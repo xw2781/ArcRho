@@ -1,0 +1,271 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Triangle Demo</title>
+  <style>
+    :root {
+      --gap: 16px;
+      --border: #ccc;
+      --bg: #fff;
+      --muted: #666;
+      --cell-w: 80px;
+      --cell-h: 26px;
+      --panel-w: 1100px;
+    }
+
+    body { font-family: Arial, sans-serif; margin: 16px; background: var(--bg); }
+    h2 { margin: 0 0 12px 0; }
+
+    /* Layout */
+    .row { display:flex; gap: var(--gap); align-items: stretch; }
+    .panel { border:1px solid var(--border); padding:12px; border-radius:8px; background: var(--bg); }
+    .left { width: 360px; flex: 0 0 360px; }
+
+    /* Right side becomes a container (no border), holding 2 panels */
+    .right {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 0;
+      border: none;
+      background: transparent;
+
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+    }
+
+    .small { color: var(--muted); font-size: 12px; }
+
+    .panelInner{
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Formula panel (auto height) */
+    #fxPanel { flex: 0 0 auto; }
+    .fxbar-top {
+      display:flex;
+      gap: 12px;
+      align-items:center;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .fxbar-top b { font-weight: 700; }
+
+    #formulaBar {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      margin-top: 6px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      outline: none;
+    }
+    #formulaBar:focus { border-color: #0747f8; }
+
+    /* Triangle panel (fixed size) */
+    #triPanel {
+      width: 1100px; 
+      height: 460px; 
+      flex: 0 0 auto; 
+    }
+
+    /* chart panel: fixed height */
+    #chartPanel {
+      width: 1125px; 
+      height: 560px; 
+
+      flex: 0 0 auto; 
+      box-sizing: border-box;
+    }
+
+    /* canvas fill */
+    #devChart {
+      width: 100%;
+      height: calc(100% - 26px);
+      display: block;
+    }
+
+    #tableWrap { min-width: 0; }
+
+    /* Table: fit to container width */
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      width: var(--cell-w);
+      height: var(--cell-h);
+      line-height: var(--cell-h);
+      padding: 0 6px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
+    }
+
+    th {
+      background:#f6f6f6;
+      position: sticky;
+      top: 0;        /* header sticks within triPanel */
+      z-index: 1;
+      text-align:left;
+    }
+
+    th:first-child, td:first-child {
+      width: 90px;
+      text-align: left;
+      font-weight: 700;
+    }
+
+    /* Selected Label highlight */
+    th.activeRow,
+    th.activeCol {
+      background: #c9c9c9;  
+    }
+
+    th.activeRow {
+      outline: 2px solid #d4d4d4;
+      outline-offset: -2px;
+    }
+
+    th.activeCol {
+      outline: 2px solid #d4d4d4;
+      outline-offset: -2px;
+    }
+
+    /* Selected cell highlight */
+    td.active {
+      outline: 2px solid #000;
+      outline-offset: -2px;
+    }
+    td.cell { cursor: pointer; }
+
+    /* Masked (blank) cells */
+    td.na {
+      border: none !important;
+      background: transparent !important;
+    }
+
+    input, button, select { padding:6px 8px; }
+    button { cursor: pointer; }
+    pre { margin: 0; }
+
+    .ctx-menu {
+      position: fixed;
+      z-index: 9999;
+      min-width: 180px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      padding: 6px;
+    }
+
+    .ctx-menu-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ctx-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font: 13px Arial, sans-serif;
+    }
+
+    .ctx-item:hover {
+      background: #f3f4f6;
+    }
+
+    .ctx-sep {
+      height: 1px;
+      background: #eee;
+      margin: 4px 0;
+    }
+
+    /* Make sure flex items can shrink */
+    .row, .panel, .right, #triPanel, #tableWrap { min-width: 0; }
+  </style>
+</head>
+
+<body>
+  <h2>Loss Triangle Demo (Headerless CSV, blanks hidden)</h2>
+
+  <div class="row">
+    <!-- Left panel -->
+    <div class="panel left">
+      <div><b>Dataset</b></div>
+      <div class="small" id="dsMeta"></div>
+
+      <div style="margin-top:10px;">
+        <button id="reloadBtn">Reload</button>
+        <button id="saveBtn">Save</button>
+        <button id="toggleBlankBtn">Show blanks</button>
+      </div>
+
+      <div style="margin-top:10px;" class="small">
+        Blanks in CSV (",,") are treated as missing and hidden in the grid.
+      </div>
+
+      <hr/>
+      <div><b>Patch log (session)</b></div>
+      <pre id="log" style="height:260px; overflow:auto; background:#fafafa; padding:8px;"></pre>
+    </div>
+
+    <!-- Right side: two panels -->
+    <div class="right">
+      <!-- Top: formula bar panel -->
+      <div class="panel" id="fxPanel">
+        <div class="fxbar-top small">
+          <b id="cellRef">Cell</b>
+          <span id="cellMeta"></span>
+        </div>
+        <input id="formulaBar" placeholder="Click a cell, then type value or =formula, press Enter" />
+      </div>
+
+      <!-- Middle: triangle panel (fixed height) -->
+      <div class="panel" id="triPanel">
+        <div class="panelInner">
+          <div id="tableWrap"></div>
+        </div>
+      </div>
+
+      <!-- Bottom: chart panel -->
+      <div class="panel" id="chartPanel">
+        <div class="panelInner">
+          <div class="small"><b>Development Curves</b></div>
+          <canvas id="devChart"></canvas>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="ctxMenu" class="ctx-menu" style="display:none;">
+    <div class="ctx-menu-inner">
+      <button class="ctx-item" data-action="copy_value">Copy value</button>
+      <button class="ctx-item" data-action="copy_formula">Copy formula</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-action="clear">Clear</button>
+      <button class="ctx-item" data-action="select_all">Select all</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-action="export_data">Export data</button>
+    </div>
+  </div>
+
+  <!-- Same-folder JS entrypoint (no /static) -->
+  <script type="module" src="/ui/main.js"></script>
+</body>
+</html>
