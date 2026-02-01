@@ -3,269 +3,979 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Triangle Demo</title>
+  <title>AdaLab</title>
   <style>
-    :root {
-      --gap: 16px;
-      --border: #ccc;
-      --bg: #fff;
-      --muted: #666;
-      --cell-w: 80px;
-      --cell-h: 26px;
-      --panel-w: 1100px;
+    .menubar{
+      height: 16px;
+      display:flex;
+      align-items:center;
+      gap: 9px;
+      padding: 2px 0px;
+      /* border-top: 1px solid var(--border); */
+      border-bottom: 1px solid var(--border);
+      user-select:none;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .menu{
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor:pointer;
+      line-height: 1;  
+      transform: translateY(-4px);
+    }
+    .menu:hover{
+      background: rgba(0,0,0,0.05);
+    }
+    .menu.disabled{
+      color: #aaa;
+      cursor: default;
+    }
+    .menu-spacer{ margin-left:auto; }
+    .autosaveToggle {
+      display: flex;
+      align-items: center;
+      align-self: center;
+      gap: 6px;
+      padding-right: 4px;
+      color: #555;
+      font-size: 12px;
+      user-select: none;
+      transform: translateY(-4px);
+      margin-left: auto;
+    }
+    .autosaveLabel { 
+      color: #747474c7; 
+      font-size: 12px;
+      transform: translateY(1px);
+    }
+    .autoSwitch {
+      position: relative;
+      width: 42px;
+      height: 19px;
+      border-radius: 800px;
+      border: 1px solid #808080be;
+      background: #e1e1e1;
+      color: #fff;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 6px;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 180ms ease, box-shadow 180ms ease;
+    }
+    .autoSwitch .autoState {
+      pointer-events: none;
+      transition: transform 160ms ease, opacity 160ms ease;
+    }
+    .autoSwitch .autoKnob {
+      position: absolute;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #f7f7f7;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
+      transition: left 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                  right 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                  transform 120ms ease,
+                  box-shadow 180ms ease;
+    }
+    .autoSwitch.on {
+      background: #007e09;
+      justify-content: flex-start;
+      box-shadow: 0 0 0 2px rgba(120, 190, 135, 0.2);
+    }
+    .autoSwitch.on .autoState { transform: translateX(-1px); }
+    .autoSwitch.on .autoKnob {
+      left: auto;
+      right: 2px;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.2);
+      animation: knobBounceOn 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .autoSwitch:not(.on) .autoKnob {
+      animation: knobBounceOff 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .autoSwitch:active .autoKnob { transform: scale(0.92); }
+
+    @keyframes knobBounceOn {
+      0% { transform: scale(1); }
+      60% { transform: scale(1.14); }
+      100% { transform: scale(1); }
+    }
+    @keyframes knobBounceOff {
+      0% { transform: scale(1); }
+      60% { transform: scale(1.08); }
+      100% { transform: scale(1); }
     }
 
-    body { font-family: Arial, sans-serif; margin: 16px; background: var(--bg); }
-    h2 { margin: 0 0 12px 0; }
+    #titlebar {
+      height: 36px;
+      background: #979797;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      user-select: none;
+    }
+    #customTitlebar {
+      height: 30px;
+      background: #a5a5a559;
+      border-bottom: 1px solid #cfcfcf;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      margin: -12px -12px 8px -12px;
+      font-size: 13px;
+      color: #222;
+      box-sizing: border-box;
+    }
+    .host-drag-region {
+      cursor: default;
+      -webkit-app-region: drag;
+    }
+    .host-nodrag { -webkit-app-region: no-drag; }
+    #titlebarTitle { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .titlebarControls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .titlebarBtn {
+      width: 28px;
+      height: 20px;
+      border: 1px solid #bdbdbd;
+      border-radius: 4px;
+      background: #efefef;
+      color: #333;
+      font-size: 12px;
+      line-height: 18px;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .titlebarBtn:hover { background: #e2e2e2; }
+    .titlebarBtn:active { background: #d8d8d8; }
+    #titlebarMinBtn:hover,
+    #titlebarMaxBtn:hover {
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+    #titlebarCloseBtn:hover {
+      background: #fee2e2;
+      border-color: #fca5a5;
+    }
+    .titlebarIcon {
+      width: 10px;
+      height: 10px;
+      stroke: #333;
+      stroke-width: 1.2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
 
-    /* Layout */
-    .row { display:flex; gap: var(--gap); align-items: stretch; }
-    .panel { border:1px solid var(--border); padding:12px; border-radius:8px; background: var(--bg); }
-    .left { width: 360px; flex: 0 0 360px; }
-
-    /* Right side becomes a container (no border), holding 2 panels */
-    .right {
-      flex: 1 1 auto;
-      min-width: 0;
-      padding: 0;
-      border: none;
-      background: transparent;
-
+    :root {
+      --border:#ddd;
+      --bg:#f2f2f2;
+      --muted:#666;
+      --gap:10px;
+      --statusbar-h: 24px;
+      --app-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+    }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: var(--app-font);
+      margin: 0;
+      padding: 12px 12px 0 12px;
+      background: var(--bg);
       display: flex;
       flex-direction: column;
-      gap: var(--gap);
-    }
-
-    .small { color: var(--muted); font-size: 12px; }
-
-    .panelInner{
-      width: 100%;
-      box-sizing: border-box;
-    }
-
-    /* Formula panel (auto height) */
-    #fxPanel { flex: 0 0 auto; }
-    .fxbar-top {
-      display:flex;
-      gap: 12px;
-      align-items:center;
-      flex-wrap: wrap;
-      min-width: 0;
-    }
-    .fxbar-top b { font-weight: 700; }
-
-    #formulaBar {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 8px 10px;
-      margin-top: 6px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      outline: none;
-    }
-    #formulaBar:focus { border-color: #0747f8; }
-
-    /* Triangle panel (fixed size) */
-    #triPanel {
-      width: 1100px; 
-      height: 460px; 
-      flex: 0 0 auto; 
-    }
-
-    /* chart panel: fixed height */
-    #chartPanel {
-      width: 1125px; 
-      height: 560px; 
-
-      flex: 0 0 auto; 
-      box-sizing: border-box;
-    }
-
-    /* canvas fill */
-    #devChart {
-      width: 100%;
-      height: calc(100% - 26px);
-      display: block;
-    }
-
-    #tableWrap { min-width: 0; }
-
-    /* Table: fit to container width */
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      table-layout: fixed;
-    }
-
-    th, td {
-      border: 1px solid #ddd;
-      width: var(--cell-w);
-      height: var(--cell-h);
-      line-height: var(--cell-h);
-      padding: 0 6px;
-      text-align: right;
-      white-space: nowrap;
       overflow: hidden;
-      text-overflow: ellipsis;
       box-sizing: border-box;
+      user-select: none;
+    }
+    input, textarea, select, option, [contenteditable="true"] {
+      user-select: text;
     }
 
-    th {
-      background:#f6f6f6;
-      position: sticky;
-      top: 0;        /* header sticks within triPanel */
-      z-index: 1;
-      text-align:left;
-    }
-
-    th:first-child, td:first-child {
-      width: 90px;
-      text-align: left;
-      font-weight: 700;
-    }
-
-    /* Selected Label highlight */
-    th.activeRow,
-    th.activeCol {
-      background: #c9c9c9;  
-    }
-
-    th.activeRow {
-      outline: 2px solid #d4d4d4;
-      outline-offset: -2px;
-    }
-
-    th.activeCol {
-      outline: 2px solid #d4d4d4;
-      outline-offset: -2px;
-    }
-
-    /* Selected cell highlight */
-    td.active {
-      outline: 2px solid #000;
-      outline-offset: -2px;
-    }
-    td.cell { cursor: pointer; }
-
-    /* Masked (blank) cells */
-    td.na {
-      border: none !important;
-      background: transparent !important;
-    }
-
-    input, button, select { padding:6px 8px; }
-    button { cursor: pointer; }
-    pre { margin: 0; }
-
-    .ctx-menu {
+    #appConfirmOverlay {
       position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.18);
+      display: none;
+      align-items: center;
+      justify-content: center;
       z-index: 9999;
+    }
+    #appConfirmOverlay.open { display: flex; }
+    #appConfirmBox {
+      background: #f3f3f3;
+      border: 1px solid #c9c9c9;
+      border-radius: 8px;
+      min-width: 320px;
+      max-width: 420px;
+      padding: 14px;
+      box-shadow: 0 12px 26px rgba(0,0,0,0.22);
+    }
+    #appConfirmTitle {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    #appConfirmMessage {
+      font-size: 13px;
+      color: #222;
+      margin-bottom: 12px;
+    }
+    #appConfirmButtons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .appConfirmBtn {
+      min-width: 72px;
+      height: 26px;
+      border: 1px solid #bdbdbd;
+      border-radius: 4px;
+      background: #efefef;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .appConfirmBtn:hover { background: #e4e4e4; }
+    .appConfirmBtn.primary { font-weight: 600; background: #e0e0e0; }
+
+    #fontSettingsOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.18);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    #fontSettingsOverlay.open { display: flex; }
+    #fontSettingsBox {
+      background: #f3f3f3;
+      border: 1px solid #c9c9c9;
+      border-radius: 10px;
+      min-width: 420px;
+      max-width: 520px;
+      padding: 14px;
+      box-shadow: 0 12px 26px rgba(0,0,0,0.22);
+    }
+    #fontSettingsTitle {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .fontSettingsRow {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #555;
+    }
+    #fontInput {
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #cfcfcf;
+      border-radius: 6px;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    #fontPreview {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid #d7d7d7;
+      border-radius: 8px;
+      background: #fff;
+      color: #222;
+      font-size: 13px;
+    }
+    #fontSettingsButtons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    #rootPathSettingsOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.18);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    #rootPathSettingsOverlay.open { display: flex; }
+    #rootPathSettingsBox {
+      background: #f3f3f3;
+      border: 1px solid #c9c9c9;
+      border-radius: 10px;
+      min-width: 480px;
+      max-width: 600px;
+      padding: 14px;
+      box-shadow: 0 12px 26px rgba(0,0,0,0.22);
+    }
+    #rootPathSettingsTitle {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    #rootPathInput {
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #cfcfcf;
+      border-radius: 6px;
+      box-sizing: border-box;
+      background: #fff;
+      width: 100%;
+    }
+    #rootPathSettingsButtons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    #zoomToast {
+      position: fixed;
+      right: 12px;
+      bottom: calc(var(--statusbar-h) + 10px);
+      background: #eeeeee;
+      border: 1px solid #c9c9c9;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: #222;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 120ms ease, transform 120ms ease;
+      pointer-events: none;
+      z-index: 10000;
+    }
+    #zoomToast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #globalTooltip {
+      position: fixed;
+      left: 0;
+      top: 0;
+      max-width: 260px;
+      background: #ffffff;
+      border: 1px solid rgba(200, 200, 200, 0.9);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: #222;
+      white-space: nowrap;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.12);
+      opacity: 0;
+      transform: translateY(-50%);
+      transition: opacity 120ms ease;
+      pointer-events: none;
+      z-index: 20000;
+    }
+    #globalTooltip.show { opacity: 1; }
+    .topbar { display:flex; align-items:center; gap: var(--gap); border-top:none; border-bottom:none; padding-top:0px; padding-bottom:0px; }
+    .brand { font-weight:700; }
+    .tabs { display:flex; gap:0; flex-wrap:wrap; position: relative; }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      line-height: 1;
+      gap: 18px;
+
+      padding: 6px 10px;
+      height: 28px;
+
+      background: #f3f3f3;
+      border: 1px solid #d0d0d0;
+      border-bottom: none;
+
+      border-radius: 0;
+
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+
+      color: #333;
+      box-sizing: border-box;
+      white-space: nowrap;
+      position: relative;
+    }
+
+    .tab.active {
+      background: #ffffff;
+      font-weight: 600;
+      border-color: #c8c8c8;
+      z-index: 2;
+      border-bottom: none;
+      margin-bottom: -1px;
+      box-shadow: inset 0 2px 0 #2b6df6;
+    }
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      left: -1px;
+      right: -1px;
+      bottom: -1px;
+      height: 1px;
+      background: #ffffff;
+    }
+
+    .tab .x {
+      border:none;
+      background:transparent;
+      cursor:pointer;
+      color: rgba(0,0,0,0.15);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      padding: 0;
+      border-radius: 3px;
+    }
+    .tab .x.dirty { color: transparent; position: relative; }
+    .tab .x.dirty:hover { color: #000; }
+    .tab .x.dirty:hover .dirtyDot { opacity: 0; }
+    .tab .x .dirtyDot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #555;
+      display: block;
+      position: absolute;
+      inset: 0;
+      margin: auto;
+      transition: opacity 120ms ease;
+    }
+    .tab .x:hover {
+      background: #dcdcdc;
+      color: #000;
+    }
+
+    .tab.dragging {
+      opacity: 1 !important;
+      align-items: center;
+      filter: none !important;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+      will-change: transform;
+      transform: scale(0.98);
+    }
+    .tab.dragging.active {
+      box-shadow: 0 6px 18px rgba(0,0,0,0.22), inset 0 2px 0 #2b6df6;
+    }
+
+    .tab.dragging > * {
+      transform: translateY(0);
+    }
+
+    .tab.placeholder {
+      background: rgba(0,0,0,0.04);
+      border: 1px dashed #bbb;
+      box-shadow: none;
+    }
+
+    .tab {
+      transition: transform 120ms ease;
+      will-change: transform;
+    }
+    .tab.dragging,
+    .tab.placeholder {
+      transition: none;
+    }
+    
+    #dropIndicator {
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      width: 3px;
+      border-radius: 2px;
+      background: #2b6df6;
+      display: none;
+      pointer-events: none;
+    }
+
+    .actions { margin-left:auto; display:flex; gap:8px; align-items:center; }
+    button { padding: 6px 10px; cursor:pointer; }
+    .content { 
+      border:1px solid var(--border); 
+      border-top: 1px solid var(--border);
+      border-radius: 0; 
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow:hidden; 
+      background: #fff;
+      margin-top: -1px;
+    }
+    .home { padding: 14px; }
+    .homeGroup { margin-top: 12px; }
+    .homeGroup:first-of-type { margin-top: 8px; }
+    .groupTitle {
+      font-size: 13px;
+      font-weight: 700;
+      color: #333;
+      margin-bottom: 8px;
+    }
+    .cards { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; }
+    .homeGroup .cards { margin-top: 0; }
+    .card {
+      width: 260px;
+      border:1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background:#fff;
+    }
+
+    .card.clickable {
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    }
+
+    .card.clickable:hover {
+      border-color: #bbb;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+      transform: translateY(-1px);
+    }
+
+    .card.clickable:active {
+      transform: translateY(0px);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+    }
+
+    .card h3 { margin: 0 0 8px 0; font-size: 16px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    iframe { width:100%; height:100%; border:0; display:block; }
+    select { padding: 6px 10px; }
+
+
+    /* ===== Jupyter-like + tab ===== */
+    .plusTab {
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      padding: 6px 10px;
+
+      background: #f3f3f3;
+      border: 1px solid #d0d0d0;
+      border-bottom: none;
+      border-radius: 1px 1px 0 0;
+
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      user-select: none;
+      color: #333;
+    }
+
+    .plusTab:hover { background: #eaeaea; }
+    .plusTab:active { background: #dedede; }
+
+    /* dropdown menu */
+    .tabMenu {
+      position: absolute;
+      top: 30px;
       min-width: 180px;
       background: #fff;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      border: 1px solid #cfcfcf;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+      border-radius: 10px;
       padding: 6px;
+      z-index: 9999;
+      display: none;
     }
 
-    .ctx-menu-inner {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
+    .tabMenu.open { display: block; }
 
-    .ctx-item {
-      width: 100%;
-      text-align: left;
-      background: transparent;
-      border: none;
+    .tabMenuItem {
       padding: 8px 10px;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
-      font: 13px Arial, sans-serif;
+      font-size: 13px;
     }
 
-    .ctx-item:hover {
-      background: #f3f4f6;
-    }
+    .tabMenuItem:hover { background: rgba(0,0,0,0.06); }
 
-    .ctx-sep {
+    .tabMenuSep {
       height: 1px;
-      background: #eee;
-      margin: 4px 0;
+      background: #e7e7e7;
+      margin: 6px 4px;
     }
 
-    /* Make sure flex items can shrink */
-    .row, .panel, .right, #triPanel, #tableWrap { min-width: 0; }
+    .menuDropdown{
+      position: fixed;
+      min-width: 260px;
+      background: #fff;
+      border: 1px solid #cfcfcf;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+      border-radius: 10px;
+      padding: 6px;
+      z-index: 9999;
+      display: none;
+    }
+
+    .menuDropdown.open { display: block; }
+
+    .menuItem {
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+    }
+
+    .menuItem:hover { background: rgba(0,0,0,0.06); }
+
+    .menuShortcut {
+      color: #777;
+      font-size: 12px;
+      margin-left: auto;
+    }
+
+    .menuItem.disabled {
+      color: #aaa;
+      cursor: default;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    .menuSep {
+      height: 1px;
+      background: #e6e6e6;
+      margin: 6px 4px;
+    }
+
+    #tabCtxMenu {
+      position: fixed;
+      min-width: 160px;
+      background: #fff;
+      border: 1px solid #cfcfcf;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+      border-radius: 10px;
+      padding: 6px;
+      z-index: 9999;
+      display: none;
+    }
+
+    #tabCtxMenu.open { display: block; }
+
+    .tabCtxItem {
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .tabCtxItem:hover { background: rgba(0,0,0,0.06); }
+
+    .tabCtxItem.disabled {
+      color: #aaa;
+      cursor: default;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    #statusBar {
+      flex: 0 0 var(--statusbar-h);
+      height: var(--statusbar-h);
+      border-top: 1px solid var(--border);
+      border-radius: 6px 6px 0 0;
+      background: #e6e6e681;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 12px;
+      color: var(--muted);
+      box-sizing: border-box;
+      gap: 8px;
+    }
+    #statusText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #resizeHandle {
+      margin-left: 6px;
+      width: 78px;
+      height: 16px;
+      border: none;
+      border-radius: 3px;
+      background: #ffffff;
+      color: #2b2b2b;
+      font-size: 11.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 6px;
+      cursor: nwse-resize;
+      user-select: none;
+    }
+    #zoomControls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      padding-right: 6px;
+    }
+    .zoomBtn {
+      width: 18px;
+      height: 18px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: #444;
+      font-size: 13px;
+      line-height: 18px;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .zoomBtn:hover { background: #e6e6e6; }
+    .zoomBtn:active { background: #d8d8d8; }
+    #zoomRange {
+      width: 160px;
+      appearance: none;
+      -webkit-appearance: none;
+      height: 2px;
+      background: #bcbcbc;
+      border-radius: 2px;
+      outline: none;
+    }
+    #zoomRange::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      background: #7a7a7a;
+    }
+    #zoomRange::-moz-range-thumb {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      background: #7a7a7a;
+      border: none;
+    }
+    #zoomRange::-moz-range-track {
+      height: 2px;
+      background: #bcbcbc;
+      border-radius: 2px;
+    }
+    #zoomValue {
+      min-width: 40px;
+      text-align: right;
+      font-size: 12px;
+      color: #333;
+    }
+    #resizeHandle .resizeIcon {
+      width: 16px;
+      height: 14px;
+      border-left: 1px solid #c7c7c7;
+      margin-left: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #resizeHandle .resizeIcon::after {
+      content: "";
+      width: 10px;
+      height: 10px;
+      background: repeating-linear-gradient(135deg, #9a9a9a 0 1px, transparent 1px 3px);
+      opacity: 0.9;
+    }
+
+    body.is-resizing .content {
+      opacity: 0.6;
+      filter: saturate(0.9);
+      transition: opacity 120ms ease;
+      pointer-events: none;
+      contain: layout paint;
+    }
+    
   </style>
 </head>
 
 <body>
-  <h2>Loss Triangle Demo (Headerless CSV, blanks hidden)</h2>
-
-  <div class="row">
-    <!-- Left panel -->
-    <div class="panel left">
-      <div><b>Dataset</b></div>
-      <div class="small" id="dsMeta"></div>
-
-      <div style="margin-top:10px;">
-        <button id="reloadBtn">Reload</button>
-        <button id="saveBtn">Save</button>
-        <button id="toggleBlankBtn">Show blanks</button>
+  <div id="customTitlebar" class="host-drag-region">
+    <div id="titlebarTitle">Actuarial Data & Analytics System</div>
+    <div class="titlebarControls host-nodrag">
+      
+      <div class="titlebarBtn" id="titlebarMinBtn" title="Minimize" aria-label="Minimize">
+        <svg class="titlebarIcon" viewBox="0 0 10 10" aria-hidden="true">
+          <line x1="2" y1="7" x2="8" y2="7"></line>
+        </svg>
       </div>
-
-      <div style="margin-top:10px;" class="small">
-        Blanks in CSV (",,") are treated as missing and hidden in the grid.
+      
+      <div class="titlebarBtn" id="titlebarMaxBtn" title="Maximize" aria-label="Maximize">
+        <svg class="titlebarIcon" viewBox="0 0 10 10" aria-hidden="true">
+          <rect x="2" y="2" width="6" height="6" rx="0.6"></rect>
+        </svg>
       </div>
+      
+      <div class="titlebarBtn" id="titlebarCloseBtn" title="Close" aria-label="Close">
+        <svg class="titlebarIcon" viewBox="0 0 10 10" aria-hidden="true">
+          <line x1="2" y1="2" x2="8" y2="8"></line>
+          <line x1="8" y1="2" x2="2" y2="8"></line>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="menubar" id="menubar">
+    <div class="menu" data-menu="file">File</div>
+    <div class="menu" data-menu="edit">Edit</div>
+    <div class="menu" data-menu="view">View</div>
+    <div class="menu" data-menu="settings">Settings</div>
+    <div class="menu" data-menu="help">Help</div>
+    <div class="menu" data-menu="about">About</div>
+    <div class="menu-spacer"></div>
+  </div>
 
-      <hr/>
-      <div><b>Patch log (session)</b></div>
-      <pre id="log" style="height:260px; overflow:auto; background:#fafafa; padding:8px;"></pre>
+  <div id="fileMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="close-tab"><span>Close Tab</span><span class="menuShortcut">Alt+W</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="save"><span>Save</span><span class="menuShortcut">Ctrl+S</span></div>
+    <div class="menuItem" data-action="save-as"><span>Save As...</span><span class="menuShortcut">Ctrl+Shift+S</span></div>
+    <div class="menuItem" data-action="import-workflow"><span>Import Workflow from...</span><span class="menuShortcut">Ctrl+O</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="print"><span>Print...</span><span class="menuShortcut">Ctrl+P</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="restart-app"><span>Restart</span><span class="menuShortcut">Ctrl+Alt+R</span></div>
+    <div class="menuItem" data-action="shutdown-app"><span>Quit Application</span><span class="menuShortcut">Ctrl+Q</span></div>
+  </div>
+
+  <div id="editMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="dfm-exclude-high"><span>Exclude Highest Ratio</span><span class="menuShortcut">Ctrl+H</span></div>
+    <div class="menuItem" data-action="dfm-exclude-low"><span>Exclude Lowest Ratio</span><span class="menuShortcut">Ctrl+L</span></div>
+    <div class="menuItem" data-action="dfm-include-all"><span>Include All Ratios</span><span class="menuShortcut">Ctrl+I</span></div>
+  </div>
+
+  <div id="viewMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="toggle-nav"><span>Hide/Show Navigation Panel</span><span class="menuShortcut">Ctrl+Shift+F</span></div>
+  </div>
+  <div id="settingsMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="font-settings"><span>Font Settings...</span></div>
+    <div class="menuItem" data-action="root-path-settings"><span>Root Path Settings...</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="clear-cache-reload"><span>Clear Cache & Reload</span></div>
+  </div>
+
+  <div id="tabCtxMenu">
+    <div class="tabCtxItem" data-action="open-window">Open in New Window</div>
+    <div class="tabCtxItem" data-action="close">Close</div>
+    <div class="tabCtxItem" data-action="close-others">Close Others</div>
+    <div class="tabCtxItem" data-action="close-all">Close All</div>
+  </div>
+
+  <div class="topbar">
+    <!-- <div class="brand">ADAS</div> -->
+
+    <div class="tabs" id="tabs"></div>
+    <div class="autosaveToggle host-nodrag" id="autoSaveToggle">
+      <span class="autosaveLabel">AutoSave</span>
+      <button class="autoSwitch" id="autoSaveSwitch" type="button" role="switch" aria-checked="true">
+        <span class="autoKnob"></span>
+        <span class="autoState" id="autoSaveState">On</span>
+      </button>
     </div>
 
-    <!-- Right side: two panels -->
-    <div class="right">
-      <!-- Top: formula bar panel -->
-      <div class="panel" id="fxPanel">
-        <div class="fxbar-top small">
-          <b id="cellRef">Cell</b>
-          <span id="cellMeta"></span>
-        </div>
-        <input id="formulaBar" placeholder="Click a cell, then type value or =formula, press Enter" />
-      </div>
+  </div>
 
-      <!-- Middle: triangle panel (fixed height) -->
-      <div class="panel" id="triPanel">
-        <div class="panelInner">
-          <div id="tableWrap"></div>
-        </div>
-      </div>
-
-      <!-- Bottom: chart panel -->
-      <div class="panel" id="chartPanel">
-        <div class="panelInner">
-          <div class="small"><b>Development Curves</b></div>
-          <canvas id="devChart"></canvas>
-        </div>
-      </div>
-
+  <div class="content" id="content"></div>
+  <div id="statusBar">
+    <span id="statusText">Status: Ready</span>
+    <div id="zoomControls" class="host-nodrag" title="Zoom">
+      <div class="zoomBtn" id="zoomOutBtn">-</div>
+      <input id="zoomRange" type="range" min="70" max="160" step="10" value="100"/>
+      <div class="zoomBtn" id="zoomInBtn">+</div>
+      <span id="zoomValue">100%</span>
+    </div>
+    <div id="resizeHandle" class="host-nodrag" title="Resize window">
+      <span id="clockText">--:--:--</span>
+      <span class="resizeIcon">↘</span>
     </div>
   </div>
 
-  <div id="ctxMenu" class="ctx-menu" style="display:none;">
-    <div class="ctx-menu-inner">
-      <button class="ctx-item" data-action="copy_value">Copy value</button>
-      <button class="ctx-item" data-action="copy_formula">Copy formula</button>
-      <div class="ctx-sep"></div>
-      <button class="ctx-item" data-action="clear">Clear</button>
-      <button class="ctx-item" data-action="select_all">Select all</button>
-      <div class="ctx-sep"></div>
-      <button class="ctx-item" data-action="export_data">Export data</button>
+  <div id="appConfirmOverlay" class="host-nodrag" role="dialog" aria-modal="true" aria-labelledby="appConfirmTitle" aria-describedby="appConfirmMessage">
+    <div id="appConfirmBox">
+      <div id="appConfirmTitle">Warning</div>
+      <div id="appConfirmMessage">Quit the application?</div>
+      <div id="appConfirmButtons">
+        <button class="appConfirmBtn" id="appConfirmCancel" type="button">Cancel</button>
+        <button class="appConfirmBtn primary" id="appConfirmOk" type="button">Quit</button>
+      </div>
     </div>
   </div>
 
-  <!-- Same-folder JS entrypoint (no /static) -->
-  <script type="module" src="/ui/main.js"></script>
+  <div id="fontSettingsOverlay" class="host-nodrag" role="dialog" aria-modal="true" aria-labelledby="fontSettingsTitle">
+    <div id="fontSettingsBox">
+      <div id="fontSettingsTitle">Font Settings</div>
+      <div class="fontSettingsRow">
+        <label for="fontInput">Font</label>
+        <input id="fontInput" list="fontList" autocomplete="off" />
+        <datalist id="fontList">
+          <option value="Arial"></option>
+          <option value="Segoe UI"></option>
+          <option value="Aptos"></option>
+          <option value="Aptos Mono"></option>
+          <option value="Skeena"></option>
+          <option value="Bierstadt"></option>
+          <option value="Tahoma"></option>
+          <option value="Calibri"></option>
+          <option value="Verdana"></option>
+          <option value="Trebuchet MS"></option>
+          <option value="Cambria"></option>
+          <option value="Georgia"></option>
+          <option value="Times New Roman"></option>
+          <option value="Consolas"></option>
+          <option value="Courier New"></option>
+        </datalist>
+      </div>
+      <div id="fontPreview">The quick brown fox jumps over the lazy dog (1234567890)</div>
+      <div id="fontSettingsButtons">
+        <button class="appConfirmBtn" id="fontCancelBtn" type="button">Cancel</button>
+        <button class="appConfirmBtn primary" id="fontApplyBtn" type="button">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rootPathSettingsOverlay" class="host-nodrag" role="dialog" aria-modal="true" aria-labelledby="rootPathSettingsTitle">
+    <div id="rootPathSettingsBox">
+      <div id="rootPathSettingsTitle">Root Path Settings</div>
+      <div class="fontSettingsRow">
+        <label for="rootPathInput">Root Path</label>
+        <input id="rootPathInput" type="text" autocomplete="off" placeholder="E:\ADAS" />
+      </div>
+      <div style="margin-top:10px; font-size:11px; color:#666;">
+        This is the base path for all data files. Requires app restart to take effect.
+      </div>
+      <div id="rootPathSettingsButtons">
+        <button class="appConfirmBtn" id="rootPathCancelBtn" type="button">Cancel</button>
+        <button class="appConfirmBtn primary" id="rootPathApplyBtn" type="button">Save & Restart</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="zoomToast" aria-live="polite">100%</div>
+  <div id="globalTooltip"></div>
+
+  <script type="module" src="/ui/ui_shell.js?v=202601265"></script>
 </body>
 </html>
+

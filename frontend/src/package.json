@@ -1,0 +1,12 @@
+{
+  "name": "adas-electron",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron_main.js",
+  "scripts": {
+    "electron": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^29.0.0"
+  }
+}

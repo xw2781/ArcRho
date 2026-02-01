@@ -3,4 +3,4 @@ An actuarial data analytics system that integrates an Excel VBA add-in, Python b
 
 ## Frontend Preview
 
-![ADAS Frontend UI](assets/images/triangle_viewer.jpg)
+![ADAS Frontend UI](assets/images/triangle_viewer_v2.jpg)

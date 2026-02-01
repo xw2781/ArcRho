@@ -8,6 +8,15 @@ export function parseFormulaInput(text) {
   const t = (text ?? "").trim();
   if (t === "") return { ok: true, value: null };
 
+  // percentage input like "12.5%"
+  if (!t.startsWith("=") && t.endsWith("%")) {
+    const num = Number(t.slice(0, -1).replace(/,/g, ""));
+    if (!Number.isFinite(num)) {
+      return { ok: false, error: `Invalid percentage: "${t}"` };
+    }
+    return { ok: true, value: num / 100 };
+  }
+
   // plain number
   if (!t.startsWith("=")) {
     const cleaned = t.replace(/,/g, "");

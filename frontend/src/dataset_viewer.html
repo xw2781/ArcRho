@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Edit Dataset</title>
+  <link rel="stylesheet" href="/ui/dataset_shared.css?v=20260129121828"/>
+</head>
+<body>
+  <div id="datasetRoot"></div>
+  <script type="module">
+    import { injectDatasetMarkup } from "/ui/dataset_shared.js";
+    injectDatasetMarkup(document.getElementById("datasetRoot"));
+    import("/ui/dataset_main.js?v=20260129121828");
+  </script>
+</body>
+</html>
+
+

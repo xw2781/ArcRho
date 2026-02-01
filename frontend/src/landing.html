@@ -1,0 +1,4224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdaLab - Actuarial Data & Analytics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #a5b4fc;
+            --secondary: #0f172a;
+            --accent: #f59e0b;
+            --gray-50: #f8fafc;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-300: #cbd5e1;
+            --gray-400: #94a3b8;
+            --gray-500: #64748b;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --gray-800: #1e293b;
+            --gray-900: #0f172a;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--gray-800);
+            line-height: 1.6;
+            background: #fff;
+            overflow-x: hidden;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes fadeInRight {
+            from {
+                opacity: 0;
+                transform: translateX(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @keyframes countUp {
+            from { opacity: 0; transform: scale(0.5); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes drawLine {
+            to { stroke-dashoffset: 0; }
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        @keyframes typing {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+
+        @keyframes blink {
+            0%, 50% { border-color: var(--primary); }
+            51%, 100% { border-color: transparent; }
+        }
+
+        @keyframes sparkle {
+            0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+            50% { opacity: 1; transform: scale(1) rotate(180deg); }
+        }
+
+        @keyframes drawChart {
+            to { stroke-dashoffset: 0; }
+        }
+
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes aiPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+            50% { box-shadow: 0 0 0 15px rgba(99, 102, 241, 0); }
+        }
+
+        @keyframes dotBounce {
+            0%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-8px); }
+        }
+
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .animate-on-scroll.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .animate-delay-1 { transition-delay: 0.1s; }
+        .animate-delay-2 { transition-delay: 0.2s; }
+        .animate-delay-3 { transition-delay: 0.3s; }
+        .animate-delay-4 { transition-delay: 0.4s; }
+        .animate-delay-5 { transition-delay: 0.5s; }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+            z-index: 1000;
+            padding: 0 24px;
+            transition: all 0.3s ease;
+        }
+
+        nav.scrolled {
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 72px;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--secondary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .logo:hover {
+            transform: scale(1.02);
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            font-weight: 700;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .logo:hover .logo-icon {
+            transform: rotate(-5deg) scale(1.1);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 36px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--gray-600);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: color 0.2s;
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .nav-cta {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .nav-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 160px 24px 100px;
+            background: linear-gradient(180deg, #f8faff 0%, #fff 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 50%, rgba(168, 85, 247, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        /* Floating shapes */
+        .floating-shapes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .shape {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.5;
+        }
+
+        .shape-1 {
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1));
+            top: 10%;
+            right: -100px;
+            animation: float 8s ease-in-out infinite;
+        }
+
+        .shape-2 {
+            width: 200px;
+            height: 200px;
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(251, 191, 36, 0.1));
+            bottom: 20%;
+            left: -50px;
+            animation: float 6s ease-in-out infinite reverse;
+        }
+
+        .shape-3 {
+            width: 150px;
+            height: 150px;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(74, 222, 128, 0.1));
+            top: 40%;
+            left: 10%;
+            animation: float 7s ease-in-out infinite;
+        }
+
+        .hero-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero-content {
+            animation: fadeInLeft 0.8s ease forwards;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1));
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--primary);
+            margin-bottom: 24px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .hero-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .hero-content h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: var(--secondary);
+            line-height: 1.1;
+            margin-bottom: 24px;
+        }
+
+        .hero-content h1 span {
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-size: 200% 200%;
+            animation: gradientMove 3s ease infinite;
+        }
+
+        .hero-content p {
+            font-size: 1.25rem;
+            color: var(--gray-600);
+            margin-bottom: 36px;
+            max-width: 500px;
+            line-height: 1.7;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 16px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 16px 32px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-primary svg {
+            transition: transform 0.3s ease;
+        }
+
+        .btn-primary:hover svg {
+            transform: translateX(4px);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: var(--gray-700);
+            padding: 16px 32px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            border: 2px solid var(--gray-200);
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            transform: translateY(-3px);
+        }
+
+        .hero-visual {
+            animation: fadeInRight 0.8s ease forwards;
+            animation-delay: 0.2s;
+            opacity: 0;
+        }
+
+        .hero-image {
+            background: linear-gradient(135deg, var(--gray-800), var(--gray-900));
+            border-radius: 20px;
+            padding: 3px;
+            box-shadow:
+                0 25px 50px rgba(0, 0, 0, 0.2),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .app-preview {
+            background: #1a1a2e;
+            border-radius: 18px;
+            overflow: hidden;
+        }
+
+        .app-titlebar {
+            background: linear-gradient(180deg, #2d2d44, #252538);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .app-dots {
+            display: flex;
+            gap: 8px;
+        }
+
+        .app-dots span {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            transition: transform 0.2s ease;
+        }
+
+        .app-dots span:hover {
+            transform: scale(1.2);
+        }
+
+        .app-dots span:first-child { background: #ff5f57; }
+        .app-dots span:nth-child(2) { background: #ffbd2e; }
+        .app-dots span:last-child { background: #28ca42; }
+
+        .app-title {
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .app-content {
+            padding: 20px;
+            background: linear-gradient(180deg, #1e1e32, #16162a);
+            min-height: 320px;
+        }
+
+        /* Animated Triangle Chart */
+        .triangle-chart {
+            display: flex;
+            gap: 20px;
+        }
+
+        .triangle-table {
+            flex: 1;
+        }
+
+        .triangle-preview {
+            display: grid;
+            gap: 3px;
+            font-size: 11px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .triangle-row {
+            display: flex;
+            gap: 3px;
+        }
+
+        .triangle-cell {
+            background: rgba(255,255,255,0.03);
+            padding: 8px 10px;
+            border-radius: 4px;
+            min-width: 58px;
+            text-align: right;
+            color: rgba(255,255,255,0.7);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .triangle-cell:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: var(--primary);
+            transform: scale(1.05);
+        }
+
+        .triangle-cell.header {
+            background: rgba(99, 102, 241, 0.15);
+            font-weight: 600;
+            color: var(--primary-light);
+        }
+
+        .triangle-cell.highlight {
+            background: rgba(99, 102, 241, 0.25);
+            border-color: var(--primary);
+            color: white;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .triangle-cell.projected {
+            background: rgba(168, 85, 247, 0.15);
+            color: #c4b5fd;
+            font-style: italic;
+            border-color: rgba(168, 85, 247, 0.3);
+        }
+
+        /* Mini Chart */
+        .mini-chart {
+            width: 120px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            gap: 4px;
+        }
+
+        .chart-bar-container {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 150px;
+            padding: 10px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .chart-bar {
+            flex: 1;
+            background: linear-gradient(180deg, var(--primary), var(--primary-dark));
+            border-radius: 4px 4px 0 0;
+            transition: height 1s ease;
+            position: relative;
+        }
+
+        .chart-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.2), transparent);
+            border-radius: 4px 4px 0 0;
+        }
+
+        .chart-bar:nth-child(1) { height: 40%; animation: growBar 1s ease forwards; animation-delay: 0.1s; }
+        .chart-bar:nth-child(2) { height: 60%; animation: growBar 1s ease forwards; animation-delay: 0.2s; }
+        .chart-bar:nth-child(3) { height: 75%; animation: growBar 1s ease forwards; animation-delay: 0.3s; }
+        .chart-bar:nth-child(4) { height: 65%; animation: growBar 1s ease forwards; animation-delay: 0.4s; }
+        .chart-bar:nth-child(5) { height: 85%; animation: growBar 1s ease forwards; animation-delay: 0.5s; }
+        .chart-bar:nth-child(6) { height: 95%; background: linear-gradient(180deg, #a855f7, #7c3aed); animation: growBar 1s ease forwards; animation-delay: 0.6s; }
+
+        @keyframes growBar {
+            from { height: 0; }
+        }
+
+        .chart-label {
+            text-align: center;
+            color: rgba(255,255,255,0.4);
+            font-size: 10px;
+            margin-top: 8px;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 120px 24px;
+            background: white;
+            position: relative;
+        }
+
+        .features::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 1px;
+            height: 80px;
+            background: linear-gradient(180deg, var(--gray-200), transparent);
+        }
+
+        .features-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 70px;
+        }
+
+        .section-label {
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            display: inline-block;
+        }
+
+        .section-title {
+            font-size: 2.75rem;
+            font-weight: 700;
+            color: var(--secondary);
+            margin-bottom: 20px;
+        }
+
+        .section-subtitle {
+            font-size: 1.2rem;
+            color: var(--gray-500);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+        }
+
+        .feature-card {
+            padding: 36px;
+            border-radius: 20px;
+            border: 1px solid var(--gray-200);
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+            background: white;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), #a855f7);
+            transform: scaleX(0);
+            transition: transform 0.4s ease;
+        }
+
+        .feature-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .feature-card:hover {
+            border-color: transparent;
+            box-shadow: 0 20px 50px rgba(99, 102, 241, 0.15);
+            transform: translateY(-8px);
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            font-size: 24px;
+            transition: transform 0.4s ease;
+            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .feature-card:hover .feature-icon {
+            transform: scale(1.1) rotate(-5deg);
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--secondary);
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            color: var(--gray-600);
+            font-size: 1rem;
+            line-height: 1.7;
+        }
+
+        /* AI Visualization Section */
+        .ai-viz {
+            padding: 120px 24px;
+            background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ai-viz::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 30% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 70% 80%, rgba(168, 85, 247, 0.15) 0%, transparent 40%);
+            pointer-events: none;
+        }
+
+        .ai-viz-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .ai-viz .section-header {
+            margin-bottom: 60px;
+        }
+
+        .ai-viz .section-title {
+            color: white;
+        }
+
+        .ai-viz .section-subtitle {
+            color: var(--gray-400);
+        }
+
+        .ai-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+            padding: 6px 14px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #a5b4fc;
+            margin-bottom: 16px;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .ai-badge svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .ai-demo-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .ai-demo-left {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+        }
+
+        .ai-demo-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .ai-demo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ai-demo-title {
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .ai-demo-subtitle {
+            color: var(--gray-400);
+            font-size: 0.8rem;
+        }
+
+        /* Mini Triangle in AI Demo */
+        .ai-triangle {
+            margin-bottom: 20px;
+        }
+
+        .ai-triangle-grid {
+            display: grid;
+            gap: 2px;
+            font-size: 10px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .ai-triangle-row {
+            display: flex;
+            gap: 2px;
+        }
+
+        .ai-triangle-cell {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px 8px;
+            border-radius: 4px;
+            min-width: 48px;
+            text-align: right;
+            color: rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .ai-triangle-cell.header {
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--primary-light);
+            font-weight: 600;
+        }
+
+        .ai-triangle-cell.active {
+            background: rgba(99, 102, 241, 0.3);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        /* Prompt Input */
+        .ai-prompt-container {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+            position: relative;
+        }
+
+        .ai-prompt-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--gray-400);
+            font-size: 0.75rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .ai-prompt-label svg {
+            width: 14px;
+            height: 14px;
+            color: var(--primary-light);
+        }
+
+        .ai-prompt-input {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 0.95rem;
+            width: 100%;
+            min-height: 60px;
+            resize: none;
+            font-family: inherit;
+            line-height: 1.5;
+        }
+
+        .ai-prompt-text {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.95rem;
+            line-height: 1.5;
+            min-height: 60px;
+        }
+
+        .ai-typing-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 18px;
+            background: var(--primary);
+            margin-left: 2px;
+            animation: blink 1s infinite;
+            vertical-align: text-bottom;
+        }
+
+        .ai-prompt-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .ai-generate-btn {
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .ai-generate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .ai-generate-btn.generating {
+            background: rgba(99, 102, 241, 0.3);
+            pointer-events: none;
+        }
+
+        .ai-generate-btn .dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .ai-generate-btn .dot {
+            width: 6px;
+            height: 6px;
+            background: white;
+            border-radius: 50%;
+            animation: dotBounce 1.4s infinite;
+        }
+
+        .ai-generate-btn .dot:nth-child(2) { animation-delay: 0.2s; }
+        .ai-generate-btn .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        .ai-model-tag {
+            color: var(--gray-500);
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* AI Generated Chart */
+        .ai-demo-right {
+            position: relative;
+        }
+
+        .ai-chart-container {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .ai-chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .ai-chart-title {
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .ai-chart-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .ai-chart-action {
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: var(--gray-400);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .ai-chart-action:hover {
+            background: rgba(99, 102, 241, 0.3);
+            color: white;
+        }
+
+        .ai-chart-canvas {
+            flex: 1;
+            position: relative;
+            min-height: 280px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .ai-chart-canvas:hover {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+        }
+
+        /* Chart SVG */
+        .ai-chart-svg {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .chart-grid-line {
+            stroke: rgba(255, 255, 255, 0.05);
+            stroke-width: 1;
+        }
+
+        .chart-axis-label {
+            fill: var(--gray-500);
+            font-size: 10px;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .chart-line {
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-dasharray: 800;
+            stroke-dashoffset: 800;
+            transition: stroke-dashoffset 0s;
+        }
+
+        .chart-line.animate {
+            animation: drawChart 1.8s ease forwards;
+        }
+
+        .chart-line-trend.animate {
+            animation: drawChart 1.5s ease forwards;
+        }
+
+        .chart-dot {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .chart-dot.visible {
+            opacity: 1;
+        }
+
+        .chart-area {
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+
+        .chart-area.visible {
+            opacity: 0.1;
+        }
+
+        /* Legend */
+        .ai-chart-legend {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--gray-400);
+            font-size: 0.8rem;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.4s ease;
+        }
+
+        .legend-item.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        .legend-color-1 { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+        .legend-color-2 { background: linear-gradient(135deg, #22c55e, #10b981); }
+        .legend-color-3 { background: linear-gradient(135deg, #f59e0b, #f97316); }
+
+        /* Placeholder state */
+        .ai-chart-placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--gray-500);
+        }
+
+        .ai-chart-placeholder-icon {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+        }
+
+        .ai-chart-placeholder p {
+            font-size: 0.9rem;
+        }
+
+        /* Sparkles */
+        .ai-sparkle {
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .ai-sparkle svg {
+            width: 20px;
+            height: 20px;
+            fill: var(--primary-light);
+            animation: sparkle 2s ease infinite;
+        }
+
+        .ai-sparkle:nth-child(1) { top: 10%; left: 20%; animation-delay: 0s; }
+        .ai-sparkle:nth-child(2) { top: 30%; right: 15%; animation-delay: 0.5s; }
+        .ai-sparkle:nth-child(3) { bottom: 20%; left: 10%; animation-delay: 1s; }
+        .ai-sparkle:nth-child(4) { bottom: 40%; right: 25%; animation-delay: 1.5s; }
+
+        /* Animated Mouse Cursor */
+        .ai-mouse-cursor {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
+        .ai-mouse-cursor.visible {
+            opacity: 1;
+        }
+
+        .ai-mouse-cursor svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        @keyframes cursorClick {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(0.85); }
+        }
+
+        .ai-mouse-cursor.clicking {
+            animation: cursorClick 0.2s ease;
+        }
+
+        /* Smaller triangle cells for 8x8 */
+        .ai-triangle-cell {
+            min-width: 42px;
+            padding: 4px 6px;
+            font-size: 9px;
+        }
+
+        .ai-triangle-grid {
+            gap: 1px;
+        }
+
+        .ai-triangle-row {
+            gap: 1px;
+        }
+
+        /* Scrollable triangle container */
+        .ai-triangle {
+            margin-bottom: 16px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .ai-triangle::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .ai-triangle::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.05);
+            border-radius: 2px;
+        }
+
+        .ai-triangle::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.3);
+            border-radius: 2px;
+        }
+
+        /* Clickable prompt area */
+        .ai-prompt-container {
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .ai-prompt-container:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+        }
+
+        /* Chart type 2 - Bar chart styles */
+        .chart-bar-rect {
+            opacity: 0;
+            transform-origin: bottom;
+            transition: opacity 0.3s ease;
+        }
+
+        .chart-bar-rect.visible {
+            opacity: 1;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .ai-demo-container {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .ai-triangle-cell {
+                min-width: 36px;
+                padding: 3px 4px;
+                font-size: 8px;
+            }
+
+            .ai-chart-legend {
+                flex-wrap: wrap;
+                gap: 12px;
+            }
+        }
+
+        /* Stochastic Simulation Section */
+        .stochastic {
+            padding: 120px 24px;
+            background: linear-gradient(180deg, #fafbff 0%, #f0f4ff 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stochastic::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 80% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 20% 80%, rgba(34, 197, 94, 0.06) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .stochastic-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stochastic-content {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 60px;
+            align-items: center;
+            margin-top: 60px;
+        }
+
+        .stochastic-info h3 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--secondary);
+            margin-bottom: 16px;
+        }
+
+        .stochastic-info p {
+            color: var(--gray-600);
+            font-size: 1.05rem;
+            line-height: 1.7;
+            margin-bottom: 24px;
+        }
+
+        .stochastic-features {
+            list-style: none;
+            margin-bottom: 28px;
+        }
+
+        .stochastic-features li {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            color: var(--gray-700);
+            font-size: 0.95rem;
+        }
+
+        .stochastic-features li svg {
+            width: 20px;
+            height: 20px;
+            color: var(--primary);
+            flex-shrink: 0;
+        }
+
+        .sim-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(16, 185, 129, 0.1));
+            padding: 6px 14px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #059669;
+            margin-bottom: 16px;
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+
+        .sim-badge svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* Simulation Visualization */
+        .sim-visual {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 20px 60px rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.1);
+        }
+
+        .sim-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .sim-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sim-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .sim-icon svg {
+            width: 22px;
+            height: 22px;
+            color: white;
+        }
+
+        .sim-title {
+            font-weight: 600;
+            color: var(--secondary);
+            font-size: 1rem;
+        }
+
+        .sim-subtitle {
+            color: var(--gray-500);
+            font-size: 0.8rem;
+        }
+
+        .sim-counter {
+            text-align: right;
+        }
+
+        .sim-counter-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .sim-counter-label {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Distribution Chart */
+        .sim-chart {
+            position: relative;
+            height: 220px;
+            margin-bottom: 20px;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.02), transparent);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .sim-chart-svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .distribution-bar {
+            fill: url(#distGradient);
+            opacity: 0;
+            transform-origin: bottom;
+            transition: opacity 0.3s ease, height 0.3s ease;
+        }
+
+        .distribution-bar.visible {
+            opacity: 1;
+        }
+
+        .percentile-line {
+            stroke-width: 2;
+            stroke-dasharray: 6, 4;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .percentile-line.visible {
+            opacity: 1;
+        }
+
+        .percentile-label {
+            font-size: 10px;
+            font-family: 'Inter', sans-serif;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .percentile-label.visible {
+            opacity: 1;
+        }
+
+        .mean-line {
+            stroke: #ef4444;
+            stroke-width: 2.5;
+        }
+
+        .p10-line { stroke: #22c55e; }
+        .p50-line { stroke: #f59e0b; }
+        .p90-line { stroke: #ef4444; }
+
+        /* Stats Grid */
+        .sim-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .sim-stat {
+            background: var(--gray-50);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .sim-stat:hover {
+            background: white;
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15);
+        }
+
+        .sim-stat-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--secondary);
+            margin-bottom: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .sim-stat-label {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .sim-stat.highlight .sim-stat-value {
+            color: var(--primary);
+        }
+
+        /* Simulation particles */
+        .sim-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: var(--primary);
+            border-radius: 50%;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        @keyframes particleFall {
+            0% {
+                opacity: 1;
+                transform: translateY(-20px) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(0) scale(0.5);
+            }
+        }
+
+        /* Play button */
+        .sim-play-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .sim-play-btn:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.5);
+        }
+
+        .sim-play-btn svg {
+            width: 24px;
+            height: 24px;
+            color: white;
+            margin-left: 3px;
+        }
+
+        .sim-play-btn.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        @media (max-width: 1024px) {
+            .stochastic-content {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .sim-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Workflow Automation Section */
+        .workflow-auto {
+            padding: 120px 24px;
+            background: linear-gradient(180deg, #f0f4ff 0%, #faf5ff 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .workflow-auto::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.06) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .workflow-auto-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .workflow-auto-content {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 60px;
+            align-items: center;
+            margin-top: 60px;
+        }
+
+        .workflow-auto-info {
+            order: 2;
+        }
+
+        .workflow-auto-info h3 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--secondary);
+            margin-bottom: 16px;
+        }
+
+        .workflow-auto-info p {
+            color: var(--gray-600);
+            font-size: 1.05rem;
+            line-height: 1.7;
+            margin-bottom: 24px;
+        }
+
+        .workflow-auto-features {
+            list-style: none;
+            margin-bottom: 28px;
+        }
+
+        .workflow-auto-features li {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            color: var(--gray-700);
+            font-size: 0.95rem;
+        }
+
+        .workflow-auto-features li svg {
+            width: 20px;
+            height: 20px;
+            color: var(--primary);
+            flex-shrink: 0;
+        }
+
+        .auto-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(139, 92, 246, 0.1));
+            padding: 6px 14px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #7c3aed;
+            margin-bottom: 16px;
+            border: 1px solid rgba(168, 85, 247, 0.2);
+        }
+
+        .auto-badge svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* Workflow Demo Visual */
+        .workflow-demo {
+            background: white;
+            border-radius: 20px;
+            padding: 0;
+            box-shadow: 0 25px 80px rgba(99, 102, 241, 0.15), 0 10px 30px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+            position: relative;
+            order: 1;
+        }
+
+        .workflow-demo-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .workflow-demo-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--gray-700);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .workflow-demo-title svg {
+            width: 16px;
+            height: 16px;
+            color: var(--primary);
+        }
+
+        .workflow-demo-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .demo-run-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .demo-run-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+
+        .demo-run-btn svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .demo-run-btn.running {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+        }
+
+        .workflow-demo-body {
+            display: flex;
+            height: 320px;
+        }
+
+        /* Demo Sidebar */
+        .demo-sidebar {
+            width: 140px;
+            background: #fafbfc;
+            border-right: 1px solid var(--gray-200);
+            padding: 12px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .demo-sidebar-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            padding: 0 4px;
+        }
+
+        .demo-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: var(--gray-700);
+            cursor: grab;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .demo-step:hover {
+            border-color: var(--primary-light);
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
+        }
+
+        .demo-step.active {
+            background: #e7f0ff;
+            border-color: var(--primary);
+        }
+
+        .demo-step.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+
+        .demo-step.drop-target {
+            border: 2px dashed var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .demo-step-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .demo-step-icon.import { background: #dbeafe; color: #2563eb; }
+        .demo-step-icon.transform { background: #fef3c7; color: #d97706; }
+        .demo-step-icon.analyze { background: #dcfce7; color: #16a34a; }
+        .demo-step-icon.export { background: #f3e8ff; color: #9333ea; }
+
+        .demo-step-icon svg {
+            width: 10px;
+            height: 10px;
+        }
+
+        .demo-add-step {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            border: 1px dashed var(--gray-300);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: auto;
+        }
+
+        .demo-add-step:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        /* Demo Workspace */
+        .demo-workspace {
+            flex: 1;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .demo-workspace-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Script Editor */
+        .demo-script-editor {
+            flex: 1;
+            background: #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .script-editor-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #0f172a;
+            border-bottom: 1px solid #334155;
+        }
+
+        .script-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: #1e293b;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            color: #94a3b8;
+        }
+
+        .script-tab.active {
+            background: #334155;
+            color: #f1f5f9;
+        }
+
+        .script-tab svg {
+            width: 10px;
+            height: 10px;
+        }
+
+        .script-editor-content {
+            flex: 1;
+            padding: 12px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.7rem;
+            line-height: 1.6;
+            color: #e2e8f0;
+            overflow: hidden;
+        }
+
+        .script-line {
+            display: flex;
+            gap: 12px;
+            opacity: 0;
+            transform: translateX(-10px);
+            transition: all 0.3s ease;
+        }
+
+        .script-line.visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .line-number {
+            color: #475569;
+            min-width: 16px;
+            text-align: right;
+        }
+
+        .line-content {
+            flex: 1;
+        }
+
+        .code-keyword { color: #c084fc; }
+        .code-function { color: #60a5fa; }
+        .code-string { color: #4ade80; }
+        .code-comment { color: #64748b; font-style: italic; }
+        .code-variable { color: #fbbf24; }
+
+        /* Demo Output */
+        .demo-output {
+            height: 60px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border: 1px solid var(--gray-200);
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .output-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .output-title {
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .output-status {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.65rem;
+            color: var(--gray-500);
+        }
+
+        .output-status.success {
+            color: #16a34a;
+        }
+
+        .output-status svg {
+            width: 10px;
+            height: 10px;
+        }
+
+        .output-content {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.65rem;
+            color: var(--gray-600);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .output-content.visible {
+            opacity: 1;
+        }
+
+        /* Animated Cursor */
+        .demo-cursor {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .demo-cursor.visible {
+            opacity: 1;
+        }
+
+        .demo-cursor svg {
+            width: 20px;
+            height: 20px;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        }
+
+        /* Progress indicator */
+        .workflow-progress {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+        }
+
+        .progress-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--gray-300);
+            transition: all 0.3s ease;
+        }
+
+        .progress-dot.active {
+            background: var(--primary);
+            transform: scale(1.2);
+        }
+
+        .progress-dot.complete {
+            background: #22c55e;
+        }
+
+        @media (max-width: 1024px) {
+            .workflow-auto-content {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .workflow-auto-info {
+                order: 1;
+            }
+
+            .workflow-demo {
+                order: 2;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .workflow-demo-body {
+                flex-direction: column;
+                height: auto;
+            }
+
+            .demo-sidebar {
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+                border-right: none;
+                border-bottom: 1px solid var(--gray-200);
+            }
+
+            .demo-workspace {
+                min-height: 280px;
+            }
+        }
+
+        /* Workflow Section */
+        .workflow {
+            padding: 120px 24px;
+            background: linear-gradient(180deg, var(--gray-50), white);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .workflow-bg-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: radial-gradient(circle at 1px 1px, var(--gray-200) 1px, transparent 0);
+            background-size: 40px 40px;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .workflow-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .workflow-steps {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            margin-top: 70px;
+            position: relative;
+        }
+
+        .workflow-steps::before {
+            content: '';
+            position: absolute;
+            top: 40px;
+            left: 15%;
+            right: 15%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), #a855f7, var(--primary));
+            background-size: 200% 100%;
+            animation: gradientMove 3s ease infinite;
+            border-radius: 2px;
+        }
+
+        .workflow-step {
+            text-align: center;
+            position: relative;
+        }
+
+        .step-number {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border: 3px solid var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin: 0 auto 24px;
+            position: relative;
+            z-index: 1;
+            transition: all 0.4s ease;
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.2);
+        }
+
+        .workflow-step:hover .step-number {
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            color: white;
+            transform: scale(1.1);
+            box-shadow: 0 12px 35px rgba(99, 102, 241, 0.4);
+        }
+
+        .workflow-step h4 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--secondary);
+            margin-bottom: 10px;
+        }
+
+        .workflow-step p {
+            font-size: 0.95rem;
+            color: var(--gray-600);
+            line-height: 1.6;
+        }
+
+        /* Benefits Section */
+        .benefits {
+            padding: 120px 24px;
+            background: white;
+        }
+
+        .benefits-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 100px;
+            align-items: center;
+        }
+
+        .benefits-list {
+            list-style: none;
+        }
+
+        .benefits-list li {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 32px;
+            padding: 20px;
+            border-radius: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .benefits-list li:hover {
+            background: var(--gray-50);
+            transform: translateX(10px);
+        }
+
+        .benefit-check {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: white;
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+        }
+
+        .benefit-text h4 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--secondary);
+            margin-bottom: 6px;
+        }
+
+        .benefit-text p {
+            color: var(--gray-600);
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        .benefits-visual {
+            background: linear-gradient(135deg, var(--primary), #7c3aed);
+            border-radius: 24px;
+            padding: 50px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 60px rgba(99, 102, 241, 0.3);
+        }
+
+        .benefits-visual::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #fff, rgba(255,255,255,0.8));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-number.counting {
+            animation: countUp 0.5s ease forwards;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        /* Animated line decoration */
+        .line-decoration {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            height: 60px;
+            opacity: 0.3;
+        }
+
+        .line-decoration svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .line-decoration path {
+            fill: none;
+            stroke: white;
+            stroke-width: 2;
+            stroke-dasharray: 300;
+            stroke-dashoffset: 300;
+            animation: drawLine 2s ease forwards;
+        }
+
+        /* CTA Section */
+        .cta {
+            padding: 120px 24px;
+            background: var(--secondary);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 20% 80%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(168, 85, 247, 0.15) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .cta-container {
+            max-width: 700px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .cta h2 {
+            font-size: 2.75rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        .cta p {
+            font-size: 1.25rem;
+            color: var(--gray-400);
+            margin-bottom: 40px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .cta .btn-primary {
+            background: white;
+            color: var(--secondary);
+            box-shadow: 0 8px 30px rgba(255, 255, 255, 0.2);
+        }
+
+        .cta .btn-primary:hover {
+            background: var(--gray-100);
+            box-shadow: 0 12px 40px rgba(255, 255, 255, 0.3);
+        }
+
+        .cta .btn-secondary {
+            border-color: var(--gray-600);
+            color: white;
+            background: transparent;
+        }
+
+        .cta .btn-secondary:hover {
+            border-color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Footer */
+        footer {
+            padding: 50px 24px;
+            background: var(--gray-900);
+            text-align: center;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .footer-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        .footer-logo .logo-icon {
+            width: 32px;
+            height: 32px;
+            font-size: 14px;
+        }
+
+        footer p {
+            color: var(--gray-500);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .hero-container {
+                grid-template-columns: 1fr;
+                gap: 50px;
+            }
+
+            .hero-content h1 {
+                font-size: 2.75rem;
+            }
+
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .workflow-steps {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .workflow-steps::before {
+                display: none;
+            }
+
+            .benefits-container {
+                grid-template-columns: 1fr;
+                gap: 50px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero {
+                padding: 120px 24px 60px;
+            }
+
+            .hero-content h1 {
+                font-size: 2.25rem;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .workflow-steps {
+                grid-template-columns: 1fr;
+            }
+
+            .stat-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+            }
+
+            .section-title {
+                font-size: 2rem;
+            }
+
+            .mini-chart {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav id="navbar">
+        <div class="nav-container">
+            <a href="#" class="logo">
+                <div class="logo-icon">A</div>
+                AdaLab
+            </a>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#workflow">How It Works</a></li>
+                <li><a href="#benefits">Benefits</a></li>
+            </ul>
+            <a href="#contact" class="nav-cta">Request Demo</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="floating-shapes">
+            <div class="shape shape-1"></div>
+            <div class="shape shape-2"></div>
+            <div class="shape shape-3"></div>
+        </div>
+        <div class="hero-container">
+            <div class="hero-content">
+                <div class="hero-badge">Now Available</div>
+                <h1>Actuarial Analysis <span>Made Simple</span></h1>
+                <p>
+                    Streamline your loss reserving process with powerful triangle analysis, automated workflows,
+                    and seamless Excel integration — enhanced with AI-assisted documentation audits
+                    and intelligent data visualization.
+                    Built by actuaries, for actuaries.
+                </p>
+                <div class="hero-buttons">
+                    <a href="#contact" class="btn-primary">
+                        Get Started
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="#features" class="btn-secondary">Learn More</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="hero-image">
+                    <div class="app-preview">
+                        <div class="app-titlebar">
+                            <div class="app-dots">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <span class="app-title">AdaLab - Loss Triangle Analysis</span>
+                        </div>
+                        <div class="app-content">
+                            <div class="triangle-chart">
+                                <div class="triangle-table">
+                                    <div class="triangle-preview">
+                                        <div class="triangle-row">
+                                            <div class="triangle-cell header">Year</div>
+                                            <div class="triangle-cell header">12</div>
+                                            <div class="triangle-cell header">24</div>
+                                            <div class="triangle-cell header">36</div>
+                                            <div class="triangle-cell header">48</div>
+                                            <div class="triangle-cell header">Ult</div>
+                                        </div>
+                                        <div class="triangle-row">
+                                            <div class="triangle-cell header">2020</div>
+                                            <div class="triangle-cell">1,245</div>
+                                            <div class="triangle-cell">2,890</div>
+                                            <div class="triangle-cell">3,567</div>
+                                            <div class="triangle-cell highlight">4,012</div>
+                                            <div class="triangle-cell projected">4,234</div>
+                                        </div>
+                                        <div class="triangle-row">
+                                            <div class="triangle-cell header">2021</div>
+                                            <div class="triangle-cell">1,389</div>
+                                            <div class="triangle-cell">3,102</div>
+                                            <div class="triangle-cell highlight">3,845</div>
+                                            <div class="triangle-cell projected">4,298</div>
+                                            <div class="triangle-cell projected">4,512</div>
+                                        </div>
+                                        <div class="triangle-row">
+                                            <div class="triangle-cell header">2022</div>
+                                            <div class="triangle-cell">1,567</div>
+                                            <div class="triangle-cell highlight">3,456</div>
+                                            <div class="triangle-cell projected">4,156</div>
+                                            <div class="triangle-cell projected">4,645</div>
+                                            <div class="triangle-cell projected">4,878</div>
+                                        </div>
+                                        <div class="triangle-row">
+                                            <div class="triangle-cell header">2023</div>
+                                            <div class="triangle-cell highlight">1,823</div>
+                                            <div class="triangle-cell projected">4,045</div>
+                                            <div class="triangle-cell projected">4,878</div>
+                                            <div class="triangle-cell projected">5,452</div>
+                                            <div class="triangle-cell projected">5,726</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mini-chart">
+                                    <div class="chart-bar-container">
+                                        <div class="chart-bar"></div>
+                                        <div class="chart-bar"></div>
+                                        <div class="chart-bar"></div>
+                                        <div class="chart-bar"></div>
+                                        <div class="chart-bar"></div>
+                                        <div class="chart-bar"></div>
+                                    </div>
+                                    <div class="chart-label">Dev Factors</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="features-container">
+            <div class="section-header animate-on-scroll">
+                <p class="section-label">Features</p>
+                <h2 class="section-title">Everything You Need for Loss Reserving</h2>
+                <p class="section-subtitle">Powerful tools designed specifically for actuarial workflows, from data import to final reporting.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card animate-on-scroll animate-delay-1">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <path d="M3 9h18M9 21V9"/>
+                        </svg>
+                    </div>
+                    <h3>Triangle Analysis</h3>
+                    <p>Interactive development triangles with automatic ratio calculations, custom averages, and visual development curves.</p>
+                </div>
+                <div class="feature-card animate-on-scroll animate-delay-2">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                        </svg>
+                    </div>
+                    <h3>Excel Integration</h3>
+                    <p>Seamless read/write to Excel workbooks. Preserve formulas, formatting, and work with your existing templates.</p>
+                </div>
+                <div class="feature-card animate-on-scroll animate-delay-3">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                    </div>
+                    <h3>Workflow Automation</h3>
+                    <p>Create multi-step workflows with drag-and-drop simplicity. Automate repetitive tasks and ensure consistency.</p>
+                </div>
+                <div class="feature-card animate-on-scroll animate-delay-1">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                            <line x1="12" y1="22.08" x2="12" y2="12"/>
+                        </svg>
+                    </div>
+                    <h3>Project Management</h3>
+                    <p>Organize projects in folders with a familiar tree view. Quick access to all your reserving analyses in one place.</p>
+                </div>
+                <div class="feature-card animate-on-scroll animate-delay-2">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <line x1="18" y1="20" x2="18" y2="10"/>
+                            <line x1="12" y1="20" x2="12" y2="4"/>
+                            <line x1="6" y1="20" x2="6" y2="14"/>
+                        </svg>
+                    </div>
+                    <h3>Data Visualization</h3>
+                    <p>Interactive charts for development curves, loss patterns, and trend analysis. Export-ready for presentations.</p>
+                </div>
+                <div class="feature-card animate-on-scroll animate-delay-3">
+                    <div class="feature-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
+                    <h3>Secure & Local</h3>
+                    <p>Your data stays on your machine. No cloud uploads, no privacy concerns. Full control over sensitive information.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- AI Visualization Section -->
+    <section class="ai-viz" id="ai-viz">
+        <!-- Sparkle decorations -->
+        <div class="ai-sparkle"><svg viewBox="0 0 24 24"><path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"/></svg></div>
+        <div class="ai-sparkle"><svg viewBox="0 0 24 24"><path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"/></svg></div>
+        <div class="ai-sparkle"><svg viewBox="0 0 24 24"><path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"/></svg></div>
+        <div class="ai-sparkle"><svg viewBox="0 0 24 24"><path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"/></svg></div>
+
+        <div class="ai-viz-container">
+            <div class="section-header animate-on-scroll" style="text-align: center;">
+                <div class="ai-badge">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                    Experimental Feature
+                </div>
+                <h2 class="section-title">AI-Powered Data Visualization</h2>
+                <p class="section-subtitle">Describe the chart you want in plain English. Our AI generates beautiful, customized loss development curves instantly.</p>
+            </div>
+
+            <div class="ai-demo-container">
+                <!-- Left: Data + Prompt -->
+                <div class="ai-demo-left animate-on-scroll">
+                    <div class="ai-demo-header">
+                        <div class="ai-demo-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <path d="M3 9h18M9 21V9"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="ai-demo-title">Loss Triangle Data</div>
+                            <div class="ai-demo-subtitle">Commercial Auto - Paid Losses</div>
+                        </div>
+                    </div>
+
+                    <!-- Mini Triangle 8x8 -->
+                    <div class="ai-triangle">
+                        <div class="ai-triangle-grid">
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">AY</div>
+                                <div class="ai-triangle-cell header">12</div>
+                                <div class="ai-triangle-cell header">24</div>
+                                <div class="ai-triangle-cell header">36</div>
+                                <div class="ai-triangle-cell header">48</div>
+                                <div class="ai-triangle-cell header">60</div>
+                                <div class="ai-triangle-cell header">72</div>
+                                <div class="ai-triangle-cell header">84</div>
+                                <div class="ai-triangle-cell header">96</div>
+                            </div>
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">2016</div>
+                                <div class="ai-triangle-cell active">1,124</div>
+                                <div class="ai-triangle-cell active">2,456</div>
+                                <div class="ai-triangle-cell active">3,234</div>
+                                <div class="ai-triangle-cell active">3,789</div>
+                                <div class="ai-triangle-cell active">4,123</div>
+                                <div class="ai-triangle-cell active">4,345</div>
+                                <div class="ai-triangle-cell active">4,489</div>
+                                <div class="ai-triangle-cell active">4,567</div>
+                            </div>
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">2017</div>
+                                <div class="ai-triangle-cell active">1,245</div>
+                                <div class="ai-triangle-cell active">2,678</div>
+                                <div class="ai-triangle-cell active">3,456</div>
+                                <div class="ai-triangle-cell active">4,012</div>
+                                <div class="ai-triangle-cell active">4,378</div>
+                                <div class="ai-triangle-cell active">4,612</div>
+                                <div class="ai-triangle-cell active">4,756</div>
+                                <div class="ai-triangle-cell"></div>
+                            </div>
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">2018</div>
+                                <div class="ai-triangle-cell active">1,389</div>
+                                <div class="ai-triangle-cell active">2,890</div>
+                                <div class="ai-triangle-cell active">3,678</div>
+                                <div class="ai-triangle-cell active">4,234</div>
+                                <div class="ai-triangle-cell active">4,589</div>
+                                <div class="ai-triangle-cell active">4,823</div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                            </div>
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">2019</div>
+                                <div class="ai-triangle-cell active">1,456</div>
+                                <div class="ai-triangle-cell active">3,102</div>
+                                <div class="ai-triangle-cell active">3,923</div>
+                                <div class="ai-triangle-cell active">4,512</div>
+                                <div class="ai-triangle-cell active">4,867</div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                            </div>
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">2020</div>
+                                <div class="ai-triangle-cell active">1,567</div>
+                                <div class="ai-triangle-cell active">3,345</div>
+                                <div class="ai-triangle-cell active">4,156</div>
+                                <div class="ai-triangle-cell active">4,789</div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                            </div>
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">2021</div>
+                                <div class="ai-triangle-cell active">1,678</div>
+                                <div class="ai-triangle-cell active">3,567</div>
+                                <div class="ai-triangle-cell active">4,389</div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                            </div>
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">2022</div>
+                                <div class="ai-triangle-cell active">1,823</div>
+                                <div class="ai-triangle-cell active">3,789</div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                            </div>
+                            <div class="ai-triangle-row">
+                                <div class="ai-triangle-cell header">2023</div>
+                                <div class="ai-triangle-cell active">1,956</div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                                <div class="ai-triangle-cell"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Animated Mouse Cursor -->
+                    <div class="ai-mouse-cursor" id="aiMouseCursor">
+                        <svg viewBox="0 0 24 24" fill="white" stroke="#333" stroke-width="1">
+                            <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.48 0 .72-.58.38-.92L6.35 2.85a.5.5 0 0 0-.85.36Z"/>
+                        </svg>
+                    </div>
+
+                    <!-- AI Prompt Input -->
+                    <div class="ai-prompt-container">
+                        <div class="ai-prompt-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            Describe your visualization
+                        </div>
+                        <div class="ai-prompt-text" id="aiPromptText"></div>
+                        <div class="ai-prompt-footer">
+                            <span class="ai-model-tag">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M12 6v6l4 2"/>
+                                </svg>
+                                Powered by AI
+                            </span>
+                            <button class="ai-generate-btn" id="aiGenerateBtn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                                </svg>
+                                Generate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Generated Chart -->
+                <div class="ai-demo-right animate-on-scroll animate-delay-2">
+                    <div class="ai-chart-container">
+                        <div class="ai-chart-header">
+                            <span class="ai-chart-title">AI Generated Visualization</span>
+                            <div class="ai-chart-actions">
+                                <button class="ai-chart-action" title="Download">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                                    </svg>
+                                </button>
+                                <button class="ai-chart-action" title="Fullscreen">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="15 3 21 3 21 9"/>
+                                        <polyline points="9 21 3 21 3 15"/>
+                                        <line x1="21" y1="3" x2="14" y2="10"/>
+                                        <line x1="3" y1="21" x2="10" y2="14"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="ai-chart-canvas" id="aiChartCanvas">
+                            <!-- Placeholder -->
+                            <div class="ai-chart-placeholder" id="chartPlaceholder">
+                                <div class="ai-chart-placeholder-icon">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <line x1="18" y1="20" x2="18" y2="10"/>
+                                        <line x1="12" y1="20" x2="12" y2="4"/>
+                                        <line x1="6" y1="20" x2="6" y2="14"/>
+                                    </svg>
+                                </div>
+                                <p>Enter a prompt and click Generate<br/>to create your visualization</p>
+                            </div>
+
+                            <!-- Chart Type 1: Development Curves (hidden initially) - All 8 AYs -->
+                            <svg class="ai-chart-svg" id="aiChartSvg1" viewBox="0 0 400 250" style="display: none;">
+                                <defs>
+                                    <!-- Gradients for all 8 accident years -->
+                                    <linearGradient id="gradientAY2016" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#6366f1"/>
+                                        <stop offset="100%" style="stop-color:#8b5cf6"/>
+                                    </linearGradient>
+                                    <linearGradient id="gradientAY2017" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#8b5cf6"/>
+                                        <stop offset="100%" style="stop-color:#a855f7"/>
+                                    </linearGradient>
+                                    <linearGradient id="gradientAY2018" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#22c55e"/>
+                                        <stop offset="100%" style="stop-color:#10b981"/>
+                                    </linearGradient>
+                                    <linearGradient id="gradientAY2019" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#14b8a6"/>
+                                        <stop offset="100%" style="stop-color:#06b6d4"/>
+                                    </linearGradient>
+                                    <linearGradient id="gradientAY2020" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#f59e0b"/>
+                                        <stop offset="100%" style="stop-color:#f97316"/>
+                                    </linearGradient>
+                                    <linearGradient id="gradientAY2021" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#ef4444"/>
+                                        <stop offset="100%" style="stop-color:#f43f5e"/>
+                                    </linearGradient>
+                                    <linearGradient id="gradientAY2022" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#ec4899"/>
+                                        <stop offset="100%" style="stop-color:#d946ef"/>
+                                    </linearGradient>
+                                    <linearGradient id="gradientAY2023" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#64748b"/>
+                                        <stop offset="100%" style="stop-color:#94a3b8"/>
+                                    </linearGradient>
+                                    <linearGradient id="areaGradient1" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#6366f1;stop-opacity:0.2"/>
+                                        <stop offset="100%" style="stop-color:#6366f1;stop-opacity:0"/>
+                                    </linearGradient>
+                                </defs>
+
+                                <!-- Grid lines -->
+                                <line class="chart-grid-line" x1="50" y1="30" x2="380" y2="30"/>
+                                <line class="chart-grid-line" x1="50" y1="72" x2="380" y2="72"/>
+                                <line class="chart-grid-line" x1="50" y1="114" x2="380" y2="114"/>
+                                <line class="chart-grid-line" x1="50" y1="156" x2="380" y2="156"/>
+                                <line class="chart-grid-line" x1="50" y1="198" x2="380" y2="198"/>
+
+                                <!-- Y-axis labels -->
+                                <text class="chart-axis-label" x="40" y="35" text-anchor="end">5,000</text>
+                                <text class="chart-axis-label" x="40" y="77" text-anchor="end">4,000</text>
+                                <text class="chart-axis-label" x="40" y="119" text-anchor="end">3,000</text>
+                                <text class="chart-axis-label" x="40" y="161" text-anchor="end">2,000</text>
+                                <text class="chart-axis-label" x="40" y="203" text-anchor="end">1,000</text>
+
+                                <!-- X-axis labels -->
+                                <text class="chart-axis-label" x="60" y="218">12</text>
+                                <text class="chart-axis-label" x="100" y="218">24</text>
+                                <text class="chart-axis-label" x="140" y="218">36</text>
+                                <text class="chart-axis-label" x="180" y="218">48</text>
+                                <text class="chart-axis-label" x="220" y="218">60</text>
+                                <text class="chart-axis-label" x="260" y="218">72</text>
+                                <text class="chart-axis-label" x="300" y="218">84</text>
+                                <text class="chart-axis-label" x="340" y="218">96</text>
+                                <text class="chart-axis-label" x="200" y="238" text-anchor="middle" style="font-size: 10px;">Development Period (Months)</text>
+
+                                <!-- Area fill for AY 2016 (oldest, most complete) -->
+                                <path class="chart-area" id="chartArea1" fill="url(#areaGradient1)"
+                                    d="M60,178 L100,128 L140,98 L180,78 L220,63 L260,53 L300,46 L340,42 L340,198 L60,198 Z"/>
+
+                                <!-- Lines - Loss Development Curves for all 8 AYs -->
+                                <!-- AY 2016: 8 points (complete) -->
+                                <path class="chart-line chart-line-1" stroke="url(#gradientAY2016)" fill="none" stroke-width="2.5"
+                                    d="M60,178 L100,128 L140,98 L180,78 L220,63 L260,53 L300,46 L340,42"/>
+                                <!-- AY 2017: 7 points -->
+                                <path class="chart-line chart-line-1" stroke="url(#gradientAY2017)" fill="none" stroke-width="2.5"
+                                    d="M60,175 L100,122 L140,92 L180,72 L220,58 L260,50 L300,44"/>
+                                <!-- AY 2018: 6 points -->
+                                <path class="chart-line chart-line-1" stroke="url(#gradientAY2018)" fill="none" stroke-width="2.5"
+                                    d="M60,172 L100,118 L140,88 L180,68 L220,55 L260,48"/>
+                                <!-- AY 2019: 5 points -->
+                                <path class="chart-line chart-line-1" stroke="url(#gradientAY2019)" fill="none" stroke-width="2.5"
+                                    d="M60,168 L100,112 L140,82 L180,64 L220,52"/>
+                                <!-- AY 2020: 4 points -->
+                                <path class="chart-line chart-line-1" stroke="url(#gradientAY2020)" fill="none" stroke-width="2.5"
+                                    d="M60,165 L100,108 L140,78 L180,60"/>
+                                <!-- AY 2021: 3 points -->
+                                <path class="chart-line chart-line-1" stroke="url(#gradientAY2021)" fill="none" stroke-width="2.5"
+                                    d="M60,162 L100,105 L140,76"/>
+                                <!-- AY 2022: 2 points -->
+                                <path class="chart-line chart-line-1" stroke="url(#gradientAY2022)" fill="none" stroke-width="2.5"
+                                    d="M60,158 L100,102"/>
+                                <!-- AY 2023: 1 point (just a dot, shown below) -->
+
+                                <!-- Data points for all AYs -->
+                                <!-- AY 2016 dots (purple) -->
+                                <circle class="chart-dot chart-dot-1" cx="60" cy="178" r="4" fill="#6366f1"/>
+                                <circle class="chart-dot chart-dot-1" cx="100" cy="128" r="4" fill="#6366f1"/>
+                                <circle class="chart-dot chart-dot-1" cx="140" cy="98" r="4" fill="#6366f1"/>
+                                <circle class="chart-dot chart-dot-1" cx="180" cy="78" r="4" fill="#6366f1"/>
+                                <circle class="chart-dot chart-dot-1" cx="220" cy="63" r="4" fill="#6366f1"/>
+                                <circle class="chart-dot chart-dot-1" cx="260" cy="53" r="4" fill="#6366f1"/>
+                                <circle class="chart-dot chart-dot-1" cx="300" cy="46" r="4" fill="#6366f1"/>
+                                <circle class="chart-dot chart-dot-1" cx="340" cy="42" r="4" fill="#6366f1"/>
+
+                                <!-- AY 2017 dots (violet) -->
+                                <circle class="chart-dot chart-dot-1" cx="60" cy="175" r="4" fill="#8b5cf6"/>
+                                <circle class="chart-dot chart-dot-1" cx="100" cy="122" r="4" fill="#8b5cf6"/>
+                                <circle class="chart-dot chart-dot-1" cx="140" cy="92" r="4" fill="#8b5cf6"/>
+                                <circle class="chart-dot chart-dot-1" cx="180" cy="72" r="4" fill="#8b5cf6"/>
+                                <circle class="chart-dot chart-dot-1" cx="220" cy="58" r="4" fill="#8b5cf6"/>
+                                <circle class="chart-dot chart-dot-1" cx="260" cy="50" r="4" fill="#8b5cf6"/>
+                                <circle class="chart-dot chart-dot-1" cx="300" cy="44" r="4" fill="#8b5cf6"/>
+
+                                <!-- AY 2018 dots (green) -->
+                                <circle class="chart-dot chart-dot-1" cx="60" cy="172" r="4" fill="#22c55e"/>
+                                <circle class="chart-dot chart-dot-1" cx="100" cy="118" r="4" fill="#22c55e"/>
+                                <circle class="chart-dot chart-dot-1" cx="140" cy="88" r="4" fill="#22c55e"/>
+                                <circle class="chart-dot chart-dot-1" cx="180" cy="68" r="4" fill="#22c55e"/>
+                                <circle class="chart-dot chart-dot-1" cx="220" cy="55" r="4" fill="#22c55e"/>
+                                <circle class="chart-dot chart-dot-1" cx="260" cy="48" r="4" fill="#22c55e"/>
+
+                                <!-- AY 2019 dots (teal) -->
+                                <circle class="chart-dot chart-dot-1" cx="60" cy="168" r="4" fill="#14b8a6"/>
+                                <circle class="chart-dot chart-dot-1" cx="100" cy="112" r="4" fill="#14b8a6"/>
+                                <circle class="chart-dot chart-dot-1" cx="140" cy="82" r="4" fill="#14b8a6"/>
+                                <circle class="chart-dot chart-dot-1" cx="180" cy="64" r="4" fill="#14b8a6"/>
+                                <circle class="chart-dot chart-dot-1" cx="220" cy="52" r="4" fill="#14b8a6"/>
+
+                                <!-- AY 2020 dots (orange) -->
+                                <circle class="chart-dot chart-dot-1" cx="60" cy="165" r="4" fill="#f59e0b"/>
+                                <circle class="chart-dot chart-dot-1" cx="100" cy="108" r="4" fill="#f59e0b"/>
+                                <circle class="chart-dot chart-dot-1" cx="140" cy="78" r="4" fill="#f59e0b"/>
+                                <circle class="chart-dot chart-dot-1" cx="180" cy="60" r="4" fill="#f59e0b"/>
+
+                                <!-- AY 2021 dots (red) -->
+                                <circle class="chart-dot chart-dot-1" cx="60" cy="162" r="4" fill="#ef4444"/>
+                                <circle class="chart-dot chart-dot-1" cx="100" cy="105" r="4" fill="#ef4444"/>
+                                <circle class="chart-dot chart-dot-1" cx="140" cy="76" r="4" fill="#ef4444"/>
+
+                                <!-- AY 2022 dots (pink) -->
+                                <circle class="chart-dot chart-dot-1" cx="60" cy="158" r="4" fill="#ec4899"/>
+                                <circle class="chart-dot chart-dot-1" cx="100" cy="102" r="4" fill="#ec4899"/>
+
+                                <!-- AY 2023 dot (gray - single point) -->
+                                <circle class="chart-dot chart-dot-1" cx="60" cy="155" r="4" fill="#64748b"/>
+                            </svg>
+
+                            <!-- Chart Type 2: Ultimate Losses by Accident Year (hidden initially) -->
+                            <svg class="ai-chart-svg" id="aiChartSvg2" viewBox="0 0 400 250" style="display: none;">
+                                <defs>
+                                    <linearGradient id="barGradient1" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#8b5cf6"/>
+                                        <stop offset="100%" style="stop-color:#6366f1"/>
+                                    </linearGradient>
+                                    <linearGradient id="barGradient2" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#a855f7"/>
+                                        <stop offset="100%" style="stop-color:#7c3aed"/>
+                                    </linearGradient>
+                                    <linearGradient id="lineGradientUlt" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#f59e0b"/>
+                                        <stop offset="100%" style="stop-color:#ef4444"/>
+                                    </linearGradient>
+                                </defs>
+
+                                <!-- Grid lines -->
+                                <line class="chart-grid-line" x1="50" y1="30" x2="380" y2="30"/>
+                                <line class="chart-grid-line" x1="50" y1="75" x2="380" y2="75"/>
+                                <line class="chart-grid-line" x1="50" y1="120" x2="380" y2="120"/>
+                                <line class="chart-grid-line" x1="50" y1="165" x2="380" y2="165"/>
+
+                                <!-- Y-axis labels -->
+                                <text class="chart-axis-label" x="40" y="35" text-anchor="end">5,000</text>
+                                <text class="chart-axis-label" x="40" y="80" text-anchor="end">4,000</text>
+                                <text class="chart-axis-label" x="40" y="125" text-anchor="end">3,000</text>
+                                <text class="chart-axis-label" x="40" y="170" text-anchor="end">2,000</text>
+
+                                <!-- X-axis labels - Accident Years -->
+                                <text class="chart-axis-label" x="75" y="210">2016</text>
+                                <text class="chart-axis-label" x="115" y="210">2017</text>
+                                <text class="chart-axis-label" x="155" y="210">2018</text>
+                                <text class="chart-axis-label" x="195" y="210">2019</text>
+                                <text class="chart-axis-label" x="235" y="210">2020</text>
+                                <text class="chart-axis-label" x="275" y="210">2021</text>
+                                <text class="chart-axis-label" x="315" y="210">2022</text>
+                                <text class="chart-axis-label" x="355" y="210">2023</text>
+                                <text class="chart-axis-label" x="210" y="235" text-anchor="middle" style="font-size: 11px;">Accident Year</text>
+
+                                <!-- Bars - Ultimate Loss by AY -->
+                                <rect class="chart-bar-rect" x="65" y="55" width="28" height="135" rx="4" fill="url(#barGradient1)"/>
+                                <rect class="chart-bar-rect" x="105" y="50" width="28" height="140" rx="4" fill="url(#barGradient1)"/>
+                                <rect class="chart-bar-rect" x="145" y="45" width="28" height="145" rx="4" fill="url(#barGradient1)"/>
+                                <rect class="chart-bar-rect" x="185" y="40" width="28" height="150" rx="4" fill="url(#barGradient1)"/>
+                                <rect class="chart-bar-rect" x="225" y="48" width="28" height="142" rx="4" fill="url(#barGradient2)"/>
+                                <rect class="chart-bar-rect" x="265" y="60" width="28" height="130" rx="4" fill="url(#barGradient2)"/>
+                                <rect class="chart-bar-rect" x="305" y="75" width="28" height="115" rx="4" fill="url(#barGradient2)"/>
+                                <rect class="chart-bar-rect" x="345" y="95" width="28" height="95" rx="4" fill="url(#barGradient2)"/>
+
+                                <!-- Trend line -->
+                                <path class="chart-line chart-line-trend" id="chartLineTrend"
+                                    d="M79,55 L119,50 L159,45 L199,40 L239,48 L279,60 L319,75 L359,95"
+                                    fill="none" stroke="url(#lineGradientUlt)" stroke-width="3" stroke-dasharray="500" stroke-dashoffset="500"/>
+
+                                <!-- Data points on trend line -->
+                                <circle class="chart-dot chart-dot-2" cx="79" cy="55" r="5" fill="#f59e0b"/>
+                                <circle class="chart-dot chart-dot-2" cx="119" cy="50" r="5" fill="#f59e0b"/>
+                                <circle class="chart-dot chart-dot-2" cx="159" cy="45" r="5" fill="#f59e0b"/>
+                                <circle class="chart-dot chart-dot-2" cx="199" cy="40" r="5" fill="#f59e0b"/>
+                                <circle class="chart-dot chart-dot-2" cx="239" cy="48" r="5" fill="#ef4444"/>
+                                <circle class="chart-dot chart-dot-2" cx="279" cy="60" r="5" fill="#ef4444"/>
+                                <circle class="chart-dot chart-dot-2" cx="319" cy="75" r="5" fill="#ef4444"/>
+                                <circle class="chart-dot chart-dot-2" cx="359" cy="95" r="5" fill="#ef4444"/>
+                            </svg>
+                        </div>
+
+                        <!-- Legend for Chart 1 - All 8 AYs -->
+                        <div class="ai-chart-legend" id="aiChartLegend1" style="flex-wrap: wrap; gap: 10px 16px;">
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #6366f1, #8b5cf6);"></span>
+                                2016
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #8b5cf6, #a855f7);"></span>
+                                2017
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #22c55e, #10b981);"></span>
+                                2018
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #14b8a6, #06b6d4);"></span>
+                                2019
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #f59e0b, #f97316);"></span>
+                                2020
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #ef4444, #f43f5e);"></span>
+                                2021
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #ec4899, #d946ef);"></span>
+                                2022
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #64748b, #94a3b8);"></span>
+                                2023
+                            </div>
+                        </div>
+
+                        <!-- Legend for Chart 2 -->
+                        <div class="ai-chart-legend" id="aiChartLegend2" style="display: none;">
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #8b5cf6, #6366f1);"></span>
+                                Actual Ultimate
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #a855f7, #7c3aed);"></span>
+                                Projected Ultimate
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: linear-gradient(135deg, #f59e0b, #ef4444);"></span>
+                                Trend Line
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stochastic Simulation Section -->
+    <section class="stochastic" id="stochastic">
+        <div class="stochastic-container">
+            <div class="section-header animate-on-scroll" style="text-align: center;">
+                <div class="sim-badge">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                    Built-in Module
+                </div>
+                <h2 class="section-title">Chain-Ladder Stochastic Simulation</h2>
+                <p class="section-subtitle">Run production-ready stochastic simulations in minutes — with sensible defaults and full parameter control when you need it.</p>
+            </div>
+
+            <div class="stochastic-content">
+                <!-- Left: Info -->
+                <div class="stochastic-info animate-on-scroll">
+                    <h3>Ready Out of the Box — Flexible When It Matters.</h3>
+                    <p>
+                        Start with a fully configured stochastic reserving engine based on
+                        the Mack chain‑ladder framework. Generate reserve distributions
+                        instantly, or customize assumptions and simulation settings as needed.
+                    </p>
+
+                    <ul class="stochastic-features">
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            One‑click execution with expert‑designed defaults
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            Bootstrap resampling of residuals
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            Fully customizable assumptions and simulation parameters
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            Percentile outputs: P10, P25, P50, P75, P90
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            Export results to Excel or PDF with full audit trail
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Right: Visualization -->
+                <div class="sim-visual animate-on-scroll animate-delay-2">
+                    <div class="sim-header">
+                        <div class="sim-header-left">
+                            <div class="sim-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 20V10M12 20V4M6 20v-6"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="sim-title">Reserve Distribution</div>
+                                <div class="sim-subtitle">Lognormal simulation results</div>
+                            </div>
+                        </div>
+                        <div class="sim-counter">
+                            <div class="sim-counter-value" id="simCounter">0</div>
+                            <div class="sim-counter-label">Simulations</div>
+                        </div>
+                    </div>
+
+                    <div class="sim-chart" id="simChart">
+                        <!-- Play button -->
+                        <button class="sim-play-btn" id="simPlayBtn">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3"/>
+                            </svg>
+                        </button>
+
+                        <svg class="sim-chart-svg" id="simChartSvg" viewBox="0 -15 500 220">
+                            <defs>
+                                <linearGradient id="distGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#6366f1;stop-opacity:0.9"/>
+                                    <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:0.6"/>
+                                </linearGradient>
+                            </defs>
+
+                            <!-- X-axis -->
+                            <line x1="40" y1="180" x2="480" y2="180" stroke="#e2e8f0" stroke-width="1"/>
+
+                            <!-- Y-axis -->
+                            <line x1="40" y1="20" x2="40" y2="180" stroke="#e2e8f0" stroke-width="1"/>
+
+                            <!-- X-axis labels (reserve amounts in millions) -->
+                            <text class="chart-axis-label" x="60" y="195" fill="#94a3b8" font-size="9">2.0M</text>
+                            <text class="chart-axis-label" x="150" y="195" fill="#94a3b8" font-size="9">2.5M</text>
+                            <text class="chart-axis-label" x="240" y="195" fill="#94a3b8" font-size="9">3.0M</text>
+                            <text class="chart-axis-label" x="330" y="195" fill="#94a3b8" font-size="9">3.5M</text>
+                            <text class="chart-axis-label" x="420" y="195" fill="#94a3b8" font-size="9">4.0M</text>
+
+                            <!-- Distribution bars (will be animated) -->
+                            <g id="distributionBars"></g>
+
+                            <!-- Percentile lines -->
+                            <line class="percentile-line p10-line" id="p10Line" x1="95" y1="20" x2="95" y2="180"/>
+                            <line class="percentile-line p50-line" id="p50Line" x1="220" y1="20" x2="220" y2="180"/>
+                            <line class="percentile-line p90-line" id="p90Line" x1="380" y1="20" x2="380" y2="180"/>
+
+                            <!-- Percentile labels -->
+                            <text class="percentile-label" id="p10Label" x="95" y="15" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="600">P10</text>
+                            <text class="percentile-label" id="p50Label" x="220" y="15" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="600">P50</text>
+                            <text class="percentile-label" id="p90Label" x="380" y="15" text-anchor="middle" fill="#ef4444" font-size="10" font-weight="600">P90</text>
+                        </svg>
+                    </div>
+
+                    <div class="sim-stats">
+                        <div class="sim-stat">
+                            <div class="sim-stat-value" id="statMean">--</div>
+                            <div class="sim-stat-label">Mean</div>
+                        </div>
+                        <div class="sim-stat highlight">
+                            <div class="sim-stat-value" id="statP50">--</div>
+                            <div class="sim-stat-label">Median (P50)</div>
+                        </div>
+                        <div class="sim-stat">
+                            <div class="sim-stat-value" id="statStdDev">--</div>
+                            <div class="sim-stat-label">Std Dev</div>
+                        </div>
+                        <div class="sim-stat">
+                            <div class="sim-stat-value" id="statCV">--</div>
+                            <div class="sim-stat-label">CoV</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Workflow Section -->
+    <section class="workflow" id="workflow">
+        <div class="workflow-bg-pattern"></div>
+        <div class="workflow-container">
+            <div class="section-header animate-on-scroll">
+                <p class="section-label">How It Works</p>
+                <h2 class="section-title">From Data to Results in Four Steps</h2>
+                <p class="section-subtitle">A streamlined process that fits naturally into your existing workflow.</p>
+            </div>
+            <div class="workflow-steps">
+                <div class="workflow-step animate-on-scroll animate-delay-1">
+                    <div class="step-number">1</div>
+                    <h4>Import Data</h4>
+                    <p>Load triangles from SQL Server or CSV files with automatic data transformation and validation.</p>
+                </div>
+                <div class="workflow-step animate-on-scroll animate-delay-2">
+                    <div class="step-number">2</div>
+                    <h4>Analyze</h4>
+                    <p>Predict ultimate losses with customizable deterministic or stochastic models.</p>
+                </div>
+                <div class="workflow-step animate-on-scroll animate-delay-3">
+                    <div class="step-number">3</div>
+                    <h4>Documentation</h4>
+                    <p>Automatic checks and validation of all inputs and assumptions.</p>
+                </div>
+                <div class="workflow-step animate-on-scroll animate-delay-4">
+                    <div class="step-number">4</div>
+                    <h4>Report</h4>
+                    <p>Export results back to Excel or generate presentation-ready outputs.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Benefits Section -->
+    <section class="benefits" id="benefits">
+        <div class="benefits-container">
+            <div class="benefits-content">
+                <div class="section-header animate-on-scroll" style="text-align: left;">
+                    <p class="section-label">Why AdaLab</p>
+                    <h2 class="section-title">Built for Real Actuarial Work</h2>
+                </div>
+                <ul class="benefits-list">
+                    <li class="animate-on-scroll animate-delay-1">
+                        <div class="benefit-check">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        </div>
+                        <div class="benefit-text">
+                            <h4>Reduce Manual Errors</h4>
+                            <p>Automated calculations eliminate copy-paste mistakes and formula errors common in spreadsheet-based workflows.</p>
+                        </div>
+                    </li>
+                    <li class="animate-on-scroll animate-delay-2">
+                        <div class="benefit-check">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        </div>
+                        <div class="benefit-text">
+                            <h4>Audit-Ready Documentation</h4>
+                            <p>Full traceability of assumptions, selections, and calculations for regulatory reviews and audits.</p>
+                        </div>
+                    </li>
+                    <li class="animate-on-scroll animate-delay-3">
+                        <div class="benefit-check">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        </div>
+                        <div class="benefit-text">
+                            <h4>Flexible Methodology</h4>
+                            <p>Support for chain ladder, Bornhuetter-Ferguson, and custom methods. Adapt to your company's standards.</p>
+                        </div>
+                    </li>
+                    <li class="animate-on-scroll animate-delay-4">
+                        <div class="benefit-check">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        </div>
+                        <div class="benefit-text">
+                            <h4>Works With Your Tools</h4>
+                            <p>Integrates seamlessly with Excel. No need to abandon your existing templates and processes.</p>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <div class="benefits-visual animate-on-scroll">
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="stat-number" data-target="80">0%</div>
+                        <div class="stat-label">Less time on data prep</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" data-target="100">0%</div>
+                        <div class="stat-label">Calculation traceability</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" data-target="0" data-static="true">0</div>
+                        <div class="stat-label">Cloud dependencies</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" data-target="1" data-static="true">1</div>
+                        <div class="stat-label">Unified workflow</div>
+                    </div>
+                </div>
+                <div class="line-decoration">
+                    <svg viewBox="0 0 300 60" preserveAspectRatio="none">
+                        <path d="M0,30 Q75,10 150,30 T300,30" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta" id="contact">
+        <div class="cta-container animate-on-scroll">
+            <h2>Ready to Streamline Your Reserving?</h2>
+            <p>See how AdaLab can transform your actuarial workflow. Request a personalized demo today.</p>
+            <div class="cta-buttons">
+                <a href="mailto:demo@example.com?subject=AdaLab Demo Request" class="btn-primary">
+                    Request a Demo
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </a>
+                <a href="#features" class="btn-secondary">Explore Features</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-logo">
+                <div class="logo-icon">A</div>
+                AdaLab
+            </div>
+            <p>&copy; 2025 AdaLab - Actuarial Data & Analytics. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Navbar scroll effect
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Scroll-triggered animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+
+                    // Trigger counter animation for stat numbers
+                    if (entry.target.classList.contains('benefits-visual')) {
+                        animateCounters();
+                    }
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.animate-on-scroll').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Counter animation
+        function animateCounters() {
+            const counters = document.querySelectorAll('.stat-number');
+            counters.forEach(counter => {
+                const target = parseInt(counter.getAttribute('data-target'));
+                const isStatic = counter.getAttribute('data-static') === 'true';
+                const duration = 2000;
+                const start = performance.now();
+
+                if (isStatic) {
+                    counter.textContent = target;
+                    counter.classList.add('counting');
+                    return;
+                }
+
+                function update(currentTime) {
+                    const elapsed = currentTime - start;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const easeOut = 1 - Math.pow(1 - progress, 3);
+                    const current = Math.floor(easeOut * target);
+                    counter.textContent = current + '%';
+
+                    if (progress < 1) {
+                        requestAnimationFrame(update);
+                    } else {
+                        counter.classList.add('counting');
+                    }
+                }
+
+                requestAnimationFrame(update);
+            });
+        }
+
+        // Add hover effects to triangle cells
+        document.querySelectorAll('.triangle-cell:not(.header)').forEach(cell => {
+            cell.addEventListener('mouseenter', function() {
+                this.style.transform = 'scale(1.08)';
+            });
+            cell.addEventListener('mouseleave', function() {
+                this.style.transform = 'scale(1)';
+            });
+        });
+
+        // AI Visualization Demo Animation
+        const aiPromptText = document.getElementById('aiPromptText');
+        const aiGenerateBtn = document.getElementById('aiGenerateBtn');
+        const chartPlaceholder = document.getElementById('chartPlaceholder');
+        const aiChartSvg1 = document.getElementById('aiChartSvg1');
+        const aiChartSvg2 = document.getElementById('aiChartSvg2');
+        const aiChartLegend1 = document.getElementById('aiChartLegend1');
+        const aiChartLegend2 = document.getElementById('aiChartLegend2');
+        const aiMouseCursor = document.getElementById('aiMouseCursor');
+        const aiPromptContainer = document.querySelector('.ai-prompt-container');
+        const aiDemoLeft = document.querySelector('.ai-demo-left');
+
+        // Two different prompts for alternating demos
+        const prompts = [
+            "Plot the loss development curve with gradient fills, showing all accident years in a modern style.",
+            "Show projected ultimate losses by accident year as a bar chart with accident years on the x-axis, include a trend line overlay with warm gradient colors"
+        ];
+
+        let currentPromptIndex = 0;
+        let aiDemoStarted = false;
+        let aiDemoComplete = false;
+        let aiDemoRunning = false;
+        let autoPlayInterval = null;
+        let cursorAnimationFrame = null;
+
+        // Typing animation
+        function typePrompt(text, element, speed = 25) {
+            return new Promise((resolve) => {
+                let i = 0;
+                element.innerHTML = '';
+                const cursor = document.createElement('span');
+                cursor.className = 'ai-typing-cursor';
+
+                function type() {
+                    if (i < text.length) {
+                        element.innerHTML = text.substring(0, i + 1);
+                        element.appendChild(cursor);
+                        i++;
+                        setTimeout(type, speed + Math.random() * 15);
+                    } else {
+                        cursor.remove();
+                        resolve();
+                    }
+                }
+                type();
+            });
+        }
+
+        // Show generating state
+        function showGenerating() {
+            aiGenerateBtn.classList.add('generating');
+            aiGenerateBtn.innerHTML = `
+                <span class="dots">
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                </span>
+                Generating...
+            `;
+        }
+
+        // Show generate button
+        function showGenerateReady() {
+            aiGenerateBtn.classList.remove('generating');
+            aiGenerateBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+                Generate
+            `;
+        }
+
+        // Animate mouse cursor to button
+        function animateMouseToButton() {
+            return new Promise((resolve) => {
+                const btnRect = aiGenerateBtn.getBoundingClientRect();
+                const containerRect = aiDemoLeft.getBoundingClientRect();
+
+                // Calculate target position relative to container
+                const targetX = btnRect.left - containerRect.left + btnRect.width / 2;
+                const targetY = btnRect.top - containerRect.top + btnRect.height / 2;
+
+                // Start position (from prompt area)
+                const startX = targetX - 100;
+                const startY = targetY - 80;
+
+                aiMouseCursor.style.left = startX + 'px';
+                aiMouseCursor.style.top = startY + 'px';
+                aiMouseCursor.classList.add('visible');
+
+                // Animate to button
+                const duration = 800;
+                const startTime = performance.now();
+
+                function animate(currentTime) {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const easeOut = 1 - Math.pow(1 - progress, 3);
+
+                    const currentX = startX + (targetX - startX) * easeOut;
+                    const currentY = startY + (targetY - startY) * easeOut;
+
+                    aiMouseCursor.style.left = currentX + 'px';
+                    aiMouseCursor.style.top = currentY + 'px';
+
+                    if (progress < 1) {
+                        cursorAnimationFrame = requestAnimationFrame(animate);
+                    } else {
+                        // Click animation
+                        aiMouseCursor.classList.add('clicking');
+                        setTimeout(() => {
+                            aiMouseCursor.classList.remove('clicking');
+                            aiMouseCursor.classList.remove('visible');
+                            resolve();
+                        }, 300);
+                    }
+                }
+
+                requestAnimationFrame(animate);
+            });
+        }
+
+        // Hide mouse cursor
+        function hideMouseCursor() {
+            if (cursorAnimationFrame) {
+                cancelAnimationFrame(cursorAnimationFrame);
+            }
+            aiMouseCursor.classList.remove('visible');
+            aiMouseCursor.classList.remove('clicking');
+        }
+
+        // Animate chart type 1 (development curves)
+        function animateChart1() {
+            chartPlaceholder.style.display = 'none';
+            aiChartSvg1.style.display = 'block';
+            aiChartSvg2.style.display = 'none';
+            aiChartLegend1.style.display = 'flex';
+            aiChartLegend2.style.display = 'none';
+            aiChartSvg1.style.animation = 'fadeInScale 0.5s ease forwards';
+
+            // Animate lines with staggered delays
+            setTimeout(() => {
+                const lines = aiChartSvg1.querySelectorAll('.chart-line');
+                lines.forEach((line, index) => {
+                    setTimeout(() => {
+                        line.classList.add('animate');
+                    }, index * 120);
+                });
+            }, 300);
+
+            // Animate area
+            setTimeout(() => {
+                const area = document.getElementById('chartArea1');
+                if (area) area.classList.add('visible');
+            }, 600);
+
+            // Animate dots with staggered delays
+            setTimeout(() => {
+                aiChartSvg1.querySelectorAll('.chart-dot-1').forEach((dot, index) => {
+                    setTimeout(() => {
+                        dot.classList.add('visible');
+                    }, index * 40);
+                });
+            }, 1800);
+
+            // Animate legend
+            setTimeout(() => {
+                aiChartLegend1.querySelectorAll('.legend-item').forEach((item, index) => {
+                    setTimeout(() => {
+                        item.classList.add('visible');
+                    }, index * 80);
+                });
+            }, 2500);
+        }
+
+        // Animate chart type 2 (bar chart with AY on x-axis)
+        function animateChart2() {
+            chartPlaceholder.style.display = 'none';
+            aiChartSvg1.style.display = 'none';
+            aiChartSvg2.style.display = 'block';
+            aiChartLegend1.style.display = 'none';
+            aiChartLegend2.style.display = 'flex';
+            aiChartSvg2.style.animation = 'fadeInScale 0.5s ease forwards';
+
+            // Animate bars
+            setTimeout(() => {
+                aiChartSvg2.querySelectorAll('.chart-bar-rect').forEach((bar, index) => {
+                    setTimeout(() => {
+                        bar.classList.add('visible');
+                        bar.style.animation = `fadeInScale 0.4s ease forwards`;
+                    }, index * 100);
+                });
+            }, 300);
+
+            // Animate trend line
+            setTimeout(() => {
+                const trendLine = document.getElementById('chartLineTrend');
+                if (trendLine) trendLine.classList.add('animate');
+            }, 1200);
+
+            // Animate dots
+            setTimeout(() => {
+                aiChartSvg2.querySelectorAll('.chart-dot-2').forEach((dot, index) => {
+                    setTimeout(() => {
+                        dot.classList.add('visible');
+                    }, index * 80);
+                });
+            }, 1800);
+
+            // Animate legend
+            setTimeout(() => {
+                aiChartLegend2.querySelectorAll('.legend-item').forEach((item, index) => {
+                    setTimeout(() => {
+                        item.classList.add('visible');
+                    }, index * 150);
+                });
+            }, 2200);
+        }
+
+        // Reset all chart states
+        function resetCharts() {
+            chartPlaceholder.style.display = 'flex';
+            aiChartSvg1.style.display = 'none';
+            aiChartSvg2.style.display = 'none';
+
+            // Reset chart 1
+            aiChartSvg1.querySelectorAll('.chart-line').forEach(line => {
+                line.classList.remove('animate');
+                line.style.strokeDashoffset = '800';
+            });
+            const area1 = document.getElementById('chartArea1');
+            if (area1) area1.classList.remove('visible');
+            aiChartSvg1.querySelectorAll('.chart-dot-1').forEach(dot => dot.classList.remove('visible'));
+            aiChartLegend1.querySelectorAll('.legend-item').forEach(item => item.classList.remove('visible'));
+
+            // Reset chart 2
+            aiChartSvg2.querySelectorAll('.chart-bar-rect').forEach(bar => {
+                bar.classList.remove('visible');
+                bar.style.animation = '';
+            });
+            const trendLine = document.getElementById('chartLineTrend');
+            if (trendLine) {
+                trendLine.classList.remove('animate');
+                trendLine.style.strokeDashoffset = '800';
+            }
+            aiChartSvg2.querySelectorAll('.chart-dot-2').forEach(dot => dot.classList.remove('visible'));
+            aiChartLegend2.querySelectorAll('.legend-item').forEach(item => item.classList.remove('visible'));
+        }
+
+        let nextDemoTimeout = null;
+
+        // Schedule next demo after 4 seconds
+        function scheduleNextDemo() {
+            if (nextDemoTimeout) clearTimeout(nextDemoTimeout);
+            nextDemoTimeout = setTimeout(() => {
+                if (aiDemoComplete && !aiDemoRunning) {
+                    runAiDemo(true);
+                }
+            }, 4000); // 4 second pause after completion
+        }
+
+        // Main demo sequence
+        async function runAiDemo(withCursor = true) {
+            if (aiDemoRunning) return;
+
+            // Clear any pending next demo
+            if (nextDemoTimeout) clearTimeout(nextDemoTimeout);
+
+            aiDemoRunning = true;
+            aiDemoStarted = true;
+            aiDemoComplete = false;
+
+            // Reset state
+            aiPromptText.innerHTML = '';
+            resetCharts();
+            showGenerateReady();
+            hideMouseCursor();
+
+            // Type prompt
+            await typePrompt(prompts[currentPromptIndex], aiPromptText);
+
+            // Animate mouse cursor to button (if enabled)
+            if (withCursor) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+                await animateMouseToButton();
+            }
+
+            // Show generating
+            await new Promise(resolve => setTimeout(resolve, 200));
+            showGenerating();
+
+            // Wait and show chart
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            if (currentPromptIndex === 0) {
+                animateChart1();
+            } else {
+                animateChart2();
+            }
+
+            // Complete - wait for animation to fully render
+            setTimeout(() => {
+                showGenerateReady();
+                aiDemoComplete = true;
+                aiDemoRunning = false;
+
+                // Toggle to next prompt for next run
+                currentPromptIndex = (currentPromptIndex + 1) % prompts.length;
+
+                // Schedule next demo after 4 seconds
+                scheduleNextDemo();
+            }, 3500);
+        }
+
+        // Start auto-play cycle
+        function startAutoPlay() {
+            stopAutoPlay();
+            runAiDemo(true);
+        }
+
+        // Stop auto-play
+        function stopAutoPlay() {
+            if (autoPlayInterval) {
+                clearInterval(autoPlayInterval);
+                autoPlayInterval = null;
+            }
+            if (nextDemoTimeout) {
+                clearTimeout(nextDemoTimeout);
+                nextDemoTimeout = null;
+            }
+        }
+
+        // Click handler for generate button (manual trigger)
+        aiGenerateBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!aiDemoRunning) {
+                stopAutoPlay();
+                runAiDemo(false); // No cursor animation for manual clicks
+            }
+        });
+
+        // Click on prompt area to restart animation with next prompt
+        aiPromptContainer.addEventListener('click', (e) => {
+            if (e.target === aiGenerateBtn || aiGenerateBtn.contains(e.target)) return;
+
+            if (!aiDemoRunning) {
+                stopAutoPlay();
+                currentPromptIndex = (currentPromptIndex + 1) % prompts.length; // Switch prompt
+                runAiDemo(true);
+            }
+        });
+
+        // Click on chart area to switch to next animation
+        const aiChartCanvas = document.getElementById('aiChartCanvas');
+        aiChartCanvas.addEventListener('click', (e) => {
+            if (!aiDemoRunning) {
+                stopAutoPlay();
+                currentPromptIndex = (currentPromptIndex + 1) % prompts.length; // Switch to next
+                runAiDemo(true);
+            }
+        });
+
+        // Auto-start demo when section is visible
+        const aiVizSection = document.querySelector('.ai-viz');
+        const aiVizObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && !aiDemoStarted) {
+                    setTimeout(() => startAutoPlay(), 800);
+                } else if (!entry.isIntersecting) {
+                    // Pause when not visible
+                    stopAutoPlay();
+                    hideMouseCursor();
+                }
+            });
+        }, { threshold: 0.3 });
+
+        aiVizObserver.observe(aiVizSection);
+
+        // ========================================
+        // Stochastic Simulation Animation
+        // ========================================
+        const simPlayBtn = document.getElementById('simPlayBtn');
+        const simCounter = document.getElementById('simCounter');
+        const simChartSvg = document.getElementById('simChartSvg');
+        const distributionBars = document.getElementById('distributionBars');
+        const statMean = document.getElementById('statMean');
+        const statP50 = document.getElementById('statP50');
+        const statStdDev = document.getElementById('statStdDev');
+        const statCV = document.getElementById('statCV');
+
+        let simRunning = false;
+        let simComplete = false;
+
+        // Generate lognormal distribution data
+        function generateLognormalData(numBars = 50) {
+            const bars = [];
+            const mu = 1.0; // log mean
+            const sigma = 0.25; // log standard deviation
+
+            for (let i = 0; i < numBars; i++) {
+                // X position maps to reserve amount (2M to 4M)
+                const x = 2 + (i / numBars) * 2; // 2M to 4M
+                // Lognormal PDF
+                const logx = Math.log(x);
+                const exponent = -Math.pow(logx - mu, 2) / (2 * sigma * sigma);
+                const pdf = (1 / (x * sigma * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
+                bars.push({
+                    x: 45 + (i * 8.5),
+                    height: pdf * 250, // Scale for visibility
+                    value: x
+                });
+            }
+            return bars;
+        }
+
+        // Create distribution bars SVG
+        function createDistributionBars(data) {
+            distributionBars.innerHTML = '';
+            data.forEach((bar, index) => {
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('class', 'distribution-bar');
+                rect.setAttribute('x', bar.x);
+                rect.setAttribute('y', 180 - bar.height);
+                rect.setAttribute('width', 7);
+                rect.setAttribute('height', bar.height);
+                rect.setAttribute('rx', 2);
+                rect.dataset.index = index;
+                distributionBars.appendChild(rect);
+            });
+        }
+
+        // Animate the simulation
+        async function runSimulation() {
+            if (simRunning) return;
+
+            simRunning = true;
+            simComplete = false;
+            simPlayBtn.classList.add('hidden');
+
+            // Reset stats
+            statMean.textContent = '--';
+            statP50.textContent = '--';
+            statStdDev.textContent = '--';
+            statCV.textContent = '--';
+
+            // Hide percentile lines
+            document.querySelectorAll('.percentile-line, .percentile-label').forEach(el => {
+                el.classList.remove('visible');
+            });
+
+            // Generate distribution data
+            const data = generateLognormalData(50);
+            createDistributionBars(data);
+
+            // Hide all bars initially
+            const bars = distributionBars.querySelectorAll('.distribution-bar');
+            bars.forEach(bar => bar.classList.remove('visible'));
+
+            // Animate counter and bars
+            const totalSims = 10000;
+            const duration = 3000; // 3 seconds
+            const startTime = performance.now();
+
+            function animateSimulation(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+
+                // Update counter
+                const currentCount = Math.floor(easeOut * totalSims);
+                simCounter.textContent = currentCount.toLocaleString();
+
+                // Progressively reveal bars from center outward
+                const centerIndex = Math.floor(bars.length / 2);
+                const revealRadius = Math.floor(easeOut * (bars.length / 2 + 5));
+
+                bars.forEach((bar, index) => {
+                    const distFromCenter = Math.abs(index - centerIndex);
+                    if (distFromCenter <= revealRadius) {
+                        bar.classList.add('visible');
+                    }
+                });
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateSimulation);
+                } else {
+                    // Animation complete - show all bars
+                    bars.forEach(bar => bar.classList.add('visible'));
+
+                    // Show percentile lines with delay
+                    setTimeout(() => {
+                        document.getElementById('p10Line').classList.add('visible');
+                        document.getElementById('p10Label').classList.add('visible');
+                    }, 200);
+
+                    setTimeout(() => {
+                        document.getElementById('p50Line').classList.add('visible');
+                        document.getElementById('p50Label').classList.add('visible');
+                    }, 400);
+
+                    setTimeout(() => {
+                        document.getElementById('p90Line').classList.add('visible');
+                        document.getElementById('p90Label').classList.add('visible');
+                    }, 600);
+
+                    // Show stats
+                    setTimeout(() => {
+                        animateStatValue(statMean, 2.87, 'M');
+                        animateStatValue(statP50, 2.72, 'M');
+                        animateStatValue(statStdDev, 0.68, 'M');
+                        animateStatValue(statCV, 23.7, '%');
+                    }, 800);
+
+                    setTimeout(() => {
+                        simRunning = false;
+                        simComplete = true;
+                        simPlayBtn.classList.remove('hidden');
+                    }, 2000);
+                }
+            }
+
+            requestAnimationFrame(animateSimulation);
+        }
+
+        // Animate stat value counting up
+        function animateStatValue(element, targetValue, suffix) {
+            const duration = 800;
+            const startTime = performance.now();
+            const startValue = 0;
+
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+
+                const currentValue = startValue + (targetValue - startValue) * easeOut;
+                element.textContent = currentValue.toFixed(2) + suffix;
+
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                }
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        // Reset simulation
+        function resetSimulation() {
+            simCounter.textContent = '0';
+            statMean.textContent = '--';
+            statP50.textContent = '--';
+            statStdDev.textContent = '--';
+            statCV.textContent = '--';
+
+            distributionBars.innerHTML = '';
+
+            document.querySelectorAll('.percentile-line, .percentile-label').forEach(el => {
+                el.classList.remove('visible');
+            });
+
+            simPlayBtn.classList.remove('hidden');
+            simComplete = false;
+        }
+
+        // Play button click
+        simPlayBtn.addEventListener('click', () => {
+            if (simComplete) {
+                resetSimulation();
+                setTimeout(runSimulation, 300);
+            } else {
+                runSimulation();
+            }
+        });
+
+        // Auto-run when section is visible
+        const stochasticSection = document.querySelector('.stochastic');
+
+        const stochasticObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    // User scrolled into view - start animation
+                    if (!simRunning) {
+                        resetSimulation();
+                        setTimeout(runSimulation, 500);
+                    }
+                } else {
+                    // User scrolled away - reset for next time
+                    if (!simRunning) {
+                        resetSimulation();
+                    }
+                }
+            });
+        }, { threshold: 0.4 });
+
+        stochasticObserver.observe(stochasticSection);
+    </script>
+</body>
+</html>

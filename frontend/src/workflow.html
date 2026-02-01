@@ -1,0 +1,419 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Workflow</title>
+  <style>
+    :root { --app-safe-bottom: 28px; --ui-zoom: 1; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 12px;
+      padding-bottom: calc(12px + var(--app-safe-bottom));
+      box-sizing: border-box;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+    }
+    input, textarea, select, option, [contenteditable="true"] { user-select: text; }
+    .row { display:flex; gap:8px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+
+    .left {
+      width: 280px;
+      min-width: 220px;
+      max-width: 620px;
+      border:1px solid #ddd;
+      border-radius:10px;
+      padding:10px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      box-sizing: border-box;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* ===== Sidebar collapse ===== */
+
+    #workflowSidebar {
+      transition: width 200ms ease, padding 200ms ease;
+      transition-property: width, padding, min-width, max-width;
+      transition-duration: 220ms;
+      transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    body.sidebar-collapsed #workflowSidebar {
+      width: 44px !important;
+      min-width: 44px !important;
+      max-width: 44px !important;
+      padding-left: 2px;
+      padding-right: 2px;
+      overflow: hidden;
+    }
+
+    /* When collapsed: keep header + steps list visible, hide other content. */
+    body.sidebar-collapsed #workflowSidebar > :not(#sidebarHeader):not(#steps){
+      display: none !important;
+    }
+
+    /* When collapsed: center the button, hide the title. */
+    body.sidebar-collapsed #sidebarHeader{
+      justify-content: center !important;
+    }
+
+    body.sidebar-collapsed #sidebarTitle{
+      display: none !important;
+    }
+
+    /* Button styling (optional). */
+    #toggleSidebarBtn{
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 6px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #toggleSidebarBtn:hover{
+      background: #f2f2f2;
+    }
+    .collapseIcon {
+      width: 10px;
+      height: 10px;
+      stroke: #333;
+      stroke-width: 1.4;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      display: block;
+    }
+
+    #toggleSidebarBtn {
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 6px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #toggleSidebarBtn:hover {
+      background: #f2f2f2;
+    }
+
+    .wfTitleInput {
+      font-size: 16px;
+      font-weight: 700;
+      border: 1px solid #6b9dfb;
+      border-radius: 4px;
+      padding: 2px 6px;
+      outline: none;
+      width: 220px;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    #sidebarResizer {
+      width: 8px;
+      cursor: col-resize;
+      background: rgba(0, 0, 0, 0.01);
+      margin: 0;
+      flex: 0 0 8px;
+      align-self: stretch;
+      height: 100%;
+      touch-action: none;
+      position: relative;
+      z-index: 2;
+    }
+    #sidebarResizer:hover {
+      background: rgba(0,0,0,0.08);
+    }
+    body.sidebar-collapsed #sidebarResizer {
+      width: 0;
+      flex: 0 0 0;
+      cursor: default;
+      background: transparent;
+      pointer-events: none;
+    }
+    .right {
+      flex:1;
+      border:1px solid #ddd;
+      border-radius:10px;
+      padding:10px;
+      display:flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .muted { color:#666; font-size:12px; }
+    button { padding:6px 10px; cursor:pointer; }
+    .stepBtn {
+      display: block;
+      width: 100%;
+      margin-bottom: 6px;
+      box-sizing: border-box;
+      text-align: left;
+      border: 1px solid rgba(180, 180, 180, 0.5);
+      background: rgba(245, 245, 245, 0.9);
+      padding: 6px 10px;
+      position: relative;
+      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+      will-change: transform;
+    }
+    .stepBtn .stepIndex {
+      display: none;
+      min-width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      border: none;
+      background: rgba(230, 230, 230, 0.95);
+      margin-right: 0;
+      font-size: 11px;
+      color: #444;
+      line-height: 22px;
+      text-align: center;
+      box-sizing: border-box;
+      opacity: 0.95;
+    }
+    .stepBtn .stepLabel {
+      display: inline;
+    }
+    .stepBtn .stepHoverLabel {
+      display: none;
+      position: fixed;
+      left: 0;
+      top: 0;
+      transform: translateY(-50%);
+      background: #ffffff;
+      border: 1px solid rgba(200, 200, 200, 0.8);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: #222;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.12);
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 120ms ease;
+      z-index: 9999;
+    }
+    .stepRenameInput {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 10px;
+      font-size: 13px;
+      border: 1px solid #6b9dfb;
+      border-radius: 4px;
+      outline: none;
+    }
+    .stepBtn.dragging {
+      opacity: 0.6;
+    }
+    .stepBtn.placeholder {
+      border: 1px dashed #9aa3af;
+      background: #f8fafc;
+      color: transparent;
+    }
+    .stepAddTile {
+      margin-top: 6px;
+      width: 100%;
+      border: 1px dashed #b6bcc7;
+      border-radius: 6px;
+      height: 32px;
+      line-height: 32px;
+      padding: 0;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: #6b7280;
+      cursor: pointer;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    .importTile {
+      margin-top: 6px;
+      width: 100%;
+      border: 1px dashed #b6bcc7;
+      border-radius: 6px;
+      height: 32px;
+      line-height: 32px;
+      padding: 0 10px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: #4b5563;
+      cursor: pointer;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    .importTile:hover {
+      background: #f3f4f6;
+      border-color: #9aa3af;
+      color: #111827;
+    }
+    .stepAddTile:hover {
+      background: #f3f4f6;
+      border-color: #9aa3af;
+      color: #111827;
+    }
+    .stepBtn.active {
+      background: #e7f0ff;
+      border-color: #6b9dfb;
+      box-shadow: inset 0 0 0 1px rgba(107,157,251,0.45);
+    }
+
+    body.sidebar-collapsed .stepBtn {
+      padding-left: 6px;
+      padding-right: 6px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      background: transparent;
+      border-color: transparent;
+    }
+    body.sidebar-collapsed .stepBtn .stepIndex {
+      display: inline-block;
+    }
+    body.sidebar-collapsed .stepBtn .stepLabel {
+      display: none;
+    }
+    body.sidebar-collapsed .stepBtn .stepHoverLabel {
+      display: block;
+    }
+    body.sidebar-collapsed .stepBtn:hover .stepHoverLabel {
+      opacity: 1;
+    }
+    body.sidebar-collapsed #workflowSidebar {
+      overflow-x: hidden;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    body.sidebar-collapsed #steps {
+      overflow: visible;
+    }
+    body.sidebar-collapsed #workflowSidebar::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+
+    /* Workspace */
+    #workspace {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* cards (match your home-card vibe) */
+    .cards { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; }
+    .card {
+      width: 260px;
+      border:1px solid #ddd;
+      border-radius: 10px;
+      padding: 12px;
+      background:#fff;
+    }
+    .card.clickable {
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+      user-select: none;
+    }
+    .card.clickable:hover {
+      border-color: #bbb;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+      transform: translateY(-1px);
+    }
+    .card.clickable:active {
+      transform: translateY(0px);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+    }
+    .card h3 { margin: 0 0 8px 0; font-size: 16px; }
+
+    /* embedded iframe */
+
+    /* Step context menu */
+    #stepCtxMenu {
+      position: fixed;
+      z-index: 9999;
+      min-width: 140px;
+      background: #fff;
+      border: 1px solid #cfcfcf;
+      border-radius: 8px;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+      padding: 6px;
+      display: none;
+    }
+    #stepCtxMenu.open { display: block; }
+    .stepCtxItem {
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .stepCtxItem:hover { background: rgba(0,0,0,0.06); }
+    .stepCtxSep {
+      height: 1px;
+      background: #e7e7e7;
+      margin: 6px 4px;
+    }
+    .embedFrame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <div class="left" id="workflowSidebar">
+
+      <div id="sidebarHeader" style="display:flex; align-items:center; justify-content:space-between;">
+        <b id="sidebarTitle" title="Click to rename">Workflow Designer</b>
+        <button id="toggleSidebarBtn" title="Collapse sidebar"><</button>
+      </div>
+
+      <!-- <div class="muted">Steps</div> -->
+      <hr/>
+      <div id="steps" style="margin-top:10px;"></div>
+      <div id="importWorkflowTile" class="importTile" title="Import workflow from path">Import from Path...</div>
+      <div id="addStepTile" class="stepAddTile" title="Add Step">+</div>
+    </div>
+
+    <div id="sidebarResizer"></div>
+
+    <div class="right">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div><b>Workspace</b></div>
+        <div class="muted" id="wsHint">Add a new step from the left panel</div>
+      </div>
+      <hr/>
+      <div id="workspace"></div>
+
+      <!-- debug only -->
+      <pre id="inspector" style="display:none; margin-top:10px;"></pre>
+    </div>
+  </div>
+
+
+  <div id="stepCtxMenu">
+    <div class="stepCtxItem" data-action="rename">Rename (R)</div>
+    <div class="stepCtxItem" data-action="duplicate">Duplicate (B)</div>
+    <div class="stepCtxSep"></div>
+    <div class="stepCtxItem" data-action="delete">Delete (D)</div>
+  </div>
+
+  <script type="module" src="/ui/workflow_main.js?v=202601291"></script>
+</body>
+</html>

@@ -1,0 +1,550 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Project Explorer</title>
+  <style>
+    :root {
+      --border: #ddd;
+      --muted: #666;
+      --bg: #fff;
+      --tree-indent: 8px;
+      --folder-bg: #f8f9fa;
+      --folder-hover: #e9ecef;
+      --project-hover: #fff3cd;
+      --active-bg: #cfe2ff;
+    }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+    input, textarea, select, option, [contenteditable="true"] { user-select: text; }
+
+    /* Main layout */
+    .main {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Tree panel */
+    .tree-panel {
+      width: 320px;
+      min-width: 200px;
+      max-width: 500px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: #fdfdfd;
+    }
+    .tree-header {
+      padding: 12px 14px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #333;
+      border-bottom: 1px solid var(--border);
+    }
+    .tree-content {
+      flex: 1 1 auto;
+      overflow: auto;
+      padding: 8px 0;
+    }
+
+    /* Tree nodes */
+    .tree-node {
+      user-select: none;
+    }
+    .tree-folder {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #333;
+      background: transparent;
+      transition: background 0.1s;
+    }
+    .tree-folder:hover {
+      background: var(--folder-hover);
+    }
+    .tree-folder-arrow {
+      width: 14px;
+      height: 14px;
+      color: #888;
+      flex-shrink: 0;
+      transition: transform 0.15s ease;
+    }
+    .tree-folder-arrow svg {
+      width: 100%;
+      height: 100%;
+    }
+    .tree-folder-arrow.expanded {
+      transform: rotate(90deg);
+    }
+    .tree-folder-icon {
+      width: 16px;
+      height: 16px;
+      color: #f0ad4e;
+      flex-shrink: 0;
+    }
+    .tree-folder-icon svg {
+      width: 100%;
+      height: 100%;
+    }
+    .tree-folder-icon.expanded {
+      color: #ec971f;
+    }
+    .tree-folder-name {
+      font-weight: 500;
+    }
+    .tree-folder-count {
+      margin-left: auto;
+      font-size: 11px;
+      color: #999;
+      background: #eee;
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+    .tree-children {
+      display: none;
+      padding-left: var(--tree-indent);
+    }
+    .tree-children.expanded {
+      display: block;
+    }
+
+    /* Project items */
+    .tree-project {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px 5px 28px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #444;
+      transition: background 0.1s;
+    }
+    .tree-project:hover {
+      background: var(--project-hover);
+    }
+    .tree-project.active {
+      background: var(--active-bg);
+    }
+    .tree-project.dragging {
+      opacity: 0.5;
+    }
+    .tree-folder.dragging {
+      opacity: 0.5;
+    }
+    .tree-folder.drop-target {
+      background: #d4edda;
+      border: 2px dashed #28a745;
+      border-radius: 4px;
+    }
+
+    /* Context Menu */
+    .context-menu {
+      display: none;
+      position: fixed;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      padding: 4px 0;
+      min-width: 140px;
+      z-index: 1000;
+    }
+    .context-menu.show {
+      display: block;
+    }
+    .context-menu-item {
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      color: #333;
+    }
+    .context-menu-item:hover {
+      background: #f0f0f0;
+    }
+    .context-menu-item.danger {
+      color: #dc3545;
+    }
+    .context-menu-item.danger:hover {
+      background: #ffeaea;
+    }
+    .context-menu-divider {
+      height: 1px;
+      background: #eee;
+      margin: 4px 0;
+    }
+
+    /* Custom Dialog */
+    .dialog-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    .dialog-overlay.show {
+      display: flex;
+    }
+    .dialog-box {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      min-width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .dialog-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #333;
+    }
+    .dialog-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+      box-sizing: border-box;
+      user-select: text;
+      -webkit-user-select: text;
+      pointer-events: auto;
+    }
+    .dialog-input:focus {
+      outline: none;
+      border-color: #0d6efd;
+    }
+    .dialog-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .dialog-btn {
+      padding: 8px 16px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .dialog-btn:hover {
+      background: #f5f5f5;
+    }
+    .dialog-btn.primary {
+      background: #0d6efd;
+      color: #fff;
+      border-color: #0d6efd;
+    }
+    .dialog-btn.primary:hover {
+      background: #0b5ed7;
+    }
+    .dialog-btn.danger {
+      background: #dc3545;
+      color: #fff;
+      border-color: #dc3545;
+    }
+    .dialog-btn.danger:hover {
+      background: #bb2d3b;
+    }
+    .dialog-message {
+      font-size: 13px;
+      color: #333;
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+    .tree-project-icon {
+      width: 16px;
+      height: 16px;
+      color: #6c757d;
+      flex-shrink: 0;
+    }
+    .tree-project-icon svg {
+      width: 100%;
+      height: 100%;
+    }
+    .tree-project.active .tree-project-icon {
+      color: #0d6efd;
+    }
+    .tree-project-name {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Detail panel */
+    .detail-panel {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--bg);
+    }
+    .detail-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      color: #999;
+      font-size: 14px;
+    }
+    .detail-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .detail-title {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .detail-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+    .detail-actions button {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .detail-actions button:hover {
+      background: #f5f5f5;
+    }
+    .detail-actions button.primary {
+      background: #0d6efd;
+      color: #fff;
+      border-color: #0d6efd;
+    }
+    .detail-actions button.primary:hover {
+      background: #0b5ed7;
+    }
+    .detail-content {
+      flex: 1 1 auto;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    /* Detail form */
+    .detail-form {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 12px 16px;
+      max-width: 700px;
+    }
+    .detail-label {
+      font-size: 12px;
+      color: #555;
+      text-align: right;
+      padding-top: 6px;
+    }
+    .detail-value {
+      font-size: 13px;
+    }
+    .detail-value input {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    .detail-value input:read-only {
+      background: #f5f5f5;
+      color: #666;
+    }
+
+    /* Resize handle */
+    .resize-handle {
+      width: 4px;
+      cursor: col-resize;
+      background: transparent;
+      transition: background 0.2s;
+    }
+    .resize-handle:hover {
+      background: #ddd;
+    }
+
+    /* Table Summary */
+    .table-summary {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .summary-header {
+      font-size: 13px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 12px;
+    }
+    .summary-stats {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+    }
+    .stat-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+    }
+    .summary-columns {
+      margin-top: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .columns-table {
+      width: 100%;
+      max-width: 900px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .columns-table th,
+    .columns-table td {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    .columns-table th {
+      background: #f5f5f5;
+      font-weight: 600;
+      color: #555;
+    }
+    .columns-table td.col-name {
+      font-weight: 500;
+    }
+    .columns-table td.col-type {
+      color: #666;
+      min-width: 70px;
+      white-space: nowrap;
+    }
+    .columns-table td.col-sample {
+      color: #555;
+      font-size: 11px;
+      max-width: 350px;
+      word-wrap: break-word;
+      white-space: normal;
+    }
+    .summary-loading {
+      color: #888;
+      font-size: 12px;
+      font-style: italic;
+    }
+    .summary-error {
+      color: #dc3545;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="main" style="height: 100%;">
+    <div class="tree-panel" id="treePanel">
+      <div class="tree-header">Projects</div>
+      <div class="tree-content" id="treeContent"></div>
+    </div>
+    <div class="resize-handle" id="resizeHandle"></div>
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-empty" id="detailEmpty">
+        Select a project to view details
+      </div>
+      <div id="detailView" style="display:none; flex-direction:column; flex:1;">
+        <div class="detail-header">
+          <div class="detail-title" id="detailTitle">Project Name</div>
+          <div class="detail-actions">
+            <button id="openInTabBtn" class="primary">Open in New Tab</button>
+            <button id="editSettingsBtn">Edit Settings</button>
+          </div>
+        </div>
+        <div class="detail-content">
+          <div class="detail-form" id="detailForm"></div>
+          <div class="table-summary" id="tableSummary" style="display:none;">
+            <div class="summary-header">Data Table Summary</div>
+            <div class="summary-stats" id="summaryStats"></div>
+            <div class="summary-columns" id="summaryColumns"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Menu (projects) -->
+  <div class="context-menu" id="contextMenu">
+    <div class="context-menu-item" data-action="rename">Rename</div>
+    <div class="context-menu-item" data-action="duplicate">Duplicate</div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item danger" data-action="delete">Delete</div>
+  </div>
+
+  <!-- Folder Context Menu -->
+  <div class="context-menu" id="folderContextMenu">
+    <div class="context-menu-item" data-action="rename-folder">Rename</div>
+    <div class="context-menu-item" data-action="create-subfolder">Create subfolder</div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item danger" data-action="delete-folder">Delete</div>
+  </div>
+
+  <!-- Tree blank area Context Menu -->
+  <div class="context-menu" id="treeContextMenu">
+    <div class="context-menu-item" data-action="create-root-folder">Create root folder</div>
+  </div>
+
+  <!-- Custom Prompt Dialog -->
+  <div class="dialog-overlay" id="dialogOverlay">
+    <div class="dialog-box" id="dialogBox">
+      <div class="dialog-title" id="dialogTitle">Enter value</div>
+      <input type="text" class="dialog-input" id="dialogInput" autocomplete="off" />
+      <div class="dialog-buttons">
+        <button class="dialog-btn" id="dialogCancel" type="button">Cancel</button>
+        <button class="dialog-btn primary" id="dialogOk" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Confirm Dialog -->
+  <div class="dialog-overlay" id="confirmOverlay">
+    <div class="dialog-box" id="confirmBox">
+      <div class="dialog-title" id="confirmTitle">Confirm</div>
+      <div class="dialog-message" id="confirmMessage"></div>
+      <div class="dialog-buttons">
+        <button class="dialog-btn" id="confirmCancel" type="button">Cancel</button>
+        <button class="dialog-btn danger" id="confirmOk" type="button">Delete</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module" src="project_settings.js?v=20260131"></script>
+</body>
+</html>

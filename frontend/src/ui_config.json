@@ -1,0 +1,10 @@
+{
+  "root_path": "E:\\ADAS",
+  "paths": {
+    "team_profile": "Team Profile",
+    "virtual_projects": "Virtual Projects",
+    "data": "data",
+    "requests": "requests",
+    "web_ui": "Web UI"
+  }
+}

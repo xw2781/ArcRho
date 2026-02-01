@@ -2,8 +2,55 @@
 
 import { state } from "./state.js";
 import { $ , logLine } from "./dom.js";
+import { openContextMenu } from "./menu_utils.js";
+import { renderDevChart } from "./chart.js";
 
 let ctxMenuWired = false;
+
+// --- keyboard focus sink: make sure this document receives keydown after clicking a cell ---
+function ensureKeySink() {
+  let el = document.getElementById("keySink");
+  if (el) return el;
+
+  el = document.createElement("div");
+  el.id = "keySink";
+  el.tabIndex = 0;                 // make it focusable
+  el.setAttribute("aria-hidden", "true");
+  el.style.position = "fixed";
+  el.style.left = "-9999px";
+  el.style.top = "0";
+  el.style.width = "1px";
+  el.style.height = "1px";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  return el;
+}
+
+function claimDatasetFocus() {
+  try { window.focus(); } catch {}
+  const sink = ensureKeySink();
+  try { sink.focus({ preventScroll: true }); } catch { try { sink.focus(); } catch {} }
+}
+
+const fmt0 = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
+function isPercentTriangle() {
+  const triInput = document.getElementById("triInput");
+  return triInput && triInput.value.includes("%");
+}
+
+function getOriginLabelText(originLen) {
+  switch (Number(originLen)) {
+    case 12: return "Accident Year";
+    case 6:  return "Accident Half-Year";
+    case 3:  return "Accident Quarter";
+    case 1:  return "Accident Month";
+    default: return "Accident Period";
+  }
+}
 
 function ensureCtxMenuWired() {
   if (ctxMenuWired) return;
@@ -37,26 +84,16 @@ function ensureCtxMenuWired() {
   window.addEventListener("resize", hideCtxMenu);
 }
 
-function showCtxMenu(clientX, clientY) {
+function showCtxMenu(anchorEl, clientX, clientY) {
   const menu = document.getElementById("ctxMenu");
   if (!menu) return;
-
-  menu.style.display = "block";
-
-  // Position with viewport clamp
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  // Temporarily measure
-  const rect = menu.getBoundingClientRect();
-  let x = clientX;
-  let y = clientY;
-
-  if (x + rect.width > vw) x = Math.max(8, vw - rect.width - 8);
-  if (y + rect.height > vh) y = Math.max(8, vh - rect.height - 8);
-
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
+  openContextMenu(menu, {
+    anchorEl,
+    clientX,
+    clientY,
+    offset: 8,
+    align: "top-left",
+  });
 }
 
 function hideCtxMenu() {
@@ -65,7 +102,85 @@ function hideCtxMenu() {
   menu.style.display = "none";
 }
 
+function getDecimalPlaces() {
+  const el = document.getElementById("decimalPlaces");
+  const n = parseInt(el?.value, 10);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(0, Math.min(6, n)); // clamp 0..6
+}
+
+function detectNumberMode() {
+  // 1) name contains % => percent
+  if (isPercentTriangle()) return "percent";
+
+  const model = state.model;
+  if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) {
+    return "int";
+  }
+
+  const vals = model.values;
+  const mask = model.mask;
+
+  // 2) scan dataset: all non-zero numeric values in (0,1) => decimal
+  let sawNonZero = false;
+
+  for (let r = 0; r < vals.length; r++) {
+    for (let c = 0; c < (vals[r] || []).length; c++) {
+      if (!mask[r] || !mask[r][c]) continue;
+
+      const v = vals[r][c];
+      if (v === null || v === undefined || v === "") continue;
+
+      const n = (typeof v === "number") ? v : Number(v);
+      if (!Number.isFinite(n)) continue;
+
+      if (n === 0) continue; // exclude 0 from the check (allowed to exist)
+
+      sawNonZero = true;
+
+      // if ANY non-zero value is outside (0,1), it's not a ratio-like dataset
+      const abs = Math.abs(n);
+      if (!(abs > 0 && abs < 1)) return "int";
+    }
+  }
+
+  return sawNonZero ? "decimal" : "int";
+}
+
+export function formatCellValue(v) {
+  if (v === null || v === undefined || v === "") return "";
+
+  const n = (typeof v === "number") ? v : Number(v);
+  if (!Number.isFinite(n)) return "";
+
+  const mode = detectNumberMode();
+  const dp = getDecimalPlaces();
+
+  if (mode === "percent") {
+    return (n * 100).toFixed(dp) + "%";
+  }
+
+  if (mode === "decimal") {
+    return n.toFixed(dp); // 0.000 style (no comma)
+  }
+
+  // default: 0,000
+  return fmt0.format(n);
+}
+
+function getEffectiveDevLabels(model) {
+  const devs = Array.isArray(model?.dev_labels) ? model.dev_labels : [];
+  const vals = Array.isArray(model?.values) ? model.values : [];
+  let maxCols = 0;
+  for (const row of vals) {
+    if (Array.isArray(row)) maxCols = Math.max(maxCols, row.length);
+  }
+  if (!maxCols || maxCols >= devs.length) return devs;
+  return devs.slice(0, maxCols);
+}
+
 export function renderTable() {
+
   const wrap = $("tableWrap");
   wrap.innerHTML = "";
   ensureCtxMenuWired();
@@ -76,14 +191,33 @@ export function renderTable() {
     return;
   }
 
+  const metaEl = document.getElementById("tableMeta");
+  if (metaEl) {
+    const path = (document.getElementById("pathInput")?.value || "").trim();
+    const tri = (document.getElementById("triInput")?.value || "").trim();
+    metaEl.textContent = `${path || ""} | ${tri || ""}`;
+  }
+
   const origins = model.origin_labels;
-  const devs = model.dev_labels;
+  const devs = getEffectiveDevLabels(model);
   const vals = model.values;
   const mask = model.mask; // True=has value, False=blank/missing
 
   if (!Array.isArray(mask)) {
     wrap.innerHTML = `<div style="color:#b00;"><b>UI Error:</b> mask is missing. Update get_dataset to return mask.</div>`;
     return;
+  }
+
+  if (state.activeCell) {
+    const maxR = (origins?.length || 0) - 1;
+    const maxC = (devs?.length || 0) - 1;
+    if (maxR < 0 || maxC < 0) {
+      state.activeCell = null;
+    } else {
+      const r = Math.max(0, Math.min(state.activeCell.r, maxR));
+      const c = Math.max(0, Math.min(state.activeCell.c, maxC));
+      state.activeCell = { r, c };
+    }
   }
 
   const tbl = document.createElement("table");
@@ -93,13 +227,13 @@ export function renderTable() {
   const trh = document.createElement("tr");
 
   const th0 = document.createElement("th");
-  th0.textContent = "Accident Year";
+  const originLen = document.getElementById("originLenSelect")?.value || 12;
+  th0.textContent = getOriginLabelText(originLen);
   trh.appendChild(th0);
 
   devs.forEach((d, c) => {
     const th = document.createElement("th");
     th.textContent = d;
-    th.style.textAlign = "right";
 
     th.classList.add("colhdr");
     th.dataset.c = String(c);
@@ -128,7 +262,7 @@ export function renderTable() {
       const td = document.createElement("td");
       const key = `${r},${c}`;
 
-      const hasValue = !!mask[r][c];
+      const hasValue = !!(mask[r] && mask[r][c]);
 
       if (!hasValue) {
         td.textContent = "";
@@ -139,7 +273,7 @@ export function renderTable() {
         }
       } else {
         const v = vals[r][c];
-        td.textContent = (v === null ? "" : String(v));
+        td.textContent = formatCellValue(v);
 
         td.classList.add("cell");
         td.dataset.r = String(r);
@@ -148,6 +282,7 @@ export function renderTable() {
         td.addEventListener("click", () => {
           state.activeCell = { r, c };
           renderActiveCellUI(); // update formula bar + highlight
+          claimDatasetFocus(); 
         });
 
         td.addEventListener("contextmenu", (e) => {
@@ -157,7 +292,7 @@ export function renderTable() {
           state.activeCell = { r, c };
           renderActiveCellUI();
 
-          showCtxMenu(e.clientX, e.clientY);
+          showCtxMenu(td, e.clientX, e.clientY);
         });
       }
 
@@ -188,7 +323,7 @@ export function renderActiveCellUI() {
   document.querySelectorAll("th.activeCol").forEach((el) => el.classList.remove("activeCol"));
 
   if (!state.activeCell) {
-    ref.textContent = "Cell";
+    ref.textContent = "Formula";
     meta.textContent = "";
     bar.value = "";
     return;
@@ -222,173 +357,33 @@ export function renderActiveCellUI() {
 export function renderChart() {
   const canvas = document.getElementById("devChart");
   if (!canvas) return;
-
-  const model = state.model;
-  if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) {
-    const ctx = canvas.getContext("2d");
-    resizeCanvasToCSS(canvas);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.font = "12px Arial";
-    ctx.fillText("No data.", 10, 20);
-    return;
-  }
-
-  const origins = model.origin_labels || [];
-  const devs = model.dev_labels || [];
-  const vals = model.values;
-  const mask = model.mask;
-
-  resizeCanvasToCSS(canvas);
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Plot area
-  const W = canvas.width;
-  const H = canvas.height;
-  const padL = 20, padR = 10, padT = 10, padB = 24;
-  const x0 = padL, y0 = padT, x1 = W - padR, y1 = H - padB;
-
-  // Collect points and y-range
-  let yMin = Infinity, yMax = -Infinity;
-  for (let r = 0; r < vals.length; r++) {
-    for (let c = 0; c < (vals[r] || []).length; c++) {
-      if (mask[r] && mask[r][c]) {
-        const v = vals[r][c];
-        if (typeof v === "number" && isFinite(v)) {
-          yMin = Math.min(yMin, v);
-          yMax = Math.max(yMax, v);
-        }
-      }
-    }
-  }
-
-  if (!isFinite(yMin) || !isFinite(yMax) || devs.length < 2) {
-    ctx.font = "12px Arial";
-    ctx.fillText("Not enough data to plot.", 10, 20);
-    return;
-  }
-
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
-  }
-
-  // Axes
-  ctx.strokeStyle = "#999";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x0, y0);
-  ctx.lineTo(x0, y1);
-  ctx.lineTo(x1, y1);
-  ctx.stroke();
-
-  // Y ticks
-  ctx.fillStyle = "#333";
-  ctx.font = "11px Arial";
-  const yTicks = 4;
-  for (let i = 0; i <= yTicks; i++) {
-    const t = i / yTicks;
-    const y = y1 - t * (y1 - y0);
-    const v = yMin + t * (yMax - yMin);
-
-    ctx.strokeStyle = "#eee";
-    ctx.beginPath();
-    ctx.moveTo(x0, y);
-    ctx.lineTo(x1, y);
-    ctx.stroke();
-
-    ctx.fillStyle = "#333";
-    ctx.fillText(formatNum(v), 6, y + 4);
-  }
-
-  // X ticks (use dev labels, but draw a few)
-  const xTicks = Math.min(6, devs.length - 1);
-  for (let i = 0; i <= xTicks; i++) {
-    const idx = Math.round(i * (devs.length - 1) / xTicks);
-    const x = x0 + (idx / (devs.length - 1)) * (x1 - x0);
-
-    ctx.strokeStyle = "#eee";
-    ctx.beginPath();
-    ctx.moveTo(x, y0);
-    ctx.lineTo(x, y1);
-    ctx.stroke();
-
-    ctx.fillStyle = "#333";
-    ctx.fillText(String(devs[idx]), x - 10, H - 8);
-  }
-
-  // Draw curves (one line per origin)
-  const palette = ["#d62728","#1f77b4","#2ca02c","#ff7f0e","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
-
-  for (let r = 0; r < vals.length; r++) {
-    // build curve points
-    const pts = [];
-    for (let c = 0; c < devs.length; c++) {
-      if (mask[r] && mask[r][c]) {
-        const v = vals[r][c];
-        if (typeof v === "number" && isFinite(v)) {
-          const x = x0 + (c / (devs.length - 1)) * (x1 - x0);
-          const y = y1 - ((v - yMin) / (yMax - yMin)) * (y1 - y0);
-          pts.push([x, y]);
-        }
-      }
-    }
-    if (pts.length < 2) continue;
-
-    const color = palette[r % palette.length];
-
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    ctx.stroke();
-
-    // draw label at curve end
-    const last = pts[pts.length - 1];
-    const label = String(origins[r] ?? r);
-
-    if (isFinite(last[0]) && isFinite(last[1])) {
-      ctx.font = "12px Arial";
-      ctx.fillStyle = color;
-      ctx.fillText(label, last[0] + 6, last[1] + 4);
-    }
-  }
-
-  // If a cell is active, highlight its origin curve point
-  if (state.activeCell) {
-    const { r, c } = state.activeCell;
-    if (mask[r] && mask[r][c] && typeof vals[r][c] === "number") {
-      const v = vals[r][c];
-      const x = x0 + (c / (devs.length - 1)) * (x1 - x0);
-      const y = y1 - ((v - yMin) / (yMax - yMin)) * (y1 - y0);
-
-      ctx.fillStyle = "#000";
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.font = "12px Arial";
-      ctx.fillText(`${origins[r] ?? r} @ ${devs[c]} = ${formatNum(v)}`, x0 + 8, y0 + 16);
-    }
-  }
+  const legendEl = document.getElementById("devChartLegend");
+  renderDevChart(canvas, state.model, {
+    activeCell: state.activeCell,
+    formatValue: formatNum,
+    legendEl,
+  });
 }
 
-function resizeCanvasToCSS(canvas) {
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  const w = Math.max(1, Math.floor(rect.width * dpr));
-  const h = Math.max(1, Math.floor(rect.height * dpr));
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w;
-    canvas.height = h;
-  }
+export function redrawChartSafely() {
+  const panel = document.getElementById("chartPanel");
+  if (!panel) return;
+
+  const rect = panel.getBoundingClientRect();
+
+  // If hidden or collapsed, skip
+  if (rect.width < 50 || rect.height < 50) return;
+
+  renderChart();
 }
 
 function formatNum(x) {
   if (!isFinite(x)) return "";
-  // compact-ish formatting
+  if (isPercentTriangle()) {
+    const dp = getDecimalPlaces();
+    return (x * 100).toFixed(dp) + "%";
+  }
   const abs = Math.abs(x);
-  if (abs >= 1000) return Math.round(x).toLocaleString();
-  return (Math.round(x * 100) / 100).toString();
+  if (abs >= 1000) return fmt0.format(x);
+  return fmt0.format(x);
 }

@@ -1,0 +1,746 @@
+#titlebar {
+      height: 36px;
+      background: #ffffff;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      user-select: none;
+    }
+
+    /* =========================
+      Base
+    ========================= */
+    :root {
+      --gap: 16px;
+      --border: #ccc;
+      --bg: #fff;
+      --muted: #666;
+      --app-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+
+      --cell-w: 100px;
+      --cell-max-w: 120px;
+      --cell-min-w: 90px;
+      --cell-h: 26px;
+
+      --panel-w: 1000px;
+    }
+
+    body {
+      font-family: var(--app-font);
+      margin: 8px;
+      background: var(--bg);
+      user-select: none;
+    }
+    input, textarea, select, option, [contenteditable="true"] { user-select: text; }
+
+    h2 { margin: 0 0 12px 0; }
+
+    /* =========================
+      Global Scrollbar (WebKit)
+    ========================= */
+    ::-webkit-scrollbar {
+      width: 23px;
+      height: 23px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background-color: rgba(182, 182, 182, 0.2); 
+      border-radius: 6px;
+      border: 3px solid transparent;    
+      background-clip: content-box;
+      transition: background-color 0.2s ease;
+    }
+
+    /* ========= Visible state ========= */
+    body.show-scrollbar ::-webkit-scrollbar-thumb {
+      background-color: rgba(120, 120, 120, 0.267);
+    }
+
+    body.show-scrollbar ::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(90, 90, 90, 0.233);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(90, 90, 90, 0.377);
+    }
+
+    .small{
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* Make sure flex items can shrink */
+    .row, .panel, .right, #triPanel, #tableWrap { min-width: 0; }
+
+    /* =========================
+      Layout / Panels
+    ========================= */
+    #titlebar{
+      height: 36px;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      user-select: none;
+    }
+
+    .row{
+      display: flex;
+      gap: var(--gap);
+      align-items: stretch;
+    }
+
+    .panel{
+      border: 1px solid var(--border);
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--bg);
+    }
+
+    /* =========================
+      Top Frame (Project Inputs)
+    ========================= */
+    #topFrame{
+      margin-bottom: var(--gap);
+      width: fit-content;
+      max-width: 100%;
+      background: #f8f9fb;
+      border: none;
+      padding: 10px 12px;
+    }
+
+    .topFrameGrid{
+      display: grid;
+      grid-template-columns: 280px 360px 280px auto;
+      gap: 12px;
+      align-items: end;
+      min-width: 960px;
+    }
+
+    .topField label{
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: #555;
+      white-space: nowrap;
+    }
+
+    .topField input,
+    .topField select{
+      width: 100%;
+      height: 30px;
+      line-height: 30px;
+      padding: 0 10px;
+      box-sizing: border-box;
+      border: 1px solid #cfcfcf;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 14px;
+    }
+
+    .topField input:focus,
+    .topField select:focus{
+      outline: none;
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+    }
+
+    .projectSelectWrap,
+    .datasetSelectWrap{
+      position: relative;
+    }
+
+    .projectDropdown,
+    .datasetDropdown{
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid #cfcfcf;
+      border-radius: 6px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+      max-height: 240px;
+      overflow: auto;
+      z-index: 50;
+      display: none;
+    }
+
+    .projectDropdown.open,
+    .datasetDropdown.open{
+      display: block;
+    }
+
+    .projectOption,
+    .datasetOption{
+      padding: 6px 10px;
+      cursor: pointer;
+      color: #111;
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .projectOption.active,
+    .projectOption:hover,
+    .datasetOption.active,
+    .datasetOption:hover{
+      background: #f1f1f1;
+    }
+
+    #reloadBtn{
+      height: 30px;
+      width: 62px;
+      padding: 0 0px;
+      border: 1px solid #c8c8c8;
+      border-radius: 6px;
+      background: #f1f1f1;
+    }
+    #reloadBtn{
+      display: none !important;
+    }
+
+    #reloadBtn:hover{
+      background: #e9e9e9;
+    }
+
+    @media (max-width: 900px){
+      .topFrameGrid{
+        grid-template-columns: 280px 360px 280px auto;
+      }
+      #reloadBtn{
+        justify-self: start;
+      }
+    }
+
+    .left{
+      width: 360px;
+      flex: 0 0 360px;
+    }
+
+    /* Right side is a container holding panels */
+    .right{
+      flex: 1 1 auto;
+      padding: 0;
+      border: none;
+      background: transparent;
+
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+
+      align-items: flex-start;
+    }
+
+    .panelInner{
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* =========================
+      Top Row: Formula + Params
+    ========================= */
+    .topRow{
+      display: flex;
+      gap: 12px;
+      align-items: stretch;
+      overflow: visible;
+    }
+
+    #fxPanel{
+      flex: 1 1 360px;
+    }
+    #fxPanel{
+      display: none;
+    }
+
+    .fxbar-top{
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      flex: 0 0 280px;
+      min-width: 0;
+    }
+
+    .fxbar-top b{ font-weight: 700; }
+
+    #formulaBar{
+      /* width: 100%; */
+      min-width: 348px;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      margin-top: 6px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      outline: none;
+    }
+    #formulaBar:focus{ border-color: #0747f8; }
+
+    /* =========================
+      Dataset Top Bar
+    ========================= */
+    #datasetTopBar{
+      min-width: 550px;   /* fix: missing unit */
+      padding: 8px 10px;
+      flex: 0 0 auto;
+      overflow: visible;
+    }
+
+    #datasetTopBar{
+      --topbar-right-pad: 0px;
+      --topbar-mid-offset: 0px;
+      --topbar-left-col: max-content;
+      --topbar-gap-1-2: 36px;
+      --topbar-gap-3-4: 36px;
+      --topbar-input-offset: 0px;
+    }
+
+    .topbar-grid{
+      display: grid;
+      grid-template-columns: var(--topbar-left-col) max-content 72px auto;
+      grid-template-rows: auto auto;
+      column-gap: 0px;
+      row-gap: 10px;
+      align-items: center;
+    }
+
+    .topbar-label-stack{
+      margin-left: var(--topbar-gap-1-2);
+    }
+
+    .topbar-left{
+      display: grid;
+      grid-template-columns: auto auto;
+      grid-template-rows: auto auto;
+      gap: 6px 12px;
+      align-items: center;
+      justify-content: start;
+    }
+
+    .topbar-label{
+      display: flex;
+      justify-content: flex-end;
+      margin-left: var(--topbar-mid-offset);
+    }
+
+    .topbar-label-stack,
+    .topbar-input-stack,
+    .topbar-right-stack{
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .topbar-input-stack{
+      margin-left: var(--topbar-input-offset);
+    }
+
+    .topbar-input{
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .topbar-right{
+      display: grid;
+      grid-template-columns: auto auto;
+      grid-auto-rows: auto;
+      gap: 8px 12px;
+      align-items: center;
+      justify-content: end;
+      min-width: 0;
+      padding-right: var(--topbar-right-pad);
+    }
+
+    .topbar-right-stack{
+      margin-left: var(--topbar-gap-3-4);
+    }
+
+    .chk, .rad{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      line-height: 26px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .field{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .field .lbl,
+    .topbar-label .lbl{
+      font-size: 13px;
+      line-height: 26px;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    /* unify select & number input */
+    #datasetTopBar select,
+    #datasetTopBar input[type="number"]{
+      height: 26px;
+      line-height: 26px;
+      padding: 0 6px;
+      box-sizing: border-box;
+    }
+
+    #datasetTopBar #originLenSelect,
+    #datasetTopBar #devLenSelect{
+      width: 55px;
+    }
+
+    #originStoredAt, #devStoredAt{ width: 56px; }
+
+    #decimalPlaces{
+      width: 55px;
+      font-size: 13px;
+    }
+
+    #maxBtn{
+      height: 26px;
+      padding: 4px 10px;
+    }
+
+    /* --- Link chip (🔗 Link + tooltip) --- */
+    #datasetTopBar .linkToggle{
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+
+      height: 26px;
+      padding: 0 8px;
+
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #datasetTopBar .linkToggle .linkIcon{
+      font-size: 14px;
+      line-height: 1;
+    }
+    #datasetTopBar .linkToggle input{
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #datasetTopBar .linkIcon{
+      font-size: 13px;
+      line-height: 1;
+      opacity: 0.65;
+    }
+    #datasetTopBar .linkText{
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    #datasetTopBar .linkToggle:has(input:checked){
+      border-color: #0747f8;
+      box-shadow: 0 0 0 2px rgba(7, 71, 248, 0.15);
+    }
+    #datasetTopBar .linkToggle:has(input:checked) .linkIcon,
+    #datasetTopBar .linkToggle:has(input:checked) .linkText{
+      opacity: 1;
+      color: #0747f8;
+    }
+
+    /* tooltip */
+    #datasetTopBar .linkTip{
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 8px);
+      transform: translateX(-50%);
+
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: #111;
+      color: #fff;
+      font-size: 12px;
+      white-space: nowrap;
+
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease;
+      z-index: 10;
+    }
+    #datasetTopBar .linkToggle:hover .linkTip{ opacity: 0.92; }
+
+    /* =========================
+      Triangle + Chart Panels
+    ========================= */
+    #triPanel{
+      border: none;
+      width: fit-content;
+      height: fit-content;
+      flex: 0 0 auto;
+      padding: 8px;
+      overflow: visible;
+    }
+
+    #chartPanel{
+      width: 1030px;
+      height: 560px;
+      flex: 0 0 auto;
+      box-sizing: border-box;
+    }
+
+    #chartPanel .panelInner{
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chartRow{
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .chartCanvasWrap{
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    #devChart{
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .chartLegend{
+      width: 140px;
+      flex: 0 0 140px;
+      max-height: 100%;
+      overflow-y: auto;
+      border-left: 1px solid #eee;
+      padding-left: 8px;
+      box-sizing: border-box;
+    }
+
+    .legendItem{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .legendSwatch{
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex: 0 0 auto;
+    }
+
+    .legendLabel{
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .legendItem.is-hover .legendLabel{
+      font-weight: 600;
+    }
+
+    .legendItem.is-selected .legendLabel{
+      font-weight: 700;
+    }
+
+    /* =========================
+      Table Grid + Sticky Panes
+    ========================= */
+    #tableWrap{
+      width: max-content;
+    }
+
+    /* Use separate to avoid sticky/header shadow jitter */
+    #tableWrap table{
+      border-collapse: separate;
+      border-spacing: 0;
+      width: max-content;
+      table-layout: fixed;
+      font-size: 14px;
+
+      /* Disable native text selection inside grid */
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #tableWrap th,
+    #tableWrap td{
+      border: 0;
+      border-right: 1px solid #ddd;
+      border-bottom: 1px solid #ddd;
+
+      max-width: var(--cell-max-w);
+      min-width: var(--cell-min-w);
+      height: var(--cell-h);
+      line-height: var(--cell-h);
+      padding: 0 6px;
+
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
+
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* -------- Alignment rules (your requirement) -------- */
+    /* 1) All header labels (grey top row) centered */
+    #tableWrap thead th{
+      text-align: center;
+      vertical-align: middle;
+      background: #f6f6f6;
+      font-weight: 400;
+
+      position: sticky;
+      top: 0;
+      z-index: 3;
+
+      border-top: 1px solid #ddd;
+      box-shadow: none;
+    }
+
+    /* 2) First column labels (grey left column) centered */
+    #tableWrap tbody th,
+    #tableWrap tbody td:first-child{
+      text-align: center;
+      font-weight: 400;
+    }
+
+    /* 3) Data cells (NOT first col) right-aligned */
+    #tableWrap tbody td:not(:first-child){
+      text-align: right;
+    }
+
+    /* -------- Sticky first column (row labels + top-left) -------- */
+    #tableWrap th:first-child,
+    #tableWrap td:first-child{
+      border-left: 1px solid #ddd;
+      border-right: 0;
+
+      position: sticky;
+      left: 0;
+      z-index: 2;
+
+      background: #f6f6f6;
+
+      /* separator after first col */
+      box-shadow: 1px 0 0 #ddd;
+
+      /* sizing */
+      width: auto;
+      min-width: max-content;
+      max-width: 180px;
+    }
+
+    /* Top-left corner highest priority */
+    #tableWrap thead th:first-child{
+      z-index: 4;
+    }
+
+    /* Data cell pointer cursor */
+    #tableWrap td.cell{
+      cursor: pointer;
+    }
+
+    /* Masked (blank) cells: visually empty BUT still selectable/clickable if needed */
+    #tableWrap td.na{
+      border: none !important;
+      background: transparent !important;
+    }
+
+    /* =========================
+      Selection / Highlights
+    ========================= */
+    #tableWrap td.active{
+      background: rgb(144, 170, 228);
+      outline: none;
+    }
+
+    #tableWrap td.sel{
+      background: rgb(148, 188, 248);
+      outline: none;
+    }
+    #tableWrap td.sel.active{
+      outline: none;
+    }
+
+    /* Multi-cell hover selection */
+    #tableWrap td.dragSel{
+      outline: 2px solid #5f8df8;
+      outline-offset: -2px;
+      background: rgba(43, 108, 255, 0.12);
+    }
+
+    /* Selected label highlight (must be AFTER sticky bg rules) */
+    #tableWrap th.activeRow,
+    #tableWrap th.activeCol{
+      background: #b6b6b6;
+      outline: none;
+    }
+
+
+
+    /* =========================
+      Context Menu
+    ========================= */
+    input, button, select{ padding: 6px 8px; }
+    button{ cursor: pointer; }
+    pre{ margin: 0; }
+
+    .ctx-menu{
+      position: fixed;
+      z-index: 9999;
+      min-width: 180px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      padding: 6px;
+    }
+
+    .ctx-menu-inner{
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ctx-item{
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font: 13px Arial, sans-serif;
+    }
+    .ctx-item:hover{ background: #f3f4f6; }
+
+    .ctx-sep{
+      height: 1px;
+      background: #eee;
+      margin: 4px 0;
+    }
+
+
+  
