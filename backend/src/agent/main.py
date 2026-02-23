@@ -38,6 +38,16 @@ DATA_DICT = {}  # CSV Data Table Files
 DATA_DICT_LOCK = Lock() # for atomic swap
 VPS_DICT_LOCK = Lock()
 BASE_DICT_LOCK = Lock()
+DATA_DICT_LOAD_ORDER = []  # Track load order for oldest removal
+
+# Global date range configuration - loaded from project-specific JSON files
+# Priority: 1) JSON file, 2) Data-derived values, 3) These hardcoded defaults (last resort)
+DEFAULT_ORIGIN_START = 201701
+DEFAULT_ORIGIN_END = 202612
+DEFAULT_DEV_END = 202601
+
+# Cache for project-specific settings to avoid repeated file reads
+PROJECT_SETTINGS_CACHE = {}
 
 
 def remove_old_instances():
@@ -47,6 +57,201 @@ def remove_old_instances():
             modified_date = datetime.fromtimestamp(f.stat().st_mtime).date()
             if modified_date < today:
                 f.unlink()
+
+
+def _parse_date_to_yyyymm(date_str):
+    """
+    Parse various date formats and convert to YYYYMM integer.
+
+    Supported formats:
+    - "yyyymm" (e.g., "202601")
+    - "mmm yyyy" (e.g., "Jan 2026")
+    - "yyyymmm" (e.g., "2026Jan")
+    - "yyyy-mm" (e.g., "2026-01")
+    - "mm/yyyy" (e.g., "01/2026")
+
+    Args:
+        date_str: Date string in various formats
+
+    Returns:
+        Integer in YYYYMM format (e.g., 202601)
+    """
+    date_str = str(date_str).strip()
+
+    # Format: yyyymm (6 digits)
+    if date_str.isdigit() and len(date_str) == 6:
+        return int(date_str)
+
+    # Month name mapping
+    month_names = {
+        'jan': 1, 'january': 1,
+        'feb': 2, 'february': 2,
+        'mar': 3, 'march': 3,
+        'apr': 4, 'april': 4,
+        'may': 5,
+        'jun': 6, 'june': 6,
+        'jul': 7, 'july': 7,
+        'aug': 8, 'august': 8,
+        'sep': 9, 'september': 9,
+        'oct': 10, 'october': 10,
+        'nov': 11, 'november': 11,
+        'dec': 12, 'december': 12
+    }
+
+    # Format: "mmm yyyy" (e.g., "Jan 2026")
+    parts = date_str.split()
+    if len(parts) == 2:
+        month_str, year_str = parts
+        if month_str.lower() in month_names and year_str.isdigit():
+            return int(year_str) * 100 + month_names[month_str.lower()]
+
+    # Format: "yyyymmm" (e.g., "2026Jan")
+    if len(date_str) >= 7:
+        year_part = date_str[:4]
+        month_part = date_str[4:]
+        if year_part.isdigit() and month_part.lower() in month_names:
+            return int(year_part) * 100 + month_names[month_part.lower()]
+
+    # Format: "yyyy-mm", "yyyy/mm", or "mm/yyyy"
+    if '-' in date_str or '/' in date_str:
+        separator = '-' if '-' in date_str else '/'
+        parts = date_str.split(separator)
+        if len(parts) == 2:
+            part1, part2 = parts
+            if part1.isdigit() and part2.isdigit():
+                # Determine which is year and which is month based on length and value
+                if len(part1) == 4:  # yyyy-mm or yyyy/mm
+                    return int(part1) * 100 + int(part2)
+                elif len(part2) == 4:  # mm/yyyy
+                    return int(part2) * 100 + int(part1)
+                elif int(part1) > 12:  # yymm format (unlikely but handle it)
+                    return int(part1) * 100 + int(part2)
+                else:  # Assume yyyy-mm if ambiguous
+                    return int(part1) * 100 + int(part2)
+
+    # If no format matches, try to return as-is if it's a number
+    try:
+        return int(date_str)
+    except ValueError:
+        raise ValueError(f"Unable to parse date format: {date_str}")
+
+
+def _load_project_settings(project_name, df=None, date_cols=None):
+    """
+    Load project-specific settings from general_settings.json.
+    Uses cache to avoid repeated file reads.
+
+    Args:
+        project_name: Name of the project
+        df: Optional DataFrame to derive dates from if JSON not found
+        date_cols: Optional list of [origin_date_col, dev_date_col] names
+
+    Returns:
+        Dictionary with keys: origin_start, origin_end, dev_end (all in YYYYMM format)
+    """
+    # Check cache first
+    if project_name in PROJECT_SETTINGS_CACHE:
+        return PROJECT_SETTINGS_CACHE[project_name]
+
+    # Build path to project settings file
+    settings_path = PROJECT_ROOT / "projects" / project_name / "general_settings.json"
+
+    settings = None
+
+    # Try to load from JSON file first
+    try:
+        if settings_path.exists():
+            with open(settings_path, mode="r", encoding="utf-8") as f:
+                json_data = json.load(f)
+
+            settings = {}
+            # Parse date fields
+            if 'origin_start_date' in json_data:
+                settings['origin_start'] = _parse_date_to_yyyymm(json_data['origin_start_date'])
+            if 'origin_end_date' in json_data:
+                settings['origin_end'] = _parse_date_to_yyyymm(json_data['origin_end_date'])
+            if 'development_end_date' in json_data:
+                settings['dev_end'] = _parse_date_to_yyyymm(json_data['development_end_date'])
+
+            print(f"Loaded settings from JSON for [{project_name}]: origin {settings['origin_start']}-{settings['origin_end']}, dev_end {settings['dev_end']}")
+    except Exception as e:
+        print(f"Error loading JSON settings for [{project_name}]: {e}")
+        settings = None
+
+    # If JSON not found or failed, try to derive from data
+    if settings is None and df is not None and date_cols is not None:
+        try:
+            settings = {
+                'origin_start': int(df[date_cols[0]].min()),
+                'origin_end': int(df[date_cols[0]].max()),
+                'dev_end': int(df[date_cols[1]].max())
+            }
+            print(f"Derived settings from data for [{project_name}]: origin {settings['origin_start']}-{settings['origin_end']}, dev_end {settings['dev_end']}")
+        except Exception as e:
+            print(f"Error deriving settings from data for [{project_name}]: {e}")
+            settings = None
+
+    # Last resort: use fixed defaults
+    if settings is None:
+        settings = {
+            'origin_start': DEFAULT_ORIGIN_START,
+            'origin_end': DEFAULT_ORIGIN_END,
+            'dev_end': DEFAULT_DEV_END
+        }
+        print(f"Using fixed default settings for [{project_name}]: origin {settings['origin_start']}-{settings['origin_end']}, dev_end {settings['dev_end']}")
+
+    # Cache the settings
+    PROJECT_SETTINGS_CACHE[project_name] = settings
+
+    return settings
+
+
+def _generate_full_month_range(start_yrmo, end_yrmo):
+    """
+    Generate a complete list of YYYYMM values from start to end.
+    Handles missing months in data by creating the full expected range.
+
+    Args:
+        start_yrmo: Starting month in YYYYMM format (e.g., 201701)
+        end_yrmo: Ending month in YYYYMM format (e.g., 202612)
+
+    Returns:
+        List of integers representing all months in range
+    """
+    result = []
+    current_year = start_yrmo // 100
+    current_month = start_yrmo % 100
+    end_year = end_yrmo // 100
+    end_month = end_yrmo % 100
+
+    while (current_year < end_year) or (current_year == end_year and current_month <= end_month):
+        result.append(current_year * 100 + current_month)
+        current_month += 1
+        if current_month > 12:
+            current_month = 1
+            current_year += 1
+
+    return result
+
+
+def _enforce_data_dict_limit(max_tables=10):
+    """
+    Enforce the max table limit in DATA_DICT.
+    Remove the oldest table if count >= max_tables before adding a new one.
+    Should be called BEFORE adding a new table while holding DATA_DICT_LOCK.
+    """
+    # Count actual dataframes (exclude " - Version" entries)
+    table_count = sum(1 for key in DATA_DICT.keys() if not key.endswith(" - Version"))
+
+    if table_count >= max_tables:
+        # Find oldest table from load order
+        if DATA_DICT_LOAD_ORDER:
+            oldest_table = DATA_DICT_LOAD_ORDER.pop(0)
+            if oldest_table in DATA_DICT:
+                del DATA_DICT[oldest_table]
+            if oldest_table + " - Version" in DATA_DICT:
+                del DATA_DICT[oldest_table + " - Version"]
+            print(f"Removed oldest table from cache: {oldest_table}")
 
 
 def load_BASE_DICT():
@@ -147,8 +352,11 @@ def load_to_VPS_DICT(project_name, settings_file=None):
 def load_to_DATA_DICT(csv_path):
     print(f"Loading Data Table {csv_path} @ {get_current_time()}")
     key = os.path.basename(csv_path)
+    _enforce_data_dict_limit(max_tables=10)
     DATA_DICT[key] = pd.read_csv(csv_path)
     DATA_DICT[key + " - Version"] = datetime.now()
+    if key not in DATA_DICT_LOAD_ORDER:
+        DATA_DICT_LOAD_ORDER.append(key)
     print(f"Data Table Loaded @ {get_current_time()}")
 
 
@@ -160,7 +368,11 @@ def load_dataframe(data_csv_path):
     print(f'Loading Data Table -- [{os.path.basename(data_csv_path)}]')
     df = pd.read_csv(data_csv_path) # build off-thread
     with DATA_DICT_LOCK:
-        DATA_DICT[os.path.basename(data_csv_path).replace('.csv', '')] = df
+        key = os.path.basename(data_csv_path).replace('.csv', '')
+        _enforce_data_dict_limit(max_tables=10)
+        DATA_DICT[key] = df
+        if key not in DATA_DICT_LOAD_ORDER:
+            DATA_DICT_LOAD_ORDER.append(key)
 
     print(get_current_time())
     print(f'Data Table Loaded -- [{os.path.basename(data_csv_path)}]')
@@ -476,7 +688,9 @@ def _get_dataset_info(arg):
     date_cols.append(DLOOKUP(df_info, 'Origin Date', 'Significances', 'Column Name'))
     date_cols.append(DLOOKUP(df_info, 'Development Date', 'Significances', 'Column Name'))
 
-    max_sys_yrmo = int(df[date_cols[1]].max())
+    # Load project-specific date settings (with fallback to data-derived values)
+    project_settings = _load_project_settings(project_name, df, date_cols)
+    max_sys_yrmo = project_settings['dev_end']
 
     required_datasets = [c for c in required_datasets if c in df.columns]  # remove invalid dataset names
     required_datasets = list(set(required_datasets))                       # remove duplicates
@@ -540,9 +754,11 @@ def UDF_ADASProjectSettings(arg):
     date_cols.append(DLOOKUP(df_info, 'Origin Date', 'Significances', 'Column Name'))
     date_cols.append(DLOOKUP(df_info, 'Development Date', 'Significances', 'Column Name'))
 
-    origin_start = int(df[date_cols[0]].min())
-    origin_end = int(df[date_cols[0]].max())
-    dev_end = int(df[date_cols[1]].max())
+    # Load project-specific date settings (with fallback to data-derived values)
+    project_settings = _load_project_settings(project_name, df, date_cols)
+    origin_start = project_settings['origin_start']
+    origin_end = project_settings['origin_end']
+    dev_end = project_settings['dev_end']
 
     data_list = [
         ['Name', project_name], 
@@ -569,23 +785,29 @@ def UDF_ADASHeaders(arg):
     date_cols = []
     date_cols.append(DLOOKUP(df_info, 'Origin Date', 'Significances', 'Column Name'))
     date_cols.append(DLOOKUP(df_info, 'Development Date', 'Significances', 'Column Name'))
-    
+
+    # Load project-specific date settings (with fallback to data-derived values)
+    project_settings = _load_project_settings(project_name, df, date_cols)
+
     if period_type == 0: # Origin Period
 
-        acc_yrmo_all = list(map(int, sorted(df[date_cols[0]].unique())))
+        # Generate full month range from project configuration
+        acc_yrmo_all = _generate_full_month_range(project_settings['origin_start'], project_settings['origin_end'])
         org_index_grp = [tuple(acc_yrmo_all[i: i+org_len]) for i in range(0, len(acc_yrmo_all), org_len)]
-            
+
         org_label = [_get_org_label(i[0], org_len) for i in org_index_grp]
 
         return write_lists_to_csv(arg['DataPath'], [org_label])
     
     elif period_type == 1: # Development Period
 
-        if (dev_len == 'Default') or (org_len % dev_len != 0): 
+        if (dev_len == 'Default') or (org_len % dev_len != 0):
             dev_len = org_len
 
-        dev_cnt = round(len(df[date_cols[0]].unique())/dev_len)
-        first_mon = int(df[date_cols[1]].max()%100)
+        # Use project configuration to calculate development counts
+        acc_yrmo_all = _generate_full_month_range(project_settings['origin_start'], project_settings['origin_end'])
+        dev_cnt = round(len(acc_yrmo_all)/dev_len)
+        first_mon = int(project_settings['dev_end'] % 100)
 
         dev_label = list(range(first_mon, dev_cnt*dev_len+1, dev_len))
 
@@ -643,6 +865,7 @@ def UDF_ADASTri(arg):
     org_len = arg['OriginLength']
     dev_len = arg['DevelopmentLength']
     cumulative = arg['Cumulative']
+    project_name = arg['ProjectName']
 
     # initialize
     if org_len == 'Default': org_len = 12
@@ -650,7 +873,11 @@ def UDF_ADASTri(arg):
     # Get a subset dataframe based on a user's request
     df, date_cols, required_datasets, rsv_cls_col_names, \
     included_rsv_cls_types, excluded_rsv_cls_types, adjusted_rsv_cls_types, \
-    source, output_data_format, max_sys_yrmo = _get_dataset_info(arg) 
+    source, output_data_format, max_sys_yrmo = _get_dataset_info(arg)
+
+    # Load project-specific date settings (with fallback to data-derived values)
+    # Note: _get_dataset_info already loads settings, but we reload here for local use
+    project_settings = _load_project_settings(project_name, df, date_cols) 
 
     max_sys_month = max_sys_yrmo % 100
 
@@ -676,21 +903,22 @@ def UDF_ADASTri(arg):
     # Calculate Age & Origin Labels
     df1['Age'] = df1.apply(lambda row: _calc_age(row[date_cols[0]], row[date_cols[1]]), axis=1)
 
-    if (dev_len == 'Default') or (org_len % dev_len != 0): 
+    if (dev_len == 'Default') or (org_len % dev_len != 0):
         dev_len = org_len
-        
-    dev_cnt = round(len(df[date_cols[0]].unique())/dev_len)
-    first_mon = int(df[date_cols[1]].max()%100)
-    
+
+    # Use project configuration to calculate development counts
+    acc_yrmo_all = _generate_full_month_range(project_settings['origin_start'], project_settings['origin_end'])
+    dev_cnt = round(len(acc_yrmo_all)/dev_len)
+    first_mon = int(project_settings['dev_end'] % 100)
+
     dev_label = list(range(first_mon, dev_cnt*dev_len+1, dev_len))
+
     for i in range(1, 999):
         prior_mon = first_mon - dev_len*i
         if prior_mon > 0:
             dev_label = [prior_mon] + dev_label
         else:
             break
-            
-    acc_yrmo_all = list(map(int, sorted(df[date_cols[0]].unique())))
     org_index_grp = [tuple(acc_yrmo_all[i: i+org_len]) for i in range(0, len(acc_yrmo_all), org_len)]
     org_index_map = {val: group[0] for group in org_index_grp for val in group}
     org_label = [_get_org_label(i[0], org_len) for i in org_index_grp]
@@ -700,6 +928,7 @@ def UDF_ADASTri(arg):
 
     df1['Org*Start'] = df1[date_cols[0]].map(org_index_map)
     df1['Age*'] = df1.apply(lambda row: _calc_age(row['Org*Start'], row[date_cols[1]]), axis=1)  # The 'real' age for org_period grouping
+
     df1['Age*Grp'] = df1['Age*'].apply(lambda x: min([i for i in dev_label if i >= x]))
 
     df1 = df1.groupby(['Org*Grp', 'Age*Grp'])[required_datasets].sum().reset_index()
@@ -731,10 +960,12 @@ def UDF_ADASTri(arg):
 
     # Clean Format
     n_rows = df2.shape[0]
+
     for i, acc in enumerate(df2.index):
         max_dev_age = (n_rows - i) * int((org_len/dev_len))
-
-        if org_len == 3 and dev_len == 1:
+        
+        # if org_len == 3 and dev_len == 1:
+        if dev_len == 1:
             max_dev_age = max_dev_age - (12 - max_sys_month)
 
         if dev_len == 3:
@@ -849,6 +1080,7 @@ class RequestHandler(FileSystemEventHandler):
         except Exception as e:
             err_msg = f"(error: {str(e).upper()})"
             print(err_msg)
+            print(arg)
             # write_lists_to_csv(arg['DataPath'], [[err_msg]])
             write_lists_to_csv(arg['DataPath'], [[0]])
             return
