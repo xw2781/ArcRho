@@ -2,7 +2,7 @@
 Option Private Module
 Option Explicit
 
-Public Const ADAS_VERSION As String = "2.0.0.1"
+Public Const ADAS_VERSION As String = "2.1.0"
 
 ' User-specific config (C:\Users\...\AppData\Local\ADAS\config.txt)
 Public configDir As String
