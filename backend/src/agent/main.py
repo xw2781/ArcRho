@@ -200,6 +200,16 @@ def _load_project_settings(project_name, df=None, date_cols=None):
         }
         print(f"Using fixed default settings for [{project_name}]: origin {settings['origin_start']}-{settings['origin_end']}, dev_end {settings['dev_end']}")
 
+    # Detect date granularity from actual data column
+    if df is not None and date_cols is not None:
+        try:
+            sample_val = int(df[date_cols[0]].dropna().iloc[0])
+            settings['date_granularity'] = 'annual' if len(str(sample_val)) == 4 else 'monthly'
+        except Exception:
+            settings['date_granularity'] = 'monthly'
+    else:
+        settings['date_granularity'] = 'monthly'
+
     # Cache the settings
     PROJECT_SETTINGS_CACHE[project_name] = settings
 
@@ -232,6 +242,25 @@ def _generate_full_month_range(start_yrmo, end_yrmo):
             current_year += 1
 
     return result
+
+
+def _generate_period_range(start_yrmo, end_yrmo, date_granularity='monthly'):
+    """
+    Wrapper: generates date range matching the data granularity.
+    For annual data, returns YYYY integers; for monthly, delegates to _generate_full_month_range.
+
+    Args:
+        start_yrmo: Starting date in YYYYMM format (from config)
+        end_yrmo: Ending date in YYYYMM format (from config)
+        date_granularity: 'annual' or 'monthly'
+
+    Returns:
+        List of YYYY integers (annual) or YYYYMM integers (monthly)
+    """
+    if date_granularity == 'annual':
+        # Extract year from YYYYMM config values
+        return list(range(start_yrmo // 100, end_yrmo // 100 + 1))
+    return _generate_full_month_range(start_yrmo, end_yrmo)
 
 
 def _enforce_data_dict_limit(max_tables=10):
@@ -276,9 +305,12 @@ def load_BASE_DICT():
 
 def DLOOKUP(df, lookup_value, lookup_col, return_col):
     """
-    Lookup a value in DataFrame
+    Lookup a value in DataFrame. Returns empty string if not found (safe fallback).
     """
-    return df[df[lookup_col]==lookup_value][return_col].iloc[0]
+    result = df[df[lookup_col]==lookup_value][return_col]
+    if result.empty:
+        return ''
+    return result.iloc[0]
 
 
 def to_upper_case(df):
@@ -513,6 +545,10 @@ def write_lists_to_csv(csv_path, lists, overwrite=True):
 
 
 def _calc_age(acc_yrmo, sys_yrmo):
+    # Detect format by digit count: 4 digits = YYYY (annual), 6 digits = YYYYMM (monthly)
+    if len(str(int(acc_yrmo))) == 4:  # YYYY annual format
+        return (int(sys_yrmo) - int(acc_yrmo)) * 12 + 1
+    # YYYYMM monthly format (original logic)
     acc_yr = acc_yrmo//100
     sys_yr = sys_yrmo//100
     acc_mo = acc_yrmo % 100
@@ -521,19 +557,25 @@ def _calc_age(acc_yrmo, sys_yrmo):
     return 12*(sys_yr-acc_yr) + sys_mo-acc_mo + 1
 
 
-def _get_org_label(yyyymm, org_len):
+def _get_org_label(date_val, org_len):
+    # Detect format by digit count: 4 digits = YYYY (annual), 6 digits = YYYYMM (monthly)
+    if len(str(int(date_val))) == 4:  # YYYY annual format
+        return int(date_val)  # org_len==12 is always the case for annual data
+
+    # YYYYMM monthly format (original logic)
+    yyyymm = date_val
     year = int(yyyymm // 100)
     month = int(yyyymm % 100)
 
     if org_len == 1:
         return yyyymm
         # return "'" + datetime.strptime(str(yyyymm), "%Y%m").strftime("%b %Y")
-    
-    elif org_len == 3:  
+
+    elif org_len == 3:
         return f"{year} Q{(month+2)//3}"
-    elif org_len == 6:  
+    elif org_len == 6:
         return f"{year} H{(month+5)//6}"
-    elif org_len == 12: 
+    elif org_len == 12:
         return year
 
 
@@ -708,21 +750,42 @@ def _get_dataset_info(arg):
         if level > len(rsv_cls_col_names):
             break
         rsv_cls_type = name_lookup[rsv_cls_type.lower()]
+        # print(f"Processing RSV CLS Type [{rsv_cls_type}] at Level {level} for dataset [{dataset_name}]")
         included_rsv_cls_types.append([])
         excluded_rsv_cls_types.append([])
         adjusted_rsv_cls_types.append([])
 
         if rsv_cls_type in df_info['Name'].values:
             included_rsv_cls_types[level-1].append(rsv_cls_type) # always include the input value itself
+            # Also include Source-derived values for data matching (handles name aliases like "New" -> "N")
+            type_source = df_info.loc[df_info['Name'] == rsv_cls_type, 'Source'].iloc[0]
+            if type_source != '':
+                src_names = split_formula(type_source)
+                # print(f"  Source for [{rsv_cls_type}]: {src_names}")
+                src_opts = split_formula_opts(type_source)
+                for si in range(len(src_names)):
+                    if src_opts[si] == '-' and src_names[si] not in excluded_rsv_cls_types[level-1]:
+                        excluded_rsv_cls_types[level-1].append(src_names[si])
+                    if src_names[si] not in included_rsv_cls_types[level-1]:
+                        included_rsv_cls_types[level-1].append(src_names[si])
+
             formula     = df_info.loc[df_info['Name'] == rsv_cls_type, 'Formula'].iloc[0]
-            eex_formula = df_info.loc[df_info['Name'] == rsv_cls_type, 'EEX Formula'].iloc[0]
+            # Safely access EEX Formula column — handle missing column or empty result
+            eex_formula = ''
+            if 'EEX Formula' in df_info.columns:
+                result = df_info.loc[df_info['Name'] == rsv_cls_type, 'EEX Formula']
+                if not result.empty:
+                    eex_formula = result.iloc[0]
+
             if formula == '':
                 pass
-            else: 
+            else:
                 if eex_formula != '':
-                    adjusted_rsv_cls_types_level_x = list(set(split_formula(formula)) - set(split_formula(eex_formula)))
+                    # Adjusted = all members at this level NOT in eex_formula (not dependent on formula)
+                    all_members = df_info[df_info['Level'] == str(level)]['Name'].tolist()
+                    adjusted_rsv_cls_types_level_x = list(set(all_members) - set(split_formula(eex_formula)))
                     adjusted_rsv_cls_types[level-1] = adjusted_rsv_cls_types_level_x
-                
+
                 name_list = split_formula(formula)
                 opts_list = split_formula_opts(formula)
 
@@ -736,9 +799,14 @@ def _get_dataset_info(arg):
             pass
         else: 
             write_lists_to_csv(arg['DataPath'], [[f'(reserving class type not defined: {rsv_cls_type})']])
+            # print(f"(reserving class type not defined: {rsv_cls_type})")
             return
 
         level += 1
+
+    included_rsv_cls_types = [list(set(sublist)) for sublist in included_rsv_cls_types]
+    excluded_rsv_cls_types = [list(set(sublist)) for sublist in excluded_rsv_cls_types]
+    adjusted_rsv_cls_types = [list(set(sublist)) for sublist in adjusted_rsv_cls_types]
 
     return df, date_cols, required_datasets, rsv_cls_col_names, \
            included_rsv_cls_types, excluded_rsv_cls_types, adjusted_rsv_cls_types, \
@@ -791,9 +859,13 @@ def UDF_ADASHeaders(arg):
 
     if period_type == 0: # Origin Period
 
-        # Generate full month range from project configuration
-        acc_yrmo_all = _generate_full_month_range(project_settings['origin_start'], project_settings['origin_end'])
-        org_index_grp = [tuple(acc_yrmo_all[i: i+org_len]) for i in range(0, len(acc_yrmo_all), org_len)]
+        # Generate period range from project configuration (handles both annual and monthly)
+        acc_yrmo_all = _generate_period_range(
+            project_settings['origin_start'], project_settings['origin_end'],
+            project_settings.get('date_granularity', 'monthly'))
+        # Compute slicing step: for annual, group by 1 year; for monthly, group by org_len months
+        org_step = 1 if project_settings.get('date_granularity') == 'annual' else org_len
+        org_index_grp = [tuple(acc_yrmo_all[i: i+org_step]) for i in range(0, len(acc_yrmo_all), org_step)]
 
         org_label = [_get_org_label(i[0], org_len) for i in org_index_grp]
 
@@ -805,8 +877,12 @@ def UDF_ADASHeaders(arg):
             dev_len = org_len
 
         # Use project configuration to calculate development counts
-        acc_yrmo_all = _generate_full_month_range(project_settings['origin_start'], project_settings['origin_end'])
-        dev_cnt = round(len(acc_yrmo_all)/dev_len)
+        acc_yrmo_all = _generate_period_range(
+            project_settings['origin_start'], project_settings['origin_end'],
+            project_settings.get('date_granularity', 'monthly'))
+        # Fix dev_cnt: for annual, number of periods = number of years; for monthly, divide by dev_len
+        is_annual = project_settings.get('date_granularity') == 'annual'
+        dev_cnt = len(acc_yrmo_all) if is_annual else round(len(acc_yrmo_all)/dev_len)
         first_mon = int(project_settings['dev_end'] % 100)
 
         dev_label = list(range(first_mon, dev_cnt*dev_len+1, dev_len))
@@ -855,8 +931,8 @@ def _filter_main_table(df, date_cols, rsv_cls_col_names, included_rsv_cls_types,
         if allowed_values:
             mask &= df[col].isin(allowed_values)
 
-    # Build final column list
-    cols = date_cols + rsv_cls_col_names + required_datasets
+    # Build final column list (filter out empty date_cols when Development Date is not defined)
+    cols = [c for c in date_cols if c != ''] + rsv_cls_col_names + required_datasets
 
     return df.loc[mask, cols]
 
@@ -883,6 +959,13 @@ def UDF_ADASTri(arg):
 
     df1 = _filter_main_table(df, date_cols, rsv_cls_col_names, included_rsv_cls_types, required_datasets)
 
+    # Check if Development Date column is missing (optional when not in field_mapping)
+    has_dev_date = date_cols[1] != '' and date_cols[1] in df1.columns
+    if not has_dev_date:
+        # Single-column triangle: set dev_len = 1 (unless explicitly set)
+        if dev_len == 'Default' or dev_len == org_len:
+            dev_len = 1
+
     # Row Adjustments (Excluded Values) -- multiply value by -1
     num_cols = df1.select_dtypes(include=[np.number]).columns
     dataset_cols = [col for col in num_cols if col not in date_cols]  # all numerical field need to be adjusted
@@ -900,36 +983,57 @@ def UDF_ADASTri(arg):
         for value in adjusted_rsv_cls_types_level_x:
             df1.loc[df1[rsv_cls_col_names[4]].isin([value]), ['Earned_Exposure']] *= 0
 
-    # Calculate Age & Origin Labels
-    df1['Age'] = df1.apply(lambda row: _calc_age(row[date_cols[0]], row[date_cols[1]]), axis=1)
-
+    # Prepare for grouping by origin period and development age
     if (dev_len == 'Default') or (org_len % dev_len != 0):
         dev_len = org_len
 
     # Use project configuration to calculate development counts
-    acc_yrmo_all = _generate_full_month_range(project_settings['origin_start'], project_settings['origin_end'])
-    dev_cnt = round(len(acc_yrmo_all)/dev_len)
+    acc_yrmo_all = _generate_period_range(
+        project_settings['origin_start'], project_settings['origin_end'],
+        project_settings.get('date_granularity', 'monthly'))
+    # Fix dev_cnt: for annual, number of periods = number of years; for monthly, divide by dev_len
+    is_annual = project_settings.get('date_granularity') == 'annual'
+    dev_cnt = len(acc_yrmo_all) if is_annual else round(len(acc_yrmo_all)/dev_len)
     first_mon = int(project_settings['dev_end'] % 100)
 
-    dev_label = list(range(first_mon, dev_cnt*dev_len+1, dev_len))
+    # When Development Date is missing, use MMM YYYY format from dev_end config
+    if not has_dev_date:
+        dev_end = project_settings['dev_end']
+        dev_year = dev_end // 100
+        dev_month = dev_end % 100
+        # Convert YYYYMM to MMM YYYY format (e.g., 202603 -> Mar 2026)
+        import calendar
+        month_abbr = calendar.month_abbr[dev_month]
+        dev_label = [f"{month_abbr} {dev_year}"]
+    else:
+        dev_label = list(range(first_mon, dev_cnt*dev_len+1, dev_len))
 
-    for i in range(1, 999):
-        prior_mon = first_mon - dev_len*i
-        if prior_mon > 0:
-            dev_label = [prior_mon] + dev_label
-        else:
-            break
-    org_index_grp = [tuple(acc_yrmo_all[i: i+org_len]) for i in range(0, len(acc_yrmo_all), org_len)]
+        for i in range(1, 999):
+            prior_mon = first_mon - dev_len*i
+            if prior_mon > 0:
+                dev_label = [prior_mon] + dev_label
+            else:
+                break
+    # Compute slicing step: for annual, group by 1 year; for monthly, group by org_len months
+    org_step = 1 if is_annual else org_len
+    org_index_grp = [tuple(acc_yrmo_all[i: i+org_step]) for i in range(0, len(acc_yrmo_all), org_step)]
     org_index_map = {val: group[0] for group in org_index_grp for val in group}
     org_label = [_get_org_label(i[0], org_len) for i in org_index_grp]
     
-    # df1['Org*Grp'] = df1[date_cols[0]].apply(_get_org_label)
-    df1['Org*Grp'] = df1.apply(lambda row: _get_org_label(row[date_cols[0]], org_len), axis=1)
+    df1['Org*Grp'] = df1[date_cols[0]].apply(lambda x: _get_org_label(x, org_len))
 
     df1['Org*Start'] = df1[date_cols[0]].map(org_index_map)
-    df1['Age*'] = df1.apply(lambda row: _calc_age(row['Org*Start'], row[date_cols[1]]), axis=1)  # The 'real' age for org_period grouping
+    # When Development Date is missing, use dev_end from config for Age* (single column triangle)
+    if has_dev_date:
+        df1['Age*'] = df1[['Org*Start', date_cols[1]]].apply(lambda row: _calc_age(row.iloc[0], row.iloc[1]), axis=1)
+    else:
+        df1['Age*'] = df1['Org*Start'].apply(lambda x: _calc_age(x, project_settings['dev_end']))
 
-    df1['Age*Grp'] = df1['Age*'].apply(lambda x: min([i for i in dev_label if i >= x]))
+    # When Development Date is missing (single column), all rows map to the single dev_label value
+    if not has_dev_date:
+        df1['Age*Grp'] = dev_label[0]  # Single column: all rows get the same label
+    else:
+        df1['Age*Grp'] = df1['Age*'].apply(lambda x: min([i for i in dev_label if i >= x]))
 
     df1 = df1.groupby(['Org*Grp', 'Age*Grp'])[required_datasets].sum().reset_index()
 
@@ -1056,6 +1160,9 @@ class RequestHandler(FileSystemEventHandler):
         except: # Already removed by another agent
             return
 
+        if debug_mode == 1:
+            print(arg)
+
         print(f"\n> {get_current_time()} \n> new request # {robot_id} # user [{arg['UserName']}]")
 
         # Check VPS Updates (guarded)
@@ -1078,10 +1185,13 @@ class RequestHandler(FileSystemEventHandler):
             else:
                 write_lists_to_csv(arg['DataPath'], [['(invalid function name)']])
         except Exception as e:
-            err_msg = f"(error: {str(e).upper()})"
-            print(err_msg)
-            print(arg)
-            # write_lists_to_csv(arg['DataPath'], [[err_msg]])
+            if debug_mode:
+                import traceback
+                traceback.print_exc()
+                print(arg)
+            else:
+                err_msg = f"(error: {str(e).upper()})"
+                print(err_msg)
             write_lists_to_csv(arg['DataPath'], [[0]])
             return
 

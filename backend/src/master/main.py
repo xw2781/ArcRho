@@ -184,6 +184,7 @@ while True:
         remove_old_instances(r"E:\ADAS\requests", 5*60)
       
         while get_config_value('apps.master.auto_create_workers') \
+          and get_config_value('apps.agent.kill_all') == False \
           and file_counts(agent_instance_path) < get_config_value('apps.master.max_workers'):
             exe = Path(r"E:\ADAS\core\ADAS Agent\dist\ADAS Agent\ADAS Agent.exe")
             subprocess.Popen([str(exe)], close_fds=True)
