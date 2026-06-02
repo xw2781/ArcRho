@@ -91,6 +91,10 @@ def main() -> int:
         action="store_true",
         help="Compute the next version without modifying files.",
     )
+    parser.add_argument(
+        "--version-file",
+        help="Optional file that receives the computed version.",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
@@ -109,6 +113,8 @@ def main() -> int:
     target_version = resolve_target_version(current_version, args.version)
 
     if args.dry_run:
+        if args.version_file:
+            Path(args.version_file).write_text(target_version + "\n", encoding="utf-8")
         print(target_version)
         return 0
 
@@ -117,6 +123,8 @@ def main() -> int:
     sync_package_lock(package_lock_path, package_name, target_version)
     update_about_dialog(index_html_path, target_version)
 
+    if args.version_file:
+        Path(args.version_file).write_text(target_version + "\n", encoding="utf-8")
     print(target_version)
     return 0
 

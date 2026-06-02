@@ -1,6 +1,6 @@
 {
   "name": "arcrho-electron",
-  "version": "0.2.11",
+  "version": "0.2.17",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -56,7 +56,8 @@
           ]
         }
       ],
-      "icon": "icons/icon.png"
+      "icon": "icons/icon.png",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,

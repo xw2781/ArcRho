@@ -220,7 +220,7 @@ def cmd_check() -> int:
     return 0
 
 
-def cmd_release(version: str) -> int:
+def cmd_release(version: str, path_file: str | None = None) -> int:
     parse_version(version)
     fragments = load_unreleased_fragments()
     released_on = date.today().isoformat()
@@ -243,7 +243,10 @@ def cmd_release(version: str) -> int:
         encoding="utf-8",
     )
 
-    print(str(release_path.relative_to(REPO_ROOT).as_posix()))
+    release_note_path = str(release_path.relative_to(REPO_ROOT).as_posix())
+    if path_file:
+        Path(path_file).write_text(release_note_path + "\n", encoding="utf-8")
+    print(release_note_path)
     return 0
 
 
@@ -259,13 +262,17 @@ def main() -> int:
         help="Generate release notes for a version and archive unreleased fragments.",
     )
     release_parser.add_argument("version", help="Release version in semantic format.")
+    release_parser.add_argument(
+        "--path-file",
+        help="Optional file that receives the generated release note path.",
+    )
 
     args = parser.parse_args()
 
     if args.command == "check":
         return cmd_check()
     if args.command == "release":
-        return cmd_release(args.version)
+        return cmd_release(args.version, args.path_file)
     raise ValueError(f"Unsupported command: {args.command}")
 
 

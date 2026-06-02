@@ -34,6 +34,12 @@ if not defined PYTHON_EXE (
 if not defined PYTHON_EXE set "PYTHON_EXE=python"
 
 echo Using Python: %PYTHON_EXE%
+call :validate_python_310
+if errorlevel 1 (
+    echo.
+    pause
+    exit /b 1
+)
 echo.
 
 echo Step 0: Validating release note fragments...
@@ -50,16 +56,22 @@ echo.
 
 echo Step 1: Updating application version...
 echo ----------------------------------------
+set "APP_VERSION_FILE=build\app_version.txt"
+if exist "%APP_VERSION_FILE%" del /q "%APP_VERSION_FILE%" >nul 2>nul
 if "%~1"=="" (
-    for /f "usebackq delims=" %%I in (`"%PYTHON_EXE%" build\version_manager.py`) do set "APP_VERSION=%%I"
+    "%PYTHON_EXE%" build\version_manager.py --version-file "%APP_VERSION_FILE%"
 ) else (
-    for /f "usebackq delims=" %%I in (`"%PYTHON_EXE%" build\version_manager.py "%~1"`) do set "APP_VERSION=%%I"
+    "%PYTHON_EXE%" build\version_manager.py "%~1" --version-file "%APP_VERSION_FILE%"
 )
 if errorlevel 1 (
     echo ERROR: Failed to update application version metadata.
     echo.
     pause
     exit /b 1
+)
+if exist "%APP_VERSION_FILE%" (
+    set /p APP_VERSION=<"%APP_VERSION_FILE%"
+    del /q "%APP_VERSION_FILE%" >nul 2>nul
 )
 if not defined APP_VERSION (
     echo ERROR: Version updater did not return a version.
@@ -109,9 +121,21 @@ if not exist "dist\ArcRho-Setup-*.exe" (
 echo.
 echo Step 4: Generating release notes...
 echo ----------------------------------------
-for /f "usebackq delims=" %%I in (`"%PYTHON_EXE%" build\release_notes.py release "%APP_VERSION%"`) do set "RELEASE_NOTE_PATH=%%I"
+set "RELEASE_NOTE_PATH_FILE=build\release_note_path_%APP_VERSION%.txt"
+if exist "%RELEASE_NOTE_PATH_FILE%" del /q "%RELEASE_NOTE_PATH_FILE%" >nul 2>nul
+"%PYTHON_EXE%" build\release_notes.py release "%APP_VERSION%" --path-file "%RELEASE_NOTE_PATH_FILE%"
 if errorlevel 1 (
     echo ERROR: Failed to generate release notes for version %APP_VERSION%.
+    echo.
+    pause
+    exit /b 1
+)
+if exist "%RELEASE_NOTE_PATH_FILE%" (
+    set /p RELEASE_NOTE_PATH=<"%RELEASE_NOTE_PATH_FILE%"
+    del /q "%RELEASE_NOTE_PATH_FILE%" >nul 2>nul
+)
+if not defined RELEASE_NOTE_PATH (
+    echo ERROR: Release note generator did not return a release note path.
     echo.
     pause
     exit /b 1
@@ -147,6 +171,21 @@ echo - %RELEASE_NOTE_PATH%  (Release Notes)
 echo.
 pause
 endlocal
+exit /b 0
+
+:validate_python_310
+"%PYTHON_EXE%" --version
+if errorlevel 1 (
+    echo ERROR: Could not run selected Python interpreter: %PYTHON_EXE%
+    echo HINT: Install Python 3.10 or set PYTHON_EXE to a Python 3.10 executable.
+    exit /b 1
+)
+"%PYTHON_EXE%" -c "import sys; raise SystemExit(0 if (3, 10, 6) <= sys.version_info[:3] < (3, 11) else 1)" >nul 2>nul
+if errorlevel 1 (
+    echo ERROR: ArcRho packaging requires Python 3.10.6 or newer within the Python 3.10 line.
+    echo HINT: Install Python 3.10.6+ or set PYTHON_EXE to a compatible Python 3.10 executable before running build_app.bat.
+    exit /b 1
+)
 exit /b 0
 
 :run_pyinstaller

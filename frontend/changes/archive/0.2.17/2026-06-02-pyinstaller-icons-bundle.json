@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Bundled the icon assets required by the packaged app server so ArcRho can start after installation."
+}

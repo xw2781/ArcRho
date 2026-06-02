@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "runtime",
+  "audience": "user",
+  "summary": "Fixed packaged app startup logging so ArcRho can launch instead of failing on an invalid app-server stdio option."
+}

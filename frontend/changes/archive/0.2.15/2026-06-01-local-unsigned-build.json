@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Kept local Windows packaging on the unsigned path so launch testing can continue without admin-only resource editing."
+}

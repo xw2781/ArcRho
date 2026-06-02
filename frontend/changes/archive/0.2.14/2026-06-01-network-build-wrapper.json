@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Added a network-safe build wrapper for running the standalone app build from a shared UNC path.",
+  "details": [
+    "The standalone build now reads the version helper result from a temp file so Python paths with spaces work reliably."
+  ]
+}

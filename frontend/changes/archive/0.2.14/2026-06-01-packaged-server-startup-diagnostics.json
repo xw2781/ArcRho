@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Hardened packaged app builds by requiring Python 3.10 and logging packaged app-server startup output for diagnostics.",
+  "details": [
+    "Packaging now requires Python 3.10.6 or newer within the Python 3.10 line to avoid early 3.10 PyInstaller analysis crashes.",
+    "The Python server build now fails before PyInstaller when required backend packages are missing from the selected Python 3.10 environment.",
+    "Packaged startup now writes Electron main-process logs and shows the startup error with the log path instead of quitting silently."
+  ]
+}

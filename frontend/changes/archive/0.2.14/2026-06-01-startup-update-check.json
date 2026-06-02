@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "startup",
+  "audience": "user",
+  "summary": "ArcRho now checks the shared installer folder at startup and prompts users when a verified newer version is available.",
+  "details": [
+    "The startup check uses the E:\\ArcRho Server\\installer feed and skips cleanly if the folder is unavailable.",
+    "Installers must pass SHA-256 verification before ArcRho launches the update."
+  ]
+}

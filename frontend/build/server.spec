@@ -8,13 +8,14 @@ repo_root = build_dir.parent
 monorepo_root = repo_root.parent
 python_api_src = monorepo_root / 'python-api' / 'src'
 
-# Collect the served frontend tree.
+# Collect the served frontend asset trees.
 static_files = []
-ui_dir = repo_root / 'ui'
-if ui_dir.exists():
-    for f in ui_dir.rglob('*'):
-        if f.is_file():
-            static_files.append((str(f), str(f.relative_to(repo_root).parent)))
+for asset_dir_name in ('ui', 'icons'):
+    asset_dir = repo_root / asset_dir_name
+    if asset_dir.exists():
+        for f in asset_dir.rglob('*'):
+            if f.is_file():
+                static_files.append((str(f), str(f.relative_to(repo_root).parent)))
 
 a = Analysis(
     [str(build_dir / 'server_entry.py')],
