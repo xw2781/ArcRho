@@ -10,7 +10,6 @@ export function wireDatasetInputController(deps) {
     toggleBlanks,
     wireLenDropdowns,
     syncDetailDatasetTypeFromTopInput,
-    ensureDatasetTypeOption,
     clearInputInvalid,
     openReservingClassTreeForDataset,
     showProjectDropdown,
@@ -52,10 +51,9 @@ export function wireDatasetInputController(deps) {
     redrawChartSafely,
     wireDatasetHostBridge,
     getTriInputsForStorage,
+    syncSidecarForCurrentDataset,
     instanceId,
     wireGridInteractions,
-    getSyncingDatasetTypeFields,
-    setSyncingDatasetTypeFields,
   } = deps;
 
   document.getElementById("reloadBtn")?.addEventListener("click", loadDataset);
@@ -75,29 +73,11 @@ export function wireDatasetInputController(deps) {
   const projectTreeBtn = document.getElementById("projectTreeBtn");
   const originSel = document.getElementById("originLenSelect");
   const devSel = document.getElementById("devLenSelect");
-  const dsDetailType = document.getElementById("dsDetailType");
   wireLenDropdowns();
 
-  // 2-way bind top Dataset Type input <-> Details Dataset Type select.
   // Name is auto-copied only when Dataset Type switches.
-  if (triInput && dsDetailType) {
+  if (triInput) {
     syncDetailDatasetTypeFromTopInput(triInput.value, { syncName: true });
-    dsDetailType.addEventListener("change", () => {
-      if (getSyncingDatasetTypeFields()) return;
-      const selected = String(dsDetailType.value || "").trim();
-      if (!selected) return;
-
-      const canonical = ensureDatasetTypeOption(selected) || selected;
-      setSyncingDatasetTypeFields(true);
-      try {
-        triInput.value = canonical;
-        clearInputInvalid(triInput);
-        syncDetailDatasetTypeFromTopInput(canonical, { syncName: true });
-        triInput.dispatchEvent(new Event("change", { bubbles: true }));
-      } finally {
-        setSyncingDatasetTypeFields(false);
-      }
-    });
   }
 
   if (pathTreeBtn && pathInput) {
@@ -130,6 +110,34 @@ export function wireDatasetInputController(deps) {
   if (cumulativeChk) {
     cumulativeChk.addEventListener("change", () => {
       saveTriInputsToStorage();
+      scheduleAutoRun(0);
+    });
+  }
+
+  const transposedChk = document.getElementById("transposedChk");
+  if (transposedChk) {
+    transposedChk.addEventListener("change", () => {
+      state.activeCell = null;
+      state.selRanges = [];
+      saveTriInputsToStorage();
+      renderTable();
+      notifyDatasetUpdated();
+      renderChart();
+    });
+  }
+
+  const timeModeInputs = Array.from(document.querySelectorAll('input[name="timeMode"]'));
+  for (const input of timeModeInputs) {
+    input.addEventListener("change", async () => {
+      if (!input.checked) return;
+      saveTriInputsToStorage();
+      const project = getResolvedProjectValue();
+      if (project) {
+        await ensureDevHeadersForProject(project, { forceRefresh: true });
+      }
+      renderTable();
+      notifyDatasetUpdated();
+      setStatus("Loading dataset...");
       scheduleAutoRun(0);
     });
   }
@@ -181,6 +189,7 @@ export function wireDatasetInputController(deps) {
       const pathResult = await validateAndNormalizeReservingClassInput(project, { strict: true, showMessage: true });
       if (!pathResult.ok) return;
       saveTriInputsToStorage();
+      await syncSidecarForCurrentDataset?.({ applyLengths: true });
       setStatus("Loading dataset...");
       scheduleAutoRun();
     });
@@ -227,6 +236,7 @@ export function wireDatasetInputController(deps) {
           const dependencyResult = await validateDatasetTypeDependencies(datasetResult.value, { showMessage: true });
           if (!dependencyResult.ok) return;
           saveTriInputsToStorage();
+          await syncSidecarForCurrentDataset?.({ applyLengths: true });
           setStatus("Loading dataset...");
           scheduleAutoRun(0);
         })();
@@ -259,6 +269,7 @@ export function wireDatasetInputController(deps) {
       }
       setLastDatasetSelection(datasetResult.value);
       saveTriInputsToStorage();
+      await syncSidecarForCurrentDataset?.({ applyLengths: true });
       setStatus("Loading dataset...");
       scheduleAutoRun();
       showDatasetDropdown(false);

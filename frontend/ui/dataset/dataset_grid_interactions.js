@@ -1,4 +1,5 @@
 import { getTopLeftRangeCell, writeTextToClipboard } from "/ui/shared/table_selection.js";
+import { getDisplayDatasetModel } from "/ui/dataset/dataset_render.js";
 
 export function wireDatasetGridInteractions(deps) {
   const { state, renderTable, renderActiveCellUI } = deps;
@@ -17,7 +18,7 @@ export function wireDatasetGridInteractions(deps) {
       // Don't steal keys while typing / selecting in controls
       if (isTypingTarget(e.target)) return;
 
-      const model = state.model;
+      const model = getDisplayDatasetModel();
       if (!model) return;
 
       const maxR = (model.origin_labels?.length || 0) - 1;
@@ -187,7 +188,7 @@ export function wireDatasetGridInteractions(deps) {
   }
 
   function buildTsvFromRange(range) {
-    const model = state.model;
+    const model = getDisplayDatasetModel();
     if (!model) return "";
     const vals = model.values || [];
     const out = [];
@@ -209,11 +210,11 @@ export function wireDatasetGridInteractions(deps) {
       text = buildTsvFromRange(ranges[0]);
     } else if (ranges.length > 1) {
       const cell = getTopLeftRangeCell(ranges);
-      const value = cell ? state.model?.values?.[cell.r]?.[cell.c] : "";
+      const value = cell ? getDisplayDatasetModel()?.values?.[cell.r]?.[cell.c] : "";
       text = value == null ? "" : String(value);
     } else if (state.activeCell) {
       const { r, c } = state.activeCell;
-      const value = state.model?.values?.[r]?.[c];
+      const value = getDisplayDatasetModel()?.values?.[r]?.[c];
       text = value == null ? "" : String(value);
     }
     await writeTextToClipboard(text);
@@ -450,7 +451,7 @@ export function wireDatasetGridInteractions(deps) {
       const th = e.target.closest("th.rowhdr[data-r]");
       if (!th) return;
       const r = Number(th.dataset.r);
-      const model = state.model;
+      const model = getDisplayDatasetModel();
       if (!model) return;
       window.__arcRhoCopyActiveGridSelection = copyActiveRangeToClipboard;
       const vals = Array.isArray(model.values) ? model.values : [];
@@ -486,7 +487,7 @@ export function wireDatasetGridInteractions(deps) {
       const th = e.target.closest("th.colhdr[data-c]");
       if (!th) return;
       const c = Number(th.dataset.c);
-      const model = state.model;
+      const model = getDisplayDatasetModel();
       if (!model) return;
       window.__arcRhoCopyActiveGridSelection = copyActiveRangeToClipboard;
       const maxR = (model.origin_labels?.length || 0) - 1;

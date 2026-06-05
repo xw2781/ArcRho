@@ -5,8 +5,11 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException
 
 from app_server.schemas.dataset import (
+    CachedDatasetDeleteRequest,
     DatasetNotesLoadRequest,
     DatasetNotesSaveRequest,
+    DatasetSidecarLoadRequest,
+    DatasetSidecarSaveRequest,
     PatchRequest,
 )
 from app_server.services import dataset_service
@@ -22,6 +25,15 @@ def list_datasets() -> List[Dict[str, Any]]:
 @router.get("/datasets/cached")
 def list_cached_dataset_names(project_name: str, reserving_class: str) -> Dict[str, Any]:
     return dataset_service.list_cached_dataset_names(project_name, reserving_class)
+
+
+@router.post("/datasets/cached/delete")
+def delete_cached_datasets(req: CachedDatasetDeleteRequest) -> Dict[str, Any]:
+    return dataset_service.delete_cached_datasets(
+        req.project_name,
+        req.reserving_class,
+        req.dataset_names,
+    )
 
 
 @router.get("/dataset/{ds_id}")
@@ -66,4 +78,27 @@ def save_dataset_notes(req: DatasetNotesSaveRequest) -> Dict[str, Any]:
         req.reserving_class,
         req.dataset_name,
         req.notes,
+    )
+
+
+@router.post("/dataset/sidecar/load")
+def load_dataset_sidecar(req: DatasetSidecarLoadRequest) -> Dict[str, Any]:
+    return dataset_service.load_dataset_sidecar(
+        req.project_name,
+        req.reserving_class,
+        req.dataset_name,
+    )
+
+
+@router.post("/dataset/sidecar/save")
+def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
+    return dataset_service.save_dataset_sidecar(
+        req.project_name,
+        req.reserving_class,
+        req.dataset_name,
+        origin_length=req.origin_length,
+        development_length=req.development_length,
+        cumulative=req.cumulative,
+        calendar=req.calendar,
+        csv_file=req.csv_file,
     )

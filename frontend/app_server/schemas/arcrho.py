@@ -8,6 +8,7 @@ class ArcRhoTriRequest(BaseModel):
     TriangleName: str
     ProjectName: str
     Cumulative: bool = True
+    Calendar: bool = False
     OriginLength: int = 12
     DevelopmentLength: int = 12
     timeout_sec: float = 6.0
@@ -16,6 +17,7 @@ class ArcRhoTriRequest(BaseModel):
 class ArcRhoHeadersRequest(BaseModel):
     periodType: int = 0
     Transposed: bool = False
+    Calendar: bool = False
     PeriodLength: int = 12
     ProjectName: str
     StoredPeriodLength: int = -1

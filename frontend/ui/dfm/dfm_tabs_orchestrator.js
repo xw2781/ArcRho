@@ -46,13 +46,14 @@ import {
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
+  restoreCleanDfmMethodState,
   saveDfmTemplate,
   loadDfmTemplate,
   applyDfmMethodPayload,
   buildDfmAssistantContextPayload,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
-} from "/ui/dfm/dfm_persistence.js?v=20260531a";
+} from "/ui/dfm/dfm_persistence.js?v=20260604a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
 import { wireDfmRpcBridgePathBar } from "/ui/dfm/dfm_rpc_bridge_pathbar.js?v=20260514a";
 import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js";
@@ -65,6 +66,8 @@ import {
 } from "/ui/dfm/dfm_ratio_history.js";
 
 const DEFAULT_TOKEN = "__DEFAULT__";
+let dfmSaveInFlight = false;
+let dfmCancelConfirmResolve = null;
 
 function getDfmInputSnapshotSafe() {
   try {
@@ -139,6 +142,96 @@ async function buildAssistantContext() {
 
 function postDfmStatus(text, tone = "") {
   window.parent.postMessage({ type: "arcrho:status", text: String(text || ""), tone }, "*");
+}
+
+function updateDfmSaveUi() {
+  const saveBtn = document.getElementById("dfmSaveBtn");
+  const cancelBtn = document.getElementById("dfmCancelBtn");
+  const dirty = getDfmIsDirty();
+  if (saveBtn) {
+    saveBtn.disabled = dfmSaveInFlight || !dirty;
+    saveBtn.classList.toggle("is-clean", !dirty);
+  }
+  if (cancelBtn) {
+    cancelBtn.disabled = dfmSaveInFlight || !dirty;
+  }
+}
+
+function resolveDfmCancelConfirm(value) {
+  const overlay = document.getElementById("dfmCancelConfirmOverlay");
+  if (overlay) overlay.hidden = true;
+  const resolve = dfmCancelConfirmResolve;
+  dfmCancelConfirmResolve = null;
+  if (resolve) resolve(!!value);
+}
+
+function showDfmCancelConfirm() {
+  if (dfmCancelConfirmResolve) return Promise.resolve(false);
+  const overlay = document.getElementById("dfmCancelConfirmOverlay");
+  const yesBtn = document.getElementById("dfmCancelConfirmYes");
+  if (!overlay || !yesBtn) return Promise.resolve(false);
+  overlay.hidden = false;
+  requestAnimationFrame(() => yesBtn.focus());
+  return new Promise((resolve) => {
+    dfmCancelConfirmResolve = resolve;
+  });
+}
+
+async function saveCurrentDfmMethodFromBar() {
+  if (dfmSaveInFlight) return;
+  dfmSaveInFlight = true;
+  updateDfmSaveUi();
+  try {
+    const result = await saveRatioSelectionPattern(false);
+    if (!result?.ok && result?.error) {
+      postDfmStatus(`DFM save failed: ${result.error}`, "error");
+    }
+  } finally {
+    dfmSaveInFlight = false;
+    updateDfmSaveUi();
+  }
+}
+
+async function cancelCurrentDfmChangesFromBar() {
+  if (dfmSaveInFlight || !getDfmIsDirty()) return;
+  const discard = await showDfmCancelConfirm();
+  if (!discard) return;
+  const result = await restoreCleanDfmMethodState();
+  if (result?.ok) {
+    postDfmStatus("DFM changes discarded.");
+  } else {
+    postDfmStatus(`DFM cancel failed: ${result?.error || "Could not restore saved method."}`, "error");
+  }
+  updateDfmSaveUi();
+}
+
+function wireDfmSaveControls() {
+  document.getElementById("dfmSaveBtn")?.addEventListener("click", () => {
+    void saveCurrentDfmMethodFromBar();
+  });
+  document.getElementById("dfmCancelBtn")?.addEventListener("click", () => {
+    void cancelCurrentDfmChangesFromBar();
+  });
+  document.getElementById("dfmCancelConfirmYes")?.addEventListener("click", () => {
+    resolveDfmCancelConfirm(true);
+  });
+  document.getElementById("dfmCancelConfirmNo")?.addEventListener("click", () => {
+    resolveDfmCancelConfirm(false);
+  });
+  document.getElementById("dfmCancelConfirmClose")?.addEventListener("click", () => {
+    resolveDfmCancelConfirm(false);
+  });
+  document.getElementById("dfmCancelConfirmOverlay")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) resolveDfmCancelConfirm(false);
+  });
+  document.getElementById("dfmCancelConfirmOverlay")?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      resolveDfmCancelConfirm(false);
+    }
+  });
+  window.addEventListener("arcrho:dfm-dirty-state", updateDfmSaveUi);
+  updateDfmSaveUi();
 }
 
 function openPathViaShellBridge(targetPath, preferredApp = "") {
@@ -216,6 +309,7 @@ function initDfmTabs() {
   wireMethodName();
   wireDfmInstanceCreationNotice();
   wireNotesInput();
+  wireDfmSaveControls();
   wireDetailsThresholdReset();
   wireRatioStrikeToggle();
   wireRatioChartModal();

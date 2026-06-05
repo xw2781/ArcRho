@@ -8,40 +8,6 @@ export function injectDatasetMarkup(container) {
     title="Clear Cache and Reload"
     aria-label="Clear Cache and Reload"
   >&#x21bb;</button>
-  <div class="panel" id="topFrame">
-    <div class="topFrameGrid">
-      <div class="topField">
-        <label class="small" for="projectSelect">Project Name</label>
-        <div class="projectSelectWrap">
-          <input id="projectSelect" autocomplete="off" />
-          <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">
-            ...
-          </button>
-          <div id="projectDropdown" class="projectDropdown"></div>
-        </div>
-      </div>
-
-      <div class="topField">
-        <label class="small" for="pathInput">Reserving Class</label>
-        <div class="reservingClassWrap">
-          <input id="pathInput" />
-          <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse reserving classes" aria-label="Browse reserving classes">...</button>
-        </div>
-      </div>
-
-      <div class="topField">
-        <label class="small" for="triInput">Dataset Type</label>
-        <div class="datasetSelectWrap">
-          <input id="triInput" autocomplete="off" />
-          <button id="datasetTreeBtn" type="button" class="datasetTreeBtn" title="Browse dataset types" aria-label="Browse dataset types">...</button>
-          <div id="datasetDropdown" class="datasetDropdown"></div>
-        </div>
-      </div>
-
-
-    </div>
-  </div>
-
   <!-- Tab bar -->
   <div class="dsTabBar">
     <button class="dsTab" data-page="details" type="button">Details</button>
@@ -53,6 +19,30 @@ export function injectDatasetMarkup(container) {
 
   <!-- Details tab page -->
   <div id="dsDetailsPage" style="display:none;">
+    <div class="panel dsDetailsFrame" id="topFrame">
+      <div class="topFrameGrid">
+        <div class="topField">
+          <label class="small" for="projectSelect">Project Name</label>
+          <div class="projectSelectWrap">
+            <input id="projectSelect" autocomplete="off" />
+            <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">
+              ...
+            </button>
+            <div id="projectDropdown" class="projectDropdown"></div>
+          </div>
+        </div>
+
+        <div class="topField">
+          <label class="small" for="pathInput">Reserving Class</label>
+          <div class="reservingClassWrap">
+            <input id="pathInput" />
+            <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse reserving classes" aria-label="Browse reserving classes">...</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <div class="dsDetailsPanel">
       <div class="dsDetailsGrid">
         <div class="dsDetailLabel">
@@ -63,17 +53,21 @@ export function injectDatasetMarkup(container) {
         </div>
 
         <div class="dsDetailLabel">
-          <label class="small" for="dsDetailType">Dataset Type</label>
+          <label class="small" for="triInput">Dataset Type</label>
         </div>
         <div class="dsDetailInput">
-          <select id="dsDetailType"></select>
+          <div class="datasetSelectWrap">
+            <input id="triInput" autocomplete="off" />
+            <button id="datasetTreeBtn" type="button" class="datasetTreeBtn" title="Browse dataset types" aria-label="Browse dataset types">...</button>
+            <div id="datasetDropdown" class="datasetDropdown"></div>
+          </div>
         </div>
 
         <div class="dsDetailLabel">
           <label class="small" for="dsDetailFormula">Formula</label>
         </div>
         <div class="dsDetailInput">
-          <input id="dsDetailFormula" autocomplete="off" readonly />
+          <textarea id="dsDetailFormula" autocomplete="off" readonly rows="1"></textarea>
         </div>
       </div>
     </div>
@@ -81,119 +75,119 @@ export function injectDatasetMarkup(container) {
 
   <!-- Data tab page: parameter strip + formula bar + triangle table -->
   <div id="dsDataPage">
-    <div class="right">
-      <!-- parameter strip -->
-      <div class="topRow">
-        <div class="panel" id="datasetTopBar">
-          <div class="topbar-grid">
-            <!-- Col 1: Cumulative / Transposed / Development / Calendar -->
-            <div class="topbar-left" style="grid-column: 1; grid-row: 1 / span 2;">
-              <label class="chk"><span>Cumulative:</span> <input id="cumulativeChk" type="checkbox" checked /></label>
-              <label class="chk"><span>Transposed:</span> <input id="transposedChk" type="checkbox" /></label>
-              <label class="rad">
-                <input type="radio" name="timeMode" value="development" checked />
-                <span>Development</span>
-              </label>
-              <label class="rad">
-                <input type="radio" name="timeMode" value="calendar" />
-                <span>Calendar</span>
-              </label>
-            </div>
+    <!-- parameter strip -->
+    <div class="topRow">
+      <div class="panel" id="datasetTopBar">
+        <div class="topbar-grid">
+          <!-- Col 1: Cumulative / Transposed / Development / Calendar -->
+          <div class="topbar-left" style="grid-column: 1; grid-row: 1 / span 2;">
+            <label class="chk"><span>Cumulative:</span> <input id="cumulativeChk" type="checkbox" checked /></label>
+            <label class="chk"><span>Transposed:</span> <input id="transposedChk" type="checkbox" /></label>
+            <label class="rad">
+              <input type="radio" name="timeMode" value="development" checked />
+              <span>Development</span>
+            </label>
+            <label class="rad">
+              <input type="radio" name="timeMode" value="calendar" />
+              <span>Calendar</span>
+            </label>
+          </div>
 
-            <!-- Col 2: Labels -->
-            <div class="topbar-label-stack" style="grid-column: 2; grid-row: 1 / span 2;">
-              <div class="topbar-label"><span class="lbl">Origin Length:</span></div>
-              <div class="topbar-label"><span class="lbl">Development Length:</span></div>
-            </div>
+          <!-- Col 2: Labels -->
+          <div class="topbar-label-stack" style="grid-column: 2; grid-row: 1 / span 2;">
+            <div class="topbar-label"><span class="lbl">Origin Length:</span></div>
+            <div class="topbar-label"><span class="lbl">Development Length:</span></div>
+          </div>
 
-            <!-- Col 3: Inputs -->
-            <div class="topbar-input-stack" style="grid-column: 3; grid-row: 1 / span 2;">
-              <div class="topbar-input">
-                <div id="originLenWrap" class="lenSelectWrap">
-                  <button
-                    id="originLenDisplay"
-                    class="lenSelectDisplay"
-                    type="button"
-                    aria-haspopup="listbox"
-                    aria-expanded="false"
-                    aria-controls="originLenDropdown"
-                  >
-                    <span class="lenSelectValue">12</span>
-                    <span class="lenSelectCaret" aria-hidden="true">
-                      <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                        <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                      </svg>
-                    </span>
-                  </button>
-                  <div id="originLenDropdown" class="datasetDropdown lenDropdown" role="listbox" aria-label="Origin Length options"></div>
-                  <select id="originLenSelect" class="lenSelectNative" tabindex="-1" aria-hidden="true"></select>
-                </div>
-              </div>
-              <div class="topbar-input">
-                <div id="devLenWrap" class="lenSelectWrap">
-                  <button
-                    id="devLenDisplay"
-                    class="lenSelectDisplay"
-                    type="button"
-                    aria-haspopup="listbox"
-                    aria-expanded="false"
-                    aria-controls="devLenDropdown"
-                  >
-                    <span class="lenSelectValue">12</span>
-                    <span class="lenSelectCaret" aria-hidden="true">
-                      <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                        <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                      </svg>
-                    </span>
-                  </button>
-                  <div id="devLenDropdown" class="datasetDropdown lenDropdown" role="listbox" aria-label="Development Length options"></div>
-                  <select id="devLenSelect" class="lenSelectNative" tabindex="-1" aria-hidden="true"></select>
-                </div>
+          <!-- Col 3: Inputs -->
+          <div class="topbar-input-stack" style="grid-column: 3; grid-row: 1 / span 2;">
+            <div class="topbar-input">
+              <div id="originLenWrap" class="lenSelectWrap">
+                <button
+                  id="originLenDisplay"
+                  class="lenSelectDisplay"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-controls="originLenDropdown"
+                >
+                  <span class="lenSelectValue">12</span>
+                  <span class="lenSelectCaret" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                      <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </span>
+                </button>
+                <div id="originLenDropdown" class="datasetDropdown lenDropdown" role="listbox" aria-label="Origin Length options"></div>
+                <select id="originLenSelect" class="lenSelectNative" tabindex="-1" aria-hidden="true"></select>
               </div>
             </div>
-
-            <!-- Col 4: Remaining -->
-            <div class="topbar-right-stack" style="grid-column: 4; grid-row: 1 / span 2;">
-              <div class="topbar-right">
-                <div class="field linkField">
-                  <label class="linkToggle">
-                    <input id="linkLenChk" type="checkbox" checked />
-                    <span class="linkIcon" aria-hidden="true">&#128279;</span>
-                    <span class="linkText">Link Period Length</span>
-                    <span class="linkTip" role="tooltip">Keep Origin Length and Development Length the same</span>
-                  </label>
-                </div>
+            <div class="topbar-input">
+              <div id="devLenWrap" class="lenSelectWrap">
+                <button
+                  id="devLenDisplay"
+                  class="lenSelectDisplay"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-controls="devLenDropdown"
+                >
+                  <span class="lenSelectValue">12</span>
+                  <span class="lenSelectCaret" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                      <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </span>
+                </button>
+                <div id="devLenDropdown" class="datasetDropdown lenDropdown" role="listbox" aria-label="Development Length options"></div>
+                <select id="devLenSelect" class="lenSelectNative" tabindex="-1" aria-hidden="true"></select>
               </div>
-              <div class="topbar-right">
-                <div class="field">
-                  <span class="lbl">Decimal Places:</span>
-                  <input id="decimalPlaces" type="number" min="0" max="6" value="1" />
-                </div>
+            </div>
+          </div>
+
+          <!-- Col 4: Remaining -->
+          <div class="topbar-right-stack" style="grid-column: 4; grid-row: 1 / span 2;">
+            <div class="topbar-right">
+              <div class="field linkField">
+                <label class="linkToggle">
+                  <input id="linkLenChk" type="checkbox" checked />
+                  <span class="linkIcon" aria-hidden="true">&#128279;</span>
+                  <span class="linkText">Link Period Length</span>
+                  <span class="linkTip" role="tooltip">Keep Origin Length and Development Length the same</span>
+                </label>
+              </div>
+            </div>
+            <div class="topbar-right">
+              <div class="field">
+                <span class="lbl">Decimal Places:</span>
+                <input id="decimalPlaces" type="number" min="0" max="6" value="1" />
               </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Triangle -->
-      <div class="panel" id="triPanel">
-        <div class="panelInner">
-          <div id="tableWrapHost">
-            <div id="tableWrap"></div>
-            <button id="tableScrollUpBtn" class="tableScrollArrow" type="button" title="Scroll up" aria-label="Scroll up">
-              <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M4.5 10.5 8 7l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-            </button>
-            <button id="tableScrollDownBtn" class="tableScrollArrow" type="button" title="Scroll down" aria-label="Scroll down">
-              <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M4.5 5.5 8 9l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-            </button>
-            <button id="tableScrollLeftBtn" class="tableScrollArrow" type="button" title="Scroll left" aria-label="Scroll left">
-              <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M10.5 4.5 7 8l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-            </button>
-            <button id="tableScrollRightBtn" class="tableScrollArrow" type="button" title="Scroll right" aria-label="Scroll right">
-              <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M5.5 4.5 9 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-            </button>
-          </div>
-        </div>
+    <!-- Triangle -->
+    <div class="panel" id="triPanel">
+      <div id="tableWrapHost">
+        <div id="tableWrap"></div>
+        <button id="tableScrollUpBtn" class="tableScrollArrow" type="button" title="Scroll up" aria-label="Scroll up">
+          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M4.5 10.5 8 7l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </button>
+        <button id="tableScrollDownBtn" class="tableScrollArrow" type="button" title="Scroll down" aria-label="Scroll down">
+          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M4.5 5.5 8 9l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </button>
+        <button id="tableScrollLeftBtn" class="tableScrollArrow" type="button" title="Scroll left" aria-label="Scroll left">
+          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M10.5 4.5 7 8l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </button>
+        <button id="tableScrollRightBtn" class="tableScrollArrow" type="button" title="Scroll right" aria-label="Scroll right">
+          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M5.5 4.5 9 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </button>
+      </div>
+      <div id="datasetSaveBar" class="datasetSaveBar" hidden>
+        <button id="datasetSaveBtn" class="datasetPrimaryBtn" type="button">Save</button>
+        <button id="datasetCancelBtn" class="datasetSecondaryBtn" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -293,6 +287,20 @@ export function injectDatasetMarkup(container) {
     <button id="saveBtn">Save</button>
     <button id="toggleBlankBtn">Show blanks</button>
     <pre id="log"></pre>
+  </div>
+
+  <div id="datasetCancelConfirmOverlay" class="datasetCancelConfirmOverlay" hidden>
+    <div class="datasetCancelConfirmBox" role="dialog" aria-modal="true" aria-labelledby="datasetCancelConfirmTitle">
+      <button id="datasetCancelConfirmClose" class="datasetCancelConfirmClose" type="button" aria-label="Close">x</button>
+      <div id="datasetCancelConfirmTitle" class="datasetCancelConfirmTitle">Cancel changes?</div>
+      <div id="datasetCancelConfirmMessage" class="datasetCancelConfirmMessage">
+        Unsaved dataset changes will be discarded.
+      </div>
+      <div class="datasetCancelConfirmActions">
+        <button id="datasetCancelConfirmYes" class="datasetPrimaryBtn" type="button">Yes</button>
+        <button id="datasetCancelConfirmNo" class="datasetSecondaryBtn" type="button">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <div id="ctxMenu" class="ctx-menu" style="display:none;">

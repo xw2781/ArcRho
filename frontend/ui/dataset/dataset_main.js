@@ -3,7 +3,14 @@
 import { state } from "/ui/shared/state.js";
 import { config } from "/ui/shared/config.js";
 import { $, logLine } from "/ui/shared/dom.js";
-import { getDataset, loadDatasetNotes, patchDataset, saveDatasetNotes } from "/ui/shared/api.js";
+import {
+  getDataset,
+  loadDatasetNotes,
+  loadDatasetSidecar,
+  patchDataset,
+  saveDatasetNotes,
+  saveDatasetSidecar,
+} from "/ui/shared/api.js";
 import { renderTable, renderActiveCellUI, renderChart, redrawChartSafely} from "/ui/dataset/dataset_render.js";
 import { createTabbedPage } from "/ui/shared/tabbed_page.js";
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
@@ -212,7 +219,6 @@ const LEN_DROPDOWN_CONFIG = {
 };
 
 let syncingLen = false;
-let syncingDatasetTypeFields = false;
 let allProjects = [];
 let lastProjectSelection = "";
 let activeProjectIndex = -1;
@@ -236,6 +242,13 @@ let notesDirty = false;
 let lastSavedNotesText = "";
 let notesProgrammaticInput = false;
 let notesSyncNonce = 0;
+let datasetSettingsDirty = false;
+let datasetSaveInFlight = false;
+let sidecarContextKey = "";
+let sidecarContextPayload = null;
+let lastSavedDatasetSettings = null;
+let sidecarSyncNonce = 0;
+let datasetCancelConfirmResolve = null;
 const lenDropdownActiveIndexBySelect = new Map();
 
 function setLastProjectSelection(value) {
@@ -254,14 +267,6 @@ function notifyProjectSelectionCommitted(projectName, source = "") {
 
 function setLastDatasetSelection(value) {
   lastDatasetSelection = String(value || "");
-}
-
-function getSyncingDatasetTypeFields() {
-  return syncingDatasetTypeFields;
-}
-
-function setSyncingDatasetTypeFields(value) {
-  syncingDatasetTypeFields = !!value;
 }
 
 function readDatasetInputsFromQueryParams() {
@@ -711,7 +716,6 @@ function ensureDatasetTypeOption(value) {
     String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base", numeric: true }),
   );
   renderDatasetOptions(allDatasetTypes, name);
-  renderDetailTypeOptions(allDatasetTypes);
   return name;
 }
 
@@ -723,39 +727,46 @@ function getDatasetTypeFormulaByName(datasetTypeName) {
   return String(formulaMap.get(key) || "").trim();
 }
 
+function resizeDetailFormulaInput() {
+  const formulaInput = document.getElementById("dsDetailFormula");
+  if (!formulaInput) return;
+  formulaInput.style.height = "30px";
+  if (!formulaInput.offsetParent) return;
+  formulaInput.style.height = `${Math.max(30, formulaInput.scrollHeight)}px`;
+}
+
+window.addEventListener("resize", () => {
+  resizeDetailFormulaInput();
+});
+
 function syncDetailFormulaFromDatasetType(datasetTypeName) {
   const formulaInput = document.getElementById("dsDetailFormula");
   if (!formulaInput) return;
   const formula = getDatasetTypeFormulaByName(datasetTypeName);
   formulaInput.value = formula;
   formulaInput.title = formula;
+  resizeDetailFormulaInput();
 }
 
 function syncDetailDatasetTypeFromTopInput(rawValue, options = {}) {
   const syncName = !!options?.syncName;
-  const dsDetailType = document.getElementById("dsDetailType");
   const dsDetailName = document.getElementById("dsDetailName");
-  const prevType = String(dsDetailType?.value || "").trim();
+  const prevType = String(dsDetailName?.dataset?.datasetType || "").trim();
   const raw = String(rawValue || "").trim();
   const canonical = raw ? (ensureDatasetTypeOption(raw) || raw) : "";
+  const nextType = String(canonical || "").trim();
 
-  if (dsDetailType) {
-    if (canonical && [...dsDetailType.options].some((opt) => opt.value === canonical)) {
-      dsDetailType.value = canonical;
-    } else {
-      dsDetailType.value = "";
+  if (dsDetailName) {
+    if (syncName) {
+      const currentName = String(dsDetailName.value || "").trim();
+      if (!currentName || normalizeProjectText(prevType) !== normalizeProjectText(nextType)) {
+        dsDetailName.value = nextType;
+      }
     }
+    dsDetailName.dataset.datasetType = nextType;
   }
 
-  if (syncName && dsDetailName) {
-    const nextType = String(dsDetailType?.value || canonical || "").trim();
-    const currentName = String(dsDetailName.value || "").trim();
-    if (!currentName || normalizeProjectText(prevType) !== normalizeProjectText(nextType)) {
-      dsDetailName.value = nextType;
-    }
-  }
-
-  syncDetailFormulaFromDatasetType(String(dsDetailType?.value || canonical || "").trim());
+  syncDetailFormulaFromDatasetType(nextType);
 }
 
 function loadDatasetTypeDependencyModel(projectName, options = {}) {
@@ -816,26 +827,6 @@ function ensureReservingClassOption(value) {
   return normalized;
 }
 
-function renderDetailTypeOptions(types) {
-  const sel = document.getElementById("dsDetailType");
-  if (!sel) return;
-  const prev = sel.value;
-  sel.innerHTML = "";
-  const blank = document.createElement("option");
-  blank.value = "";
-  blank.textContent = "";
-  sel.appendChild(blank);
-  for (const name of types) {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    sel.appendChild(opt);
-  }
-  if (prev && types.includes(prev)) {
-    sel.value = prev;
-  }
-}
-
 async function refreshDatasetTypesForProject(project, useCache = true) {
   datasetDependencyGuard.clearProjectCache(project);
 
@@ -844,7 +835,6 @@ async function refreshDatasetTypesForProject(project, useCache = true) {
     state.datasetTypeSourceByKey = new Map();
     state.datasetTypeFormulaByKey = new Map();
     renderDatasetOptions([]);
-    renderDetailTypeOptions([]);
     syncDetailDatasetTypeFromTopInput(document.getElementById("triInput")?.value || "", { syncName: false });
     showDatasetDropdown(false);
     return;
@@ -865,7 +855,6 @@ async function refreshDatasetTypesForProject(project, useCache = true) {
     state.datasetTypeFormulaByKey = new Map();
   }
   renderDatasetOptions(allDatasetTypes);
-  renderDetailTypeOptions(allDatasetTypes);
   syncDetailDatasetTypeFromTopInput(document.getElementById("triInput")?.value || "", { syncName: false });
   showDatasetDropdown(false);
 }
@@ -924,6 +913,8 @@ async function handleDatasetSelection(value, options = {}) {
   showDatasetDropdown(false);
   if (switched) {
     saveTriInputsToStorage();
+    await syncSidecarForCurrentDataset({ applyLengths: true });
+    enforceDevLenRule({ source: "origin" });
     scheduleAutoRun();
   }
   return true;
@@ -1099,6 +1090,7 @@ async function validateTriInputsBeforeRun(options = {}) {
       path: reservingResult.value,
       tri: datasetResult.value,
       cumulative: triInputs.cumulative,
+      calendar: triInputs.calendar,
       originLen: triInputs.originLen,
       devLen: triInputs.devLen,
     },
@@ -1443,7 +1435,9 @@ function saveTriInputsToStorage() {
       originLen: document.getElementById("originLenSelect")?.value || "",
       devLen: document.getElementById("devLenSelect")?.value || "",
       linkLen: linkLenChecked,
-      cumulative: document.getElementById("cumulativeChk")?.checked || true,
+      cumulative: !!document.getElementById("cumulativeChk")?.checked,
+      transposed: !!document.getElementById("transposedChk")?.checked,
+      calendar: document.querySelector('input[name="timeMode"][value="calendar"]')?.checked === true,
     };
     const resolvedInputs = normalizeBrowsingHistoryEntry({
       project: getResolvedProjectValue(),
@@ -1469,6 +1463,7 @@ function saveTriInputsToStorage() {
     } catch {
       // ignore
     }
+    refreshDatasetSettingsDirty();
   } catch {
     // ignore
   }
@@ -1559,6 +1554,14 @@ async function restoreTriInputsFromStorage() {
   const cumChk = document.getElementById("cumulativeChk");
   if (cumChk && typeof s.cumulative === "boolean") cumChk.checked = s.cumulative;
 
+  const transposedChk = document.getElementById("transposedChk");
+  if (transposedChk && typeof s.transposed === "boolean") transposedChk.checked = s.transposed;
+
+  if (typeof s.calendar === "boolean") {
+    const mode = s.calendar ? "calendar" : "development";
+    const modeInput = document.querySelector(`input[name="timeMode"][value="${mode}"]`);
+    if (modeInput) modeInput.checked = true;
+  }
 }
 
 function applyTriInputsFromQueryParams() {
@@ -1801,12 +1804,16 @@ function getTriInputs() {
   const originLen = parseInt(document.getElementById("originLenSelect")?.value, 10);
   const devLen = parseInt(document.getElementById("devLenSelect")?.value, 10);
   const cumulative = !!document.getElementById("cumulativeChk")?.checked;
+  const transposed = !!document.getElementById("transposedChk")?.checked;
+  const calendar = document.querySelector('input[name="timeMode"][value="calendar"]')?.checked === true;
 
   return {
     project,
     path,
     tri,
     cumulative,
+    transposed,
+    calendar,
     originLen: Number.isFinite(originLen) ? originLen : 12,
     devLen: Number.isFinite(devLen) ? devLen : 12,
   };
@@ -1817,6 +1824,7 @@ function resolveTriRequestInputs(rawInputs = {}) {
   const path = normalizeReservingClassPath(rawInputs?.path || "");
   const tri = String(rawInputs?.tri || "").trim();
   const cumulative = !!rawInputs?.cumulative;
+  const calendar = !!rawInputs?.calendar;
   const originRaw = Number(rawInputs?.originLen);
   const devRaw = Number(rawInputs?.devLen);
   return {
@@ -1824,6 +1832,7 @@ function resolveTriRequestInputs(rawInputs = {}) {
     path,
     tri,
     cumulative,
+    calendar,
     originLen: Number.isFinite(originRaw) ? originRaw : 12,
     devLen: Number.isFinite(devRaw) ? devRaw : 12,
   };
@@ -1836,6 +1845,7 @@ function buildTriRequestPayload(rawInputs = {}) {
     TriangleName: resolved.tri,
     ProjectName: resolved.project,
     Cumulative: resolved.cumulative,
+    Calendar: resolved.calendar,
     OriginLength: resolved.originLen,
     DevelopmentLength: resolved.devLen,
     timeout_sec: 6.0,
@@ -1885,15 +1895,314 @@ function getTriInputsForStorage() {
   const originLen = parseInt(document.getElementById("originLenSelect")?.value, 10);
   const devLen = parseInt(document.getElementById("devLenSelect")?.value, 10);
   const cumulative = !!document.getElementById("cumulativeChk")?.checked;
+  const transposed = !!document.getElementById("transposedChk")?.checked;
+  const calendar = document.querySelector('input[name="timeMode"][value="calendar"]')?.checked === true;
 
   return {
     project: getStoredInputValue(projectInput),
     path: getStoredInputValue(pathInput),
     tri,
     cumulative,
+    transposed,
+    calendar,
     originLen: Number.isFinite(originLen) ? originLen : 12,
     devLen: Number.isFinite(devLen) ? devLen : 12,
   };
+}
+
+function buildDatasetSidecarContextPayload() {
+  return {
+    project_name: getResolvedProjectValue(),
+    reserving_class: getResolvedReservingClassValue(),
+    dataset_name: (document.getElementById("triInput")?.value || "").trim(),
+  };
+}
+
+function hasDatasetSidecarContext(payload) {
+  return !!(
+    String(payload?.project_name || "").trim()
+    && String(payload?.reserving_class || "").trim()
+    && String(payload?.dataset_name || "").trim()
+  );
+}
+
+function buildDatasetSidecarContextKey(payload) {
+  if (!hasDatasetSidecarContext(payload)) return "";
+  return `${payload.project_name}\u001f${payload.reserving_class}\u001f${payload.dataset_name}`;
+}
+
+function getCurrentDatasetSettings() {
+  const triInputs = getTriInputs();
+  return {
+    origin_length: triInputs.originLen,
+    development_length: triInputs.devLen,
+    cumulative: !!triInputs.cumulative,
+    calendar: !!triInputs.calendar,
+  };
+}
+
+function normalizeDatasetSettings(source = {}) {
+  const origin = Number(source.origin_length ?? source.originLen);
+  const development = Number(source.development_length ?? source.devLen);
+  return {
+    origin_length: Number.isFinite(origin) && origin > 0 ? Math.trunc(origin) : 12,
+    development_length: Number.isFinite(development) && development > 0 ? Math.trunc(development) : 12,
+    cumulative: typeof source.cumulative === "boolean" ? source.cumulative : true,
+    calendar: typeof source.calendar === "boolean" ? source.calendar : false,
+  };
+}
+
+function sameDatasetSettings(a, b) {
+  const left = normalizeDatasetSettings(a || {});
+  const right = normalizeDatasetSettings(b || {});
+  return (
+    left.origin_length === right.origin_length
+    && left.development_length === right.development_length
+    && left.cumulative === right.cumulative
+    && left.calendar === right.calendar
+  );
+}
+
+function notifyDatasetDirtyState() {
+  const dirty = datasetSettingsDirty || notesDirty;
+  try {
+    window.parent?.postMessage({
+      type: "arcrho:dataset-dirty",
+      inst: instanceId,
+      dirty,
+    }, "*");
+  } catch {}
+}
+
+function updateDatasetSaveUi() {
+  const bar = document.getElementById("datasetSaveBar");
+  const saveBtn = document.getElementById("datasetSaveBtn");
+  const cancelBtn = document.getElementById("datasetCancelBtn");
+  const hasContext = hasDatasetSidecarContext(sidecarContextPayload) || hasNotesContext(notesContextPayload);
+  const dirty = datasetSettingsDirty || notesDirty;
+  if (bar) bar.hidden = !hasContext;
+  if (saveBtn) {
+    saveBtn.disabled = datasetSaveInFlight || !hasContext || !dirty;
+    saveBtn.classList.toggle("is-clean", !dirty);
+  }
+  if (cancelBtn) cancelBtn.disabled = datasetSaveInFlight || !dirty;
+  notifyDatasetDirtyState();
+}
+
+function refreshDatasetSettingsDirty() {
+  datasetSettingsDirty = !!lastSavedDatasetSettings && !sameDatasetSettings(getCurrentDatasetSettings(), lastSavedDatasetSettings);
+  updateDatasetSaveUi();
+}
+
+function applyDatasetSettingsToControls(settings = {}) {
+  const normalized = normalizeDatasetSettings(settings);
+  setLenSelectValue("originLenSelect", String(normalized.origin_length));
+  setLenSelectValue("devLenSelect", String(normalized.development_length));
+  const linkChk = document.getElementById("linkLenChk");
+  if (linkChk && normalized.origin_length !== normalized.development_length) {
+    linkChk.checked = false;
+  }
+  const cumulativeChk = document.getElementById("cumulativeChk");
+  if (cumulativeChk) cumulativeChk.checked = normalized.cumulative;
+  const mode = normalized.calendar ? "calendar" : "development";
+  const modeInput = document.querySelector(`input[name="timeMode"][value="${mode}"]`);
+  if (modeInput) modeInput.checked = true;
+  refreshLenDropdowns();
+}
+
+async function syncSidecarForCurrentDataset(options = {}) {
+  const context = buildDatasetSidecarContextPayload();
+  const key = buildDatasetSidecarContextKey(context);
+  sidecarContextPayload = hasDatasetSidecarContext(context) ? context : null;
+  sidecarContextKey = key;
+  if (!key) {
+    lastSavedDatasetSettings = null;
+    datasetSettingsDirty = false;
+    updateDatasetSaveUi();
+    return false;
+  }
+
+  const nonce = ++sidecarSyncNonce;
+  const resp = await loadDatasetSidecar(context);
+  if (nonce !== sidecarSyncNonce) return false;
+  if (!resp.ok) {
+    setStatus(`Dataset settings load failed: ${resp?.data?.detail || "Unknown error."}`);
+    lastSavedDatasetSettings = normalizeDatasetSettings(getCurrentDatasetSettings());
+    datasetSettingsDirty = false;
+    updateDatasetSaveUi();
+    return false;
+  }
+
+  const data = resp.data || {};
+  const settings = data.exists
+    ? normalizeDatasetSettings(data)
+    : normalizeDatasetSettings(getCurrentDatasetSettings());
+  lastSavedDatasetSettings = settings;
+  if (options?.applyLengths !== false && data.exists) {
+    applyDatasetSettingsToControls(settings);
+    saveTriInputsToStorage();
+  }
+  datasetSettingsDirty = false;
+  updateDatasetSaveUi();
+  return true;
+}
+
+async function saveDatasetSidecarForCurrentContext() {
+  const context = sidecarContextPayload || buildDatasetSidecarContextPayload();
+  if (!hasDatasetSidecarContext(context)) {
+    return { ok: false, error: "Project, Reserving Class, and Dataset Type are required." };
+  }
+  const settings = getCurrentDatasetSettings();
+  const resp = await saveDatasetSidecar({
+    ...context,
+    ...settings,
+  });
+  if (!resp.ok) {
+    return { ok: false, error: resp?.data?.detail || "Failed to save dataset settings." };
+  }
+  sidecarContextPayload = context;
+  sidecarContextKey = buildDatasetSidecarContextKey(context);
+  lastSavedDatasetSettings = normalizeDatasetSettings(settings);
+  datasetSettingsDirty = false;
+  updateDatasetSaveUi();
+  return { ok: true, data: resp.data };
+}
+
+async function saveDatasetChanges(options = {}) {
+  if (datasetSaveInFlight) return { ok: false, error: "Save already in progress." };
+  datasetSaveInFlight = true;
+  updateDatasetSaveUi();
+  try {
+    if (datasetSettingsDirty) {
+      const sidecarResult = await saveDatasetSidecarForCurrentContext();
+      if (!sidecarResult.ok) return sidecarResult;
+    }
+    if (notesDirty) {
+      const notesResult = await saveNotesForCurrentContext({ silentStatus: true });
+      if (!notesResult.ok) return notesResult;
+    }
+    updateDatasetSaveUi();
+    if (!options?.silentStatus) setStatus("Dataset settings saved.");
+    return { ok: true };
+  } finally {
+    datasetSaveInFlight = false;
+    updateDatasetSaveUi();
+  }
+}
+
+async function discardDatasetChanges(options = {}) {
+  const reload = options?.reload !== false;
+  if (lastSavedDatasetSettings) {
+    applyDatasetSettingsToControls(lastSavedDatasetSettings);
+    saveTriInputsToStorage();
+    if (reload) {
+      const project = getResolvedProjectValue();
+      if (project) {
+        await ensureHeadersForProject(project);
+        await ensureDevHeadersForProject(project);
+      }
+      renderTable();
+      notifyDatasetUpdated();
+      renderChart();
+      setStatus("Loading dataset...");
+      scheduleAutoRun(0);
+    }
+  }
+  if (notesDirty) applyNotesInputValue(lastSavedNotesText);
+  datasetSettingsDirty = false;
+  updateDatasetSaveUi();
+}
+
+function resolveDatasetCancelConfirm(value) {
+  const overlay = document.getElementById("datasetCancelConfirmOverlay");
+  if (overlay) overlay.hidden = true;
+  const resolve = datasetCancelConfirmResolve;
+  datasetCancelConfirmResolve = null;
+  if (resolve) resolve(!!value);
+}
+
+function showDatasetCancelConfirm(reason = "close") {
+  if (datasetCancelConfirmResolve) return Promise.resolve(false);
+  const overlay = document.getElementById("datasetCancelConfirmOverlay");
+  const title = document.getElementById("datasetCancelConfirmTitle");
+  const message = document.getElementById("datasetCancelConfirmMessage");
+  const yesBtn = document.getElementById("datasetCancelConfirmYes");
+  if (!overlay || !yesBtn) return Promise.resolve(false);
+
+  const isClose = reason === "close";
+  if (title) title.textContent = isClose ? "Cancel and close?" : "Cancel changes?";
+  if (message) {
+    message.textContent = isClose
+      ? "Unsaved dataset changes will be discarded and the window will close."
+      : "Unsaved dataset changes will be discarded.";
+  }
+
+  overlay.hidden = false;
+  requestAnimationFrame(() => yesBtn.focus());
+  return new Promise((resolve) => {
+    datasetCancelConfirmResolve = resolve;
+  });
+}
+
+async function confirmCancelDatasetChanges(reason = "close") {
+  if (!(datasetSettingsDirty || notesDirty)) return true;
+  const discard = await showDatasetCancelConfirm(reason);
+  if (!discard) return false;
+  await discardDatasetChanges({ reload: reason !== "close" });
+  return true;
+}
+
+function requestConfirmedDatasetClose() {
+  try {
+    window.parent?.postMessage({
+      type: "arcrho:dataset-close-confirmed",
+      inst: instanceId,
+    }, "*");
+  } catch {}
+}
+
+function wireDatasetSaveControls() {
+  document.getElementById("datasetSaveBtn")?.addEventListener("click", async () => {
+    const result = await saveDatasetChanges();
+    if (!result.ok) setStatus(`Dataset save failed: ${result.error || "Unknown error."}`);
+  });
+  document.getElementById("datasetCancelBtn")?.addEventListener("click", async () => {
+    const ok = await confirmCancelDatasetChanges("cancel");
+    if (ok) updateDatasetSaveUi();
+  });
+  document.getElementById("datasetCancelConfirmYes")?.addEventListener("click", () => {
+    resolveDatasetCancelConfirm(true);
+  });
+  document.getElementById("datasetCancelConfirmNo")?.addEventListener("click", () => {
+    resolveDatasetCancelConfirm(false);
+  });
+  document.getElementById("datasetCancelConfirmClose")?.addEventListener("click", () => {
+    resolveDatasetCancelConfirm(false);
+  });
+  document.getElementById("datasetCancelConfirmOverlay")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) resolveDatasetCancelConfirm(false);
+  });
+  document.getElementById("datasetCancelConfirmOverlay")?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      resolveDatasetCancelConfirm(false);
+    }
+  });
+  window.__arcrho_request_close = () => {
+    if (!(datasetSettingsDirty || notesDirty)) return false;
+    void (async () => {
+      const ok = await confirmCancelDatasetChanges("close");
+      if (ok) requestConfirmedDatasetClose();
+    })();
+    return true;
+  };
+  window.__arcrho_consume_close_shortcut = window.__arcrho_request_close;
+  window.addEventListener("beforeunload", (event) => {
+    if (!(datasetSettingsDirty || notesDirty)) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+  updateDatasetSaveUi();
 }
 
 function getDisplayProjectValue() {
@@ -1982,15 +2291,18 @@ function updateNotesSaveUi() {
   saveState.classList.remove("is-dirty", "is-clean", "is-hidden");
   if (!hasContext) {
     saveState.textContent = "No dataset context";
+    updateDatasetSaveUi();
     return;
   }
   if (notesDirty) {
     saveState.textContent = "Unsaved changes";
     saveState.classList.add("is-dirty");
+    updateDatasetSaveUi();
     return;
   }
   saveState.textContent = "";
   saveState.classList.add("is-hidden");
+  updateDatasetSaveUi();
 }
 
 function applyNotesInputValue(text) {
@@ -2004,6 +2316,7 @@ function applyNotesInputValue(text) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
   notesProgrammaticInput = false;
   updateNotesSaveUi();
+  updateDatasetSaveUi();
 }
 
 async function saveNotesForPayload(payload, options = {}) {
@@ -2213,7 +2526,7 @@ async function openReservingClassTreeForDataset(targetInput) {
       console.error("Failed to load reserving class tree:", err);
       setStatus("Error loading reserving class paths.");
     },
-    onSelect: (path) => {
+    onSelect: async (path) => {
       if (!targetInput) return;
       setInputDefaultBound(targetInput, false);
       const normalized = ensureReservingClassOption(path);
@@ -2223,6 +2536,7 @@ async function openReservingClassTreeForDataset(targetInput) {
         clearInputInvalid(targetInput);
       }
       saveTriInputsToStorage();
+      await syncSidecarForCurrentDataset({ applyLengths: true });
       setStatus("Loading dataset...");
       scheduleAutoRun(0);
     },
@@ -2358,6 +2672,7 @@ async function handleProjectSelection(value, options = {}) {
       await applyResolvedProjectDefaults(defaults.project);
     }
     saveTriInputsToStorage();
+    await syncSidecarForCurrentDataset({ applyLengths: true });
     scheduleAutoRun(0);
     return true;
   }
@@ -2462,6 +2777,7 @@ async function handleProjectSelection(value, options = {}) {
       clearInputInvalid(triInput);
     }
 
+    await syncSidecarForCurrentDataset({ applyLengths: true });
     scheduleAutoRun();
     return true;
   } finally {
@@ -2551,12 +2867,12 @@ function wireEvents() {
     redrawChartSafely,
     wireDatasetHostBridge,
     getTriInputsForStorage,
+    syncSidecarForCurrentDataset,
     instanceId,
     wireGridInteractions,
-    getSyncingDatasetTypeFields,
-    setSyncingDatasetTypeFields,
   });
   wireNotesEditor();
+  wireDatasetSaveControls();
 }
 
 
@@ -2584,6 +2900,8 @@ async function boot() {
   }
   await validateAndNormalizeReservingClassInput(getResolvedProjectValue(), { strict: true, showMessage: false });
   validateAndNormalizeDatasetInput({ strict: true, showMessage: false });
+  await syncSidecarForCurrentDataset({ applyLengths: true });
+  enforceDevLenRule({ source: "origin" });
 
   // Initialize dataset tab system (Details / Data / Chart / Notes / Audit Log)
   const redrawPoppedChart = (tabId) => {
@@ -2598,6 +2916,9 @@ async function boot() {
     initialTab: "data",
     injectTabBar: false,
     onTabChange: (tabId) => {
+      if (tabId === "details") {
+        requestAnimationFrame(resizeDetailFormulaInput);
+      }
       if (tabId === "chart") {
         // Chart canvas needs a redraw after becoming visible
         requestAnimationFrame(() => {

@@ -13,7 +13,7 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name, set_data_path_like_vba, send_request_like_vba, wait_for_file
-from app_server.services import book_service
+from app_server.services import book_service, dataset_instance_index_service
 
 
 def _pair_value(pairs: list, key: str) -> str:
@@ -41,9 +41,24 @@ def _pair_int_value(pairs: list, key: str, default: int) -> int:
         return default
 
 
+def _pair_bool_value(pairs: list, key: str, default: bool) -> bool:
+    raw = _pair_value(pairs, key)
+    if not raw:
+        return default
+    text = raw.strip().lower()
+    if text in {"true", "yes", "1"}:
+        return True
+    if text in {"false", "no", "0"}:
+        return False
+    return default
+
+
 def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
     dataset_name = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
     if not dataset_name:
+        return
+    sidecar_path = _dataset_sidecar_path(data_path, pairs)
+    if os.path.exists(sidecar_path):
         return
     user_name = getpass.getuser()
     created = datetime.utcnow().isoformat(timespec="seconds") + "Z"
@@ -62,18 +77,30 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "data_format_code": 0,
         "origin_length": _pair_int_value(pairs, "OriginLength", 12),
         "development_length": _pair_int_value(pairs, "DevelopmentLength", 12),
+        "cumulative": _pair_bool_value(pairs, "Cumulative", True),
+        "calendar": _pair_bool_value(pairs, "Calendar", False),
         "csv_file": os.path.basename(data_path),
         "user": user_name,
         "created": created,
         "modified_by": user_name,
         "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
     }
-    sidecar_path = _dataset_sidecar_path(data_path, pairs)
     tmp_path = f"{sidecar_path}.{uuid.uuid4()}.tmp"
     with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
         f.write("\n")
     os.replace(tmp_path, sidecar_path)
+
+
+def _refresh_dataset_instance_index_after_cache_write(pairs: list) -> None:
+    project_name = _pair_value(pairs, "ProjectName")
+    reserving_class = _pair_value(pairs, "Path")
+    if not project_name or not reserving_class:
+        return
+    try:
+        dataset_instance_index_service.rebuild_index(project_name, reserving_class)
+    except Exception:
+        return
 
 
 def arcrho_tri_cache_matches(data_path: str, pairs: list) -> bool:
@@ -94,7 +121,19 @@ def arcrho_tri_cache_matches(data_path: str, pairs: list) -> bool:
         "reserving_class": _pair_value(pairs, "Path"),
         "project_name": _pair_value(pairs, "ProjectName"),
     }
-    return all(str(payload.get(key) or "").strip() == value for key, value in checks.items())
+    for key, value in checks.items():
+        if isinstance(value, bool):
+            if bool(payload.get(key)) != value:
+                return False
+        elif isinstance(value, int):
+            try:
+                if int(payload.get(key)) != value:
+                    return False
+            except (TypeError, ValueError):
+                return False
+        elif str(payload.get(key) or "").strip() != value:
+            return False
+    return True
 
 
 def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
@@ -131,11 +170,12 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
     }
 
 
-def _header_cache_pairs(project_name: str, period_type: int, transposed: bool, period_length: int) -> list:
+def _header_cache_pairs(project_name: str, period_type: int, transposed: bool, period_length: int, calendar: bool = False) -> list:
     return [
         ("Function", "ArcRhoHeaders"),
         ("periodType", str(period_type)),
         ("Transposed", str(transposed)),
+        ("Calendar", str(calendar)),
         ("PeriodLength", str(period_length)),
         ("ProjectName", project_name),
         ("StoredPeriodLength", str(-1)),
@@ -146,17 +186,18 @@ def _target_header_cache_paths(project_name: str, origin_length: Any, developmen
     targets: list[str] = []
     seen = set()
     specs = (
-        (0, False, origin_length),
-        (1, True, development_length),
+        (0, False, origin_length, False),
+        (1, True, development_length, False),
+        (1, True, development_length, True),
     )
-    for period_type, transposed, length in specs:
+    for period_type, transposed, length, calendar in specs:
         try:
             period_length = int(length)
         except (TypeError, ValueError):
             continue
         if period_length <= 0:
             continue
-        path = set_data_path_like_vba(_header_cache_pairs(project_name, period_type, transposed, period_length))
+        path = set_data_path_like_vba(_header_cache_pairs(project_name, period_type, transposed, period_length, calendar))
         normalized = os.path.normcase(os.path.abspath(path))
         if normalized in seen:
             continue
@@ -307,6 +348,7 @@ def run_arcrho_tri(pairs: list, data_path: str, timeout_sec: float, force_refres
 
     try:
         _write_dataset_sidecar(data_path, pairs)
+        _refresh_dataset_instance_index_after_cache_write(pairs)
     except OSError as err:
         raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")
 

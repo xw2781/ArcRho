@@ -329,6 +329,95 @@ def _get_org_label(date_val, org_len):
         return year
 
 
+def _request_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    text = str(value if value is not None else "").strip().lower()
+    if text in {"true", "yes", "1"}:
+        return True
+    if text in {"false", "no", "0"}:
+        return False
+    return default
+
+
+def _as_month_period(value):
+    n = int(value)
+    if len(str(n)) == 4:
+        return n * 100 + 1
+    return n
+
+
+def _add_months(yyyymm, months):
+    year = int(yyyymm) // 100
+    month = int(yyyymm) % 100
+    total = year * 12 + (month - 1) + int(months)
+    return (total // 12) * 100 + (total % 12) + 1
+
+
+def _month_period_label(start_yyyymm, end_yyyymm):
+    start = int(start_yyyymm)
+    end = int(end_yyyymm)
+    return f"{start % 100:02d}/{start // 100 % 100:02d} - {end % 100:02d}/{end // 100 % 100:02d}"
+
+
+def _development_age_labels(project_settings, dev_len):
+    acc_yrmo_all = _generate_period_range(
+        project_settings['origin_start'], project_settings['origin_end'],
+        project_settings.get('date_granularity', 'monthly'))
+    is_annual = project_settings.get('date_granularity') == 'annual'
+    dev_cnt = len(acc_yrmo_all) if is_annual else round(len(acc_yrmo_all)/dev_len)
+    first_mon = int(project_settings['dev_end'] % 100)
+
+    dev_label = list(range(first_mon, dev_cnt*dev_len+1, dev_len))
+    for i in range(1, 999):
+        prior_mon = first_mon - dev_len*i
+        if prior_mon > 0:
+            dev_label = [prior_mon] + dev_label
+        else:
+            break
+    return dev_label
+
+
+def _calendar_periods_from_dev_labels(project_settings, dev_label):
+    origin_start = _as_month_period(project_settings['origin_start'])
+    periods = []
+    prior_end = None
+    for age in dev_label:
+        end_period = _add_months(origin_start, int(age) - 1)
+        start_period = origin_start if prior_end is None else _add_months(prior_end, 1)
+        periods.append({
+            "start": start_period,
+            "end": end_period,
+            "label": _month_period_label(start_period, end_period),
+        })
+        prior_end = end_period
+    return periods
+
+
+def _reshape_triangle_to_calendar(df, org_index_grp, dev_label, project_settings):
+    calendar_periods = _calendar_periods_from_dev_labels(project_settings, dev_label)
+    calendar_labels = [period["label"] for period in calendar_periods]
+    end_to_col = {period["end"]: idx for idx, period in enumerate(calendar_periods)}
+    out = pd.DataFrame(np.nan, index=df.index, columns=calendar_labels)
+
+    for row_idx, group in enumerate(org_index_grp):
+        if row_idx >= len(df.index) or not group:
+            continue
+        origin_start = _as_month_period(group[0])
+        for dev_age in dev_label:
+            if dev_age not in df.columns:
+                continue
+            value = df.iat[row_idx, df.columns.get_loc(dev_age)]
+            if pd.isna(value):
+                continue
+            dev_end = _add_months(origin_start, int(dev_age) - 1)
+            col_idx = end_to_col.get(dev_end)
+            if col_idx is None:
+                continue
+            out.iat[row_idx, col_idx] = value
+    return out
+
+
 def vector_to_triangle(df: pd.Series | pd.DataFrame, colnames=None) -> pd.DataFrame:
     """
     Convert a vector (Series or 1-col DataFrame) to a triangle DataFrame.
@@ -556,6 +645,7 @@ def UDF_ADASHeaders(arg):
     org_len = int(arg['PeriodLength'])
     dev_len = int(arg['PeriodLength'])
     period_type = int(arg['periodType'])
+    calendar_mode = _request_bool(arg.get('Calendar'), False)
 
     df = _get_df(project_name)
     df_info = PROJECT_CONFIG[project_name]['Source Table']
@@ -585,25 +675,12 @@ def UDF_ADASHeaders(arg):
         if (dev_len == 'Default') or (org_len % dev_len != 0):
             dev_len = org_len
 
-        # Use project configuration to calculate development counts
-        acc_yrmo_all = _generate_period_range(
-            project_settings['origin_start'], project_settings['origin_end'],
-            project_settings.get('date_granularity', 'monthly'))
-        # Fix dev_cnt: for annual, number of periods = number of years; for monthly, divide by dev_len
-        is_annual = project_settings.get('date_granularity') == 'annual'
-        dev_cnt = len(acc_yrmo_all) if is_annual else round(len(acc_yrmo_all)/dev_len)
-        first_mon = int(project_settings['dev_end'] % 100)
+        dev_label = _development_age_labels(project_settings, dev_len)
 
-        dev_label = list(range(first_mon, dev_cnt*dev_len+1, dev_len))
-
-        for i in range(1, 999):
-            prior_mon = first_mon - dev_len*i
-            if prior_mon > 0:
-                dev_label = [prior_mon] + dev_label
-            else:
-                break
-
-        dev_label = list(map(lambda x:f"{x}m", dev_label))
+        if calendar_mode:
+            dev_label = [period["label"] for period in _calendar_periods_from_dev_labels(project_settings, dev_label)]
+        else:
+            dev_label = list(map(lambda x:f"{x}m", dev_label))
         return write_lists_to_csv(arg['DataPath'], [dev_label])
     
     else:
@@ -649,7 +726,8 @@ def _filter_main_table(df, date_cols, rsv_cls_col_names, included_rsv_cls_types,
 def UDF_ADASTri(arg):
     org_len = arg['OriginLength']
     dev_len = arg['DevelopmentLength']
-    cumulative = arg['Cumulative']
+    cumulative = _request_bool(arg.get('Cumulative'), True)
+    calendar_mode = _request_bool(arg.get('Calendar'), False)
     project_name = arg['ProjectName']
 
     # initialize
@@ -715,14 +793,7 @@ def UDF_ADASTri(arg):
         month_abbr = calendar.month_abbr[dev_month]
         dev_label = [f"{month_abbr} {dev_year}"]
     else:
-        dev_label = list(range(first_mon, dev_cnt*dev_len+1, dev_len))
-
-        for i in range(1, 999):
-            prior_mon = first_mon - dev_len*i
-            if prior_mon > 0:
-                dev_label = [prior_mon] + dev_label
-            else:
-                break
+        dev_label = _development_age_labels(project_settings, dev_len)
     # Compute slicing step: for annual, group by 1 year; for monthly, group by org_len months
     org_step = 1 if is_annual else org_len
     org_index_grp = [tuple(acc_yrmo_all[i: i+org_step]) for i in range(0, len(acc_yrmo_all), org_step)]
@@ -799,6 +870,8 @@ def UDF_ADASTri(arg):
 
     if output_data_format == 'Vector' or is_vector_function(arg['Function']):
         df2 = df2.iloc[:, [0]].fillna(0)
+    elif calendar_mode:
+        df2 = _reshape_triangle_to_calendar(df2, org_index_grp, dev_label, project_settings)
 
     # Output
     _export_dataframe(df2, arg)

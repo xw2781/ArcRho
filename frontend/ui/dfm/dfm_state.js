@@ -156,6 +156,11 @@ export function getDfmInst() {
 function notifyDfmDirtyState(dirty) {
   if (dfmIsDirty === dirty) return;
   dfmIsDirty = dirty;
+  try {
+    window.dispatchEvent(new CustomEvent("arcrho:dfm-dirty-state", { detail: { dirty } }));
+  } catch {
+    // ignore
+  }
   const inst = getDfmInst();
   window.parent.postMessage({ type: "arcrho:dfm-dirty", inst, dirty }, "*");
 }

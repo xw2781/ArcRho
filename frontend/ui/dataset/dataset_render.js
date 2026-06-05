@@ -205,13 +205,47 @@ function getEffectiveDevLabels(model) {
   return devs.concat(Array(maxCols - devs.length).fill(""));
 }
 
+function isTransposedView() {
+  return document.getElementById("transposedChk")?.checked === true;
+}
+
+function transposeMatrix(matrix) {
+  const rows = Array.isArray(matrix) ? matrix : [];
+  let maxCols = 0;
+  for (const row of rows) {
+    if (Array.isArray(row)) maxCols = Math.max(maxCols, row.length);
+  }
+  const out = [];
+  for (let c = 0; c < maxCols; c++) {
+    const next = [];
+    for (let r = 0; r < rows.length; r++) {
+      next.push(rows[r]?.[c]);
+    }
+    out.push(next);
+  }
+  return out;
+}
+
+export function getDisplayDatasetModel() {
+  const model = state.model;
+  if (!model || !isTransposedView()) return model;
+
+  return {
+    ...model,
+    origin_labels: getEffectiveDevLabels(model),
+    dev_labels: Array.isArray(model.origin_labels) ? model.origin_labels.map(String) : [],
+    values: transposeMatrix(model.values),
+    mask: transposeMatrix(model.mask).map((row) => row.map(Boolean)),
+  };
+}
+
 export function renderTable() {
 
   const wrap = $("tableWrap");
   wrap.innerHTML = "";
   ensureCtxMenuWired();
 
-  const model = state.model;
+  const model = getDisplayDatasetModel();
   if (!model) {
     wrap.innerHTML = `<div class="small">No dataset loaded.</div>`;
     return;
@@ -247,12 +281,14 @@ export function renderTable() {
 
   const th0 = document.createElement("th");
   const originLen = document.getElementById("originLenSelect")?.value || 12;
-  th0.textContent = getOriginLabelText(originLen);
+  const transposed = isTransposedView();
+  const calendar = document.querySelector('input[name="timeMode"][value="calendar"]')?.checked === true;
+  th0.textContent = transposed ? (calendar ? "Calendar Period" : "Development Period") : getOriginLabelText(originLen);
   trh.appendChild(th0);
 
   devs.forEach((d, c) => {
     const th = document.createElement("th");
-    th.textContent = d;
+    th.textContent = transposed ? formatOriginLabel(d, originLen) : d;
 
     th.classList.add("colhdr");
     th.dataset.c = String(c);
@@ -358,7 +394,7 @@ export function renderTable() {
 }
 
 export function renderActiveCellUI() {
-  const model = state.model;
+  const model = getDisplayDatasetModel();
   if (!model) return;
 
   // clear old active class
@@ -402,7 +438,7 @@ export function renderChart() {
 
   const oLen = Number(originLen) || 12;
 
-  renderChartCanvas(canvas, state.model, {
+  renderChartCanvas(canvas, getDisplayDatasetModel(), {
     mode: state.chartMode === "byCol" ? "byCol" : "byRow",
     activeCell: state.activeCell,
     formatValue: formatNum,

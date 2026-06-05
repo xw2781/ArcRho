@@ -1,7 +1,7 @@
 export function createDatasetHeadersService(deps) {
   const { state, setStatus } = deps;
 
-  const HEADER_CACHE_VERSION = "v2";
+  const HEADER_CACHE_VERSION = "v3";
   const HEADER_PREFIX_V1 = "arcrho_header_labels::";
   const DEV_HEADER_PREFIX_V1 = "arcrho_dev_header_labels::";
   const HEADER_PREFIX_V2 = `${HEADER_PREFIX_V1}${HEADER_CACHE_VERSION}::`;
@@ -34,13 +34,18 @@ export function createDatasetHeadersService(deps) {
     }
   }
 
-  function devHeaderKey(project, originLen, devLen) {
-    return `${DEV_HEADER_PREFIX_V2}${String(project || "").trim()}::${String(originLen || "")}::${String(devLen || "")}`;
+  function getCurrentCalendarMode() {
+    return document.querySelector('input[name="timeMode"][value="calendar"]')?.checked === true;
   }
 
-  function loadDevHeadersCache(project, originLen, devLen) {
+  function devHeaderKey(project, originLen, devLen, calendar) {
+    const mode = calendar ? "cal" : "dev";
+    return `${DEV_HEADER_PREFIX_V2}${String(project || "").trim()}::${String(originLen || "")}::${String(devLen || "")}::${mode}`;
+  }
+
+  function loadDevHeadersCache(project, originLen, devLen, calendar) {
     try {
-      const raw = localStorage.getItem(devHeaderKey(project, originLen, devLen)) || "";
+      const raw = localStorage.getItem(devHeaderKey(project, originLen, devLen, calendar)) || "";
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed?.labels)) return parsed.labels.map(String);
@@ -50,9 +55,9 @@ export function createDatasetHeadersService(deps) {
     return null;
   }
 
-  function saveDevHeadersCache(project, originLen, devLen, labels) {
+  function saveDevHeadersCache(project, originLen, devLen, calendar, labels) {
     try {
-      localStorage.setItem(devHeaderKey(project, originLen, devLen), JSON.stringify({ labels }));
+      localStorage.setItem(devHeaderKey(project, originLen, devLen, calendar), JSON.stringify({ labels }));
     } catch {
       // ignore
     }
@@ -74,6 +79,7 @@ export function createDatasetHeadersService(deps) {
     timeoutSec = 6.0,
     periodType = 0,
     transposed = false,
+    calendar = false,
   ) {
     const resp = await fetch("/arcrho/headers", {
       method: "POST",
@@ -84,6 +90,7 @@ export function createDatasetHeadersService(deps) {
         timeout_sec: timeoutSec,
         periodType,
         Transposed: !!transposed,
+        Calendar: !!calendar,
       }),
     });
     if (!resp.ok) {
@@ -115,7 +122,8 @@ export function createDatasetHeadersService(deps) {
     if (!clearAll && hasTargetLengths) {
       try {
         localStorage.removeItem(headerKey(p, originLen));
-        localStorage.removeItem(devHeaderKey(p, originLen, devLen));
+        localStorage.removeItem(devHeaderKey(p, originLen, devLen, false));
+        localStorage.removeItem(devHeaderKey(p, originLen, devLen, true));
       } catch {
         // ignore
       }
@@ -215,14 +223,15 @@ export function createDatasetHeadersService(deps) {
     const forceRefresh = !!options?.forceRefresh;
     const originLen = getCurrentOriginLength();
     const devLen = getCurrentDevLength();
-    const key = `${p}||${originLen}||${devLen}`;
+    const calendar = getCurrentCalendarMode();
+    const key = `${p}||${originLen}||${devLen}||${calendar}`;
     if (!forceRefresh && key === lastDevHeaderKey && Array.isArray(state.devHeaderLabels) && state.devHeaderLabels.length) {
       return;
     }
 
     if (!forceRefresh) {
       // Try cache first
-      const cached = loadDevHeadersCache(p, originLen, devLen);
+      const cached = loadDevHeadersCache(p, originLen, devLen, calendar);
       if (Array.isArray(cached) && cached.length) {
         state.devHeaderLabels = cached;
         lastDevHeaderKey = key;
@@ -231,15 +240,15 @@ export function createDatasetHeadersService(deps) {
     }
 
     // periodType=1, Transposed=true (csv is still one line)
-    setStatus(forceRefresh ? "Refreshing development labels (cache cleared)..." : "Refreshing development labels...");
+    setStatus(forceRefresh ? "Refreshing column labels (cache cleared)..." : "Refreshing column labels...");
     for (let i = 0; i < 2; i++) {
       try {
         // periodType=1, Transposed=true (csv is still one line)
         // For dev headers, PeriodLength follows the UI "Development Length" selector.
-        const labels = await fetchHeadersViaGetDataset(p, devLen, 6.0, 1, true);
+        const labels = await fetchHeadersViaGetDataset(p, devLen, 6.0, 1, true, calendar);
         if (Array.isArray(labels)) {
           state.devHeaderLabels = labels;
-          saveDevHeadersCache(p, originLen, devLen, labels);
+          saveDevHeadersCache(p, originLen, devLen, calendar, labels);
           lastDevHeaderKey = key;
           return;
         }

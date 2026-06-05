@@ -84,6 +84,7 @@ let ratioFileWatchInFlight = false;
 let ratioFileWatchPath = "";
 let ratioFileWatchRevisionToken = "";
 let ratioFileWatchDirtyWarnToken = "";
+let lastCleanDfmMethodPayload = null;
 const DFM_INSTANCE_PRESENCE_EVENT = "arcrho:dfm-instance-presence";
 const DFM_LOCAL_LOOKUP_DEBUG_STATUS = true; // Temporary debug aid.
 const DFM_ANALYSIS_DECIMALS = 4;
@@ -850,7 +851,13 @@ function serializeDfmDirtySnapshot(payload) {
 }
 
 function recordCleanDfmDirtySnapshot(payload = null) {
-  lastCleanDfmDirtySnapshot = serializeDfmDirtySnapshot(payload || buildDfmMethodPayload());
+  const cleanPayload = payload || buildDfmMethodPayload();
+  try {
+    lastCleanDfmMethodPayload = JSON.parse(JSON.stringify(cleanPayload));
+  } catch {
+    lastCleanDfmMethodPayload = cleanPayload;
+  }
+  lastCleanDfmDirtySnapshot = serializeDfmDirtySnapshot(cleanPayload);
 }
 
 function isCurrentDfmDirtyComparedToCleanSnapshot() {
@@ -995,6 +1002,8 @@ export async function loadRatioSelectionIfExists(reason) {
     clearMethodSavedFlag();
     renderRatioTable();
     renderResultsTable();
+    recordCleanDfmDirtySnapshot();
+    markDfmClean();
     return;
   }
   emitDfmInstancePresence("found");
@@ -1016,6 +1025,28 @@ export function scheduleRatioSelectionLoad(reason) {
     ratioLoadTimer = null;
     loadRatioSelectionIfExists(scheduledReason);
   }, 120);
+}
+
+export async function restoreCleanDfmMethodState() {
+  if (lastCleanDfmMethodPayload) {
+    return applyDfmMethodPayload(lastCleanDfmMethodPayload, { reason: "cancel", markClean: true });
+  }
+  const hostApi = getHostApi();
+  if (!hostApi || typeof hostApi.readJsonFile !== "function") {
+    return { ok: false, error: "desktop app required" };
+  }
+  try {
+    const path = await buildRatioSavePath();
+    const result = await hostApi.readJsonFile({ path });
+    if (!result?.exists) {
+      return { ok: false, error: "No saved DFM method is available to restore." };
+    }
+    const applied = await applyDfmMethodPayload(result.data, { reason: "cancel", markClean: true });
+    if (applied?.ok) rememberDfmMethodFileRevision(path, result.revision);
+    return applied;
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not restore DFM method.") };
+  }
 }
 
 export function buildDfmMethodPayload(options = {}) {

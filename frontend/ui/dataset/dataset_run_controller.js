@@ -186,11 +186,11 @@ export function createDatasetRunController(deps) {
   }
 
   async function autoRun() {
-    const { project, path, tri, cumulative, originLen, devLen } = getTriInputs();
+    const { project, path, tri, cumulative, calendar, originLen, devLen } = getTriInputs();
 
     if (!project || !path || !tri) return;
 
-    const key = `${project}||${path}||${tri}||${cumulative}||${originLen}||${devLen}`;
+    const key = `${project}||${path}||${tri}||${cumulative}||${calendar}||${originLen}||${devLen}`;
 
     if (key === lastAutoKey) return;
 
@@ -234,9 +234,9 @@ export function createDatasetRunController(deps) {
       clearCache = false;
       setStatus("Dependencies unresolved: clear-cache refresh disabled; trying local CSV only.");
     }
-    const { cumulative, originLen, devLen } = getTriInputs();
+    const { cumulative, calendar, originLen, devLen } = getTriInputs();
     const { project, path, tri } = validated;
-    const triRequestInputs = { project, path, tri, cumulative, originLen, devLen };
+    const triRequestInputs = { project, path, tri, cumulative, calendar, originLen, devLen };
     const requestPayload = buildTriRequestPayload(triRequestInputs);
     const loadingTarget = String(tri || config.DS_ID || "").trim() || "dataset";
     let loadingPopupVisible = false;

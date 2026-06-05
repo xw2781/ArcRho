@@ -58,12 +58,25 @@ def sanitize_dataset_file_name(value: Any, fallback: str = "Dataset") -> str:
     return text or fallback
 
 
-def build_length_scoped_dataset_file_name(dataset_name: Any, origin_length: Any, development_length: Any) -> str:
+def _request_bool_suffix(value: Any, true_suffix: str, false_suffix: str) -> str:
+    text = str(value if value is not None else "").strip().lower()
+    return true_suffix if text in {"true", "yes", "1"} else false_suffix
+
+
+def build_length_scoped_dataset_file_name(
+    dataset_name: Any,
+    origin_length: Any,
+    development_length: Any,
+    cumulative: Any = True,
+    calendar: Any = False,
+) -> str:
     dataset_file = sanitize_dataset_file_name(dataset_name)
     origin = str(origin_length if origin_length is not None else "").strip()
     development = str(development_length if development_length is not None else "").strip()
     if origin and development:
-        return f"{dataset_file}@{origin}@{development}"
+        cum_suffix = _request_bool_suffix(cumulative, "cum", "inc")
+        cal_suffix = _request_bool_suffix(calendar, "cal", "dev")
+        return f"{dataset_file}@{origin}@{development}@{cum_suffix}@{cal_suffix}"
     return dataset_file
 
 
@@ -78,6 +91,8 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
     dataset_name = ""
     origin_length = ""
     development_length = ""
+    cumulative = True
+    calendar = False
     values = []
     for k, v in pairs:
         key = (k or "").strip().lower()
@@ -99,6 +114,12 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
         elif key == "developmentlength":
             development_length = value
             values.append(value)
+        elif key == "cumulative":
+            cumulative = value
+            values.append(value)
+        elif key == "calendar":
+            calendar = value
+            values.append(value)
         else:
             values.append(value)
 
@@ -113,7 +134,13 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
 
     if function_name.strip().lower() == "arcrhotri" and reserving_class and dataset_name:
         rc_folder = sanitize_reserving_class_folder(reserving_class)
-        dataset_file = build_length_scoped_dataset_file_name(dataset_name, origin_length, development_length)
+        dataset_file = build_length_scoped_dataset_file_name(
+            dataset_name,
+            origin_length,
+            development_length,
+            cumulative,
+            calendar,
+        )
         return os.path.join(project_data_dir, rc_folder, f"{dataset_file}.csv")
 
     full_name = config.encode_filename_segment("@".join(values))

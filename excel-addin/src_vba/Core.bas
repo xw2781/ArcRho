@@ -430,6 +430,8 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     Dim datasetName As String
     Dim originLength As String
     Dim developmentLength As String
+    Dim cumulativeMode As String
+    Dim calendarMode As String
     Dim projectDataPath As String
     Dim generatedDataPath As String
     Dim manualDataPath As String
@@ -444,6 +446,8 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     s = Replace(s, vbCr, "#")
     s = Replace(s, vbLf, "#")
     lines = Split(s, "#")
+    cumulativeMode = "True"
+    calendarMode = "False"
 
     ' Build the @-joined Value list for legacy flat caches while also capturing
     ' the project, reserving class path, and dataset name for the new ArcRho
@@ -476,6 +480,14 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
                         fullName = fullName & val
                     Case "developmentlength"
                         developmentLength = val
+                        If Len(fullName) > 0 Then fullName = fullName & "@"
+                        fullName = fullName & val
+                    Case "cumulative"
+                        cumulativeMode = val
+                        If Len(fullName) > 0 Then fullName = fullName & "@"
+                        fullName = fullName & val
+                    Case "calendar"
+                        calendarMode = val
                         If Len(fullName) > 0 Then fullName = fullName & "@"
                         fullName = fullName & val
                     Case Else
@@ -511,7 +523,9 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
             If LCase$(Trim$(functionName)) = "arcrhotri" _
                     And Len(Trim$(originLength)) > 0 _
                     And Len(Trim$(developmentLength)) > 0 Then
-                datasetFile = datasetFile & "@" & Trim$(originLength) & "@" & Trim$(developmentLength)
+                datasetFile = datasetFile & "@" & Trim$(originLength) & "@" & Trim$(developmentLength) _
+                    & "@" & RequestBoolSuffix(cumulativeMode, "cum", "inc") _
+                    & "@" & RequestBoolSuffix(calendarMode, "cal", "dev")
             End If
             spec.DataPath = generatedDataPath & "\" & rcFolder & "\" & datasetFile & ".csv"
         End If
@@ -529,6 +543,15 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     spec.ProjectDataPath = projectDataPath
     spec.StorageKind = storageKind
     BuildDatasetRequestSpec = spec
+End Function
+
+Private Function RequestBoolSuffix(ByVal value As String, ByVal trueSuffix As String, ByVal falseSuffix As String) As String
+    Select Case LCase$(Trim$(value))
+        Case "true", "yes", "1"
+            RequestBoolSuffix = trueSuffix
+        Case Else
+            RequestBoolSuffix = falseSuffix
+    End Select
 End Function
 
 Private Function ResolveDatasetStorageKind(ByVal projectName As String, ByVal datasetName As String, ByVal functionName As String) As String

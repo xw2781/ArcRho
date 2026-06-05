@@ -25,3 +25,26 @@ class DatasetNotesSaveRequest(BaseModel):
     reserving_class: str
     dataset_name: str
     notes: str = ""
+
+
+class DatasetSidecarLoadRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    dataset_name: str
+
+
+class DatasetSidecarSaveRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    dataset_name: str
+    origin_length: int = Field(..., ge=1)
+    development_length: int = Field(..., ge=1)
+    cumulative: bool = True
+    calendar: bool = False
+    csv_file: str = ""
+
+
+class CachedDatasetDeleteRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    dataset_names: List[str] = Field(default_factory=list)

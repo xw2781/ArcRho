@@ -111,7 +111,8 @@ Public Function ArcRhoHeaders( _
     Transposed As Boolean, _
     Optional PeriodLength As Integer = 12, _
     Optional ProjectName As String = "Default", _
-    Optional StoredPeriodLength As Integer = -1 _
+    Optional StoredPeriodLength As Integer = -1, _
+    Optional Calendar As Boolean = False _
   ) As Variant
   
     Dim outArr() As Variant
@@ -121,6 +122,7 @@ Public Function ArcRhoHeaders( _
       "Function = ArcRhoHeaders" & "#" & _
       "periodType = " & periodType & "#" & _
       "Transposed = " & Transposed & "#" & _
+      "Calendar = " & Calendar & "#" & _
       "PeriodLength = " & PeriodLength & "#" & _
       "ProjectName = " & SetDefaultProject(ProjectName) & "#" & _
       "StoredPeriodLength = " & StoredPeriodLength _
@@ -346,9 +348,10 @@ Public Function ADASHeaders( _
     Transposed As Boolean, _
     Optional PeriodLength As Integer = 12, _
     Optional ProjectName As String = "Default", _
-    Optional StoredPeriodLength As Integer = -1 _
+    Optional StoredPeriodLength As Integer = -1, _
+    Optional Calendar As Boolean = False _
 ) As Variant
-    ADASHeaders = ArcRhoHeaders(periodType, Transposed, PeriodLength, ProjectName, StoredPeriodLength)
+    ADASHeaders = ArcRhoHeaders(periodType, Transposed, PeriodLength, ProjectName, StoredPeriodLength, Calendar)
 End Function
 
 Public Function ADASTriOrigin( _
