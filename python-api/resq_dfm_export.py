@@ -26,7 +26,7 @@ from pathlib import Path
 # ── Configuration ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb Test"
 RC_PATH = r"PRNJ - PA\PA\NY\Direct Group\MP+PIP"
-RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
+# RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 USER_NAME = ""
 PASSWORD = ""
