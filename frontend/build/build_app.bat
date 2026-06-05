@@ -27,6 +27,7 @@ set "NODE_HOME=%APP_ROOT%\node-portable"
 set "PATH=%NODE_HOME%;%PATH%"
 set "APP_BUILDER_EXE=node_modules\app-builder-bin\win\x64\app-builder.exe"
 set "APP_VERSION="
+set "UPDATE_FEED_DIR=E:\ArcRho Server\releases\installers"
 
 if not defined PYTHON_EXE (
     for /f "usebackq delims=" %%I in (`py -3.10 -c "import sys; print(sys.executable)" 2^>nul`) do set "PYTHON_EXE=%%I"
@@ -143,7 +144,19 @@ if not defined RELEASE_NOTE_PATH (
 echo Release notes generated: %RELEASE_NOTE_PATH%
 echo.
 
-echo Step 5: Cleaning Python build artifacts...
+echo Step 5: Publishing installer update feed...
+echo ----------------------------------------
+powershell -NoProfile -ExecutionPolicy Bypass -File "build\publish_update_feed.ps1" -InstallerPath "dist\ArcRho-Setup-%APP_VERSION%.exe" -FeedDir "%UPDATE_FEED_DIR%" -ReleaseNotesPath "%RELEASE_NOTE_PATH%"
+if errorlevel 1 (
+    echo ERROR: Failed to publish installer update feed.
+    echo.
+    pause
+    exit /b 1
+)
+echo Installer update feed published: %UPDATE_FEED_DIR%
+echo.
+
+echo Step 6: Cleaning Python build artifacts...
 echo ----------------------------------------
 if exist "python_dist" (
     rmdir /s /q "python_dist"
@@ -165,8 +178,11 @@ echo Build completed successfully!
 echo ========================================
 echo.
 echo Output location: dist\
+echo Update feed: %UPDATE_FEED_DIR%
 echo.
 echo - ArcRho-Setup-%APP_VERSION%.exe  (Installer)
+echo - %UPDATE_FEED_DIR%\ArcRho-Setup-%APP_VERSION%.exe  (Published Installer)
+echo - %UPDATE_FEED_DIR%\latest.json  (Update Manifest)
 echo - %RELEASE_NOTE_PATH%  (Release Notes)
 echo.
 pause

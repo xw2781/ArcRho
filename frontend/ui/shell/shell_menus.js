@@ -16,12 +16,13 @@ const helpMenuBtn = document.querySelector('.menu[data-menu="help"]');
 const helpMenuDropdown = document.getElementById("helpMenuDropdown");
 const menuBarEl = document.getElementById("menubar");
 const aboutOverlay = document.getElementById("aboutOverlay");
-const aboutCloseBtn = document.getElementById("aboutCloseBtn");
+const aboutCheckUpdatesBtn = document.getElementById("aboutCheckUpdatesBtn");
 let dfmEditEnabled = false;
 let dfmUndoEnabled = false;
 let dfmRedoEnabled = false;
 let shellMenusWired = false;
 let recentNotebookLoadToken = 0;
+let aboutUpdateCheckRunning = false;
 
 function positionDropdown(btn, dropdown) {
   if (!btn || !dropdown) return;
@@ -71,6 +72,40 @@ export function closeAllShellMenus() {
 
 function openAboutDialog() { aboutOverlay?.classList.add("open"); }
 function closeAboutDialog() { aboutOverlay?.classList.remove("open"); }
+async function checkForUpdatesFromAbout() {
+  if (aboutUpdateCheckRunning) return;
+  const hostApi = shell.getHostApi?.();
+  if (typeof hostApi?.checkForUpdates !== "function") {
+    shell.updateStatusBar?.("Update checks are available in the desktop app.");
+    return;
+  }
+
+  aboutUpdateCheckRunning = true;
+  const previousLabel = aboutCheckUpdatesBtn?.textContent || "Check for Updates";
+  if (aboutCheckUpdatesBtn) {
+    aboutCheckUpdatesBtn.disabled = true;
+    aboutCheckUpdatesBtn.textContent = "Checking...";
+  }
+  shell.updateStatusBar?.("Checking for updates...");
+
+  try {
+    const result = await hostApi.checkForUpdates();
+    const status = String(result?.status || "");
+    if (status === "none") shell.updateStatusBar?.("ArcRho is up to date.");
+    else if (status === "missing-checksum") shell.updateStatusBar?.("Newer installer found, but checksum is missing.");
+    else if (status === "failed" || status === "unsupported" || status === "unavailable") shell.updateStatusBar?.("Update check unavailable.");
+    else if (status === "launching") shell.updateStatusBar?.("Starting update installer...");
+    else shell.updateStatusBar?.("Update check finished.");
+  } catch {
+    shell.updateStatusBar?.("Update check unavailable.");
+  } finally {
+    aboutUpdateCheckRunning = false;
+    if (aboutCheckUpdatesBtn) {
+      aboutCheckUpdatesBtn.disabled = false;
+      aboutCheckUpdatesBtn.textContent = previousLabel;
+    }
+  }
+}
 export function setDfmEditEnabled(enabled) { dfmEditEnabled = !!enabled; updateEditMenuState(); }
 export function setDfmHistoryEnabled({ canUndo = false, canRedo = false } = {}) {
   dfmUndoEnabled = !!canUndo;
@@ -289,7 +324,7 @@ export function toggleNavigationPanel() { sendWorkflowCommand("arcrho:workflow-t
 export function initShellMenus() {
   if (shellMenusWired) return;
   shellMenusWired = true;
-  aboutCloseBtn?.addEventListener("click", closeAboutDialog);
+  aboutCheckUpdatesBtn?.addEventListener("click", checkForUpdatesFromAbout);
   aboutOverlay?.addEventListener("click", (e) => { if (e.target === aboutOverlay) closeAboutDialog(); });
   menuBarEl?.addEventListener("click", (e) => {
     const btn = e.target?.closest?.(".menu[data-menu]");

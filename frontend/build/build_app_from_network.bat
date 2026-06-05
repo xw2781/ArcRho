@@ -3,9 +3,10 @@ setlocal EnableExtensions
 
 REM Network-safe wrapper for running build_app.bat from a UNC path.
 REM Usage from another PC:
-REM   "\\Ne7saswpn02\e\XWSpace\Repos\ArcRho\frontend\build\build_app_network.bat"
+REM   "\\Ne7saswpn02\e\XWSpace\Repos\ArcRho\frontend\build\build_app_from_network.bat"
 REM Optional:
 REM   set PYTHON_EXE=C:\Path\To\Python310\python.exe
+REM Installer update feed publishing is handled by the delegated build_app.bat.
 
 set "SCRIPT_DIR=%~dp0"
 set "ORIGINAL_DIR=%CD%"
@@ -48,6 +49,14 @@ if /i "%~1"=="--check" (
     exit /b 0
 )
 
+call :enable_sign_and_edit_executable
+if errorlevel 1 (
+    popd
+    cd /d "%ORIGINAL_DIR%" >nul 2>nul
+    pause
+    exit /b 1
+)
+
 call build_app.bat %*
 set "BUILD_EXIT_CODE=%ERRORLEVEL%"
 
@@ -55,3 +64,17 @@ popd
 cd /d "%ORIGINAL_DIR%" >nul 2>nul
 
 exit /b %BUILD_EXIT_CODE%
+
+:enable_sign_and_edit_executable
+set "ARCRHO_NETWORK_PACKAGE_JSON=%SCRIPT_DIR%..\package.json"
+if not exist "%ARCRHO_NETWORK_PACKAGE_JSON%" (
+    echo ERROR: Could not find package.json at %ARCRHO_NETWORK_PACKAGE_JSON%
+    exit /b 1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:ARCRHO_NETWORK_PACKAGE_JSON; $text=Get-Content -LiteralPath $p -Raw; $q=[char]34; $falsePattern=$q+'signAndEditExecutable'+$q+'\s*:\s*false'; $truePattern=$q+'signAndEditExecutable'+$q+'\s*:\s*true'; if ($text -match $falsePattern) { $replacement=$q+'signAndEditExecutable'+$q+': true'; $text=[regex]::Replace($text,$falsePattern,$replacement,1); Set-Content -LiteralPath $p -Value $text -NoNewline; exit 0 }; if ($text -match $truePattern) { exit 0 }; Write-Error 'Could not find signAndEditExecutable in package.json.'; exit 1"
+if errorlevel 1 (
+    echo ERROR: Failed to enable signAndEditExecutable in package.json.
+    exit /b 1
+)
+echo Enabled package.json build.win.signAndEditExecutable for network build.
+exit /b 0

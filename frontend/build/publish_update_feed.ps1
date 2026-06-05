@@ -2,9 +2,11 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$InstallerPath,
 
-    [string]$FeedDir = "E:\ArcRho Server\installer",
+    [string]$FeedDir = "E:\ArcRho Server\releases\installers",
 
     [string]$ReleaseNotes = "",
+
+    [string]$ReleaseNotesPath = "",
 
     [switch]$Mandatory
 )
@@ -24,6 +26,11 @@ if (-not $versionMatch.Success) {
 
 $version = $versionMatch.Groups[1].Value
 New-Item -ItemType Directory -Path $FeedDir -Force | Out-Null
+
+if ($ReleaseNotesPath) {
+    $resolvedReleaseNotes = Resolve-Path -LiteralPath $ReleaseNotesPath
+    $ReleaseNotes = Get-Content -LiteralPath $resolvedReleaseNotes.Path -Raw
+}
 
 $targetInstaller = Join-Path $FeedDir $installerFile.Name
 Copy-Item -LiteralPath $installerFile.FullName -Destination $targetInstaller -Force

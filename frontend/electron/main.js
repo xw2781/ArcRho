@@ -92,7 +92,7 @@ const BACKEND_STARTUP_ATTEMPTS = Math.max(
   1,
   parseInt(process.env.ARCRHO_BACKEND_STARTUP_ATTEMPTS || "2", 10) || 2
 );
-const UPDATE_FEED_DIR = process.env.ARCRHO_UPDATE_DIR || "E:\\ArcRho Server\\installer";
+const UPDATE_FEED_DIR = process.env.ARCRHO_UPDATE_DIR || "E:\\ArcRho Server\\releases\\installers";
 const UPDATE_MANIFEST_FILE = process.env.ARCRHO_UPDATE_MANIFEST_FILE || "latest.json";
 const UPDATE_CHECK_TIMEOUT_MS = Math.max(
   1000,
@@ -289,7 +289,23 @@ function createUpdateInfo(version, installerPath, sha256, source, manifest = {})
   };
 }
 
-async function updateInfoFromManifest(manifest) {
+function createUpdateIssue(status, version, installerPath, source, message, detail = "") {
+  return {
+    status,
+    version,
+    installerPath,
+    source,
+    message,
+    detail,
+  };
+}
+
+function isInstallableUpdate(updateInfo) {
+  return !!(updateInfo && !updateInfo.status && updateInfo.version && updateInfo.installerPath && updateInfo.sha256);
+}
+
+async function updateInfoFromManifest(manifest, options = {}) {
+  const reportIssues = options.reportIssues === true;
   const version = String(manifest?.version || "").trim();
   if (!parseVersion(version) || compareVersions(version, app.getVersion()) <= 0) {
     return null;
@@ -299,25 +315,53 @@ async function updateInfoFromManifest(manifest) {
   const installerPath = resolveUpdateInstallerPath(installerName);
   if (!installerPath) {
     console.warn("ArcRho update manifest references an invalid installer path.");
+    if (reportIssues) {
+      return createUpdateIssue(
+        "invalid-update",
+        version,
+        "",
+        "manifest",
+        "ArcRho found a newer update manifest, but its installer path is invalid."
+      );
+    }
     return null;
   }
 
   const stat = await fs.promises.stat(installerPath).catch(() => null);
   if (!stat?.isFile()) {
     console.warn(`ArcRho update installer was not found: ${installerPath}`);
+    if (reportIssues) {
+      return createUpdateIssue(
+        "missing-installer",
+        version,
+        installerPath,
+        "manifest",
+        "ArcRho found a newer update manifest, but the installer file is missing."
+      );
+    }
     return null;
   }
 
   const sha256 = await readInstallerSha256(installerPath, manifest.sha256);
   if (!sha256) {
     console.warn(`ArcRho update installer is missing a SHA-256 checksum: ${installerPath}`);
+    if (reportIssues) {
+      return createUpdateIssue(
+        "missing-checksum",
+        version,
+        installerPath,
+        "manifest",
+        "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
+        `Add a checksum in ${path.basename(installerPath)}.sha256 or in ${UPDATE_MANIFEST_FILE}.`
+      );
+    }
     return null;
   }
 
   return createUpdateInfo(version, installerPath, sha256, "manifest", manifest);
 }
 
-async function readManifestUpdate() {
+async function readManifestUpdate(options = {}) {
   const manifestPath = path.join(UPDATE_FEED_DIR, UPDATE_MANIFEST_FILE);
   let raw = "";
   try {
@@ -330,14 +374,15 @@ async function readManifestUpdate() {
   }
 
   try {
-    return updateInfoFromManifest(JSON.parse(raw));
+    return updateInfoFromManifest(JSON.parse(raw), options);
   } catch (err) {
     console.warn(`ArcRho update manifest is invalid: ${err?.message || err}`);
     return null;
   }
 }
 
-async function scanInstallerFolderUpdate() {
+async function scanInstallerFolderUpdate(options = {}) {
+  const reportIssues = options.reportIssues === true;
   let entries = [];
   try {
     entries = await fs.promises.readdir(UPDATE_FEED_DIR, { withFileTypes: true });
@@ -364,15 +409,27 @@ async function scanInstallerFolderUpdate() {
   const sha256 = await readInstallerSha256(newest.installerPath);
   if (!sha256) {
     console.warn(`ArcRho update installer is missing a SHA-256 checksum: ${newest.installerPath}`);
+    if (reportIssues) {
+      return createUpdateIssue(
+        "missing-checksum",
+        newest.version,
+        newest.installerPath,
+        "folder",
+        "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
+        `Add ${path.basename(newest.installerPath)}.sha256 beside the installer.`
+      );
+    }
     return null;
   }
   return createUpdateInfo(newest.version, newest.installerPath, sha256, "folder");
 }
 
-async function findAvailableUpdate() {
-  const manifestUpdate = await readManifestUpdate();
-  if (manifestUpdate) return manifestUpdate;
-  return scanInstallerFolderUpdate();
+async function findAvailableUpdate(options = {}) {
+  const manifestUpdate = await readManifestUpdate(options);
+  if (isInstallableUpdate(manifestUpdate)) return manifestUpdate;
+  const folderUpdate = await scanInstallerFolderUpdate(options);
+  if (isInstallableUpdate(folderUpdate)) return folderUpdate;
+  return manifestUpdate || folderUpdate || null;
 }
 
 function calculateFileSha256(filePath) {
@@ -395,6 +452,13 @@ async function verifyUpdateInstaller(updateInfo) {
   }
 }
 
+function showMainWindowMessageBox(options) {
+  if (win && !win.isDestroyed()) {
+    return dialog.showMessageBox(win, options);
+  }
+  return dialog.showMessageBox(options);
+}
+
 async function confirmUpdateShutdown() {
   if (!win || win.isDestroyed()) return true;
   try {
@@ -415,18 +479,8 @@ function launchUpdateInstaller(installerPath) {
   child.unref();
 }
 
-async function checkForStartupUpdate() {
-  if (process.platform !== "win32") return;
-
-  let updateInfo = null;
-  try {
-    updateInfo = await withTimeout(findAvailableUpdate(), UPDATE_CHECK_TIMEOUT_MS, "ArcRho update check");
-  } catch (err) {
-    console.warn(`ArcRho update check skipped: ${err?.message || err}`);
-    return;
-  }
-  if (!updateInfo || !win || win.isDestroyed()) return;
-
+async function promptForUpdateInstall(updateInfo) {
+  if (!updateInfo || !win || win.isDestroyed()) return { status: "unavailable" };
   const detailLines = [
     `Current version: ${app.getVersion()}`,
     `Available version: ${updateInfo.version}`,
@@ -436,7 +490,7 @@ async function checkForStartupUpdate() {
   if (updateInfo.releaseNotes) detailLines.push("", updateInfo.releaseNotes);
   if (updateInfo.mandatory) detailLines.push("", "This update is marked as mandatory.");
 
-  const response = await dialog.showMessageBox(win, {
+  const response = await showMainWindowMessageBox({
     type: "info",
     title: "ArcRho update available",
     message: `ArcRho ${updateInfo.version} is available.`,
@@ -447,13 +501,13 @@ async function checkForStartupUpdate() {
     noLink: true,
   });
 
-  if (response.response !== 0) return;
+  if (response.response !== 0) return { status: "deferred", version: updateInfo.version };
   const canShutdown = await confirmUpdateShutdown();
-  if (!canShutdown) return;
+  if (!canShutdown) return { status: "cancelled", version: updateInfo.version };
 
   const verified = await verifyUpdateInstaller(updateInfo);
   if (!verified) {
-    await dialog.showMessageBox(win, {
+    await showMainWindowMessageBox({
       type: "error",
       title: "Update could not be verified",
       message: "ArcRho did not install the update.",
@@ -461,14 +515,15 @@ async function checkForStartupUpdate() {
       buttons: ["OK"],
       noLink: true,
     });
-    return;
+    return { status: "verification-failed", version: updateInfo.version };
   }
 
   try {
     launchUpdateInstaller(updateInfo.installerPath);
     app.quit();
+    return { status: "launching", version: updateInfo.version };
   } catch (err) {
-    await dialog.showMessageBox(win, {
+    await showMainWindowMessageBox({
       type: "error",
       title: "Update could not be started",
       message: "ArcRho could not launch the update installer.",
@@ -476,7 +531,92 @@ async function checkForStartupUpdate() {
       buttons: ["OK"],
       noLink: true,
     });
+    return { status: "launch-failed", version: updateInfo.version };
   }
+}
+
+async function checkForUpdate(options = {}) {
+  const showNoUpdate = options.showNoUpdate === true;
+  if (process.platform !== "win32") {
+    if (showNoUpdate) {
+      await showMainWindowMessageBox({
+        type: "info",
+        title: "Update check unavailable",
+        message: "ArcRho update checks are available in the Windows desktop app.",
+        buttons: ["OK"],
+        noLink: true,
+      });
+    }
+    return { status: "unsupported" };
+  }
+
+  let updateInfo = null;
+  try {
+    updateInfo = await withTimeout(
+      findAvailableUpdate({ reportIssues: showNoUpdate }),
+      UPDATE_CHECK_TIMEOUT_MS,
+      "ArcRho update check"
+    );
+  } catch (err) {
+    console.warn(`ArcRho update check skipped: ${err?.message || err}`);
+    if (showNoUpdate) {
+      await showMainWindowMessageBox({
+        type: "info",
+        title: "Update location unavailable",
+        message: "ArcRho could not reach the update location.",
+        detail: [
+          `Update location: ${UPDATE_FEED_DIR}`,
+          String(err?.message || err),
+        ].join("\n"),
+        buttons: ["OK"],
+        noLink: true,
+      });
+    }
+    return { status: "unavailable" };
+  }
+
+  if (updateInfo?.status) {
+    if (showNoUpdate) {
+      await showMainWindowMessageBox({
+        type: updateInfo.status === "missing-checksum" ? "warning" : "info",
+        title: "Update installer is not ready",
+        message: updateInfo.message || "ArcRho found an update, but it cannot be installed yet.",
+        detail: [
+          `Current version: ${app.getVersion()}`,
+          updateInfo.version ? `Available version: ${updateInfo.version}` : "",
+          updateInfo.installerPath ? `Installer: ${updateInfo.installerPath}` : "",
+          updateInfo.detail || "",
+        ].filter(Boolean).join("\n"),
+        buttons: ["OK"],
+        noLink: true,
+      });
+    }
+    return {
+      status: updateInfo.status,
+      version: updateInfo.version || "",
+      installerPath: updateInfo.installerPath || "",
+    };
+  }
+
+  if (!updateInfo) {
+    if (showNoUpdate) {
+      await showMainWindowMessageBox({
+        type: "info",
+        title: "No update available",
+        message: "ArcRho is up to date.",
+        detail: `Current version: ${app.getVersion()}`,
+        buttons: ["OK"],
+        noLink: true,
+      });
+    }
+    return { status: "none" };
+  }
+
+  return promptForUpdateInstall(updateInfo);
+}
+
+async function checkForStartupUpdate() {
+  return checkForUpdate({ showNoUpdate: false });
 }
 
 function getMainWindowPrefsPath() {
@@ -581,7 +721,10 @@ function normalizeArcBotDebugLogs(logs) {
 
 function normalizeArcBotModel(model) {
   const value = String(model || "codex").trim().toLowerCase();
-  const supported = new Set(["codex", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]);
+  const supported = new Set([
+    "codex", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
+    "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
+  ]);
   return supported.has(value) ? value : "codex";
 }
 
@@ -589,6 +732,164 @@ function normalizeArcBotReasoningEffort(effort) {
   const value = String(effort || "high").trim().toLowerCase();
   const supported = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
   return supported.has(value) ? value : "high";
+}
+
+function isClaudeArcBotModel(model) {
+  return String(model || "").startsWith("claude-");
+}
+
+function getClaudeCredentialsPath() {
+  return path.join(os.homedir(), ".claude", ".credentials.json");
+}
+
+function loadClaudeAuthToken() {
+  try {
+    const raw = fs.readFileSync(getClaudeCredentialsPath(), "utf8");
+    const creds = JSON.parse(raw);
+    const oauth = creds?.claudeAiOauth;
+    if (!oauth?.accessToken) return null;
+    const expiresAt = Number(oauth.expiresAt || 0);
+    if (expiresAt && Date.now() > expiresAt) return null;
+    return String(oauth.accessToken);
+  } catch {
+    return null;
+  }
+}
+
+function getClaudeCommand() {
+  if (process.platform === "win32") {
+    const candidates = [
+      process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "claude.cmd") : "",
+      findExecutableOnPath(["claude.cmd", "claude.exe"]),
+    ].filter(Boolean);
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate)) return candidate;
+      } catch {}
+    }
+    return "";
+  }
+  return findExecutableOnPath(["claude"]) || "";
+}
+
+function buildClaudeSystemPrompt(mode, activeContext, activeJson) {
+  const parts = [
+    "You are ArcBot, an AI assistant embedded in ArcRho, an actuarial reserving and analytics platform.",
+    mode === "edit"
+      ? "You are in Edit Mode. Provide clear, actionable guidance to help the user work with their data and models."
+      : "You are in Read-Only Review Mode. Analyze and explain; do not modify any data or files.",
+  ];
+  if (activeContext?.available) {
+    const tabLabel = activeContext.title || activeContext.tabType || "active tab";
+    parts.push(`Current app context: ${tabLabel}${activeContext.tabType ? ` (${activeContext.tabType})` : ""}.`);
+    if (activeContext.targetPath) parts.push(`Active file: ${activeContext.targetPath}`);
+  }
+  if (activeJson && typeof activeJson === "object" && !activeJson.error) {
+    const jsonStr = JSON.stringify(activeJson, null, 2).slice(0, 12000);
+    parts.push(`Active page data:\n\`\`\`json\n${jsonStr}\n\`\`\``);
+  }
+  return parts.join("\n\n");
+}
+
+function runClaudeArcBotRequest({ event, requestId, requestState, model, reasoningEffort, systemText, messages, attachments, usage }) {
+  const authToken = loadClaudeAuthToken();
+  if (!authToken) {
+    return Promise.resolve({ ok: false, needsAuth: true, error: "Claude is not authenticated. Run: claude login" });
+  }
+  const thinkingBudgetMap = { low: 1024, medium: 4096, high: 8192, xhigh: 16000 };
+  const thinkingBudget = thinkingBudgetMap[reasoningEffort] ?? 8192;
+  const enableThinking = (model === "claude-opus-4-8" || model === "claude-sonnet-4-6") && reasoningEffort !== "low";
+  const anthropicMessages = (Array.isArray(messages) ? messages : [])
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m, i, arr) => {
+      let content = String(m.content || "");
+      if (m.role === "user" && i === arr.length - 1 && Array.isArray(attachments) && attachments.length) {
+        content += attachments.map((a) => `\n\n--- Attached: ${a.name} ---\n${a.text}`).join("");
+      }
+      return { role: m.role, content };
+    });
+  if (!anthropicMessages.length) {
+    return Promise.resolve({ ok: false, error: "No messages to send." });
+  }
+  const bodyObj = {
+    model,
+    max_tokens: enableThinking ? thinkingBudget + 8192 : 8192,
+    system: systemText,
+    messages: anthropicMessages,
+    stream: true,
+  };
+  if (enableThinking) bodyObj.thinking = { type: "enabled", budget_tokens: thinkingBudget };
+  const requestBodyStr = JSON.stringify(bodyObj);
+  const https = require("https");
+  return new Promise((resolve) => {
+    const reqHeaders = {
+      "Authorization": `Bearer ${authToken}`,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(requestBodyStr),
+    };
+    const req = https.request({
+      hostname: "api.anthropic.com",
+      path: "/v1/messages",
+      method: "POST",
+      headers: reqHeaders,
+    }, (res) => {
+      if (res.statusCode !== 200) {
+        let errorText = "";
+        res.on("data", (chunk) => { errorText += chunk; });
+        res.on("end", () => resolve({
+          ok: false,
+          needsAuth: res.statusCode === 401,
+          error: `Anthropic API error ${res.statusCode}: ${String(errorText).slice(0, 300)}`,
+        }));
+        return;
+      }
+      if (requestState) requestState.cancelProcess = () => { req.destroy(); return true; };
+      let fullText = "";
+      let buffer = "";
+      let inputTokens = 0;
+      let outputTokens = 0;
+      res.on("data", (chunk) => {
+        if (requestState?.canceled) { req.destroy(); return; }
+        buffer += chunk.toString("utf8");
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") return;
+          try {
+            const evt = JSON.parse(data);
+            if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+              fullText += evt.delta.text;
+              sendArcBotActivity(event, requestId, "stdout", evt.delta.text);
+            } else if (evt.type === "message_delta" && evt.usage) {
+              outputTokens = Number(evt.usage.output_tokens || 0);
+            } else if (evt.type === "message_start" && evt.message?.usage) {
+              inputTokens = Number(evt.message.usage.input_tokens || 0);
+            }
+          } catch {}
+        }
+      });
+      res.on("end", () => {
+        if (requestState?.canceled) { resolve({ ok: false, canceled: true, error: "Request canceled." }); return; }
+        if (inputTokens || outputTokens) {
+          const total = inputTokens + outputTokens;
+          sendArcBotActivity(event, requestId, "usage",
+            `Context: ~${total.toLocaleString()} tokens (${inputTokens.toLocaleString()} in, ${outputTokens.toLocaleString()} out).`,
+            { usage: { ...(usage || {}), estimatedTokens: total } });
+        }
+        resolve({ ok: true, stdout: fullText });
+      });
+      res.on("error", (err) => resolve({ ok: false, error: String(err?.message || err || "Claude stream error.") }));
+    });
+    req.on("error", (err) => {
+      if (requestState?.canceled) resolve({ ok: false, canceled: true, error: "Request canceled." });
+      else resolve({ ok: false, error: String(err?.message || err || "Claude request failed.") });
+    });
+    req.write(requestBodyStr);
+    req.end();
+  });
 }
 
 function getArcBotRuntimeModel(model) {
@@ -3610,6 +3911,8 @@ ipcMain.handle("app-shutdown", async () => {
   return true;
 });
 
+ipcMain.handle("app-check-for-update", async () => checkForUpdate({ showNoUpdate: true }));
+
 ipcMain.handle("app-clear-cache-reload", async () => {
   if (!win || win.isDestroyed()) return false;
   try {
@@ -3639,6 +3942,7 @@ ipcMain.handle("codex-assistant-status", async () => {
     return {
       installed: false,
       authenticated: false,
+      claudeAuthenticated: !!loadClaudeAuthToken(),
       version: "",
       error: normalizeHostError(version, "Codex CLI was not found."),
     };
@@ -3655,6 +3959,7 @@ ipcMain.handle("codex-assistant-status", async () => {
   return {
     installed: true,
     authenticated: auth.ok,
+    claudeAuthenticated: !!loadClaudeAuthToken(),
     version: combinedCommandOutput(version).split(/\r?\n/)[0] || "codex",
     authStatus: combinedCommandOutput(auth),
     error: auth.ok ? "" : normalizeHostError(auth, "Codex CLI is not signed in."),
@@ -3728,7 +4033,28 @@ ipcMain.handle("codex-assistant-install", async () => {
   };
 });
 
-ipcMain.handle("codex-assistant-login", async () => {
+ipcMain.handle("codex-assistant-login", async (_event, payload) => {
+  const provider = String(payload?.provider || "openai").trim().toLowerCase();
+  if (provider === "anthropic") {
+    try {
+      const claudeCmd = getClaudeCommand();
+      if (!claudeCmd) return { ok: false, error: "Claude CLI (claude) was not found. Install it to sign in." };
+      if (process.platform === "win32") {
+        const child = spawn("cmd.exe", ["/d", "/k", `${quoteWindowsCmdArg(claudeCmd)} login`], {
+          cwd: APP_ROOT, detached: true, stdio: "ignore", windowsHide: false, shell: false,
+        });
+        child.unref();
+        return { ok: true };
+      }
+      const child = spawn(claudeCmd, ["login"], {
+        cwd: APP_ROOT, detached: true, stdio: "ignore", windowsHide: false, shell: false,
+      });
+      child.unref();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
+    }
+  }
   try {
     const codexCommand = getCodexCommand();
     if (!codexCommand) {
@@ -3953,7 +4279,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
   }
   let editSession = null;
   const activeJsonIsError = activeJson && typeof activeJson.error === "string";
-  if (mode === "edit" && targetPath && activeJson && !activeJsonIsError) {
+  if (mode === "edit" && targetPath && activeJson && !activeJsonIsError && !isClaudeArcBotModel(model)) {
     requestLog.start("validate_edit_target", { targetPath });
     const validation = await validateArcBotJsonTarget(targetPath, { allowActiveNotebook: !!activeJsonFallback });
     requestLog.end("validate_edit_target", {
@@ -4017,101 +4343,122 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     `Context estimate: ~${usage.estimatedTokens.toLocaleString()} of ${usage.contextWindowTokens.toLocaleString()} tokens (${usage.contextPercentUsed.toFixed(usage.contextPercentUsed < 10 ? 1 : 0)}%).`,
     { usage }
   );
-  sendArcBotActivity(event, requestId, "activity", `Starting warm Codex session with ${model === "codex" ? "the Codex default model" : model} at ${reasoningEffort} reasoning in ${mode === "edit" ? "Edit Mode" : "Review Mode"}...`);
   let result = null;
-  requestLog.start("warm_codex_turn", {
-    codexCwd,
-    codexSandbox,
-    mode,
-    model,
-    reasoningEffort,
-    readableRoots: roots.serverReadRoots || [],
-  });
-  try {
-    result = await runCodexWarmTurn({
+  if (isClaudeArcBotModel(model)) {
+    requestLog.start("claude_request", { model, reasoningEffort });
+    result = await runClaudeArcBotRequest({
       event,
       requestId,
       requestState,
-      payload,
+      model,
+      reasoningEffort,
+      systemText: buildClaudeSystemPrompt(mode, activeContext, activeJson),
+      messages: payload?.messages,
+      attachments,
+      usage,
+    });
+    requestLog.end("claude_request", {
+      ok: !!result?.ok,
+      canceled: !!result?.canceled,
+      stdoutChars: String(result?.stdout || "").length,
+      error: result?.error || "",
+    });
+  } else {
+    sendArcBotActivity(event, requestId, "activity", `Starting warm Codex session with ${model === "codex" ? "the Codex default model" : model} at ${reasoningEffort} reasoning in ${mode === "edit" ? "Edit Mode" : "Review Mode"}...`);
+    requestLog.start("warm_codex_turn", {
+      codexCwd,
+      codexSandbox,
       mode,
       model,
       reasoningEffort,
-      codexCwd,
-      codexSandbox,
-      prompt,
-      readableRoots: roots.serverReadRoots,
+      readableRoots: roots.serverReadRoots || [],
     });
-    requestLog.end("warm_codex_turn", {
-      ok: !!result?.ok,
-      code: result?.code ?? null,
-      canceled: !!result?.canceled,
-      stdoutChars: String(result?.stdout || "").length,
-      stderrChars: String(result?.stderr || "").length,
-      error: result?.error || "",
-    });
-  } catch (err) {
-    requestLog.end("warm_codex_turn", {
-      ok: false,
-      canceled: !!requestState?.canceled,
-      error: String(err?.message || err || "Codex warm session failed."),
-    });
-    if (requestState?.canceled) {
-      result = { ok: false, canceled: true, stdout: "", stderr: "", error: "Request canceled." };
-    } else {
-      const warmError = String(err?.message || err || "Codex warm session failed.");
-      sendArcBotActivity(event, requestId, "stderr", `${warmError}\n`);
-      sendArcBotActivity(event, requestId, "activity", "Warm Codex session unavailable; using one-shot Codex CLI.");
-      const execArgs = [
-        "exec",
-        "--ephemeral",
-        "--color",
-        "never",
-        "--sandbox",
-        codexSandbox,
-        "--skip-git-repo-check",
-        "--cd",
-        codexCwd,
-        "--config",
-        `model_reasoning_effort="${reasoningEffort}"`,
-      ];
-      const runtimeModel = getArcBotRuntimeModel(model);
-      if (runtimeModel) execArgs.push("--model", runtimeModel);
-      requestLog.start("fallback_codex_cli", {
-        codexCwd,
-        codexSandbox,
+    try {
+      result = await runCodexWarmTurn({
+        event,
+        requestId,
+        requestState,
+        payload,
         mode,
         model,
         reasoningEffort,
+        codexCwd,
+        codexSandbox,
+        prompt,
+        readableRoots: roots.serverReadRoots,
       });
-      try {
-        result = await runCodexCommand(execArgs, {
-          input: prompt,
-          timeoutMs: CODEX_ASSISTANT_TIMEOUT_MS,
-          cancelKey: requestId,
-          onStdout: (chunk) => sendArcBotActivity(event, requestId, "stdout", chunk),
-          onStderr: (chunk) => sendArcBotActivity(event, requestId, "stderr", chunk),
+      requestLog.end("warm_codex_turn", {
+        ok: !!result?.ok,
+        code: result?.code ?? null,
+        canceled: !!result?.canceled,
+        stdoutChars: String(result?.stdout || "").length,
+        stderrChars: String(result?.stderr || "").length,
+        error: result?.error || "",
+      });
+    } catch (err) {
+      requestLog.end("warm_codex_turn", {
+        ok: false,
+        canceled: !!requestState?.canceled,
+        error: String(err?.message || err || "Codex warm session failed."),
+      });
+      if (requestState?.canceled) {
+        result = { ok: false, canceled: true, stdout: "", stderr: "", error: "Request canceled." };
+      } else {
+        const warmError = String(err?.message || err || "Codex warm session failed.");
+        sendArcBotActivity(event, requestId, "stderr", `${warmError}\n`);
+        sendArcBotActivity(event, requestId, "activity", "Warm Codex session unavailable; using one-shot Codex CLI.");
+        const execArgs = [
+          "exec",
+          "--ephemeral",
+          "--color",
+          "never",
+          "--sandbox",
+          codexSandbox,
+          "--skip-git-repo-check",
+          "--cd",
+          codexCwd,
+          "--config",
+          `model_reasoning_effort="${reasoningEffort}"`,
+        ];
+        const runtimeModel = getArcBotRuntimeModel(model);
+        if (runtimeModel) execArgs.push("--model", runtimeModel);
+        requestLog.start("fallback_codex_cli", {
+          codexCwd,
+          codexSandbox,
+          mode,
+          model,
+          reasoningEffort,
         });
-        requestLog.end("fallback_codex_cli", {
-          ok: !!result?.ok,
-          code: result?.code ?? null,
-          signal: result?.signal || "",
-          timedOut: !!result?.timedOut,
-          canceled: !!result?.canceled,
-          stdoutChars: String(result?.stdout || "").length,
-          stderrChars: String(result?.stderr || "").length,
-          error: result?.error || "",
-        });
-      } catch (execErr) {
-        requestLog.end("fallback_codex_cli", {
-          ok: false,
-          error: String(execErr?.message || execErr || "Codex CLI fallback failed."),
-        });
-        result = {
-          ok: false,
-          stdout: "",
-          stderr: "",
-          error: String(execErr?.message || execErr || "Codex CLI fallback failed."),
-        };
+        try {
+          result = await runCodexCommand(execArgs, {
+            input: prompt,
+            timeoutMs: CODEX_ASSISTANT_TIMEOUT_MS,
+            cancelKey: requestId,
+            onStdout: (chunk) => sendArcBotActivity(event, requestId, "stdout", chunk),
+            onStderr: (chunk) => sendArcBotActivity(event, requestId, "stderr", chunk),
+          });
+          requestLog.end("fallback_codex_cli", {
+            ok: !!result?.ok,
+            code: result?.code ?? null,
+            signal: result?.signal || "",
+            timedOut: !!result?.timedOut,
+            canceled: !!result?.canceled,
+            stdoutChars: String(result?.stdout || "").length,
+            stderrChars: String(result?.stderr || "").length,
+            error: result?.error || "",
+          });
+        } catch (execErr) {
+          requestLog.end("fallback_codex_cli", {
+            ok: false,
+            error: String(execErr?.message || execErr || "Codex CLI fallback failed."),
+          });
+          result = {
+            ok: false,
+            stdout: "",
+            stderr: "",
+            error: String(execErr?.message || execErr || "Codex CLI fallback failed."),
+          };
+        }
       }
     }
   }

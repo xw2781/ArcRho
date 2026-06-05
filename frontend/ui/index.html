@@ -832,6 +832,20 @@
       stroke-linecap: round;
       stroke-linejoin: round;
     }
+    .aiAssistantTokenAlert {
+      display: none;
+      margin-top: 9px;
+      padding: 6px 8px;
+      border-radius: 5px;
+      background: #fff8e6;
+      border: 1px solid #e8c040;
+      color: #6b4c00;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .aiAssistantTokenAlert.visible {
+      display: block;
+    }
     @keyframes aiAssistantPopoverIn {
       from {
         opacity: 0;
@@ -3850,23 +3864,34 @@
       line-height: 1.5;
       margin-bottom: 20px;
     }
-    #aboutCloseBtn {
-      min-width: 90px;
-      height: 30px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      background: #f9fafb;
+    #aboutActions {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    #aboutCheckUpdatesBtn {
+      min-width: 0;
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
       cursor: pointer;
-      font-size: 13px;
-      color: #374151;
-      transition: background 120ms ease, border-color 120ms ease;
+      font-size: 12.5px;
+      color: #4b5563;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
     }
-    #aboutCloseBtn:hover {
+    #aboutCheckUpdatesBtn:hover {
       background: #f3f4f6;
-      border-color: #9ca3af;
+      border-color: #e5e7eb;
+      color: #111827;
     }
-    #aboutCloseBtn:active {
+    #aboutCheckUpdatesBtn:active {
       background: #e5e7eb;
+    }
+    #aboutCheckUpdatesBtn:disabled {
+      cursor: default;
+      opacity: 0.7;
     }
 
   </style>
@@ -4105,14 +4130,21 @@
         <label class="aiAssistantSettingsField" for="aiAssistantSettingsModelSelect">
           <span>Model</span>
           <select id="aiAssistantSettingsModelSelect">
-            <option value="codex">Codex default</option>
-            <option value="gpt-5.5">GPT-5.5</option>
-            <option value="gpt-5.4">GPT-5.4</option>
-            <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+            <optgroup label="OpenAI">
+              <option value="codex">Codex default</option>
+              <option value="gpt-5.5">GPT-5.5</option>
+              <option value="gpt-5.4">GPT-5.4</option>
+              <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+            </optgroup>
+            <optgroup label="Anthropic">
+              <option value="claude-opus-4-8">Claude Opus 4.8</option>
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+              <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+            </optgroup>
           </select>
         </label>
-        <label class="aiAssistantSettingsField" for="aiAssistantSettingsReasoningSelect">
-          <span>Reasoning</span>
+        <label id="aiAssistantSettingsReasoningField" class="aiAssistantSettingsField" for="aiAssistantSettingsReasoningSelect">
+          <span id="aiAssistantSettingsReasoningLabel">Reasoning</span>
           <select id="aiAssistantSettingsReasoningSelect">
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -4120,6 +4152,9 @@
             <option value="xhigh">Extra high</option>
           </select>
         </label>
+        <div id="aiAssistantTokenAlert" class="aiAssistantTokenAlert">
+          High reasoning / thinking effort and top-tier models (GPT-5.5, Claude Opus) use significantly more tokens per request.
+        </div>
       </div>
       <div class="aiAssistantSettingsSection">
         <div class="aiAssistantSettingsTitle">Access</div>
@@ -4148,7 +4183,7 @@
         <div class="aiAssistantSettingsDetails">
           <span>Session</span><span data-ai-settings-detail="session">New ArcBot Chat</span>
           <span>Model</span><span data-ai-settings-detail="model">Codex default</span>
-          <span>Reasoning</span><span data-ai-settings-detail="reasoning">High</span>
+          <span class="aiAssistantReasoningDetail">Reasoning</span><span class="aiAssistantReasoningDetail" data-ai-settings-detail="reasoning">High</span>
           <span>Folders</span><span data-ai-settings-detail="folders">Server only</span>
           <span>Tokens</span><span data-ai-settings-detail="tokens">Not measured yet</span>
           <span>Status</span><span data-ai-settings-detail="status">Offline</span>
@@ -4399,9 +4434,11 @@
       </div>
       <div id="aboutBody">
         <div id="aboutAppName">ArcRho</div>
-        <div id="aboutVersion">Version 0.2.17</div>
+        <div id="aboutVersion">Version 0.2.22</div>
         <div id="aboutDesc">Actuarial Data & Analytics System</div>
-        <button id="aboutCloseBtn" type="button">Close</button>
+        <div id="aboutActions">
+          <button id="aboutCheckUpdatesBtn" type="button">Check for Updates</button>
+        </div>
       </div>
     </div>
   </div>

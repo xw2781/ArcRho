@@ -43,10 +43,13 @@ const ASSISTANT_TYPING_MAX_FRAMES = 220;
 const ASSISTANT_WORK_TYPING_FRAME_MS = 16;
 const ASSISTANT_WORK_TYPING_CHARS_PER_FRAME = 4;
 const ASSISTANT_MODEL_OPTIONS = [
-  { value: "codex", label: "Codex default" },
-  { value: "gpt-5.5", label: "GPT-5.5" },
-  { value: "gpt-5.4", label: "GPT-5.4" },
-  { value: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+  { value: "codex", label: "Codex default", provider: "openai", supportsReasoning: true },
+  { value: "gpt-5.5", label: "GPT-5.5", provider: "openai", supportsReasoning: true },
+  { value: "gpt-5.4", label: "GPT-5.4", provider: "openai", supportsReasoning: true },
+  { value: "gpt-5.4-mini", label: "GPT-5.4 Mini", provider: "openai", supportsReasoning: false },
+  { value: "claude-opus-4-8", label: "Claude Opus 4.8", provider: "anthropic", supportsReasoning: true },
+  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", provider: "anthropic", supportsReasoning: true },
+  { value: "claude-haiku-4-5", label: "Claude Haiku 4.5", provider: "anthropic", supportsReasoning: false },
 ];
 const ASSISTANT_REASONING_OPTIONS = [
   { value: "low", label: "Low" },
@@ -116,6 +119,20 @@ function getAssistantModelLabel(model = assistantModel) {
 
 function getAssistantReasoningLabel(effort = assistantReasoningEffort) {
   return ASSISTANT_REASONING_OPTIONS.find((option) => option.value === normalizeAssistantReasoningEffort(effort))?.label || "High";
+}
+
+function isClaudeModel(model = assistantModel) {
+  return ASSISTANT_MODEL_OPTIONS.find((opt) => opt.value === normalizeAssistantModel(model))?.provider === "anthropic";
+}
+
+function assistantModelHasReasoning(model = assistantModel) {
+  return !!(ASSISTANT_MODEL_OPTIONS.find((opt) => opt.value === normalizeAssistantModel(model))?.supportsReasoning);
+}
+
+function shouldShowAssistantTokenAlert() {
+  if (assistantModel === "gpt-5.5" || assistantModel === "claude-opus-4-8") return true;
+  if (assistantModelHasReasoning() && (assistantReasoningEffort === "high" || assistantReasoningEffort === "xhigh")) return true;
+  return false;
 }
 
 function formatAssistantLoginDetail() {
@@ -897,11 +914,17 @@ function updateContextPanel() {
 }
 
 function setAssistantModel(model, options = {}) {
+  const prevClaude = isClaudeModel();
   assistantModel = normalizeAssistantModel(model);
   const select = $("aiAssistantSettingsModelSelect");
   if (select) select.value = assistantModel;
   updateAssistantSettingsPanel();
   if (options.save !== false) saveCurrentSession();
+  if (prevClaude !== isClaudeModel() && assistantStatusChecked) {
+    refreshAssistantStatus();
+  } else if (assistantReady) {
+    setStatus(`${isClaudeModel() ? getAssistantModelLabel() : "Codex"} ready. ${getModeLabel()}.`);
+  }
 }
 
 function setAssistantReasoningEffort(effort, options = {}) {
@@ -1063,6 +1086,10 @@ function updateAssistantSettingsPanel() {
   if (!panel) return;
   const modelSelect = $("aiAssistantSettingsModelSelect");
   const reasoningSelect = $("aiAssistantSettingsReasoningSelect");
+  const reasoningField = $("aiAssistantSettingsReasoningField");
+  const reasoningLabel = $("aiAssistantSettingsReasoningLabel");
+  const hasReasoning = assistantModelHasReasoning();
+  const isClaudeProvider = isClaudeModel();
   if (modelSelect) {
     modelSelect.value = assistantModel;
     modelSelect.disabled = assistantBusy;
@@ -1071,10 +1098,16 @@ function updateAssistantSettingsPanel() {
     reasoningSelect.value = assistantReasoningEffort;
     reasoningSelect.disabled = assistantBusy;
   }
+  if (reasoningField) reasoningField.style.display = hasReasoning ? "" : "none";
+  if (reasoningLabel) reasoningLabel.textContent = isClaudeProvider ? "Thinking" : "Reasoning";
+  panel.querySelectorAll(".aiAssistantReasoningDetail").forEach((el) => {
+    el.style.display = hasReasoning ? "" : "none";
+  });
+  $("aiAssistantTokenAlert")?.classList.toggle("visible", shouldShowAssistantTokenAlert());
   const rows = [
     ["session", currentSessionTitle || currentSessionId || "New ArcBot Chat"],
     ["model", getAssistantModelLabel()],
-    ["reasoning", getAssistantReasoningLabel()],
+    ["reasoning", hasReasoning ? getAssistantReasoningLabel() : "—"],
     ["folders", assistantReadableRoots.length ? `${assistantReadableRoots.length} extra` : "Server only"],
     ["tokens", formatContextWindowUsage(currentUsage || {})],
     ["status", assistantReady ? "Online" : "Offline"],
@@ -1585,7 +1618,7 @@ function setAssistantMode(mode, options = {}) {
   setModeIcon();
   $("aiAssistantReviewModeOption")?.classList.toggle("active", assistantMode === "review");
   $("aiAssistantEditModeOption")?.classList.toggle("active", assistantMode === "edit");
-  setStatus(assistantReady ? `Codex ready. ${getModeLabel()}.` : `${getModeLabel()} selected.`);
+  setStatus(assistantReady ? `${isClaudeModel() ? getAssistantModelLabel() : "Codex"} ready. ${getModeLabel()}.` : `${getModeLabel()} selected.`);
   updateAssistantSettingsPanel();
   if (!assistantMessages.length) renderMessages();
   if (options.save !== false) saveCurrentSession();
@@ -1797,8 +1830,28 @@ function scrollMessagesToBottom() {
 }
 
 function applyStatus(status) {
-  assistantReady = !!status?.installed && !!status?.authenticated;
+  const usingClaude = isClaudeModel();
   assistantAuthStatus = String(status?.authStatus || status?.error || "").trim();
+  if (usingClaude) {
+    assistantReady = !!status?.claudeAuthenticated;
+    if (!assistantReady) {
+      setStatus("Claude is not signed in.", "error");
+      setSetup({
+        open: true,
+        install: false,
+        login: true,
+        text: "Sign in to link this computer to your Claude account.",
+      });
+      setComposerEnabled(false);
+      return;
+    }
+    setStatus(`${getAssistantModelLabel()} ready. ${getModeLabel()}.`);
+    setSetup({ open: false });
+    setComposerEnabled(!assistantBusy);
+    updateAssistantSettingsPanel();
+    return;
+  }
+  assistantReady = !!status?.installed && !!status?.authenticated;
   if (!status?.installed) {
     setStatus("Codex CLI is not installed.", "error");
     setSetup({
@@ -1887,7 +1940,7 @@ async function refreshAssistantStatus() {
     return;
   }
   assistantStatusChecked = true;
-  setStatus("Checking Codex CLI...");
+  setStatus(isClaudeModel() ? "Checking Claude credentials..." : "Checking Codex CLI...");
   setComposerEnabled(false);
   try {
     const status = await host.codexAssistantStatus();
@@ -2358,19 +2411,22 @@ async function installCodexCli() {
 async function loginCodexCli() {
   const host = getHostApi();
   if (!host?.codexAssistantLogin) return;
+  const usingClaude = isClaudeModel();
   const confirmed = window.confirm(
-    "Open Codex sign-in now?\n\nA terminal window will run: codex login"
+    usingClaude
+      ? "Open Claude sign-in now?\n\nA terminal window will run: claude login"
+      : "Open Codex sign-in now?\n\nA terminal window will run: codex login"
   );
   if (!confirmed) return;
   try {
-    const result = await host.codexAssistantLogin();
+    const result = await host.codexAssistantLogin(usingClaude ? { provider: "anthropic" } : undefined);
     if (!result?.ok) {
-      setStatus(result?.error || "Could not start Codex sign-in.", "error");
+      setStatus(result?.error || `Could not start ${usingClaude ? "Claude" : "Codex"} sign-in.`, "error");
       return;
     }
-    setStatus("Complete Codex sign-in, then refresh status.");
+    setStatus(`Complete ${usingClaude ? "Claude" : "Codex"} sign-in, then refresh status.`);
   } catch (err) {
-    setStatus(String(err?.message || err || "Could not start Codex sign-in."), "error");
+    setStatus(String(err?.message || err || `Could not start ${usingClaude ? "Claude" : "Codex"} sign-in.`), "error");
   }
 }
 
@@ -2512,12 +2568,13 @@ async function sendAssistantMessage() {
         failAssistantProgress("Request canceled");
       } else if (result?.needsAuth) {
         assistantReady = false;
-        setStatus("Codex CLI needs sign-in.", "error");
+        const isClaudeProvider = isClaudeModel();
+        setStatus(`${isClaudeProvider ? "Claude" : "Codex CLI"} needs sign-in.`, "error");
         setSetup({
           open: true,
           install: false,
           login: true,
-          text: "Sign in to link this computer to your Codex account.",
+          text: `Sign in to link this computer to your ${isClaudeProvider ? "Claude" : "Codex"} account.`,
         });
       } else {
         setStatus(message, "error");
@@ -2532,7 +2589,7 @@ async function sendAssistantMessage() {
     if (result?.editApplied) notifyActivePageJsonUpdated(result);
     appendActivity(result?.editApplied ? "Applied JSON-backed edit with host validation." : "Response completed.", "activity");
     completeAssistantProgress(result?.editApplied ? "Edit applied" : "Response completed");
-    setStatus(result?.editApplied ? "ArcBot applied a JSON-backed edit." : `Codex ready. ${getModeLabel()}.`);
+    setStatus(result?.editApplied ? "ArcBot applied a JSON-backed edit." : `${isClaudeModel() ? getAssistantModelLabel() : "Codex"} ready. ${getModeLabel()}.`);
   } catch (err) {
     const message = assistantCancelRequested ? "Request canceled." : String(err?.message || err || "ArcBot request failed.");
     resolveAssistantPendingMessage(pending, message);

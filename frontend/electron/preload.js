@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   pickSaveWorkflowFile: (suggestedName, startDir) =>
     invoke("pick-save-workflow", { suggestedName, startDir }),
   shutdownApp: () => invoke("app-shutdown"),
+  checkForUpdates: () => invoke("app-check-for-update"),
   minimizeWindow: () => invoke("window-minimize"),
   maximizeWindow: () => invoke("window-maximize"),
   restoreWindow: () => invoke("window-restore-native"),
@@ -63,7 +64,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
   codexAssistantStatus: () => invoke("codex-assistant-status"),
   codexAssistantInstall: () => invoke("codex-assistant-install"),
-  codexAssistantLogin: () => invoke("codex-assistant-login"),
+  codexAssistantLogin: (payload) => invoke("codex-assistant-login", payload),
   codexAssistantLoadPromptGuide: () => invoke("codex-assistant-prompt-guide-load"),
   codexAssistantLoadReadableRoots: () => invoke("codex-assistant-readable-roots-load"),
   codexAssistantSaveReadableRoots: (folders) => invoke("codex-assistant-readable-roots-save", { folders }),
