@@ -156,6 +156,17 @@ export function createIframeHost(deps) {
       if (tab.projectFolder) params.set("folder", String(tab.projectFolder || ""));
       if (tab.projectTablePath) params.set("tablePath", String(tab.projectTablePath || ""));
       params.set("v", uiVersionParam);
+      iframe.addEventListener("load", () => {
+        const state = tab.projectInstanceState && typeof tab.projectInstanceState === "object"
+          ? tab.projectInstanceState
+          : null;
+        if (!state) return;
+        try {
+          iframe.contentWindow?.postMessage({ type: "arcrho:project-instance-restore-state", state }, "*");
+        } catch {
+          // ignore
+        }
+      });
       iframe.src = `/ui/project_instance/project_instance.html?${params.toString()}`;
     } else if (tab.type === "browsing_history") {
       iframe.src = `/ui/shell/browsing_history.html?v=${encodeURIComponent(uiVersionParam)}`;

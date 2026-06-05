@@ -44,6 +44,18 @@
       color: var(--muted);
       background: #fcfcfc;
     }
+    .section {
+      margin-top: 14px;
+    }
+    .section:first-of-type {
+      margin-top: 0;
+    }
+    .sectionTitle {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #2f3a4a;
+    }
     .list {
       display: flex;
       flex-direction: column;
@@ -100,14 +112,36 @@
       font-size: 11px;
       color: #757575;
     }
+    .badgeLine {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .badge {
+      border: 1px solid #d8dde7;
+      border-radius: 999px;
+      padding: 1px 7px;
+      background: #fff;
+      color: #4d5b70;
+      font-size: 11px;
+      line-height: 17px;
+    }
   </style>
 </head>
 <body>
   <main class="page">
     <h1 class="title">Browsing History</h1>
-    <p class="subtitle">Recent project, reserving class, and dataset views.</p>
-    <div id="historyEmpty" class="empty">No browsing history yet.</div>
-    <div id="historyList" class="list" aria-label="Browsing History List"></div>
+    <p class="subtitle">Recent pages saved to this PC for quick restore after cache reloads.</p>
+    <section class="section" aria-label="Restore Pages">
+      <h2 class="sectionTitle">Restore Pages</h2>
+      <div id="activityEmpty" class="empty">No page restore history yet.</div>
+      <div id="activityList" class="list" aria-label="Page Restore History List"></div>
+    </section>
+    <section class="section" aria-label="Recent Dataset Views">
+      <h2 class="sectionTitle">Recent Dataset Views</h2>
+      <div id="historyEmpty" class="empty">No dataset browsing history yet.</div>
+      <div id="historyList" class="list" aria-label="Dataset Browsing History List"></div>
+    </section>
   </main>
 
   <script type="module" src="/ui/shell/browsing_history_main.js?v=20260521a"></script>

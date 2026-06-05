@@ -1,5 +1,6 @@
 import { isFloatingTab, normalizeFloatRect } from "./floating_tabs.js?v=20260510a";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
+import { normalizeProjectInstanceState } from "/ui/shell/shell_activity_history.js";
 
 const STORAGE_KEY = "arcrho_ui_shell_state_v4";
 const LEGACY_STORAGE_KEYS = ["arcrho_ui_shell_state_v3"];
@@ -85,6 +86,7 @@ export function loadState() {
       projectName: t.type === "project_instance" ? String(t.projectName || t.title || "").trim() : undefined,
       projectFolder: t.type === "project_instance" ? String(t.projectFolder || "").trim() : undefined,
       projectTablePath: t.type === "project_instance" ? String(t.projectTablePath || "").trim() : undefined,
+      projectInstanceState: t.type === "project_instance" ? normalizeProjectInstanceState(t.projectInstanceState || null) || undefined : undefined,
       projectSettingsRibbon: t.type === "project_settings"
         ? (String(t.projectSettingsRibbon || "").trim().toLowerCase() || "summary")
         : undefined,
@@ -150,6 +152,7 @@ export function saveState() {
           projectName: t.type === "project_instance" ? String(t.projectName || t.title || "").trim() : undefined,
           projectFolder: t.type === "project_instance" ? String(t.projectFolder || "").trim() : undefined,
           projectTablePath: t.type === "project_instance" ? String(t.projectTablePath || "").trim() : undefined,
+          projectInstanceState: t.type === "project_instance" ? normalizeProjectInstanceState(t.projectInstanceState || null) || undefined : undefined,
           projectSettingsRibbon: t.type === "project_settings"
             ? String(t.projectSettingsRibbon || "").trim().toLowerCase()
             : undefined,

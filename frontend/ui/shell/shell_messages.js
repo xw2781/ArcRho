@@ -1,5 +1,6 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
+import { normalizeProjectInstanceState, normalizeShellActivityEntry } from "/ui/shell/shell_activity_history.js";
 
 let shellMessagesWired = false;
 
@@ -106,6 +107,20 @@ export function initShellMessages() {
     }
     if (msg.type === "arcrho:project-instance-dirty") {
       const tab = shell.state.tabs.find(t => t.type === "project_instance" && t.iframe?.contentWindow === e.source);
+      if (!tab) return;
+      const dirty = !!msg.dirty;
+      if (tab.isDirty === dirty) return;
+      tab.isDirty = dirty;
+      if (dirty) shell.clearSavedStatusOnDirty?.();
+      refreshDirtyIndicators();
+      shell.saveState?.();
+      return;
+    }
+    if (msg.type === "arcrho:dataset-dirty") {
+      const inst = String(msg.inst || "");
+      const tab = shell.state.tabs.find(t => t.type === "dataset" && (
+        (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
+      ));
       if (!tab) return;
       const dirty = !!msg.dirty;
       if (tab.isDirty === dirty) return;
@@ -238,6 +253,22 @@ export function initShellMessages() {
       shell.openProjectInstanceTab?.(project);
       return;
     }
+    if (msg.type === "arcrho:project-instance-state") {
+      const tab = shell.state.tabs.find(t => t.type === "project_instance" && t.iframe?.contentWindow === e.source);
+      const state = normalizeProjectInstanceState(msg?.state || null);
+      if (tab && state) {
+        tab.projectInstanceState = state;
+        shell.saveState?.();
+        if (shell.state.activeId === tab.id) shell.recordActiveTabHistory?.(tab);
+        shell.notifyBrowsingHistoryTabs?.({ projectInstanceState: state });
+      }
+      return;
+    }
+    if (msg.type === "arcrho:open-shell-activity-history-entry") {
+      const entry = normalizeShellActivityEntry(msg?.entry || null);
+      if (entry) shell.openShellActivityHistoryEntry?.(entry);
+      return;
+    }
     if (msg.type === "arcrho:tooltip") {
       if (msg.show) {
         let x = Number(msg.x) || 0;
@@ -249,6 +280,14 @@ export function initShellMessages() {
       return;
     }
     if (msg.type === "arcrho:workflow-import") return shell.importWorkflow?.();
+    if (msg.type === "arcrho:dataset-close-confirmed") {
+      const inst = String(msg.inst || "");
+      const tab = shell.state.tabs.find(t => t.type === "dataset" && (
+        (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
+      ));
+      if (tab) return shell.closeTab?.(tab.id, true);
+      return;
+    }
     if (msg.type === "arcrho:close-active-tab") {
       if (tryConsumeActiveFrameCloseShortcut()) return;
       return shell.closeTab?.(shell.state.activeId);

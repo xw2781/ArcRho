@@ -851,6 +851,16 @@
     .pi-table th {
       white-space: nowrap;
     }
+    .pi-table tbody tr[data-record-key] {
+      cursor: default;
+    }
+    .pi-table tbody tr[data-record-key].selected td {
+      background: #e9f2ff;
+      box-shadow: inset 0 1px 0 #9cc7ff, inset 0 -1px 0 #9cc7ff;
+    }
+    .pi-table tbody tr[data-record-key].selected td:first-child {
+      box-shadow: inset 3px 0 0 #2474d8, inset 0 1px 0 #9cc7ff, inset 0 -1px 0 #9cc7ff;
+    }
     .pi-table td {
       white-space: normal;
       vertical-align: top;
@@ -1007,16 +1017,123 @@
     .pi-table tr {
       cursor: default;
     }
-    .pi-table tbody tr:hover {
-      background: #fff8df;
-    }
     .pi-table-empty {
       color: #8a94a6;
       text-align: center;
       padding: 18px;
     }
+    .pi-delete-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10120;
+      background: rgba(15, 23, 42, 0.18);
+    }
+    .pi-delete-confirm-overlay[hidden] {
+      display: none;
+    }
+    .pi-delete-confirm-box {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: min(440px, calc(100vw - 28px));
+      max-height: min(480px, calc(100vh - 28px));
+      transform: translate(-50%, -50%);
+      border: 1px solid #c9ced5;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.26);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .pi-delete-confirm-header {
+      height: 36px;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid #e1e5ea;
+      background: #f7f9fc;
+      cursor: move;
+      user-select: none;
+    }
+    .pi-delete-confirm-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #263244;
+    }
+    .pi-delete-confirm-close {
+      width: 24px;
+      height: 24px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #637083;
+      cursor: pointer;
+      font-size: 17px;
+      line-height: 1;
+    }
+    .pi-delete-confirm-close:hover {
+      background: #e9eef6;
+      color: #263244;
+    }
+    .pi-delete-confirm-body {
+      padding: 14px;
+      overflow: auto;
+      color: #334155;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .pi-delete-confirm-list {
+      margin-top: 10px;
+      border: 1px solid #e1e5ea;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fbfcfe;
+    }
+    .pi-delete-confirm-item,
+    .pi-delete-confirm-more {
+      padding: 6px 9px;
+      border-top: 1px solid #e9edf3;
+      overflow-wrap: anywhere;
+    }
+    .pi-delete-confirm-item:first-child {
+      border-top: 0;
+    }
+    .pi-delete-confirm-more {
+      color: #64748b;
+      font-style: italic;
+    }
+    .pi-delete-confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 10px 12px 12px;
+      border-top: 1px solid #e1e5ea;
+      background: #fbfcfe;
+    }
+    .pi-delete-confirm-actions button {
+      height: 28px;
+      border: 1px solid #cbd3df;
+      border-radius: 5px;
+      padding: 0 12px;
+      background: #fff;
+      color: #263244;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .pi-delete-confirm-actions .danger {
+      border-color: #b42318;
+      background: #b42318;
+      color: #fff;
+    }
+    .pi-delete-confirm-actions button:hover {
+      filter: brightness(0.97);
+    }
     .pi-table-context-menu,
     .pi-table-group-context-menu,
+    .pi-table-row-context-menu,
     .pi-table-filter-popover {
       position: fixed;
       z-index: 10080;
@@ -1029,11 +1146,13 @@
     }
     .pi-table-context-menu.open,
     .pi-table-group-context-menu.open,
+    .pi-table-row-context-menu.open,
     .pi-table-filter-popover.open {
       display: block;
     }
     .pi-table-context-menu,
-    .pi-table-group-context-menu {
+    .pi-table-group-context-menu,
+    .pi-table-row-context-menu {
       min-width: 190px;
       padding: 4px;
       overflow: visible;
@@ -1110,6 +1229,26 @@
       padding-bottom: 4px;
       border-bottom: 1px solid #eceff3;
     }
+    .pi-table-filter-clear-all {
+      width: 100%;
+      height: 26px;
+      margin: 0 0 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: #f8fafc;
+      color: #2f3a4a;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .pi-table-filter-clear-all:hover:not(:disabled) {
+      background: #eef4ff;
+      border-color: #9fb9ff;
+    }
+    .pi-table-filter-clear-all:disabled {
+      color: #9aa3b2;
+      cursor: default;
+      opacity: 0.75;
+    }
     .pi-table-filter-list {
       display: flex;
       flex-direction: column;
@@ -1158,6 +1297,11 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      transition: border-color 140ms ease, box-shadow 140ms ease;
+    }
+    .pi-window.active {
+      border-color: #2f6fec;
+      box-shadow: 0 0 0 2px rgba(47, 111, 236, 0.18), 0 14px 34px rgba(27, 40, 66, 0.24);
     }
     .pi-window.drop-target-active {
       border-color: #2f6fec;
@@ -1178,6 +1322,12 @@
       cursor: move;
       border-top-left-radius: 4px;
       border-top-right-radius: 4px;
+      transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+    }
+    .pi-window.active .pi-window-titlebar {
+      background: #e7f0ff;
+      border-bottom-color: #9bbcf7;
+      color: #13294b;
     }
     body.win11-frame .pi-window-titlebar {
       border-top-left-radius: 8px;
@@ -1309,9 +1459,6 @@
       right: 0;
       bottom: 0;
       cursor: nwse-resize;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
     .pi-window-resize-s {
       left: 16px;
@@ -1333,27 +1480,6 @@
       width: 8px;
       height: auto;
       cursor: ew-resize;
-    }
-    .pi-window-resize .resizeIcon {
-      width: 16px;
-      height: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .pi-window-resize .resizeIcon::after {
-      content: "";
-      width: 10px;
-      height: 10px;
-      background-image:
-        radial-gradient(circle at 9px 1px, #999 1.1px, transparent 1.2px),
-        radial-gradient(circle at 5px 5px, #999 1.1px, transparent 1.2px),
-        radial-gradient(circle at 9px 5px, #999 1.1px, transparent 1.2px),
-        radial-gradient(circle at 1px 9px, #999 1.1px, transparent 1.2px),
-        radial-gradient(circle at 5px 9px, #999 1.1px, transparent 1.2px),
-        radial-gradient(circle at 9px 9px, #999 1.1px, transparent 1.2px);
-      background-size: 10px 10px;
-      background-repeat: no-repeat;
     }
     .pi-window-drag-shield {
       position: absolute;
@@ -1451,7 +1577,28 @@
       <button class="pi-context-menu-item" type="button" role="menuitem" data-group-action="collapse-all">Collapse all</button>
       <button class="pi-context-menu-item" type="button" role="menuitem" data-group-action="expand-all">Expand all</button>
     </div>
+    <div class="pi-table-row-context-menu" id="datasetRowContextMenu" role="menu" aria-hidden="true">
+      <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="view">View</button>
+      <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add" title="Coming soon">Add</button>
+      <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="delete">Delete</button>
+    </div>
     <div class="pi-table-filter-popover" id="datasetTableFilterPopover" aria-hidden="true"></div>
+    <div class="pi-delete-confirm-overlay" id="datasetDeleteConfirmOverlay" hidden>
+      <div class="pi-delete-confirm-box" id="datasetDeleteConfirmBox" role="dialog" aria-modal="true" aria-labelledby="datasetDeleteConfirmTitle">
+        <div class="pi-delete-confirm-header">
+          <div class="pi-delete-confirm-title" id="datasetDeleteConfirmTitle">Delete Cached Datasets</div>
+          <button class="pi-delete-confirm-close" id="datasetDeleteConfirmClose" type="button" aria-label="Close">x</button>
+        </div>
+        <div class="pi-delete-confirm-body">
+          <div id="datasetDeleteConfirmMessage"></div>
+          <div class="pi-delete-confirm-list" id="datasetDeleteConfirmList"></div>
+        </div>
+        <div class="pi-delete-confirm-actions">
+          <button id="datasetDeleteConfirmCancel" type="button">Cancel</button>
+          <button id="datasetDeleteConfirmDelete" class="danger" type="button">Delete</button>
+        </div>
+      </div>
+    </div>
   </div>
   <script type="module" src="/ui/project_instance/project_instance.js?v=20260531d"></script>
 </body>

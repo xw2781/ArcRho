@@ -4,6 +4,66 @@ import {
   getLastViewedDatasetInputs,
   normalizeBrowsingHistoryEntry,
 } from "/ui/shell/browsing_history.js";
+import {
+  normalizeProjectInstanceState,
+  normalizeShellActivityEntry,
+  pushShellActivityHistoryEntry,
+} from "/ui/shell/shell_activity_history.js";
+
+const RESTORABLE_ACTIVITY_TYPES = new Set([
+  "dataset",
+  "dfm",
+  "workflow",
+  "project_settings",
+  "project_instance",
+  "scripting",
+  "agent_guide",
+]);
+let activeHistorySaveTimer = 0;
+let pendingActiveHistoryEntry = null;
+
+function buildShellActivityEntry(tab) {
+  if (!tab || !RESTORABLE_ACTIVITY_TYPES.has(tab.type)) return null;
+  const entry = {
+    tabType: tab.type,
+    title: tab.title || tab.type,
+  };
+  if (tab.type === "dataset") {
+    entry.datasetInputs = tab.datasetInputs || undefined;
+  } else if (tab.type === "dfm") {
+    entry.dfmInputs = tab.dfmInputs || undefined;
+    entry.dfmTab = tab.dfmTab || "details";
+  } else if (tab.type === "project_instance") {
+    entry.projectName = String(tab.projectName || tab.title || "").trim();
+    entry.projectFolder = String(tab.projectFolder || "").trim() || undefined;
+    entry.projectTablePath = String(tab.projectTablePath || "").trim() || undefined;
+    entry.projectInstanceState = normalizeProjectInstanceState(tab.projectInstanceState || null) || undefined;
+  } else if (tab.type === "project_settings") {
+    entry.projectSettingsRibbon = String(tab.projectSettingsRibbon || "summary").trim().toLowerCase();
+  } else if (tab.type === "scripting") {
+    entry.path = String(tab.scPath || tab.scOpenPath || "").trim() || undefined;
+  }
+  return normalizeShellActivityEntry(entry);
+}
+
+export function recordActiveTabHistory(tabOrId = null) {
+  const tab = typeof tabOrId === "string"
+    ? shell.state.tabs.find((item) => item.id === tabOrId)
+    : (tabOrId || shell.state.tabs.find((item) => item.id === shell.state.activeId));
+  const entry = buildShellActivityEntry(tab);
+  if (!entry) return;
+  pendingActiveHistoryEntry = entry;
+  if (activeHistorySaveTimer) window.clearTimeout(activeHistorySaveTimer);
+  activeHistorySaveTimer = window.setTimeout(() => {
+    const next = pendingActiveHistoryEntry;
+    pendingActiveHistoryEntry = null;
+    activeHistorySaveTimer = 0;
+    if (!next) return;
+    pushShellActivityHistoryEntry(next)
+      .then(() => shell.notifyBrowsingHistoryTabs?.({ activity: next }))
+      .catch((err) => console.warn("Failed to save shell activity history:", err));
+  }, 450);
+}
 
 export function setActive(id) {
   const tab = shell.state.tabs.find(t => t.id === id) || shell.state.tabs.find(t => t.id === "home");
@@ -19,11 +79,13 @@ export function setActive(id) {
   }
   shell.render?.();
   shell.saveState?.();
+  recordActiveTabHistory(tab);
 }
 
 export function setDockedActive(id) {
   shell.state.activeId = id;
   shell.state.lastDockedActiveId = id;
+  recordActiveTabHistory(id);
 }
 
 export function floatTab(id, rect) {
@@ -60,6 +122,12 @@ export function closeTab(id, skipConfirm = false) {
   const idx = shell.state.tabs.findIndex(t => t.id === id);
   if (idx < 0) return;
   const tab = shell.state.tabs[idx];
+  if (!skipConfirm && tab.iframe?.contentWindow) {
+    try {
+      const requestClose = tab.iframe.contentWindow.__arcrho_request_close;
+      if (typeof requestClose === "function" && requestClose() === true) return;
+    } catch {}
+  }
   if (!skipConfirm && tab.isDirty) {
     const confirmed = confirm("This tab has unsaved changes. Are you sure you want to close it?");
     if (!confirmed) return;
@@ -196,11 +264,32 @@ export function openProjectSettingsTab() {
   shell.saveState?.();
 }
 
-export function openProjectInstanceTab(project = {}) {
+function postProjectInstanceRestoreState(tab) {
+  const state = normalizeProjectInstanceState(tab?.projectInstanceState || null);
+  const iframe = tab?.iframe;
+  if (!state || !iframe?.contentWindow) return false;
+  try {
+    iframe.contentWindow.postMessage({ type: "arcrho:project-instance-restore-state", state }, "*");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function openProjectInstanceTab(project = {}, options = {}) {
   const projectName = String(project?.name || project?.projectName || "").trim();
   if (!projectName) return null;
-  const existing = shell.state.tabs.find(t => t.type === "project_instance" && String(t.projectName || "").trim().toLowerCase() === projectName.toLowerCase());
+  const existing = !options?.forceNew
+    ? shell.state.tabs.find(t => t.type === "project_instance" && String(t.projectName || "").trim().toLowerCase() === projectName.toLowerCase())
+    : null;
   if (existing) {
+    const restoreState = normalizeProjectInstanceState(project?.projectInstanceState || options?.projectInstanceState || null);
+    if (restoreState) {
+      existing.projectInstanceState = restoreState;
+      shell.ensureIframe?.(existing);
+      postProjectInstanceRestoreState(existing);
+      shell.saveState?.();
+    }
     setActive(existing.id);
     return existing;
   }
@@ -212,6 +301,7 @@ export function openProjectInstanceTab(project = {}) {
     projectName,
     projectFolder: String(project?.folder || "").trim(),
     projectTablePath: String(project?.tablePath || "").trim(),
+    projectInstanceState: normalizeProjectInstanceState(project?.projectInstanceState || options?.projectInstanceState || null) || undefined,
     iframe: null,
     layout: "docked",
   };
@@ -220,6 +310,41 @@ export function openProjectInstanceTab(project = {}) {
   shell.render?.();
   shell.saveState?.();
   return tab;
+}
+
+export function openShellActivityHistoryEntry(entry) {
+  const normalized = normalizeShellActivityEntry(entry);
+  if (!normalized) return null;
+  if (normalized.tabType === "dataset") {
+    openDatasetTab({ datasetInputs: normalized.datasetInputs });
+    return null;
+  }
+  if (normalized.tabType === "dfm") {
+    openDFMTab({ dfmInputs: normalized.dfmInputs, dfmTab: normalized.dfmTab });
+    return null;
+  }
+  if (normalized.tabType === "project_settings") {
+    const tab = openProjectSettingsTab();
+    const active = shell.state.tabs.find(t => t.type === "project_settings");
+    if (active) active.projectSettingsRibbon = normalized.projectSettingsRibbon || "summary";
+    shell.render?.();
+    shell.saveState?.();
+    return tab || active || null;
+  }
+  if (normalized.tabType === "project_instance") {
+    return openProjectInstanceTab({
+      name: normalized.projectName,
+      folder: normalized.projectFolder || "",
+      tablePath: normalized.projectTablePath || "",
+      projectInstanceState: normalized.projectInstanceState || null,
+    });
+  }
+  if (normalized.tabType === "scripting") {
+    return openScriptingTab({ forceNew: true, notebookPath: normalized.path || "" });
+  }
+  if (normalized.tabType === "workflow") return openWorkflowTab();
+  if (normalized.tabType === "agent_guide") return openAgentGuideTab();
+  return null;
 }
 
 export function openBrowsingHistoryTab() {

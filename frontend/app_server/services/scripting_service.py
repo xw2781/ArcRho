@@ -1982,6 +1982,31 @@ def _normalize_local_project_preferences(raw: Any) -> Dict[str, Any]:
                 seen_folders.add(folder_key)
                 expanded_folders.append(folder)
             out["projectExplorer"] = {"expandedFolders": expanded_folders}
+
+    shell_history_source = None
+    for history_key in ("shellActivityHistory", "shell_activity_history"):
+        if history_key in source:
+            shell_history_source = source.get(history_key)
+            break
+    if isinstance(shell_history_source, dict):
+        entries_raw = shell_history_source.get("entries")
+        entries: List[Dict[str, Any]] = []
+        if isinstance(entries_raw, (list, tuple)):
+            for item in entries_raw:
+                if not isinstance(item, dict):
+                    continue
+                entry = dict(item)
+                tab_type = str(entry.get("tabType") or entry.get("tab_type") or "").strip().lower()
+                title = str(entry.get("title") or tab_type or "Untitled").strip()
+                if not tab_type:
+                    continue
+                entry["tabType"] = tab_type
+                entry["title"] = title
+                entry.pop("tab_type", None)
+                entries.append(entry)
+                if len(entries) >= 10:
+                    break
+        out["shellActivityHistory"] = {"entries": entries}
     return out
 
 

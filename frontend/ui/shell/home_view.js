@@ -61,7 +61,7 @@ export function renderHomeViewOnce(homeView) {
             <div class="homeBrandMark" aria-hidden="true">${createHomeBrandMarkSvg(DEFAULT_HOME_BRAND_NAME)}</div>
             <div class="homeBrandText">
               <div class="homeBrandTitle">ArcRho</div>
-              <div class="homeBrandSub">Actuarial data workspace</div>
+              <div class="homeBrandSub">Actuarial Workspace</div>
             </div>
           </div>
           <div class="homeNavGroup">
@@ -98,7 +98,7 @@ export function renderHomeViewOnce(homeView) {
             <div class="groupTitle">General</div>
             <div class="cards">
               <div class="card clickable" id="cardProjectSettings"><div class="homeIconBox project" aria-hidden="true"><svg class="homeIcon" viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"></path><circle cx="16.5" cy="13" r="2"></circle><path d="M16.5 10v1"></path><path d="M16.5 15v1"></path><path d="M19.1 11.5l-.9.5"></path><path d="M14.8 14l-.9.5"></path></svg></div><div><h3>Project Explorer</h3><div class="muted">Browse and manage projects.</div></div></div>
-              <div class="card clickable" id="cardBrowsingHistory"><div class="homeIconBox history" aria-hidden="true"><svg class="homeIcon" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7"></path><path d="M4 5v5h5"></path><path d="M12 8v5l3 2"></path></svg></div><div><h3>Browsing History</h3><div class="muted">Open recent dataset views in a dedicated tab.</div></div></div>
+              <div class="card clickable" id="cardBrowsingHistory"><div class="homeIconBox history" aria-hidden="true"><svg class="homeIcon" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7"></path><path d="M4 5v5h5"></path><path d="M12 8v5l3 2"></path></svg></div><div><h3>Browsing History</h3><div class="muted">Restore recent pages and dataset views.</div></div></div>
             </div>
           </div>
         </main>
