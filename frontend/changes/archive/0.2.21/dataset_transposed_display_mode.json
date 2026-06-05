@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Made the Dataset Data tab Transposed checkbox update the grid, chart, and copied selections."
+}

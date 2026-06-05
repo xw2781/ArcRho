@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Kept the Project Instance dataset index focused on logical cached dataset entries instead of physical CSV variants.",
+  "details": [
+    "Length and mode-specific cached CSV files now collapse to their base dataset name in dataset_instance_index.json."
+  ]
+}

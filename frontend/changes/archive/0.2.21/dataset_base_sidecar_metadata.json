@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Kept ArcRhoTri metadata in one base dataset JSON sidecar while retaining mode-specific CSV caches."
+}

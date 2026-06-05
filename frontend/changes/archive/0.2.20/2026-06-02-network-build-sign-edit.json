@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Network packaging now enables Windows executable signing metadata edits before building."
+}

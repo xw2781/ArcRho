@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project-instance",
+  "audience": "user",
+  "summary": "Preserved cleared Project Instance dataset table filters after reload."
+}

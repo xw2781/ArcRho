@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added a DFM Save and Cancel row for method changes.",
+  "details": [
+    "Save uses the existing DFM method save flow.",
+    "Cancel confirms before restoring the last loaded or saved DFM method state."
+  ]
+}

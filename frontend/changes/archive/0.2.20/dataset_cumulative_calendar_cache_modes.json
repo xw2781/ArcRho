@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added separate cumulative, incremental, development, and calendar dataset cache variants for ArcRhoTri."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance now avoids duplicate cached dataset folder scans when loading a selected reserving class."
+}

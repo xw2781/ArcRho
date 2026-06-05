@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added PC-local Restore Pages history for the latest active pages, including Project Instance nested window state."
+}

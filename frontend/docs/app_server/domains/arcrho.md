@@ -28,14 +28,14 @@ ArcRho calculations/precheck domain.
 <!-- MANUAL:BEGIN -->
 - Called by dataset/workflow actions requiring ArcRho processing.
 - ArcRho runtime requests are published as flat JSON `request-*.json` files under the configured requests directory. Temporary `.tmp` files are atomically renamed to `.json`, and data-engine workers process JSON requests only.
-- Includes a cache-maintenance endpoint used by Project Settings reload to clear project-scoped generated `ArcRhoHeaders*.csv` files; Dataset `Clear Cache & Reload` can pass current Origin Length and Development Length so only matching header caches are cleared.
+- Includes a cache-maintenance endpoint used by Project Settings reload to clear project-scoped generated `ArcRhoHeaders*.csv` files; Dataset `Clear Cache & Reload` can pass current Origin Length and Development Length so matching origin, development-column, and calendar-column header caches are cleared.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Integrates headers/project listing and tri execution endpoints.
 - Manages ArcRho request-result CSV caches under each project `data/generated` folder; supports targeted ArcRhoHeaders cache clearing without touching `data/manual`.
-- ArcRhoTri writes generated `<DatasetName>@<OriginLength>@<DevelopmentLength>.csv` caches plus a plain `<DatasetName>.json` metadata sidecar under `data/generated/<ReservingClassFolder>`; the sidecar records the current Windows login user in `user` and `modified_by`.
+- ArcRhoTri writes generated `<DatasetName>@<OriginLength>@<DevelopmentLength>@<cum|inc>@<dev|cal>.csv` caches plus a base `<DatasetName>.json` metadata sidecar under `data/generated/<ReservingClassFolder>`; the sidecar records the current Windows login user in `user` and `modified_by` and stores the latest generated Cumulative/Calendar values.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Removed dataset-table row hover fill and browser tooltips from Project Instance."
+}

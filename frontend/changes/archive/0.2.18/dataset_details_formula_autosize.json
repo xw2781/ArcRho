@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Let the Dataset Details formula box expand vertically for longer formulas."
+}

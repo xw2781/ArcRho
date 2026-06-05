@@ -1,0 +1,10 @@
+{
+  "type": "breaking",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance and DFM now use dataset_instance_index.json instead of method_index.json for selected-path dataset metadata.",
+  "details": [
+    "The new index stores cached dataset names, file metadata, folder signatures, and DFM method types for the Project Instance dataset table.",
+    "Existing method_index.json files are not read as fallback caches."
+  ]
+}

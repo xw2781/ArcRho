@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added a lightweight Check for Updates action to the ArcRho About dialog with clearer unavailable-location and missing-checksum feedback."
+}

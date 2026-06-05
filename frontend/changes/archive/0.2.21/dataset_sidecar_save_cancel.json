@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added Dataset Save and Cancel controls for saved period lengths and notes.",
+  "details": [
+    "Dataset pages now reload saved Origin Length and Development Length from the generated sidecar JSON.",
+    "The Data tab reserves a table-width row below the grid for Save and Cancel so large tables remain scrollable and the buttons stay connected to the bottom edge.",
+    "When there are no unsaved changes, Save uses the same neutral style as Cancel.",
+    "Closing or canceling with unsaved period length or notes changes now uses a Dataset confirmation box where Yes discards changes and Cancel returns to the page."
+  ]
+}

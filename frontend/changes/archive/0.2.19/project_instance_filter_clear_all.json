@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project-instance",
+  "audience": "user",
+  "summary": "Added a Clear All button to Project Instance dataset table filter popovers."
+}

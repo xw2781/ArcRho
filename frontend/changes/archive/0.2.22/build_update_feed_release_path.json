@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Moved the installer update feed to the releases installer folder and publish release builds there automatically."
+}

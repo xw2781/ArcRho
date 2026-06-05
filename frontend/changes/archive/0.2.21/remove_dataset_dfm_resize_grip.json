@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Removed the visible resize grip from Dataset and DFM floating windows while keeping resize behavior available."
+}

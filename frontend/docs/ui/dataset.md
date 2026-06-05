@@ -18,6 +18,8 @@ Detected `fetch(...)` targets in key JS files:
 - `${config.API_BASE}/dataset/${dsId}?start_year=${encodeURIComponent(startYear)}`
 - `${config.API_BASE}/dataset/notes/load`
 - `${config.API_BASE}/dataset/notes/save`
+- `${config.API_BASE}/dataset/sidecar/load`
+- `${config.API_BASE}/dataset/sidecar/save`
 - `${config.API_BASE}/excel/active_selection`
 - `${config.API_BASE}/excel/open_workbook`
 - `${config.API_BASE}/excel/read_cell`
@@ -29,6 +31,8 @@ Detected `arcrho:*` message types in key JS files:
 - `arcrho:browsing-history-updated`
 - `arcrho:close-active-tab`
 - `arcrho:close-shell-menus`
+- `arcrho:dataset-close-confirmed`
+- `arcrho:dataset-dirty`
 - `arcrho:dataset-settings-changed`
 - `arcrho:hotkey`
 - `arcrho:status`
@@ -50,6 +54,7 @@ Detected `arcrho:*` message types in key JS files:
 - Uses `/project-user-preferences` to persist and restore the shared project-specific last Reserving Class path plus the Dataset Viewer Dataset Name in `projects/<project>/users/<windows-login>/preferences.json`.
 - Sends status/hotkey/close signals to parent shell.
 - Publishes dataset input updates and browsing-history updates to shell via `arcrho:dataset-settings-changed` and `arcrho:browsing-history-updated`.
+- Publishes `arcrho:dataset-dirty` while saved sidecar settings or Notes have unsaved changes, then uses `arcrho:dataset-close-confirmed` after the user chooses Save or discard during close.
 - Dataset/DFM shared styles import the reusable 20px `ui/shared/scrollbars.css` WebKit scrollbar treatment that is also used by shell and scripting pages.
 <!-- MANUAL:END -->
 
@@ -72,14 +77,17 @@ Detected `arcrho:*` message types in key JS files:
 - New standalone Dataset tabs read the last selected Project Name from `%APPDATA%\ArcRho\local_project_prefs.json` first, then load that project's `lastReservingClassPath` and `datasetViewer.datasetName` from `projects/<project>/users/<windows-login>/preferences.json` to restore the last Reserving Class and Dataset Name for that project. The project tree picker also reads the same local preference file and shows a blue virtual `Recent Projects` folder above the real project folders with the last three picker-selected project names.
 - Stores the project-specific last Reserving Class under shared `lastReservingClassPath` and Dataset Name under `datasetViewer.datasetName`, then reuses them after a project is selected when no query/workflow values override the inputs.
 - Workflow-embedded Dataset pages can bind Project and Reserving Class inputs to Global Control defaults, displaying `Default Project (<project>)` and `Default Path (<path>)` while resolving backend requests to the current default values.
-- Persists last-viewed dataset inputs globally and restores them when opening a new Dataset tab.
+- Persists last-viewed dataset inputs globally, including Cumulative, Transposed, and Development/Calendar mode, and restores them when opening a new Dataset tab.
+- On Dataset page open, loads the base generated dataset sidecar `<DatasetName>.json` for the selected project/reserving-class/dataset and applies its saved `origin_length` and `development_length` before loading the triangle. If the saved lengths differ, the page disables the visual link toggle so both saved values are preserved.
+- The Details tab contains a Project/Reserving Class frame above the Name/Dataset Type/Formula metadata frame, and the read-only Formula box expands vertically for wrapped formulas.
 - Stores latest browsing history entries via `browsing_history.js` (project + reserving class + dataset).
 - Rejects invalid typed values on change/Enter and blocks ArcRhoTri requests until all 3 inputs are valid.
-- On Dataset page open, bypasses the browser-side header-label cache once and refreshes origin/development labels for the selected project and period lengths before the Data grid renders; normal dataset reloads also refresh labels before applying them to the model.
-- `Clear Cache & Reload` clears only the ArcRhoHeaders CSV caches for the currently selected Origin Length and Development Length before refreshing those labels.
+- On Dataset page open, bypasses the browser-side header-label cache once and refreshes origin/development-or-calendar labels for the selected project, mode, and period lengths before the Data grid renders; normal dataset reloads also refresh labels before applying them to the model.
+- `Clear Cache & Reload` clears the ArcRhoHeaders CSV caches for the currently selected Origin Length and Development Length, including development and calendar column-label variants, before refreshing those labels.
 - Dataset grid cells support rectangular drag selection and copy. The cell context menu shows `Copy value` and `Export data`; `Copy value` copies the selected rectangle as tab-separated text, or the top-left selected cell when multiple separate ranges are selected.
-- ArcRhoTri generated dataset files are written under `projects/<project>/data/generated/<ReservingClassFolder>/<DatasetName>@<OriginLength>@<DevelopmentLength>.csv` with a plain `<DatasetName>.json` metadata sidecar that records the Windows login user in `user` and `modified_by`; project, reserving-class, and dataset file components use the shared reversible `_%XX_` filename escaping rule used by DFM, the app server, and Excel add-in request paths. For example, `/` becomes `_%2F_` before the dataset page checks or requests a CSV cache file.
-- ArcRhoTri metadata sidecars do not store Origin Length or Development Length; those dimensions are encoded only in the CSV filename, so changing period lengths uses a separate length-specific CSV cache for the same dataset sidecar.
+- The Data tab Transposed checkbox is a client-side display mode, matching Excel add-in behavior: it reuses the current ArcRhoTri CSV cache and flips rendered rows/columns, totals, chart data, and copied selections without sending a new data-engine request.
+- ArcRhoTri generated dataset files are written under `projects/<project>/data/generated/<ReservingClassFolder>/<DatasetName>@<OriginLength>@<DevelopmentLength>@<cum|inc>@<dev|cal>.csv` with one base `<DatasetName>.json` sidecar that records the Windows login user in `user` and `modified_by`; project, reserving-class, and dataset file components use the shared reversible `_%XX_` filename escaping rule used by DFM, the app server, and Excel add-in request paths. For example, `/` becomes `_%2F_` before the dataset page checks or requests a CSV cache file.
+- The Dataset page Save/Cancel row below the Data table is the only normal UI path that updates the base generated sidecar after it exists. The row reserves table-width space under the scrollable grid so the buttons do not overlap large tables. Save writes the current Origin Length, Development Length, Cumulative, and Calendar values and saves dirty Notes; Cancel or close opens a Dataset-owned confirmation box where the default Yes action discards unsaved changes, while Cancel or closing the box returns to the unsaved page. CSV filenames still distinguish cumulative, incremental, development-view, and calendar-view variants.
 - Right-clicking a Dataset page tab temporarily moves that live tab page into a draggable, resizable floating window inside the Dataset page, using the same shared tab pop-out behavior as DFM. The floated tab keeps its original controls, event handlers, and data state because the actual tab DOM is moved rather than cloned. Pop-out and dock use short fade/scale transitions. Floating titlebars support double-click maximize/restore and drag-from-maximized restore to the previous window size. Closing the floating window, right-clicking its titlebar, or right-clicking the grey popped tab button docks the tab back into the normal tab area. The Chart tab redraws after pop-out, dock, focus, and resize so the canvas fits the floating window.
 <!-- MANUAL:END -->
 

@@ -1,0 +1,9 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance dataset rows now support persistent multi-selection, row actions, and confirmed cached-file deletion.",
+  "details": [
+    "The app status bar shows the selected dataset count when more than one row is selected."
+  ]
+}

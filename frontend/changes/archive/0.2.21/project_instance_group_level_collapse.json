@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance dataset-table group collapse and expand actions now apply to headers at the clicked grouping level."
+}

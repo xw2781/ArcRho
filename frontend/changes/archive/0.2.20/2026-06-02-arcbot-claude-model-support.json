@@ -1,0 +1,14 @@
+{
+  "type": "feature",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot now supports Anthropic Claude models alongside OpenAI models, routing requests through the Claude CLI OAuth credentials stored by claude login.",
+  "details": [
+    "Added Claude Opus 4.8, Claude Sonnet 4.6, and Claude Haiku 4.5 to the model selector under an Anthropic group.",
+    "Claude requests are authenticated using the OAuth token in ~/.claude/.credentials.json written by the Claude CLI, with no separate API key required.",
+    "Switching to a Claude model re-checks credentials automatically; the sign-in button opens claude login in a terminal.",
+    "Reasoning/thinking effort field is hidden for models that do not support it; for Claude models the label reads Thinking instead of Reasoning.",
+    "All models share the same session context, message history, attachments, and active-tab context flow.",
+    "An inline warning appears in the settings panel when a high-token configuration is active: high or extra-high effort, or a top-tier model (GPT-5.5, Claude Opus 4.8)."
+  ]
+}

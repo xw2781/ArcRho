@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance now highlights the active nested window and shortens matching Dataset and DFM window titles."
+}
