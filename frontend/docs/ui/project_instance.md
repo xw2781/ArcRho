@@ -7,7 +7,7 @@ Project instance workspace for browsing one project's reserving-class paths and 
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_instance.entry_points -->
-- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260607b`; inline imports _none_.
+- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260607c`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/datasets/cached/delete`
@@ -31,7 +31,17 @@ Detected `arcrho:*` message types in key JS files:
 ## Key Files
 <!-- AUTO-GEN:BEGIN frontend.project_instance.key_files -->
 - [`ui/project_instance/project_instance.html`](../../ui/project_instance/project_instance.html) - Project instance tab layout.
-- [`ui/project_instance/project_instance.js`](../../ui/project_instance/project_instance.js) - Project instance path selector, dataset table, and in-tab dataset viewer windows.
+- [`ui/project_instance/project_instance.js`](../../ui/project_instance/project_instance.js) - Project instance module entrypoint.
+- [`ui/project_instance/project_instance_boot.js`](../../ui/project_instance/project_instance_boot.js) - Project instance bootstrap and module composition.
+- [`ui/project_instance/project_instance_context.js`](../../ui/project_instance/project_instance_context.js) - Shared Project Instance DOM, constants, and mutable state context.
+- [`ui/project_instance/project_instance_utils.js`](../../ui/project_instance/project_instance_utils.js) - Shared Project Instance text, path, motion, and numeric helpers.
+- [`ui/project_instance/project_instance_loading.js`](../../ui/project_instance/project_instance_loading.js) - Project Instance status, zoom, host frame style, and page loading helpers.
+- [`ui/project_instance/project_instance_dataset_cache.js`](../../ui/project_instance/project_instance_dataset_cache.js) - Cached dataset lookup, toolbar status, table preference, and disk-change watcher logic.
+- [`ui/project_instance/project_instance_dataset_table.js`](../../ui/project_instance/project_instance_dataset_table.js) - Dataset table rendering, filters, grouping, sorting, selection, and row actions.
+- [`ui/project_instance/project_instance_path_panel.js`](../../ui/project_instance/project_instance_path_panel.js) - Reserving-class path panel loading, selection, persistence, and resizing.
+- [`ui/project_instance/project_instance_windows.js`](../../ui/project_instance/project_instance_windows.js) - Floating Dataset and DFM window lifecycle, geometry, dirty state, and restore snapshots.
+- [`ui/project_instance/project_instance_hidden_tabs.js`](../../ui/project_instance/project_instance_hidden_tabs.js) - Hidden floating-window tab strip, menu, drop target, and dock animations.
+- [`ui/project_instance/project_instance_messages.js`](../../ui/project_instance/project_instance_messages.js) - Shell and nested DFM message routing plus keyboard command forwarding.
 - [`ui/dataset/dataset_viewer.html`](../../ui/dataset/dataset_viewer.html) - Reused dataset viewer page for floating dataset windows.
 - [`ui/dataset/dataset_types_source.js`](../../ui/dataset/dataset_types_source.js) - Shared dataset type payload loader and normalizer.
 - [`ui/shared/reserving_class_lazy_picker.js`](../../ui/shared/reserving_class_lazy_picker.js) - Shared reserving-class lookup, filter, shortcut, and favorite-folder picker.
@@ -98,7 +108,7 @@ Detected `arcrho:*` message types in key JS files:
 ## Common Change Tasks
 <!-- MANUAL:BEGIN -->
 1. Change project instance launch behavior: update Project Settings sender and shell message/tab routing together.
-2. Change dataset-window behavior: update `project_instance.js` while preserving the reused Dataset Viewer page contract.
+2. Change dataset-window behavior: update the relevant `ui/project_instance/project_instance_*` module while preserving the reused Dataset Viewer page contract.
 <!-- MANUAL:END -->
 
 ## Known Risks
