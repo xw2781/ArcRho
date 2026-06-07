@@ -129,6 +129,7 @@ const cachedDatasetFilter = {
   names: new Set(),
   metadataByName: new Map(),
   methodTypesByName: new Map(),
+  visibleCount: 0,
   error: "",
   requestSeq: 0,
 };
@@ -274,7 +275,9 @@ function syncCachedDatasetToolbar() {
     els.cachedDatasetStatus.textContent = "Cached dataset check failed";
     return;
   }
-  const count = cachedDatasetFilter.names.size;
+  const count = Number.isFinite(cachedDatasetFilter.visibleCount)
+    ? cachedDatasetFilter.visibleCount
+    : cachedDatasetFilter.names.size;
   els.cachedDatasetStatus.textContent = count === 1 ? "1 cached dataset" : `${count} cached datasets`;
 }
 
@@ -309,7 +312,10 @@ function isDatasetRecordCached(record) {
 }
 
 function getDatasetRecordKey(record) {
-  return getCachedDatasetKey(record?.datasetName);
+  const rowIndex = Number(record?.rowIndex);
+  if (Number.isInteger(rowIndex) && rowIndex >= 0) return `row-${rowIndex}`;
+  const name = toText(record?.datasetName);
+  return name ? `name-${name.toLowerCase()}` : "";
 }
 
 function pruneDatasetTableSelection() {
@@ -333,11 +339,61 @@ function getDatasetRecordByKey(key) {
   return datasetTableVisibleRecords.find((record) => getDatasetRecordKey(record) === normalized) || null;
 }
 
+function getDatasetRecordIndexByKey(key) {
+  const normalized = toText(key);
+  if (!normalized) return -1;
+  return datasetTableVisibleRecords.findIndex((record) => getDatasetRecordKey(record) === normalized);
+}
+
 function setDatasetRecordSelected(key, selected) {
   const normalized = toText(key);
   if (!normalized) return;
   if (selected) datasetTableSelection.selectedKeys.add(normalized);
   else datasetTableSelection.selectedKeys.delete(normalized);
+}
+
+function focusDatasetTableSurface() {
+  const surface = els.datasetTableSurface;
+  if (!surface) return;
+  if (surface.tabIndex < 0) surface.tabIndex = 0;
+  surface.focus?.({ preventScroll: true });
+}
+
+function scrollDatasetRecordIntoView(key) {
+  const normalized = toText(key);
+  if (!normalized) return;
+  const row = els.datasetTableSurface?.querySelector?.(`tr[data-record-key="${CSS.escape(normalized)}"]`);
+  row?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+}
+
+function getActiveDatasetSelectionIndex() {
+  const anchorIndex = getDatasetRecordIndexByKey(datasetTableSelection.anchorKey);
+  if (
+    anchorIndex >= 0
+    && datasetTableSelection.selectedKeys.has(datasetTableSelection.anchorKey)
+  ) {
+    return anchorIndex;
+  }
+  for (const key of datasetTableSelection.selectedKeys) {
+    const selectedIndex = getDatasetRecordIndexByKey(key);
+    if (selectedIndex >= 0) return selectedIndex;
+  }
+  return -1;
+}
+
+function selectDatasetRecordAtIndex(index) {
+  if (!datasetTableVisibleRecords.length) return false;
+  const clamped = Math.max(0, Math.min(datasetTableVisibleRecords.length - 1, Number(index)));
+  const record = datasetTableVisibleRecords[clamped];
+  const key = getDatasetRecordKey(record);
+  if (!key) return false;
+  datasetTableSelection.selectedKeys.clear();
+  datasetTableSelection.selectedKeys.add(key);
+  datasetTableSelection.anchorKey = key;
+  syncDatasetTableSelectionDom();
+  scrollDatasetRecordIntoView(key);
+  focusDatasetTableSurface();
+  return true;
 }
 
 function applyDatasetRowSelection(record, event = {}) {
@@ -367,6 +423,30 @@ function applyDatasetRowSelection(record, event = {}) {
     datasetTableSelection.anchorKey = key;
   }
   syncDatasetTableSelectionDom();
+}
+
+function handleDatasetTableKeyDown(event) {
+  if (event.key === "Enter") {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const activeIndex = getActiveDatasetSelectionIndex();
+    if (activeIndex < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openDatasetRecord(datasetTableVisibleRecords[activeIndex]);
+    return;
+  }
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  const activeIndex = getActiveDatasetSelectionIndex();
+  if (activeIndex < 0) return;
+  const nextIndex = activeIndex + (event.key === "ArrowDown" ? 1 : -1);
+  if (nextIndex < 0 || nextIndex >= datasetTableVisibleRecords.length) {
+    event.preventDefault();
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  selectDatasetRecordAtIndex(nextIndex);
 }
 
 function syncDatasetTableSelectionDom() {
@@ -506,9 +586,6 @@ function normalizeCachedDatasetSnapshot(payload) {
     const type = toText(methodType);
     if (key && type) methodTypesByName.set(key, type);
   };
-  for (const item of Array.isArray(payload?.methods) ? payload.methods : []) {
-    addMethodType(item?.dataset_name, item?.method_type);
-  }
   for (const item of Array.isArray(payload?.files) ? payload.files : []) {
     const itemNames = getCachedFileDatasetNames(item);
     for (const name of itemNames) {
@@ -1911,6 +1988,7 @@ function createDatasetRecordRow(item, columns) {
   });
   tr.addEventListener("click", (event) => {
     applyDatasetRowSelection(item, event);
+    focusDatasetTableSurface();
   });
   tr.addEventListener("contextmenu", (event) => {
     event.preventDefault();
@@ -1922,6 +2000,7 @@ function createDatasetRecordRow(item, columns) {
       datasetTableSelection.anchorKey = recordKey;
       syncDatasetTableSelectionDom();
     }
+    focusDatasetTableSurface();
     showDatasetRowContextMenu(recordKey, event.clientX, event.clientY);
   });
   return tr;
@@ -2133,6 +2212,8 @@ function renderDatasetTable() {
   if (!els.datasetTableSurface) return;
   datasetTableVisibleRecords = [];
   if (!datasetRows.length) {
+    cachedDatasetFilter.visibleCount = 0;
+    syncCachedDatasetToolbar();
     els.datasetTableSurface.innerHTML = "";
     pruneDatasetTableSelection();
     setEmptyTable("No dataset types are defined for this project.");
@@ -2140,18 +2221,24 @@ function renderDatasetTable() {
   }
   if (cachedDatasetFilter.enabled) {
     if (!selectedPath) {
+      cachedDatasetFilter.visibleCount = 0;
+      syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
       pruneDatasetTableSelection();
       setEmptyTable("Select a reserving class path to show cached datasets.");
       return;
     }
     if (cachedDatasetFilter.loading) {
+      cachedDatasetFilter.visibleCount = 0;
+      syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
       pruneDatasetTableSelection();
       setEmptyTable("Loading cached dataset list...");
       return;
     }
     if (cachedDatasetFilter.error) {
+      cachedDatasetFilter.visibleCount = 0;
+      syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
       pruneDatasetTableSelection();
       setEmptyTable(cachedDatasetFilter.error);
@@ -2159,12 +2246,16 @@ function renderDatasetTable() {
     }
     if (!shouldUseCachedDatasetFilter()) {
       void loadCachedDatasetFilterForSelectedPath();
+      cachedDatasetFilter.visibleCount = 0;
+      syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
       pruneDatasetTableSelection();
       setEmptyTable("Loading cached dataset list...");
       return;
     }
     if (cachedDatasetFilter.names.size === 0) {
+      cachedDatasetFilter.visibleCount = 0;
+      syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
       pruneDatasetTableSelection();
       setEmptyTable("No cached CSV or JSON dataset files found for selected path.");
@@ -2174,6 +2265,8 @@ function renderDatasetTable() {
 
   const context = buildDatasetTableRenderContext();
   const records = getDatasetTableRecords(context);
+  cachedDatasetFilter.visibleCount = cachedDatasetFilter.enabled ? records.length : cachedDatasetFilter.names.size;
+  syncCachedDatasetToolbar();
   if (!records.length) {
     const fragment = document.createDocumentFragment();
     fragment.appendChild(createDatasetTable([], context));
@@ -2531,6 +2624,10 @@ function findDatasetFilterButton(key) {
 function initDatasetTableInteractions() {
   if (els.rightPanel?.dataset?.tableInteractionsWired === "1") return;
   if (els.rightPanel) els.rightPanel.dataset.tableInteractionsWired = "1";
+  if (els.datasetTableSurface) {
+    els.datasetTableSurface.tabIndex = 0;
+    els.datasetTableSurface.addEventListener("keydown", handleDatasetTableKeyDown);
+  }
   els.datasetTableSurface?.addEventListener("contextmenu", (event) => {
     if (!event.target?.closest?.(".pi-table thead th")) return;
     event.preventDefault();

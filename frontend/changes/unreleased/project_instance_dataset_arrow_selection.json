@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Dataset table selections can now move with Up and Down arrow keys and open the selected row with Enter."
+}

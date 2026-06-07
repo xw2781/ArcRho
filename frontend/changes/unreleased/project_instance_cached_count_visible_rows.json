@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Aligned the Project Instance cached dataset count with the visible cached dataset rows."
+}

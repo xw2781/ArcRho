@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "internal",
+  "summary": "Dataset instance indexes now store method type as a dataset file property instead of a separate methods section."
+}

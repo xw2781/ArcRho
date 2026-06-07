@@ -14,7 +14,7 @@ from app_server.helpers import sanitize_dataset_file_name, sanitize_reserving_cl
 
 INDEX_FILE_NAME = "dataset_instance_index.json"
 LEGACY_METHOD_INDEX_FILE_NAME = "method_index.json"
-INDEX_VERSION = 2
+INDEX_VERSION = 3
 DFM_METHOD_TYPE = "DFM"
 
 
@@ -472,7 +472,6 @@ def _empty_index(project: str, reserving_class: str, folder_paths: Dict[str, str
         "folder_signature": _cached_folder_signature([], folder_paths),
         "dataset_names": [],
         "files": [],
-        "methods": [],
     }
 
 
@@ -517,7 +516,6 @@ def rebuild_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
         "folder_signature": _cached_folder_signature(physical_files, folder_paths),
         "dataset_names": sorted(names, key=lambda item: item.lower()),
         "files": files,
-        "methods": methods,
     }
 
     index_path = _index_path(project, rc)
@@ -542,7 +540,6 @@ def _is_current_index(data: Dict[str, Any]) -> bool:
         data.get("version") == INDEX_VERSION
         and isinstance(data.get("dataset_names"), list)
         and isinstance(data.get("files"), list)
-        and isinstance(data.get("methods"), list)
         and _clean_text(data.get("folder_signature")) != ""
     )
 

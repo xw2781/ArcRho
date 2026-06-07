@@ -2,7 +2,7 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
-Dataset instance index routes maintain a reserving-class-scoped `dataset_instance_index.json` cache of logical dataset instances, minimal Project Instance table metadata, folder signatures, and method-backed dataset associations. Project Instance uses the index for its cached dataset table, and the DFM Details `Name` selector uses the same index's `methods` list for DFM-backed dataset names.
+Dataset instance index routes maintain a reserving-class-scoped `dataset_instance_index.json` cache of logical dataset instances, minimal Project Instance table metadata, folder signatures, and method-backed dataset associations. Project Instance uses the index for its cached dataset table, and the DFM Details `Name` selector uses `files` entries with `method_type: "DFM"` for DFM-backed dataset names.
 <!-- MANUAL:END -->
 
 ## Entry Points
@@ -29,7 +29,7 @@ Routes:
 <!-- MANUAL:BEGIN -->
 - Cache file path: `projects/<project>/data/manual/<ReservingClassFolder>/dataset_instance_index.json`.
 - Indexed method files must match local DFM method storage: `projects/<project>/data/manual/<ReservingClassFolder>/DFM@<Name>.json`.
-- The index stores `dataset_names`, `files`, `methods`, `folder_paths`, and `folder_signature`. The `files` list is a logical dataset-instance list for Project Instance, not a physical file inventory: length/mode-scoped CSV variants such as `<DatasetName>@12@12@cum@dev.csv` collapse into the base `<DatasetName>` entry. Each logical entry includes only the dataset name plus table metadata such as latest modified time, earliest created time, user, and `method_type` when the instance is backed by a DFM method. For DFM entries, `dataset_name` comes from `details tab`.`output type` in the `DFM@<Name>.json` method file and `method_type` is `DFM`.
+- The index stores `dataset_names`, `files`, `folder_paths`, and `folder_signature`. The `files` list is a logical dataset-instance list for Project Instance, not a physical file inventory: length/mode-scoped CSV variants such as `<DatasetName>@12@12@cum@dev.csv` collapse into the base `<DatasetName>` entry. Each logical entry includes only the dataset name plus table metadata such as latest modified time, earliest created time, user, and `method_type` when the instance is backed by a DFM method. For DFM entries, `dataset_name` comes from `details tab`.`output type` in the `DFM@<Name>.json` method file and `method_type` is `DFM`.
 - Normal DFM saves and app-server generated dataset cache writes request an index refresh for the current project/reserving-class path after files are written, so Project Instance and the Details `Name` selector use the shared durable cache instead of scanning folders during every page load.
 - `method_index.json` is no longer read as a fallback cache file. Existing folders without `dataset_instance_index.json` rebuild the new file from current cached files when the endpoint is called.
 - `% Developed` curve lookup is read-only. It uses the same local DFM filename convention, reads `data tab`.`development labels` for x-axis month indexes, reads `ratios tab`.`ratio triangle`.`development labels` for displayed ratio period labels, reads `ratios tab`.`average formulas`.`selected` and `values`, derives selected/cumulative/% developed values, and returns only plot points and request metadata. Missing or incomplete DFM methods return explicit API errors so the frontend does not add a comparison line.

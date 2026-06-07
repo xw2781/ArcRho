@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Fixed Project Instance dataset row selection for names that differ only by special characters."
+}
