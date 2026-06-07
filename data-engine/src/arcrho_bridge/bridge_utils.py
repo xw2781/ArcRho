@@ -148,11 +148,24 @@ def app_is_running(image_name):
         return False
 
 
-def list_instance_files(folder):
+def list_json_files_by_mtime(folder, reverse=False):
     folder = Path(folder)
     if not folder.exists():
         return []
-    return sorted(folder.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)
+
+    paths = []
+    for path in folder.glob("*.json"):
+        try:
+            paths.append((path.stat().st_mtime, path))
+        except OSError:
+            pass
+
+    paths.sort(key=lambda item: item[0], reverse=reverse)
+    return [path for _, path in paths]
+
+
+def list_instance_files(folder):
+    return list_json_files_by_mtime(folder, reverse=True)
 
 
 def remove_old_instances(folder, age_seconds=60):
