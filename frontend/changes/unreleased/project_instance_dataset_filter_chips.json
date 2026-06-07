@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added Project Instance dataset table filter chips while keeping the cached-dataset eye toggle separate.",
+  "details": [
+    "Filter chips can be cleared from the toolbar with the left-side x or by right-clicking the chip.",
+    "Hovering a filter chip shows the full selected value list in an app-styled tooltip.",
+    "The cached-dataset eye toolbar is transparent and aligned with the dataset table inset.",
+    "Floating Project Instance window title text no longer shows a native browser tooltip."
+  ]
+}
