@@ -581,9 +581,9 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 0 8px;
-      border-bottom: 1px solid var(--border);
-      background: #fbfcff;
+      padding: 0 8px 0 4px;
+      border-bottom: 1px solid transparent;
+      background: transparent;
     }
     .dataset-toolbar-btn {
       width: 24px;
@@ -597,6 +597,9 @@
       justify-content: center;
       padding: 0;
       cursor: pointer;
+    }
+    #cachedDatasetToggle {
+      margin-left: 16px;
     }
     .dataset-toolbar-btn:hover {
       border-color: #c9d7ef;
@@ -667,6 +670,91 @@
     .dataset-toolbar-alert-action {
       font-weight: 700;
     }
+    .dataset-active-filters {
+      flex: 0 1 auto;
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+    }
+    .dataset-active-filters[hidden] {
+      display: none;
+    }
+    .dataset-filter-chip {
+      max-width: 220px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 9px 0 4px;
+      border: 1px solid #78a4ee;
+      border-radius: 4px;
+      background: #edf5ff;
+      color: #174ea6;
+      box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dataset-filter-chip:hover {
+      border-color: #5a8fe6;
+      background: #e3efff;
+    }
+    .dataset-filter-chip-close {
+      width: 17px;
+      height: 17px;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #526f9f;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 0 1px;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .dataset-filter-chip-close:hover {
+      background: #d9e8ff;
+      color: #174ea6;
+    }
+    .dataset-filter-chip-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dataset-filter-chip-tooltip {
+      position: fixed;
+      z-index: 10060;
+      max-width: min(620px, calc(100vw - 16px));
+      padding: 8px 12px;
+      border: 1px solid #b8c9ef;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 12px 24px rgba(20, 31, 51, 0.18);
+      color: #20242a;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 16px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    .dataset-filter-chip-tooltip.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
     .pi-table-wrap {
       flex: 1 1 auto;
       min-height: 0;
@@ -675,6 +763,7 @@
       position: relative;
       background: #fff;
       scrollbar-gutter: stable both-edges;
+      padding: 0 0 0 0px;
     }
     .pi-table-surface {
       min-width: 1120px;
@@ -1543,6 +1632,7 @@
               <circle cx="12" cy="12" r="2.8"></circle>
             </svg>
           </button>
+          <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Active dataset table filters" hidden></div>
           <div class="dataset-toolbar-status" id="cachedDatasetStatus" aria-live="polite"></div>
           <button class="dataset-toolbar-alert" id="diskChangeReloadAlert" type="button" hidden title="New dataset instances were detected on disk. Reload the Project Instance page to update the table.">
             <span class="dataset-toolbar-alert-text">New instances on disk</span>
@@ -1603,6 +1693,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260531d"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260607b"></script>
 </body>
 </html>

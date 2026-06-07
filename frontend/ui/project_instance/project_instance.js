@@ -25,6 +25,7 @@ const els = {
   hiddenTabsMenu: document.getElementById("hiddenTabsMenu"),
   hiddenDropBanner: document.getElementById("hiddenDropBanner"),
   cachedDatasetToggle: document.getElementById("cachedDatasetToggle"),
+  datasetActiveFilters: document.getElementById("datasetActiveFilters"),
   cachedDatasetStatus: document.getElementById("cachedDatasetStatus"),
   diskChangeReloadAlert: document.getElementById("diskChangeReloadAlert"),
   pageLoadingOverlay: document.getElementById("pageLoadingOverlay"),
@@ -74,6 +75,7 @@ const DATASET_TABLE_AUTOFIT_MAX_WIDTH = 460;
 const DATASET_TABLE_AUTOFIT_CELL_EXTRA_WIDTH = 38;
 const DATASET_TABLE_AUTOFIT_HEADER_EXTRA_WIDTH = 76;
 const DATASET_TABLE_BLANK_LABEL = "(Blank)";
+const DATASET_FILTER_CHIP_VALUE_LIMIT = 2;
 const LEFT_PANEL_DEFAULT_WIDTH = 400;
 const LEFT_PANEL_MIN_WIDTH = 200;
 const LEFT_PANEL_MAX_WIDTH = 600;
@@ -105,6 +107,7 @@ const pageLoadingTasks = new Set();
 let hiddenTabsHoverCloseTimer = 0;
 let hiddenTabsMenuPinned = false;
 let minimizedTabTooltip = null;
+let datasetFilterTooltip = null;
 let pageLoadingFrameTimer = 0;
 let pageLoadingStartedAt = 0;
 let pendingProjectInstanceRestoreState = null;
@@ -259,12 +262,8 @@ function syncCachedDatasetToolbar() {
     }
   }
   if (!els.cachedDatasetStatus) return;
-  if (!cachedDatasetFilter.enabled) {
-    els.cachedDatasetStatus.textContent = "";
-    return;
-  }
   if (!selectedPath) {
-    els.cachedDatasetStatus.textContent = "Select a path to filter cached datasets";
+    els.cachedDatasetStatus.textContent = "";
     return;
   }
   if (cachedDatasetFilter.loading) {
@@ -287,10 +286,121 @@ function syncDiskChangeToolbarAlert() {
   alert.hidden = !activePathFolderWatch.noticeShown;
 }
 
+function getDatasetFilterActiveValues(key, context = null) {
+  if (!context) {
+    const selected = datasetTableView.filters.get(key);
+    return selected instanceof Set ? Array.from(selected).map((value) => String(value)) : [];
+  }
+  const options = getDatasetColumnOptions(key, context);
+  if (!options.length) return [];
+  const selected = context?.selectionsByKey?.get?.(key) || getDatasetFilterSelection(key, options);
+  if (!(selected instanceof Set) || selected.size === 0 || selected.size === options.length) return [];
+  const optionLabels = new Map(options.map((opt) => [opt.key, opt.label]));
+  return options
+    .filter((opt) => selected.has(opt.key))
+    .map((opt) => opt.label || opt.key)
+    .concat(
+      Array.from(selected)
+        .filter((keyValue) => !optionLabels.has(keyValue))
+        .map((keyValue) => String(keyValue))
+    );
+}
+
+function getDatasetActiveFilterSummaries(context = null) {
+  const summaries = [];
+  for (const col of DATASET_TABLE_COLUMNS) {
+    const values = getDatasetFilterActiveValues(col.key, context);
+    if (!values.length) continue;
+    const visible = values.slice(0, DATASET_FILTER_CHIP_VALUE_LIMIT).join(", ");
+    summaries.push({
+      key: col.key,
+      label: col.label,
+      text: `${col.label}: ${visible}${values.length > DATASET_FILTER_CHIP_VALUE_LIMIT ? "..." : ""}`,
+      title: `${col.label}: ${values.join(", ")}`,
+    });
+  }
+  return summaries;
+}
+
+function clearDatasetColumnFilter(key) {
+  const normalized = toText(key);
+  if (!getDatasetColumn(normalized) || !datasetTableView.filters.has(normalized)) return;
+  hideDatasetFilterTooltip();
+  datasetTableView.filters.delete(normalized);
+  closeDatasetTableFilterPopover();
+  saveDatasetTablePreferences();
+  renderDatasetTable();
+}
+
+function ensureDatasetFilterTooltip() {
+  if (datasetFilterTooltip?.isConnected) return datasetFilterTooltip;
+  datasetFilterTooltip = document.createElement("div");
+  datasetFilterTooltip.className = "dataset-filter-chip-tooltip";
+  datasetFilterTooltip.setAttribute("role", "tooltip");
+  datasetFilterTooltip.setAttribute("aria-hidden", "true");
+  document.body.appendChild(datasetFilterTooltip);
+  return datasetFilterTooltip;
+}
+
+function positionDatasetFilterTooltip(chip) {
+  if (!datasetFilterTooltip?.classList?.contains("active") || !chip?.getBoundingClientRect) return;
+  const chipRect = chip.getBoundingClientRect();
+  const tooltipRect = datasetFilterTooltip.getBoundingClientRect();
+  const pad = 8;
+  const left = Math.max(pad, Math.min(chipRect.left, window.innerWidth - tooltipRect.width - pad));
+  const top = Math.max(pad, Math.min(chipRect.bottom + 6, window.innerHeight - tooltipRect.height - pad));
+  datasetFilterTooltip.style.left = `${Math.round(left)}px`;
+  datasetFilterTooltip.style.top = `${Math.round(top)}px`;
+}
+
+function showDatasetFilterTooltip(chip) {
+  const text = toText(chip?.dataset?.tooltip);
+  if (!text) return;
+  const tooltip = ensureDatasetFilterTooltip();
+  tooltip.textContent = text;
+  tooltip.classList.add("active");
+  tooltip.setAttribute("aria-hidden", "false");
+  window.requestAnimationFrame(() => positionDatasetFilterTooltip(chip));
+}
+
+function hideDatasetFilterTooltip() {
+  if (!datasetFilterTooltip) return;
+  datasetFilterTooltip.classList.remove("active");
+  datasetFilterTooltip.setAttribute("aria-hidden", "true");
+}
+
+function syncDatasetActiveFiltersToolbar(context = null) {
+  const wrap = els.datasetActiveFilters;
+  if (!wrap) return;
+  hideDatasetFilterTooltip();
+  const summaries = getDatasetActiveFilterSummaries(context);
+  wrap.replaceChildren();
+  wrap.hidden = summaries.length === 0;
+  for (const item of summaries) {
+    const chip = document.createElement("span");
+    chip.className = "dataset-filter-chip";
+    chip.dataset.filterKey = item.key;
+    chip.dataset.tooltip = item.title;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "dataset-filter-chip-close";
+    close.dataset.filterKey = item.key;
+    close.setAttribute("aria-label", `Clear ${item.label} filter`);
+    close.textContent = "x";
+    const label = document.createElement("span");
+    label.className = "dataset-filter-chip-label";
+    label.textContent = item.text;
+    chip.append(close, label);
+    chip.addEventListener("mouseenter", () => showDatasetFilterTooltip(chip));
+    chip.addEventListener("mousemove", () => positionDatasetFilterTooltip(chip));
+    chip.addEventListener("mouseleave", hideDatasetFilterTooltip);
+    wrap.appendChild(chip);
+  }
+}
+
 function shouldUseCachedDatasetFilter() {
   return (
-    cachedDatasetFilter.enabled
-    && !cachedDatasetFilter.loading
+    !cachedDatasetFilter.loading
     && !cachedDatasetFilter.error
     && selectedPath
     && normalizePath(cachedDatasetFilter.loadedPath).toLowerCase() === normalizePath(selectedPath).toLowerCase()
@@ -305,8 +415,16 @@ function hasCachedDatasetMetadataForSelectedPath() {
   );
 }
 
+function hasCachedDatasetSnapshotForSelectedPath() {
+  return (
+    hasCachedDatasetMetadataForSelectedPath()
+    && !cachedDatasetFilter.loading
+    && !cachedDatasetFilter.error
+  );
+}
+
 function isDatasetRecordCached(record) {
-  if (!shouldUseCachedDatasetFilter()) return true;
+  if (!hasCachedDatasetSnapshotForSelectedPath()) return false;
   const key = getCachedDatasetKey(record?.datasetName || getDatasetName(record?.row));
   return !!key && cachedDatasetFilter.names.has(key);
 }
@@ -805,12 +923,6 @@ function setCachedDatasetFilterEnabled(enabled) {
   if (cachedDatasetFilter.enabled === next) return;
   cachedDatasetFilter.enabled = next;
   closeDatasetTableFilterPopover();
-  if (next) {
-    void loadCachedDatasetFilterForSelectedPath();
-    return;
-  }
-  cachedDatasetFilter.loading = false;
-  cachedDatasetFilter.error = "";
   syncCachedDatasetToolbar();
   renderDatasetTable();
 }
@@ -981,7 +1093,7 @@ function updateDatasetWindowTitle(frame) {
   const titleEl = frame.querySelector?.(".pi-window-title");
   if (titleEl) {
     titleEl.textContent = displayTitle;
-    titleEl.title = fullTitle;
+    titleEl.removeAttribute("title");
   }
   frame.dataset.windowDisplayTitle = displayTitle;
   frame.setAttribute("aria-label", fullTitle);
@@ -1518,6 +1630,7 @@ function finishPageLoading(task) {
 function setEmptyTable(message) {
   if (!els.datasetTableSurface) return;
   els.datasetTableSurface.innerHTML = "";
+  syncDatasetActiveFiltersToolbar();
   const table = document.createElement("table");
   table.className = "pi-table";
   const tbody = document.createElement("tbody");
@@ -1707,7 +1820,7 @@ function buildDatasetTableRenderContext() {
   const records = datasetRows
     .map((row, rowIndex) => buildDatasetRecord(row, rowIndex))
     .filter((record) => record.datasetName)
-    .filter(isDatasetRecordCached);
+    .filter((record) => !cachedDatasetFilter.enabled || isDatasetRecordCached(record));
   const optionsByKey = new Map();
   const selectionsByKey = new Map();
 
@@ -1860,7 +1973,11 @@ function setDatasetTableColumnWidth(key, width) {
 
 function getDatasetTableRecords(context) {
   const records = Array.isArray(context?.records) ? context.records : datasetRows.map((row, rowIndex) => buildDatasetRecord(row, rowIndex));
-  return records.filter((item) => item.datasetName && isDatasetRecordCached(item) && rowMatchesDatasetTableFilters(item, context));
+  return records.filter((item) => (
+    item.datasetName
+    && (!cachedDatasetFilter.enabled || isDatasetRecordCached(item))
+    && rowMatchesDatasetTableFilters(item, context)
+  ));
 }
 
 function clearDatasetColumnDragIndicators() {
@@ -2138,6 +2255,7 @@ function createDatasetTable(records, context = null) {
     if (groupKeys.length) appendGroupedDatasetRows(tbody, records, groupKeys, columns);
     else for (const item of sortDatasetRecords(records)) tbody.appendChild(createDatasetRecordRow(item, columns));
   }
+  syncDatasetActiveFiltersToolbar(context);
   pruneDatasetTableSelection();
   syncDatasetTableSelectionDom();
   table.appendChild(tbody);
@@ -2219,15 +2337,15 @@ function renderDatasetTable() {
     setEmptyTable("No dataset types are defined for this project.");
     return;
   }
-  if (cachedDatasetFilter.enabled) {
-    if (!selectedPath) {
-      cachedDatasetFilter.visibleCount = 0;
-      syncCachedDatasetToolbar();
-      els.datasetTableSurface.innerHTML = "";
-      pruneDatasetTableSelection();
-      setEmptyTable("Select a reserving class path to show cached datasets.");
-      return;
-    }
+  if (cachedDatasetFilter.enabled && !selectedPath) {
+    cachedDatasetFilter.visibleCount = 0;
+    syncCachedDatasetToolbar();
+    els.datasetTableSurface.innerHTML = "";
+    pruneDatasetTableSelection();
+    setEmptyTable("Select a reserving class path to show cached datasets.");
+    return;
+  }
+  if (selectedPath) {
     if (cachedDatasetFilter.loading) {
       cachedDatasetFilter.visibleCount = 0;
       syncCachedDatasetToolbar();
@@ -2253,19 +2371,19 @@ function renderDatasetTable() {
       setEmptyTable("Loading cached dataset list...");
       return;
     }
-    if (cachedDatasetFilter.names.size === 0) {
+    if (cachedDatasetFilter.enabled && cachedDatasetFilter.names.size === 0) {
       cachedDatasetFilter.visibleCount = 0;
       syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
       pruneDatasetTableSelection();
-      setEmptyTable("No cached CSV or JSON dataset files found for selected path.");
+      setEmptyTable("No dataset found in this path.");
       return;
     }
   }
 
   const context = buildDatasetTableRenderContext();
   const records = getDatasetTableRecords(context);
-  cachedDatasetFilter.visibleCount = cachedDatasetFilter.enabled ? records.length : cachedDatasetFilter.names.size;
+  cachedDatasetFilter.visibleCount = records.filter(isDatasetRecordCached).length;
   syncCachedDatasetToolbar();
   if (!records.length) {
     const fragment = document.createDocumentFragment();
@@ -2654,6 +2772,20 @@ function initDatasetTableInteractions() {
     event.preventDefault();
     event.stopPropagation();
     applyDatasetRowContextAction(item.dataset.rowAction);
+  });
+  els.datasetActiveFilters?.addEventListener("click", (event) => {
+    const close = event.target?.closest?.(".dataset-filter-chip-close");
+    if (!close) return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearDatasetColumnFilter(close.dataset.filterKey);
+  });
+  els.datasetActiveFilters?.addEventListener("contextmenu", (event) => {
+    const chip = event.target?.closest?.(".dataset-filter-chip");
+    if (!chip) return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearDatasetColumnFilter(chip.dataset.filterKey);
   });
   document.addEventListener("mousedown", (event) => {
     if (els.datasetTableContextMenu?.contains(event.target)) return;
