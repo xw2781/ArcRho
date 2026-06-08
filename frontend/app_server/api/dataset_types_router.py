@@ -32,9 +32,10 @@ def get_dataset_types(project_name: str) -> Dict[str, Any]:
             "exists": False,
             "path": filepath,
             "data": {
-                "columns": list(config.DATASET_TYPES_COLUMNS),
+                "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
                 "rows": [],
                 "source_by_name": {},
+                "generated_by_name": {},
             },
         }
 

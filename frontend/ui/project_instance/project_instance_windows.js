@@ -535,11 +535,18 @@ function wireDatasetViewerWindowShortcuts(iframe, frame) {
   }, true);
 }
 
-function buildDatasetViewerUrl(datasetName, inst) {
+function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   params.set("project", projectName);
   params.set("path", state.selectedPath);
-  params.set("tri", datasetName);
+  if (toText(datasetName)) params.set("tri", datasetName);
+  if (options?.originLen) params.set("origin_len", String(options.originLen));
+  if (options?.devLen) params.set("dev_len", String(options.devLen));
+  if (options?.dsId) params.set("ds", toText(options.dsId));
+  if (options?.readOnly) params.set("readonly", "1");
+  if (options?.generated) params.set("generated_dataset", "1");
+  if (options?.draft) params.set("draft_instance", "1");
+  if (options?.initialTab) params.set("tab", toText(options.initialTab));
   params.set("inst", inst);
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
@@ -775,7 +782,7 @@ function createFloatingContentWindow(options = {}) {
   return frame;
 }
 
-function openDatasetWindow(datasetName) {
+function openDatasetWindow(datasetName, options = {}) {
   const name = toText(datasetName);
   if (!name) return;
   if (!state.selectedPath) {
@@ -793,7 +800,45 @@ function openDatasetWindow(datasetName) {
     title,
     windowKey,
     inst,
-    iframeSrc: buildDatasetViewerUrl(name, inst),
+    iframeSrc: buildDatasetViewerUrl(name, inst, {
+      readOnly: options?.readOnly,
+      generated: options?.generated,
+    }),
+    onIframeLoad: (iframe) => {
+      lockDatasetViewerInputs(iframe, name);
+      window.setTimeout(() => lockDatasetViewerInputs(iframe, name), 250);
+    },
+  });
+}
+
+function openNewDatasetDraftWindow(datasetName, options = {}) {
+  const name = toText(datasetName);
+  if (!name) return null;
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before adding a dataset.", true);
+    return null;
+  }
+
+  const windowKey = `${getDatasetWindowKey(name)}\u0001draft\u0001${Date.now()}`;
+  const isDraft = options?.draft !== false;
+  const title = isDraft ? `${state.selectedPath}\\New Dataset: ${name}` : `${state.selectedPath}\\${name}`;
+  const inst = `pi_ds_new_${Date.now()}_${state.windowSeq++}`;
+  return createFloatingContentWindow({
+    kind: "dataset",
+    name: isDraft ? `New: ${name}` : name,
+    itemName: name,
+    title,
+    windowKey,
+    inst,
+    iframeSrc: buildDatasetViewerUrl(name, inst, {
+      originLen: options?.originLen || 12,
+      devLen: options?.devLen || 12,
+      dsId: options?.dsId,
+      readOnly: options?.readOnly,
+      generated: options?.generated,
+      draft: isDraft,
+      initialTab: options?.initialTab || "details",
+    }),
     onIframeLoad: (iframe) => {
       lockDatasetViewerInputs(iframe, name);
       window.setTimeout(() => lockDatasetViewerInputs(iframe, name), 250);
@@ -922,6 +967,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     notifyProjectInstanceDirtyState,
     notifyProjectInstanceStateChanged,
     openDatasetWindow,
+    openNewDatasetDraftWindow,
     openDfmWindow,
     raiseWindow,
     rememberDatasetWindowSize,

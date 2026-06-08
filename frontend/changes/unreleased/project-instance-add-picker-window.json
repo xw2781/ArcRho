@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Improved the Project Instance Add Dataset picker so it scrolls cleanly and can be dragged or resized."
+}

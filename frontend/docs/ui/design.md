@@ -48,6 +48,7 @@ Keep surfaces pale, borders precise, typography compact, and motion short. Favor
 - Switches: compact 42px by 20px with green enabled state.
 - Chips: small rounded status labels with optional dot; use sparingly for state and counts.
 - Tables: compact row height around 31px, pale header, hover row highlight.
+- Sticky table headers: prevent scroll bleed-through with paint-only header-cell covers, not layout spacers. Use separated borders (`border-collapse: separate; border-spacing: 0;`) when sticky header borders need to stay opaque, and place seam masks on `th`/`thead` pseudo-elements that are absolutely positioned so they do not create white gaps above the header.
 - Drag/drop: dashed neutral border at rest, blue-tinted surface on hover/over state, clear drop result text.
 
 ## Motion

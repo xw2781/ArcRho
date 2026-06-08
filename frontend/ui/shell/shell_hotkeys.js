@@ -43,6 +43,7 @@ const hotkeys = {
   "Ctrl+Shift+F": "view_toggle_nav",
   "Ctrl+Shift+L": "view_toggle_line_numbers",
   "Ctrl+Shift+E": "view_toggle_exec_time",
+  "Ctrl+Shift+I": "help_view_dev_panel",
   "Ctrl+Q": "app_shutdown",
   "Ctrl+Alt+R": "file_restart",
 };
@@ -96,6 +97,7 @@ export function runHotkeyAction(action) {
   if (action === "view_toggle_nav") return shell.toggleNavigationPanel?.();
   if (action === "view_toggle_line_numbers") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-line-numbers"); return; }
   if (action === "view_toggle_exec_time") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-exec-time"); return; }
+  if (action === "help_view_dev_panel") return shell.openDevPanel?.();
   if (action === "file_restart") return shell.restartApplication?.();
   if (action === "app_shutdown") return shell.shutdownApplication?.();
 }
@@ -117,10 +119,16 @@ export function initHotkeys() {
       e.stopPropagation();
       return;
     }
-    if (shouldIgnoreHotkey(e)) return;
     const combo = normalizeKeyCombo(e);
     lastKeyCombo = combo;
     lastKeyTime = Date.now();
+    if (combo === "Ctrl+Shift+I") {
+      e.preventDefault();
+      e.stopPropagation();
+      runHotkeyAction("help_view_dev_panel");
+      return;
+    }
+    if (shouldIgnoreHotkey(e)) return;
     if (combo === "Ctrl+W") {
       e.preventDefault();
       e.stopPropagation();

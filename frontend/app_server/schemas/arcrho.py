@@ -7,6 +7,8 @@ class ArcRhoTriRequest(BaseModel):
     Path: str
     TriangleName: str
     ProjectName: str
+    InstanceName: Optional[str] = None
+    DatasetTypeName: Optional[str] = None
     Cumulative: bool = True
     Calendar: bool = False
     OriginLength: int = 12

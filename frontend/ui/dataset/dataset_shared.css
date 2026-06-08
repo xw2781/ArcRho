@@ -167,6 +167,55 @@
       padding-right: 34px;
     }
 
+    .dsDetailNameWrap {
+      position: relative;
+      width: min(100%, 420px);
+      max-width: 100%;
+    }
+
+    .dsDetailNameWrap #dsDetailName {
+      width: 100%;
+    }
+
+    .dsDetailNameWrap #dsDetailName.invalid {
+      border-color: #d92d20;
+      box-shadow: 0 0 0 2px rgba(217, 45, 32, 0.12);
+    }
+
+    .dsDetailNameWarning {
+      position: absolute;
+      left: calc(100% + 10px);
+      top: 50%;
+      z-index: 20;
+      min-width: 220px;
+      max-width: min(300px, calc(100vw - 40px));
+      padding: 7px 9px;
+      border: 1px solid #f04438;
+      border-radius: 6px;
+      background: #fff7f5;
+      color: #b42318;
+      box-shadow: 0 8px 20px rgba(180, 35, 24, 0.16);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.25;
+      white-space: normal;
+      pointer-events: none;
+      transform: translateY(-50%);
+    }
+
+    .dsDetailNameWarning::before {
+      content: "";
+      position: absolute;
+      left: -5px;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      border-left: 1px solid #f04438;
+      border-bottom: 1px solid #f04438;
+      background: #fff7f5;
+      transform: translateY(-50%) rotate(45deg);
+    }
+
     .projectTreeBtn,
     .pathTreeBtn,
     .datasetTreeBtn{
@@ -1431,9 +1480,8 @@
       align-items: center;
       justify-content: flex-end;
       gap: 8px;
-      padding: 6px 4px 0;
-      border: 1px solid transparent;
-      border-top: none;
+      padding: 6px 10px 4px;
+      border-top: 1px solid #d7dce5;
       box-sizing: border-box;
       background: #fff;
     }

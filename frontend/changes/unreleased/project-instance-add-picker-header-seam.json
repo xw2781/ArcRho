@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed the Add Dataset picker header so scrolled table contents no longer show through the top seam."
+}

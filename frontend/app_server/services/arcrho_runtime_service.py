@@ -25,7 +25,7 @@ def _pair_value(pairs: list, key: str) -> str:
 
 
 def _dataset_sidecar_path(data_path: str, pairs: list) -> str:
-    dataset_name = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
+    dataset_name = _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
     dataset_file = sanitize_dataset_file_name(dataset_name)
     return os.path.join(os.path.dirname(data_path), f"{dataset_file}.json")
 
@@ -54,8 +54,9 @@ def _pair_bool_value(pairs: list, key: str, default: bool) -> bool:
 
 
 def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
-    dataset_name = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
-    if not dataset_name:
+    dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
+    instance_name = _pair_value(pairs, "InstanceName") or dataset_type
+    if not instance_name:
         return
     sidecar_path = _dataset_sidecar_path(data_path, pairs)
     if os.path.exists(sidecar_path):
@@ -67,9 +68,9 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
     except OSError:
         pass
     payload = {
-        "dataset_name": dataset_name,
-        "dataset_type": dataset_name,
-        "instance_name": dataset_name,
+        "dataset_name": instance_name,
+        "dataset_type": dataset_type,
+        "instance_name": instance_name,
         "reserving_class": _pair_value(pairs, "Path"),
         "project_name": _pair_value(pairs, "ProjectName"),
         "storage": "generated",
@@ -117,10 +118,13 @@ def arcrho_tri_cache_matches(data_path: str, pairs: list) -> bool:
     if not isinstance(payload, dict):
         return False
     checks = {
-        "dataset_name": _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
+        "dataset_name": _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
         "reserving_class": _pair_value(pairs, "Path"),
         "project_name": _pair_value(pairs, "ProjectName"),
     }
+    dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
+    if dataset_type:
+        checks["dataset_type"] = dataset_type
     for key, value in checks.items():
         if isinstance(value, bool):
             if bool(payload.get(key)) != value:

@@ -62,7 +62,12 @@ export function wireDatasetInputController(deps) {
     setStatus("Clearing cache and reloading dataset...");
     void runArcRhoTri({ clearCache: true, showValidationMessage: true });
   });
-  $("saveBtn").addEventListener("click", savePatch);
+  const saveBtn = $("saveBtn");
+  if (window.location.search.includes("readonly=1") || window.location.search.includes("generated_dataset=1")) {
+    saveBtn.disabled = true;
+    saveBtn.title = "Generated datasets are read-only.";
+  }
+  saveBtn.addEventListener("click", savePatch);
   $("toggleBlankBtn").addEventListener("click", toggleBlanks);
 
   const pathInput = document.getElementById("pathInput");

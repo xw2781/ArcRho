@@ -638,38 +638,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .dataset-toolbar-alert {
-      min-width: 0;
-      max-width: 260px;
-      height: 24px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 0 8px;
-      border: 1px solid #e7a931;
-      border-radius: 4px;
-      background: #fff8e6;
-      color: #573a00;
-      font-size: 12px;
-      line-height: 1;
-      white-space: nowrap;
-      cursor: pointer;
-    }
-    .dataset-toolbar-alert:hover {
-      border-color: #c77d05;
-      background: #fff2cc;
-    }
-    .dataset-toolbar-alert[hidden] {
-      display: none;
-    }
-    .dataset-toolbar-alert-text {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .dataset-toolbar-alert-action {
-      font-weight: 700;
-    }
     .dataset-active-filters {
       flex: 0 1 auto;
       min-width: 0;
@@ -1307,6 +1275,201 @@
     .pi-context-submenu:focus-within .pi-context-submenu-menu {
       display: block;
     }
+    .pi-add-picker-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10120;
+      background: rgba(15, 23, 42, 0.18);
+    }
+    .pi-add-picker-box {
+      position: absolute;
+      top: 96px;
+      right: 64px;
+      width: min(720px, calc(100vw - 48px));
+      min-width: min(420px, calc(100vw - 24px));
+      min-height: min(220px, calc(100vh - 24px));
+      max-height: min(560px, calc(100vh - 132px));
+      border: 1px solid #aeb8ca;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 18px 42px rgba(27, 40, 66, 0.26);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .pi-add-picker-box.dragging,
+    .pi-add-picker-box.resizing {
+      user-select: none;
+    }
+    .pi-add-picker-header {
+      height: 32px;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 8px 0 12px;
+      border-bottom: 1px solid #d4dbe7;
+      background: #f2f5f9;
+      color: #243044;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: move;
+    }
+    .pi-add-picker-close {
+      width: 24px;
+      height: 24px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      background: transparent;
+      color: #344054;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+    }
+    .pi-add-picker-close:hover {
+      border-color: #cbd5e1;
+      background: #fff;
+    }
+    .pi-add-picker-body {
+      min-height: 0;
+      overflow: hidden;
+      padding: 10px;
+      background: #fafafa;
+      display: flex;
+      flex-direction: column;
+    }
+    .pi-add-picker-table-wrap {
+      min-height: 0;
+      flex: 1 1 auto;
+      position: relative;
+      overflow: auto;
+      border: 0.5px solid #cfd6e1;
+      background: #fff;
+      isolation: isolate;
+    }
+    .pi-add-picker-table {
+      width: 100%;
+      min-width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: fixed;
+      font-size: 12px;
+      background: #fff;
+    }
+    .pi-add-picker-table th,
+    .pi-add-picker-table td {
+      border: 0.5px solid #cfd6e1;
+      padding: 6px 10px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    .pi-add-picker-table th {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      background: #f5f5f5;
+      color: #555;
+      font-weight: 600;
+      background-clip: border-box;
+      white-space: normal;
+      word-break: break-word;
+    }
+    .pi-add-picker-table th::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -3px;
+      height: 3px;
+      background: #f5f5f5;
+    }
+    .pi-add-picker-table td {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .pi-add-picker-table tbody tr {
+      cursor: pointer;
+    }
+    .pi-add-picker-table tbody tr:hover td,
+    .pi-add-picker-table tbody tr:focus td {
+      background: #e9f2ff;
+    }
+    .pi-add-picker-table td.pi-add-generated-cell {
+      text-align: center;
+    }
+    .pi-add-picker-table input[type="checkbox"] {
+      width: 13px;
+      height: 13px;
+      margin: 0;
+      accent-color: #2a63d4;
+      pointer-events: none;
+    }
+    .pi-add-picker-empty {
+      padding: 18px 10px;
+      color: #667085;
+      font-size: 12px;
+      text-align: center;
+    }
+    .pi-add-picker-resize {
+      position: absolute;
+      z-index: 4;
+      background: transparent;
+    }
+    .pi-add-picker-resize[data-edge="n"],
+    .pi-add-picker-resize[data-edge="s"] {
+      left: 8px;
+      right: 8px;
+      height: 8px;
+      cursor: ns-resize;
+    }
+    .pi-add-picker-resize[data-edge="n"] {
+      top: -3px;
+    }
+    .pi-add-picker-resize[data-edge="s"] {
+      bottom: -3px;
+    }
+    .pi-add-picker-resize[data-edge="e"],
+    .pi-add-picker-resize[data-edge="w"] {
+      top: 8px;
+      bottom: 8px;
+      width: 8px;
+      cursor: ew-resize;
+    }
+    .pi-add-picker-resize[data-edge="e"] {
+      right: -3px;
+    }
+    .pi-add-picker-resize[data-edge="w"] {
+      left: -3px;
+    }
+    .pi-add-picker-resize[data-edge="ne"],
+    .pi-add-picker-resize[data-edge="nw"],
+    .pi-add-picker-resize[data-edge="se"],
+    .pi-add-picker-resize[data-edge="sw"] {
+      width: 14px;
+      height: 14px;
+    }
+    .pi-add-picker-resize[data-edge="ne"] {
+      top: -4px;
+      right: -4px;
+      cursor: nesw-resize;
+    }
+    .pi-add-picker-resize[data-edge="nw"] {
+      top: -4px;
+      left: -4px;
+      cursor: nwse-resize;
+    }
+    .pi-add-picker-resize[data-edge="se"] {
+      right: -4px;
+      bottom: -4px;
+      cursor: nwse-resize;
+    }
+    .pi-add-picker-resize[data-edge="sw"] {
+      left: -4px;
+      bottom: -4px;
+      cursor: nesw-resize;
+    }
     .pi-table-filter-popover {
       min-width: 210px;
       max-width: 320px;
@@ -1634,10 +1797,6 @@
           </button>
           <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Active dataset table filters" hidden></div>
           <div class="dataset-toolbar-status" id="cachedDatasetStatus" aria-live="polite"></div>
-          <button class="dataset-toolbar-alert" id="diskChangeReloadAlert" type="button" hidden title="New dataset instances were detected on disk. Reload the Project Instance page to update the table.">
-            <span class="dataset-toolbar-alert-text">New instances on disk</span>
-            <span class="dataset-toolbar-alert-action">Reload</span>
-          </button>
         </div>
         <div class="pi-table-wrap" id="datasetTableWrap">
           <div class="pi-table-surface" id="datasetTableSurface"></div>
@@ -1672,8 +1831,56 @@
     </div>
     <div class="pi-table-row-context-menu" id="datasetRowContextMenu" role="menu" aria-hidden="true">
       <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="view">View</button>
-      <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add" title="Coming soon">Add</button>
+      <div class="pi-context-submenu">
+        <button class="pi-context-menu-item pi-context-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu">
+          <span>Add</span>
+          <span class="pi-context-submenu-arrow" aria-hidden="true"></span>
+        </button>
+        <div class="pi-context-submenu-menu" role="menu">
+          <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-dataset">Dataset</button>
+          <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-dfm">DFM</button>
+          <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-bsm">Berquist Sherman Method</button>
+        </div>
+      </div>
       <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="delete">Delete</button>
+    </div>
+    <div class="pi-add-picker-overlay" id="datasetAddPickerOverlay" hidden>
+      <div class="pi-add-picker-box" id="datasetAddPickerBox" role="dialog" aria-modal="true" aria-labelledby="datasetAddPickerTitle">
+        <div class="pi-add-picker-header">
+          <div id="datasetAddPickerTitle">Add Dataset</div>
+          <button class="pi-add-picker-close" id="datasetAddPickerClose" type="button" aria-label="Close">x</button>
+        </div>
+        <div class="pi-add-picker-body">
+          <div class="pi-add-picker-table-wrap" id="datasetAddPickerTableWrap">
+            <table class="pi-add-picker-table" id="datasetAddPickerTable">
+              <colgroup>
+                <col style="width: 42%;">
+                <col style="width: 20%;">
+                <col style="width: 25%;">
+                <col style="width: 13%;">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Dataset Type Name</th>
+                  <th>Data Format</th>
+                  <th>Category</th>
+                  <th>Generated</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="pi-add-picker-empty" id="datasetAddPickerEmpty" hidden>No dataset types are available.</div>
+        </div>
+        <div class="pi-add-picker-resize" data-edge="n" aria-hidden="true"></div>
+        <div class="pi-add-picker-resize" data-edge="e" aria-hidden="true"></div>
+        <div class="pi-add-picker-resize" data-edge="s" aria-hidden="true"></div>
+        <div class="pi-add-picker-resize" data-edge="w" aria-hidden="true"></div>
+        <div class="pi-add-picker-resize" data-edge="ne" aria-hidden="true"></div>
+        <div class="pi-add-picker-resize" data-edge="se" aria-hidden="true"></div>
+        <div class="pi-add-picker-resize" data-edge="sw" aria-hidden="true"></div>
+        <div class="pi-add-picker-resize" data-edge="nw" aria-hidden="true"></div>
+      </div>
     </div>
     <div class="pi-table-filter-popover" id="datasetTableFilterPopover" aria-hidden="true"></div>
     <div class="pi-delete-confirm-overlay" id="datasetDeleteConfirmOverlay" hidden>
@@ -1693,6 +1900,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260607c"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260608b"></script>
 </body>
 </html>

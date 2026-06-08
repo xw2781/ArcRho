@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed existing Dataset Viewer instances getting stuck while loading after the editable instance name update."
+}

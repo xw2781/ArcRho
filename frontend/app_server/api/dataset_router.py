@@ -10,6 +10,7 @@ from app_server.schemas.dataset import (
     DatasetNotesSaveRequest,
     DatasetSidecarLoadRequest,
     DatasetSidecarSaveRequest,
+    EmptyDatasetCacheCreateRequest,
     PatchRequest,
 )
 from app_server.services import dataset_service
@@ -33,6 +34,21 @@ def delete_cached_datasets(req: CachedDatasetDeleteRequest) -> Dict[str, Any]:
         req.project_name,
         req.reserving_class,
         req.dataset_names,
+    )
+
+
+@router.post("/datasets/cached/empty")
+def create_empty_cached_dataset(req: EmptyDatasetCacheCreateRequest) -> Dict[str, Any]:
+    return dataset_service.create_empty_cached_dataset(
+        req.project_name,
+        req.reserving_class,
+        req.dataset_type,
+        instance_name=req.instance_name,
+        data_format=req.data_format,
+        origin_length=req.origin_length,
+        development_length=req.development_length,
+        cumulative=req.cumulative,
+        calendar=req.calendar,
     )
 
 
@@ -96,6 +112,8 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
         req.project_name,
         req.reserving_class,
         req.dataset_name,
+        dataset_type=req.dataset_type,
+        instance_name=req.instance_name,
         origin_length=req.origin_length,
         development_length=req.development_length,
         cumulative=req.cumulative,

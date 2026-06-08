@@ -49,7 +49,10 @@ export function injectDatasetMarkup(container) {
           <label class="small" for="dsDetailName">Name</label>
         </div>
         <div class="dsDetailInput">
-          <input id="dsDetailName" autocomplete="off" />
+          <div class="dsDetailNameWrap">
+            <input id="dsDetailName" autocomplete="off" />
+            <span id="dsDetailNameWarning" class="dsDetailNameWarning" role="tooltip" aria-live="polite" hidden></span>
+          </div>
         </div>
 
         <div class="dsDetailLabel">
@@ -185,10 +188,6 @@ export function injectDatasetMarkup(container) {
           <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M5.5 4.5 9 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
         </button>
       </div>
-      <div id="datasetSaveBar" class="datasetSaveBar" hidden>
-        <button id="datasetSaveBtn" class="datasetPrimaryBtn" type="button">Save</button>
-        <button id="datasetCancelBtn" class="datasetSecondaryBtn" type="button">Cancel</button>
-      </div>
     </div>
   </div>
 
@@ -280,6 +279,11 @@ export function injectDatasetMarkup(container) {
       <div class="small"><b>Audit Log</b></div>
       <div class="dsPlaceholderText">No audit entries yet.</div>
     </div>
+  </div>
+
+  <div id="datasetSaveBar" class="datasetSaveBar" hidden>
+    <button id="datasetSaveBtn" class="datasetPrimaryBtn" type="button">Save</button>
+    <button id="datasetCancelBtn" class="datasetSecondaryBtn" type="button">Cancel</button>
   </div>
 
   <div id="hiddenControls" style="display:none;">

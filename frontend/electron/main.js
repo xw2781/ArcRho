@@ -128,6 +128,12 @@ const arcBotCodexThreads = new Map();
 const arcBotRequestLoggers = new Map();
 let codexAppServerClient = null;
 
+function toggleDevPanelForWindow(target = BrowserWindow.getFocusedWindow() || win) {
+  if (!target || target.isDestroyed()) return { ok: false, error: "Window unavailable." };
+  target.webContents.toggleDevTools();
+  return { ok: true, open: target.webContents.isDevToolsOpened() };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -3404,6 +3410,12 @@ function createWindow() {
       win.webContents.send("arcrho:hotkey", { action });
     };
 
+    if (ctrl && !alt && shift && key === "I") {
+      event.preventDefault();
+      toggleDevPanelForWindow();
+      return;
+    }
+
     if (type === "mouseWheel" && ctrl) {
       event.preventDefault();
       const deltaY = Number(input.deltaY || 0);
@@ -3912,6 +3924,10 @@ ipcMain.handle("app-shutdown", async () => {
 });
 
 ipcMain.handle("app-check-for-update", async () => checkForUpdate({ showNoUpdate: true }));
+
+ipcMain.handle("app-toggle-dev-panel", () => {
+  return toggleDevPanelForWindow();
+});
 
 ipcMain.handle("app-clear-cache-reload", async () => {
   if (!win || win.isDestroyed()) return false;

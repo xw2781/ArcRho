@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import getpass
+import hashlib
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
@@ -13,7 +14,7 @@ import pandas as pd
 from fastapi import HTTPException
 
 from app_server import config
-from app_server.helpers import atomic_write_csv, sanitize_dataset_file_name
+from app_server.helpers import atomic_write_csv, build_length_scoped_dataset_file_name, sanitize_dataset_file_name
 from app_server.helpers import sanitize_reserving_class_folder
 from app_server.services import dataset_instance_index_service
 
@@ -79,6 +80,178 @@ def delete_cached_datasets(project_name: str, reserving_class: str, dataset_name
     if not project or not rc:
         raise HTTPException(400, "project_name and reserving_class are required.")
     return dataset_instance_index_service.delete_cached_datasets(project, rc, dataset_names)
+
+
+def _data_format_code(data_format: str) -> int:
+    text = str(data_format or "").strip().lower()
+    if text == "vector":
+        return 1
+    return 0
+
+
+def _empty_dataset_values(data_format: str, origin_length: int, development_length: int) -> pd.DataFrame:
+    fmt = str(data_format or "").strip().lower()
+    n_origin = max(1, int(origin_length))
+    n_dev = 1 if fmt == "vector" else max(1, int(development_length))
+    values = np.zeros((n_origin, n_dev), dtype="float64")
+    if fmt != "vector":
+        values = np.where(triangle_mask(n_origin, n_dev), 0.0, np.nan)
+    return pd.DataFrame(values)
+
+
+def _ym_to_month_index(value: Any) -> int | None:
+    text = str(value if value is not None else "").strip()
+    if not text:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) >= 6:
+        year = int(digits[:4])
+        month = int(digits[4:6])
+    elif len(digits) == 4:
+        year = int(digits)
+        month = 1
+    else:
+        return None
+    if year <= 0 or month < 1 or month > 12:
+        return None
+    return year * 12 + (month - 1)
+
+
+def _period_count(start_value: Any, end_value: Any, period_length: int, fallback: int = 12) -> int:
+    start = _ym_to_month_index(start_value)
+    end = _ym_to_month_index(end_value)
+    period = max(1, int(period_length or 1))
+    if start is None or end is None or end < start:
+        return fallback
+    return max(1, ((end - start) // period) + 1)
+
+
+def _empty_dataset_shape_from_general_settings(
+    project_name: str,
+    origin_period_length: int,
+    development_period_length: int,
+) -> tuple[int, int]:
+    try:
+        path = config.get_general_settings_path(project_name)
+    except ValueError:
+        return 12, 12
+    if not os.path.exists(path):
+        return 12, 12
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except Exception:
+        return 12, 12
+    origin_start = payload.get("origin_start_date", "")
+    origin_end = payload.get("origin_end_date", "")
+    development_end = payload.get("development_end_date", "")
+    origin_count = _period_count(origin_start, origin_end, origin_period_length)
+    development_count = _period_count(origin_start, development_end, development_period_length, fallback=origin_count)
+    return origin_count, development_count
+
+
+def create_empty_cached_dataset(
+    project_name: str,
+    reserving_class: str,
+    dataset_type: str,
+    *,
+    instance_name: str = "",
+    data_format: str = "Triangle",
+    origin_length: int = 12,
+    development_length: int = 12,
+    cumulative: bool = True,
+    calendar: bool = False,
+) -> Dict[str, Any]:
+    p, rc, ds_type = _require_dataset_fields(project_name, reserving_class, dataset_type)
+    instance = str(instance_name or ds_type).strip()
+    if not instance:
+        raise HTTPException(400, "instance_name or dataset_type is required.")
+
+    try:
+        data_dir = config.get_project_generated_data_dir(p)
+    except ValueError as err:
+        raise HTTPException(404, str(err))
+
+    origin_period_len = max(1, int(origin_length))
+    dev_period_len = max(1, int(development_length))
+    origin_count, dev_count = _empty_dataset_shape_from_general_settings(p, origin_period_len, dev_period_len)
+    fmt = str(data_format or "Triangle").strip() or "Triangle"
+    rc_folder = sanitize_reserving_class_folder(rc)
+    folder = os.path.join(data_dir, rc_folder)
+    csv_stem = build_length_scoped_dataset_file_name(instance, origin_period_len, dev_period_len, cumulative, calendar)
+    csv_path = os.path.join(folder, f"{csv_stem}.csv")
+    sidecar_path = os.path.join(folder, f"{sanitize_dataset_file_name(instance)}.json")
+    now = _now_utc_iso()
+    user_name = getpass.getuser()
+
+    df = _empty_dataset_values(fmt, origin_count, dev_count)
+    payload = {
+        "dataset_name": instance,
+        "dataset_type": ds_type,
+        "instance_name": instance,
+        "reserving_class": rc,
+        "project_name": p,
+        "storage": "generated",
+        "data_format": fmt,
+        "data_format_code": _data_format_code(fmt),
+        "origin_length": origin_period_len,
+        "development_length": dev_period_len,
+        "cumulative": bool(cumulative),
+        "calendar": bool(calendar),
+        "csv_file": os.path.basename(csv_path),
+        "user": user_name,
+        "created": now,
+        "modified_by": user_name,
+        "updated_at": now,
+        "editable": True,
+        "generated": False,
+    }
+
+    tmp_sidecar = f"{sidecar_path}.{uuid.uuid4()}.tmp"
+    try:
+        os.makedirs(folder, exist_ok=True)
+        atomic_write_csv(df, csv_path)
+        with open(tmp_sidecar, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(payload, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        os.replace(tmp_sidecar, sidecar_path)
+    except PermissionError:
+        try:
+            if os.path.exists(tmp_sidecar):
+                os.remove(tmp_sidecar)
+        except OSError:
+            pass
+        raise HTTPException(423, "Dataset cache file is locked or inaccessible.")
+    except OSError as err:
+        try:
+            if os.path.exists(tmp_sidecar):
+                os.remove(tmp_sidecar)
+        except OSError:
+            pass
+        raise HTTPException(500, f"Failed to create empty dataset cache: {str(err)}")
+
+    try:
+        dataset_instance_index_service.rebuild_index(p, rc)
+    except Exception:
+        pass
+
+    ds_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
+    config.DATASETS[ds_id] = csv_path
+    return {
+        "ok": True,
+        "project_name": p,
+        "reserving_class": rc,
+        "dataset_name": instance,
+        "dataset_type": ds_type,
+        "data_format": fmt,
+        "origin_length": origin_period_len,
+        "development_length": dev_period_len,
+        "shape": {"n_origin": origin_count, "n_development": 1 if fmt.strip().lower() == "vector" else dev_count},
+        "csv_file": os.path.basename(csv_path),
+        "ds_id": ds_id,
+        "path": csv_path,
+        "sidecar_path": sidecar_path,
+    }
 
 
 def get_dataset(ds_id: str, start_year: int = 2016) -> Dict[str, Any]:
@@ -218,6 +391,8 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "project_name": str(payload.get("project_name") or p),
         "reserving_class": str(payload.get("reserving_class") or rc),
         "dataset_name": str(payload.get("dataset_name") or ds),
+        "dataset_type": str(payload.get("dataset_type") or payload.get("dataset_type_name") or ds),
+        "instance_name": str(payload.get("instance_name") or payload.get("dataset_name") or ds),
         "origin_length": payload.get("origin_length"),
         "development_length": payload.get("development_length"),
         "cumulative": payload.get("cumulative"),
@@ -236,6 +411,8 @@ def save_dataset_sidecar(
     reserving_class: str,
     dataset_name: str,
     *,
+    dataset_type: str = "",
+    instance_name: str = "",
     origin_length: int,
     development_length: int,
     cumulative: bool = True,
@@ -255,8 +432,8 @@ def save_dataset_sidecar(
     payload = {
         **existing,
         "dataset_name": ds,
-        "dataset_type": str(existing.get("dataset_type") or ds),
-        "instance_name": str(existing.get("instance_name") or ds),
+        "dataset_type": str(dataset_type or existing.get("dataset_type") or existing.get("dataset_type_name") or ds),
+        "instance_name": str(instance_name or existing.get("instance_name") or ds),
         "reserving_class": rc,
         "project_name": p,
         "storage": "generated",
@@ -303,6 +480,8 @@ def save_dataset_sidecar(
         "project_name": p,
         "reserving_class": rc,
         "dataset_name": ds,
+        "dataset_type": payload["dataset_type"],
+        "instance_name": payload["instance_name"],
         "origin_length": payload["origin_length"],
         "development_length": payload["development_length"],
         "cumulative": payload["cumulative"],

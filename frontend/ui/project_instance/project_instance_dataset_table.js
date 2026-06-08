@@ -16,6 +16,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
   const normalizePath = (...args) => api.normalizePath(...args);
   const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
+  const openNewDatasetDraftWindow = (...args) => api.openNewDatasetDraftWindow(...args);
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
   const postProjectInstanceStatus = (...args) => api.postProjectInstanceStatus(...args);
   const setStatus = (...args) => api.setStatus(...args);
@@ -436,6 +437,16 @@ function getDatasetName(row) {
   return toText(row?.[0]);
 }
 
+function parseDatasetGeneratedFlag(value) {
+  if (typeof value === "boolean") return value;
+  const text = toText(value).toLowerCase();
+  return text === "true" || text === "1" || text === "yes" || text === "y";
+}
+
+function getDatasetGenerated(row) {
+  return parseDatasetGeneratedFlag(row?.[5]);
+}
+
 function getMethodType(row) {
   if (!state.selectedPath) return "None";
   if (normalizePath(cachedDatasetFilter.loadedPath).toLowerCase() !== normalizePath(state.selectedPath).toLowerCase()) {
@@ -537,7 +548,7 @@ function buildDatasetRecord(row, rowIndex) {
     values[col.key] = getDatasetCellValue(row, col.key);
   }
   const datasetName = values.name || getDatasetName(row);
-  return { row, rowIndex, datasetName, values };
+  return { row, rowIndex, datasetName, generated: getDatasetGenerated(row), values };
 }
 
 function getDatasetRecordValue(record, key) {
@@ -888,7 +899,10 @@ function createDatasetRecordRow(item, columns) {
       openDfmTabForDataset(item);
       return;
     }
-    openDatasetWindow(item.datasetName);
+    openDatasetWindow(item.datasetName, {
+      readOnly: !!item.generated,
+      generated: !!item.generated,
+    });
   });
   tr.addEventListener("click", (event) => {
     applyDatasetRowSelection(item, event);
@@ -1310,7 +1324,10 @@ function openDatasetRecord(record) {
     openDfmTabForDataset(record);
     return;
   }
-  openDatasetWindow(record.datasetName);
+  openDatasetWindow(record.datasetName, {
+    readOnly: !!record.generated,
+    generated: !!record.generated,
+  });
 }
 
 function getDatasetRowActionRecords() {
@@ -1324,6 +1341,333 @@ function getDatasetRowActionRecords() {
 
 function getDatasetRowViewRecord() {
   return getDatasetRecordByKey(state.datasetRowContextKey) || getSelectedDatasetRecords()[0] || null;
+}
+
+function closeDatasetAddPicker() {
+  if (state.datasetAddPickerResolve) {
+    state.datasetAddPickerResolve(null);
+    state.datasetAddPickerResolve = null;
+  }
+  els.datasetAddPickerOverlay?.setAttribute("hidden", "");
+}
+
+function getDatasetAddPickerViewportLimits() {
+  const maxWidth = Math.max(260, window.innerWidth - 24);
+  const maxHeight = Math.max(180, window.innerHeight - 24);
+  return {
+    pad: 12,
+    minWidth: Math.min(420, maxWidth),
+    minHeight: Math.min(220, maxHeight),
+    maxWidth,
+    maxHeight,
+  };
+}
+
+function applyDatasetAddPickerRect(rect) {
+  const box = els.datasetAddPickerBox;
+  if (!box) return;
+  const limits = getDatasetAddPickerViewportLimits();
+  const width = Math.max(limits.minWidth, Math.min(Number(rect?.width) || limits.minWidth, limits.maxWidth));
+  const height = Math.max(limits.minHeight, Math.min(Number(rect?.height) || limits.minHeight, limits.maxHeight));
+  const left = Math.max(limits.pad, Math.min(Number(rect?.left) || limits.pad, window.innerWidth - width - limits.pad));
+  const top = Math.max(limits.pad, Math.min(Number(rect?.top) || limits.pad, window.innerHeight - height - limits.pad));
+  box.style.left = `${Math.round(left)}px`;
+  box.style.top = `${Math.round(top)}px`;
+  box.style.right = "auto";
+  box.style.width = `${Math.round(width)}px`;
+  box.style.height = `${Math.round(height)}px`;
+  box.style.maxHeight = "none";
+  box.dataset.positioned = "1";
+}
+
+function ensureDatasetAddPickerPositioned() {
+  const box = els.datasetAddPickerBox;
+  if (!box) return;
+  if (box.dataset.positioned === "1") {
+    clampDatasetAddPickerToViewport();
+    return;
+  }
+  const rect = box.getBoundingClientRect();
+  applyDatasetAddPickerRect({
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  });
+}
+
+function clampDatasetAddPickerToViewport() {
+  const box = els.datasetAddPickerBox;
+  if (!box || els.datasetAddPickerOverlay?.hasAttribute?.("hidden")) return;
+  const rect = box.getBoundingClientRect();
+  applyDatasetAddPickerRect({
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  });
+}
+
+function initDatasetAddPickerDragResize() {
+  const box = els.datasetAddPickerBox;
+  if (!box || box.dataset.dragResizeWired === "1") return;
+  box.dataset.dragResizeWired = "1";
+
+  const startInteraction = (event, mode, edge = "") => {
+    if (event.button !== 0) return;
+    const rect = box.getBoundingClientRect();
+    ensureDatasetAddPickerPositioned();
+    const startRect = {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+    const startX = Number(event.clientX || 0);
+    const startY = Number(event.clientY || 0);
+    box.classList.toggle("dragging", mode === "drag");
+    box.classList.toggle("resizing", mode === "resize");
+
+    const onMove = (moveEvent) => {
+      const dx = Number(moveEvent.clientX || 0) - startX;
+      const dy = Number(moveEvent.clientY || 0) - startY;
+      if (mode === "drag") {
+        applyDatasetAddPickerRect({
+          left: startRect.left + dx,
+          top: startRect.top + dy,
+          width: startRect.width,
+          height: startRect.height,
+        });
+        return;
+      }
+
+      let nextLeft = startRect.left;
+      let nextTop = startRect.top;
+      let nextWidth = startRect.width;
+      let nextHeight = startRect.height;
+      if (edge.includes("e")) nextWidth = startRect.width + dx;
+      if (edge.includes("s")) nextHeight = startRect.height + dy;
+      if (edge.includes("w")) {
+        nextLeft = startRect.left + dx;
+        nextWidth = startRect.width - dx;
+      }
+      if (edge.includes("n")) {
+        nextTop = startRect.top + dy;
+        nextHeight = startRect.height - dy;
+      }
+      applyDatasetAddPickerRect({
+        left: nextLeft,
+        top: nextTop,
+        width: nextWidth,
+        height: nextHeight,
+      });
+    };
+
+    const onUp = () => {
+      box.classList.remove("dragging", "resizing");
+      document.removeEventListener("mousemove", onMove, true);
+      document.removeEventListener("mouseup", onUp, true);
+    };
+
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("mouseup", onUp, true);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  box.querySelector(".pi-add-picker-header")?.addEventListener("mousedown", (event) => {
+    if (event.target?.closest?.("button")) return;
+    startInteraction(event, "drag");
+  });
+
+  for (const handle of box.querySelectorAll(".pi-add-picker-resize[data-edge]")) {
+    handle.addEventListener("mousedown", (event) => {
+      startInteraction(event, "resize", String(handle.dataset.edge || ""));
+    });
+  }
+}
+
+function getDatasetAddPickerRecords() {
+  return state.datasetRows
+    .map((row, rowIndex) => buildDatasetRecord(row, rowIndex))
+    .filter((record) => record.datasetName);
+}
+
+function renderDatasetAddPickerRows() {
+  const tbody = els.datasetAddPickerTable?.querySelector?.("tbody");
+  if (!tbody) return;
+  tbody.replaceChildren();
+  const records = getDatasetAddPickerRecords();
+  els.datasetAddPickerEmpty?.toggleAttribute("hidden", records.length > 0);
+  if (els.datasetAddPickerTable) els.datasetAddPickerTable.hidden = records.length === 0;
+  if (els.datasetAddPickerTableWrap) els.datasetAddPickerTableWrap.hidden = records.length === 0;
+
+  for (const record of records) {
+    const tr = document.createElement("tr");
+    tr.tabIndex = 0;
+    tr.dataset.datasetName = record.datasetName;
+    for (const key of ["datasetTypeName", "dataFormat", "category"]) {
+      const td = document.createElement("td");
+      td.textContent = getDatasetRecordValue(record, key);
+      tr.appendChild(td);
+    }
+    const generatedTd = document.createElement("td");
+    generatedTd.className = "pi-add-generated-cell";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !!record.generated;
+    checkbox.disabled = true;
+    checkbox.setAttribute("aria-label", record.generated ? "Generated" : "Not generated");
+    generatedTd.appendChild(checkbox);
+    tr.appendChild(generatedTd);
+    const choose = () => {
+      if (state.datasetAddPickerResolve) {
+        const resolve = state.datasetAddPickerResolve;
+        state.datasetAddPickerResolve = null;
+        resolve(record);
+      }
+      els.datasetAddPickerOverlay?.setAttribute("hidden", "");
+    };
+    tr.addEventListener("click", choose);
+    tr.addEventListener("dblclick", choose);
+    tr.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      event.stopPropagation();
+      choose();
+    });
+    tbody.appendChild(tr);
+  }
+}
+
+function showDatasetAddPicker() {
+  if (!els.datasetAddPickerOverlay) {
+    setStatus("Dataset type picker is not available.", true);
+    return Promise.resolve(null);
+  }
+  closeDatasetRowContextMenu();
+  closeDatasetTableContextMenu();
+  closeDatasetGroupContextMenu();
+  closeDatasetTableFilterPopover();
+  renderDatasetAddPickerRows();
+  els.datasetAddPickerOverlay.removeAttribute("hidden");
+  ensureDatasetAddPickerPositioned();
+  const firstRow = els.datasetAddPickerTable?.querySelector?.("tbody tr");
+  firstRow?.focus?.();
+  return new Promise((resolve) => {
+    state.datasetAddPickerResolve = resolve;
+  });
+}
+
+function buildAddDatasetTriPayload(record, lengths) {
+  const originLen = Number(lengths?.originLen) || 12;
+  const devLen = Number(lengths?.devLen) || 12;
+  return {
+    Path: state.selectedPath,
+    TriangleName: record.datasetName,
+    DatasetTypeName: record.datasetName,
+    ProjectName: projectName,
+    InstanceName: record.datasetName,
+    Cumulative: true,
+    Calendar: false,
+    OriginLength: originLen,
+    DevelopmentLength: devLen,
+    timeout_sec: 6.0,
+  };
+}
+
+async function getAddDatasetDefaultLengths() {
+  return { originLen: 12, devLen: 12 };
+}
+
+async function refreshDatasetsAfterAdd() {
+  await loadCachedDatasetFilterForSelectedPath();
+  renderDatasetTable();
+}
+
+async function addGeneratedDataset(record, lengths) {
+  setStatus(`Requesting generated dataset ${record.datasetName}...`);
+  const res = await fetch("/arcrho/tri/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildAddDatasetTriPayload(record, lengths)),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (res.ok && out?.ok === false && toText(out?.request_file)) {
+    await refreshDatasetsAfterAdd();
+    setStatus(`Generated dataset request sent for ${record.datasetName}. Waiting for data engine output.`);
+    return;
+  }
+  if (!res.ok || out?.ok === false) {
+    const detail = toText(out?.detail || out?.status) || `HTTP ${res.status}`;
+    throw new Error(detail);
+  }
+  await refreshDatasetsAfterAdd();
+  openNewDatasetDraftWindow(record.datasetName, {
+    originLen: lengths.originLen,
+    devLen: lengths.devLen,
+    dsId: out.ds_id,
+    readOnly: true,
+    generated: true,
+    draft: false,
+    initialTab: "data",
+  });
+  setStatus(`Generated dataset request completed for ${record.datasetName}.`);
+}
+
+async function addEmptyEditableDataset(record, lengths) {
+  setStatus(`Creating empty dataset ${record.datasetName}...`);
+  const res = await fetch("/datasets/cached/empty", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_name: projectName,
+      reserving_class: state.selectedPath,
+      dataset_type: record.datasetName,
+      instance_name: record.datasetName,
+      data_format: getDatasetRecordValue(record, "dataFormat") || "Triangle",
+      origin_length: lengths.originLen,
+      development_length: lengths.devLen,
+      cumulative: true,
+      calendar: false,
+    }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || out?.ok === false) {
+    const detail = toText(out?.detail || out?.status) || `HTTP ${res.status}`;
+    throw new Error(detail);
+  }
+  await refreshDatasetsAfterAdd();
+  openNewDatasetDraftWindow(record.datasetName, {
+    originLen: lengths.originLen,
+    devLen: lengths.devLen,
+    dsId: out.ds_id,
+    readOnly: false,
+    generated: false,
+    draft: false,
+    initialTab: "data",
+  });
+  setStatus(`Created empty editable dataset ${record.datasetName}.`);
+}
+
+async function addDatasetFromTypePicker() {
+  if (!projectName || !state.selectedPath) {
+    setStatus("Select a reserving class path before adding a dataset.", true);
+    return;
+  }
+  const selected = await showDatasetAddPicker();
+  const datasetName = toText(selected?.datasetName);
+  if (!datasetName) return;
+  try {
+    const lengths = await getAddDatasetDefaultLengths();
+    if (selected.generated) {
+      await addGeneratedDataset(selected, lengths);
+    } else {
+      await addEmptyEditableDataset(selected, lengths);
+    }
+  } catch (err) {
+    setStatus(`Add dataset failed: ${toText(err?.message) || "Unknown error."}`, true);
+  }
 }
 
 function resolveDatasetDeleteConfirm(value) {
@@ -1416,8 +1760,12 @@ function applyDatasetRowContextAction(action) {
   closeDatasetRowContextMenu();
   if (normalized === "view") {
     openDatasetRecord(viewRecord);
-  } else if (normalized === "add") {
-    setStatus("Add dataset is not available yet.");
+  } else if (normalized === "add-dataset") {
+    void addDatasetFromTypePicker();
+  } else if (normalized === "add-dfm") {
+    setStatus("Development Factor Method is a placeholder.");
+  } else if (normalized === "add-bsm") {
+    setStatus("Berquist Sherman Method is a placeholder.");
   } else if (normalized === "delete") {
     void deleteSelectedDatasetRows(records);
   }
@@ -1529,6 +1877,7 @@ function findDatasetFilterButton(key) {
 function initDatasetTableInteractions() {
   if (els.rightPanel?.dataset?.tableInteractionsWired === "1") return;
   if (els.rightPanel) els.rightPanel.dataset.tableInteractionsWired = "1";
+  initDatasetAddPickerDragResize();
   if (els.datasetTableSurface) {
     els.datasetTableSurface.tabIndex = 0;
     els.datasetTableSurface.addEventListener("keydown", handleDatasetTableKeyDown);
@@ -1574,11 +1923,16 @@ function initDatasetTableInteractions() {
     event.stopPropagation();
     clearDatasetColumnFilter(chip.dataset.filterKey);
   });
+  els.datasetAddPickerClose?.addEventListener("click", closeDatasetAddPicker);
+  els.datasetAddPickerOverlay?.addEventListener("mousedown", (event) => {
+    if (event.target === event.currentTarget) closeDatasetAddPicker();
+  });
   document.addEventListener("mousedown", (event) => {
     if (els.datasetTableContextMenu?.contains(event.target)) return;
     if (els.datasetGroupContextMenu?.contains(event.target)) return;
     if (els.datasetRowContextMenu?.contains(event.target)) return;
     if (els.datasetTableFilterPopover?.contains(event.target)) return;
+    if (els.datasetAddPickerOverlay?.contains(event.target)) return;
     if (event.target?.closest?.(".pi-table-filter-btn")) return;
     closeDatasetTableContextMenu();
     closeDatasetGroupContextMenu();
@@ -1590,6 +1944,9 @@ function initDatasetTableInteractions() {
     if (!els.datasetDeleteConfirmOverlay?.hasAttribute?.("hidden")) {
       resolveDatasetDeleteConfirm(false);
     }
+    if (!els.datasetAddPickerOverlay?.hasAttribute?.("hidden")) {
+      closeDatasetAddPicker();
+    }
     closeDatasetTableContextMenu();
     closeDatasetGroupContextMenu();
     closeDatasetRowContextMenu();
@@ -1599,6 +1956,7 @@ function initDatasetTableInteractions() {
     closeDatasetTableContextMenu();
     closeDatasetGroupContextMenu();
     closeDatasetRowContextMenu();
+    clampDatasetAddPickerToViewport();
     positionDatasetTableFilterPopover();
   });
   els.datasetTableWrap?.addEventListener("scroll", positionDatasetTableFilterPopover, true);
@@ -1683,6 +2041,7 @@ async function loadDatasets() {
     clearDatasetColumnDragIndicators,
     clearDatasetColumnFilter,
     closeDatasetGroupContextMenu,
+    closeDatasetAddPicker,
     closeDatasetRowContextMenu,
     closeDatasetTableContextMenu,
     closeDatasetTableFilterPopover,
@@ -1709,6 +2068,7 @@ async function loadDatasets() {
     getDatasetGroupByKeys,
     getDatasetGroupId,
     getDatasetName,
+    getDatasetAddPickerRecords,
     getDatasetRecordByKey,
     getDatasetRecordIndexByKey,
     getDatasetRecordKey,
@@ -1737,6 +2097,7 @@ async function loadDatasets() {
     measureDatasetTableText,
     moveDatasetTableColumn,
     openDatasetRecord,
+    addDatasetFromTypePicker,
     openDatasetTableFilterPopover,
     openDfmTabForDataset,
     parseDatasetGroupId,
@@ -1756,6 +2117,7 @@ async function loadDatasets() {
     setDatasetTableColumnWidth,
     setEmptyTable,
     showDatasetDeleteConfirm,
+    showDatasetAddPicker,
     showDatasetFilterTooltip,
     showDatasetGroupContextMenu,
     showDatasetRowContextMenu,

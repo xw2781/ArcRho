@@ -8,8 +8,8 @@ import { clearTestData, getLastWorkflowDir, getLastWorkflowPath, getWorkflowTabS
 import { closeTab, closeTabsExcept, dockTab, floatTab, openAgentGuideTab, openBrowsingHistoryTab, openDatasetTab, openDFMTab, openProjectInstanceTab, openProjectSettingsTab, openScriptingTab, openShellActivityHistoryEntry, openWorkflowTab, recordActiveTabHistory, setActive, setDockedActive } from "./tab_actions.js?v=20260520a";
 import { applyDockedIframeLayout, clampFloatingTabsToContent, clampFloatRect, defaultFloatRectFromPointer, ensureContentContainers, ensureIframe, notifyBrowsingHistoryTabs, notifyServerConnectionUpdated, notifyTabActivated, printActiveTab, removeFloatPreview, renderContent, renderFloatingWindows, updateFloatPreview } from "./shell_content.js?v=20260531a";
 import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, renderTabs, togglePlusMenu } from "./tab_strip.js?v=20260520b";
-import { closeAllShellMenus, initShellMenus, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260531a";
-import { initHotkeys, runHotkeyAction } from "./shell_hotkeys.js?v=20260531a";
+import { closeAllShellMenus, initShellMenus, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260608a";
+import { initHotkeys, runHotkeyAction } from "./shell_hotkeys.js?v=20260608a";
 import { initShellMessages } from "./shell_messages.js?v=20260531a";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260519a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
@@ -104,6 +104,7 @@ registerShellApi({
   openAgentGuideTab,
   openDatasetTab,
   openDFMTab,
+  openDevPanel,
   openFontSettingsModal,
   openForceRebuildSettingsModal,
   openMacroWindow,

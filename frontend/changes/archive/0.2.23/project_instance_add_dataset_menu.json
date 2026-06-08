@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added Project Instance row-menu Add options for dataset drafts and placeholder method workflows."
+}

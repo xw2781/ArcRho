@@ -1,4 +1,4 @@
-const DEFAULT_DATASET_TYPES_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula"];
+const DEFAULT_DATASET_TYPES_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula", "Generated"];
 
 function toText(value) {
   return String(value || "").trim();
@@ -12,6 +12,10 @@ export function parseDatasetTypesCalculatedFlag(value) {
   if (typeof value === "boolean") return value;
   const text = normalizeKey(value);
   return text === "true" || text === "1" || text === "yes" || text === "y";
+}
+
+export function parseDatasetTypesGeneratedFlag(value) {
+  return parseDatasetTypesCalculatedFlag(value);
 }
 
 function buildColumnIndexByName(columns) {
@@ -58,6 +62,7 @@ export function normalizeDatasetTypesPayload(rawPayload) {
   const idxCategory = indexByName.has("category") ? Number(indexByName.get("category")) : -1;
   const idxCalculated = indexByName.has("calculated") ? Number(indexByName.get("calculated")) : -1;
   const idxFormula = indexByName.has("formula") ? Number(indexByName.get("formula")) : -1;
+  const idxGenerated = indexByName.has("generated") ? Number(indexByName.get("generated")) : -1;
 
   for (const row of rows) {
     if (Array.isArray(row)) {
@@ -67,6 +72,7 @@ export function normalizeDatasetTypesPayload(rawPayload) {
         toText(getRowValueByIndex(row, idxCategory, row[2])),
         parseDatasetTypesCalculatedFlag(getRowValueByIndex(row, idxCalculated, row[3])),
         toText(getRowValueByIndex(row, idxFormula, row[4])),
+        parseDatasetTypesGeneratedFlag(getRowValueByIndex(row, idxGenerated, row[6])),
       ]);
       continue;
     }
@@ -77,6 +83,7 @@ export function normalizeDatasetTypesPayload(rawPayload) {
         toText(getRowValueByKeys(row, ["Category", "category"])),
         parseDatasetTypesCalculatedFlag(getRowValueByKeys(row, ["Calculated", "calculated"])),
         toText(getRowValueByKeys(row, ["Formula", "formula"])),
+        parseDatasetTypesGeneratedFlag(getRowValueByKeys(row, ["Generated", "generated"])),
       ]);
     }
   }
@@ -107,6 +114,7 @@ export function extractDatasetTypeItems(columns, rows, options = {}) {
       category: toText(row?.[2]) || itemDefaultCategory,
       calculated: !!parseDatasetTypesCalculatedFlag(row?.[3]),
       formula: toText(row?.[4]),
+      generated: !!parseDatasetTypesGeneratedFlag(row?.[5]),
     });
   }
 

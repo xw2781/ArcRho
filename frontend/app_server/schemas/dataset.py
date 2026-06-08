@@ -37,11 +37,25 @@ class DatasetSidecarSaveRequest(BaseModel):
     project_name: str
     reserving_class: str
     dataset_name: str
+    dataset_type: str = ""
+    instance_name: str = ""
     origin_length: int = Field(..., ge=1)
     development_length: int = Field(..., ge=1)
     cumulative: bool = True
     calendar: bool = False
     csv_file: str = ""
+
+
+class EmptyDatasetCacheCreateRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    dataset_type: str
+    instance_name: str = ""
+    data_format: str = "Triangle"
+    origin_length: int = Field(12, ge=1)
+    development_length: int = Field(12, ge=1)
+    cumulative: bool = True
+    calendar: bool = False
 
 
 class CachedDatasetDeleteRequest(BaseModel):

@@ -18,6 +18,7 @@ from app_server.helpers import _canon_dataset_name, _parse_calculated_flag
 def normalize_dataset_types_data(data: Any) -> Dict[str, Any]:
     rows_out: List[List[Any]] = []
     source_by_name: Dict[str, str] = {}
+    generated_by_name: Dict[str, bool] = {}
 
     if isinstance(data, list):
         for item in data:
@@ -27,21 +28,26 @@ def normalize_dataset_types_data(data: Any) -> Dict[str, Any]:
             source = str(
                 item.get("Source", item.get("source", item.get("SOURCE", ""))) or ""
             ).strip()
+            generated = _parse_calculated_flag(item.get("Generated", item.get("generated", False)))
             if str(name).strip():
                 source_by_name[str(name).strip()] = source
+                generated_by_name[str(name).strip()] = generated
             rows_out.append([
                 name,
                 str(item.get("Data Format", "") or ""),
                 str(item.get("Category", "") or ""),
                 _parse_calculated_flag(item.get("Calculated", False)),
                 str(item.get("Formula", "") or ""),
+                source,
+                generated,
             ])
             if not rows_out[-1][3]:
                 rows_out[-1][4] = ""
         return {
-            "columns": list(config.DATASET_TYPES_COLUMNS),
+            "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
             "rows": rows_out,
             "source_by_name": source_by_name,
+            "generated_by_name": generated_by_name,
         }
 
     if isinstance(data, dict):
@@ -63,6 +69,7 @@ def normalize_dataset_types_data(data: Any) -> Dict[str, Any]:
                 i_calc = col_idx.get("Calculated", -1)
                 i_formula = col_idx.get("Formula", -1)
                 i_source = col_idx.get("Source", col_idx.get("source", -1))
+                i_generated = col_idx.get("Generated", col_idx.get("generated", -1))
                 norm = [
                     str(r[i_name] if i_name >= 0 and i_name < len(r) and r[i_name] is not None else ""),
                     str(r[i_fmt] if i_fmt >= 0 and i_fmt < len(r) and r[i_fmt] is not None else ""),
@@ -75,18 +82,30 @@ def normalize_dataset_types_data(data: Any) -> Dict[str, Any]:
                     if i_source >= 0 and i_source < len(r) and r[i_source] is not None
                     else (r[5] if len(r) > 5 and r[5] is not None else "")
                 ).strip()
+                generated = _parse_calculated_flag(
+                    r[i_generated]
+                    if i_generated >= 0 and i_generated < len(r)
+                    else (r[6] if len(r) > 6 else False)
+                )
                 if not norm[3]:
                     norm[4] = ""
-                rows_out.append(norm)
+                rows_out.append([*norm, source, generated])
                 if norm[0].strip():
                     source_by_name[norm[0].strip()] = source
+                    generated_by_name[norm[0].strip()] = generated
             return {
-                "columns": list(config.DATASET_TYPES_COLUMNS),
+                "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
                 "rows": rows_out,
                 "source_by_name": source_by_name,
+                "generated_by_name": generated_by_name,
             }
 
-    return {"columns": list(config.DATASET_TYPES_COLUMNS), "rows": [], "source_by_name": {}}
+    return {
+        "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
+        "rows": [],
+        "source_by_name": {},
+        "generated_by_name": {},
+    }
 
 
 def _normalize_dataset_types_header_row(values: List[Any]) -> List[str]:

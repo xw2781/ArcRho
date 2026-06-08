@@ -12,6 +12,27 @@ from app_server.services import arcrho_runtime_service
 router = APIRouter()
 
 
+def _arcrho_tri_pairs(req: ArcRhoTriRequest) -> list:
+    dataset_type = str(req.DatasetTypeName or req.TriangleName or "").strip()
+    instance_name = str(req.InstanceName or "").strip()
+    pairs = [
+        ("Function", "ArcRhoTri"),
+        ("Path", req.Path),
+        ("DatasetName", dataset_type),
+    ]
+    if instance_name:
+        pairs.append(("InstanceName", instance_name))
+    pairs.extend([
+        ("Cumulative", str(req.Cumulative)),
+        ("Transposed", str(False)),
+        ("Calendar", str(req.Calendar)),
+        ("ProjectName", req.ProjectName),
+        ("OriginLength", str(req.OriginLength)),
+        ("DevelopmentLength", str(req.DevelopmentLength)),
+    ])
+    return pairs
+
+
 @router.post("/arcrho/headers")
 def arcrho_headers(req: ArcRhoHeadersRequest) -> Dict[str, Any]:
     pairs = [
@@ -42,17 +63,7 @@ def arcrho_projects() -> Dict[str, Any]:
 
 @router.post("/arcrho/tri/precheck")
 def arcrho_tri_precheck(req: ArcRhoTriRequest) -> Dict[str, Any]:
-    pairs = [
-        ("Function", "ArcRhoTri"),
-        ("Path", req.Path),
-        ("DatasetName", req.TriangleName),
-        ("Cumulative", str(req.Cumulative)),
-        ("Transposed", str(False)),
-        ("Calendar", str(req.Calendar)),
-        ("ProjectName", req.ProjectName),
-        ("OriginLength", str(req.OriginLength)),
-        ("DevelopmentLength", str(req.DevelopmentLength)),
-    ]
+    pairs = _arcrho_tri_pairs(req)
     data_path = set_data_path_like_vba(pairs)
     need_request = not arcrho_runtime_service.arcrho_tri_cache_matches(data_path, pairs)
     ds_id = "arcrhotri_" + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
@@ -67,33 +78,13 @@ def arcrho_tri_precheck(req: ArcRhoTriRequest) -> Dict[str, Any]:
 
 @router.post("/arcrho/tri")
 def arcrho_tri(req: ArcRhoTriRequest) -> Dict[str, Any]:
-    pairs = [
-        ("Function", "ArcRhoTri"),
-        ("Path", req.Path),
-        ("DatasetName", req.TriangleName),
-        ("Cumulative", str(req.Cumulative)),
-        ("Transposed", str(False)),
-        ("Calendar", str(req.Calendar)),
-        ("ProjectName", req.ProjectName),
-        ("OriginLength", str(req.OriginLength)),
-        ("DevelopmentLength", str(req.DevelopmentLength)),
-    ]
+    pairs = _arcrho_tri_pairs(req)
     data_path = set_data_path_like_vba(pairs)
     return arcrho_runtime_service.run_arcrho_tri(pairs, data_path, timeout_sec=max(0.1, float(req.timeout_sec)), force_refresh=False)
 
 
 @router.post("/arcrho/tri/refresh")
 def arcrho_tri_refresh(req: ArcRhoTriRequest) -> Dict[str, Any]:
-    pairs = [
-        ("Function", "ArcRhoTri"),
-        ("Path", req.Path),
-        ("DatasetName", req.TriangleName),
-        ("Cumulative", str(req.Cumulative)),
-        ("Transposed", str(False)),
-        ("Calendar", str(req.Calendar)),
-        ("ProjectName", req.ProjectName),
-        ("OriginLength", str(req.OriginLength)),
-        ("DevelopmentLength", str(req.DevelopmentLength)),
-    ]
+    pairs = _arcrho_tri_pairs(req)
     data_path = set_data_path_like_vba(pairs)
     return arcrho_runtime_service.run_arcrho_tri(pairs, data_path, timeout_sec=max(0.1, float(req.timeout_sec)), force_refresh=True)

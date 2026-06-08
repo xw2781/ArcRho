@@ -13,6 +13,8 @@ These contracts are mandatory whenever a task touches:
 - App-server API, service, or runtime config files under `app_server/api/`, `app_server/services/`, or `app_server/config.py`.
 - Electron runtime bridge/host files under `electron/`.
 
+Before initiating a new window, table, UI design, layout, or styling task, also read `docs/ui/design.md` and follow its UI design reference guidance.
+
 ## Hard Rules (MUST)
 1. Keep `arcrho:*` message names backward-compatible unless all producers/consumers are updated in the same change.
 2. Preserve tab dirty-state semantics and close-confirmation behavior.
@@ -61,6 +63,7 @@ When code and docs conflict:
 
 ## CSS Editing Safety
 For CSS edits, patch with selector-level context and inspect the diff before reporting success.
+For sticky table headers inside scroll wrappers, keep header seam/bleed-through fixes out of layout flow. Do not add spacer or mask pseudo-elements on the scroll wrapper that create height, margin, or padding. Prefer `border-collapse: separate; border-spacing: 0;` for sticky-header tables and put any paint-only cover on the sticky `th` cells themselves, such as an absolutely positioned `th::before`, so body content cannot show through without creating a visible gap above the header.
 
 ## Change Safety
 Before modifying code, stop and double-check with the user if any of the following are detected:

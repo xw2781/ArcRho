@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "internal",
+  "summary": "Added a Help menu shortcut for toggling the desktop developer panel."
+}

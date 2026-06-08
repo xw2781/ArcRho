@@ -2,7 +2,14 @@ import { getTopLeftRangeCell, writeTextToClipboard } from "/ui/shared/table_sele
 import { getDisplayDatasetModel } from "/ui/dataset/dataset_render.js";
 
 export function wireDatasetGridInteractions(deps) {
-  const { state, renderTable, renderActiveCellUI } = deps;
+  const {
+    state,
+    renderTable,
+    renderActiveCellUI,
+    isReadOnly = () => false,
+    setStatus = () => {},
+    notifyDatasetUpdated = () => {},
+  } = deps;
 
   wireArrowKeyNavigation();
   wireRectSelectionAndCopy();
@@ -525,6 +532,58 @@ export function wireDatasetGridInteractions(deps) {
 
       e.preventDefault();
       copyActiveRangeToClipboard();
+    });
+
+    document.addEventListener("paste", (e) => {
+      if (isTypingTarget(e.target)) return;
+      if (isReadOnly()) {
+        setStatus("Generated datasets are read-only.");
+        return;
+      }
+      const text = String(e.clipboardData?.getData("text/plain") || "");
+      if (!text) return;
+      const start = state.activeCell || getTopLeftRangeCell(state.selRanges || []);
+      if (!start) return;
+      const model = getDisplayDatasetModel();
+      const sourceModel = state.model;
+      if (!model || !sourceModel) return;
+
+      const rows = text
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .split("\n")
+        .filter((row, index, arr) => index < arr.length - 1 || row !== "")
+        .map((row) => row.split("\t"));
+      if (!rows.length) return;
+
+      let applied = 0;
+      for (let rr = 0; rr < rows.length; rr += 1) {
+        for (let cc = 0; cc < rows[rr].length; cc += 1) {
+          const displayR = start.r + rr;
+          const displayC = start.c + cc;
+          if (displayR < 0 || displayC < 0) continue;
+          if (displayR >= (model.origin_labels?.length || 0) || displayC >= (model.dev_labels?.length || 0)) continue;
+
+          const actualR = document.getElementById("transposedChk")?.checked === true ? displayC : displayR;
+          const actualC = document.getElementById("transposedChk")?.checked === true ? displayR : displayC;
+          if (!sourceModel.mask?.[actualR]?.[actualC]) continue;
+
+          const raw = String(rows[rr][cc] ?? "").trim().replace(/,/g, "");
+          const value = raw === "" ? null : Number(raw.endsWith("%") ? Number(raw.slice(0, -1)) / 100 : raw);
+          if (value !== null && !Number.isFinite(value)) continue;
+
+          if (!Array.isArray(sourceModel.values[actualR])) continue;
+          sourceModel.values[actualR][actualC] = value;
+          state.dirty.set(`${actualR},${actualC}`, value);
+          applied += 1;
+        }
+      }
+      if (!applied) return;
+      e.preventDefault();
+      renderTable();
+      notifyDatasetUpdated();
+      applySelectionFromState();
+      setStatus(`Pasted ${applied} cell${applied === 1 ? "" : "s"}.`);
     });
   }
 

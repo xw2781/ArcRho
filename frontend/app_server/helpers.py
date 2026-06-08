@@ -89,6 +89,7 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
     function_name = ""
     reserving_class = ""
     dataset_name = ""
+    instance_name = ""
     origin_length = ""
     development_length = ""
     cumulative = True
@@ -107,6 +108,9 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
             values.append(value)
         elif key in {"datasetname", "trianglename"}:
             dataset_name = value
+            values.append(value)
+        elif key == "instancename":
+            instance_name = value
             values.append(value)
         elif key == "originlength":
             origin_length = value
@@ -135,7 +139,7 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
     if function_name.strip().lower() == "arcrhotri" and reserving_class and dataset_name:
         rc_folder = sanitize_reserving_class_folder(reserving_class)
         dataset_file = build_length_scoped_dataset_file_name(
-            dataset_name,
+            instance_name or dataset_name,
             origin_length,
             development_length,
             cumulative,

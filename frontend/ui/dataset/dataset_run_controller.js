@@ -20,11 +20,13 @@ export function createDatasetRunController(deps) {
     saveLastDsId,
     recordDatasetBrowsingHistory,
     syncNotesForCurrentDataset,
+    syncSidecarForCurrentDataset,
     updateCurrentTabTitle,
     setStatus,
     applyGridSelectionFromState,
     stepId,
     suppressLoadingPopup = false,
+    isDatasetReadOnly = () => false,
   } = deps;
 
   let autoRunTimer = null;
@@ -186,11 +188,11 @@ export function createDatasetRunController(deps) {
   }
 
   async function autoRun() {
-    const { project, path, tri, cumulative, calendar, originLen, devLen } = getTriInputs();
+    const { project, path, tri, instanceName, cumulative, calendar, originLen, devLen } = getTriInputs();
 
     if (!project || !path || !tri) return;
 
-    const key = `${project}||${path}||${tri}||${cumulative}||${calendar}||${originLen}||${devLen}`;
+    const key = `${project}||${path}||${tri}||${instanceName || ""}||${cumulative}||${calendar}||${originLen}||${devLen}`;
 
     if (key === lastAutoKey) return;
 
@@ -234,9 +236,9 @@ export function createDatasetRunController(deps) {
       clearCache = false;
       setStatus("Dependencies unresolved: clear-cache refresh disabled; trying local CSV only.");
     }
-    const { cumulative, calendar, originLen, devLen } = getTriInputs();
+    const { cumulative, calendar, originLen, devLen, instanceName } = getTriInputs();
     const { project, path, tri } = validated;
-    const triRequestInputs = { project, path, tri, cumulative, calendar, originLen, devLen };
+    const triRequestInputs = { project, path, tri, instanceName, cumulative, calendar, originLen, devLen };
     const requestPayload = buildTriRequestPayload(triRequestInputs);
     const loadingTarget = String(tri || config.DS_ID || "").trim() || "dataset";
     let loadingPopupVisible = false;
@@ -376,6 +378,9 @@ export function createDatasetRunController(deps) {
     if (typeof syncNotesForCurrentDataset === "function") {
       await syncNotesForCurrentDataset();
     }
+    if (typeof syncSidecarForCurrentDataset === "function") {
+      await syncSidecarForCurrentDataset({ applyLengths: false, forceReload: true });
+    }
 
     $("dsMeta").textContent =
       `id=${data.id} | origins=${data.origin_labels.length} | dev=${data.dev_labels.length} | mtime=${data.mtime}`;
@@ -404,6 +409,11 @@ export function createDatasetRunController(deps) {
   }
 
   async function savePatch() {
+    if (isDatasetReadOnly()) {
+      logLine("Generated dataset is read-only; patch save skipped.");
+      setStatus("Generated datasets are read-only.");
+      return;
+    }
     if (state.dirty.size === 0) {
       logLine("No changes to save.");
       return;

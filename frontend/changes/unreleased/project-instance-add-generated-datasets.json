@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance can add generated datasets through the data engine and create editable empty caches for non-generated datasets.",
+  "details": [
+    "The Add Dataset picker now shows the Generated flag from project dataset types.",
+    "Editable datasets support pasting tab-separated values from Excel while generated datasets open read-only."
+  ]
+}

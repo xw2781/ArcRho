@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance now refreshes the dataset table automatically when cached dataset instances are added or removed on disk."
+}

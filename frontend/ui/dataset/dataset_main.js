@@ -190,6 +190,8 @@ const LS_FORM_KEY = "arcrho_tri_inputs";
 // Per-instance storage (e.g. workflow embeds)
 const qs = new URLSearchParams(window.location.search);
 const instanceId = qs.get("inst") || "default";
+const isProjectInstanceDraft = qs.get("draft_instance") === "1" || qs.get("draft") === "1";
+const isReadOnlyDatasetViewer = qs.get("readonly") === "1" || qs.get("generated_dataset") === "1";
 const stepId = instanceId.startsWith("step_") ? instanceId : null;
 const scopedKey = (k) => `${k}::${instanceId}`;
 const workflowId = qs.get("wf") || "";
@@ -205,6 +207,12 @@ const DATASET_TABS = [
   { id: "notes", label: "Notes" },
   { id: "auditLog", label: "Audit Log" },
 ];
+
+function getDatasetInitialTab() {
+  const requested = String(qs.get("tab") || qs.get("initial_tab") || "").trim();
+  return DATASET_TABS.some((tab) => tab.id === requested) ? requested : "data";
+}
+
 const LEN_DROPDOWN_CONFIG = {
   originLenSelect: {
     wrapId: "originLenWrap",
@@ -244,9 +252,15 @@ let notesProgrammaticInput = false;
 let notesSyncNonce = 0;
 let datasetSettingsDirty = false;
 let datasetSaveInFlight = false;
+let datasetInstanceNameConflict = false;
+let datasetInstanceNameConflictMessage = "";
+let cachedDatasetInstanceRows = [];
+let cachedDatasetInstanceKey = "";
+let cachedDatasetInstanceLoadPromise = null;
 let sidecarContextKey = "";
 let sidecarContextPayload = null;
 let lastSavedDatasetSettings = null;
+let lastSavedDatasetSidecarExists = false;
 let sidecarSyncNonce = 0;
 let datasetCancelConfirmResolve = null;
 const lenDropdownActiveIndexBySelect = new Map();
@@ -288,7 +302,13 @@ function readDatasetInputsFromQueryParams() {
     || qs.get("dataset")
     || "",
   ).trim();
+  const instanceName = String(qs.get("instance_name") || qs.get("instanceName") || "").trim();
+  const originLen = String(qs.get("origin_len") || qs.get("originLen") || "").trim();
+  const devLen = String(qs.get("dev_len") || qs.get("devLen") || "").trim();
   const normalized = normalizeBrowsingHistoryEntry({ project, path, tri });
+  if (normalized && instanceName) normalized.instanceName = instanceName;
+  if (normalized && originLen) normalized.originLen = originLen;
+  if (normalized && devLen) normalized.devLen = devLen;
   return normalized;
 }
 
@@ -767,6 +787,121 @@ function syncDetailDatasetTypeFromTopInput(rawValue, options = {}) {
   }
 
   syncDetailFormulaFromDatasetType(nextType);
+  void refreshDatasetInstanceNameConflict();
+}
+
+function getDatasetInstanceNameValue() {
+  const detailName = String(document.getElementById("dsDetailName")?.value || "").trim();
+  return detailName || String(document.getElementById("triInput")?.value || "").trim();
+}
+
+function normalizeDatasetInstanceKey(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function getCachedInstanceNamesFromItem(item = {}) {
+  const names = [];
+  const add = (value) => {
+    const text = String(value || "").trim();
+    if (text) names.push(text);
+  };
+  add(item.dataset_name);
+  add(item.instance_name);
+  if (Array.isArray(item.dataset_names)) {
+    for (const value of item.dataset_names) add(value);
+  }
+  return names;
+}
+
+function cachedInstanceMatchesName(item, instanceName) {
+  const instanceKey = normalizeDatasetInstanceKey(instanceName);
+  if (!instanceKey) return false;
+  const itemNames = getCachedInstanceNamesFromItem(item).map(normalizeDatasetInstanceKey);
+  return itemNames.includes(instanceKey);
+}
+
+function isCurrentSavedDatasetInstance(instanceName, datasetTypeName) {
+  if (!lastSavedDatasetSidecarExists || !lastSavedDatasetSettings) return false;
+  const saved = normalizeDatasetSettings(lastSavedDatasetSettings);
+  return (
+    normalizeDatasetInstanceKey(saved.instance_name) === normalizeDatasetInstanceKey(instanceName)
+    && normalizeDatasetInstanceKey(saved.dataset_type) === normalizeDatasetInstanceKey(datasetTypeName)
+  );
+}
+
+async function loadCachedDatasetInstancesForCurrentContext() {
+  const project = getResolvedProjectValue();
+  const path = getResolvedReservingClassValue();
+  if (!project || !path) {
+    cachedDatasetInstanceRows = [];
+    cachedDatasetInstanceKey = "";
+    return [];
+  }
+  const key = `${normalizeProjectText(project)}\u001f${normalizeReservingClassPath(path).toLowerCase()}`;
+  if (cachedDatasetInstanceKey === key) return cachedDatasetInstanceRows;
+  if (cachedDatasetInstanceLoadPromise) return cachedDatasetInstanceLoadPromise;
+  cachedDatasetInstanceLoadPromise = (async () => {
+    try {
+      const url = new URL("/datasets/cached", window.location.origin);
+      url.searchParams.set("project_name", project);
+      url.searchParams.set("reserving_class", path);
+      const resp = await fetch(url.toString(), { cache: "no-store" });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok || payload?.ok === false) throw new Error(payload?.detail || "Cached dataset lookup failed.");
+      cachedDatasetInstanceRows = Array.isArray(payload?.files) ? payload.files : [];
+      cachedDatasetInstanceKey = key;
+      return cachedDatasetInstanceRows;
+    } catch {
+      cachedDatasetInstanceRows = [];
+      cachedDatasetInstanceKey = key;
+      return cachedDatasetInstanceRows;
+    } finally {
+      cachedDatasetInstanceLoadPromise = null;
+    }
+  })();
+  return cachedDatasetInstanceLoadPromise;
+}
+
+function setDatasetInstanceNameConflict(hasConflict, message = "") {
+  datasetInstanceNameConflict = !!hasConflict;
+  datasetInstanceNameConflictMessage = datasetInstanceNameConflict ? String(message || "Name already exists.") : "";
+  const warning = document.getElementById("dsDetailNameWarning");
+  if (warning) {
+    warning.textContent = datasetInstanceNameConflictMessage;
+    warning.hidden = !datasetInstanceNameConflict;
+  }
+  const input = document.getElementById("dsDetailName");
+  if (input) {
+    input.setCustomValidity(datasetInstanceNameConflict ? datasetInstanceNameConflictMessage : "");
+    input.classList.toggle("invalid", datasetInstanceNameConflict);
+  }
+  updateDatasetSaveUi();
+}
+
+function invalidateCachedDatasetInstances() {
+  cachedDatasetInstanceRows = [];
+  cachedDatasetInstanceKey = "";
+  cachedDatasetInstanceLoadPromise = null;
+}
+
+async function refreshDatasetInstanceNameConflict() {
+  const instanceName = getDatasetInstanceNameValue();
+  const datasetTypeName = String(document.getElementById("triInput")?.value || "").trim();
+  if (!instanceName) {
+    setDatasetInstanceNameConflict(false);
+    return false;
+  }
+  if (!isProjectInstanceDraft && isCurrentSavedDatasetInstance(instanceName, datasetTypeName)) {
+    setDatasetInstanceNameConflict(false);
+    return false;
+  }
+  const rows = await loadCachedDatasetInstancesForCurrentContext();
+  const conflict = rows.some((item) => cachedInstanceMatchesName(item, instanceName));
+  setDatasetInstanceNameConflict(
+    conflict,
+    conflict ? "Name already exists in this reserving class path." : "",
+  );
+  return conflict;
 }
 
 function loadDatasetTypeDependencyModel(projectName, options = {}) {
@@ -1070,6 +1205,11 @@ async function validateAndNormalizeReservingClassInput(projectName, options = {}
 
 async function validateTriInputsBeforeRun(options = {}) {
   const showMessage = !!options?.showMessage;
+  const hasNameConflict = await refreshDatasetInstanceNameConflict();
+  if (hasNameConflict) {
+    setStatus(datasetInstanceNameConflictMessage || "Dataset instance name already exists.");
+    return { ok: false };
+  }
   const projectResult = validateAndNormalizeProjectInput({ strict: true, showMessage });
   if (!projectResult.ok || !projectResult.value) return { ok: false };
 
@@ -1089,6 +1229,7 @@ async function validateTriInputsBeforeRun(options = {}) {
       project,
       path: reservingResult.value,
       tri: datasetResult.value,
+      instanceName: triInputs.instanceName,
       cumulative: triInputs.cumulative,
       calendar: triInputs.calendar,
       originLen: triInputs.originLen,
@@ -1103,6 +1244,7 @@ async function validateTriInputsBeforeRun(options = {}) {
     project,
     path: reservingResult.value,
     tri: datasetResult.value,
+    instanceName: triInputs.instanceName,
     dependencyBypassedByExistingCsv: !!dependencyResult?.bypassedByExistingCsv,
   };
 }
@@ -1432,6 +1574,7 @@ function saveTriInputsToStorage() {
       project: getStoredInputValue(projectInput),
       path: getStoredInputValue(pathInput),
       tri: triInput?.value || "",
+      instanceName: getDatasetInstanceNameValue(),
       originLen: document.getElementById("originLenSelect")?.value || "",
       devLen: document.getElementById("devLenSelect")?.value || "",
       linkLen: linkLenChecked,
@@ -1443,6 +1586,7 @@ function saveTriInputsToStorage() {
       project: getResolvedProjectValue(),
       path: getResolvedReservingClassValue(),
       tri: String(triInput?.value || "").trim(),
+      instanceName: getDatasetInstanceNameValue(),
     });
     localStorage.setItem(scopedKey(LS_FORM_KEY), JSON.stringify(payload));
     if (!window.ADA_DFM_CONTEXT) {
@@ -1467,6 +1611,10 @@ function saveTriInputsToStorage() {
   } catch {
     // ignore
   }
+}
+
+function isDatasetReadOnly() {
+  return isReadOnlyDatasetViewer;
 }
 
 async function restoreTriInputsFromStorage() {
@@ -1515,6 +1663,7 @@ async function restoreTriInputsFromStorage() {
   const projectInput = document.getElementById("projectSelect");
   const pathInput = document.getElementById("pathInput");
   const triInput = document.getElementById("triInput");
+  const detailNameInput = document.getElementById("dsDetailName");
   const originSel = document.getElementById("originLenSelect");
   const devSel = document.getElementById("devLenSelect");
 
@@ -1537,6 +1686,9 @@ async function restoreTriInputsFromStorage() {
     }
   }
   if (triInput && typeof s.tri === "string" && s.tri.trim()) triInput.value = s.tri;
+  if (detailNameInput && typeof s.instanceName === "string" && s.instanceName.trim()) {
+    detailNameInput.value = s.instanceName.trim();
+  }
 
   if (originSel && s.originLen && [...originSel.options].some(o => o.value === String(s.originLen))) {
     originSel.value = String(s.originLen);
@@ -1571,6 +1723,9 @@ function applyTriInputsFromQueryParams() {
   const projectInput = document.getElementById("projectSelect");
   const pathInput = document.getElementById("pathInput");
   const triInput = document.getElementById("triInput");
+  const detailNameInput = document.getElementById("dsDetailName");
+  const originSel = document.getElementById("originLenSelect");
+  const devSel = document.getElementById("devLenSelect");
   if (projectInput && queryInputs.project) {
     setInputDefaultBound(projectInput, false);
     projectInput.value = queryInputs.project;
@@ -1582,6 +1737,18 @@ function applyTriInputsFromQueryParams() {
   if (triInput && queryInputs.tri) {
     triInput.value = queryInputs.tri;
   }
+  if (detailNameInput && queryInputs.instanceName) {
+    detailNameInput.value = queryInputs.instanceName;
+  } else if (detailNameInput && queryInputs.tri && !String(detailNameInput.value || "").trim()) {
+    detailNameInput.value = queryInputs.tri;
+  }
+  if (originSel && queryInputs.originLen && [...originSel.options].some(o => o.value === String(queryInputs.originLen))) {
+    originSel.value = String(queryInputs.originLen);
+  }
+  if (devSel && queryInputs.devLen && [...devSel.options].some(o => o.value === String(queryInputs.devLen))) {
+    devSel.value = String(queryInputs.devLen);
+  }
+  refreshLenDropdowns();
   if (!window.ADA_DFM_CONTEXT) {
     setLastViewedDatasetInputs(queryInputs);
   }
@@ -1801,6 +1968,7 @@ function getTriInputs() {
   const project = getResolvedProjectValue();
   const path = getResolvedReservingClassValue();
   const tri = (document.getElementById("triInput")?.value || "").trim();
+  const instanceName = getDatasetInstanceNameValue();
   const originLen = parseInt(document.getElementById("originLenSelect")?.value, 10);
   const devLen = parseInt(document.getElementById("devLenSelect")?.value, 10);
   const cumulative = !!document.getElementById("cumulativeChk")?.checked;
@@ -1811,6 +1979,7 @@ function getTriInputs() {
     project,
     path,
     tri,
+    instanceName,
     cumulative,
     transposed,
     calendar,
@@ -1823,6 +1992,7 @@ function resolveTriRequestInputs(rawInputs = {}) {
   const project = String(rawInputs?.project || "").trim();
   const path = normalizeReservingClassPath(rawInputs?.path || "");
   const tri = String(rawInputs?.tri || "").trim();
+  const instanceName = String(rawInputs?.instanceName || rawInputs?.instance_name || "").trim();
   const cumulative = !!rawInputs?.cumulative;
   const calendar = !!rawInputs?.calendar;
   const originRaw = Number(rawInputs?.originLen);
@@ -1831,6 +2001,7 @@ function resolveTriRequestInputs(rawInputs = {}) {
     project,
     path,
     tri,
+    instanceName,
     cumulative,
     calendar,
     originLen: Number.isFinite(originRaw) ? originRaw : 12,
@@ -1843,6 +2014,8 @@ function buildTriRequestPayload(rawInputs = {}) {
   return {
     Path: resolved.path,
     TriangleName: resolved.tri,
+    DatasetTypeName: resolved.tri,
+    InstanceName: resolved.instanceName || resolved.tri,
     ProjectName: resolved.project,
     Cumulative: resolved.cumulative,
     Calendar: resolved.calendar,
@@ -1914,7 +2087,9 @@ function buildDatasetSidecarContextPayload() {
   return {
     project_name: getResolvedProjectValue(),
     reserving_class: getResolvedReservingClassValue(),
-    dataset_name: (document.getElementById("triInput")?.value || "").trim(),
+    dataset_name: getDatasetInstanceNameValue(),
+    dataset_type: (document.getElementById("triInput")?.value || "").trim(),
+    instance_name: getDatasetInstanceNameValue(),
   };
 }
 
@@ -1928,12 +2103,14 @@ function hasDatasetSidecarContext(payload) {
 
 function buildDatasetSidecarContextKey(payload) {
   if (!hasDatasetSidecarContext(payload)) return "";
-  return `${payload.project_name}\u001f${payload.reserving_class}\u001f${payload.dataset_name}`;
+  return `${payload.project_name}\u001f${payload.reserving_class}\u001f${payload.dataset_type || ""}\u001f${payload.dataset_name}`;
 }
 
 function getCurrentDatasetSettings() {
   const triInputs = getTriInputs();
   return {
+    dataset_type: triInputs.tri,
+    instance_name: triInputs.instanceName || triInputs.tri,
     origin_length: triInputs.originLen,
     development_length: triInputs.devLen,
     cumulative: !!triInputs.cumulative,
@@ -1945,6 +2122,8 @@ function normalizeDatasetSettings(source = {}) {
   const origin = Number(source.origin_length ?? source.originLen);
   const development = Number(source.development_length ?? source.devLen);
   return {
+    dataset_type: String(source.dataset_type ?? source.datasetType ?? source.tri ?? "").trim(),
+    instance_name: String(source.instance_name ?? source.instanceName ?? source.dataset_name ?? source.datasetName ?? "").trim(),
     origin_length: Number.isFinite(origin) && origin > 0 ? Math.trunc(origin) : 12,
     development_length: Number.isFinite(development) && development > 0 ? Math.trunc(development) : 12,
     cumulative: typeof source.cumulative === "boolean" ? source.cumulative : true,
@@ -1960,6 +2139,8 @@ function sameDatasetSettings(a, b) {
     && left.development_length === right.development_length
     && left.cumulative === right.cumulative
     && left.calendar === right.calendar
+    && normalizeProjectText(left.dataset_type) === normalizeProjectText(right.dataset_type)
+    && normalizeProjectText(left.instance_name) === normalizeProjectText(right.instance_name)
   );
 }
 
@@ -1978,14 +2159,31 @@ function updateDatasetSaveUi() {
   const bar = document.getElementById("datasetSaveBar");
   const saveBtn = document.getElementById("datasetSaveBtn");
   const cancelBtn = document.getElementById("datasetCancelBtn");
+  const runBtn = document.getElementById("runArcRhoTriBtn");
+  const clearBtn = document.getElementById("clearCacheReloadBtn");
   const hasContext = hasDatasetSidecarContext(sidecarContextPayload) || hasNotesContext(notesContextPayload);
   const dirty = datasetSettingsDirty || notesDirty;
   if (bar) bar.hidden = !hasContext;
   if (saveBtn) {
-    saveBtn.disabled = datasetSaveInFlight || !hasContext || !dirty;
+    saveBtn.disabled = datasetSaveInFlight || datasetInstanceNameConflict || !hasContext || !dirty;
     saveBtn.classList.toggle("is-clean", !dirty);
   }
   if (cancelBtn) cancelBtn.disabled = datasetSaveInFlight || !dirty;
+  for (const button of [runBtn, clearBtn]) {
+    if (!button) continue;
+    if (datasetInstanceNameConflict) {
+      if (button.dataset.duplicateNameBlocked !== "1") {
+        button.dataset.originalTitle = button.title || "";
+      }
+      button.dataset.duplicateNameBlocked = "1";
+      button.disabled = true;
+      button.title = datasetInstanceNameConflictMessage || "Dataset instance name already exists.";
+    } else if (button.dataset.duplicateNameBlocked === "1") {
+      button.disabled = false;
+      button.title = button.dataset.originalTitle || "";
+      delete button.dataset.duplicateNameBlocked;
+    }
+  }
   notifyDatasetDirtyState();
 }
 
@@ -2017,6 +2215,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
   sidecarContextKey = key;
   if (!key) {
     lastSavedDatasetSettings = null;
+    lastSavedDatasetSidecarExists = false;
     datasetSettingsDirty = false;
     updateDatasetSaveUi();
     return false;
@@ -2038,6 +2237,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
     ? normalizeDatasetSettings(data)
     : normalizeDatasetSettings(getCurrentDatasetSettings());
   lastSavedDatasetSettings = settings;
+  lastSavedDatasetSidecarExists = !!data.exists;
   if (options?.applyLengths !== false && data.exists) {
     applyDatasetSettingsToControls(settings);
     saveTriInputsToStorage();
@@ -2048,7 +2248,10 @@ async function syncSidecarForCurrentDataset(options = {}) {
 }
 
 async function saveDatasetSidecarForCurrentContext() {
-  const context = sidecarContextPayload || buildDatasetSidecarContextPayload();
+  if (await refreshDatasetInstanceNameConflict()) {
+    return { ok: false, error: datasetInstanceNameConflictMessage || "Dataset instance name already exists." };
+  }
+  const context = buildDatasetSidecarContextPayload();
   if (!hasDatasetSidecarContext(context)) {
     return { ok: false, error: "Project, Reserving Class, and Dataset Type are required." };
   }
@@ -2063,6 +2266,8 @@ async function saveDatasetSidecarForCurrentContext() {
   sidecarContextPayload = context;
   sidecarContextKey = buildDatasetSidecarContextKey(context);
   lastSavedDatasetSettings = normalizeDatasetSettings(settings);
+  lastSavedDatasetSidecarExists = true;
+  invalidateCachedDatasetInstances();
   datasetSettingsDirty = false;
   updateDatasetSaveUi();
   return { ok: true, data: resp.data };
@@ -2236,7 +2441,7 @@ function getRawReservingClassValueForNotes() {
 }
 
 function getRawDatasetNameValueForNotes() {
-  const input = document.getElementById("triInput");
+  const input = document.getElementById("dsDetailName") || document.getElementById("triInput");
   return String(input?.value ?? "");
 }
 
@@ -2500,11 +2705,13 @@ datasetRunController = createDatasetRunController({
   saveLastDsId,
   recordDatasetBrowsingHistory,
   syncNotesForCurrentDataset,
+  syncSidecarForCurrentDataset,
   updateCurrentTabTitle,
   setStatus,
   applyGridSelectionFromState,
   stepId,
   suppressLoadingPopup: !!window.ADA_DFM_CONTEXT,
+  isDatasetReadOnly,
 });
 
 async function openReservingClassTreeForDataset(targetInput) {
@@ -2793,6 +3000,9 @@ function wireGridInteractions() {
     state,
     renderTable,
     renderActiveCellUI,
+    isReadOnly: isDatasetReadOnly,
+    setStatus,
+    notifyDatasetUpdated,
   });
 }
 
@@ -2810,6 +3020,20 @@ function wireNotesEditor() {
     updateNotesSaveUi,
     saveNotesForCurrentContext,
     setStatus,
+  });
+}
+
+function wireDatasetInstanceNameInput() {
+  const input = document.getElementById("dsDetailName");
+  if (!input || input.dataset.instanceNameWired === "1") return;
+  input.dataset.instanceNameWired = "1";
+  input.addEventListener("input", () => {
+    saveTriInputsToStorage();
+    refreshDatasetSettingsDirty();
+    void refreshDatasetInstanceNameConflict();
+  });
+  input.addEventListener("change", () => {
+    void refreshDatasetInstanceNameConflict();
   });
 }
 
@@ -2871,6 +3095,7 @@ function wireEvents() {
     instanceId,
     wireGridInteractions,
   });
+  wireDatasetInstanceNameInput();
   wireNotesEditor();
   wireDatasetSaveControls();
 }
@@ -2900,7 +3125,8 @@ async function boot() {
   }
   await validateAndNormalizeReservingClassInput(getResolvedProjectValue(), { strict: true, showMessage: false });
   validateAndNormalizeDatasetInput({ strict: true, showMessage: false });
-  await syncSidecarForCurrentDataset({ applyLengths: true });
+  await syncSidecarForCurrentDataset({ applyLengths: !isProjectInstanceDraft });
+  await refreshDatasetInstanceNameConflict();
   enforceDevLenRule({ source: "origin" });
 
   // Initialize dataset tab system (Details / Data / Chart / Notes / Audit Log)
@@ -2913,7 +3139,7 @@ async function boot() {
   const dsTabSystem = createTabbedPage(document.body, {
     tabs: DATASET_TABS,
     cssPrefix: "ds",
-    initialTab: "data",
+    initialTab: getDatasetInitialTab(),
     injectTabBar: false,
     onTabChange: (tabId) => {
       if (tabId === "details") {
@@ -2946,7 +3172,14 @@ async function boot() {
   if (project && path && tri) {
     await ensureHeadersForProject(project, { forceRefresh: true });
     await ensureDevHeadersForProject(project, { forceRefresh: true });
-    scheduleAutoRun(0);
+    if (isProjectInstanceDraft) {
+      setStatus("Ready to generate dataset instance.");
+      renderTable();
+      notifyDatasetUpdated();
+      renderChart();
+    } else {
+      scheduleAutoRun(0);
+    }
   } else {
     await loadDataset();
   }

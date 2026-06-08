@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed Dataset Save and Cancel controls overlapping large Data tables."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed duplicate dataset instance name warnings when adding datasets from Project Instance."
+}

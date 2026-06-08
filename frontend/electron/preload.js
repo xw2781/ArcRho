@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
     invoke("pick-save-workflow", { suggestedName, startDir }),
   shutdownApp: () => invoke("app-shutdown"),
   checkForUpdates: () => invoke("app-check-for-update"),
+  toggleDevPanel: () => invoke("app-toggle-dev-panel"),
   minimizeWindow: () => invoke("window-minimize"),
   maximizeWindow: () => invoke("window-maximize"),
   restoreWindow: () => invoke("window-restore-native"),
