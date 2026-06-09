@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed direct-open DFM method loads so saved ratio selections are retried after restoring Details inputs and refreshing the embedded dataset model."
+}

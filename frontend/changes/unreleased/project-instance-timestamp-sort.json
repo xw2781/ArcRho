@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed Project Instance dataset table sorting so Last Modified and Created use actual timestamps instead of formatted date text."
+}

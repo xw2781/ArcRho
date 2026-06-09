@@ -52,14 +52,14 @@ Detected `arcrho:*` message types in key JS files:
 - Calls `/project_settings/*`, `/table_summary*`, `/field_mapping`, `/general_settings`, `/arcrho/headers/cache/clear`, and related endpoints.
 - Uses `POST /project_settings/{source}/open_project_folder` from the detail header action to open the selected project's folder in the OS file explorer.
 - Posts `arcrho:open-project-instance` when the project tree's `View project contents in a new tab` action is clicked for a project.
-- Folder tree "Create New Project" action calls `POST /project_settings/{source}/create_project_folder` before saving folder structure + settings JSON.
+- Folder tree "Create New Project" action calls `POST /project_settings/{source}/create_project_folder` before saving the updated project index.
 - Dataset Types pane persists changes through `POST /dataset_types` (debounced auto-save).
 - Posts title/status events to shell.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Reads/writes settings payloads and folder structures. Project map rows use `Project Name` and `Table Path`; folder placement is stored in `folder_structure.json`; obsolete `Folder`, `Preload`, `Project Settings`, and `Settings Profile` columns are stripped from in-memory data and saved payloads.
+- Reads/writes the project registry through `projects/index.json`. Project rows use `Project Name` for the project folder/name, virtual folder placement is stored as each project's `folder` value, and source CSV paths are projected from each project's `field_mapping.json` `table_path`.
 - Project tree rows reveal a red open-corner `View project contents in a new tab` icon button on row hover or keyboard focus, opening the selected project as a top-level project instance tab.
 - Project tree folder expand/collapse state is saved in `%APPDATA%\ArcRho\local_project_prefs.json` under `projectExplorer.expandedFolders` and restored when Project Settings opens.
 - `Project Settings` ribbon page includes an `Open Folder` action button with folder icon styling and disabled-state feedback while the request is in flight.
@@ -96,9 +96,9 @@ Detected `arcrho:*` message types in key JS files:
 - `general_settings.json` stores `auto_generated`; derived writes set it `true`, user edits set it `false`.
 - When `auto_generated` is `false`, table reload will not overwrite the 3 date values unless `project_name` in JSON mismatches the project folder name (stale duplicated settings).
 - Source Data date inputs auto-derive from table summary + field mapping when values are missing, stale mismatch is detected, or reload is requested while `auto_generated=true`.
-- Source Data table reload clears project-level `ArcRhoHeaders*.csv` cache files under the project `data/generated` folder before refreshing table summary.
-- Folder-node context menu supports `Create New Project`, prompts for a project name, creates an empty project folder (with `data/generated` and `data/manual` subfolders) via the app server, then persists folder-tree mapping + blank project row with rollback on intermediate failures.
-- Project creation creates `data/generated` and `data/manual`; project duplication copies only `data/manual` and creates a fresh empty `data/generated` so generated source-table datasets are rebuilt for the duplicated project.
+- Source Data table reload clears project-level `ArcRhoHeaders*.csv` cache files under the project `data` folder before refreshing table summary.
+- Folder-node context menu supports `Create New Project`, prompts for a project name, creates an empty project folder with a `data` subfolder via the app server, then persists folder-tree mapping + blank project row with rollback on intermediate failures.
+- Project creation creates `data`; project duplication copies the canonical `data` folder so reserving-class cache folders, sidecars, DFM methods, and dataset indexes stay together.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

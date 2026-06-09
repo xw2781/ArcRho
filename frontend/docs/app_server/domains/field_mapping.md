@@ -22,12 +22,12 @@ Field mapping persistence domain for project settings.
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Used by project settings field mapping feature.
+- Used by project settings field mapping feature and by data-engine project source CSV lookup.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Stores mapping files under project folders.
+- Stores mapping files under project folders. `table_path` is the canonical source CSV path for a project; global project registry files do not store source table paths.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

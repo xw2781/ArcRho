@@ -2,7 +2,7 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
-Project settings source and folder-structure management domain.
+Project settings source and project-index management domain.
 Also persists per-project Source Data date boundaries in `general_settings.json`.
 Provides project-folder filesystem operations used by Project Settings tree actions (rename/duplicate/create/delete).
 <!-- MANUAL:END -->
@@ -42,10 +42,10 @@ Provides project-folder filesystem operations used by Project Settings tree acti
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Handles folder CRUD and settings JSON writes.
+- Handles project-index CRUD and settings JSON writes. Project names and virtual UI folders live in `projects/index.json`; source table paths live in each project's `field_mapping.json`.
 - Handles project folder open requests by resolving the project directory through config path helpers before launching OS file explorer.
-- `create_project_folder` creates an empty project folder plus `data/generated` and `data/manual` subfolders; client coordinates rollback if later folder-structure/settings saves fail.
-- `duplicate_project_folder` copies project configuration files and `data/manual` only, then creates an empty `data/generated` folder so source-derived/generated datasets are rebuilt for the duplicated project instead of being carried forward.
+- `create_project_folder` creates an empty project folder plus a `data` subfolder; client coordinates rollback if later folder-structure/settings saves fail.
+- `duplicate_project_folder` copies project configuration files and the canonical `data` folder when present so reserving-class cache folders, sidecars, DFM methods, and dataset indexes stay together.
 - Handles per-project `general_settings.json` persistence in each project folder.
 - Normalizes stored Origin/Development boundary values to plain integer strings (no commas, no trailing `.0`/`.00`).
 - Stores `auto_generated` in `general_settings.json`; the app server writes `project_name` as current project folder name to detect stale duplicated files.

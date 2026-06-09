@@ -31,7 +31,7 @@ Routes:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Before writing each `Function = DFM` request, the app server deletes any existing returned DFM JSON and `SyncDFM` status JSON for that project/reserving-class/method from `projects/<project>/data/manual/<ReservingClassFolder>/tmp_rpc`, so the sync comparison can only use a fresh RPC bridge response. `Function = DFM` request files contain Details page fields plus `DataPath`, where `DataPath` points to the expected returned remote DFM method JSON under that RPC temp folder.
+- Before writing each `Function = DFM` request, the app server deletes any existing returned DFM JSON and `SyncDFM` status JSON for that project/reserving-class/method from `projects/<project>/data/<ReservingClassFolder>/methods/tmp_rpc`, so the sync comparison can only use a fresh RPC bridge response. `Function = DFM` request files contain Details page fields plus `DataPath`, where `DataPath` points to the expected returned remote DFM method JSON under that RPC temp folder.
 - `Function = SyncDFM` request files contain the same Details page fields plus `DataPath`, where `DataPath` points to an expected `SyncDFM...json` status file. They also include `MethodJsonPath` for the local DFM JSON to write into the RPC server and `RPCServerWriteConfirmed = true`; the app-server route rejects update-remote requests without this explicit confirmation.
 - Request files are flat JSON `request-*.json` payloads with native booleans/numbers. Temporary `.tmp` files are atomically renamed to `.json`, and `arcrho_bridge` scans JSON requests only.
 - `SyncDFM` status JSON must include fields that let the frontend report final result, for example `ok`, `status`, and `message`.
@@ -41,9 +41,9 @@ Routes:
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Local DFM method JSON path: `projects/<project>/data/manual/<ReservingClassFolder>/DFM@<Name>.json`.
-- Remote DFM method JSON path: `projects/<project>/data/manual/<ReservingClassFolder>/tmp_rpc/DFM@<Name>.json`.
-- Remote update status JSON path: `projects/<project>/data/manual/<ReservingClassFolder>/tmp_rpc/SyncDFM@<Name>.json`.
+- Local DFM method JSON path: `projects/<project>/data/<ReservingClassFolder>/methods/DFM@<Name>.json`.
+- Remote DFM method JSON path: `projects/<project>/data/<ReservingClassFolder>/methods/tmp_rpc/DFM@<Name>.json`.
+- Remote update status JSON path: `projects/<project>/data/<ReservingClassFolder>/methods/tmp_rpc/SyncDFM@<Name>.json`.
 - `<ReservingClassFolder>` and `<Name>` use the shared reversible `_%XX_` filename escaping rule for Windows-invalid filename characters.
 - Applying the remote version writes the canonical GUI-tab grouped DFM method JSON with the same row-compact layout used by normal DFM saves, so any 2D array remains one child row per JSON line, including `ratio triangle`.`excluded`, `average formulas`.`selected`, input data triangle values, `ratio triangle`.`ratio values`, `average formulas`.`values`, and extra or nested 2D arrays when present.
 - Applying the remote version is driven by an explicit component list matching the current grouped RPC JSON shape. Synced RPC components include Details fields, `ratio triangle`.`excluded`, average formula labels/settings/selected values, `ratios tab`.`cell notes`, Results ratio-basis settings, notes, and `method metadata`.`last modified`.

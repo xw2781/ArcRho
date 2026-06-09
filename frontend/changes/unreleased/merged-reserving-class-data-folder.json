@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Store reserving-class dataset CSV caches, method JSON files, sidecars, and index.json in a clean data folder layout."
+}

@@ -2,16 +2,16 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
-Project workbook domain resolved by project name and source folders.
+Project registry compatibility domain backed by `projects/index.json`.
 <!-- MANUAL:END -->
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN app_server.project_book.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `GET` | `/project_book/meta` | `project_book_meta` | - | - | `book_service._load_project_map_data`, `book_service._project_map_sheet_names` |
-| `POST` | `/project_book/patch` | `project_book_patch` | `XlsmPatchRequest` | [`app_server/schemas/book.py`](../../../app_server/schemas/book.py) | `book_service._load_project_map_data`, `book_service._project_map_sheet_names` |
-| `GET` | `/project_book/sheet` | `project_book_sheet` | `str` | - | `book_service._read_project_map_sheet_matrix` |
+| `GET` | `/project_book/meta` | `project_book_meta` | - | - | - |
+| `POST` | `/project_book/patch` | `project_book_patch` | `XlsmPatchRequest` | [`app_server/schemas/book.py`](../../../app_server/schemas/book.py) | `project_settings_service._read_project_index`, `project_settings_service._write_project_index`, `project_settings_service.project_index_to_sheet_data`, `project_settings_service.update_project_index_from_sheet_data` |
+| `GET` | `/project_book/sheet` | `project_book_sheet` | `str` | - | `project_settings_service._read_project_index`, `project_settings_service.project_index_to_sheet_data` |
 | `GET` | `/project_settings` | `list_project_settings_sources` | - | - | `project_settings_service.list_project_settings_sources` |
 <!-- AUTO-GEN:END -->
 
@@ -25,13 +25,13 @@ Project workbook domain resolved by project name and source folders.
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Used by project settings/dataset flows for project-specific workbook operations.
+- Used by project settings/dataset flows that still call the project-book compatibility endpoints.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Depends on project settings path resolution.
-- Project map rows are expected to carry `Project Name` and `Table Path`; folder placement lives in `folder_structure.json`; legacy `Folder`, `Preload`, `Project Settings`, and `Settings Profile` columns are no longer consumed by Project Settings saves.
+- Reads/writes `projects/index.json` as the project registry. The compatibility sheet view exposes `Project Name` plus a `Table Path` value hydrated from each project's `field_mapping.json`, but persisted registry entries contain only project `name` and virtual UI `folder`.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed Project Instance empty non-generated triangle caches so their editable zero cells follow the project's latest diagonal orientation."
+}

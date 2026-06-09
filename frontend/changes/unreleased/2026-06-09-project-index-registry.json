@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Project names and virtual folders now use a single project index while source table paths stay with each project field mapping.",
+  "details": [
+    "The project registry uses projects/index.json instead of separate project map and folder structure files.",
+    "Data-engine source CSV lookup now reads table_path from the project's field_mapping.json."
+  ]
+}

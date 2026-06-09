@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added eager recalculation for app-calculated datasets when their cached component datasets are saved or refreshed.",
+  "details": [
+    "Calculated non-generated outputs stay in the selected reserving-class datasets folder with read-only sidecars.",
+    "Dataset Viewer now treats calculated sidecars as read-only."
+  ]
+}

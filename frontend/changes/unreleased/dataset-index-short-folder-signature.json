@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Shortened reserving-class index.json folder signatures to a sha256 digest instead of storing the full physical file signature text."
+}

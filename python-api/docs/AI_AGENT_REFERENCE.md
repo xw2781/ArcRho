@@ -57,7 +57,7 @@ Save behavior:
 - Preserve unknown JSON fields.
 - Update `method metadata.last modified`.
 - Write with a temporary file and atomic replace.
-- Rebuild each reserving-class folder's `method_index.json`.
+- Rebuild each reserving-class folder's `index.json`.
 - Refuse writes when the client is `read_only=True`.
 
 DFM cell notes use the grouped `ratios tab.cell notes` shape keyed by visible row label, then visible development label. Use `set_cell_note(row_label, development, note)`, `clear_cell_notes_for_development(development)`, or `set_selected_average_cell_note(development, note, clear_column=True)` for average-formula notes.
@@ -69,13 +69,19 @@ User Entry formulas can store both the cached numeric value and formula text. Us
 DFM methods are stored as:
 
 ```text
-projects/<project>/data/<ReservingClassFolder>/DFM@<Name>.json
+projects/<project>/data/<ReservingClassFolder>/methods/DFM@<Name>.json
 ```
 
-ArcRhoTri dataset CSV files live beside DFM methods in the same reserving-class folder:
+ArcRhoTri dataset CSV files live under:
 
 ```text
-projects/<project>/data/<ReservingClassFolder>/<DatasetName>.csv
+projects/<project>/data/<ReservingClassFolder>/datasets/<DatasetName>.csv
+```
+
+Dataset sidecar metadata lives under:
+
+```text
+projects/<project>/data/<ReservingClassFolder>/sidecars/<DatasetName>.json
 ```
 
 The reserving-class filename component uses `^` for Windows-invalid filename characters. The method-name component uses `_` for invalid filename characters.

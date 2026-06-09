@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Stored Project Instance non-generated placeholder datasets in the selected reserving-class datasets folder with editable input sidecars."
+}

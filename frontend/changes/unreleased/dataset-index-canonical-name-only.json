@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Updated Project Instance cached dataset rows so custom instance Names are counted separately from their Dataset Type names."
+}
