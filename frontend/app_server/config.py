@@ -147,9 +147,11 @@ def _get_scripting_dir() -> str:
     return os.path.join(os.path.expanduser("~"), "Documents", "ArcRho", "scripts")
 
 
+PROJECT_INDEX_FILE = "index.json"
+
 # Project settings JSON files (on shared network drive)
 PROJECT_SETTINGS_SOURCES = {
-    "project_map": "map.json",
+    "project_map": PROJECT_INDEX_FILE,
     # Add more sources here as needed
 }
 
@@ -175,7 +177,7 @@ def refresh_runtime_paths() -> None:
     PROJECT_SETTINGS_DIR = _get_project_map_dir()
     PROJECT_BOOK = os.path.join(
         PROJECT_SETTINGS_DIR,
-        PROJECT_SETTINGS_SOURCES.get("project_map", "map.json"),
+        PROJECT_SETTINGS_SOURCES.get("project_map", PROJECT_INDEX_FILE),
     )
     WORKFLOW_DIR = _get_workflow_dir()
     SCRIPTING_DIR = _get_scripting_dir()
@@ -202,7 +204,6 @@ refresh_runtime_paths()
 # File-name constants
 # ---------------------------------------------------------------------------
 
-FOLDER_STRUCTURE_FILE = "folder_structure.json"
 FIELD_MAPPING_FILE = "field_mapping.json"
 FIELD_MAPPING_SIGNIFICANCES = {
     "Reserving Class",
@@ -228,8 +229,9 @@ AUDIT_LOG_FILE = "audit_log.json"
 AUDIT_LOG_MAX_ENTRIES = 5000
 GENERAL_SETTINGS_FILE = "general_settings.json"
 PROJECT_DATA_DIR = "data"
-GENERATED_DATA_DIR = "generated"
-MANUAL_DATA_DIR = "manual"
+DATASET_CACHE_DIR = "datasets"
+METHOD_DATA_DIR = "methods"
+DATASET_SIDECAR_DIR = "sidecars"
 
 # ---------------------------------------------------------------------------
 # Thread locks
@@ -282,6 +284,14 @@ def _sanitize_folder_name(name: str) -> str:
 def _sanitize_project_dir_name(name: str) -> str:
     out = (name or "").strip()
     return encode_filename_segment(out)
+
+
+def sanitize_reserving_class_folder(value: Any, fallback: str = "ReservingClass") -> str:
+    text = str(value if value is not None else "").strip()
+    text = encode_filename_segment(text)
+    text = re.sub(r"[. ]+$", lambda match: "^" * len(match.group(0)), text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or fallback
 
 
 def _infer_project_name_from_table_path(table_path: str) -> str:
@@ -417,9 +427,29 @@ def get_project_data_dir(project_name: str) -> str:
     return os.path.join(project_dir, PROJECT_DATA_DIR)
 
 
-def get_project_generated_data_dir(project_name: str) -> str:
-    return os.path.join(get_project_data_dir(project_name), GENERATED_DATA_DIR)
+def get_project_reserving_class_data_dir(project_name: str, reserving_class: str) -> str:
+    return os.path.join(
+        get_project_data_dir(project_name),
+        sanitize_reserving_class_folder(reserving_class),
+    )
 
 
-def get_project_manual_data_dir(project_name: str) -> str:
-    return os.path.join(get_project_data_dir(project_name), MANUAL_DATA_DIR)
+def get_project_dataset_sidecar_dir(project_name: str, reserving_class: str) -> str:
+    return os.path.join(
+        get_project_reserving_class_data_dir(project_name, reserving_class),
+        DATASET_SIDECAR_DIR,
+    )
+
+
+def get_project_dataset_cache_dir(project_name: str, reserving_class: str) -> str:
+    return os.path.join(
+        get_project_reserving_class_data_dir(project_name, reserving_class),
+        DATASET_CACHE_DIR,
+    )
+
+
+def get_project_method_data_dir(project_name: str, reserving_class: str) -> str:
+    return os.path.join(
+        get_project_reserving_class_data_dir(project_name, reserving_class),
+        METHOD_DATA_DIR,
+    )

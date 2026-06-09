@@ -1,4 +1,4 @@
-"""Project settings and folder structure CRUD."""
+"""Project settings and project index CRUD."""
 from __future__ import annotations
 
 import os
@@ -23,8 +23,184 @@ from app_server.helpers import (
 from app_server.services.audit_service import safe_append_project_audit_log
 
 
-def _folder_structure_path() -> str:
-    return os.path.join(config.PROJECT_SETTINGS_DIR, config.FOLDER_STRUCTURE_FILE)
+def _project_index_path() -> str:
+    return os.path.join(config.PROJECT_SETTINGS_DIR, config.PROJECT_INDEX_FILE)
+
+
+def _read_project_index() -> Dict[str, Any]:
+    path = _project_index_path()
+    if not os.path.exists(path):
+        raise HTTPException(404, f"Project index file not found: {path}")
+    try:
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as err:
+        raise HTTPException(400, f"Invalid project index JSON: {str(err)}")
+    if not isinstance(data, dict):
+        raise HTTPException(400, "Invalid project index format.")
+    return _normalize_project_index(data)
+
+
+def _write_project_index(data: Dict[str, Any]) -> str:
+    path = _project_index_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(_normalize_project_index(data), f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, path)
+    return path
+
+
+def _folder_entry_from_path(path: str) -> Dict[str, str]:
+    cleaned = _norm_tree_path(path)
+    if not cleaned:
+        return {"name": "", "path": "", "parent": ""}
+    idx = cleaned.rfind("\\")
+    if idx >= 0:
+        return {"name": cleaned[idx + 1 :], "path": cleaned, "parent": cleaned[:idx]}
+    return {"name": cleaned, "path": cleaned, "parent": ""}
+
+
+def _normalize_project_index(data: Dict[str, Any]) -> Dict[str, Any]:
+    projects: List[Dict[str, str]] = []
+    seen_projects: set[str] = set()
+    folder_paths: set[str] = set()
+
+    for item in data.get("projects", []) if isinstance(data.get("projects"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen_projects:
+            continue
+        seen_projects.add(key)
+        folder = _norm_tree_path(item.get("folder", ""))
+        if folder:
+            _add_folder_with_parents(folder_paths, folder)
+        projects.append({"name": name, "folder": folder})
+
+    for item in data.get("folders", []) if isinstance(data.get("folders"), list) else []:
+        if isinstance(item, dict):
+            path = _norm_tree_path(item.get("path", ""))
+        else:
+            path = _norm_tree_path(item)
+        if path:
+            _add_folder_with_parents(folder_paths, path)
+
+    folders = [_folder_entry_from_path(path) for path in sorted(folder_paths)]
+    return {
+        "version": int(data.get("version") or 1),
+        "projects": projects,
+        "folders": [f for f in folders if f["path"]],
+    }
+
+
+def _project_table_path(project_name: str) -> str:
+    name = str(project_name or "").strip()
+    if not name:
+        return ""
+    try:
+        path = config.get_field_mapping_path(name)
+    except ValueError:
+        return ""
+    if not os.path.exists(path):
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        return ""
+    return str(payload.get("table_path", "") if isinstance(payload, dict) else "").strip()
+
+
+def _save_project_table_path(project_name: str, table_path: str) -> None:
+    name = str(project_name or "").strip()
+    if not name:
+        return
+    try:
+        path = config.get_field_mapping_path(name)
+    except ValueError:
+        return
+    payload: Dict[str, Any] = {}
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                payload = raw
+        except Exception:
+            payload = {}
+    payload["project_name"] = name
+    payload["table_path"] = str(table_path or "").strip()
+    payload.setdefault("rows", [])
+    payload["updated_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, path)
+
+
+def project_index_to_sheet_data(index_data: Dict[str, Any]) -> Dict[str, Any]:
+    data = _normalize_project_index(index_data)
+    rows = [
+        [item["name"], _project_table_path(item["name"])]
+        for item in data["projects"]
+    ]
+    return {
+        "Virtual Projects": {
+            "headers": ["Project Name", "Table Path"],
+            "rows": rows,
+        }
+    }
+
+
+def project_index_folder_payload(index_data: Dict[str, Any]) -> Dict[str, List[str]]:
+    data = _normalize_project_index(index_data)
+    folders = [str(item.get("path", "") or "").strip() for item in data["folders"] if str(item.get("path", "") or "").strip()]
+    project_paths = []
+    for item in data["projects"]:
+        folder = _norm_tree_path(item.get("folder", ""))
+        name = str(item.get("name", "") or "").strip()
+        if not name:
+            continue
+        project_paths.append(f"{folder}\\{name}" if folder else name)
+    return {"folders": folders, "project_paths": project_paths}
+
+
+def update_project_index_from_sheet_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    existing = _read_project_index()
+    folder_by_name = {item["name"].lower(): item.get("folder", "") for item in existing["projects"]}
+    projects: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    if not isinstance(data, dict):
+        data = {}
+    for sheet in data.values():
+        if not isinstance(sheet, dict):
+            continue
+        headers = list(sheet.get("headers") or [])
+        rows = sheet.get("rows") or []
+        name_idx = headers.index("Project Name") if "Project Name" in headers else -1
+        table_idx = headers.index("Table Path") if "Table Path" in headers else -1
+        if name_idx < 0:
+            continue
+        for row in rows:
+            source = list(row) if isinstance(row, list) else []
+            name = str(source[name_idx] if name_idx < len(source) and source[name_idx] is not None else "").strip()
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            folder = folder_by_name.get(key, "")
+            projects.append({"name": name, "folder": folder})
+            if table_idx >= 0:
+                table_path = str(source[table_idx] if table_idx < len(source) and source[table_idx] is not None else "").strip()
+                _save_project_table_path(name, table_path)
+    return _normalize_project_index({"version": existing.get("version", 1), "projects": projects, "folders": existing.get("folders", [])})
 
 
 def _normalize_integer_like_text(value: Any) -> str:
@@ -88,36 +264,18 @@ def get_project_folders(source: str) -> Dict[str, Any]:
     if source not in config.PROJECT_SETTINGS_SOURCES:
         raise HTTPException(404, f"Unknown source: {source}")
 
-    filepath = _folder_structure_path()
-    folders: List[str] = []
-    project_paths: List[str] = []
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                folders, project_paths = _normalize_folder_structure_entry(data.get(source))
-        except Exception:
-            folders = []
-            project_paths = []
-
-    return {"ok": True, "source": source, "folders": folders, "project_paths": project_paths}
+    payload = project_index_folder_payload(_read_project_index())
+    return {
+        "ok": True,
+        "source": source,
+        "folders": payload["folders"],
+        "project_paths": payload["project_paths"],
+    }
 
 
 def update_project_folders(source: str, folders_input: List[str], project_paths_input: List[str]) -> Dict[str, Any]:
     if source not in config.PROJECT_SETTINGS_SOURCES:
         raise HTTPException(404, f"Unknown source: {source}")
-
-    filepath = _folder_structure_path()
-    data: Dict[str, Any] = {}
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = {}
-    if not isinstance(data, dict):
-        data = {}
 
     folders, _ = _normalize_folder_structure_entry({"folders": list(folders_input) if folders_input else []})
     _, project_paths = _normalize_folder_structure_entry({"project_paths": list(project_paths_input) if project_paths_input else []})
@@ -127,22 +285,27 @@ def update_project_folders(source: str, folders_input: List[str], project_paths_
         _add_folder_with_parents(folder_set, folder)
     folders_final = sorted(folder_set)
 
-    data[source] = {
-        "folders": folders_final,
-        "project_paths": project_paths,
-    }
+    folder_by_project = {}
+    for full in project_paths:
+        folder, project = _split_project_tree_path(full)
+        if project:
+            folder_by_project[project.lower()] = folder
+    index_data = _read_project_index()
+    projects = []
+    for item in index_data["projects"]:
+        name = str(item.get("name", "") or "").strip()
+        if not name:
+            continue
+        projects.append({"name": name, "folder": folder_by_project.get(name.lower(), item.get("folder", ""))})
+    folder_entries = [_folder_entry_from_path(path) for path in folders_final]
 
     try:
-        os.makedirs(config.PROJECT_SETTINGS_DIR, exist_ok=True)
-        tmp_path = filepath + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, filepath)
+        _write_project_index({"version": index_data.get("version", 1), "projects": projects, "folders": folder_entries})
         return {"ok": True, "source": source, "folders_count": len(folders_final), "project_paths_count": len(project_paths)}
     except PermissionError:
         raise HTTPException(423, "File is locked. Another user may have it open.")
     except Exception as e:
-        raise HTTPException(500, f"Failed to save folder structure: {str(e)}")
+        raise HTTPException(500, f"Failed to save project index folders: {str(e)}")
 
 
 def rename_project_folder(source: str, old_name: str, new_name: str) -> Dict[str, Any]:
@@ -207,31 +370,25 @@ def duplicate_project_folder(source: str, old_name: str, new_name: str) -> Dict[
 
     try:
         shutil.copytree(old_path, new_path, ignore=ignore_data_in_root)
-        old_manual_path = os.path.join(old_path, config.PROJECT_DATA_DIR, config.MANUAL_DATA_DIR)
         new_data_path = os.path.join(new_path, config.PROJECT_DATA_DIR)
-        new_generated_path = os.path.join(new_data_path, config.GENERATED_DATA_DIR)
-        new_manual_path = os.path.join(new_data_path, config.MANUAL_DATA_DIR)
-        os.makedirs(new_generated_path, exist_ok=True)
-        if os.path.isdir(old_manual_path):
-            shutil.copytree(old_manual_path, new_manual_path, dirs_exist_ok=True)
-            manual_action = "copied"
+        old_data_path = os.path.join(old_path, config.PROJECT_DATA_DIR)
+        if os.path.isdir(old_data_path):
+            shutil.copytree(old_data_path, new_data_path, dirs_exist_ok=True)
+            data_action = "copied"
         else:
-            os.makedirs(new_manual_path, exist_ok=True)
-            manual_action = "created"
+            os.makedirs(new_data_path, exist_ok=True)
+            data_action = "created"
         safe_append_project_audit_log(
             project_name=new_folder,
             action=f"Duplicated project folder from '{old_folder}'",
         )
-        created = [f"{config.PROJECT_DATA_DIR}/{config.GENERATED_DATA_DIR}"]
-        if manual_action == "created":
-            created.append(f"{config.PROJECT_DATA_DIR}/{config.MANUAL_DATA_DIR}")
         return {
             "ok": True,
             "old_folder": old_folder,
             "new_folder": new_folder,
-            "skipped": [f"{config.PROJECT_DATA_DIR}/{config.GENERATED_DATA_DIR}"],
-            "created": created,
-            "copied": [f"{config.PROJECT_DATA_DIR}/{config.MANUAL_DATA_DIR}"] if manual_action == "copied" else [],
+            "skipped": [],
+            "created": [config.PROJECT_DATA_DIR] if data_action == "created" else [],
+            "copied": [config.PROJECT_DATA_DIR] if data_action == "copied" else [],
         }
     except FileExistsError:
         raise HTTPException(409, f"Target folder already exists: {new_folder}")
@@ -260,8 +417,7 @@ def create_project_folder(source: str, name: str) -> Dict[str, Any]:
         raise HTTPException(400, "Project name must not be empty.")
 
     folder_path = os.path.join(config.PROJECT_SETTINGS_DIR, folder)
-    generated_data_path = os.path.join(folder_path, config.PROJECT_DATA_DIR, config.GENERATED_DATA_DIR)
-    manual_data_path = os.path.join(folder_path, config.PROJECT_DATA_DIR, config.MANUAL_DATA_DIR)
+    data_path = os.path.join(folder_path, config.PROJECT_DATA_DIR)
     base_dir = os.path.normcase(os.path.abspath(config.PROJECT_SETTINGS_DIR))
     target_dir = os.path.normcase(os.path.abspath(folder_path))
     if not (target_dir == base_dir or target_dir.startswith(base_dir + os.sep)):
@@ -273,8 +429,7 @@ def create_project_folder(source: str, name: str) -> Dict[str, Any]:
         raise HTTPException(409, f"Target path is not a folder: {folder}")
 
     try:
-        os.makedirs(generated_data_path, exist_ok=False)
-        os.makedirs(manual_data_path, exist_ok=False)
+        os.makedirs(data_path, exist_ok=False)
         safe_append_project_audit_log(
             project_name=folder,
             action="Created empty project folder",
@@ -282,10 +437,7 @@ def create_project_folder(source: str, name: str) -> Dict[str, Any]:
         return {
             "ok": True,
             "created_folder": folder,
-            "created": [
-                f"{config.PROJECT_DATA_DIR}/{config.GENERATED_DATA_DIR}",
-                f"{config.PROJECT_DATA_DIR}/{config.MANUAL_DATA_DIR}",
-            ],
+            "created": [config.PROJECT_DATA_DIR],
         }
     except FileExistsError:
         raise HTTPException(409, f"Target folder already exists: {folder}")
@@ -370,15 +522,13 @@ def get_project_settings(source: str) -> Dict[str, Any]:
     if source not in config.PROJECT_SETTINGS_SOURCES:
         raise HTTPException(404, f"Unknown source: {source}")
 
-    filename = config.PROJECT_SETTINGS_SOURCES[source]
-    filepath = os.path.join(config.PROJECT_SETTINGS_DIR, filename)
+    filepath = _project_index_path()
 
     if not os.path.exists(filepath):
-        raise HTTPException(404, f"Settings file not found: {filepath}")
+        raise HTTPException(404, f"Project index file not found: {filepath}")
 
     st = os.stat(filepath)
-    with open(filepath, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = project_index_to_sheet_data(_read_project_index())
 
     return {
         "ok": True,
@@ -393,8 +543,7 @@ def update_project_settings(source: str, data: Dict[str, Any], file_mtime: float
     if source not in config.PROJECT_SETTINGS_SOURCES:
         raise HTTPException(404, f"Unknown source: {source}")
 
-    filename = config.PROJECT_SETTINGS_SOURCES[source]
-    filepath = os.path.join(config.PROJECT_SETTINGS_DIR, filename)
+    filepath = _project_index_path()
 
     if os.path.exists(filepath):
         st = os.stat(filepath)
@@ -402,10 +551,8 @@ def update_project_settings(source: str, data: Dict[str, Any], file_mtime: float
             raise HTTPException(409, "File was modified by another user. Please refresh and try again.")
 
     try:
-        tmp_path = filepath + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, filepath)
+        index_data = update_project_index_from_sheet_data(data)
+        _write_project_index(index_data)
 
         st2 = os.stat(filepath)
         return {
@@ -510,7 +657,7 @@ def update_general_settings(
 def list_project_settings_sources() -> Dict[str, Any]:
     sources = []
     for key, filename in config.PROJECT_SETTINGS_SOURCES.items():
-        filepath = os.path.join(config.PROJECT_SETTINGS_DIR, filename)
+        filepath = _project_index_path() if filename == config.PROJECT_INDEX_FILE else os.path.join(config.PROJECT_SETTINGS_DIR, filename)
         exists = os.path.exists(filepath)
         sources.append({
             "key": key,

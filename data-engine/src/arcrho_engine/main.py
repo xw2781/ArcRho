@@ -28,7 +28,6 @@ from watchdog.observers import Observer
 
 from utils import get_config_value, get_project_root, normalize_function_name
 from arcrho_engine.data_processing import (
-    BASE_DICT,
     PROJECT_CONFIG,
     PROJECT_CONFIG_LOCK,
     ProjectSettingsError,
@@ -37,15 +36,14 @@ from arcrho_engine.data_processing import (
     UDF_ADASTri,
     _get_vps_last_modified_time,
     debug_mode,
+    get_project_table_path,
     id_path,
-    load_BASE_DICT,
     load_to_PROJECT_CONFIG,
-    project_map_path,
+    project_exists,
     remove_old_instances,
     robot_id,
 )
 from arcrho_engine.general_utils import (
-    DLOOKUP,
     get_current_time,
     read_json,
     safe_remove,
@@ -85,8 +83,10 @@ class RequestHandler(FileSystemEventHandler):
 
         try:
             project_name = arg['ProjectName']
-            DLOOKUP(BASE_DICT['Project Map'], project_name, 'Project Name', 'Table Path')
-        except:
+            if not project_exists(project_name):
+                raise FileNotFoundError(project_name)
+            get_project_table_path(project_name)
+        except Exception:
             write_lists_to_csv(arg['DataPath'], [[f'(project not found: {project_name})']])
             return
 
@@ -148,7 +148,6 @@ def start_monitoring(path):
     print('Server ID: ' + robot_id + '\n')
 
     remove_old_instances()
-    load_BASE_DICT()
 
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -170,11 +169,6 @@ def start_monitoring(path):
             arg_1 = read_json(id_path)
             arg_1['Last seen'] = current_time
             write_json(id_path, arg_1)
-
-            # Check Base Settings (New Version Available?)
-            if BASE_DICT["Project Map - Version"] < datetime.fromtimestamp(os.path.getmtime(project_map_path)):
-                load_BASE_DICT()
-                print(">>> Project Map Updated\n")
 
             time.sleep(5)
 

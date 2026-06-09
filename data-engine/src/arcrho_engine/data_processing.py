@@ -47,19 +47,16 @@ from arcrho_engine.general_utils import (
 
 debug_mode = 0
 device_name = os.environ.get("COMPUTERNAME")
-project_map_path = str(get_project_root() / "projects" / "map.json")
 ts = datetime.now().strftime("%y%m%d-%H%M%S-%f")[:-3]
 robot_id =  f'{device_name}@' + os.getlogin() + "@" + ts
 id_folder = str(resolve_app_path("engine", "instances"))
 id_path = str(Path(id_folder) / f"{robot_id}.json")
 
 
-BASE_DICT = {}  # Base Settings Table
 PROJECT_CONFIG = {}   # Project configuration (Source Table, Dataset Types, Reserving Class Types)
 DATA_DICT = {}  # CSV Data Table Files
 DATA_DICT_LOCK = Lock() # for atomic swap
 PROJECT_CONFIG_LOCK = Lock()
-BASE_DICT_LOCK = Lock()
 DATA_DICT_LOAD_ORDER = []  # Track load order for oldest removal
 
 # Cache for project-specific settings to avoid repeated file reads
@@ -183,26 +180,6 @@ def _enforce_data_dict_limit(max_tables=10):
             print(f"Removed oldest table from cache: {oldest_table}")
 
 
-def load_BASE_DICT():
-    with open(project_map_path, mode="r", encoding="utf-8") as f:
-        project_mapping = json.load(f)
-
-    virtual_projects = project_mapping.get("Virtual Projects")
-    if virtual_projects is None:
-        raise KeyError("Missing 'Virtual Projects' in project mapping JSON.")
-
-    if isinstance(virtual_projects, dict) and "headers" in virtual_projects and "rows" in virtual_projects:
-        headers = virtual_projects.get("headers", [])
-        rows = virtual_projects.get("rows", [])
-        team_profile_df = pd.DataFrame(rows, columns=headers)
-    else:
-        # Fallback for list/dict-of-records JSON shapes.
-        team_profile_df = pd.DataFrame(virtual_projects)
-
-    BASE_DICT['Project Map'] = team_profile_df.fillna('')
-    BASE_DICT['Project Map - Version'] = datetime.now()
-
-
 def _project_json_paths(project_name):
     project_dir = get_project_root() / "projects" / project_name
     return {
@@ -212,9 +189,38 @@ def _project_json_paths(project_name):
     }
 
 
+def _project_dir(project_name):
+    return get_project_root() / "projects" / str(project_name or "").strip()
+
+
+def project_exists(project_name):
+    return _project_dir(project_name).is_dir()
+
+
 def _read_json(json_path):
-    with open(json_path, mode="r", encoding="utf-8") as f:
+    with open(json_path, mode="r", encoding="utf-8-sig") as f:
         return json.load(f)
+
+
+def _project_field_mapping_json(project_name):
+    path = _project_json_paths(project_name)["source_table"]
+    if not path.exists():
+        raise FileNotFoundError(f"Missing field_mapping.json for project: {project_name}")
+    return _read_json(path)
+
+
+def get_project_table_path(project_name):
+    field_mapping = _project_field_mapping_json(project_name)
+    table_path = str(field_mapping.get("table_path", "") if isinstance(field_mapping, dict) else "").strip()
+    if not table_path:
+        raise ProjectSettingsError(f"Missing table_path in field_mapping.json for project: {project_name}")
+    if not os.path.exists(table_path):
+        raise FileNotFoundError(f"Source table not found for project {project_name}: {table_path}")
+    return table_path
+
+
+def _data_table_cache_key(csv_path):
+    return os.path.normcase(os.path.abspath(str(csv_path)))
 
 
 def _json_table_to_df(json_obj):
@@ -262,7 +268,7 @@ def load_to_PROJECT_CONFIG(project_name, settings_file=None):
 
 def load_to_DATA_DICT(csv_path):
     print(f"Loading Data Table {csv_path} @ {get_current_time()}")
-    key = os.path.basename(csv_path)
+    key = _data_table_cache_key(csv_path)
     _enforce_data_dict_limit(max_tables=10)
     DATA_DICT[key] = pd.read_csv(csv_path)
     DATA_DICT[key + " - Version"] = datetime.now()
@@ -279,7 +285,7 @@ def load_dataframe(data_csv_path):
     print(f'Loading Data Table -- [{os.path.basename(data_csv_path)}]')
     df = pd.read_csv(data_csv_path) # build off-thread
     with DATA_DICT_LOCK:
-        key = os.path.basename(data_csv_path).replace('.csv', '')
+        key = _data_table_cache_key(data_csv_path)
         _enforce_data_dict_limit(max_tables=10)
         DATA_DICT[key] = df
         if key not in DATA_DICT_LOAD_ORDER:
@@ -479,13 +485,13 @@ def eval_triangle_formula(triangles: dict[str, pd.DataFrame],
 
 
 def _get_df(project_name):
-    table_path = DLOOKUP(BASE_DICT['Project Map'], project_name, 'Project Name', 'Table Path')
-    table_name = os.path.basename(table_path)
+    table_path = get_project_table_path(project_name)
+    table_key = _data_table_cache_key(table_path)
 
     # DATA table cache (guarded)
     with DATA_DICT_LOCK:
-        need_load = (table_name not in DATA_DICT) or (DATA_DICT.get(table_name + " - Version") is None) \
-                    or (DATA_DICT[table_name + " - Version"] < datetime.fromtimestamp(os.path.getmtime(table_path)))
+        need_load = (table_key not in DATA_DICT) or (DATA_DICT.get(table_key + " - Version") is None) \
+                    or (DATA_DICT[table_key + " - Version"] < datetime.fromtimestamp(os.path.getmtime(table_path)))
 
     if need_load:
         # build outside lock if you want, but simplest is just load here
@@ -497,7 +503,7 @@ def _get_df(project_name):
         if project_name not in PROJECT_CONFIG:
             load_to_PROJECT_CONFIG(project_name)
 
-    return DATA_DICT[table_name]
+    return DATA_DICT[table_key]
 
 
 def _get_dataset_info(arg):

@@ -966,7 +966,7 @@ async function loadProjectData(sourceKey = DEFAULT_SOURCE) {
     currentMtime = result.mtime;
     removeObsoleteProjectMapColumns(projectData);
 
-    // Load folder structure from folder_structure.json.
+    // Load virtual folder structure from projects/index.json.
     try {
       let folders = [];
       let projectPaths = [];
@@ -2947,7 +2947,7 @@ async function renameProject(project) {
     }
     folderStructureSaved = true;
 
-    // 3) Save renamed project name into map.json.
+    // 3) Save renamed project name into projects/index.json.
     const dataToSave = { ...projectData };
     const currentSheet = dataToSave[sheetName] || {};
     const currentRows = Array.isArray(currentSheet.rows)
@@ -3456,7 +3456,7 @@ async function saveProjectData(sourceKey = DEFAULT_SOURCE) {
 
   setStatus("Saving...");
   try {
-    // Save project data (exclude folder structure fields - stored in folder_structure.json)
+    // Save project data (exclude folder structure fields - stored in projects/index.json folders)
     const dataToSave = { ...projectData };
     delete dataToSave.customFolders;
     delete dataToSave.projectPaths;
@@ -3488,7 +3488,7 @@ async function saveProjectData(sourceKey = DEFAULT_SOURCE) {
     const result = await res.json();
     currentMtime = result.mtime;
 
-    // Save folder structure to E:\ArcRho\projects\folder_structure.json
+    // Save virtual folder structure to projects/index.json
     const folders = Array.isArray(projectData.customFolders) ? projectData.customFolders : [];
     const project_paths = Array.isArray(projectData.projectPaths) ? projectData.projectPaths : [];
     const foldersRes = await fetch(`/project_settings/${sourceKey}/folders`, {
@@ -3497,7 +3497,7 @@ async function saveProjectData(sourceKey = DEFAULT_SOURCE) {
       body: JSON.stringify({ folders, project_paths })
     });
     if (!foldersRes.ok) {
-      setStatus(`Saved projects, but folder structure save failed: ${foldersRes.status}`);
+      setStatus(`Saved projects, but project index folder save failed: ${foldersRes.status}`);
       return false;
     } else {
       setStatus("Saved successfully.");

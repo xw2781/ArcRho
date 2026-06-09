@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import os
-import json
 from pathlib import Path
-from typing import Any, Dict, List
 
 import openpyxl
 from fastapi import HTTPException
@@ -39,52 +37,3 @@ def read_sheet_matrix(path: str, sheet_name: str, max_rows: int = 200, max_cols:
             row.append(v)
         rows.append(row)
     return rows
-
-
-def _normalize_matrix_rows(rows: List[List[Any]], max_rows: int = 200, max_cols: int = 50) -> List[List[Any]]:
-    if not rows:
-        return []
-    limited = rows[:max_rows]
-    width = min(max((len(r) for r in limited), default=0), max_cols)
-    if width <= 0:
-        return []
-    out: List[List[Any]] = []
-    for r in limited:
-        row = list(r[:width])
-        if len(row) < width:
-            row.extend([None] * (width - len(row)))
-        out.append(row)
-    return out
-
-
-def _load_project_map_data(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, dict):
-        raise HTTPException(400, "Invalid project map format.")
-    return data
-
-
-def _project_map_sheet_names(data: Dict[str, Any]) -> List[str]:
-    out: List[str] = []
-    for k, v in data.items():
-        if isinstance(v, dict) and isinstance(v.get("headers"), list) and isinstance(v.get("rows"), list):
-            out.append(k)
-    return out
-
-
-def _read_project_map_sheet_matrix(
-    path: str, sheet_name: str, max_rows: int = 200, max_cols: int = 50
-) -> List[List[Any]]:
-    data = _load_project_map_data(path)
-    sheet_names = _project_map_sheet_names(data)
-    if sheet_name not in sheet_names:
-        raise HTTPException(404, f"Sheet not found: {sheet_name}")
-
-    sheet = data.get(sheet_name) or {}
-    headers = sheet.get("headers") or []
-    body_rows = sheet.get("rows") or []
-    rows: List[List[Any]] = [list(headers)]
-    for r in body_rows:
-        rows.append(list(r) if isinstance(r, list) else [])
-    return _normalize_matrix_rows(rows, max_rows=max_rows, max_cols=max_cols)
