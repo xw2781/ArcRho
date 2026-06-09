@@ -8,6 +8,7 @@ from . import arcrho_runtime_service
 from . import project_settings_service
 from . import table_summary_service
 from . import dataset_types_service
+from . import calculated_dataset_service
 from . import reserving_class_service
 from . import field_mapping_service
 from . import dfm_rpc_bridge_service
@@ -24,6 +25,7 @@ __all__ = [
     "project_settings_service",
     "table_summary_service",
     "dataset_types_service",
+    "calculated_dataset_service",
     "reserving_class_service",
     "field_mapping_service",
     "dfm_rpc_bridge_service",

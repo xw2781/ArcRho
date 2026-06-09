@@ -13,7 +13,7 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name, set_data_path_like_vba, send_request_like_vba, wait_for_file
-from app_server.services import book_service, dataset_instance_index_service
+from app_server.services import dataset_instance_index_service, project_settings_service
 
 
 def _pair_value(pairs: list, key: str) -> str:
@@ -27,7 +27,12 @@ def _pair_value(pairs: list, key: str) -> str:
 def _dataset_sidecar_path(data_path: str, pairs: list) -> str:
     dataset_name = _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
     dataset_file = sanitize_dataset_file_name(dataset_name)
-    return os.path.join(os.path.dirname(data_path), f"{dataset_file}.json")
+    dataset_dir = os.path.dirname(data_path)
+    if os.path.basename(dataset_dir).lower() == config.DATASET_CACHE_DIR.lower():
+        sidecar_dir = os.path.join(os.path.dirname(dataset_dir), config.DATASET_SIDECAR_DIR)
+    else:
+        sidecar_dir = os.path.join(dataset_dir, config.DATASET_SIDECAR_DIR)
+    return os.path.join(sidecar_dir, f"{dataset_file}.json")
 
 
 def _utc_timestamp_from_stat(value: float) -> str:
@@ -73,7 +78,9 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "instance_name": instance_name,
         "reserving_class": _pair_value(pairs, "Path"),
         "project_name": _pair_value(pairs, "ProjectName"),
-        "storage": "generated",
+        "source_kind": "engine",
+        "generated": True,
+        "editable": False,
         "data_format": "Triangle",
         "data_format_code": 0,
         "origin_length": _pair_int_value(pairs, "OriginLength", 12),
@@ -87,6 +94,7 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
     }
     tmp_path = f"{sidecar_path}.{uuid.uuid4()}.tmp"
+    os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)
     with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
         f.write("\n")
@@ -216,7 +224,7 @@ def clear_arcrho_headers_cache(project_name: str, origin_length: Any = None, dev
         raise HTTPException(400, "ProjectName is required")
 
     try:
-        data_dir = config.get_project_generated_data_dir(project_name_clean)
+        data_dir = config.get_project_data_dir(project_name_clean)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
@@ -281,39 +289,16 @@ def clear_arcrho_headers_cache(project_name: str, origin_length: Any = None, dev
 
 
 def arcrho_projects() -> Dict[str, Any]:
-    if not os.path.exists(config.PROJECT_BOOK):
-        raise HTTPException(404, f"Project map file not found: {config.PROJECT_BOOK}")
-
-    data = book_service._load_project_map_data(config.PROJECT_BOOK)
-    sheet_names = book_service._project_map_sheet_names(data)
-    if not sheet_names:
-        raise HTTPException(400, "No sheet data found in project map JSON.")
-    first_sheet = sheet_names[0]
-
-    values = book_service._read_project_map_sheet_matrix(config.PROJECT_BOOK, first_sheet, max_rows=5000, max_cols=50)
-
-    vals = []
-    for row in values:
-        if not row:
-            continue
-        v = row[0]
-        if v is None:
-            continue
-        s = str(v).strip()
-        if s:
-            vals.append(s)
-
-    if vals and vals[0].strip().lower() in ("project name", "projectname"):
-        vals = vals[1:]
-
     seen = set()
     out = []
-    for x in vals:
-        if x not in seen:
-            out.append(x)
-            seen.add(x)
+    index_data = project_settings_service._read_project_index()
+    for item in index_data.get("projects", []):
+        name = str(item.get("name", "") or "").strip()
+        if name and name not in seen:
+            out.append(name)
+            seen.add(name)
 
-    return {"sheet": first_sheet, "projects": out}
+    return {"sheet": "Virtual Projects", "projects": out, "folders": index_data.get("folders", [])}
 
 
 def run_arcrho_tri(pairs: list, data_path: str, timeout_sec: float, force_refresh: bool = False) -> Dict[str, Any]:
@@ -350,9 +335,21 @@ def run_arcrho_tri(pairs: list, data_path: str, timeout_sec: float, force_refres
                 timeout_out["cache_cleared"] = cache_cleared
             return timeout_out
 
+    calculated_updates = None
     try:
         _write_dataset_sidecar(data_path, pairs)
         _refresh_dataset_instance_index_after_cache_write(pairs)
+        try:
+            from app_server.services import calculated_dataset_service
+
+            calculated_updates = calculated_dataset_service.recalculate_dependents(
+                _pair_value(pairs, "ProjectName"),
+                _pair_value(pairs, "Path"),
+                _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
+                _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
+            )
+        except Exception as err:
+            calculated_updates = {"ok": False, "skipped": True, "reason": str(err)}
     except OSError as err:
         raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")
 
@@ -365,6 +362,7 @@ def run_arcrho_tri(pairs: list, data_path: str, timeout_sec: float, force_refres
         "ds_id": ds_id,
         "request_file": request_file,
         "data_path": data_path,
+        "calculated_updates": calculated_updates,
     }
     if force_refresh:
         out["cache_cleared"] = cache_cleared

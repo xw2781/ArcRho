@@ -15,7 +15,6 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import atomic_write_csv, build_length_scoped_dataset_file_name, sanitize_dataset_file_name
-from app_server.helpers import sanitize_reserving_class_folder
 from app_server.services import dataset_instance_index_service
 
 
@@ -37,14 +36,14 @@ def load_triangle_values(path: str) -> pd.DataFrame:
 def triangle_mask(n_origin: int, n_dev: int) -> np.ndarray:
     r = np.arange(n_origin)[:, None]
     c = np.arange(n_dev)[None, :]
-    return (c <= r)
+    return (r + c < n_dev)
 
 
 def diagonal_indices(n_origin: int, n_dev: int, k: int = 0) -> List[Tuple[int, int]]:
     mask = triangle_mask(n_origin, n_dev)
     out = []
     for r in range(n_origin):
-        c = r - k
+        c = n_dev - 1 - r - k
         if 0 <= c < n_dev and mask[r, c]:
             out.append((r, c))
     return out
@@ -89,13 +88,21 @@ def _data_format_code(data_format: str) -> int:
     return 0
 
 
-def _empty_dataset_values(data_format: str, origin_length: int, development_length: int) -> pd.DataFrame:
+def _empty_dataset_values(
+    data_format: str,
+    origin_length: int,
+    development_length: int,
+    triangle_shape_mask: np.ndarray | None = None,
+) -> pd.DataFrame:
     fmt = str(data_format or "").strip().lower()
     n_origin = max(1, int(origin_length))
     n_dev = 1 if fmt == "vector" else max(1, int(development_length))
     values = np.zeros((n_origin, n_dev), dtype="float64")
     if fmt != "vector":
-        values = np.where(triangle_mask(n_origin, n_dev), 0.0, np.nan)
+        mask = triangle_shape_mask
+        if not isinstance(mask, np.ndarray) or mask.shape != (n_origin, n_dev):
+            mask = triangle_mask(n_origin, n_dev)
+        values = np.where(mask, 0.0, np.nan)
     return pd.DataFrame(values)
 
 
@@ -126,28 +133,55 @@ def _period_count(start_value: Any, end_value: Any, period_length: int, fallback
     return max(1, ((end - start) // period) + 1)
 
 
-def _empty_dataset_shape_from_general_settings(
+def _empty_dataset_geometry_from_general_settings(
     project_name: str,
     origin_period_length: int,
     development_period_length: int,
-) -> tuple[int, int]:
+) -> tuple[int, int, np.ndarray | None]:
     try:
         path = config.get_general_settings_path(project_name)
     except ValueError:
-        return 12, 12
+        return 12, 12, None
     if not os.path.exists(path):
-        return 12, 12
+        return 12, 12, None
     try:
         with open(path, "r", encoding="utf-8") as fh:
             payload = json.load(fh)
     except Exception:
-        return 12, 12
+        return 12, 12, None
     origin_start = payload.get("origin_start_date", "")
     origin_end = payload.get("origin_end_date", "")
     development_end = payload.get("development_end_date", "")
     origin_count = _period_count(origin_start, origin_end, origin_period_length)
     development_count = _period_count(origin_start, development_end, development_period_length, fallback=origin_count)
-    return origin_count, development_count
+    origin_start_month = _ym_to_month_index(origin_start)
+    development_end_month = _ym_to_month_index(development_end)
+    if origin_start_month is None or development_end_month is None:
+        return origin_count, development_count, None
+    origin_offsets = np.arange(origin_count)[:, None] * max(1, int(origin_period_length or 1))
+    development_offsets = np.arange(development_count)[None, :] * max(1, int(development_period_length or 1))
+    mask = origin_start_month + origin_offsets + development_offsets <= development_end_month
+    return origin_count, development_count, mask
+
+
+def _dataset_patch_mask(path: str, n_origin: int, n_dev: int) -> np.ndarray:
+    try:
+        sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
+        payload = _read_dataset_sidecar(sidecar_path)
+        project_name = str(payload.get("project_name") or "").strip()
+        origin_period_len = max(1, int(payload.get("origin_length") or 1))
+        dev_period_len = max(1, int(payload.get("development_length") or 1))
+        if project_name:
+            _, _, mask = _empty_dataset_geometry_from_general_settings(
+                project_name,
+                origin_period_len,
+                dev_period_len,
+            )
+            if isinstance(mask, np.ndarray) and mask.shape == (n_origin, n_dev):
+                return mask
+    except Exception:
+        pass
+    return triangle_mask(n_origin, n_dev)
 
 
 def create_empty_cached_dataset(
@@ -168,30 +202,73 @@ def create_empty_cached_dataset(
         raise HTTPException(400, "instance_name or dataset_type is required.")
 
     try:
-        data_dir = config.get_project_generated_data_dir(p)
+        from app_server.services import calculated_dataset_service
+
+        calc_result = calculated_dataset_service.recalculate_dataset(p, rc, ds_type)
+    except Exception as err:
+        calc_result = {"ok": False, "reason": "calculation_error", "errors": [str(err)]}
+    if calc_result.get("ok"):
+        csv_path = str(calc_result.get("path") or "")
+        if csv_path:
+            ds_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
+            config.DATASETS[ds_id] = csv_path
+            try:
+                n_origin, n_dev = infer_shape(csv_path)
+            except Exception:
+                n_origin, n_dev = 0, 0
+            return {
+                "ok": True,
+                "project_name": p,
+                "reserving_class": rc,
+                "dataset_name": instance,
+                "dataset_type": ds_type,
+                "source_kind": "calculated",
+                "data_format": "Calculated",
+                "origin_length": 12,
+                "development_length": 12,
+                "shape": {"n_origin": n_origin, "n_development": n_dev},
+                "csv_file": os.path.basename(csv_path),
+                "ds_id": ds_id,
+                "path": csv_path,
+                "sidecar_path": str(calc_result.get("sidecar_path") or ""),
+                "calculated": True,
+                "editable": False,
+            }
+    if calc_result.get("reason") not in {"not_calculated"}:
+        detail = "; ".join(str(item) for item in calc_result.get("errors") or [])
+        if not detail:
+            detail = str(calc_result.get("reason") or "Failed to calculate dataset.")
+        raise HTTPException(422, detail)
+
+    try:
+        data_dir = config.get_project_dataset_cache_dir(p, rc)
+        sidecar_dir = config.get_project_dataset_sidecar_dir(p, rc)
     except ValueError as err:
         raise HTTPException(404, str(err))
 
     origin_period_len = max(1, int(origin_length))
     dev_period_len = max(1, int(development_length))
-    origin_count, dev_count = _empty_dataset_shape_from_general_settings(p, origin_period_len, dev_period_len)
+    origin_count, dev_count, triangle_shape_mask = _empty_dataset_geometry_from_general_settings(
+        p,
+        origin_period_len,
+        dev_period_len,
+    )
     fmt = str(data_format or "Triangle").strip() or "Triangle"
-    rc_folder = sanitize_reserving_class_folder(rc)
-    folder = os.path.join(data_dir, rc_folder)
+    folder = data_dir
     csv_stem = build_length_scoped_dataset_file_name(instance, origin_period_len, dev_period_len, cumulative, calendar)
     csv_path = os.path.join(folder, f"{csv_stem}.csv")
-    sidecar_path = os.path.join(folder, f"{sanitize_dataset_file_name(instance)}.json")
+    sidecar_path = os.path.join(sidecar_dir, f"{sanitize_dataset_file_name(instance)}.json")
     now = _now_utc_iso()
     user_name = getpass.getuser()
 
-    df = _empty_dataset_values(fmt, origin_count, dev_count)
+    df = _empty_dataset_values(fmt, origin_count, dev_count, triangle_shape_mask)
     payload = {
         "dataset_name": instance,
         "dataset_type": ds_type,
         "instance_name": instance,
         "reserving_class": rc,
         "project_name": p,
-        "storage": "generated",
+        "source_kind": "input",
         "data_format": fmt,
         "data_format_code": _data_format_code(fmt),
         "origin_length": origin_period_len,
@@ -210,6 +287,7 @@ def create_empty_cached_dataset(
     tmp_sidecar = f"{sidecar_path}.{uuid.uuid4()}.tmp"
     try:
         os.makedirs(folder, exist_ok=True)
+        os.makedirs(sidecar_dir, exist_ok=True)
         atomic_write_csv(df, csv_path)
         with open(tmp_sidecar, "w", encoding="utf-8", newline="\n") as fh:
             json.dump(payload, fh, indent=2, ensure_ascii=False)
@@ -234,6 +312,12 @@ def create_empty_cached_dataset(
         dataset_instance_index_service.rebuild_index(p, rc)
     except Exception:
         pass
+    try:
+        from app_server.services import calculated_dataset_service
+
+        calculated_dataset_service.recalculate_dependents(p, rc, instance, ds_type)
+    except Exception:
+        pass
 
     ds_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
     config.DATASETS[ds_id] = csv_path
@@ -243,6 +327,7 @@ def create_empty_cached_dataset(
         "reserving_class": rc,
         "dataset_name": instance,
         "dataset_type": ds_type,
+        "source_kind": "input",
         "data_format": fmt,
         "origin_length": origin_period_len,
         "development_length": dev_period_len,
@@ -320,11 +405,10 @@ def _require_notes_fields(project_name: str, reserving_class: str, dataset_name:
 
 def _get_notes_file_path(project_name: str, reserving_class: str, dataset_id: str) -> str:
     try:
-        data_dir = config.get_project_manual_data_dir(project_name)
+        data_dir = config.get_project_dataset_sidecar_dir(project_name, reserving_class)
     except ValueError as err:
         raise HTTPException(404, str(err))
-    rc_folder = sanitize_reserving_class_folder(reserving_class)
-    return os.path.join(data_dir, rc_folder, f"{dataset_id}.json")
+    return os.path.join(data_dir, f"{dataset_id}.json")
 
 
 def _require_dataset_fields(project_name: str, reserving_class: str, dataset_name: str) -> Tuple[str, str, str]:
@@ -336,14 +420,19 @@ def _require_dataset_fields(project_name: str, reserving_class: str, dataset_nam
     return p, rc, ds
 
 
-def _get_dataset_sidecar_path(project_name: str, reserving_class: str, dataset_name: str) -> str:
+def _get_dataset_sidecar_path(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    csv_file: str = "",
+) -> str:
+    _ = csv_file
     try:
-        data_dir = config.get_project_generated_data_dir(project_name)
+        sidecar_dir = config.get_project_dataset_sidecar_dir(project_name, reserving_class)
     except ValueError as err:
         raise HTTPException(404, str(err))
-    rc_folder = sanitize_reserving_class_folder(reserving_class)
     ds_file = sanitize_dataset_file_name(dataset_name)
-    return os.path.join(data_dir, rc_folder, f"{ds_file}.json")
+    return os.path.join(sidecar_dir, f"{ds_file}.json")
 
 
 def _now_utc_iso() -> str:
@@ -372,6 +461,23 @@ def _read_dataset_sidecar(path: str) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _is_app_calculated_dataset_type(project_name: str, dataset_type_name: str) -> tuple[bool, str]:
+    name_key = str(dataset_type_name or "").strip().lower()
+    if not name_key:
+        return False, ""
+    try:
+        from app_server.services import calculated_dataset_service
+
+        rows = calculated_dataset_service._dataset_type_rows(project_name)
+    except Exception:
+        return False, ""
+    for row in rows:
+        if str(row.get("name") or "").strip().lower() != name_key:
+            continue
+        return bool(row.get("calculated") and not row.get("generated") and str(row.get("formula") or "").strip()), str(row.get("formula") or "")
+    return False, ""
+
+
 def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     path = _get_dataset_sidecar_path(p, rc, ds)
@@ -385,19 +491,26 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
             "dataset_name": ds,
             "path": path,
         }
+    dataset_type = str(payload.get("dataset_type") or payload.get("dataset_type_name") or ds)
+    app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type)
     return {
         "ok": True,
         "exists": True,
         "project_name": str(payload.get("project_name") or p),
         "reserving_class": str(payload.get("reserving_class") or rc),
         "dataset_name": str(payload.get("dataset_name") or ds),
-        "dataset_type": str(payload.get("dataset_type") or payload.get("dataset_type_name") or ds),
+        "dataset_type": dataset_type,
         "instance_name": str(payload.get("instance_name") or payload.get("dataset_name") or ds),
         "origin_length": payload.get("origin_length"),
         "development_length": payload.get("development_length"),
         "cumulative": payload.get("cumulative"),
         "calendar": payload.get("calendar"),
         "csv_file": str(payload.get("csv_file") or ""),
+        "source_kind": str(payload.get("source_kind") or ""),
+        "editable": False if app_calculated else payload.get("editable"),
+        "generated": False if app_calculated else payload.get("generated"),
+        "calculated": True if app_calculated else payload.get("calculated"),
+        "formula": formula or str(payload.get("formula") or ""),
         "user": str(payload.get("user") or ""),
         "modified_by": str(payload.get("modified_by") or ""),
         "created": str(payload.get("created") or ""),
@@ -423,20 +536,22 @@ def save_dataset_sidecar(
     if origin_length <= 0 or development_length <= 0:
         raise HTTPException(400, "origin_length and development_length must be positive.")
 
-    path = _get_dataset_sidecar_path(p, rc, ds)
+    path = _get_dataset_sidecar_path(p, rc, ds, csv_file=csv_file)
     existing = _read_dataset_sidecar(path)
     created = str(existing.get("created") or "") if existing else ""
     if not created:
         created = _now_utc_iso()
     user_name = getpass.getuser()
+    dataset_type_value = str(dataset_type or existing.get("dataset_type") or existing.get("dataset_type_name") or ds)
+    app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type_value)
     payload = {
         **existing,
         "dataset_name": ds,
-        "dataset_type": str(dataset_type or existing.get("dataset_type") or existing.get("dataset_type_name") or ds),
+        "dataset_type": dataset_type_value,
         "instance_name": str(instance_name or existing.get("instance_name") or ds),
         "reserving_class": rc,
         "project_name": p,
-        "storage": "generated",
+        "source_kind": str(existing.get("source_kind") or ("calculated" if app_calculated else "input")),
         "data_format": str(existing.get("data_format") or "Triangle"),
         "data_format_code": _int_or_default(existing.get("data_format_code"), 0),
         "origin_length": int(origin_length),
@@ -444,6 +559,10 @@ def save_dataset_sidecar(
         "cumulative": bool(cumulative),
         "calendar": bool(calendar),
         "csv_file": str(csv_file or existing.get("csv_file") or ""),
+        "editable": False if app_calculated else existing.get("editable"),
+        "generated": False if app_calculated else existing.get("generated"),
+        "calculated": True if app_calculated else existing.get("calculated"),
+        "formula": formula or str(existing.get("formula") or ""),
         "user": user_name,
         "created": created,
         "modified_by": user_name,
@@ -487,6 +606,7 @@ def save_dataset_sidecar(
         "cumulative": payload["cumulative"],
         "calendar": payload["calendar"],
         "csv_file": payload["csv_file"],
+        "source_kind": payload["source_kind"],
         "updated_at": payload["updated_at"],
         "path": path,
     }
@@ -591,7 +711,7 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
 
     df = load_triangle_values(path)
     n_origin, n_dev = df.shape
-    mask = triangle_mask(n_origin, n_dev)
+    mask = _dataset_patch_mask(path, n_origin, n_dev)
 
     applied = 0
     rejected: List[Dict[str, Any]] = []
@@ -610,5 +730,12 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
 
     atomic_write_csv(df, path)
     st2 = os.stat(path)
+    calculated_updates = None
+    try:
+        from app_server.services import calculated_dataset_service
 
-    return {"ok": True, "applied": applied, "rejected": rejected, "mtime": st2.st_mtime}
+        calculated_updates = calculated_dataset_service.recalculate_dependents_for_csv(path)
+    except Exception as err:
+        calculated_updates = {"ok": False, "skipped": True, "reason": str(err)}
+
+    return {"ok": True, "applied": applied, "rejected": rejected, "mtime": st2.st_mtime, "calculated_updates": calculated_updates}
