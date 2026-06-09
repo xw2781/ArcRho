@@ -3,7 +3,7 @@ resq_data_migration.py
 
 Migrate ResQ triangles and DFM methods to ArcRho dataset files.
 Scope: ProjectName = 'NJ_Annual_Prod_202605_Fake'
-Output: E:\\ArcRho Server\\projects\\NJ_Annual_Prod_202605_Fake\\data\\manual\\
+Output: E:\\ArcRho Server\\projects\\NJ_Annual_Prod_202605_Fake\\data\\<ReservingClassFolder>\\
 
 Run:
   python resq_data_migration.py
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import re
 import sys
@@ -33,12 +34,11 @@ PASSWORD = ""
 
 SERVER_ROOT = Path(r"E:\ArcRho Server")
 PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
-MANUAL_OUTPUT_BASE = PROJECT_DATA_DIR / "manual"
-GENERATED_OUTPUT_BASE = PROJECT_DATA_DIR / "generated"
-OUTPUT_BASE = MANUAL_OUTPUT_BASE  # Backward-compatible default for DFM/manual outputs.
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
-DATASET_INSTANCE_INDEX_FILE_NAME = "dataset_instance_index.json"
-LEGACY_METHOD_INDEX_FILE_NAME = "method_index.json"
+INDEX_FILE_NAME = "index.json"
+DATASET_CACHE_DIR = "datasets"
+METHOD_DATA_DIR = "methods"
+DATASET_SIDECAR_DIR = "sidecars"
 
 # Stop probing average formula rows after this many consecutive misses
 MAX_AVERAGE_FORMULA_PROBE = 30
@@ -113,18 +113,13 @@ def _encode_name_part(name: str) -> str:
     )
 
 
-def _dataset_storage(name: str, dataset_type: str) -> str:
-    """ArcRho storage rule for migrated ResQ datasets."""
-    return "generated" if _clean_name(dataset_type) == _clean_name(name) else "manual"
-
-
-def _dataset_output_base(name: str, dataset_type: str) -> Path:
-    return GENERATED_OUTPUT_BASE if _dataset_storage(name, dataset_type) == "generated" else MANUAL_OUTPUT_BASE
+def _triangle_source_kind(name: str, dataset_type: str) -> str:
+    return "engine" if _clean_name(dataset_type) == _clean_name(name) else "input"
 
 
 def _csv_abs_path(rc_folder: str, name: str, origin_length: int, dev_length: int, dataset_type: str = "") -> str:
     filename = f"{_encode_name_part(name)}@{origin_length}@{dev_length}.csv"
-    return str(_dataset_output_base(name, dataset_type) / rc_folder / filename)
+    return str(PROJECT_DATA_DIR / rc_folder / DATASET_CACHE_DIR / filename)
 
 
 def _csv_file_name(name: str, origin_length: int, dev_length: int) -> str:
@@ -142,26 +137,6 @@ def _safe_read_json(path: Path) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
-
-
-def _remove_legacy_dfm_sidecar(path: Path, encoded_name: str) -> None:
-    if not path.exists():
-        return
-    data = _safe_read_json(path)
-    if (
-        _clean_name(data.get("source")).lower() == "dfm"
-        and _clean_name(data.get("dataset_name")) == encoded_name
-        and _clean_name(data.get("instance_name")) == encoded_name
-    ):
-        path.unlink()
-        print(f"    OK  removed obsolete DFM metadata sidecar {path.name}")
-
-
-def _remove_legacy_method_index(rc_dir: Path) -> None:
-    index_path = rc_dir / LEGACY_METHOD_INDEX_FILE_NAME
-    if index_path.exists():
-        index_path.unlink()
-        print(f"    OK  removed obsolete {LEGACY_METHOD_INDEX_FILE_NAME}")
 
 
 def _split_length_scoped_stem(stem: str) -> tuple[str, bool]:
@@ -194,11 +169,12 @@ def _add_cached_dataset_name(names: set[str], value: object) -> None:
 def _dataset_sidecar_path_for_cached_csv(csv_path: Path) -> Path:
     stem = csv_path.stem
     dataset_stem, is_length_scoped = _split_length_scoped_stem(stem)
+    sidecar_dir = csv_path.parent.parent / DATASET_SIDECAR_DIR if csv_path.parent.name == DATASET_CACHE_DIR else csv_path.parent / DATASET_SIDECAR_DIR
     if is_length_scoped:
-        plain_sidecar = csv_path.with_name(f"{dataset_stem}.json")
+        plain_sidecar = sidecar_dir / f"{dataset_stem}.json"
         if plain_sidecar.exists():
             return plain_sidecar
-    return csv_path.with_suffix(".json")
+    return sidecar_dir / f"{stem}.json"
 
 
 def _cached_dataset_names_from_file(filename: str) -> set[str]:
@@ -225,11 +201,17 @@ def _cached_dataset_names_from_payload(payload: dict) -> set[str]:
         _add_cached_dataset_name(names, payload.get(key))
     if names:
         return names
-    for key in ("dataset_type", "dataset_type_name"):
-        _add_cached_dataset_name(names, payload.get(key))
     details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
     _add_cached_dataset_name(names, details_tab.get("output type"))
     return names
+
+
+def _dataset_type_name_from_payload(payload: dict) -> str:
+    text = _normalize_cached_dataset_name(payload.get("dataset_type_name") or payload.get("dataset_type"))
+    if text:
+        return text
+    details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
+    return _normalize_cached_dataset_name(details_tab.get("output type"))
 
 
 def _metadata_text(metadata: dict, keys: tuple[str, ...]) -> str:
@@ -255,31 +237,36 @@ def _numeric_timestamp(value: object) -> float:
         return 0.0
 
 
-def _is_legacy_dfm_sidecar(payload: dict) -> bool:
-    if _clean_name(payload.get("source")).lower() != "dfm":
-        return False
-    dataset_name = _clean_name(payload.get("dataset_name"))
-    instance_name = _clean_name(payload.get("instance_name"))
-    return bool(dataset_name and dataset_name == instance_name)
-
-
-def _scan_physical_dataset_files(folder_path: Path, storage: str) -> list[dict]:
+def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
     files: list[dict] = []
     if not folder_path.is_dir():
         return files
 
     metadata_cache: dict[Path, dict] = {}
-    for entry in sorted(folder_path.iterdir(), key=lambda item: item.name.lower()):
+    entries: list[Path] = []
+    dataset_dir = folder_path / DATASET_CACHE_DIR
+    if dataset_dir.is_dir():
+        entries.extend(entry for entry in dataset_dir.iterdir())
+    method_dir = folder_path / METHOD_DATA_DIR
+    if method_dir.is_dir():
+        entries.extend(entry for entry in method_dir.iterdir())
+    sidecar_dir = folder_path / DATASET_SIDECAR_DIR
+    if sidecar_dir.is_dir():
+        entries.extend(entry for entry in sidecar_dir.iterdir())
+
+    for entry in sorted(entries, key=lambda item: str(item).lower()):
         if not entry.is_file():
             continue
         ext = entry.suffix.lower()
-        if ext not in {".csv", ".json"} or entry.name in {DATASET_INSTANCE_INDEX_FILE_NAME, LEGACY_METHOD_INDEX_FILE_NAME}:
+        if ext not in {".csv", ".json"} or entry.name == INDEX_FILE_NAME:
             continue
 
         stat = entry.stat()
         file_names: set[str] = set()
         metadata: dict = {}
         method_type = ""
+        method_dataset_name = ""
+        method_dataset_type_name = ""
 
         if ext == ".csv":
             file_names = _cached_dataset_names_from_file(entry.name)
@@ -287,12 +274,13 @@ def _scan_physical_dataset_files(folder_path: Path, storage: str) -> list[dict]:
             metadata = metadata_cache.setdefault(metadata_path, _safe_read_json(metadata_path))
         else:
             metadata = metadata_cache.setdefault(entry, _safe_read_json(entry))
-            if entry.name.startswith("DFM@"):
+            is_sidecar = entry.parent.name == DATASET_SIDECAR_DIR
+            if not is_sidecar and entry.name.startswith("DFM@"):
                 details_tab = metadata.get("details tab") if isinstance(metadata.get("details tab"), dict) else {}
                 _add_cached_dataset_name(file_names, details_tab.get("output type"))
+                method_dataset_name = _normalize_cached_dataset_name(details_tab.get("output type"))
+                method_dataset_type_name = method_dataset_name
                 method_type = "DFM" if file_names else ""
-            elif _is_legacy_dfm_sidecar(metadata):
-                continue
             else:
                 file_names = _cached_dataset_names_from_payload(metadata) or _cached_dataset_names_from_file(entry.name)
 
@@ -301,7 +289,6 @@ def _scan_physical_dataset_files(folder_path: Path, storage: str) -> list[dict]:
 
         file_info = {
             "physical_name": entry.name,
-            "storage": storage,
             "path": str(entry),
             "size": stat.st_size,
             "mtime": stat.st_mtime,
@@ -316,6 +303,20 @@ def _scan_physical_dataset_files(folder_path: Path, storage: str) -> list[dict]:
             first_name = file_info["dataset_names"][0]
             file_info["dataset_name"] = first_name
         if metadata:
+            metadata_dataset_name = _normalize_cached_dataset_name(metadata.get("dataset_name") or metadata.get("instance_name"))
+            dataset_type_name = _dataset_type_name_from_payload(metadata)
+            if metadata_dataset_name:
+                file_info["dataset_name"] = metadata_dataset_name
+            if dataset_type_name:
+                file_info["dataset_type_name"] = dataset_type_name
+                file_info["dataset_type"] = dataset_type_name
+            file_info["source_kind"] = _clean_name(metadata.get("source_kind"))
+            if "editable" in metadata:
+                file_info["editable"] = metadata.get("editable")
+            if "generated" in metadata:
+                file_info["generated"] = metadata.get("generated")
+            if "calculated" in metadata:
+                file_info["calculated"] = metadata.get("calculated")
             file_info["user"] = _metadata_text(metadata, (
                 "user",
                 "user_name",
@@ -341,6 +342,11 @@ def _scan_physical_dataset_files(folder_path: Path, storage: str) -> list[dict]:
                 "creation_time",
             ))
         if method_type:
+            if method_dataset_name:
+                file_info["dataset_name"] = method_dataset_name
+            if method_dataset_type_name:
+                file_info["dataset_type_name"] = method_dataset_type_name
+                file_info["dataset_type"] = method_dataset_type_name
             file_info["method_type"] = method_type
         files.append(file_info)
     return files
@@ -352,6 +358,9 @@ def _file_dataset_names(item: dict) -> set[str]:
         _add_cached_dataset_name(names, item.get(key))
     for value in item.get("dataset_names") or []:
         _add_cached_dataset_name(names, value)
+    if names:
+        return names
+    _add_cached_dataset_name(names, item.get("physical_name"))
     return names
 
 
@@ -381,6 +390,15 @@ def _merge_logical_file(existing: dict, source: dict) -> dict:
     method_type = _clean_name(source.get("method_type"))
     if method_type:
         existing["method_type"] = method_type
+    dataset_type_name = _clean_name(source.get("dataset_type_name") or source.get("dataset_type"))
+    if dataset_type_name and not _clean_name(existing.get("dataset_type_name")):
+        existing["dataset_type_name"] = dataset_type_name
+    source_kind = _clean_name(source.get("source_kind"))
+    if source_kind and not _clean_name(existing.get("source_kind")):
+        existing["source_kind"] = source_kind
+    for flag in ("editable", "generated", "calculated"):
+        if flag in source and flag not in existing:
+            existing[flag] = source.get(flag)
     return existing
 
 
@@ -418,55 +436,49 @@ def _cached_folder_signature(files: list[dict], folder_paths: dict[str, str]) ->
         },
         "files": [
             {
-                "storage": _clean_name(item.get("storage")),
+                "source_kind": _clean_name(item.get("source_kind")),
                 "name": _clean_name(item.get("physical_name")),
                 "size": int(item.get("size") or 0),
                 "mtime_ns": int(item.get("mtime_ns") or 0),
             }
             for item in sorted(files, key=lambda item: (
-                _clean_name(item.get("storage")),
+                _clean_name(item.get("source_kind")),
                 _clean_name(item.get("physical_name")).lower(),
             ))
         ],
     }
-    return json.dumps(source, sort_keys=True, separators=(",", ":"))
+    signature_source = json.dumps(source, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(signature_source.encode("utf-8")).hexdigest()
 
 
-def rebuild_dataset_instance_index(project_name: str, rc_path: str, manual_rc_dir: Path, generated_rc_dir: Path) -> Path:
+def rebuild_dataset_instance_index(project_name: str, rc_path: str, rc_dir: Path) -> Path:
     folder_paths = {
-        "generated": str(generated_rc_dir),
-        "manual": str(manual_rc_dir),
+        "data": str(rc_dir),
+        "datasets": str(rc_dir / DATASET_CACHE_DIR),
+        "methods": str(rc_dir / METHOD_DATA_DIR),
+        "sidecars": str(rc_dir / DATASET_SIDECAR_DIR),
     }
-    physical_files = (
-        _scan_physical_dataset_files(generated_rc_dir, "generated")
-        + _scan_physical_dataset_files(manual_rc_dir, "manual")
-    )
+    physical_files = _scan_physical_dataset_files(rc_dir)
     files = _logical_files_from_physical_files(physical_files)
-    dataset_names = sorted(
-        {_clean_name(item.get("dataset_name")) for item in files if _clean_name(item.get("dataset_name"))},
-        key=lambda item: item.lower(),
-    )
     payload = {
         "ok": True,
-        "version": 3,
-        "exists": bool(generated_rc_dir.is_dir() or manual_rc_dir.is_dir()),
+        "version": 6,
+        "exists": rc_dir.is_dir(),
         "project_name": project_name,
         "reserving_class": rc_path,
-        "folder_path": str(generated_rc_dir),
         "folder_paths": folder_paths,
         "folder_signature": _cached_folder_signature(physical_files, folder_paths),
-        "dataset_names": dataset_names,
         "files": files,
     }
 
-    manual_rc_dir.mkdir(parents=True, exist_ok=True)
-    index_path = manual_rc_dir / DATASET_INSTANCE_INDEX_FILE_NAME
+    rc_dir.mkdir(parents=True, exist_ok=True)
+    index_path = rc_dir / INDEX_FILE_NAME
     temp_path = index_path.with_name(f"{index_path.name}.tmp")
     with temp_path.open("w", encoding="utf-8", newline="\n") as fh:
         fh.write(_format_json(payload))
         fh.write("\n")
     temp_path.replace(index_path)
-    print(f"    OK  {DATASET_INSTANCE_INDEX_FILE_NAME} ({len(files)} entries, version 3)")
+    print(f"    OK  {INDEX_FILE_NAME} ({len(files)} entries, version 6)")
     return index_path
 
 
@@ -757,22 +769,28 @@ def export_triangle(triangle) -> dict:
     }
 
 
-def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path, storage: str) -> Path:
+def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     name = payload["name"]
+    dataset_type = payload.get("dataset_type") or name
     origin_length = int(payload["origin_length"])
     dev_length = int(payload["development_length"])
     csv_name = _csv_file_name(name, origin_length, dev_length)
-    csv_path = rc_dir / csv_name
+    csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
     _write_csv_matrix(csv_path, payload["values"])
 
     updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    source_kind = _triangle_source_kind(name, dataset_type)
     meta = {
         "dataset_name": name,
-        "dataset_type": payload.get("dataset_type") or name,
+        "dataset_type": dataset_type,
+        "dataset_type_name": dataset_type,
         "instance_name": name,
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
-        "storage": storage,
+        "source_kind": source_kind,
+        "generated": source_kind == "engine",
+        "editable": source_kind != "engine",
+        "calculated": False,
         "source": "resq_triangle",
         "data_format": "Triangle",
         "data_format_code": payload.get("data_format", 0),
@@ -787,7 +805,9 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path, storage: st
         "created": payload.get("created", ""),
         "updated_at": updated_at,
     }
-    meta_path = rc_dir / _json_sidecar_name(name)
+    meta_dir = rc_dir / DATASET_SIDECAR_DIR
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = meta_dir / _json_sidecar_name(name)
     with meta_path.open("w", encoding="utf-8", newline="\n") as fh:
         fh.write(_format_json(meta))
         fh.write("\n")
@@ -797,8 +817,7 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path, storage: st
 def export_triangles_for_rc(
     reserving_class,
     rc_path: str,
-    manual_rc_dir: Path,
-    generated_rc_dir: Path,
+    rc_dir: Path,
 ) -> tuple[int, int]:
     """Export triangle datasets for one reserving class. Returns (written, errors)."""
     triangle_collection = reserving_class.Triangles()
@@ -811,11 +830,10 @@ def export_triangles_for_rc(
         try:
             triangle = triangle_collection.Item(triangle_name)
             payload = export_triangle(triangle)
-            storage = _dataset_storage(payload["name"], payload.get("dataset_type", ""))
-            rc_dir = generated_rc_dir if storage == "generated" else manual_rc_dir
-            write_triangle_export(payload, rc_path, rc_dir, storage)
+            write_triangle_export(payload, rc_path, rc_dir)
+            source_kind = _triangle_source_kind(payload["name"], payload.get("dataset_type", ""))
             print(
-                f"    OK  {storage}/"
+                f"    OK  {source_kind} "
                 f"{_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
             )
             written += 1
@@ -1031,16 +1049,13 @@ def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int
     written = errors = 0
     for dfm_name in dfm_names:
         file_name = f"DFM@{_encode_name_part(dfm_name)}.json"
-        out_path = rc_dir / file_name
+        out_path = rc_dir / METHOD_DATA_DIR / file_name
         try:
             dfm = dfm_collection.Item(dfm_name)
             payload = export_dfm(dfm, rc_path)
             with out_path.open("w", encoding="utf-8", newline="\n") as fh:
                 fh.write(_format_json(payload))
                 fh.write("\n")
-
-            encoded_name = _encode_name_part(dfm_name)
-            _remove_legacy_dfm_sidecar(rc_dir / f"{encoded_name}.json", encoded_name)
 
             print(f"    OK  {file_name}")
             written += 1
@@ -1091,39 +1106,36 @@ def main(argv: list[str] | None = None) -> None:
     try:
         project = ResQApp.Projects().Item(PROJECT_NAME)
         print(f"Project: {PROJECT_NAME}")
-        MANUAL_OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
-        if run_triangles:
-            GENERATED_OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
+        PROJECT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         rc_path = RC_PATH
         rc_folder = _encode_rc_folder(rc_path)
-        manual_rc_dir = MANUAL_OUTPUT_BASE / rc_folder
-        generated_rc_dir = GENERATED_OUTPUT_BASE / rc_folder
+        rc_dir = PROJECT_DATA_DIR / rc_folder
 
         reserving_class = project.ReservingClasses().Item(rc_path)
         print(f"RC: {rc_path}")
         print(f"Export mode: {args.export} (triangles={run_triangles}, dfm={run_dfms})")
-        manual_rc_dir.mkdir(parents=True, exist_ok=True)
-        if run_triangles:
-            generated_rc_dir.mkdir(parents=True, exist_ok=True)
+        rc_dir.mkdir(parents=True, exist_ok=True)
+        (rc_dir / DATASET_CACHE_DIR).mkdir(parents=True, exist_ok=True)
+        (rc_dir / METHOD_DATA_DIR).mkdir(parents=True, exist_ok=True)
+        (rc_dir / DATASET_SIDECAR_DIR).mkdir(parents=True, exist_ok=True)
 
         rc_written = 0
 
         if run_triangles:
-            written, errors = export_triangles_for_rc(reserving_class, rc_path, manual_rc_dir, generated_rc_dir)
+            written, errors = export_triangles_for_rc(reserving_class, rc_path, rc_dir)
             rc_written += written
             total_written += written
             total_errors += errors
 
         if run_dfms:
-            written, errors = export_dfms_for_rc(reserving_class, rc_path, manual_rc_dir)
+            written, errors = export_dfms_for_rc(reserving_class, rc_path, rc_dir)
             rc_written += written
             total_written += written
             total_errors += errors
 
         if rc_written:
-            _remove_legacy_method_index(manual_rc_dir)
-            rebuild_dataset_instance_index(PROJECT_NAME, rc_path, manual_rc_dir, generated_rc_dir)
+            rebuild_dataset_instance_index(PROJECT_NAME, rc_path, rc_dir)
 
     finally:
         ResQApp.Disconnect()

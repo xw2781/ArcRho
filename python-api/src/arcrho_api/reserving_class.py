@@ -59,14 +59,20 @@ class ReservingClass:
     def data_dir(self) -> Path:
         return self.project.reserving_class_data_dir(self.path)
 
+    @property
+    def datasets_dir(self) -> Path:
+        if hasattr(self.project, "reserving_class_datasets_dir"):
+            return self.project.reserving_class_datasets_dir(self.path)
+        return self.data_dir / "datasets"
+
     def dataset_path(self, name: str) -> Path:
         wanted = dataset_filename(name)
-        direct = self.data_dir / wanted
+        direct = self.datasets_dir / wanted
         if direct.exists():
             return direct
         wanted_lower = wanted.lower()
-        if self.data_dir.exists():
-            for item in self.data_dir.iterdir():
+        if self.datasets_dir.exists():
+            for item in self.datasets_dir.iterdir():
                 if item.is_file() and item.name.lower() == wanted_lower:
                     return item
         return direct
@@ -75,9 +81,9 @@ class ReservingClass:
         return self.dataset_path(name).is_file()
 
     def list_datasets(self) -> list[str]:
-        if not self.data_dir.exists():
+        if not self.datasets_dir.exists():
             return []
-        names = [item.stem for item in self.data_dir.iterdir() if item.is_file() and item.suffix.lower() == ".csv"]
+        names = [item.stem for item in self.datasets_dir.iterdir() if item.is_file() and item.suffix.lower() == ".csv"]
         return sorted(names, key=str.lower)
 
     def read_dataset(self, name: str) -> list[list[Any]]:
@@ -93,10 +99,10 @@ class ReservingClass:
         origin_length: int = 12,
         development_length: int = 12,
     ) -> Path:
-        """Return the generated ArcRhoTri CSV cache path for this reserving class."""
+        """Return the ArcRhoTri CSV cache path for this reserving class."""
 
         filename = _length_scoped_dataset_filename(name, origin_length, development_length)
-        return self.project.path / "data" / "generated" / sanitize_reserving_class_folder(self.path) / filename
+        return self.project.path / "data" / sanitize_reserving_class_folder(self.path) / "datasets" / filename
 
     def add_triangle(
         self,
@@ -108,11 +114,11 @@ class ReservingClass:
         timeout_sec: float = 6.0,
         force_refresh: bool = False,
     ) -> TriangleCacheResult:
-        """Ensure a generated ArcRhoTri CSV cache exists, requesting it if needed.
+        """Ensure an ArcRhoTri CSV cache exists, requesting it if needed.
 
         If the cache file is already present, it is reused. Otherwise this writes an
         ArcRhoTri request JSON to the server requests folder and waits for the engine
-        to produce the generated CSV.
+        to produce the CSV.
         """
 
         dataset_name = clean_text(name)
@@ -210,11 +216,16 @@ class ReservingClass:
             "instance_name": dataset_name,
             "reserving_class": self.path,
             "project_name": self.project.name,
-            "storage": "generated",
+            "source_kind": "engine",
+            "generated": True,
+            "editable": False,
+            "calculated": False,
             "csv_file": data_path.name,
             "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         }
-        sidecar_path = data_path.with_name(f"{_encoded_file_name_part(dataset_name, 'Dataset')}.json")
+        sidecar_dir = data_path.parent.parent / "sidecars" if data_path.parent.name == "datasets" else data_path.parent / "sidecars"
+        sidecar_dir.mkdir(parents=True, exist_ok=True)
+        sidecar_path = sidecar_dir / f"{_encoded_file_name_part(dataset_name, 'Dataset')}.json"
         temp_path = sidecar_path.with_name(f"{sidecar_path.name}.{uuid.uuid4()}.tmp")
         try:
             temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

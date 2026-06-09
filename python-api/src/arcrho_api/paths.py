@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-METHOD_INDEX_FILE_NAME = "method_index.json"
+RESERVING_CLASS_INDEX_FILE_NAME = "index.json"
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 
 

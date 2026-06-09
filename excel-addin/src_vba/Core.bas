@@ -33,6 +33,7 @@ Public triangle_tool_col As Long
 
 Private Const DATA_STORAGE_GENERATED As String = "generated"
 Private Const DATA_STORAGE_MANUAL As String = "manual"
+Private Const DATASET_CACHE_DIR As String = "datasets"
 
 Private Type DatasetRequestSpec
     FunctionName As String
@@ -66,17 +67,20 @@ Private Function NormalizeDatasetKey(ByVal value As String) As String
     NormalizeDatasetKey = LCase$(Trim$(value))
 End Function
 
-Private Function IsGeneratedDataPath(ByVal filePath As String) As Boolean
-    IsGeneratedDataPath = (InStr(1, filePath, "\data\generated\", vbTextCompare) > 0)
+Private Function FirstNonBlank(ByVal firstValue As String, ByVal secondValue As String) As String
+    If Len(Trim$(firstValue)) > 0 Then
+        FirstNonBlank = firstValue
+    Else
+        FirstNonBlank = secondValue
+    End If
 End Function
 
 Private Sub DeleteFileIfExists(ByVal filePath As String)
     If FileExists(filePath) Then Kill filePath
 End Sub
 
-Private Sub DeleteGeneratedDatasetCache(ByVal csvPath As String)
+Private Sub DeleteDatasetCache(ByVal csvPath As String)
     Dim jsonPath As String
-    If Not IsGeneratedDataPath(csvPath) Then Exit Sub
     DeleteFileIfExists csvPath
     If LCase$(Right$(csvPath, 4)) = ".csv" Then
         jsonPath = Left$(csvPath, Len(csvPath) - 4) & ".json"
@@ -149,15 +153,15 @@ Public Function GetDataset(funcArgs As String)
     End If
     requestInfo = funcArgs & "#DataPath = " & dataPath
 
-    ' Manual datasets are read-only from Excel. Missing manual datasets should
-    ' not create request files or clear files under data\manual.
+    ' Non-generated datasets are read-only from Excel. Missing non-generated
+    ' datasets should not create request files or clear existing cache files.
     If spec.StorageKind = DATA_STORAGE_MANUAL Then
         If FileExists(dataPath) Then
             GetDataset = GetDataArray(dataPath)
             errCount = 0
         Else
-            Debug.Print "[error] - manual dataset file not found: "; dataPath
-            GetDataset = "(manual dataset not found)"
+            Debug.Print "[error] - non-generated dataset file not found: "; dataPath
+            GetDataset = "(non-generated dataset not found)"
         End If
         GoTo CleanExit
     End If
@@ -172,7 +176,7 @@ Public Function GetDataset(funcArgs As String)
     ' --- Case 2: need fresh data ---
     ufLoading.UpdateText "Updating [" & GetParamValue(requestInfo, "DatasetName") & "]"
 
-    DeleteGeneratedDatasetCache dataPath
+    DeleteDatasetCache dataPath
 
     If InStrRev(dataPath, "\") > 0 Then
         projectDataDir = Left$(dataPath, InStrRev(dataPath, "\") - 1)
@@ -428,15 +432,16 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     Dim functionName As String
     Dim reservingClassPath As String
     Dim datasetName As String
+    Dim instanceName As String
     Dim originLength As String
     Dim developmentLength As String
     Dim cumulativeMode As String
     Dim calendarMode As String
     Dim projectDataPath As String
-    Dim generatedDataPath As String
-    Dim manualDataPath As String
     Dim storageKind As String
     Dim rcFolder As String
+    Dim rcDataPath As String
+    Dim datasetDataPath As String
     Dim datasetFile As String
     Dim spec As DatasetRequestSpec
 
@@ -474,6 +479,10 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
                         datasetName = val
                         If Len(fullName) > 0 Then fullName = fullName & "@"
                         fullName = fullName & val
+                    Case "instancename"
+                        instanceName = val
+                        If Len(fullName) > 0 Then fullName = fullName & "@"
+                        fullName = fullName & val
                     Case "originlength"
                         originLength = val
                         If Len(fullName) > 0 Then fullName = fullName & "@"
@@ -506,34 +515,29 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     Else
         projectDataPath = basePath & "data"
     End If
-    generatedDataPath = projectDataPath & "\generated"
-    manualDataPath = projectDataPath & "\manual"
     storageKind = ResolveDatasetStorageKind(proj, datasetName, functionName)
 
-    ' New storage contract: dataset CSV files live under one sanitized
-    ' reserving-class folder and no longer repeat the reserving class path in
-    ' the filename. Dataset Types "Generated" controls generated/manual
-    ' placement; missing dataset types are treated as manual instances.
+    ' Storage contract shared with the frontend app:
+    ' data\<reserving-class>\datasets\<dataset>.csv. Dataset Types "Generated"
+    ' controls whether Excel sends an engine request or only reads the file.
     If Len(reservingClassPath) > 0 And Len(datasetName) > 0 Then
         rcFolder = SanitizeReservingClassFolderName(reservingClassPath)
-        datasetFile = SanitizeDataFileName(datasetName)
-        If storageKind = DATA_STORAGE_MANUAL Then
-            spec.DataPath = manualDataPath & "\" & rcFolder & "\" & datasetFile & ".csv"
-        Else
-            If LCase$(Trim$(functionName)) = "arcrhotri" _
-                    And Len(Trim$(originLength)) > 0 _
-                    And Len(Trim$(developmentLength)) > 0 Then
-                datasetFile = datasetFile & "@" & Trim$(originLength) & "@" & Trim$(developmentLength) _
-                    & "@" & RequestBoolSuffix(cumulativeMode, "cum", "inc") _
-                    & "@" & RequestBoolSuffix(calendarMode, "cal", "dev")
-            End If
-            spec.DataPath = generatedDataPath & "\" & rcFolder & "\" & datasetFile & ".csv"
+        rcDataPath = projectDataPath & "\" & rcFolder
+        datasetDataPath = rcDataPath & "\" & DATASET_CACHE_DIR
+        datasetFile = SanitizeDataFileName(FirstNonBlank(instanceName, datasetName))
+        If LCase$(Trim$(functionName)) = "arcrhotri" _
+                And Len(Trim$(originLength)) > 0 _
+                And Len(Trim$(developmentLength)) > 0 Then
+            datasetFile = datasetFile & "@" & Trim$(originLength) & "@" & Trim$(developmentLength) _
+                & "@" & RequestBoolSuffix(cumulativeMode, "cum", "inc") _
+                & "@" & RequestBoolSuffix(calendarMode, "cal", "dev")
         End If
+        spec.DataPath = datasetDataPath & "\" & datasetFile & ".csv"
     Else
         ' Fallback for requests that are not scoped by reserving class and dataset
         ' name, such as ArcRhoHeaders and ArcRhoProjectSettings.
         fullName = EncodeFileNameSegment(fullName)
-        spec.DataPath = generatedDataPath & "\" & fullName & ".csv"
+        spec.DataPath = projectDataPath & "\" & fullName & ".csv"
     End If
 
     spec.FunctionName = functionName

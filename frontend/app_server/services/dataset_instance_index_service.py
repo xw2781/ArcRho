@@ -4,17 +4,17 @@ from __future__ import annotations
 import json
 import os
 import re
+import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
 
 from fastapi import HTTPException
 
 from app_server import config
-from app_server.helpers import sanitize_dataset_file_name, sanitize_reserving_class_folder
+from app_server.helpers import sanitize_dataset_file_name
 
-INDEX_FILE_NAME = "dataset_instance_index.json"
-LEGACY_METHOD_INDEX_FILE_NAME = "method_index.json"
-INDEX_VERSION = 3
+INDEX_FILE_NAME = "index.json"
+INDEX_VERSION = 6
 DFM_METHOD_TYPE = "DFM"
 
 
@@ -36,37 +36,42 @@ def _project_data_dir(project_name: str) -> str:
     return os.path.join(_require_project_dir(project_name), config.PROJECT_DATA_DIR)
 
 
-def _manual_data_dir(project_name: str) -> str:
-    return os.path.join(_project_data_dir(project_name), config.MANUAL_DATA_DIR)
-
-
-def _generated_data_dir(project_name: str) -> str:
-    return os.path.join(_project_data_dir(project_name), config.GENERATED_DATA_DIR)
-
-
 def _reserving_class_folder(reserving_class: str) -> str:
-    return sanitize_reserving_class_folder(reserving_class, "ReservingClass")
+    return config.sanitize_reserving_class_folder(reserving_class, "ReservingClass")
 
 
-def _manual_reserving_class_dir(project_name: str, reserving_class: str) -> str:
-    return os.path.join(_manual_data_dir(project_name), _reserving_class_folder(reserving_class))
+def _reserving_class_dir(project_name: str, reserving_class: str) -> str:
+    return os.path.join(_project_data_dir(project_name), _reserving_class_folder(reserving_class))
+
+
+def _sidecar_dir(project_name: str, reserving_class: str) -> str:
+    return os.path.join(_reserving_class_dir(project_name, reserving_class), config.DATASET_SIDECAR_DIR)
+
+
+def _dataset_dir(project_name: str, reserving_class: str) -> str:
+    return os.path.join(_reserving_class_dir(project_name, reserving_class), config.DATASET_CACHE_DIR)
+
+
+def _method_dir(project_name: str, reserving_class: str) -> str:
+    return os.path.join(_reserving_class_dir(project_name, reserving_class), config.METHOD_DATA_DIR)
 
 
 def _method_json_path(project_name: str, reserving_class: str, method_name: str) -> str:
     name_part = sanitize_dataset_file_name(method_name, "Name")
-    return os.path.join(_manual_reserving_class_dir(project_name, reserving_class), f"DFM@{name_part}.json")
+    return os.path.join(_method_dir(project_name, reserving_class), f"DFM@{name_part}.json")
 
 
 def _folder_paths(project_name: str, reserving_class: str) -> Dict[str, str]:
-    rc_folder = _reserving_class_folder(reserving_class)
     return {
-        "generated": os.path.join(_generated_data_dir(project_name), rc_folder),
-        "manual": os.path.join(_manual_data_dir(project_name), rc_folder),
+        "data": _reserving_class_dir(project_name, reserving_class),
+        "datasets": _dataset_dir(project_name, reserving_class),
+        "methods": _method_dir(project_name, reserving_class),
+        "sidecars": _sidecar_dir(project_name, reserving_class),
     }
 
 
 def _index_path(project_name: str, reserving_class: str) -> str:
-    return os.path.join(_manual_reserving_class_dir(project_name, reserving_class), INDEX_FILE_NAME)
+    return os.path.join(_reserving_class_dir(project_name, reserving_class), INDEX_FILE_NAME)
 
 
 def _safe_read_json(path: str) -> Dict[str, Any]:
@@ -127,14 +132,13 @@ def _dataset_sidecar_path_for_cached_csv(csv_path: str) -> str:
     folder = os.path.dirname(csv_path)
     stem = os.path.splitext(os.path.basename(csv_path))[0]
     dataset_stem, is_length_scoped = _split_length_scoped_stem(stem)
+    if os.path.basename(folder).lower() == config.DATASET_CACHE_DIR.lower():
+        sidecar_folder = os.path.join(os.path.dirname(folder), config.DATASET_SIDECAR_DIR)
+    else:
+        sidecar_folder = os.path.join(folder, config.DATASET_SIDECAR_DIR)
     if is_length_scoped:
-        plain_sidecar = os.path.join(folder, f"{dataset_stem}.json")
-        if os.path.exists(plain_sidecar):
-            return plain_sidecar
-    exact_sidecar = os.path.splitext(csv_path)[0] + ".json"
-    if os.path.exists(exact_sidecar):
-        return exact_sidecar
-    return exact_sidecar
+        return os.path.join(sidecar_folder, f"{dataset_stem}.json")
+    return os.path.join(sidecar_folder, f"{stem}.json")
 
 
 def _cached_dataset_names_from_file(filename: str) -> Set[str]:
@@ -161,8 +165,6 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(payload.get(key)))
     if names:
         return names
-    for key in ("dataset_type", "dataset_type_name"):
-        _add_cached_dataset_name(names, _normalize_cached_dataset_name(payload.get(key)))
     details_tab = _json_tab(payload, "details tab")
     _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("output type")))
     return names
@@ -191,12 +193,13 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
         return None
     return {
         "dataset_name": dataset_name,
+        "dataset_type_name": dataset_name,
         "method_type": DFM_METHOD_TYPE,
     }
 
 
 def _is_index_file(filename: str) -> bool:
-    return filename in {INDEX_FILE_NAME, LEGACY_METHOD_INDEX_FILE_NAME}
+    return filename == INDEX_FILE_NAME
 
 
 def _cached_folder_signature(files: List[Dict[str, Any]], folder_paths: Dict[str, str]) -> str:
@@ -210,18 +213,18 @@ def _cached_folder_signature(files: List[Dict[str, Any]], folder_paths: Dict[str
         },
         "files": [
             {
-                "storage": _clean_text(item.get("storage")),
                 "name": _clean_text(item.get("name")),
+                "source_kind": _clean_text(item.get("source_kind")),
                 "size": int(item.get("size") or 0),
                 "mtime_ns": int(item.get("mtime_ns") or 0),
             }
             for item in sorted(files, key=lambda item: (
-                _clean_text(item.get("storage")),
                 _clean_text(item.get("name")).lower(),
             ))
         ],
     }
-    return json.dumps(source, sort_keys=True, separators=(",", ":"))
+    signature_source = json.dumps(source, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(signature_source.encode("utf-8")).hexdigest()
 
 
 def _numeric_timestamp(value: Any) -> float:
@@ -240,7 +243,7 @@ def _file_dataset_names(item: Dict[str, Any]) -> Set[str]:
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(value))
     if names:
         return names
-    for key in ("dataset_type", "dataset_type_name", "name"):
+    for key in ("name",):
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get(key)))
     return names
 
@@ -266,6 +269,15 @@ def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dic
     metadata_created = _clean_text(source.get("metadata_created"))
     if metadata_created and not _clean_text(existing.get("metadata_created")):
         existing["metadata_created"] = metadata_created
+    dataset_type_name = _clean_text(source.get("dataset_type_name") or source.get("dataset_type"))
+    if dataset_type_name and not _clean_text(existing.get("dataset_type_name")):
+        existing["dataset_type_name"] = dataset_type_name
+    source_kind = _clean_text(source.get("source_kind"))
+    if source_kind and not _clean_text(existing.get("source_kind")):
+        existing["source_kind"] = source_kind
+    for flag in ("editable", "generated", "calculated"):
+        if flag in source and flag not in existing:
+            existing[flag] = source.get(flag)
     return existing
 
 
@@ -283,7 +295,6 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
                 logical = {
                     "name": display_names[key],
                     "dataset_name": display_names[key],
-                    "dataset_names": [display_names[key]],
                     "last_modified": "",
                     "last_modified_timestamp": 0,
                     "created": "",
@@ -307,7 +318,6 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
             logical = {
                 "name": name,
                 "dataset_name": name,
-                "dataset_names": [name],
                 "last_modified": "",
                 "last_modified_timestamp": 0,
                 "created": "",
@@ -320,7 +330,7 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
     return sorted(by_name.values(), key=lambda item: _clean_text(item.get("dataset_name")).lower())
 
 
-def _scan_cached_dataset_folder(folder_path: str, storage: str) -> Tuple[Set[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
     names: Set[str] = set()
     files: List[Dict[str, Any]] = []
     methods: List[Dict[str, Any]] = []
@@ -328,13 +338,12 @@ def _scan_cached_dataset_folder(folder_path: str, storage: str) -> Tuple[Set[str
     if not os.path.isdir(folder_path):
         return names, files, methods
 
-    with os.scandir(folder_path) as it:
-        for entry in it:
+    def process_entry(entry: os.DirEntry, *, sidecar_metadata: bool = False) -> None:
             if not entry.is_file():
-                continue
+                return
             ext = os.path.splitext(entry.name)[1].lower()
             if ext not in {".csv", ".json"} or _is_index_file(entry.name):
-                continue
+                return
 
             stat = entry.stat()
             file_names: Set[str] = set()
@@ -349,7 +358,7 @@ def _scan_cached_dataset_folder(folder_path: str, storage: str) -> Tuple[Set[str
             elif ext == ".json":
                 metadata = metadata_cache.setdefault(entry.path, _safe_read_json(entry.path))
                 payload_names = _cached_dataset_names_from_payload(metadata)
-                if entry.name.startswith("DFM@"):
+                if not sidecar_metadata and entry.name.startswith("DFM@"):
                     method_entry = _method_entry_from_payload(metadata)
                     if method_entry:
                         methods.append(method_entry)
@@ -365,7 +374,6 @@ def _scan_cached_dataset_folder(folder_path: str, storage: str) -> Tuple[Set[str
 
             file_info = {
                 "name": entry.name,
-                "storage": storage,
                 "path": entry.path,
                 "size": stat.st_size,
                 "mtime": stat.st_mtime,
@@ -379,8 +387,14 @@ def _scan_cached_dataset_folder(folder_path: str, storage: str) -> Tuple[Set[str
                 file_info["dataset_names"] = sorted(file_names, key=lambda item: item.lower())
             if metadata:
                 file_info["dataset_name"] = _normalize_cached_dataset_name(metadata.get("dataset_name") or metadata.get("instance_name"))
-                file_info["dataset_type"] = _normalize_cached_dataset_name(metadata.get("dataset_type") or metadata.get("dataset_type_name"))
+                dataset_type_name = _normalize_cached_dataset_name(metadata.get("dataset_type_name") or metadata.get("dataset_type"))
+                file_info["dataset_type_name"] = dataset_type_name
+                file_info["dataset_type"] = dataset_type_name
                 file_info["csv_file"] = _clean_text(metadata.get("csv_file"))
+                file_info["source_kind"] = _clean_text(metadata.get("source_kind"))
+                file_info["editable"] = metadata.get("editable")
+                file_info["generated"] = metadata.get("generated")
+                file_info["calculated"] = metadata.get("calculated")
                 file_info["user"] = _metadata_text(metadata, (
                     "user",
                     "user_name",
@@ -407,9 +421,28 @@ def _scan_cached_dataset_folder(folder_path: str, storage: str) -> Tuple[Set[str
                 ))
             if method_entry:
                 file_info["dataset_name"] = method_entry["dataset_name"]
-                file_info["dataset_type"] = method_entry["dataset_name"]
+                file_info["dataset_type_name"] = method_entry["dataset_type_name"]
+                file_info["dataset_type"] = method_entry["dataset_type_name"]
                 file_info["method_type"] = method_entry["method_type"]
             files.append(file_info)
+
+    dataset_folder = os.path.join(folder_path, config.DATASET_CACHE_DIR)
+    if os.path.isdir(dataset_folder):
+        with os.scandir(dataset_folder) as it:
+            for entry in it:
+                process_entry(entry)
+
+    method_folder = os.path.join(folder_path, config.METHOD_DATA_DIR)
+    if os.path.isdir(method_folder):
+        with os.scandir(method_folder) as it:
+            for entry in it:
+                process_entry(entry)
+
+    sidecar_folder = os.path.join(folder_path, config.DATASET_SIDECAR_DIR)
+    if os.path.isdir(sidecar_folder):
+        with os.scandir(sidecar_folder) as it:
+            for entry in it:
+                process_entry(entry, sidecar_metadata=True)
     return names, files, methods
 
 
@@ -467,10 +500,8 @@ def _empty_index(project: str, reserving_class: str, folder_paths: Dict[str, str
         "exists": False,
         "project_name": project,
         "reserving_class": reserving_class,
-        "folder_path": folder_paths["generated"],
         "folder_paths": folder_paths,
         "folder_signature": _cached_folder_signature([], folder_paths),
-        "dataset_names": [],
         "files": [],
     }
 
@@ -481,21 +512,13 @@ def rebuild_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
     if not rc:
         raise HTTPException(400, "reserving_class is required.")
     folder_paths = _folder_paths(project, rc)
-    if not os.path.isdir(folder_paths["generated"]) and not os.path.isdir(folder_paths["manual"]):
+    if not os.path.isdir(folder_paths["data"]):
         return _empty_index(project, rc, folder_paths)
 
-    names: Set[str] = set()
     physical_files: List[Dict[str, Any]] = []
     methods: List[Dict[str, Any]] = []
     try:
-        for storage, folder_path in (
-            ("generated", folder_paths["generated"]),
-            ("manual", folder_paths["manual"]),
-        ):
-            folder_names, folder_files, folder_methods = _scan_cached_dataset_folder(folder_path, storage)
-            names.update(folder_names)
-            physical_files.extend(folder_files)
-            methods.extend(folder_methods)
+        _folder_names, physical_files, methods = _scan_cached_dataset_folder(folder_paths["data"])
     except PermissionError:
         raise HTTPException(423, "Dataset instance folder is locked or inaccessible.")
     except OSError as err:
@@ -504,17 +527,14 @@ def rebuild_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
     methods = _dedupe_methods(methods)
     _apply_method_types_to_files(physical_files, methods)
     files = _logical_files_from_physical_files(physical_files, methods)
-    names = {_clean_text(item.get("dataset_name")) for item in files if _clean_text(item.get("dataset_name"))}
     data = {
         "ok": True,
         "version": INDEX_VERSION,
         "exists": True,
         "project_name": project,
         "reserving_class": rc,
-        "folder_path": folder_paths["generated"],
         "folder_paths": folder_paths,
         "folder_signature": _cached_folder_signature(physical_files, folder_paths),
-        "dataset_names": sorted(names, key=lambda item: item.lower()),
         "files": files,
     }
 
@@ -538,7 +558,6 @@ def rebuild_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
 def _is_current_index(data: Dict[str, Any]) -> bool:
     return (
         data.get("version") == INDEX_VERSION
-        and isinstance(data.get("dataset_names"), list)
         and isinstance(data.get("files"), list)
         and _clean_text(data.get("folder_signature")) != ""
     )
@@ -592,32 +611,27 @@ def delete_cached_datasets(project_name: str, reserving_class: str, dataset_name
     seen_paths: Set[str] = set()
 
     try:
-        for storage, folder_path in (
-            ("generated", folder_paths["generated"]),
-            ("manual", folder_paths["manual"]),
-        ):
-            _folder_names, files, _methods = _scan_cached_dataset_folder(folder_path, storage)
-            for item in files:
-                item_names = {_clean_text(name).lower() for name in _file_dataset_names(item) if _clean_text(name)}
-                matched = item_names.intersection(requested)
-                if not matched:
-                    continue
-                path = _clean_text(item.get("path"))
-                if not path:
-                    continue
-                if not _path_is_within_folder(path, folder_path):
-                    raise HTTPException(500, "Refusing to delete a cached dataset file outside the selected cache folder.")
-                path_key = os.path.normcase(os.path.abspath(path))
-                if path_key in seen_paths:
-                    continue
-                seen_paths.add(path_key)
-                matched_keys.update(matched)
-                delete_items.append({
-                    "name": _clean_text(item.get("name")) or os.path.basename(path),
-                    "path": path,
-                    "storage": storage,
-                    "dataset_names": sorted(item_names),
-                })
+        folder_path = folder_paths["data"]
+        _folder_names, files, _methods = _scan_cached_dataset_folder(folder_path)
+        for item in files:
+            item_names = {_clean_text(name).lower() for name in _file_dataset_names(item) if _clean_text(name)}
+            matched = item_names.intersection(requested)
+            if not matched:
+                continue
+            path = _clean_text(item.get("path"))
+            if not path:
+                continue
+            if not _path_is_within_folder(path, folder_path):
+                raise HTTPException(500, "Refusing to delete a cached dataset file outside the selected cache folder.")
+            path_key = os.path.normcase(os.path.abspath(path))
+            if path_key in seen_paths:
+                continue
+            seen_paths.add(path_key)
+            matched_keys.update(matched)
+            delete_items.append({
+                "name": _clean_text(item.get("name")) or os.path.basename(path),
+                "path": path,
+            })
     except PermissionError:
         raise HTTPException(423, "Cached dataset folder is locked or inaccessible.")
     except HTTPException:

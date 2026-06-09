@@ -11,7 +11,7 @@ from typing import Any, Dict
 from fastapi import HTTPException
 
 from app_server import config
-from app_server.helpers import sanitize_dataset_file_name, sanitize_reserving_class_folder, wait_for_file
+from app_server.helpers import sanitize_dataset_file_name, wait_for_file
 from app_server.schemas.dfm_rpc_bridge import DfmRpcBridgeRequest
 
 RPC_BRIDGE_DIR_NAME = "RPC bridge"
@@ -93,10 +93,7 @@ def _build_method_filename(
 def build_paths(req: DfmRpcBridgeRequest) -> Dict[str, str]:
     project_dir = _require_project_dir(req.project_name)
     data_dir = os.path.join(project_dir, config.PROJECT_DATA_DIR)
-    manual_data_dir = os.path.join(data_dir, config.MANUAL_DATA_DIR)
-    generated_data_dir = os.path.join(data_dir, config.GENERATED_DATA_DIR)
-    rc_folder = sanitize_reserving_class_folder(req.reserving_class, "ReservingClass")
-    method_dir = os.path.join(manual_data_dir, rc_folder)
+    method_dir = config.get_project_method_data_dir(req.project_name, req.reserving_class)
     rpc_methods_dir = os.path.join(method_dir, RPC_BRIDGE_TMP_DIR_NAME)
     request_dir = os.path.join(config.REQUEST_DIR, RPC_BRIDGE_DIR_NAME)
     local_path = os.path.join(method_dir, _build_method_filename(req, DFM_FUNCTION_NAME, include_lengths=False))
@@ -105,8 +102,6 @@ def build_paths(req: DfmRpcBridgeRequest) -> Dict[str, str]:
     return {
         "project_dir": project_dir,
         "data_dir": data_dir,
-        "manual_data_dir": manual_data_dir,
-        "generated_data_dir": generated_data_dir,
         "method_dir": method_dir,
         "rpc_methods_dir": rpc_methods_dir,
         "request_dir": request_dir,

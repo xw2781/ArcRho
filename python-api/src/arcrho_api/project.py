@@ -9,7 +9,7 @@ from .exceptions import ProjectNotFoundError
 from .io import read_json, write_json_atomic
 from .models import DatasetTypeInfo, DfmMethodRef, ProjectSettings
 from .paths import (
-    METHOD_INDEX_FILE_NAME,
+    RESERVING_CLASS_INDEX_FILE_NAME,
     clean_text,
     dfm_filename,
     parse_dfm_filename,
@@ -92,10 +92,16 @@ class Project:
         return self.dfm_path(reserving_class, name).exists()
 
     def dfm_path(self, reserving_class: str, name: str) -> Path:
-        return self.reserving_class_data_dir(reserving_class) / dfm_filename(name)
+        return self.reserving_class_methods_dir(reserving_class) / dfm_filename(name)
 
     def reserving_class_data_dir(self, reserving_class: str) -> Path:
         return self.data_dir / sanitize_reserving_class_folder(reserving_class)
+
+    def reserving_class_datasets_dir(self, reserving_class: str) -> Path:
+        return self.reserving_class_data_dir(reserving_class) / "datasets"
+
+    def reserving_class_methods_dir(self, reserving_class: str) -> Path:
+        return self.reserving_class_data_dir(reserving_class) / "methods"
 
     def list_dfm_methods(self, refresh: bool = False) -> list[DfmMethodRef]:
         if refresh:
@@ -106,7 +112,10 @@ class Project:
         for folder in self.data_dir.iterdir():
             if not folder.is_dir() or folder.name.lower() == "tmp":
                 continue
-            for path in folder.iterdir():
+            method_dir = folder / "methods"
+            if not method_dir.is_dir():
+                continue
+            for path in method_dir.iterdir():
                 if not path.is_file():
                     continue
                 method_name = parse_dfm_filename(path.name)
@@ -143,8 +152,27 @@ class Project:
                 })
             methods.sort(key=lambda item: (item["dataset_name"].lower(), item["method_type"].lower()))
             write_json_atomic(
-                self.data_dir / folder_name / METHOD_INDEX_FILE_NAME,
-                {"methods": methods},
+                self.data_dir / folder_name / RESERVING_CLASS_INDEX_FILE_NAME,
+                {
+                    "ok": True,
+                    "version": 6,
+                    "project_name": self.name,
+                    "reserving_class": folder_name,
+                    "folder_paths": {
+                        "data": str(self.data_dir / folder_name),
+                        "datasets": str(self.data_dir / folder_name / "datasets"),
+                        "methods": str(self.data_dir / folder_name / "methods"),
+                        "sidecars": str(self.data_dir / folder_name / "sidecars"),
+                    },
+                    "files": [
+                        {
+                            "dataset_name": item["dataset_name"],
+                            "dataset_type_name": item["dataset_name"],
+                            "method_type": item["method_type"],
+                        }
+                        for item in methods
+                    ],
+                },
                 read_only=self.read_only,
             )
         return refs

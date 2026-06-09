@@ -44,11 +44,7 @@ def _sanitize_filename(name: str) -> str:
 
 
 def sanitize_reserving_class_folder(value: Any, fallback: str = "ReservingClass") -> str:
-    text = str(value if value is not None else "").strip()
-    text = config.encode_filename_segment(text)
-    text = re.sub(r"[. ]+$", lambda match: "^" * len(match.group(0)), text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text or fallback
+    return config.sanitize_reserving_class_folder(value, fallback)
 
 
 def sanitize_dataset_file_name(value: Any, fallback: str = "Dataset") -> str:
@@ -127,17 +123,7 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
         else:
             values.append(value)
 
-    projects_root = config.PROJECT_SETTINGS_DIR.rstrip("\\/")
-    if proj:
-        proj = _sanitize_folder_name(proj)
-    project_data_dir = (
-        os.path.join(projects_root, proj, config.PROJECT_DATA_DIR, config.GENERATED_DATA_DIR)
-        if proj
-        else os.path.join(projects_root, config.PROJECT_DATA_DIR, config.GENERATED_DATA_DIR)
-    )
-
     if function_name.strip().lower() == "arcrhotri" and reserving_class and dataset_name:
-        rc_folder = sanitize_reserving_class_folder(reserving_class)
         dataset_file = build_length_scoped_dataset_file_name(
             instance_name or dataset_name,
             origin_length,
@@ -145,13 +131,22 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
             cumulative,
             calendar,
         )
-        return os.path.join(project_data_dir, rc_folder, f"{dataset_file}.csv")
+        if proj:
+            project_data_dir = config.get_project_dataset_cache_dir(proj, reserving_class)
+        else:
+            project_data_dir = os.path.join(
+                config.PROJECT_SETTINGS_DIR.rstrip("\\/"),
+                config.PROJECT_DATA_DIR,
+                sanitize_reserving_class_folder(reserving_class),
+                config.DATASET_CACHE_DIR,
+            )
+        return os.path.join(project_data_dir, f"{dataset_file}.csv")
 
     full_name = config.encode_filename_segment("@".join(values))
 
     if proj:
-        return os.path.join(project_data_dir, f"{full_name}.csv")
-    return os.path.join(project_data_dir, f"{full_name}.csv")
+        return os.path.join(config.get_project_data_dir(proj), f"{full_name}.csv")
+    return os.path.join(config.PROJECT_SETTINGS_DIR.rstrip("\\/"), config.PROJECT_DATA_DIR, f"{full_name}.csv")
 
 
 def send_request_like_vba(request_info: str) -> str:

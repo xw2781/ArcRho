@@ -282,7 +282,10 @@ class DfmMethod:
         class _StandaloneProject:
             def __init__(self, method_path: Path, read_only_value: bool) -> None:
                 self.name = clean_text(_get_tab(payload, "method metadata").get("project")) or ""
-                if method_path.parent.parent.name.lower() == "data":
+                if method_path.parent.name.lower() == "methods" and method_path.parent.parent.parent.name.lower() == "data":
+                    self.path = method_path.parent.parent.parent.parent
+                    self.data_dir = method_path.parent.parent.parent
+                elif method_path.parent.parent.name.lower() == "data":
                     self.path = method_path.parent.parent.parent
                     self.data_dir = method_path.parent.parent
                 else:
@@ -294,6 +297,8 @@ class DfmMethod:
                 return path
 
             def reserving_class_data_dir(self, _reserving_class: str) -> Path:
+                if path.parent.name.lower() == "methods":
+                    return path.parent.parent
                 return path.parent
 
             def rebuild_dfm_index(self) -> list[Any]:
@@ -1503,6 +1508,12 @@ class DfmMethod:
             rc_candidate = Path(rc_data_dir) / text
             if rc_candidate.exists():
                 return rc_candidate
+            dataset_candidate = Path(rc_data_dir) / "datasets" / text
+            if dataset_candidate.exists():
+                return dataset_candidate
+            method_candidate = Path(rc_data_dir) / "methods" / text
+            if method_candidate.exists():
+                return method_candidate
         if project_data:
             data_candidate = Path(project_data) / text
             if data_candidate.exists():
