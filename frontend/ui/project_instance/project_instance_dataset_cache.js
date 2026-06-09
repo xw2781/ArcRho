@@ -101,8 +101,6 @@ function getCachedFileDatasetNames(item) {
   }
   add(item?.dataset_name);
   add(item?.instance_name);
-  add(item?.dataset_type);
-  add(item?.dataset_type_name);
 
   const filename = toText(item?.name);
   const stem = filename.replace(/\.[^.]*$/u, "");
@@ -186,17 +184,26 @@ function mergeCachedDatasetMetadata(existing, item) {
 }
 
 function normalizeCachedDatasetSnapshot(payload) {
-  const names = Array.isArray(payload?.dataset_names) ? payload.dataset_names : [];
+  const files = Array.isArray(payload?.files) ? payload.files : [];
   const metadataByName = new Map();
   const methodTypesByName = new Map();
+  const datasetKeys = new Set();
+  const addDatasetKey = (name) => {
+    const key = getCachedDatasetKey(name);
+    if (key) datasetKeys.add(key);
+  };
+  if (Array.isArray(payload?.dataset_names)) {
+    for (const name of payload.dataset_names) addDatasetKey(name);
+  }
   const addMethodType = (name, methodType) => {
     const key = normalizeLookupKey(name);
     const type = toText(methodType);
     if (key && type) methodTypesByName.set(key, type);
   };
-  for (const item of Array.isArray(payload?.files) ? payload.files : []) {
+  for (const item of files) {
     const itemNames = getCachedFileDatasetNames(item);
     for (const name of itemNames) {
+      addDatasetKey(name);
       const key = getCachedDatasetKey(name);
       if (!key) continue;
       metadataByName.set(key, mergeCachedDatasetMetadata(metadataByName.get(key), item));
@@ -206,7 +213,8 @@ function normalizeCachedDatasetSnapshot(payload) {
     }
   }
   return {
-    names: new Set(names.map((name) => getCachedDatasetKey(name)).filter(Boolean)),
+    names: datasetKeys,
+    instanceRows: files,
     metadataByName,
     methodTypesByName,
   };
@@ -220,18 +228,28 @@ function getCachedDatasetSnapshotSignature(payload) {
     exists: payload?.exists !== false,
     files: files
       .map((item) => ({
-        storage: toText(item?.storage),
+        source_kind: toText(item?.source_kind),
         name: toText(item?.name),
         size: Number(item?.size) || 0,
         mtime_ns: Number(item?.mtime_ns) || 0,
       }))
-      .sort((a, b) => `${a.storage}\u0001${a.name}`.localeCompare(`${b.storage}\u0001${b.name}`, undefined, { sensitivity: "base" })),
+      .sort((a, b) => `${a.source_kind}\u0001${a.name}`.localeCompare(`${b.source_kind}\u0001${b.name}`, undefined, { sensitivity: "base" })),
   });
 }
 
 function getCachedDatasetInstanceSignature(payload) {
-  const names = Array.isArray(payload?.dataset_names) ? payload.dataset_names : [];
-  const keys = Array.from(new Set(names.map((name) => getCachedDatasetKey(name)).filter(Boolean)));
+  const keysSet = new Set();
+  const add = (name) => {
+    const key = getCachedDatasetKey(name);
+    if (key) keysSet.add(key);
+  };
+  if (Array.isArray(payload?.dataset_names)) {
+    for (const name of payload.dataset_names) add(name);
+  }
+  for (const item of Array.isArray(payload?.files) ? payload.files : []) {
+    for (const name of getCachedFileDatasetNames(item)) add(name);
+  }
+  const keys = Array.from(keysSet);
   keys.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
   return JSON.stringify(keys);
 }
@@ -268,6 +286,7 @@ function applyCachedDatasetSnapshot(payload, path = state.selectedPath) {
   const normalizedPath = normalizePath(path);
   const snapshot = normalizeCachedDatasetSnapshot(payload);
   cachedDatasetFilter.names = snapshot.names;
+  cachedDatasetFilter.instanceRows = snapshot.instanceRows;
   cachedDatasetFilter.metadataByName = snapshot.metadataByName;
   cachedDatasetFilter.methodTypesByName = snapshot.methodTypesByName;
   cachedDatasetFilter.loadedPath = normalizedPath;
@@ -361,6 +380,7 @@ async function loadCachedDatasetFilterForSelectedPath() {
   cachedDatasetFilter.requestSeq = seq;
   cachedDatasetFilter.error = "";
   cachedDatasetFilter.names = new Set();
+  cachedDatasetFilter.instanceRows = [];
   cachedDatasetFilter.metadataByName = new Map();
   cachedDatasetFilter.methodTypesByName = new Map();
   cachedDatasetFilter.loadedPath = path;
@@ -383,6 +403,7 @@ async function loadCachedDatasetFilterForSelectedPath() {
   } catch (err) {
     if (seq !== cachedDatasetFilter.requestSeq) return;
     cachedDatasetFilter.names = new Set();
+    cachedDatasetFilter.instanceRows = [];
     cachedDatasetFilter.metadataByName = new Map();
     cachedDatasetFilter.methodTypesByName = new Map();
     cachedDatasetFilter.error = toText(err?.message) || "Cached dataset lookup failed.";

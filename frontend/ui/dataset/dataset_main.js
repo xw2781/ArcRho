@@ -192,6 +192,7 @@ const qs = new URLSearchParams(window.location.search);
 const instanceId = qs.get("inst") || "default";
 const isProjectInstanceDraft = qs.get("draft_instance") === "1" || qs.get("draft") === "1";
 const isReadOnlyDatasetViewer = qs.get("readonly") === "1" || qs.get("generated_dataset") === "1";
+let isSidecarReadOnlyDataset = false;
 const stepId = instanceId.startsWith("step_") ? instanceId : null;
 const scopedKey = (k) => `${k}::${instanceId}`;
 const workflowId = qs.get("wf") || "";
@@ -1614,7 +1615,7 @@ function saveTriInputsToStorage() {
 }
 
 function isDatasetReadOnly() {
-  return isReadOnlyDatasetViewer;
+  return isReadOnlyDatasetViewer || isSidecarReadOnlyDataset;
 }
 
 async function restoreTriInputsFromStorage() {
@@ -2214,6 +2215,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
   sidecarContextPayload = hasDatasetSidecarContext(context) ? context : null;
   sidecarContextKey = key;
   if (!key) {
+    isSidecarReadOnlyDataset = false;
     lastSavedDatasetSettings = null;
     lastSavedDatasetSidecarExists = false;
     datasetSettingsDirty = false;
@@ -2233,6 +2235,22 @@ async function syncSidecarForCurrentDataset(options = {}) {
   }
 
   const data = resp.data || {};
+  const sidecarEditable = data.editable;
+  const sidecarCalculated = data.calculated;
+  const sidecarGenerated = data.generated;
+  isSidecarReadOnlyDataset = !!data.exists && (
+    sidecarEditable === false
+    || String(sidecarEditable).trim().toLowerCase() === "false"
+    || sidecarCalculated === true
+    || String(sidecarCalculated).trim().toLowerCase() === "true"
+    || sidecarGenerated === true
+    || String(sidecarGenerated).trim().toLowerCase() === "true"
+  );
+  const patchSaveBtn = document.getElementById("saveBtn");
+  if (patchSaveBtn && !isReadOnlyDatasetViewer) {
+    patchSaveBtn.disabled = isSidecarReadOnlyDataset;
+    patchSaveBtn.title = isSidecarReadOnlyDataset ? "Calculated datasets are read-only." : "";
+  }
   const settings = data.exists
     ? normalizeDatasetSettings(data)
     : normalizeDatasetSettings(getCurrentDatasetSettings());

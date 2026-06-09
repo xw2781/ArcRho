@@ -437,6 +437,29 @@ function getDatasetName(row) {
   return toText(row?.[0]);
 }
 
+function splitLengthScopedDatasetName(value) {
+  const text = toText(value);
+  const parts = text.split("@");
+  if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 1]) && /^\d+$/.test(parts[parts.length - 2])) {
+    return parts.slice(0, -2).join("@").trim();
+  }
+  return text;
+}
+
+function getDatasetTypeRowByName(name) {
+  const key = normalizeLookupKey(name);
+  if (!key) return null;
+  return state.datasetRows.find((row) => normalizeLookupKey(getDatasetName(row)) === key) || null;
+}
+
+function getInstanceDatasetName(item) {
+  return splitLengthScopedDatasetName(toText(item?.dataset_name || item?.instance_name || item?.name));
+}
+
+function getInstanceDatasetTypeName(item, instanceName = "") {
+  return toText(item?.dataset_type_name || item?.dataset_type || item?.datasetTypeName || item?.datasetType) || instanceName;
+}
+
 function parseDatasetGeneratedFlag(value) {
   if (typeof value === "boolean") return value;
   const text = toText(value).toLowerCase();
@@ -458,6 +481,12 @@ function getMethodType(row) {
 function getCachedDatasetMetadata(row) {
   if (!hasCachedDatasetMetadataForSelectedPath()) return null;
   const key = getCachedDatasetKey(getDatasetName(row));
+  return key ? cachedDatasetFilter.metadataByName.get(key) || null : null;
+}
+
+function getCachedDatasetMetadataByName(name) {
+  if (!hasCachedDatasetMetadataForSelectedPath()) return null;
+  const key = getCachedDatasetKey(name);
   return key ? cachedDatasetFilter.metadataByName.get(key) || null : null;
 }
 
@@ -530,6 +559,34 @@ function getDatasetCellValue(row, key) {
   }
 }
 
+function getDatasetRecordCellValue(row, key, instance = null) {
+  const instanceName = instance ? getInstanceDatasetName(instance) : getDatasetName(row);
+  const datasetTypeName = instance ? getInstanceDatasetTypeName(instance, instanceName) : getDatasetName(row);
+  const meta = instance ? getCachedDatasetMetadataByName(instanceName) : getCachedDatasetMetadata(row);
+  switch (key) {
+    case "name":
+      return instanceName;
+    case "datasetTypeName":
+      return datasetTypeName;
+    case "dataFormat":
+      return toText(row?.[1]);
+    case "formula":
+      return toText(row?.[4]);
+    case "category":
+      return toText(row?.[2]);
+    case "methodType":
+      return instance?.method_type || cachedDatasetFilter.methodTypesByName.get(normalizeLookupKey(instanceName)) || getMethodType(row);
+    case "lastModified":
+      return meta?.lastModified || "";
+    case "created":
+      return meta?.created || "";
+    case "user":
+      return meta?.user || "";
+    default:
+      return "";
+  }
+}
+
 function getDatasetFilterKey(value) {
   const text = toText(value);
   return text || DATASET_TABLE_BLANK_LABEL;
@@ -542,13 +599,47 @@ function compareTextValues(a, b) {
   });
 }
 
-function buildDatasetRecord(row, rowIndex) {
+function getDatasetRecordTimestamp(record, key) {
+  const meta = record?.meta || getCachedDatasetMetadata(record?.row);
+  const raw = key === "lastModified"
+    ? meta?._lastModifiedTs
+    : key === "created"
+      ? meta?._createdTs
+      : 0;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function compareTimestampValues(a, b, key, dir) {
+  const left = getDatasetRecordTimestamp(a, key);
+  const right = getDatasetRecordTimestamp(b, key);
+  if (left && right && left !== right) return (left - right) * dir;
+  if (left && !right) return -1;
+  if (!left && right) return 1;
+  return 0;
+}
+
+function buildDatasetRecord(row, rowIndex, instance = null) {
+  const instanceName = instance ? getInstanceDatasetName(instance) : getDatasetName(row);
+  const datasetTypeName = instance ? getInstanceDatasetTypeName(instance, instanceName) : getDatasetName(row);
+  const typeRow = instance ? (getDatasetTypeRowByName(datasetTypeName) || row || []) : row;
   const values = {};
   for (const col of DATASET_TABLE_COLUMNS) {
-    values[col.key] = getDatasetCellValue(row, col.key);
+    values[col.key] = getDatasetRecordCellValue(typeRow, col.key, instance);
   }
-  const datasetName = values.name || getDatasetName(row);
-  return { row, rowIndex, datasetName, generated: getDatasetGenerated(row), values };
+  const datasetName = values.name || instanceName || getDatasetName(typeRow);
+  const generated = parseDatasetGeneratedFlag(instance?.generated) || getDatasetGenerated(typeRow);
+  const meta = getCachedDatasetMetadataByName(datasetName);
+  return {
+    row: typeRow,
+    rowIndex,
+    instance,
+    datasetName,
+    datasetTypeName,
+    generated,
+    values,
+    meta,
+  };
 }
 
 function getDatasetRecordValue(record, key) {
@@ -615,10 +706,15 @@ function autoFitInitialDatasetTableWidths(rows = state.datasetRows) {
 }
 
 function buildDatasetTableRenderContext() {
-  const records = state.datasetRows
-    .map((row, rowIndex) => buildDatasetRecord(row, rowIndex))
-    .filter((record) => record.datasetName)
-    .filter((record) => !cachedDatasetFilter.enabled || isDatasetRecordCached(record));
+  const sourceRecords = cachedDatasetFilter.enabled && shouldUseCachedDatasetFilter()
+    ? (Array.isArray(cachedDatasetFilter.instanceRows) ? cachedDatasetFilter.instanceRows : [])
+      .map((item, rowIndex) => {
+        const instanceName = getInstanceDatasetName(item);
+        const datasetTypeName = getInstanceDatasetTypeName(item, instanceName);
+        return buildDatasetRecord(getDatasetTypeRowByName(datasetTypeName) || [], rowIndex, item);
+      })
+    : state.datasetRows.map((row, rowIndex) => buildDatasetRecord(row, rowIndex));
+  const records = sourceRecords.filter((record) => record.datasetName);
   const optionsByKey = new Map();
   const selectionsByKey = new Map();
 
@@ -650,11 +746,16 @@ function compareDatasetRecords(a, b) {
   const sortKey = toText(datasetTableView.sort?.key);
   const dir = datasetTableView.sort?.dir === "desc" ? -1 : 1;
   if (!getDatasetColumn(sortKey)) return (a?.rowIndex ?? 0) - (b?.rowIndex ?? 0);
-  const cmp = compareTextValues(
-    getDatasetRecordValue(a, sortKey),
-    getDatasetRecordValue(b, sortKey)
-  );
-  if (cmp !== 0) return cmp * dir;
+  if (sortKey === "lastModified" || sortKey === "created") {
+    const timestampCmp = compareTimestampValues(a, b, sortKey, dir);
+    if (timestampCmp !== 0) return timestampCmp;
+  } else {
+    const cmp = compareTextValues(
+      getDatasetRecordValue(a, sortKey),
+      getDatasetRecordValue(b, sortKey)
+    );
+    if (cmp !== 0) return cmp * dir;
+  }
   return (a?.rowIndex ?? 0) - (b?.rowIndex ?? 0);
 }
 
@@ -688,8 +789,9 @@ function getDatasetColumnOptions(key, context = null) {
   if (cached) return cached;
   const seen = new Set();
   const options = [];
-  for (const row of state.datasetRows) {
-    const value = getDatasetCellValue(row, key);
+  const records = state.datasetRows.map((row, rowIndex) => buildDatasetRecord(row, rowIndex));
+  for (const record of records) {
+    const value = getDatasetRecordValue(record, key);
     const optionKey = getDatasetFilterKey(value);
     if (seen.has(optionKey)) continue;
     seen.add(optionKey);
@@ -773,7 +875,6 @@ function getDatasetTableRecords(context) {
   const records = Array.isArray(context?.records) ? context.records : state.datasetRows.map((row, rowIndex) => buildDatasetRecord(row, rowIndex));
   return records.filter((item) => (
     item.datasetName
-    && (!cachedDatasetFilter.enabled || isDatasetRecordCached(item))
     && rowMatchesDatasetTableFilters(item, context)
   ));
 }
@@ -900,6 +1001,7 @@ function createDatasetRecordRow(item, columns) {
       return;
     }
     openDatasetWindow(item.datasetName, {
+      datasetTypeName: getDatasetRecordValue(item, "datasetTypeName"),
       readOnly: !!item.generated,
       generated: !!item.generated,
     });
@@ -1325,6 +1427,7 @@ function openDatasetRecord(record) {
     return;
   }
   openDatasetWindow(record.datasetName, {
+    datasetTypeName: getDatasetRecordValue(record, "datasetTypeName"),
     readOnly: !!record.generated,
     generated: !!record.generated,
   });

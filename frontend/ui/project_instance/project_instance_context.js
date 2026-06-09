@@ -131,6 +131,7 @@ export function createProjectInstanceContext(deps = {}) {
       loading: false,
       loadedPath: "",
       names: new Set(),
+      instanceRows: [],
       metadataByName: new Map(),
       methodTypesByName: new Map(),
       visibleCount: 0,

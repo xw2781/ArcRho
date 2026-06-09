@@ -472,7 +472,7 @@ function resizeRectFromCorner(start, corner, dx, dy) {
   return next;
 }
 
-function lockDatasetViewerInputs(iframe, datasetName) {
+function lockDatasetViewerInputs(iframe, datasetTypeName) {
   let doc = null;
   try {
     doc = iframe.contentDocument || iframe.contentWindow?.document || null;
@@ -494,8 +494,8 @@ function lockDatasetViewerInputs(iframe, datasetName) {
     pathInput.readOnly = true;
     pathInput.title = "Reserving class path is set by the project instance tab.";
   }
-  if (triInput && datasetName) {
-    triInput.value = datasetName;
+  if (triInput && datasetTypeName) {
+    triInput.value = datasetTypeName;
   }
   for (const id of ["projectTreeBtn", "pathTreeBtn"]) {
     const button = doc.getElementById(id);
@@ -539,7 +539,10 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   params.set("project", projectName);
   params.set("path", state.selectedPath);
-  if (toText(datasetName)) params.set("tri", datasetName);
+  const instanceName = toText(datasetName);
+  const datasetTypeName = toText(options?.datasetTypeName) || instanceName;
+  if (datasetTypeName) params.set("tri", datasetTypeName);
+  if (instanceName && instanceName !== datasetTypeName) params.set("instance_name", instanceName);
   if (options?.originLen) params.set("origin_len", String(options.originLen));
   if (options?.devLen) params.set("dev_len", String(options.devLen));
   if (options?.dsId) params.set("ds", toText(options.dsId));
@@ -784,6 +787,7 @@ function createFloatingContentWindow(options = {}) {
 
 function openDatasetWindow(datasetName, options = {}) {
   const name = toText(datasetName);
+  const datasetTypeName = toText(options?.datasetTypeName) || name;
   if (!name) return;
   if (!state.selectedPath) {
     setStatus("Select a reserving class path before opening a dataset.", true);
@@ -801,18 +805,20 @@ function openDatasetWindow(datasetName, options = {}) {
     windowKey,
     inst,
     iframeSrc: buildDatasetViewerUrl(name, inst, {
+      datasetTypeName,
       readOnly: options?.readOnly,
       generated: options?.generated,
     }),
     onIframeLoad: (iframe) => {
-      lockDatasetViewerInputs(iframe, name);
-      window.setTimeout(() => lockDatasetViewerInputs(iframe, name), 250);
+      lockDatasetViewerInputs(iframe, datasetTypeName);
+      window.setTimeout(() => lockDatasetViewerInputs(iframe, datasetTypeName), 250);
     },
   });
 }
 
 function openNewDatasetDraftWindow(datasetName, options = {}) {
   const name = toText(datasetName);
+  const datasetTypeName = toText(options?.datasetTypeName) || name;
   if (!name) return null;
   if (!state.selectedPath) {
     setStatus("Select a reserving class path before adding a dataset.", true);
@@ -831,6 +837,7 @@ function openNewDatasetDraftWindow(datasetName, options = {}) {
     windowKey,
     inst,
     iframeSrc: buildDatasetViewerUrl(name, inst, {
+      datasetTypeName,
       originLen: options?.originLen || 12,
       devLen: options?.devLen || 12,
       dsId: options?.dsId,
@@ -840,8 +847,8 @@ function openNewDatasetDraftWindow(datasetName, options = {}) {
       initialTab: options?.initialTab || "details",
     }),
     onIframeLoad: (iframe) => {
-      lockDatasetViewerInputs(iframe, name);
-      window.setTimeout(() => lockDatasetViewerInputs(iframe, name), 250);
+      lockDatasetViewerInputs(iframe, datasetTypeName);
+      window.setTimeout(() => lockDatasetViewerInputs(iframe, datasetTypeName), 250);
     },
   });
 }
