@@ -53,7 +53,7 @@ import {
   buildDfmAssistantContextPayload,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
-} from "/ui/dfm/dfm_persistence.js?v=20260604a";
+} from "/ui/dfm/dfm_persistence.js?v=20260608a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
 import { wireDfmRpcBridgePathBar } from "/ui/dfm/dfm_rpc_bridge_pathbar.js?v=20260514a";
 import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js";

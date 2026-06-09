@@ -100,8 +100,20 @@ function splitLengthScopedDatasetName(value) {
 
 function getCanonicalDatasetSidecarPath(csvPath) {
   const path = String(csvPath || "");
-  const match = path.match(/^(.*?)(?:@\d+@\d+)?\.csv$/i);
-  return match ? `${match[1]}.json` : path.replace(/\.csv$/i, ".json");
+  const normalized = path.replace(/\\/g, "/");
+  const slash = normalized.lastIndexOf("/");
+  const folder = slash >= 0 ? path.slice(0, slash) : "";
+  const filename = slash >= 0 ? path.slice(slash + 1) : path;
+  const match = filename.match(/^(.*?)(?:@\d+@\d+)?(?:@(?:cum|inc)@(?:dev|cal))?\.csv$/i);
+  const sidecarName = match ? `${match[1]}.json` : filename.replace(/\.csv$/i, ".json");
+  const folderNorm = folder.replace(/\\/g, "/");
+  const parentSlash = folderNorm.lastIndexOf("/");
+  const folderName = parentSlash >= 0 ? folderNorm.slice(parentSlash + 1) : folderNorm;
+  const parentFolder = parentSlash >= 0 ? folder.slice(0, parentSlash) : "";
+  const sidecarFolder = folderName.toLowerCase() === "datasets"
+    ? (parentFolder ? `${parentFolder}/sidecars` : "sidecars")
+    : `${folder}/sidecars`;
+  return folder ? `${sidecarFolder}/${sidecarName}` : `sidecars/${sidecarName}`;
 }
 
 function buildDatasetSidecarJson(csvPath, datasetName, userName = "") {
@@ -114,7 +126,7 @@ function buildDatasetSidecarJson(csvPath, datasetName, userName = "") {
     instance_name: name,
     reserving_class: getResolvedReservingClass(),
     project_name: getRatioSaveProjectName(),
-    storage: "manual",
+    source_kind: "dfm",
     source: "dfm",
     csv_file: String(csvPath || "").split(/[\\/]/).pop() || "",
     user,
@@ -898,7 +910,7 @@ export async function applyDfmMethodPayload(payload, options = {}) {
   const resultsTab = getDfmResultsTab(payload);
   const notesTab = getDfmNotesTab(payload);
   const pattern = Array.isArray(payload) ? payload : ratioTriangle.excluded;
-  const applied = applyRatioSelectionPattern(pattern);
+  let applied = applyRatioSelectionPattern(pattern);
   if (payload && !Array.isArray(payload)) {
     const cfgKey = getSummaryConfigKey();
     const averageFormulas = ratiosTab["average formulas"];
@@ -952,6 +964,9 @@ export async function applyDfmMethodPayload(payload, options = {}) {
       ...options,
       forceRefreshLabels: true,
     });
+    if (!applied) {
+      applied = applyRatioSelectionPattern(pattern);
+    }
   }
 
   if (applied && options.render !== false) {

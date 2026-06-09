@@ -283,7 +283,7 @@ export async function getRatioSaveBaseDir() {
     getResolvedReservingClass() || String(document.getElementById("pathInput")?.value || "").trim(),
     "ReservingClass",
   );
-  return `${rootPath}\\projects\\${project || "UnknownProject"}\\data\\manual\\${reservingClass}`;
+  return `${rootPath}\\projects\\${project || "UnknownProject"}\\data\\${reservingClass}\\methods`;
 }
 
 export async function buildRatioSavePath() {
@@ -293,7 +293,13 @@ export async function buildRatioSavePath() {
 }
 
 export async function getRatioDataDir() {
-  return getRatioSaveBaseDir();
+  const rootPath = await getRootPath();
+  const project = sanitizeFileNamePart(getRatioSaveProjectName(), "UnknownProject");
+  const reservingClass = sanitizeDfmMethodFilePart(
+    getResolvedReservingClass() || String(document.getElementById("pathInput")?.value || "").trim(),
+    "ReservingClass",
+  );
+  return `${rootPath}\\projects\\${project || "UnknownProject"}\\data\\${reservingClass}\\datasets`;
 }
 
 export function getResultsCsvSuggestedName(options = {}) {
