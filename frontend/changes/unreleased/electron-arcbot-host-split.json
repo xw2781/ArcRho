@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcbot",
+  "audience": "internal",
+  "summary": "Moved ArcBot Electron IPC, request state, assistant host helpers, and lifecycle cleanup out of electron/main.js into a dedicated arcbot_host module."
+}
