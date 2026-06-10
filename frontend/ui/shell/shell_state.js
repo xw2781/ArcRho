@@ -130,43 +130,56 @@ export function loadState() {
   }
 }
 
+export function buildShellStateSnapshot() {
+  return {
+    tabs: state.tabs.map(t => ({
+      id: t.id,
+      title: t.title,
+      type: t.type,
+      datasetId: t.datasetId,
+      datasetInputs: t.datasetInputs || undefined,
+      dfmInputs: t.type === "dfm" ? normalizeDfmInitialInputs(t.dfmInputs || null) : undefined,
+      dsInst: t.dsInst,
+      wfInst: t.wfInst,
+      wfFresh: t.wfFresh,
+      scInst: t.scInst,
+      scFresh: t.scFresh,
+      scPath: t.type === "scripting" ? String(t.scPath || t.scOpenPath || "").trim() || undefined : undefined,
+      scOpenPath: t.type === "scripting" ? String(t.scOpenPath || "").trim() || undefined : undefined,
+      projectName: t.type === "project_instance" ? String(t.projectName || t.title || "").trim() : undefined,
+      projectFolder: t.type === "project_instance" ? String(t.projectFolder || "").trim() : undefined,
+      projectTablePath: t.type === "project_instance" ? String(t.projectTablePath || "").trim() : undefined,
+      projectInstanceState: t.type === "project_instance" ? normalizeProjectInstanceState(t.projectInstanceState || null) || undefined : undefined,
+      projectSettingsRibbon: t.type === "project_settings"
+        ? String(t.projectSettingsRibbon || "").trim().toLowerCase()
+        : undefined,
+      layout: isFloatingTab(t) ? "floating" : "docked",
+      floatRect: isFloatingTab(t) ? t.floatRect : undefined,
+      floatZ: isFloatingTab(t) ? t.floatZ : undefined,
+      floatMinimized: isFloatingTab(t) ? !!t.floatMinimized : undefined,
+    })),
+    activeId: state.activeId,
+    nextId: state.nextId,
+    lastDockedActiveId: state.lastDockedActiveId,
+    nextFloatZ: state.nextFloatZ,
+  };
+}
+
+export function persistShellStateSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object" || !Array.isArray(snapshot.tabs) || !snapshot.activeId) {
+    return false;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function saveState() {
   try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        tabs: state.tabs.map(t => ({
-          id: t.id,
-          title: t.title,
-          type: t.type,
-          datasetId: t.datasetId,
-          datasetInputs: t.datasetInputs || undefined,
-          dfmInputs: t.type === "dfm" ? normalizeDfmInitialInputs(t.dfmInputs || null) : undefined,
-          dsInst: t.dsInst,
-          wfInst: t.wfInst,
-          wfFresh: t.wfFresh,
-          scInst: t.scInst,
-          scFresh: t.scFresh,
-          scPath: t.type === "scripting" ? String(t.scPath || t.scOpenPath || "").trim() || undefined : undefined,
-          scOpenPath: t.type === "scripting" ? String(t.scOpenPath || "").trim() || undefined : undefined,
-          projectName: t.type === "project_instance" ? String(t.projectName || t.title || "").trim() : undefined,
-          projectFolder: t.type === "project_instance" ? String(t.projectFolder || "").trim() : undefined,
-          projectTablePath: t.type === "project_instance" ? String(t.projectTablePath || "").trim() : undefined,
-          projectInstanceState: t.type === "project_instance" ? normalizeProjectInstanceState(t.projectInstanceState || null) || undefined : undefined,
-          projectSettingsRibbon: t.type === "project_settings"
-            ? String(t.projectSettingsRibbon || "").trim().toLowerCase()
-            : undefined,
-          layout: isFloatingTab(t) ? "floating" : "docked",
-          floatRect: isFloatingTab(t) ? t.floatRect : undefined,
-          floatZ: isFloatingTab(t) ? t.floatZ : undefined,
-          floatMinimized: isFloatingTab(t) ? !!t.floatMinimized : undefined,
-        })),
-        activeId: state.activeId,
-        nextId: state.nextId,
-        lastDockedActiveId: state.lastDockedActiveId,
-        nextFloatZ: state.nextFloatZ,
-      })
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(buildShellStateSnapshot()));
   } catch {
     // ignore quota / privacy errors
   }

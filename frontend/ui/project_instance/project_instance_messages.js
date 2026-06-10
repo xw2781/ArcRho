@@ -162,6 +162,11 @@ window.addEventListener("message", (event) => {
     }
     return;
   }
+  if (msg.type === "arcrho:project-instance-request-state") {
+    notifyActiveDfmWindowState();
+    notifyProjectInstanceStateChanged();
+    return;
+  }
   if (msg.type === "arcrho:tab-activated") {
     notifyActiveDfmWindowState();
     notifyProjectInstanceStateChanged();

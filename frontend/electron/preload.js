@@ -84,7 +84,8 @@ contextBridge.exposeInMainWorld("ADAHost", {
     ipcRenderer.on("codex-assistant-event", listener);
     return () => ipcRenderer.removeListener("codex-assistant-event", listener);
   },
-  clearCacheAndReload: () => invoke("app-clear-cache-reload"),
+  clearCacheAndReload: (payload) => invoke("app-clear-cache-reload", payload),
+  consumeClearCacheReloadRestore: () => invoke("app-consume-clear-cache-reload-restore"),
   focusWindow: () => invoke("focus-window"),
 });
 

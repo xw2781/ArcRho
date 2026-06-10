@@ -2,6 +2,7 @@ import { $, shell } from "./shell_context.js?v=20260510a";
 
 let appShutdownRequested = false;
 let appConfirmPromise = null;
+const CLEAR_CACHE_RESTORE_KIND = "arcrho-clear-cache-reload-restore-v1";
 
 function appendRefreshParam(rawUrl) {
   try {
@@ -60,6 +61,54 @@ export function customHardRefresh() {
   shell.saveState?.();
 }
 
+function requestProjectInstanceStateSnapshots(timeoutMs = 250) {
+  const tabs = (shell.state?.tabs || []).filter((tab) => (
+    tab?.type === "project_instance"
+    && tab.iframe?.contentWindow
+  ));
+  if (!tabs.length) return Promise.resolve();
+  const pending = new Set(tabs.map((tab) => tab.iframe.contentWindow).filter(Boolean));
+  if (!pending.size) return Promise.resolve();
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", onMessage);
+      resolve();
+    };
+    const onMessage = (event) => {
+      if (!pending.has(event.source)) return;
+      if (event.data?.type !== "arcrho:project-instance-state") return;
+      pending.delete(event.source);
+      if (!pending.size) finish();
+    };
+    window.addEventListener("message", onMessage);
+    window.setTimeout(finish, timeoutMs);
+    for (const tab of tabs) {
+      try {
+        tab.iframe.contentWindow.postMessage({ type: "arcrho:project-instance-request-state" }, "*");
+      } catch {
+        pending.delete(tab.iframe.contentWindow);
+      }
+    }
+    if (!pending.size) finish();
+  });
+}
+
+async function buildClearCacheReloadRestorePayload() {
+  await requestProjectInstanceStateSnapshots();
+  shell.ensureActiveTabInvariant?.();
+  shell.saveState?.();
+  const shellState = shell.buildShellStateSnapshot?.();
+  if (!shellState) return null;
+  return {
+    kind: CLEAR_CACHE_RESTORE_KIND,
+    createdAt: Date.now(),
+    shellState,
+  };
+}
+
 export async function clearCacheAndReload() {
   const confirmed = await showAppConfirm({
     title: "Warning",
@@ -68,10 +117,11 @@ export async function clearCacheAndReload() {
     cancelText: "Cancel",
   });
   if (!confirmed) return;
+  const restore = await buildClearCacheReloadRestorePayload();
   const hostApi = shell.getHostApi?.();
   if (hostApi?.clearCacheAndReload) {
     try {
-      await hostApi.clearCacheAndReload();
+      await hostApi.clearCacheAndReload({ restore });
       return;
     } catch {}
   }

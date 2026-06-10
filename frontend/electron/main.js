@@ -93,6 +93,7 @@ let electronLogPath = "";
 let allowClose = false;
 let pseudoMaximized = false;
 let lastBounds = null;
+let pendingClearCacheReloadRestore = null;
 let serverSpawnError = null;
 let backendShutdownPromise = null;
 function toggleDevPanelForWindow(target = BrowserWindow.getFocusedWindow() || win) {
@@ -1875,8 +1876,11 @@ ipcMain.handle("app-toggle-dev-panel", () => {
   return toggleDevPanelForWindow();
 });
 
-ipcMain.handle("app-clear-cache-reload", async () => {
+ipcMain.handle("app-clear-cache-reload", async (_event, payload) => {
   if (!win || win.isDestroyed()) return false;
+  pendingClearCacheReloadRestore = payload?.restore && typeof payload.restore === "object"
+    ? payload.restore
+    : null;
   try {
     await win.webContents.session.clearCache();
     await win.webContents.session.clearStorageData();
@@ -1896,6 +1900,11 @@ ipcMain.handle("app-clear-cache-reload", async () => {
   return true;
 });
 
+ipcMain.handle("app-consume-clear-cache-reload-restore", async () => {
+  const restore = pendingClearCacheReloadRestore;
+  pendingClearCacheReloadRestore = null;
+  return restore || null;
+});
 
 const arcBotHost = registerArcBotIpc({
   ipcMain,

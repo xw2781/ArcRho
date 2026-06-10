@@ -12,7 +12,7 @@ Detailed menu, floating-window, lifecycle, and bridge behavior belongs in focuse
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.shell.entry_points -->
-- `ui/index.html`: external scripts `/ui/shell/ui_shell.js?v=20260608a`; inline imports _none_.
+- `ui/index.html`: external scripts `/ui/shell/ui_shell.js?v=20260610b`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/`
@@ -33,6 +33,7 @@ Detected `arcrho:*` message types in key JS files:
 - `arcrho:force-rebuild-toggle`
 - `arcrho:hotkey`
 - `arcrho:open-path-result`
+- `arcrho:project-instance-request-state`
 - `arcrho:project-instance-restore-state`
 - `arcrho:scripting-open-path`
 - `arcrho:scripting-rename-notebook`
@@ -77,7 +78,7 @@ Detected `arcrho:*` message types in key JS files:
 - Uses Electron host bridge and explicit shell commands for shutdown/clear-cache actions; ordinary document unloads and reloads do not send app shutdown.
 - The desktop host consumes F5 and Ctrl+F5 as no-op shortcuts so accidental refreshes do not reload the app; Ctrl+R remains the explicit shell refresh shortcut.
 - The desktop shell status bar shows a decorative resize glyph only; it does not expose custom drag-to-resize behavior, so window resizing is left to the native Electron window frame while in-shell floating tab windows keep their own resize controls.
-- Clear Cache & Reload reloads the shell with a fresh timestamped UI URL after clearing Electron cache/storage, and Project Settings iframes include the shell UI version query parameter so reloads fetch the current Project Settings HTML/module graph consistently.
+- Clear Cache & Reload asks open Project Instance tabs for a current state snapshot, stores a one-shot shell restore payload in the Electron host, clears Electron cache/storage, then reloads the shell with a fresh timestamped UI URL and restores the previously active page/tab layout before normal localStorage persistence resumes. Project Settings iframes include the shell UI version query parameter so reloads fetch the current Project Settings HTML/module graph consistently.
 - App-server startup is host-managed on fixed local port `28765` by default, with retry on transient launch failures; Electron verifies a per-launch `/app/health` token so it does not attach to a stale backend process that happens to be listening on the same port, clears mismatched listeners before starting its backend, writes packaged app-server stdout/stderr logs under the Electron user-data `logs` folder, and writes Electron main-process startup logs plus a visible startup-failure dialog for diagnostics.
 - After the desktop shell is visible, the Electron host checks `E:\ArcRho Server\releases\installers` for a newer ArcRho installer without blocking startup. The About dialog also exposes a Check for Updates button that runs the same host check and reports when ArcRho is already current, when the update location is unavailable, or when a newer installer exists but is missing the required SHA-256 checksum. Update checks time out quickly, require a SHA-256 checksum before launching an installer, ask the user whether to update, and reuse the normal shutdown confirmation before starting the installer and quitting ArcRho.
 - The home sidebar brand reads the Windows username from the Electron host bridge when available, then renders the username and a low-contrast circular SVG initial mark; plain browser sessions keep the default ArcRho brand.
@@ -113,7 +114,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Persists tab state, docked/floating layout, floating window position/size/z-order, zoom, and toggles in `localStorage`.
+- Persists tab state, docked/floating layout, floating window position/size/z-order, zoom, and toggles in `localStorage`; Clear Cache & Reload preserves the current shell tab snapshot through the Electron host because the action intentionally clears browser storage.
 - Persists project instance tab identity using the selected project name plus project folder/table-path metadata.
 - Persists dataset browsing history entries (latest 15) via `browsing_history.js`.
 - Persists the latest 10 active restore-capable page entries under `shellActivityHistory.entries` in `%APPDATA%\ArcRho\local_project_prefs.json`, so Restore Pages survives Clear Cache & Reload. Project Instance entries also persist selected path, nested floating Dataset/DFM window names, hidden/active/maximized/dirty flags, DFM subtab, and restore rectangles.
