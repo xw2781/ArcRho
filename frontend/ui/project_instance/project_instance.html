@@ -1176,6 +1176,10 @@
       text-align: center;
       padding: 18px;
     }
+    .pi-table-surface[data-empty-add-dataset="1"],
+    .pi-table-empty[data-empty-action="add-dataset"] {
+      cursor: context-menu;
+    }
     .pi-delete-confirm-overlay {
       position: fixed;
       inset: 0;
@@ -1337,6 +1341,19 @@
     }
     .pi-context-submenu {
       position: relative;
+    }
+    .pi-context-submenu::after {
+      content: "";
+      position: absolute;
+      top: -6px;
+      right: -12px;
+      bottom: -6px;
+      width: 14px;
+      display: none;
+    }
+    .pi-context-submenu:hover::after,
+    .pi-context-submenu:focus-within::after {
+      display: block;
     }
     .pi-context-submenu-trigger {
       display: flex;
