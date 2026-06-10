@@ -7,6 +7,35 @@ const WINDOW_FRAME_MARGIN_PX = 8;
 let activePicker = null;
 let activeFavoriteContextMenu = null;
 
+async function copyPathTreeText(rawText, doc = window.document) {
+  const text = String(rawText || "").trim();
+  if (!text) return false;
+  const view = doc?.defaultView || window;
+  try {
+    if (view?.navigator?.clipboard?.writeText) {
+      await view.navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the textarea fallback.
+  }
+  try {
+    const textarea = doc.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    doc.body.appendChild(textarea);
+    textarea.select();
+    const ok = doc.execCommand?.("copy") !== false;
+    textarea.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 function ensureSharedScrollbarStyles(doc) {
   if (!doc || doc.getElementById(SHARED_SCROLLBAR_STYLE_ID)) return;
   const existing = Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).some((link) =>
@@ -1509,6 +1538,9 @@ function openFavoriteContextMenu(doc, item, options = {}, ctx = {}) {
     menu.appendChild(btn);
   };
 
+  addItem("Copy Path", () => {
+    void copyPathTreeText(item.path, doc);
+  });
   addItem("View in Tree", () => {
     if (typeof ctx?.onViewInTree === "function") ctx.onViewInTree(item.path, item);
   });

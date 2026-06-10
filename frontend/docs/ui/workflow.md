@@ -65,7 +65,7 @@ Detected `arcrho:*` message types in key JS files:
 - Fresh workflows initialize Global Control's `<Default Project>` from the user's local last-project preference and `Default Path` from that project's user-specific `lastReservingClassPath`.
 - Project and path pickers opened from a workflow context expose `Current Workflow` shortcuts populated from Global Control rows with type `Project` / `Reserving Class`; workflow project rows show the control variable name with the resolved project in muted detail text.
 - Shared project/path picker windows load the app-wide `ui/shared/scrollbars.css` styling so their scrollable tree areas match the rest of ArcRho.
-- Reserving-class tree view toggle preferences (auto-expand/auto-close/double-click) are shared globally across projects.
+- Reserving-class tree view toggle preferences (auto-expand/auto-close) are shared globally across projects, and final path rows are always selected with a single click.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

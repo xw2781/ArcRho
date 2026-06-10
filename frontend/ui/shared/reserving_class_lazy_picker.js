@@ -8,7 +8,6 @@ const FILTER_PREFS_CACHE = new Map();
 const TREE_FILTER_PREFERENCE_DEFAULTS = Object.freeze({
   autoExpandSingleChild: true,
   autoCloseOnSelect: true,
-  selectOnDoubleClick: true,
 });
 const WINDOW_FRAME_MARGIN_PX = 8;
 
@@ -1237,12 +1236,6 @@ function normalizeReservingClassFilterPreferences(rawPrefs) {
         : (typeof prefs.autoCloseOnSelect === "boolean"
           ? prefs.autoCloseOnSelect
           : TREE_FILTER_PREFERENCE_DEFAULTS.autoCloseOnSelect),
-    selectOnDoubleClick:
-      typeof prefs.select_on_double_click === "boolean"
-        ? prefs.select_on_double_click
-        : (typeof prefs.selectOnDoubleClick === "boolean"
-          ? prefs.selectOnDoubleClick
-          : TREE_FILTER_PREFERENCE_DEFAULTS.selectOnDoubleClick),
     treeWindowWidth,
     treeWindowHeight,
     filterWindowWidth,
@@ -1258,7 +1251,6 @@ function isDefaultReservingClassFilterPreferences(rawPrefs) {
   return (
     prefs.autoExpandSingleChild === TREE_FILTER_PREFERENCE_DEFAULTS.autoExpandSingleChild
     && prefs.autoCloseOnSelect === TREE_FILTER_PREFERENCE_DEFAULTS.autoCloseOnSelect
-    && prefs.selectOnDoubleClick === TREE_FILTER_PREFERENCE_DEFAULTS.selectOnDoubleClick
     && !Number.isFinite(prefs.treeWindowWidth)
     && !Number.isFinite(prefs.treeWindowHeight)
     && !Number.isFinite(prefs.filterWindowWidth)
@@ -1296,7 +1288,6 @@ async function saveReservingClassFilterSpec(projectName, filterSpec, preferences
   const outPrefs = {
     auto_expand_single_child: !!normalizedPreferences.autoExpandSingleChild,
     auto_close_on_select: !!normalizedPreferences.autoCloseOnSelect,
-    select_on_double_click: !!normalizedPreferences.selectOnDoubleClick,
   };
   if (Number.isFinite(normalizedPreferences.treeWindowWidth)) {
     outPrefs.tree_window_width = normalizedPreferences.treeWindowWidth;
@@ -2095,38 +2086,18 @@ function openReservingClassPreferencesWindow(options = {}) {
   closeOnSelectHelp.textContent = "When disabled, the tree window stays open after a final path is selected.";
   body.appendChild(closeOnSelectHelp);
 
-  const selectModeLabel = doc.createElement("label");
-  selectModeLabel.className = "rcprefs-toggle";
-  const selectModeInput = doc.createElement("input");
-  selectModeInput.type = "checkbox";
-  selectModeInput.checked =
-    typeof options?.preferences?.selectOnDoubleClick === "boolean"
-      ? options.preferences.selectOnDoubleClick
-      : TREE_FILTER_PREFERENCE_DEFAULTS.selectOnDoubleClick;
-  const selectModeText = doc.createElement("span");
-  selectModeText.textContent = "Use double click to select final path";
-  selectModeLabel.append(selectModeInput, selectModeText);
-  body.appendChild(selectModeLabel);
-
-  const selectModeHelp = doc.createElement("div");
-  selectModeHelp.className = "rcprefs-help";
-  selectModeHelp.textContent = "When disabled, single click selects the final path.";
-  body.appendChild(selectModeHelp);
-
   const emitChange = () => {
     if (typeof options?.onChange === "function") {
       try {
         options.onChange({
           autoExpandSingleChild: !!toggleInput.checked,
           autoCloseOnSelect: !!closeOnSelectInput.checked,
-          selectOnDoubleClick: !!selectModeInput.checked,
         });
       } catch {}
     }
   };
   toggleInput.addEventListener("change", emitChange);
   closeOnSelectInput.addEventListener("change", emitChange);
-  selectModeInput.addEventListener("change", emitChange);
 
   win.appendChild(body);
 
@@ -3618,7 +3589,6 @@ export async function openLazyReservingClassPicker(options = {}) {
           : 0,
         autoExpandSingleChild: !!treeFilterPreferences.autoExpandSingleChild,
         autoCloseOnSelect: inlineTree ? false : !!treeFilterPreferences.autoCloseOnSelect,
-        selectOnDoubleClick: !!treeFilterPreferences.selectOnDoubleClick,
         showFavoriteSection: true,
         favoriteSectionTitle: "Shortcut",
         sourceSectionTitle: "All Paths",
