@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance now lets users click individual toolbar path levels to switch that level from a compact popup list."
+}

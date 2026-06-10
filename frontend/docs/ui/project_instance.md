@@ -7,7 +7,7 @@ Project instance workspace for browsing one project's reserving-class paths and 
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_instance.entry_points -->
-- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260608c`; inline imports _none_.
+- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260610c`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/tri/refresh`
@@ -70,6 +70,7 @@ Detected `arcrho:*` message types in key JS files:
 - The toolbar includes a hidden-tab collection area to the right of the selected path; dragging a floating dataset window titlebar anywhere above the main project-instance layout highlights the dragged window, shows a release-to-minimize banner, and hides the window with a slower dock-style minimize animation that moves to its minimized toolbar tab. Hidden windows appear as large-radius minimized tabs on the toolbar that show dataset names only plus a styled hover tooltip with the full window title, and hovering or clicking the hidden-tabs button opens a wider content-fitting dropdown that lists full hidden window titles with a one-second hover grace period, per-item close controls, Resume all tabs, Close all tabs, and a matching restore animation that starts from the matching minimized tab.
 - Dataset viewer windows add a transparent parent-page drag shield during move/resize so embedded iframes do not interrupt fast mouse movement.
 - The project instance toolbar is compact, shows only the currently selected reserving-class path, omits the duplicate selected path above the tree, and sizes the path label to its content with a capped width so minimized toolbar tabs get the remaining space.
+- The selected reserving-class path in the toolbar is interactive: each level renders as a compact rounded segment, and clicking a segment opens a small styled picker below it with alternate values for that level from the shared reserving-class hierarchy. Choosing a value preserves the existing lower-level suffix when that branch exists, otherwise it selects the first valid descendant path.
 - The left and right panel title bars are omitted so the reserving-class tree and dataset table start directly below the toolbar.
 - The dataset table has a compact transparent toolbar above the scroll area with an eye icon toggle for cached dataset view, and cached dataset view is active by default. The cached eye aligns with the table inset below, stays separate from normal table column filters, and is not represented as a table filter chip. When active, the table is driven by cached dataset instances from the selected reserving-class path: `Name` is the instance name, `Dataset Type Name` is the stored dataset type, and multiple instance names can share the same dataset type. The cached dataset count in the toolbar reflects visible instance rows after table filters.
 - Normal table column filters show compact active-filter chips in the dataset toolbar. Each chip displays the column label plus up to two selected values, such as `Method Type: DFM` or `Method Type: DFM, BF...`; hovering the chip shows the full selected value list in an app-styled tooltip. Clicking the `x` on the left side of a chip or right-clicking the chip clears that column's filter.

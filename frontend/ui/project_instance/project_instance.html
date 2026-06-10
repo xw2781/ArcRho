@@ -127,14 +127,108 @@
     .pi-toolbar-path {
       flex: 0 1 auto;
       width: fit-content;
-      max-width: min(38%, 560px);
+      max-width: min(46%, 680px);
       min-width: 0;
       font-size: 14px;
       font-weight: 600;
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      min-height: 26px;
+    }
+    .pi-toolbar-path.has-path {
+      color: #334155;
+    }
+    .pi-toolbar-path-segment {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 128px;
+      height: 24px;
+      padding: 0 5px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: transparent;
+      box-shadow: none;
+      color: #263244;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 22px;
+      overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+    }
+    .pi-toolbar-path-segment:hover,
+    .pi-toolbar-path-segment:focus-visible {
+      background: linear-gradient(180deg, #ffffff 0%, #eef5ff 100%);
+      border-color: #8fb0f4;
+      color: #1f4fbf;
+      box-shadow: 0 2px 7px rgba(31, 78, 153, 0.16), 0 0 0 2px rgba(96, 165, 250, 0.16);
+      outline: none;
+    }
+    .pi-toolbar-path-separator {
+      flex: 0 0 auto;
+      color: #7c8ca3;
+      font-size: 18px;
+      font-weight: 400;
+      line-height: 24px;
+      margin: 0 -3px;
+      transform: translateY(1px);
+    }
+    .pi-path-segment-menu {
+      position: fixed;
+      z-index: 6000;
+      width: 220px;
+      max-width: calc(100vw - 16px);
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      overflow: hidden;
+    }
+    .pi-path-segment-title {
+      padding: 8px 10px 7px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 14px;
+      text-transform: uppercase;
+    }
+    .pi-path-segment-list {
+      max-height: 260px;
+      overflow: auto;
+      padding: 4px;
+    }
+    .pi-path-segment-option {
+      width: 100%;
+      min-height: 26px;
+      padding: 5px 7px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: #334155;
+      font: 12px Arial, "Segoe UI", sans-serif;
+      text-align: left;
+      cursor: pointer;
+    }
+    .pi-path-segment-option:hover,
+    .pi-path-segment-option:focus-visible {
+      background: #eef5ff;
+      border-color: #bfdbfe;
+      outline: none;
+    }
+    .pi-path-segment-option.selected {
+      background: #e8f0ff;
+      border-color: #8fb0f4;
+      color: #1f4fbf;
+      font-weight: 700;
     }
     .pi-hidden-tabs-wrap {
       position: relative;
@@ -1900,6 +1994,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260608c"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260610c"></script>
 </body>
 </html>

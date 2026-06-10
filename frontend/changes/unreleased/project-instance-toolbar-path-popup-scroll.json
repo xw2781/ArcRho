@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance toolbar path popups now stay open while users scroll within their option list."
+}

@@ -3883,7 +3883,7 @@ export async function openLazyReservingClassPicker(options = {}) {
     const opened = openTreeWindow();
     if (!opened) return { ok: false, reason: "empty" };
 
-    return { ok: true, picker: treeWindowPicker };
+    return { ok: true, picker: treeWindowPicker, model };
   } catch (err) {
     const statusCode = Number(err?.status || 0);
     closeReservingClassTreeNodeMenu("error");
