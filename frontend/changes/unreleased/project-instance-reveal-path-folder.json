@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added a Help menu action to reveal the selected reserving-class path folder in File Explorer."
+}

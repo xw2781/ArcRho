@@ -4,6 +4,7 @@ export function installProjectInstanceMessages(ctx) {
   const closeDatasetWindow = (...args) => api.closeDatasetWindow(...args);
   const findWindowByInstance = (...args) => api.findWindowByInstance(...args);
   const findWindowByMessageSource = (...args) => api.findWindowByMessageSource(...args);
+  const fetchCachedDatasetSnapshot = (...args) => api.fetchCachedDatasetSnapshot(...args);
   const getActiveDatasetWindow = (...args) => api.getActiveDatasetWindow(...args);
   const getActiveDfmWindow = (...args) => api.getActiveDfmWindow(...args);
   const getWindowIframe = (...args) => api.getWindowIframe(...args);
@@ -13,6 +14,69 @@ export function installProjectInstanceMessages(ctx) {
   const setStatus = (...args) => api.setStatus(...args);
   const setWindowDirtyState = (...args) => api.setWindowDirtyState(...args);
   const toText = (...args) => api.toText(...args);
+
+function getReservingClassFolderPathFromSnapshot(payload) {
+  const folderPaths = payload?.folder_paths && typeof payload.folder_paths === "object"
+    ? payload.folder_paths
+    : payload?.folderPaths && typeof payload.folderPaths === "object"
+      ? payload.folderPaths
+      : null;
+  return toText(folderPaths?.data || payload?.folder_path || payload?.folderPath);
+}
+
+function requestShellOpenPath(targetPath) {
+  const path = toText(targetPath);
+  if (!path) return Promise.resolve({ ok: false, error: "Empty path." });
+  const requestId = `pi_reveal_path_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (payload) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", onMessage);
+      resolve(payload);
+    };
+    const onMessage = (event) => {
+      const msg = event.data || {};
+      if (msg.type !== "arcrho:open-path-result" || toText(msg.requestId) !== requestId) return;
+      finish({ ok: !!msg.ok, error: toText(msg.error) });
+    };
+    window.addEventListener("message", onMessage);
+    window.setTimeout(() => finish({ ok: false, error: "Timed out opening path." }), 6000);
+    try {
+      window.parent?.postMessage({ type: "arcrho:open-path", requestId, path }, "*");
+    } catch (err) {
+      finish({ ok: false, error: toText(err?.message) || "Failed to send open-path request." });
+    }
+  });
+}
+
+async function revealSelectedReservingClassFolder() {
+  const selectedPath = toText(state.selectedPath);
+  if (!projectName || !selectedPath) {
+    setStatus("Select a reserving-class path before revealing it.", true);
+    return false;
+  }
+  setStatus("Resolving reserving-class folder...");
+  try {
+    const payload = await fetchCachedDatasetSnapshot(selectedPath);
+    const folderPath = getReservingClassFolderPathFromSnapshot(payload);
+    if (!folderPath) {
+      setStatus("Could not resolve the reserving-class folder.", true);
+      return false;
+    }
+    setStatus("Opening reserving-class folder...");
+    const result = await requestShellOpenPath(folderPath);
+    if (result?.ok) {
+      setStatus("Opened reserving-class folder.");
+      return true;
+    }
+    setStatus(toText(result?.error) || "Could not open the reserving-class folder.", true);
+  } catch (err) {
+    setStatus(toText(err?.message) || "Could not resolve the reserving-class folder.", true);
+  }
+  return false;
+}
 
 function routeDfmWindowCommand(type) {
   let command = toText(type);
@@ -167,6 +231,10 @@ window.addEventListener("message", (event) => {
     notifyProjectInstanceStateChanged();
     return;
   }
+  if (msg.type === "arcrho:project-instance-reveal-selected-path") {
+    void revealSelectedReservingClassFolder();
+    return;
+  }
   if (msg.type === "arcrho:tab-activated") {
     notifyActiveDfmWindowState();
     notifyProjectInstanceStateChanged();
@@ -303,6 +371,8 @@ window.addEventListener("message", (event) => {
     forwardRequestToActiveDfm,
     initDatasetWindowShortcuts,
     isCloseActiveWindowShortcut,
+    requestShellOpenPath,
+    revealSelectedReservingClassFolder,
     routeDfmRatioHotkey,
     routeDfmWindowCommand
   });
