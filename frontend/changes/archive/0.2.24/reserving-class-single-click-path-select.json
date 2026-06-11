@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "reserving class picker",
+  "audience": "user",
+  "summary": "Reserving-class path pickers now always select final paths with a single click and no longer show the double-click selection preference."
+}

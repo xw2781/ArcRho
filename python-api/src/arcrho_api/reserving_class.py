@@ -96,12 +96,18 @@ class ReservingClass:
         self,
         name: str,
         *,
+        cumulative: bool = True,
         origin_length: int = 12,
         development_length: int = 12,
     ) -> Path:
         """Return the ArcRhoTri CSV cache path for this reserving class."""
 
-        filename = _length_scoped_dataset_filename(name, origin_length, development_length)
+        filename = _length_scoped_dataset_filename(
+            name,
+            origin_length,
+            development_length,
+            cumulative=cumulative,
+        )
         return self.project.path / "data" / sanitize_reserving_class_folder(self.path) / "datasets" / filename
 
     def add_triangle(
@@ -127,6 +133,7 @@ class ReservingClass:
 
         data_path = self.triangle_cache_path(
             dataset_name,
+            cumulative=cumulative,
             origin_length=origin_length,
             development_length=development_length,
         )
@@ -280,12 +287,19 @@ def _encoded_file_name_part(value: Any, fallback: str) -> str:
     return encoded or fallback
 
 
-def _length_scoped_dataset_filename(dataset_name: Any, origin_length: Any, development_length: Any) -> str:
+def _length_scoped_dataset_filename(
+    dataset_name: Any,
+    origin_length: Any,
+    development_length: Any,
+    *,
+    cumulative: bool = True,
+) -> str:
     dataset_file = _encoded_file_name_part(dataset_name, "Dataset")
     origin = clean_text(origin_length)
     development = clean_text(development_length)
     if origin and development:
-        dataset_file = f"{dataset_file}@{origin}@{development}"
+        cum_suffix = "cum" if cumulative else "inc"
+        dataset_file = f"{dataset_file}@{origin}@{development}@{cum_suffix}@dev"
     return f"{dataset_file}.csv"
 
 

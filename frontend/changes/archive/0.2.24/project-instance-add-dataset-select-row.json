@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Adding a dataset from Project Instance now selects and highlights the new row instead of opening it in a floating window."
+}

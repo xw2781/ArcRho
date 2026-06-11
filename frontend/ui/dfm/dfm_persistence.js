@@ -88,13 +88,14 @@ let lastCleanDfmMethodPayload = null;
 const DFM_INSTANCE_PRESENCE_EVENT = "arcrho:dfm-instance-presence";
 const DFM_LOCAL_LOOKUP_DEBUG_STATUS = true; // Temporary debug aid.
 const DFM_ANALYSIS_DECIMALS = 4;
+const DFM_AVERAGE_FORMULA_DECIMALS = 6;
 const DFM_METHOD_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1";
 const DFM_METHOD_FILE_WATCH_INTERVAL_MS = 2000;
 let lastCleanDfmDirtySnapshot = "";
 
-function splitLengthScopedDatasetName(value) {
+function stripDatasetCacheVariantSuffix(value) {
   const text = String(value || "").trim();
-  const match = text.match(/^(.*)@(\d+)@(\d+)$/);
+  const match = text.match(/^(.*)@\d+@\d+@(?:cum|inc)@(?:dev|cal)$/i);
   return match ? match[1] : text;
 }
 
@@ -104,7 +105,7 @@ function getCanonicalDatasetSidecarPath(csvPath) {
   const slash = normalized.lastIndexOf("/");
   const folder = slash >= 0 ? path.slice(0, slash) : "";
   const filename = slash >= 0 ? path.slice(slash + 1) : path;
-  const match = filename.match(/^(.*?)(?:@\d+@\d+)?(?:@(?:cum|inc)@(?:dev|cal))?\.csv$/i);
+  const match = filename.match(/^(.*?)(?:@\d+@\d+@(?:cum|inc)@(?:dev|cal))?\.csv$/i);
   const sidecarName = match ? `${match[1]}.json` : filename.replace(/\.csv$/i, ".json");
   const folderNorm = folder.replace(/\\/g, "/");
   const parentSlash = folderNorm.lastIndexOf("/");
@@ -117,7 +118,7 @@ function getCanonicalDatasetSidecarPath(csvPath) {
 }
 
 function buildDatasetSidecarJson(csvPath, datasetName, userName = "") {
-  const name = splitLengthScopedDatasetName(datasetName);
+  const name = stripDatasetCacheVariantSuffix(datasetName);
   const outputType = String(document.getElementById("dfmOutputVector")?.value || "").trim();
   const user = String(userName || "").trim();
   return JSON.stringify({
@@ -613,6 +614,10 @@ function roundAnalysisValue(value) {
   return Number.isFinite(Number(value)) ? roundRatio(Number(value), DFM_ANALYSIS_DECIMALS) : null;
 }
 
+function roundAverageFormulaValue(value) {
+  return Number.isFinite(Number(value)) ? roundRatio(Number(value), DFM_AVERAGE_FORMULA_DECIMALS) : null;
+}
+
 function trimTrailingNulls(row) {
   const out = Array.isArray(row) ? row.slice() : [];
   while (out.length && out[out.length - 1] === null) {
@@ -679,25 +684,25 @@ function buildAverageFormulaValues() {
     const cfg = rows[rowIndex];
     for (let c = 0; c < ratioLabels.length; c++) {
       if (c >= devs.length - 1) {
-        values[rowIndex][c] = roundAnalysisValue(1);
+        values[rowIndex][c] = roundAverageFormulaValue(1);
         continue;
       }
       if (isUserEntrySummaryRow(cfg)) {
         const raw = Array.isArray(cfg.values) ? cfg.values[c] : 1;
-        values[rowIndex][c] = roundAnalysisValue(normalizeSummaryUserEntryValue(raw));
+        values[rowIndex][c] = roundAverageFormulaValue(normalizeSummaryUserEntryValue(raw));
         continue;
       }
       const excluded = buildExcludedSetForColumn(model, c, cfg, ratioStrikeSet);
       const summary = computeAverageForColumn(model, c, excluded, cfg);
       if (summary.totalValid > 0 && summary.totalIncluded === 0) {
-        values[rowIndex][c] = roundAnalysisValue(1);
+        values[rowIndex][c] = roundAverageFormulaValue(1);
         continue;
       }
       const isVolume = String(cfg.base || "volume").toLowerCase() === "volume";
       const hasValue =
         summary.value !== null &&
         (isVolume ? summary.sumA : summary.totalIncluded > 0);
-      values[rowIndex][c] = roundAnalysisValue(hasValue ? summary.value : 1);
+      values[rowIndex][c] = roundAverageFormulaValue(hasValue ? summary.value : 1);
     }
   }
   return values.map((row) => trimTrailingNulls(row));

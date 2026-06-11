@@ -819,6 +819,33 @@
     #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableActive {
       background: rgba(183, 227, 86, 0.374);
     }
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell,
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell.ratioSelectedCell,
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableSel,
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableActive {
+      background: #dbeafe;
+    }
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell,
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.ratioSelectedCell,
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableSel,
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableActive {
+      position: relative;
+      background: #dbeafe;
+      outline: 2px solid #2563eb;
+      outline-offset: -2px;
+      cursor: grab;
+      z-index: 5;
+    }
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget,
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.ratioSelectedCell,
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.dfmTableSel,
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.dfmTableActive {
+      background: #dbeafe;
+      outline: 2px solid #f59e0b;
+      outline-offset: -2px;
+      cursor: grabbing;
+      z-index: 6;
+    }
     #ratioWrap td.dfmCellNote {
       position: relative;
     }

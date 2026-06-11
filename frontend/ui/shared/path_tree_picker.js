@@ -275,9 +275,16 @@ function ensureStyles(doc) {
       cursor: pointer;
       flex-shrink: 0;
     }
+    .ptree-section-action.ptree-pref {
+      margin-right: 6px;
+    }
     .ptree-section-action:hover {
       background: #eef3ff;
       color: #2563eb;
+    }
+    .ptree-section-action.active {
+      background: #e3edff;
+      color: #1d4ed8;
     }
     .ptree-section-action svg {
       width: 14px;
@@ -2031,13 +2038,23 @@ export function openFloatingPathTreePicker(options = {}) {
       const actionBtn = doc.createElement("button");
       actionBtn.type = "button";
       actionBtn.className = "ptree-section-action";
+      if (action.className) actionBtn.classList.add(String(action.className));
+      if (action.active) actionBtn.classList.add("active");
       actionBtn.title = String(action.title || action.label || "");
       actionBtn.setAttribute("aria-label", String(action.title || action.label || ""));
       actionBtn.innerHTML = action.icon || '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
       actionBtn.addEventListener("click", (evt) => {
         evt.preventDefault();
         evt.stopPropagation();
-        try { action.onClick({ event: evt, buttonElement: actionBtn }); } catch {}
+        try {
+          action.onClick({
+            event: evt,
+            buttonElement: actionBtn,
+            headerElement: header,
+            pickerElement: win,
+            sectionElement: section,
+          });
+        } catch {}
       });
       header.appendChild(actionBtn);
     }
@@ -2333,7 +2350,8 @@ export function openFloatingPathTreePicker(options = {}) {
   const sourceSection = doc.createElement("div");
   sourceSection.className = "ptree-section ptree-section-tree";
   if (options?.showSourceSectionTitle) {
-    appendCollapsibleSectionTitle(sourceSection, options?.sourceSectionTitle || "All Paths");
+    const sourceActions = Array.isArray(options?.sourceSectionActions) ? options.sourceSectionActions : [];
+    appendCollapsibleSectionTitle(sourceSection, options?.sourceSectionTitle || "All Paths", sourceActions);
   }
   const sourceContent = doc.createElement("div");
   sourceContent.className = "ptree-section-content ptree-section-tree-content";

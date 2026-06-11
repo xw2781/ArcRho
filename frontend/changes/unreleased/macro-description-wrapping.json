@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Fixed Macro window descriptions so longer macro summaries wrap instead of appearing cut off."
+}

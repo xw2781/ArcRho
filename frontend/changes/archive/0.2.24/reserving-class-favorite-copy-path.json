@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "reserving class picker",
+  "audience": "user",
+  "summary": "Added Copy Path as the first action in reserving-class favorite path context menus."
+}

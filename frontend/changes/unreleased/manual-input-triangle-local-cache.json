@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset, dfm",
+  "audience": "user",
+  "summary": "Manual input triangle caches now load locally and aggregate only from finer cached detail.",
+  "details": [
+    "DFM Input Triangle refresh no longer auto-generates missing input caches; it shows a clear error when the named triangle sidecar or compatible cache is unavailable.",
+    "Dataset and DFM can derive coarser requested periods from finer manual cumulative caches, while fixed coarse manual caches are not expanded to finer detail."
+  ]
+}

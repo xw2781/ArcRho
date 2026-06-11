@@ -277,6 +277,16 @@ def encode_filename_segment(name: str) -> str:
     return "".join(out)
 
 
+def decode_filename_segment(name: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        try:
+            return chr(int(match.group(1), 16))
+        except Exception:
+            return match.group(0)
+
+    return re.sub(r"_%([0-9A-Fa-f]{2})_", repl, str(name or ""))
+
+
 def _sanitize_folder_name(name: str) -> str:
     return encode_filename_segment(name or "")
 

@@ -13,6 +13,12 @@ Before changing files under `frontend/`, read `frontend/AGENTS.md`.
 ## Bug Fix Cleanup Review
 When fixing a bug, remove clearly obsolete code in the touched area. Ask before broader cleanup or cleanup with behavior risk.
 
+## Agent Project Data Access
+Agents may view, inspect, or modify ArcRho Server project data only for project `NJ_Annual_Prod_202605_Fake`.
+Do not read directory listings, file contents, metadata, or derived data from any other project under `E:\ArcRho Server\projects`, and do not write, copy, delete, or regenerate files for any other project.
+If a user references another ArcRho Server project, ask them to switch the task to `NJ_Annual_Prod_202605_Fake` or provide the needed excerpts directly in the chat.
+This restriction applies to agent tool use and analysis only; it does not change runnable scripts that a human may execute, such as `python-api/resq_data_migration.py`.
+
 ## Commit Workflow
 Before creating a commit, follow `tools/agent_commit_workflow.md`. Agents must summarize repository changes in 1 to 7 logical groups, provide best-practice suggestions when applicable, and ask for the user's final review and explicit approval before staging or committing.
 

@@ -678,6 +678,14 @@ export function wireRatioStrikeToggle() {
   let lastKey = null;
   const isDataRow = (rowId) => /^\d+$/.test(String(rowId || ""));
 
+  const finishRatioCellDrag = () => {
+    if (dragActive) {
+      commitRatioHistoryAction("ratio-cell-click");
+    }
+    dragActive = false;
+    lastKey = null;
+  };
+
   const toggleRatioRowExclusions = (rowHead) => {
     if (!rowHead) return;
     const rRaw = rowHead.dataset.r;
@@ -757,12 +765,10 @@ export function wireRatioStrikeToggle() {
     toggleStrike(cell);
   });
 
-  window.addEventListener("mouseup", () => {
-    if (dragActive) {
-      commitRatioHistoryAction("ratio-cell-click");
-    }
-    dragActive = false;
-    lastKey = null;
+  window.addEventListener("mouseup", finishRatioCellDrag);
+  window.addEventListener("blur", finishRatioCellDrag);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) finishRatioCellDrag();
   });
 
   wrap.addEventListener("click", (e) => {

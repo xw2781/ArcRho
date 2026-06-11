@@ -268,6 +268,57 @@ function openPathViaShellBridge(targetPath, preferredApp = "") {
   });
 }
 
+function forwardChildOpenPathRequest(message, sourceWindow) {
+  const source = sourceWindow || null;
+  if (!source || source === window || source === window.parent) return false;
+
+  const requestId = String(message?.requestId || "").trim();
+  const path = String(message?.path || "").trim();
+  const preferredApp = String(message?.preferredApp || "").trim();
+  const readOnly = !!message?.readOnly;
+  if (!requestId) return true;
+
+  const replyToSource = (payload) => {
+    try {
+      source.postMessage({ type: "arcrho:open-path-result", requestId, ...payload }, "*");
+    } catch {}
+  };
+  if (!path) {
+    replyToSource({ ok: false, error: "Empty path." });
+    return true;
+  }
+  if (!window.parent || window.parent === window) {
+    replyToSource({ ok: false, error: "Open path requires desktop app." });
+    return true;
+  }
+
+  let done = false;
+  let timeoutId = null;
+  const finish = (payload) => {
+    if (done) return;
+    done = true;
+    if (timeoutId != null) window.clearTimeout(timeoutId);
+    window.removeEventListener("message", onMessage);
+    replyToSource(payload || { ok: false, error: "Open path failed." });
+  };
+  const onMessage = (evt) => {
+    const msg = evt?.data;
+    if (!msg || msg.type !== "arcrho:open-path-result") return;
+    if (String(msg.requestId || "") !== requestId) return;
+    finish({ ok: !!msg.ok, error: String(msg.error || "") });
+  };
+  window.addEventListener("message", onMessage);
+  timeoutId = window.setTimeout(() => {
+    finish({ ok: false, error: "Open path timed out." });
+  }, 6000);
+  try {
+    window.parent.postMessage({ type: "arcrho:open-path", requestId, path, preferredApp, readOnly }, "*");
+  } catch {
+    finish({ ok: false, error: "Open path requires desktop app." });
+  }
+  return true;
+}
+
 async function openCurrentDfmMethodJson() {
   let methodPath = "";
   try {
@@ -412,6 +463,9 @@ export function initDfmRatios() {
   refreshDfmTabContent("dfm-open");
 
   window.addEventListener("message", (e) => {
+    if (e?.data?.type === "arcrho:open-path" && forwardChildOpenPathRequest(e.data, e.source)) {
+      return;
+    }
     /* Respond to workflow requesting DFM step settings for snapshot */
     if (e?.data?.type === "arcrho:get-dfm-settings") {
       const inputSnap = getDfmInputSnapshotSafe();

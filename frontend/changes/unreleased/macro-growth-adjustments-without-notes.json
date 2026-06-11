@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Apply Growth Adjustments can apply workbook adjustments to a DFM even when the method has no prior actuary notes.",
+  "details": [
+    "Adjusted User Entry values are stored at six-decimal precision so the displayed fourth decimal stays consistent with the UI.",
+    "Adjustment note multipliers now use compact values such as 1.02 instead of 1.0200."
+  ]
+}

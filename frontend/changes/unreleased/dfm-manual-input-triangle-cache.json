@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Load manual input triangle caches in DFM by instance name.",
+  "details": [
+    "DFM Data-tab refreshes now treat a cached CSV as valid when the sidecar's project, reserving class, and decoded instance name match, even if the manual dataset type is a broader label such as `Net Loss - ad hoc`."
+  ]
+}

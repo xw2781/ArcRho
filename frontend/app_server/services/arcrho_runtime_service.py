@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict
 
+import pandas as pd
 from fastapi import HTTPException
 
 from app_server import config
@@ -56,6 +57,260 @@ def _pair_bool_value(pairs: list, key: str, default: bool) -> bool:
     if text in {"false", "no", "0"}:
         return False
     return default
+
+
+def _clean_cache_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _cache_text_matches(left: Any, right: Any) -> bool:
+    return _clean_cache_text(left) == _clean_cache_text(right)
+
+
+def _cache_payload_name_matches(payload: Dict[str, Any], expected_name: str) -> bool:
+    if not expected_name:
+        return False
+    return (
+        _cache_text_matches(payload.get("dataset_name"), expected_name)
+        or _cache_text_matches(payload.get("instance_name"), expected_name)
+    )
+
+
+def _safe_read_json(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _request_dataset_name(pairs: list) -> str:
+    return _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
+
+
+def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]:
+    sidecar_path = _dataset_sidecar_path(data_path, pairs)
+    payload = _safe_read_json(sidecar_path)
+    if not payload:
+        return {}
+    expected_name = _request_dataset_name(pairs)
+    if not _cache_payload_name_matches(payload, expected_name):
+        return {}
+    if not _cache_text_matches(payload.get("reserving_class"), _pair_value(pairs, "Path")):
+        return {}
+    if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
+        return {}
+    if _clean_cache_text(payload.get("source_kind")).lower() != "input":
+        return {}
+    generated = str(payload.get("generated") or "").strip().lower()
+    if generated in {"true", "1", "yes"}:
+        return {}
+    data_format = _clean_cache_text(payload.get("data_format") or "Triangle").lower()
+    if data_format and data_format != "triangle":
+        return {}
+    return payload
+
+
+def _parse_cache_variant(filename: str) -> Dict[str, Any]:
+    stem, ext = os.path.splitext(os.path.basename(filename))
+    if ext.lower() != ".csv":
+        return {}
+    parts = stem.split("@")
+    if len(parts) < 5:
+        return {}
+    origin = parts[-4].strip()
+    dev = parts[-3].strip()
+    cum = parts[-2].strip().lower()
+    cal = parts[-1].strip().lower()
+    if not origin.isdigit() or not dev.isdigit():
+        return {}
+    if cum not in {"cum", "inc"} or cal not in {"dev", "cal"}:
+        return {}
+    return {
+        "base": "@".join(parts[:-4]),
+        "origin_length": int(origin),
+        "development_length": int(dev),
+        "cumulative": cum == "cum",
+        "calendar": cal == "cal",
+    }
+
+
+def _manual_cache_candidates(data_path: str, pairs: list) -> list[Dict[str, Any]]:
+    payload = _manual_input_sidecar_payload(data_path, pairs)
+    if not payload:
+        return []
+    dataset_dir = os.path.dirname(data_path)
+    expected_base = sanitize_dataset_file_name(_request_dataset_name(pairs))
+    if not os.path.isdir(dataset_dir):
+        return []
+    out: list[Dict[str, Any]] = []
+    for filename in os.listdir(dataset_dir):
+        parsed = _parse_cache_variant(filename)
+        if not parsed or parsed["base"] != expected_base:
+            continue
+        path = os.path.join(dataset_dir, filename)
+        if not os.path.isfile(path):
+            continue
+        out.append({
+            **parsed,
+            "path": path,
+            "payload": payload,
+        })
+    return out
+
+
+def _can_derive_cache(candidate: Dict[str, Any], pairs: list, target_path: str) -> tuple[bool, str]:
+    if candidate.get("path") == target_path:
+        return False, "exact target already handled"
+    target_origin = _pair_int_value(pairs, "OriginLength", 12)
+    target_dev = _pair_int_value(pairs, "DevelopmentLength", 12)
+    source_origin = int(candidate.get("origin_length") or 0)
+    source_dev = int(candidate.get("development_length") or 0)
+    if source_origin <= 0 or source_dev <= 0 or target_origin <= 0 or target_dev <= 0:
+        return False, "invalid period length"
+    if bool(candidate.get("calendar")) != _pair_bool_value(pairs, "Calendar", False):
+        return False, "calendar mode differs"
+    if bool(candidate.get("cumulative")) != _pair_bool_value(pairs, "Cumulative", True):
+        return False, "cumulative mode differs"
+    if target_origin < source_origin or target_dev < source_dev:
+        return False, "manual caches can only derive from finer to coarser periods"
+    if target_origin % source_origin != 0 or target_dev % source_dev != 0:
+        return False, "requested periods are not whole multiples of the cached periods"
+    return True, ""
+
+
+def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: str) -> Dict[str, Any]:
+    source_path = str(candidate["path"])
+    source_origin = int(candidate["origin_length"])
+    source_dev = int(candidate["development_length"])
+    target_origin = _pair_int_value(pairs, "OriginLength", 12)
+    target_dev = _pair_int_value(pairs, "DevelopmentLength", 12)
+    origin_factor = target_origin // source_origin
+    dev_factor = target_dev // source_dev
+    df = pd.read_csv(source_path, header=None, dtype="float64", keep_default_na=True)
+    source_rows, source_cols = df.shape
+    target_rows = source_rows // origin_factor
+    target_cols = source_cols // dev_factor
+    if target_rows <= 0 or target_cols <= 0:
+        raise ValueError("cached triangle is smaller than the requested output size")
+    values: list[list[Any]] = []
+    cumulative = _pair_bool_value(pairs, "Cumulative", True)
+    for row_index in range(target_rows):
+        row_values: list[Any] = []
+        row_block = df.iloc[row_index * origin_factor:(row_index + 1) * origin_factor, :]
+        for col_index in range(target_cols):
+            if cumulative:
+                source_col = (col_index + 1) * dev_factor - 1
+                block = row_block.iloc[:, source_col]
+            else:
+                block = row_block.iloc[:, col_index * dev_factor:(col_index + 1) * dev_factor].to_numpy().ravel()
+                block = pd.Series(block)
+            row_values.append(float(block.sum(skipna=True)) if block.notna().any() else None)
+        values.append(row_values)
+
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    tmp_path = f"{target_path}.{uuid.uuid4()}.tmp"
+    pd.DataFrame(values).to_csv(tmp_path, header=False, index=False)
+    os.replace(tmp_path, target_path)
+    return {
+        "source_path": source_path,
+        "source_origin_length": source_origin,
+        "source_development_length": source_dev,
+        "origin_factor": origin_factor,
+        "development_factor": dev_factor,
+        "target_rows": target_rows,
+        "target_cols": target_cols,
+    }
+
+
+def _register_arcrho_dataset(data_path: str) -> str:
+    ds_id = "arcrhotri_" + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
+    config.DATASETS[ds_id] = data_path
+    return ds_id
+
+
+def resolve_local_triangle_cache(
+    data_path: str,
+    pairs: list,
+    allow_derived: bool = True,
+    materialize: bool = True,
+) -> Dict[str, Any]:
+    if arcrho_tri_cache_matches(data_path, pairs):
+        return {
+            "ok": True,
+            "status": "cache_exact",
+            "data_path": data_path,
+            "manual_source_found": bool(_manual_input_sidecar_payload(data_path, pairs)),
+        }
+
+    candidates = _manual_cache_candidates(data_path, pairs)
+    if not candidates:
+        return {
+            "ok": False,
+            "status": "missing_sidecar",
+            "manual_source_found": False,
+            "message": f"Input triangle cache sidecar was not found for '{_request_dataset_name(pairs)}'.",
+            "data_path": data_path,
+        }
+
+    if not allow_derived:
+        return {
+            "ok": False,
+            "status": "cache_missing",
+            "manual_source_found": True,
+            "message": f"Input triangle cache was not found for '{_request_dataset_name(pairs)}'.",
+            "data_path": data_path,
+        }
+
+    rejected: list[str] = []
+    candidates.sort(key=lambda item: (int(item.get("origin_length") or 999999), int(item.get("development_length") or 999999)))
+    for candidate in candidates:
+        can_derive, reason = _can_derive_cache(candidate, pairs, data_path)
+        if not can_derive:
+            if reason:
+                rejected.append(reason)
+            continue
+        if not materialize:
+            return {
+                "ok": True,
+                "status": "cache_derivable",
+                "data_path": data_path,
+                "manual_source_found": True,
+                "derived": {
+                    "source_path": str(candidate["path"]),
+                    "source_origin_length": int(candidate.get("origin_length") or 0),
+                    "source_development_length": int(candidate.get("development_length") or 0),
+                },
+            }
+        try:
+            derived = _derive_triangle_cache(candidate, pairs, data_path)
+        except Exception as err:
+            rejected.append(str(err))
+            continue
+        try:
+            dataset_instance_index_service.rebuild_index(_pair_value(pairs, "ProjectName"), _pair_value(pairs, "Path"))
+        except Exception:
+            pass
+        return {
+            "ok": True,
+            "status": "cache_derived",
+            "data_path": data_path,
+            "manual_source_found": True,
+            "derived": derived,
+        }
+
+    detail = rejected[0] if rejected else "no compatible finer cache was found"
+    return {
+        "ok": False,
+        "status": "cache_not_derivable",
+        "manual_source_found": True,
+        "message": (
+            f"Input triangle '{_request_dataset_name(pairs)}' exists only as a manual cache that cannot derive "
+            f"{_pair_int_value(pairs, 'OriginLength', 12)}x{_pair_int_value(pairs, 'DevelopmentLength', 12)} periods: {detail}."
+        ),
+        "data_path": data_path,
+    }
 
 
 def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
@@ -125,25 +380,19 @@ def arcrho_tri_cache_matches(data_path: str, pairs: list) -> bool:
         return False
     if not isinstance(payload, dict):
         return False
-    checks = {
-        "dataset_name": _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
-        "reserving_class": _pair_value(pairs, "Path"),
-        "project_name": _pair_value(pairs, "ProjectName"),
-    }
+    expected_name = _pair_value(pairs, "InstanceName")
     dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
-    if dataset_type:
-        checks["dataset_type"] = dataset_type
-    for key, value in checks.items():
-        if isinstance(value, bool):
-            if bool(payload.get(key)) != value:
-                return False
-        elif isinstance(value, int):
-            try:
-                if int(payload.get(key)) != value:
-                    return False
-            except (TypeError, ValueError):
-                return False
-        elif str(payload.get(key) or "").strip() != value:
+    if not expected_name:
+        expected_name = dataset_type
+    if not _cache_payload_name_matches(payload, expected_name):
+        return False
+    if not _cache_text_matches(payload.get("reserving_class"), _pair_value(pairs, "Path")):
+        return False
+    if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
+        return False
+    if not _pair_value(pairs, "InstanceName") and dataset_type:
+        payload_type = payload.get("dataset_type_name") or payload.get("dataset_type")
+        if payload_type and not _cache_text_matches(payload_type, dataset_type):
             return False
     return True
 
@@ -301,9 +550,48 @@ def arcrho_projects() -> Dict[str, Any]:
     return {"sheet": "Virtual Projects", "projects": out, "folders": index_data.get("folders", [])}
 
 
-def run_arcrho_tri(pairs: list, data_path: str, timeout_sec: float, force_refresh: bool = False) -> Dict[str, Any]:
+def _local_cache_response(local_result: Dict[str, Any], data_path: str) -> Dict[str, Any]:
+    ds_id = _register_arcrho_dataset(data_path)
+    return {
+        "ok": True,
+        "need_request": False,
+        "ds_id": ds_id,
+        "request_file": None,
+        "data_path": data_path,
+        "local_cache_status": local_result.get("status"),
+        "derived": local_result.get("derived"),
+        "calculated_updates": None,
+    }
+
+
+def run_arcrho_tri(
+    pairs: list,
+    data_path: str,
+    timeout_sec: float,
+    force_refresh: bool = False,
+    local_only: bool = False,
+    allow_derived: bool = True,
+) -> Dict[str, Any]:
     request_file = None
     cache_cleared = False
+
+    local_result = resolve_local_triangle_cache(data_path, pairs, allow_derived=allow_derived)
+    if local_result.get("ok") and not force_refresh:
+        return _local_cache_response(local_result, data_path)
+    manual_source_found = bool(local_result.get("manual_source_found"))
+    if local_only or manual_source_found:
+        message = str(local_result.get("message") or "Input triangle cache is not available.")
+        if force_refresh and manual_source_found:
+            message = "Manual input triangle caches cannot be refreshed from the DFM/Dataset loader."
+        return {
+            "ok": False,
+            "status": local_result.get("status") or "local_cache_unavailable",
+            "need_request": False,
+            "data_path": data_path,
+            "message": message,
+            "local_only": bool(local_only),
+            "manual_source_found": manual_source_found,
+        }
 
     cache_matches = arcrho_tri_cache_matches(data_path, pairs)
     if (force_refresh or not cache_matches) and os.path.exists(data_path):
@@ -353,8 +641,7 @@ def run_arcrho_tri(pairs: list, data_path: str, timeout_sec: float, force_refres
     except OSError as err:
         raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")
 
-    ds_id = "arcrhotri_" + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
-    config.DATASETS[ds_id] = data_path
+    ds_id = _register_arcrho_dataset(data_path)
 
     out: Dict[str, Any] = {
         "ok": True,

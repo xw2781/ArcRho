@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset Viewer now shows decoded migrated dataset names and avoids draft-only duplicate-name warnings when opening existing datasets."
+}

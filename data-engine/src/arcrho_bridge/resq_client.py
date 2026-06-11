@@ -1,15 +1,14 @@
 ﻿import re
 from pathlib import Path
 import threading
-import time
 
+import pythoncom
 import win32com.client
 
 from arcrho_bridge.bridge_utils import read_json, write_json, write_json_with_compact_rows
 
 
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
-DISCONNECT_COOLDOWN_SECONDS = 5
 DFM_METHOD_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 DFM_COMPACT_ROW_KEYS = (
     "input data triangle values",
@@ -23,41 +22,60 @@ DFM_COMPACT_ROW_KEYS = (
 class ResQClient:
     def __init__(self):
         self.app = None
-        self._disconnect_deadline = None
         self._disconnect_lock = threading.RLock()
+        self._com_thread_id = None
+        self._com_initialized = False
+
+    def _ensure_com_initialized(self):
+        thread_id = threading.get_ident()
+        if self._com_initialized and self._com_thread_id == thread_id:
+            return
+        pythoncom.CoInitialize()
+        self._com_initialized = True
+        self._com_thread_id = thread_id
+
+    def _uninitialize_com(self):
+        if not self._com_initialized:
+            return
+        if self._com_thread_id != threading.get_ident():
+            return
+        pythoncom.CoUninitialize()
+        self._com_initialized = False
+        self._com_thread_id = None
 
     def _connect(self):
         with self._disconnect_lock:
-            self._disconnect_deadline = None
+            if self.app is not None and self._com_thread_id != threading.get_ident():
+                raise RuntimeError("ResQ COM connection is owned by another bridge worker thread.")
+            self._ensure_com_initialized()
             if self.app is None:
-                self.app = win32com.client.Dispatch("ResQ3Automation.ResQApplication")
-                self.app.ConnectByName(CONNECTION_NAME, "", "")
+                try:
+                    self.app = win32com.client.Dispatch("ResQ3Automation.ResQApplication")
+                    self.app.ConnectByName(CONNECTION_NAME, "", "")
+                except Exception:
+                    self.app = None
+                    self._uninitialize_com()
+                    raise
             return self.app
 
-    def _schedule_disconnect(self):
-        with self._disconnect_lock:
-            if self.app is not None:
-                self._disconnect_deadline = time.monotonic() + DISCONNECT_COOLDOWN_SECONDS
-
     def disconnect_if_idle(self):
-        with self._disconnect_lock:
-            if self._disconnect_deadline is None:
-                return
-            if time.monotonic() < self._disconnect_deadline:
-                return
-        self._disconnect()
+        return
 
     def _disconnect(self):
         with self._disconnect_lock:
+            if self.app is not None and self._com_thread_id != threading.get_ident():
+                return
             app = self.app
             self.app = None
-            self._disconnect_deadline = None
         if app is None:
+            self._uninitialize_com()
             return
         try:
             app.Disconnect()
         except Exception:
             pass
+        finally:
+            self._uninitialize_com()
 
     def close(self):
         self._disconnect()
@@ -116,7 +134,7 @@ class ResQClient:
             write_json_with_compact_rows(request["DataPath"], payload, compact_row_keys=DFM_COMPACT_ROW_KEYS)
             return payload
         finally:
-            self._schedule_disconnect()
+            self._disconnect()
 
     def write_sync_dfm_payload(self, request):
         self._connect()
@@ -124,6 +142,7 @@ class ResQClient:
             dfm = self._dfm_method(request)
             payload = read_json(request["MethodJsonPath"])
             excluded_count = self._sync_excluded_ratios(dfm, payload)
+            user_entry_count = self._sync_user_entry_values(dfm, payload)
             selected_count = self._sync_selected_ratios(dfm, payload)
             notes_changed = self._sync_notes(dfm, payload)
             cell_notes_changed = self._sync_cell_notes(dfm, payload)
@@ -135,6 +154,7 @@ class ResQClient:
                 "updated": {
                     "excluded ratios": excluded_count,
                     "selected ratios": selected_count,
+                    "user entry values": user_entry_count,
                     "notes": notes_changed,
                     "cell notes": cell_notes_changed,
                 },
@@ -142,7 +162,7 @@ class ResQClient:
             write_json(request["DataPath"], payload)
             return payload
         finally:
-            self._schedule_disconnect()
+            self._disconnect()
 
     def write_error(self, request, message):
         data_path = request.get("DataPath")
@@ -229,6 +249,76 @@ class ResQClient:
             dfm.SetSelectedRatios(DevIndex=development_index, arg1=display_index)
             updates += 1
         return updates
+
+    def _sync_user_entry_values(self, dfm, payload):
+        average_formulas = self._dict_path(payload, ("ratios tab", "average formulas"))
+        labels = average_formulas.get("label") if isinstance(average_formulas, dict) else None
+        values = average_formulas.get("values") if isinstance(average_formulas, dict) else None
+        if not isinstance(labels, list) or not isinstance(values, list):
+            return 0
+
+        row_index = self._user_entry_payload_row_index(average_formulas, labels)
+        if row_index is None or row_index >= len(values) or not isinstance(values[row_index], list):
+            return 0
+
+        avg_index = self._user_entry_resq_index(dfm)
+        if avg_index is None:
+            return 0
+
+        column_count = self._development_column_count(dfm)
+        updates = 0
+        for development_index, raw_value in enumerate(values[row_index], start=1):
+            if development_index > column_count:
+                break
+            value = self._positive_number(raw_value)
+            if value is None:
+                continue
+            self._set_user_entry_average_ratio_value(dfm, development_index, avg_index, value)
+            updates += 1
+        return updates
+
+    def _user_entry_payload_row_index(self, average_formulas, labels):
+        settings = average_formulas.get("custom average formula settings")
+        average_types = settings.get("averageType") if isinstance(settings, dict) else None
+        if isinstance(average_types, list):
+            for index, average_type in enumerate(average_types):
+                if str(average_type or "").strip().lower() == "user_entry":
+                    return index
+
+        for index, label in enumerate(labels):
+            normalized = self._clean_label(label).lower()
+            if normalized == "user entry" or normalized.startswith("user entry "):
+                return index
+        return None
+
+    def _user_entry_resq_index(self, dfm):
+        for api_index in range(1, 50):
+            try:
+                raw_name = str(dfm.AverageFormula(api_index))
+            except Exception:
+                break
+            display_index, name = self._parse_average_formula_name(raw_name, api_index)
+            normalized = self._clean_label(name).lower()
+            if normalized == "user entry" or normalized.startswith("user entry "):
+                return display_index
+        return None
+
+    def _positive_number(self, value):
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        if number <= 0:
+            return None
+        return number
+
+    def _set_user_entry_average_ratio_value(self, dfm, development_index, avg_index, value):
+        try:
+            dfm.SetUserRatios(DevIndex=development_index, AvgIndex=avg_index, arg2=value)
+        except Exception as exc:
+            raise RuntimeError(f"Unable to update DFM User Entry value in ResQ with SetUserRatios: {exc}") from exc
 
     def _average_formula_display_indexes(self, dfm):
         out = {}

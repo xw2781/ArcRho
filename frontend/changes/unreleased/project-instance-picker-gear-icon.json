@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Matched the project instance tree preferences action to the shared path picker gear icon, spacing, and open-panel highlight behavior."
+}

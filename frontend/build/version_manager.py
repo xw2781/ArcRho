@@ -11,6 +11,9 @@ SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 ABOUT_VERSION_RE = re.compile(
     r'(<div id="aboutVersion">)Version\s+\d+\.\d+\.\d+(</div>)'
 )
+SPLASH_VERSION_RE = re.compile(
+    r'(<div class="version" id="version">)v\d+\.\d+\.\d+(</div>)'
+)
 
 
 def load_json(path: Path) -> dict:
@@ -48,9 +51,9 @@ def resolve_target_version(current_version: str, requested_version: str | None) 
     if requested_version:
         requested_version = requested_version.strip()
         parse_version(requested_version)
-        if not is_strictly_greater_version(requested_version, current_version):
+        if parse_version(requested_version) < parse_version(current_version):
             raise ValueError(
-                f"Requested version '{requested_version}' must be greater than current version '{current_version}'."
+                f"Requested version '{requested_version}' must not be lower than current version '{current_version}'."
             )
         return requested_version
     return bump_patch(current_version)
@@ -62,6 +65,14 @@ def update_about_dialog(index_html_path: Path, version: str) -> None:
     if count != 1:
         raise ValueError(f"Could not update About dialog version in {index_html_path}")
     index_html_path.write_text(updated, encoding="utf-8")
+
+
+def update_splash_page(splash_html_path: Path, version: str) -> None:
+    text = splash_html_path.read_text(encoding="utf-8")
+    updated, count = SPLASH_VERSION_RE.subn(rf"\1v{version}\2", text, count=1)
+    if count != 1:
+        raise ValueError(f"Could not update splash version in {splash_html_path}")
+    splash_html_path.write_text(updated, encoding="utf-8")
 
 
 def sync_package_lock(package_lock_path: Path, package_name: str, version: str) -> None:
@@ -101,6 +112,7 @@ def main() -> int:
     package_json_path = repo_root / "package.json"
     package_lock_path = repo_root / "package-lock.json"
     index_html_path = repo_root / "ui" / "index.html"
+    splash_html_path = repo_root / "ui" / "splash.html"
 
     package_json = load_json(package_json_path)
     current_version = str(package_json.get("version", "")).strip()
@@ -122,6 +134,7 @@ def main() -> int:
     dump_json(package_json_path, package_json)
     sync_package_lock(package_lock_path, package_name, target_version)
     update_about_dialog(index_html_path, target_version)
+    update_splash_page(splash_html_path, target_version)
 
     if args.version_file:
         Path(args.version_file).write_text(target_version + "\n", encoding="utf-8")

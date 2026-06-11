@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance now exposes the shared reserving-class tree Hidden Paths, Filter, and Preferences controls in its left panel."
+}

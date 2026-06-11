@@ -13,6 +13,8 @@ class ArcRhoTriRequest(BaseModel):
     Calendar: bool = False
     OriginLength: int = 12
     DevelopmentLength: int = 12
+    LocalOnly: bool = False
+    AllowDerived: bool = True
     timeout_sec: float = 6.0
 
 

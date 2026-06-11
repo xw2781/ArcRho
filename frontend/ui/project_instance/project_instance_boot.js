@@ -3,7 +3,7 @@ import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
 } from "/ui/shared/project_user_preferences.js";
-import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js?v=20260610b";
+import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js?v=20260610d";
 import "/ui/shared/zoom_bridge.js?v=20260521a";
 
 import { createProjectInstanceContext } from "./project_instance_context.js?v=20260608c";
@@ -11,7 +11,7 @@ import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260607d";
 import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260608c";
 import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260610a";
-import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260610a";
+import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260610b";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260607d";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260607d";
 import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260610b";

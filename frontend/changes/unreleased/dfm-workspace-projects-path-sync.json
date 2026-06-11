@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed DFM JSON save and load paths so Sync uses the configured workspace projects folder."
+}

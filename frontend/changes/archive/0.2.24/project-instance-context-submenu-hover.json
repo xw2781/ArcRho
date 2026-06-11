@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Made Project Instance context-menu submenus easier to reach without disappearing."
+}

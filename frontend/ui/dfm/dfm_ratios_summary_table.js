@@ -558,6 +558,7 @@ function showAvgMenu(x, y) {
 let summaryActiveCellState = { rowId: "", col: -1 };
 let summaryFormulaEditState = null;
 let summaryFormulaBarSkipBlurCommit = false;
+let summaryReferenceDragState = null;
 
 function normalizeAverageType(value) {
   const txt = String(value || "").trim().toLowerCase();
@@ -594,6 +595,104 @@ function findReferencedLabels(formula, allLabels) {
     }
   }
   return found;
+}
+
+function getSummaryLabelToIdMap() {
+  const rows = Array.isArray(summaryRowConfigs) ? summaryRowConfigs : [];
+  return new Map(
+    rows
+      .map((cfg) => [String(cfg?.label || cfg?.id || "").trim(), String(cfg?.id || "").trim()])
+      .filter(([label, rowId]) => label && rowId)
+  );
+}
+
+function getSummaryCellRowLabel(cell) {
+  return String(cell?.parentElement?.querySelector?.("th")?.textContent || "").trim();
+}
+
+function getFormulaReferencedLabels(raw) {
+  const labelToId = getSummaryLabelToIdMap();
+  if (!labelToId.size) return [];
+  return findReferencedLabels(raw, Array.from(labelToId.keys()));
+}
+
+function replaceFormulaReferenceLabel(raw, oldLabel, newLabel) {
+  const oldText = String(oldLabel || "").trim();
+  const nextText = String(newLabel || "").trim();
+  const source = String(raw || "");
+  if (!oldText || !nextText || oldText.toLowerCase() === nextText.toLowerCase()) {
+    return { changed: false, value: source };
+  }
+
+  const tokens = tokenizeFormula(source);
+  for (const token of tokens) {
+    if (token.type !== "ref") continue;
+    const quote = token.text[0];
+    const inner = token.text.slice(1, -1);
+    if (inner.toLowerCase() !== oldText.toLowerCase()) continue;
+    token.text = `${quote}${nextText}${quote}`;
+    return { changed: true, value: tokens.map((item) => item.text).join("") };
+  }
+
+  const lit = escapeRegExp(oldText);
+  const bare = new RegExp(lit, "i");
+  if (!bare.test(source)) return { changed: false, value: source };
+  return { changed: true, value: source.replace(bare, `"${nextText}"`) };
+}
+
+function updateActiveSummaryFormulaReferenceUi(summaryTable) {
+  if (!summaryTable) return;
+  summaryTable.querySelectorAll("td.summaryCell.summaryFormulaActiveRefCell")
+    .forEach((el) => el.classList.remove("summaryFormulaActiveRefCell"));
+
+  const state = summaryFormulaEditState;
+  const input = state?.input;
+  if (!state || state.summaryTable !== summaryTable || !input || !document.body.contains(input)) return;
+  if (!String(input.value || "").includes("=")) return;
+
+  const editCol = Number(state.col);
+  const editCell = state.cell;
+  if (!Number.isFinite(editCol) || editCol < 0 || !editCell) return;
+
+  const labelToId = getSummaryLabelToIdMap();
+  getFormulaReferencedLabels(input.value).forEach((label) => {
+    const rowId = labelToId.get(label);
+    if (!rowId) return;
+    const refCell = summaryTable.querySelector(
+      `td.summaryCell[data-r="${CSS.escape(rowId)}"][data-col="${editCol}"]`
+    );
+    if (!refCell || refCell === editCell) return;
+    refCell.classList.add("summaryFormulaActiveRefCell");
+  });
+}
+
+function applyUserEntryReferenceHighlights(summaryTable) {
+  if (!summaryTable) return;
+  summaryTable.querySelectorAll("td.summaryCell.summaryFormulaReferencedCell")
+    .forEach((el) => el.classList.remove("summaryFormulaReferencedCell"));
+
+  const labelToId = getSummaryLabelToIdMap();
+  if (!labelToId.size) return;
+  const labels = Array.from(labelToId.keys());
+
+  summaryRowConfigs.forEach((cfg) => {
+    if (!isUserEntryConfig(cfg)) return;
+    const sourceRowId = String(cfg?.id || "");
+    const colCount = getCurrentRatioColumnCount();
+    for (let col = 0; col < colCount; col++) {
+      const inputRaw = String(getUserEntryInputForCol(cfg, col) || "").trim();
+      if (!inputRaw) continue;
+      const referencedLabels = findReferencedLabels(inputRaw, labels);
+      referencedLabels.forEach((label) => {
+        const refRowId = labelToId.get(label);
+        if (!refRowId || refRowId === sourceRowId) return;
+        const refCell = summaryTable.querySelector(
+          `td.summaryCell[data-r="${CSS.escape(refRowId)}"][data-col="${col}"]`
+        );
+        if (refCell) refCell.classList.add("summaryFormulaReferencedCell");
+      });
+    }
+  });
 }
 
 function evaluateSimpleMathExpression(raw, referenceValues) {
@@ -1036,6 +1135,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       const cell = summaryTableEl.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
       if (!cell) return;
       beginSummaryFormulaEditSession(summaryTableEl, cell, input, col);
+      updateActiveSummaryFormulaReferenceUi(summaryTableEl);
       scrollSummaryFormulaInputToEnd(input);
     });
     // Prevent cursor from moving before the prefix
@@ -1057,6 +1157,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
         if (cell) {
           beginSummaryFormulaEditSession(summaryTableEl, cell, input, col);
           updateSummaryFormulaBarForCell(cell);
+          updateActiveSummaryFormulaReferenceUi(summaryTableEl);
         }
       }
     });
@@ -1303,6 +1404,8 @@ async function commitExcelFormulaAsync(inputEl, rowId, col, raw) {
       cell.title = raw;
     }
     if (selectedTable && summaryTable) ensureSelectedRowValues(summaryTable, selectedTable);
+    applyUserEntryReferenceHighlights(summaryTable);
+    clearSummaryReferenceUi(summaryTable);
     summaryFormulaEditState = null;
     updateSummaryFormulaBarForCell(cell);
     _onRatioStateMutated();
@@ -1394,6 +1497,7 @@ export async function refreshAllExcelLinks() {
 
   if (anyChanged && summaryTable && selectedTable) {
     ensureSelectedRowValues(summaryTable, selectedTable);
+    applyUserEntryReferenceHighlights(summaryTable);
     _onRatioStateMutated();
   }
   const count = cellsToRefresh.length;
@@ -1483,6 +1587,8 @@ function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCo
     summaryActiveCellState = { rowId: String(rowId), col: nextEntries[0].col };
   }
   if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
+  applyUserEntryReferenceHighlights(summaryTable);
+  clearSummaryReferenceUi(summaryTable);
   summaryFormulaEditState = null;
   updateSummaryFormulaBarForCell(firstCell);
   _onRatioStateMutated();
@@ -1520,6 +1626,8 @@ function commitSummaryFormulaInput(inputEl) {
   const cell = summaryTable.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
   if (cell) setUserEntryCellDisplayValue(cell, nextValue);
   if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
+  applyUserEntryReferenceHighlights(summaryTable);
+  clearSummaryReferenceUi(summaryTable);
   summaryFormulaEditState = null;
   updateSummaryFormulaBarForCell(cell);
   _onRatioStateMutated();
@@ -1606,6 +1714,10 @@ function clearSummaryReferenceUi(summaryTable) {
     .forEach((el) => el.classList.remove("summaryRefHover"));
   summaryTable.querySelectorAll("td.summaryCell.summaryRefCandidate")
     .forEach((el) => el.classList.remove("summaryRefCandidate"));
+  summaryTable.querySelectorAll("td.summaryCell.summaryFormulaActiveRefCell")
+    .forEach((el) => el.classList.remove("summaryFormulaActiveRefCell"));
+  summaryTable.querySelectorAll("td.summaryCell.summaryFormulaRefDragTarget")
+    .forEach((el) => el.classList.remove("summaryFormulaRefDragTarget"));
 }
 
 function buildSummaryReferenceValues(summaryTable, col) {
@@ -1668,6 +1780,7 @@ function beginSummaryFormulaEditSession(summaryTable, cell, input, col) {
     rowId,
     originalInput: keepOriginal,
   };
+  updateActiveSummaryFormulaReferenceUi(summaryTable);
 }
 
 function cancelSummaryFormulaEditSession() {
@@ -2464,6 +2577,7 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable) {
     setUserEntryCellEntry(rowId, col, raw || String(nextValue), nextValue);
     restore(nextValue);
     ensureSelectedRowValues(summaryTable, selectedTable);
+    applyUserEntryReferenceHighlights(summaryTable);
     updateSummaryFormulaBarForCell(cell);
     _onRatioStateMutated();
   };
@@ -2488,6 +2602,14 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   summaryTable.dataset.selectionWired = "1";
   let dragActive = false;
   let lastKey = null;
+
+  const finishSummaryCellDrag = () => {
+    if (dragActive) {
+      commitRatioHistoryAction("summary-cell-click");
+    }
+    dragActive = false;
+    lastKey = null;
+  };
 
   const isSummaryEditSessionActive = () => {
     if (!summaryFormulaEditState) return false;
@@ -2518,6 +2640,105 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       const hoverCol = Number(hoverCell.dataset.col);
       if (hoverCol === editCol) hoverCell.classList.add("summaryRefHover");
     }
+    updateActiveSummaryFormulaReferenceUi(summaryTable);
+  };
+
+  const isNearCellBorder = (e, cell) => {
+    const rect = cell?.getBoundingClientRect?.();
+    if (!rect) return false;
+    const tolerance = 6;
+    const left = Math.abs(e.clientX - rect.left);
+    const right = Math.abs(e.clientX - rect.right);
+    const top = Math.abs(e.clientY - rect.top);
+    const bottom = Math.abs(e.clientY - rect.bottom);
+    return Math.min(left, right, top, bottom) <= tolerance;
+  };
+
+  const getReferenceDragTarget = (e) => {
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = target?.closest?.("td.summaryCell");
+    const dragState = summaryReferenceDragState;
+    if (!cell || !dragState || !summaryTable.contains(cell)) return null;
+    if (cell === dragState.editCell) return null;
+    const col = Number(cell.dataset.col);
+    return col === dragState.col ? cell : null;
+  };
+
+  const clearReferenceDragTargetUi = () => {
+    summaryTable.querySelectorAll("td.summaryCell.summaryFormulaRefDragTarget")
+      .forEach((cell) => cell.classList.remove("summaryFormulaRefDragTarget"));
+  };
+
+  const applyReferenceDragTarget = (cell) => {
+    const dragState = summaryReferenceDragState;
+    if (!dragState || !cell) return;
+    const nextLabel = getSummaryCellRowLabel(cell);
+    if (!nextLabel) return;
+    const replaced = replaceFormulaReferenceLabel(dragState.input.value, dragState.currentLabel, nextLabel);
+    clearReferenceDragTargetUi();
+    cell.classList.add("summaryFormulaRefDragTarget");
+    if (!replaced.changed) return;
+    dragState.input.value = replaced.value;
+    dragState.currentLabel = nextLabel;
+    dragState.currentCell = cell;
+    beginSummaryFormulaEditSession(summaryTable, dragState.editCell, dragState.input, dragState.col);
+    updateSummaryFormulaBarForCell(dragState.editCell);
+    updateActiveSummaryFormulaReferenceUi(summaryTable);
+    scrollSummaryFormulaInputToEnd(dragState.input);
+  };
+
+  const finishReferenceDrag = () => {
+    if (!summaryReferenceDragState) return;
+    const input = summaryReferenceDragState.input;
+    summaryReferenceDragState = null;
+    clearReferenceDragTargetUi();
+    updateActiveSummaryFormulaReferenceUi(summaryTable);
+    input?.focus?.();
+    window.removeEventListener("mousemove", onReferenceDragMove, true);
+    window.removeEventListener("mouseup", onReferenceDragUp, true);
+    window.removeEventListener("blur", finishReferenceDrag, true);
+  };
+
+  function onReferenceDragMove(e) {
+    if (!summaryReferenceDragState) return;
+    e.preventDefault();
+    const targetCell = getReferenceDragTarget(e);
+    if (targetCell) applyReferenceDragTarget(targetCell);
+  }
+
+  function onReferenceDragUp(e) {
+    if (summaryReferenceDragState && e) {
+      const targetCell = getReferenceDragTarget(e);
+      if (targetCell) applyReferenceDragTarget(targetCell);
+    }
+    finishReferenceDrag();
+  }
+
+  const tryStartReferenceDrag = (e) => {
+    if (!isFormulaReferenceMode()) return false;
+    const cell = e.target?.closest?.("td.summaryCell.summaryFormulaActiveRefCell");
+    if (!cell || !isNearCellBorder(e, cell)) return false;
+    const editState = summaryFormulaEditState;
+    const input = editState?.input;
+    const editCol = Number(editState?.col);
+    const editCell = editState?.cell;
+    const currentLabel = getSummaryCellRowLabel(cell);
+    if (!input || !Number.isFinite(editCol) || !editCell || !currentLabel) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    summaryReferenceDragState = {
+      summaryTable,
+      input,
+      editCell,
+      col: editCol,
+      currentCell: cell,
+      currentLabel,
+    };
+    cell.classList.add("summaryFormulaRefDragTarget");
+    window.addEventListener("mousemove", onReferenceDragMove, true);
+    window.addEventListener("mouseup", onReferenceDragUp, true);
+    window.addEventListener("blur", finishReferenceDrag, true);
+    return true;
   };
 
   const tryInsertReferenceFromEvent = (e) => {
@@ -2535,6 +2756,11 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     if (!rowLabel) return false;
     e.preventDefault();
     e.stopPropagation();
+    if (cell.classList.contains("summaryFormulaActiveRefCell")) {
+      input.focus();
+      updateReferenceHoverUi(cell);
+      return true;
+    }
     insertAtInputCursor(input, `"${rowLabel}"`);
     input.focus();
     updateReferenceHoverUi(cell);
@@ -2646,6 +2872,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   };
 
   summaryTable.addEventListener("mousedown", (e) => {
+    if (tryStartReferenceDrag(e)) return;
     if (tryInsertReferenceFromEvent(e)) return;
     if (e.button !== 0) return;
     if (e.target?.closest?.("input.summaryCellEditInput")) return;
@@ -2660,6 +2887,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   });
 
   summaryTable.addEventListener("mousemove", (e) => {
+    if (summaryReferenceDragState) return;
     const hoverCell = e.target?.closest?.("td.summaryCell");
     updateReferenceHoverUi(hoverCell || null);
     if (!dragActive) return;
@@ -2671,12 +2899,10 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     setActiveCell(cell, true);
   });
 
-  window.addEventListener("mouseup", () => {
-    if (dragActive) {
-      commitRatioHistoryAction("summary-cell-click");
-    }
-    dragActive = false;
-    lastKey = null;
+  window.addEventListener("mouseup", finishSummaryCellDrag);
+  window.addEventListener("blur", finishSummaryCellDrag);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) finishSummaryCellDrag();
   });
 
   summaryTable.addEventListener("click", (e) => {
@@ -2833,6 +3059,7 @@ export function updateRatioSummary() {
   const selectedTable = wrap.querySelector("table.ratioSelectedTable");
   if (summaryTable && selectedTable) {
     ensureSelectedRowValues(summaryTable, selectedTable);
+    applyUserEntryReferenceHighlights(summaryTable);
   }
 }
 

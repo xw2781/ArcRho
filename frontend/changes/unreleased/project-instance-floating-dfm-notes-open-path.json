@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Fixed DFM Notes file-link context-menu actions when the DFM is open as a floating Project Instance window, including popped DFM tab surfaces."
+}

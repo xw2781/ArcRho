@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Stopped Project Instance from showing both encoded and decoded rows for the same cached dataset instance."
+}

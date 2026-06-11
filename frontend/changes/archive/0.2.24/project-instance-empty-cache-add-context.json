@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Allowed adding a dataset from the project-instance empty cached-dataset area."
+}

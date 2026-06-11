@@ -221,6 +221,343 @@ function applyPayloadToActiveDfm(payload) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  }[ch]));
+}
+
+function ensureMacroPreviewStyles() {
+  if (document.getElementById("macro-notes-preview-style")) return;
+  const style = document.createElement("style");
+  style.id = "macro-notes-preview-style";
+  style.textContent = `
+    .macroNotesPreviewOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 13000;
+      background: rgba(15, 23, 42, 0.18);
+      box-sizing: border-box;
+    }
+    .macroNotesPreviewWindow {
+      position: fixed;
+      width: min(980px, calc(100vw - 32px));
+      min-width: min(620px, calc(100vw - 32px));
+      height: min(720px, calc(100vh - 96px));
+      min-height: 360px;
+      max-width: calc(100vw - 16px);
+      max-height: calc(100vh - 96px);
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #c8d0dc;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 22px 54px rgba(15, 23, 42, 0.24);
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      color: #172033;
+      overflow: hidden;
+      resize: both;
+    }
+    .macroNotesPreviewHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 32px;
+      padding: 3px 12px;
+      border-bottom: 1px solid #e2e7ef;
+      background: #f7f9fc;
+      cursor: move;
+      user-select: none;
+    }
+    .macroNotesPreviewTitle {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .macroNotesPreviewClose {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      box-sizing: border-box;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      color: #5b6678;
+    }
+    .macroNotesPreviewClose:hover { background: #edf1f7; color: #1f2937; }
+    .macroNotesPreviewBody {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 16px;
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+    .macroNotesPreviewStatus {
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border-radius: 7px;
+      border: 1px solid #c9d9f7;
+      background: #eef5ff;
+      color: #244a86;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .macroNotesPreviewGrid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      min-height: 0;
+    }
+    .macroNotesPreviewCard {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      border: 1px solid #d9e0ea;
+      border-radius: 7px;
+      background: #fbfcff;
+      padding: 12px;
+    }
+    .macroNotesPreviewCard.newest {
+      border-color: #78b997;
+      box-shadow: inset 0 0 0 1px #a8d9bd;
+      background: #f3fbf6;
+    }
+    .macroNotesPreviewSourceLabel {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      width: fit-content;
+      padding: 2px 9px;
+      border: 1px solid #2457a6;
+      border-radius: 6px;
+      background: #e8f0ff;
+      color: #173d78;
+      font-weight: 800;
+      font-size: 13px;
+      line-height: 1.2;
+      white-space: nowrap;
+      margin-bottom: 9px;
+    }
+    .macroNotesPreviewText {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: 470px;
+      margin: 0;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #fff;
+      overflow: auto;
+      white-space: pre-wrap;
+      font: 12px Consolas, "Courier New", monospace;
+      color: #172033;
+    }
+    .macroNotesDeleted {
+      background: #ffe3e3;
+      color: #8f1d1d;
+      border-radius: 2px;
+    }
+    .macroNotesAdded {
+      background: #dcfce7;
+      color: #14532d;
+      border-radius: 2px;
+    }
+    .macroNotesPreviewActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid #e2e7ef;
+      background: #fbfcff;
+    }
+    .macroNotesPreviewBtn {
+      min-width: 82px;
+      height: 28px;
+      padding: 0 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      color: #172033;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .macroNotesPreviewBtn.primary {
+      border-color: #9bbcf7;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-weight: 700;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function tokenizeDiffText(text) {
+  return String(text || "").match(/\s+|[^\s]+/g) || [];
+}
+
+function buildTextDiff(oldText, newText) {
+  const oldTokens = tokenizeDiffText(oldText);
+  const newTokens = tokenizeDiffText(newText);
+  const dp = Array.from({ length: oldTokens.length + 1 }, () => new Array(newTokens.length + 1).fill(0));
+  for (let i = oldTokens.length - 1; i >= 0; i -= 1) {
+    for (let j = newTokens.length - 1; j >= 0; j -= 1) {
+      dp[i][j] = oldTokens[i] === newTokens[j]
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const deleted = new Array(oldTokens.length).fill(false);
+  const added = new Array(newTokens.length).fill(false);
+  let i = 0;
+  let j = 0;
+  while (i < oldTokens.length && j < newTokens.length) {
+    if (oldTokens[i] === newTokens[j]) {
+      i += 1;
+      j += 1;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      deleted[i] = true;
+      i += 1;
+    } else {
+      added[j] = true;
+      j += 1;
+    }
+  }
+  while (i < oldTokens.length) {
+    deleted[i] = true;
+    i += 1;
+  }
+  while (j < newTokens.length) {
+    added[j] = true;
+    j += 1;
+  }
+  return { oldTokens, newTokens, deleted, added };
+}
+
+function renderDiffTokens(tokens, flags, className) {
+  let html = "";
+  let buffer = "";
+  let highlighted = false;
+  const flush = () => {
+    if (!buffer) return;
+    const text = escapeHtml(buffer);
+    html += highlighted ? `<span class="${className}">${text}</span>` : text;
+    buffer = "";
+  };
+  tokens.forEach((token, index) => {
+    const isWhitespace = /^\s+$/.test(String(token || ""));
+    const nextHighlighted = !!flags[index] && !isWhitespace;
+    if (nextHighlighted !== highlighted) {
+      flush();
+      highlighted = nextHighlighted;
+    }
+    buffer += token;
+  });
+  flush();
+  return html;
+}
+
+function placeMacroPreviewWindow(dialogWindow) {
+  const rect = dialogWindow.getBoundingClientRect();
+  const top = Math.min(64, Math.max(16, Math.floor(window.innerHeight * 0.08)));
+  const left = Math.max(8, Math.round((window.innerWidth - rect.width) / 2));
+  dialogWindow.style.left = `${left}px`;
+  dialogWindow.style.top = `${top}px`;
+}
+
+function enableMacroPreviewDrag(dialogWindow, header) {
+  if (!dialogWindow || !header) return;
+  header.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target?.closest?.("button")) return;
+    const rect = dialogWindow.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLeft = rect.left;
+    const startTop = rect.top;
+    header.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+    const onMove = (moveEvent) => {
+      dialogWindow.style.left = `${startLeft + moveEvent.clientX - startX}px`;
+      dialogWindow.style.top = `${startTop + moveEvent.clientY - startY}px`;
+    };
+    const onUp = () => {
+      header.releasePointerCapture?.(event.pointerId);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+  });
+}
+
+function showMacroNotesPreview(preview) {
+  ensureMacroPreviewStyles();
+  const oldText = String(preview?.original_notes || "");
+  const newText = String(preview?.suggested_notes || "");
+  const diff = buildTextDiff(oldText, newText);
+  const overlay = document.createElement("div");
+  overlay.className = "macroNotesPreviewOverlay";
+  const summary = String(preview?.summary || "Review the suggested Notes correction.");
+  overlay.innerHTML = `
+    <div class="macroNotesPreviewWindow" role="dialog" aria-modal="true" aria-labelledby="macroNotesPreviewTitle">
+      <div class="macroNotesPreviewHeader">
+        <h2 class="macroNotesPreviewTitle" id="macroNotesPreviewTitle">${escapeHtml(preview?.title || "Validate Notes")}</h2>
+        <button class="macroNotesPreviewClose" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="macroNotesPreviewBody">
+        <div class="macroNotesPreviewStatus">${escapeHtml(summary)}</div>
+        <div class="macroNotesPreviewGrid">
+          <div class="macroNotesPreviewCard">
+            <span class="macroNotesPreviewSourceLabel">Current Notes</span>
+            <pre class="macroNotesPreviewText">${renderDiffTokens(diff.oldTokens, diff.deleted, "macroNotesDeleted") || "No notes"}</pre>
+          </div>
+          <div class="macroNotesPreviewCard newest">
+            <span class="macroNotesPreviewSourceLabel">Suggested Notes</span>
+            <pre class="macroNotesPreviewText">${renderDiffTokens(diff.newTokens, diff.added, "macroNotesAdded") || "No notes"}</pre>
+          </div>
+        </div>
+      </div>
+      <div class="macroNotesPreviewActions">
+        <button class="macroNotesPreviewBtn primary" type="button" data-action="accept">Accept Corrected Notes</button>
+        <button class="macroNotesPreviewBtn" type="button" data-action="cancel">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const dialogWindow = overlay.querySelector(".macroNotesPreviewWindow");
+  const header = overlay.querySelector(".macroNotesPreviewHeader");
+  placeMacroPreviewWindow(dialogWindow);
+  enableMacroPreviewDrag(dialogWindow, header);
+  return new Promise((resolve) => {
+    const finish = (accepted) => {
+      overlay.remove();
+      resolve(!!accepted);
+    };
+    overlay.querySelector(".macroNotesPreviewClose")?.addEventListener("click", () => finish(false));
+    overlay.querySelector("[data-action='cancel']")?.addEventListener("click", () => finish(false));
+    overlay.querySelector("[data-action='accept']")?.addEventListener("click", () => finish(true));
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(false);
+    });
+    overlay.tabIndex = -1;
+    overlay.focus();
+  });
+}
+
 async function runSelectedMacro() {
   const macro = getSelectedMacro();
   if (!macro) return;
@@ -246,6 +583,19 @@ async function runSelectedMacro() {
     });
     const result = await response.json();
     if (!result?.success) throw new Error(result?.message || "Macro failed.");
+    const preview = result.preview || null;
+    if (preview?.type === "notes_diff") {
+      if (!preview.has_changes) {
+        const message = String(preview.summary || "Validate Notes found no required changes.");
+        setMacroStatus(message, "", { statusBar: true });
+        return;
+      }
+      const accepted = await showMacroNotesPreview(preview);
+      if (!accepted) {
+        setMacroStatus("Validate Notes suggestion was not applied.", "", { statusBar: true });
+        return;
+      }
+    }
     const applied = await applyPayloadToActiveDfm(result.payload);
     if (!applied?.ok) throw new Error(applied?.error || "Macro ran, but the DFM tab did not accept the result.");
     const output = String(result.stdout || "").trim();

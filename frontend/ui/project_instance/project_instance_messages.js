@@ -51,6 +51,57 @@ function requestShellOpenPath(targetPath) {
   });
 }
 
+function forwardOpenPathRequestToShell(message, sourceWindow) {
+  const source = sourceWindow || null;
+  const sourceFrame = findWindowByMessageSource(source);
+  if (!sourceFrame) return false;
+
+  const requestId = toText(message?.requestId);
+  const path = toText(message?.path);
+  const preferredApp = toText(message?.preferredApp);
+  const readOnly = !!message?.readOnly;
+  if (!requestId) return true;
+
+  const replyToSource = (payload) => {
+    try {
+      source?.postMessage({ type: "arcrho:open-path-result", requestId, ...payload }, "*");
+    } catch {}
+  };
+  if (!path) {
+    replyToSource({ ok: false, error: "Empty path." });
+    return true;
+  }
+
+  let done = false;
+  let timeoutId = null;
+  const finish = (payload) => {
+    if (done) return;
+    done = true;
+    if (timeoutId != null) window.clearTimeout(timeoutId);
+    window.removeEventListener("message", onMessage);
+    replyToSource(payload || { ok: false, error: "Open path failed." });
+  };
+  const onMessage = (event) => {
+    const msg = event.data || {};
+    if (msg.type !== "arcrho:open-path-result" || toText(msg.requestId) !== requestId) return;
+    finish({ ok: !!msg.ok, error: toText(msg.error) });
+  };
+  window.addEventListener("message", onMessage);
+  timeoutId = window.setTimeout(() => finish({ ok: false, error: "Open path timed out." }), 6000);
+  try {
+    window.parent?.postMessage({
+      type: "arcrho:open-path",
+      requestId,
+      path,
+      preferredApp,
+      readOnly,
+    }, "*");
+  } catch (err) {
+    finish({ ok: false, error: toText(err?.message) || "Failed to send open-path request." });
+  }
+  return true;
+}
+
 async function revealSelectedReservingClassFolder() {
   const selectedPath = toText(state.selectedPath);
   if (!projectName || !selectedPath) {
@@ -235,6 +286,9 @@ window.addEventListener("message", (event) => {
     void revealSelectedReservingClassFolder();
     return;
   }
+  if (msg.type === "arcrho:open-path") {
+    if (forwardOpenPathRequestToShell(msg, event.source)) return;
+  }
   if (msg.type === "arcrho:tab-activated") {
     notifyActiveDfmWindowState();
     notifyProjectInstanceStateChanged();
@@ -369,6 +423,7 @@ window.addEventListener("message", (event) => {
     closeActiveDatasetWindowFromShortcut,
     consumeCloseShortcutFromShell,
     forwardRequestToActiveDfm,
+    forwardOpenPathRequestToShell,
     initDatasetWindowShortcuts,
     isCloseActiveWindowShortcut,
     requestShellOpenPath,

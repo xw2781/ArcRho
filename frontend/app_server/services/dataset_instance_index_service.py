@@ -14,7 +14,7 @@ from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 6
+INDEX_VERSION = 7
 DFM_METHOD_TYPE = "DFM"
 
 
@@ -107,10 +107,14 @@ def _add_cached_dataset_name(names: Set[str], value: Any) -> None:
         names.add(text)
 
 
-def _split_length_scoped_stem(stem: str) -> Tuple[str, bool]:
+def _add_cached_dataset_name_from_filename(names: Set[str], value: Any) -> None:
+    text = config.decode_filename_segment(_clean_text(value))
+    if text:
+        names.add(text)
+
+
+def _split_cache_variant_stem(stem: str) -> Tuple[str, bool]:
     parts = str(stem or "").split("@")
-    if len(parts) >= 3 and parts[-1].strip().isdigit() and parts[-2].strip().isdigit():
-        return "@".join(parts[:-2]), True
     if (
         len(parts) >= 5
         and parts[-4].strip().isdigit()
@@ -122,21 +126,26 @@ def _split_length_scoped_stem(stem: str) -> Tuple[str, bool]:
     return str(stem or ""), False
 
 
+def _has_legacy_length_only_suffix(stem: str) -> bool:
+    parts = str(stem or "").split("@")
+    return len(parts) >= 3 and parts[-1].strip().isdigit() and parts[-2].strip().isdigit()
+
+
 def _normalize_cached_dataset_name(value: Any) -> str:
     text = _clean_text(value)
-    stem, _ = _split_length_scoped_stem(text)
-    return stem.strip()
+    stem, _ = _split_cache_variant_stem(text)
+    return config.decode_filename_segment(stem.strip()).strip()
 
 
 def _dataset_sidecar_path_for_cached_csv(csv_path: str) -> str:
     folder = os.path.dirname(csv_path)
     stem = os.path.splitext(os.path.basename(csv_path))[0]
-    dataset_stem, is_length_scoped = _split_length_scoped_stem(stem)
+    dataset_stem, is_cache_variant = _split_cache_variant_stem(stem)
     if os.path.basename(folder).lower() == config.DATASET_CACHE_DIR.lower():
         sidecar_folder = os.path.join(os.path.dirname(folder), config.DATASET_SIDECAR_DIR)
     else:
         sidecar_folder = os.path.join(folder, config.DATASET_SIDECAR_DIR)
-    if is_length_scoped:
+    if is_cache_variant:
         return os.path.join(sidecar_folder, f"{dataset_stem}.json")
     return os.path.join(sidecar_folder, f"{stem}.json")
 
@@ -146,16 +155,16 @@ def _cached_dataset_names_from_file(filename: str) -> Set[str]:
     ext_l = ext.lower()
     names: Set[str] = set()
     if ext_l == ".csv":
-        _add_cached_dataset_name(names, _normalize_cached_dataset_name(stem))
+        _add_cached_dataset_name_from_filename(names, _normalize_cached_dataset_name(stem))
         return names
     if ext_l != ".json":
         return names
 
     for prefix in ("ArcRhoTriNotes@", "DFM@"):
         if stem.startswith(prefix):
-            _add_cached_dataset_name(names, stem[len(prefix):])
+            _add_cached_dataset_name_from_filename(names, stem[len(prefix):])
             return names
-    _add_cached_dataset_name(names, _normalize_cached_dataset_name(stem))
+    _add_cached_dataset_name_from_filename(names, _normalize_cached_dataset_name(stem))
     return names
 
 
@@ -188,7 +197,7 @@ def _metadata_text(metadata: Dict[str, Any], keys: Tuple[str, ...]) -> str:
 
 def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None:
     details_tab = _json_tab(payload, "details tab")
-    dataset_name = _clean_text(details_tab.get("output type"))
+    dataset_name = _normalize_cached_dataset_name(details_tab.get("output type"))
     if not dataset_name:
         return None
     return {
@@ -350,14 +359,19 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
             metadata: Dict[str, Any] = {}
             metadata_path = entry.path
             method_entry = None
+            entry_stem = os.path.splitext(entry.name)[0]
+            legacy_length_only_name = _has_legacy_length_only_suffix(entry_stem)
 
             if ext == ".csv":
                 file_names = set(_cached_dataset_names_from_file(entry.name))
                 metadata_path = _dataset_sidecar_path_for_cached_csv(entry.path)
                 metadata = metadata_cache.setdefault(metadata_path, _safe_read_json(metadata_path))
+                legacy_length_only_name = legacy_length_only_name or _has_legacy_length_only_suffix(
+                    os.path.splitext(os.path.basename(metadata_path))[0]
+                )
             elif ext == ".json":
                 metadata = metadata_cache.setdefault(entry.path, _safe_read_json(entry.path))
-                payload_names = _cached_dataset_names_from_payload(metadata)
+                payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
                 if not sidecar_metadata and entry.name.startswith("DFM@"):
                     method_entry = _method_entry_from_payload(metadata)
                     if method_entry:
@@ -366,7 +380,7 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 if not file_names:
                     file_names.update(payload_names or _cached_dataset_names_from_file(entry.name))
 
-            if metadata:
+            if metadata and not legacy_length_only_name:
                 payload_names = _cached_dataset_names_from_payload(metadata)
                 file_names.update(payload_names)
 
@@ -386,10 +400,11 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
             if file_names:
                 file_info["dataset_names"] = sorted(file_names, key=lambda item: item.lower())
             if metadata:
-                file_info["dataset_name"] = _normalize_cached_dataset_name(metadata.get("dataset_name") or metadata.get("instance_name"))
                 dataset_type_name = _normalize_cached_dataset_name(metadata.get("dataset_type_name") or metadata.get("dataset_type"))
-                file_info["dataset_type_name"] = dataset_type_name
-                file_info["dataset_type"] = dataset_type_name
+                if not legacy_length_only_name:
+                    file_info["dataset_name"] = _normalize_cached_dataset_name(metadata.get("dataset_name") or metadata.get("instance_name"))
+                    file_info["dataset_type_name"] = dataset_type_name
+                    file_info["dataset_type"] = dataset_type_name
                 file_info["csv_file"] = _clean_text(metadata.get("csv_file"))
                 file_info["source_kind"] = _clean_text(metadata.get("source_kind"))
                 file_info["editable"] = metadata.get("editable")
@@ -450,7 +465,7 @@ def _dedupe_methods(methods: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     seen = set()
     for item in methods:
-        dataset_name = _clean_text(item.get("dataset_name"))
+        dataset_name = _normalize_cached_dataset_name(item.get("dataset_name"))
         method_type = _clean_text(item.get("method_type")) or "None"
         key = (dataset_name.lower(), method_type.lower())
         if not dataset_name or key in seen:
@@ -470,7 +485,7 @@ def _dedupe_methods(methods: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def _method_type_by_name(methods: List[Dict[str, Any]]) -> Dict[str, str]:
     out: Dict[str, str] = {}
     for item in methods:
-        name = _clean_text(item.get("dataset_name"))
+        name = _normalize_cached_dataset_name(item.get("dataset_name"))
         method_type = _clean_text(item.get("method_type"))
         if name and method_type:
             out[name.lower()] = method_type

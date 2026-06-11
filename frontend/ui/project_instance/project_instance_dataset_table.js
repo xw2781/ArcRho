@@ -460,11 +460,17 @@ function getDatasetName(row) {
   return toText(row?.[0]);
 }
 
-function splitLengthScopedDatasetName(value) {
+function stripDatasetCacheVariantSuffix(value) {
   const text = toText(value);
   const parts = text.split("@");
-  if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 1]) && /^\d+$/.test(parts[parts.length - 2])) {
-    return parts.slice(0, -2).join("@").trim();
+  if (
+    parts.length >= 5
+    && /^(dev|cal)$/i.test(parts[parts.length - 1])
+    && /^(cum|inc)$/i.test(parts[parts.length - 2])
+    && /^\d+$/.test(parts[parts.length - 3])
+    && /^\d+$/.test(parts[parts.length - 4])
+  ) {
+    return parts.slice(0, -4).join("@").trim();
   }
   return text;
 }
@@ -476,7 +482,7 @@ function getDatasetTypeRowByName(name) {
 }
 
 function getInstanceDatasetName(item) {
-  return splitLengthScopedDatasetName(toText(item?.dataset_name || item?.instance_name || item?.name));
+  return stripDatasetCacheVariantSuffix(toText(item?.dataset_name || item?.instance_name || item?.name));
 }
 
 function getInstanceDatasetTypeName(item, instanceName = "") {

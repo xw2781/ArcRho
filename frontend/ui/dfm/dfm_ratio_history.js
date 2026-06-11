@@ -152,7 +152,11 @@ export function clearRatioHistoryTempSession() {
 }
 
 export function beginRatioHistoryAction(source = "") {
-  if (applyingHistory || pendingBefore) return;
+  if (applyingHistory) return;
+  if (pendingBefore) {
+    commitRatioHistoryAction(`${pendingSource || source || "ratio-change"}:auto-commit`);
+  }
+  if (pendingBefore) return;
   pendingBefore = snapshotRatioState();
   pendingSource = String(source || "");
 }

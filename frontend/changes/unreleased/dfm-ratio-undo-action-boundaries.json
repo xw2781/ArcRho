@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Kept separate DFM ratio exclusion clicks from merging into one undo or redo step after a missed mouseup event."
+}

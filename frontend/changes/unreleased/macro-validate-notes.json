@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Added a Validate Notes macro that previews corrected DFM adjustment notes before applying them."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Updated DFM RPC server write-back to sync User Entry average-formula values into ResQ."
+}

@@ -21,6 +21,39 @@ from arcrho_api.paths import dfm_filename
 from arcrho_api.migration import ArcRhoSession
 
 
+_LOG_DIR = Path(__file__).resolve().parent / "logs"
+_TMP_ROOT = _LOG_DIR / "tmp"
+_LOG_PATH = _LOG_DIR / f"{Path(__file__).stem}_{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}.log"
+_LOG_READY = False
+
+
+def _prune_logs() -> None:
+    logs = sorted(
+        _LOG_DIR.glob(f"{Path(__file__).stem}_*.log"),
+        key=lambda item: item.stat().st_mtime if item.exists() else 0,
+        reverse=True,
+    )
+    for old_log in logs[3:]:
+        try:
+            old_log.unlink()
+        except OSError:
+            pass
+
+
+def test_log(message: str) -> None:
+    global _LOG_READY
+    try:
+        _LOG_DIR.mkdir(parents=True, exist_ok=True)
+        if not _LOG_READY:
+            _prune_logs()
+            _LOG_READY = True
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with _LOG_PATH.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(f"{timestamp} | {message}\n")
+    except OSError:
+        pass
+
+
 def sample_payload() -> dict:
     return {
         "json format": "arcrho-dfm-method-by-tab-v1",
@@ -69,24 +102,52 @@ def sample_payload() -> dict:
 
 class ArcRhoApiTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory(dir=r"C:\tmp")
+        test_log(f"START {self.id()}")
+        test_log(f"SETUP_STEP ensure_tmp_root={_TMP_ROOT}")
+        _TMP_ROOT.mkdir(parents=True, exist_ok=True)
+        test_log("SETUP_STEP create_temporary_directory")
+        self.tmp = tempfile.TemporaryDirectory(dir=str(_TMP_ROOT))
+        test_log(f"SETUP_STEP temporary_directory_created={self.tmp.name}")
         self.root = Path(self.tmp.name) / "ArcRho Server"
         self.project_dir = self.root / "projects" / "Demo"
         self.data_dir = self.project_dir / "data"
         self.rc_data_dir = self.data_dir / "Auto_%5C_PP"
-        self.rc_data_dir.mkdir(parents=True)
-        self.method_path = self.rc_data_dir / dfm_filename("Paid DFM")
-        self.input_csv = self.rc_data_dir / "input.csv"
+        self.datasets_dir = self.rc_data_dir / "datasets"
+        self.methods_dir = self.rc_data_dir / "methods"
+        self.sidecars_dir = self.rc_data_dir / "sidecars"
+        test_log(f"SETUP_STEP mkdir_datasets={self.datasets_dir}")
+        self.datasets_dir.mkdir(parents=True)
+        test_log(f"SETUP_STEP mkdir_methods={self.methods_dir}")
+        self.methods_dir.mkdir(parents=True)
+        test_log(f"SETUP_STEP mkdir_sidecars={self.sidecars_dir}")
+        self.sidecars_dir.mkdir(parents=True)
+        self.method_path = self.methods_dir / dfm_filename("Paid DFM")
+        self.input_csv = self.datasets_dir / "input.csv"
+        test_log(f"SETUP_STEP write_input_csv={self.input_csv}")
         self.input_csv.write_text("10,20,30\n11,22,\n12,,\n", encoding="utf-8")
-        self.ultimate_csv = self.rc_data_dir / "ultimate.csv"
+        self.ultimate_csv = self.datasets_dir / "ultimate.csv"
+        test_log(f"SETUP_STEP write_ultimate_csv={self.ultimate_csv}")
         self.ultimate_csv.write_text("100\n200\n300\n", encoding="utf-8")
+        test_log("SETUP_STEP build_payload")
         payload = sample_payload()
         payload["data tab"]["input data triangle csv path"] = str(self.input_csv)
         payload["results tab"]["ultimate vector csv path"] = str(self.ultimate_csv)
+        test_log(f"SETUP_STEP write_method={self.method_path}")
         self.method_path.write_text(json.dumps(payload), encoding="utf-8")
+        test_log(
+            "SETUP "
+            f"root={self.root} rc_data_dir={self.rc_data_dir} "
+            f"method_path={self.method_path} input_csv={self.input_csv} ultimate_csv={self.ultimate_csv}"
+        )
 
     def tearDown(self) -> None:
-        self.tmp.cleanup()
+        test_log(f"TEARDOWN {self.id()} root={getattr(self, 'root', '')}")
+        try:
+            self.tmp.cleanup()
+            test_log(f"END {self.id()}")
+        except Exception as err:
+            test_log(f"TEARDOWN_ERROR {self.id()} {err!r}")
+            raise
 
     def test_client_project_and_index(self) -> None:
         client = ArcRhoClient(self.root)
@@ -95,8 +156,12 @@ class ArcRhoApiTests(unittest.TestCase):
         refs = project.rebuild_dfm_index()
         self.assertEqual(len(refs), 1)
         self.assertEqual(refs[0].name, "Paid DFM")
-        index = json.loads((self.rc_data_dir / "method_index.json").read_text(encoding="utf-8"))
-        self.assertEqual(index["methods"], [{"dataset_name": "Paid Ultimate", "method_type": "DFM"}])
+        index = json.loads((self.rc_data_dir / "index.json").read_text(encoding="utf-8"))
+        self.assertEqual(index["files"], [{
+            "dataset_name": "Paid Ultimate",
+            "dataset_type_name": "Paid Ultimate",
+            "method_type": "DFM",
+        }])
 
     def test_default_server_root_uses_host_workspace_config(self) -> None:
         original_root = api_config._server_root
@@ -171,7 +236,7 @@ class ArcRhoApiTests(unittest.TestCase):
             development_length=12,
         )
         dfm.save()
-        self.assertTrue((self.rc_data_dir / dfm_filename("New DFM")).exists())
+        self.assertTrue((self.methods_dir / dfm_filename("New DFM")).exists())
 
     def test_project_reads_dataset_type_category(self) -> None:
         (self.project_dir / "dataset_types.json").write_text(json.dumps({
@@ -209,7 +274,7 @@ class ArcRhoApiTests(unittest.TestCase):
     def test_add_triangle_reuses_existing_generated_cache(self) -> None:
         rc = ArcRhoClient(self.root).project("Demo").reserving_class(r"Auto\PP")
         cache_path = rc.triangle_cache_path("Paid/Loss", origin_length=12, development_length=12)
-        cache_path.parent.mkdir(parents=True)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text("1,2\n3,\n", encoding="utf-8")
 
         result = rc.add_triangle("Paid/Loss", origin_length=12, development_length=12)
@@ -217,31 +282,39 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertTrue(result.from_cache)
         self.assertEqual(result.file_path, cache_path)
         self.assertIsNone(result.request_path)
-        sidecar = cache_path.with_name("Paid_%2F_Loss.json")
+        sidecar = self.sidecars_dir / "Paid_%2F_Loss.json"
         payload = json.loads(sidecar.read_text(encoding="utf-8"))
         self.assertEqual(payload["dataset_name"], "Paid/Loss")
-        self.assertEqual(payload["csv_file"], "Paid_%2F_Loss@12@12.csv")
+        self.assertEqual(payload["csv_file"], "Paid_%2F_Loss@12@12@cum@dev.csv")
 
     def test_add_triangle_requests_missing_generated_cache(self) -> None:
         rc = ArcRhoClient(self.root).project("Demo").reserving_class(r"Auto\PP")
         requests_dir = self.root / "requests"
+        test_log(f"ARC_TRI_REQUEST_TEST requests_dir={requests_dir}")
 
         def write_requested_csv() -> None:
+            test_log("ARC_TRI_WRITER start")
             deadline = time.time() + 5
             while time.time() < deadline:
                 request_files = sorted(requests_dir.glob("request-*.json")) if requests_dir.exists() else []
                 if request_files:
+                    test_log(f"ARC_TRI_WRITER found_request={request_files[0]}")
                     payload = json.loads(request_files[0].read_text(encoding="utf-8"))
                     data_path = Path(payload["DataPath"])
                     data_path.parent.mkdir(parents=True, exist_ok=True)
                     data_path.write_text("4,5\n6,\n", encoding="utf-8")
+                    test_log(f"ARC_TRI_WRITER wrote_csv={data_path}")
                     return
                 time.sleep(0.05)
+            test_log("ARC_TRI_WRITER timeout_waiting_for_request")
 
         writer = threading.Thread(target=write_requested_csv)
         writer.start()
+        test_log("ARC_TRI_MAIN calling_add_triangle")
         result = rc.add_triangle("Missing Triangle", timeout_sec=3)
+        test_log(f"ARC_TRI_MAIN add_triangle_returned file_path={result.file_path} from_cache={result.from_cache}")
         writer.join(timeout=1)
+        test_log(f"ARC_TRI_MAIN writer_alive_after_join={writer.is_alive()}")
 
         self.assertFalse(result.from_cache)
         self.assertIsNotNone(result.request_path)

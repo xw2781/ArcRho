@@ -39,7 +39,7 @@ function syncCachedDatasetToolbar() {
   const count = Number.isFinite(cachedDatasetFilter.visibleCount)
     ? cachedDatasetFilter.visibleCount
     : cachedDatasetFilter.names.size;
-  els.cachedDatasetStatus.textContent = count === 1 ? "1 cached dataset" : `${count} cached datasets`;
+  els.cachedDatasetStatus.textContent = `${count} record(s)`;
 }
 
 function syncDiskChangeToolbarAlert() {
@@ -81,11 +81,17 @@ function isDatasetRecordCached(record) {
 }
 
 
-function splitLengthScopedDatasetName(value) {
+function stripDatasetCacheVariantSuffix(value) {
   const text = toText(value);
   const parts = text.split("@");
-  if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 1]) && /^\d+$/.test(parts[parts.length - 2])) {
-    return parts.slice(0, -2).join("@").trim();
+  if (
+    parts.length >= 5
+    && /^(dev|cal)$/i.test(parts[parts.length - 1])
+    && /^(cum|inc)$/i.test(parts[parts.length - 2])
+    && /^\d+$/.test(parts[parts.length - 3])
+    && /^\d+$/.test(parts[parts.length - 4])
+  ) {
+    return parts.slice(0, -4).join("@").trim();
   }
   return text;
 }
@@ -93,7 +99,7 @@ function splitLengthScopedDatasetName(value) {
 function getCachedFileDatasetNames(item) {
   const names = [];
   const add = (value) => {
-    const text = splitLengthScopedDatasetName(value);
+    const text = stripDatasetCacheVariantSuffix(value);
     if (text) names.push(text);
   };
   if (Array.isArray(item?.dataset_names)) {
@@ -457,7 +463,7 @@ function initCachedDatasetToolbar() {
     resetActivePathFolderWatch,
     setCachedDatasetFilterEnabled,
     shouldUseCachedDatasetFilter,
-    splitLengthScopedDatasetName,
+    stripDatasetCacheVariantSuffix,
     syncCachedDatasetToolbar,
     syncDiskChangeToolbarAlert
   });

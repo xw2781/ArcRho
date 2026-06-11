@@ -261,7 +261,6 @@ let cachedDatasetInstanceLoadPromise = null;
 let sidecarContextKey = "";
 let sidecarContextPayload = null;
 let lastSavedDatasetSettings = null;
-let lastSavedDatasetSidecarExists = false;
 let sidecarSyncNonce = 0;
 let datasetCancelConfirmResolve = null;
 const lenDropdownActiveIndexBySelect = new Map();
@@ -821,15 +820,6 @@ function cachedInstanceMatchesName(item, instanceName) {
   return itemNames.includes(instanceKey);
 }
 
-function isCurrentSavedDatasetInstance(instanceName, datasetTypeName) {
-  if (!lastSavedDatasetSidecarExists || !lastSavedDatasetSettings) return false;
-  const saved = normalizeDatasetSettings(lastSavedDatasetSettings);
-  return (
-    normalizeDatasetInstanceKey(saved.instance_name) === normalizeDatasetInstanceKey(instanceName)
-    && normalizeDatasetInstanceKey(saved.dataset_type) === normalizeDatasetInstanceKey(datasetTypeName)
-  );
-}
-
 async function loadCachedDatasetInstancesForCurrentContext() {
   const project = getResolvedProjectValue();
   const path = getResolvedReservingClassValue();
@@ -886,13 +876,12 @@ function invalidateCachedDatasetInstances() {
 }
 
 async function refreshDatasetInstanceNameConflict() {
-  const instanceName = getDatasetInstanceNameValue();
-  const datasetTypeName = String(document.getElementById("triInput")?.value || "").trim();
-  if (!instanceName) {
+  if (!isProjectInstanceDraft) {
     setDatasetInstanceNameConflict(false);
     return false;
   }
-  if (!isProjectInstanceDraft && isCurrentSavedDatasetInstance(instanceName, datasetTypeName)) {
+  const instanceName = getDatasetInstanceNameValue();
+  if (!instanceName) {
     setDatasetInstanceNameConflict(false);
     return false;
   }
@@ -2022,6 +2011,8 @@ function buildTriRequestPayload(rawInputs = {}) {
     Calendar: resolved.calendar,
     OriginLength: resolved.originLen,
     DevelopmentLength: resolved.devLen,
+    LocalOnly: !!window.ADA_DFM_CONTEXT,
+    AllowDerived: true,
     timeout_sec: 6.0,
   };
 }
@@ -2217,7 +2208,6 @@ async function syncSidecarForCurrentDataset(options = {}) {
   if (!key) {
     isSidecarReadOnlyDataset = false;
     lastSavedDatasetSettings = null;
-    lastSavedDatasetSidecarExists = false;
     datasetSettingsDirty = false;
     updateDatasetSaveUi();
     return false;
@@ -2255,7 +2245,6 @@ async function syncSidecarForCurrentDataset(options = {}) {
     ? normalizeDatasetSettings(data)
     : normalizeDatasetSettings(getCurrentDatasetSettings());
   lastSavedDatasetSettings = settings;
-  lastSavedDatasetSidecarExists = !!data.exists;
   if (options?.applyLengths !== false && data.exists) {
     applyDatasetSettingsToControls(settings);
     saveTriInputsToStorage();
@@ -2284,7 +2273,6 @@ async function saveDatasetSidecarForCurrentContext() {
   sidecarContextPayload = context;
   sidecarContextKey = buildDatasetSidecarContextKey(context);
   lastSavedDatasetSettings = normalizeDatasetSettings(settings);
-  lastSavedDatasetSidecarExists = true;
   invalidateCachedDatasetInstances();
   datasetSettingsDirty = false;
   updateDatasetSaveUi();

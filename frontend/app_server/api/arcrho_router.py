@@ -65,14 +65,25 @@ def arcrho_projects() -> Dict[str, Any]:
 def arcrho_tri_precheck(req: ArcRhoTriRequest) -> Dict[str, Any]:
     pairs = _arcrho_tri_pairs(req)
     data_path = set_data_path_like_vba(pairs)
-    need_request = not arcrho_runtime_service.arcrho_tri_cache_matches(data_path, pairs)
+    local_result = arcrho_runtime_service.resolve_local_triangle_cache(
+        data_path,
+        pairs,
+        allow_derived=bool(req.AllowDerived),
+        materialize=False,
+    )
+    local_available = bool(local_result.get("ok"))
+    manual_source_found = bool(local_result.get("manual_source_found"))
+    need_request = not local_available and not req.LocalOnly and not manual_source_found
     ds_id = "arcrhotri_" + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
     return {
         "ok": True,
         "need_request": need_request,
-        "cache_exists": (not need_request),
+        "cache_exists": local_available,
         "data_path": data_path,
         "ds_id": ds_id,
+        "local_cache_status": local_result.get("status"),
+        "local_cache_message": local_result.get("message"),
+        "manual_source_found": manual_source_found,
     }
 
 
@@ -80,11 +91,25 @@ def arcrho_tri_precheck(req: ArcRhoTriRequest) -> Dict[str, Any]:
 def arcrho_tri(req: ArcRhoTriRequest) -> Dict[str, Any]:
     pairs = _arcrho_tri_pairs(req)
     data_path = set_data_path_like_vba(pairs)
-    return arcrho_runtime_service.run_arcrho_tri(pairs, data_path, timeout_sec=max(0.1, float(req.timeout_sec)), force_refresh=False)
+    return arcrho_runtime_service.run_arcrho_tri(
+        pairs,
+        data_path,
+        timeout_sec=max(0.1, float(req.timeout_sec)),
+        force_refresh=False,
+        local_only=bool(req.LocalOnly),
+        allow_derived=bool(req.AllowDerived),
+    )
 
 
 @router.post("/arcrho/tri/refresh")
 def arcrho_tri_refresh(req: ArcRhoTriRequest) -> Dict[str, Any]:
     pairs = _arcrho_tri_pairs(req)
     data_path = set_data_path_like_vba(pairs)
-    return arcrho_runtime_service.run_arcrho_tri(pairs, data_path, timeout_sec=max(0.1, float(req.timeout_sec)), force_refresh=True)
+    return arcrho_runtime_service.run_arcrho_tri(
+        pairs,
+        data_path,
+        timeout_sec=max(0.1, float(req.timeout_sec)),
+        force_refresh=True,
+        local_only=bool(req.LocalOnly),
+        allow_derived=bool(req.AllowDerived),
+    )

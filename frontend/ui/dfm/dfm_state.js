@@ -57,6 +57,7 @@ export const ratioChartLeftThresholdByCol = new Map();
 
 let ratioColAllActive = false;
 let cachedRootPath = null;
+let cachedWorkspacePaths = null;
 let dfmIsDirty = false;
 let showNaBorders = false;
 let currentDfmTab = "details";
@@ -211,25 +212,74 @@ export function getResolvedReservingClass() {
   return (snap.resolved?.reservingClass || "").trim();
 }
 
-export async function getRootPath() {
-  if (cachedRootPath) return cachedRootPath;
+function normalizeWorkspacePathConfig(data) {
+  const config = data?.config && typeof data.config === "object" ? data.config : {};
+  const paths = config.paths && typeof config.paths === "object" ? config.paths : {};
+  const root = String(config.workspace_root || "E:\\ArcRho").trim() || "E:\\ArcRho";
+  return {
+    workspace_root: root,
+    paths: {
+      projects_dir: String(paths.projects_dir || "projects").trim() || "projects",
+      requests_dir: String(paths.requests_dir || "requests").trim() || "requests",
+    },
+  };
+}
+
+function trimPathSeparators(value) {
+  return String(value || "").replace(/^[\\/]+|[\\/]+$/g, "");
+}
+
+function trimTrailingPathSeparators(value) {
+  return String(value || "").replace(/[\\/]+$/g, "");
+}
+
+function isAbsolutePath(value) {
+  const text = String(value || "").trim();
+  return /^[A-Za-z]:[\\/]/.test(text) || /^\\\\/.test(text);
+}
+
+function joinWorkspacePath(...parts) {
+  const cleaned = [];
+  parts.forEach((part, index) => {
+    const text = String(part || "").trim();
+    if (!text) return;
+    cleaned.push(index === 0 ? trimTrailingPathSeparators(text) : trimPathSeparators(text));
+  });
+  return cleaned.join("\\");
+}
+
+export async function getWorkspacePathsConfig() {
+  if (cachedWorkspacePaths) return cachedWorkspacePaths;
   try {
     const res = await fetch("/workspace_paths");
     if (res.ok) {
       const data = await res.json();
-      cachedRootPath = data.config?.workspace_root || "E:\\ArcRho";
+      cachedWorkspacePaths = normalizeWorkspacePathConfig(data);
     } else {
-      cachedRootPath = "E:\\ArcRho";
+      cachedWorkspacePaths = normalizeWorkspacePathConfig(null);
     }
   } catch {
-    cachedRootPath = "E:\\ArcRho";
+    cachedWorkspacePaths = normalizeWorkspacePathConfig(null);
   }
+  cachedRootPath = cachedWorkspacePaths.workspace_root;
+  return cachedWorkspacePaths;
+}
+
+export async function getRootPath() {
+  if (cachedRootPath) return cachedRootPath;
+  const config = await getWorkspacePathsConfig();
+  cachedRootPath = config.workspace_root;
   return cachedRootPath;
 }
 
 export function setCachedRootPath(value) {
   const next = String(value || "").trim();
   cachedRootPath = next || null;
+  if (cachedWorkspacePaths) {
+    cachedWorkspacePaths = next
+      ? { ...cachedWorkspacePaths, workspace_root: next }
+      : null;
+  }
 }
 
 export function getDefaultMethodName() {
@@ -277,13 +327,17 @@ export function getRatioSaveSuggestedName() {
 }
 
 export async function getRatioSaveBaseDir() {
-  const rootPath = await getRootPath();
+  const workspaceConfig = await getWorkspacePathsConfig();
+  const projectsDir = workspaceConfig.paths.projects_dir || "projects";
+  const projectsPath = isAbsolutePath(projectsDir)
+    ? trimTrailingPathSeparators(projectsDir)
+    : joinWorkspacePath(workspaceConfig.workspace_root, projectsDir);
   const project = sanitizeFileNamePart(getRatioSaveProjectName(), "UnknownProject");
   const reservingClass = sanitizeDfmMethodFilePart(
     getResolvedReservingClass() || String(document.getElementById("pathInput")?.value || "").trim(),
     "ReservingClass",
   );
-  return `${rootPath}\\projects\\${project || "UnknownProject"}\\data\\${reservingClass}\\methods`;
+  return joinWorkspacePath(projectsPath, project || "UnknownProject", "data", reservingClass, "methods");
 }
 
 export async function buildRatioSavePath() {
@@ -293,13 +347,17 @@ export async function buildRatioSavePath() {
 }
 
 export async function getRatioDataDir() {
-  const rootPath = await getRootPath();
+  const workspaceConfig = await getWorkspacePathsConfig();
+  const projectsDir = workspaceConfig.paths.projects_dir || "projects";
+  const projectsPath = isAbsolutePath(projectsDir)
+    ? trimTrailingPathSeparators(projectsDir)
+    : joinWorkspacePath(workspaceConfig.workspace_root, projectsDir);
   const project = sanitizeFileNamePart(getRatioSaveProjectName(), "UnknownProject");
   const reservingClass = sanitizeDfmMethodFilePart(
     getResolvedReservingClass() || String(document.getElementById("pathInput")?.value || "").trim(),
     "ReservingClass",
   );
-  return `${rootPath}\\projects\\${project || "UnknownProject"}\\data\\${reservingClass}\\datasets`;
+  return joinWorkspacePath(projectsPath, project || "UnknownProject", "data", reservingClass, "datasets");
 }
 
 export function getResultsCsvSuggestedName(options = {}) {
@@ -308,8 +366,8 @@ export function getResultsCsvSuggestedName(options = {}) {
     : (String(document.getElementById("dfmMethodName")?.value || "").trim() || getDefaultMethodName());
   const originLen = normalizePositiveIntegerText(options.originLen ?? options.originLength ?? document.getElementById("originLenSelect")?.value);
   const devLen = normalizePositiveIntegerText(options.devLen ?? options.developmentLength ?? document.getElementById("devLenSelect")?.value);
-  const lengthSuffix = originLen && devLen ? `@${originLen}@${devLen}` : "";
-  return `${sanitizeFileNamePart(datasetNameRaw, "Dataset")}${lengthSuffix}.csv`;
+  const cacheVariantSuffix = originLen && devLen ? `@${originLen}@${devLen}@cum@dev` : "";
+  return `${sanitizeFileNamePart(datasetNameRaw, "Dataset")}${cacheVariantSuffix}.csv`;
 }
 
 export function getInputTriangleCsvSuggestedName(options = {}) {

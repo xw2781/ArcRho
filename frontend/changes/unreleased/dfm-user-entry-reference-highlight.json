@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Improved DFM User Entry formula references with active source-cell outlines and drag-to-repoint editing."
+}

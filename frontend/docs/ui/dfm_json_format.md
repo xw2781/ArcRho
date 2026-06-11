@@ -10,7 +10,7 @@ Top-level sections:
 
 - `json format`: currently `arcrho-dfm-method-by-tab-v1`.
 - `details tab`: `name`, `output type`, `input triangle`, `origin length`, `development length`, and `decimal places`.
-- `data tab`: `origin labels`, raw Data-tab `development labels` such as `2m` and `14m`, `input data triangle values`, and length-scoped `input data triangle csv path`.
+- `data tab`: `origin labels`, raw Data-tab `development labels` such as `2m` and `14m`, `input data triangle values`, and mode-qualified `input data triangle csv path`.
 - `ratios tab`: `ratio triangle`, `average formulas`, and `cell notes`.
 - `ratios tab`.`ratio triangle`: `origin labels`, GUI-display Ratios-tab `development labels` such as `(1) 2-14`, `ratio values`, and `excluded`.
 - `results tab`: `ratio basis dataset`, `ultimate ratio decimal places`, and `ultimate vector`.
@@ -36,7 +36,7 @@ Saved DFM method JSON and ArcBot context include read-analysis snapshots:
 - `ratios tab`.`ratio triangle`.`ratio values`
 - `ratios tab`.`average formulas`.`values`
 
-Numeric snapshot values are rounded to 4 decimals. For triangle-shaped arrays, each row trims only trailing `null` values to reduce file size and token usage; internal `null` values remain in place so column position is still recoverable from the row and labels.
+Numeric snapshot values for input-data and ratio arrays are rounded to 4 decimals. `ratios tab`.`average formulas`.`values` is rounded to 6 decimals so cached User Entry formula results can still display an accurate fourth decimal in the UI. For triangle-shaped arrays, each row trims only trailing `null` values to reduce file size and token usage; internal `null` values remain in place so column position is still recoverable from the row and labels.
 
 These analysis snapshots are ignored when restoring editable method selections. Editable restore behavior remains driven by `ratios tab`.`ratio triangle`.`excluded`, `ratios tab`.`average formulas`.`selected`, and related canonical selection fields.
 

@@ -1460,6 +1460,23 @@ def _formula_number(value: float) -> str:
     return f"{float(value):.10g}"
 
 
+def _compact_formula_number_text(value: Any) -> str:
+    text = str(value)
+
+    def repl(match: re.Match[str]) -> str:
+        try:
+            number = float(match.group(0))
+        except ValueError:
+            return match.group(0)
+        return f"{number:.4f}".rstrip("0").rstrip(".")
+
+    return re.sub(r"(?<![A-Za-z0-9_])[-+]?\d+\.\d+", repl, text)
+
+
+def _format_note_multiplier(value: float) -> str:
+    return f"{float(value):.4f}".rstrip("0").rstrip(".")
+
+
 def _quote_formula_label(label: str) -> str:
     return '"' + _display_average_label(label).replace('"', "'") + '"'
 
@@ -1498,13 +1515,15 @@ def _format_adjustment_note(
     lines = [f"For development period {dfm.dev_period(col + 1)}:"]
     formula_parts = [f"{average_value:.4f}"]
     if abs(float(adjustment["factor"]) - 1.0) > 0.0000001:
-        lines.append(f"  - Apply growth adjustments of {adjustment['left']} = {adjustment['right']};")
-        formula_parts.append(str(adjustment["right"]))
+        adjustment_right = _compact_formula_number_text(adjustment["right"])
+        lines.append(f"  - Apply growth adjustments of {adjustment['left']} = {adjustment_right};")
+        formula_parts.append(adjustment_right)
     if abs(accounting_cutoff - 1.0) > 0.0000001:
-        lines.append(f"  - Apply accounting cutoff 1+{accounting_cutoff - 1.0:.2%} = {accounting_cutoff:.4f};")
-        formula_parts.append(f"{accounting_cutoff:.4f}")
+        cutoff_text = _format_note_multiplier(accounting_cutoff)
+        lines.append(f"  - Apply accounting cutoff 1+{accounting_cutoff - 1.0:.2%} = {cutoff_text};")
+        formula_parts.append(cutoff_text)
     if abs(other_factor - 1.0) > 0.0000001:
-        formula_parts.append(f"{other_factor:.4f}")
+        formula_parts.append(_format_note_multiplier(other_factor))
     display_label = _display_average_label(label)
     lines.append(f"  - Selected average factor: \"{display_label}\" ({average_value:.4f})")
     lines.append(f"  - Selected LDF after adjustments: {' * '.join(formula_parts)} = {final_value:.4f}")
@@ -1518,6 +1537,7 @@ def _clear_adjustment_notes(dfm: Any) -> None:
         "Apply accounting cutoff ",
         "Selected average factor: ",
         "Selected LDF after adjustments: ",
+        "Skipped: no actuary notes",
     )
     lines = [line for line in dfm.notes.splitlines() if not any(keyword in line for keyword in keywords)]
     dfm.update_notes("\n".join(lines).strip())
@@ -1586,7 +1606,7 @@ def apply_adjustments(
         if not _has_meaningful_adjustment(adjustment["factor"], accounting_cutoff, other_factor):
             continue
         _mark_selected_before_adjustment(dfm, col, labels[selected_row])
-        final_user_value = round(final_value, 4)
+        final_user_value = round(final_value, 6)
         formula = _build_user_entry_formula(labels[selected_row], adjustment, accounting_cutoff, other_factor)
         if hasattr(dfm, "set_user_formula"):
             dfm.set_user_formula(formula, final_user_value, col + 1)
@@ -1602,7 +1622,7 @@ def apply_adjustments(
                 col,
                 labels[selected_row],
                 average_value,
-                final_value,
+                final_user_value,
                 adjustment,
                 accounting_cutoff,
                 other_factor,
@@ -1830,15 +1850,28 @@ def run_macro(macro_id: str, active_context: Dict[str, Any]) -> Dict[str, Any]:
         with redirect_stdout(output):
             exec(compile(source, path, "exec"), namespace)
             runner = namespace.get("run_macro") or namespace.get("main")
+            runner_result = None
             if callable(runner):
-                runner(active_dfm, active_context)
-        return {
+                runner_result = runner(active_dfm, active_context)
+        payload = active_dfm.to_dict()
+        preview = None
+        if isinstance(runner_result, dict):
+            if isinstance(runner_result.get("payload"), dict):
+                payload = runner_result["payload"]
+            if isinstance(runner_result.get("preview"), dict):
+                preview = runner_result["preview"]
+        response = {
             "success": True,
             "message": f"Ran {os.path.basename(path)}",
-            "payload": active_dfm.to_dict(),
+            "payload": payload,
             "stdout": output.getvalue(),
             "path": path,
         }
+        if preview is not None:
+            response["preview"] = preview
+        if isinstance(runner_result, dict) and runner_result.get("message"):
+            response["message"] = str(runner_result.get("message"))
+        return response
     except Exception as exc:
         return {
             "success": False,

@@ -417,6 +417,7 @@ async function loadPathTree() {
       projectName,
       inlineContainer: els.pathTree,
       initialPath,
+      ignoreSavedFilterSpec: true,
       setStatus: (message) => setStatus(message),
       title: "Reserving Class",
       onProjectMissing: (name) => {

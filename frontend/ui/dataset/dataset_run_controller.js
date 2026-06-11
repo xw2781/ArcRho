@@ -187,6 +187,13 @@ export function createDatasetRunController(deps) {
     });
   }
 
+  function showDfmLocalCacheAlert(message) {
+    if (!window.ADA_DFM_CONTEXT) return;
+    const text = String(message || "").trim();
+    if (!text) return;
+    window.alert(text);
+  }
+
   async function autoRun() {
     const { project, path, tri, instanceName, cumulative, calendar, originLen, devLen } = getTriInputs();
 
@@ -291,10 +298,16 @@ export function createDatasetRunController(deps) {
       }
 
       if (!data.ok) {
-        logLine(`${clearCache ? "ArcRhoTri refresh" : "ArcRhoTri"} timeout. data_path=${data.data_path}`);
-        if (status) status.textContent = "Timeout waiting for csv (try again).";
+        const message = String(
+          data?.message
+          || (data?.status === "timeout" ? "Timeout waiting for csv (try again)." : "")
+          || "Dataset cache is not available.",
+        );
+        logLine(`${clearCache ? "ArcRhoTri refresh" : "ArcRhoTri"} failed: ${message} data_path=${data.data_path}`);
+        if (status) status.textContent = message;
         lastAutoKey = null;
-        setStatus("Timeout waiting for csv (try again).");
+        setStatus(message);
+        showDfmLocalCacheAlert(message);
         return;
       }
 

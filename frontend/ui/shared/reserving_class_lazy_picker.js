@@ -1,4 +1,4 @@
-import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/path_tree_picker.js?v=20260517a";
+import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/path_tree_picker.js?v=20260610a";
 import { buildWorkflowPathRootNode } from "/ui/shared/workflow_global_picker_options.js";
 
 const LOOKUP_MODEL_CACHE = new Map();
@@ -10,6 +10,9 @@ const TREE_FILTER_PREFERENCE_DEFAULTS = Object.freeze({
   autoCloseOnSelect: true,
 });
 const WINDOW_FRAME_MARGIN_PX = 8;
+const HIDDEN_PATHS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="3"/></svg>';
+const FILTER_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>';
+const SETTINGS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>';
 
 function toText(value) {
   return String(value || "").trim();
@@ -1348,6 +1351,15 @@ let activeTreeNodeMenu = null;
 let activeFilterValuesMenu = null;
 let activeHiddenPathsWindow = null;
 
+function setPreferencesButtonsActive(doc, active) {
+  const root = doc || window.document;
+  if (!root || typeof root.querySelectorAll !== "function") return;
+  root.querySelectorAll(".ptree-pref").forEach((btn) => {
+    if (!btn?.classList) return;
+    btn.classList.toggle("active", !!active);
+  });
+}
+
 function ensureFilterWindowStyles(doc) {
   if (!doc || doc.getElementById(FILTER_STYLE_ID)) return;
   const style = doc.createElement("style");
@@ -2018,6 +2030,7 @@ function closeReservingClassPreferencesWindow(reason = "programmatic") {
   }
   if (win && win.parentNode) win.parentNode.removeChild(win);
   activePreferencesWindow = null;
+  setPreferencesButtonsActive(doc, false);
   if (typeof onClose === "function") {
     try { onClose(reason); } catch {}
   }
@@ -3078,6 +3091,7 @@ export async function openLazyReservingClassPicker(options = {}) {
   const cacheKey = canonName(projectName);
   const forceModelReload = !!options?.forceModelReload;
   const preserveFilters = !!options?.preserveFilters;
+  const ignoreSavedFilterSpec = !!options?.ignoreSavedFilterSpec;
   const setStatus = typeof options?.setStatus === "function" ? options.setStatus : () => {};
   const onSelect = typeof options?.onSelect === "function" ? options.onSelect : null;
   const onClose = typeof options?.onClose === "function" ? options.onClose : null;
@@ -3176,7 +3190,7 @@ export async function openLazyReservingClassPicker(options = {}) {
     if (!preserveFilters) {
       let initialFilterSpec = {};
 
-      const hasCachedSpec = !!(cacheKey && FILTER_SPEC_CACHE.has(cacheKey));
+      const hasCachedSpec = !ignoreSavedFilterSpec && !!(cacheKey && FILTER_SPEC_CACHE.has(cacheKey));
       const hasCachedPrefs = FILTER_PREFS_CACHE.has(filterPrefsCacheKey);
 
       if (hasCachedSpec) {
@@ -3191,9 +3205,11 @@ export async function openLazyReservingClassPicker(options = {}) {
       if (!hasCachedSpec || !hasCachedPrefs) {
         try {
           const loaded = await fetchReservingClassFilterSpec(projectName);
-          initialFilterSpec = normalizeReservingClassFilterSpec(loaded?.filterSpec || {});
+          initialFilterSpec = ignoreSavedFilterSpec
+            ? {}
+            : normalizeReservingClassFilterSpec(loaded?.filterSpec || {});
           treeFilterPreferences = normalizeReservingClassFilterPreferences(loaded?.preferences || {});
-          if (cacheKey) {
+          if (cacheKey && !ignoreSavedFilterSpec) {
             FILTER_SPEC_CACHE.set(cacheKey, initialFilterSpec);
           }
           FILTER_PREFS_CACHE.set(filterPrefsCacheKey, treeFilterPreferences);
@@ -3566,6 +3582,66 @@ export async function openLazyReservingClassPicker(options = {}) {
         return false;
       }
 
+      const handleHiddenPathsClick = (ctx) => {
+        closeReservingClassTreeNodeMenu("open_hidden_paths");
+        closeReservingClassFilterWindow("open_hidden_paths");
+        closeReservingClassPreferencesWindow("open_hidden_paths");
+        treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
+        openHiddenPathsPanel(ctx?.buttonElement || ctx?.pickerElement || null);
+      };
+      const handleFilterClick = (ctx) => {
+        closeReservingClassTreeNodeMenu("open_filter");
+        closeHiddenPathsWindow("open_filter");
+        closeReservingClassPreferencesWindow("open_filter");
+        treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
+        openReservingClassFilterWindow({
+          document: window.document,
+          title: `${pickerTitle} Filters`,
+          fields: model.getFilterFields(),
+          anchorElement: ctx?.buttonElement || ctx?.pickerElement || null,
+          initialSize: filterWindowSize,
+          getMatchCount: () => model.getActiveMatchCount(),
+          onApply: (spec) => {
+            const normalizedSpec = persistFilterSpec(spec);
+            model.applyFilters(normalizedSpec);
+            treeWindowPosition = readWindowPosition(treeWindowElement) || treeWindowPosition;
+            closeFloatingPathTreePicker(internalCloseReason);
+            openTreeWindow();
+          },
+          onBeforeClose: (closeCtx) => {
+            const nextSize = normalizeWindowSize(
+              { width: closeCtx?.width, height: closeCtx?.height },
+              FILTER_WINDOW_SIZE_LIMITS,
+            );
+            if (nextSize.width || nextSize.height) {
+              filterWindowSize = nextSize;
+            }
+          },
+          onClose: () => {
+            persistFilterWindowSize(filterWindowSize);
+          },
+        });
+      };
+      const handlePreferencesClick = (ctx) => {
+        closeReservingClassTreeNodeMenu("open_preferences");
+        closeHiddenPathsWindow("open_preferences");
+        closeReservingClassFilterWindow("open_preferences");
+        treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
+        openReservingClassPreferencesWindow({
+          document: window.document,
+          title: "Tree View Preferences",
+          anchorElement: ctx?.buttonElement || ctx?.pickerElement || null,
+          preferences: treeFilterPreferences,
+          onChange: (nextPrefs) => {
+            treeFilterPreferences = persistFilterPreferences(nextPrefs);
+            treeWindowPosition = readWindowPosition(treeWindowElement) || treeWindowPosition;
+            closeFloatingPathTreePicker(internalCloseReason);
+            openTreeWindow();
+          },
+        });
+        setPreferencesButtonsActive(window.document, true);
+      };
+
       const picker = openFloatingPathTreePicker({
         title: pickerTitle,
         titleFromActivePath: true,
@@ -3593,6 +3669,29 @@ export async function openLazyReservingClassPicker(options = {}) {
         favoriteSectionTitle: "Shortcut",
         sourceSectionTitle: "All Paths",
         showSourceSectionTitle: true,
+        sourceSectionActions: inlineTree ? [
+          {
+            title: "Hidden Paths",
+            className: "ptree-hidden-paths",
+            active: hiddenPathMap.size > 0,
+            icon: HIDDEN_PATHS_ICON,
+            onClick: handleHiddenPathsClick,
+          },
+          {
+            title: "Filter",
+            className: "ptree-filter",
+            active: model.hasActiveFilters(),
+            icon: FILTER_ICON,
+            onClick: handleFilterClick,
+          },
+          {
+            title: "Preferences",
+            className: "ptree-pref",
+            active: !!activePreferencesWindow,
+            icon: SETTINGS_ICON,
+            onClick: handlePreferencesClick,
+          },
+        ] : [],
         shortcutRootNodes: workflowRootNode ? [workflowRootNode] : [],
         ...getFavoriteRenderState(),
         getFavoriteState: (path) => {
@@ -3667,70 +3766,15 @@ export async function openLazyReservingClassPicker(options = {}) {
         showHiddenPathsButton: true,
         hiddenPathsButtonTitle: "Hidden Paths",
         hiddenPathsButtonActive: hiddenPathMap.size > 0,
-        onHiddenPathsClick: (ctx) => {
-          closeReservingClassTreeNodeMenu("open_hidden_paths");
-          closeReservingClassFilterWindow("open_hidden_paths");
-          closeReservingClassPreferencesWindow("open_hidden_paths");
-          treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
-          openHiddenPathsPanel(ctx?.buttonElement || ctx?.pickerElement || null);
-        },
+        onHiddenPathsClick: handleHiddenPathsClick,
         showFilterButton: true,
         filterButtonTitle: "Filter",
         filterButtonActive: model.hasActiveFilters(),
-        onFilterClick: (ctx) => {
-          closeReservingClassTreeNodeMenu("open_filter");
-          closeHiddenPathsWindow("open_filter");
-          closeReservingClassPreferencesWindow("open_filter");
-          treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
-          openReservingClassFilterWindow({
-            document: window.document,
-            title: `${pickerTitle} Filters`,
-            fields: model.getFilterFields(),
-            anchorElement: ctx?.pickerElement || null,
-            initialSize: filterWindowSize,
-            getMatchCount: () => model.getActiveMatchCount(),
-            onApply: (spec) => {
-              const normalizedSpec = persistFilterSpec(spec);
-              model.applyFilters(normalizedSpec);
-              treeWindowPosition = readWindowPosition(treeWindowElement) || treeWindowPosition;
-              closeFloatingPathTreePicker(internalCloseReason);
-              openTreeWindow();
-            },
-            onBeforeClose: (closeCtx) => {
-              const nextSize = normalizeWindowSize(
-                { width: closeCtx?.width, height: closeCtx?.height },
-                FILTER_WINDOW_SIZE_LIMITS,
-              );
-              if (nextSize.width || nextSize.height) {
-                filterWindowSize = nextSize;
-              }
-            },
-            onClose: () => {
-              persistFilterWindowSize(filterWindowSize);
-            },
-          });
-        },
+        onFilterClick: handleFilterClick,
         showPreferencesButton: true,
         preferencesButtonTitle: "Preferences",
-        preferencesButtonActive: !isDefaultReservingClassFilterPreferences(treeFilterPreferences),
-        onPreferencesClick: (ctx) => {
-          closeReservingClassTreeNodeMenu("open_preferences");
-          closeHiddenPathsWindow("open_preferences");
-          closeReservingClassFilterWindow("open_preferences");
-          treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
-          openReservingClassPreferencesWindow({
-            document: window.document,
-            title: "Tree View Preferences",
-            anchorElement: ctx?.pickerElement || null,
-            preferences: treeFilterPreferences,
-            onChange: (nextPrefs) => {
-              treeFilterPreferences = persistFilterPreferences(nextPrefs);
-              treeWindowPosition = readWindowPosition(treeWindowElement) || treeWindowPosition;
-              closeFloatingPathTreePicker(internalCloseReason);
-              openTreeWindow();
-            },
-          });
-        },
+        preferencesButtonActive: !!activePreferencesWindow,
+        onPreferencesClick: handlePreferencesClick,
         onNodeContextMenu: (node, ctx) => {
           const hidePath = toText(node?.path);
           if (!hidePath) return;

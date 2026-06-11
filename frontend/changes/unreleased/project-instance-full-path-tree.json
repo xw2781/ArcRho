@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance now opens its reserving-class tree with the full project path hierarchy even when a saved picker filter exists."
+}

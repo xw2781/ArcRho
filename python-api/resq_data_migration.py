@@ -2,8 +2,8 @@
 resq_data_migration.py
 
 Migrate ResQ triangles and DFM methods to ArcRho dataset files.
-Scope: ProjectName = 'NJ_Annual_Prod_202605_Fake'
-Output: E:\\ArcRho Server\\projects\\NJ_Annual_Prod_202605_Fake\\data\\<ReservingClassFolder>\\
+Scope: ProjectName = '{PROJECT_NAME}'
+Output: E:\\ArcRho Server\\projects\\{PROJECT_NAME}\\data\\<ReservingClassFolder>\\
 
 Run:
   python resq_data_migration.py
@@ -21,13 +21,16 @@ import json
 import re
 import sys
 import traceback
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+# PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
 RC_PATH = r"PRNJ - PA\PA\NY\Direct Group\MP+PIP"
-# RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
+RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 USER_NAME = ""
 PASSWORD = ""
@@ -39,6 +42,8 @@ INDEX_FILE_NAME = "index.json"
 DATASET_CACHE_DIR = "datasets"
 METHOD_DATA_DIR = "methods"
 DATASET_SIDECAR_DIR = "sidecars"
+DEFAULT_CUMULATIVE = True
+DEFAULT_CALENDAR = False
 
 # Stop probing average formula rows after this many consecutive misses
 MAX_AVERAGE_FORMULA_PROBE = 30
@@ -92,38 +97,77 @@ def _format_json(data: object, indent: str = "") -> str:
 
 # ── Path / filename encoding ───────────────────────────────────────────────────
 
+def _encode_filename_segment(value: object) -> str:
+    """Match the frontend app-server reversible _%XX_ filename escaping rule."""
+    replacements = {
+        "\\": "_%5C_",
+        "/": "_%2F_",
+        ":": "_%3A_",
+        "*": "_%2A_",
+        "?": "_%3F_",
+        '"': "_%22_",
+        "<": "_%3C_",
+        ">": "_%3E_",
+        "|": "_%7C_",
+    }
+    out: list[str] = []
+    for ch in str(value if value is not None else "").strip():
+        if ch in replacements:
+            out.append(replacements[ch])
+        elif ord(ch) < 32:
+            out.append(f"_%{ord(ch):02X}_")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def _encode_rc_folder(rc_path: str) -> str:
-    """Encode a reserving class path (backslashes and slashes) for use as a directory name."""
-    return rc_path.replace("\\", "_%5C_").replace("/", "_%2F_")
+    """Encode a reserving class path exactly like frontend config.sanitize_reserving_class_folder."""
+    text = _encode_filename_segment(rc_path)
+    text = re.sub(r"[. ]+$", lambda match: "^" * len(match.group(0)), text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or "ReservingClass"
 
 
 def _encode_name_part(name: str) -> str:
     """Encode a dataset / method name for use inside a filename."""
-    return (
-        name
-        .replace("\\", "_%5C_")
-        .replace("/", "_%2F_")
-        .replace(":", "_%3A_")
-        .replace("*", "_%2A_")
-        .replace("?", "_%3F_")
-        .replace('"', "_%22_")
-        .replace("<", "_%3C_")
-        .replace(">", "_%3E_")
-        .replace("|", "_%7C_")
-    )
+    text = _encode_filename_segment(name)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or "Dataset"
 
 
 def _triangle_source_kind(name: str, dataset_type: str) -> str:
     return "engine" if _clean_name(dataset_type) == _clean_name(name) else "input"
 
 
-def _csv_abs_path(rc_folder: str, name: str, origin_length: int, dev_length: int, dataset_type: str = "") -> str:
-    filename = f"{_encode_name_part(name)}@{origin_length}@{dev_length}.csv"
+def _mode_suffix(cumulative: bool = DEFAULT_CUMULATIVE, calendar: bool = DEFAULT_CALENDAR) -> str:
+    cum_suffix = "cum" if cumulative else "inc"
+    cal_suffix = "cal" if calendar else "dev"
+    return f"@{cum_suffix}@{cal_suffix}"
+
+
+def _dataset_cache_csv_file_name(
+    name: str,
+    origin_length: int,
+    dev_length: int,
+    *,
+    cumulative: bool = DEFAULT_CUMULATIVE,
+    calendar: bool = DEFAULT_CALENDAR,
+) -> str:
+    return f"{_encode_name_part(name)}@{origin_length}@{dev_length}{_mode_suffix(cumulative, calendar)}.csv"
+
+
+def _csv_abs_path(
+    rc_folder: str,
+    name: str,
+    origin_length: int,
+    dev_length: int,
+    *,
+    cumulative: bool = DEFAULT_CUMULATIVE,
+    calendar: bool = DEFAULT_CALENDAR,
+) -> str:
+    filename = _dataset_cache_csv_file_name(name, origin_length, dev_length, cumulative=cumulative, calendar=calendar)
     return str(PROJECT_DATA_DIR / rc_folder / DATASET_CACHE_DIR / filename)
-
-
-def _csv_file_name(name: str, origin_length: int, dev_length: int) -> str:
-    return f"{_encode_name_part(name)}@{origin_length}@{dev_length}.csv"
 
 
 def _json_sidecar_name(name: str) -> str:
@@ -139,10 +183,8 @@ def _safe_read_json(path: Path) -> dict:
         return {}
 
 
-def _split_length_scoped_stem(stem: str) -> tuple[str, bool]:
+def _split_cache_variant_stem(stem: str) -> tuple[str, bool]:
     parts = str(stem or "").split("@")
-    if len(parts) >= 3 and parts[-1].strip().isdigit() and parts[-2].strip().isdigit():
-        return "@".join(parts[:-2]), True
     if (
         len(parts) >= 5
         and parts[-4].strip().isdigit()
@@ -154,9 +196,14 @@ def _split_length_scoped_stem(stem: str) -> tuple[str, bool]:
     return str(stem or ""), False
 
 
+def _has_legacy_length_only_suffix(stem: str) -> bool:
+    parts = str(stem or "").split("@")
+    return len(parts) >= 3 and parts[-1].strip().isdigit() and parts[-2].strip().isdigit()
+
+
 def _normalize_cached_dataset_name(value: object) -> str:
     text = _clean_name(value)
-    stem, _is_length_scoped = _split_length_scoped_stem(text)
+    stem, _is_cache_variant = _split_cache_variant_stem(text)
     return stem.strip()
 
 
@@ -168,9 +215,9 @@ def _add_cached_dataset_name(names: set[str], value: object) -> None:
 
 def _dataset_sidecar_path_for_cached_csv(csv_path: Path) -> Path:
     stem = csv_path.stem
-    dataset_stem, is_length_scoped = _split_length_scoped_stem(stem)
+    dataset_stem, is_cache_variant = _split_cache_variant_stem(stem)
     sidecar_dir = csv_path.parent.parent / DATASET_SIDECAR_DIR if csv_path.parent.name == DATASET_CACHE_DIR else csv_path.parent / DATASET_SIDECAR_DIR
-    if is_length_scoped:
+    if is_cache_variant:
         plain_sidecar = sidecar_dir / f"{dataset_stem}.json"
         if plain_sidecar.exists():
             return plain_sidecar
@@ -267,11 +314,13 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
         method_type = ""
         method_dataset_name = ""
         method_dataset_type_name = ""
+        legacy_length_only_name = _has_legacy_length_only_suffix(entry.stem)
 
         if ext == ".csv":
             file_names = _cached_dataset_names_from_file(entry.name)
             metadata_path = _dataset_sidecar_path_for_cached_csv(entry)
             metadata = metadata_cache.setdefault(metadata_path, _safe_read_json(metadata_path))
+            legacy_length_only_name = legacy_length_only_name or _has_legacy_length_only_suffix(metadata_path.stem)
         else:
             metadata = metadata_cache.setdefault(entry, _safe_read_json(entry))
             is_sidecar = entry.parent.name == DATASET_SIDECAR_DIR
@@ -282,9 +331,10 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
                 method_dataset_type_name = method_dataset_name
                 method_type = "DFM" if file_names else ""
             else:
-                file_names = _cached_dataset_names_from_payload(metadata) or _cached_dataset_names_from_file(entry.name)
+                payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
+                file_names = payload_names or _cached_dataset_names_from_file(entry.name)
 
-        if metadata and not entry.name.startswith("DFM@"):
+        if metadata and not entry.name.startswith("DFM@") and not legacy_length_only_name:
             file_names.update(_cached_dataset_names_from_payload(metadata))
 
         file_info = {
@@ -305,11 +355,12 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
         if metadata:
             metadata_dataset_name = _normalize_cached_dataset_name(metadata.get("dataset_name") or metadata.get("instance_name"))
             dataset_type_name = _dataset_type_name_from_payload(metadata)
-            if metadata_dataset_name:
-                file_info["dataset_name"] = metadata_dataset_name
-            if dataset_type_name:
-                file_info["dataset_type_name"] = dataset_type_name
-                file_info["dataset_type"] = dataset_type_name
+            if not legacy_length_only_name:
+                if metadata_dataset_name:
+                    file_info["dataset_name"] = metadata_dataset_name
+                if dataset_type_name:
+                    file_info["dataset_type_name"] = dataset_type_name
+                    file_info["dataset_type"] = dataset_type_name
             file_info["source_kind"] = _clean_name(metadata.get("source_kind"))
             if "editable" in metadata:
                 file_info["editable"] = metadata.get("editable")
@@ -585,6 +636,149 @@ def _clean_name(value) -> str:
     return str(value if value is not None else "").strip()
 
 
+def _dict_child(parent: dict, key: str) -> dict:
+    value = parent.get(key)
+    if isinstance(value, dict):
+        return value
+    value = {}
+    parent[key] = value
+    return value
+
+
+def _dict_path(payload: dict, keys: tuple[str, ...]) -> dict:
+    current = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return {}
+        current = current.get(key)
+    return current if isinstance(current, dict) else {}
+
+
+def _merge_cell_note_dicts(remote_notes: dict, local_notes: dict) -> dict:
+    merged = deepcopy(remote_notes) if isinstance(remote_notes, dict) else {}
+    if not isinstance(local_notes, dict):
+        return merged
+
+    for table_name, local_rows in local_notes.items():
+        if not isinstance(local_rows, dict):
+            merged[table_name] = deepcopy(local_rows)
+            continue
+        merged_rows = merged.setdefault(table_name, {})
+        if not isinstance(merged_rows, dict):
+            merged_rows = {}
+            merged[table_name] = merged_rows
+        for row_label, local_cols in local_rows.items():
+            if not isinstance(local_cols, dict):
+                merged_rows[row_label] = deepcopy(local_cols)
+                continue
+            merged_cols = merged_rows.setdefault(row_label, {})
+            if not isinstance(merged_cols, dict):
+                merged_cols = {}
+                merged_rows[row_label] = merged_cols
+            for col_label, note_text in local_cols.items():
+                merged_cols[col_label] = deepcopy(note_text)
+    return merged
+
+
+def _average_formula_user_entry_index(average_formulas: dict) -> int | None:
+    settings = average_formulas.get("custom average formula settings")
+    average_types = settings.get("averageType") if isinstance(settings, dict) else None
+    if isinstance(average_types, list):
+        for index, average_type in enumerate(average_types):
+            if _clean_name(average_type).lower() == "user_entry":
+                return index
+
+    labels = average_formulas.get("label")
+    if isinstance(labels, list):
+        for index, label in enumerate(labels):
+            normalized = _clean_name(label).lower()
+            if normalized == "user entry" or normalized.startswith("user entry "):
+                return index
+    return None
+
+
+def _dfm_ratio_development_labels(payload: dict) -> list[str]:
+    ratio_triangle = _dict_path(payload, ("ratios tab", "ratio triangle"))
+    labels = ratio_triangle.get("development labels")
+    return [_clean_name(label) for label in labels] if isinstance(labels, list) else []
+
+
+def _ensure_matrix_row(matrix: list, row_index: int) -> list:
+    while len(matrix) <= row_index:
+        matrix.append([])
+    if not isinstance(matrix[row_index], list):
+        matrix[row_index] = []
+    return matrix[row_index]
+
+
+def _copy_local_user_entry_inputs(remote_payload: dict, local_payload: dict) -> bool:
+    remote_avg = _dict_path(remote_payload, ("ratios tab", "average formulas"))
+    local_avg = _dict_path(local_payload, ("ratios tab", "average formulas"))
+    remote_user_row = _average_formula_user_entry_index(remote_avg)
+    local_user_row = _average_formula_user_entry_index(local_avg)
+    if remote_user_row is None or local_user_row is None:
+        return False
+
+    local_inputs = local_avg.get("inputs")
+    if not isinstance(local_inputs, list):
+        local_inputs = local_avg.get("formulas")
+    if (
+        not isinstance(local_inputs, list)
+        or local_user_row >= len(local_inputs)
+        or not isinstance(local_inputs[local_user_row], list)
+    ):
+        return False
+
+    remote_inputs = remote_avg.get("inputs")
+    if not isinstance(remote_inputs, list):
+        remote_inputs = []
+        remote_avg["inputs"] = remote_inputs
+    remote_row = _ensure_matrix_row(remote_inputs, remote_user_row)
+
+    remote_dev_labels = _dfm_ratio_development_labels(remote_payload)
+    local_dev_labels = _dfm_ratio_development_labels(local_payload)
+    remote_label_to_col = {
+        label.lower(): index
+        for index, label in enumerate(remote_dev_labels)
+        if label
+    }
+
+    copied = False
+    for local_col, formula in enumerate(local_inputs[local_user_row]):
+        formula_text = _clean_name(formula)
+        if not formula_text:
+            continue
+        remote_col = local_col
+        if local_col < len(local_dev_labels):
+            remote_col = remote_label_to_col.get(local_dev_labels[local_col].lower(), local_col)
+        while len(remote_row) <= remote_col:
+            remote_row.append("")
+        remote_row[remote_col] = formula_text
+        copied = True
+    return copied
+
+
+def _preserve_local_dfm_data(remote_payload: dict, local_payload: dict) -> tuple[dict, set[str]]:
+    """Keep local-only DFM annotations when refreshing from ResQ."""
+    preserved: set[str] = set()
+    if not isinstance(local_payload, dict):
+        return remote_payload, preserved
+
+    remote_ratios = _dict_child(remote_payload, "ratios tab")
+    remote_notes = remote_ratios.get("cell notes")
+    local_notes = _dict_path(local_payload, ("ratios tab", "cell notes"))
+    if isinstance(local_notes, dict) and local_notes:
+        remote_ratios["cell notes"] = _merge_cell_note_dicts(
+            remote_notes if isinstance(remote_notes, dict) else {},
+            local_notes,
+        )
+        preserved.add("cell notes")
+
+    if _copy_local_user_entry_inputs(remote_payload, local_payload):
+        preserved.add("user entry formulas")
+    return remote_payload, preserved
+
+
 def _iso_or_text(value) -> str:
     if value is None:
         return ""
@@ -774,7 +968,13 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     dataset_type = payload.get("dataset_type") or name
     origin_length = int(payload["origin_length"])
     dev_length = int(payload["development_length"])
-    csv_name = _csv_file_name(name, origin_length, dev_length)
+    csv_name = _dataset_cache_csv_file_name(
+        name,
+        origin_length,
+        dev_length,
+        cumulative=DEFAULT_CUMULATIVE,
+        calendar=DEFAULT_CALENDAR,
+    )
     csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
     _write_csv_matrix(csv_path, payload["values"])
 
@@ -800,9 +1000,12 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "development_count": payload.get("development_count", 0),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
+        "cumulative": DEFAULT_CUMULATIVE,
+        "calendar": DEFAULT_CALENDAR,
         "csv_file": csv_name,
         "user": payload.get("user", ""),
         "created": payload.get("created", ""),
+        "modified_by": payload.get("user", ""),
         "updated_at": updated_at,
     }
     meta_dir = rc_dir / DATASET_SIDECAR_DIR
@@ -834,7 +1037,7 @@ def export_triangles_for_rc(
             source_kind = _triangle_source_kind(payload["name"], payload.get("dataset_type", ""))
             print(
                 f"    OK  {source_kind} "
-                f"{_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
+                f"{_dataset_cache_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
             )
             written += 1
         except Exception as exc:
@@ -856,10 +1059,6 @@ def export_dfm(dfm, rc_path: str) -> dict:
     """Extract all DFM data from a ResQ DFM COM object and return a JSON-ready dict."""
     name = dfm.Name.strip()
     input_tri_name = dfm.InputTriangle.Name.strip()
-    try:
-        input_tri_type = _clean_name(dfm.InputTriangle.DatasetType.Name)
-    except Exception:
-        input_tri_type = input_tri_name
     output_vec_name = dfm.OutputVector.Name.strip()
     origin_length: int = dfm.OriginLength
     dev_length: int = dfm.DevelopmentLength
@@ -990,8 +1189,22 @@ def export_dfm(dfm, rc_path: str) -> dict:
 
     # CSV paths
     rc_folder = _encode_rc_folder(rc_path)
-    input_csv = _csv_abs_path(rc_folder, input_tri_name, origin_length, dev_length, input_tri_type)
-    output_csv = _csv_abs_path(rc_folder, name, origin_length, dev_length)
+    input_csv = _csv_abs_path(
+        rc_folder,
+        input_tri_name,
+        origin_length,
+        dev_length,
+        cumulative=DEFAULT_CUMULATIVE,
+        calendar=DEFAULT_CALENDAR,
+    )
+    output_csv = _csv_abs_path(
+        rc_folder,
+        output_vec_name,
+        origin_length,
+        dev_length,
+        cumulative=DEFAULT_CUMULATIVE,
+        calendar=DEFAULT_CALENDAR,
+    )
 
     return {
         "json format": DFM_JSON_FORMAT,
@@ -1053,11 +1266,14 @@ def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int
         try:
             dfm = dfm_collection.Item(dfm_name)
             payload = export_dfm(dfm, rc_path)
+            existing_payload = _safe_read_json(out_path)
+            payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
             with out_path.open("w", encoding="utf-8", newline="\n") as fh:
                 fh.write(_format_json(payload))
                 fh.write("\n")
 
-            print(f"    OK  {file_name}")
+            suffix = f" (preserved {', '.join(sorted(preserved))})" if preserved else ""
+            print(f"    OK  {file_name}{suffix}")
             written += 1
         except Exception as exc:
             print(f"    ERR {dfm_name}: {exc}")

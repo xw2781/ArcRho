@@ -1,0 +1,10 @@
+{
+  "type": "breaking",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM CSV caches now use mode-qualified filenames and no longer normalize older length-only cache names.",
+  "details": [
+    "DFM result and input CSV paths now use the same @Origin@Development@cum@dev filename shape as dataset caches.",
+    "Older @Origin@Development CSV and JSON sidecar names are treated as literal names instead of base dataset aliases."
+  ]
+}
