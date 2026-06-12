@@ -128,7 +128,7 @@ class ResQClient:
                     "notes": self._optional_value(dfm, "Notes", ""),
                 },
                 "method metadata": {
-                    "last modified": self._json_value(self._nested_value(dfm, "OutputVector", "Modified", "")),
+                    "last modified": self._dfm_last_modified(dfm),
                 },
             }
             write_json_with_compact_rows(request["DataPath"], payload, compact_row_keys=DFM_COMPACT_ROW_KEYS)
@@ -626,6 +626,30 @@ class ResQClient:
             return nested_value
         except Exception:
             return default
+
+    def _dfm_last_modified(self, dfm):
+        try:
+            modified = dfm.OutputVector.Modified
+        except Exception:
+            return ""
+        if hasattr(modified, "replace") and hasattr(modified, "isoformat"):
+            try:
+                return modified.replace(tzinfo=None).isoformat()
+            except Exception:
+                pass
+        normalized = self._json_value(modified)
+        if self._has_json_value(normalized):
+            return normalized
+        return ""
+
+    def _has_json_value(self, value):
+        if value is None or isinstance(value, bool):
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (int, float)):
+            return value > 0
+        return True
 
     def _json_value(self, value):
         if hasattr(value, "isoformat"):

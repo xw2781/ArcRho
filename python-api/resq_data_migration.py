@@ -8,6 +8,7 @@ Output: E:\\ArcRho Server\\projects\\{PROJECT_NAME}\\data\\<ReservingClassFolder
 Run:
   python resq_data_migration.py
   python resq_dfm_export.py --export triangles
+  python resq_dfm_export.py --export vectors
   python resq_dfm_export.py --export dfm
   python resq_dfm_export.py --export all
 """
@@ -27,9 +28,9 @@ from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
-RC_PATH = r"PRNJ - PA\PA\NY\Direct Group\MP+PIP"
+# RC_PATH = r"PRNJ - PA\PA\NY\Direct Group\MP+PIP"
 RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 USER_NAME = ""
@@ -39,6 +40,7 @@ SERVER_ROOT = Path(r"E:\ArcRho Server")
 PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 INDEX_FILE_NAME = "index.json"
+INDEX_VERSION = 7
 DATASET_CACHE_DIR = "datasets"
 METHOD_DATA_DIR = "methods"
 DATASET_SIDECAR_DIR = "sidecars"
@@ -51,7 +53,9 @@ MAX_AVERAGE_FORMULA_PROBE = 30
 # Dataset export controls. CLI --export can override these.
 EXPORT_DFMS = True
 EXPORT_TRIANGLES = True
+EXPORT_VECTORS = True
 TRIANGLE_NAMES: list[str] = []  # Empty means export all triangles in RC_PATH
+VECTOR_NAMES: list[str] = []  # Empty means export all methodless vectors in RC_PATH
 DFM_NAMES: list[str] = []  # Empty means export all DFM methods in RC_PATH
 
 
@@ -119,6 +123,17 @@ def _encode_filename_segment(value: object) -> str:
         else:
             out.append(ch)
     return "".join(out)
+
+
+def _decode_filename_segment(value: object) -> str:
+    """Match the frontend app-server reversible _%XX_ filename decoding rule."""
+    def repl(match: re.Match[str]) -> str:
+        try:
+            return chr(int(match.group(1), 16))
+        except Exception:
+            return match.group(0)
+
+    return re.sub(r"_%([0-9A-Fa-f]{2})_", repl, str(value if value is not None else ""))
 
 
 def _encode_rc_folder(rc_path: str) -> str:
@@ -204,7 +219,7 @@ def _has_legacy_length_only_suffix(stem: str) -> bool:
 def _normalize_cached_dataset_name(value: object) -> str:
     text = _clean_name(value)
     stem, _is_cache_variant = _split_cache_variant_stem(text)
-    return stem.strip()
+    return _decode_filename_segment(stem.strip()).strip()
 
 
 def _add_cached_dataset_name(names: set[str], value: object) -> None:
@@ -218,9 +233,7 @@ def _dataset_sidecar_path_for_cached_csv(csv_path: Path) -> Path:
     dataset_stem, is_cache_variant = _split_cache_variant_stem(stem)
     sidecar_dir = csv_path.parent.parent / DATASET_SIDECAR_DIR if csv_path.parent.name == DATASET_CACHE_DIR else csv_path.parent / DATASET_SIDECAR_DIR
     if is_cache_variant:
-        plain_sidecar = sidecar_dir / f"{dataset_stem}.json"
-        if plain_sidecar.exists():
-            return plain_sidecar
+        return sidecar_dir / f"{dataset_stem}.json"
     return sidecar_dir / f"{stem}.json"
 
 
@@ -338,7 +351,7 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
             file_names.update(_cached_dataset_names_from_payload(metadata))
 
         file_info = {
-            "physical_name": entry.name,
+            "name": entry.name,
             "path": str(entry),
             "size": stat.st_size,
             "mtime": stat.st_mtime,
@@ -368,6 +381,9 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
                 file_info["generated"] = metadata.get("generated")
             if "calculated" in metadata:
                 file_info["calculated"] = metadata.get("calculated")
+            formula = _clean_name(metadata.get("formula"))
+            if formula:
+                file_info["formula"] = formula
             file_info["user"] = _metadata_text(metadata, (
                 "user",
                 "user_name",
@@ -411,7 +427,7 @@ def _file_dataset_names(item: dict) -> set[str]:
         _add_cached_dataset_name(names, value)
     if names:
         return names
-    _add_cached_dataset_name(names, item.get("physical_name"))
+    _add_cached_dataset_name(names, item.get("name"))
     return names
 
 
@@ -447,6 +463,9 @@ def _merge_logical_file(existing: dict, source: dict) -> dict:
     source_kind = _clean_name(source.get("source_kind"))
     if source_kind and not _clean_name(existing.get("source_kind")):
         existing["source_kind"] = source_kind
+    formula = _clean_name(source.get("formula"))
+    if formula:
+        existing["formula"] = formula
     for flag in ("editable", "generated", "calculated"):
         if flag in source and flag not in existing:
             existing[flag] = source.get(flag)
@@ -487,14 +506,13 @@ def _cached_folder_signature(files: list[dict], folder_paths: dict[str, str]) ->
         },
         "files": [
             {
+                "name": _clean_name(item.get("name")),
                 "source_kind": _clean_name(item.get("source_kind")),
-                "name": _clean_name(item.get("physical_name")),
                 "size": int(item.get("size") or 0),
                 "mtime_ns": int(item.get("mtime_ns") or 0),
             }
             for item in sorted(files, key=lambda item: (
-                _clean_name(item.get("source_kind")),
-                _clean_name(item.get("physical_name")).lower(),
+                _clean_name(item.get("name")).lower(),
             ))
         ],
     }
@@ -513,7 +531,7 @@ def rebuild_dataset_instance_index(project_name: str, rc_path: str, rc_dir: Path
     files = _logical_files_from_physical_files(physical_files)
     payload = {
         "ok": True,
-        "version": 6,
+        "version": INDEX_VERSION,
         "exists": rc_dir.is_dir(),
         "project_name": project_name,
         "reserving_class": rc_path,
@@ -529,7 +547,7 @@ def rebuild_dataset_instance_index(project_name: str, rc_path: str, rc_dir: Path
         fh.write(_format_json(payload))
         fh.write("\n")
     temp_path.replace(index_path)
-    print(f"    OK  {INDEX_FILE_NAME} ({len(files)} entries, version 6)")
+    print(f"    OK  {INDEX_FILE_NAME} ({len(files)} entries, version {INDEX_VERSION})")
     return index_path
 
 
@@ -883,6 +901,50 @@ def _triangle_value(triangle, origin_index: int, dev_index: int):
     )
 
 
+def _vector_origin_count(vector) -> int:
+    for name in ("OriginCount", "Count", "Length"):
+        value = _safe_int_attr(vector, name, 0)
+        if value > 0:
+            return value
+        try:
+            value = int(_call_member(vector, name))
+            if value > 0:
+                return value
+        except Exception:
+            continue
+    return 0
+
+
+def _vector_origin_label(vector, origin_index: int) -> str:
+    for name in ("OriginLabel", "OriginLabels", "Label", "Labels"):
+        try:
+            return _clean_name(_try_call_member(vector, name, [((origin_index,), {}), ((), {"OriginIndex": origin_index})]))
+        except Exception:
+            continue
+    return str(origin_index)
+
+
+def _vector_value(vector, origin_index: int):
+    origin_date = _origin_date_from_label(_vector_origin_label(vector, origin_index))
+    call_shapes = [
+        ((origin_index,), {}),
+        ((), {"OriginIndex": origin_index}),
+        ((), {"Index": origin_index}),
+        ((), {"arg0": origin_index}),
+        ((), {"OriginDate": origin_date}) if origin_date is not None else None,
+    ]
+    call_shapes = [shape for shape in call_shapes if shape is not None]
+    for name in ("ValuesByIndex", "Values", "Value", "Data", "VectorValues"):
+        try:
+            return _try_call_member(vector, name, call_shapes)
+        except Exception:
+            continue
+    raise AttributeError(
+        "Could not read vector values. Tried ValuesByIndex, Values, Value, Data, and VectorValues "
+        f"for origin index {origin_index}."
+    )
+
+
 def _csv_cell(value) -> str:
     if value is None:
         return ""
@@ -1017,6 +1079,234 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     return csv_path
 
 
+def export_vector(vector) -> dict:
+    """Extract a ResQ Vector COM object into ArcRho CSV values and metadata."""
+    name = _clean_name(vector.Name)
+    dataset_type_obj = _safe_attr(vector, "DatasetType", None)
+    dataset_type = _clean_name(_safe_attr(dataset_type_obj, "Name", "")) or name
+    data_format = _safe_int_attr(dataset_type_obj, "DataFormat", 1)
+    method_type = _safe_int_attr(vector, "MethodType", -1)
+    origin_length = _safe_int_attr(vector, "OriginLength", 12)
+    dev_length = _safe_int_attr(vector, "DevelopmentLength", 12)
+    origin_count = _vector_origin_count(vector)
+    if origin_count <= 0:
+        raise ValueError(f"Vector {name!r} does not expose a positive OriginCount/Count.")
+
+    values: list[list] = []
+    attempted_cells = 0
+    value_errors: list[Exception] = []
+    for i in range(1, origin_count + 1):
+        attempted_cells += 1
+        try:
+            values.append([_vector_value(vector, i)])
+        except Exception as exc:
+            value_errors.append(exc)
+            values.append([None])
+    if attempted_cells > 0 and len(value_errors) == attempted_cells:
+        raise ValueError(f"Failed to read any values for vector {name!r}: {value_errors[0]}")
+
+    user = _clean_name(_safe_attr(vector, "User", ""))
+    created = _iso_or_text(_safe_attr(vector, "Created", ""))
+    modified = _iso_or_text(_safe_attr(vector, "Modified", ""))
+    formula = _clean_name(_safe_attr(vector, "Formula", ""))
+    origin_labels = [_vector_origin_label(vector, i) for i in range(1, origin_count + 1)]
+
+    return {
+        "name": name,
+        "dataset_type": dataset_type,
+        "data_format": data_format,
+        "method_type": method_type,
+        "origin_length": origin_length,
+        "development_length": dev_length,
+        "origin_count": origin_count,
+        "development_count": 1,
+        "origin_labels": origin_labels,
+        "development_labels": ["Value"],
+        "values": values,
+        "formula": formula,
+        "user": user,
+        "created": created,
+        "modified": modified,
+    }
+
+
+def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
+    name = payload["name"]
+    dataset_type = payload.get("dataset_type") or name
+    origin_length = int(payload["origin_length"])
+    dev_length = int(payload["development_length"])
+    csv_name = _dataset_cache_csv_file_name(
+        name,
+        origin_length,
+        dev_length,
+        cumulative=DEFAULT_CUMULATIVE,
+        calendar=DEFAULT_CALENDAR,
+    )
+    csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
+    _write_csv_matrix(csv_path, payload["values"])
+
+    formula = _clean_name(payload.get("formula"))
+    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    source_kind = "calculated" if formula else "input"
+    meta = {
+        "dataset_name": name,
+        "dataset_type": dataset_type,
+        "dataset_type_name": dataset_type,
+        "instance_name": name,
+        "reserving_class": rc_path,
+        "project_name": PROJECT_NAME,
+        "source_kind": source_kind,
+        "generated": False,
+        "editable": not bool(formula),
+        "calculated": bool(formula),
+        "formula": formula,
+        "source": "resq_vector",
+        "method_type": payload.get("method_type", 0),
+        "data_format": "Vector",
+        "data_format_code": payload.get("data_format", 1),
+        "origin_length": origin_length,
+        "development_length": dev_length,
+        "origin_count": payload.get("origin_count", 0),
+        "development_count": payload.get("development_count", 1),
+        "origin_labels": payload.get("origin_labels", []),
+        "development_labels": payload.get("development_labels", []),
+        "cumulative": DEFAULT_CUMULATIVE,
+        "calendar": DEFAULT_CALENDAR,
+        "csv_file": csv_name,
+        "user": payload.get("user", ""),
+        "created": payload.get("created", ""),
+        "modified_by": payload.get("user", ""),
+        "updated_at": updated_at,
+    }
+    meta_dir = rc_dir / DATASET_SIDECAR_DIR
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = meta_dir / _json_sidecar_name(name)
+    with meta_path.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(_format_json(meta))
+        fh.write("\n")
+    return csv_path
+
+
+def _dfm_ultimate_value(dfm, origin_index: int):
+    call_shapes = [
+        ((origin_index,), {}),
+        ((), {"OriginIndex": origin_index}),
+        ((), {"arg0": origin_index}),
+    ]
+    try:
+        return _try_call_member(dfm, "Ultimates", call_shapes)
+    except Exception as exc:
+        raise AttributeError(f"Could not read DFM ultimate value for origin index {origin_index}.") from exc
+
+
+def export_dfm_ultimate_vector(
+    dfm,
+    origin_labels: list[str],
+    origin_length: int,
+    dev_length: int,
+) -> dict:
+    """Extract the DFM output vector from ResQ DFM.Ultimates into ArcRho CSV payload shape."""
+    output_vector = dfm.OutputVector
+    name = _clean_name(output_vector.Name)
+    dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
+    dataset_type = _clean_name(_safe_attr(dataset_type_obj, "Name", "")) or name
+    data_format = _safe_int_attr(dataset_type_obj, "DataFormat", 1)
+    method_type = _safe_int_attr(output_vector, "MethodType", -1)
+    origin_count = len(origin_labels)
+    if origin_count <= 0:
+        raise ValueError(f"DFM output vector {name!r} does not have origin labels.")
+
+    values: list[list] = []
+    attempted_cells = 0
+    value_errors: list[Exception] = []
+    for i in range(1, origin_count + 1):
+        attempted_cells += 1
+        try:
+            values.append([_dfm_ultimate_value(dfm, i)])
+        except Exception as exc:
+            value_errors.append(exc)
+            values.append([None])
+    if attempted_cells > 0 and len(value_errors) == attempted_cells:
+        raise ValueError(f"Failed to read any DFM ultimate values for {name!r}: {value_errors[0]}")
+
+    user = _clean_name(_safe_attr(output_vector, "User", ""))
+    created = _iso_or_text(_safe_attr(output_vector, "Created", ""))
+    modified = _iso_or_text(_safe_attr(output_vector, "Modified", ""))
+
+    return {
+        "name": name,
+        "dataset_type": dataset_type,
+        "data_format": data_format,
+        "method_type": method_type,
+        "origin_length": origin_length,
+        "development_length": dev_length,
+        "origin_count": origin_count,
+        "development_count": 1,
+        "origin_labels": origin_labels,
+        "development_labels": ["Ultimate"],
+        "values": values,
+        "method_name": _clean_name(dfm.Name),
+        "user": user,
+        "created": created,
+        "modified": modified,
+    }
+
+
+def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
+    name = payload["name"]
+    dataset_type = payload.get("dataset_type") or name
+    origin_length = int(payload["origin_length"])
+    dev_length = int(payload["development_length"])
+    csv_name = _dataset_cache_csv_file_name(
+        name,
+        origin_length,
+        dev_length,
+        cumulative=DEFAULT_CUMULATIVE,
+        calendar=DEFAULT_CALENDAR,
+    )
+    csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
+    _write_csv_matrix(csv_path, payload["values"])
+
+    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    meta = {
+        "dataset_name": name,
+        "dataset_type": dataset_type,
+        "dataset_type_name": dataset_type,
+        "instance_name": name,
+        "reserving_class": rc_path,
+        "project_name": PROJECT_NAME,
+        "source_kind": "dfm",
+        "generated": True,
+        "editable": False,
+        "calculated": True,
+        "source": "resq_dfm_ultimates",
+        "method_name": payload.get("method_name", ""),
+        "method_type": payload.get("method_type", -1),
+        "data_format": "Vector",
+        "data_format_code": payload.get("data_format", 1),
+        "origin_length": origin_length,
+        "development_length": dev_length,
+        "origin_count": payload.get("origin_count", 0),
+        "development_count": payload.get("development_count", 1),
+        "origin_labels": payload.get("origin_labels", []),
+        "development_labels": payload.get("development_labels", []),
+        "cumulative": DEFAULT_CUMULATIVE,
+        "calendar": DEFAULT_CALENDAR,
+        "csv_file": csv_name,
+        "user": payload.get("user", ""),
+        "created": payload.get("created", ""),
+        "modified_by": payload.get("user", ""),
+        "updated_at": updated_at,
+    }
+    meta_dir = rc_dir / DATASET_SIDECAR_DIR
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = meta_dir / _json_sidecar_name(name)
+    with meta_path.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(_format_json(meta))
+        fh.write("\n")
+    return csv_path
+
+
 def export_triangles_for_rc(
     reserving_class,
     rc_path: str,
@@ -1042,6 +1332,46 @@ def export_triangles_for_rc(
             written += 1
         except Exception as exc:
             print(f"    ERR triangle {triangle_name}: {exc}")
+            traceback.print_exc(file=sys.stdout)
+            errors += 1
+    return written, errors
+
+
+def export_vectors_for_rc(
+    reserving_class,
+    rc_path: str,
+    rc_dir: Path,
+) -> tuple[int, int]:
+    """Export methodless vector datasets for one reserving class. Returns (written, errors)."""
+    vector_collection = reserving_class.Vectors()
+    if VECTOR_NAMES:
+        vector_names = [name.strip() for name in VECTOR_NAMES]
+    else:
+        vector_names = []
+        for vector in vector_collection:
+            if _safe_int_attr(vector, "MethodType", -1) == 0:
+                name = _clean_name(_safe_attr(vector, "Name", ""))
+                if name:
+                    vector_names.append(name)
+
+    print(f"Vectors (MethodType=0): {len(vector_names)}")
+    written = errors = 0
+    for vector_name in vector_names:
+        try:
+            vector = vector_collection.Item(vector_name)
+            method_type = _safe_int_attr(vector, "MethodType", -1)
+            if method_type != 0:
+                print(f"    SKIP vector {vector_name} (MethodType {method_type})")
+                continue
+            payload = export_vector(vector)
+            write_vector_export(payload, rc_path, rc_dir)
+            print(
+                f"    OK  vector "
+                f"{_dataset_cache_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
+            )
+            written += 1
+        except Exception as exc:
+            print(f"    ERR vector {vector_name}: {exc}")
             traceback.print_exc(file=sys.stdout)
             errors += 1
     return written, errors
@@ -1266,6 +1596,13 @@ def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int
         try:
             dfm = dfm_collection.Item(dfm_name)
             payload = export_dfm(dfm, rc_path)
+            ultimate_payload = export_dfm_ultimate_vector(
+                dfm,
+                payload["data tab"]["origin labels"],
+                payload["details tab"]["origin length"],
+                payload["details tab"]["development length"],
+            )
+            ultimate_csv_path = write_dfm_ultimate_vector_export(ultimate_payload, rc_path, rc_dir)
             existing_payload = _safe_read_json(out_path)
             payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
             with out_path.open("w", encoding="utf-8", newline="\n") as fh:
@@ -1273,6 +1610,7 @@ def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int
                 fh.write("\n")
 
             suffix = f" (preserved {', '.join(sorted(preserved))})" if preserved else ""
+            print(f"    OK  {_clean_name(ultimate_csv_path.name)}")
             print(f"    OK  {file_name}{suffix}")
             written += 1
         except Exception as exc:
@@ -1284,29 +1622,31 @@ def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export ResQ triangles and/or DFM methods to ArcRho dataset files.")
+    parser = argparse.ArgumentParser(description="Export ResQ triangles, methodless vectors, and/or DFM methods to ArcRho dataset files.")
     parser.add_argument(
         "--export",
-        choices=("configured", "all", "triangles", "dfm", "dfms"),
+        choices=("configured", "all", "triangles", "vectors", "vector", "dfm", "dfms"),
         default="configured",
-        help="Export phase to run. 'configured' uses EXPORT_DFMS/EXPORT_TRIANGLES constants.",
+        help="Export phase to run. 'configured' uses EXPORT_TRIANGLES/EXPORT_VECTORS/EXPORT_DFMS constants.",
     )
     return parser.parse_args(argv)
 
 
-def _selected_exports(export_mode: str) -> tuple[bool, bool]:
+def _selected_exports(export_mode: str) -> tuple[bool, bool, bool]:
     if export_mode == "all":
-        return True, True
+        return True, True, True
     if export_mode == "triangles":
-        return True, False
+        return True, False, False
+    if export_mode in {"vector", "vectors"}:
+        return False, True, False
     if export_mode in {"dfm", "dfms"}:
-        return False, True
-    return bool(EXPORT_TRIANGLES), bool(EXPORT_DFMS)
+        return False, False, True
+    return bool(EXPORT_TRIANGLES), bool(EXPORT_VECTORS), bool(EXPORT_DFMS)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
-    run_triangles, run_dfms = _selected_exports(args.export)
+    run_triangles, run_vectors, run_dfms = _selected_exports(args.export)
     try:
         import win32com.client
     except ImportError:
@@ -1330,7 +1670,7 @@ def main(argv: list[str] | None = None) -> None:
 
         reserving_class = project.ReservingClasses().Item(rc_path)
         print(f"RC: {rc_path}")
-        print(f"Export mode: {args.export} (triangles={run_triangles}, dfm={run_dfms})")
+        print(f"Export mode: {args.export} (triangles={run_triangles}, vectors={run_vectors}, dfm={run_dfms})")
         rc_dir.mkdir(parents=True, exist_ok=True)
         (rc_dir / DATASET_CACHE_DIR).mkdir(parents=True, exist_ok=True)
         (rc_dir / METHOD_DATA_DIR).mkdir(parents=True, exist_ok=True)
@@ -1340,6 +1680,12 @@ def main(argv: list[str] | None = None) -> None:
 
         if run_triangles:
             written, errors = export_triangles_for_rc(reserving_class, rc_path, rc_dir)
+            rc_written += written
+            total_written += written
+            total_errors += errors
+
+        if run_vectors:
+            written, errors = export_vectors_for_rc(reserving_class, rc_path, rc_dir)
             rc_written += written
             total_written += written
             total_errors += errors
