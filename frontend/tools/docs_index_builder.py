@@ -523,6 +523,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/project_instance/project_instance_loading.js", "Project Instance status, zoom, host frame style, and page loading helpers."),
             ("ui/project_instance/project_instance_dataset_cache.js", "Cached dataset lookup, toolbar status, table preference, and disk-change watcher logic."),
             ("ui/project_instance/project_instance_dataset_table.js", "Dataset table rendering, filters, grouping, sorting, selection, and row actions."),
+            ("ui/project_instance/project_instance_dataset_add_picker.js", "Add Dataset picker sorting, filtering, search, drag/resize, and row selection."),
             ("ui/project_instance/project_instance_path_panel.js", "Reserving-class path panel loading, selection, persistence, and resizing."),
             ("ui/project_instance/project_instance_windows.js", "Floating Dataset and DFM window lifecycle, geometry, dirty state, and restore snapshots."),
             ("ui/project_instance/project_instance_hidden_tabs.js", "Hidden floating-window tab strip, menu, drop target, and dock animations."),

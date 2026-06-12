@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Python script files can be dropped into the shell to open in Scripting Console, and clean script tabs no longer repeat-reload after one disk edit."
+}

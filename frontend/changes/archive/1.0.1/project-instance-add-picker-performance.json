@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Improved Add Dataset picker responsiveness when opening the picker and typing in its search box."
+}

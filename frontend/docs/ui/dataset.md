@@ -11,7 +11,7 @@ Implementation details should stay in the generated entrypoint/key-file sections
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.dataset.entry_points -->
-- `ui/dataset/dataset_viewer.html`: external scripts _none_; inline imports `/ui/dataset/dataset_main.js?v=20260607b`, `/ui/dataset/dataset_shared.js?v=20260607a`.
+- `ui/dataset/dataset_viewer.html`: external scripts _none_; inline imports `/ui/dataset/dataset_main.js?v=20260611a`, `/ui/dataset/dataset_shared.js?v=20260607a`.
 
 Detected `fetch(...)` targets in key JS files:
 - `${config.API_BASE}/dataset/${dsId}/patch`

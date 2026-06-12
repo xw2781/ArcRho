@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Replaced the Add Dataset picker filter Clear All button with an All checkbox that resets the filter."
+}

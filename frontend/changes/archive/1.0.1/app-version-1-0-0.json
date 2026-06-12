@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Updated the ArcRho app version metadata and launch splash version display to 1.0.1."
+}

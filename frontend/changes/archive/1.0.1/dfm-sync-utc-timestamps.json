@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Sync now shows method JSON last-modified timestamps in UTC instead of converting them to local time."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Simplified the Macro window list so it shows macro names while keeping details in the description panel."
+}

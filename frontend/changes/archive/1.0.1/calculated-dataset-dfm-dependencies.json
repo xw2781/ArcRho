@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Calculated dataset adds can now resolve saved DFM method dependencies even when their result CSVs are missing."
+}

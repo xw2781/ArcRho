@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance dataset indexes now carry calculated formula text so instance rows can show their formulas reliably."
+}

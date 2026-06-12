@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added a Project Instance dataset-table refresh button and removed automatic table refresh after nested saves."
+}

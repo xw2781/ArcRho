@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed DFM RPC sync so returned remote JSON and comparison timestamps preserve the ResQ output-vector Modified wall-clock time."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Fixed Macro window splitter resizing and added a splitter context menu for Run, Edit, and Delete actions."
+}

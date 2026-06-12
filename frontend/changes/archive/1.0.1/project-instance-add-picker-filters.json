@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added sorting, filters, and Dataset Type Name search to the Project Instance Add Dataset picker."
+}

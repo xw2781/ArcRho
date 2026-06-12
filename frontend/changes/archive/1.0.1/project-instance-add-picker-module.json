@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "internal",
+  "summary": "Split the Project Instance Add Dataset picker into its own frontend module."
+}
