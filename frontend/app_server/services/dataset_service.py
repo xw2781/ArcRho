@@ -65,12 +65,12 @@ def list_datasets() -> List[Dict[str, Any]]:
     return out
 
 
-def list_cached_dataset_names(project_name: str, reserving_class: str) -> Dict[str, Any]:
+def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: bool = False) -> Dict[str, Any]:
     project = str(project_name if project_name is not None else "").strip()
     rc = str(reserving_class if reserving_class is not None else "").strip()
     if not project or not rc:
         raise HTTPException(400, "project_name and reserving_class are required.")
-    return dataset_instance_index_service.get_cached_dataset_index(project, rc)
+    return dataset_instance_index_service.get_index(project, rc, refresh=refresh)
 
 
 def delete_cached_datasets(project_name: str, reserving_class: str, dataset_names: List[str]) -> Dict[str, Any]:
@@ -212,6 +212,10 @@ def create_empty_cached_dataset(
         if csv_path:
             ds_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
             config.DATASETS[ds_id] = csv_path
+            try:
+                dataset_instance_index_service.rebuild_index(p, rc)
+            except Exception:
+                pass
             try:
                 n_origin, n_dev = infer_shape(csv_path)
             except Exception:

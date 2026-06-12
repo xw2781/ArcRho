@@ -284,6 +284,9 @@ def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dic
     source_kind = _clean_text(source.get("source_kind"))
     if source_kind and not _clean_text(existing.get("source_kind")):
         existing["source_kind"] = source_kind
+    formula = _clean_text(source.get("formula"))
+    if formula:
+        existing["formula"] = formula
     for flag in ("editable", "generated", "calculated"):
         if flag in source and flag not in existing:
             existing[flag] = source.get(flag)
@@ -410,6 +413,7 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 file_info["editable"] = metadata.get("editable")
                 file_info["generated"] = metadata.get("generated")
                 file_info["calculated"] = metadata.get("calculated")
+                file_info["formula"] = _clean_text(metadata.get("formula"))
                 file_info["user"] = _metadata_text(metadata, (
                     "user",
                     "user_name",

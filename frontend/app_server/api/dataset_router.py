@@ -24,8 +24,8 @@ def list_datasets() -> List[Dict[str, Any]]:
 
 
 @router.get("/datasets/cached")
-def list_cached_dataset_names(project_name: str, reserving_class: str) -> Dict[str, Any]:
-    return dataset_service.list_cached_dataset_names(project_name, reserving_class)
+def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: bool = False) -> Dict[str, Any]:
+    return dataset_service.list_cached_dataset_names(project_name, reserving_class, refresh=refresh)
 
 
 @router.post("/datasets/cached/delete")

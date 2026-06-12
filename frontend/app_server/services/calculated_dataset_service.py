@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import getpass
 import hashlib
 import json
 import os
@@ -36,6 +37,17 @@ def _bool_value(value: Any) -> bool:
 
 def _now_utc_iso() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+def _current_user_name() -> str:
+    for value in (os.environ.get("USERNAME"), os.environ.get("USER")):
+        text = _clean_text(value)
+        if text:
+            return text
+    try:
+        return _clean_text(getpass.getuser()) or "calculated"
+    except Exception:
+        return "calculated"
 
 
 def _dataset_type_rows(project_name: str) -> List[Dict[str, Any]]:
@@ -196,6 +208,210 @@ def _sidecar_for_csv(path: str) -> Dict[str, Any]:
     return payload
 
 
+def _json_tab(source: Dict[str, Any], key: str) -> Dict[str, Any]:
+    value = source.get(key) if isinstance(source, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
+def _method_output_names(payload: Dict[str, Any], path: str = "") -> Set[str]:
+    names: Set[str] = set()
+    details = _json_tab(payload, "details tab")
+    for key in ("output type", "name"):
+        text = _clean_text(details.get(key))
+        if text:
+            names.add(text)
+    stem = os.path.splitext(os.path.basename(path))[0]
+    if stem.startswith("DFM@"):
+        text = _clean_text(config.decode_filename_segment(stem[len("DFM@"):]))
+        if text:
+            names.add(text)
+    return names
+
+
+def _candidate_dfm_methods(
+    project_name: str,
+    reserving_class: str,
+    dataset_type_name: str,
+) -> List[Dict[str, Any]]:
+    folder = config.get_project_method_data_dir(project_name, reserving_class)
+    dep_key = _canon_dataset_name(dataset_type_name)
+    if not dep_key or not os.path.isdir(folder):
+        return []
+
+    out: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+
+    def add_candidate(path: str) -> None:
+        norm = os.path.abspath(path)
+        if norm in seen or not os.path.isfile(path):
+            return
+        seen.add(norm)
+        payload = _read_sidecar(path)
+        names = _method_output_names(payload, path)
+        if dep_key not in {_canon_dataset_name(name) for name in names}:
+            return
+        details = _json_tab(payload, "details tab")
+        output_type = _clean_text(details.get("output type"))
+        method_name = _clean_text(details.get("name"))
+        score = 0
+        if _canon_dataset_name(output_type) == dep_key:
+            score += 8
+        if _canon_dataset_name(method_name) == dep_key:
+            score += 4
+        out.append({
+            "path": path,
+            "payload": payload,
+            "score": score,
+            "mtime": os.stat(path).st_mtime,
+        })
+
+    direct_path = os.path.join(folder, f"DFM@{sanitize_dataset_file_name(dataset_type_name)}.json")
+    add_candidate(direct_path)
+    for name in os.listdir(folder):
+        if not name.startswith("DFM@") or not name.lower().endswith(".json"):
+            continue
+        add_candidate(os.path.join(folder, name))
+
+    out.sort(key=lambda item: (int(item.get("score") or 0), float(item.get("mtime") or 0)), reverse=True)
+    best_score = int(out[0].get("score") or 0) if out else 0
+    return [item for item in out if int(item.get("score") or 0) == best_score]
+
+
+def _path_in_dir(path: str, folder: str) -> bool:
+    try:
+        return os.path.commonpath([os.path.abspath(path), os.path.abspath(folder)]) == os.path.abspath(folder)
+    except Exception:
+        return False
+
+
+def _finite_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _read_numeric_csv(path: str) -> np.ndarray:
+    df = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True)
+    return df.to_numpy(dtype="float64")
+
+
+def _read_dfm_input_triangle(
+    project_name: str,
+    reserving_class: str,
+    payload: Dict[str, Any],
+    target_settings: Dict[str, Any],
+) -> Tuple[np.ndarray | None, str, str]:
+    data_tab = _json_tab(payload, "data tab")
+    details = _json_tab(payload, "details tab")
+    dataset_folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
+    path = _clean_text(data_tab.get("input data triangle csv path"))
+    if path and os.path.isfile(path) and _path_in_dir(path, dataset_folder):
+        try:
+            return _read_numeric_csv(path), path, ""
+        except Exception as exc:
+            return None, path, str(exc)
+
+    input_name = _clean_text(details.get("input triangle"))
+    if not input_name:
+        return None, "", "DFM method is missing an input triangle name."
+    candidates = _candidate_csvs(project_name, reserving_class, input_name, target_settings)
+    if not candidates:
+        return None, "", f"Missing DFM input triangle: {input_name}"
+    if len(candidates) > 1:
+        return None, "", f"Ambiguous DFM input triangle: {input_name}"
+    path = str(candidates[0]["path"])
+    try:
+        return _read_numeric_csv(path), path, ""
+    except Exception as exc:
+        return None, path, str(exc)
+
+
+def _selected_dfm_ratio_values(payload: Dict[str, Any], dev_count: int) -> List[float]:
+    ratios_tab = _json_tab(payload, "ratios tab")
+    formulas = _json_tab(ratios_tab, "average formulas")
+    selected = formulas.get("selected") if isinstance(formulas.get("selected"), list) else []
+    values = formulas.get("values") if isinstance(formulas.get("values"), list) else []
+    ratio_count = max(0, int(dev_count or 0))
+    out: List[float] = []
+    for col in range(ratio_count):
+        if dev_count and col >= dev_count - 1:
+            out.append(1.0)
+            continue
+        selected_row = None
+        for row_index, row in enumerate(selected):
+            row_values = row if isinstance(row, list) else []
+            if col < len(row_values) and _finite_float(row_values[col]) == 1.0:
+                selected_row = row_index
+                break
+        if selected_row is None:
+            selected_row = 0
+        source_row = values[selected_row] if selected_row < len(values) and isinstance(values[selected_row], list) else []
+        ratio = _finite_float(source_row[col] if col < len(source_row) else None)
+        out.append(ratio if ratio is not None else 1.0)
+    return out
+
+
+def _cumulative_factors(ratio_values: List[float]) -> List[float | None]:
+    cumulative: List[float | None] = [None] * len(ratio_values)
+    running: float | None = None
+    for index in range(len(ratio_values) - 1, -1, -1):
+        value = ratio_values[index]
+        if not np.isfinite(value):
+            cumulative[index] = None
+            running = None
+            continue
+        if index == len(ratio_values) - 1:
+            running = value
+        elif running is not None and np.isfinite(running):
+            running = value * running
+        else:
+            cumulative[index] = None
+            running = None
+            continue
+        cumulative[index] = running
+    return cumulative
+
+
+def _build_dfm_method_vector(
+    project_name: str,
+    reserving_class: str,
+    payload: Dict[str, Any],
+    target_settings: Dict[str, Any],
+) -> Tuple[np.ndarray | None, str, str]:
+    data_tab = _json_tab(payload, "data tab")
+    input_values, input_path, error = _read_dfm_input_triangle(project_name, reserving_class, payload, target_settings)
+    if error:
+        return None, input_path, error
+    if input_values is None or input_values.ndim != 2:
+        return None, input_path, "DFM input triangle could not be loaded."
+
+    dev_labels = data_tab.get("development labels") if isinstance(data_tab.get("development labels"), list) else []
+    origin_labels = data_tab.get("origin labels") if isinstance(data_tab.get("origin labels"), list) else []
+    dev_count = len(dev_labels) or input_values.shape[1]
+    if dev_count <= 0:
+        return None, input_path, "DFM method is missing development periods."
+
+    cumulative = _cumulative_factors(_selected_dfm_ratio_values(payload, dev_count))
+    row_count = len(origin_labels) or input_values.shape[0]
+    out: List[float] = []
+    for row_index in range(row_count):
+        latest_value = None
+        latest_col = None
+        if row_index < input_values.shape[0]:
+            max_col = min(dev_count - 1, input_values.shape[1] - 1)
+            for col in range(max_col, -1, -1):
+                value = _finite_float(input_values[row_index, col])
+                if value is not None:
+                    latest_value = value
+                    latest_col = col
+                    break
+        factor = cumulative[latest_col] if latest_col is not None and latest_col < len(cumulative) else None
+        out.append(latest_value * factor if latest_value is not None and factor is not None else np.nan)
+    return np.asarray(out, dtype="float64").reshape((-1, 1)), input_path, ""
+
+
 def _candidate_csvs(
     project_name: str,
     reserving_class: str,
@@ -282,7 +498,35 @@ def _load_components(
     for index, component in enumerate(components):
         candidates = _candidate_csvs(project_name, reserving_class, component, target_settings)
         if not candidates:
-            errors.append(f"Missing dependency: {component}")
+            method_candidates = _candidate_dfm_methods(project_name, reserving_class, component)
+            if not method_candidates:
+                errors.append(f"Missing dependency: {component}")
+                continue
+            if len(method_candidates) > 1:
+                errors.append(f"Ambiguous DFM dependency: {component}")
+                continue
+            method_item = method_candidates[0]
+            method_path = str(method_item["path"])
+            arr, input_path, error = _build_dfm_method_vector(
+                project_name,
+                reserving_class,
+                method_item.get("payload") if isinstance(method_item.get("payload"), dict) else {},
+                target_settings,
+            )
+            if error or arr is None:
+                errors.append(f"Failed to rebuild DFM dependency {component}: {error or 'unknown error'}")
+                continue
+            var = f"_d{index}"
+            values[var] = arr
+            stat = os.stat(method_path)
+            dependency_info.append({
+                "dataset_type_name": component,
+                "path": method_path,
+                "source_kind": "dfm_method",
+                "input_path": input_path,
+                "mtime": stat.st_mtime,
+                "mtime_ns": stat.st_mtime_ns,
+            })
             continue
         if len(candidates) > 1:
             errors.append(f"Ambiguous dependency: {component}")
@@ -439,6 +683,7 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
     csv_path, sidecar_path = _target_paths(project_name, reserving_class, row["name"], settings)
     now = _now_utc_iso()
     created = settings.get("created") or now
+    user_name = _current_user_name()
     payload = {
         "dataset_name": row["name"],
         "dataset_type": row["name"],
@@ -456,8 +701,8 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         "csv_file": os.path.basename(csv_path),
         "created": created,
         "updated_at": now,
-        "modified_by": "calculated",
-        "user": "calculated",
+        "modified_by": user_name,
+        "user": user_name,
         "editable": False,
         "generated": False,
         "calculated": True,
