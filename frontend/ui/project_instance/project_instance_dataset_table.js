@@ -6,7 +6,7 @@ export function installProjectInstanceDatasetTable(ctx) {
     scheduleProjectUserPreferencesSave,
   } = ctx;
   const { DATASET_TABLE_COLUMNS, DATASET_COLUMNS, DATASET_TABLE_AUTOFIT_MAX_WIDTH, DATASET_TABLE_AUTOFIT_CELL_EXTRA_WIDTH, DATASET_TABLE_AUTOFIT_HEADER_EXTRA_WIDTH, DATASET_TABLE_BLANK_LABEL, DATASET_FILTER_CHIP_VALUE_LIMIT } = ctx.constants;
-  const { datasetTablePreferenceWidthKeys, datasetTableView, cachedDatasetFilter, activePathFolderWatch, datasetTableSelection } = state;
+  const { datasetTablePreferenceWidthKeys, datasetTableView, cachedDatasetFilter, datasetTableSelection } = state;
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
   const finishPageLoading = (...args) => api.finishPageLoading(...args);
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
@@ -20,8 +20,8 @@ export function installProjectInstanceDatasetTable(ctx) {
   const postProjectInstanceStatus = (...args) => api.postProjectInstanceStatus(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const shouldUseCachedDatasetFilter = (...args) => api.shouldUseCachedDatasetFilter(...args);
+  const showDatasetAddPicker = (...args) => api.showDatasetAddPicker(...args);
   const syncCachedDatasetToolbar = (...args) => api.syncCachedDatasetToolbar(...args);
-  const syncDiskChangeToolbarAlert = (...args) => api.syncDiskChangeToolbarAlert(...args);
   const toText = (...args) => api.toText(...args);
 
 function getDatasetFilterActiveValues(key, context = null) {
@@ -142,6 +142,60 @@ function getDatasetRecordKey(record) {
   if (Number.isInteger(rowIndex) && rowIndex >= 0) return `row-${rowIndex}`;
   const name = toText(record?.datasetName);
   return name ? `name-${name.toLowerCase()}` : "";
+}
+
+function getDatasetSelectionName(record) {
+  return normalizeLookupKey(record?.datasetName || getDatasetRecordValue(record, "name"));
+}
+
+function captureDatasetTableSelection() {
+  pruneDatasetTableSelection();
+  const selectedNames = [];
+  for (const record of getSelectedDatasetRecords()) {
+    const name = getDatasetSelectionName(record);
+    if (name) selectedNames.push(name);
+  }
+  return {
+    selectedNames,
+    anchorName: getDatasetSelectionName(getDatasetRecordByKey(datasetTableSelection.anchorKey)),
+    selectedKeys: Array.from(datasetTableSelection.selectedKeys),
+    anchorKey: datasetTableSelection.anchorKey,
+  };
+}
+
+function restoreDatasetTableSelection(selectionState) {
+  if (!selectionState) return;
+  const selectedNames = new Set(
+    (Array.isArray(selectionState.selectedNames) ? selectionState.selectedNames : [])
+      .map((name) => normalizeLookupKey(name))
+      .filter(Boolean)
+  );
+  const oldSelectedKeys = new Set(
+    (Array.isArray(selectionState.selectedKeys) ? selectionState.selectedKeys : [])
+      .map((key) => toText(key))
+      .filter(Boolean)
+  );
+  const anchorName = normalizeLookupKey(selectionState.anchorName);
+  const oldAnchorKey = toText(selectionState.anchorKey);
+  let nextAnchorKey = "";
+
+  datasetTableSelection.selectedKeys.clear();
+  datasetTableSelection.anchorKey = "";
+
+  for (const record of state.datasetTableVisibleRecords) {
+    const recordKey = getDatasetRecordKey(record);
+    if (!recordKey) continue;
+    const name = getDatasetSelectionName(record);
+    const selected = (name && selectedNames.has(name)) || (!selectedNames.size && oldSelectedKeys.has(recordKey));
+    if (!selected) continue;
+    datasetTableSelection.selectedKeys.add(recordKey);
+    if (!nextAnchorKey && ((anchorName && name === anchorName) || (!anchorName && recordKey === oldAnchorKey))) {
+      nextAnchorKey = recordKey;
+    }
+  }
+
+  datasetTableSelection.anchorKey = nextAnchorKey || datasetTableSelection.selectedKeys.values().next().value || "";
+  syncDatasetTableSelectionDom();
 }
 
 function pruneDatasetTableSelection() {
@@ -600,7 +654,7 @@ function getDatasetRecordCellValue(row, key, instance = null) {
     case "dataFormat":
       return toText(row?.[1]);
     case "formula":
-      return toText(row?.[4]);
+      return instance ? (meta?.formula || toText(instance?.formula)) : toText(row?.[4]);
     case "category":
       return toText(row?.[2]);
     case "methodType":
@@ -1497,222 +1551,6 @@ function getDatasetRowViewRecord() {
   return getDatasetRecordByKey(state.datasetRowContextKey) || getSelectedDatasetRecords()[0] || null;
 }
 
-function closeDatasetAddPicker() {
-  if (state.datasetAddPickerResolve) {
-    state.datasetAddPickerResolve(null);
-    state.datasetAddPickerResolve = null;
-  }
-  els.datasetAddPickerOverlay?.setAttribute("hidden", "");
-}
-
-function getDatasetAddPickerViewportLimits() {
-  const maxWidth = Math.max(260, window.innerWidth - 24);
-  const maxHeight = Math.max(180, window.innerHeight - 24);
-  return {
-    pad: 12,
-    minWidth: Math.min(420, maxWidth),
-    minHeight: Math.min(220, maxHeight),
-    maxWidth,
-    maxHeight,
-  };
-}
-
-function applyDatasetAddPickerRect(rect) {
-  const box = els.datasetAddPickerBox;
-  if (!box) return;
-  const limits = getDatasetAddPickerViewportLimits();
-  const width = Math.max(limits.minWidth, Math.min(Number(rect?.width) || limits.minWidth, limits.maxWidth));
-  const height = Math.max(limits.minHeight, Math.min(Number(rect?.height) || limits.minHeight, limits.maxHeight));
-  const left = Math.max(limits.pad, Math.min(Number(rect?.left) || limits.pad, window.innerWidth - width - limits.pad));
-  const top = Math.max(limits.pad, Math.min(Number(rect?.top) || limits.pad, window.innerHeight - height - limits.pad));
-  box.style.left = `${Math.round(left)}px`;
-  box.style.top = `${Math.round(top)}px`;
-  box.style.right = "auto";
-  box.style.width = `${Math.round(width)}px`;
-  box.style.height = `${Math.round(height)}px`;
-  box.style.maxHeight = "none";
-  box.dataset.positioned = "1";
-}
-
-function ensureDatasetAddPickerPositioned() {
-  const box = els.datasetAddPickerBox;
-  if (!box) return;
-  if (box.dataset.positioned === "1") {
-    clampDatasetAddPickerToViewport();
-    return;
-  }
-  const rect = box.getBoundingClientRect();
-  applyDatasetAddPickerRect({
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height,
-  });
-}
-
-function clampDatasetAddPickerToViewport() {
-  const box = els.datasetAddPickerBox;
-  if (!box || els.datasetAddPickerOverlay?.hasAttribute?.("hidden")) return;
-  const rect = box.getBoundingClientRect();
-  applyDatasetAddPickerRect({
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height,
-  });
-}
-
-function initDatasetAddPickerDragResize() {
-  const box = els.datasetAddPickerBox;
-  if (!box || box.dataset.dragResizeWired === "1") return;
-  box.dataset.dragResizeWired = "1";
-
-  const startInteraction = (event, mode, edge = "") => {
-    if (event.button !== 0) return;
-    const rect = box.getBoundingClientRect();
-    ensureDatasetAddPickerPositioned();
-    const startRect = {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-    };
-    const startX = Number(event.clientX || 0);
-    const startY = Number(event.clientY || 0);
-    box.classList.toggle("dragging", mode === "drag");
-    box.classList.toggle("resizing", mode === "resize");
-
-    const onMove = (moveEvent) => {
-      const dx = Number(moveEvent.clientX || 0) - startX;
-      const dy = Number(moveEvent.clientY || 0) - startY;
-      if (mode === "drag") {
-        applyDatasetAddPickerRect({
-          left: startRect.left + dx,
-          top: startRect.top + dy,
-          width: startRect.width,
-          height: startRect.height,
-        });
-        return;
-      }
-
-      let nextLeft = startRect.left;
-      let nextTop = startRect.top;
-      let nextWidth = startRect.width;
-      let nextHeight = startRect.height;
-      if (edge.includes("e")) nextWidth = startRect.width + dx;
-      if (edge.includes("s")) nextHeight = startRect.height + dy;
-      if (edge.includes("w")) {
-        nextLeft = startRect.left + dx;
-        nextWidth = startRect.width - dx;
-      }
-      if (edge.includes("n")) {
-        nextTop = startRect.top + dy;
-        nextHeight = startRect.height - dy;
-      }
-      applyDatasetAddPickerRect({
-        left: nextLeft,
-        top: nextTop,
-        width: nextWidth,
-        height: nextHeight,
-      });
-    };
-
-    const onUp = () => {
-      box.classList.remove("dragging", "resizing");
-      document.removeEventListener("mousemove", onMove, true);
-      document.removeEventListener("mouseup", onUp, true);
-    };
-
-    document.addEventListener("mousemove", onMove, true);
-    document.addEventListener("mouseup", onUp, true);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  box.querySelector(".pi-add-picker-header")?.addEventListener("mousedown", (event) => {
-    if (event.target?.closest?.("button")) return;
-    startInteraction(event, "drag");
-  });
-
-  for (const handle of box.querySelectorAll(".pi-add-picker-resize[data-edge]")) {
-    handle.addEventListener("mousedown", (event) => {
-      startInteraction(event, "resize", String(handle.dataset.edge || ""));
-    });
-  }
-}
-
-function getDatasetAddPickerRecords() {
-  return state.datasetRows
-    .map((row, rowIndex) => buildDatasetRecord(row, rowIndex))
-    .filter((record) => record.datasetName);
-}
-
-function renderDatasetAddPickerRows() {
-  const tbody = els.datasetAddPickerTable?.querySelector?.("tbody");
-  if (!tbody) return;
-  tbody.replaceChildren();
-  const records = getDatasetAddPickerRecords();
-  els.datasetAddPickerEmpty?.toggleAttribute("hidden", records.length > 0);
-  if (els.datasetAddPickerTable) els.datasetAddPickerTable.hidden = records.length === 0;
-  if (els.datasetAddPickerTableWrap) els.datasetAddPickerTableWrap.hidden = records.length === 0;
-
-  for (const record of records) {
-    const tr = document.createElement("tr");
-    tr.tabIndex = 0;
-    tr.dataset.datasetName = record.datasetName;
-    for (const key of ["datasetTypeName", "dataFormat", "category"]) {
-      const td = document.createElement("td");
-      td.textContent = getDatasetRecordValue(record, key);
-      tr.appendChild(td);
-    }
-    const generatedTd = document.createElement("td");
-    generatedTd.className = "pi-add-generated-cell";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = !!record.generated;
-    checkbox.disabled = true;
-    checkbox.setAttribute("aria-label", record.generated ? "Generated" : "Not generated");
-    generatedTd.appendChild(checkbox);
-    tr.appendChild(generatedTd);
-    const choose = () => {
-      if (state.datasetAddPickerResolve) {
-        const resolve = state.datasetAddPickerResolve;
-        state.datasetAddPickerResolve = null;
-        resolve(record);
-      }
-      els.datasetAddPickerOverlay?.setAttribute("hidden", "");
-    };
-    tr.addEventListener("click", choose);
-    tr.addEventListener("dblclick", choose);
-    tr.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      event.stopPropagation();
-      choose();
-    });
-    tbody.appendChild(tr);
-  }
-}
-
-function showDatasetAddPicker() {
-  if (!els.datasetAddPickerOverlay) {
-    setStatus("Dataset type picker is not available.", true);
-    return Promise.resolve(null);
-  }
-  closeDatasetRowContextMenu();
-  closeDatasetTableContextMenu();
-  closeDatasetGroupContextMenu();
-  closeDatasetTableFilterPopover();
-  renderDatasetAddPickerRows();
-  els.datasetAddPickerOverlay.removeAttribute("hidden");
-  ensureDatasetAddPickerPositioned();
-  const firstRow = els.datasetAddPickerTable?.querySelector?.("tbody tr");
-  firstRow?.focus?.();
-  return new Promise((resolve) => {
-    state.datasetAddPickerResolve = resolve;
-  });
-}
-
 function buildAddDatasetTriPayload(record, lengths) {
   const originLen = Number(lengths?.originLen) || 12;
   const devLen = Number(lengths?.devLen) || 12;
@@ -1876,11 +1714,6 @@ async function deleteSelectedDatasetRows(records) {
     }
     datasetTableSelection.selectedKeys.clear();
     datasetTableSelection.anchorKey = "";
-    activePathFolderWatch.noticeShown = false;
-    activePathFolderWatch.path = normalizePath(state.selectedPath);
-    activePathFolderWatch.signature = "";
-    activePathFolderWatch.instanceSignature = "";
-    syncDiskChangeToolbarAlert();
     await loadCachedDatasetFilterForSelectedPath();
     renderDatasetTable();
     const deletedCount = Number(payload?.deleted_count || 0);
@@ -1946,23 +1779,26 @@ function openDatasetTableFilterPopover(key, anchor) {
   title.textContent = `${col.label} Filter`;
   pop.appendChild(title);
 
-  const clearAllBtn = document.createElement("button");
-  clearAllBtn.type = "button";
-  clearAllBtn.className = "pi-table-filter-clear-all";
-  clearAllBtn.textContent = "Clear All";
-  clearAllBtn.disabled = selected.size === 0;
-  clearAllBtn.addEventListener("click", () => {
+  const list = document.createElement("div");
+  list.className = "pi-table-filter-list";
+  pop.appendChild(list);
+
+  const allRow = document.createElement("label");
+  allRow.className = "pi-table-filter-option";
+  const allCb = document.createElement("input");
+  allCb.type = "checkbox";
+  allCb.checked = selected.size === 0;
+  allCb.addEventListener("change", () => {
     selected.clear();
     saveDatasetTablePreferences();
     renderDatasetTable();
     const nextAnchor = findDatasetFilterButton(key);
     if (nextAnchor) openDatasetTableFilterPopover(key, nextAnchor);
   });
-  pop.appendChild(clearAllBtn);
-
-  const list = document.createElement("div");
-  list.className = "pi-table-filter-list";
-  pop.appendChild(list);
+  const allText = document.createElement("span");
+  allText.textContent = "All";
+  allRow.append(allCb, allText);
+  list.appendChild(allRow);
 
   for (const opt of options) {
     const row = document.createElement("label");
@@ -2018,7 +1854,6 @@ function findDatasetFilterButton(key) {
 function initDatasetTableInteractions() {
   if (els.rightPanel?.dataset?.tableInteractionsWired === "1") return;
   if (els.rightPanel) els.rightPanel.dataset.tableInteractionsWired = "1";
-  initDatasetAddPickerDragResize();
   if (els.datasetTableSurface) {
     els.datasetTableSurface.tabIndex = 0;
     els.datasetTableSurface.addEventListener("keydown", handleDatasetTableKeyDown);
@@ -2069,10 +1904,6 @@ function initDatasetTableInteractions() {
     event.stopPropagation();
     clearDatasetColumnFilter(chip.dataset.filterKey);
   });
-  els.datasetAddPickerClose?.addEventListener("click", closeDatasetAddPicker);
-  els.datasetAddPickerOverlay?.addEventListener("mousedown", (event) => {
-    if (event.target === event.currentTarget) closeDatasetAddPicker();
-  });
   document.addEventListener("mousedown", (event) => {
     if (els.datasetTableContextMenu?.contains(event.target)) return;
     if (els.datasetGroupContextMenu?.contains(event.target)) return;
@@ -2090,9 +1921,6 @@ function initDatasetTableInteractions() {
     if (!els.datasetDeleteConfirmOverlay?.hasAttribute?.("hidden")) {
       resolveDatasetDeleteConfirm(false);
     }
-    if (!els.datasetAddPickerOverlay?.hasAttribute?.("hidden")) {
-      closeDatasetAddPicker();
-    }
     closeDatasetTableContextMenu();
     closeDatasetGroupContextMenu();
     closeDatasetRowContextMenu();
@@ -2102,7 +1930,6 @@ function initDatasetTableInteractions() {
     closeDatasetTableContextMenu();
     closeDatasetGroupContextMenu();
     closeDatasetRowContextMenu();
-    clampDatasetAddPickerToViewport();
     positionDatasetTableFilterPopover();
   });
   els.datasetTableWrap?.addEventListener("scroll", positionDatasetTableFilterPopover, true);
@@ -2183,11 +2010,11 @@ async function loadDatasets() {
     buildDatasetGroupParts,
     buildDatasetRecord,
     buildDatasetTableRenderContext,
+    captureDatasetTableSelection,
     clampInitialDatasetTableWidth,
     clearDatasetColumnDragIndicators,
     clearDatasetColumnFilter,
     closeDatasetGroupContextMenu,
-    closeDatasetAddPicker,
     closeDatasetRowContextMenu,
     closeDatasetTableContextMenu,
     closeDatasetTableFilterPopover,
@@ -2214,7 +2041,6 @@ async function loadDatasets() {
     getDatasetGroupByKeys,
     getDatasetGroupId,
     getDatasetName,
-    getDatasetAddPickerRecords,
     getDatasetRecordByKey,
     getDatasetRecordIndexByKey,
     getDatasetRecordKey,
@@ -2254,6 +2080,7 @@ async function loadDatasets() {
     recordSelectedDfmObject,
     renderDatasetTable,
     resolveDatasetDeleteConfirm,
+    restoreDatasetTableSelection,
     rowMatchesDatasetTableFilters,
     saveDatasetTablePreferences,
     scrollDatasetRecordIntoView,
@@ -2264,7 +2091,6 @@ async function loadDatasets() {
     setDatasetTableColumnWidth,
     setEmptyTable,
     showDatasetDeleteConfirm,
-    showDatasetAddPicker,
     showDatasetFilterTooltip,
     showDatasetGroupContextMenu,
     showDatasetRowContextMenu,

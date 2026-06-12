@@ -1,13 +1,14 @@
 export function installProjectInstanceDatasetCache(ctx) {
   const { api, els, projectName, state } = ctx;
-  const { ACTIVE_PATH_FOLDER_WATCH_INTERVAL_MS } = ctx.constants;
-  const { cachedDatasetFilter, cachedDatasetSnapshotRequests, activePathFolderWatch } = state;
+  const { cachedDatasetFilter, cachedDatasetSnapshotRequests } = state;
+  const captureDatasetTableSelection = (...args) => api.captureDatasetTableSelection(...args);
   const closeDatasetTableFilterPopover = (...args) => api.closeDatasetTableFilterPopover(...args);
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
   const getDatasetName = (...args) => api.getDatasetName(...args);
   const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
   const normalizePath = (...args) => api.normalizePath(...args);
   const renderDatasetTable = (...args) => api.renderDatasetTable(...args);
+  const restoreDatasetTableSelection = (...args) => api.restoreDatasetTableSelection(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const toText = (...args) => api.toText(...args);
 
@@ -22,6 +23,9 @@ function syncCachedDatasetToolbar() {
     } else {
       btn.title = "Show only datasets with cached CSV or JSON files";
     }
+  }
+  if (els.datasetRefreshBtn) {
+    els.datasetRefreshBtn.disabled = cachedDatasetFilter.loading || !state.selectedPath;
   }
   if (!els.cachedDatasetStatus) return;
   if (!state.selectedPath) {
@@ -39,13 +43,7 @@ function syncCachedDatasetToolbar() {
   const count = Number.isFinite(cachedDatasetFilter.visibleCount)
     ? cachedDatasetFilter.visibleCount
     : cachedDatasetFilter.names.size;
-  els.cachedDatasetStatus.textContent = `${count} record(s)`;
-}
-
-function syncDiskChangeToolbarAlert() {
-  const alert = els.diskChangeReloadAlert;
-  if (!alert) return;
-  alert.hidden = !activePathFolderWatch.noticeShown;
+  els.cachedDatasetStatus.textContent = `(${count} ${count === 1 ? "record" : "records"})`;
 }
 
 
@@ -160,9 +158,11 @@ function mergeCachedDatasetMetadata(existing, item) {
     lastModified: "",
     created: "",
     user: "",
+    formula: "",
     _lastModifiedTs: 0,
     _createdTs: 0,
     _userModifiedTs: 0,
+    _formulaModifiedTs: 0,
   };
 
   const lastModifiedRaw = item?.last_modified || item?.last_modified_timestamp || item?.mtime || item?.metadata_last_modified;
@@ -185,6 +185,12 @@ function mergeCachedDatasetMetadata(existing, item) {
   if (user && (!meta.user || lastModifiedTs >= meta._userModifiedTs)) {
     meta.user = user;
     meta._userModifiedTs = lastModifiedTs;
+  }
+
+  const formula = toText(item?.formula);
+  if (formula && (!meta.formula || lastModifiedTs >= meta._formulaModifiedTs)) {
+    meta.formula = formula;
+    meta._formulaModifiedTs = lastModifiedTs;
   }
   return meta;
 }
@@ -226,43 +232,10 @@ function normalizeCachedDatasetSnapshot(payload) {
   };
 }
 
-function getCachedDatasetSnapshotSignature(payload) {
-  const direct = toText(payload?.folder_signature);
-  if (direct) return direct;
-  const files = Array.isArray(payload?.files) ? payload.files : [];
-  return JSON.stringify({
-    exists: payload?.exists !== false,
-    files: files
-      .map((item) => ({
-        source_kind: toText(item?.source_kind),
-        name: toText(item?.name),
-        size: Number(item?.size) || 0,
-        mtime_ns: Number(item?.mtime_ns) || 0,
-      }))
-      .sort((a, b) => `${a.source_kind}\u0001${a.name}`.localeCompare(`${b.source_kind}\u0001${b.name}`, undefined, { sensitivity: "base" })),
-  });
-}
-
-function getCachedDatasetInstanceSignature(payload) {
-  const keysSet = new Set();
-  const add = (name) => {
-    const key = getCachedDatasetKey(name);
-    if (key) keysSet.add(key);
-  };
-  if (Array.isArray(payload?.dataset_names)) {
-    for (const name of payload.dataset_names) add(name);
-  }
-  for (const item of Array.isArray(payload?.files) ? payload.files : []) {
-    for (const name of getCachedFileDatasetNames(item)) add(name);
-  }
-  const keys = Array.from(keysSet);
-  keys.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
-  return JSON.stringify(keys);
-}
-
-async function fetchCachedDatasetSnapshot(path) {
+async function fetchCachedDatasetSnapshot(path, options = {}) {
   const normalizedPath = normalizePath(path);
-  const requestKey = `${normalizeLookupKey(projectName)}\u0001${normalizedPath.toLowerCase()}`;
+  const refresh = !!options?.refresh;
+  const requestKey = `${normalizeLookupKey(projectName)}\u0001${normalizedPath.toLowerCase()}\u0001${refresh ? "refresh" : "cached"}`;
   const existing = cachedDatasetSnapshotRequests.get(requestKey);
   if (existing) return existing;
 
@@ -270,6 +243,7 @@ async function fetchCachedDatasetSnapshot(path) {
     const url = new URL("/datasets/cached", window.location.origin);
     url.searchParams.set("project_name", projectName);
     url.searchParams.set("reserving_class", normalizedPath);
+    if (refresh) url.searchParams.set("refresh", "true");
     const resp = await fetch(url.toString(), { cache: "no-store" });
     const payload = await resp.json().catch(() => ({}));
     if (!resp.ok || payload?.ok === false) {
@@ -297,90 +271,9 @@ function applyCachedDatasetSnapshot(payload, path = state.selectedPath) {
   cachedDatasetFilter.methodTypesByName = snapshot.methodTypesByName;
   cachedDatasetFilter.loadedPath = normalizedPath;
   cachedDatasetFilter.error = "";
-
-  if (normalizedPath && normalizePath(state.selectedPath).toLowerCase() === normalizedPath.toLowerCase()) {
-    const signature = getCachedDatasetSnapshotSignature(payload);
-    if (signature) {
-      activePathFolderWatch.path = normalizedPath;
-      activePathFolderWatch.signature = signature;
-      activePathFolderWatch.instanceSignature = getCachedDatasetInstanceSignature(payload);
-      activePathFolderWatch.noticeShown = false;
-      syncDiskChangeToolbarAlert();
-    }
-  }
 }
 
-function clearDiskChangeNotice() {
-  activePathFolderWatch.noticeShown = false;
-  syncDiskChangeToolbarAlert();
-}
-
-async function checkActivePathFolderSnapshot() {
-  const path = normalizePath(state.selectedPath);
-  if (!projectName || !path || activePathFolderWatch.noticeShown) return;
-  if (normalizePath(activePathFolderWatch.path).toLowerCase() !== path.toLowerCase()) {
-    activePathFolderWatch.path = path;
-    activePathFolderWatch.signature = "";
-  }
-  const seq = activePathFolderWatch.requestSeq + 1;
-  activePathFolderWatch.requestSeq = seq;
-  try {
-    const payload = await fetchCachedDatasetSnapshot(path);
-    if (seq !== activePathFolderWatch.requestSeq) return;
-    const signature = getCachedDatasetSnapshotSignature(payload);
-    if (!signature) return;
-    const instanceSignature = getCachedDatasetInstanceSignature(payload);
-    if (!activePathFolderWatch.signature) {
-      activePathFolderWatch.signature = signature;
-      activePathFolderWatch.instanceSignature = instanceSignature;
-      return;
-    }
-    if (signature !== activePathFolderWatch.signature) {
-      if (instanceSignature !== activePathFolderWatch.instanceSignature) {
-        cachedDatasetFilter.requestSeq += 1;
-        cachedDatasetFilter.loading = false;
-        applyCachedDatasetSnapshot(payload, path);
-        renderDatasetTable();
-        setStatus("Dataset table refreshed from cached files on disk.");
-        return;
-      }
-      activePathFolderWatch.signature = signature;
-      activePathFolderWatch.instanceSignature = instanceSignature;
-    }
-  } catch (err) {
-    if (seq !== activePathFolderWatch.requestSeq) return;
-    console.warn("Failed to check active reserving-class folder:", err);
-  }
-}
-
-function resetActivePathFolderWatch(path = state.selectedPath, options = {}) {
-  activePathFolderWatch.path = normalizePath(path);
-  activePathFolderWatch.signature = "";
-  activePathFolderWatch.instanceSignature = "";
-  activePathFolderWatch.requestSeq += 1;
-  activePathFolderWatch.noticeShown = false;
-  clearDiskChangeNotice();
-  if (!projectName || !activePathFolderWatch.path) {
-    if (activePathFolderWatch.timer) {
-      window.clearInterval(activePathFolderWatch.timer);
-      activePathFolderWatch.timer = 0;
-    }
-    return;
-  }
-  ensureActivePathFolderWatch();
-  if (options?.skipInitialCheck) return;
-  void checkActivePathFolderSnapshot();
-}
-
-function ensureActivePathFolderWatch() {
-  if (activePathFolderWatch.noticeShown) return;
-  if (activePathFolderWatch.timer) return;
-  activePathFolderWatch.timer = window.setInterval(() => {
-    void checkActivePathFolderSnapshot();
-  }, ACTIVE_PATH_FOLDER_WATCH_INTERVAL_MS);
-}
-
-async function loadCachedDatasetFilterForSelectedPath() {
+async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   const path = normalizePath(state.selectedPath);
   const seq = cachedDatasetFilter.requestSeq + 1;
   cachedDatasetFilter.requestSeq = seq;
@@ -403,7 +296,7 @@ async function loadCachedDatasetFilterForSelectedPath() {
   renderDatasetTable();
 
   try {
-    const payload = await fetchCachedDatasetSnapshot(path);
+    const payload = await fetchCachedDatasetSnapshot(path, { refresh: !!options?.refresh });
     if (seq !== cachedDatasetFilter.requestSeq) return;
     applyCachedDatasetSnapshot(payload, path);
   } catch (err) {
@@ -422,6 +315,41 @@ async function loadCachedDatasetFilterForSelectedPath() {
   }
 }
 
+async function refreshCachedDatasetTableFromDisk() {
+  if (!state.selectedPath) {
+    setStatus("Select a reserving-class path before refreshing the dataset table.", true);
+    return false;
+  }
+  const scrollState = {
+    left: Number(els.datasetTableWrap?.scrollLeft) || 0,
+    top: Number(els.datasetTableWrap?.scrollTop) || 0,
+  };
+  const selectionState = captureDatasetTableSelection();
+  closeDatasetTableFilterPopover();
+  setStatus("Refreshing dataset table...");
+  await loadCachedDatasetFilterForSelectedPath({ refresh: true });
+  restoreDatasetTableSelection(selectionState);
+  restoreDatasetTableScroll(scrollState);
+  if (!cachedDatasetFilter.error) {
+    setStatus("Dataset table refreshed.");
+    return true;
+  }
+  return false;
+}
+
+function restoreDatasetTableScroll(scrollState) {
+  const wrap = els.datasetTableWrap;
+  if (!wrap || !scrollState) return;
+  const apply = () => {
+    const maxLeft = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+    const maxTop = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+    wrap.scrollLeft = Math.max(0, Math.min(Number(scrollState.left) || 0, maxLeft));
+    wrap.scrollTop = Math.max(0, Math.min(Number(scrollState.top) || 0, maxTop));
+  };
+  apply();
+  window.requestAnimationFrame(apply);
+}
+
 function setCachedDatasetFilterEnabled(enabled) {
   const next = !!enabled;
   if (cachedDatasetFilter.enabled === next) return;
@@ -433,24 +361,25 @@ function setCachedDatasetFilterEnabled(enabled) {
 
 
 function initCachedDatasetToolbar() {
-  if (!els.cachedDatasetToggle || els.cachedDatasetToggle.dataset.wired === "1") return;
-  els.cachedDatasetToggle.dataset.wired = "1";
+  if (els.cachedDatasetToggle && els.cachedDatasetToggle.dataset.wired !== "1") {
+    els.cachedDatasetToggle.dataset.wired = "1";
+    els.cachedDatasetToggle.addEventListener("click", () => {
+      setCachedDatasetFilterEnabled(!cachedDatasetFilter.enabled);
+    });
+  }
+  if (els.datasetRefreshBtn && els.datasetRefreshBtn.dataset.wired !== "1") {
+    els.datasetRefreshBtn.dataset.wired = "1";
+    els.datasetRefreshBtn.addEventListener("click", () => {
+      void refreshCachedDatasetTableFromDisk();
+    });
+  }
   syncCachedDatasetToolbar();
-  syncDiskChangeToolbarAlert();
-  els.cachedDatasetToggle.addEventListener("click", () => {
-    setCachedDatasetFilterEnabled(!cachedDatasetFilter.enabled);
-  });
 }
 
   Object.assign(api, {
     applyCachedDatasetSnapshot,
-    checkActivePathFolderSnapshot,
-    clearDiskChangeNotice,
-    ensureActivePathFolderWatch,
     fetchCachedDatasetSnapshot,
     formatCachedTimestamp,
-    getCachedDatasetInstanceSignature,
-    getCachedDatasetSnapshotSignature,
     getCachedFileDatasetNames,
     getTimestampNumber,
     hasCachedDatasetMetadataForSelectedPath,
@@ -460,11 +389,10 @@ function initCachedDatasetToolbar() {
     loadCachedDatasetFilterForSelectedPath,
     mergeCachedDatasetMetadata,
     normalizeCachedDatasetSnapshot,
-    resetActivePathFolderWatch,
+    refreshCachedDatasetTableFromDisk,
     setCachedDatasetFilterEnabled,
     shouldUseCachedDatasetFilter,
     stripDatasetCacheVariantSuffix,
-    syncCachedDatasetToolbar,
-    syncDiskChangeToolbarAlert
+    syncCachedDatasetToolbar
   });
 }

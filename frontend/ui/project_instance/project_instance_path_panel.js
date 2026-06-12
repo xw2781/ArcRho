@@ -13,7 +13,6 @@ export function installProjectInstancePathPanel(ctx) {
   const normalizePath = (...args) => api.normalizePath(...args);
   const notifyProjectInstanceStateChanged = (...args) => api.notifyProjectInstanceStateChanged(...args);
   const renderDatasetTable = (...args) => api.renderDatasetTable(...args);
-  const resetActivePathFolderWatch = (...args) => api.resetActivePathFolderWatch(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const syncDatasetWindowChrome = (...args) => api.syncDatasetWindowChrome(...args);
   const toText = (...args) => api.toText(...args);
@@ -221,7 +220,6 @@ function setSelectedPath(path, options = {}) {
   state.selectedPath = normalizePath(path);
   datasetTableSelection.selectedKeys.clear();
   datasetTableSelection.anchorKey = "";
-  resetActivePathFolderWatch(state.selectedPath, { skipInitialCheck: true });
   closePathSegmentMenu();
   renderSelectedPathDisplay();
   markPathTreeActive(state.selectedPath);

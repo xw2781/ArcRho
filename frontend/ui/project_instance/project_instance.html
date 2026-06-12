@@ -1066,6 +1066,7 @@
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
       max-height: 32px;
       overflow: hidden;
       overflow-wrap: anywhere;
@@ -1450,6 +1451,39 @@
       background: #fafafa;
       display: flex;
       flex-direction: column;
+      gap: 8px;
+    }
+    .pi-add-picker-tools {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .pi-add-picker-search {
+      flex: 1 1 auto;
+      min-width: 160px;
+      height: 28px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      color: #243044;
+      padding: 0 9px;
+      font-size: 12px;
+      outline: none;
+    }
+    .pi-add-picker-search:focus {
+      border-color: #7ea6ef;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+    }
+    .pi-add-picker-status {
+      flex: 0 0 auto;
+      max-width: 160px;
+      color: #667085;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .pi-add-picker-table-wrap {
       min-height: 0;
@@ -1486,6 +1520,37 @@
       background-clip: border-box;
       white-space: normal;
       word-break: break-word;
+    }
+    .pi-add-picker-header-cell {
+      min-width: 0;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pi-add-picker-sort {
+      min-width: 0;
+      flex: 1 1 auto;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0;
+      font: inherit;
+      font-weight: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .pi-add-picker-sort-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pi-add-picker-filter-popover {
+      z-index: 10140;
     }
     .pi-add-picker-table th::before {
       content: "";
@@ -1907,6 +1972,14 @@
               <circle cx="12" cy="12" r="2.8"></circle>
             </svg>
           </button>
+          <button class="dataset-toolbar-btn" id="datasetRefreshBtn" type="button" title="Refresh dataset table" aria-label="Refresh dataset table">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M20 6v5h-5"></path>
+              <path d="M4 18v-5h5"></path>
+              <path d="M18.6 9A7 7 0 0 0 6.3 6.4L4 8.8"></path>
+              <path d="M5.4 15A7 7 0 0 0 17.7 17.6L20 15.2"></path>
+            </svg>
+          </button>
           <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Active dataset table filters" hidden></div>
           <div class="dataset-toolbar-status" id="cachedDatasetStatus" aria-live="polite"></div>
         </div>
@@ -1963,6 +2036,10 @@
           <button class="pi-add-picker-close" id="datasetAddPickerClose" type="button" aria-label="Close">x</button>
         </div>
         <div class="pi-add-picker-body">
+          <div class="pi-add-picker-tools">
+            <input class="pi-add-picker-search" id="datasetAddPickerNameSearch" type="search" autocomplete="off" placeholder="Search Dataset Type Name">
+            <div class="pi-add-picker-status" id="datasetAddPickerStatus" aria-live="polite"></div>
+          </div>
           <div class="pi-add-picker-table-wrap" id="datasetAddPickerTableWrap">
             <table class="pi-add-picker-table" id="datasetAddPickerTable">
               <colgroup>
@@ -1973,10 +2050,10 @@
               </colgroup>
               <thead>
                 <tr>
-                  <th>Dataset Type Name</th>
-                  <th>Data Format</th>
-                  <th>Category</th>
-                  <th>Generated</th>
+                  <th data-add-picker-col="datasetTypeName"></th>
+                  <th data-add-picker-col="dataFormat"></th>
+                  <th data-add-picker-col="category"></th>
+                  <th data-add-picker-col="generated"></th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -1995,6 +2072,7 @@
       </div>
     </div>
     <div class="pi-table-filter-popover" id="datasetTableFilterPopover" aria-hidden="true"></div>
+    <div class="pi-table-filter-popover pi-add-picker-filter-popover" id="datasetAddPickerFilterPopover" aria-hidden="true"></div>
     <div class="pi-delete-confirm-overlay" id="datasetDeleteConfirmOverlay" hidden>
       <div class="pi-delete-confirm-box" id="datasetDeleteConfirmBox" role="dialog" aria-modal="true" aria-labelledby="datasetDeleteConfirmTitle">
         <div class="pi-delete-confirm-header">
@@ -2012,6 +2090,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260610c"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260611d"></script>
 </body>
 </html>
