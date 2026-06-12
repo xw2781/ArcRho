@@ -12,6 +12,7 @@ from app_server.schemas.scripting import (
     ScriptNotebookLoadRequest,
     ScriptInspectRequest,
     ScriptMacroRunRequest,
+    ScriptMacroDeleteRequest,
 )
 from app_server.services import scripting_service
 
@@ -74,13 +75,18 @@ def scripting_list_notebooks() -> List[Dict[str, str]]:
 
 
 @router.get("/scripting/macros")
-def scripting_list_macros() -> List[Dict[str, str]]:
+def scripting_list_macros() -> List[Dict[str, Any]]:
     return scripting_service.list_macros()
 
 
 @router.post("/scripting/run-macro")
 def scripting_run_macro(req: ScriptMacroRunRequest) -> Dict[str, Any]:
     return scripting_service.run_macro(req.macro_id, req.active_context)
+
+
+@router.post("/scripting/delete-macro")
+def scripting_delete_macro(req: ScriptMacroDeleteRequest) -> Dict[str, Any]:
+    return scripting_service.delete_macro(req.macro_id)
 
 
 @router.post("/scripting/inspect")

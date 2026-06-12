@@ -1185,6 +1185,7 @@ def list_notebooks() -> List[Dict[str, str]]:
 
 _MACRO_META_BEGIN = "# <arcrho-macro>"
 _MACRO_META_END = "# </arcrho-macro>"
+_BUILTIN_MACRO_IDS = {"apply_growth_adjustments.py"}
 _APPLY_ADJUSTMENTS_MACRO = r'''# <arcrho-macro>
 # title: Apply Growth Adjustments
 # description: Reads COL growth adjustments from the workbook used by the 2026Q1 reserve-review notebook, applies them to the active DFM method, and adds adjustment notes.
@@ -1662,7 +1663,8 @@ def _seed_builtin_macros() -> None:
 
 def _parse_macro_metadata(text: str, filename: str) -> Dict[str, str]:
     title = os.path.splitext(os.path.basename(filename))[0].replace("_", " ").title()
-    description = ""
+    description_parts: List[str] = []
+    active_key = ""
     in_block = False
     for raw_line in str(text or "").splitlines():
         line = raw_line.strip()
@@ -1675,15 +1677,23 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, str]:
             continue
         if line.startswith("#"):
             line = line[1:].strip()
-        if ":" not in line:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip().lower()
+            value = value.strip()
+            if key == "title" and value:
+                title = value
+                active_key = "title"
+                continue
+            if key == "description":
+                description_parts = [value] if value else []
+                active_key = "description"
+                continue
+        if active_key == "description" and line:
+            description_parts.append(line)
             continue
-        key, value = line.split(":", 1)
-        key = key.strip().lower()
-        value = value.strip()
-        if key == "title" and value:
-            title = value
-        elif key == "description" and value:
-            description = value
+        active_key = ""
+    description = " ".join(part for part in description_parts if part).strip()
     return {"title": title, "description": description}
 
 
@@ -1700,7 +1710,7 @@ def _safe_macro_path(macro_id: str) -> str:
     return path
 
 
-def list_macros() -> List[Dict[str, str]]:
+def list_macros() -> List[Dict[str, Any]]:
     _seed_builtin_macros()
     macro_dir = _get_macros_dir()
     result: List[Dict[str, str]] = []
@@ -1720,10 +1730,24 @@ def list_macros() -> List[Dict[str, str]]:
                 "description": meta["description"],
                 "path": path,
                 "modified": str(int(stat.st_mtime)),
+                "builtin": entry.lower() in _BUILTIN_MACRO_IDS,
             })
         except OSError:
             continue
     return result
+
+
+def delete_macro(macro_id: str) -> Dict[str, Any]:
+    path = _safe_macro_path(macro_id)
+    if os.path.basename(path).lower() in _BUILTIN_MACRO_IDS:
+        return {"success": False, "message": "Built-in macros cannot be deleted."}
+    if not os.path.isfile(path):
+        return {"success": False, "message": f"Macro not found: {macro_id}"}
+    try:
+        os.remove(path)
+    except OSError as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "message": f"Deleted macro: {os.path.basename(path)}"}
 
 
 def _ensure_arcrho_api_import_path() -> None:

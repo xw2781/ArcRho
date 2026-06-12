@@ -766,8 +766,9 @@ async function reloadCurrentNotebookFromDisk({ reason = "manual" } = {}) {
         setNotebookDiskConflict(msg, "deleted");
         return false;
       }
+      const revision = result.revision || await readNotebookDiskRevision(currentNotebookPath);
       applyLoadedNotebookCells([{ type: CELL_TYPES.CODE, source: result.text || "" }], currentNotebookPath, {
-        revision: result.revision || null,
+        revision,
         recordUndo: reason !== "external",
       });
       const label = getNotebookFilenameFromPath(currentNotebookPath);

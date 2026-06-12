@@ -1,6 +1,6 @@
 import { shell } from "./shell_context.js?v=20260510a";
 
-const NOTEBOOK_EXTENSIONS = new Set([".ipynb", ".arcnb"]);
+const NOTEBOOK_EXTENSIONS = new Set([".ipynb", ".arcnb", ".py"]);
 
 let shellFileDropsWired = false;
 let dragOverlayEl = null;
@@ -112,20 +112,20 @@ function getDropHint(event) {
       supported: true,
       title: count === 1
         ? "Drop to open notebook in Scripting Console"
-        : `Drop to open ${count} notebooks in Scripting Console`,
-      detail: count === 1 ? notebookEntries.names[0] : ".ipynb and .arcnb files are supported.",
+        : `Drop to open ${count} scripting files in Scripting Console`,
+      detail: count === 1 ? notebookEntries.names[0] : ".ipynb, .arcnb, and .py files are supported.",
     };
   }
   if (!fileEntries.length) {
     return {
       supported: true,
-      title: "Drop notebook file to open in Scripting Console",
-      detail: ".ipynb and .arcnb files are supported.",
+      title: "Drop notebook or Python file to open in Scripting Console",
+      detail: ".ipynb, .arcnb, and .py files are supported.",
     };
   }
   return {
     supported: false,
-    title: "Drop an .ipynb or .arcnb notebook",
+    title: "Drop an .ipynb, .arcnb, or .py scripting file",
     detail: "Other file types are not opened by the shell drop target.",
   };
 }
@@ -183,7 +183,7 @@ export function handleShellFileDrop(event) {
 
   const notebookPaths = getDroppedNotebookPaths(event);
   if (!notebookPaths.length) {
-    shell.updateStatusBar?.("Drop an .ipynb or .arcnb notebook to open it in Scripting Console.", { tone: "warning" });
+    shell.updateStatusBar?.("Drop an .ipynb, .arcnb, or .py scripting file to open it in Scripting Console.", { tone: "warning" });
     return true;
   }
 
@@ -191,7 +191,7 @@ export function handleShellFileDrop(event) {
     shell.openScriptingTab?.({ forceNew: true, notebookPath });
   }
 
-  const label = notebookPaths.length === 1 ? "notebook" : `${notebookPaths.length} notebooks`;
+  const label = notebookPaths.length === 1 ? "scripting file" : `${notebookPaths.length} scripting files`;
   shell.updateStatusBar?.(`Opening ${label} in Scripting Console...`);
   return true;
 }

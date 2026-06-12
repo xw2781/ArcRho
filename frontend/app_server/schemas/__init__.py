@@ -28,6 +28,7 @@ from .scripting import (
     ScriptNotebookSaveRequest,
     ScriptNotebookLoadRequest,
     ScriptMacroRunRequest,
+    ScriptMacroDeleteRequest,
 )
 from .dfm_rpc_bridge import DfmRpcBridgeRequest, DfmRpcBridgeApplyRequest, DfmRpcBridgeUpdateRemoteRequest
 from .dfm_method_index import DfmMethodIndexRefreshRequest
@@ -54,6 +55,7 @@ __all__ = [
     "ScriptNotebookSaveRequest",
     "ScriptNotebookLoadRequest",
     "ScriptMacroRunRequest",
+    "ScriptMacroDeleteRequest",
     "DfmRpcBridgeRequest",
     "DfmRpcBridgeApplyRequest",
     "DfmRpcBridgeUpdateRemoteRequest",

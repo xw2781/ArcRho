@@ -30,3 +30,7 @@ class ScriptInspectRequest(BaseModel):
 class ScriptMacroRunRequest(BaseModel):
     macro_id: str
     active_context: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ScriptMacroDeleteRequest(BaseModel):
+    macro_id: str

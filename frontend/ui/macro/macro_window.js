@@ -48,6 +48,7 @@ let macros = [];
 let selectedMacroId = "";
 let macroWindowWired = false;
 let macroSplitCustomized = false;
+let macroSplitContextMenu = null;
 
 function setMacroStatus(text, tone = "", options = {}) {
   const message = String(text || "");
@@ -66,6 +67,14 @@ function getSelectedMacro() {
 
 function isDemoMacro(macro) {
   return !!macro?.demo;
+}
+
+function isBuiltInMacro(macro) {
+  return !!macro?.builtin;
+}
+
+function canDeleteMacro(macro) {
+  return !!macro?.path && !isDemoMacro(macro) && !isBuiltInMacro(macro);
 }
 
 function buildMacroDisplayList(loadedMacros) {
@@ -97,12 +106,6 @@ function renderMacroList() {
     title.className = "macroListItemName";
     title.textContent = macro.name || macro.id;
     item.appendChild(title);
-    if (macro.description) {
-      const description = document.createElement("span");
-      description.className = "macroListItemDescription";
-      description.textContent = macro.description;
-      item.appendChild(description);
-    }
     item.title = macro.description || macro.path || macro.id;
     item.addEventListener("click", () => {
       selectedMacroId = macro.id;
@@ -616,6 +619,97 @@ function editSelectedMacro() {
   setMacroStatus(`Opened ${macro.name || macro.id} in Scripting Console.`, "", { statusBar: true });
 }
 
+async function deleteSelectedMacro() {
+  const macro = getSelectedMacro();
+  if (isBuiltInMacro(macro)) {
+    setMacroStatus("Built-in macros cannot be deleted.", "error", { statusBar: true });
+    return;
+  }
+  if (!canDeleteMacro(macro)) {
+    setMacroStatus("Select a real macro before deleting.", "error", { statusBar: true });
+    return;
+  }
+  const name = String(macro.name || macro.id);
+  const confirmed = window.confirm(`Delete macro "${name}"?\n\nThis removes the Python file from the scripting folder.`);
+  if (!confirmed) return;
+  setMacroStatus(`Deleting macro: ${name}...`);
+  try {
+    const response = await fetch(`${API_BASE}/scripting/delete-macro`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ macro_id: macro.id }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.message || "Macro delete failed.");
+    }
+    selectedMacroId = "";
+    await loadMacros();
+    setMacroStatus(`Deleted macro: ${name}.`, "", { statusBar: true });
+  } catch (err) {
+    const message = String(err?.message || err || "Macro delete failed.");
+    setMacroStatus(`Macro delete failed: ${message}`, "error", { statusBar: true });
+  }
+}
+
+function syncMacroSplitContextMenu() {
+  if (!macroSplitContextMenu) return;
+  const macro = getSelectedMacro();
+  const isDemo = isDemoMacro(macro);
+  const canUseRealMacro = !!macro && !isDemo;
+  const runItem = macroSplitContextMenu.querySelector("[data-action='run']");
+  const editItem = macroSplitContextMenu.querySelector("[data-action='edit']");
+  const deleteItem = macroSplitContextMenu.querySelector("[data-action='delete']");
+  if (runItem) runItem.disabled = !canUseRealMacro;
+  if (editItem) editItem.disabled = !canUseRealMacro || !macro?.path;
+  if (deleteItem) deleteItem.disabled = !canDeleteMacro(macro);
+}
+
+function hideMacroSplitContextMenu() {
+  if (!macroSplitContextMenu) return;
+  macroSplitContextMenu.classList.remove("open");
+  macroSplitContextMenu.setAttribute("aria-hidden", "true");
+}
+
+function ensureMacroSplitContextMenu() {
+  if (macroSplitContextMenu) return macroSplitContextMenu;
+  const menu = document.createElement("div");
+  menu.className = "macroSplitContextMenu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-hidden", "true");
+  menu.innerHTML = `
+    <button type="button" role="menuitem" data-action="run">Run</button>
+    <button type="button" role="menuitem" data-action="edit">Edit</button>
+    <button type="button" role="menuitem" class="danger" data-action="delete">Delete</button>
+  `;
+  menu.addEventListener("click", (event) => {
+    const item = event.target?.closest?.("[data-action]");
+    if (!item || item.disabled) return;
+    const action = item.dataset.action;
+    hideMacroSplitContextMenu();
+    if (action === "run") void runSelectedMacro();
+    else if (action === "edit") editSelectedMacro();
+    else if (action === "delete") void deleteSelectedMacro();
+  });
+  document.body.appendChild(menu);
+  macroSplitContextMenu = menu;
+  return menu;
+}
+
+function showMacroSplitContextMenu(x, y) {
+  const menu = ensureMacroSplitContextMenu();
+  syncMacroSplitContextMenu();
+  menu.classList.add("open");
+  menu.setAttribute("aria-hidden", "false");
+  const rect = menu.getBoundingClientRect();
+  const margin = 6;
+  const left = Math.min(Math.max(margin, x), Math.max(margin, window.innerWidth - rect.width - margin));
+  const top = Math.min(Math.max(margin, y), Math.max(margin, window.innerHeight - rect.height - margin));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  menu.querySelector("button:not(:disabled)")?.focus?.();
+}
+
 function getMacroWindowBounds() {
   const margin = 8;
   const styles = macroWindow ? getComputedStyle(macroWindow) : null;
@@ -770,8 +864,16 @@ function initMacroContentSplit() {
   if (!macroContent || !macroSplitHandle || !macroList) return;
   let splitState = null;
 
+  const cleanupSplitListeners = () => {
+    document.removeEventListener("pointermove", moveSplit);
+    document.removeEventListener("pointerup", stopSplit);
+    document.removeEventListener("pointercancel", stopSplit);
+    window.removeEventListener("blur", stopSplit);
+  };
+
   const startSplit = (event) => {
     if (event.button !== 0) return;
+    hideMacroSplitContextMenu();
     splitState = {
       pointerId: event.pointerId,
       startY: event.clientY,
@@ -779,6 +881,10 @@ function initMacroContentSplit() {
     };
     document.body.classList.add("macroSplitResizeActive");
     try { macroSplitHandle.setPointerCapture(event.pointerId); } catch {}
+    document.addEventListener("pointermove", moveSplit);
+    document.addEventListener("pointerup", stopSplit);
+    document.addEventListener("pointercancel", stopSplit);
+    window.addEventListener("blur", stopSplit);
     event.preventDefault();
     event.stopPropagation();
   };
@@ -789,21 +895,30 @@ function initMacroContentSplit() {
   };
 
   const stopSplit = (event) => {
-    if (!splitState || splitState.pointerId !== event.pointerId) return;
-    try { macroSplitHandle.releasePointerCapture(event.pointerId); } catch {}
+    if (!splitState || (event?.pointerId != null && splitState.pointerId !== event.pointerId)) return;
+    try { macroSplitHandle.releasePointerCapture(splitState.pointerId); } catch {}
     document.body.classList.remove("macroSplitResizeActive");
     const applied = applyMacroSplitHeight(macroList.getBoundingClientRect().height, { markCustom: true, save: true });
     if (applied == null) {
       try { localStorage.removeItem(MACRO_SPLIT_HEIGHT_KEY); } catch {}
     }
+    cleanupSplitListeners();
     splitState = null;
   };
 
   macroSplitHandle.addEventListener("pointerdown", startSplit);
-  macroSplitHandle.addEventListener("pointermove", moveSplit);
-  macroSplitHandle.addEventListener("pointerup", stopSplit);
-  macroSplitHandle.addEventListener("pointercancel", stopSplit);
+  macroSplitHandle.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    showMacroSplitContextMenu(event.clientX, event.clientY);
+  });
   macroSplitHandle.addEventListener("keydown", (event) => {
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      const rect = macroSplitHandle.getBoundingClientRect();
+      event.preventDefault();
+      showMacroSplitContextMenu(rect.left + rect.width / 2, rect.bottom);
+      return;
+    }
     const metrics = getMacroSplitMetrics();
     if (!metrics) return;
     const current = macroList.getBoundingClientRect().height;
@@ -816,6 +931,14 @@ function initMacroContentSplit() {
     event.preventDefault();
     applyMacroSplitHeight(next, { markCustom: true, save: true });
   });
+  document.addEventListener("mousedown", (event) => {
+    if (!macroSplitContextMenu?.classList.contains("open")) return;
+    if (event.target?.closest?.(".macroSplitContextMenu")) return;
+    hideMacroSplitContextMenu();
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideMacroSplitContextMenu();
+  }, true);
 }
 
 function initMacroWindowResize() {

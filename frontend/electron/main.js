@@ -1697,6 +1697,12 @@ ipcMain.handle("read-text-file", async (_event, payload) => {
       path: filePath,
       name: path.basename(filePath),
       size: stat.size,
+      revision: {
+        path: filePath,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        hash: crypto.createHash("sha256").update(raw).digest("hex"),
+      },
       text: raw.toString("utf8"),
     };
   } catch (err) {
