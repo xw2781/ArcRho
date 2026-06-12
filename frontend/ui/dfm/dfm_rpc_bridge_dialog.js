@@ -440,12 +440,51 @@ function ensureStyles() {
 
 function formatTime(meta) {
   if (!meta || !meta.exists) return "Missing";
+  const rawTimestamp = String(meta.last_modified || "").trim();
+  if (rawTimestamp) {
+    if (!hasExplicitTimezone(rawTimestamp)) {
+      return formatNaiveTimestamp(rawTimestamp) || rawTimestamp;
+    }
+    const parsed = parseTimestampDate(rawTimestamp);
+    if (parsed) {
+      return formatUtcTimestamp(parsed);
+    }
+    return rawTimestamp;
+  }
   const jsonTimestamp = Number(meta.last_modified_timestamp);
   if (Number.isFinite(jsonTimestamp) && jsonTimestamp > 0) {
-    return new Date(jsonTimestamp * 1000).toLocaleString();
+    return formatUtcTimestamp(new Date(jsonTimestamp * 1000));
   }
-  if (meta.last_modified) return String(meta.last_modified);
   return "Missing last modified";
+}
+
+function hasExplicitTimezone(value) {
+  return /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(String(value || "").trim());
+}
+
+function formatNaiveTimestamp(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?/);
+  if (!match) return "";
+  const millis = match[3] ? `.${match[3].slice(0, 3).padEnd(3, "0")}` : "";
+  return `${match[1]} ${match[2]}${millis}`;
+}
+
+function parseTimestampDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const normalized = raw
+    .replace(/(\.\d{3})\d+([zZ]|[+-]\d{2}:?\d{2})$/, "$1$2")
+    .replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  const parsed = new Date(normalized);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function formatUtcTimestamp(date) {
+  if (!(date instanceof Date) || !Number.isFinite(date.getTime())) return "";
+  const iso = date.toISOString();
+  const normalized = iso.replace("T", " ").replace("Z", " UTC");
+  return normalized.replace(/(\.\d{3})\d*/, "$1");
 }
 
 function escapeHtml(value) {

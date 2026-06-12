@@ -36,6 +36,7 @@ const fmt0 = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 0,
 });
+const DFM_PERCENT_DECIMAL_PLACES = 1;
 
 function isPercentTriangle() {
   const triInput = document.getElementById("triInput");
@@ -134,6 +135,10 @@ function getDecimalPlaces() {
   return Math.max(0, Math.min(6, n)); // clamp 0..6
 }
 
+function getPercentDecimalPlaces() {
+  return window.ADA_DFM_CONTEXT ? DFM_PERCENT_DECIMAL_PLACES : getDecimalPlaces();
+}
+
 function detectNumberMode() {
   // 1) name contains % => percent
   if (isPercentTriangle()) return "percent";
@@ -182,7 +187,7 @@ export function formatCellValue(v) {
   const dp = getDecimalPlaces();
 
   if (mode === "percent") {
-    return (n * 100).toFixed(dp) + "%";
+    return (n * 100).toFixed(getPercentDecimalPlaces()) + "%";
   }
 
   if (mode === "decimal") {
@@ -463,7 +468,7 @@ export function redrawChartSafely() {
 function formatNum(x) {
   if (!isFinite(x)) return "";
   if (isPercentTriangle()) {
-    const dp = getDecimalPlaces();
+    const dp = getPercentDecimalPlaces();
     return (x * 100).toFixed(dp) + "%";
   }
   const abs = Math.abs(x);

@@ -1986,13 +1986,13 @@
   <script type="module">
     (async () => {
       window.ADA_DFM_CONTEXT = true;
-      await import("/ui/dataset/dataset_main.js?v=20260521a");
+      await import("/ui/dataset/dataset_main.js?v=20260611a");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/dfm/dfm_main.js?v=20260608a");
+      await import("/ui/dfm/dfm_main.js?v=20260611a");
     })();
   </script>
 </body>
