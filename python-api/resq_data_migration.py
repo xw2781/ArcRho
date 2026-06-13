@@ -27,11 +27,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+# PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
+
 # RC_PATH = r"PRNJ - PA\PA\NY\Direct Group\MP+PIP"
 RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
+
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 USER_NAME = ""
 PASSWORD = ""
@@ -196,6 +198,98 @@ def _safe_read_json(path: Path) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _dataset_type_rows() -> list[dict]:
+    path = SERVER_ROOT / "projects" / PROJECT_NAME / "dataset_types.json"
+    data = _safe_read_json(path)
+    rows = data.get("rows") if isinstance(data, dict) else []
+    out: list[dict] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, list):
+            continue
+        name = _clean_name(row[0] if len(row) > 0 else "")
+        if not name:
+            continue
+        out.append({
+            "name": name,
+            "calculated": _bool_value(row[3] if len(row) > 3 else False),
+            "formula": _clean_name(row[4] if len(row) > 4 else ""),
+            "generated": _bool_value(row[6] if len(row) > 6 else False),
+        })
+    return out
+
+
+def _bool_value(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return _clean_name(value).lower() in {"true", "1", "yes", "y"}
+
+
+def _canon_dataset_name(value: object) -> str:
+    return re.sub(r"\s+", " ", _clean_name(value)).casefold()
+
+
+def _formula_components(formula: str, known_names: list[str]) -> list[str]:
+    text = _clean_name(formula)
+    if not text:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    masked_parts: list[str] = []
+    last = 0
+    for match in re.finditer(r'"([^"]+)"', text):
+        token = _clean_name(match.group(1))
+        key = _canon_dataset_name(token)
+        if token and key and key not in seen:
+            seen.add(key)
+            out.append(token)
+        masked_parts.append(text[last:match.start()])
+        masked_parts.append(" ")
+        last = match.end()
+    masked_parts.append(text[last:])
+    unquoted_text = "".join(masked_parts)
+    for name in sorted({item.strip() for item in known_names if item.strip()}, key=len, reverse=True):
+        key = _canon_dataset_name(name)
+        if not key or key in seen:
+            continue
+        pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", flags=re.I)
+        if pattern.search(unquoted_text):
+            seen.add(key)
+            out.append(name)
+    return out
+
+
+def _dataset_type_graph_fields(dataset_type_name: str) -> dict:
+    rows = _dataset_type_rows()
+    known_names = [row["name"] for row in rows]
+    target_key = _canon_dataset_name(dataset_type_name)
+    precedents: list[dict] = []
+    dependents: list[dict] = []
+    for row in rows:
+        row_key = _canon_dataset_name(row.get("name"))
+        formula = _clean_name(row.get("formula"))
+        if row_key == target_key and row.get("calculated") and not row.get("generated") and formula:
+            precedents = [
+                {"dataset_type_name": name}
+                for name in _formula_components(formula, known_names)
+            ]
+        if row.get("calculated") and not row.get("generated") and formula:
+            component_keys = {
+                _canon_dataset_name(name)
+                for name in _formula_components(formula, known_names)
+            }
+            if target_key and target_key in component_keys:
+                dependents.append({"dataset_type_name": row["name"]})
+    return {"Precedents": precedents, "Dependents": dependents}
+
+
+def _apply_sidecar_graph_meta(meta: dict, dataset_type_name: str) -> None:
+    meta["dataset_type_name"] = dataset_type_name
+    meta.update(_dataset_type_graph_fields(dataset_type_name))
+    meta.pop("dependencies", None)
 
 
 def _split_cache_variant_stem(stem: str) -> tuple[str, bool]:
@@ -1070,6 +1164,7 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "modified_by": payload.get("user", ""),
         "updated_at": updated_at,
     }
+    _apply_sidecar_graph_meta(meta, dataset_type)
     meta_dir = rc_dir / DATASET_SIDECAR_DIR
     meta_dir.mkdir(parents=True, exist_ok=True)
     meta_path = meta_dir / _json_sidecar_name(name)
@@ -1178,6 +1273,7 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "modified_by": payload.get("user", ""),
         "updated_at": updated_at,
     }
+    _apply_sidecar_graph_meta(meta, dataset_type)
     meta_dir = rc_dir / DATASET_SIDECAR_DIR
     meta_dir.mkdir(parents=True, exist_ok=True)
     meta_path = meta_dir / _json_sidecar_name(name)
@@ -1298,6 +1394,7 @@ def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) 
         "modified_by": payload.get("user", ""),
         "updated_at": updated_at,
     }
+    _apply_sidecar_graph_meta(meta, dataset_type)
     meta_dir = rc_dir / DATASET_SIDECAR_DIR
     meta_dir.mkdir(parents=True, exist_ok=True)
     meta_path = meta_dir / _json_sidecar_name(name)
