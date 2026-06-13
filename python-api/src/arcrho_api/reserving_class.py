@@ -6,7 +6,6 @@ import csv
 import getpass
 import json
 import os
-import re
 import time
 import uuid
 from datetime import datetime
@@ -15,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from .exceptions import DfmDataError, ReadOnlyError
 from .models import DfmMethodRef, TriangleCacheResult
-from .paths import clean_text, dataset_filename, sanitize_reserving_class_folder
+from .paths import clean_text, dataset_filename, sanitize_file_name_part, sanitize_reserving_class_folder
 
 if TYPE_CHECKING:
     from .dfm import DfmMethod
@@ -232,7 +231,7 @@ class ReservingClass:
         }
         sidecar_dir = data_path.parent.parent / "sidecars" if data_path.parent.name == "datasets" else data_path.parent / "sidecars"
         sidecar_dir.mkdir(parents=True, exist_ok=True)
-        sidecar_path = sidecar_dir / f"{_encoded_file_name_part(dataset_name, 'Dataset')}.json"
+        sidecar_path = sidecar_dir / f"{sanitize_file_name_part(dataset_name, 'Dataset')}.json"
         temp_path = sidecar_path.with_name(f"{sidecar_path.name}.{uuid.uuid4()}.tmp")
         try:
             temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -263,30 +262,6 @@ def _read_csv_matrix(path: Path) -> list[list[Any]]:
         raise DfmDataError(f"Failed to read CSV file {path}: {err}") from err
 
 
-def _encoded_file_name_part(value: Any, fallback: str) -> str:
-    replacements = {
-        "\\": "_%5C_",
-        "/": "_%2F_",
-        ":": "_%3A_",
-        "*": "_%2A_",
-        "?": "_%3F_",
-        '"': "_%22_",
-        "<": "_%3C_",
-        ">": "_%3E_",
-        "|": "_%7C_",
-    }
-    out = []
-    for ch in clean_text(value):
-        if ch in replacements:
-            out.append(replacements[ch])
-        elif ord(ch) < 32:
-            out.append(f"_%{ord(ch):02X}_")
-        else:
-            out.append(ch)
-    encoded = re.sub(r"\s+", " ", "".join(out)).strip()
-    return encoded or fallback
-
-
 def _length_scoped_dataset_filename(
     dataset_name: Any,
     origin_length: Any,
@@ -294,7 +269,7 @@ def _length_scoped_dataset_filename(
     *,
     cumulative: bool = True,
 ) -> str:
-    dataset_file = _encoded_file_name_part(dataset_name, "Dataset")
+    dataset_file = sanitize_file_name_part(dataset_name, "Dataset")
     origin = clean_text(origin_length)
     development = clean_text(development_length)
     if origin and development:

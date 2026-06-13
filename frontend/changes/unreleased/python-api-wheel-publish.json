@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "ArcRho release builds now publish the latest Python API wheel for notebook users.",
+  "details": [
+    "The app build creates a fresh arcrho_api wheel before packaging the app.",
+    "The wheel is bundled with the app and copied to the shared packages folder as arcrho_api-latest.whl.",
+    "The Python API can also be published independently from python-api/tools without rebuilding the desktop app."
+  ]
+}

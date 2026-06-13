@@ -68,3 +68,12 @@ Development builds can create the same wheel without network access:
 python python-api\tools\build_wheel.py --out-dir python-api\dist
 python -m pip install python-api\dist\arcrho_api-0.1.0-py3-none-any.whl
 ```
+
+API-only releases can publish the wheel to the shared ArcRho Server packages folder without rebuilding the desktop app:
+
+```powershell
+python-api\tools\publish_package.bat --version 0.1.1
+py -3.10 -m pip install --upgrade "E:\ArcRho Server\packages\arcrho_api-latest.whl"
+```
+
+Set `PYTHON_API_PACKAGE_DIR` or pass `--package-dir` to publish somewhere other than `E:\ArcRho Server\packages`.

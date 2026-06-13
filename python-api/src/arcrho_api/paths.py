@@ -8,6 +8,17 @@ from typing import Any
 
 RESERVING_CLASS_INDEX_FILE_NAME = "index.json"
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
+_FILENAME_REPLACEMENTS = {
+    "\\": "_%5C_",
+    "/": "_%2F_",
+    ":": "_%3A_",
+    "*": "_%2A_",
+    "?": "_%3F_",
+    '"': "_%22_",
+    "<": "_%3C_",
+    ">": "_%3E_",
+    "|": "_%7C_",
+}
 
 
 def clean_text(value: Any) -> str:
@@ -21,9 +32,26 @@ def sanitize_project_dir_name(value: Any, fallback: str = "UnknownProject") -> s
 
 
 def sanitize_file_name_part(value: Any, fallback: str) -> str:
-    cleaned = re.sub(r'[\\/:*?"<>|]+', "_", clean_text(value))
-    cleaned = re.sub(r"\s+", " ", cleaned)
+    out = []
+    for ch in clean_text(value):
+        if ch in _FILENAME_REPLACEMENTS:
+            out.append(_FILENAME_REPLACEMENTS[ch])
+        elif ord(ch) < 32:
+            out.append(f"_%{ord(ch):02X}_")
+        else:
+            out.append(ch)
+    cleaned = re.sub(r"\s+", " ", "".join(out)).strip()
     return cleaned or fallback
+
+
+def decode_file_name_part(value: Any) -> str:
+    def repl(match: re.Match[str]) -> str:
+        try:
+            return chr(int(match.group(1), 16))
+        except ValueError:
+            return match.group(0)
+
+    return re.sub(r"_%([0-9A-Fa-f]{2})_", repl, clean_text(value))
 
 
 def sanitize_reserving_class_folder(value: Any, fallback: str = "ReservingClass") -> str:
@@ -51,7 +79,7 @@ def parse_dfm_filename(filename: str) -> str | None:
     parts = stem.split("@")
     if len(parts) < 2:
         return None
-    method_name = "@".join(parts[1:]).strip()
+    method_name = decode_file_name_part("@".join(parts[1:]).strip())
     if not method_name:
         return None
     return method_name

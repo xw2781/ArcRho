@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import arcrho_api.config as api_config
 from arcrho_api.agent import main as agent_main
 from arcrho_api import ArcRhoClient, DfmDataError, ReadOnlyError, get_config_path, get_server_root, set_server_root
-from arcrho_api.paths import dfm_filename
+from arcrho_api.paths import dfm_filename, parse_dfm_filename
 from arcrho_api.migration import ArcRhoSession
 
 
@@ -162,6 +162,21 @@ class ArcRhoApiTests(unittest.TestCase):
             "dataset_type_name": "Paid Ultimate",
             "method_type": "DFM",
         }])
+
+    def test_dfm_filename_uses_reversible_display_name_encoding(self) -> None:
+        method_name = r"Paid/DFM\Selected"
+        file_name = dfm_filename(method_name)
+        self.assertEqual(file_name, "DFM@Paid_%2F_DFM_%5C_Selected.json")
+        self.assertEqual(parse_dfm_filename(file_name), method_name)
+
+        method_path = self.methods_dir / file_name
+        payload = sample_payload()
+        payload["details tab"]["name"] = method_name
+        method_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        dfm = ArcRhoClient(self.root).project("Demo").reserving_class(r"Auto\PP").dfm(method_name)
+        self.assertEqual(dfm.name, method_name)
+        self.assertEqual(dfm.ratio(1, 1), 1.1)
 
     def test_default_server_root_uses_host_workspace_config(self) -> None:
         original_root = api_config._server_root

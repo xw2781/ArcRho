@@ -7,10 +7,15 @@ import base64
 import csv
 import hashlib
 import io
+import re
 import sys
-import tomllib
 import zipfile
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 build runtime.
+    tomllib = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +30,47 @@ def _wheel_escape(value: str) -> str:
 def _hash(data: bytes) -> str:
     digest = hashlib.sha256(data).digest()
     return "sha256=" + base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _toml_string(value: str) -> str:
+    text = value.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
+        return text[1:-1]
+    return text
+
+
+def _toml_string_list(value: str) -> list[str]:
+    text = value.strip()
+    if not text.startswith("[") or not text.endswith("]"):
+        return []
+    return [_toml_string(item) for item in text[1:-1].split(",") if item.strip()]
+
+
+def _load_pyproject() -> dict:
+    text = PYPROJECT.read_text(encoding="utf-8")
+    if tomllib is not None:
+        return tomllib.loads(text)
+
+    project: dict[str, object] = {}
+    in_project = False
+    for raw_line in text.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_project = line == "[project]"
+            continue
+        if not in_project or "=" not in line:
+            continue
+        key, raw_value = [part.strip() for part in line.split("=", 1)]
+        if key in {"dependencies"}:
+            project[key] = _toml_string_list(raw_value)
+        elif key in {"authors"}:
+            names = re.findall(r'name\s*=\s*"([^"]+)"', raw_value)
+            project[key] = [{"name": name} for name in names]
+        else:
+            project[key] = _toml_string(raw_value)
+    return {"project": project}
 
 
 def _metadata(project: dict) -> str:
@@ -62,9 +108,11 @@ def _wheel_file() -> str:
     )
 
 
-def build_wheel(out_dir: Path) -> Path:
-    config = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
-    project = config["project"]
+def build_wheel(out_dir: Path, *, version_override: str | None = None) -> Path:
+    config = _load_pyproject()
+    project = dict(config["project"])
+    if version_override:
+        project["version"] = version_override
     name = str(project["name"])
     version = str(project["version"])
     dist = _wheel_escape(name)
@@ -101,8 +149,9 @@ def build_wheel(out_dir: Path) -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build the arcrho-api wheel.")
     parser.add_argument("--out-dir", default=str(ROOT / "dist"), help="Directory where the wheel is written.")
+    parser.add_argument("--version", default="", help="Optional wheel version override.")
     args = parser.parse_args(argv)
-    wheel_path = build_wheel(Path(args.out_dir).resolve())
+    wheel_path = build_wheel(Path(args.out_dir).resolve(), version_override=args.version.strip() or None)
     print(wheel_path)
     return 0
 

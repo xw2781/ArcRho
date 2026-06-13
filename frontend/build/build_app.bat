@@ -28,6 +28,8 @@ set "PATH=%NODE_HOME%;%PATH%"
 set "APP_BUILDER_EXE=node_modules\app-builder-bin\win\x64\app-builder.exe"
 set "APP_VERSION="
 set "UPDATE_FEED_DIR=E:\ArcRho Server\releases\installers"
+if not defined PYTHON_API_PACKAGE_DIR set "PYTHON_API_PACKAGE_DIR=E:\ArcRho Server\packages"
+set "PYTHON_API_WHEEL="
 
 if not defined PYTHON_EXE (
     for /f "usebackq delims=" %%I in (`py -3.10 -c "import sys; print(sys.executable)" 2^>nul`) do set "PYTHON_EXE=%%I"
@@ -83,7 +85,18 @@ if not defined APP_VERSION (
 echo Building version %APP_VERSION%
 echo.
 
-echo Step 2: Building Python app server with PyInstaller...
+echo Step 2: Building Python API wheel...
+echo ----------------------------------------
+call :build_python_api_wheel
+if errorlevel 1 (
+    echo.
+    pause
+    exit /b 1
+)
+echo Python API wheel built: %PYTHON_API_WHEEL%
+echo.
+
+echo Step 3: Building Python app server with PyInstaller...
 echo ----------------------------------------
 call :run_pyinstaller
 if errorlevel 1 (
@@ -94,7 +107,7 @@ if errorlevel 1 (
 echo Python app server built successfully!
 echo.
 
-echo Step 3: Building Electron app with electron-builder...
+echo Step 4: Building Electron app with electron-builder...
 echo ----------------------------------------
 if not exist "python_dist\arcrho_server\arcrho_server.exe" (
     echo ERROR: Missing app-server bundle: python_dist\arcrho_server\arcrho_server.exe
@@ -120,7 +133,7 @@ if not exist "dist\ArcRho-Setup-*.exe" (
 )
 
 echo.
-echo Step 4: Generating release notes...
+echo Step 5: Generating release notes...
 echo ----------------------------------------
 set "RELEASE_NOTE_PATH_FILE=build\release_note_path_%APP_VERSION%.txt"
 if exist "%RELEASE_NOTE_PATH_FILE%" del /q "%RELEASE_NOTE_PATH_FILE%" >nul 2>nul
@@ -144,7 +157,7 @@ if not defined RELEASE_NOTE_PATH (
 echo Release notes generated: %RELEASE_NOTE_PATH%
 echo.
 
-echo Step 5: Publishing installer update feed...
+echo Step 6: Publishing installer update feed...
 echo ----------------------------------------
 powershell -NoProfile -ExecutionPolicy Bypass -File "build\publish_update_feed.ps1" -InstallerPath "dist\ArcRho-Setup-%APP_VERSION%.exe" -FeedDir "%UPDATE_FEED_DIR%" -ReleaseNotesPath "%RELEASE_NOTE_PATH%"
 if errorlevel 1 (
@@ -156,7 +169,18 @@ if errorlevel 1 (
 echo Installer update feed published: %UPDATE_FEED_DIR%
 echo.
 
-echo Step 6: Cleaning Python build artifacts...
+echo Step 7: Publishing Python API package...
+echo ----------------------------------------
+call :publish_python_api_package
+if errorlevel 1 (
+    echo.
+    pause
+    exit /b 1
+)
+echo Python API package published: %PYTHON_API_PACKAGE_DIR%
+echo.
+
+echo Step 8: Cleaning Python build artifacts...
 echo ----------------------------------------
 if exist "python_dist" (
     rmdir /s /q "python_dist"
@@ -183,10 +207,60 @@ echo.
 echo - ArcRho-Setup-%APP_VERSION%.exe  (Installer)
 echo - %UPDATE_FEED_DIR%\ArcRho-Setup-%APP_VERSION%.exe  (Published Installer)
 echo - %UPDATE_FEED_DIR%\latest.json  (Update Manifest)
+echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
 echo - %RELEASE_NOTE_PATH%  (Release Notes)
 echo.
 pause
 endlocal
+exit /b 0
+
+:build_python_api_wheel
+if not exist "%NODE_HOME%\node.exe" (
+    echo ERROR: Missing portable node: %NODE_HOME%\node.exe
+    exit /b 1
+)
+call "%NODE_HOME%\node.exe" build\build_python_api_wheel.js
+if errorlevel 1 (
+    echo ERROR: Failed to build Python API wheel.
+    exit /b 1
+)
+for %%I in ("build\python_packages\arcrho_api-*.whl") do set "PYTHON_API_WHEEL=%%~fI"
+if not defined PYTHON_API_WHEEL (
+    echo ERROR: Python API wheel was not generated in build\python_packages.
+    exit /b 1
+)
+if not exist "%PYTHON_API_WHEEL%" (
+    echo ERROR: Python API wheel path does not exist: %PYTHON_API_WHEEL%
+    exit /b 1
+)
+exit /b 0
+
+:publish_python_api_package
+if not defined PYTHON_API_WHEEL (
+    echo ERROR: Python API wheel path is empty.
+    exit /b 1
+)
+if not exist "%PYTHON_API_WHEEL%" (
+    echo ERROR: Python API wheel does not exist: %PYTHON_API_WHEEL%
+    exit /b 1
+)
+if not exist "%PYTHON_API_PACKAGE_DIR%" (
+    mkdir "%PYTHON_API_PACKAGE_DIR%"
+    if errorlevel 1 (
+        echo ERROR: Failed to create Python API package directory: %PYTHON_API_PACKAGE_DIR%
+        exit /b 1
+    )
+)
+copy /Y "%PYTHON_API_WHEEL%" "%PYTHON_API_PACKAGE_DIR%\" >nul
+if errorlevel 1 (
+    echo ERROR: Failed to publish versioned Python API wheel to %PYTHON_API_PACKAGE_DIR%.
+    exit /b 1
+)
+copy /Y "%PYTHON_API_WHEEL%" "%PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl" >nul
+if errorlevel 1 (
+    echo ERROR: Failed to publish arcrho_api-latest.whl to %PYTHON_API_PACKAGE_DIR%.
+    exit /b 1
+)
 exit /b 0
 
 :validate_python_310
