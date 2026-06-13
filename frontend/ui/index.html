@@ -2072,15 +2072,25 @@
       color: #263241;
       box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08);
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 400;
       line-height: 1.35;
       font-variant-numeric: tabular-nums;
       pointer-events: none;
-      white-space: pre-line;
+      white-space: normal;
       opacity: 0;
       visibility: hidden;
       transform: translateY(3px) scale(0.98);
       transition: opacity 140ms ease, transform 140ms ease, visibility 0ms linear 140ms;
+    }
+    .aiAssistantAppContextTooltipTitle,
+    .aiAssistantAppContextTooltipLabel {
+      font-weight: 700;
+    }
+    .aiAssistantAppContextTooltipLine {
+      display: block;
+    }
+    .aiAssistantAppContextTooltipValue {
+      font-weight: 400;
     }
     #aiAssistantAppContextTooltip::after {
       content: "";
@@ -4321,8 +4331,9 @@
             </svg>
           </button>
           <div id="aiAssistantModeMenu" class="aiAssistantSelectMenu" role="menu" aria-label="ArcBot mode">
-            <button id="aiAssistantEditModeOption" class="aiAssistantSelectOption active" type="button" role="menuitem">Edit Automatically</button>
             <button id="aiAssistantReviewModeOption" class="aiAssistantSelectOption" type="button" role="menuitem">Read Only</button>
+            <button id="aiAssistantApprovalModeOption" class="aiAssistantSelectOption" type="button" role="menuitem">Ask for Approval</button>
+            <button id="aiAssistantEditModeOption" class="aiAssistantSelectOption active" type="button" role="menuitem">Edit Automatically</button>
           </div>
         </div>
         <button id="aiAssistantSendBtn" class="aiAssistantBtn primary" type="submit" title="Send" aria-label="Send">

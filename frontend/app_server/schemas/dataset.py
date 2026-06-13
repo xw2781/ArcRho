@@ -39,6 +39,8 @@ class DatasetSidecarSaveRequest(BaseModel):
     dataset_name: str
     dataset_type: str = ""
     instance_name: str = ""
+    source_kind: str = ""
+    data_format: str = ""
     origin_length: int = Field(..., ge=1)
     development_length: int = Field(..., ge=1)
     cumulative: bool = True

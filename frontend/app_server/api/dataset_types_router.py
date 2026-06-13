@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 
 from app_server import config
 from app_server.schemas.dataset_types import DatasetTypesSaveRequest, DatasetTypesImportLocalFileRequest
-from app_server.services import dataset_types_service
+from app_server.services import calculated_dataset_service, dataset_types_service
 from app_server.services.audit_service import safe_append_project_audit_log
 from app_server.helpers import _canon_dataset_name, _parse_calculated_flag
 
@@ -73,6 +73,15 @@ def save_dataset_types(req: DatasetTypesSaveRequest) -> Dict[str, Any]:
         filepath = config.get_dataset_types_path(project_name)
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+    previous_rows: List[List[Any]] = []
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f_prev:
+                previous_raw = json.load(f_prev)
+            previous_rows = list(dataset_types_service.normalize_dataset_types_data(previous_raw).get("rows") or [])
+        except Exception:
+            previous_rows = []
 
     source_map = dataset_types_service._load_dataset_source_map(project_name)
     field_names = dataset_types_service._load_field_mapping_field_names(project_name)
@@ -150,11 +159,25 @@ def save_dataset_types(req: DatasetTypesSaveRequest) -> Dict[str, Any]:
 
     try:
         dataset_types_service.save_dataset_types_payload(filepath, payload)
+        changed_formula_types = calculated_dataset_service.changed_formula_dataset_type_names(
+            previous_rows,
+            normalized_rows,
+        )
+        calculation_updates = calculated_dataset_service.refresh_sidecar_graphs_and_recalculate(
+            project_name,
+            changed_formula_types,
+        )
         safe_append_project_audit_log(
             project_name=project_name,
             action=f"Saved Dataset Types ({len(normalized_rows)} rows)",
         )
-        return {"ok": True, "path": filepath, "count": len(normalized_rows)}
+        return {
+            "ok": True,
+            "path": filepath,
+            "count": len(normalized_rows),
+            "changed_formula_types": changed_formula_types,
+            "calculated_updates": calculation_updates,
+        }
     except PermissionError:
         raise HTTPException(423, "Dataset types file is locked. Another user may have it open.")
     except Exception as e:

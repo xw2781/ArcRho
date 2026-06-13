@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Results saves now preserve dataset graph sidecar metadata and refresh dependent calculated datasets.",
+  "details": [
+    "DFM output sidecars are saved through the app-server sidecar endpoint instead of a minimal browser-written JSON file.",
+    "Saving a DFM output vector now reports dependent calculated dataset refreshes in the save status."
+  ]
+}

@@ -56,6 +56,7 @@ import {
 } from "/ui/dfm/dfm_persistence.js?v=20260611a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
 import { wireDfmRpcBridgePathBar } from "/ui/dfm/dfm_rpc_bridge_pathbar.js?v=20260514a";
+import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260613a";
 import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js";
 import {
   clearRatioHistoryTempSession,
@@ -520,6 +521,29 @@ export function initDfmRatios() {
     }
     if (e?.data?.type === "arcrho:assistant-json-updated") {
       scheduleRatioSelectionLoad("assistant-edit");
+      return;
+    }
+    if (e?.data?.type === "arcrho:assistant-dfm-edit-approval") {
+      const requestId = e.data.requestId || "";
+      const reply = (payload) => {
+        try {
+          window.parent.postMessage({
+            type: "arcrho:assistant-dfm-edit-approval-result",
+            requestId,
+            ...payload,
+          }, "*");
+        } catch {
+          // ignore stale shell messaging
+        }
+      };
+      reviewArcBotDfmEditApproval({
+        targetPath: e.data.targetPath || "",
+        originalJson: e.data.originalJson || null,
+        proposedJson: e.data.proposedJson || null,
+        reply: e.data.reply || "",
+      })
+        .then(reply)
+        .catch((err) => reply({ ok: false, error: String(err?.message || err || "Could not review ArcBot DFM edit.") }));
       return;
     }
     if (e?.data?.type === "arcrho:dfm-apply-method-payload") {

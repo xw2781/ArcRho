@@ -330,6 +330,7 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
     payload = {
         "dataset_name": instance_name,
         "dataset_type": dataset_type,
+        "dataset_type_name": dataset_type,
         "instance_name": instance_name,
         "reserving_class": _pair_value(pairs, "Path"),
         "project_name": _pair_value(pairs, "ProjectName"),
@@ -348,6 +349,13 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "modified_by": user_name,
         "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
     }
+    from app_server.services import calculated_dataset_service
+
+    calculated_dataset_service.apply_sidecar_graph_fields(
+        payload,
+        _pair_value(pairs, "ProjectName"),
+        dataset_type,
+    )
     tmp_path = f"{sidecar_path}.{uuid.uuid4()}.tmp"
     os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)
     with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:

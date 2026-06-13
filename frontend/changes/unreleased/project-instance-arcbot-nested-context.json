@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot now treats the active Project Instance nested window as primary app context while noting other visible nested windows.",
+  "details": [
+    "The App Context hover text now shows Project, Segment, Active Tab, Method Type, and visible nested-tab count for Project Instance pages."
+  ]
+}

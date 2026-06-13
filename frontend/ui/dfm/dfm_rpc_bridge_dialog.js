@@ -498,6 +498,8 @@ function escapeHtml(value) {
 
 function comparisonMessage(comparison) {
   switch (comparison) {
+    case "approval_pending":
+      return { tone: "", text: "Review the proposed ArcBot edits before applying them." };
     case "remote_latest":
     case "local_latest":
       return { tone: "", text: "" };
@@ -517,23 +519,25 @@ function comparisonMessage(comparison) {
 function getOrderedVersions(data) {
   const local = data?.local || {};
   const remote = data?.remote || {};
+  const labels = data?.labels && typeof data.labels === "object" ? data.labels : {};
+  const actions = data?.actions && typeof data.actions === "object" ? data.actions : {};
   if (!local.exists || !remote.exists) return [];
   const localModified = Number(local.last_modified_timestamp || 0);
   const remoteModified = Number(remote.last_modified_timestamp || 0);
   if (Math.abs(localModified - remoteModified) <= 1e-6) return [];
   const localVersion = {
     key: "local",
-    source: "ArcRho - Local",
+    source: labels.local || "ArcRho - Local",
     meta: local,
     snapshot: data?.snapshots?.local || {},
-    action: data?.comparison === "local_latest" ? "update-remote" : "keep-local",
+    action: actions.local || (data?.comparison === "local_latest" ? "update-remote" : "keep-local"),
   };
   const remoteVersion = {
     key: "remote",
-    source: "RPC - Remote",
+    source: labels.remote || "RPC - Remote",
     meta: remote,
     snapshot: data?.snapshots?.remote || {},
-    action: "update-local",
+    action: actions.remote || "update-local",
   };
   return [
     { ...localVersion, age: localModified < remoteModified ? "old" : "new" },
@@ -899,8 +903,11 @@ function renderCellNotesPreview(version, otherVersion) {
 }
 
 function versionPrimaryLabel(version) {
+  if (version?.primaryLabel) return String(version.primaryLabel);
   if (version?.action === "update-remote") return "Confirm";
   if (version?.action === "update-local") return "Confirm";
+  if (version?.action === "accept-agent-edit") return "Accept";
+  if (version?.action === "reject-agent-edit") return "Reject";
   if (version?.key === "local") return "Keep Using Local";
   if (version?.key === "remote") return "Use Remote Version";
   return "Use Selected Version";

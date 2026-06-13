@@ -1458,6 +1458,102 @@ export function createDatasetTypesFeature(deps = {}) {
     if (loadedOk) setDatasetTypesStatus("");
   }
 
+  function collectRecalcSteps(report) {
+    const steps = [];
+    if (Array.isArray(report?.steps)) steps.push(...report.steps);
+    if (Array.isArray(report?.chains)) {
+      report.chains.forEach((chain) => {
+        if (Array.isArray(chain?.steps)) {
+          steps.push(...chain.steps.map((step) => ({
+            ...step,
+            reserving_class: step?.reserving_class || chain?.reserving_class || "",
+          })));
+        }
+      });
+    }
+    return steps.filter((step) => String(step?.dataset_type_name || "").trim() || String(step?.reason || "").trim());
+  }
+
+  function showRecalcDialog(report) {
+    const steps = collectRecalcSteps(report);
+    if (!steps.length) return;
+    if (!document.getElementById("datasetTypesRecalcDialogStyles")) {
+      const style = document.createElement("style");
+      style.id = "datasetTypesRecalcDialogStyles";
+      style.textContent = `
+        .datasetTypesRecalcOverlay{position:fixed;inset:0;z-index:1400;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.18)}
+        .datasetTypesRecalcBox{position:relative;width:min(580px,calc(100vw - 40px));max-height:min(70vh,560px);border:1px solid #c9d1dc;border-radius:8px;background:#fff;box-shadow:0 18px 42px rgba(15,23,42,.24);padding:16px 18px 14px;box-sizing:border-box;display:flex;flex-direction:column;min-height:0}
+        .datasetTypesRecalcClose{position:absolute;top:7px;right:8px;width:24px;height:24px;border:none;border-radius:4px;background:transparent;color:#64748b;font-size:15px;line-height:24px;cursor:pointer}
+        .datasetTypesRecalcClose:hover{background:#f1f5f9;color:#0f172a}
+        .datasetTypesRecalcTitle{padding-right:26px;font-size:14px;font-weight:700}
+        .datasetTypesRecalcSummary{margin-top:8px;color:#475569;font-size:13px}
+        .datasetTypesRecalcList{margin-top:12px;padding:8px;border:1px solid #d8dde3;border-radius:6px;background:#f8fafc;overflow:auto;min-height:0;font-size:12px}
+        .datasetTypesRecalcItem{padding:7px 6px;border-bottom:1px solid #e5eaf1}
+        .datasetTypesRecalcItem:last-child{border-bottom:none}
+        .datasetTypesRecalcName{color:#111827;font-weight:700;overflow-wrap:anywhere}
+        .datasetTypesRecalcMeta{margin-top:2px;color:#64748b;overflow-wrap:anywhere}
+        .datasetTypesRecalcActions{display:flex;justify-content:flex-end;margin-top:16px}
+      `;
+      document.head.appendChild(style);
+    }
+    const overlay = document.createElement("div");
+    overlay.className = "datasetTypesRecalcOverlay";
+    const box = document.createElement("div");
+    box.className = "datasetTypesRecalcBox";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    const close = document.createElement("button");
+    close.className = "datasetTypesRecalcClose";
+    close.type = "button";
+    close.setAttribute("aria-label", "Close");
+    close.textContent = "x";
+    const title = document.createElement("div");
+    title.className = "datasetTypesRecalcTitle";
+    title.textContent = "Calculated Dataset Refresh";
+    const summary = document.createElement("div");
+    summary.className = "datasetTypesRecalcSummary";
+    const updatedCount = steps.filter((step) => step?.ok).length;
+    summary.textContent = `Refreshed ${updatedCount} calculated dataset${updatedCount === 1 ? "" : "s"} after Dataset Types save.`;
+    const list = document.createElement("div");
+    list.className = "datasetTypesRecalcList";
+    steps.forEach((step, index) => {
+      const item = document.createElement("div");
+      item.className = "datasetTypesRecalcItem";
+      const name = document.createElement("div");
+      name.className = "datasetTypesRecalcName";
+      name.textContent = `${index + 1}. ${String(step?.dataset_type_name || "Calculated dataset")}`;
+      const meta = document.createElement("div");
+      meta.className = "datasetTypesRecalcMeta";
+      meta.textContent = [
+        String(step?.reserving_class || "").trim(),
+        step?.path ? String(step.path) : "",
+        step?.reason ? `Reason: ${step.reason}` : "",
+      ].filter(Boolean).join(" | ") || (step?.ok ? "CSV refreshed" : "Skipped");
+      item.append(name, meta);
+      list.appendChild(item);
+    });
+    const actions = document.createElement("div");
+    actions.className = "datasetTypesRecalcActions";
+    const ok = document.createElement("button");
+    ok.className = "dataset-types-action";
+    ok.type = "button";
+    ok.textContent = "OK";
+    actions.appendChild(ok);
+    box.append(close, title, summary, list, actions);
+    overlay.appendChild(box);
+    const dismiss = () => overlay.remove();
+    close.addEventListener("click", dismiss);
+    ok.addEventListener("click", dismiss);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) dismiss();
+    });
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") dismiss();
+    });
+    document.body.appendChild(overlay);
+    ok.focus();
+  }
+
   async function saveDatasetTypes(projectName) {
     if (!projectName) return false;
     const state = getProjectDatasetTypesState(projectName);
@@ -1490,6 +1586,7 @@ export function createDatasetTypesFeature(deps = {}) {
       renderDatasetTypesTable(projectName);
       setDatasetTypesStatus(`Saved dataset types to ${out.path}`);
       setStatus(`Saved dataset types: ${projectName}`);
+      showRecalcDialog(out?.calculated_updates);
       await loadAuditLog(projectName, true);
       return true;
     } catch (err) {

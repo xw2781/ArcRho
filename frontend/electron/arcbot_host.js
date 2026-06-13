@@ -31,6 +31,7 @@ const ARCBOT_SERVER_INSTRUCTION_PLACEHOLDERS = [
 
 const ARCBOT_READABLE_ROOTS_FILE = "arcbot_readable_roots.json";
 const ARCBOT_CHAT_SESSIONS_DIR = "arcbot_chat_sessions";
+const ARCBOT_CODEX_COMMAND_HINT_FILE = "arcbot_codex_command.json";
 const CODEX_ASSISTANT_TIMEOUT_MS = Math.max(
   15000,
   parseInt(process.env.ARCRHO_CODEX_ASSISTANT_TIMEOUT_MS || "120000", 10) || 120000
@@ -73,6 +74,36 @@ function getPythonApiWheelPath() {
 
 function getArcBotChatSessionsDir() {
   return path.join(app.getPath("userData"), ARCBOT_CHAT_SESSIONS_DIR);
+}
+
+function getArcBotCodexCommandHintPath() {
+  return path.join(app.getPath("userData"), ARCBOT_CODEX_COMMAND_HINT_FILE);
+}
+
+function readArcBotCodexCommandHint() {
+  try {
+    const raw = fs.readFileSync(getArcBotCodexCommandHintPath(), "utf8");
+    const parsed = JSON.parse(raw);
+    const command = String(parsed?.command || "").trim();
+    if (command && fs.existsSync(command) && !isWindowsAppsPath(command)) return command;
+  } catch {
+    // Missing or stale hints are ignored; normal command discovery still runs.
+  }
+  return "";
+}
+
+function writeArcBotCodexCommandHint(command) {
+  const value = String(command || "").trim();
+  if (!value) return;
+  try {
+    fs.mkdirSync(path.dirname(getArcBotCodexCommandHintPath()), { recursive: true });
+    fs.writeFileSync(getArcBotCodexCommandHintPath(), JSON.stringify({
+      command: value,
+      updatedAt: new Date().toISOString(),
+    }, null, 2), "utf8");
+  } catch {
+    // A hint failure should not turn a successful CLI install into a failed install.
+  }
 }
 
 function sanitizeArcBotSessionId(value) {
@@ -511,6 +542,10 @@ function getNpmCommand() {
   return getBundledNpmCommand() || "npm";
 }
 
+function isWindowsAppsPath(filePath) {
+  return /\\WindowsApps\\/iu.test(String(filePath || ""));
+}
+
 function getCodexCommand() {
   const configured = String(process.env.ARCRHO_CODEX_CMD || "").trim();
   if (configured) return configured;
@@ -518,6 +553,7 @@ function getCodexCommand() {
   if (process.platform === "win32") {
     const candidates = [
       path.join(APP_ROOT, "node-portable", "codex.cmd"),
+      readArcBotCodexCommandHint(),
       process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "codex.cmd") : "",
       process.env.LOCALAPPDATA
         ? path.join(process.env.LOCALAPPDATA, "OpenAI", "Codex", "bin", "codex.cmd")
@@ -535,6 +571,11 @@ function getCodexCommand() {
   }
 
   return findExecutableOnPath(["codex"]) || "codex";
+}
+
+function extractCodexCommandFromInstallOutput(output) {
+  const match = String(output || "").match(/^ARCRHO_CODEX_CMD=(.+)$/imu);
+  return match ? match[1].trim() : "";
 }
 
 function getArcBotCodexEnv(env = process.env) {
@@ -1535,6 +1576,13 @@ function restoreExchangeJsonForApply(editSession, editedJson) {
   return restored;
 }
 
+function isArcBotDfmContext(activeContext) {
+  const ctx = activeContext && typeof activeContext === "object" ? activeContext : {};
+  const pageType = String(ctx.pageType || ctx.tabType || "").trim().toLowerCase();
+  const nestedPageType = String(ctx.nestedPageType || ctx.activeNestedWindow?.kind || "").trim().toLowerCase();
+  return pageType === "dfm" || nestedPageType === "dfm";
+}
+
 function createArcBotEditSession({ targetPath, activeJson, roots = null }) {
   if (activeJson == null || typeof activeJson !== "object" || Array.isArray(activeJson)) {
     return null;
@@ -1747,8 +1795,21 @@ function writeCodexInstallScript() {
     "if ($npmDir) { $env:Path = \"$npmDir;$env:Path\" }",
     "& $NpmCommand install -g @openai/codex",
     "Write-Output 'Codex CLI install completed.'",
-    "$codexCmd = Join-Path $npmDir 'codex.cmd'",
-    "if (Test-Path -LiteralPath $codexCmd) { & $codexCmd --version } else { & codex --version }",
+    "$prefix = (& $NpmCommand prefix -g | Select-Object -First 1)",
+    "if (-not $prefix) { $prefix = $npmDir }",
+    "$codexCandidates = @(",
+    "  (Join-Path $prefix 'codex.cmd'),",
+    "  (Join-Path $prefix 'bin\\codex.cmd'),",
+    "  (Join-Path $npmDir 'codex.cmd')",
+    ")",
+    "$codexCmd = $codexCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1",
+    "if (-not $codexCmd) {",
+    "  $pathCmd = Get-Command codex -ErrorAction SilentlyContinue",
+    "  if ($pathCmd) { $codexCmd = $pathCmd.Path }",
+    "}",
+    "if (-not $codexCmd) { throw 'Codex CLI installed, but codex.cmd was not found on the npm global path.' }",
+    "Write-Output \"ARCRHO_CODEX_CMD=$codexCmd\"",
+    "& $codexCmd --version",
     "",
   ].join("\r\n");
   fs.writeFileSync(scriptPath, script, "utf8");
@@ -2184,9 +2245,13 @@ ipcMain.handle("codex-assistant-install", async () => {
       windowsHide: false,
       shell: false,
     });
+    const output = combinedCommandOutput(result);
+    if (result.ok) {
+      writeArcBotCodexCommandHint(extractCodexCommandFromInstallOutput(output) || getCodexCommand());
+    }
     return {
       ok: result.ok,
-      output: combinedCommandOutput(result),
+      output,
       error: result.ok ? "" : normalizeHostError(result, "Codex CLI installation failed."),
     };
   }
@@ -2195,6 +2260,7 @@ ipcMain.handle("codex-assistant-install", async () => {
     timeoutMs: 10 * 60 * 1000,
     windowsHide: false,
   });
+  if (result.ok) writeArcBotCodexCommandHint(getCodexCommand());
   return {
     ok: result.ok,
     output: combinedCommandOutput(result),
@@ -2316,7 +2382,9 @@ ipcMain.handle("codex-assistant-session-delete", async (_event, payload) => {
 
 ipcMain.handle("codex-assistant-send", async (event, payload) => {
   const requestId = String(payload?.requestId || "");
-  const mode = String(payload?.mode || "edit").trim().toLowerCase();
+  const requestedMode = String(payload?.mode || "edit").trim().toLowerCase();
+  const mode = requestedMode === "approve" ? "approve" : requestedMode;
+  const promptMode = mode === "approve" ? "edit" : mode;
   const model = normalizeArcBotModel(payload?.model);
   const reasoningEffort = normalizeArcBotReasoningEffort(payload?.reasoningEffort);
   const requestLog = createArcBotRequestLogger({ requestId, payload, mode, model, reasoningEffort });
@@ -2339,7 +2407,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     if (requestId) arcBotRequestLoggers.delete(requestId);
     return response;
   };
-  if (mode !== "edit" && mode !== "review") {
+  if (mode !== "edit" && mode !== "review" && mode !== "approve") {
     return finishArcBotRequest({
       ok: false,
       needsAuth: false,
@@ -2448,7 +2516,9 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
   }
   let editSession = null;
   const activeJsonIsError = activeJson && typeof activeJson.error === "string";
-  if (mode === "edit" && targetPath && activeJson && !activeJsonIsError && !isClaudeArcBotModel(model)) {
+  const editLikeMode = mode === "edit" || mode === "approve";
+  const deferDfmApproval = mode === "approve" && isArcBotDfmContext(activeContext);
+  if (editLikeMode && targetPath && activeJson && !activeJsonIsError && !isClaudeArcBotModel(model)) {
     requestLog.start("validate_edit_target", { targetPath });
     const validation = await validateArcBotJsonTarget(targetPath, { allowActiveNotebook: !!activeJsonFallback });
     requestLog.end("validate_edit_target", {
@@ -2479,7 +2549,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
   });
   const rawPrompt = buildAssistantPrompt(
     payload?.messages,
-    mode,
+    promptMode,
     roots.projectRoot,
     codexCwd,
     roots.networkRoot,
@@ -2533,7 +2603,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
       error: result?.error || "",
     });
   } else {
-    sendArcBotActivity(event, requestId, "activity", `Starting warm Codex session with ${model === "codex" ? "the Codex default model" : model} at ${reasoningEffort} reasoning in ${mode === "edit" ? "Edit Mode" : "Review Mode"}...`);
+    sendArcBotActivity(event, requestId, "activity", `Starting warm Codex session with ${model === "codex" ? "the Codex default model" : model} at ${reasoningEffort} reasoning in ${editLikeMode ? "Edit Mode" : "Review Mode"}...`);
     requestLog.start("warm_codex_turn", {
       codexCwd,
       codexSandbox,
@@ -2651,7 +2721,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     stderrChars: String(result.stderr || "").length,
   });
   sendArcBotActivity(event, requestId, "activity", "ArcBot response received.");
-  if (mode === "edit") {
+  if (editLikeMode) {
     if (editSession) {
       let editedJson = null;
       let editedText = "";
@@ -2687,15 +2757,32 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
         }, "failed");
       }
       if (sha256Text(editedText) !== editSession.beforeSha256) {
-        sendArcBotActivity(event, requestId, "activity", "Validating and applying edited JSON-backed copy...");
+        const replacementJson = restoreExchangeJsonForApply(editSession, editedJson);
         const structured = extractJsonObject(rawText);
+        if (deferDfmApproval) {
+          sendArcBotActivity(event, requestId, "activity", "Prepared DFM edit for approval.");
+          requestLog.mark("dfm_edit_pending_approval", {
+            targetPath: editSession.targetPath,
+            replyFromStructuredOutput: !!structured?.reply,
+          });
+          return finishArcBotRequest({
+            ok: true,
+            text: structured?.reply || rawText || "Review the proposed DFM edit.",
+            editPendingApproval: true,
+            targetPath: editSession.targetPath,
+            originalJson: activeJson,
+            proposedJson: replacementJson,
+            usage,
+          });
+        }
+        sendArcBotActivity(event, requestId, "activity", "Validating and applying edited JSON-backed copy...");
         requestLog.start("apply_json_edit", {
           targetPath: editSession.targetPath,
           replyFromStructuredOutput: !!structured?.reply,
         });
         const applied = await applyArcBotJsonEdit({
           targetPath: editSession.targetPath,
-          replacementJson: restoreExchangeJsonForApply(editSession, editedJson),
+          replacementJson,
           requestText: String((payload?.messages || []).slice(-1)[0]?.content || ""),
           reply: structured?.reply || rawText,
           originalJson: activeJson,

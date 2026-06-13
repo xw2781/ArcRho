@@ -736,7 +736,9 @@ function isDfmDatasetRecord(record) {
 function openDfmTabForDataset(record) {
   const datasetName = toText(record?.datasetName);
   if (!datasetName || !state.selectedPath) return;
-  openDfmWindow(datasetName);
+  openDfmWindow(datasetName, {
+    methodType: getDatasetRecordValue(record, "methodType"),
+  });
 }
 
 function recordSelectedDfmObject(methodName) {
@@ -1085,6 +1087,7 @@ function createDatasetRecordRow(item, columns) {
     }
     openDatasetWindow(item.datasetName, {
       datasetTypeName: getDatasetRecordValue(item, "datasetTypeName"),
+      methodType: getDatasetRecordValue(item, "methodType"),
       readOnly: !!item.generated,
       generated: !!item.generated,
     });
@@ -1533,6 +1536,7 @@ function openDatasetRecord(record) {
   }
   openDatasetWindow(record.datasetName, {
     datasetTypeName: getDatasetRecordValue(record, "datasetTypeName"),
+    methodType: getDatasetRecordValue(record, "methodType"),
     readOnly: !!record.generated,
     generated: !!record.generated,
   });

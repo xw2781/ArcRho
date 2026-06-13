@@ -50,6 +50,8 @@ import "/ui/shared/zoom_bridge.js?v=20260521a";
 const FONT_STORAGE_KEY = "arcrho_app_font";
 const FORCE_REBUILD_KEY = "arcrho_force_rebuild_enabled";
 const LOCAL_PROJECT_PREFS_ENDPOINT = "/local-project/preferences";
+const CALCULATED_DATASETS_UPDATED_MESSAGE = "arcrho:calculated-datasets-updated";
+let calculatedDatasetRefreshInFlight = false;
 
 function buildFontStack(font) {
   const raw = String(font || "").trim();
@@ -90,9 +92,80 @@ function notifyDatasetUpdated() {
   window.dispatchEvent(new CustomEvent("arcrho:dataset-updated"));
 }
 
+function normalizeDatasetMatchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function collectCurrentDatasetNamesForMatch() {
+  return new Set([
+    normalizeDatasetMatchText(getDatasetInstanceNameValue()),
+    normalizeDatasetMatchText(document.getElementById("triInput")?.value || ""),
+  ].filter(Boolean));
+}
+
+function isCalculationStepUpdated(step) {
+  return !!step?.ok || String(step?.status || "").toLowerCase() === "updated";
+}
+
+function calculationContextMatches(report, step = {}) {
+  const reportProject = String(step?.project_name || report?.project_name || "").trim();
+  const reportPath = String(step?.reserving_class || report?.reserving_class || "").trim();
+  if (reportProject && normalizeDatasetMatchText(reportProject) !== normalizeDatasetMatchText(getResolvedProjectValue())) {
+    return false;
+  }
+  if (reportPath && normalizeReservingClassPath(reportPath) !== normalizeReservingClassPath(getResolvedReservingClassValue())) {
+    return false;
+  }
+  return true;
+}
+
+function calculationStepMatchesCurrentDataset(step) {
+  const currentNames = collectCurrentDatasetNamesForMatch();
+  if (!currentNames.size) return false;
+  return [
+    step?.dataset_type_name,
+    step?.dataset_name,
+    step?.instance_name,
+  ].some((value) => currentNames.has(normalizeDatasetMatchText(value)));
+}
+
+function calculationReportTargetsCurrentDataset(report) {
+  if (!report || typeof report !== "object") return false;
+  const steps = collectCalculationSteps(report);
+  if (steps.some((step) => isCalculationStepUpdated(step) && calculationContextMatches(report, step) && calculationStepMatchesCurrentDataset(step))) {
+    return true;
+  }
+  if (!calculationContextMatches(report)) return false;
+  const currentNames = collectCurrentDatasetNamesForMatch();
+  return Array.isArray(report.targets) && report.targets.some((target) => currentNames.has(normalizeDatasetMatchText(target)));
+}
+
+async function handleCalculatedDatasetsUpdatedMessage(report) {
+  if (calculatedDatasetRefreshInFlight || !calculationReportTargetsCurrentDataset(report)) return;
+  if (state.dirty.size || datasetSettingsDirty || notesDirty) {
+    setStatus("This dataset was recalculated on disk. Save or discard local edits before reloading.");
+    return;
+  }
+  calculatedDatasetRefreshInFlight = true;
+  try {
+    setStatus("Upstream formula change refreshed this dataset. Reloading...");
+    await loadDataset();
+    setStatus("Dataset refreshed after upstream recalculation.");
+  } catch (err) {
+    const message = String(err?.message || err || "Dataset refresh failed.");
+    setStatus(`Dataset refresh failed: ${message}`);
+  } finally {
+    calculatedDatasetRefreshInFlight = false;
+  }
+}
+
 window.addEventListener("message", (e) => {
   if (e?.data?.type === "arcrho:set-app-font") {
     applyAppFont(e.data.font);
+  }
+  if (e?.data?.type === CALCULATED_DATASETS_UPDATED_MESSAGE) {
+    void handleCalculatedDatasetsUpdatedMessage(e.data.report || null);
+    return;
   }
   if (e?.data?.type === "arcrho:workflow-global-changed") {
     handleWorkflowGlobalChange(e.data.globalControl);
@@ -2276,6 +2349,7 @@ async function saveDatasetSidecarForCurrentContext() {
   invalidateCachedDatasetInstances();
   datasetSettingsDirty = false;
   updateDatasetSaveUi();
+  handleCalculationUpdates(resp.data?.calculated_updates, "Dataset settings save");
   return { ok: true, data: resp.data };
 }
 
@@ -2397,6 +2471,17 @@ function wireDatasetSaveControls() {
     if (event.key === "Escape") {
       event.preventDefault();
       resolveDatasetCancelConfirm(false);
+    }
+  });
+  document.getElementById("datasetRecalcOk")?.addEventListener("click", hideCalculationUpdatesDialog);
+  document.getElementById("datasetRecalcClose")?.addEventListener("click", hideCalculationUpdatesDialog);
+  document.getElementById("datasetRecalcOverlay")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) hideCalculationUpdatesDialog();
+  });
+  document.getElementById("datasetRecalcOverlay")?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      hideCalculationUpdatesDialog();
     }
   });
   window.__arcrho_request_close = () => {
@@ -2682,6 +2767,96 @@ function setStatus(text) {
   }
 }
 
+function collectCalculationSteps(report) {
+  if (!report || typeof report !== "object") return [];
+  const steps = [];
+  if (Array.isArray(report.steps)) steps.push(...report.steps);
+  if (Array.isArray(report.chains)) {
+    report.chains.forEach((chain) => {
+      if (Array.isArray(chain?.steps)) steps.push(...chain.steps);
+    });
+  }
+  if (!steps.length && Array.isArray(report.updated)) steps.push(...report.updated.map((item) => ({ ...item, status: "updated" })));
+  if (!steps.length && Array.isArray(report.skipped)) steps.push(...report.skipped.map((item) => ({ ...item, status: "skipped" })));
+  const seen = new Set();
+  return steps.filter((step) => {
+    const key = [
+      String(step?.reserving_class || report.reserving_class || ""),
+      String(step?.dataset_type_name || ""),
+      String(step?.status || (step?.ok ? "updated" : "skipped")),
+      String(step?.reason || ""),
+    ].join("\u0001");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return String(step?.dataset_type_name || "").trim() || String(step?.reason || "").trim();
+  });
+}
+
+function showCalculationUpdatesDialog(report, source = "Dataset save") {
+  const steps = collectCalculationSteps(report);
+  if (!steps.length) return;
+  const overlay = document.getElementById("datasetRecalcOverlay");
+  const summary = document.getElementById("datasetRecalcSummary");
+  const list = document.getElementById("datasetRecalcList");
+  if (!overlay || !summary || !list) return;
+
+  const updatedCount = steps.filter((step) => step?.ok || String(step?.status || "").toLowerCase() === "updated").length;
+  const skippedCount = steps.length - updatedCount;
+  summary.textContent = `${source} refreshed ${updatedCount} calculated dataset${updatedCount === 1 ? "" : "s"}${skippedCount ? ` and skipped ${skippedCount}` : ""}.`;
+  list.replaceChildren();
+  steps.forEach((step, index) => {
+    const item = document.createElement("div");
+    const skipped = !(step?.ok || String(step?.status || "").toLowerCase() === "updated");
+    item.className = `datasetRecalcItem${skipped ? " is-skipped" : ""}`;
+
+    const badge = document.createElement("span");
+    badge.className = "datasetRecalcBadge";
+    badge.title = skipped ? "Skipped" : "Updated";
+
+    const body = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "datasetRecalcName";
+    name.textContent = `${index + 1}. ${String(step?.dataset_type_name || "Calculated dataset")}`;
+
+    const meta = document.createElement("div");
+    meta.className = "datasetRecalcMeta";
+    const parts = [];
+    if (step?.path) parts.push(String(step.path));
+    if (step?.reason) parts.push(`Reason: ${step.reason}`);
+    if (Array.isArray(step?.errors) && step.errors.length) parts.push(`Errors: ${step.errors.join("; ")}`);
+    meta.textContent = parts.join(" | ") || (skipped ? "Skipped" : "CSV refreshed");
+
+    body.append(name, meta);
+    item.append(badge, body);
+    list.appendChild(item);
+  });
+  overlay.hidden = false;
+  document.getElementById("datasetRecalcOk")?.focus();
+}
+
+function publishCalculatedDatasetUpdates(report, source = "Dataset save") {
+  if (!collectCalculationSteps(report).some(isCalculationStepUpdated)) return;
+  try {
+    window.parent.postMessage({
+      type: CALCULATED_DATASETS_UPDATED_MESSAGE,
+      report,
+      source,
+    }, "*");
+  } catch {
+    // ignore
+  }
+}
+
+function handleCalculationUpdates(report, source = "Dataset save") {
+  showCalculationUpdatesDialog(report, source);
+  publishCalculatedDatasetUpdates(report, source);
+}
+
+function hideCalculationUpdatesDialog() {
+  const overlay = document.getElementById("datasetRecalcOverlay");
+  if (overlay) overlay.hidden = true;
+}
+
 datasetHeadersService = createDatasetHeadersService({
   state,
   setStatus,
@@ -2714,6 +2889,7 @@ datasetRunController = createDatasetRunController({
   syncSidecarForCurrentDataset,
   updateCurrentTabTitle,
   setStatus,
+  onCalculatedUpdates: (report, source) => handleCalculationUpdates(report, source),
   applyGridSelectionFromState,
   stepId,
   suppressLoadingPopup: !!window.ADA_DFM_CONTEXT,

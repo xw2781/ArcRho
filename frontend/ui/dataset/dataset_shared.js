@@ -307,6 +307,18 @@ export function injectDatasetMarkup(container) {
     </div>
   </div>
 
+  <div id="datasetRecalcOverlay" class="datasetRecalcOverlay" hidden>
+    <div class="datasetRecalcBox" role="dialog" aria-modal="true" aria-labelledby="datasetRecalcTitle">
+      <button id="datasetRecalcClose" class="datasetCancelConfirmClose" type="button" aria-label="Close">x</button>
+      <div id="datasetRecalcTitle" class="datasetRecalcTitle">Calculated Dataset Refresh</div>
+      <div id="datasetRecalcSummary" class="datasetRecalcSummary"></div>
+      <div id="datasetRecalcList" class="datasetRecalcList" aria-live="polite"></div>
+      <div class="datasetCancelConfirmActions">
+        <button id="datasetRecalcOk" class="datasetPrimaryBtn is-clean" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
   <div id="ctxMenu" class="ctx-menu" style="display:none;">
     <div class="ctx-menu-inner">
       <button class="ctx-item" data-action="copy_value">Copy value</button>

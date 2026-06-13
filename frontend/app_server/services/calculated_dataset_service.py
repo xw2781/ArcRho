@@ -82,6 +82,14 @@ def _dataset_type_rows(project_name: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def _dataset_type_name_by_key(project_name: str) -> Dict[str, str]:
+    return {
+        _canon_dataset_name(row["name"]): row["name"]
+        for row in _dataset_type_rows(project_name)
+        if _canon_dataset_name(row.get("name"))
+    }
+
+
 def _formula_components(formula: str, known_names: List[str]) -> List[str]:
     text = _clean_text(formula)
     if not text:
@@ -116,6 +124,117 @@ def _formula_components(formula: str, known_names: List[str]) -> List[str]:
             seen.add(key)
             out.append(name)
     return out
+
+
+def _direct_precedent_names(project_name: str, dataset_type_name: str) -> List[str]:
+    rows = _dataset_type_rows(project_name)
+    known_names = [row["name"] for row in rows]
+    target_key = _canon_dataset_name(dataset_type_name)
+    for row in rows:
+        if _canon_dataset_name(row["name"]) != target_key:
+            continue
+        if not row.get("calculated") or row.get("generated") or not _clean_text(row.get("formula")):
+            return []
+        return _formula_components(row["formula"], known_names)
+    return []
+
+
+def _direct_dependent_names(project_name: str, dataset_type_name: str) -> List[str]:
+    rows = _dataset_type_rows(project_name)
+    known_names = [row["name"] for row in rows]
+    target_key = _canon_dataset_name(dataset_type_name)
+    out: List[str] = []
+    seen: Set[str] = set()
+    if not target_key:
+        return out
+    for row in rows:
+        if not row.get("calculated") or row.get("generated") or not _clean_text(row.get("formula")):
+            continue
+        components = _formula_components(row["formula"], known_names)
+        component_keys = {_canon_dataset_name(component) for component in components}
+        if target_key not in component_keys:
+            continue
+        dep_key = _canon_dataset_name(row["name"])
+        if dep_key and dep_key not in seen:
+            seen.add(dep_key)
+            out.append(row["name"])
+    return out
+
+
+def _name_entries(names: List[str]) -> List[Dict[str, str]]:
+    return [{"dataset_type_name": name} for name in names if _clean_text(name)]
+
+
+def _precedent_entries(
+    project_name: str,
+    dataset_type_name: str,
+    dependency_info: List[Dict[str, Any]] | None = None,
+) -> List[Dict[str, Any]]:
+    info_by_key = {
+        _canon_dataset_name(item.get("dataset_type_name")): item
+        for item in (dependency_info or [])
+        if _canon_dataset_name(item.get("dataset_type_name"))
+    }
+    entries: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for name in _direct_precedent_names(project_name, dataset_type_name):
+        key = _canon_dataset_name(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        item = dict(info_by_key.get(key) or {})
+        item["dataset_type_name"] = item.get("dataset_type_name") or name
+        entries.append(item)
+    return entries
+
+
+def sidecar_graph_fields(
+    project_name: str,
+    dataset_type_name: str,
+    dependency_info: List[Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    return {
+        "Precedents": _precedent_entries(project_name, dataset_type_name, dependency_info),
+        "Dependents": _name_entries(_direct_dependent_names(project_name, dataset_type_name)),
+    }
+
+
+def apply_sidecar_graph_fields(
+    payload: Dict[str, Any],
+    project_name: str = "",
+    dataset_type_name: str = "",
+    dependency_info: List[Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    project = _clean_text(project_name or payload.get("project_name"))
+    dataset_type = _clean_text(
+        dataset_type_name
+        or payload.get("dataset_type_name")
+        or payload.get("dataset_type")
+        or payload.get("dataset_name")
+    )
+    if not project or not dataset_type:
+        payload["Precedents"] = []
+        payload["Dependents"] = []
+        payload.pop("dependencies", None)
+        return payload
+
+    rows_by_key = {
+        _canon_dataset_name(row["name"]): row
+        for row in _dataset_type_rows(project)
+        if _canon_dataset_name(row.get("name"))
+    }
+    row = rows_by_key.get(_canon_dataset_name(dataset_type))
+    if row:
+        formula = _clean_text(row.get("formula"))
+        is_calculated = bool(row.get("calculated") and not row.get("generated") and formula)
+        payload["formula"] = formula if is_calculated else ""
+        payload["calculated"] = is_calculated
+        payload["editable"] = False if is_calculated else payload.get("editable")
+        payload["generated"] = False if is_calculated else payload.get("generated")
+
+    payload.update(sidecar_graph_fields(project, dataset_type, dependency_info))
+    payload.pop("dependencies", None)
+    return payload
 
 
 def _replace_formula_refs(formula: str, known_names: List[str]) -> Tuple[str, Dict[str, str]]:
@@ -640,7 +759,7 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
     ordered_components = [refs[key] for key in sorted(refs.keys(), key=lambda item: int(item[2:]))]
 
     settings = _existing_target_settings(project_name, reserving_class, row["name"])
-    values, dependencies, errors = _load_components(project_name, reserving_class, ordered_components, settings)
+    values, precedents, errors = _load_components(project_name, reserving_class, ordered_components, settings)
     if errors:
         return {
             "ok": False,
@@ -707,8 +826,8 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         "generated": False,
         "calculated": True,
         "formula": row.get("formula") or "",
-        "dependencies": dependencies,
     }
+    apply_sidecar_graph_fields(payload, project_name, row["name"], precedents)
 
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)
@@ -725,7 +844,31 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         "dataset_type_name": row["name"],
         "path": csv_path,
         "sidecar_path": sidecar_path,
-        "dependencies": dependencies,
+        "Precedents": payload.get("Precedents", []),
+        "Dependents": payload.get("Dependents", []),
+    }
+
+
+def recalculate_dataset_chain(project_name: str, reserving_class: str, dataset_type_name: str) -> Dict[str, Any]:
+    first = recalculate_dataset(project_name, reserving_class, dataset_type_name)
+    first_step = {
+        **first,
+        "status": "updated" if first.get("ok") else "skipped",
+    }
+    downstream = recalculate_dependents(project_name, reserving_class, dataset_type_name, dataset_type_name)
+    steps = [first_step] + list(downstream.get("steps") or [])
+    updated = [item for item in steps if item.get("ok")]
+    skipped = [item for item in steps if not item.get("ok")]
+    return {
+        "ok": True,
+        "project_name": project_name,
+        "reserving_class": reserving_class,
+        "changed_dataset_name": dataset_type_name,
+        "changed_dataset_type_name": dataset_type_name,
+        "targets": [item.get("dataset_type_name") for item in steps if _clean_text(item.get("dataset_type_name"))],
+        "steps": steps,
+        "updated": updated,
+        "skipped": skipped,
     }
 
 
@@ -743,7 +886,12 @@ def recalculate_dependents(
         row = rows_by_key.get(key)
         if not row:
             continue
-        results.append(recalculate_dataset(project_name, reserving_class, row["name"]))
+        result = recalculate_dataset(project_name, reserving_class, row["name"])
+        step = {
+            **result,
+            "status": "updated" if result.get("ok") else "skipped",
+        }
+        results.append(step)
 
     try:
         dataset_instance_index_service.rebuild_index(project_name, reserving_class)
@@ -756,6 +904,12 @@ def recalculate_dependents(
         "reserving_class": reserving_class,
         "changed_dataset_name": changed_dataset_name,
         "changed_dataset_type_name": changed_dataset_type_name,
+        "targets": [
+            rows_by_key[key]["name"]
+            for key in targets
+            if key in rows_by_key
+        ],
+        "steps": results,
         "updated": [item for item in results if item.get("ok")],
         "skipped": [item for item in results if not item.get("ok")],
     }
@@ -773,3 +927,150 @@ def recalculate_dependents_for_csv(csv_path: str) -> Dict[str, Any]:
     if not project_name or not reserving_class or not dataset_name:
         return {"ok": False, "skipped": True, "reason": "missing_sidecar_context"}
     return recalculate_dependents(project_name, reserving_class, dataset_name, dataset_type)
+
+
+def _rows_by_key_from_normalized_rows(rows: List[List[Any]]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in rows or []:
+        if not isinstance(row, list):
+            continue
+        name = _clean_text(row[0] if len(row) > 0 else "")
+        key = _canon_dataset_name(name)
+        if not key:
+            continue
+        out[key] = {
+            "name": name,
+            "calculated": _bool_value(row[3] if len(row) > 3 else False),
+            "formula": _clean_text(row[4] if len(row) > 4 else ""),
+            "generated": _bool_value(row[6] if len(row) > 6 else False),
+        }
+    return out
+
+
+def changed_formula_dataset_type_names(previous_rows: List[List[Any]], next_rows: List[List[Any]]) -> List[str]:
+    previous = _rows_by_key_from_normalized_rows(previous_rows)
+    current = _rows_by_key_from_normalized_rows(next_rows)
+    names_by_key = _dataset_type_name_by_key_from_rows(next_rows)
+    changed: List[str] = []
+    for key, row in current.items():
+        prev = previous.get(key)
+        if (
+            prev is None
+            or bool(prev.get("calculated")) != bool(row.get("calculated"))
+            or bool(prev.get("generated")) != bool(row.get("generated"))
+            or _clean_text(prev.get("formula")) != _clean_text(row.get("formula"))
+        ):
+            name = names_by_key.get(key) or row.get("name")
+            if _clean_text(name):
+                changed.append(str(name))
+    return changed
+
+
+def _dataset_type_name_by_key_from_rows(rows: List[List[Any]]) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for row in rows or []:
+        if not isinstance(row, list):
+            continue
+        name = _clean_text(row[0] if len(row) > 0 else "")
+        key = _canon_dataset_name(name)
+        if key:
+            out[key] = name
+    return out
+
+
+def _iter_project_sidecars(project_name: str):
+    try:
+        data_dir = config.get_project_data_dir(project_name)
+    except ValueError:
+        return
+    if not os.path.isdir(data_dir):
+        return
+    for rc_entry in os.scandir(data_dir):
+        if not rc_entry.is_dir():
+            continue
+        sidecar_dir = os.path.join(rc_entry.path, config.DATASET_SIDECAR_DIR)
+        if not os.path.isdir(sidecar_dir):
+            continue
+        for entry in os.scandir(sidecar_dir):
+            if entry.is_file() and entry.name.lower().endswith(".json") and not entry.name.startswith("ArcRhoTriNotes@"):
+                payload = _read_sidecar(entry.path)
+                if payload:
+                    yield entry.path, payload
+
+
+def _write_sidecar_json(path: str, payload: Dict[str, Any]) -> None:
+    tmp_path = f"{path}.{uuid.uuid4()}.tmp"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(payload, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    os.replace(tmp_path, path)
+
+
+def refresh_sidecar_graphs_and_recalculate(
+    project_name: str,
+    changed_dataset_types: List[str] | None = None,
+) -> Dict[str, Any]:
+    changed_keys = {
+        _canon_dataset_name(name)
+        for name in (changed_dataset_types or [])
+        if _canon_dataset_name(name)
+    }
+    rows_by_key = _calculated_rows_by_key(project_name)
+    sidecars_updated = 0
+    recalc_seeds: Set[Tuple[str, str]] = set()
+    errors: List[str] = []
+
+    for path, payload in _iter_project_sidecars(project_name) or []:
+        dataset_type = _clean_text(payload.get("dataset_type_name") or payload.get("dataset_type") or payload.get("dataset_name"))
+        dataset_key = _canon_dataset_name(dataset_type)
+        reserving_class = _clean_text(payload.get("reserving_class"))
+        if not dataset_key:
+            continue
+        try:
+            before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+            apply_sidecar_graph_fields(payload, project_name, dataset_type)
+            after = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+            if before != after:
+                _write_sidecar_json(path, payload)
+                sidecars_updated += 1
+        except Exception as exc:
+            errors.append(f"{os.path.basename(path)}: {exc}")
+            continue
+
+        if changed_keys and dataset_key in changed_keys and dataset_key in rows_by_key and reserving_class:
+            recalc_seeds.add((reserving_class, rows_by_key[dataset_key]["name"]))
+
+    chains: List[Dict[str, Any]] = []
+    for reserving_class, dataset_type in sorted(recalc_seeds):
+        try:
+            chains.append(recalculate_dataset_chain(project_name, reserving_class, dataset_type))
+        except Exception as exc:
+            chains.append({
+                "ok": False,
+                "reserving_class": reserving_class,
+                "changed_dataset_type_name": dataset_type,
+                "steps": [],
+                "updated": [],
+                "skipped": [{"ok": False, "dataset_type_name": dataset_type, "reason": str(exc)}],
+            })
+
+    touched_rcs = {
+        _clean_text(chain.get("reserving_class"))
+        for chain in chains
+        if _clean_text(chain.get("reserving_class"))
+    }
+    for reserving_class in touched_rcs:
+        try:
+            dataset_instance_index_service.rebuild_index(project_name, reserving_class)
+        except Exception:
+            pass
+
+    return {
+        "ok": not errors,
+        "project_name": project_name,
+        "changed_dataset_types": list(changed_dataset_types or []),
+        "sidecars_updated": sidecars_updated,
+        "chains": chains,
+        "errors": errors,
+    }

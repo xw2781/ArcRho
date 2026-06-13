@@ -114,6 +114,8 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
         req.dataset_name,
         dataset_type=req.dataset_type,
         instance_name=req.instance_name,
+        source_kind=req.source_kind,
+        data_format=req.data_format,
         origin_length=req.origin_length,
         development_length=req.development_length,
         cumulative=req.cumulative,

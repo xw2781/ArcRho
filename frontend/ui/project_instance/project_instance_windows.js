@@ -9,6 +9,7 @@ export function installProjectInstanceWindows(ctx) {
   const isPointInHiddenDropZone = (...args) => api.isPointInHiddenDropZone(...args);
   const markPathTreeActive = (...args) => api.markPathTreeActive(...args);
   const normalizePath = (...args) => api.normalizePath(...args);
+  const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
   const postZoomToDatasetFrame = (...args) => api.postZoomToDatasetFrame(...args);
   const recordSelectedDfmObject = (...args) => api.recordSelectedDfmObject(...args);
   const routeDfmRatioHotkey = (...args) => api.routeDfmRatioHotkey(...args);
@@ -45,6 +46,14 @@ function getWindowFullTitle(frame) {
 
 function getWindowShortTitle(frame) {
   return toText(frame?.dataset?.windowDatasetName || frame?.dataset?.windowItemName || getWindowFullTitle(frame));
+}
+
+function getWindowMethodType(frame) {
+  const explicit = toText(frame?.dataset?.windowMethodType);
+  if (explicit) return explicit;
+  if (isDfmWindow(frame)) return "DFM";
+  const key = normalizeLookupKey(frame?.dataset?.windowItemName || frame?.dataset?.windowDatasetName || "");
+  return key ? state.cachedDatasetFilter.methodTypesByName.get(key) || "None" : "None";
 }
 
 function updateDatasetWindowTitle(frame) {
@@ -94,6 +103,7 @@ function getProjectInstanceWindowSnapshot(frame) {
     active,
     maximized: frame.dataset.maximized === "1",
     dirty: frame.dataset.dirty === "1",
+    methodType: getWindowMethodType(frame),
     dfmTab: kind === "dfm" ? toText(frame.dataset.dfmTab || "") : "",
     rect: hiddenItem?.restoreRect || getFrameRect(frame),
   };
@@ -117,6 +127,43 @@ function buildProjectInstanceStateSnapshot() {
   };
   if (active) snapshotState.activeWindow = { kind: active.kind, name: active.name };
   return snapshotState;
+}
+
+function getVisibleProjectInstanceWindowSummaries() {
+  const windows = [];
+  for (const frame of datasetWindows.values()) {
+    const snapshot = getProjectInstanceWindowSnapshot(frame);
+    if (!snapshot || snapshot.hidden) continue;
+    windows.push({
+      kind: snapshot.kind,
+      name: snapshot.name,
+      title: snapshot.title,
+      path: getWindowPath(frame),
+      active: !!snapshot.active,
+      dirty: !!snapshot.dirty,
+      maximized: !!snapshot.maximized,
+      methodType: snapshot.methodType || getWindowMethodType(frame),
+      dfmTab: snapshot.dfmTab || "",
+      zIndex: Number.parseInt(frame.style.zIndex || "0", 10) || 0,
+    });
+  }
+  windows.sort((a, b) => {
+    if (a.active && !b.active) return -1;
+    if (b.active && !a.active) return 1;
+    return b.zIndex - a.zIndex || a.title.localeCompare(b.title);
+  });
+  return windows.map(({ zIndex: _zIndex, ...item }) => item);
+}
+
+function getProjectInstanceAssistantContextSummary() {
+  const openNestedWindows = getVisibleProjectInstanceWindowSummaries();
+  return {
+    projectName,
+    selectedPath: state.selectedPath,
+    activeNestedWindow: openNestedWindows.find((item) => item.active) || openNestedWindows[0] || null,
+    openNestedWindows,
+    ignoredMinimizedWindowCount: hiddenWindows.size,
+  };
 }
 
 function notifyProjectInstanceStateChanged() {
@@ -376,6 +423,15 @@ function findWindowByMessageSource(source) {
 
 function getWindowIframe(frame) {
   return frame?.querySelector?.(".pi-window-body iframe") || null;
+}
+
+function postMessageToDatasetWindows(message, excludeSource = null) {
+  for (const frame of datasetWindows.values()) {
+    if (!frame || isDfmWindow(frame)) continue;
+    const iframe = getWindowIframe(frame);
+    if (!iframe?.contentWindow || iframe.contentWindow === excludeSource) continue;
+    try { iframe.contentWindow.postMessage(message, "*"); } catch {}
+  }
 }
 
 function setWindowDirtyState(frame, dirty) {
@@ -690,6 +746,8 @@ function createFloatingContentWindow(options = {}) {
   frame.dataset.windowPath = normalizePath(options.path || state.selectedPath);
   frame.dataset.windowTitle = title;
   frame.dataset.windowKind = toText(options.kind) || "dataset";
+  const methodType = toText(options.methodType || (frame.dataset.windowKind === "dfm" ? "DFM" : ""));
+  if (methodType) frame.dataset.windowMethodType = methodType;
   if (frame.dataset.windowKind === "dfm") frame.dataset.dfmTab = "ratios";
   frame.setAttribute("aria-label", title);
   frame.innerHTML = `
@@ -809,6 +867,7 @@ function openDatasetWindow(datasetName, options = {}) {
       readOnly: options?.readOnly,
       generated: options?.generated,
     }),
+    methodType: options?.methodType,
     onIframeLoad: (iframe) => {
       lockDatasetViewerInputs(iframe, datasetTypeName);
       window.setTimeout(() => lockDatasetViewerInputs(iframe, datasetTypeName), 250);
@@ -846,6 +905,7 @@ function openNewDatasetDraftWindow(datasetName, options = {}) {
       draft: isDraft,
       initialTab: options?.initialTab || "details",
     }),
+    methodType: options?.methodType,
     onIframeLoad: (iframe) => {
       lockDatasetViewerInputs(iframe, datasetTypeName);
       window.setTimeout(() => lockDatasetViewerInputs(iframe, datasetTypeName), 250);
@@ -874,6 +934,7 @@ function openDfmWindow(datasetName, options = {}) {
     windowKey,
     inst,
     iframeSrc: buildDfmViewerUrl(name, inst, initialTab),
+    methodType: options.methodType || "DFM",
   });
 }
 
@@ -922,7 +983,9 @@ async function applyProjectInstanceRestoreState(rawState) {
     const kind = toText(item?.kind).toLowerCase() === "dfm" ? "dfm" : "dataset";
     const name = toText(item?.name || item?.datasetName || item?.methodName);
     if (!name) continue;
-    const frame = kind === "dfm" ? openDfmWindow(name, { initialTab: item?.dfmTab }) : openDatasetWindow(name);
+    const frame = kind === "dfm"
+      ? openDfmWindow(name, { initialTab: item?.dfmTab, methodType: item?.methodType })
+      : openDatasetWindow(name, { methodType: item?.methodType });
     applyRestoredWindowState(frame, item);
     if (item?.active) activeTarget = frame;
   }
@@ -957,10 +1020,12 @@ async function applyProjectInstanceRestoreState(rawState) {
     getNextDatasetWindowRect,
     getPointerRestoreRect,
     getProjectInstanceWindowSnapshot,
+    getProjectInstanceAssistantContextSummary,
     getWindowBounds,
     getWindowFullTitle,
     getWindowHorizontalLimits,
     getWindowIframe,
+    getWindowMethodType,
     getWindowPath,
     getWindowShortTitle,
     getWindowTopLimit,
@@ -968,6 +1033,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     isDatasetWindowMaximized,
     isDfmWindow,
     isWindowOnSelectedPath,
+    postMessageToDatasetWindows,
     lockDatasetViewerInputs,
     maximizeDatasetWindow,
     notifyActiveDfmWindowState,

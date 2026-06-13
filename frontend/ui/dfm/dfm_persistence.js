@@ -91,6 +91,7 @@ const DFM_ANALYSIS_DECIMALS = 4;
 const DFM_AVERAGE_FORMULA_DECIMALS = 6;
 const DFM_METHOD_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1";
 const DFM_METHOD_FILE_WATCH_INTERVAL_MS = 2000;
+const CALCULATED_DATASETS_UPDATED_MESSAGE = "arcrho:calculated-datasets-updated";
 let lastCleanDfmDirtySnapshot = "";
 
 function stripDatasetCacheVariantSuffix(value) {
@@ -99,62 +100,79 @@ function stripDatasetCacheVariantSuffix(value) {
   return match ? match[1] : text;
 }
 
-function getCanonicalDatasetSidecarPath(csvPath) {
-  const path = String(csvPath || "");
-  const normalized = path.replace(/\\/g, "/");
-  const slash = normalized.lastIndexOf("/");
-  const folder = slash >= 0 ? path.slice(0, slash) : "";
-  const filename = slash >= 0 ? path.slice(slash + 1) : path;
-  const match = filename.match(/^(.*?)(?:@\d+@\d+@(?:cum|inc)@(?:dev|cal))?\.csv$/i);
-  const sidecarName = match ? `${match[1]}.json` : filename.replace(/\.csv$/i, ".json");
-  const folderNorm = folder.replace(/\\/g, "/");
-  const parentSlash = folderNorm.lastIndexOf("/");
-  const folderName = parentSlash >= 0 ? folderNorm.slice(parentSlash + 1) : folderNorm;
-  const parentFolder = parentSlash >= 0 ? folder.slice(0, parentSlash) : "";
-  const sidecarFolder = folderName.toLowerCase() === "datasets"
-    ? (parentFolder ? `${parentFolder}/sidecars` : "sidecars")
-    : `${folder}/sidecars`;
-  return folder ? `${sidecarFolder}/${sidecarName}` : `sidecars/${sidecarName}`;
-}
-
-function buildDatasetSidecarJson(csvPath, datasetName, userName = "") {
-  const name = stripDatasetCacheVariantSuffix(datasetName);
-  const outputType = String(document.getElementById("dfmOutputVector")?.value || "").trim();
-  const user = String(userName || "").trim();
-  return JSON.stringify({
-    dataset_name: name,
-    dataset_type: outputType || name,
-    instance_name: name,
-    reserving_class: getResolvedReservingClass(),
-    project_name: getRatioSaveProjectName(),
-    source_kind: "dfm",
-    source: "dfm",
-    csv_file: String(csvPath || "").split(/[\\/]/).pop() || "",
-    user,
-    modified_by: user,
-    updated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-  }, null, 2) + "\n";
-}
-
-async function saveDatasetSidecar(hostApi, csvPath, datasetName) {
-  if (!hostApi || typeof hostApi.saveTextFile !== "function" || !csvPath) return { ok: true };
-  const jsonPath = getCanonicalDatasetSidecarPath(csvPath);
-  let userName = "";
-  if (typeof hostApi.getWindowsUserName === "function") {
-    try {
-      userName = String(await hostApi.getWindowsUserName() || "").trim();
-    } catch {
-      userName = "";
-    }
-  }
-  const out = await hostApi.saveTextFile({
-    path: jsonPath,
-    data: buildDatasetSidecarJson(csvPath, datasetName, userName),
+function decodeFileNameSegment(value) {
+  return String(value || "").replace(/_%([0-9A-Fa-f]{2})_/g, (match, hex) => {
+    const code = Number.parseInt(hex, 16);
+    return Number.isFinite(code) ? String.fromCharCode(code) : match;
   });
-  if (!out || out.error) {
-    return { ok: false, error: out?.error ? String(out.error) : "unknown error" };
+}
+
+function decodeDatasetNameFromCsvStem(value) {
+  return decodeFileNameSegment(stripDatasetCacheVariantSuffix(value));
+}
+
+function publishCalculatedDatasetUpdates(report, source = "DFM save") {
+  const updatedCount = Array.isArray(report?.updated) ? report.updated.length : 0;
+  const stepUpdated = Array.isArray(report?.steps)
+    ? report.steps.some((step) => step?.ok || String(step?.status || "").toLowerCase() === "updated")
+    : false;
+  if (!updatedCount && !stepUpdated) return;
+  try {
+    window.parent.postMessage({
+      type: CALCULATED_DATASETS_UPDATED_MESSAGE,
+      report,
+      source,
+    }, "*");
+  } catch {
+    // ignore
   }
-  return { ok: true };
+}
+
+async function saveDatasetSidecar(_hostApi, csvPath, datasetName) {
+  const projectName = String(getRatioSaveProjectName() || getResolvedProjectName() || "").trim();
+  const reservingClass = String(getResolvedReservingClass() || "").trim();
+  const csvFile = String(csvPath || "").split(/[\\/]/).pop() || "";
+  const name = decodeDatasetNameFromCsvStem(datasetName);
+  const outputType = String(document.getElementById("dfmOutputVector")?.value || "").trim();
+
+  if (!projectName || !reservingClass || !name || !csvFile) {
+    return {
+      ok: false,
+      error: "Missing project, reserving class, output vector, or CSV file for DFM sidecar save.",
+    };
+  }
+
+  try {
+    const response = await fetch("/dataset/sidecar/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_name: projectName,
+        reserving_class: reservingClass,
+        dataset_name: name,
+        dataset_type: outputType || name,
+        instance_name: name,
+        source_kind: "dfm",
+        data_format: "Vector",
+        origin_length: readSelectedLengthNumber("originLenSelect"),
+        development_length: readSelectedLengthNumber("devLenSelect"),
+        cumulative: true,
+        calendar: false,
+        csv_file: csvFile,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) {
+      return {
+        ok: false,
+        error: String(data?.detail || data?.error || `HTTP ${response.status}`),
+        data,
+      };
+    }
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Failed to save DFM sidecar.") };
+  }
 }
 
 function getRatioLoadReasonPriority(reason) {
@@ -1295,6 +1313,8 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
     let csvError = "";
     const aggregatedCsvPaths = [];
     let baseCsvSaved = false;
+    let calculatedUpdateCount = 0;
+    let calculatedUpdatesReport = null;
     if (typeof hostApi.saveTextFile === "function") {
       const csvErrors = [];
       try {
@@ -1311,6 +1331,9 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
           const sidecarOut = await saveDatasetSidecar(hostApi, csvPath, getResultsCsvSuggestedName().replace(/\.csv$/i, ""));
           if (!sidecarOut.ok) {
             csvErrors.push(`${csvPath.replace(/\.csv$/i, ".json")}: ${sidecarOut.error}`);
+          } else if (Array.isArray(sidecarOut.data?.calculated_updates?.updated)) {
+            calculatedUpdatesReport = sidecarOut.data.calculated_updates;
+            calculatedUpdateCount = calculatedUpdatesReport.updated.length;
           }
           const variants = buildAggregatedResultVariants(resultVector);
           for (const variant of variants) {
@@ -1352,6 +1375,9 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
     if (baseCsvSaved) {
       statusText += ` | CSV saved${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`;
     }
+    if (calculatedUpdateCount) {
+      statusText += ` | ${calculatedUpdateCount} dependent dataset${calculatedUpdateCount === 1 ? "" : "s"} refreshed`;
+    }
     if (csvError) {
       statusText += ` | CSV save failed: ${csvError}`;
     }
@@ -1359,6 +1385,7 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
       { type: "arcrho:status", text: statusText },
       "*"
     );
+    publishCalculatedDatasetUpdates(calculatedUpdatesReport, "DFM save");
     return { ok: true, path: result.path, csvPath, csvError, aggregatedCsvPaths };
   } else if (result && result.error) {
     window.parent.postMessage({ type: "arcrho:status", text: `Save failed: ${result.error}` }, "*");

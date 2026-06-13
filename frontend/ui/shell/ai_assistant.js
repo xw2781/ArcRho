@@ -63,6 +63,7 @@ let assistantCancelRequested = false;
 let assistantHostRequestSubmitted = false;
 let assistantAppContextEnabled = true;
 let assistantStatusChecked = false;
+let assistantInstallJustSucceeded = false;
 let suppressLauncherClick = false;
 let assistantUserAvatarName = "ArcRho";
 let assistantAuthStatus = "";
@@ -265,6 +266,10 @@ function getAssistantContextTitle(context = currentContext) {
 
 function getAssistantContextKind(context = currentContext) {
   const tabType = String(context?.tabType || "").trim().toLowerCase();
+  const nestedType = String(context?.nestedPageType || context?.activeNestedWindow?.kind || "").trim().toLowerCase();
+  if (tabType === "project_instance" && nestedType === "dfm") return "Project Instance DFM window";
+  if (tabType === "project_instance" && nestedType === "dataset") return "Project Instance Dataset window";
+  if (tabType === "project_instance") return "Project Instance";
   if (tabType === "dfm") return "DFM page";
   if (tabType === "dataset") return "Dataset Viewer";
   if (tabType === "scripting") return "notebook";
@@ -278,6 +283,8 @@ function getAssistantTargetKind(context = currentContext) {
   const target = String(context?.targetPath || context?.path || "").trim().toLowerCase();
   if (target.endsWith(".ipynb") || target.endsWith(".arcnb")) return "notebook file";
   if (target.endsWith(".json")) return "JSON-backed app file";
+  if (context?.tabType === "project_instance" && context?.activeNestedWindow?.kind === "dfm") return "active Project Instance DFM method data";
+  if (context?.tabType === "project_instance" && context?.activeNestedWindow?.kind === "dataset") return "active Project Instance dataset window";
   if (context?.tabType === "dfm") return "DFM method data";
   if (context?.tabType === "scripting") return "notebook data";
   return "active app data";
@@ -293,6 +300,11 @@ function isAssistantDfmWork(context = currentContext) {
 function formatAssistantContextScanStatus(context, fallback = "") {
   if (context?.disabled) return "App Context is off, so Codex will use only the chat and attachments.";
   if (!context?.available) return fallback || "No active app tab data was available for this request.";
+  if (context?.tabType === "project_instance") {
+    const count = Array.isArray(context.openNestedWindows) ? context.openNestedWindows.length : 0;
+    const suffix = count > 1 ? ` ArcBot can also see ${count - 1} other open nested window${count === 2 ? "" : "s"}.` : "";
+    return `Reading ${getAssistantContextKind(context)} context from "${getAssistantContextTitle(context)}".${suffix}`;
+  }
   return `Reading ${getAssistantContextKind(context)} context from "${getAssistantContextTitle(context)}".`;
 }
 
@@ -348,10 +360,10 @@ function updateTokenUsageRing() {
   const percent = windowTokens ? getUsagePercent(usage) : 0;
   const measured = !!windowTokens;
   const tooltip = measured
-    ? `Context window\n${formatTokenCount(used)} / ${formatTokenCount(windowTokens)} tokens\n${formatContextPercent(percent)} used before auto compacting`
+    ? `Context window\n${formatTokenCount(used)} / ${formatTokenCount(windowTokens)} tokens (${formatContextPercent(percent)})`
     : "Context window usage\nNot measured yet.";
   const ariaLabel = measured
-    ? `Context window usage: ${formatTokenCount(used)} / ${formatTokenCount(windowTokens)} tokens before auto compacting (${formatContextPercent(percent)}).`
+    ? `Context window usage: ${formatTokenCount(used)} / ${formatTokenCount(windowTokens)} tokens (${formatContextPercent(percent)}).`
     : "Context window usage has not been measured yet.";
   textEl.textContent = tooltip;
   fillEl.setAttribute("stroke-dasharray", `${Math.min(100, Math.max(0, percent))} 100`);
@@ -881,6 +893,9 @@ function updateContextPanel() {
     ["Tab", context.title || context.tabType || "No active tab context"],
     ["Type", context.tabType || "home"],
     ["File", context.targetPath || context.path || "No active JSON-backed file"],
+    ...(context.tabType === "project_instance"
+      ? [["Nested Windows", `${Array.isArray(context.openNestedWindows) ? context.openNestedWindows.length : 0} visible${context.ignoredMinimizedWindowCount ? `, ${context.ignoredMinimizedWindowCount} minimized ignored` : ""}`]]
+      : []),
     ["Context Window", formatContextWindowUsage(usage)],
     ["Prompt Size", usage.promptChars ? `${Number(usage.promptChars).toLocaleString()} chars, ~${formatTokenCount(usage.estimatedTokens)} tokens` : "Not measured yet"],
     ["Included", usage.includedMessages != null ? `${usage.includedMessages} messages${usage.truncated ? ", truncated" : ""}` : "Not measured yet"],
@@ -911,6 +926,26 @@ function updateContextPanel() {
     grid.append(labelEl, valueEl);
   }
   panel.appendChild(grid);
+}
+
+function normalizeAssistantContextForPanel(context, activeTab = null) {
+  const source = context && typeof context === "object" ? context : {};
+  const fallbackTab = activeTab || {};
+  return {
+    available: !!source.available,
+    tabType: source.tabType || source.pageType || fallbackTab.type || "home",
+    pageType: source.pageType || "",
+    nestedPageType: source.nestedPageType || "",
+    title: source.title || fallbackTab.title || "",
+    targetPath: source.targetPath || source.methodPath || source.path || "",
+    fileState: source.disabled ? "disabled" : (source.fileState || (source.dirty ? "unsaved-changes" : "")),
+    activeNestedWindow: source.activeNestedWindow || null,
+    openNestedWindows: Array.isArray(source.openNestedWindows) ? source.openNestedWindows : [],
+    ignoredMinimizedWindowCount: Number.isFinite(source.ignoredMinimizedWindowCount)
+      ? Math.max(0, Math.round(source.ignoredMinimizedWindowCount))
+      : 0,
+    projectInstance: source.projectInstance || null,
+  };
 }
 
 function setAssistantModel(model, options = {}) {
@@ -1267,6 +1302,36 @@ async function attachAssistantContextFile() {
 
 function getActiveTabPreviewContext() {
   const activeTab = shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId) || null;
+  if (activeTab?.type === "project_instance") {
+    const state = activeTab.projectInstanceState && typeof activeTab.projectInstanceState === "object"
+      ? activeTab.projectInstanceState
+      : {};
+    const visibleWindows = Array.isArray(state.windows)
+      ? state.windows.filter((item) => item && !item.hidden)
+      : [];
+    visibleWindows.sort((a, b) => {
+      if (a.active && !b.active) return -1;
+      if (b.active && !a.active) return 1;
+      return String(a.title || a.name || "").localeCompare(String(b.title || b.name || ""));
+    });
+    const activeWindow = visibleWindows.find((item) => item.active) || visibleWindows[0] || null;
+    const activeTitle = String(activeWindow?.title || activeWindow?.name || "").trim();
+    return {
+      available: !!activeWindow,
+      tabId: activeTab.id || "",
+      tabType: "project_instance",
+      nestedPageType: activeWindow?.kind || "",
+      projectName: activeTab.projectName || activeTab.title || "",
+      title: activeTitle ? `${activeTab.title || activeTab.projectName || "Project Instance"}: ${activeTitle}` : (activeTab.title || "Project Instance"),
+      targetPath: String(state.selectedPath || "").trim(),
+      fileState: activeWindow?.dirty ? "unsaved-changes" : "",
+      activeNestedWindow: activeWindow,
+      openNestedWindows: visibleWindows,
+      ignoredMinimizedWindowCount: Array.isArray(state.windows)
+        ? state.windows.filter((item) => item?.hidden).length
+        : 0,
+    };
+  }
   return {
     available: !!activeTab && activeTab.type !== "home",
     tabId: activeTab?.id || "",
@@ -1277,24 +1342,71 @@ function getActiveTabPreviewContext() {
   };
 }
 
-function formatAppContextTooltip(context) {
+function getAppContextTooltipRows(context) {
   if (!assistantAppContextEnabled) {
     return [
-      "App Context Off",
-      "ArcBot will not receive active page, tab, file, or notebook contents.",
-    ].join("\n");
+      { text: "App Context Off", strong: true },
+      { text: "ArcBot will not receive active page, tab, file, or notebook contents." },
+    ];
   }
   const ctx = context && typeof context === "object" ? context : getActiveTabPreviewContext();
   const title = String(ctx.title || "Home");
   const type = String(ctx.tabType || ctx.pageType || "home");
   const path = String(ctx.targetPath || ctx.path || "").trim();
   const state = String(ctx.fileState || (ctx.dirty ? "unsaved-changes" : "") || "").trim();
+  if (ctx.tabType === "project_instance") {
+    const project = String(ctx.projectInstance?.projectName || ctx.projectName || title.split(":")[0] || "").trim();
+    const activeWindow = ctx.activeNestedWindow || null;
+    const activeName = String(activeWindow?.name || activeWindow?.title || "").trim();
+    const methodType = String(activeWindow?.methodType || "").trim() || "None";
+    const visibleWindows = Array.isArray(ctx.openNestedWindows) ? ctx.openNestedWindows : [];
+    const segment = String(ctx.projectInstance?.selectedPath || activeWindow?.path || "").trim();
+    return [
+      { text: "App Context", strong: true },
+      project ? { label: "Project", value: project } : null,
+      { label: "Segment", value: segment || "no active segment" },
+      { label: "Active Tab", value: activeName || "no visible nested tab" },
+      { label: "Method Type", value: methodType },
+      { label: "Visible Tabs", value: String(visibleWindows.length) },
+      state ? { label: "State", value: state } : null,
+    ].filter(Boolean);
+  }
   return [
-    "App Context",
-    `Tab: ${title} (${type})`,
-    path ? `File: ${path}` : "File: no active file",
-    state ? `State: ${state}` : "",
-  ].filter(Boolean).join("\n");
+    { text: "App Context", strong: true },
+    { label: "Tab", value: `${title} (${type})` },
+    { label: "File", value: path || "no active file" },
+    state ? { label: "State", value: state } : null,
+  ].filter(Boolean);
+}
+
+function formatAppContextTooltip(context) {
+  return getAppContextTooltipRows(context).map((row) => (
+    row.text || `${row.label}: ${row.value}`
+  )).join("\n");
+}
+
+function renderAppContextTooltip(tooltip, context) {
+  if (!tooltip) return;
+  const rows = getAppContextTooltipRows(context);
+  tooltip.textContent = "";
+  tooltip.setAttribute("aria-label", rows.map((row) => row.text || `${row.label}: ${row.value}`).join("\n"));
+  rows.forEach((row) => {
+    const line = document.createElement("div");
+    line.className = "aiAssistantAppContextTooltipLine";
+    if (row.text) {
+      line.textContent = row.text;
+      if (row.strong) line.classList.add("aiAssistantAppContextTooltipTitle");
+    } else {
+      const label = document.createElement("span");
+      label.className = "aiAssistantAppContextTooltipLabel";
+      label.textContent = `${row.label}: `;
+      const value = document.createElement("span");
+      value.className = "aiAssistantAppContextTooltipValue";
+      value.textContent = row.value;
+      line.append(label, value);
+    }
+    tooltip.appendChild(line);
+  });
 }
 
 async function refreshAppContextTooltip({ probe = false } = {}) {
@@ -1309,8 +1421,7 @@ async function refreshAppContextTooltip({ probe = false } = {}) {
       // Keep shell-level preview when iframe context is unavailable.
     }
   }
-  const text = formatAppContextTooltip(context);
-  if (tooltip) tooltip.textContent = text;
+  renderAppContextTooltip(tooltip, context);
   button?.removeAttribute("title");
 }
 
@@ -1365,7 +1476,7 @@ async function loadAssistantSession(sessionId) {
   const session = result.session;
   currentSessionId = session.id || "";
   currentSessionTitle = session.title || "ArcBot Chat";
-  assistantMode = session.mode === "review" ? "review" : "edit";
+  assistantMode = normalizeAssistantMode(session.mode);
   assistantModel = normalizeAssistantModel(session.model);
   assistantReasoningEffort = normalizeAssistantReasoningEffort(session.reasoningEffort);
   assistantMessages = normalizeMessages(session.messages);
@@ -1600,8 +1711,16 @@ export function toggleAiAssistantLauncherVisible() {
   return setAiAssistantLauncherVisible(!isAiAssistantLauncherVisible());
 }
 
+function normalizeAssistantMode(mode) {
+  const key = String(mode || "").trim().toLowerCase();
+  if (key === "review" || key === "approve") return key;
+  return "edit";
+}
+
 function getModeLabel() {
-  return assistantMode === "review" ? "Read Only" : "Edit Automatically";
+  if (assistantMode === "review") return "Read Only";
+  if (assistantMode === "approve") return "Ask for Approval";
+  return "Edit Automatically";
 }
 
 function setModeIcon() {
@@ -1613,10 +1732,11 @@ function setModeIcon() {
 }
 
 function setAssistantMode(mode, options = {}) {
-  assistantMode = mode === "review" ? "review" : "edit";
+  assistantMode = normalizeAssistantMode(mode);
   setText($("aiAssistantModeLabel"), getModeLabel());
   setModeIcon();
   $("aiAssistantReviewModeOption")?.classList.toggle("active", assistantMode === "review");
+  $("aiAssistantApprovalModeOption")?.classList.toggle("active", assistantMode === "approve");
   $("aiAssistantEditModeOption")?.classList.toggle("active", assistantMode === "edit");
   setStatus(assistantReady ? `${isClaudeModel() ? getAssistantModelLabel() : "Codex"} ready. ${getModeLabel()}.` : `${getModeLabel()} selected.`);
   updateAssistantSettingsPanel();
@@ -1853,6 +1973,17 @@ function applyStatus(status) {
   }
   assistantReady = !!status?.installed && !!status?.authenticated;
   if (!status?.installed) {
+    if (assistantInstallJustSucceeded) {
+      setStatus("Codex CLI installed, but ArcRho cannot find it yet.", "error");
+      setSetup({
+        open: true,
+        install: false,
+        login: false,
+        text: "Restart ArcRho, then refresh ArcBot status so the updated npm command path is picked up.",
+      });
+      setComposerEnabled(false);
+      return;
+    }
     setStatus("Codex CLI is not installed.", "error");
     setSetup({
       open: true,
@@ -1863,6 +1994,7 @@ function applyStatus(status) {
     setComposerEnabled(false);
     return;
   }
+  assistantInstallJustSucceeded = false;
   if (!status?.authenticated) {
     setStatus("Codex CLI is installed but not signed in.", "error");
     setSetup({
@@ -1913,7 +2045,7 @@ function requestActivePageContext() {
       finish(baseContext);
       return;
     }
-    setTimeout(() => finish(baseContext), 900);
+    setTimeout(() => finish(baseContext), activeTab?.type === "project_instance" ? 1700 : 900);
   });
 }
 
@@ -1929,6 +2061,45 @@ function notifyActivePageJsonUpdated(result) {
   } catch {
     // ignore stale iframe messaging
   }
+}
+
+function requestActiveDfmEditApproval(result) {
+  const activeTab = shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId) || null;
+  const iframe = activeTab?.iframe || null;
+  if (!iframe?.contentWindow) {
+    return Promise.resolve({ ok: false, error: "No active DFM tab is available for approval." });
+  }
+  return new Promise((resolve) => {
+    const requestId = `arcbot_dfm_approval_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    let done = false;
+    const finish = (payload) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", onMessage);
+      resolve(payload || { ok: false, error: "DFM approval did not return a result." });
+    };
+    const onMessage = (event) => {
+      if (event.source !== iframe.contentWindow) return;
+      const msg = event.data || {};
+      if (msg.type !== "arcrho:assistant-dfm-edit-approval-result" || msg.requestId !== requestId) return;
+      finish(msg);
+    };
+    window.addEventListener("message", onMessage);
+    try {
+      iframe.contentWindow.postMessage({
+        type: "arcrho:assistant-dfm-edit-approval",
+        requestId,
+        targetPath: result?.targetPath || "",
+        originalJson: result?.originalJson || null,
+        proposedJson: result?.proposedJson || null,
+        reply: result?.text || "",
+      }, "*");
+    } catch (err) {
+      finish({ ok: false, error: String(err?.message || err || "Could not open DFM approval review.") });
+      return;
+    }
+    window.setTimeout(() => finish({ ok: false, error: "Timed out waiting for DFM edit approval." }), 120000);
+  });
 }
 
 async function refreshAssistantStatus() {
@@ -2378,6 +2549,7 @@ function initAssistantDrag(panel) {
 async function installCodexCli() {
   const host = getHostApi();
   if (!host?.codexAssistantInstall) return;
+  assistantInstallJustSucceeded = false;
   const confirmed = window.confirm(
     "Install Codex CLI now?\n\nArcRho will run: npm install -g @openai/codex"
   );
@@ -2399,6 +2571,7 @@ async function installCodexCli() {
       return;
     }
     shell.updateStatusBar?.("Codex CLI installed.");
+    assistantInstallJustSucceeded = true;
     await refreshAssistantStatus();
   } catch (err) {
     setStatus(String(err?.message || err || "Codex CLI installation failed."), "error");
@@ -2510,13 +2683,8 @@ async function sendAssistantMessage() {
           title: "App Context Off",
           targetPath: "",
         };
-    currentContext = {
-      available: !!activeContext?.available,
-      tabType: activeContext?.tabType || "home",
-      title: activeContext?.title || "",
-      targetPath: activeContext?.targetPath || activeContext?.path || "",
-      fileState: activeContext?.disabled ? "disabled" : (activeContext?.fileState || ""),
-    };
+    const panelActiveTab = shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId) || null;
+    currentContext = normalizeAssistantContextForPanel(activeContext, panelActiveTab);
     updateContextPanel();
     appendActivity(
       activeContext?.available
@@ -2583,13 +2751,39 @@ async function sendAssistantMessage() {
       }
       return;
     }
-    const reply = String(result?.text || "").trim() || "No response.";
+    let reply = String(result?.text || "").trim() || "No response.";
+    let editApplied = !!result?.editApplied;
+    let approvalFailed = false;
+    if (result?.editPendingApproval) {
+      appendActivity("Opening DFM version compare for approval.", "activity");
+      setStatus("Review the proposed DFM edit before accepting it...");
+      const approval = await requestActiveDfmEditApproval(result);
+      if (approval?.ok && approval.accepted) {
+        editApplied = true;
+        reply = approval.message || reply || "Applied the approved DFM edit.";
+        appendActivity("Approved and applied DFM edit.", "activity");
+      } else if (approval?.ok && approval.accepted === false) {
+        editApplied = false;
+        reply = approval.message || "DFM edit was rejected. No changes were applied.";
+        appendActivity("Rejected DFM edit. No changes were applied.", "activity");
+      } else {
+        editApplied = false;
+        approvalFailed = true;
+        reply = approval?.error || "DFM edit approval failed. No changes were applied.";
+        appendActivity("DFM edit approval failed.", "error");
+      }
+    }
     await resolveAssistantPendingMessage(pending, reply, { animate: true });
     assistantMessages.push({ role: "assistant", content: reply, timestamp: nowIso() });
-    if (result?.editApplied) notifyActivePageJsonUpdated(result);
-    appendActivity(result?.editApplied ? "Applied JSON-backed edit with host validation." : "Response completed.", "activity");
-    completeAssistantProgress(result?.editApplied ? "Edit applied" : "Response completed");
-    setStatus(result?.editApplied ? "ArcBot applied a JSON-backed edit." : `${isClaudeModel() ? getAssistantModelLabel() : "Codex"} ready. ${getModeLabel()}.`);
+    if (editApplied && result?.editApplied) notifyActivePageJsonUpdated(result);
+    appendActivity(editApplied ? "Edit completed." : "Response completed.", "activity");
+    completeAssistantProgress(editApplied ? "Edit applied" : "Response completed");
+    setStatus(
+      approvalFailed
+        ? "DFM edit approval failed."
+        : editApplied ? "ArcBot edit completed." : `${isClaudeModel() ? getAssistantModelLabel() : "Codex"} ready. ${getModeLabel()}.`,
+      approvalFailed ? "error" : "",
+    );
   } catch (err) {
     const message = assistantCancelRequested ? "Request canceled." : String(err?.message || err || "ArcBot request failed.");
     resolveAssistantPendingMessage(pending, message);
@@ -2700,13 +2894,7 @@ export function initAiAssistant() {
     setAssistantAppContextEnabled(!assistantAppContextEnabled);
     if (assistantAppContextEnabled) {
       const activeContext = await requestActivePageContext();
-      currentContext = {
-        available: !!activeContext?.available,
-        tabType: activeContext?.tabType || "home",
-        title: activeContext?.title || "",
-        targetPath: activeContext?.targetPath || activeContext?.path || "",
-        fileState: activeContext?.fileState || "",
-      };
+      currentContext = normalizeAssistantContextForPanel(activeContext);
       updateContextPanel();
     }
     refreshAppContextTooltip({ probe: assistantAppContextEnabled });
@@ -2714,7 +2902,7 @@ export function initAiAssistant() {
   $("aiAssistantAppContextBtn")?.addEventListener("mouseenter", () => {
     const tooltip = $("aiAssistantAppContextTooltip");
     if (tooltip) {
-      tooltip.textContent = formatAppContextTooltip(getActiveTabPreviewContext());
+      renderAppContextTooltip(tooltip, getActiveTabPreviewContext());
       tooltip.classList.add("open");
     }
     refreshAppContextTooltip({ probe: assistantAppContextEnabled });
@@ -2771,6 +2959,10 @@ export function initAiAssistant() {
   $("aiAssistantReviewModeOption")?.addEventListener("click", () => {
     closeModeMenu();
     setAssistantMode("review");
+  });
+  $("aiAssistantApprovalModeOption")?.addEventListener("click", () => {
+    closeModeMenu();
+    setAssistantMode("approve");
   });
   $("aiAssistantEditModeOption")?.addEventListener("click", (event) => {
     event.preventDefault();

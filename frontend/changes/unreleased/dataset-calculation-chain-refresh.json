@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Calculated dataset sidecars now track formula graph links and refresh downstream chains after source or formula changes.",
+  "details": [
+    "Sidecars store direct `Precedents` and `Dependents` from Dataset Types formulas.",
+    "Dataset and Project Settings show a recalculation report when calculated CSV chains are refreshed."
+  ]
+}

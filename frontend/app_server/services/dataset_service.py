@@ -269,6 +269,7 @@ def create_empty_cached_dataset(
     payload = {
         "dataset_name": instance,
         "dataset_type": ds_type,
+        "dataset_type_name": ds_type,
         "instance_name": instance,
         "reserving_class": rc,
         "project_name": p,
@@ -287,6 +288,9 @@ def create_empty_cached_dataset(
         "editable": True,
         "generated": False,
     }
+    from app_server.services import calculated_dataset_service
+
+    calculated_dataset_service.apply_sidecar_graph_fields(payload, p, ds_type)
 
     tmp_sidecar = f"{sidecar_path}.{uuid.uuid4()}.tmp"
     try:
@@ -530,6 +534,8 @@ def save_dataset_sidecar(
     *,
     dataset_type: str = "",
     instance_name: str = "",
+    source_kind: str = "",
+    data_format: str = "",
     origin_length: int,
     development_length: int,
     cumulative: bool = True,
@@ -548,16 +554,19 @@ def save_dataset_sidecar(
     user_name = getpass.getuser()
     dataset_type_value = str(dataset_type or existing.get("dataset_type") or existing.get("dataset_type_name") or ds)
     app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type_value)
+    source_kind_value = str(source_kind or existing.get("source_kind") or ("calculated" if app_calculated else "input"))
+    data_format_value = str(data_format or existing.get("data_format") or "Triangle")
     payload = {
         **existing,
         "dataset_name": ds,
         "dataset_type": dataset_type_value,
+        "dataset_type_name": dataset_type_value,
         "instance_name": str(instance_name or existing.get("instance_name") or ds),
         "reserving_class": rc,
         "project_name": p,
-        "source_kind": str(existing.get("source_kind") or ("calculated" if app_calculated else "input")),
-        "data_format": str(existing.get("data_format") or "Triangle"),
-        "data_format_code": _int_or_default(existing.get("data_format_code"), 0),
+        "source_kind": source_kind_value,
+        "data_format": data_format_value,
+        "data_format_code": _data_format_code(data_format_value),
         "origin_length": int(origin_length),
         "development_length": int(development_length),
         "cumulative": bool(cumulative),
@@ -572,6 +581,9 @@ def save_dataset_sidecar(
         "modified_by": user_name,
         "updated_at": _now_utc_iso(),
     }
+    from app_server.services import calculated_dataset_service
+
+    calculated_dataset_service.apply_sidecar_graph_fields(payload, p, dataset_type_value)
     tmp_path = f"{path}.{uuid.uuid4()}.tmp"
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -598,6 +610,11 @@ def save_dataset_sidecar(
         dataset_instance_index_service.rebuild_index(p, rc)
     except Exception:
         pass
+    calculated_updates = None
+    try:
+        calculated_updates = calculated_dataset_service.recalculate_dependents(p, rc, ds, dataset_type_value)
+    except Exception as err:
+        calculated_updates = {"ok": False, "skipped": True, "reason": str(err)}
     return {
         "ok": True,
         "project_name": p,
@@ -613,6 +630,7 @@ def save_dataset_sidecar(
         "source_kind": payload["source_kind"],
         "updated_at": payload["updated_at"],
         "path": path,
+        "calculated_updates": calculated_updates,
     }
 
 

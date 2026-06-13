@@ -92,6 +92,14 @@ export function notifyBrowsingHistoryTabs(message = {}) {
   }
 }
 
+export function notifyCalculatedDatasetTabs(message = {}) {
+  for (const t of shell.state.tabs || []) {
+    if (t.type !== "dataset" && t.type !== "project_instance") continue;
+    if (!t.iframe || !t.iframe.contentWindow) continue;
+    try { t.iframe.contentWindow.postMessage({ type: "arcrho:calculated-datasets-updated", ...message }, "*"); } catch {}
+  }
+}
+
 export function notifyServerConnectionUpdated(config = {}) {
   const message = { type: "arcrho:server-connection-updated", config };
   for (const t of shell.state.tabs || []) {

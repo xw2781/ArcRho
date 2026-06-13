@@ -23,6 +23,7 @@ export function createDatasetRunController(deps) {
     syncSidecarForCurrentDataset,
     updateCurrentTabTitle,
     setStatus,
+    onCalculatedUpdates = null,
     applyGridSelectionFromState,
     stepId,
     suppressLoadingPopup = false,
@@ -342,6 +343,9 @@ export function createDatasetRunController(deps) {
         }
       }
       await loadDataset();
+      if (typeof onCalculatedUpdates === "function") {
+        onCalculatedUpdates(data?.calculated_updates, clearCache ? "Dataset refresh" : "Dataset run");
+      }
       recordDatasetBrowsingHistory({ project, path, tri });
     } finally {
       hideLoadingPopup();
@@ -447,6 +451,9 @@ export function createDatasetRunController(deps) {
 
     logLine(`Saved patch: applied=${data.applied}, rejected=${(data.rejected || []).length}, new_mtime=${data.mtime}`);
     await loadDataset();
+    if (typeof onCalculatedUpdates === "function") {
+      onCalculatedUpdates(data?.calculated_updates, "Dataset grid save");
+    }
   }
 
   function toggleBlanks() {

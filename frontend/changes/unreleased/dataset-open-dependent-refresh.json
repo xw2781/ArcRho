@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Open calculated dataset tabs now refresh when an upstream component save recalculates them.",
+  "details": [
+    "Dataset and DFM output saves broadcast dependent recalculation reports through the shell.",
+    "Matching open Dataset tabs and Project Instance nested dataset windows reload automatically unless they have unsaved local edits."
+  ]
+}

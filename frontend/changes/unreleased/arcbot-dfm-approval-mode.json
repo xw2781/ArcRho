@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added an ArcBot Ask for Approval mode that reviews proposed DFM edits in the DFM version compare window before saving."
+}

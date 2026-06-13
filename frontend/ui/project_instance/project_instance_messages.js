@@ -7,10 +7,12 @@ export function installProjectInstanceMessages(ctx) {
   const fetchCachedDatasetSnapshot = (...args) => api.fetchCachedDatasetSnapshot(...args);
   const getActiveDatasetWindow = (...args) => api.getActiveDatasetWindow(...args);
   const getActiveDfmWindow = (...args) => api.getActiveDfmWindow(...args);
+  const getProjectInstanceAssistantContextSummary = (...args) => api.getProjectInstanceAssistantContextSummary(...args);
   const getWindowIframe = (...args) => api.getWindowIframe(...args);
   const isDfmWindow = (...args) => api.isDfmWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
   const notifyProjectInstanceStateChanged = (...args) => api.notifyProjectInstanceStateChanged(...args);
+  const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const setWindowDirtyState = (...args) => api.setWindowDirtyState(...args);
   const toText = (...args) => api.toText(...args);
@@ -197,6 +199,86 @@ function forwardRequestToActiveDfm(message, resultType, fallbackContext, timeout
   return true;
 }
 
+function createProjectInstanceAssistantContext(extra = {}) {
+  const summary = getProjectInstanceAssistantContextSummary();
+  const activeWindow = summary.activeNestedWindow || null;
+  const activeTitle = toText(activeWindow?.title || activeWindow?.name);
+  return {
+    available: !!activeWindow,
+    pageType: "project_instance",
+    tabType: "project_instance",
+    title: activeTitle ? `${projectName}: ${activeTitle}` : (projectName || "Project Instance"),
+    targetPath: toText(activeWindow?.path || summary.selectedPath),
+    fileState: activeWindow?.dirty ? "unsaved-changes" : "",
+    projectInstance: summary,
+    activeNestedWindow: activeWindow,
+    openNestedWindows: summary.openNestedWindows,
+    ignoredMinimizedWindowCount: summary.ignoredMinimizedWindowCount,
+    ...extra,
+  };
+}
+
+function requestActiveNestedWindowAssistantContext(message, timeoutMs = 1000) {
+  const requestId = toText(message?.requestId) || `pi_assistant_context_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const frame = getActiveDatasetWindow();
+  const iframe = getWindowIframe(frame);
+  const fallbackContext = createProjectInstanceAssistantContext(
+    frame ? {} : { error: "No visible nested window is available in the Project Instance page." }
+  );
+  if (!frame || !iframe?.contentWindow) {
+    try {
+      window.parent?.postMessage({ type: "arcrho:assistant-context-result", requestId, context: fallbackContext }, "*");
+    } catch {}
+    return false;
+  }
+
+  let done = false;
+  const finish = (context = null) => {
+    if (done) return;
+    done = true;
+    window.removeEventListener("message", onMessage);
+    const base = createProjectInstanceAssistantContext();
+    const childContext = context && typeof context === "object" ? context : {};
+    const childPageType = toText(childContext.pageType || childContext.tabType);
+    const nestedPageType = childPageType && childPageType !== "project_instance"
+      ? childPageType
+      : (isDfmWindow(frame) ? "dfm" : "dataset");
+    const mergedContext = {
+      ...childContext,
+      available: childContext.available !== false || !!base.activeNestedWindow,
+      pageType: "project_instance",
+      tabType: "project_instance",
+      nestedPageType,
+      activeDfmTab: childContext.activeDfmTab || base.activeNestedWindow?.dfmTab || "",
+      title: base.title,
+      targetPath: childContext.targetPath || childContext.methodPath || childContext.path || base.targetPath,
+      fileState: base.fileState || childContext.fileState || (childContext.dirty ? "unsaved-changes" : ""),
+      projectInstance: base.projectInstance,
+      activeNestedWindow: base.activeNestedWindow,
+      openNestedWindows: base.openNestedWindows,
+      ignoredMinimizedWindowCount: base.ignoredMinimizedWindowCount,
+    };
+    try {
+      window.parent?.postMessage({ type: "arcrho:assistant-context-result", requestId, context: mergedContext }, "*");
+    } catch {}
+  };
+  const onMessage = (event) => {
+    if (event.source !== iframe.contentWindow) return;
+    const msg = event.data || {};
+    if (msg.type !== "arcrho:assistant-context-result" || toText(msg.requestId) !== requestId) return;
+    finish(msg.context || {});
+  };
+  window.addEventListener("message", onMessage);
+  try {
+    iframe.contentWindow.postMessage({ ...message, requestId }, "*");
+  } catch {
+    finish(fallbackContext);
+    return false;
+  }
+  window.setTimeout(() => finish(fallbackContext), timeoutMs);
+  return true;
+}
+
 function isCloseActiveWindowShortcut(event) {
   return !!event?.ctrlKey
     && !event.altKey
@@ -312,13 +394,7 @@ window.addEventListener("message", (event) => {
     return;
   }
   if (msg.type === "arcrho:assistant-context-request") {
-    forwardRequestToActiveDfm(msg, "arcrho:assistant-context-result", {
-      context: {
-        available: false,
-        pageType: "project_instance",
-        error: "No active DFM window is available in the Project Instance page.",
-      },
-    }, 1500);
+    requestActiveNestedWindowAssistantContext(msg);
     return;
   }
   if (msg.type === "arcrho:dfm-apply-method-payload") {
@@ -326,6 +402,13 @@ window.addEventListener("message", (event) => {
       ok: false,
       error: "No active DFM window is available in the Project Instance page.",
     }, 3000);
+    return;
+  }
+  if (msg.type === "arcrho:assistant-dfm-edit-approval") {
+    forwardRequestToActiveDfm(msg, "arcrho:assistant-dfm-edit-approval-result", {
+      ok: false,
+      error: "No active DFM window is available in the Project Instance page.",
+    }, 120000);
     return;
   }
   if (msg.type === "arcrho:dfm-edit-state") {
@@ -371,6 +454,15 @@ window.addEventListener("message", (event) => {
     if (frame) {
       setWindowDirtyState(frame, false);
       closeDatasetWindow(frame);
+    }
+    return;
+  }
+  if (msg.type === "arcrho:calculated-datasets-updated") {
+    const relay = { type: msg.type, report: msg?.report || null, source: msg?.source || "" };
+    if (event.source === window.parent) {
+      postMessageToDatasetWindows(relay);
+    } else {
+      try { window.parent?.postMessage(relay, "*"); } catch {}
     }
     return;
   }
@@ -426,6 +518,7 @@ window.addEventListener("message", (event) => {
     forwardOpenPathRequestToShell,
     initDatasetWindowShortcuts,
     isCloseActiveWindowShortcut,
+    requestActiveNestedWindowAssistantContext,
     requestShellOpenPath,
     revealSelectedReservingClassFolder,
     routeDfmRatioHotkey,

@@ -235,6 +235,10 @@ export function initShellMessages() {
       shell.notifyBrowsingHistoryTabs?.({ resolved });
       return;
     }
+    if (msg.type === "arcrho:calculated-datasets-updated") {
+      shell.notifyCalculatedDatasetTabs?.({ report: msg?.report || null, source: msg?.source || "" });
+      return;
+    }
     if (msg.type === "arcrho:browsing-history-updated") {
       const active = shell.state.tabs.find(t => t.id === shell.state.activeId);
       const entry = normalizeBrowsingHistoryEntry(msg?.entry || null);

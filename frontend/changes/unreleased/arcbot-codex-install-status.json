@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "Fixed ArcBot setup so a successful Codex CLI install does not reopen the install prompt when the command path needs a refresh."
+}

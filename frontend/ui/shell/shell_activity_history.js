@@ -35,8 +35,10 @@ function normalizeNestedWindow(raw) {
   const active = !!raw.active;
   const maximized = !!raw.maximized;
   const dirty = !!raw.dirty;
+  const methodType = toText(raw.methodType || raw.method_type);
   const dfmTab = toText(raw.dfmTab || raw.tab).toLowerCase();
   const out = { kind, name, title, hidden, active, maximized, dirty };
+  if (methodType) out.methodType = methodType;
   if (dfmTab) out.dfmTab = dfmTab;
   const rect = normalizeRect(raw.rect);
   if (rect) out.rect = rect;

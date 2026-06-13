@@ -107,6 +107,262 @@ function buildCurrentPatternLabelFallbacks() {
   };
 }
 
+function cleanText(value) {
+  return String(value ?? "").trim();
+}
+
+function jsonTab(payload, key) {
+  const value = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? payload[key]
+    : null;
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function normalizeBinaryCell(value, missingValue = 0) {
+  if (value === 1 || value === true || value === "1" || value === "true" || value === "True") return 1;
+  if (missingValue === 2 && (value === 2 || value === "2")) return 2;
+  return 0;
+}
+
+function extractPatternSnapshot(payload) {
+  const ratiosTab = jsonTab(payload, "ratios tab");
+  const ratioTriangle = jsonTab(ratiosTab, "ratio triangle");
+  const dataTab = jsonTab(payload, "data tab");
+  const pattern = ratioTriangle.excluded;
+  const originLabels = Array.isArray(ratioTriangle["origin labels"])
+    ? ratioTriangle["origin labels"]
+    : dataTab["origin labels"];
+  const developmentLabels = Array.isArray(ratioTriangle["development labels"])
+    ? ratioTriangle["development labels"]
+    : dataTab["development labels"];
+  const previewOriginLabels = Array.isArray(originLabels) ? originLabels.map(cleanText) : [];
+  const previewDevelopmentLabels = Array.isArray(developmentLabels) ? developmentLabels.map(cleanText) : [];
+  if (!Array.isArray(pattern)) {
+    return {
+      exists: false,
+      rows: 0,
+      columns: 0,
+      selected_count: 0,
+      preview: [],
+      origin_labels: [],
+      development_labels: [],
+    };
+  }
+  let columns = 0;
+  let selectedCount = 0;
+  const preview = pattern.map((row) => {
+    if (!Array.isArray(row)) return [];
+    columns = Math.max(columns, row.length);
+    return row.map((cell) => {
+      const value = normalizeBinaryCell(cell, 2);
+      if (value === 1) selectedCount += 1;
+      return value;
+    });
+  });
+  return {
+    exists: true,
+    rows: pattern.length,
+    columns,
+    selected_count: selectedCount,
+    preview,
+    origin_labels: previewOriginLabels,
+    development_labels: previewDevelopmentLabels,
+  };
+}
+
+function extractAverageFormulaSnapshot(payload) {
+  const ratiosTab = jsonTab(payload, "ratios tab");
+  const formulaPayload = jsonTab(ratiosTab, "average formulas");
+  const ratioTriangle = jsonTab(ratiosTab, "ratio triangle");
+  const dataTab = jsonTab(payload, "data tab");
+  const labels = Array.isArray(formulaPayload.label) ? formulaPayload.label : [];
+  const selected = Array.isArray(formulaPayload.selected) ? formulaPayload.selected : null;
+  const developmentLabels = Array.isArray(ratioTriangle["development labels"])
+    ? ratioTriangle["development labels"]
+    : dataTab["development labels"];
+  if (!selected) {
+    return {
+      exists: false,
+      rows: 0,
+      columns: 0,
+      selected_count: 0,
+      preview: [],
+      formula_labels: labels.map(cleanText),
+      development_labels: Array.isArray(developmentLabels) ? developmentLabels.map(cleanText) : [],
+    };
+  }
+  let columns = 0;
+  let selectedCount = 0;
+  const preview = selected.map((row) => {
+    if (!Array.isArray(row)) return [];
+    columns = Math.max(columns, row.length);
+    return row.map((cell) => {
+      const value = normalizeBinaryCell(cell);
+      if (value === 1) selectedCount += 1;
+      return value;
+    });
+  });
+  return {
+    exists: true,
+    rows: Math.max(preview.length, labels.length),
+    columns,
+    selected_count: selectedCount,
+    preview,
+    formula_labels: labels.map(cleanText),
+    development_labels: Array.isArray(developmentLabels) ? developmentLabels.map(cleanText) : [],
+  };
+}
+
+function extractCellNotesSnapshot(payload) {
+  const ratiosTab = jsonTab(payload, "ratios tab");
+  const cellNotes = jsonTab(ratiosTab, "cell notes");
+  const entries = [];
+  Object.entries(cellNotes).forEach(([tableKey, tableNotes]) => {
+    if (!tableNotes || typeof tableNotes !== "object" || Array.isArray(tableNotes)) return;
+    Object.entries(tableNotes).forEach(([rowLabel, rowNotes]) => {
+      if (!rowNotes || typeof rowNotes !== "object" || Array.isArray(rowNotes)) return;
+      Object.entries(rowNotes).forEach(([colLabel, note]) => {
+        const text = cleanText(note);
+        if (!text) return;
+        entries.push({
+          table: cleanText(tableKey),
+          row: cleanText(rowLabel),
+          column: cleanText(colLabel),
+          note: text,
+        });
+      });
+    });
+  });
+  entries.sort((a, b) => (
+    `${a.table}\t${a.row}\t${a.column}\t${a.note}`.localeCompare(`${b.table}\t${b.row}\t${b.column}\t${b.note}`)
+  ));
+  return {
+    exists: entries.length > 0,
+    count: entries.length,
+    entries: entries.slice(0, 50),
+    truncated: entries.length > 50,
+  };
+}
+
+function buildJsonSnapshot(payload) {
+  const safePayload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  const notes = cleanText(jsonTab(safePayload, "notes tab").notes);
+  const formulaPayload = jsonTab(jsonTab(safePayload, "ratios tab"), "average formulas");
+  const formulas = Array.isArray(formulaPayload.label) ? formulaPayload.label : [];
+  return {
+    available: !!Object.keys(safePayload).length,
+    error: "",
+    ratio_pattern: extractPatternSnapshot(safePayload),
+    average_formula_pattern: extractAverageFormulaSnapshot(safePayload),
+    cell_notes: extractCellNotesSnapshot(safePayload),
+    notes,
+    notes_preview: notes.slice(0, 600),
+    average_formulas: formulas.map((item) => String(item)),
+    last_modified: cleanText(jsonTab(safePayload, "method metadata")["last modified"]),
+  };
+}
+
+function buildApprovalMeta(payload, fallbackLabel, timestamp) {
+  const metadataTime = cleanText(jsonTab(payload, "method metadata")["last modified"]);
+  return {
+    exists: !!payload && typeof payload === "object" && !Array.isArray(payload),
+    last_modified: metadataTime || fallbackLabel,
+    last_modified_timestamp: timestamp,
+  };
+}
+
+function buildAgentApprovalComparison(originalJson, proposedJson) {
+  const nowSeconds = Date.now() / 1000;
+  return {
+    ok: true,
+    status: "approval_pending",
+    comparison: "approval_pending",
+    local: buildApprovalMeta(originalJson, "Current DFM tab", nowSeconds),
+    remote: buildApprovalMeta(proposedJson, "Pending ArcBot edit", nowSeconds + 1),
+    labels: {
+      local: "ArcRho - Current",
+      remote: "ArcBot - Proposed",
+    },
+    actions: {
+      local: "reject-agent-edit",
+      remote: "accept-agent-edit",
+    },
+    snapshots: {
+      local: buildJsonSnapshot(originalJson),
+      remote: buildJsonSnapshot(proposedJson),
+    },
+  };
+}
+
+export function reviewArcBotDfmEditApproval(options = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      resolve(payload);
+    };
+    const originalJson = options?.originalJson;
+    const proposedJson = options?.proposedJson;
+    if (!proposedJson || typeof proposedJson !== "object" || Array.isArray(proposedJson)) {
+      finish({ ok: false, error: "ArcBot did not provide a valid proposed DFM method." });
+      return;
+    }
+    const dialog = createDfmRpcBridgeDialog({
+      onClose: (reason) => {
+        if (reason === "primary-action") return;
+        finish({ ok: true, accepted: false, message: "DFM edit approval was closed. No changes were applied." });
+      },
+    });
+    dialog.setComparison(buildAgentApprovalComparison(originalJson, proposedJson), {
+      labelFallbacks: buildCurrentPatternLabelFallbacks(),
+      onPrimary: async (action) => {
+        if (action === "reject-agent-edit") {
+          dialog.close("primary-action");
+          postStatus("ArcBot DFM edit rejected.");
+          finish({ ok: true, accepted: false, message: "DFM edit was rejected. No changes were applied." });
+          return;
+        }
+        if (action !== "accept-agent-edit") return;
+        dialog.setBusy(true);
+        const statusDialog = createDfmRpcBridgeMessageBox("Applying approved ArcBot DFM edit...", "", {
+          title: "ArcBot DFM Edit",
+        });
+        statusDialog.setBusy(true);
+        dialog.close("primary-action");
+        try {
+          const applied = await applyDfmMethodPayload(proposedJson, { markClean: false, reason: "arcbot-approval" });
+          if (!applied?.ok) {
+            statusDialog.setMessage("Could not apply the approved DFM edit to this tab.", "error");
+            finish({ ok: false, error: "Could not apply the approved DFM edit to this tab." });
+            return;
+          }
+          statusDialog.setWaiting("Saving approved DFM method...");
+          const saved = await saveRatioSelectionPattern(false);
+          if (!saved?.ok) {
+            markDfmDirty();
+            statusDialog.setMessage("Applied in the app, but final JSON save failed. Save the DFM before closing.", "warn");
+            finish({ ok: false, error: "Approved DFM edit applied in the app, but final JSON save failed." });
+            return;
+          }
+          const message = options?.reply || "Applied the approved DFM edit.";
+          statusDialog.setMessage("Approved DFM edit applied.", "ok");
+          postStatus("ArcBot DFM edit approved and saved.");
+          finish({ ok: true, accepted: true, message });
+        } catch (err) {
+          const message = String(err?.message || err || "Approved DFM edit failed.");
+          statusDialog.setMessage(message, "error");
+          postStatus(`ArcBot DFM edit failed: ${message}`, "warn");
+          finish({ ok: false, error: message });
+        } finally {
+          statusDialog.setBusy(false);
+          dialog.setBusy(false);
+        }
+      },
+    });
+  });
+}
+
 async function ensureSavedBeforeSync(dialog) {
   if (!getDfmIsDirty()) return true;
   const shouldSave = window.confirm("This DFM tab has unsaved edits. Save and proceed with sync?");
