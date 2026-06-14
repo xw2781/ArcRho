@@ -42,6 +42,7 @@ High-risk files that must follow contracts:
 - `ui/dfm/dfm.html` and `ui/dfm/dfm_*.js`
 - `ui/project_settings/project_settings.js`
 - `ui/scripting_console/scripting_console*.js` and `ui/scripting_console/scripting_console.html`
+- `ui/arcode/arcode_shell.js` and `ui/arcode/index.html`
 <!-- MANUAL:END -->
 
 ## Design References
@@ -70,10 +71,12 @@ High-risk files that must follow contracts:
 4. Workflow editor change -> [`workflow.md`](workflow.md).
 5. Project settings flow change -> [`project_settings.md`](project_settings.md).
 6. Scripting console change -> [`scripting_console.md`](scripting_console.md).
+7. Arcode standalone scripting app change -> [`arcode.md`](arcode.md).
 <!-- MANUAL:END -->
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Shell/iframe messaging changes can break hotkeys and dirty-state sync.
 - Endpoint path changes in JS can silently break page-level features.
+- Arcode shares scripting-console iframes with ArcRho, so scripting message changes must account for both hosts.
 <!-- MANUAL:END -->

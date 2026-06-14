@@ -1,10 +1,11 @@
 {
   "name": "arcrho-electron",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
     "electron": "electron .",
+    "arcode": "set ARCRHO_APP_MODE=arcode&& electron .",
     "build:python-api": "node-portable\\node.exe build/build_python_api_wheel.js",
     "build:python": "build\\build_python_server.bat",
     "build:electron": "node-portable\\node.exe build/patch_nsis_installer_progress.js && node-portable\\node.exe node_modules/electron-builder/cli.js --win",

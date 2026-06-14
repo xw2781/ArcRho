@@ -21,7 +21,11 @@ const IS_WIN11 = isWindows11();
 const HOST = process.env.ARCRHO_HOST || "127.0.0.1";
 const PORT = parseInt(process.env.ARCRHO_PORT || "28765", 10);
 const UI_VERSION = process.env.ARCRHO_UI_VERSION || String(Date.now());
+const APP_MODE = String(process.env.ARCRHO_APP_MODE || "arcrho").trim().toLowerCase() === "arcode"
+  ? "arcode"
+  : "arcrho";
 const URL = `http://${HOST}:${PORT}/ui/?v=${encodeURIComponent(UI_VERSION)}`;
+const ARCODE_URL = `http://${HOST}:${PORT}/ui/arcode/?v=${encodeURIComponent(UI_VERSION)}`;
 const BACKEND_HEALTH_URL = `http://${HOST}:${PORT}/app/health`;
 const BACKEND_TOKEN = crypto.randomBytes(16).toString("hex");
 const START_BACKEND = process.env.ARCRHO_START_BACKEND !== "0";
@@ -85,17 +89,20 @@ function getBundledServerPath() {
 }
 
 let win = null;
+let arcodeWin = null;
 let splashWin = null;
 let serverProc = null;
 let serverLogStream = null;
 let lastServerLogPath = "";
 let electronLogPath = "";
 let allowClose = false;
+let backendOwned = false;
 let pseudoMaximized = false;
 let lastBounds = null;
 let pendingClearCacheReloadRestore = null;
 let serverSpawnError = null;
 let backendShutdownPromise = null;
+let backendClientMarkerPath = "";
 function toggleDevPanelForWindow(target = BrowserWindow.getFocusedWindow() || win) {
   if (!target || target.isDestroyed()) return { ok: false, error: "Window unavailable." };
   target.webContents.toggleDevTools();
@@ -1087,6 +1094,78 @@ function isBackendProcAlive(proc) {
   return !!proc && !proc.killed && proc.exitCode == null;
 }
 
+function getBackendClientDir() {
+  return path.join(app.getPath("userData"), "backend_clients");
+}
+
+function getBackendClientMarkerPath() {
+  return path.join(getBackendClientDir(), `${process.pid}.json`);
+}
+
+function registerBackendClient() {
+  try {
+    const dir = getBackendClientDir();
+    fs.mkdirSync(dir, { recursive: true });
+    backendClientMarkerPath = getBackendClientMarkerPath();
+    fs.writeFileSync(backendClientMarkerPath, JSON.stringify({
+      pid: process.pid,
+      mode: APP_MODE,
+      port: PORT,
+      started_at: new Date().toISOString(),
+    }, null, 2), "utf8");
+  } catch {
+    backendClientMarkerPath = "";
+  }
+}
+
+function unregisterBackendClient() {
+  if (!backendClientMarkerPath) return;
+  try {
+    if (fs.existsSync(backendClientMarkerPath)) fs.unlinkSync(backendClientMarkerPath);
+  } catch {
+    // Stale markers are cleaned up by the next process.
+  }
+  backendClientMarkerPath = "";
+}
+
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  if (pid === process.pid) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getOtherBackendClientCount() {
+  let count = 0;
+  try {
+    const dir = getBackendClientDir();
+    if (!fs.existsSync(dir)) return 0;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      const filePath = path.join(dir, entry.name);
+      let pid = 0;
+      try {
+        const raw = fs.readFileSync(filePath, "utf8");
+        pid = Number(JSON.parse(raw)?.pid || 0);
+      } catch {
+        pid = Number(path.basename(entry.name, ".json")) || 0;
+      }
+      if (!isProcessAlive(pid)) {
+        try { fs.unlinkSync(filePath); } catch {}
+        continue;
+      }
+      if (pid !== process.pid) count += 1;
+    }
+  } catch {
+    return 0;
+  }
+  return count;
+}
+
 async function waitForProcExit(proc, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (isBackendProcAlive(proc) && Date.now() < deadline) {
@@ -1166,12 +1245,24 @@ async function getBackendPortListenerPids() {
   }
 }
 
+function isCompatibleBackendHealth(health) {
+  if (!health || health.ok !== true) return false;
+  if (health.token === BACKEND_TOKEN) return true;
+  const projectRoot = String(health.project_root || health.projectRoot || "").trim();
+  if (!projectRoot) return false;
+  try {
+    return path.resolve(projectRoot).toLowerCase() === path.resolve(APP_ROOT).toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 async function stopMismatchedBackendListener() {
   let health = null;
   try {
     health = await requestBackendHealth(700);
   } catch {}
-  if (health && health.ok === true && health.token === BACKEND_TOKEN) return;
+  if (isCompatibleBackendHealth(health)) return;
   const pids = await getBackendPortListenerPids();
   for (const pid of pids) {
     if (serverProc && pid === serverProc.pid) continue;
@@ -1190,6 +1281,7 @@ function startBackend() {
     path.join(require("os").homedir(), "Documents", "ArcRho", "workflows");
   env.ARCRHO_BACKEND_TOKEN = BACKEND_TOKEN;
   serverSpawnError = null;
+  backendOwned = true;
 
   const bundledServer = getBundledServerPath();
 
@@ -1242,8 +1334,8 @@ async function waitForServer(timeoutMs = BACKEND_STARTUP_TIMEOUT_MS) {
     }
     try {
       const payload = await requestBackendHealth(1500);
-      if (!payload || payload.ok !== true || payload.token !== BACKEND_TOKEN) {
-        throw new Error("health token mismatch");
+      if (!isCompatibleBackendHealth(payload)) {
+        throw new Error("health response is not compatible with this ArcRho frontend");
       }
       return;
     } catch {
@@ -1257,6 +1349,17 @@ async function startBackendWithRetry() {
   let lastErr = null;
   for (let attempt = 1; attempt <= BACKEND_STARTUP_ATTEMPTS; attempt++) {
     clearBackendControlFlags();
+    try {
+      const existing = await requestBackendHealth(700);
+      if (isCompatibleBackendHealth(existing)) {
+        backendOwned = false;
+        serverProc = null;
+        appendElectronLog(`Reusing existing ArcRho backend on ${HOST}:${PORT}.`);
+        return;
+      }
+    } catch {
+      // No compatible backend is listening yet; start one below.
+    }
     await stopMismatchedBackendListener();
     startBackend();
     try {
@@ -1283,6 +1386,7 @@ async function terminateBackend(options = {}) {
     forceKillBackendProc(proc);
     await waitForProcExit(proc, 900);
     if (serverProc === proc) serverProc = null;
+    backendOwned = false;
     closeBackendLogStream();
     return;
   }
@@ -1293,10 +1397,19 @@ async function terminateBackend(options = {}) {
     await waitForProcExit(proc, 900);
   }
   if (serverProc === proc) serverProc = null;
+  backendOwned = false;
   closeBackendLogStream();
 }
 
 async function requestBackendShutdown() {
+  if (!backendOwned || !serverProc) {
+    return;
+  }
+  const otherClients = getOtherBackendClientCount();
+  if (otherClients > 0) {
+    appendElectronLog(`Leaving shared backend running for ${otherClients} other frontend client(s).`);
+    return;
+  }
   if (backendShutdownPromise) {
     await backendShutdownPromise;
     return;
@@ -1312,85 +1425,10 @@ async function requestBackendShutdown() {
   }
 }
 
-function createWindow() {
-  const savedSize = loadMainWindowPrefs();
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const screenWidth = Math.round(Number(primaryDisplay?.size?.width || 0));
-  const screenHeight = Math.round(Number(primaryDisplay?.size?.height || 0));
-  const launchMaxWidth = screenWidth > 0 ? Math.max(320, Math.floor(screenWidth * 0.9)) : 1400;
-  const launchMaxHeight = screenHeight > 0 ? Math.max(320, Math.floor(screenHeight * 0.93)) : 900;
-  const launchWidth = Math.min(Math.round(savedSize?.width || 1400), launchMaxWidth);
-  const launchHeight = Math.min(Math.round(savedSize?.height || 900), launchMaxHeight);
-  win = new BrowserWindow({
-    width: launchWidth,
-    height: launchHeight,
-    frame: false,
-    thickFrame: true,  // Adds Windows border for resize handles and visibility on Win10
-    show: false,  // Hidden until splash closes
-    backgroundColor: "#ffffff",
-    webPreferences: {
-      preload: PRELOAD_PATH,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  win.on("close", async (e) => {
-    if (allowClose) return;
-    e.preventDefault();
-    try {
-      const shouldIntercept = await win.webContents.executeJavaScript(
-        "window.__arcrho_should_intercept_close && window.__arcrho_should_intercept_close()"
-      );
-      if (shouldIntercept) {
-        win.webContents.executeJavaScript(
-          "window.postMessage({type:'arcrho:close-active-tab'}, '*');"
-        );
-        return;
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      const confirmed = await win.webContents.executeJavaScript(
-        "window.__arcrho_confirm_app_shutdown ? window.__arcrho_confirm_app_shutdown() : true"
-      );
-      if (!confirmed) {
-        return;
-      }
-    } catch {
-      // ignore
-    }
-
-    allowClose = true;
-    await requestBackendShutdown();
-    setTimeout(() => {
-      try { win.close(); } catch {}
-    }, 0);
-  });
-
-  let windowSizeSaveTimer = null;
-  const scheduleWindowSizeSave = () => {
-    if (windowSizeSaveTimer) clearTimeout(windowSizeSaveTimer);
-    windowSizeSaveTimer = setTimeout(() => {
-      windowSizeSaveTimer = null;
-      if (!win || win.isDestroyed()) return;
-      if (win.isMinimized() || win.isMaximized() || win.isFullScreen() || pseudoMaximized) return;
-      const [width, height] = win.getSize();
-      saveMainWindowPrefs({ width, height });
-    }, 200);
-  };
-  win.on("resize", scheduleWindowSizeSave);
-  win.on("closed", () => {
-    if (windowSizeSaveTimer) clearTimeout(windowSizeSaveTimer);
-    windowSizeSaveTimer = null;
-  });
-
-  win.loadURL(URL);
-
-  win.webContents.on("before-input-event", (event, input) => {
-    if (!win || win.isDestroyed()) return;
+function wireAppWindowInput(targetWindow) {
+  if (!targetWindow || targetWindow.isDestroyed()) return;
+  targetWindow.webContents.on("before-input-event", (event, input) => {
+    if (!targetWindow || targetWindow.isDestroyed()) return;
 
     const key = String(input.key || "").toUpperCase();
     const ctrl = !!input.control;
@@ -1399,45 +1437,42 @@ function createWindow() {
     const type = String(input.type || "");
 
     const sendHotkey = (action) => {
-      win.webContents.send("arcrho:hotkey", { action });
+      targetWindow.webContents.send("arcrho:hotkey", { action });
     };
 
     if (ctrl && !alt && shift && key === "I") {
       event.preventDefault();
-      toggleDevPanelForWindow();
+      toggleDevPanelForWindow(targetWindow);
       return;
     }
 
     if (type === "mouseWheel" && ctrl) {
       event.preventDefault();
       const deltaY = Number(input.deltaY || 0);
-      win.webContents.send("arcrho:zoom", { deltaY });
+      targetWindow.webContents.send("arcrho:zoom", { deltaY });
       return;
     }
 
-    // Zoom shortcuts (Ctrl +/-/0)
     if (ctrl && !alt && (key === "-" || key === "_")) {
       event.preventDefault();
-      win.webContents.send("arcrho:zoom-step", { delta: -1 });
+      targetWindow.webContents.send("arcrho:zoom-step", { delta: -1 });
       return;
     }
     if (ctrl && !alt && (key === "=" || key === "+")) {
       event.preventDefault();
-      win.webContents.send("arcrho:zoom-step", { delta: 1 });
+      targetWindow.webContents.send("arcrho:zoom-step", { delta: 1 });
       return;
     }
     if (ctrl && !alt && key === "0") {
       event.preventDefault();
-      win.webContents.send("arcrho:zoom-reset");
+      targetWindow.webContents.send("arcrho:zoom-reset");
       return;
     }
 
-    // Block F5-based refresh shortcuts app-wide.
     if (!alt && key === "F5") {
       event.preventDefault();
       return;
     }
-    // Refresh shortcuts
     if (ctrl && !alt && key === "R" && shift) {
       event.preventDefault();
       sendHotkey("custom_hard_refresh");
@@ -1449,7 +1484,6 @@ function createWindow() {
       return;
     }
 
-    // File/menu shortcuts
     if (ctrl && !alt && !shift && key === "S") {
       event.preventDefault();
       sendHotkey("file_save");
@@ -1491,22 +1525,173 @@ function createWindow() {
       return;
     }
 
-    // Tab management
     if (alt && !ctrl && !shift && key === "W") {
       event.preventDefault();
-      win.webContents.send("arcrho:close-active-tab");
+      targetWindow.webContents.send("arcrho:close-active-tab");
       return;
     }
     if (ctrl && !alt && !shift && key === "W") {
       event.preventDefault();
-      win.webContents.send("arcrho:close-active-tab");
+      targetWindow.webContents.send("arcrho:close-active-tab");
     }
   });
 }
 
-ipcMain.handle("pick-open-workflow", async (_event, payload) => {
+function buildArcodeUrl(options = {}) {
+  const params = new URLSearchParams();
+  params.set("v", String(options.uiVersion || UI_VERSION));
+  const openPath = String(options.path || options.openPath || "").trim();
+  if (openPath) params.set("path", openPath);
+  if (options.fresh) params.set("fresh", "1");
+  return `http://${HOST}:${PORT}/ui/arcode/?${params.toString()}`;
+}
+
+function createWindow() {
+  const savedSize = loadMainWindowPrefs();
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const screenWidth = Math.round(Number(primaryDisplay?.size?.width || 0));
+  const screenHeight = Math.round(Number(primaryDisplay?.size?.height || 0));
+  const launchMaxWidth = screenWidth > 0 ? Math.max(320, Math.floor(screenWidth * 0.9)) : 1400;
+  const launchMaxHeight = screenHeight > 0 ? Math.max(320, Math.floor(screenHeight * 0.93)) : 900;
+  const launchWidth = Math.min(Math.round(savedSize?.width || 1400), launchMaxWidth);
+  const launchHeight = Math.min(Math.round(savedSize?.height || 900), launchMaxHeight);
+  win = new BrowserWindow({
+    width: launchWidth,
+    height: launchHeight,
+    frame: false,
+    thickFrame: true,  // Adds Windows border for resize handles and visibility on Win10
+    show: false,  // Hidden until splash closes
+    backgroundColor: "#ffffff",
+    title: APP_MODE === "arcode" ? "Arcode" : "ArcRho",
+    webPreferences: {
+      preload: PRELOAD_PATH,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  win.on("close", async (e) => {
+    if (allowClose) return;
+    e.preventDefault();
+    try {
+      const shouldIntercept = await win.webContents.executeJavaScript(
+        "window.__arcrho_should_intercept_close && window.__arcrho_should_intercept_close()"
+      );
+      if (shouldIntercept) {
+        win.webContents.executeJavaScript(
+          "window.postMessage({type:'arcrho:close-active-tab'}, '*');"
+        );
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const confirmed = await win.webContents.executeJavaScript(
+        "window.__arcrho_confirm_app_shutdown ? window.__arcrho_confirm_app_shutdown() : (window.__arcode_confirm_window_close ? window.__arcode_confirm_window_close() : true)"
+      );
+      if (!confirmed) {
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    allowClose = true;
+    await requestBackendShutdown();
+    setTimeout(() => {
+      try { win.close(); } catch {}
+    }, 0);
+  });
+
+  let windowSizeSaveTimer = null;
+  const scheduleWindowSizeSave = () => {
+    if (windowSizeSaveTimer) clearTimeout(windowSizeSaveTimer);
+    windowSizeSaveTimer = setTimeout(() => {
+      windowSizeSaveTimer = null;
+      if (!win || win.isDestroyed()) return;
+      if (win.isMinimized() || win.isMaximized() || win.isFullScreen() || pseudoMaximized) return;
+      const [width, height] = win.getSize();
+      saveMainWindowPrefs({ width, height });
+    }, 200);
+  };
+  win.on("resize", scheduleWindowSizeSave);
+  win.on("closed", () => {
+    if (windowSizeSaveTimer) clearTimeout(windowSizeSaveTimer);
+    windowSizeSaveTimer = null;
+  });
+
+  win.loadURL(APP_MODE === "arcode" ? ARCODE_URL : URL);
+  wireAppWindowInput(win);
+}
+
+function createArcodeWindow(options = {}) {
+  if (arcodeWin && !arcodeWin.isDestroyed()) {
+    const openPath = String(options.path || options.openPath || "").trim();
+    if (arcodeWin.isMinimized()) arcodeWin.restore();
+    arcodeWin.show();
+    arcodeWin.focus();
+    if (openPath) {
+      arcodeWin.webContents.send("arcode:open-file", { path: openPath });
+    }
+    return arcodeWin;
+  }
+
+  arcodeWin = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 900,
+    minHeight: 560,
+    frame: false,
+    thickFrame: true,
+    show: false,
+    backgroundColor: "#f7f8fa",
+    title: "Arcode",
+    webPreferences: {
+      preload: PRELOAD_PATH,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  let arcodeAllowClose = false;
+  arcodeWin.on("close", (event) => {
+    if (arcodeAllowClose) return;
+    event.preventDefault();
+    try {
+      arcodeWin.webContents.executeJavaScript(
+        "window.__arcode_confirm_window_close ? window.__arcode_confirm_window_close() : true"
+      ).then((confirmed) => {
+        if (!confirmed || !arcodeWin || arcodeWin.isDestroyed()) return;
+        arcodeAllowClose = true;
+        arcodeWin.close();
+      }).catch(() => {
+        if (!arcodeWin || arcodeWin.isDestroyed()) return;
+        arcodeAllowClose = true;
+        arcodeWin.close();
+      });
+    } catch {
+      arcodeAllowClose = true;
+      arcodeWin.close();
+    }
+  });
+  arcodeWin.on("closed", () => {
+    arcodeWin = null;
+  });
+  arcodeWin.loadURL(buildArcodeUrl(options));
+  arcodeWin.once("ready-to-show", () => {
+    if (!arcodeWin || arcodeWin.isDestroyed()) return;
+    arcodeWin.show();
+    arcodeWin.focus();
+  });
+  wireAppWindowInput(arcodeWin);
+  return arcodeWin;
+}
+
+ipcMain.handle("pick-open-workflow", async (event, payload) => {
   const startDir = payload?.startDir || "";
-  const result = await dialog.showOpenDialog(win, {
+  const result = await dialog.showOpenDialog(getIpcWindow(event), {
     defaultPath: startDir || undefined,
     properties: ["openFile"],
     filters: [{ name: "Workflow", extensions: ["arcwf", "json"] }],
@@ -1515,9 +1700,9 @@ ipcMain.handle("pick-open-workflow", async (_event, payload) => {
   return result.filePaths[0];
 });
 
-ipcMain.handle("pick-open-table-file", async (_event, payload) => {
+ipcMain.handle("pick-open-table-file", async (event, payload) => {
   const startDir = payload?.startDir || "";
-  const result = await dialog.showOpenDialog(win, {
+  const result = await dialog.showOpenDialog(getIpcWindow(event), {
     defaultPath: startDir || undefined,
     properties: ["openFile"],
     filters: [
@@ -1529,10 +1714,10 @@ ipcMain.handle("pick-open-table-file", async (_event, payload) => {
   return result.filePaths[0];
 });
 
-ipcMain.handle("pick-folder", async (_event, payload) => {
+ipcMain.handle("pick-folder", async (event, payload) => {
   const startDir = String(payload?.startDir || "").trim();
   const defaultPath = startDir && fs.existsSync(startDir) ? startDir : undefined;
-  const result = await dialog.showOpenDialog(win, {
+  const result = await dialog.showOpenDialog(getIpcWindow(event), {
     defaultPath,
     properties: ["openDirectory"],
   });
@@ -1556,11 +1741,11 @@ ipcMain.handle("find-arcrho-server-root", async () => {
   return { found: false, path: "" };
 });
 
-ipcMain.handle("pick-save-workflow", async (_event, payload) => {
+ipcMain.handle("pick-save-workflow", async (event, payload) => {
   const suggestedName = payload?.suggestedName || "workflow.arcwf";
   const startDir = payload?.startDir || "";
   const defaultPath = startDir ? path.join(startDir, suggestedName) : suggestedName;
-  const result = await dialog.showSaveDialog(win, {
+  const result = await dialog.showSaveDialog(getIpcWindow(event), {
     defaultPath,
     filters: [{ name: "Workflow", extensions: ["arcwf", "json"] }],
   });
@@ -1568,12 +1753,12 @@ ipcMain.handle("pick-save-workflow", async (_event, payload) => {
   return result.filePath;
 });
 
-ipcMain.handle("pick-open-file", async (_event, payload) => {
+ipcMain.handle("pick-open-file", async (event, payload) => {
   const startDir = payload?.startDir || "";
   const filters = Array.isArray(payload?.filters) && payload.filters.length
     ? payload.filters
     : [{ name: "All Files", extensions: ["*"] }];
-  const result = await dialog.showOpenDialog(win, {
+  const result = await dialog.showOpenDialog(getIpcWindow(event), {
     defaultPath: startDir || undefined,
     properties: ["openFile"],
     filters,
@@ -1626,7 +1811,7 @@ ipcMain.handle("show-item-in-folder", async (_event, payload) => {
   }
 });
 
-ipcMain.handle("save-json-file", async (_event, payload) => {
+ipcMain.handle("save-json-file", async (event, payload) => {
   const data = payload?.data ?? null;
   const suggestedName = payload?.suggestedName || "data.json";
   const startDir = payload?.startDir || "";
@@ -1637,7 +1822,7 @@ ipcMain.handle("save-json-file", async (_event, payload) => {
 
   if (!filePath) {
     const defaultPath = startDir ? path.join(startDir, suggestedName) : suggestedName;
-    const result = await dialog.showSaveDialog(win, {
+    const result = await dialog.showSaveDialog(getIpcWindow(event), {
       defaultPath,
       filters,
     });
@@ -1656,7 +1841,7 @@ ipcMain.handle("save-json-file", async (_event, payload) => {
   }
 });
 
-ipcMain.handle("save-text-file", async (_event, payload) => {
+ipcMain.handle("save-text-file", async (event, payload) => {
   const data = payload?.data ?? "";
   const suggestedName = payload?.suggestedName || "data.txt";
   const startDir = payload?.startDir || "";
@@ -1664,7 +1849,7 @@ ipcMain.handle("save-text-file", async (_event, payload) => {
 
   if (!filePath) {
     const defaultPath = startDir ? path.join(startDir, suggestedName) : suggestedName;
-    const result = await dialog.showSaveDialog(win, { defaultPath });
+    const result = await dialog.showSaveDialog(getIpcWindow(event), { defaultPath });
     if (result.canceled || !result.filePath) return { path: "", canceled: true };
     filePath = result.filePath;
   }
@@ -1927,6 +2112,11 @@ ipcMain.handle("app-toggle-dev-panel", () => {
   return toggleDevPanelForWindow();
 });
 
+ipcMain.handle("arcode-window-open", async (_event, payload) => {
+  createArcodeWindow(payload || {});
+  return { ok: true };
+});
+
 ipcMain.handle("app-clear-cache-reload", async (_event, payload) => {
   if (!win || win.isDestroyed()) return false;
   pendingClearCacheReloadRestore = payload?.restore && typeof payload.restore === "object"
@@ -1968,11 +2158,16 @@ const arcBotHost = registerArcBotIpc({
   findExecutableOnPath,
   runHostCommand,
 });
-ipcMain.handle("focus-window", () => {
-  if (!win || win.isDestroyed()) return;
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
+function getIpcWindow(event) {
+  return BrowserWindow.fromWebContents(event?.sender) || BrowserWindow.getFocusedWindow() || win;
+}
+
+ipcMain.handle("focus-window", (event) => {
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow || targetWindow.isDestroyed()) return;
+  if (targetWindow.isMinimized()) targetWindow.restore();
+  targetWindow.show();
+  targetWindow.focus();
 });
 ipcMain.handle("get-documents-path", () => {
   try {
@@ -1991,57 +2186,64 @@ ipcMain.handle("get-windows-user-name", () => {
   }
 });
 ipcMain.handle("is-windows-11", () => IS_WIN11);
-ipcMain.handle("window-minimize", () => win?.minimize());
-ipcMain.handle("window-maximize", () => win?.maximize());
-ipcMain.handle("window-restore-native", () => win?.restore());
-ipcMain.handle("window-is-maximized", () => !!win?.isMaximized());
-ipcMain.handle("window-is-fullscreen", () => !!win?.isFullScreen());
-ipcMain.handle("window-set-fullscreen", (_e, payload) => {
+ipcMain.handle("window-minimize", (event) => getIpcWindow(event)?.minimize());
+ipcMain.handle("window-maximize", (event) => getIpcWindow(event)?.maximize());
+ipcMain.handle("window-restore-native", (event) => getIpcWindow(event)?.restore());
+ipcMain.handle("window-close", (event) => getIpcWindow(event)?.close());
+ipcMain.handle("window-is-maximized", (event) => !!getIpcWindow(event)?.isMaximized());
+ipcMain.handle("window-is-fullscreen", (event) => !!getIpcWindow(event)?.isFullScreen());
+ipcMain.handle("window-set-fullscreen", (event, payload) => {
   const enabled = !!payload?.enabled;
-  win?.setFullScreen(enabled);
+  getIpcWindow(event)?.setFullScreen(enabled);
 });
-ipcMain.handle("window-get-size", () => {
-  if (!win) return { width: 0, height: 0 };
-  const [width, height] = win.getSize();
+ipcMain.handle("window-get-size", (event) => {
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow) return { width: 0, height: 0 };
+  const [width, height] = targetWindow.getSize();
   return { width, height };
 });
-ipcMain.handle("window-resize", (_e, payload) => {
-  if (!win) return;
+ipcMain.handle("window-resize", (event, payload) => {
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow) return;
   const w = Math.max(200, Number(payload?.width || 0));
   const h = Math.max(200, Number(payload?.height || 0));
-  if (w && h) win.setSize(Math.round(w), Math.round(h));
+  if (w && h) targetWindow.setSize(Math.round(w), Math.round(h));
 });
 
-ipcMain.handle("zoom-get", () => {
-  if (!win) return 1;
-  return win.webContents.getZoomFactor();
+ipcMain.handle("zoom-get", (event) => {
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow) return 1;
+  return targetWindow.webContents.getZoomFactor();
 });
 
-ipcMain.handle("zoom-set", (_e, payload) => {
-  if (!win) return 1;
+ipcMain.handle("zoom-set", (event, payload) => {
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow) return 1;
   const factor = Number(payload?.factor || 1);
   const safe = Math.max(0.5, Math.min(2, factor));
-  win.webContents.setZoomFactor(safe);
+  targetWindow.webContents.setZoomFactor(safe);
   return safe;
 });
 
-ipcMain.handle("window-pseudo-maximize", (_e, payload) => {
-  if (!win) return;
+ipcMain.handle("window-pseudo-maximize", (event, payload) => {
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow) return;
   const margin = Math.max(0, Number(payload?.margin ?? 1));
-  lastBounds = win.getBounds();
+  lastBounds = targetWindow.getBounds();
   const display = screen.getDisplayMatching(lastBounds);
   const wa = display.workArea;
   const w = Math.max(200, wa.width - margin * 2);
   const h = Math.max(200, wa.height - margin * 2);
-  win.setBounds({ x: wa.x + margin, y: wa.y + margin, width: w, height: h }, true);
+  targetWindow.setBounds({ x: wa.x + margin, y: wa.y + margin, width: w, height: h }, true);
   pseudoMaximized = true;
 });
 
 ipcMain.handle("window-is-pseudo-maximized", () => !!pseudoMaximized);
 
-ipcMain.handle("window-restore-to-last", () => {
-  if (!win) return;
-  if (lastBounds) win.setBounds(lastBounds, true);
+ipcMain.handle("window-restore-to-last", (event) => {
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow) return;
+  if (lastBounds) targetWindow.setBounds(lastBounds, true);
   pseudoMaximized = false;
 });
 
@@ -2049,6 +2251,7 @@ app.whenReady().then(async () => {
   appendElectronLog(
     `ArcRho startup begin. packaged=${app.isPackaged}; version=${app.getVersion()}; appPath=${app.getAppPath()}; resourcesPath=${process.resourcesPath}`
   );
+  registerBackendClient();
 
   // Show splash screen first
   appendElectronLog("Creating splash window.");
@@ -2082,11 +2285,13 @@ app.whenReady().then(async () => {
         closeSplash();
         win.show();
         win.focus();
-        setTimeout(() => {
-          checkForStartupUpdate().catch((err) => {
-            console.warn(`ArcRho startup update check failed: ${err?.message || err}`);
-          });
-        }, 750);
+        if (APP_MODE !== "arcode") {
+          setTimeout(() => {
+            checkForStartupUpdate().catch((err) => {
+              console.warn(`ArcRho startup update check failed: ${err?.message || err}`);
+            });
+          }, 750);
+        }
       }, 400);
     });
 
@@ -2110,4 +2315,5 @@ app.on("before-quit", async () => {
   allowClose = true;
   arcBotHost?.stop();
   await requestBackendShutdown();
+  unregisterBackendClient();
 });

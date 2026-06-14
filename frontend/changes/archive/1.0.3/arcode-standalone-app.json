@@ -1,0 +1,14 @@
+{
+  "type": "feature",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Added Arcode as a standalone scripting app with its own launch page and code-file tabs.",
+  "details": [
+    "ArcRho scripting launch actions now open Arcode in the desktop app.",
+    "Arcode uses the same ArcRho backend scripting APIs and app frame styling.",
+    "Arcode now matches the ArcRho titlebar and ArcBot panel controls.",
+    "Arcode fills its standalone window without an extra outer gutter.",
+    "The Arcode launch page now focuses on file actions without the standalone-app intro copy.",
+    "ArcRho and Arcode can now run side by side against one shared backend service."
+  ]
+}

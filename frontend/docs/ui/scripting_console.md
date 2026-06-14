@@ -34,7 +34,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Called from shell as a scripting tab iframe.
+- Called from shell as a legacy scripting tab iframe and from Arcode as one iframe per open code/notebook tab.
 - Uses `/scripting/*` app-server routes for execution, variables, preferences, and notebook persistence.
 - In the desktop app, File > Open Notebook (Ctrl+O) uses the Electron host file picker and can load `.ipynb`, legacy `.arcnb`, or `.py` scripting files from any folder. Browser sessions fall back to the in-app saved-notebooks list under the scripting directory.
 - Python scripts load as a single editable code cell. Desktop file-backed scripts save back to the original `.py` path through the host text-file bridge; scripts opened through the app-server fallback are loaded from `Documents\ArcRho\scripts`.
@@ -45,6 +45,7 @@ Detected `arcrho:*` message types in key JS files:
 - File-backed notebooks track a disk revision token. Clean tabs auto-reload external disk edits, dirty tabs pause autosave and show a conflict banner with Reload, Save Copy, and Overwrite actions.
 - Responds to ArcBot active-context requests with the current notebook path, dirty/file state, autosave state, and JSON-backed notebook payload so ArcBot can use the active scripting tab as default app context.
 - Sends `arcrho:*` status and command messages to/from the shell.
+- In Arcode, those same `arcrho:*` title, dirty, status, command, and ArcBot context messages are consumed by the Arcode shell instead of the ArcRho shell.
 - Imports the shared 20px `ui/shared/scrollbars.css` WebKit scrollbar treatment so notebook, output, sidebar, and dialog scroll areas match the Dataset/DFM scrollbar style.
 - Code-cell output panes include a bottom-right resize handle for per-cell output height adjustments during the current notebook session.
 - The sidebar contains Table of Contents and Variables panels. Clicking either panel header collapses or expands that section. The TOC header includes a persisted three-mode heading-number control: no numbers, numbers from the first heading, or numbers from the second heading while treating the first heading as an unnumbered notebook title. Visible heading numbers are mirrored into rendered markdown headings. The main vertical resize handle has an expanded pointer target without a wider visible rail, can be dragged to resize/collapse the sidebar, and can be double-clicked to collapse or expand it.

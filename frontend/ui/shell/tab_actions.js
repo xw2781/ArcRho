@@ -390,6 +390,21 @@ function getFilenameFromPath(pathLike) {
 
 export function openScriptingTab(options = {}) {
   const notebookPath = String(options?.notebookPath || options?.openPath || "").trim();
+  const hostApi = shell.getHostApi?.();
+  if (typeof hostApi?.openArcodeWindow === "function") {
+    Promise.resolve(hostApi.openArcodeWindow({ path: notebookPath }))
+      .then((result) => {
+        if (!result?.ok) {
+          shell.updateStatusBar?.(String(result?.error || "Could not open Arcode."), { tone: "error" });
+        } else {
+          shell.updateStatusBar?.(notebookPath ? `Opening ${getFilenameFromPath(notebookPath)} in Arcode...` : "Opening Arcode...");
+        }
+      })
+      .catch((err) => {
+        shell.updateStatusBar?.(String(err?.message || err || "Could not open Arcode."), { tone: "error" });
+      });
+    return null;
+  }
   const forceNew = !!options?.forceNew || !!notebookPath;
   const existing = !forceNew ? shell.state.tabs.find(t => t.type === "scripting") : null;
   if (existing) {

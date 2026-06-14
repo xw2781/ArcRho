@@ -40,9 +40,9 @@ def terminate_process_tree(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
-def start_electron(env: dict) -> subprocess.Popen:
+def start_electron(env: dict, mode: str) -> subprocess.Popen:
     npm_cmd, env = resolve_npm_cmd(BASE_DIR)
-    cmd = npm_cmd + ["run", "electron"]
+    cmd = npm_cmd + ["run", "arcode" if mode == "arcode" else "electron"]
     if os.name == "nt":
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
@@ -50,10 +50,12 @@ def start_electron(env: dict) -> subprocess.Popen:
     return subprocess.Popen(cmd, cwd=str(BASE_DIR), env=env, creationflags=creationflags)
 
 
-def run_shell() -> None:
+def run_shell(mode: str) -> None:
     env = os.environ.copy()
+    if mode == "arcode":
+        env["ARCRHO_APP_MODE"] = "arcode"
     while True:
-        proc = start_electron(env)
+        proc = start_electron(env, mode)
 
         while True:
             if proc.poll() is not None:
@@ -79,8 +81,9 @@ def run_shell() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Electron supervisor")
-    parser.parse_args()
-    run_shell()
+    parser.add_argument("--mode", choices=["arcrho", "arcode"], default=os.environ.get("ARCRHO_APP_MODE", "arcrho"))
+    args = parser.parse_args()
+    run_shell("arcode" if args.mode == "arcode" else "arcrho")
 
 
 if __name__ == "__main__":

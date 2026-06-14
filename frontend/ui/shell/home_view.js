@@ -91,7 +91,7 @@ export function renderHomeViewOnce(homeView) {
             <div class="groupTitle">Automation</div>
             <div class="cards">
               <div class="card clickable" id="cardNewWorkflow"><div class="homeIconBox workflow" aria-hidden="true"><svg class="homeIcon" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1.2"></rect><rect x="15" y="4" width="6" height="5" rx="1.2"></rect><rect x="9" y="15" width="6" height="5" rx="1.2"></rect><path d="M9 6.5h6"></path><path d="M6 9v3.5h6V15"></path><path d="M18 9v3.5h-6"></path></svg></div><div><h3>New Workflow</h3><div class="muted">Build or load a workflow tab.</div></div></div>
-              <div class="card clickable" id="cardScripting"><div class="homeIconBox scripting" aria-hidden="true"><svg class="homeIcon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3"></path><path d="M12 15h5"></path></svg></div><div><h3>Scripting</h3><div class="muted">Write code in a notebook.</div></div></div>
+              <div class="card clickable" id="cardScripting"><div class="homeIconBox scripting" aria-hidden="true"><svg class="homeIcon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3"></path><path d="M12 15h5"></path></svg></div><div><h3>Arcode</h3><div class="muted">Open the scripting app.</div></div></div>
             </div>
           </div>
           <div class="homeGroup">

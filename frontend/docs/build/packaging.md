@@ -9,6 +9,7 @@ Document Electron + Python packaging inputs and scripts.
 <!-- AUTO-GEN:BEGIN build.packaging.entry_points -->
 | Script | Command |
 | --- | --- |
+| `npm run arcode` | `set ARCRHO_APP_MODE=arcode&& electron .` |
 | `npm run build` | `npm run build:python-api && npm run build:python && npm run build:electron && npm run clean:python-artifacts` |
 | `npm run build:electron` | `node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --win` |
 | `npm run build:python` | `build\build_python_server.bat` |

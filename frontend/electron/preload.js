@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   minimizeWindow: () => invoke("window-minimize"),
   maximizeWindow: () => invoke("window-maximize"),
   restoreWindow: () => invoke("window-restore-native"),
+  closeWindow: () => invoke("window-close"),
   isMaximized: () => invoke("window-is-maximized"),
   isFullscreen: () => invoke("window-is-fullscreen"),
   setFullscreen: (enabled) => invoke("window-set-fullscreen", { enabled }),
@@ -60,6 +61,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   saveLastScriptingNotebook: (path) => invoke("scripting-last-notebook-save", { path }),
   loadScriptingShortcuts: () => invoke("scripting-shortcuts-load"),
   saveScriptingShortcuts: (bindings) => invoke("scripting-shortcuts-save", { bindings }),
+  openArcodeWindow: (payload) => invoke("arcode-window-open", payload),
   pickOpenFile: (payload) => invoke("pick-open-file", payload),
   openPath: (payload) => invoke("open-path", payload),
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
@@ -116,6 +118,14 @@ ipcRenderer.on("arcrho:hotkey", (_event, payload) => {
 ipcRenderer.on("arcrho:zoom", (_event, payload) => {
   try {
     window.postMessage({ type: "arcrho:zoom", deltaY: payload?.deltaY }, "*");
+  } catch {
+    // ignore
+  }
+});
+
+ipcRenderer.on("arcode:open-file", (_event, payload) => {
+  try {
+    window.postMessage({ type: "arcode:open-file", path: payload?.path || "" }, "*");
   } catch {
     // ignore
   }
