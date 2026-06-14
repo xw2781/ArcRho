@@ -193,9 +193,9 @@ function lockTabsHostLayout(host) {
   host.style.height = `${Math.ceil(r.height)}px`;
   host.style.minHeight = host.style.height;
   host.style.flexWrap = "nowrap";
-  host.style.overflowX = "auto";
+  host.style.overflowX = "hidden";
   host.style.overflowY = "hidden";
-  host.style.alignItems = "stretch";
+  host.style.alignItems = "flex-end";
 }
 
 function unlockTabsHostLayout() {
@@ -243,6 +243,7 @@ function cleanupDragUI() {
   isDragging = false;
   lastPlaceholderIndex = -1;
   unlockTabsHostLayout();
+  document.body.classList.remove("tab-dragging");
   try { document.body.style.cursor = ""; } catch {}
 }
 
@@ -273,6 +274,7 @@ function startDragIfNeeded(host, el, pointerId) {
   if (!host || !el || dragElPrevStyle) return;
   isDragging = true;
   lockTabsHostLayout(host);
+  document.body.classList.add("tab-dragging");
   try { document.body.style.cursor = "grabbing"; } catch {}
   el.classList.add("dragging");
   const hostRect = host.getBoundingClientRect();

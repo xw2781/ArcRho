@@ -75,6 +75,7 @@ Detected `arcrho:*` message types in key JS files:
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - Communicates with child iframes via `arcrho:*` postMessage events.
+- The main docked tab strip keeps a stable row height and connects the active tab to the shell body through border and stacking-layer styling rather than resolution-sensitive transform offsets.
 - Invokes app-server endpoints for workflow import helpers and configuration endpoints.
 - Uses Electron host bridge and explicit shell commands for shutdown/clear-cache actions; ordinary document unloads and reloads do not send app shutdown.
 - The desktop host consumes F5 and Ctrl+F5 as no-op shortcuts so accidental refreshes do not reload the app; Ctrl+R remains the explicit shell refresh shortcut.

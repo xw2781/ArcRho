@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Made active shell tabs visually connect to the workspace body without resolution-sensitive offsets.",
+  "details": [
+    "Inactive tabs keep a single clean bottom border.",
+    "Dragged tabs stay aligned with the tab strip without the extra dock-target border or topbar height jump appearing during reorder."
+  ]
+}

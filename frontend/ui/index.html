@@ -2481,9 +2481,20 @@
       z-index: 20000;
     }
     #globalTooltip.show { opacity: 1; }
-    .topbar { display:flex; align-items:center; gap: var(--gap); border-top:none; border-bottom:none; padding-top:0px; padding-bottom:0px; }
-    .brand { font-weight:700; }
-    .tabs { display:flex; gap:0; flex-wrap:wrap; position: relative; align-items: flex-end; }
+    .topbar { display:flex; align-items:flex-end; position: relative; gap: var(--gap); height: 34px; min-height: 34px; box-sizing: border-box; border-top:none; border-bottom:none; padding-top:0px; padding-bottom:0px; }
+    .topbar::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 1px;
+      background: var(--border);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .brand { font-weight:700; position: relative; z-index: 1; }
+    .tabs { flex: 1 1 auto; display:flex; gap:0; flex-wrap:nowrap; min-width: 0; height: 34px; overflow: hidden; position: relative; z-index: 1; align-items: flex-end; }
     .tabs.floatingDockTarget {
       box-shadow: inset 0 -2px 0 #2b6df6, inset 0 0 0 1px rgba(43,109,246,0.28);
       background: rgba(43,109,246,0.08);
@@ -2513,16 +2524,17 @@
       white-space: nowrap;
       position: relative;
       box-shadow: inset 0 2px 0 var(--bg);
+      transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
     }
+
 
     .tab.active {
       background: #ffffff;
       font-weight: 600;
       border-color: #c8c8c8;
       z-index: 2;
-      border-bottom: none;
+      border-bottom-color: #ffffff;
       margin-bottom: 0;
-      transform: translateY(-0.9px);
       box-shadow: inset 0 2px 0 #2b6df6;
     }
     .tab.active::after {
@@ -2530,9 +2542,10 @@
       position: absolute;
       left: -1px;
       right: -1px;
-      bottom: -1px;
+      bottom: 0;
       height: 1px;
       background: #ffffff;
+      pointer-events: none;
     }
 
     .tab .x {
@@ -2572,7 +2585,7 @@
       align-items: center;
       filter: none !important;
       box-shadow: 0 6px 18px rgba(0,0,0,0.22);
-      will-change: transform;
+      cursor: grabbing;
       transform: scale(0.98);
     }
     .tab.dragging.active {
@@ -2596,15 +2609,28 @@
       opacity: 0.9;
     }
 
-    .tab {
-      transition: transform 120ms ease;
-      will-change: transform;
-    }
     .tab.dragging,
     .tab.placeholder {
       transition: none;
     }
-    
+
+    body.tab-dragging #tabs,
+    body.tab-dragging #tabs .tab {
+      cursor: grabbing;
+    }
+
+    body.tab-dragging #tabs {
+      height: 34px !important;
+      min-height: 34px !important;
+      align-items: flex-end !important;
+      overflow: hidden !important;
+    }
+
+    body.tab-dragging #tabs.floatingDockTarget {
+      box-shadow: none;
+      background: transparent;
+    }
+
     #dropIndicator {
       position: absolute;
       top: 2px;
@@ -2619,14 +2645,14 @@
     .actions { margin-left:auto; display:flex; gap:8px; align-items:center; }
     button { padding: 6px 10px; cursor:pointer; }
     .content { 
-      border:1px solid var(--border); 
-      border-top: 1px solid var(--border);
+      border:1px solid var(--border);
+      border-top: 0;
       border-radius: 0; 
       flex: 1 1 auto;
       min-height: 0;
       overflow:hidden; 
       background: #fff;
-      margin-top: -1px;
+      margin-top: 0;
       position: relative;
     }
     #floatingHost {
