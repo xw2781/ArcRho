@@ -449,7 +449,7 @@ function ensurePlusMenu(host) {
     plusMenuEl.className = "tabMenu";
     plusMenuEl.id = "plusTabMenu";
     plusMenuEl.style.position = "fixed";
-    plusMenuEl.innerHTML = `<div class="tabMenuItem" data-action="add-dataset">Dataset</div><div class="tabMenuItem" data-action="add-dfm">DFM</div><div class="tabMenuItem" data-action="add-workflow">Workflow</div><div class="tabMenuItem" data-action="add-scripting">Scripting Console</div><div class="tabMenuSep"></div><div class="tabMenuItem" data-action="close-menu">Cancel</div>`;
+    plusMenuEl.innerHTML = `<div class="tabMenuItem" data-action="add-dataset">Dataset</div><div class="tabMenuItem" data-action="add-dfm">DFM</div><div class="tabMenuItem" data-action="add-workflow">Workflow</div><div class="tabMenuItem" data-action="add-scripting">Arcode</div><div class="tabMenuSep"></div><div class="tabMenuItem" data-action="close-menu">Cancel</div>`;
     plusMenuEl.addEventListener("click", (e) => {
       const action = e.target?.closest?.(".tabMenuItem")?.getAttribute("data-action");
       if (!action) return;
@@ -595,7 +595,7 @@ function requestScriptingNotebookRename(tab) {
   const iframe = tab.iframe;
   if (!iframe) return;
   const send = () => {
-    try { iframe.contentWindow?.postMessage({ type: "arcrho:scripting-rename-notebook" }, "*"); } catch {}
+    try { iframe.contentWindow?.postMessage({ type: "arcode:scripting-rename-notebook" }, "*"); } catch {}
   };
   try {
     if (iframe.contentDocument?.readyState === "complete") {

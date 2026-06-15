@@ -321,7 +321,13 @@ export function sendDFMCommand(type) {
   try { tab.iframe?.contentWindow?.postMessage({ type }, "*"); } catch {}
 }
 export function sendProjectInstanceCommand(type) { const tab = shell.state.tabs.find(t => t.id === shell.state.activeId); if (!tab || tab.type !== "project_instance") return; shell.ensureIframe?.(tab); try { tab.iframe?.contentWindow?.postMessage({ type }, "*"); } catch {} }
-export function sendScriptingCommand(type) { const tab = shell.state.tabs.find(t => t.id === shell.state.activeId); if (!tab || tab.type !== "scripting") return; shell.ensureIframe?.(tab); try { tab.iframe?.contentWindow?.postMessage({ type }, "*"); } catch {} }
+export function sendScriptingCommand(type) {
+  const tab = shell.state.tabs.find(t => t.id === shell.state.activeId);
+  if (!tab || tab.type !== "scripting") return;
+  shell.ensureIframe?.(tab);
+  const messageType = String(type || "").replace(/^arcrho:scripting-/, "arcode:scripting-");
+  try { tab.iframe?.contentWindow?.postMessage({ type: messageType }, "*"); } catch {}
+}
 export function sendProjectSettingsCommand(type) { const tab = shell.state.tabs.find(t => t.id === shell.state.activeId); if (!tab || tab.type !== "project_settings") return; shell.ensureIframe?.(tab); try { tab.iframe?.contentWindow?.postMessage({ type }, "*"); } catch {} }
 export function toggleNavigationPanel() { sendWorkflowCommand("arcrho:workflow-toggle-nav"); }
 export async function openDevPanel() {

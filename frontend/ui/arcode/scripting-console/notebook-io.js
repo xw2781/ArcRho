@@ -17,7 +17,7 @@ function updateNotebookTitleUI() {
   const title = getNotebookDisplayTitle();
   try {
     window.parent?.postMessage({
-      type: "arcrho:update-active-tab-title",
+      type: "arcode:update-active-tab-title",
       title,
       inst: scriptingTabInstanceId,
       path: currentNotebookPath || "",
@@ -52,8 +52,9 @@ function isIpynbPath(pathLike) {
   return getNotebookExtension(pathLike).toLowerCase() === ".ipynb";
 }
 
-function isPythonScriptPath(pathLike) {
-  return getNotebookExtension(pathLike).toLowerCase() === ".py";
+function isCodeTextFilePath(pathLike) {
+  const extension = getNotebookExtension(pathLike).toLowerCase();
+  return extension === ".py" || extension === ".sql";
 }
 
 function isAbsoluteFilePath(pathLike) {
@@ -78,8 +79,8 @@ function normalizeNotebookRenameInput(rawName) {
   const dot = raw.lastIndexOf(".");
   const nextName = dot > 0 ? raw : `${raw}${currentExt}`;
   const nextExt = getNotebookExtension(nextName).toLowerCase();
-  if (nextExt !== ".ipynb" && nextExt !== ".arcnb" && nextExt !== ".py") {
-    return { ok: false, error: "Notebook name must end with .ipynb, .arcnb, or .py." };
+  if (nextExt !== ".ipynb" && nextExt !== ".arcnb" && nextExt !== ".py" && nextExt !== ".sql") {
+    return { ok: false, error: "Notebook name must end with .ipynb, .arcnb, .py, or .sql." };
   }
   return { ok: true, name: nextName };
 }
@@ -111,7 +112,7 @@ function setNotebookDirty(nextDirty) {
   notebookDirty = dirty;
   updateNotebookTitleUI();
   try {
-    window.parent?.postMessage({ type: "arcrho:scripting-dirty", inst: scriptingTabInstanceId, dirty }, "*");
+    window.parent?.postMessage({ type: "arcode:scripting-dirty", inst: scriptingTabInstanceId, dirty }, "*");
   } catch {}
 }
 
@@ -251,10 +252,11 @@ function buildNotebookFileData() {
   };
 }
 
-function buildPythonScriptText() {
+function buildCodeTextFile(pathLike = currentNotebookPath || currentNotebookFilename) {
+  const separator = getNotebookExtension(pathLike).toLowerCase() === ".sql" ? "\n\n-- %%\n\n" : "\n\n# %%\n\n";
   return getNotebookSavePayload()
     .map((cell) => sourceToText(cell.source))
-    .join("\n\n# %%\n\n")
+    .join(separator)
     .trimEnd() + "\n";
 }
 
@@ -368,7 +370,7 @@ function postShellStatus(text) {
   const msg = String(text || "").trim();
   if (!msg) return;
   try {
-    window.parent?.postMessage({ type: "arcrho:status", text: msg }, "*");
+    window.parent?.postMessage({ type: "arcode:status", text: msg }, "*");
   } catch {}
 }
 
@@ -508,7 +510,7 @@ async function renameCurrentNotebook() {
 
   const hostApi = getNotebookHostApi();
   if (typeof hostApi?.renameFile !== "function") {
-    const msg = "Rename requires the ArcRho desktop app.";
+    const msg = "Rename requires the Arcode desktop app.";
     setStatus(msg);
     postShellStatus(msg);
     return false;
@@ -757,7 +759,7 @@ function applyLoadedNotebookCells(loadedCells, filename, options = {}) {
 async function reloadCurrentNotebookFromDisk({ reason = "manual" } = {}) {
   const hostApi = getNotebookHostApi();
   if (!currentNotebookPath) return false;
-  if (isPythonScriptPath(currentNotebookPath)) {
+  if (isCodeTextFilePath(currentNotebookPath)) {
     if (typeof hostApi?.readTextFile !== "function") return false;
     try {
       const result = await hostApi.readTextFile({ path: currentNotebookPath });
@@ -819,7 +821,7 @@ async function openNotebookFromAnyFolder() {
     filePath = await hostApi.pickOpenFile({
       startDir,
       filters: [
-        { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py"] },
+        { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py", "sql"] },
         { name: "All Files", extensions: ["*"] },
       ],
     });
@@ -843,14 +845,14 @@ async function openNotebookFilePath(filePath, options = {}) {
     postShellStatus("Open failed");
     return false;
   }
-  if (extension !== ".ipynb" && extension !== ".arcnb" && extension !== ".py") {
-    const msg = "Only .ipynb, .arcnb, and .py files can be opened in Scripting Console.";
+  if (extension !== ".ipynb" && extension !== ".arcnb" && extension !== ".py" && extension !== ".sql") {
+    const msg = "Only .ipynb, .arcnb, .py, and .sql files can be opened in Arcode.";
     setStatus(msg);
     postShellStatus(msg);
     return false;
   }
   try {
-    if (extension === ".py") {
+    if (isCodeTextFilePath(targetPath)) {
       if (!hostApi || typeof hostApi.readTextFile !== "function") {
         return await loadNotebook(targetPath);
       }
@@ -869,7 +871,7 @@ async function openNotebookFilePath(filePath, options = {}) {
     }
     if (!hostApi || typeof hostApi.readJsonFile !== "function") {
       if (isAbsoluteFilePath(targetPath)) {
-        const msg = "Opening notebook files from disk requires the ArcRho desktop app.";
+        const msg = "Opening notebook files from disk requires the Arcode desktop app.";
         setStatus(msg);
         postShellStatus(msg);
         return false;
@@ -906,8 +908,8 @@ async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConfl
   }
 
   const hostApi = getNotebookHostApi();
-  const pythonScript = isPythonScriptPath(currentNotebookPath || currentNotebookFilename);
-  const saveFnName = pythonScript ? "saveTextFile" : "saveJsonFile";
+  const codeTextFile = isCodeTextFilePath(currentNotebookPath || currentNotebookFilename);
+  const saveFnName = codeTextFile ? "saveTextFile" : "saveJsonFile";
   if (typeof hostApi?.[saveFnName] !== "function") {
     return saveNotebookViaApi(currentNotebookFilename, { closeDialog });
   }
@@ -932,9 +934,9 @@ async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConfl
   try {
     const result = await hostApi[saveFnName]({
       path: currentNotebookPath,
-      data: pythonScript ? buildPythonScriptText() : buildNotebookFileData(),
+      data: codeTextFile ? buildCodeTextFile(currentNotebookPath || currentNotebookFilename) : buildNotebookFileData(),
       filters: [
-        { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py"] },
+        { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py", "sql"] },
         { name: "All Files", extensions: ["*"] },
       ],
     });

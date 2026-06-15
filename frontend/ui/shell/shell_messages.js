@@ -177,7 +177,7 @@ export function initShellMessages() {
       shell.saveState?.();
       return;
     }
-    if (msg.type === "arcrho:scripting-dirty") {
+    if (msg.type === "arcrho:scripting-dirty" || msg.type === "arcode:scripting-dirty") {
       const inst = String(msg.inst || "").trim();
       const tab = shell.state.tabs.find(t => t.type === "scripting" && (
         (inst && t.scInst === inst) || t.iframe?.contentWindow === e.source
@@ -298,7 +298,7 @@ export function initShellMessages() {
     }
     if (msg.type === "arcrho:app-shutdown") return shell.shutdownApplication?.();
     if (msg.type === "arcrho:hotkey") { const action = String(msg.action || ""); if (action) shell.runHotkeyAction?.(action); return; }
-    if (msg.type !== "arcrho:update-active-tab-title") return;
+    if (msg.type !== "arcrho:update-active-tab-title" && msg.type !== "arcode:update-active-tab-title") return;
     const title = String(msg.title || "").trim();
     if (!title) return;
     const inst = String(msg.inst || "").trim();

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arcode</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f8f9fc;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    .splash-container {
+      text-align: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Logo container */
+    .logo-container {
+      position: relative;
+      margin-bottom: 32px;
+    }
+
+    .logo-icon {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0 auto;
+      animation: breathe 3s ease-in-out infinite;
+    }
+
+    .logo-icon img {
+      width: 120px;
+      height: 120px;
+      display: block;
+      filter: drop-shadow(0 8px 24px rgba(99, 102, 241, 0.3));
+    }
+
+    @keyframes breathe {
+      0%, 100% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.02);
+      }
+    }
+
+    /* App title */
+    .app-title {
+      font-size: 26px;
+      font-weight: 600;
+      color: #1e293b;
+      margin-bottom: 6px;
+      letter-spacing: 1px;
+    }
+
+    .app-subtitle {
+      font-size: 13px;
+      color: #64748b;
+      letter-spacing: 0.5px;
+      margin-bottom: 40px;
+    }
+
+    /* Loading section */
+    .loading-section {
+      width: 240px;
+      margin: 0 auto;
+    }
+
+    /* Progress bar */
+    .progress-container {
+      height: 3px;
+      background: #e2e8f0;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #6366f1, #818cf8);
+      border-radius: 2px;
+      transition: width 0.4s ease;
+      position: relative;
+    }
+
+    .progress-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      animation: shimmer 1.5s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    /* Loading indicator */
+    .loading-indicator {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      background: #6366f1;
+      border-radius: 50%;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .pulse-dot:nth-child(1) { animation-delay: 0s; }
+    .pulse-dot:nth-child(2) { animation-delay: 0.15s; }
+    .pulse-dot:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes pulse {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.4;
+      }
+      40% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* Status text */
+    .status-text {
+      font-size: 12px;
+      color: #94a3b8;
+      min-height: 18px;
+      transition: opacity 0.2s ease;
+    }
+
+    /* Subtle grid background */
+    .grid-bg {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(133, 135, 238, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(130, 132, 236, 0.08) 1px, transparent 1px);
+      background-size: 40px 40px;
+      z-index: 1;
+    }
+
+    /* Floating gradient orbs */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.4;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .orb-1 {
+      width: 200px;
+      height: 200px;
+      background: rgba(99, 102, 241, 0.15);
+      top: -40px;
+      right: -40px;
+      animation: float1 8s ease-in-out infinite;
+    }
+
+    .orb-2 {
+      width: 160px;
+      height: 160px;
+      background: rgba(139, 92, 246, 0.12);
+      bottom: -30px;
+      left: -30px;
+      animation: float2 10s ease-in-out infinite;
+    }
+
+    @keyframes float1 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(-15px, 15px); }
+    }
+
+    @keyframes float2 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(15px, -15px); }
+    }
+
+    /* Version info */
+    .version {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      font-size: 10px;
+      color: #cbd5e1;
+      z-index: 10;
+    }
+
+    /* Scan line effect */
+    .scan-line {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.35), transparent);
+      animation: scan 4s linear infinite;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    @keyframes scan {
+      0% { top: -1px; opacity: 0; }
+      5% { opacity: 1; }
+      95% { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Subtle background -->
+  <div class="grid-bg"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="scan-line"></div>
+
+  <!-- Main content -->
+  <div class="splash-container">
+    <div class="logo-container">
+      <div class="logo-icon" aria-label="Arcode logo">
+        <img src="../icons/icon_wing_geo_v3.svg" alt="Arcode logo" />
+      </div>
+    </div>
+
+    <h1 class="app-title">Arcode</h1>
+    <p class="app-subtitle">Actuarial Data & Analytics Platform</p>
+
+    <div class="loading-section">
+      <div class="loading-indicator">
+        <div class="pulse-dot"></div>
+        <div class="pulse-dot"></div>
+        <div class="pulse-dot"></div>
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+
+      <p class="status-text" id="statusText">Initializing...</p>
+    </div>
+  </div>
+
+  <div class="version" id="version">v1.0.3</div>
+
+  <script>
+    // Progress and status management
+    const progressBar = document.getElementById('progressBar');
+    const statusText = document.getElementById('statusText');
+
+    const stages = [
+      { progress: 10, text: 'Initializing...' },
+      { progress: 30, text: 'Starting app server...' },
+      { progress: 50, text: 'Loading components...' },
+      { progress: 70, text: 'Connecting to services...' },
+      { progress: 85, text: 'Preparing workspace...' },
+      { progress: 95, text: 'Almost ready...' },
+      { progress: 100, text: 'Launching...' }
+    ];
+
+    let currentStage = 0;
+
+    function updateProgress(progress, text) {
+      progressBar.style.width = progress + '%';
+      if (text) {
+        statusText.style.opacity = 0;
+        setTimeout(() => {
+          statusText.textContent = text;
+          statusText.style.opacity = 1;
+        }, 100);
+      }
+    }
+
+    // Listen for progress updates from main process
+    if (window.electronAPI) {
+      window.electronAPI.onSplashProgress((data) => {
+        updateProgress(data.progress, data.text);
+      });
+    } else {
+      // Fallback animation for testing
+      function autoProgress() {
+        if (currentStage < stages.length) {
+          const stage = stages[currentStage];
+          updateProgress(stage.progress, stage.text);
+          currentStage++;
+          setTimeout(autoProgress, 600 + Math.random() * 300);
+        }
+      }
+      setTimeout(autoProgress, 400);
+    }
+  </script>
+</body>
+</html>

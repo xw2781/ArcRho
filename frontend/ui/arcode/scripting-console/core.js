@@ -95,7 +95,7 @@ let isRunning = false;
 let monacoReady = false;
 let draggingCellId = null;
 let draggingCellIds = [];
-const CELL_DRAG_MIME = "application/x-arcrho-cell-id";
+const CELL_DRAG_MIME = "application/x-arcode-cell-id";
 const SHORTCUTS_STORAGE_KEY = "sc_shortcuts";
 const CELL_TYPES = Object.freeze({
   CODE: "code",
@@ -168,13 +168,13 @@ const selectedCellIds = new Set();
 const dropPlaceholderEl = document.createElement("div");
 dropPlaceholderEl.className = "sc-drop-placeholder";
 
-const SAMPLE_CODE = `# ArcRho Scripting Console
+const SAMPLE_CODE = `# Arcode Scripting Console
 # Variables persist between cells. Shift+Enter to run & advance.
 # Available: read_json, write_json, read_csv, write_csv,
 #            list_files, get_project_path, get_data_path,
 #            pd (pandas), json, os, math, log
 
-log("Hello from ArcRho!")`;
+log("Hello from Arcode!")`;
 
 // ---------------------------------------------------------------------------
 // Monaco setup

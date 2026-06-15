@@ -182,14 +182,14 @@ export function createIframeHost(deps) {
         params.set("skipLast", "1");
         iframe.addEventListener("load", () => {
           try {
-            iframe.contentWindow?.postMessage({ type: "arcrho:scripting-open-path", path: openPath }, "*");
+            iframe.contentWindow?.postMessage({ type: "arcode:scripting-open-path", path: openPath }, "*");
           } catch {
             // ignore
           }
           tab.scOpenPath = "";
         }, { once: true });
       }
-      iframe.src = `/ui/scripting_console/scripting_console.html?${params.toString()}`;
+      iframe.src = `/ui/arcode/scripting-console/?${params.toString()}`;
       tab.scFresh = false;
     }
 

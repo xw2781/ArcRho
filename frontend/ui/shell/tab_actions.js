@@ -405,30 +405,13 @@ export function openScriptingTab(options = {}) {
       });
     return null;
   }
-  const forceNew = !!options?.forceNew || !!notebookPath;
-  const existing = !forceNew ? shell.state.tabs.find(t => t.type === "scripting") : null;
-  if (existing) {
-    setActive(existing.id);
-    return existing;
-  }
-  const id = `sc_${shell.state.nextId++}`;
-  const scInst = `sc_${shell.state.nextId - 1}_${Date.now()}`;
-  const tab = {
-    id,
-    title: getFilenameFromPath(notebookPath) || "Untitled Notebook",
-    type: "scripting",
-    scInst,
-    scFresh: true,
-    scOpenPath: notebookPath || undefined,
-    scPath: notebookPath || undefined,
-    iframe: null,
-    layout: "docked",
-  };
-  shell.state.tabs.push(tab);
-  setDockedActive(id);
-  shell.render?.();
-  shell.saveState?.();
-  return tab;
+  const params = new URLSearchParams();
+  params.set("v", String(Date.now()));
+  if (notebookPath) params.set("path", notebookPath);
+  const url = `/ui/arcode/main.html?${params.toString()}`;
+  window.open(url, "_blank", "noopener");
+  shell.updateStatusBar?.(notebookPath ? `Opening ${getFilenameFromPath(notebookPath)} in Arcode...` : "Opening Arcode...");
+  return null;
 }
 
 function removeTabById(id) {

@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arcode Folder Icon Preview</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --border: #d8dee8;
+      --selected: #2563eb;
+      --selected-bg: #eff6ff;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 28px auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .summary {
+      margin-top: 4px;
+      color: var(--muted);
+    }
+
+    .selected-readout {
+      min-width: 310px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .selected-readout strong,
+    .selected-readout code {
+      display: block;
+    }
+
+    .selected-readout code {
+      margin-top: 2px;
+      color: #1d4ed8;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .candidate {
+      width: 100%;
+      min-height: 180px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+      padding: 14px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+    }
+
+    .candidate:hover {
+      background: #f8fbff;
+    }
+
+    .candidate[aria-pressed="true"] {
+      background: var(--selected-bg);
+      outline: 2px solid var(--selected);
+      outline-offset: -2px;
+    }
+
+    .candidate-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 700;
+    }
+
+    .badge {
+      min-width: 68px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      color: #475569;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .candidate[aria-pressed="true"] .badge {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .sizes {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .icon-stack {
+      display: grid;
+      gap: 9px;
+      align-items: center;
+      justify-items: center;
+    }
+
+    .icon-16 {
+      width: 16px;
+      height: 16px;
+    }
+
+    .icon-24 {
+      width: 24px;
+      height: 24px;
+    }
+
+    .icon-48 {
+      width: 48px;
+      height: 48px;
+    }
+
+    .explorer-sample {
+      min-width: 0;
+      padding: 8px 0;
+      border: 1px solid #e2e8f0;
+      background: #f7f9fc;
+    }
+
+    .row {
+      height: 24px;
+      display: grid;
+      grid-template-columns: 16px 18px minmax(0, 1fr);
+      align-items: center;
+      gap: 2px;
+      padding: 0 8px;
+      color: #334155;
+      font-size: 12px;
+    }
+
+    .row.selected {
+      background: #dbeafe;
+      color: #111827;
+    }
+
+    .twistie {
+      width: 12px;
+      height: 12px;
+      color: #64748b;
+    }
+
+    .row img {
+      display: block;
+      width: 16px;
+      height: 16px;
+      object-fit: contain;
+    }
+
+    .label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .filename {
+      color: var(--muted);
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 11px;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .panel {
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .current-icon {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+
+    .current-icon img {
+      width: 48px;
+      height: 48px;
+    }
+
+    @media (max-width: 860px) {
+      header,
+      .comparison {
+        display: grid;
+      }
+
+      .selected-readout {
+        min-width: 0;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Folder Icon Candidates</h1>
+        <div class="summary">Click a candidate to mark your selection for replacing <code>ui/shared/file-icons/icons/folder-base.svg</code>.</div>
+      </div>
+      <div class="selected-readout" aria-live="polite">
+        <strong id="selectedName">Selected: Candidate 01 Classic</strong>
+        <code id="selectedFile">folder-candidates/folder-candidate-01-classic.svg</code>
+      </div>
+    </header>
+
+    <section class="comparison">
+      <div class="panel">
+        <h2>Current</h2>
+        <div class="current-icon">
+          <img src="icons/folder-base.svg" alt="">
+          <div>
+            <strong>folder-base.svg</strong>
+            <div class="summary">The current brown Material folder icon.</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Explorer Baseline</h2>
+        <div class="explorer-sample" aria-label="Current explorer row sample">
+          <div class="row selected">
+            <svg class="twistie" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <img src="icons/folder-base.svg" alt="">
+            <span class="label">Arcode Workspace</span>
+          </div>
+          <div class="row">
+            <span></span>
+            <img src="icons/python.svg" alt="">
+            <span class="label">app.py</span>
+          </div>
+          <div class="row">
+            <span></span>
+            <img src="icons/json.svg" alt="">
+            <span class="label">package.json</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid" aria-label="Folder icon candidates">
+      <div class="card">
+        <button class="candidate" type="button" data-name="Candidate 01 Classic" data-file="folder-candidates/folder-candidate-01-classic.svg" aria-pressed="true">
+          <span class="candidate-title">Classic Amber <span class="badge">Selected</span></span>
+          <span class="sizes">
+            <span class="icon-stack">
+              <img class="icon-16" src="folder-candidates/folder-candidate-01-classic.svg" alt="">
+              <img class="icon-24" src="folder-candidates/folder-candidate-01-classic.svg" alt="">
+              <img class="icon-48" src="folder-candidates/folder-candidate-01-classic.svg" alt="">
+            </span>
+            <span class="explorer-sample">
+              <span class="row selected"><svg class="twistie" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><img src="folder-candidates/folder-candidate-01-classic.svg" alt=""><span class="label">projects</span></span>
+              <span class="row"><span></span><img src="icons/python.svg" alt=""><span class="label">analysis.py</span></span>
+            </span>
+          </span>
+          <span class="filename">folder-candidate-01-classic.svg</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <button class="candidate" type="button" data-name="Candidate 02 Steel" data-file="folder-candidates/folder-candidate-02-steel.svg" aria-pressed="false">
+          <span class="candidate-title">Steel Outline <span class="badge">Pick</span></span>
+          <span class="sizes">
+            <span class="icon-stack">
+              <img class="icon-16" src="folder-candidates/folder-candidate-02-steel.svg" alt="">
+              <img class="icon-24" src="folder-candidates/folder-candidate-02-steel.svg" alt="">
+              <img class="icon-48" src="folder-candidates/folder-candidate-02-steel.svg" alt="">
+            </span>
+            <span class="explorer-sample">
+              <span class="row selected"><svg class="twistie" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><img src="folder-candidates/folder-candidate-02-steel.svg" alt=""><span class="label">projects</span></span>
+              <span class="row"><span></span><img src="icons/python.svg" alt=""><span class="label">analysis.py</span></span>
+            </span>
+          </span>
+          <span class="filename">folder-candidate-02-steel.svg</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <button class="candidate" type="button" data-name="Candidate 03 Cobalt" data-file="folder-candidates/folder-candidate-03-cobalt.svg" aria-pressed="false">
+          <span class="candidate-title">Cobalt Workbench <span class="badge">Pick</span></span>
+          <span class="sizes">
+            <span class="icon-stack">
+              <img class="icon-16" src="folder-candidates/folder-candidate-03-cobalt.svg" alt="">
+              <img class="icon-24" src="folder-candidates/folder-candidate-03-cobalt.svg" alt="">
+              <img class="icon-48" src="folder-candidates/folder-candidate-03-cobalt.svg" alt="">
+            </span>
+            <span class="explorer-sample">
+              <span class="row selected"><svg class="twistie" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><img src="folder-candidates/folder-candidate-03-cobalt.svg" alt=""><span class="label">projects</span></span>
+              <span class="row"><span></span><img src="icons/python.svg" alt=""><span class="label">analysis.py</span></span>
+            </span>
+          </span>
+          <span class="filename">folder-candidate-03-cobalt.svg</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <button class="candidate" type="button" data-name="Candidate 04 Mint" data-file="folder-candidates/folder-candidate-04-mint.svg" aria-pressed="false">
+          <span class="candidate-title">Mint Project <span class="badge">Pick</span></span>
+          <span class="sizes">
+            <span class="icon-stack">
+              <img class="icon-16" src="folder-candidates/folder-candidate-04-mint.svg" alt="">
+              <img class="icon-24" src="folder-candidates/folder-candidate-04-mint.svg" alt="">
+              <img class="icon-48" src="folder-candidates/folder-candidate-04-mint.svg" alt="">
+            </span>
+            <span class="explorer-sample">
+              <span class="row selected"><svg class="twistie" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><img src="folder-candidates/folder-candidate-04-mint.svg" alt=""><span class="label">projects</span></span>
+              <span class="row"><span></span><img src="icons/python.svg" alt=""><span class="label">analysis.py</span></span>
+            </span>
+          </span>
+          <span class="filename">folder-candidate-04-mint.svg</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <button class="candidate" type="button" data-name="Candidate 05 Graphite" data-file="folder-candidates/folder-candidate-05-graphite.svg" aria-pressed="false">
+          <span class="candidate-title">Graphite Compact <span class="badge">Pick</span></span>
+          <span class="sizes">
+            <span class="icon-stack">
+              <img class="icon-16" src="folder-candidates/folder-candidate-05-graphite.svg" alt="">
+              <img class="icon-24" src="folder-candidates/folder-candidate-05-graphite.svg" alt="">
+              <img class="icon-48" src="folder-candidates/folder-candidate-05-graphite.svg" alt="">
+            </span>
+            <span class="explorer-sample">
+              <span class="row selected"><svg class="twistie" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><img src="folder-candidates/folder-candidate-05-graphite.svg" alt=""><span class="label">projects</span></span>
+              <span class="row"><span></span><img src="icons/python.svg" alt=""><span class="label">analysis.py</span></span>
+            </span>
+          </span>
+          <span class="filename">folder-candidate-05-graphite.svg</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <button class="candidate" type="button" data-name="Candidate 06 Outline" data-file="folder-candidates/folder-candidate-06-outline.svg" aria-pressed="false">
+          <span class="candidate-title">Light Outline <span class="badge">Pick</span></span>
+          <span class="sizes">
+            <span class="icon-stack">
+              <img class="icon-16" src="folder-candidates/folder-candidate-06-outline.svg" alt="">
+              <img class="icon-24" src="folder-candidates/folder-candidate-06-outline.svg" alt="">
+              <img class="icon-48" src="folder-candidates/folder-candidate-06-outline.svg" alt="">
+            </span>
+            <span class="explorer-sample">
+              <span class="row selected"><svg class="twistie" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><img src="folder-candidates/folder-candidate-06-outline.svg" alt=""><span class="label">projects</span></span>
+              <span class="row"><span></span><img src="icons/python.svg" alt=""><span class="label">analysis.py</span></span>
+            </span>
+          </span>
+          <span class="filename">folder-candidate-06-outline.svg</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const storageKey = "arcode-folder-icon-preview-selection";
+    const candidates = Array.from(document.querySelectorAll(".candidate"));
+    const selectedName = document.getElementById("selectedName");
+    const selectedFile = document.getElementById("selectedFile");
+
+    function selectCandidate(button) {
+      candidates.forEach((candidate) => {
+        const selected = candidate === button;
+        candidate.setAttribute("aria-pressed", selected ? "true" : "false");
+        const badge = candidate.querySelector(".badge");
+        if (badge) badge.textContent = selected ? "Selected" : "Pick";
+      });
+      selectedName.textContent = `Selected: ${button.dataset.name}`;
+      selectedFile.textContent = button.dataset.file;
+      localStorage.setItem(storageKey, button.dataset.file);
+    }
+
+    candidates.forEach((candidate) => {
+      candidate.addEventListener("click", () => selectCandidate(candidate));
+    });
+
+    const saved = localStorage.getItem(storageKey);
+    const savedCandidate = candidates.find((candidate) => candidate.dataset.file === saved);
+    if (savedCandidate) selectCandidate(savedCandidate);
+  </script>
+</body>
+</html>

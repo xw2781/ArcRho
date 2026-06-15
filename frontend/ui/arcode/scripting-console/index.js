@@ -1,7 +1,26 @@
+function resetArcodeConsoleZoom() {
+  if (!/^\/ui\/arcode\/scripting-console(?:\/|$)/i.test(window.location.pathname || "")) return;
+  try {
+    localStorage.setItem("arcode_ui_zoom_pct", "100");
+    localStorage.setItem("arcode_zoom_mode", "css");
+    localStorage.setItem("arcode_statusbar_h", "28");
+  } catch {
+    // Zoom preferences are best-effort only.
+  }
+  const root = document.documentElement;
+  const body = document.body;
+  if (root) {
+    root.style.zoom = "1";
+    root.style.setProperty("--ui-zoom", "1");
+    root.style.setProperty("--app-safe-bottom", "28px");
+  }
+  if (body) body.style.zoom = "";
+  window.ArcodeZoomBridge?.applyPageZoomValue?.(100, 28);
+}
 
-window.ArcRhoZoomBridge?.wirePageZoomBridge();
-
-
+resetArcodeConsoleZoom();
+window.ArcodeZoomBridge?.wirePageZoomBridge();
+resetArcodeConsoleZoom();
 // ---------------------------------------------------------------------------
 // Resize handle (panels)
 // ---------------------------------------------------------------------------
@@ -292,7 +311,7 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     event.stopPropagation();
     window.parent?.postMessage(
-      { type: "arcrho:hotkey", action: event.shiftKey ? "file_save_as" : "file_save" },
+      { type: "arcode:hotkey", action: event.shiftKey ? "file_save_as" : "file_save" },
       "*",
     );
     return;
@@ -323,54 +342,54 @@ document.addEventListener("keydown", (event) => {
 
 window.addEventListener("message", (event) => {
   const type = event?.data?.type;
-  if (type === "arcrho:scripting-save") {
+  if (type === "arcode:scripting-save") {
     void requestNotebookSave(false);
     return;
   }
-  if (type === "arcrho:scripting-save-as") {
+  if (type === "arcode:scripting-save-as") {
     void requestNotebookSave(true);
     return;
   }
-  if (type === "arcrho:scripting-open") {
+  if (type === "arcode:scripting-open") {
     void openOpenNbDialog();
     return;
   }
-  if (type === "arcrho:scripting-open-path") {
+  if (type === "arcode:scripting-open-path") {
     void openNotebookFilePath(event.data?.path || "");
     return;
   }
-  if (type === "arcrho:scripting-rename-notebook") {
+  if (type === "arcode:scripting-rename-notebook") {
     void renameCurrentNotebook();
     return;
   }
-  if (type === "arcrho:scripting-toggle-line-numbers") {
+  if (type === "arcode:scripting-toggle-line-numbers") {
     toggleCodeCellLineNumbers();
     return;
   }
-  if (type === "arcrho:scripting-toggle-exec-time") {
+  if (type === "arcode:scripting-toggle-exec-time") {
     toggleExecTimeVisible();
     return;
   }
-  if (type === "arcrho:scripting-render-all-markdown") {
+  if (type === "arcode:scripting-render-all-markdown") {
     renderAllMarkdownCells({ setStatusMessage: true });
     return;
   }
-  if (type === "arcrho:autosave-toggle") {
+  if (type === "arcode:autosave-toggle") {
     setNotebookAutoSaveEnabled(!!event.data.enabled);
     return;
   }
-  if (type === "arcrho:assistant-context-request") {
+  if (type === "arcode:assistant-context-request") {
     const requestId = event.data.requestId || "";
     try {
       window.parent?.postMessage({
-        type: "arcrho:assistant-context-result",
+        type: "arcode:assistant-context-result",
         requestId,
         context: buildScriptingAssistantContext(),
       }, "*");
     } catch {}
     return;
   }
-  if (type === "arcrho:assistant-json-updated") {
+  if (type === "arcode:assistant-json-updated") {
     const updatedPath = String(event.data.path || "").trim();
     if (!updatedPath || updatedPath === currentNotebookPath) {
       void checkNotebookDiskForChanges({ force: true });

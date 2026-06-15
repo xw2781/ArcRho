@@ -1,0 +1,29 @@
+/* Shared Arcode scrollbar styling. Import this stylesheet in pages that should use the app scrollbar. */
+::-webkit-scrollbar {
+  width: 20px;
+  height: 20px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(182, 182, 182, 0.2);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s ease;
+}
+
+body.show-scrollbar ::-webkit-scrollbar-thumb {
+  background-color: rgba(120, 120, 120, 0.267);
+}
+
+body.show-scrollbar ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(90, 90, 90, 0.233);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(90, 90, 90, 0.377);
+}

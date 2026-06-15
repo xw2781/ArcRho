@@ -111,15 +111,15 @@ function getDropHint(event) {
     return {
       supported: true,
       title: count === 1
-        ? "Drop to open notebook in Scripting Console"
-        : `Drop to open ${count} scripting files in Scripting Console`,
+        ? "Drop to open notebook in Arcode"
+        : `Drop to open ${count} scripting files in Arcode`,
       detail: count === 1 ? notebookEntries.names[0] : ".ipynb, .arcnb, and .py files are supported.",
     };
   }
   if (!fileEntries.length) {
     return {
       supported: true,
-      title: "Drop notebook or Python file to open in Scripting Console",
+      title: "Drop notebook or Python file to open in Arcode",
       detail: ".ipynb, .arcnb, and .py files are supported.",
     };
   }
@@ -183,7 +183,7 @@ export function handleShellFileDrop(event) {
 
   const notebookPaths = getDroppedNotebookPaths(event);
   if (!notebookPaths.length) {
-    shell.updateStatusBar?.("Drop an .ipynb, .arcnb, or .py scripting file to open it in Scripting Console.", { tone: "warning" });
+    shell.updateStatusBar?.("Drop an .ipynb, .arcnb, or .py scripting file to open it in Arcode.", { tone: "warning" });
     return true;
   }
 
@@ -192,7 +192,7 @@ export function handleShellFileDrop(event) {
   }
 
   const label = notebookPaths.length === 1 ? "scripting file" : `${notebookPaths.length} scripting files`;
-  shell.updateStatusBar?.(`Opening ${label} in Scripting Console...`);
+  shell.updateStatusBar?.(`Opening ${label} in Arcode...`);
   return true;
 }
 

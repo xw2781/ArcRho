@@ -1,0 +1,161 @@
+﻿<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Arcode</title>
+  <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
+  <link rel="stylesheet" href="/ui/arcode/main.css?v=20260614a"/>
+  <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260615a"/>
+</head>
+<body>
+  <div id="customTitlebar" class="host-drag-region">
+    <div id="titlebarTitle">
+      <svg class="titlebarLogo" viewBox="0 0 512 512" aria-hidden="true">
+        <defs>
+          <linearGradient id="arcodeTitlebarWingGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#0891b2"/>
+            <stop offset="45%" style="stop-color:#1d4ed8"/>
+            <stop offset="100%" style="stop-color:#8b5cf6"/>
+          </linearGradient>
+        </defs>
+        <rect x="32" y="32" width="448" height="448" rx="88" fill="#fafafa"/>
+        <path d="M 85 420 L 85 200 Q 170 120 360 70 L 85 420 Z" fill="url(#arcodeTitlebarWingGrad)" opacity="0.88"/>
+        <path d="M 85 420 L 130 250 Q 200 180 400 120 L 85 420 Z" fill="url(#arcodeTitlebarWingGrad)" opacity="0.5"/>
+        <path d="M 85 420 L 180 300 Q 240 250 430 180 L 85 420 Z" fill="url(#arcodeTitlebarWingGrad)" opacity="0.25"/>
+      </svg>
+      Arcode
+    </div>
+    <div class="titlebarControls host-nodrag">
+      <div class="titlebarBtn" id="titlebarMinBtn" title="Minimize" aria-label="Minimize">
+        <svg class="titlebarIcon" viewBox="0 0 10 10" aria-hidden="true">
+          <line x1="2" y1="7" x2="8" y2="7"></line>
+        </svg>
+      </div>
+      <div class="titlebarBtn" id="titlebarMaxBtn" title="Maximize" aria-label="Maximize">
+        <svg class="titlebarIcon" viewBox="0 0 10 10" aria-hidden="true">
+          <rect x="2" y="2" width="6" height="6" rx="0.6"></rect>
+        </svg>
+      </div>
+      <div class="titlebarBtn" id="titlebarCloseBtn" title="Close" aria-label="Close">
+        <svg class="titlebarIcon" viewBox="0 0 10 10" aria-hidden="true">
+          <line x1="2" y1="2" x2="8" y2="8"></line>
+          <line x1="8" y1="2" x2="2" y2="8"></line>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="menubar host-nodrag" id="menubar">
+    <div class="menu" data-menu="file">File</div>
+    <div class="menu" data-menu="edit">Edit</div>
+    <div class="menu" data-menu="view">View</div>
+    <div class="menu" data-menu="settings">Settings</div>
+    <div class="menu" data-menu="window">Window</div>
+    <div class="menu" data-menu="help">Help</div>
+    <div class="menu-spacer"></div>
+  </div>
+
+  <div id="fileMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="new-notebook"><span>New Notebook</span><span class="menuShortcut">Ctrl+N</span></div>
+    <div class="menuItem" data-action="open-file"><span>Open File...</span><span class="menuShortcut">Ctrl+O</span></div>
+    <div class="menuItem" data-action="select-folder"><span>Select Workspace Folder...</span></div>
+    <div class="menuItem" data-action="add-folder"><span>Add Workspace Folder...</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="save"><span>Save</span><span class="menuShortcut">Ctrl+S</span></div>
+    <div class="menuItem" data-action="save-as"><span>Save As...</span><span class="menuShortcut">Ctrl+Shift+S</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="close-tab"><span>Close Tab</span><span class="menuShortcut">Ctrl+W</span></div>
+    <div class="menuItem" data-action="quit"><span>Quit Application</span><span class="menuShortcut">Ctrl+Q</span></div>
+  </div>
+
+  <div id="editMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="render-markdown"><span>Render All Markdown Cells</span></div>
+  </div>
+
+  <div id="viewMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="toggle-line-numbers"><span>Toggle Line Numbers</span><span class="menuShortcut">Ctrl+Shift+L</span></div>
+    <div class="menuItem" data-action="toggle-exec-time"><span>Toggle Execution Time</span><span class="menuShortcut">Ctrl+Shift+E</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="zoom-in"><span>Zoom In</span><span class="menuShortcut">Ctrl+=</span></div>
+    <div class="menuItem" data-action="zoom-out"><span>Zoom Out</span><span class="menuShortcut">Ctrl+-</span></div>
+    <div class="menuItem" data-action="zoom-reset"><span>Reset Zoom</span><span class="menuShortcut">Ctrl+0</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="refresh-tab"><span>Refresh Tab</span><span class="menuShortcut">Ctrl+R</span></div>
+    <div class="menuItem" data-action="hard-refresh"><span>Hard Refresh</span><span class="menuShortcut">Ctrl+Shift+R</span></div>
+  </div>
+
+  <div id="settingsMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="clear-cache-reload"><span>Clear Cache & Reload</span></div>
+  </div>
+
+  <div id="windowMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="new-window"><span>New Arcode Window</span><span class="menuShortcut">Ctrl+Shift+N</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="close-others"><span>Close Other Tabs</span></div>
+    <div class="menuItem" data-action="close-all"><span>Close All Tabs</span></div>
+    <div class="menuSep"></div>
+    <div class="menuItem" data-action="minimize-window"><span>Minimize</span></div>
+    <div class="menuItem" data-action="toggle-maximize"><span>Maximize / Restore</span></div>
+  </div>
+
+  <div id="helpMenuDropdown" class="menuDropdown">
+    <div class="menuItem" data-action="view-dev-panel"><span>View Dev Panel</span><span class="menuShortcut">Ctrl+Shift+I</span></div>
+  </div>
+
+  <div id="tabCtxMenu" class="host-nodrag">
+    <div class="tabCtxItem" data-action="rename">Rename Notebook</div>
+    <div class="tabCtxItem" data-action="open-file-location">Open File Location</div>
+    <div class="tabCtxItem" data-action="copy-file-path">Copy File Path</div>
+    <div class="tabCtxItem" data-action="close">Close</div>
+    <div class="tabCtxItem" data-action="close-others">Close Others</div>
+    <div class="tabCtxItem" data-action="close-all">Close All</div>
+  </div>
+
+  <div id="arcodeCreateMenu" class="menuDropdown host-nodrag" aria-label="Create new item">
+    <div class="menuItem" data-action="create-python"><span>Python</span></div>
+    <div class="menuItem" data-action="create-notebook"><span>Notebook</span></div>
+    <div class="menuItem" data-action="create-mssql"><span>MSSQL</span></div>
+    <div class="menuItem" data-action="create-snowflake"><span>Snowflake</span></div>
+  </div>
+
+  <div id="arcodeApp">
+    <header id="arcodeTitlebar" class="topbar">
+      <div class="brand arcodeTopBrand host-nodrag">Arcode</div>
+      <nav id="arcodeTabs" class="tabs host-nodrag" aria-label="Open files"></nav>
+      <div id="arcodeWindowActions" class="host-nodrag">
+        <button id="arcodeNewBtn" class="arcodeIconBtn" type="button" title="New" aria-label="New">+</button>
+        <button id="arcodeOpenBtn" class="arcodeTextBtn" type="button">Open</button>
+      </div>
+      <div class="autosaveToggle host-nodrag" id="arcodeAutoSaveToggle">
+        <span class="autosaveLabel">AutoSave</span>
+        <button class="autoSwitch on" id="arcodeAutoSaveSwitch" type="button" role="switch" aria-checked="true">
+          <span class="autoKnob"></span>
+          <span class="autoState" id="arcodeAutoSaveState">On</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="arcodeMain">
+      <section id="arcodeHome" aria-label="Arcode home"></section>
+      <section id="arcodeFrameHost" aria-label="Open code files"></section>
+    </main>
+
+    <footer id="arcodeStatus">
+      <span id="arcodeStatusText">Ready</span>
+      <div id="arcodeStatusRight">
+        <span id="arcodeTabCount">No files open</span>
+        <div id="zoomControls" class="host-nodrag" title="Zoom">
+          <button class="zoomBtn" id="zoomOutBtn" type="button" aria-label="Zoom out">-</button>
+          <input id="zoomRange" type="range" min="70" max="160" step="10" value="100" aria-label="Zoom"/>
+          <button class="zoomBtn" id="zoomInBtn" type="button" aria-label="Zoom in">+</button>
+          <span id="zoomValue">100%</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="/ui/arcode/main.js?v=20260614a"></script>
+</body>
+</html>
+
