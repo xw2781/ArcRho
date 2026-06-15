@@ -15,7 +15,8 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 | `ui/workflow/workflow.html` | 1 external script | - |
 | `ui/project_settings/project_settings.html` | 1 external script | - |
 | `ui/project_instance/project_instance.html` | 1 external script | - |
-| `ui/scripting_console/scripting_console.html` | 9 external scripts | - |
+| `ui/arcode/main.html` | 1 external script | - |
+| `ui/arcode/scripting-console/index.html` | 9 external scripts | - |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
@@ -25,7 +26,8 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 - [`docs/ui/dfm.md`](dfm.md) - DFM feature index.
 - [`docs/ui/workflow.md`](workflow.md) - Workflow feature index.
 - [`docs/ui/project_settings.md`](project_settings.md) - Project settings feature index.
-- [`docs/ui/scripting_console.md`](scripting_console.md) - Scripting console feature index.
+- [`docs/ui/arcode.md`](arcode.md) - Arcode scripting workspace feature index.
+- [`docs/ui/ai_assistant.md`](ai_assistant.md) - Shared ArcBot assistant widget index.
 <!-- AUTO-GEN:END -->
 
 ## Non-Negotiable Contracts
@@ -41,8 +43,8 @@ High-risk files that must follow contracts:
 - `ui/dataset/dataset_main.js`
 - `ui/dfm/dfm.html` and `ui/dfm/dfm_*.js`
 - `ui/project_settings/project_settings.js`
-- `ui/scripting_console/scripting_console*.js` and `ui/scripting_console/scripting_console.html`
-- `ui/arcode/arcode_shell.js` and `ui/arcode/index.html`
+- `ui/arcode/main.js`, `ui/arcode/main.html`, and `ui/arcode/scripting-console/*`
+- `ui/ai-assistant/*`
 <!-- MANUAL:END -->
 
 ## Design References
@@ -70,13 +72,13 @@ High-risk files that must follow contracts:
 3. DFM behavior change -> [`dfm.md`](dfm.md).
 4. Workflow editor change -> [`workflow.md`](workflow.md).
 5. Project settings flow change -> [`project_settings.md`](project_settings.md).
-6. Scripting console change -> [`scripting_console.md`](scripting_console.md).
-7. Arcode standalone scripting app change -> [`arcode.md`](arcode.md).
+6. Arcode scripting app or notebook/editor change -> [`arcode.md`](arcode.md).
+7. Shared ArcBot widget change -> [`ai_assistant.md`](ai_assistant.md).
 <!-- MANUAL:END -->
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Shell/iframe messaging changes can break hotkeys and dirty-state sync.
 - Endpoint path changes in JS can silently break page-level features.
-- Arcode shares scripting-console iframes with ArcRho, so scripting message changes must account for both hosts.
+- Arcode is the canonical scripting UI; keep ArcRho shell launch and macro edit flows coordinated with Arcode window/file-opening behavior.
 <!-- MANUAL:END -->

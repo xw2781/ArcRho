@@ -7,12 +7,12 @@ Excluded directories: `__pycache__`, `dist`, `node-portable`, `node-v24.13.0-win
 ## Top-Level Counts
 | Top-Level Segment | File Count |
 | --- | --- |
-| `(root)` | 11 |
-| `app_server` | 57 |
-| `build` | 44 |
-| `changes` | 302 |
+| `(root)` | 12 |
+| `app_server` | 59 |
+| `build` | 48 |
+| `changes` | 306 |
 | `docs` | 60 |
 | `electron` | 4 |
 | `icons` | 19 |
 | `tools` | 2 |
-| `ui` | 222 |
+| `ui` | 279 |

@@ -29,7 +29,7 @@ MUST:
 - Keep `ui/shell/ui_shell.js` as tab/iframe orchestration layer.
 - Keep feature pages (`dataset`, `workflow`, `DFM`, `project_settings`) isolated in iframe contexts.
 - Keep cross-context communication via explicit `arcrho:*` messages.
-- Keep `ui/arcode/arcode_shell.js` as the standalone Arcode app shell; it may host scripting-console iframes, but it must not depend on the ArcRho main shell runtime being open.
+- Keep `ui/arcode/main.js` as the standalone Arcode app shell; it may host `ui/arcode/scripting-console/` iframes, but it must not depend on the ArcRho main shell runtime being open.
 
 MUST NOT:
 - Collapse all feature logic into shell context.

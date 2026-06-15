@@ -59,7 +59,8 @@ FRONTEND_ENTRY_HTMLS = [
     "ui/workflow/workflow.html",
     "ui/project_settings/project_settings.html",
     "ui/project_instance/project_instance.html",
-    "ui/scripting_console/scripting_console.html",
+    "ui/arcode/main.html",
+    "ui/arcode/scripting-console/index.html",
 ]
 
 FRONTEND_PURPOSE_MAX_LINES = 6
@@ -534,18 +535,31 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/shared/path_tree_picker.js", "Shared path tree body renderer used by the embedded reserving-class picker."),
         ],
     },
-    "scripting_console": {
-        "doc": "docs/ui/scripting_console.md",
-        "html": ["ui/scripting_console/scripting_console.html"],
+    "arcode": {
+        "doc": "docs/ui/arcode.md",
+        "html": ["ui/arcode/main.html", "ui/arcode/scripting-console/index.html"],
         "files": [
-            ("ui/scripting_console/scripting_console.html", "Notebook-style scripting console page layout."),
-            ("ui/scripting_console/scripting_console.js", "Scripting console bootstrap and shell integration."),
-            ("ui/scripting_console/scripting_console_core.js", "Notebook state, cell model, and command-mode helpers."),
-            ("ui/scripting_console/scripting_console_cells.js", "Cell rendering, selection, markdown, and drag/drop behavior."),
-            ("ui/scripting_console/scripting_console_execution.js", "Code execution, streaming output, and cancellation handling."),
-            ("ui/scripting_console/scripting_console_shortcuts.js", "Keyboard shortcut parsing, customization, and persistence."),
-            ("ui/scripting_console/scripting_console_panels.js", "Sidebar, TOC, variables, and API reference panels."),
-            ("ui/scripting_console/scripting_console_notebook_io.js", "Notebook save/open and `.ipynb` import/export helpers."),
+            ("ui/arcode/main.html", "Arcode workspace app frame and menus."),
+            ("ui/arcode/main.js", "Arcode shell, tabs, explorer, file opening, and command routing."),
+            ("ui/arcode/main.css", "Arcode workspace and scripting-console styling."),
+            ("ui/arcode/scripting-console/index.html", "Arcode notebook/code editor page layout."),
+            ("ui/arcode/scripting-console/core.js", "Notebook state, cell model, and command-mode helpers."),
+            ("ui/arcode/scripting-console/cells.js", "Cell rendering, selection, markdown, and drag/drop behavior."),
+            ("ui/arcode/scripting-console/execution.js", "Code execution, streaming output, and cancellation handling."),
+            ("ui/arcode/scripting-console/shortcuts.js", "Keyboard shortcut parsing, customization, and persistence."),
+            ("ui/arcode/scripting-console/panels.js", "Sidebar, TOC, variables, and API reference panels."),
+            ("ui/arcode/scripting-console/notebook-io.js", "Notebook save/open and `.ipynb` import/export helpers."),
+        ],
+    },
+    "ai_assistant": {
+        "doc": "docs/ui/ai_assistant.md",
+        "html": [],
+        "files": [
+            ("ui/ai-assistant/index.js", "Shared ArcBot widget behavior and host-configurable message/storage contracts."),
+            ("ui/ai-assistant/template.js", "Idempotent assistant launcher and panel DOM creation."),
+            ("ui/ai-assistant/assistant.css", "Shared assistant launcher, panel, composer, message, history, and activity styling."),
+            ("ui/ai-assistant/arcrho.js", "ArcRho host adapter for arcrho messages, storage keys, and DFM edit approval."),
+            ("ui/ai-assistant/arcode.js", "Arcode host adapter for arcode notebook context messages and storage keys."),
         ],
     },
 }
@@ -767,7 +781,8 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
                 3. DFM behavior change -> [`dfm.md`](dfm.md).
                 4. Workflow editor change -> [`workflow.md`](workflow.md).
                 5. Project settings flow change -> [`project_settings.md`](project_settings.md).
-                6. Scripting console change -> [`scripting_console.md`](scripting_console.md).
+                6. Arcode scripting app or notebook/editor change -> [`arcode.md`](arcode.md).
+                7. Shared ArcBot widget change -> [`ai_assistant.md`](ai_assistant.md).
                 """
             ),
             "Known Risks": dedent(
@@ -867,12 +882,19 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "tasks": "1. Change project instance launch behavior: update Project Settings sender and shell message/tab routing together.\n2. Change dataset-window behavior: update `project_instance.js` while preserving the reused Dataset Viewer page contract.",
             "risks": "- Nested dataset iframes post messages to the project instance page before reaching the shell.\n- Dataset viewer query parameters must remain compatible with normal top-level dataset tabs.",
         },
-        "scripting_console": {
-            "purpose": "Notebook-style scripting workspace for code, markdown, raw cells, execution output, and sidebar panels.",
-            "external": "- Called from shell as a scripting tab iframe.\n- Uses `/scripting/*` app-server routes for execution, variables, preferences, and notebook persistence.\n- Sends `arcrho:*` status and command messages to/from the shell.",
-            "data": "- Stores per-tab draft notebook state with tab-scoped browser storage keys.\n- Saves notebooks as `.ipynb` files under the user scripting directory by default.\n- Persists keyboard shortcut preferences under APPDATA with browser storage fallback.",
-            "tasks": "1. Change notebook model or persistence: update core state, notebook I/O, app-server scripting routes if needed, and docs together.\n2. Change cell behavior or shortcuts: update cells/core/shortcuts modules and verify command/edit mode interactions.\n3. Change sidebar or visual layout: update panels/cells/html together and keep INDEX.md as a short pointer only.",
-            "risks": "- Keyboard handling is sensitive to edit mode, command mode, IME/composition, and Monaco focus.\n- Multi-cell selection, queueing, markdown folding, and drag/drop share state and can regress each other.\n- Long feature notes should stay in this module doc or release fragments, not in `docs/ui/INDEX.md`.",
+        "arcode": {
+            "purpose": "Canonical Arcode workspace for notebooks, scripts, SQL files, execution output, file explorer, and assistant context.",
+            "external": "- Opened by ArcRho through the Electron `openArcodeWindow` bridge or as standalone `ARCRHO_APP_MODE=arcode`.\n- Uses `/scripting/*` app-server routes for execution, variables, preferences, and notebook persistence.\n- Sends `arcode:*` status and command messages between the Arcode shell and scripting-console iframes.",
+            "data": "- Stores Arcode recent files, workspace folders, zoom, and tab-local notebook drafts in browser storage.\n- Saves notebooks and scripts through Electron host file APIs or under the user scripting directory by default.\n- Standalone Arcode mode uses `Documents\\Arcode\\scripts` and `%APPDATA%\\Arcode` defaults.",
+            "tasks": "1. Change Arcode shell behavior: update `ui/arcode/main.js`, Electron host APIs, and docs together.\n2. Change notebook model or persistence: update `ui/arcode/scripting-console/*`, app-server scripting routes if needed, and docs together.\n3. Change standalone packaging: update `electron-builder.arcode.json`, `build/arcode_server.spec`, package scripts, and build docs.",
+            "risks": "- Keyboard handling is sensitive to edit mode, command mode, IME/composition, and Monaco focus.\n- Multi-cell selection, queueing, markdown folding, and drag/drop share state and can regress each other.\n- ArcRho macros rely on ArcRho-only scripting macro endpoints that are intentionally excluded from the standalone Arcode route surface.",
+        },
+        "ai_assistant": {
+            "purpose": "Shared ArcBot widget package used by both the ArcRho shell and Arcode shell.",
+            "external": "- Hosts configure the widget through `ui/ai-assistant/arcrho.js` or `ui/ai-assistant/arcode.js`.\n- Uses Electron preload `codexAssistant*` APIs without changing IPC names.\n- Exchanges assistant context/update messages with active iframes using host-specific namespaces.",
+            "data": "- Uses host-specific storage prefixes so ArcRho keeps `arcrho_ai_assistant_*` keys and Arcode keeps `arcode_ai_assistant_*` keys.\n- Persists chat/session data through the existing Electron assistant host APIs.\n- Creates the assistant DOM once per host page at runtime.",
+            "tasks": "1. Change shared assistant UI or behavior: update `ui/ai-assistant/index.js`, `template.js`, `assistant.css`, and this doc together.\n2. Change host-specific message/storage behavior: update the matching adapter and all producers/consumers for that namespace.",
+            "risks": "- The widget is shared by two app shells, so hardcoded app names, storage keys, or message namespaces can regress one host.\n- ArcRho DFM edit approval must stay disabled in Arcode and enabled only through the ArcRho adapter.",
         },
     }
 
@@ -1267,7 +1289,8 @@ def render_frontend_index_key_files(doc_path: str) -> str:
         ("docs/ui/dfm.md", "DFM feature index."),
         ("docs/ui/workflow.md", "Workflow feature index."),
         ("docs/ui/project_settings.md", "Project settings feature index."),
-        ("docs/ui/scripting_console.md", "Scripting console feature index."),
+        ("docs/ui/arcode.md", "Arcode scripting workspace feature index."),
+        ("docs/ui/ai_assistant.md", "Shared ArcBot assistant widget index."),
     ]
     return render_key_files_block(doc_path, files)
 
