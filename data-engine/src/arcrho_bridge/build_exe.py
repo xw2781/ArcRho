@@ -77,6 +77,8 @@ def build_exe():
         SOURCE_ROOT,
         "--hidden-import",
         "utils",
+        "--hidden-import",
+        "win32timezone",
         f"--icon={ICON}",
         "--add-data",
         f"{ICON};.",

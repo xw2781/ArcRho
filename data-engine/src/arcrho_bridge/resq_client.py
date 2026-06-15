@@ -4,6 +4,7 @@ import threading
 
 import pythoncom
 import win32com.client
+import win32timezone  # noqa: F401 - required by pywin32 COM date conversion in frozen builds.
 
 from arcrho_bridge.bridge_utils import read_json, write_json, write_json_with_compact_rows
 
@@ -669,4 +670,3 @@ class ResQClient:
         if isinstance(value, (int, float)):
             return round(value, 4)
         return value
-
