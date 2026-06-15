@@ -1,0 +1,56 @@
+{
+  "appId": "com.arcode.app",
+  "productName": "Arcode",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "**/*",
+    "!dist/**",
+    "!build/**",
+    "!python_dist/**",
+    "!python_build/**",
+    "!node-portable/**",
+    "!node-v24.13.0-win-x64/**",
+    "!__pycache__/**",
+    "!*.ipynb",
+    "!*.spec",
+    "!.claude/**",
+    "!*.py"
+  ],
+  "extraMetadata": {
+    "name": "arcode-electron",
+    "productName": "Arcode"
+  },
+  "extraResources": [
+    {
+      "from": "python_dist/arcode_server",
+      "to": "arcode_server"
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "icons/icon.png",
+    "signAndEditExecutable": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "perMachine": false,
+    "allowElevation": true,
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "Arcode",
+    "artifactName": "Arcode-Setup-${version}.exe",
+    "deleteAppDataOnUninstall": false,
+    "include": "build/arcode_installer.nsh"
+  },
+  "asar": true
+}

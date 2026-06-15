@@ -59,10 +59,13 @@ contextBridge.exposeInMainWorld("ADAHost", {
   loadLastScriptingNotebook: () => invoke("scripting-last-notebook-load"),
   loadRecentScriptingNotebooks: () => invoke("scripting-recent-notebooks-load"),
   saveLastScriptingNotebook: (path) => invoke("scripting-last-notebook-save", { path }),
+  loadArcodeUserSettings: () => invoke("arcode-user-settings-load"),
+  saveArcodeUserSettings: (settings) => invoke("arcode-user-settings-save", { settings }),
   loadScriptingShortcuts: () => invoke("scripting-shortcuts-load"),
   saveScriptingShortcuts: (bindings) => invoke("scripting-shortcuts-save", { bindings }),
   openArcodeWindow: (payload) => invoke("arcode-window-open", payload),
   pickOpenFile: (payload) => invoke("pick-open-file", payload),
+  listFolder: (payload) => invoke("arcode-list-folder", payload),
   openPath: (payload) => invoke("open-path", payload),
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
   codexAssistantStatus: () => invoke("codex-assistant-status"),
@@ -107,6 +110,14 @@ ipcRenderer.on("arcrho:close-active-tab", () => {
   }
 });
 
+ipcRenderer.on("arcode:close-active-tab", () => {
+  try {
+    window.postMessage({ type: "arcode:close-active-tab" }, "*");
+  } catch {
+    // ignore
+  }
+});
+
 ipcRenderer.on("arcrho:hotkey", (_event, payload) => {
   try {
     window.postMessage({ type: "arcrho:hotkey", action: payload?.action }, "*");
@@ -115,9 +126,25 @@ ipcRenderer.on("arcrho:hotkey", (_event, payload) => {
   }
 });
 
+ipcRenderer.on("arcode:hotkey", (_event, payload) => {
+  try {
+    window.postMessage({ type: "arcode:hotkey", action: payload?.action }, "*");
+  } catch {
+    // ignore
+  }
+});
+
 ipcRenderer.on("arcrho:zoom", (_event, payload) => {
   try {
     window.postMessage({ type: "arcrho:zoom", deltaY: payload?.deltaY }, "*");
+  } catch {
+    // ignore
+  }
+});
+
+ipcRenderer.on("arcode:zoom", (_event, payload) => {
+  try {
+    window.postMessage({ type: "arcode:zoom", deltaY: payload?.deltaY }, "*");
   } catch {
     // ignore
   }
@@ -139,9 +166,25 @@ ipcRenderer.on("arcrho:zoom-step", (_event, payload) => {
   }
 });
 
+ipcRenderer.on("arcode:zoom-step", (_event, payload) => {
+  try {
+    window.postMessage({ type: "arcode:zoom-step", delta: payload?.delta }, "*");
+  } catch {
+    // ignore
+  }
+});
+
 ipcRenderer.on("arcrho:zoom-reset", () => {
   try {
     window.postMessage({ type: "arcrho:zoom-reset" }, "*");
+  } catch {
+    // ignore
+  }
+});
+
+ipcRenderer.on("arcode:zoom-reset", () => {
+  try {
+    window.postMessage({ type: "arcode:zoom-reset" }, "*");
   } catch {
     // ignore
   }

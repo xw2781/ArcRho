@@ -11,9 +11,13 @@ Document Electron + Python packaging inputs and scripts.
 | --- | --- |
 | `npm run arcode` | `set ARCRHO_APP_MODE=arcode&& electron .` |
 | `npm run build` | `npm run build:python-api && npm run build:python && npm run build:electron && npm run clean:python-artifacts` |
+| `npm run build:arcode` | `build\build_arcode_python_server.bat && set ARCRHO_APP_MODE=arcode&& node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win && node-portable\node.exe -e "const fs=require('fs'); ['python_dist/arcode_server','python_build'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));"` |
+| `npm run build:arcode:electron` | `set ARCRHO_APP_MODE=arcode&& node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win` |
+| `npm run build:arcode:python` | `build\build_arcode_python_server.bat` |
 | `npm run build:electron` | `node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --win` |
 | `npm run build:python` | `build\build_python_server.bat` |
 | `npm run build:python-api` | `node-portable\node.exe build/build_python_api_wheel.js` |
+| `npm run clean:arcode-python-artifacts` | `node-portable\node.exe -e "const fs=require('fs'); ['python_dist/arcode_server','python_build'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));"` |
 | `npm run clean:python-artifacts` | `node -e "const fs=require('fs'); ['python_dist','python_build','build/python_packages'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));"` |
 | `npm run electron` | `electron .` |
 
@@ -48,12 +52,15 @@ Electron main entry: `electron/main.js`
 - Published Windows installers are staged in `E:\ArcRho Server\releases\installers` for the desktop startup update check. The preferred feed shape is `latest.json`, `ArcRho-Setup-<version>.exe`, and `ArcRho-Setup-<version>.exe.sha256`; `latest.json` should include `version`, `installer`, and `sha256`, with optional `releaseNotes`, `mandatory`, and `publishedAt`.
 - `build/build_app.bat` publishes the generated installer, checksum, and `latest.json` to `E:\ArcRho Server\releases\installers` after generating release notes.
 - `build/publish_update_feed.ps1 -InstallerPath dist\ArcRho-Setup-<version>.exe` publishes that feed shape to `E:\ArcRho Server\releases\installers` by default.
+- `npm run build:arcode` builds the standalone Arcode product from the ArcRho-owned Arcode source, using `build/arcode_server.spec`, `electron-builder.arcode.json`, and the `python_dist/arcode_server` extra resource.
+- Standalone Arcode packaging uses product name `Arcode`, appId `com.arcode.app`, artifact `Arcode-Setup-<version>.exe`, and a slim scripting-only app server.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Build outputs: `dist/`, `python_build/`, `python_dist/`.
 - The packaged server bundle is expected to contain `python_dist/arcrho_server/_internal/ui/index.html` and `python_dist/arcrho_server/_internal/icons/icon.png`; `build/build_python_server.bat` fails fast when either served asset tree is missing.
+- The packaged Arcode server bundle is expected to contain `python_dist/arcode_server/_internal/ui/arcode/main.html`, `python_dist/arcode_server/_internal/ui/ai-assistant/index.js`, and `python_dist/arcode_server/_internal/ui/libs/monaco-editor/min/vs/loader.js`; `build/build_arcode_python_server.bat` fails fast when required served assets are missing.
 - Build logs: `build/log/build_app_<timestamp>.log`.
 - Installer settings in `package.json`, `build/installer.nsh`, and `build/patch_nsis_installer_progress.js`.
 - Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.
@@ -64,12 +71,12 @@ Electron main entry: `electron/main.js`
 ## Common Change Tasks
 <!-- MANUAL:BEGIN -->
 1. Update app packaging metadata: edit `package.json` `build` block.
-2. Update bundled backend: edit `build/server.spec` and verify `extraResources` mappings.
+2. Update bundled backend: edit `build/server.spec` for ArcRho or `build/arcode_server.spec` for Arcode and verify `extraResources` mappings.
 3. Add or update unreleased change fragments in `changes/unreleased/` before packaging a release.
 4. If you need a specific release version, run `build\build_app.bat <version>` (for example `build\build_app.bat 2.0.0`); otherwise the script auto-increments the patch version.
 5. From another Windows PC, run `"\\Ne7saswpn02\e\XWSpace\Repos\ArcRho\frontend\build\build_app_from_network.bat"`; use `--check` first to verify the network path and Python 3.10 environment without starting a build.
 6. If a packaged build fails, inspect the newest `build\log\build_app_<timestamp>.log`.
-7. If inspecting PyInstaller artifacts is needed, run `npm run build:python` directly (the full build cleans them on success).
+7. If inspecting PyInstaller artifacts is needed, run `npm run build:python` or `npm run build:arcode:python` directly (the full build cleans them on success).
 8. If electron-builder is reinstalled or upgraded, rerun `npm run build:electron` or `build\build_app.bat`; both paths reapply the ArcRho NSIS installer-progress patch before packaging.
 9. After validating a release installer outside the normal build flow, publish it to the startup update feed with `build\publish_update_feed.ps1 -InstallerPath dist\ArcRho-Setup-<version>.exe -ReleaseNotes "<summary>"`.
 <!-- MANUAL:END -->

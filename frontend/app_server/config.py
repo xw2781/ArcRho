@@ -50,11 +50,15 @@ DEFAULT_PROJECT_INSTANCE_PREFS_PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb Test"
 DEFAULT_PROJECT_INSTANCE_PREFS_USER_NAME = "xwei"
 
 
+def _is_arcode_mode() -> bool:
+    return os.environ.get("ARCRHO_APP_MODE", "").strip().lower() == "arcode"
+
+
 def _get_user_appdata_dir() -> str:
     appdata = str(os.environ.get("APPDATA") or "").strip()
     if not appdata:
         appdata = os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
-    return os.path.join(appdata, "ArcRho")
+    return os.path.join(appdata, "Arcode" if _is_arcode_mode() else "ArcRho")
 
 
 WORKSPACE_PATHS_PATH = os.path.join(_get_user_appdata_dir(), "workspace_paths.json")
@@ -144,6 +148,14 @@ def _get_workflow_dir() -> str:
 
 
 def _get_scripting_dir() -> str:
+    if _is_arcode_mode():
+        configured = str(os.environ.get("ARCODE_DATA_DIR") or "").strip()
+        if configured:
+            return configured
+        return os.path.join(os.path.expanduser("~"), "Documents", "Arcode", "scripts")
+    configured = str(os.environ.get("ARCRHO_SCRIPTING_DIR") or "").strip()
+    if configured:
+        return configured
     return os.path.join(os.path.expanduser("~"), "Documents", "ArcRho", "scripts")
 
 

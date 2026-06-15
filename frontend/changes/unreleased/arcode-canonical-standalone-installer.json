@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Moved scripting into the canonical Arcode workspace and added standalone Arcode installer support.",
+  "details": [
+    "ArcRho scripting launch actions now open Arcode instead of the legacy Scripting Console page.",
+    "Standalone Arcode builds use a separate slim scripting backend and Arcode installer identity."
+  ]
+}

@@ -18,17 +18,28 @@ function isWindows11() {
 
 const IS_WIN11 = isWindows11();
 
-const HOST = process.env.ARCRHO_HOST || "127.0.0.1";
-const PORT = parseInt(process.env.ARCRHO_PORT || "28765", 10);
-const UI_VERSION = process.env.ARCRHO_UI_VERSION || String(Date.now());
-const APP_MODE = String(process.env.ARCRHO_APP_MODE || "arcrho").trim().toLowerCase() === "arcode"
+const PACKAGED_PRODUCT_NAME = String(app.getName?.() || "").trim().toLowerCase();
+const APP_MODE = (
+  String(process.env.ARCRHO_APP_MODE || "").trim().toLowerCase() === "arcode"
+  || (app.isPackaged && PACKAGED_PRODUCT_NAME.includes("arcode"))
+)
   ? "arcode"
   : "arcrho";
+if (APP_MODE === "arcode") {
+  app.setName("Arcode");
+  app.setAppUserModelId("com.arcode.app");
+} else {
+  app.setAppUserModelId("com.arcrho.app");
+}
+const HOST = process.env.ARCRHO_HOST || "127.0.0.1";
+const DEFAULT_PORT = APP_MODE === "arcode" ? "28766" : "28765";
+const PORT = parseInt(process.env.ARCRHO_PORT || process.env.ARCODE_PORT || DEFAULT_PORT, 10);
+const UI_VERSION = process.env.ARCRHO_UI_VERSION || process.env.ARCODE_UI_VERSION || String(Date.now());
 const URL = `http://${HOST}:${PORT}/ui/?v=${encodeURIComponent(UI_VERSION)}`;
-const ARCODE_URL = `http://${HOST}:${PORT}/ui/arcode/?v=${encodeURIComponent(UI_VERSION)}`;
+const ARCODE_URL = `http://${HOST}:${PORT}/ui/arcode/main.html?v=${encodeURIComponent(UI_VERSION)}`;
 const BACKEND_HEALTH_URL = `http://${HOST}:${PORT}/app/health`;
 const BACKEND_TOKEN = crypto.randomBytes(16).toString("hex");
-const START_BACKEND = process.env.ARCRHO_START_BACKEND !== "0";
+const START_BACKEND = (APP_MODE === "arcode" ? process.env.ARCODE_START_BACKEND : process.env.ARCRHO_START_BACKEND) !== "0";
 const PYTHON_EXE = process.env.PYTHON_EXE || process.env.PYTHON || "python";
 const APP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(APP_ROOT, "..");
@@ -52,6 +63,7 @@ function resolveDfmRatioUndoDir(dirPath) {
 
 const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const MAIN_WINDOW_PREFS_FILE = "main_window_prefs.json";
+const ARCODE_USER_SETTINGS_FILE = "settings.json";
 const SCRIPTING_SHORTCUTS_FILE = "scripting_shortcuts.json";
 const SCRIPTING_NOTEBOOK_PREFS_FILE = "scripting_notebook_prefs.json";
 const WORKSPACE_PATHS_FILE = "workspace_paths.json";
@@ -63,27 +75,43 @@ const BACKEND_CONTROL_FLAGS = [
 ];
 const BACKEND_STARTUP_TIMEOUT_MS = Math.max(
   5000,
-  parseInt(process.env.ARCRHO_BACKEND_STARTUP_TIMEOUT_MS || "30000", 10) || 30000
+  parseInt(
+    (APP_MODE === "arcode" ? process.env.ARCODE_BACKEND_STARTUP_TIMEOUT_MS : process.env.ARCRHO_BACKEND_STARTUP_TIMEOUT_MS)
+      || "30000",
+    10
+  ) || 30000
 );
 const BACKEND_STARTUP_ATTEMPTS = Math.max(
   1,
-  parseInt(process.env.ARCRHO_BACKEND_STARTUP_ATTEMPTS || "2", 10) || 2
+  parseInt(
+    (APP_MODE === "arcode" ? process.env.ARCODE_BACKEND_STARTUP_ATTEMPTS : process.env.ARCRHO_BACKEND_STARTUP_ATTEMPTS)
+      || "2",
+    10
+  ) || 2
 );
-const UPDATE_FEED_DIR = process.env.ARCRHO_UPDATE_DIR || "E:\\ArcRho Server\\releases\\installers";
-const UPDATE_MANIFEST_FILE = process.env.ARCRHO_UPDATE_MANIFEST_FILE || "latest.json";
+const UPDATE_FEED_DIR = APP_MODE === "arcode"
+  ? (process.env.ARCODE_UPDATE_DIR || "E:\\Arcode Server\\releases\\arcode-installers")
+  : (process.env.ARCRHO_UPDATE_DIR || "E:\\ArcRho Server\\releases\\installers");
+const UPDATE_MANIFEST_FILE = (APP_MODE === "arcode" ? process.env.ARCODE_UPDATE_MANIFEST_FILE : process.env.ARCRHO_UPDATE_MANIFEST_FILE) || "latest.json";
 const UPDATE_CHECK_TIMEOUT_MS = Math.max(
   1000,
-  parseInt(process.env.ARCRHO_UPDATE_CHECK_TIMEOUT_MS || "3000", 10) || 3000
+  parseInt(
+    (APP_MODE === "arcode" ? process.env.ARCODE_UPDATE_CHECK_TIMEOUT_MS : process.env.ARCRHO_UPDATE_CHECK_TIMEOUT_MS)
+      || "3000",
+    10
+  ) || 3000
 );
-const UPDATE_INSTALLER_NAME_RE = /^ArcRho-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i;
+const UPDATE_INSTALLER_NAME_RE = APP_MODE === "arcode"
+  ? /^Arcode-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i
+  : /^ArcRho-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i;
 const SHA256_RE = /\b[a-fA-F0-9]{64}\b/;
 
 function getBundledServerPath() {
   // Check if running as packaged app
   if (app.isPackaged) {
-    // In packaged app, server is in resources/arcrho_server/arcrho_server.exe
+    const serverName = APP_MODE === "arcode" ? "arcode_server" : "arcrho_server";
     const resourcesPath = process.resourcesPath;
-    return path.join(resourcesPath, "arcrho_server", "arcrho_server.exe");
+    return path.join(resourcesPath, serverName, `${serverName}.exe`);
   }
   return null;
 }
@@ -166,9 +194,10 @@ function createBackendLogStream() {
   try {
     const logDir = path.join(app.getPath("userData"), "logs");
     fs.mkdirSync(logDir, { recursive: true });
-    lastServerLogPath = path.join(logDir, `arcrho-server-${getTimestampForFileName()}.log`);
+    const appLabel = APP_MODE === "arcode" ? "arcode" : "arcrho";
+    lastServerLogPath = path.join(logDir, `${appLabel}-server-${getTimestampForFileName()}.log`);
     const stream = fs.createWriteStream(lastServerLogPath, { flags: "a" });
-    stream.write(`ArcRho packaged app-server log\nStarted: ${new Date().toISOString()}\n\n`);
+    stream.write(`${APP_MODE === "arcode" ? "Arcode" : "ArcRho"} packaged app-server log\nStarted: ${new Date().toISOString()}\n\n`);
     return stream;
   } catch (err) {
     console.warn(`Could not create app-server log file: ${err?.message || err}`);
@@ -680,6 +709,39 @@ function normalizeRecentIpynbPaths(value, fallbackPath = "") {
 
 function getWorkspacePathsPath() {
   return path.join(app.getPath("appData"), "ArcRho", WORKSPACE_PATHS_FILE);
+}
+
+function getArcodeUserSettingsPath() {
+  return path.join(app.getPath("appData"), "Arcode", ARCODE_USER_SETTINGS_FILE);
+}
+
+function readArcodeUserSettingsFile() {
+  const filePath = getArcodeUserSettingsPath();
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeArcodeUserSettingsFile(settingsLike) {
+  const settings = settingsLike && typeof settingsLike === "object" && !Array.isArray(settingsLike)
+    ? settingsLike
+    : {};
+  const filePath = getArcodeUserSettingsPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  let existing = {};
+  try { existing = JSON.parse(fs.readFileSync(filePath, "utf8")) || {}; } catch { existing = {}; }
+  const payload = {
+    ...(existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {}),
+    ...settings,
+    updatedAt: new Date().toISOString(),
+  };
+  const tmpPath = `${filePath}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), "utf8");
+  fs.renameSync(tmpPath, filePath);
+  return { ok: true, settings: payload };
 }
 
 function isWindowsAppsPath(filePath) {
@@ -1247,6 +1309,8 @@ async function getBackendPortListenerPids() {
 
 function isCompatibleBackendHealth(health) {
   if (!health || health.ok !== true) return false;
+  const healthApp = String(health.app || "").trim().toLowerCase();
+  if (healthApp && healthApp !== APP_MODE) return false;
   if (health.token === BACKEND_TOKEN) return true;
   const projectRoot = String(health.project_root || health.projectRoot || "").trim();
   if (!projectRoot) return false;
@@ -1276,9 +1340,15 @@ async function stopMismatchedBackendListener() {
 function startBackend() {
   const env = { ...process.env };
   env.TRI_DATA_DIR = env.TRI_DATA_DIR || APP_ROOT;
-  env.ARCRHO_WORKFLOW_DIR =
-    env.ARCRHO_WORKFLOW_DIR ||
-    path.join(require("os").homedir(), "Documents", "ArcRho", "workflows");
+  if (APP_MODE === "arcode") {
+    env.ARCODE_DATA_DIR = env.ARCODE_DATA_DIR || path.join(os.homedir(), "Documents", "Arcode", "scripts");
+    env.ARCODE_BACKEND_TOKEN = BACKEND_TOKEN;
+    env.ARCRHO_APP_MODE = "arcode";
+  } else {
+    env.ARCRHO_WORKFLOW_DIR =
+      env.ARCRHO_WORKFLOW_DIR ||
+      path.join(os.homedir(), "Documents", "ArcRho", "workflows");
+  }
   env.ARCRHO_BACKEND_TOKEN = BACKEND_TOKEN;
   serverSpawnError = null;
   backendOwned = true;
@@ -1429,6 +1499,7 @@ function wireAppWindowInput(targetWindow) {
   if (!targetWindow || targetWindow.isDestroyed()) return;
   targetWindow.webContents.on("before-input-event", (event, input) => {
     if (!targetWindow || targetWindow.isDestroyed()) return;
+    const messagePrefix = (APP_MODE === "arcode" || targetWindow === arcodeWin) ? "arcode" : "arcrho";
 
     const key = String(input.key || "").toUpperCase();
     const ctrl = !!input.control;
@@ -1437,7 +1508,7 @@ function wireAppWindowInput(targetWindow) {
     const type = String(input.type || "");
 
     const sendHotkey = (action) => {
-      targetWindow.webContents.send("arcrho:hotkey", { action });
+      targetWindow.webContents.send(`${messagePrefix}:hotkey`, { action });
     };
 
     if (ctrl && !alt && shift && key === "I") {
@@ -1449,23 +1520,23 @@ function wireAppWindowInput(targetWindow) {
     if (type === "mouseWheel" && ctrl) {
       event.preventDefault();
       const deltaY = Number(input.deltaY || 0);
-      targetWindow.webContents.send("arcrho:zoom", { deltaY });
+      targetWindow.webContents.send(`${messagePrefix}:zoom`, { deltaY });
       return;
     }
 
     if (ctrl && !alt && (key === "-" || key === "_")) {
       event.preventDefault();
-      targetWindow.webContents.send("arcrho:zoom-step", { delta: -1 });
+      targetWindow.webContents.send(`${messagePrefix}:zoom-step`, { delta: -1 });
       return;
     }
     if (ctrl && !alt && (key === "=" || key === "+")) {
       event.preventDefault();
-      targetWindow.webContents.send("arcrho:zoom-step", { delta: 1 });
+      targetWindow.webContents.send(`${messagePrefix}:zoom-step`, { delta: 1 });
       return;
     }
     if (ctrl && !alt && key === "0") {
       event.preventDefault();
-      targetWindow.webContents.send("arcrho:zoom-reset");
+      targetWindow.webContents.send(`${messagePrefix}:zoom-reset`);
       return;
     }
 
@@ -1527,12 +1598,12 @@ function wireAppWindowInput(targetWindow) {
 
     if (alt && !ctrl && !shift && key === "W") {
       event.preventDefault();
-      targetWindow.webContents.send("arcrho:close-active-tab");
+      targetWindow.webContents.send(`${messagePrefix}:close-active-tab`);
       return;
     }
     if (ctrl && !alt && !shift && key === "W") {
       event.preventDefault();
-      targetWindow.webContents.send("arcrho:close-active-tab");
+      targetWindow.webContents.send(`${messagePrefix}:close-active-tab`);
     }
   });
 }
@@ -1543,7 +1614,7 @@ function buildArcodeUrl(options = {}) {
   const openPath = String(options.path || options.openPath || "").trim();
   if (openPath) params.set("path", openPath);
   if (options.fresh) params.set("fresh", "1");
-  return `http://${HOST}:${PORT}/ui/arcode/?${params.toString()}`;
+  return `http://${HOST}:${PORT}/ui/arcode/main.html?${params.toString()}`;
 }
 
 function createWindow() {
@@ -1765,6 +1836,35 @@ ipcMain.handle("pick-open-file", async (event, payload) => {
   });
   if (result.canceled || !result.filePaths?.length) return "";
   return result.filePaths[0];
+});
+
+ipcMain.handle("arcode-list-folder", async (_event, payload) => {
+  const folderPath = String(payload?.path || "").trim();
+  const includeHidden = !!payload?.includeHidden;
+  if (!folderPath) return { ok: false, error: "Empty folder path.", entries: [] };
+  try {
+    const stat = await fs.promises.stat(folderPath);
+    if (!stat.isDirectory()) return { ok: false, error: `Not a folder: ${folderPath}`, entries: [] };
+    const dirents = await fs.promises.readdir(folderPath, { withFileTypes: true });
+    const entries = dirents
+      .filter((entry) => includeHidden || !entry.name.startsWith("."))
+      .map((entry) => {
+        const entryPath = path.join(folderPath, entry.name);
+        return {
+          name: entry.name,
+          path: entryPath,
+          isDirectory: entry.isDirectory(),
+          isFile: entry.isFile(),
+        };
+      })
+      .sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      });
+    return { ok: true, path: folderPath, entries };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not list folder."), entries: [] };
+  }
 });
 
 ipcMain.handle("open-path", async (_event, payload) => {
@@ -2028,6 +2128,23 @@ ipcMain.handle("scripting-shortcuts-save", async (_event, payload) => {
     return { ok: true, path: filePath };
   } catch (err) {
     return { ok: false, error: String(err?.message || err) };
+  }
+});
+
+ipcMain.handle("arcode-user-settings-load", async () => {
+  try {
+    return readArcodeUserSettingsFile();
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not load Arcode settings.") };
+  }
+});
+
+ipcMain.handle("arcode-user-settings-save", async (_event, payload) => {
+  try {
+    const settings = payload?.settings && typeof payload.settings === "object" ? payload.settings : {};
+    return writeArcodeUserSettingsFile(settings);
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not save Arcode settings.") };
   }
 });
 

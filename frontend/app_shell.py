@@ -12,12 +12,13 @@ RESTART_FLAG = BASE_DIR / ".restart_app"
 SHUTDOWN_FLAG = BASE_DIR / ".shutdown_app"
 
 
-def build_cmd(host: str, port: int, reload: bool) -> list[str]:
+def build_cmd(host: str, port: int, reload: bool, app_mode: str = "arcrho") -> list[str]:
+    app_target = "app_server.arcode_main:app" if app_mode == "arcode" else "app_server.main:app"
     cmd = [
         sys.executable,
         "-m",
         "uvicorn",
-        "app_server.main:app",
+        app_target,
         "--host",
         host,
         "--port",
@@ -48,13 +49,17 @@ def terminate_process_tree(proc: subprocess.Popen) -> None:
 def ensure_env_defaults(env: dict[str, str]) -> dict[str, str]:
     env = dict(env)
     env.setdefault("TRI_DATA_DIR", str(BASE_DIR))
-    env.setdefault("ARCRHO_WORKFLOW_DIR", str(Path.home() / "Documents" / "ArcRho" / "workflows"))
+    if env.get("ARCRHO_APP_MODE", "").strip().lower() == "arcode":
+        env.setdefault("ARCODE_DATA_DIR", str(Path.home() / "Documents" / "Arcode" / "scripts"))
+    else:
+        env.setdefault("ARCRHO_WORKFLOW_DIR", str(Path.home() / "Documents" / "ArcRho" / "workflows"))
     return env
 
 
 def run_supervisor(host: str, port: int, reload: bool) -> None:
   env = ensure_env_defaults(os.environ)
-  cmd = build_cmd(host, port, reload)
+  app_mode = "arcode" if env.get("ARCRHO_APP_MODE", "").strip().lower() == "arcode" else "arcrho"
+  cmd = build_cmd(host, port, reload, app_mode)
   console_mode = env.get("ARCRHO_BACKEND_CONSOLE", "").strip().lower()
   if os.name == "nt":
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -109,8 +114,9 @@ def run_supervisor(host: str, port: int, reload: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="ArcRho app supervisor")
+    default_port = 28766 if os.environ.get("ARCRHO_APP_MODE", "").strip().lower() == "arcode" else 28765
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=28765)
+    parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--reload", action="store_true")
     args = parser.parse_args()
 

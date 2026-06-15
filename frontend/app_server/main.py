@@ -76,6 +76,7 @@ def home():
 def app_health():
     return {
         "ok": True,
+        "app": "arcrho",
         "token": os.environ.get("ARCRHO_BACKEND_TOKEN", ""),
         "project_root": str(config.PROJECT_ROOT),
     }
