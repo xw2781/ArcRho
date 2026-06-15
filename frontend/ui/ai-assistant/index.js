@@ -1,4 +1,71 @@
-import { $, getHostApi, shell } from "./shell_context.js?v=20260510a";
+import { ensureAiAssistantDom } from "./template.js";
+import {
+  ATTACHMENT_EXTENSIONS as ASSISTANT_ATTACHMENT_EXTENSIONS,
+  PANEL_DEFAULT_HEIGHT as ASSISTANT_PANEL_DEFAULT_HEIGHT,
+  PANEL_MIN_WIDTH as ASSISTANT_PANEL_MIN_WIDTH,
+  VISIBLE_WORK_STEP_IDS as ASSISTANT_VISIBLE_WORK_STEP_IDS,
+  WORK_STEP_DEFS as ASSISTANT_WORK_STEP_DEFS,
+  WORK_TYPING_CHARS_PER_FRAME as ASSISTANT_WORK_TYPING_CHARS_PER_FRAME,
+  WORK_TYPING_FRAME_MS as ASSISTANT_WORK_TYPING_FRAME_MS,
+} from "./state.js";
+import {
+  MODEL_OPTIONS as ASSISTANT_MODEL_OPTIONS,
+  REASONING_OPTIONS as ASSISTANT_REASONING_OPTIONS,
+  assistantModelSupportsReasoning,
+  getAssistantModelLabelFor,
+  getAssistantReasoningLabelFor,
+  isClaudeAssistantModel,
+  normalizeAssistantModel,
+  normalizeAssistantReasoningEffort,
+  shouldShowTokenAlertFor,
+} from "./models.js";
+import {
+  appendAssistantInlineMarkdown,
+  createAssistantUserAvatarSvg,
+  renderAssistantMessageContent,
+  typeAssistantMessage as typeAssistantMessageContent,
+} from "./messages.js";
+import {
+  normalizeActivities,
+  normalizeDebugLogs,
+  normalizeMessages,
+  nowIso,
+} from "./sessions.js";
+import {
+  formatContextPercent,
+  formatContextWindowUsage,
+  formatTokenCount,
+  getUsagePercent,
+  normalizeAssistantContextForPanel,
+} from "./context.js";
+import {
+  getAttachmentIconKind,
+  getAttachmentIconSvg,
+  getAttachmentTypeLabel,
+} from "./attachments.js";
+import { formatElapsed, formatWorkDuration } from "./activity.js";
+import { normalizeReadableRootList } from "./settings.js";
+import { clampAssistantPanelSize } from "./layout.js";
+import { getHostErrorMessage } from "./host.js";
+
+const defaultShell = {};
+let shell = defaultShell;
+let getHostApi = () => window.ADAHost || null;
+let $ = (id) => document.getElementById(id);
+let assistantConfig = {
+  appName: "Arcode",
+  botName: "ArcBot",
+  messageNamespace: "arcode",
+  storagePrefix: "arcode",
+  contextTimeoutMs: 900,
+  projectInstanceContextTimeoutMs: 900,
+  enableDfmApproval: false,
+  getAppContextTooltipRows: null,
+};
+let ASSISTANT_LAUNCHER_VISIBLE_KEY = "arcode_ai_assistant_launcher_visible";
+let ASSISTANT_LAUNCHER_POSITION_KEY = "arcode_ai_assistant_launcher_position";
+let ASSISTANT_PANEL_SIZE_KEY = "arcode_ai_assistant_panel_size";
+let ASSISTANT_PANEL_OPENED_SESSION_KEY = "arcode_ai_assistant_panel_opened_session";
 
 let assistantMessages = [];
 let assistantActivities = [];
@@ -21,42 +88,6 @@ let assistantMode = "edit";
 let assistantModel = "codex";
 let assistantReasoningEffort = "high";
 let assistantReadableRoots = [];
-const ASSISTANT_LAUNCHER_VISIBLE_KEY = "arcrho_ai_assistant_launcher_visible";
-const ASSISTANT_LAUNCHER_POSITION_KEY = "arcrho_ai_assistant_launcher_position";
-const ASSISTANT_PANEL_SIZE_KEY = "arcrho_ai_assistant_panel_size";
-const ASSISTANT_PANEL_OPENED_SESSION_KEY = "arcrho_ai_assistant_panel_opened_session";
-const ASSISTANT_PANEL_MIN_WIDTH = 420;
-const ASSISTANT_PANEL_DEFAULT_HEIGHT = 640;
-const ASSISTANT_ATTACHMENT_EXTENSIONS = [
-  "txt", "md", "csv", "tsv", "json", "jsonl", "ipynb", "arcnb", "py", "r", "sql",
-  "js", "ts", "html", "css", "xml", "yaml", "yml", "toml", "ini", "log",
-];
-const ASSISTANT_WORK_STEP_DEFS = [
-  { id: "understanding", label: "Request" },
-  { id: "scanning", label: "App context" },
-  { id: "executing", label: "Codex work" },
-  { id: "finalizing", label: "Result" },
-];
-const ASSISTANT_VISIBLE_WORK_STEP_IDS = new Set(["executing", "finalizing"]);
-const ASSISTANT_TYPING_FRAME_MS = 18;
-const ASSISTANT_TYPING_MAX_FRAMES = 220;
-const ASSISTANT_WORK_TYPING_FRAME_MS = 16;
-const ASSISTANT_WORK_TYPING_CHARS_PER_FRAME = 4;
-const ASSISTANT_MODEL_OPTIONS = [
-  { value: "codex", label: "Codex default", provider: "openai", supportsReasoning: true },
-  { value: "gpt-5.5", label: "GPT-5.5", provider: "openai", supportsReasoning: true },
-  { value: "gpt-5.4", label: "GPT-5.4", provider: "openai", supportsReasoning: true },
-  { value: "gpt-5.4-mini", label: "GPT-5.4 Mini", provider: "openai", supportsReasoning: false },
-  { value: "claude-opus-4-8", label: "Claude Opus 4.8", provider: "anthropic", supportsReasoning: true },
-  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", provider: "anthropic", supportsReasoning: true },
-  { value: "claude-haiku-4-5", label: "Claude Haiku 4.5", provider: "anthropic", supportsReasoning: false },
-];
-const ASSISTANT_REASONING_OPTIONS = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "Extra high" },
-];
 let assistantReady = false;
 let assistantBusy = false;
 let assistantCancelRequested = false;
@@ -65,24 +96,31 @@ let assistantAppContextEnabled = true;
 let assistantStatusChecked = false;
 let assistantInstallJustSucceeded = false;
 let suppressLauncherClick = false;
-let assistantUserAvatarName = "ArcRho";
+let assistantUserAvatarName = "Arcode";
 let assistantAuthStatus = "";
 const assistantActivityTypingStates = new Map();
 let assistantActivityTypingTimer = null;
 
-function getAssistantBrandInitial(name) {
-  const text = String(name || "").trim();
-  const firstAscii = Array.from(text).find((char) => /^[A-Za-z0-9]$/.test(char));
-  return firstAscii ? firstAscii.toUpperCase() : "#";
+export function configureAiAssistant(config = {}) {
+  assistantConfig = {
+    ...assistantConfig,
+    ...config,
+  };
+  shell = config.shell || shell || defaultShell;
+  getHostApi = typeof config.getHostApi === "function" ? config.getHostApi : getHostApi;
+  $ = typeof config.$ === "function" ? config.$ : $;
+  const storagePrefix = String(assistantConfig.storagePrefix || assistantConfig.messageNamespace || "arcode").trim() || "arcode";
+  assistantConfig.storagePrefix = storagePrefix;
+  ASSISTANT_LAUNCHER_VISIBLE_KEY = `${storagePrefix}_ai_assistant_launcher_visible`;
+  ASSISTANT_LAUNCHER_POSITION_KEY = `${storagePrefix}_ai_assistant_launcher_position`;
+  ASSISTANT_PANEL_SIZE_KEY = `${storagePrefix}_ai_assistant_panel_size`;
+  ASSISTANT_PANEL_OPENED_SESSION_KEY = `${storagePrefix}_ai_assistant_panel_opened_session`;
+  assistantUserAvatarName = String(assistantConfig.appName || "Arcode").trim() || "Arcode";
 }
 
-function createAssistantUserAvatarSvg(initial) {
-  const safeInitial = getAssistantBrandInitial(initial);
-  return `
-    <svg viewBox="0 0 32 32" role="img" aria-label="${safeInitial} initial avatar" focusable="false">
-      <text x="16" y="21" text-anchor="middle" fill="#526071" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">${safeInitial}</text>
-    </svg>
-  `;
+function assistantMessageType(name) {
+  const namespace = String(assistantConfig.messageNamespace || "arcode").trim() || "arcode";
+  return `${namespace}:assistant-${name}`;
 }
 
 function setText(el, text) {
@@ -104,40 +142,29 @@ function setStatus(text, _tone = "") {
   setAssistantConnectionStatus(assistantReady, text);
 }
 
-function normalizeAssistantModel(model) {
-  const value = String(model || "codex").trim().toLowerCase();
-  return ASSISTANT_MODEL_OPTIONS.some((option) => option.value === value) ? value : "codex";
-}
-
-function normalizeAssistantReasoningEffort(effort) {
-  const value = String(effort || "high").trim().toLowerCase();
-  return ASSISTANT_REASONING_OPTIONS.some((option) => option.value === value) ? value : "high";
-}
-
 function getAssistantModelLabel(model = assistantModel) {
-  return ASSISTANT_MODEL_OPTIONS.find((option) => option.value === normalizeAssistantModel(model))?.label || "Codex default";
+  return getAssistantModelLabelFor(model);
 }
 
 function getAssistantReasoningLabel(effort = assistantReasoningEffort) {
-  return ASSISTANT_REASONING_OPTIONS.find((option) => option.value === normalizeAssistantReasoningEffort(effort))?.label || "High";
+  return getAssistantReasoningLabelFor(effort);
 }
 
 function isClaudeModel(model = assistantModel) {
-  return ASSISTANT_MODEL_OPTIONS.find((opt) => opt.value === normalizeAssistantModel(model))?.provider === "anthropic";
+  return isClaudeAssistantModel(model);
 }
 
 function assistantModelHasReasoning(model = assistantModel) {
-  return !!(ASSISTANT_MODEL_OPTIONS.find((opt) => opt.value === normalizeAssistantModel(model))?.supportsReasoning);
+  return assistantModelSupportsReasoning(model);
 }
 
 function shouldShowAssistantTokenAlert() {
-  if (assistantModel === "gpt-5.5" || assistantModel === "claude-opus-4-8") return true;
-  if (assistantModelHasReasoning() && (assistantReasoningEffort === "high" || assistantReasoningEffort === "xhigh")) return true;
-  return false;
+  return shouldShowTokenAlertFor(assistantModel, assistantReasoningEffort);
 }
 
 function formatAssistantLoginDetail() {
-  const user = assistantUserAvatarName && assistantUserAvatarName !== "ArcRho" ? assistantUserAvatarName : "Unknown";
+  const appName = String(assistantConfig.appName || "Arcode").trim() || "Arcode";
+  const user = assistantUserAvatarName && assistantUserAvatarName !== appName ? assistantUserAvatarName : "Unknown";
   const auth = String(assistantAuthStatus || "").replace(/\s+/g, " ").trim();
   if (!auth) return user;
   return user === "Unknown" ? auth : `${user} - ${auth}`;
@@ -152,43 +179,6 @@ function setSetup({ open = false, text = "", install = false, login = false } = 
   setText(setupText, text);
   if (installBtn) installBtn.style.display = install ? "inline-block" : "none";
   if (loginBtn) loginBtn.style.display = login ? "inline-block" : "none";
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function normalizeMessages(messages) {
-  if (!Array.isArray(messages)) return [];
-  return messages.map((message) => {
-    const rawRole = String(message?.role || "").toLowerCase();
-    if (rawRole === "system") return null;
-    return {
-      role: rawRole === "assistant" ? "assistant" : "user",
-      content: String(message?.content || ""),
-      timestamp: String(message?.timestamp || nowIso()),
-    };
-  }).filter((message) => message?.content.trim());
-}
-
-function normalizeActivities(activities) {
-  if (!Array.isArray(activities)) return [];
-  return activities.map((activity) => ({
-    type: String(activity?.type || "info"),
-    text: String(activity?.text || ""),
-    rawText: String(activity?.rawText || ""),
-    elapsedMs: Number.isFinite(activity?.elapsedMs) ? Math.max(0, Math.round(activity.elapsedMs)) : null,
-    timestamp: String(activity?.timestamp || nowIso()),
-  })).filter((activity) => activity.text.trim()).slice(-120);
-}
-
-function normalizeDebugLogs(logs) {
-  if (!Array.isArray(logs)) return [];
-  return logs.map((entry) => ({
-    type: String(entry?.type || "debug"),
-    text: String(entry?.text || ""),
-    timestamp: String(entry?.timestamp || nowIso()),
-  })).filter((entry) => entry.text.trim()).slice(-300);
 }
 
 function getSessionPayload() {
@@ -242,20 +232,6 @@ function appendAssistantDisclaimer(container) {
   container.appendChild(notice);
 }
 
-function formatElapsed(ms) {
-  const value = Math.max(0, Number(ms || 0));
-  if (value < 1000) return `${Math.round(value)}ms`;
-  return `${(value / 1000).toFixed(value < 10000 ? 1 : 0)}s`;
-}
-
-function formatWorkDuration(ms) {
-  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
-}
-
 function getAssistantContextTitle(context = currentContext) {
   const title = String(context?.title || "").trim();
   if (title) return title;
@@ -273,8 +249,6 @@ function getAssistantContextKind(context = currentContext) {
   if (tabType === "dfm") return "DFM page";
   if (tabType === "dataset") return "Dataset Viewer";
   if (tabType === "scripting") return "notebook";
-  if (tabType === "workflow") return "workflow";
-  if (tabType === "project_settings") return "Project Explorer";
   if (tabType === "off") return "app context";
   return tabType || "active app tab";
 }
@@ -291,6 +265,7 @@ function getAssistantTargetKind(context = currentContext) {
 }
 
 function isAssistantDfmWork(context = currentContext) {
+  if (!assistantConfig.enableDfmApproval) return false;
   const tabType = String(context?.tabType || context?.pageType || "").trim().toLowerCase();
   const title = String(context?.title || "").trim().toLowerCase();
   const target = String(context?.targetPath || context?.path || "").trim().toLowerCase();
@@ -300,11 +275,6 @@ function isAssistantDfmWork(context = currentContext) {
 function formatAssistantContextScanStatus(context, fallback = "") {
   if (context?.disabled) return "App Context is off, so Codex will use only the chat and attachments.";
   if (!context?.available) return fallback || "No active app tab data was available for this request.";
-  if (context?.tabType === "project_instance") {
-    const count = Array.isArray(context.openNestedWindows) ? context.openNestedWindows.length : 0;
-    const suffix = count > 1 ? ` ArcBot can also see ${count - 1} other open nested window${count === 2 ? "" : "s"}.` : "";
-    return `Reading ${getAssistantContextKind(context)} context from "${getAssistantContextTitle(context)}".${suffix}`;
-  }
   return `Reading ${getAssistantContextKind(context)} context from "${getAssistantContextTitle(context)}".`;
 }
 
@@ -319,34 +289,6 @@ function formatAssistantUsageStatus(usage) {
   return parts.length
     ? `Packed ${parts.join(", ")} for Codex.`
     : "Packed the chat request for Codex.";
-}
-
-function formatContextPercent(value) {
-  const percent = Math.max(0, Math.min(100, Number(value || 0)));
-  if (!Number.isFinite(percent)) return "0%";
-  if (percent > 0 && percent < 0.1) return "<0.1%";
-  return `${percent.toFixed(percent < 10 ? 1 : 0)}%`;
-}
-
-function formatTokenCount(value) {
-  const tokens = Math.max(0, Math.round(Number(value || 0)));
-  return tokens ? tokens.toLocaleString() : "0";
-}
-
-function getUsagePercent(usage) {
-  const explicit = Number(usage?.contextPercentUsed);
-  if (Number.isFinite(explicit) && explicit >= 0) return Math.min(100, explicit);
-  const used = Number(usage?.estimatedTokens || 0);
-  const windowTokens = Number(usage?.contextWindowTokens || 0);
-  if (!used || !windowTokens) return 0;
-  return Math.min(100, Math.max(0, (used / windowTokens) * 100));
-}
-
-function formatContextWindowUsage(usage) {
-  const used = Number(usage?.estimatedTokens || 0);
-  const windowTokens = Number(usage?.contextWindowTokens || 0);
-  if (!used || !windowTokens) return "Not measured yet";
-  return `${formatTokenCount(used)} / ${formatTokenCount(windowTokens)} tokens (${formatContextPercent(getUsagePercent(usage))})`;
 }
 
 function updateTokenUsageRing() {
@@ -382,18 +324,6 @@ function formatAssistantActivityForCard(text, event = {}) {
   const contextKind = getAssistantContextKind();
   const targetKind = getAssistantTargetKind();
   if (!raw) return "";
-  const apiMatch = raw.match(/ArcBot is using the ArcRho Python API:\s*([^.\n]+)\.?/i) ||
-    raw.match(/"api method"\s*:\s*"([^"]+)"/i);
-  if (apiMatch) return formatArcRhoPythonApiActivity(apiMatch[1], targetKind);
-  if (lower.includes("arcbot is bundling the active dfm method details")) return raw;
-  if (lower.includes("arcbot is reading the active dfm method summary")) return raw;
-  if (lower.includes("arcbot is inspecting a dfm method component")) return raw;
-  if (lower.includes("arcbot is reading ratio-row details")) return raw;
-  if (lower.includes("arcbot is marking selected ratio cells")) return raw;
-  if (lower.includes("arcbot is restoring selected ratio cells")) return raw;
-  if (lower.includes("arcbot is updating the selected average formula")) return raw;
-  if (lower.includes("arcbot is setting a user-entered selected factor")) return raw;
-  if (lower.includes("arcbot is checking that the proposed dfm update is valid")) return raw;
   if (lower.includes("checking latest arcbot edit history")) return "Looking up the latest ArcBot edit so it can be reverted safely.";
   if (lower.includes("resolving arcbot project")) return "Preparing the local ArcBot workspace and checking the configured server root.";
   if (lower.includes("arcbot can read the configured folders")) return "ArcBot can read the configured folders for this request.";
@@ -418,20 +348,6 @@ function formatAssistantActivityForCard(text, event = {}) {
   if (lower.includes("cancel requested")) return "Stopping the current ArcBot request.";
   if (lower.includes("failed") || lower.includes("could not") || lower.includes("error:")) return raw;
   return raw;
-}
-
-function formatArcRhoPythonApiActivity(rawAction, targetKind = "app data") {
-  const action = String(rawAction || "").trim().toLowerCase();
-  if (action.includes("agent_inspect") || action === "inspect") return "ArcBot is bundling the active DFM method details in one helper read.";
-  if (action.includes("agent_summary") || action === "summary") return "ArcBot is reading the active DFM method summary.";
-  if (action.includes("component") || action === "component") return "ArcBot is inspecting part of the active DFM method.";
-  if (action.includes("ratio-row") || action.includes("ratio_row")) return "ArcBot is reading ratio-row details from the active DFM method.";
-  if (action.includes("exclude-ratio") || action.includes("exclude_ratio")) return "ArcBot is marking selected ratio cells as excluded.";
-  if (action.includes("include-ratio") || action.includes("include_ratio")) return "ArcBot is restoring selected ratio cells.";
-  if (action.includes("select-average") || action.includes("select_average")) return "ArcBot is updating the selected average formula.";
-  if (action.includes("set-user-entry") || action.includes("set_user")) return "ArcBot is setting a user-entered selected factor.";
-  if (action.includes("validate")) return `ArcBot is checking that the proposed ${targetKind} update is valid.`;
-  return `ArcBot is using the ArcRho Python helper for the active ${targetKind}.`;
 }
 
 function createAssistantProgressSteps() {
@@ -691,14 +607,6 @@ function shouldShowAssistantActivity(activity, text) {
   const raw = String(activity?.rawText || activity?.text || "").trim();
   const lower = `${visible}\n${raw}`.toLowerCase();
   if (String(activity?.type || "").toLowerCase() === "error") return true;
-  if (lower.includes("bundling the active dfm method details")) return true;
-  if (lower.includes("arcrho python helper")) return true;
-  if (lower.includes("active dfm method summary")) return true;
-  if (lower.includes("dfm method component") || lower.includes("part of the active dfm method")) return true;
-  if (lower.includes("ratio-row details")) return true;
-  if (lower.includes("selected ratio cells")) return true;
-  if (lower.includes("selected average formula")) return true;
-  if (lower.includes("user-entered selected factor")) return true;
   if (lower.includes("proposed") && lower.includes("update is valid")) return true;
   if (lower.includes("running command:") || lower.includes("codex is running a command")) return true;
   if (lower.includes("reading file:") || lower.includes("editing file:")) return true;
@@ -710,7 +618,7 @@ function shouldShowAssistantActivity(activity, text) {
   if (lower.includes("codex is using a tool") || lower.includes("arcbot is using a tool")) return true;
   if (lower.includes("codex is searching") || lower.includes("arcbot is searching")) return true;
   if (lower.includes("codex is drafting") || lower.includes("arcbot is drafting")) return true;
-  if (lower.includes("active dfm") || lower.includes("active notebook") || lower.includes("active dataset")) return true;
+  if (lower.includes("active notebook")) return true;
   if (lower.includes("request canceled") || lower.includes("failed") || lower.includes("could not") || lower.includes("error:")) return true;
   return false;
 }
@@ -893,9 +801,6 @@ function updateContextPanel() {
     ["Tab", context.title || context.tabType || "No active tab context"],
     ["Type", context.tabType || "home"],
     ["File", context.targetPath || context.path || "No active JSON-backed file"],
-    ...(context.tabType === "project_instance"
-      ? [["Nested Windows", `${Array.isArray(context.openNestedWindows) ? context.openNestedWindows.length : 0} visible${context.ignoredMinimizedWindowCount ? `, ${context.ignoredMinimizedWindowCount} minimized ignored` : ""}`]]
-      : []),
     ["Context Window", formatContextWindowUsage(usage)],
     ["Prompt Size", usage.promptChars ? `${Number(usage.promptChars).toLocaleString()} chars, ~${formatTokenCount(usage.estimatedTokens)} tokens` : "Not measured yet"],
     ["Included", usage.includedMessages != null ? `${usage.includedMessages} messages${usage.truncated ? ", truncated" : ""}` : "Not measured yet"],
@@ -928,26 +833,6 @@ function updateContextPanel() {
   panel.appendChild(grid);
 }
 
-function normalizeAssistantContextForPanel(context, activeTab = null) {
-  const source = context && typeof context === "object" ? context : {};
-  const fallbackTab = activeTab || {};
-  return {
-    available: !!source.available,
-    tabType: source.tabType || source.pageType || fallbackTab.type || "home",
-    pageType: source.pageType || "",
-    nestedPageType: source.nestedPageType || "",
-    title: source.title || fallbackTab.title || "",
-    targetPath: source.targetPath || source.methodPath || source.path || "",
-    fileState: source.disabled ? "disabled" : (source.fileState || (source.dirty ? "unsaved-changes" : "")),
-    activeNestedWindow: source.activeNestedWindow || null,
-    openNestedWindows: Array.isArray(source.openNestedWindows) ? source.openNestedWindows : [],
-    ignoredMinimizedWindowCount: Number.isFinite(source.ignoredMinimizedWindowCount)
-      ? Math.max(0, Math.round(source.ignoredMinimizedWindowCount))
-      : 0,
-    projectInstance: source.projectInstance || null,
-  };
-}
-
 function setAssistantModel(model, options = {}) {
   const prevClaude = isClaudeModel();
   assistantModel = normalizeAssistantModel(model);
@@ -968,20 +853,6 @@ function setAssistantReasoningEffort(effort, options = {}) {
   if (select) select.value = assistantReasoningEffort;
   updateAssistantSettingsPanel();
   if (options.save !== false) saveCurrentSession();
-}
-
-function normalizeReadableRootList(folders = []) {
-  const seen = new Set();
-  const roots = [];
-  for (const folder of Array.isArray(folders) ? folders : []) {
-    const text = String(folder || "").trim();
-    if (!text) continue;
-    const key = text.replace(/[\\/]+$/g, "").toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    roots.push(text);
-  }
-  return roots;
 }
 
 function setFolderPermissionsStatus(text) {
@@ -1212,40 +1083,6 @@ function renderAssistantAttachments() {
   });
 }
 
-function getAttachmentExtension(fileName) {
-  const base = String(fileName || "").split(/[\\/]/).pop() || "";
-  const index = base.lastIndexOf(".");
-  return index >= 0 ? base.slice(index + 1).toLowerCase() : "";
-}
-
-function getAttachmentIconKind(fileName) {
-  const ext = getAttachmentExtension(fileName);
-  if (["csv", "tsv", "xlsx", "xls", "xlsm", "json", "jsonl", "parquet"].includes(ext)) return "data";
-  if (["py", "r", "sql", "js", "ts", "html", "css", "xml", "yaml", "yml", "toml", "ini"].includes(ext)) return "code";
-  if (["md", "txt", "log", "ipynb", "arcnb"].includes(ext)) return "note";
-  return "file";
-}
-
-function getAttachmentTypeLabel(fileName) {
-  const ext = getAttachmentExtension(fileName);
-  if (!ext) return "File";
-  if (["md", "markdown"].includes(ext)) return "MD";
-  return ext.toUpperCase();
-}
-
-function getAttachmentIconSvg(kind) {
-  if (kind === "data") {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"></rect><path d="M5 10h14"></path><path d="M10 5v14"></path><path d="M14 5v14"></path></svg>';
-  }
-  if (kind === "code") {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l-6-6 6-6"></path><path d="M15 6l6 6-6 6"></path></svg>';
-  }
-  if (kind === "note") {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h8l4 4v12H7z"></path><path d="M15 4v5h4"></path><path d="M10 13h6"></path><path d="M10 17h4"></path></svg>';
-  }
-  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>';
-}
-
 function closeAttachMenu() {
   $("aiAssistantAttachMenu")?.classList.remove("open");
   $("aiAssistantAttachBtn")?.setAttribute("aria-expanded", "false");
@@ -1302,36 +1139,6 @@ async function attachAssistantContextFile() {
 
 function getActiveTabPreviewContext() {
   const activeTab = shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId) || null;
-  if (activeTab?.type === "project_instance") {
-    const state = activeTab.projectInstanceState && typeof activeTab.projectInstanceState === "object"
-      ? activeTab.projectInstanceState
-      : {};
-    const visibleWindows = Array.isArray(state.windows)
-      ? state.windows.filter((item) => item && !item.hidden)
-      : [];
-    visibleWindows.sort((a, b) => {
-      if (a.active && !b.active) return -1;
-      if (b.active && !a.active) return 1;
-      return String(a.title || a.name || "").localeCompare(String(b.title || b.name || ""));
-    });
-    const activeWindow = visibleWindows.find((item) => item.active) || visibleWindows[0] || null;
-    const activeTitle = String(activeWindow?.title || activeWindow?.name || "").trim();
-    return {
-      available: !!activeWindow,
-      tabId: activeTab.id || "",
-      tabType: "project_instance",
-      nestedPageType: activeWindow?.kind || "",
-      projectName: activeTab.projectName || activeTab.title || "",
-      title: activeTitle ? `${activeTab.title || activeTab.projectName || "Project Instance"}: ${activeTitle}` : (activeTab.title || "Project Instance"),
-      targetPath: String(state.selectedPath || "").trim(),
-      fileState: activeWindow?.dirty ? "unsaved-changes" : "",
-      activeNestedWindow: activeWindow,
-      openNestedWindows: visibleWindows,
-      ignoredMinimizedWindowCount: Array.isArray(state.windows)
-        ? state.windows.filter((item) => item?.hidden).length
-        : 0,
-    };
-  }
   return {
     available: !!activeTab && activeTab.type !== "home",
     tabId: activeTab?.id || "",
@@ -1354,22 +1161,9 @@ function getAppContextTooltipRows(context) {
   const type = String(ctx.tabType || ctx.pageType || "home");
   const path = String(ctx.targetPath || ctx.path || "").trim();
   const state = String(ctx.fileState || (ctx.dirty ? "unsaved-changes" : "") || "").trim();
-  if (ctx.tabType === "project_instance") {
-    const project = String(ctx.projectInstance?.projectName || ctx.projectName || title.split(":")[0] || "").trim();
-    const activeWindow = ctx.activeNestedWindow || null;
-    const activeName = String(activeWindow?.name || activeWindow?.title || "").trim();
-    const methodType = String(activeWindow?.methodType || "").trim() || "None";
-    const visibleWindows = Array.isArray(ctx.openNestedWindows) ? ctx.openNestedWindows : [];
-    const segment = String(ctx.projectInstance?.selectedPath || activeWindow?.path || "").trim();
-    return [
-      { text: "App Context", strong: true },
-      project ? { label: "Project", value: project } : null,
-      { label: "Segment", value: segment || "no active segment" },
-      { label: "Active Tab", value: activeName || "no visible nested tab" },
-      { label: "Method Type", value: methodType },
-      { label: "Visible Tabs", value: String(visibleWindows.length) },
-      state ? { label: "State", value: state } : null,
-    ].filter(Boolean);
+  if (typeof assistantConfig.getAppContextTooltipRows === "function") {
+    const rows = assistantConfig.getAppContextTooltipRows(ctx, { title, type, path, state });
+    if (Array.isArray(rows) && rows.length) return rows.filter(Boolean);
   }
   return [
     { text: "App Context", strong: true },
@@ -1804,118 +1598,8 @@ function getMessageAvatar(role) {
   return avatar;
 }
 
-function appendAssistantInlineMarkdown(parent, text) {
-  const raw = String(text || "");
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-  let lastIndex = 0;
-  for (const match of raw.matchAll(pattern)) {
-    if (match.index > lastIndex) parent.appendChild(document.createTextNode(raw.slice(lastIndex, match.index)));
-    const token = match[0];
-    const el = token.startsWith("**") ? document.createElement("strong") : document.createElement("code");
-    el.textContent = token.startsWith("**") ? token.slice(2, -2) : token.slice(1, -1);
-    parent.appendChild(el);
-    lastIndex = match.index + token.length;
-  }
-  if (lastIndex < raw.length) parent.appendChild(document.createTextNode(raw.slice(lastIndex)));
-}
-
-function flushAssistantMarkdownList(container, listState) {
-  if (!listState.items.length) return;
-  const list = document.createElement(listState.ordered ? "ol" : "ul");
-  for (const itemText of listState.items) {
-    const item = document.createElement("li");
-    appendAssistantInlineMarkdown(item, itemText);
-    list.appendChild(item);
-  }
-  container.appendChild(list);
-  listState.items = [];
-  listState.ordered = false;
-}
-
-function renderAssistantMarkdown(el, text) {
-  if (!el) return;
-  const raw = String(text || "");
-  el.textContent = "";
-  el.classList.toggle("rich", true);
-  const lines = raw.split(/\r?\n/);
-  const listState = { items: [], ordered: false };
-  let inCodeBlock = false;
-  let codeLines = [];
-  const flushCodeBlock = () => {
-    if (!codeLines.length) return;
-    const pre = document.createElement("pre");
-    const code = document.createElement("code");
-    code.textContent = codeLines.join("\n");
-    pre.appendChild(code);
-    el.appendChild(pre);
-    codeLines = [];
-  };
-  for (const line of lines) {
-    if (/^\s*```/.test(line)) {
-      flushAssistantMarkdownList(el, listState);
-      if (inCodeBlock) flushCodeBlock();
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-    if (inCodeBlock) {
-      codeLines.push(line);
-      continue;
-    }
-    if (!line.trim()) {
-      flushAssistantMarkdownList(el, listState);
-      continue;
-    }
-    const bullet = line.match(/^\s*[-*]\s+(.+)$/);
-    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
-    if (bullet || ordered) {
-      const isOrdered = !!ordered;
-      if (listState.items.length && listState.ordered !== isOrdered) flushAssistantMarkdownList(el, listState);
-      listState.ordered = isOrdered;
-      listState.items.push((bullet || ordered)[1]);
-      continue;
-    }
-    flushAssistantMarkdownList(el, listState);
-    const paragraph = document.createElement("p");
-    appendAssistantInlineMarkdown(paragraph, line);
-    el.appendChild(paragraph);
-  }
-  flushAssistantMarkdownList(el, listState);
-  if (inCodeBlock || codeLines.length) flushCodeBlock();
-  if (!el.childNodes.length) el.textContent = raw;
-}
-
-function renderAssistantMessageContent(el, role, text) {
-  if (!el) return;
-  if (role === "assistant") {
-    renderAssistantMarkdown(el, text);
-    return;
-  }
-  el.classList.remove("rich");
-  el.textContent = text || "";
-}
-
-function prefersReducedAssistantMotion() {
-  return !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-}
-
 async function typeAssistantMessage(el, text) {
-  if (!el) return;
-  const fullText = String(text || "");
-  el.classList.remove("thinking");
-  el.classList.add("typing");
-  if (prefersReducedAssistantMotion() || fullText.length < 48) {
-    renderAssistantMarkdown(el, fullText);
-    el.classList.remove("typing");
-    return;
-  }
-  const step = Math.max(2, Math.ceil(fullText.length / ASSISTANT_TYPING_MAX_FRAMES));
-  for (let index = step; index < fullText.length; index += step) {
-    renderAssistantMarkdown(el, fullText.slice(0, index));
-    scrollMessagesToBottom();
-    await new Promise((resolve) => window.setTimeout(resolve, ASSISTANT_TYPING_FRAME_MS));
-  }
-  renderAssistantMarkdown(el, fullText);
-  el.classList.remove("typing");
+  return typeAssistantMessageContent(el, text, { scrollToBottom: scrollMessagesToBottom });
 }
 
 function appendMessage(role, text) {
@@ -1974,12 +1658,12 @@ function applyStatus(status) {
   assistantReady = !!status?.installed && !!status?.authenticated;
   if (!status?.installed) {
     if (assistantInstallJustSucceeded) {
-      setStatus("Codex CLI installed, but ArcRho cannot find it yet.", "error");
+      setStatus(`Codex CLI installed, but ${assistantConfig.appName} cannot find it yet.`, "error");
       setSetup({
         open: true,
         install: false,
         login: false,
-        text: "Restart ArcRho, then refresh ArcBot status so the updated npm command path is picked up.",
+        text: `Restart ${assistantConfig.appName}, then refresh ArcBot status so the updated npm command path is picked up.`,
       });
       setComposerEnabled(false);
       return;
@@ -2035,17 +1719,20 @@ function requestActivePageContext() {
     const onMessage = (event) => {
       if (event.source !== iframe.contentWindow) return;
       const msg = event.data || {};
-      if (msg.type !== "arcrho:assistant-context-result" || msg.requestId !== requestId) return;
+      if (msg.type !== assistantMessageType("context-result") || msg.requestId !== requestId) return;
       finish(msg.context || {});
     };
     window.addEventListener("message", onMessage);
     try {
-      iframe.contentWindow.postMessage({ type: "arcrho:assistant-context-request", requestId }, "*");
+      iframe.contentWindow.postMessage({ type: assistantMessageType("context-request"), requestId }, "*");
     } catch {
       finish(baseContext);
       return;
     }
-    setTimeout(() => finish(baseContext), activeTab?.type === "project_instance" ? 1700 : 900);
+    const timeoutMs = activeTab?.type === "project_instance"
+      ? Number(assistantConfig.projectInstanceContextTimeoutMs || assistantConfig.contextTimeoutMs || 900)
+      : Number(assistantConfig.contextTimeoutMs || 900);
+    setTimeout(() => finish(baseContext), Math.max(1, timeoutMs));
   });
 }
 
@@ -2055,7 +1742,7 @@ function notifyActivePageJsonUpdated(result) {
   if (!iframe?.contentWindow) return;
   try {
     iframe.contentWindow.postMessage({
-      type: "arcrho:assistant-json-updated",
+      type: assistantMessageType("json-updated"),
       path: result?.targetPath || "",
     }, "*");
   } catch {
@@ -2081,13 +1768,13 @@ function requestActiveDfmEditApproval(result) {
     const onMessage = (event) => {
       if (event.source !== iframe.contentWindow) return;
       const msg = event.data || {};
-      if (msg.type !== "arcrho:assistant-dfm-edit-approval-result" || msg.requestId !== requestId) return;
+      if (msg.type !== assistantMessageType("dfm-edit-approval-result") || msg.requestId !== requestId) return;
       finish(msg);
     };
     window.addEventListener("message", onMessage);
     try {
       iframe.contentWindow.postMessage({
-        type: "arcrho:assistant-dfm-edit-approval",
+        type: assistantMessageType("dfm-edit-approval"),
         requestId,
         targetPath: result?.targetPath || "",
         originalJson: result?.originalJson || null,
@@ -2118,7 +1805,7 @@ async function refreshAssistantStatus() {
     applyStatus(status);
   } catch (err) {
     assistantReady = false;
-    setStatus(String(err?.message || err || "Codex status check failed."), "error");
+    setStatus(getHostErrorMessage(err, "Codex status check failed."), "error");
     setComposerEnabled(false);
   }
 }
@@ -2417,10 +2104,14 @@ function clampPanelSize(width, height) {
   const statusbarHeight = Number(shell.getStatusBarHeight?.() || 0);
   const maxWidth = Math.max(ASSISTANT_PANEL_MIN_WIDTH, window.innerWidth - 16);
   const maxHeight = Math.max(340, window.innerHeight - statusbarHeight - 16);
-  return {
-    width: Math.min(Math.max(ASSISTANT_PANEL_MIN_WIDTH, Number(width) || ASSISTANT_PANEL_MIN_WIDTH), maxWidth),
-    height: Math.min(Math.max(340, Number(height) || ASSISTANT_PANEL_DEFAULT_HEIGHT), maxHeight),
-  };
+  return clampAssistantPanelSize(width, height, {
+    minWidth: ASSISTANT_PANEL_MIN_WIDTH,
+    minHeight: 340,
+    maxWidth,
+    maxHeight,
+    fallbackWidth: ASSISTANT_PANEL_MIN_WIDTH,
+    fallbackHeight: ASSISTANT_PANEL_DEFAULT_HEIGHT,
+  });
 }
 
 function applyPanelSize(panel, size = readPanelSize()) {
@@ -2551,7 +2242,7 @@ async function installCodexCli() {
   if (!host?.codexAssistantInstall) return;
   assistantInstallJustSucceeded = false;
   const confirmed = window.confirm(
-    "Install Codex CLI now?\n\nArcRho will run: npm install -g @openai/codex"
+    `Install Codex CLI now?\n\n${assistantConfig.appName} will run: npm install -g @openai/codex`
   );
   if (!confirmed) return;
   assistantBusy = true;
@@ -2755,22 +2446,27 @@ async function sendAssistantMessage() {
     let editApplied = !!result?.editApplied;
     let approvalFailed = false;
     if (result?.editPendingApproval) {
-      appendActivity("Opening DFM version compare for approval.", "activity");
-      setStatus("Review the proposed DFM edit before accepting it...");
-      const approval = await requestActiveDfmEditApproval(result);
-      if (approval?.ok && approval.accepted) {
-        editApplied = true;
-        reply = approval.message || reply || "Applied the approved DFM edit.";
-        appendActivity("Approved and applied DFM edit.", "activity");
-      } else if (approval?.ok && approval.accepted === false) {
-        editApplied = false;
-        reply = approval.message || "DFM edit was rejected. No changes were applied.";
-        appendActivity("Rejected DFM edit. No changes were applied.", "activity");
+      if (assistantConfig.enableDfmApproval) {
+        appendActivity("Opening DFM version compare for approval.", "activity");
+        setStatus("Review the proposed DFM edit before accepting it...");
+        const approval = await requestActiveDfmEditApproval(result);
+        if (approval?.ok && approval.accepted) {
+          editApplied = true;
+          reply = approval.message || reply || "Applied the approved DFM edit.";
+          appendActivity("Approved and applied DFM edit.", "activity");
+        } else if (approval?.ok && approval.accepted === false) {
+          editApplied = false;
+          reply = approval.message || "DFM edit was rejected. No changes were applied.";
+          appendActivity("Rejected DFM edit. No changes were applied.", "activity");
+        } else {
+          editApplied = false;
+          approvalFailed = true;
+          reply = approval?.error || "DFM edit approval failed. No changes were applied.";
+          appendActivity("DFM edit approval failed.", "error");
+        }
       } else {
-        editApplied = false;
-        approvalFailed = true;
-        reply = approval?.error || "DFM edit approval failed. No changes were applied.";
-        appendActivity("DFM edit approval failed.", "error");
+        editApplied = true;
+        appendActivity("Edit completed.", "activity");
       }
     }
     await resolveAssistantPendingMessage(pending, reply, { animate: true });
@@ -2811,10 +2507,6 @@ function handleAssistantEvent(event) {
   if (!event || event.requestId !== currentRequestId) return;
   if (event.type === "stdout") {
     appendDebugLog(event.text, "stdout");
-    const apiStatus = formatAssistantActivityForCard(event.text, event);
-    if (apiStatus && /ArcRho Python API|"api method"|arcrho_api/iu.test(String(event.text || ""))) {
-      appendActivity(event.text, "activity", { displayText: apiStatus, save: false });
-    }
     return;
   }
   if (event.type === "stderr") {
@@ -2843,6 +2535,7 @@ function handleAssistantEvent(event) {
 }
 
 export function initAiAssistant() {
+  ensureAiAssistantDom(assistantConfig);
   const launcher = $("aiAssistantLauncher");
   const panel = $("aiAssistantPanel");
   const composer = $("aiAssistantComposer");

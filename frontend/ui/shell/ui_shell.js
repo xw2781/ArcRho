@@ -13,7 +13,7 @@ import { initHotkeys, runHotkeyAction } from "./shell_hotkeys.js?v=20260608a";
 import { initShellMessages } from "./shell_messages.js?v=20260531a";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
-import { initAiAssistant } from "./ai_assistant.js?v=20260515b";
+import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260615a";
 import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260601a";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());

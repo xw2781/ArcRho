@@ -1,5 +1,5 @@
 import { shell } from "./shell_context.js?v=20260510a";
-import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "./ai_assistant.js?v=20260515a";
+import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260615a";
 import { openMacroWindow } from "../macro/macro_window.js?v=20260601a";
 
 const fileMenuBtn = document.querySelector('.menu[data-menu="file"]');

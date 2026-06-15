@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "ai assistant",
+  "audience": "user",
+  "summary": "Consolidated the ArcBot assistant widget so ArcRho and Arcode share the same panel, styling, and behavior.",
+  "details": [
+    "ArcRho keeps its DFM approval behavior while Arcode keeps its notebook-focused assistant context."
+  ]
+}

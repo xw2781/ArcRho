@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "ai assistant",
+  "audience": "user",
+  "summary": "Restored ArcBot App Context tooltip details for DFM windows opened inside project instances."
+}
