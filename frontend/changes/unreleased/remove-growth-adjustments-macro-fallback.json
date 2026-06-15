@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Removed the seeded Apply Growth Adjustments macro fallback from the Macro window."
+}

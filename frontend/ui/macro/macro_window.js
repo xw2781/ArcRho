@@ -69,12 +69,8 @@ function isDemoMacro(macro) {
   return !!macro?.demo;
 }
 
-function isBuiltInMacro(macro) {
-  return !!macro?.builtin;
-}
-
 function canDeleteMacro(macro) {
-  return !!macro?.path && !isDemoMacro(macro) && !isBuiltInMacro(macro);
+  return !!macro?.path && !isDemoMacro(macro);
 }
 
 function buildMacroDisplayList(loadedMacros) {
@@ -616,15 +612,11 @@ function editSelectedMacro() {
   const macro = getSelectedMacro();
   if (!macro?.path || isDemoMacro(macro)) return;
   shell.openScriptingTab?.({ forceNew: true, notebookPath: macro.path });
-  setMacroStatus(`Opened ${macro.name || macro.id} in Scripting Console.`, "", { statusBar: true });
+  setMacroStatus(`Opened ${macro.name || macro.id} in Arcode.`, "", { statusBar: true });
 }
 
 async function deleteSelectedMacro() {
   const macro = getSelectedMacro();
-  if (isBuiltInMacro(macro)) {
-    setMacroStatus("Built-in macros cannot be deleted.", "error", { statusBar: true });
-    return;
-  }
   if (!canDeleteMacro(macro)) {
     setMacroStatus("Select a real macro before deleting.", "error", { statusBar: true });
     return;
