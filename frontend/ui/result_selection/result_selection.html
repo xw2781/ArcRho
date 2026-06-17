@@ -1,0 +1,508 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Result Selection</title>
+  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260129165558"/>
+  <style>
+    :root {
+      --rs-font: Arial, "Segoe UI", Tahoma, sans-serif;
+      --rs-cell-h: 24px;
+      --rs-border: #cfd6df;
+      --rs-header: #eef2f6;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: 12px var(--rs-font);
+      color: #1f2937;
+      background: #f8fafc;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .rsPathBar {
+      flex: 0 0 auto;
+      min-height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      box-sizing: border-box;
+      border-bottom: 1px solid #d8dde3;
+      background: #f3f6fa;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rsPathSep { color: #64748b; }
+    .rsTabBar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: flex-end;
+      height: 31px;
+      padding-left: 8px;
+      border-bottom: 1px solid #cbd5e1;
+      background: #f5f7fa;
+      box-sizing: border-box;
+    }
+    .rsTab {
+      height: 26px;
+      padding: 0 10px;
+      border: 1px solid #cbd5e1;
+      border-bottom: 0;
+      border-radius: 0;
+      background: #edf1f6;
+      color: #1f2937;
+      cursor: pointer;
+      font: 12px var(--rs-font);
+      box-sizing: border-box;
+    }
+    .rsTab.active {
+      height: 29px;
+      background: #fff;
+      font-weight: 700;
+      transform: translateY(1px);
+    }
+    .rsPageHost {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      background: #fff;
+      border-left: 1px solid #d8dde3;
+      border-right: 1px solid #d8dde3;
+      overflow: hidden;
+    }
+    .rsPage {
+      display: none;
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      padding: 12px;
+      box-sizing: border-box;
+      overflow: auto;
+    }
+    .rsPage.active { display: block; }
+    #rsMethodPage.active {
+      display: flex;
+      flex-direction: column;
+      padding: 4px;
+      overflow: hidden;
+    }
+    .rsDetailsGrid {
+      display: grid;
+      grid-template-columns: 170px minmax(260px, 1fr);
+      column-gap: 8px;
+      row-gap: 18px;
+      align-items: center;
+      max-width: 100%;
+    }
+    .rsDetailsGrid label {
+      text-align: right;
+      font-weight: 600;
+      color: #111827;
+    }
+    .rsDetailsGrid label::after { content: ":"; margin-left: 3px; }
+    .rsFieldRow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .rsInput,
+    .rsSelect,
+    .rsNumber {
+      height: 28px;
+      border: 1px solid #aeb8c8;
+      border-radius: 2px;
+      background: #fff;
+      box-sizing: border-box;
+      padding: 0 7px;
+      font: 12px var(--rs-font);
+    }
+    .rsInput { width: min(100%, 980px); }
+    .rsNumber { width: 70px; }
+    .rsButton {
+      height: 28px;
+      min-width: 32px;
+      border: 1px solid #aab3c2;
+      border-radius: 2px;
+      background: #eef2f7;
+      color: #111827;
+      font: 12px var(--rs-font);
+      cursor: pointer;
+    }
+    .rsButton:hover:not(:disabled) { background: #e2e8f0; }
+    .rsButton:disabled { opacity: 0.55; cursor: default; }
+    .rsBasisPanel {
+      grid-column: 2;
+      width: min(100%, 960px);
+      border: 1px solid #aeb8c8;
+      padding: 18px 24px;
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: auto minmax(220px, 1fr) auto auto;
+      gap: 16px 10px;
+      align-items: center;
+    }
+    .rsCheckboxRow {
+      grid-column: 1 / span 2;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .rsMethodToolbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-height: 76px;
+      padding: 6px 8px;
+      border: 1px solid #d8dde3;
+      background: #f5f7fa;
+      box-sizing: border-box;
+    }
+    .rsToolGroup {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 54px;
+      padding: 4px 10px;
+      border-right: 1px solid #d8dde3;
+    }
+    .rsToolTitle {
+      align-self: flex-start;
+      font-weight: 700;
+      color: #334155;
+    }
+    .rsGridHost {
+      flex: 1 1 auto;
+      min-height: 0;
+      margin-top: 4px;
+      border: 1px solid #b8c2cf;
+      overflow: auto;
+      background: #fff;
+    }
+    .rsGrid {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: max-content;
+      min-width: 100%;
+      table-layout: fixed;
+      font: 12px var(--rs-font);
+    }
+    .rsGrid th,
+    .rsGrid td {
+      height: var(--rs-cell-h);
+      min-width: 92px;
+      max-width: 126px;
+      padding: 0 6px;
+      border-right: 1px solid #e2e8f0;
+      border-bottom: 1px solid #e2e8f0;
+      box-sizing: border-box;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rsGrid th {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      min-height: 48px;
+      height: 48px;
+      line-height: 1.15;
+      white-space: normal;
+      text-align: center;
+      background: #d9dde2;
+      color: #1f2937;
+      font-weight: 700;
+    }
+    .rsGrid th:first-child,
+    .rsGrid td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      min-width: 76px;
+      max-width: 76px;
+      background: #e5e7eb;
+      color: #111827;
+      text-align: center;
+      font-weight: 700;
+      border-left: 1px solid #e2e8f0;
+    }
+    .rsGrid th:first-child { z-index: 5; }
+    .rsWeightCell,
+    .rsGrid th.rsWeightHeader {
+      background: #dff8f8;
+      color: #64748b;
+      font-style: italic;
+    }
+    .rsWeightInput {
+      width: 100%;
+      height: 22px;
+      border: 0;
+      background: transparent;
+      color: #0284c7;
+      text-align: right;
+      font: italic 12px var(--rs-font);
+      outline: none;
+    }
+    .rsUltimateCell,
+    .rsGrid th.rsUltimateHeader {
+      background: #fff176;
+      font-weight: 700;
+    }
+    .rsRatioCell,
+    .rsGrid th.rsRatioHeader {
+      background: #edf7ff;
+      color: #0f172a;
+    }
+    .rsTotalRow td {
+      font-weight: 700;
+      background: #f8fafc;
+    }
+    .rsSourceHeader {
+      position: relative;
+    }
+    .rsSourceRemove {
+      float: right;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      border: 1px solid #aab3c2;
+      background: #eef2f7;
+      cursor: pointer;
+      font-size: 10px;
+    }
+    .rsSaveBar {
+      flex: 0 0 38px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 5px 10px;
+      border-top: 1px solid #d8dde3;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .rsSaveBtn,
+    .rsCancelBtn {
+      min-width: 74px;
+      height: 28px;
+      border-radius: 4px;
+      font: 600 12px var(--rs-font);
+      cursor: pointer;
+    }
+    .rsSaveBtn {
+      border: 1px solid #2563eb;
+      background: #2563eb;
+      color: #fff;
+    }
+    .rsCancelBtn,
+    .rsSaveBtn.is-clean {
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #1f2937;
+    }
+    .rsSaveBtn:disabled,
+    .rsCancelBtn:disabled { opacity: 0.55; cursor: default; }
+    .rsNotesWrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: min(100%, 960px);
+    }
+    .rsNotesInputWrap {
+      position: relative;
+      width: 100%;
+      min-height: 260px;
+      height: 360px;
+      resize: both;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    #rsNotesDecor,
+    #rsNotesInput {
+      position: absolute;
+      inset: 0;
+      margin: 0;
+      padding: 10px;
+      box-sizing: border-box;
+      border: 1px solid #aeb8c8;
+      border-radius: 4px;
+      font: 13px var(--rs-font);
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    #rsNotesDecor {
+      pointer-events: auto;
+      color: #1f2937;
+      background: #fff;
+      z-index: 1;
+      user-select: none;
+    }
+    #rsNotesInput {
+      z-index: 2;
+      resize: none;
+      overflow: auto;
+      background: transparent;
+      color: transparent;
+      caret-color: #111827;
+      outline: none;
+    }
+    .rsNotesPathToken {
+      color: #0b3d91;
+      text-decoration: underline;
+      text-underline-offset: 1px;
+    }
+    .rsNotesPathToken.isHoverPath { background: rgba(66, 117, 196, 0.2); }
+    .rsNotesPathTooltip {
+      position: fixed;
+      display: none;
+      z-index: 2000;
+      max-width: 260px;
+      padding: 4px 8px;
+      border: 1px solid #2f4e85;
+      border-radius: 4px;
+      background: rgba(11, 37, 82, 0.95);
+      color: #f8fafc;
+      white-space: nowrap;
+    }
+    .rsNotesPathTooltip.show { display: block; }
+    .rsPlaceholder {
+      color: #64748b;
+      padding: 14px;
+      border: 1px solid #d8dde3;
+      background: #f8fafc;
+    }
+    .rsPicker {
+      position: fixed;
+      z-index: 2500;
+      display: none;
+      min-width: 360px;
+      max-height: 320px;
+      overflow: auto;
+      border: 1px solid #aeb8c8;
+      background: #fff;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+    }
+    .rsPicker.open { display: block; }
+    .rsPicker button {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) 90px 90px;
+      width: 100%;
+      gap: 8px;
+      border: 0;
+      border-bottom: 1px solid #edf2f7;
+      background: #fff;
+      text-align: left;
+      padding: 7px 9px;
+      cursor: pointer;
+      font: 12px var(--rs-font);
+    }
+    .rsPicker button:hover { background: #edf3ff; }
+  </style>
+</head>
+<body>
+  <div class="rsPathBar">
+    <span id="rsPathProject">-</span><span class="rsPathSep">&gt;</span><span id="rsPathClass">-</span>
+  </div>
+  <div class="rsTabBar" id="rsTabBar">
+    <button class="rsTab active" data-page="details" type="button">Details</button>
+    <button class="rsTab" data-page="method" type="button">Method</button>
+    <button class="rsTab" data-page="results" type="button">Results</button>
+    <button class="rsTab" data-page="validation" type="button">Validation</button>
+    <button class="rsTab" data-page="notes" type="button">Notes</button>
+  </div>
+  <div class="rsPageHost">
+    <section id="rsDetailsPage" class="rsPage active">
+      <div class="rsDetailsGrid">
+        <label for="rsNameInput">Name</label>
+        <div class="rsFieldRow">
+          <input id="rsNameInput" class="rsInput" type="text" autocomplete="off"/>
+        </div>
+        <label for="rsOutputTypeInput">Output Type</label>
+        <div class="rsFieldRow">
+          <input id="rsOutputTypeInput" class="rsInput" type="text" autocomplete="off"/>
+          <button id="rsOutputTypeBtn" class="rsButton" type="button" title="Select output vector">...</button>
+        </div>
+        <label for="rsOriginLengthInput">Origin Length</label>
+        <div class="rsFieldRow">
+          <input id="rsOriginLengthInput" class="rsNumber" type="number" min="1" step="1" value="12"/>
+        </div>
+        <label>Ratio Basis</label>
+        <div class="rsBasisPanel">
+          <span>Basis</span>
+          <div class="rsFieldRow">
+            <input id="rsRatioBasisInput" class="rsInput" type="text" autocomplete="off"/>
+            <button id="rsRatioBasisBtn" class="rsButton" type="button" title="Select ratio basis">...</button>
+          </div>
+          <span>Statistic Decimal Places</span>
+          <input id="rsStatisticDecimalsInput" class="rsNumber" type="number" min="0" max="8" step="1" value="1"/>
+          <label class="rsCheckboxRow">
+            <input id="rsShowRatiosPctInput" type="checkbox" checked/>
+            <span>Show Ratios as Percentages</span>
+          </label>
+        </div>
+      </div>
+    </section>
+    <section id="rsMethodPage" class="rsPage">
+      <div class="rsMethodToolbar">
+        <div class="rsToolGroup">
+          <span class="rsToolTitle">Formatting</span>
+          <label><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights</label>
+        </div>
+        <div class="rsToolGroup">
+          <span class="rsToolTitle">Sources</span>
+          <button id="rsAddSourceBtn" class="rsButton" type="button">Add Dataset</button>
+        </div>
+        <div class="rsToolGroup">
+          <span class="rsToolTitle">Display as Ratios</span>
+          <span id="rsRatioBasisStatus">Basis: None</span>
+        </div>
+      </div>
+      <div class="rsGridHost">
+        <table class="rsGrid" id="rsMethodGrid"></table>
+      </div>
+    </section>
+    <section id="rsResultsPage" class="rsPage">
+      <div class="rsPlaceholder">Results tab placeholder for Result Selection v1.</div>
+    </section>
+    <section id="rsValidationPage" class="rsPage">
+      <div class="rsPlaceholder">Validation tab placeholder for Result Selection v1.</div>
+    </section>
+    <section id="rsNotesPage" class="rsPage">
+      <div class="rsNotesWrap">
+        <div class="notesFormatToolbar" id="rsNotesFormatToolbar" data-notes-format-toolbar>
+          <label class="notesFormatGroup" title="Font family">
+            <span class="notesFormatLabel">Font</span>
+            <select class="notesFormatSelect notesFormatFontFamily" data-notes-style="font-family">
+              <option value="">Default</option>
+              <option value="'Segoe UI', Tahoma, sans-serif">Segoe UI</option>
+              <option value="Calibri, 'Segoe UI', sans-serif">Calibri</option>
+              <option value="'Consolas', 'Courier New', monospace">Consolas</option>
+            </select>
+          </label>
+          <button type="button" class="notesFormatToggle" data-notes-toggle="bold" aria-pressed="false" title="Bold">B</button>
+          <button type="button" class="notesFormatToggle notesFormatToggleItalic" data-notes-toggle="italic" aria-pressed="false" title="Italic">I</button>
+          <button type="button" class="notesFormatToggle" data-notes-toggle="underline" aria-pressed="false" title="Underline">U</button>
+        </div>
+        <div class="rsNotesInputWrap" id="rsNotesInputWrap">
+          <pre id="rsNotesDecor" aria-hidden="true"></pre>
+          <textarea id="rsNotesInput" placeholder="Enter notes..."></textarea>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="rsSaveBar">
+    <button id="rsSaveBtn" class="rsSaveBtn is-clean" type="button" disabled>Save</button>
+    <button id="rsCancelBtn" class="rsCancelBtn" type="button" disabled>Cancel</button>
+  </div>
+  <div id="rsPicker" class="rsPicker" aria-hidden="true"></div>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260617a"></script>
+</body>
+</html>

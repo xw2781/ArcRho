@@ -50,6 +50,7 @@ function getWindowMethodType(frame) {
   const explicit = toText(frame?.dataset?.windowMethodType);
   if (explicit) return explicit;
   if (isDfmWindow(frame)) return "DFM";
+  if (isResultSelectionWindow(frame)) return "Result Selection";
   const key = normalizeLookupKey(frame?.dataset?.windowItemName || frame?.dataset?.windowDatasetName || "");
   return key ? state.cachedDatasetFilter.methodTypesByName.get(key) || "None" : "None";
 }
@@ -88,7 +89,7 @@ function getFrameRect(frame) {
 
 function getProjectInstanceWindowSnapshot(frame) {
   if (!frame?.isConnected) return null;
-  const kind = isDfmWindow(frame) ? "dfm" : "dataset";
+  const kind = isDfmWindow(frame) ? "dfm" : isResultSelectionWindow(frame) ? "result_selection" : "dataset";
   const name = toText(frame.dataset.windowItemName || frame.dataset.windowDatasetName || "");
   if (!name) return null;
   const active = getActiveDatasetWindow() === frame;
@@ -401,6 +402,10 @@ function isDfmWindow(frame) {
   return frame?.dataset?.windowKind === "dfm";
 }
 
+function isResultSelectionWindow(frame) {
+  return frame?.dataset?.windowKind === "result_selection";
+}
+
 function findWindowByInstance(inst) {
   const id = toText(inst);
   if (!id) return null;
@@ -627,6 +632,24 @@ function buildDfmViewerUrl(datasetName, inst, options = {}) {
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
   return `/ui/dfm/dfm.html?${params.toString()}`;
+}
+
+function buildResultSelectionViewerUrl(datasetName, inst, options = {}) {
+  const params = new URLSearchParams();
+  const name = toText(datasetName);
+  const initialTab = toText(options?.initialTab || options?.rsTab || "details") || "details";
+  params.set("project", projectName);
+  params.set("class", state.selectedPath);
+  if (name) params.set("name", name);
+  if (options?.outputType) params.set("output_type", toText(options.outputType));
+  if (options?.datasetTypeName) params.set("dataset_type", toText(options.datasetTypeName));
+  if (options?.category) params.set("category", toText(options.category));
+  if (options?.originLength) params.set("origin_length", toText(options.originLength));
+  params.set("tab", initialTab);
+  params.set("inst", inst);
+  params.set("project_instance", "1");
+  params.set("v", String(Date.now()));
+  return `/ui/result_selection/result_selection.html?${params.toString()}`;
 }
 
 function beginWindowDragCapture(mode) {
@@ -937,6 +960,29 @@ function openDfmWindow(datasetName, options = {}) {
   });
 }
 
+function openResultSelectionWindow(datasetName, options = {}) {
+  const name = toText(datasetName);
+  if (!name) return;
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before opening a Result Selection object.", true);
+    return;
+  }
+
+  const windowKey = `rs\u0001${normalizePath(state.selectedPath)}\u0001${name.toLowerCase()}`;
+  const title = `${state.selectedPath}\\Result Selection\\${name}`;
+  const inst = `pi_rs_${Date.now()}_${state.windowSeq++}`;
+  return createFloatingContentWindow({
+    kind: "result_selection",
+    name: `RS: ${name}`,
+    itemName: name,
+    title,
+    windowKey,
+    inst,
+    iframeSrc: buildResultSelectionViewerUrl(name, inst, options),
+    methodType: options.methodType || "Result Selection",
+  });
+}
+
 function applyRestoredWindowState(frame, item = {}) {
   if (!frame?.isConnected) return;
   const rect = item?.rect && typeof item.rect === "object" ? item.rect : null;
@@ -979,12 +1025,15 @@ async function applyProjectInstanceRestoreState(rawState) {
   const windows = Array.isArray(restoreState.windows) ? restoreState.windows : [];
   let activeTarget = null;
   for (const item of windows) {
-    const kind = toText(item?.kind).toLowerCase() === "dfm" ? "dfm" : "dataset";
+    const rawKind = toText(item?.kind).toLowerCase();
+    const kind = rawKind === "dfm" ? "dfm" : rawKind === "result_selection" ? "result_selection" : "dataset";
     const name = toText(item?.name || item?.datasetName || item?.methodName);
     if (!name) continue;
     const frame = kind === "dfm"
       ? openDfmWindow(name, { initialTab: item?.dfmTab, methodType: item?.methodType })
-      : openDatasetWindow(name, { methodType: item?.methodType });
+      : kind === "result_selection"
+        ? openResultSelectionWindow(name, { methodType: item?.methodType })
+        : openDatasetWindow(name, { methodType: item?.methodType });
     applyRestoredWindowState(frame, item);
     if (item?.active) activeTarget = frame;
   }
@@ -1004,6 +1053,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     beginWindowDragCapture,
     buildDatasetViewerUrl,
     buildDfmViewerUrl,
+    buildResultSelectionViewerUrl,
     buildProjectInstanceStateSnapshot,
     clampWindowRect,
     closeDatasetWindow,
@@ -1031,6 +1081,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     hasDirtyDfmWindow,
     isDatasetWindowMaximized,
     isDfmWindow,
+    isResultSelectionWindow,
     isWindowOnSelectedPath,
     postMessageToDatasetWindows,
     lockDatasetViewerInputs,
@@ -1041,6 +1092,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     openDatasetWindow,
     openNewDatasetDraftWindow,
     openDfmWindow,
+    openResultSelectionWindow,
     raiseWindow,
     rememberDatasetWindowSize,
     resizeRectFromCorner,

@@ -1,5 +1,6 @@
 export function installProjectInstanceMessages(ctx) {
   const { api, els, projectName, state } = ctx;
+  const activateDatasetWindow = (...args) => api.activateDatasetWindow(...args);
   const applyProjectInstanceRestoreState = (...args) => api.applyProjectInstanceRestoreState(...args);
   const closeDatasetWindow = (...args) => api.closeDatasetWindow(...args);
   const findWindowByInstance = (...args) => api.findWindowByInstance(...args);
@@ -7,12 +8,21 @@ export function installProjectInstanceMessages(ctx) {
   const fetchCachedDatasetSnapshot = (...args) => api.fetchCachedDatasetSnapshot(...args);
   const getActiveDatasetWindow = (...args) => api.getActiveDatasetWindow(...args);
   const getActiveDfmWindow = (...args) => api.getActiveDfmWindow(...args);
+  const getFrameRect = (...args) => api.getFrameRect(...args);
   const getProjectInstanceAssistantContextSummary = (...args) => api.getProjectInstanceAssistantContextSummary(...args);
   const getWindowIframe = (...args) => api.getWindowIframe(...args);
+  const getWindowMethodType = (...args) => api.getWindowMethodType(...args);
+  const getWindowPath = (...args) => api.getWindowPath(...args);
+  const hideDatasetWindow = (...args) => api.hideDatasetWindow(...args);
+  const isDatasetWindowMaximized = (...args) => api.isDatasetWindowMaximized(...args);
   const isDfmWindow = (...args) => api.isDfmWindow(...args);
+  const loadCachedDatasetFilterForSelectedPath = (...args) => api.loadCachedDatasetFilterForSelectedPath(...args);
+  const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
   const notifyProjectInstanceStateChanged = (...args) => api.notifyProjectInstanceStateChanged(...args);
+  const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
   const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
+  const restoreDatasetWindow = (...args) => api.restoreDatasetWindow(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const setWindowDirtyState = (...args) => api.setWindowDirtyState(...args);
   const toText = (...args) => api.toText(...args);
@@ -178,6 +188,159 @@ function routeDatasetWindowCommand(type = "arcrho:dataset-save") {
     setStatus("Failed to send save command to the dataset window.", true);
     return false;
   }
+}
+
+function replyAutomationResult(sourceWindow, requestId, payload) {
+  if (!requestId) return;
+  try {
+    sourceWindow?.postMessage({
+      type: "arcrho:automation-command-result",
+      requestId,
+      ...payload,
+    }, "*");
+  } catch {}
+}
+
+function getAutomationWindowInfo(frame) {
+  if (!frame?.isConnected) return null;
+  const windowId = toText(frame.dataset.windowId);
+  const name = toText(frame.dataset.windowItemName || frame.dataset.windowDatasetName);
+  const title = toText(frame.dataset.windowTitle || frame.getAttribute("aria-label") || name);
+  return {
+    windowId,
+    id: windowId,
+    windowKey: toText(frame.dataset.windowKey),
+    kind: toText(frame.dataset.windowKind || "dataset"),
+    name,
+    datasetName: toText(frame.dataset.windowDatasetName || name),
+    itemName: toText(frame.dataset.windowItemName || name),
+    title,
+    projectName,
+    selectedPath: toText(state.selectedPath),
+    path: toText(getWindowPath(frame) || frame.dataset.windowPath || state.selectedPath),
+    methodType: toText(getWindowMethodType(frame)),
+    active: getActiveDatasetWindow() === frame,
+    hidden: frame.dataset.hidden === "1" || frame.style.display === "none",
+    maximized: !!isDatasetWindowMaximized(frame),
+    dirty: frame.dataset.dirty === "1",
+    connected: true,
+    rect: getFrameRect(frame),
+  };
+}
+
+function findAutomationWindow(args = {}) {
+  const id = toText(args.windowId || args.window_id || args.id || args.inst);
+  if (id) return findWindowByInstance(id);
+  const key = toText(args.windowKey || args.window_key);
+  if (key) {
+    for (const frame of state.datasetWindows.values()) {
+      if (frame?.dataset?.windowKey === key) return frame;
+    }
+  }
+  return getActiveDatasetWindow();
+}
+
+function handleAutomationOpenDataset(message, sourceWindow) {
+  const requestId = toText(message?.requestId);
+  const args = message?.args && typeof message.args === "object" ? message.args : {};
+  const reply = (payload) => replyAutomationResult(sourceWindow, requestId, payload);
+  if (!requestId) return true;
+  const datasetName = toText(args.datasetName || args.dataset_name || args.name);
+  if (!datasetName) {
+    reply({ ok: false, error: "Dataset name is required." });
+    return true;
+  }
+  if (!state.selectedPath) {
+    reply({ ok: false, error: "Select a reserving class path before opening a dataset." });
+    return true;
+  }
+  const frame = openDatasetWindow(datasetName, {
+    datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
+    readOnly: args.readOnly,
+    generated: args.generated,
+    methodType: toText(args.methodType || args.method_type),
+  });
+  if (!frame) {
+    reply({ ok: false, error: `Could not open dataset: ${datasetName}` });
+    return true;
+  }
+  setStatus(`Automation opened ${datasetName}.`);
+  const windowInfo = getAutomationWindowInfo(frame);
+  reply({
+    ok: true,
+    result: {
+      ...windowInfo,
+      datasetName,
+      window: windowInfo,
+    },
+  });
+  return true;
+}
+
+function handleAutomationWindowCommand(message, sourceWindow) {
+  const requestId = toText(message?.requestId);
+  const args = message?.args && typeof message.args === "object" ? message.args : {};
+  const reply = (payload) => replyAutomationResult(sourceWindow, requestId, payload);
+  if (!requestId) return true;
+  const frame = findAutomationWindow(args);
+  if (!frame?.isConnected) {
+    reply({ ok: false, error: "Project Instance window was not found." });
+    return true;
+  }
+
+  const action = toText(args.action || "properties").toLowerCase();
+  const sendInfo = () => {
+    const windowInfo = getAutomationWindowInfo(frame);
+    reply({ ok: true, result: { ...windowInfo, window: windowInfo } });
+  };
+
+  if (action === "properties" || action === "get" || action === "info") {
+    sendInfo();
+    return true;
+  }
+  if (action === "activate" || action === "focus") {
+    void activateDatasetWindow(frame).then(sendInfo);
+    return true;
+  }
+  if (action === "maximize") {
+    maximizeDatasetWindow(frame);
+    sendInfo();
+    return true;
+  }
+  if (action === "restore") {
+    if (frame.dataset.hidden === "1" || frame.style.display === "none") {
+      void activateDatasetWindow(frame).then(() => {
+        restoreDatasetWindow(frame);
+        sendInfo();
+      });
+    } else {
+      restoreDatasetWindow(frame);
+      sendInfo();
+    }
+    return true;
+  }
+  if (action === "minimize" || action === "hide") {
+    void hideDatasetWindow(frame, getFrameRect(frame)).then(sendInfo);
+    return true;
+  }
+  if (action === "close") {
+    const windowId = toText(frame.dataset.windowId);
+    const closed = closeDatasetWindow(frame);
+    reply({
+      ok: true,
+      result: {
+        closed,
+        windowId,
+        id: windowId,
+        connected: frame.isConnected,
+      },
+      error: "",
+    });
+    return true;
+  }
+
+  reply({ ok: false, error: `Unsupported Project Instance window action: ${action}` });
+  return true;
 }
 
 function routeActiveWindowSaveCommand(saveAs = false) {
@@ -445,6 +608,14 @@ window.addEventListener("message", (event) => {
     }, 120000);
     return;
   }
+  if (msg.type === "arcrho:automation-open-dataset") {
+    handleAutomationOpenDataset(msg, event.source);
+    return;
+  }
+  if (msg.type === "arcrho:automation-window-command") {
+    handleAutomationWindowCommand(msg, event.source);
+    return;
+  }
   if (msg.type === "arcrho:dfm-edit-state") {
     const frame = findWindowByMessageSource(event.source);
     if (frame && isDfmWindow(frame)) {
@@ -506,6 +677,14 @@ window.addEventListener("message", (event) => {
     } else {
       try { window.parent?.postMessage(relay, "*"); } catch {}
     }
+    return;
+  }
+  if (msg.type === "arcrho:project-instance-refresh-datasets") {
+    void loadCachedDatasetFilterForSelectedPath({ refresh: true }).then(() => {
+      setStatus("Project Instance dataset table refreshed.");
+    }).catch((err) => {
+      setStatus(`Project Instance refresh failed: ${toText(err?.message) || err}`, true);
+    });
     return;
   }
   if (msg.type === "arcrho:dfm-tab-changed") {

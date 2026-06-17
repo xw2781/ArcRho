@@ -14,8 +14,9 @@ from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 8
+INDEX_VERSION = 9
 DFM_METHOD_TYPE = "DFM"
+RESULT_SELECTION_METHOD_TYPE = "Result Selection"
 
 
 def _clean_text(value: Any) -> str:
@@ -160,7 +161,7 @@ def _cached_dataset_names_from_file(filename: str) -> Set[str]:
     if ext_l != ".json":
         return names
 
-    for prefix in ("ArcRhoTriNotes@", "DFM@"):
+    for prefix in ("ArcRhoTriNotes@", "DFM@", "RS@"):
         if stem.startswith(prefix):
             _add_cached_dataset_name_from_filename(names, stem[len(prefix):])
             return names
@@ -172,6 +173,10 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
     names: Set[str] = set()
     _add_cached_dataset_name(names, _normalize_cached_dataset_name(payload.get("dataset_name")))
     if names:
+        return names
+    if _clean_text(payload.get("json_format")).lower() == "arcrho-result-selection-method-by-tab-v1":
+        details_tab = _json_tab(payload, "details_tab")
+        _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
     details_tab = _json_tab(payload, "details tab")
     _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("output type")))
@@ -195,6 +200,19 @@ def _metadata_text(metadata: Dict[str, Any], keys: Tuple[str, ...]) -> str:
 
 
 def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None:
+    json_format = _clean_text(payload.get("json_format") or payload.get("json format")).lower()
+    if json_format == "arcrho-result-selection-method-by-tab-v1":
+        details_tab = _json_tab(payload, "details_tab")
+        dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
+        dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type"))
+        if not dataset_name:
+            return None
+        return {
+            "dataset_name": dataset_name,
+            "dataset_type_name": dataset_type or dataset_name,
+            "method_type": RESULT_SELECTION_METHOD_TYPE,
+            "data_format": "Vector",
+        }
     details_tab = _json_tab(payload, "details tab")
     dataset_name = _normalize_cached_dataset_name(details_tab.get("output type"))
     if not dataset_name:
@@ -377,7 +395,7 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
             elif ext == ".json":
                 metadata = metadata_cache.setdefault(entry.path, _safe_read_json(entry.path))
                 payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
-                if not sidecar_metadata and entry.name.startswith("DFM@"):
+                if not sidecar_metadata and (entry.name.startswith("DFM@") or entry.name.startswith("RS@")):
                     method_entry = _method_entry_from_payload(metadata)
                     if method_entry:
                         methods.append(method_entry)

@@ -17,6 +17,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const normalizePath = (...args) => api.normalizePath(...args);
   const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
+  const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const postProjectInstanceStatus = (...args) => api.postProjectInstanceStatus(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const shouldUseCachedDatasetFilter = (...args) => api.shouldUseCachedDatasetFilter(...args);
@@ -733,9 +734,20 @@ function isDfmDatasetRecord(record) {
   return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "dfm";
 }
 
+function isResultSelectionDatasetRecord(record) {
+  return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "result selection";
+}
+
 function isDfmVectorDatasetRecord(record) {
   return (
     isDfmDatasetRecord(record)
+    && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
+  );
+}
+
+function isResultSelectionVectorDatasetRecord(record) {
+  return (
+    isResultSelectionDatasetRecord(record)
     && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
   );
 }
@@ -745,6 +757,16 @@ function openDfmTabForDataset(record) {
   if (!datasetName || !state.selectedPath) return;
   openDfmWindow(datasetName, {
     methodType: getDatasetRecordValue(record, "methodType"),
+  });
+}
+
+function openResultSelectionTabForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName || !state.selectedPath) return;
+  openResultSelectionWindow(datasetName, {
+    methodType: getDatasetRecordValue(record, "methodType"),
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
   });
 }
 
@@ -775,6 +797,38 @@ function addDfmForDataset(record) {
     methodType: "DFM",
   });
   setStatus(`Opened DFM for ${datasetName}.`);
+}
+
+function canAddResultSelectionForDataset(record) {
+  return (
+    !!record
+    && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
+    && ["", "none"].includes(normalizeLookupKey(getDatasetRecordValue(record, "methodType")))
+  );
+}
+
+function addResultSelectionForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName) {
+    setStatus("Select a vector dataset before adding a Result Selection object.", true);
+    return;
+  }
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before adding a Result Selection object.", true);
+    return;
+  }
+  if (!canAddResultSelectionForDataset(record)) {
+    setStatus("Result Selection can be added only to vector datasets with Method Type None.", true);
+    return;
+  }
+  openResultSelectionWindow(datasetName, {
+    initialTab: "details",
+    methodType: "Result Selection",
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
+    originLength: 12,
+  });
+  setStatus(`Opened Result Selection for ${datasetName}.`);
 }
 
 function recordSelectedDfmObject(methodName) {
@@ -1116,18 +1170,7 @@ function createDatasetRecordRow(item, columns) {
     td.appendChild(text);
     tr.appendChild(td);
   }
-  tr.addEventListener("dblclick", () => {
-    if (isDfmDatasetRecord(item)) {
-      openDfmTabForDataset(item);
-      return;
-    }
-    openDatasetWindow(item.datasetName, {
-      datasetTypeName: getDatasetRecordValue(item, "datasetTypeName"),
-      methodType: getDatasetRecordValue(item, "methodType"),
-      readOnly: !!item.generated,
-      generated: !!item.generated,
-    });
-  });
+  tr.addEventListener("dblclick", () => openDatasetRecord(item));
   tr.addEventListener("click", (event) => {
     applyDatasetRowSelection(item, event);
     focusDatasetTableSurface();
@@ -1492,9 +1535,16 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
   if (viewItem) viewItem.disabled = emptyContext || !viewRecord;
   const showAsVectorItem = menu.querySelector("[data-row-action='show-as-vector']");
   if (showAsVectorItem) {
-    const showAsVector = !!viewRecord && isDfmVectorDatasetRecord(viewRecord);
+    const showAsVector = !!viewRecord && (isDfmVectorDatasetRecord(viewRecord) || isResultSelectionVectorDatasetRecord(viewRecord));
     showAsVectorItem.hidden = !showAsVector;
     showAsVectorItem.disabled = !showAsVector;
+  }
+  const addResultSelectionItem = menu.querySelector("[data-row-action='add-result-selection']");
+  if (addResultSelectionItem) {
+    const canAdd = !emptyContext && canAddResultSelectionForDataset(viewRecord);
+    addResultSelectionItem.hidden = emptyContext;
+    addResultSelectionItem.disabled = !canAdd;
+    addResultSelectionItem.title = canAdd ? "" : "Result Selection can be added only to vector datasets with Method Type None.";
   }
   const selectedCount = emptyContext ? 0 : getSelectedDatasetRecords().length;
   const deleteItem = menu.querySelector("[data-row-action='delete']");
@@ -1575,6 +1625,10 @@ function openDatasetRecord(record) {
   if (!record) return;
   if (isDfmDatasetRecord(record)) {
     openDfmTabForDataset(record);
+    return;
+  }
+  if (isResultSelectionDatasetRecord(record)) {
+    openResultSelectionTabForDataset(record);
     return;
   }
   openDatasetRecordAsVector(record);
@@ -1782,6 +1836,8 @@ function applyDatasetRowContextAction(action) {
     void addDatasetFromTypePicker();
   } else if (normalized === "add-dfm") {
     addDfmForDataset(viewRecord);
+  } else if (normalized === "add-result-selection") {
+    addResultSelectionForDataset(viewRecord);
   } else if (normalized === "add-bsm") {
     setStatus("Berquist Sherman Method is a placeholder.");
   } else if (normalized === "delete") {

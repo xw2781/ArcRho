@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added the first Result Selection method window for weighted vector selections from Project Instance.",
+  "details": [
+    "Project Instance can create Result Selection objects from eligible vector datasets and reopen saved Result Selection method outputs.",
+    "The Method tab supports source datasets, row-level weights, selected ultimate calculation, and an optional ultimate-to-basis ratio column."
+  ]
+}
