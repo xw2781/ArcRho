@@ -4,6 +4,10 @@ import { state } from "/ui/shared/state.js";
 import { $ } from "/ui/shared/dom.js";
 import { openContextMenu } from "/ui/shared/menu_utils.js";
 import { renderChart as renderChartCanvas, setupChartHover } from "/ui/dataset/dataset_chart.js";
+import {
+  formatDatasetNumberValue,
+  normalizeDatasetNumberFormat,
+} from "/ui/dataset/dataset_number_format.js";
 
 let ctxMenuWired = false;
 
@@ -135,6 +139,10 @@ function getDecimalPlaces() {
   return Math.max(0, Math.min(6, n)); // clamp 0..6
 }
 
+function getNumberFormatPattern() {
+  return normalizeDatasetNumberFormat(document.getElementById("numberFormatSelect")?.value);
+}
+
 function getPercentDecimalPlaces() {
   return window.ADA_DFM_CONTEXT ? DFM_PERCENT_DECIMAL_PLACES : getDecimalPlaces();
 }
@@ -182,6 +190,9 @@ export function formatCellValue(v) {
 
   const n = (typeof v === "number") ? v : Number(v);
   if (!Number.isFinite(n)) return "";
+
+  const pattern = getNumberFormatPattern();
+  if (pattern) return formatDatasetNumberValue(n, pattern, getDecimalPlaces());
 
   const mode = detectNumberMode();
   const dp = getDecimalPlaces();
@@ -467,6 +478,8 @@ export function redrawChartSafely() {
 
 function formatNum(x) {
   if (!isFinite(x)) return "";
+  const pattern = getNumberFormatPattern();
+  if (pattern) return formatDatasetNumberValue(x, pattern, getDecimalPlaces());
   if (isPercentTriangle()) {
     const dp = getPercentDecimalPlaces();
     return (x * 100).toFixed(dp) + "%";

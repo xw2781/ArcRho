@@ -1,3 +1,11 @@
+import {
+  applyDecimalPlacesToDatasetNumberFormat,
+  clampDatasetDecimalPlaces,
+  DATASET_NUMBER_FORMAT_PRESETS,
+  getDatasetNumberFormatDecimalPlaces,
+  normalizeDatasetNumberFormat,
+} from "/ui/dataset/dataset_number_format.js";
+
 export function wireDatasetInputController(deps) {
   const {
     state,
@@ -148,18 +156,135 @@ export function wireDatasetInputController(deps) {
   }
 
   const dec = document.getElementById("decimalPlaces");
+  const numberFormatSelect = document.getElementById("numberFormatSelect");
+  const numberFormatWrap = document.getElementById("numberFormatWrap");
+  const numberFormatDropdownBtn = document.getElementById("numberFormatDropdownBtn");
+  const numberFormatDropdown = document.getElementById("numberFormatDropdown");
+  const decimalPlacesUpBtn = document.getElementById("decimalPlacesUpBtn");
+  const decimalPlacesDownBtn = document.getElementById("decimalPlacesDownBtn");
+
+  function refreshNumberDisplaySettings() {
+    saveTriInputsToStorage();
+    renderTable();
+    notifyDatasetUpdated();
+    renderChart();
+  }
+
+  function syncNumberFormatFromDecimalPlaces() {
+    if (!numberFormatSelect || !dec) return;
+    const places = clampDatasetDecimalPlaces(dec.value);
+    dec.value = String(places);
+    numberFormatSelect.value = applyDecimalPlacesToDatasetNumberFormat(numberFormatSelect.value, places);
+  }
+
+  function syncDecimalPlacesFromNumberFormat() {
+    if (!numberFormatSelect || !dec) return;
+    numberFormatSelect.value = normalizeDatasetNumberFormat(numberFormatSelect.value);
+    dec.value = String(clampDatasetDecimalPlaces(getDatasetNumberFormatDecimalPlaces(numberFormatSelect.value)));
+  }
+
+  function stepDecimalPlaces(delta) {
+    if (!dec) return;
+    const next = clampDatasetDecimalPlaces((Number.parseInt(dec.value, 10) || 0) + delta);
+    dec.value = String(next);
+    syncNumberFormatFromDecimalPlaces();
+    refreshNumberDisplaySettings();
+    dec.focus();
+  }
+
+  function closeNumberFormatDropdown() {
+    numberFormatWrap?.classList.remove("open");
+    if (numberFormatDropdown) numberFormatDropdown.classList.remove("open");
+    numberFormatSelect?.setAttribute("aria-expanded", "false");
+    numberFormatDropdownBtn?.setAttribute("aria-expanded", "false");
+  }
+
+  function openNumberFormatDropdown() {
+    if (!numberFormatWrap || !numberFormatDropdown) return;
+    numberFormatDropdown.innerHTML = "";
+    for (const preset of DATASET_NUMBER_FORMAT_PRESETS) {
+      const option = document.createElement("div");
+      option.className = "datasetOption numberFormatOption";
+      option.setAttribute("role", "option");
+      option.dataset.value = preset;
+      option.textContent = preset;
+      option.title = preset;
+      if (preset === numberFormatSelect?.value) option.classList.add("active");
+      numberFormatDropdown.appendChild(option);
+    }
+    numberFormatWrap.classList.add("open");
+    numberFormatDropdown.classList.add("open");
+    numberFormatSelect?.setAttribute("aria-expanded", "true");
+    numberFormatDropdownBtn?.setAttribute("aria-expanded", "true");
+  }
+
+  function toggleNumberFormatDropdown() {
+    if (numberFormatDropdown?.classList.contains("open")) {
+      closeNumberFormatDropdown();
+    } else {
+      openNumberFormatDropdown();
+    }
+  }
+
   if (dec) {
     dec.addEventListener("change", () => {
-      renderTable();
-      notifyDatasetUpdated();
-      renderChart();
+      syncNumberFormatFromDecimalPlaces();
+      refreshNumberDisplaySettings();
     });
     dec.addEventListener("input", () => {
-      renderTable();
-      notifyDatasetUpdated();
-      renderChart();
+      syncNumberFormatFromDecimalPlaces();
+      refreshNumberDisplaySettings();
     });
   }
+  decimalPlacesUpBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    stepDecimalPlaces(1);
+  });
+  decimalPlacesDownBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    stepDecimalPlaces(-1);
+  });
+
+  if (numberFormatSelect) {
+    numberFormatSelect.addEventListener("change", () => {
+      syncDecimalPlacesFromNumberFormat();
+      refreshNumberDisplaySettings();
+      closeNumberFormatDropdown();
+    });
+    numberFormatSelect.addEventListener("input", () => {
+      refreshNumberDisplaySettings();
+    });
+  }
+  if (numberFormatDropdownBtn) {
+    numberFormatDropdownBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleNumberFormatDropdown();
+      numberFormatSelect?.focus();
+    });
+  }
+  if (numberFormatDropdown) {
+    numberFormatDropdown.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+    });
+    numberFormatDropdown.addEventListener("click", (e) => {
+      const option = e.target.closest(".numberFormatOption");
+      if (!option || !numberFormatDropdown.contains(option) || !numberFormatSelect) return;
+      numberFormatSelect.value = option.dataset.value || option.textContent || "";
+      syncDecimalPlacesFromNumberFormat();
+      refreshNumberDisplaySettings();
+      closeNumberFormatDropdown();
+      numberFormatSelect.focus();
+    });
+  }
+  document.addEventListener("mousedown", (e) => {
+    if (!numberFormatWrap || numberFormatWrap.contains(e.target)) return;
+    closeNumberFormatDropdown();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeNumberFormatDropdown();
+  });
+  syncNumberFormatFromDecimalPlaces();
 
   // Chart mode toggle
   const chartToggle = document.getElementById("chartModeToggle");

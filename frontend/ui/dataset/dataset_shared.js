@@ -86,14 +86,16 @@ export function injectDatasetMarkup(container) {
           <div class="topbar-left" style="grid-column: 1; grid-row: 1 / span 2;">
             <label class="chk"><span>Cumulative:</span> <input id="cumulativeChk" type="checkbox" checked /></label>
             <label class="chk"><span>Transposed:</span> <input id="transposedChk" type="checkbox" /></label>
-            <label class="rad">
-              <input type="radio" name="timeMode" value="development" checked />
-              <span>Development</span>
-            </label>
-            <label class="rad">
-              <input type="radio" name="timeMode" value="calendar" />
-              <span>Calendar</span>
-            </label>
+            <div class="timeModeFrame" role="group" aria-label="Time mode">
+              <label class="rad">
+                <input type="radio" name="timeMode" value="development" checked />
+                <span>Development</span>
+              </label>
+              <label class="rad">
+                <input type="radio" name="timeMode" value="calendar" />
+                <span>Calendar</span>
+              </label>
+            </div>
           </div>
 
           <!-- Col 2: Labels -->
@@ -148,23 +150,55 @@ export function injectDatasetMarkup(container) {
             </div>
           </div>
 
-          <!-- Col 4: Remaining -->
-          <div class="topbar-right-stack" style="grid-column: 4; grid-row: 1 / span 2;">
-            <div class="topbar-right">
-              <div class="field linkField">
-                <label class="linkToggle">
-                  <input id="linkLenChk" type="checkbox" checked />
-                  <span class="linkIcon" aria-hidden="true">&#128279;</span>
-                  <span class="linkText">Link Period Length</span>
-                  <span class="linkTip" role="tooltip">Keep Origin Length and Development Length the same</span>
-                </label>
+          <!-- Col 4: Number formatting labels -->
+          <div class="topbar-format-label-stack" style="grid-column: 4; grid-row: 1 / span 2;">
+            <div class="topbar-label"><span class="lbl">Number Format:</span></div>
+            <div class="topbar-label"><span class="lbl">Decimal Places:</span></div>
+          </div>
+
+          <!-- Col 5: Number formatting inputs -->
+          <div class="topbar-format-input-stack" style="grid-column: 5; grid-row: 1 / span 2;">
+            <div class="topbar-input">
+              <div id="numberFormatWrap" class="numberFormatWrap">
+                <input id="numberFormatSelect" type="text" value="0,000" aria-label="Number Format" aria-controls="numberFormatDropdown" aria-expanded="false" autocomplete="off" />
+                <button id="numberFormatDropdownBtn" class="numberFormatDropdownBtn" type="button" aria-label="Show Number Format presets" aria-controls="numberFormatDropdown" aria-expanded="false">
+                  <span class="lenSelectCaret" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                      <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </span>
+                </button>
+                <div id="numberFormatDropdown" class="datasetDropdown numberFormatDropdown" role="listbox" aria-label="Number Format presets"></div>
               </div>
             </div>
-            <div class="topbar-right">
-              <div class="field">
-                <span class="lbl">Decimal Places:</span>
-                <input id="decimalPlaces" type="number" min="0" max="6" value="1" />
+            <div class="topbar-input">
+              <div id="decimalPlacesWrap" class="decimalPlacesWrap">
+                <input id="decimalPlaces" type="number" min="0" max="6" value="1" aria-label="Decimal Places" />
+                <div class="decimalPlacesStepper">
+                  <button id="decimalPlacesUpBtn" class="decimalPlacesStepBtn" type="button" aria-label="Increase Decimal Places">
+                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                      <path d="M4.5 9.5 8 6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </button>
+                  <button id="decimalPlacesDownBtn" class="decimalPlacesStepBtn" type="button" aria-label="Decrease Decimal Places">
+                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
+                      <path d="M4.5 6.5 8 10l3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </button>
+                </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Col 6: Link toggle -->
+          <div class="topbar-link-stack" style="grid-column: 6; grid-row: 1;">
+            <div class="field linkField">
+              <label class="linkToggle">
+                <input id="linkLenChk" type="checkbox" checked />
+                <span class="linkIcon" aria-hidden="true">&#128279;</span>
+                <span class="linkText">Link Period Length</span>
+                <span class="linkTip" role="tooltip">Keep Origin Length and Development Length the same</span>
+              </label>
             </div>
           </div>
         </div>
@@ -275,9 +309,25 @@ export function injectDatasetMarkup(container) {
 
   <!-- Audit Log tab page -->
   <div id="dsAuditLogPage" style="display:none;">
-    <div class="dsPlaceholderBlock">
-      <div class="small"><b>Audit Log</b></div>
-      <div class="dsPlaceholderText">No audit entries yet.</div>
+    <div class="datasetAuditLogWrap">
+      <table class="datasetAuditLogTable" aria-label="Dataset audit log">
+        <colgroup>
+          <col>
+          <col>
+          <col>
+          <col>
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Event Date</th>
+            <th>Action</th>
+            <th>Change Info</th>
+            <th>User</th>
+          </tr>
+        </thead>
+        <tbody id="datasetAuditLogBody"></tbody>
+      </table>
+      <div id="datasetAuditLogEmpty" class="dsPlaceholderText">No audit entries yet.</div>
     </div>
   </div>
 

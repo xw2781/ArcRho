@@ -365,12 +365,14 @@
       --topbar-left-col: max-content;
       --topbar-gap-1-2: 36px;
       --topbar-gap-3-4: 36px;
+      --topbar-gap-5-6: 24px;
       --topbar-input-offset: 0px;
+      --topbar-control-height: 28px;
     }
 
     .topbar-grid{
       display: grid;
-      grid-template-columns: var(--topbar-left-col) max-content 72px auto;
+      grid-template-columns: var(--topbar-left-col) max-content 72px max-content max-content max-content;
       grid-template-rows: auto auto;
       column-gap: 0px;
       row-gap: 10px;
@@ -398,14 +400,24 @@
 
     .topbar-label-stack,
     .topbar-input-stack,
+    .topbar-format-label-stack,
+    .topbar-format-input-stack,
     .topbar-right-stack{
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
 
+    .topbar-format-label-stack{
+      margin-left: var(--topbar-gap-3-4);
+    }
+
     .topbar-input-stack{
       margin-left: var(--topbar-input-offset);
+    }
+
+    .topbar-format-input-stack{
+      margin-left: 13px;
     }
 
     .topbar-input{
@@ -428,14 +440,39 @@
       margin-left: var(--topbar-gap-3-4);
     }
 
+    .topbar-link-stack{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      margin-left: var(--topbar-gap-5-6);
+      min-width: 0;
+    }
+
     .chk, .rad{
       display: inline-flex;
       align-items: center;
       gap: 6px;
       font-size: 13px;
-      line-height: 26px;
+      line-height: var(--topbar-control-height);
       color: var(--muted);
       white-space: nowrap;
+    }
+
+    #datasetTopBar .timeModeFrame{
+      grid-column: 1 / span 2;
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      height: var(--topbar-control-height);
+      padding: 0 10px 0 7px;
+      border: 1px solid #d6dbe2;
+      border-radius: 6px;
+      background: #f8fafc;
+      box-sizing: border-box;
+    }
+
+    #datasetTopBar .timeModeFrame .rad{
+      line-height: 1;
     }
 
     .field{
@@ -447,7 +484,7 @@
     .field .lbl,
     .topbar-label .lbl{
       font-size: 13px;
-      line-height: 26px;
+      line-height: var(--topbar-control-height);
       color: var(--muted);
       text-align: right;
     }
@@ -455,9 +492,10 @@
     /* unify select & number input */
     #datasetTopBar select,
     #datasetTopBar .lenSelectDisplay,
+    #datasetTopBar input[type="text"],
     #datasetTopBar input[type="number"]{
-      height: 26px;
-      line-height: 26px;
+      height: var(--topbar-control-height);
+      line-height: var(--topbar-control-height);
       padding: 0 6px;
       box-sizing: border-box;
       border: 1px solid #cfcfcf;
@@ -470,6 +508,7 @@
     #datasetTopBar select:focus,
     #datasetTopBar .lenSelectDisplay:focus,
     #datasetTopBar .lenSelectWrap.open .lenSelectDisplay,
+    #datasetTopBar input[type="text"]:focus,
     #datasetTopBar input[type="number"]:focus{
       outline: none;
       border-color: #8aa8ff;
@@ -479,6 +518,7 @@
     #datasetTopBar .lenSelectWrap{
       position: relative;
       width: 55px;
+      height: var(--topbar-control-height);
     }
 
     #datasetTopBar .lenSelectDisplay{
@@ -529,6 +569,116 @@
       color: #2f5fd3;
     }
 
+    #datasetTopBar .numberFormatWrap{
+      position: relative;
+      width: 69px;
+      height: var(--topbar-control-height);
+    }
+
+    #numberFormatSelect{
+      width: 100%;
+      padding-right: 24px !important;
+    }
+
+    #datasetTopBar .numberFormatDropdownBtn{
+      position: absolute;
+      right: 1px;
+      top: 1px;
+      width: 24px;
+      height: calc(var(--topbar-control-height) - 2px);
+      padding: 0;
+      border: 0;
+      border-left: 1px solid transparent;
+      border-radius: 0 5px 5px 0;
+      background: transparent;
+      color: #555;
+      cursor: pointer;
+    }
+
+    #datasetTopBar .numberFormatDropdownBtn .lenSelectCaret{
+      right: 5px;
+      width: 14px;
+      height: 14px;
+      pointer-events: none;
+    }
+
+    #datasetTopBar .numberFormatWrap.open .numberFormatDropdownBtn .lenSelectCaret{
+      transform: translateY(-50%) rotate(180deg);
+      color: #2f5fd3;
+    }
+
+    #datasetTopBar .numberFormatDropdown{
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 160px;
+      z-index: 70;
+    }
+
+    #datasetTopBar .numberFormatOption{
+      text-align: left;
+      padding-left: 10px;
+    }
+
+    #datasetTopBar .decimalPlacesWrap{
+      position: relative;
+      width: 69px;
+      height: var(--topbar-control-height);
+    }
+
+    #decimalPlaces{
+      width: 100%;
+      padding-right: 24px !important;
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+
+    #decimalPlaces::-webkit-outer-spin-button,
+    #decimalPlaces::-webkit-inner-spin-button{
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    #datasetTopBar .decimalPlacesStepper{
+      position: absolute;
+      right: 1px;
+      top: 1px;
+      width: 22px;
+      height: calc(var(--topbar-control-height) - 2px);
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      border-radius: 0 5px 5px 0;
+      overflow: hidden;
+      color: #555;
+      pointer-events: auto;
+    }
+
+    #datasetTopBar .decimalPlacesStepBtn{
+      position: relative;
+      width: 22px;
+      height: calc((var(--topbar-control-height) - 2px) / 2);
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    #datasetTopBar .decimalPlacesStepBtn:hover{
+      color: #2f5fd3;
+      background: #f5f8ff;
+    }
+
+    #datasetTopBar .decimalPlacesStepBtn svg{
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 12px;
+      height: 12px;
+      transform: translate(-50%, -50%);
+      display: block;
+    }
+
     #datasetTopBar .lenSelectNative{
       position: absolute;
       width: 0;
@@ -554,11 +704,6 @@
 
     #originStoredAt, #devStoredAt{ width: 56px; }
 
-    #decimalPlaces{
-      width: 55px;
-      font-size: 13px;
-    }
-
     #maxBtn{
       height: 26px;
       padding: 4px 10px;
@@ -571,7 +716,7 @@
       align-items: center;
       gap: 6px;
 
-      height: 26px;
+      height: var(--topbar-control-height);
       padding: 0 8px;
 
       border: 1px solid var(--border);
@@ -1222,6 +1367,49 @@
     #dsAuditLogPage {
       overflow: auto;
     }
+    .datasetAuditLogWrap {
+      width: min(100%, 960px);
+      overflow: auto;
+    }
+    .datasetAuditLogTable {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: fixed;
+      font-size: 13px;
+      color: #1f2937;
+      border: 1px solid #d8dde3;
+      background: #fff;
+    }
+    .datasetAuditLogTable th,
+    .datasetAuditLogTable td {
+      height: 31px;
+      padding: 5px 8px;
+      border-right: 1px solid #e1e5eb;
+      border-bottom: 1px solid #e1e5eb;
+      box-sizing: border-box;
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .datasetAuditLogTable th {
+      background: #f4f7fa;
+      color: #334155;
+      font-weight: 600;
+    }
+    .datasetAuditLogTable th:last-child,
+    .datasetAuditLogTable td:last-child {
+      border-right: 0;
+    }
+    .datasetAuditLogTable tbody tr:last-child td {
+      border-bottom: 0;
+    }
+    .datasetAuditLogTable col:nth-child(1) { width: 210px; }
+    .datasetAuditLogTable col:nth-child(2) { width: 110px; }
+    .datasetAuditLogTable col:nth-child(3) { width: 160px; }
+    .datasetAuditLogTable col:nth-child(4) { width: auto; }
     .dsNotesEditorWrap {
       display: flex;
       flex-direction: column;

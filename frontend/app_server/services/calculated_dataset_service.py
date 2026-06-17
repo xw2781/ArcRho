@@ -800,9 +800,12 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
 
     csv_path, sidecar_path = _target_paths(project_name, reserving_class, row["name"], settings)
     now = _now_utc_iso()
-    created = settings.get("created") or now
+    existing_sidecar = _read_sidecar(sidecar_path)
+    created = existing_sidecar.get("created") or settings.get("created") or now
     user_name = _current_user_name()
+    action_value = "Update" if existing_sidecar else "Insert"
     payload = {
+        **({"audit_log": existing_sidecar.get("audit_log")} if existing_sidecar else {}),
         "dataset_name": row["name"],
         "dataset_type": row["name"],
         "reserving_class": reserving_class,
@@ -825,6 +828,9 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         "formula": row.get("formula") or "",
     }
     apply_sidecar_graph_fields(payload, project_name, row["name"], precedents)
+    from app_server.services.dataset_service import _append_dataset_audit_entry
+
+    _append_dataset_audit_entry(payload, action_value, event_date=now, user_name=user_name)
 
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)

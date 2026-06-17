@@ -33,6 +33,12 @@ class DatasetSidecarLoadRequest(BaseModel):
     dataset_name: str
 
 
+class DatasetCacheLoadRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    dataset_name: str
+
+
 class DatasetSidecarSaveRequest(BaseModel):
     project_name: str
     reserving_class: str
@@ -46,6 +52,8 @@ class DatasetSidecarSaveRequest(BaseModel):
     cumulative: bool = True
     transposed: bool = False
     calendar: bool = False
+    number_format: str = ""
+    decimal_places: int = Field(1, ge=0, le=6)
     csv_file: str = ""
 
 

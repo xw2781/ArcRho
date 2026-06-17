@@ -88,6 +88,91 @@ def _data_format_code(data_format: str) -> int:
     return 0
 
 
+def _normalize_number_format(value: Any) -> str:
+    text = str(value or "").replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
+    return (text or "0,000")[:64]
+
+
+def _normalize_decimal_places(value: Any) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return 1
+    return max(0, min(6, n))
+
+
+DATASET_AUDIT_LOG_MAX_ENTRIES = 50
+
+
+def _current_user_name() -> str:
+    for value in (os.environ.get("USERNAME"), os.environ.get("USER")):
+        text = str(value or "").strip()
+        if text:
+            return text
+    try:
+        return str(getpass.getuser() or "").strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _normalize_dataset_audit_log(value: Any) -> List[Dict[str, str]]:
+    entries: List[Dict[str, str]] = []
+    if not isinstance(value, list):
+        return entries
+    for raw in value:
+        if not isinstance(raw, dict):
+            continue
+        event_date = str(raw.get("event_date") or raw.get("Event Date") or "").strip()
+        action = str(raw.get("action") or raw.get("Action") or "").strip()
+        change_info = str(raw.get("change_info") or raw.get("Change Info") or "").strip()
+        user = str(raw.get("user") or raw.get("User") or "").strip()
+        if not event_date or action not in {"Insert", "Update"}:
+            continue
+        entries.append({
+            "event_date": event_date,
+            "action": action,
+            "change_info": "" if action == "Insert" else (change_info or "Values"),
+            "user": user,
+        })
+    return entries[-DATASET_AUDIT_LOG_MAX_ENTRIES:]
+
+
+def _append_dataset_audit_entry(payload: Dict[str, Any], action: str, *, event_date: str | None = None, user_name: str | None = None) -> None:
+    action_value = "Insert" if str(action or "").strip().lower() == "insert" else "Update"
+    entries = _normalize_dataset_audit_log(payload.get("audit_log"))
+    entries.append({
+        "event_date": event_date or _now_utc_iso(),
+        "action": action_value,
+        "change_info": "" if action_value == "Insert" else "Values",
+        "user": str(user_name or "").strip() or _current_user_name(),
+    })
+    payload["audit_log"] = entries[-DATASET_AUDIT_LOG_MAX_ENTRIES:]
+
+
+def _write_dataset_sidecar_payload(path: str, payload: Dict[str, Any]) -> None:
+    tmp_path = f"{path}.{uuid.uuid4()}.tmp"
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(payload, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        os.replace(tmp_path, path)
+    except PermissionError:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        raise HTTPException(423, "Dataset sidecar is locked or inaccessible.")
+    except OSError as err:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        raise HTTPException(500, f"Failed to write dataset sidecar: {str(err)}")
+
+
 def _empty_dataset_values(
     data_format: str,
     origin_length: int,
@@ -263,7 +348,7 @@ def create_empty_cached_dataset(
     csv_path = os.path.join(folder, f"{csv_stem}.csv")
     sidecar_path = os.path.join(sidecar_dir, f"{sanitize_dataset_file_name(instance)}.json")
     now = _now_utc_iso()
-    user_name = getpass.getuser()
+    user_name = _current_user_name()
 
     df = _empty_dataset_values(fmt, origin_count, dev_count, triangle_shape_mask)
     payload = {
@@ -286,32 +371,19 @@ def create_empty_cached_dataset(
         "editable": True,
         "generated": False,
     }
+    _append_dataset_audit_entry(payload, "Insert", event_date=now, user_name=user_name)
     from app_server.services import calculated_dataset_service
 
     calculated_dataset_service.apply_sidecar_graph_fields(payload, p, ds_type)
 
-    tmp_sidecar = f"{sidecar_path}.{uuid.uuid4()}.tmp"
     try:
         os.makedirs(folder, exist_ok=True)
         os.makedirs(sidecar_dir, exist_ok=True)
         atomic_write_csv(df, csv_path)
-        with open(tmp_sidecar, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump(payload, fh, indent=2, ensure_ascii=False)
-            fh.write("\n")
-        os.replace(tmp_sidecar, sidecar_path)
+        _write_dataset_sidecar_payload(sidecar_path, payload)
     except PermissionError:
-        try:
-            if os.path.exists(tmp_sidecar):
-                os.remove(tmp_sidecar)
-        except OSError:
-            pass
         raise HTTPException(423, "Dataset cache file is locked or inaccessible.")
     except OSError as err:
-        try:
-            if os.path.exists(tmp_sidecar):
-                os.remove(tmp_sidecar)
-        except OSError:
-            pass
         raise HTTPException(500, f"Failed to create empty dataset cache: {str(err)}")
 
     try:
@@ -512,6 +584,8 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "cumulative": payload.get("cumulative"),
         "transposed": payload.get("transposed"),
         "calendar": payload.get("calendar"),
+        "number_format": _normalize_number_format(payload.get("number_format") or "0,000"),
+        "decimal_places": _normalize_decimal_places(payload.get("decimal_places")),
         "csv_file": str(payload.get("csv_file") or ""),
         "source_kind": str(payload.get("source_kind") or ""),
         "editable": False if app_calculated else payload.get("editable"),
@@ -522,7 +596,76 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "modified_by": str(payload.get("modified_by") or ""),
         "created": str(payload.get("created") or ""),
         "updated_at": str(payload.get("updated_at") or ""),
+        "audit_log": _normalize_dataset_audit_log(payload.get("audit_log")),
         "path": path,
+    }
+
+
+def _cached_csv_candidates(project_name: str, reserving_class: str, dataset_name: str, sidecar: Dict[str, Any]) -> List[str]:
+    try:
+        data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
+    except ValueError as err:
+        raise HTTPException(404, str(err))
+    names: List[str] = []
+    csv_file = str(sidecar.get("csv_file") or "").strip()
+    if csv_file:
+        names.append(csv_file)
+    base = sanitize_dataset_file_name(dataset_name, "Dataset")
+    names.append(f"{base}.csv")
+    if os.path.isdir(data_dir):
+        prefix = f"{base}@".lower()
+        for filename in os.listdir(data_dir):
+            name_l = filename.lower()
+            if not name_l.endswith(".csv"):
+                continue
+            if name_l == f"{base}.csv".lower() or name_l.startswith(prefix):
+                names.append(filename)
+    seen = set()
+    out: List[str] = []
+    for name in names:
+        clean = os.path.basename(str(name or "").strip())
+        key = clean.lower()
+        if not clean or key in seen:
+            continue
+        seen.add(key)
+        out.append(os.path.join(data_dir, clean))
+    return out
+
+
+def load_cached_dataset_values(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
+    p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
+    sidecar_path = _get_dataset_sidecar_path(p, rc, ds)
+    sidecar = _read_dataset_sidecar(sidecar_path)
+    csv_path = ""
+    for candidate in _cached_csv_candidates(p, rc, ds, sidecar):
+        if os.path.exists(candidate) and os.path.isfile(candidate):
+            csv_path = candidate
+            break
+    if not csv_path:
+        raise HTTPException(404, f"Cached dataset CSV not found for '{ds}'.")
+    try:
+        df = pd.read_csv(csv_path, header=None)
+    except PermissionError:
+        raise HTTPException(423, "Dataset cache CSV is locked or inaccessible.")
+    except OSError as err:
+        raise HTTPException(500, f"Failed to read dataset cache CSV: {str(err)}")
+    except Exception as err:
+        raise HTTPException(500, f"Invalid dataset cache CSV format: {str(err)}")
+    df = df.astype(object).where(pd.notnull(df), None)
+    values = df.values.tolist()
+    return {
+        "ok": True,
+        "project_name": p,
+        "reserving_class": rc,
+        "dataset_name": str(sidecar.get("dataset_name") or ds),
+        "dataset_type": str(sidecar.get("dataset_type") or ds),
+        "data_format": str(sidecar.get("data_format") or ""),
+        "origin_length": _int_or_default(sidecar.get("origin_length"), max(1, len(values))),
+        "development_length": _int_or_default(sidecar.get("development_length"), max(1, len(values[0]) if values else 1)),
+        "csv_file": os.path.basename(csv_path),
+        "path": csv_path,
+        "sidecar_path": sidecar_path,
+        "values": values,
     }
 
 
@@ -540,6 +683,8 @@ def save_dataset_sidecar(
     cumulative: bool = True,
     transposed: bool = False,
     calendar: bool = False,
+    number_format: str = "",
+    decimal_places: int = 1,
     csv_file: str = "",
 ) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
@@ -551,11 +696,15 @@ def save_dataset_sidecar(
     created = str(existing.get("created") or "") if existing else ""
     if not created:
         created = _now_utc_iso()
-    user_name = getpass.getuser()
+    user_name = _current_user_name()
     dataset_type_value = str(dataset_type or existing.get("dataset_type") or ds)
     app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type_value)
     source_kind_value = str(source_kind or existing.get("source_kind") or ("calculated" if app_calculated else "input"))
     data_format_value = str(data_format or existing.get("data_format") or "Triangle")
+    number_format_value = _normalize_number_format(number_format or existing.get("number_format") or "0,000")
+    decimal_places_value = _normalize_decimal_places(decimal_places)
+    action_value = "Update" if existing else "Insert"
+    updated_at = _now_utc_iso()
     payload = {
         **existing,
         "dataset_name": ds,
@@ -570,6 +719,8 @@ def save_dataset_sidecar(
         "cumulative": bool(cumulative),
         "transposed": bool(transposed),
         "calendar": bool(calendar),
+        "number_format": number_format_value,
+        "decimal_places": decimal_places_value,
         "csv_file": str(csv_file or existing.get("csv_file") or ""),
         "editable": False if app_calculated else existing.get("editable"),
         "generated": False if app_calculated else existing.get("generated"),
@@ -578,34 +729,15 @@ def save_dataset_sidecar(
         "user": user_name,
         "created": created,
         "modified_by": user_name,
-        "updated_at": _now_utc_iso(),
+        "updated_at": updated_at,
     }
+    _append_dataset_audit_entry(payload, action_value, event_date=updated_at, user_name=user_name)
     payload.pop("instance_name", None)
     payload.pop("dataset_type_name", None)
     from app_server.services import calculated_dataset_service
 
     calculated_dataset_service.apply_sidecar_graph_fields(payload, p, dataset_type_value)
-    tmp_path = f"{path}.{uuid.uuid4()}.tmp"
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump(payload, fh, indent=2, ensure_ascii=False)
-            fh.write("\n")
-        os.replace(tmp_path, path)
-    except PermissionError:
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError:
-            pass
-        raise HTTPException(423, "Dataset sidecar is locked or inaccessible.")
-    except OSError as err:
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError:
-            pass
-        raise HTTPException(500, f"Failed to write dataset sidecar: {str(err)}")
+    _write_dataset_sidecar_payload(path, payload)
 
     try:
         dataset_instance_index_service.rebuild_index(p, rc)
@@ -628,9 +760,12 @@ def save_dataset_sidecar(
         "cumulative": payload["cumulative"],
         "transposed": payload["transposed"],
         "calendar": payload["calendar"],
+        "number_format": payload["number_format"],
+        "decimal_places": payload["decimal_places"],
         "csv_file": payload["csv_file"],
         "source_kind": payload["source_kind"],
         "updated_at": payload["updated_at"],
+        "audit_log": payload["audit_log"],
         "path": path,
         "calculated_updates": calculated_updates,
     }
@@ -754,6 +889,17 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
 
     atomic_write_csv(df, path)
     st2 = os.stat(path)
+    if applied > 0:
+        sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
+        sidecar_payload = _read_dataset_sidecar(sidecar_path)
+        if sidecar_payload:
+            audit_at = _now_utc_iso()
+            user_name = _current_user_name()
+            sidecar_payload["updated_at"] = audit_at
+            sidecar_payload["modified_by"] = user_name
+            sidecar_payload["user"] = user_name
+            _append_dataset_audit_entry(sidecar_payload, "Update", event_date=audit_at, user_name=user_name)
+            _write_dataset_sidecar_payload(sidecar_path, sidecar_payload)
     calculated_updates = None
     try:
         from app_server.services import calculated_dataset_service

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from app_server.schemas.dataset import (
     CachedDatasetDeleteRequest,
+    DatasetCacheLoadRequest,
     DatasetNotesLoadRequest,
     DatasetNotesSaveRequest,
     DatasetSidecarLoadRequest,
@@ -106,6 +107,15 @@ def load_dataset_sidecar(req: DatasetSidecarLoadRequest) -> Dict[str, Any]:
     )
 
 
+@router.post("/dataset/cache/load")
+def load_dataset_cache(req: DatasetCacheLoadRequest) -> Dict[str, Any]:
+    return dataset_service.load_cached_dataset_values(
+        req.project_name,
+        req.reserving_class,
+        req.dataset_name,
+    )
+
+
 @router.post("/dataset/sidecar/save")
 def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
     return dataset_service.save_dataset_sidecar(
@@ -121,5 +131,7 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
         cumulative=req.cumulative,
         transposed=req.transposed,
         calendar=req.calendar,
+        number_format=req.number_format,
+        decimal_places=req.decimal_places,
         csv_file=req.csv_file,
     )

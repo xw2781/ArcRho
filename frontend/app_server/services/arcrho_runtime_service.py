@@ -361,6 +361,7 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         created = _utc_timestamp_from_stat(os.stat(data_path).st_ctime)
     except OSError:
         pass
+    updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     payload = {
         "dataset_name": instance_name,
         "dataset_type": dataset_type,
@@ -379,15 +380,17 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "user": user_name,
         "created": created,
         "modified_by": user_name,
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "updated_at": updated_at,
     }
     from app_server.services import calculated_dataset_service
+    from app_server.services.dataset_service import _append_dataset_audit_entry
 
     calculated_dataset_service.apply_sidecar_graph_fields(
         payload,
         _pair_value(pairs, "ProjectName"),
         dataset_type,
     )
+    _append_dataset_audit_entry(payload, "Insert", event_date=updated_at, user_name=user_name)
     tmp_path = f"{sidecar_path}.{uuid.uuid4()}.tmp"
     os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)
     with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:

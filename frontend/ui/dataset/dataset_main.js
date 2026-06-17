@@ -21,6 +21,11 @@ import { wireDatasetNotesEditor } from "/ui/dataset/dataset_notes_editor.js";
 import { publishDfmInputHelpers as publishDatasetHostDfmHelpers, wireDatasetHostBridge } from "/ui/dataset/dataset_host_bridge.js";
 import { createDatasetRunController } from "/ui/dataset/dataset_run_controller.js";
 import { wireDatasetInputController } from "/ui/dataset/dataset_input_controller.js";
+import {
+  applyDecimalPlacesToDatasetNumberFormat,
+  clampDatasetDecimalPlaces,
+  normalizeDatasetNumberFormat,
+} from "/ui/dataset/dataset_number_format.js";
 import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js";
 import { openProjectNameTreePicker } from "/ui/shared/project_name_tree_picker.js";
 import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
@@ -286,6 +291,41 @@ const DATASET_TABS = [
   { id: "auditLog", label: "Audit Log" },
 ];
 
+function normalizeDatasetAuditLog(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((raw) => {
+      if (!raw || typeof raw !== "object") return null;
+      const eventDate = String(raw.event_date ?? raw["Event Date"] ?? "").trim();
+      const action = String(raw.action ?? raw.Action ?? "").trim();
+      const changeInfo = String(raw.change_info ?? raw["Change Info"] ?? "").trim();
+      const user = String(raw.user ?? raw.User ?? "").trim();
+      if (!eventDate && !action && !changeInfo && !user) return null;
+      return { eventDate, action, changeInfo, user };
+    })
+    .filter(Boolean)
+    .slice(-50);
+}
+
+function renderDatasetAuditLog(entries = []) {
+  const body = document.getElementById("datasetAuditLogBody");
+  const empty = document.getElementById("datasetAuditLogEmpty");
+  if (!body) return;
+  const rows = normalizeDatasetAuditLog(entries).slice().reverse();
+  body.replaceChildren();
+  for (const entry of rows) {
+    const tr = document.createElement("tr");
+    for (const value of [entry.eventDate, entry.action, entry.changeInfo, entry.user]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      td.title = value;
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+  if (empty) empty.hidden = rows.length > 0;
+}
+
 function getDatasetInitialTab() {
   const requested = String(qs.get("tab") || qs.get("initial_tab") || "").trim();
   return DATASET_TABS.some((tab) => tab.id === requested) ? requested : "data";
@@ -391,6 +431,30 @@ function readDatasetInputsFromQueryParams() {
 
 function normalizeProjectText(s) {
   return String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function getDatasetNumberFormatValue() {
+  return normalizeDatasetNumberFormat(document.getElementById("numberFormatSelect")?.value);
+}
+
+function setDatasetNumberFormatValue(value) {
+  const input = document.getElementById("numberFormatSelect");
+  if (!input) return;
+  input.value = normalizeDatasetNumberFormat(value);
+}
+
+function getDatasetDecimalPlacesValue() {
+  return clampDatasetDecimalPlaces(document.getElementById("decimalPlaces")?.value);
+}
+
+function getDatasetSyncedNumberFormatValue() {
+  return applyDecimalPlacesToDatasetNumberFormat(getDatasetNumberFormatValue(), getDatasetDecimalPlacesValue());
+}
+
+function setDatasetDecimalPlacesValue(value) {
+  const input = document.getElementById("decimalPlaces");
+  if (!input) return;
+  input.value = String(clampDatasetDecimalPlaces(value));
 }
 
 function normalizeDatasetViewerPrefs(raw, projectFallback = "", sharedReservingClassPath = "") {
@@ -1648,6 +1712,8 @@ function saveTriInputsToStorage() {
       cumulative: !!document.getElementById("cumulativeChk")?.checked,
       transposed: !!document.getElementById("transposedChk")?.checked,
       calendar: document.querySelector('input[name="timeMode"][value="calendar"]')?.checked === true,
+      decimalPlaces: getDatasetDecimalPlacesValue(),
+      numberFormat: getDatasetSyncedNumberFormatValue(),
     };
     const resolvedInputs = normalizeBrowsingHistoryEntry({
       project: getResolvedProjectValue(),
@@ -1780,6 +1846,12 @@ async function restoreTriInputsFromStorage() {
     const mode = s.calendar ? "calendar" : "development";
     const modeInput = document.querySelector(`input[name="timeMode"][value="${mode}"]`);
     if (modeInput) modeInput.checked = true;
+  }
+  if (s.decimalPlaces !== undefined || s.decimal_places !== undefined) {
+    setDatasetDecimalPlacesValue(s.decimalPlaces ?? s.decimal_places);
+  }
+  if (typeof s.numberFormat === "string") {
+    setDatasetNumberFormatValue(s.numberFormat);
   }
 }
 
@@ -2147,6 +2219,8 @@ function getTriInputsForStorage() {
     cumulative,
     transposed,
     calendar,
+    decimalPlaces: getDatasetDecimalPlacesValue(),
+    numberFormat: getDatasetSyncedNumberFormatValue(),
     originLen: Number.isFinite(originLen) ? originLen : 12,
     devLen: Number.isFinite(devLen) ? devLen : 12,
   };
@@ -2185,12 +2259,17 @@ function getCurrentDatasetSettings() {
     cumulative: !!triInputs.cumulative,
     transposed: !!triInputs.transposed,
     calendar: !!triInputs.calendar,
+    decimal_places: getDatasetDecimalPlacesValue(),
+    number_format: getDatasetSyncedNumberFormatValue(),
   };
 }
 
 function normalizeDatasetSettings(source = {}) {
   const origin = Number(source.origin_length ?? source.originLen);
   const development = Number(source.development_length ?? source.devLen);
+  const numberFormat = source.number_format ?? source.numberFormat ?? source.num_format;
+  const decimalPlaces = source.decimal_places ?? source.decimalPlaces;
+  const normalizedDecimalPlaces = clampDatasetDecimalPlaces(decimalPlaces);
   return {
     dataset_type: String(source.dataset_type ?? source.datasetType ?? source.tri ?? "").trim(),
     instance_name: String(source.instance_name ?? source.instanceName ?? source.dataset_name ?? source.datasetName ?? "").trim(),
@@ -2199,6 +2278,11 @@ function normalizeDatasetSettings(source = {}) {
     cumulative: typeof source.cumulative === "boolean" ? source.cumulative : true,
     transposed: typeof source.transposed === "boolean" ? source.transposed : false,
     calendar: typeof source.calendar === "boolean" ? source.calendar : false,
+    decimal_places: normalizedDecimalPlaces,
+    number_format: applyDecimalPlacesToDatasetNumberFormat(
+      normalizeDatasetNumberFormat(numberFormat),
+      normalizedDecimalPlaces,
+    ),
   };
 }
 
@@ -2211,6 +2295,8 @@ function sameDatasetSettings(a, b) {
     && left.cumulative === right.cumulative
     && left.transposed === right.transposed
     && left.calendar === right.calendar
+    && left.decimal_places === right.decimal_places
+    && left.number_format === right.number_format
     && normalizeProjectText(left.dataset_type) === normalizeProjectText(right.dataset_type)
     && normalizeProjectText(left.instance_name) === normalizeProjectText(right.instance_name)
   );
@@ -2279,6 +2365,8 @@ function applyDatasetSettingsToControls(settings = {}) {
   const mode = normalized.calendar ? "calendar" : "development";
   const modeInput = document.querySelector(`input[name="timeMode"][value="${mode}"]`);
   if (modeInput) modeInput.checked = true;
+  setDatasetDecimalPlacesValue(normalized.decimal_places);
+  setDatasetNumberFormatValue(normalized.number_format);
   refreshLenDropdowns();
 }
 
@@ -2291,6 +2379,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
     isSidecarReadOnlyDataset = false;
     lastSavedDatasetSettings = null;
     datasetSettingsDirty = false;
+    renderDatasetAuditLog([]);
     updateDatasetSaveUi();
     return false;
   }
@@ -2302,11 +2391,13 @@ async function syncSidecarForCurrentDataset(options = {}) {
     setStatus(`Dataset settings load failed: ${resp?.data?.detail || "Unknown error."}`);
     lastSavedDatasetSettings = normalizeDatasetSettings(getCurrentDatasetSettings());
     datasetSettingsDirty = false;
+    renderDatasetAuditLog([]);
     updateDatasetSaveUi();
     return false;
   }
 
   const data = resp.data || {};
+  renderDatasetAuditLog(data.exists ? data.audit_log : []);
   const sidecarEditable = data.editable;
   const sidecarCalculated = data.calculated;
   const sidecarGenerated = data.generated;
@@ -2357,6 +2448,7 @@ async function saveDatasetSidecarForCurrentContext() {
   sidecarContextPayload = context;
   sidecarContextKey = buildDatasetSidecarContextKey(context);
   lastSavedDatasetSettings = normalizeDatasetSettings(settings);
+  renderDatasetAuditLog(resp.data?.audit_log);
   invalidateCachedDatasetInstances();
   datasetSettingsDirty = false;
   updateDatasetSaveUi();
