@@ -1188,7 +1188,9 @@ _MACRO_META_END = "# </arcrho-macro>"
 
 
 def _get_macros_dir() -> str:
-    macro_dir = _get_notebooks_dir()
+    macro_dir = str(getattr(config, "MACRO_DIR", "") or "").strip()
+    if not macro_dir:
+        macro_dir = os.path.join(os.path.expanduser("~"), "Documents", "ArcRho", "macros")
     os.makedirs(macro_dir, exist_ok=True)
     return macro_dir
 
@@ -1238,7 +1240,7 @@ def _safe_macro_path(macro_id: str) -> str:
         safe_name = f"{safe_name}.py"
     path = os.path.abspath(os.path.join(macro_dir, safe_name))
     if not (path == macro_dir or path.startswith(macro_dir + os.sep)):
-        raise ValueError("Macro path is outside the scripting directory.")
+        raise ValueError("Macro path is outside the macros directory.")
     return path
 
 
@@ -1252,7 +1254,7 @@ def list_macros() -> List[Dict[str, Any]]:
         if not os.path.isfile(path):
             continue
         try:
-            text = Path(path).read_text(encoding="utf-8")
+            text = Path(path).read_text(encoding="utf-8-sig")
             meta = _parse_macro_metadata(text, entry)
             stat = os.stat(path)
             result.append({
@@ -1389,8 +1391,9 @@ def run_macro(macro_id: str, active_context: Dict[str, Any]) -> Dict[str, Any]:
     if not os.path.isfile(path):
         return {"success": False, "message": f"Macro not found: {macro_id}"}
     try:
-        source = Path(path).read_text(encoding="utf-8")
-        active_dfm = _build_active_dfm(active_context if isinstance(active_context, dict) else {})
+        source = Path(path).read_text(encoding="utf-8-sig")
+        active_context = active_context if isinstance(active_context, dict) else {}
+        active_dfm = _build_active_dfm(active_context) if isinstance(active_context.get("activeJson"), dict) else None
         output = io.StringIO()
         namespace: Dict[str, Any] = {
             "__name__": "__arcrho_macro__",
@@ -1405,7 +1408,7 @@ def run_macro(macro_id: str, active_context: Dict[str, Any]) -> Dict[str, Any]:
             runner_result = None
             if callable(runner):
                 runner_result = runner(active_dfm, active_context)
-        payload = active_dfm.to_dict()
+        payload = active_dfm.to_dict() if active_dfm is not None else None
         preview = None
         if isinstance(runner_result, dict):
             if isinstance(runner_result.get("payload"), dict):
@@ -1415,10 +1418,11 @@ def run_macro(macro_id: str, active_context: Dict[str, Any]) -> Dict[str, Any]:
         response = {
             "success": True,
             "message": f"Ran {os.path.basename(path)}",
-            "payload": payload,
             "stdout": output.getvalue(),
             "path": path,
         }
+        if payload is not None:
+            response["payload"] = payload
         if preview is not None:
             response["preview"] = preview
         if isinstance(runner_result, dict) and runner_result.get("message"):

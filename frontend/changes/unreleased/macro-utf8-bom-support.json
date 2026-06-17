@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Macro Python files saved with a UTF-8 BOM now load and run correctly."
+}

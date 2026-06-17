@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "ArcRho macros now load from the dedicated Documents\\ArcRho\\macros folder."
+}

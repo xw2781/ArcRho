@@ -564,15 +564,15 @@ async function runSelectedMacro() {
     setMacroStatus("Demo macro examples are placeholders and cannot be run yet.", "error", { statusBar: true });
     return;
   }
-  if (!getActiveDfmTab()) {
-    setMacroStatus("Open or activate a DFM tab/window before running a macro.", "error", { statusBar: true });
-    return;
-  }
   setMacroStatus(`Running macro: ${macro.name || macro.id}...`, "", { statusBar: true });
   if (macroRunBtn) macroRunBtn.disabled = true;
   try {
-    const activeContext = await requestActiveDfmContext();
-    if (!activeContext?.available || !activeContext?.activeJson) {
+    const hasActiveDfm = !!getActiveDfmTab();
+    const activeContext = hasActiveDfm ? await requestActiveDfmContext() : {
+      available: false,
+      pageType: shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId)?.type || "",
+    };
+    if (hasActiveDfm && (!activeContext?.available || !activeContext?.activeJson)) {
       throw new Error(activeContext?.error || "Active DFM JSON is not available.");
     }
     const response = await fetch(`${API_BASE}/scripting/run-macro`, {
@@ -595,10 +595,14 @@ async function runSelectedMacro() {
         return;
       }
     }
-    const applied = await applyPayloadToActiveDfm(result.payload);
-    if (!applied?.ok) throw new Error(applied?.error || "Macro ran, but the DFM tab did not accept the result.");
+    if (result.payload && typeof result.payload === "object") {
+      const applied = await applyPayloadToActiveDfm(result.payload);
+      if (!applied?.ok) throw new Error(applied?.error || "Macro ran, but the DFM tab did not accept the result.");
+    }
     const output = String(result.stdout || "").trim();
-    const message = output ? `Macro applied. ${output}` : "Macro applied to the active DFM.";
+    const message = output
+      ? `Macro completed. ${output}`
+      : (result.payload ? "Macro applied to the active DFM." : "Macro completed.");
     setMacroStatus(message, "", { statusBar: true });
   } catch (err) {
     const message = String(err?.message || err || "Macro failed.");
@@ -622,7 +626,7 @@ async function deleteSelectedMacro() {
     return;
   }
   const name = String(macro.name || macro.id);
-  const confirmed = window.confirm(`Delete macro "${name}"?\n\nThis removes the Python file from the scripting folder.`);
+  const confirmed = window.confirm(`Delete macro "${name}"?\n\nThis removes the Python file from the macros folder.`);
   if (!confirmed) return;
   setMacroStatus(`Deleting macro: ${name}...`);
   try {

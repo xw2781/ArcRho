@@ -159,6 +159,13 @@ def _get_scripting_dir() -> str:
     return os.path.join(os.path.expanduser("~"), "Documents", "ArcRho", "scripts")
 
 
+def _get_macro_dir() -> str:
+    configured = str(os.environ.get("ARCRHO_MACRO_DIR") or "").strip()
+    if configured:
+        return configured
+    return os.path.join(os.path.expanduser("~"), "Documents", "ArcRho", "macros")
+
+
 PROJECT_INDEX_FILE = "index.json"
 
 # Project settings JSON files (on shared network drive)
@@ -178,13 +185,14 @@ PROJECT_SETTINGS_DIR: str = ""
 PROJECT_BOOK: str = ""
 WORKFLOW_DIR: str = ""
 SCRIPTING_DIR: str = ""
+MACRO_DIR: str = ""
 ALLOWED_BOOK_DIRS: List[Path] = []
 REQUEST_DIR: str = ""
 
 
 def refresh_runtime_paths() -> None:
     """Refresh runtime directories from workspace path config."""
-    global DATA_DIR, PROJECT_SETTINGS_DIR, PROJECT_BOOK, WORKFLOW_DIR, SCRIPTING_DIR
+    global DATA_DIR, PROJECT_SETTINGS_DIR, PROJECT_BOOK, WORKFLOW_DIR, SCRIPTING_DIR, MACRO_DIR
     global ALLOWED_BOOK_DIRS, REQUEST_DIR
     PROJECT_SETTINGS_DIR = _get_project_map_dir()
     PROJECT_BOOK = os.path.join(
@@ -193,6 +201,7 @@ def refresh_runtime_paths() -> None:
     )
     WORKFLOW_DIR = _get_workflow_dir()
     SCRIPTING_DIR = _get_scripting_dir()
+    MACRO_DIR = _get_macro_dir()
     DATA_DIR = SCRIPTING_DIR
     ALLOWED_BOOK_DIRS = [
         Path(PROJECT_SETTINGS_DIR).resolve(),
