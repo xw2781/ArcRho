@@ -13,7 +13,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `arcrho` | [`app_server/api/arcrho_router.py`](../../app_server/api/arcrho_router.py) | 6 | [`arcrho.md`](domains/arcrho.md) |
 | `audit_log` | [`app_server/api/audit_log_router.py`](../../app_server/api/audit_log_router.py) | 2 | [`audit_log.md`](domains/audit_log.md) |
 | `book` | [`app_server/api/book_router.py`](../../app_server/api/book_router.py) | 3 | [`book.md`](domains/book.md) |
-| `dataset` | [`app_server/api/dataset_router.py`](../../app_server/api/dataset_router.py) | 11 | [`dataset.md`](domains/dataset.md) |
+| `dataset` | [`app_server/api/dataset_router.py`](../../app_server/api/dataset_router.py) | 12 | [`dataset.md`](domains/dataset.md) |
 | `dataset_types` | [`app_server/api/dataset_types_router.py`](../../app_server/api/dataset_types_router.py) | 3 | [`dataset_types.md`](domains/dataset_types.md) |
 | `excel` | [`app_server/api/excel_router.py`](../../app_server/api/excel_router.py) | 5 | [`excel.md`](domains/excel.md) |
 | `field_mapping` | [`app_server/api/field_mapping_router.py`](../../app_server/api/field_mapping_router.py) | 2 | [`field_mapping.md`](domains/field_mapping.md) |
@@ -21,6 +21,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `project_settings` | [`app_server/api/project_settings_router.py`](../../app_server/api/project_settings_router.py) | 11 | [`project_settings.md`](domains/project_settings.md) |
 | `reserving_class` | [`app_server/api/reserving_class_router.py`](../../app_server/api/reserving_class_router.py) | 11 | [`reserving_class.md`](domains/reserving_class.md) |
 | `table_summary` | [`app_server/api/table_summary_router.py`](../../app_server/api/table_summary_router.py) | 2 | [`table_summary.md`](domains/table_summary.md) |
+| `ui_automation` | [`app_server/api/ui_automation_router.py`](../../app_server/api/ui_automation_router.py) | 3 | [`ui_automation.md`](domains/ui_automation.md) |
 | `workflow` | [`app_server/api/workflow_router.py`](../../app_server/api/workflow_router.py) | 5 | [`workflow.md`](domains/workflow.md) |
 | `workspace_paths` | [`app_server/api/workspace_paths_router.py`](../../app_server/api/workspace_paths_router.py) | 2 | [`workspace_paths.md`](domains/workspace_paths.md) |
 <!-- AUTO-GEN:END -->
@@ -57,7 +58,8 @@ High-risk files that must follow contracts:
 <!-- MANUAL:BEGIN -->
 - Path and cache constants are centralized in `app_server/config.py`.
 - Several domains persist JSON caches under project folders or AppData.
-- Scripting notebook persistence is file-based under `~/Documents/ArcRho/scripts`; save writes `.ipynb` with code-cell outputs/execution counts and load accepts `.ipynb`, legacy `.arcnb`, and `.py` scripting files from that directory. `/scripting/run-macro` still returns the updated DFM payload for active-tab application and may include optional macro-specific preview metadata, such as a Notes diff that the shell can show before applying the returned payload. `/scripting/delete-macro` removes a selected user-created macro `.py` file resolved through the scripting directory path guard.
+- Scripting notebook persistence is file-based under `~/Documents/ArcRho/scripts`; save writes `.ipynb` with code-cell outputs/execution counts and load accepts `.ipynb`, legacy `.arcnb`, and `.py` scripting files from that directory. ArcRho Macro window files are loaded only from `~/Documents/ArcRho/macros`; `/scripting/run-macro` returns an updated DFM payload when a DFM-backed macro modifies active DFM state, and UI-only macros can run without an active DFM target. Macro results may include optional preview metadata, such as a Notes diff that the shell can show before applying a returned payload. `/scripting/delete-macro` removes a selected user-created macro `.py` file resolved through the macros directory path guard.
+- UI automation commands use `/ui_automation/commands` plus shell polling/completion endpoints so Python macros and scripts can ask the running local shell to show message boxes or perform typed window operations without writing ArcRho Server request files.
 - Scripting execution interrupt uses per-session cancellation with trace checks and an interruptible `time.sleep(...)` import hook so `/scripting/interrupt` can stop active cells promptly; `/scripting/run-stream` emits NDJSON stdout/stderr events for live output during long-running cells.
 <!-- MANUAL:END -->
 

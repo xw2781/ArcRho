@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added saved Dataset Data tab number formatting controls for grid and chart values.",
+  "details": [
+    "Decimal Places now persists in dataset sidecar JSON.",
+    "Number Format is editable while still offering common preset suggestions.",
+    "Decimal Places now uses a wider custom spinner with SVG up/down controls."
+  ]
+}

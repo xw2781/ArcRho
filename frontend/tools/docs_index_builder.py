@@ -684,6 +684,15 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("ui/shared/reserving_class_lazy_picker.js", "Frontend caller for reserving-class endpoints."),
         ],
     },
+    "ui_automation": {
+        "doc": "docs/app_server/domains/ui_automation.md",
+        "files": [
+            ("app_server/api/ui_automation_router.py", "Local UI automation command endpoints."),
+            ("app_server/services/ui_automation_service.py", "In-memory command queue and completion handling."),
+            ("app_server/schemas/ui_automation.py", "UI automation command request and result schemas."),
+            ("ui/shell/ui_automation.js", "Shell-side command polling and execution."),
+        ],
+    },
 }
 
 
@@ -1015,6 +1024,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "1. Add a reserving-class endpoint: keep schema/service lock logic consistent.\n2. Change cache structure: update readers/writers and UI consumers together.",
             "- High route volume and file-lock contention make regression risk higher here.",
         ),
+        "ui_automation": (
+            "Local UI automation command bridge for Python macros and scripts.",
+            "- Consumed by `arcrho_api.ui` helpers and the shell polling executor.\n- Commands are typed and routed through explicit shell/page handlers.",
+            "- Keeps pending commands in memory only; no ArcRho Server request files or project data are written.",
+            "1. Add a UI automation command: update schema/service if needed, shell executor, page handler, Python helper, and docs together.",
+            "- Commands depend on active UI state and should fail clearly when the expected page/window is not active.",
+        ),
     }
 
     for domain in BACKEND_DOMAIN_META:
@@ -1041,7 +1057,7 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
         manual_sections={
             "Purpose": "Document path/config setup, AppData-backed workspace path persistence, and runtime path refresh behavior.",
             "External Interfaces": "- Frontend shell settings modal calls `/workspace_paths` routes.\n- App-server modules import `app_server.config` for runtime path resolution.\n- On first-time setup, the Electron shell searches `D:\\ArcRho Server` through `Z:\\ArcRho Server` and fills the Server Connection root path when found.",
-            "Data/State/Caches": "- `%APPDATA%\\ArcRho\\workspace_paths.json` is the persistent user-local source-of-truth for workspace root/path mapping.\n- If the AppData workspace path file does not exist yet, the app uses built-in defaults until the Server Connection setting is saved.\n- Runtime globals in `app_server/config.py` are refreshed from config.\n- User-local fixed paths are also refreshed in `app_server/config.py`, including workflow export path (`~/Documents/ArcRho/workflows`) and scripting notebook path (`~/Documents/ArcRho/scripts`).",
+            "Data/State/Caches": "- `%APPDATA%\\ArcRho\\workspace_paths.json` is the persistent user-local source-of-truth for workspace root/path mapping.\n- If the AppData workspace path file does not exist yet, the app uses built-in defaults until the Server Connection setting is saved.\n- Runtime globals in `app_server/config.py` are refreshed from config.\n- User-local fixed paths are also refreshed in `app_server/config.py`, including workflow export path (`~/Documents/ArcRho/workflows`), scripting notebook path (`~/Documents/ArcRho/scripts`), and Macro window path (`~/Documents/ArcRho/macros`).",
             "Common Change Tasks": "1. Add a new configurable path: update the AppData `workspace_paths.json` contract + `app_server/config.py` getters.\n2. Change path refresh behavior: validate all services that depend on runtime globals.",
             "Known Risks": "- Path changes affect every filesystem-backed domain.\n- Environment-specific path assumptions can break packaged deployments.",
         },

@@ -10,6 +10,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 - Path/config helper functions in `app_server/config.py`:
   - `_clean_path_segment`
   - `_find_existing_project_dir`
+  - `_get_macro_dir`
   - `_get_project_map_dir`
   - `_get_requests_dir`
   - `_get_scripting_dir`
@@ -71,7 +72,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 - Runtime globals in `app_server/config.py` are refreshed from config after `/workspace_paths` updates.
 - In-memory runtime caches that contain absolute workspace paths, including the app-server dataset registry, are cleared after `/workspace_paths` updates.
 - Dataset valid-value caches and the DFM root-path cache are cleared or replaced when the shell broadcasts a Server Connection update.
-- User-local fixed paths are also refreshed in `app_server/config.py`, including workflow export path (`~/Documents/ArcRho/workflows`) and scripting path (`~/Documents/ArcRho/scripts`) used for notebooks and editable macros.
+- User-local fixed paths are also refreshed in `app_server/config.py`, including workflow export path (`~/Documents/ArcRho/workflows`), scripting notebook path (`~/Documents/ArcRho/scripts`), and Macro window path (`~/Documents/ArcRho/macros`).
 - Project, reserving-class, dataset, DFM method, workflow, and project-user folder/file components encode Windows-invalid filename characters with the reversible `_%XX_` rule, for example `/` becomes `_%2F_`, `:` becomes `_%3A_`, and ASCII control characters use their two-digit hex code. Backend paths use `app_server.config.encode_filename_segment`; direct renderer-side file paths use the shared `/ui/shared/filename_sanitizer.js` helper so DFM, Dataset, and future pages follow the same convention.
 - ArcRhoTri generated dataset CSV caches use `projects/<project>/data/<ReservingClassFolder>/datasets/<DatasetName>@<OriginLength>@<DevelopmentLength>@<cum|inc>@<dev|cal>.csv` with one base `sidecars/<DatasetName>.json` sidecar, so period length, cumulative/incremental, and development/calendar shape changes rebuild separate CSV caches without creating extra metadata files. Runtime cache creation writes the sidecar only if it is missing; the Dataset page Save button updates saved period lengths, cumulative/calendar/transposed settings, and user fields. Dataset sidecars record the current Windows login user in `user` and `modified_by` for Project Instance's `User` column.
 - DFM local method files use `projects/<project>/data/<ReservingClassFolder>/methods/DFM@<Name>.json`; within one project/reserving-class pair, the DFM `Name` is the sole local instance identity. DFM RPC Bridge remote responses use `data/<ReservingClassFolder>/methods/tmp_rpc/DFM@<Name>.json`, while remote-update status files start with `SyncDFM@`.

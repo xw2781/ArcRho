@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added Dataset sidecar audit logs for inserts and value updates.",
+  "details": [
+    "Dataset audit logs keep the latest 50 records in the sidecar JSON.",
+    "The Dataset Audit Log tab now displays event date, action, change info, and Windows user."
+  ]
+}

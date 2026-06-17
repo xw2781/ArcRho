@@ -70,10 +70,11 @@ High-risk files that must follow contracts:
 1. Shell tab lifecycle change -> [`shell.md`](shell.md).
 2. Dataset behavior change -> [`dataset.md`](dataset.md).
 3. DFM behavior change -> [`dfm.md`](dfm.md).
-4. Workflow editor change -> [`workflow.md`](workflow.md).
-5. Project settings flow change -> [`project_settings.md`](project_settings.md).
-6. Arcode scripting app or notebook/editor change -> [`arcode.md`](arcode.md).
-7. Shared ArcBot widget change -> [`ai_assistant.md`](ai_assistant.md).
+4. Result Selection method change -> [`result_selection.md`](result_selection.md).
+5. Workflow editor change -> [`workflow.md`](workflow.md).
+6. Project settings flow change -> [`project_settings.md`](project_settings.md).
+7. Arcode scripting app or notebook/editor change -> [`arcode.md`](arcode.md).
+8. Shared ArcBot widget change -> [`ai_assistant.md`](ai_assistant.md).
 <!-- MANUAL:END -->
 
 ## Known Risks
