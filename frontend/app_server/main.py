@@ -32,6 +32,7 @@ from app_server.api import (
     dfm_rpc_bridge_router,
     dfm_method_index_router,
     project_user_preferences_router,
+    ui_automation_router,
 )
 
 # ---------------------------------------------------------------------------
@@ -59,6 +60,7 @@ app.include_router(scripting_router)
 app.include_router(dfm_rpc_bridge_router)
 app.include_router(dfm_method_index_router)
 app.include_router(project_user_preferences_router)
+app.include_router(ui_automation_router)
 
 # --- Frontend assets (served from ./ui and ./icons, no /static) ---
 # Mount AFTER API routes to avoid conflicts

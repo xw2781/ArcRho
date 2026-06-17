@@ -48,6 +48,26 @@ dfm.set_selected_estimate("Simple - 3")
 dfm.save()
 ```
 
+## UI Automation Helpers
+
+When the ArcRho app is running locally, Python macros, notebooks, and external scripts can send typed UI commands to the shell:
+
+```python
+from arcrho_api import ArcRhoUI
+
+ui = ArcRhoUI()
+ui.wait_for_app(timeout_sec=10)
+ui.message_box("Notebook started.", title="ArcRho UI Automation")
+window = ui.project_instance.open_dataset("Paid Loss")
+window.maximize()
+print(window.properties.as_dict())
+window.restore()
+```
+
+UI automation targets active app state. For example, `open_dataset_in_active_project_instance(...)` requires an active Project Instance page with a reserving-class path selected.
+The object-style API mirrors familiar COM automation patterns: `ArcRhoUI().project_instance.open_dataset(...)` returns an `ArcRhoWindow` with methods such as `activate()`, `maximize()`, `restore()`, `minimize()`, and `close()`, plus current-state properties such as `title`, `is_active`, `is_hidden`, `is_maximized`, and `is_dirty`.
+Set `ARCRHO_APP_URL`, or instantiate `ArcRhoUI(app_url="http://127.0.0.1:28765")`, when the app is running on a non-default URL.
+
 ArcBot uses the same package through a compact command helper. For DFM inspection, prefer the bundled `inspect` command so summary, components, and optional ratio rows are returned in one call:
 
 ```powershell

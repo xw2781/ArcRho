@@ -13,6 +13,7 @@ from . import reserving_class_service
 from . import field_mapping_service
 from . import dfm_rpc_bridge_service
 from . import project_user_preferences_service
+from . import ui_automation_service
 
 __all__ = [
     "workflow_service",
@@ -30,4 +31,5 @@ __all__ = [
     "field_mapping_service",
     "dfm_rpc_bridge_service",
     "project_user_preferences_service",
+    "ui_automation_service",
 ]

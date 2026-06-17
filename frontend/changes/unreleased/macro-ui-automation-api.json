@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Added Python macro helpers for ArcRho UI automation commands.",
+  "details": [
+    "Macros can show an ArcRho message box from Python.",
+    "Macros can open a Dataset Viewer window in the active Project Instance page for the currently selected reserving-class path."
+  ]
+}

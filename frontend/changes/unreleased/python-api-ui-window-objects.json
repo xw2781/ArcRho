@@ -1,0 +1,9 @@
+{
+  "type": "feature",
+  "scope": "python-api",
+  "audience": "user",
+  "summary": "Added COM-style Python UI window objects for controlling ArcRho Project Instance floating windows.",
+  "details": [
+    "Python scripts can now open a dataset window, inspect its properties, and activate, maximize, restore, minimize, or close it through an object API."
+  ]
+}

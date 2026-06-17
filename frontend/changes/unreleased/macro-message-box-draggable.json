@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "ArcRho macro message boxes can now be dragged as floating windows."
+}

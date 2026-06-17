@@ -1,0 +1,527 @@
+"""ArcRho UI automation helpers."""
+from __future__ import annotations
+
+import json
+import os
+import time
+from dataclasses import dataclass
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+from .exceptions import ArcRhoApiError
+
+
+@dataclass
+class UiCommandResult:
+    ok: bool
+    result: dict[str, Any]
+    error: str = ""
+    command_id: str = ""
+
+    @property
+    def button(self) -> str:
+        return str(self.result.get("button") or "")
+
+
+@dataclass
+class ArcRhoWindowProperties:
+    """Current properties for a floating ArcRho UI window."""
+
+    window_id: str
+    title: str = ""
+    kind: str = ""
+    name: str = ""
+    dataset_name: str = ""
+    item_name: str = ""
+    project_name: str = ""
+    selected_path: str = ""
+    path: str = ""
+    method_type: str = ""
+    window_key: str = ""
+    active: bool = False
+    hidden: bool = False
+    maximized: bool = False
+    dirty: bool = False
+    connected: bool = True
+    rect: dict[str, Any] | None = None
+
+    @classmethod
+    def from_result(cls, payload: dict[str, Any]) -> "ArcRhoWindowProperties":
+        data = payload.get("window") if isinstance(payload.get("window"), dict) else payload
+        if not isinstance(data, dict):
+            data = {}
+        window_id = str(data.get("windowId") or data.get("id") or "")
+        return cls(
+            window_id=window_id,
+            title=str(data.get("title") or ""),
+            kind=str(data.get("kind") or ""),
+            name=str(data.get("name") or ""),
+            dataset_name=str(data.get("datasetName") or data.get("dataset_name") or ""),
+            item_name=str(data.get("itemName") or data.get("item_name") or ""),
+            project_name=str(data.get("projectName") or data.get("project_name") or ""),
+            selected_path=str(data.get("selectedPath") or data.get("selected_path") or ""),
+            path=str(data.get("path") or ""),
+            method_type=str(data.get("methodType") or data.get("method_type") or ""),
+            window_key=str(data.get("windowKey") or data.get("window_key") or ""),
+            active=bool(data.get("active")),
+            hidden=bool(data.get("hidden")),
+            maximized=bool(data.get("maximized")),
+            dirty=bool(data.get("dirty")),
+            connected=bool(data.get("connected", True)),
+            rect=data.get("rect") if isinstance(data.get("rect"), dict) else None,
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "windowId": self.window_id,
+            "id": self.window_id,
+            "windowKey": self.window_key,
+            "kind": self.kind,
+            "name": self.name,
+            "datasetName": self.dataset_name,
+            "itemName": self.item_name,
+            "title": self.title,
+            "projectName": self.project_name,
+            "selectedPath": self.selected_path,
+            "path": self.path,
+            "methodType": self.method_type,
+            "active": self.active,
+            "hidden": self.hidden,
+            "maximized": self.maximized,
+            "dirty": self.dirty,
+            "connected": self.connected,
+            "rect": dict(self.rect or {}),
+        }
+
+
+def _base_url(app_url: str | None = None) -> str:
+    configured = str(app_url or os.environ.get("ARCRHO_APP_URL") or "").strip()
+    if configured:
+        return configured.rstrip("/")
+    host = str(os.environ.get("ARCRHO_HOST") or "127.0.0.1").strip() or "127.0.0.1"
+    port = str(os.environ.get("ARCRHO_PORT") or "28765").strip() or "28765"
+    return f"http://{host}:{port}"
+
+
+def _request_json(
+    path: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+    timeout_sec: float = 5.0,
+    app_url: str | None = None,
+) -> dict[str, Any]:
+    data = json.dumps(payload or {}).encode("utf-8") if method.upper() != "GET" else None
+    request = Request(
+        f"{_base_url(app_url)}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method=method.upper(),
+    )
+    try:
+        with urlopen(request, timeout=max(0.1, float(timeout_sec))) as response:
+            body = response.read().decode("utf-8")
+    except HTTPError as err:
+        detail = err.read().decode("utf-8", errors="replace")
+        raise ArcRhoApiError(f"ArcRho UI command failed ({err.code}): {detail}") from err
+    except URLError as err:
+        raise ArcRhoApiError(f"ArcRho app is not reachable at {_base_url(app_url)}.") from err
+    except OSError as err:
+        raise ArcRhoApiError(f"ArcRho UI command failed: {err}") from err
+
+    try:
+        parsed = json.loads(body) if body else {}
+    except json.JSONDecodeError as err:
+        raise ArcRhoApiError(f"ArcRho UI command returned invalid JSON: {body[:200]}") from err
+    if not isinstance(parsed, dict):
+        raise ArcRhoApiError("ArcRho UI command returned an unexpected response.")
+    return parsed
+
+
+def _post_json(path: str, payload: dict[str, Any], timeout_sec: float, *, app_url: str | None = None) -> dict[str, Any]:
+    return _request_json(
+        path,
+        method="POST",
+        payload=payload,
+        timeout_sec=max(0.1, float(timeout_sec) + 2.0),
+        app_url=app_url,
+    )
+
+
+def get_app_health(*, timeout_sec: float = 2.0, app_url: str | None = None) -> dict[str, Any]:
+    """Return `/app/health` from the running local ArcRho app."""
+
+    return _request_json("/app/health", timeout_sec=timeout_sec, app_url=app_url)
+
+
+def is_app_running(*, timeout_sec: float = 2.0, app_url: str | None = None) -> bool:
+    """Return True when the local ArcRho app server is reachable."""
+
+    try:
+        health = get_app_health(timeout_sec=timeout_sec, app_url=app_url)
+    except ArcRhoApiError:
+        return False
+    return bool(health.get("ok"))
+
+
+def wait_for_app(
+    *,
+    timeout_sec: float = 10.0,
+    interval_sec: float = 0.5,
+    app_url: str | None = None,
+) -> dict[str, Any]:
+    """Wait for the local ArcRho app server and return its health payload."""
+
+    deadline = time.monotonic() + max(0.1, float(timeout_sec))
+    last_error = ""
+    while time.monotonic() <= deadline:
+        try:
+            health = get_app_health(timeout_sec=min(2.0, max(0.1, float(interval_sec))), app_url=app_url)
+            if health.get("ok"):
+                return health
+        except ArcRhoApiError as err:
+            last_error = str(err)
+        time.sleep(max(0.05, float(interval_sec)))
+    raise ArcRhoApiError(last_error or f"ArcRho app is not reachable at {_base_url(app_url)}.")
+
+
+def send_command(
+    command: str,
+    *,
+    target: dict[str, Any] | None = None,
+    args: dict[str, Any] | None = None,
+    timeout_sec: float = 30.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Send a typed UI automation command to the running ArcRho app."""
+
+    payload = {
+        "command": str(command or "").strip(),
+        "target": target or {},
+        "args": args or {},
+        "timeout_sec": float(timeout_sec),
+    }
+    response = _post_json("/ui_automation/commands", payload, timeout_sec, app_url=app_url)
+    result = response.get("result") if isinstance(response.get("result"), dict) else {}
+    out = UiCommandResult(
+        ok=bool(response.get("ok")),
+        result=result,
+        error=str(response.get("error") or ""),
+        command_id=str(response.get("command_id") or ""),
+    )
+    if not out.ok:
+        raise ArcRhoApiError(out.error or f"ArcRho UI command failed: {command}")
+    return out
+
+
+def message_box(
+    message: str,
+    *,
+    title: str = "ArcRho",
+    buttons: list[str] | tuple[str, ...] | None = None,
+    kind: str = "info",
+    timeout_sec: float = 30.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Show a message box in the active ArcRho app and return the clicked button."""
+
+    return send_command(
+        "ui.messageBox",
+        args={
+            "message": str(message or ""),
+            "title": str(title or "ArcRho"),
+            "buttons": list(buttons or ["OK"]),
+            "kind": str(kind or "info"),
+        },
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
+def open_dataset_in_active_project_instance(
+    dataset_name: str,
+    *,
+    dataset_type_name: str | None = None,
+    read_only: bool | None = None,
+    generated: bool | None = None,
+    method_type: str | None = None,
+    timeout_sec: float = 30.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Open or activate a Dataset Viewer window in the active Project Instance page."""
+
+    args: dict[str, Any] = {"datasetName": str(dataset_name or "")}
+    if dataset_type_name is not None:
+        args["datasetTypeName"] = str(dataset_type_name)
+    if read_only is not None:
+        args["readOnly"] = bool(read_only)
+    if generated is not None:
+        args["generated"] = bool(generated)
+    if method_type is not None:
+        args["methodType"] = str(method_type)
+    return send_command(
+        "projectInstance.openDataset",
+        target={"scope": "activeProjectInstance"},
+        args=args,
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
+def project_instance_window_action(
+    action: str,
+    *,
+    window_id: str | None = None,
+    window_key: str | None = None,
+    timeout_sec: float = 30.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Run an action against a floating window in the active Project Instance page."""
+
+    args: dict[str, Any] = {"action": str(action or "properties")}
+    if window_id is not None:
+        args["windowId"] = str(window_id)
+    if window_key is not None:
+        args["windowKey"] = str(window_key)
+    return send_command(
+        "projectInstance.windowAction",
+        target={"scope": "activeProjectInstance"},
+        args=args,
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
+def active_project_instance_window(
+    *,
+    timeout_sec: float = 30.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Return properties for the active floating window in the active Project Instance page."""
+
+    return send_command(
+        "projectInstance.activeWindow",
+        target={"scope": "activeProjectInstance"},
+        args={"action": "properties"},
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
+class ArcRhoWindow:
+    """COM-style wrapper for a floating ArcRho UI window."""
+
+    def __init__(
+        self,
+        ui: "ArcRhoUI",
+        window_id: str,
+        properties: ArcRhoWindowProperties | dict[str, Any] | None = None,
+    ) -> None:
+        self._ui = ui
+        self._window_id = str(window_id or "")
+        self._properties = self._coerce_properties(properties)
+
+    def __repr__(self) -> str:
+        title = self._properties.title if self._properties else ""
+        return f"ArcRhoWindow(id={self.id!r}, title={title!r})"
+
+    @staticmethod
+    def _coerce_properties(
+        properties: ArcRhoWindowProperties | dict[str, Any] | None,
+    ) -> ArcRhoWindowProperties | None:
+        if isinstance(properties, ArcRhoWindowProperties):
+            return properties
+        if isinstance(properties, dict):
+            return ArcRhoWindowProperties.from_result(properties)
+        return None
+
+    def _run(self, action: str, *, timeout_sec: float = 30.0) -> UiCommandResult:
+        result = self._ui.send_command(
+            "projectInstance.windowAction",
+            target={"scope": "activeProjectInstance"},
+            args={"action": action, "windowId": self.id},
+            timeout_sec=timeout_sec,
+        )
+        if action == "close":
+            props = self._properties or ArcRhoWindowProperties(window_id=self.id)
+            props.connected = bool(result.result.get("connected", False))
+            self._properties = props
+        else:
+            self._properties = ArcRhoWindowProperties.from_result(result.result)
+        return result
+
+    @property
+    def id(self) -> str:
+        return self._window_id or (self._properties.window_id if self._properties else "")
+
+    @property
+    def window_id(self) -> str:
+        return self.id
+
+    @property
+    def properties(self) -> ArcRhoWindowProperties:
+        self.refresh()
+        return self._properties or ArcRhoWindowProperties(window_id=self.id)
+
+    def refresh(self, *, timeout_sec: float = 30.0) -> "ArcRhoWindow":
+        self._run("properties", timeout_sec=timeout_sec)
+        return self
+
+    def get_properties(self, *, timeout_sec: float = 30.0) -> ArcRhoWindowProperties:
+        self.refresh(timeout_sec=timeout_sec)
+        return self._properties or ArcRhoWindowProperties(window_id=self.id)
+
+    def activate(self, *, timeout_sec: float = 30.0) -> "ArcRhoWindow":
+        self._run("activate", timeout_sec=timeout_sec)
+        return self
+
+    def focus(self, *, timeout_sec: float = 30.0) -> "ArcRhoWindow":
+        return self.activate(timeout_sec=timeout_sec)
+
+    def maximize(self, *, timeout_sec: float = 30.0) -> "ArcRhoWindow":
+        self._run("maximize", timeout_sec=timeout_sec)
+        return self
+
+    def restore(self, *, timeout_sec: float = 30.0) -> "ArcRhoWindow":
+        self._run("restore", timeout_sec=timeout_sec)
+        return self
+
+    def minimize(self, *, timeout_sec: float = 30.0) -> "ArcRhoWindow":
+        self._run("minimize", timeout_sec=timeout_sec)
+        return self
+
+    def close(self, *, timeout_sec: float = 30.0) -> bool:
+        return bool(self._run("close", timeout_sec=timeout_sec).result.get("closed"))
+
+    @property
+    def title(self) -> str:
+        return self.properties.title
+
+    @property
+    def kind(self) -> str:
+        return self.properties.kind
+
+    @property
+    def dataset_name(self) -> str:
+        return self.properties.dataset_name
+
+    @property
+    def selected_path(self) -> str:
+        return self.properties.selected_path
+
+    @property
+    def is_active(self) -> bool:
+        return self.properties.active
+
+    @property
+    def is_hidden(self) -> bool:
+        return self.properties.hidden
+
+    @property
+    def is_maximized(self) -> bool:
+        return self.properties.maximized
+
+    @property
+    def is_dirty(self) -> bool:
+        return self.properties.dirty
+
+    @property
+    def is_closed(self) -> bool:
+        try:
+            return not self.properties.connected
+        except ArcRhoApiError:
+            return True
+
+
+class ProjectInstanceAutomation:
+    """Automation entry point for the active Project Instance page."""
+
+    def __init__(self, ui: "ArcRhoUI") -> None:
+        self._ui = ui
+
+    def open_dataset(
+        self,
+        dataset_name: str,
+        *,
+        dataset_type_name: str | None = None,
+        read_only: bool | None = None,
+        generated: bool | None = None,
+        method_type: str | None = None,
+        timeout_sec: float = 30.0,
+    ) -> ArcRhoWindow:
+        result = self._ui.open_dataset_in_active_project_instance(
+            dataset_name,
+            dataset_type_name=dataset_type_name,
+            read_only=read_only,
+            generated=generated,
+            method_type=method_type,
+            timeout_sec=timeout_sec,
+        )
+        properties = ArcRhoWindowProperties.from_result(result.result)
+        return ArcRhoWindow(self._ui, properties.window_id, properties)
+
+    def active_window(self, *, timeout_sec: float = 30.0) -> ArcRhoWindow | None:
+        result = self._ui.send_command(
+            "projectInstance.activeWindow",
+            target={"scope": "activeProjectInstance"},
+            args={"action": "properties"},
+            timeout_sec=timeout_sec,
+        )
+        properties = ArcRhoWindowProperties.from_result(result.result)
+        return ArcRhoWindow(self._ui, properties.window_id, properties) if properties.window_id else None
+
+    def window(self, window_id: str) -> ArcRhoWindow:
+        return ArcRhoWindow(self._ui, window_id)
+
+
+class ArcRhoUI:
+    """Convenience object for ArcRho UI automation commands."""
+
+    def __init__(self, app_url: str | None = None) -> None:
+        self.app_url = str(app_url or "").strip() or None
+
+    @property
+    def base_url(self) -> str:
+        return _base_url(self.app_url)
+
+    @property
+    def project_instance(self) -> ProjectInstanceAutomation:
+        return ProjectInstanceAutomation(self)
+
+    def get_app_health(self, **kwargs: Any) -> dict[str, Any]:
+        kwargs.setdefault("app_url", self.app_url)
+        return get_app_health(**kwargs)
+
+    def is_app_running(self, **kwargs: Any) -> bool:
+        kwargs.setdefault("app_url", self.app_url)
+        return is_app_running(**kwargs)
+
+    def wait_for_app(self, **kwargs: Any) -> dict[str, Any]:
+        kwargs.setdefault("app_url", self.app_url)
+        return wait_for_app(**kwargs)
+
+    def send_command(self, command: str, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return send_command(command, **kwargs)
+
+    def message_box(self, message: str, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return message_box(message, **kwargs)
+
+    def open_dataset_in_active_project_instance(self, dataset_name: str, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return open_dataset_in_active_project_instance(dataset_name, **kwargs)
+
+    def project_instance_window_action(self, action: str, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return project_instance_window_action(action, **kwargs)
+
+    def active_project_instance_window(self, **kwargs: Any) -> ArcRhoWindow | None:
+        kwargs.setdefault("app_url", self.app_url)
+        result = active_project_instance_window(**kwargs)
+        properties = ArcRhoWindowProperties.from_result(result.result)
+        return ArcRhoWindow(self, properties.window_id, properties) if properties.window_id else None
+
+    def window(self, window_id: str) -> ArcRhoWindow:
+        return ArcRhoWindow(self, window_id)

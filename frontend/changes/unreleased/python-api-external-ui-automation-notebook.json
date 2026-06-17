@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "python api",
+  "audience": "user",
+  "summary": "Added Python UI automation helpers for external notebooks and scripts."
+}
