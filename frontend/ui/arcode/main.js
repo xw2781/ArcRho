@@ -11,6 +11,7 @@ const EXPANDED_EXPLORER_PATHS_KEY = "arcode_expanded_explorer_paths_v1";
 const ZOOM_STORAGE_KEY = "arcode_ui_zoom_pct";
 const ZOOM_MODE_KEY = "arcode_zoom_mode";
 const STATUSBAR_H_KEY = "arcode_statusbar_h";
+const CLEAR_CACHE_RESTORE_KIND = "arcode-clear-cache-reload-restore-v1";
 const DEFAULT_ZOOM_PERCENT = 100;
 const MIN_ZOOM_PERCENT = 70;
 const MAX_ZOOM_PERCENT = 160;
@@ -90,6 +91,66 @@ function currentUserSettingsPayload() {
     recentFiles: readRecentFiles(),
     windowScalePercent: normalizeZoomPercent(state.zoomPercent),
   };
+}
+
+function buildClearCacheReloadRestorePayload() {
+  const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeId);
+  return {
+    kind: CLEAR_CACHE_RESTORE_KIND,
+    createdAt: Date.now(),
+    activeIndex,
+    activeWasHome: state.activeId === "home",
+    tabs: state.tabs.map((tab) => ({
+      title: tabTitle(tab),
+      path: String(tab.path || "").trim(),
+      forceFresh: !String(tab.path || "").trim() || !!tab.forceFresh,
+    })),
+  };
+}
+
+function normalizeRestoreTabs(value) {
+  const entries = Array.isArray(value) ? value : [];
+  return entries.slice(0, 30).map((entry) => {
+    const path = String(entry?.path || "").trim();
+    const title = String(entry?.title || "").trim();
+    return {
+      path,
+      title: title || filenameFromPath(path) || "Untitled Notebook",
+      forceFresh: !path || !!entry?.forceFresh,
+    };
+  });
+}
+
+async function restoreTabsAfterClearCacheReload() {
+  const host = getHostApi();
+  if (typeof host?.consumeClearCacheReloadRestore !== "function") return false;
+  let payload = null;
+  try {
+    payload = await host.consumeClearCacheReloadRestore();
+  } catch {
+    return false;
+  }
+  if (payload?.kind !== CLEAR_CACHE_RESTORE_KIND) return false;
+  const restoreTabs = normalizeRestoreTabs(payload.tabs);
+  const openedTabs = [];
+  for (const tab of restoreTabs) {
+    openedTabs.push(openCodeTab({
+      path: tab.path,
+      title: tab.title,
+      forceFresh: tab.forceFresh,
+    }));
+  }
+  if (payload.activeWasHome || !openedTabs.length) {
+    setActiveTab("home");
+  } else {
+    const activeIndex = Number.parseInt(String(payload.activeIndex ?? -1), 10);
+    const activeTab = openedTabs[Math.max(0, Math.min(openedTabs.length - 1, activeIndex))] || openedTabs[0];
+    if (activeTab) setActiveTab(activeTab.id);
+  }
+  updateStatus(openedTabs.length
+    ? `Restored ${openedTabs.length === 1 ? "1 tab" : `${openedTabs.length} tabs`} after reload.`
+    : "Reloaded Arcode.");
+  return true;
 }
 
 async function saveArcodeUserSettings({ reportFailure = false } = {}) {
@@ -921,7 +982,7 @@ function openCodeTab(options = {}) {
   const id = `arcode_${state.nextId++}`;
   const tab = {
     id,
-    title: filenameFromPath(filePath) || "Untitled Notebook",
+    title: String(options.title || "").trim() || filenameFromPath(filePath) || "Untitled Notebook",
     type: "scripting",
     path: filePath,
     scInst: `${id}_${Date.now()}`,
@@ -1311,13 +1372,17 @@ async function runShellAction(action) {
       updateStatus("Clear Cache & Reload requires the desktop app host.");
       return;
     }
+    if (!confirmWindowClose()) {
+      updateStatus("Clear Cache & Reload canceled.");
+      return;
+    }
     const saved = await saveArcodeUserSettings({ reportFailure: true });
     if (saved?.ok === false) {
       updateStatus(`Clear Cache & Reload canceled: ${saved.error || "Unable to save Arcode settings."}`);
       return;
     }
     updateStatus("Clearing cache and reloading...");
-    return window.ADAHost.clearCacheAndReload({});
+    return window.ADAHost.clearCacheAndReload({ restore: buildClearCacheReloadRestorePayload() });
   }
   if (action === "new-window") return window.ADAHost?.openArcodeWindow?.({});
   if (action === "close-others") return activeTab() ? closeTabsExcept(state.activeId) : undefined;
@@ -1633,7 +1698,8 @@ async function boot() {
   await loadExplorerFileIcons();
   render();
   initAiAssistant();
-  if (initialOpenPath) openCodeTab({ path: initialOpenPath });
+  const restored = await restoreTabsAfterClearCacheReload();
+  if (!restored && initialOpenPath) openCodeTab({ path: initialOpenPath });
 }
 
 void boot();

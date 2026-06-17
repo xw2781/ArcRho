@@ -867,6 +867,7 @@
       min-height: 132px;
       padding: 8px;
       border: 1px solid #c9a227;
+      border-radius: 8px;
       background: #fff7c2;
       box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
     }
@@ -890,6 +891,7 @@
       font-size: 12px;
       line-height: 1.2;
       padding: 3px 8px;
+      border-radius: 4px;
     }
     .dfmCellNoteClearBtn:hover:not(:disabled) {
       background: #ffef99;
@@ -909,6 +911,7 @@
       color: #111827;
       font: 13px/1.35 Arial, sans-serif;
       padding: 6px;
+      border-radius: 6px;
       outline: none;
     }
     .dfmCellNoteText:focus {
@@ -1105,8 +1108,9 @@
       box-shadow: none;
     }
     .dfmSummaryFormulaBar {
-      position: sticky;
-      left: 0;
+      --dfm-summary-formula-bar-content-width: 100%;
+      --dfm-summary-formula-bar-content-x: 0px;
+      position: relative;
       z-index: 9;
       min-height: 22px;
       line-height: 20px;
@@ -1122,9 +1126,7 @@
       box-sizing: border-box;
       margin: 6px 0 4px;
       max-width: 100%;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      display: block;
       opacity: 0;
       transform: translateX(-20px);
       transition: opacity 0.2s ease, transform 0.2s ease;
@@ -1132,6 +1134,16 @@
     .dfmSummaryFormulaBar.fxVisible {
       opacity: 1;
       transform: translateX(0);
+    }
+    .dfmSummaryFormulaBarContent {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: var(--dfm-summary-formula-bar-content-width);
+      max-width: 100%;
+      min-width: 0;
+      transform: translateX(var(--dfm-summary-formula-bar-content-x));
+      will-change: transform;
     }
     .dfmSummaryFormulaBarFxIcon {
       display: inline-flex;
@@ -1648,7 +1660,7 @@
         <label for="dfmMethodName">Name</label>
         <div class="dfmFormField">
           <div class="dfmMethodNameWrap">
-            <input id="dfmMethodName" type="text" placeholder="DFM | Triangle Name" />
+            <input id="dfmMethodName" type="text" placeholder="Enter the method name" />
             <button id="dfmMethodNameBtn" type="button" class="pathTreeBtn" title="Select DFM method name" aria-label="Select DFM method name">...</button>
             <div id="dfmMethodNameDropdown" class="datasetDropdown"></div>
           </div>
@@ -1992,7 +2004,7 @@
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/dfm/dfm_main.js?v=20260611a");
+      await import("/ui/dfm/dfm_main.js?v=20260616h");
     })();
   </script>
 </body>

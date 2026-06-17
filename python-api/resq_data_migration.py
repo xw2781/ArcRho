@@ -27,12 +27,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-# PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
 
 # RC_PATH = r"PRNJ - PA\PA\NY\Direct Group\MP+PIP"
-RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
+RC_PATH = r"PRNJ - PA\PA\NJ\Direct Group\BIR51+UMBIR51"
+# RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
+# RC_PATH = r'PRNJ - PA\PA\All States\Direct Group\COL'
 
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 USER_NAME = ""
@@ -48,6 +50,7 @@ METHOD_DATA_DIR = "methods"
 DATASET_SIDECAR_DIR = "sidecars"
 DEFAULT_CUMULATIVE = True
 DEFAULT_CALENDAR = False
+DEBUG_LOG_PATH = Path(__file__).resolve().parent / "logs" / "resq_data_migration_debug.log"
 
 # Stop probing average formula rows after this many consecutive misses
 MAX_AVERAGE_FORMULA_PROBE = 30
@@ -62,6 +65,21 @@ DFM_NAMES: list[str] = []  # Empty means export all DFM methods in RC_PATH
 
 
 # ── JSON formatting ────────────────────────────────────────────────────────────
+
+def _debug_log(event: str, **fields: object) -> None:
+    try:
+        DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            "event": event,
+            **fields,
+        }
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(payload, ensure_ascii=False, default=str))
+            fh.write("\n")
+    except Exception:
+        pass
+
 
 def _is_row_array(value: object) -> bool:
     return isinstance(value, list) and all(isinstance(row, list) for row in value)
@@ -287,7 +305,6 @@ def _dataset_type_graph_fields(dataset_type_name: str) -> dict:
 
 
 def _apply_sidecar_graph_meta(meta: dict, dataset_type_name: str) -> None:
-    meta["dataset_type_name"] = dataset_type_name
     meta.update(_dataset_type_graph_fields(dataset_type_name))
     meta.pop("dependencies", None)
 
@@ -351,8 +368,7 @@ def _cached_dataset_names_from_file(filename: str) -> set[str]:
 
 def _cached_dataset_names_from_payload(payload: dict) -> set[str]:
     names: set[str] = set()
-    for key in ("dataset_name", "instance_name"):
-        _add_cached_dataset_name(names, payload.get(key))
+    _add_cached_dataset_name(names, payload.get("dataset_name"))
     if names:
         return names
     details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
@@ -361,7 +377,7 @@ def _cached_dataset_names_from_payload(payload: dict) -> set[str]:
 
 
 def _dataset_type_name_from_payload(payload: dict) -> str:
-    text = _normalize_cached_dataset_name(payload.get("dataset_type_name") or payload.get("dataset_type"))
+    text = _normalize_cached_dataset_name(payload.get("dataset_type"))
     if text:
         return text
     details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
@@ -460,7 +476,7 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
             first_name = file_info["dataset_names"][0]
             file_info["dataset_name"] = first_name
         if metadata:
-            metadata_dataset_name = _normalize_cached_dataset_name(metadata.get("dataset_name") or metadata.get("instance_name"))
+            metadata_dataset_name = _normalize_cached_dataset_name(metadata.get("dataset_name"))
             dataset_type_name = _dataset_type_name_from_payload(metadata)
             if not legacy_length_only_name:
                 if metadata_dataset_name:
@@ -515,8 +531,7 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
 
 def _file_dataset_names(item: dict) -> set[str]:
     names: set[str] = set()
-    for key in ("dataset_name", "instance_name"):
-        _add_cached_dataset_name(names, item.get(key))
+    _add_cached_dataset_name(names, item.get("dataset_name"))
     for value in item.get("dataset_names") or []:
         _add_cached_dataset_name(names, value)
     if names:
@@ -1139,8 +1154,6 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     meta = {
         "dataset_name": name,
         "dataset_type": dataset_type,
-        "dataset_type_name": dataset_type,
-        "instance_name": name,
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
@@ -1246,8 +1259,6 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     meta = {
         "dataset_name": name,
         "dataset_type": dataset_type,
-        "dataset_type_name": dataset_type,
-        "instance_name": name,
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
@@ -1367,8 +1378,6 @@ def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) 
     meta = {
         "dataset_name": name,
         "dataset_type": dataset_type,
-        "dataset_type_name": dataset_type,
-        "instance_name": name,
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": "dfm",
@@ -1679,6 +1688,35 @@ def export_dfm(dfm, rc_path: str) -> dict:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+def _warn_if_dfm_input_sidecar_missing(payload: dict) -> None:
+    details = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
+    data_tab = payload.get("data tab") if isinstance(payload.get("data tab"), dict) else {}
+    input_path = _clean_name(data_tab.get("input data triangle csv path"))
+    if not input_path:
+        _debug_log("dfm_input_sidecar_check", method_name=_clean_name(details.get("name")), input_path="", skipped=True)
+        return
+    path = Path(input_path)
+    sidecar_path = _dataset_sidecar_path_for_cached_csv(path)
+    _debug_log(
+        "dfm_input_sidecar_check",
+        method_name=_clean_name(details.get("name")),
+        input_triangle=_clean_name(details.get("input triangle")),
+        origin_length=details.get("origin length"),
+        development_length=details.get("development length"),
+        input_csv_path=str(path),
+        input_csv_exists=path.is_file(),
+        sidecar_path=str(sidecar_path),
+        sidecar_exists=sidecar_path.is_file(),
+    )
+    if sidecar_path.is_file():
+        return
+    print(
+        "    WARN missing DFM input sidecar "
+        f"{sidecar_path.name} for {_clean_name(details.get('name')) or 'DFM method'}; "
+        "export the input triangle before opening the DFM in ArcRho."
+    )
+
+
 def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int, int]:
     """Export DFM method JSON/metadata for one reserving class. Returns (written, errors)."""
     dfm_collection = reserving_class.DFMMethods()
@@ -1693,6 +1731,17 @@ def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int
         try:
             dfm = dfm_collection.Item(dfm_name)
             payload = export_dfm(dfm, rc_path)
+            _debug_log(
+                "dfm_export_payload",
+                project_name=PROJECT_NAME,
+                reserving_class=rc_path,
+                method_name=payload.get("details tab", {}).get("name") if isinstance(payload.get("details tab"), dict) else dfm_name,
+                input_triangle=payload.get("details tab", {}).get("input triangle") if isinstance(payload.get("details tab"), dict) else "",
+                origin_length=payload.get("details tab", {}).get("origin length") if isinstance(payload.get("details tab"), dict) else "",
+                development_length=payload.get("details tab", {}).get("development length") if isinstance(payload.get("details tab"), dict) else "",
+                input_csv_path=payload.get("data tab", {}).get("input data triangle csv path") if isinstance(payload.get("data tab"), dict) else "",
+            )
+            _warn_if_dfm_input_sidecar_missing(payload)
             ultimate_payload = export_dfm_ultimate_vector(
                 dfm,
                 payload["data tab"]["origin labels"],

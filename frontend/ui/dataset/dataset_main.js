@@ -160,6 +160,10 @@ async function handleCalculatedDatasetsUpdatedMessage(report) {
 }
 
 window.addEventListener("message", (e) => {
+  if (e?.data?.type === "arcrho:dataset-save") {
+    void handleDatasetSaveCommand();
+    return;
+  }
   if (e?.data?.type === "arcrho:set-app-font") {
     applyAppFont(e.data.font);
   }
@@ -2179,6 +2183,7 @@ function getCurrentDatasetSettings() {
     origin_length: triInputs.originLen,
     development_length: triInputs.devLen,
     cumulative: !!triInputs.cumulative,
+    transposed: !!triInputs.transposed,
     calendar: !!triInputs.calendar,
   };
 }
@@ -2192,6 +2197,7 @@ function normalizeDatasetSettings(source = {}) {
     origin_length: Number.isFinite(origin) && origin > 0 ? Math.trunc(origin) : 12,
     development_length: Number.isFinite(development) && development > 0 ? Math.trunc(development) : 12,
     cumulative: typeof source.cumulative === "boolean" ? source.cumulative : true,
+    transposed: typeof source.transposed === "boolean" ? source.transposed : false,
     calendar: typeof source.calendar === "boolean" ? source.calendar : false,
   };
 }
@@ -2203,6 +2209,7 @@ function sameDatasetSettings(a, b) {
     left.origin_length === right.origin_length
     && left.development_length === right.development_length
     && left.cumulative === right.cumulative
+    && left.transposed === right.transposed
     && left.calendar === right.calendar
     && normalizeProjectText(left.dataset_type) === normalizeProjectText(right.dataset_type)
     && normalizeProjectText(left.instance_name) === normalizeProjectText(right.instance_name)
@@ -2267,6 +2274,8 @@ function applyDatasetSettingsToControls(settings = {}) {
   }
   const cumulativeChk = document.getElementById("cumulativeChk");
   if (cumulativeChk) cumulativeChk.checked = normalized.cumulative;
+  const transposedChk = document.getElementById("transposedChk");
+  if (transposedChk) transposedChk.checked = normalized.transposed;
   const mode = normalized.calendar ? "calendar" : "development";
   const modeInput = document.querySelector(`input[name="timeMode"][value="${mode}"]`);
   if (modeInput) modeInput.checked = true;
@@ -2321,9 +2330,11 @@ async function syncSidecarForCurrentDataset(options = {}) {
   if (options?.applyLengths !== false && data.exists) {
     applyDatasetSettingsToControls(settings);
     saveTriInputsToStorage();
+    datasetSettingsDirty = false;
+    updateDatasetSaveUi();
+    return true;
   }
-  datasetSettingsDirty = false;
-  updateDatasetSaveUi();
+  refreshDatasetSettingsDirty();
   return true;
 }
 
@@ -2448,8 +2459,7 @@ function requestConfirmedDatasetClose() {
 
 function wireDatasetSaveControls() {
   document.getElementById("datasetSaveBtn")?.addEventListener("click", async () => {
-    const result = await saveDatasetChanges();
-    if (!result.ok) setStatus(`Dataset save failed: ${result.error || "Unknown error."}`);
+    await handleDatasetSaveCommand();
   });
   document.getElementById("datasetCancelBtn")?.addEventListener("click", async () => {
     const ok = await confirmCancelDatasetChanges("cancel");
@@ -2499,6 +2509,12 @@ function wireDatasetSaveControls() {
     event.returnValue = "";
   });
   updateDatasetSaveUi();
+}
+
+async function handleDatasetSaveCommand() {
+  const result = await saveDatasetChanges();
+  if (!result.ok) setStatus(`Dataset save failed: ${result.error || "Unknown error."}`);
+  return result;
 }
 
 function getDisplayProjectValue() {

@@ -14,16 +14,16 @@ import {
 import { resetRatioChartThresholds } from "/ui/dfm/dfm_ratios_tab.js";
 import {
   scheduleRatioSelectionLoad,
-} from "/ui/dfm/dfm_persistence.js?v=20260611a";
-import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
+} from "/ui/dfm/dfm_persistence.js?v=20260616d";
 import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
 } from "/ui/shared/project_user_preferences.js";
+import { fetchProjectDatasetTypeItems } from "/ui/dataset/dataset_types_source.js";
 
+const cachedDatasetNamesByProjectPathFormat = new Map();
 const outputTypeNamesByProject = new Map();
-const triangleInputNamesByProject = new Map();
 const dfmMethodNamesByProjectPath = new Map();
 let outputTypeRequestSeq = 0;
 let triangleInputRequestSeq = 0;
@@ -58,91 +58,51 @@ function isReservingClassDefaultBound() {
   return !!getInputSnapshotSafe()?.defaults?.reservingClassDefault;
 }
 
-function parseCalculatedFlag(value) {
-  if (typeof value === "boolean") return value;
-  const text = normalizeKey(value);
-  return text === "true" || text === "1" || text === "yes" || text === "y";
+function getCachedDatasetDataFormat(record) {
+  return normalizeKey(record?.data_format || record?.dataFormat || record?.values?.dataFormat);
 }
 
-function getDatasetTypeColumnIndexes(columns) {
-  const indexByName = {};
-  for (let i = 0; i < columns.length; i += 1) {
-    const key = normalizeKey(columns[i]);
-    if (!key || indexByName[key] != null) continue;
-    indexByName[key] = i;
-  }
-  return {
-    name: indexByName.name,
-    dataFormat: indexByName["data format"],
-    calculated: indexByName.calculated,
-  };
+function getCachedDatasetInstanceName(record) {
+  return toText(
+    record?.dataset_name
+    || record?.instance_name
+    || record?.name
+    || (Array.isArray(record?.dataset_names) ? record.dataset_names[0] : "")
+  );
 }
 
-function getDatasetTypeCell(row, index, fallbackKeys) {
-  if (Array.isArray(row)) {
-    if (Number.isInteger(index) && index >= 0) return row[index];
-    return "";
-  }
-  if (row && typeof row === "object") {
-    for (const key of fallbackKeys) {
-      if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
-    }
-  }
-  return "";
-}
-
-function extractOutputTypeNames(data) {
-  const columns = Array.isArray(data?.columns) ? data.columns : [];
-  const rows = Array.isArray(data?.rows) ? data.rows : [];
-  const indexes = getDatasetTypeColumnIndexes(columns);
+function extractCachedDatasetInstanceNames(payload, dataFormat) {
+  const expectedFormat = normalizeKey(dataFormat);
   const seen = new Set();
   const out = [];
-
-  for (const row of rows) {
-    const name = toText(getDatasetTypeCell(row, indexes.name, ["Name", "name"]));
-    if (!name) continue;
-
-    const dataFormat = normalizeKey(getDatasetTypeCell(row, indexes.dataFormat, ["Data Format", "dataFormat", "data_format"]));
-    if (dataFormat !== "vector") continue;
-
+  for (const record of Array.isArray(payload?.files) ? payload.files : []) {
+    if (expectedFormat && getCachedDatasetDataFormat(record) !== expectedFormat) continue;
+    const name = getCachedDatasetInstanceName(record);
     const key = normalizeKey(name);
-    if (!key || seen.has(key)) continue;
+    if (!name || !key || seen.has(key)) continue;
     seen.add(key);
     out.push(name);
   }
+  out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
   return out;
 }
 
-function extractTriangleInputNames(data) {
-  const columns = Array.isArray(data?.columns) ? data.columns : [];
-  const rows = Array.isArray(data?.rows) ? data.rows : [];
-  const indexes = getDatasetTypeColumnIndexes(columns);
-  const seen = new Set();
-  const out = [];
-
-  for (const row of rows) {
-    const name = toText(getDatasetTypeCell(row, indexes.name, ["Name", "name"]));
-    if (!name) continue;
-
-    const dataFormat = normalizeKey(getDatasetTypeCell(row, indexes.dataFormat, ["Data Format", "dataFormat", "data_format"]));
-    if (dataFormat !== "triangle") continue;
-
-    const key = normalizeKey(name);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(name);
-  }
-  return out;
-}
-
-async function loadOutputTypeNames(projectName, options = {}) {
-  const normalizedProject = normalizeKey(projectName);
-  if (!normalizedProject) return [];
-  if (!options?.forceReload && outputTypeNamesByProject.has(normalizedProject)) {
-    return outputTypeNamesByProject.get(normalizedProject);
+async function loadCachedDatasetInstanceNames(projectName, pathValue, dataFormat, options = {}) {
+  const project = toText(projectName);
+  const path = toText(pathValue);
+  const format = normalizeKey(dataFormat);
+  if (!project || !path || !format) return [];
+  const cacheKey = `${normalizeKey(project)}\n${normalizeKey(path)}\n${format}`;
+  if (!options?.forceReload && cachedDatasetNamesByProjectPathFormat.has(cacheKey)) {
+    return cachedDatasetNamesByProjectPathFormat.get(cacheKey);
   }
 
-  const response = await fetch(`/dataset_types?project_name=${encodeURIComponent(projectName)}`);
+  const query = new URLSearchParams({
+    project_name: project,
+    reserving_class: path,
+    refresh: options?.forceReload ? "true" : "false",
+  });
+  const response = await fetch(`/datasets/cached?${query.toString()}`);
   if (!response.ok) {
     let detail = "";
     try {
@@ -151,30 +111,36 @@ async function loadOutputTypeNames(projectName, options = {}) {
     throw new Error(detail || `HTTP ${response.status}`);
   }
   const payload = await response.json().catch(() => ({}));
-  const names = extractOutputTypeNames(payload?.data || {});
-  outputTypeNamesByProject.set(normalizedProject, names);
+  const names = extractCachedDatasetInstanceNames(payload, format);
+  cachedDatasetNamesByProjectPathFormat.set(cacheKey, names);
   return names;
 }
 
-async function loadTriangleInputNames(projectName, options = {}) {
-  const normalizedProject = normalizeKey(projectName);
-  if (!normalizedProject) return [];
-  if (!options?.forceReload && triangleInputNamesByProject.has(normalizedProject)) {
-    return triangleInputNamesByProject.get(normalizedProject);
+async function loadOutputTypeNames(projectName, _pathValue = "", options = {}) {
+  const project = toText(projectName);
+  if (!project) return [];
+  const cacheKey = normalizeKey(project);
+  if (!options?.forceReload && outputTypeNamesByProject.has(cacheKey)) {
+    return outputTypeNamesByProject.get(cacheKey);
   }
-
-  const response = await fetch(`/dataset_types?project_name=${encodeURIComponent(projectName)}`);
-  if (!response.ok) {
-    let detail = "";
-    try {
-      detail = toText(await response.text());
-    } catch {}
-    throw new Error(detail || `HTTP ${response.status}`);
+  const payload = await fetchProjectDatasetTypeItems(project, { dedupeByName: true });
+  const seen = new Set();
+  const names = [];
+  for (const item of Array.isArray(payload?.items) ? payload.items : []) {
+    if (normalizeKey(item?.dataFormat) !== "vector") continue;
+    const name = toText(item?.name);
+    const key = normalizeKey(name);
+    if (!name || !key || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
   }
-  const payload = await response.json().catch(() => ({}));
-  const names = extractTriangleInputNames(payload?.data || {});
-  triangleInputNamesByProject.set(normalizedProject, names);
+  names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+  outputTypeNamesByProject.set(cacheKey, names);
   return names;
+}
+
+function loadTriangleInputNames(projectName, pathValue, options = {}) {
+  return loadCachedDatasetInstanceNames(projectName, pathValue, "triangle", options);
 }
 
 function closeOutputTypeDropdown() {
@@ -217,6 +183,10 @@ function syncMethodNameToOutputType(value, options = {}) {
   const next = toText(value);
   const methodInput = document.getElementById("dfmMethodName");
   if (!methodInput) return false;
+  if (toText(methodInput.value)) {
+    updateAppTabTitle(toText(methodInput.value) || getDefaultMethodName(), !options?.silent);
+    return false;
+  }
   const changed = toText(methodInput.value) !== next;
   if (changed) methodInput.value = next;
   updateAppTabTitle(next || getDefaultMethodName(), !options?.silent);
@@ -242,7 +212,7 @@ function applyOutputTypeSelection(value, options = {}) {
   scheduleRatioSelectionLoad("details-change");
 }
 
-function getFilteredOutputTypeNames(names, query) {
+function getFilteredNames(names, query) {
   const list = Array.isArray(names) ? names : [];
   const q = normalizeKey(query);
   if (!q) return list;
@@ -255,7 +225,7 @@ function renderOutputTypeDropdown(names, options = {}) {
   if (!dropdown || !input) return;
 
   const query = toText(options?.query);
-  const filteredNames = getFilteredOutputTypeNames(names, query);
+  const filteredNames = getFilteredNames(names, query);
   dropdown.innerHTML = "";
   if (!Array.isArray(names) || names.length === 0) {
     const option = document.createElement("div");
@@ -310,11 +280,13 @@ function applyTriangleSelection(value) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function renderTriangleTypeDropdown(names) {
+function renderTriangleTypeDropdown(names, options = {}) {
   const dropdown = document.getElementById("dfmTriTypeDropdown");
   const input = document.getElementById("triInput");
   if (!dropdown || !input) return;
 
+  const query = toText(options?.query);
+  const filteredNames = getFilteredNames(names, query);
   dropdown.innerHTML = "";
   if (!Array.isArray(names) || names.length === 0) {
     const option = document.createElement("div");
@@ -326,9 +298,19 @@ function renderTriangleTypeDropdown(names) {
     dropdown.classList.add("open");
     return;
   }
+  if (filteredNames.length === 0) {
+    const option = document.createElement("div");
+    option.className = "datasetOption";
+    option.textContent = "No matching triangle names.";
+    option.style.cursor = "default";
+    option.style.color = "#666";
+    dropdown.appendChild(option);
+    dropdown.classList.add("open");
+    return;
+  }
 
   const selectedKey = normalizeKey(input.value);
-  for (const name of names) {
+  for (const name of filteredNames) {
     const option = document.createElement("div");
     option.className = "datasetOption";
     option.textContent = name;
@@ -609,7 +591,7 @@ async function syncOutputTypeForCurrentProject(options = {}) {
 
   const requestSeq = ++outputTypeRequestSeq;
   try {
-    const names = await loadOutputTypeNames(projectName, { forceReload: !!options?.forceReload });
+    const names = await loadOutputTypeNames(projectName, "", { forceReload: !!options?.forceReload });
     if (requestSeq !== outputTypeRequestSeq) return;
     const allowedKeys = new Set(names.map((name) => normalizeKey(name)));
 
@@ -623,7 +605,7 @@ async function syncOutputTypeForCurrentProject(options = {}) {
 
     const current = toText(input.value);
     const isActivelyEditing = document.activeElement === input;
-    // Avoid clobbering user typing if the async dataset_types response returns
+    // Avoid clobbering user typing if the async dataset-type response returns
     // while Output Vector is focused/being edited after page refresh.
     if (isActivelyEditing || (wasFocusedAtStart && current !== valueAtStart)) {
       return;
@@ -880,8 +862,8 @@ function wireOutputTypePicker() {
     const projectChanged = projectKey !== pickerProjectKey;
     if (forceReload || projectChanged || !pickerLoaded) {
       const requestSeq = ++outputTypeRequestSeq;
-      const names = await loadOutputTypeNames(projectName, {
-        forceReload: forceReload || projectChanged,
+      const names = await loadOutputTypeNames(projectName, "", {
+        forceReload: forceReload || projectChanged || !pickerLoaded,
       });
       if (requestSeq !== outputTypeRequestSeq) return null;
       pickerProjectKey = projectKey;
@@ -933,38 +915,10 @@ function wireOutputTypePicker() {
     input.value = committedOutputType;
   };
 
-  const openWindowPicker = async () => {
-    const projectName = toText(getResolvedProjectName());
-    closeOutputTypeDropdown();
-    const out = await openDatasetNamePicker({
-      projectName,
-      initialName: input.value,
-      anchorElement: input,
-      title: "Select Output Vector",
-      allowedDataFormats: ["Vector"],
-      includeCalculated: true,
-      emptyMessage: "No Vector dataset names found.",
-      setStatus: (msg) => postDfmStatus(msg, { tone: "warn" }),
-      onError: (err) => {
-        console.error("Failed to open output-vector picker:", err);
-        postDfmStatus(`Error loading output vectors: ${String(err?.message || err)}`, { tone: "error" });
-      },
-      onSelect: (name) => {
-        const selected = toText(name);
-        if (!selected) return;
-        applyOutputTypeSelection(selected);
-        input.dispatchEvent(new CustomEvent("arcrho:output-type-selected", { detail: { value: selected } }));
-      },
-    });
-    if (out?.ok) {
-      try { input.focus({ preventScroll: true }); } catch { try { input.focus(); } catch {} }
-    }
-  };
-
   button.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    void openWindowPicker();
+    void openPicker({ forceReload: true, alertOnProjectMissing: true });
   });
 
   input.addEventListener("click", (e) => {
@@ -1027,6 +981,7 @@ function wireOutputTypePicker() {
   }, true);
 
   const projectInput = document.getElementById("projectSelect");
+  const pathInput = document.getElementById("pathInput");
   projectInput?.addEventListener("change", () => {
     resetPickerCache();
     committedOutputType = toText(input.value);
@@ -1034,6 +989,16 @@ function wireOutputTypePicker() {
     void syncOutputTypeForCurrentProject({ forceReload: true });
   });
   projectInput?.addEventListener("input", () => {
+    resetPickerCache();
+    closeOutputTypeDropdown();
+  });
+  pathInput?.addEventListener("change", () => {
+    resetPickerCache();
+    committedOutputType = toText(input.value);
+    closeOutputTypeDropdown();
+    void syncOutputTypeForCurrentProject({ forceReload: true });
+  });
+  pathInput?.addEventListener("input", () => {
     resetPickerCache();
     closeOutputTypeDropdown();
   });
@@ -1052,34 +1017,97 @@ function wireTriangleTypePicker() {
   if (!triInput || !button || !dropdown || button.dataset.wired === "1") return;
   button.dataset.wired = "1";
 
-  const openPicker = async () => {
+  let pickerProjectPathKey = "";
+  let pickerNames = [];
+  let pickerLoaded = false;
+
+  const resetPickerCache = () => {
+    pickerProjectPathKey = "";
+    pickerNames = [];
+    pickerLoaded = false;
+  };
+
+  const ensurePickerNames = async (options = {}) => {
     const projectName = toText(getResolvedProjectName());
+    const pathValue = toText(getResolvedReservingClass());
+    if (!projectName || !pathValue) {
+      resetPickerCache();
+      return { projectName: "", pathValue: "", names: [] };
+    }
+    const projectPathKey = `${normalizeKey(projectName)}\n${normalizeKey(pathValue)}`;
+    const forceReload = !!options?.forceReload;
+    const pathChanged = projectPathKey !== pickerProjectPathKey;
+    if (forceReload || pathChanged || !pickerLoaded) {
+      const names = await loadTriangleInputNames(projectName, pathValue, {
+        forceReload: forceReload || pathChanged || !pickerLoaded,
+      });
+      pickerProjectPathKey = projectPathKey;
+      pickerNames = Array.isArray(names) ? names : [];
+      pickerLoaded = true;
+    }
+    return { projectName, pathValue, names: pickerNames };
+  };
+
+  const openPicker = async (options = {}) => {
+    const projectName = toText(getResolvedProjectName());
+    const pathValue = toText(getResolvedReservingClass());
     closeTriangleTypeDropdown();
     const nativeDatasetDropdown = document.getElementById("datasetDropdown");
     nativeDatasetDropdown?.classList.remove("open");
-    await openDatasetNamePicker({
-      projectName,
-      initialName: triInput.value,
-      anchorElement: triInput,
-      title: "Select Input Triangle",
-      allowedDataFormats: ["Triangle"],
-      includeCalculated: true,
-      emptyMessage: "No Triangle dataset names found.",
-      setStatus: (msg) => postDfmStatus(msg, { tone: "warn" }),
-      onError: (err) => {
-        console.error("Failed to open input-triangle picker:", err);
-        postDfmStatus(`Error loading triangle names: ${String(err?.message || err)}`, { tone: "error" });
-      },
-      onSelect: (name) => {
-        applyTriangleSelection(name);
-      },
-    });
+    if (!projectName || !pathValue) {
+      if (options?.alertOnContextMissing) alert("Select a project and reserving class path first.");
+      return;
+    }
+    button.disabled = true;
+    try {
+      const out = await ensurePickerNames({ forceReload: !!options?.forceReload });
+      renderTriangleTypeDropdown(out.names, { query: triInput.value });
+    } catch (err) {
+      console.error("Failed to load input-triangle options:", err);
+      postDfmStatus(`Error loading triangle names: ${String(err?.message || err)}`, { tone: "error" });
+    } finally {
+      button.disabled = false;
+    }
   };
 
   button.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    void openPicker();
+    void openPicker({ forceReload: true, alertOnContextMissing: true });
+  });
+
+  triInput.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void openPicker({ forceReload: false, alertOnContextMissing: false });
+  });
+
+  triInput.addEventListener("focus", () => {
+    void openPicker({ forceReload: false, alertOnContextMissing: false });
+  });
+
+  triInput.addEventListener("input", () => {
+    void openPicker({ forceReload: false, alertOnContextMissing: false });
+  });
+
+  triInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeTriangleTypeDropdown();
+      return;
+    }
+    if (e.key === "ArrowDown" && !dropdown.classList.contains("open")) {
+      e.preventDefault();
+      void openPicker({ forceReload: false, alertOnContextMissing: false });
+      return;
+    }
+    if (e.key === "Enter" && dropdown.classList.contains("open")) {
+      const first = dropdown.querySelector(".datasetOption");
+      const text = toText(first?.textContent);
+      if (text && text !== "No triangle names found (Triangle)." && text !== "No matching triangle names.") {
+        e.preventDefault();
+        applyTriangleSelection(text);
+        closeTriangleTypeDropdown();
+      }
+    }
   });
 
   document.addEventListener("mousedown", (e) => {
@@ -1094,8 +1122,23 @@ function wireTriangleTypePicker() {
   }, true);
 
   const projectInput = document.getElementById("projectSelect");
-  projectInput?.addEventListener("change", closeTriangleTypeDropdown);
-  projectInput?.addEventListener("input", closeTriangleTypeDropdown);
+  const pathInput = document.getElementById("pathInput");
+  projectInput?.addEventListener("change", () => {
+    resetPickerCache();
+    closeTriangleTypeDropdown();
+  });
+  projectInput?.addEventListener("input", () => {
+    resetPickerCache();
+    closeTriangleTypeDropdown();
+  });
+  pathInput?.addEventListener("change", () => {
+    resetPickerCache();
+    closeTriangleTypeDropdown();
+  });
+  pathInput?.addEventListener("input", () => {
+    resetPickerCache();
+    closeTriangleTypeDropdown();
+  });
 }
 
 export function wireDetailsThresholdReset() {

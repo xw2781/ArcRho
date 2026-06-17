@@ -163,6 +163,35 @@ function routeDfmWindowCommand(type) {
   }
 }
 
+function routeDatasetWindowCommand(type = "arcrho:dataset-save") {
+  const frame = getActiveDatasetWindow();
+  if (!frame || isDfmWindow(frame)) {
+    setStatus("No active dataset window.", true);
+    return false;
+  }
+  const iframe = getWindowIframe(frame);
+  try {
+    iframe?.contentWindow?.postMessage({ type: toText(type) || "arcrho:dataset-save" }, "*");
+    setStatus("Saving dataset...");
+    return true;
+  } catch {
+    setStatus("Failed to send save command to the dataset window.", true);
+    return false;
+  }
+}
+
+function routeActiveWindowSaveCommand(saveAs = false) {
+  const frame = getActiveDatasetWindow();
+  if (!frame) {
+    setStatus("No active dataset or DFM window.", true);
+    return false;
+  }
+  if (isDfmWindow(frame)) {
+    return routeDfmWindowCommand(saveAs ? "arcrho:dfm-save-as" : "arcrho:dfm-save");
+  }
+  return routeDatasetWindowCommand("arcrho:dataset-save");
+}
+
 function forwardRequestToActiveDfm(message, resultType, fallbackContext, timeoutMs = 3000) {
   const requestId = toText(message?.requestId) || `pi_dfm_request_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const frame = getActiveDfmWindow();
@@ -339,7 +368,7 @@ function initDatasetWindowShortcuts() {
     ) {
       event.preventDefault();
       event.stopPropagation();
-      routeDfmWindowCommand(event.shiftKey ? "arcrho:dfm-save-as" : "arcrho:dfm-save");
+      routeActiveWindowSaveCommand(event.shiftKey);
       return;
     }
     closeActiveDatasetWindowFromShortcut(event);
@@ -382,7 +411,12 @@ window.addEventListener("message", (event) => {
   if (
     msg.type === "arcrho:dfm-save"
     || msg.type === "arcrho:dfm-save-as"
-    || msg.type === "arcrho:dfm-save-template"
+  ) {
+    routeActiveWindowSaveCommand(msg.type === "arcrho:dfm-save-as");
+    return;
+  }
+  if (
+    msg.type === "arcrho:dfm-save-template"
     || msg.type === "arcrho:dfm-open-method-json"
     || msg.type === "arcrho:dfm-exclude-high"
     || msg.type === "arcrho:dfm-exclude-low"
@@ -437,8 +471,8 @@ window.addEventListener("message", (event) => {
     return;
   }
   if (msg.type === "arcrho:dfm-dirty") {
-    const frame = findWindowByInstance(msg.inst);
-    if (frame) {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isDfmWindow(frame)) {
       setWindowDirtyState(frame, !!msg.dirty);
       notifyActiveDfmWindowState();
     }
@@ -478,11 +512,11 @@ window.addEventListener("message", (event) => {
   if (msg.type === "arcrho:hotkey") {
     const action = toText(msg.action);
     if (action === "file_save") {
-      routeDfmWindowCommand("arcrho:dfm-save");
+      routeActiveWindowSaveCommand(false);
       return;
     }
     if (action === "file_save_as") {
-      routeDfmWindowCommand("arcrho:dfm-save-as");
+      routeActiveWindowSaveCommand(true);
       return;
     }
     if (action === "dfm_undo") {
@@ -522,6 +556,8 @@ window.addEventListener("message", (event) => {
     requestShellOpenPath,
     revealSelectedReservingClassFolder,
     routeDfmRatioHotkey,
-    routeDfmWindowCommand
+    routeDfmWindowCommand,
+    routeDatasetWindowCommand,
+    routeActiveWindowSaveCommand
   });
 }

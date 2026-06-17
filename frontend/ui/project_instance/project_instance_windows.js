@@ -6,7 +6,6 @@ export function installProjectInstanceWindows(ctx) {
   const clampNumber = (...args) => api.clampNumber(...args);
   const closeActiveDatasetWindowFromShortcut = (...args) => api.closeActiveDatasetWindowFromShortcut(...args);
   const hideDatasetWindow = (...args) => api.hideDatasetWindow(...args);
-  const isPointInHiddenDropZone = (...args) => api.isPointInHiddenDropZone(...args);
   const markPathTreeActive = (...args) => api.markPathTreeActive(...args);
   const normalizePath = (...args) => api.normalizePath(...args);
   const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
@@ -14,7 +13,6 @@ export function installProjectInstanceWindows(ctx) {
   const recordSelectedDfmObject = (...args) => api.recordSelectedDfmObject(...args);
   const routeDfmRatioHotkey = (...args) => api.routeDfmRatioHotkey(...args);
   const routeDfmWindowCommand = (...args) => api.routeDfmWindowCommand(...args);
-  const setHiddenDropActive = (...args) => api.setHiddenDropActive(...args);
   const setSelectedPath = (...args) => api.setSelectedPath(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const toText = (...args) => api.toText(...args);
@@ -612,13 +610,19 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   return `/ui/dataset/dataset_viewer.html?${params.toString()}`;
 }
 
-function buildDfmViewerUrl(datasetName, inst, initialTab = "ratios") {
+function buildDfmViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
+  const name = toText(datasetName);
+  const initialTab = toText(options?.initialTab || options?.dfmTab || "ratios") || "ratios";
+  const methodName = options?.fresh ? "" : toText(options?.methodName || name);
+  const outputType = options?.fresh ? "" : toText(options?.outputType || name);
+  const inputTriangle = toText(options?.inputTriangle || "");
   params.set("project", projectName);
   params.set("class", state.selectedPath);
-  params.set("method_name", datasetName);
-  params.set("output_type", datasetName);
-  params.set("tab", toText(initialTab) || "ratios");
+  if (methodName) params.set("method_name", methodName);
+  if (outputType) params.set("output_type", outputType);
+  if (inputTriangle) params.set("input_triangle", inputTriangle);
+  params.set("tab", initialTab);
   params.set("inst", inst);
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
@@ -663,22 +667,11 @@ function startMove(frame, event) {
       width: start.width,
       height: start.height,
     });
-    setHiddenDropActive(isPointInHiddenDropZone(e.clientX, e.clientY), frame);
   };
-  const onUp = (e) => {
+  const onUp = () => {
     releaseDragCapture();
     document.removeEventListener("mousemove", onMove, true);
     document.removeEventListener("mouseup", onUp, true);
-    if (isPointInHiddenDropZone(e.clientX, e.clientY)) {
-      hideDatasetWindow(frame, {
-        x: start.x,
-        y: start.y,
-        width: start.width,
-        height: start.height,
-      });
-      return;
-    }
-    setHiddenDropActive(false, frame);
     notifyProjectInstanceStateChanged();
   };
   document.addEventListener("mousemove", onMove, true);
@@ -746,6 +739,7 @@ function createFloatingContentWindow(options = {}) {
   frame.dataset.windowPath = normalizePath(options.path || state.selectedPath);
   frame.dataset.windowTitle = title;
   frame.dataset.windowKind = toText(options.kind) || "dataset";
+  frame.dataset.dirty = "0";
   const methodType = toText(options.methodType || (frame.dataset.windowKind === "dfm" ? "DFM" : ""));
   if (methodType) frame.dataset.windowMethodType = methodType;
   if (frame.dataset.windowKind === "dfm") frame.dataset.dfmTab = "ratios";
@@ -818,6 +812,11 @@ function createFloatingContentWindow(options = {}) {
     if (Number(frame.__piLastTitlebarToggle || 0) && Date.now() - frame.__piLastTitlebarToggle < 400) return;
     e.preventDefault();
     toggleDatasetWindowMaximized(frame);
+  });
+  titlebar?.addEventListener("contextmenu", (e) => {
+    if (e.target.closest("button")) return;
+    e.preventDefault();
+    hideDatasetWindow(frame, getFrameRect(frame));
   });
   for (const handle of frame.querySelectorAll(".pi-window-resize")) {
     handle.addEventListener("mousedown", (e) => {
@@ -933,7 +932,7 @@ function openDfmWindow(datasetName, options = {}) {
     title,
     windowKey,
     inst,
-    iframeSrc: buildDfmViewerUrl(name, inst, initialTab),
+    iframeSrc: buildDfmViewerUrl(name, inst, { ...options, initialTab }),
     methodType: options.methodType || "DFM",
   });
 }

@@ -16,7 +16,6 @@ from app_server import config
 from app_server.helpers import sanitize_dataset_file_name, set_data_path_like_vba, send_request_like_vba, wait_for_file
 from app_server.services import dataset_instance_index_service, project_settings_service
 
-
 def _pair_value(pairs: list, key: str) -> str:
     key_l = key.strip().lower()
     for pair_key, pair_value in pairs:
@@ -70,10 +69,7 @@ def _cache_text_matches(left: Any, right: Any) -> bool:
 def _cache_payload_name_matches(payload: Dict[str, Any], expected_name: str) -> bool:
     if not expected_name:
         return False
-    return (
-        _cache_text_matches(payload.get("dataset_name"), expected_name)
-        or _cache_text_matches(payload.get("instance_name"), expected_name)
-    )
+    return _cache_text_matches(payload.get("dataset_name"), expected_name)
 
 
 def _safe_read_json(path: str) -> Dict[str, Any]:
@@ -89,7 +85,7 @@ def _request_dataset_name(pairs: list) -> str:
     return _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
 
 
-def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]:
+def _triangle_sidecar_payload(data_path: str, pairs: list, *, local_only: bool = False) -> Dict[str, Any]:
     sidecar_path = _dataset_sidecar_path(data_path, pairs)
     payload = _safe_read_json(sidecar_path)
     if not payload:
@@ -101,15 +97,26 @@ def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]
         return {}
     if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
         return {}
-    if _clean_cache_text(payload.get("source_kind")).lower() != "input":
+    source_kind = _clean_cache_text(payload.get("source_kind")).lower()
+    generated = str(payload.get("generated") or "").strip().lower() in {"true", "1", "yes"}
+    if not local_only and source_kind != "input":
         return {}
-    generated = str(payload.get("generated") or "").strip().lower()
-    if generated in {"true", "1", "yes"}:
+    if not local_only and generated:
         return {}
     data_format = _clean_cache_text(payload.get("data_format") or "Triangle").lower()
     if data_format and data_format != "triangle":
         return {}
     return payload
+
+
+def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]:
+    return _triangle_sidecar_payload(data_path, pairs, local_only=False)
+
+
+def _is_generated_triangle_payload(payload: Dict[str, Any]) -> bool:
+    source_kind = _clean_cache_text(payload.get("source_kind")).lower()
+    generated = str(payload.get("generated") or "").strip().lower() in {"true", "1", "yes"}
+    return generated or source_kind == "engine"
 
 
 def _parse_cache_variant(filename: str) -> Dict[str, Any]:
@@ -136,8 +143,8 @@ def _parse_cache_variant(filename: str) -> Dict[str, Any]:
     }
 
 
-def _manual_cache_candidates(data_path: str, pairs: list) -> list[Dict[str, Any]]:
-    payload = _manual_input_sidecar_payload(data_path, pairs)
+def _local_cache_candidates(data_path: str, pairs: list, *, local_only: bool = False) -> list[Dict[str, Any]]:
+    payload = _triangle_sidecar_payload(data_path, pairs, local_only=local_only)
     if not payload:
         return []
     dataset_dir = os.path.dirname(data_path)
@@ -174,7 +181,7 @@ def _can_derive_cache(candidate: Dict[str, Any], pairs: list, target_path: str) 
     if bool(candidate.get("cumulative")) != _pair_bool_value(pairs, "Cumulative", True):
         return False, "cumulative mode differs"
     if target_origin < source_origin or target_dev < source_dev:
-        return False, "manual caches can only derive from finer to coarser periods"
+        return False, "local caches can only derive from finer to coarser periods"
     if target_origin % source_origin != 0 or target_dev % source_dev != 0:
         return False, "requested periods are not whole multiples of the cached periods"
     return True, ""
@@ -235,22 +242,41 @@ def resolve_local_triangle_cache(
     pairs: list,
     allow_derived: bool = True,
     materialize: bool = True,
+    local_only: bool = False,
 ) -> Dict[str, Any]:
     if arcrho_tri_cache_matches(data_path, pairs):
+        payload = _triangle_sidecar_payload(data_path, pairs, local_only=True)
         return {
             "ok": True,
             "status": "cache_exact",
             "data_path": data_path,
             "manual_source_found": bool(_manual_input_sidecar_payload(data_path, pairs)),
+            "generated_source_found": bool(payload and _is_generated_triangle_payload(payload)),
+            "local_source_found": True,
         }
 
-    candidates = _manual_cache_candidates(data_path, pairs)
-    if not candidates:
+    payload = _triangle_sidecar_payload(data_path, pairs, local_only=local_only)
+    if not payload:
         return {
             "ok": False,
             "status": "missing_sidecar",
             "manual_source_found": False,
+            "generated_source_found": False,
+            "local_source_found": False,
             "message": f"Input triangle cache sidecar was not found for '{_request_dataset_name(pairs)}'.",
+            "data_path": data_path,
+        }
+    generated_source_found = _is_generated_triangle_payload(payload)
+    manual_source_found = bool(_manual_input_sidecar_payload(data_path, pairs))
+    candidates = _local_cache_candidates(data_path, pairs, local_only=local_only)
+    if not candidates:
+        return {
+            "ok": False,
+            "status": "cache_missing",
+            "manual_source_found": manual_source_found,
+            "generated_source_found": generated_source_found,
+            "local_source_found": True,
+            "message": f"Input triangle cache was not found for '{_request_dataset_name(pairs)}'.",
             "data_path": data_path,
         }
 
@@ -258,7 +284,9 @@ def resolve_local_triangle_cache(
         return {
             "ok": False,
             "status": "cache_missing",
-            "manual_source_found": True,
+            "manual_source_found": manual_source_found,
+            "generated_source_found": generated_source_found,
+            "local_source_found": True,
             "message": f"Input triangle cache was not found for '{_request_dataset_name(pairs)}'.",
             "data_path": data_path,
         }
@@ -276,7 +304,9 @@ def resolve_local_triangle_cache(
                 "ok": True,
                 "status": "cache_derivable",
                 "data_path": data_path,
-                "manual_source_found": True,
+                "manual_source_found": manual_source_found,
+                "generated_source_found": generated_source_found,
+                "local_source_found": True,
                 "derived": {
                     "source_path": str(candidate["path"]),
                     "source_origin_length": int(candidate.get("origin_length") or 0),
@@ -296,17 +326,21 @@ def resolve_local_triangle_cache(
             "ok": True,
             "status": "cache_derived",
             "data_path": data_path,
-            "manual_source_found": True,
+            "manual_source_found": manual_source_found,
+            "generated_source_found": generated_source_found,
+            "local_source_found": True,
             "derived": derived,
         }
 
     detail = rejected[0] if rejected else "no compatible finer cache was found"
     return {
         "ok": False,
-        "status": "cache_not_derivable",
-        "manual_source_found": True,
+        "status": "cache_missing" if generated_source_found else "cache_not_derivable",
+        "manual_source_found": manual_source_found,
+        "generated_source_found": generated_source_found,
+        "local_source_found": True,
         "message": (
-            f"Input triangle '{_request_dataset_name(pairs)}' exists only as a manual cache that cannot derive "
+            f"Input triangle '{_request_dataset_name(pairs)}' exists as a local cache that cannot derive "
             f"{_pair_int_value(pairs, 'OriginLength', 12)}x{_pair_int_value(pairs, 'DevelopmentLength', 12)} periods: {detail}."
         ),
         "data_path": data_path,
@@ -330,8 +364,6 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
     payload = {
         "dataset_name": instance_name,
         "dataset_type": dataset_type,
-        "dataset_type_name": dataset_type,
-        "instance_name": instance_name,
         "reserving_class": _pair_value(pairs, "Path"),
         "project_name": _pair_value(pairs, "ProjectName"),
         "source_kind": "engine",
@@ -399,7 +431,7 @@ def arcrho_tri_cache_matches(data_path: str, pairs: list) -> bool:
     if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
         return False
     if not _pair_value(pairs, "InstanceName") and dataset_type:
-        payload_type = payload.get("dataset_type_name") or payload.get("dataset_type")
+        payload_type = payload.get("dataset_type")
         if payload_type and not _cache_text_matches(payload_type, dataset_type):
             return False
     return True
@@ -583,11 +615,12 @@ def run_arcrho_tri(
     request_file = None
     cache_cleared = False
 
-    local_result = resolve_local_triangle_cache(data_path, pairs, allow_derived=allow_derived)
+    local_result = resolve_local_triangle_cache(data_path, pairs, allow_derived=allow_derived, local_only=local_only)
     if local_result.get("ok") and not force_refresh:
         return _local_cache_response(local_result, data_path)
     manual_source_found = bool(local_result.get("manual_source_found"))
-    if local_only or manual_source_found:
+    generated_source_found = bool(local_result.get("generated_source_found"))
+    if (local_only and not generated_source_found) or manual_source_found:
         message = str(local_result.get("message") or "Input triangle cache is not available.")
         if force_refresh and manual_source_found:
             message = "Manual input triangle caches cannot be refreshed from the DFM/Dataset loader."

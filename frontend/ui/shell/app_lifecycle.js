@@ -110,20 +110,39 @@ async function buildClearCacheReloadRestorePayload() {
 }
 
 export async function clearCacheAndReload() {
-  const confirmed = await showAppConfirm({
-    title: "Warning",
-    message: "Clear cache and reload the app?",
-    okText: "Reload",
-    cancelText: "Cancel",
-  });
-  if (!confirmed) return;
-  const restore = await buildClearCacheReloadRestorePayload();
+  let confirmed = false;
+  try {
+    confirmed = await showAppConfirm({
+      title: "Warning",
+      message: "Clear cache and reload the app?",
+      okText: "Reload",
+      cancelText: "Cancel",
+    });
+  } catch {
+    confirmed = window.confirm("Clear cache and reload the app?");
+  }
+  if (!confirmed) {
+    shell.updateStatusBar?.("Clear Cache & Reload canceled.");
+    return;
+  }
+  shell.updateStatusBar?.("Preparing cache reload...");
+  let restore = null;
+  try {
+    restore = await buildClearCacheReloadRestorePayload();
+  } catch (err) {
+    console.warn("Could not build Clear Cache & Reload restore payload:", err);
+  }
   const hostApi = shell.getHostApi?.();
-  if (hostApi?.clearCacheAndReload) {
+  if (typeof hostApi?.clearCacheAndReload === "function") {
     try {
-      await hostApi.clearCacheAndReload({ restore });
-      return;
-    } catch {}
+      shell.updateStatusBar?.("Clearing cache and reloading...");
+      const result = await hostApi.clearCacheAndReload({ restore });
+      if (result !== false) return;
+      shell.updateStatusBar?.("Host cache reload was unavailable; using browser reload...");
+    } catch (err) {
+      console.warn("Host Clear Cache & Reload failed; falling back to browser reload:", err);
+      shell.updateStatusBar?.("Host cache reload failed; using browser reload...");
+    }
   }
   try {
     if (window.caches?.keys) {

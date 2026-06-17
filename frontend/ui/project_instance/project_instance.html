@@ -364,38 +364,6 @@
       color: #1f4e99;
       box-shadow: 0 1px 4px rgba(31, 78, 153, 0.12);
     }
-    .pi-hidden-tabs-wrap.drop-active .pi-hidden-tabs-button {
-      border-color: #2f6fec;
-      background: #eaf2ff;
-      color: #174ea6;
-      box-shadow: 0 0 0 2px rgba(47, 111, 236, 0.14);
-    }
-    .pi-hidden-drop-banner {
-      position: absolute;
-      top: 36px;
-      left: 50%;
-      z-index: 10040;
-      transform: translate(-50%, -8px);
-      min-width: 260px;
-      max-width: min(520px, calc(100% - 32px));
-      border: 1px solid #8fb0f4;
-      border-radius: 8px;
-      background: rgba(247, 250, 255, 0.98);
-      box-shadow: 0 12px 28px rgba(31, 78, 153, 0.18);
-      color: #174ea6;
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 18px;
-      padding: 8px 14px;
-      text-align: center;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 140ms ease, transform 140ms ease;
-    }
-    .pi-hidden-drop-banner.active {
-      opacity: 1;
-      transform: translate(-50%, 0);
-    }
     .pi-hidden-tabs-caret {
       width: 0;
       height: 0;
@@ -1735,10 +1703,6 @@
       border-color: #2f6fec;
       box-shadow: 0 0 0 2px rgba(47, 111, 236, 0.18), 0 14px 34px rgba(27, 40, 66, 0.24);
     }
-    .pi-window.drop-target-active {
-      border-color: #2f6fec;
-      box-shadow: 0 0 0 2px rgba(47, 111, 236, 0.22), var(--shadow);
-    }
     body.win11-frame .pi-window {
       border-radius: 8px;
     }
@@ -1958,7 +1922,6 @@
         <div class="pi-hidden-tabs-menu" id="hiddenTabsMenu" role="menu"></div>
       </div>
     </div>
-    <div class="pi-hidden-drop-banner" id="hiddenDropBanner" aria-hidden="true">Release here to minimize this window</div>
     <div class="pi-layout">
       <section class="pi-left" aria-label="Reserving class paths">
         <div class="pi-path-tree" id="pathTree"></div>
@@ -2016,6 +1979,7 @@
     </div>
     <div class="pi-table-row-context-menu" id="datasetRowContextMenu" role="menu" aria-hidden="true">
       <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="view">View</button>
+      <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="show-as-vector" hidden>Show as vector</button>
       <div class="pi-context-submenu">
         <button class="pi-context-menu-item pi-context-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu">
           <span>Add</span>
@@ -2090,6 +2054,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260611d"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260616a"></script>
 </body>
 </html>

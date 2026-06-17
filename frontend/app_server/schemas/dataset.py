@@ -44,6 +44,7 @@ class DatasetSidecarSaveRequest(BaseModel):
     origin_length: int = Field(..., ge=1)
     development_length: int = Field(..., ge=1)
     cumulative: bool = True
+    transposed: bool = False
     calendar: bool = False
     csv_file: str = ""
 

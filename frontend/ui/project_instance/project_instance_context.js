@@ -40,7 +40,6 @@ export function createProjectInstanceContext(deps = {}) {
     hiddenTabsButton: document.getElementById("hiddenTabsButton"),
     hiddenTabsLabel: document.getElementById("hiddenTabsLabel"),
     hiddenTabsMenu: document.getElementById("hiddenTabsMenu"),
-    hiddenDropBanner: document.getElementById("hiddenDropBanner"),
     cachedDatasetToggle: document.getElementById("cachedDatasetToggle"),
     datasetRefreshBtn: document.getElementById("datasetRefreshBtn"),
     datasetActiveFilters: document.getElementById("datasetActiveFilters"),

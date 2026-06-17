@@ -2234,23 +2234,30 @@ ipcMain.handle("arcode-window-open", async (_event, payload) => {
   return { ok: true };
 });
 
-ipcMain.handle("app-clear-cache-reload", async (_event, payload) => {
-  if (!win || win.isDestroyed()) return false;
+ipcMain.handle("app-clear-cache-reload", async (event, payload) => {
+  const targetWindow = getIpcWindow(event) || win;
+  if (!targetWindow || targetWindow.isDestroyed()) return false;
   pendingClearCacheReloadRestore = payload?.restore && typeof payload.restore === "object"
     ? payload.restore
     : null;
   try {
-    await win.webContents.session.clearCache();
-    await win.webContents.session.clearStorageData();
+    await targetWindow.webContents.session.clearCache();
+    await targetWindow.webContents.session.clearStorageData();
   } catch {
     // ignore
   }
   try {
-    const reloadUrl = `http://${HOST}:${PORT}/ui/?v=${encodeURIComponent(String(Date.now()))}`;
-    await win.loadURL(reloadUrl);
+    const uiVersion = String(Date.now());
+    const isArcodeReload = APP_MODE === "arcode"
+      || targetWindow === arcodeWin
+      || pendingClearCacheReloadRestore?.kind === "arcode-clear-cache-reload-restore-v1";
+    const reloadUrl = isArcodeReload
+      ? buildArcodeUrl({ uiVersion })
+      : `http://${HOST}:${PORT}/ui/?v=${encodeURIComponent(uiVersion)}`;
+    await targetWindow.loadURL(reloadUrl);
   } catch {
     try {
-      win.webContents.reloadIgnoringCache();
+      targetWindow.webContents.reloadIgnoringCache();
     } catch {
       // ignore
     }

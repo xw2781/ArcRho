@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance Add > DFM now opens a fresh DFM Details window for the selected dataset."
+}

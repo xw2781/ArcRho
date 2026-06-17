@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance floating windows now minimize from titlebar right-click instead of dragging to the hidden-tabs area."
+}

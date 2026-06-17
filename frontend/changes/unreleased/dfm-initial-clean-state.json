@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Stopped newly opened DFM tabs from showing unsaved changes before any edits are made."
+}

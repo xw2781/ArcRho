@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset tabs now stay dirty after Data-tab setting changes and can save those changes from the File menu or Ctrl+S.",
+  "details": [
+    "Saved Data-tab settings also restore the transposed view state."
+  ]
+}

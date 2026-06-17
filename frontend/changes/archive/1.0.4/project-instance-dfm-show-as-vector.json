@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance DFM vector rows now offer Show as vector in the row context menu."
+}

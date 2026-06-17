@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Fixed Clear Cache & Reload so it reports failures and falls back to a browser reload when the desktop host cannot reload the shell."
+}

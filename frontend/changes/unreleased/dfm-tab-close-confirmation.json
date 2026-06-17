@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed closing dirty DFM tabs from the tab close button and Ctrl+W."
+}

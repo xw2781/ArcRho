@@ -119,6 +119,7 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
         origin_length=req.origin_length,
         development_length=req.development_length,
         cumulative=req.cumulative,
+        transposed=req.transposed,
         calendar=req.calendar,
         csv_file=req.csv_file,
     )

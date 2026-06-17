@@ -292,6 +292,14 @@ export function initShellMessages() {
       if (tab) return shell.closeTab?.(tab.id, true);
       return;
     }
+    if (msg.type === "arcrho:dfm-close-confirmed") {
+      const inst = String(msg.inst || "");
+      const tab = shell.state.tabs.find(t => t.type === "dfm" && (
+        (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
+      ));
+      if (tab) return shell.closeTab?.(tab.id, true);
+      return;
+    }
     if (msg.type === "arcrho:close-active-tab") {
       if (tryConsumeActiveFrameCloseShortcut()) return;
       return shell.closeTab?.(shell.state.activeId);

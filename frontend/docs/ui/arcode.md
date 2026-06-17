@@ -8,7 +8,7 @@ ArcRho embeds the Arcode launch path, and the same source can be packaged as the
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.arcode.entry_points -->
-- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260614a`; inline imports _none_.
+- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260616a`; inline imports _none_.
 - `ui/arcode/scripting-console/index.html`: external scripts `/ui/arcode/scripting-console/cells.js`, `/ui/arcode/scripting-console/core.js`, `/ui/arcode/scripting-console/execution.js`, `/ui/arcode/scripting-console/index.js?v=20260614a`, `/ui/arcode/scripting-console/notebook-io.js`, `/ui/arcode/scripting-console/panels.js`, `/ui/arcode/scripting-console/shortcuts.js`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
@@ -38,6 +38,7 @@ Detected `fetch(...)` targets in key JS files:
 - Uses the scripting HTTP API for execution, variables, notebooks, preferences, and object inspection. ArcRho extends the same service with macro endpoints for the main app only.
 - Uses the shared `ui/ai-assistant/` widget through the Arcode adapter, which keeps `arcode:*` notebook context messages and `arcode_ai_assistant_*` UI storage separate from ArcRho.
 - ArcRho shell scripting launch actions open the desktop Arcode window through `openArcodeWindow`; browser fallback opens `/ui/arcode/main.html` directly.
+- Clear Cache & Reload stores a one-shot Arcode restore payload in the Electron host, clears Electron cache/storage, reloads the requesting Arcode window with a fresh timestamped UI URL, and restores the previously open Arcode tabs and active tab after boot.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
@@ -46,6 +47,7 @@ Detected `fetch(...)` targets in key JS files:
 - Leaves notebook persistence, execution, autosave, disk conflict checks, and shortcut preferences inside the Arcode scripting-console modules.
 - Uses Electron host dialogs for opening and saving files, parented to the requesting Arcode window.
 - Standalone Arcode mode stores scripts under `Documents\Arcode\scripts` by default and uses `%APPDATA%\Arcode` for Arcode settings.
+- Clear Cache & Reload preserves open tab paths and clean untitled tabs through the host one-shot restore payload because browser storage is intentionally cleared; dirty tabs still use the normal close confirmation before reload.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

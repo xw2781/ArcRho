@@ -186,24 +186,6 @@ function updateHiddenTabsArea() {
   }
 }
 
-function isPointInHiddenDropZone(x, y) {
-  const rootRect = els.root?.getBoundingClientRect?.();
-  const layoutRect = els.layout?.getBoundingClientRect?.();
-  if (!rootRect || !layoutRect) return false;
-  return x >= rootRect.left && x <= rootRect.right && y >= rootRect.top && y < layoutRect.top;
-}
-
-function setHiddenDropActive(active, frame = null) {
-  els.hiddenTabsWrap?.classList?.toggle("drop-active", !!active);
-  els.hiddenDropBanner?.classList?.toggle("active", !!active);
-  els.hiddenDropBanner?.setAttribute("aria-hidden", active ? "false" : "true");
-  for (const highlighted of els.windowLayer?.querySelectorAll?.(".pi-window.drop-target-active") || []) {
-    if (!active || highlighted !== frame) highlighted.classList.remove("drop-target-active");
-  }
-  frame?.classList?.toggle("drop-target-active", !!active);
-}
-
-
 function getMinimizedTabElement(frameOrId) {
   const id = typeof frameOrId === "string" ? frameOrId : frameOrId?.dataset?.windowId || "";
   if (!id || !els.hiddenTabsList) return null;
@@ -327,7 +309,6 @@ async function hideDatasetWindow(frame, restoreRect) {
   });
   frame.dataset.hidden = "1";
   if (state.activeDatasetWindow === frame) state.activeDatasetWindow = null;
-  setHiddenDropActive(false, frame);
   syncDatasetWindowChrome();
   updateHiddenTabsArea();
   await animateWindowToDock(frame);
@@ -460,12 +441,10 @@ function initHiddenTabsArea() {
     hideDatasetWindow,
     hideMinimizedTabTooltip,
     initHiddenTabsArea,
-    isPointInHiddenDropZone,
     positionMinimizedTabTooltip,
     restoreAllHiddenWindows,
     restoreHiddenWindow,
     scheduleHiddenTabsHoverClose,
-    setHiddenDropActive,
     setHiddenTabsMenuOpen,
     showMinimizedTabTooltip,
     updateHiddenTabsArea

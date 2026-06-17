@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Restored open Arcode tabs automatically after Clear Cache & Reload."
+}

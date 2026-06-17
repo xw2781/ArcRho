@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "internal",
+  "summary": "Dataset sidecars now use dataset_name and dataset_type as the only persisted name fields and no longer accept legacy root aliases."
+}

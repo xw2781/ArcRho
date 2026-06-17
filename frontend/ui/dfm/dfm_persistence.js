@@ -27,6 +27,7 @@ import {
   getResolvedProjectName,
   getResolvedReservingClass,
   getDfmDecimalPlaces,
+  getDfmInst,
   getEffectiveDevLabelsForModel,
   getRatioHeaderLabels,
   calcRatio,
@@ -893,6 +894,16 @@ function recordCleanDfmDirtySnapshot(payload = null) {
     lastCleanDfmMethodPayload = cleanPayload;
   }
   lastCleanDfmDirtySnapshot = serializeDfmDirtySnapshot(cleanPayload);
+}
+
+export function recordCurrentDfmCleanState() {
+  recordCleanDfmDirtySnapshot();
+  markDfmClean();
+  try {
+    window.parent?.postMessage({ type: "arcrho:dfm-dirty", inst: getDfmInst(), dirty: false }, "*");
+  } catch {
+    // ignore
+  }
 }
 
 function isCurrentDfmDirtyComparedToCleanSnapshot() {

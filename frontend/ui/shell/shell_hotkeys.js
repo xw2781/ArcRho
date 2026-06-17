@@ -72,6 +72,7 @@ export function runHotkeyAction(action) {
   if (action === "dfm_redo") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-redo"); return; }
   if (action === "file_save") {
     if (shell.isActiveWorkflowTab?.()) shell.sendWorkflowCommand?.("arcrho:workflow-save");
+    else if (shell.isActiveDatasetTab?.()) shell.sendDatasetCommand?.("arcrho:dataset-save");
     else if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-save");
     else if (shell.isActiveProjectInstanceTab?.()) shell.sendProjectInstanceCommand?.("arcrho:dfm-save");
     else if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-save");
@@ -81,6 +82,7 @@ export function runHotkeyAction(action) {
   }
   if (action === "file_save_as") {
     if (shell.isActiveWorkflowTab?.()) shell.sendWorkflowCommand?.("arcrho:workflow-save-as");
+    else if (shell.isActiveDatasetTab?.()) shell.sendDatasetCommand?.("arcrho:dataset-save");
     else if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.(shell.isActiveDFMDetailsTab?.() ? "arcrho:dfm-save-template" : "arcrho:dfm-save-as");
     else if (shell.isActiveProjectInstanceTab?.()) shell.sendProjectInstanceCommand?.("arcrho:dfm-save-as");
     else if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-save-as");

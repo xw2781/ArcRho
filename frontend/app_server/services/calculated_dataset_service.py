@@ -208,7 +208,6 @@ def apply_sidecar_graph_fields(
     project = _clean_text(project_name or payload.get("project_name"))
     dataset_type = _clean_text(
         dataset_type_name
-        or payload.get("dataset_type_name")
         or payload.get("dataset_type")
         or payload.get("dataset_name")
     )
@@ -547,14 +546,14 @@ def _candidate_csvs(
             continue
         path = os.path.join(folder, name)
         sidecar = _sidecar_for_csv(path)
-        instance_name = _clean_text(sidecar.get("instance_name") or sidecar.get("dataset_name") or _csv_base_name(path))
-        type_name = _clean_text(sidecar.get("dataset_type_name") or sidecar.get("dataset_type") or _csv_base_name(path))
-        if dep_key not in {_canon_dataset_name(instance_name), _canon_dataset_name(type_name), _canon_dataset_name(_csv_base_name(path))}:
+        dataset_name = _clean_text(sidecar.get("dataset_name") or _csv_base_name(path))
+        type_name = _clean_text(sidecar.get("dataset_type") or _csv_base_name(path))
+        if dep_key not in {_canon_dataset_name(dataset_name), _canon_dataset_name(type_name), _canon_dataset_name(_csv_base_name(path))}:
             continue
         score = 0
         if _canon_dataset_name(type_name) == dep_key:
             score += 8
-        if _canon_dataset_name(instance_name) == dep_key:
+        if _canon_dataset_name(dataset_name) == dep_key:
             score += 4
         for key in ("origin_length", "development_length"):
             if str(sidecar.get(key) or "").strip() and str(sidecar.get(key)) == str(target_settings.get(key)):
@@ -806,8 +805,6 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
     payload = {
         "dataset_name": row["name"],
         "dataset_type": row["name"],
-        "dataset_type_name": row["name"],
-        "instance_name": row["name"],
         "reserving_class": reserving_class,
         "project_name": project_name,
         "source_kind": "calculated",
@@ -922,8 +919,8 @@ def recalculate_dependents_for_csv(csv_path: str) -> Dict[str, Any]:
     payload = _sidecar_for_csv(path)
     project_name = _clean_text(payload.get("project_name"))
     reserving_class = _clean_text(payload.get("reserving_class"))
-    dataset_name = _clean_text(payload.get("instance_name") or payload.get("dataset_name") or _csv_base_name(path))
-    dataset_type = _clean_text(payload.get("dataset_type_name") or payload.get("dataset_type") or dataset_name)
+    dataset_name = _clean_text(payload.get("dataset_name") or _csv_base_name(path))
+    dataset_type = _clean_text(payload.get("dataset_type") or dataset_name)
     if not project_name or not reserving_class or not dataset_name:
         return {"ok": False, "skipped": True, "reason": "missing_sidecar_context"}
     return recalculate_dependents(project_name, reserving_class, dataset_name, dataset_type)
@@ -999,6 +996,9 @@ def _iter_project_sidecars(project_name: str):
 
 
 def _write_sidecar_json(path: str, payload: Dict[str, Any]) -> None:
+    payload = dict(payload)
+    payload.pop("instance_name", None)
+    payload.pop("dataset_type_name", None)
     tmp_path = f"{path}.{uuid.uuid4()}.tmp"
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
@@ -1022,13 +1022,15 @@ def refresh_sidecar_graphs_and_recalculate(
     errors: List[str] = []
 
     for path, payload in _iter_project_sidecars(project_name) or []:
-        dataset_type = _clean_text(payload.get("dataset_type_name") or payload.get("dataset_type") or payload.get("dataset_name"))
+        dataset_type = _clean_text(payload.get("dataset_type") or payload.get("dataset_name"))
         dataset_key = _canon_dataset_name(dataset_type)
         reserving_class = _clean_text(payload.get("reserving_class"))
         if not dataset_key:
             continue
         try:
             before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+            payload.pop("instance_name", None)
+            payload.pop("dataset_type_name", None)
             apply_sidecar_graph_fields(payload, project_name, dataset_type)
             after = json.dumps(payload, sort_keys=True, ensure_ascii=False)
             if before != after:

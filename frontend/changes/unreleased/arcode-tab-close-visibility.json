@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Improved Arcode tab label and close button visibility for long notebook names."
+}

@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM input-triangle loading now lets generated cached triangles build missing period shapes while keeping manual inputs local-cache-only.",
+  "details": [
+    "Manual and imported input triangles can still load exact caches or derive coarser shapes from finer local caches, but requests for finer detail are rejected."
+  ]
+}

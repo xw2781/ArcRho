@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Softened the DFM Ratios cell note popup corners to better match modern Windows styling."
+}

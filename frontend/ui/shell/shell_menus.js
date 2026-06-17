@@ -116,6 +116,7 @@ function getActiveTab() { return shell.state.tabs.find(t => t.id === shell.state
 function isStandaloneDFMTab(tab = getActiveTab()) { return !!tab && tab.type === "dfm"; }
 function isProjectInstanceDfmActive(tab = getActiveTab()) { return !!tab && tab.type === "project_instance" && !!tab.piDfmActive; }
 export function isActiveWorkflowTab() { const tab = getActiveTab(); return !!tab && tab.type === "workflow"; }
+export function isActiveDatasetTab() { const tab = getActiveTab(); return !!tab && tab.type === "dataset"; }
 export function isActiveDFMTab() { const tab = getActiveTab(); return isStandaloneDFMTab(tab) || isProjectInstanceDfmActive(tab); }
 function getActiveDFMSubTab() {
   const tab = getActiveTab();
@@ -245,7 +246,7 @@ export function updateFileMenuState() {
   applyScopedMenuVisibility(fileMenuDropdown);
   updateFileSaveMenuLabels();
   refreshRecentNotebookMenu();
-  const saveEnabled = isActiveWorkflowTab() || isActiveDFMTab() || isActiveProjectInstanceTab() || isActiveScriptingTab() || isActiveProjectSettingsReservingClassTypesTab() || isActiveProjectSettingsDatasetTypesTab();
+  const saveEnabled = isActiveWorkflowTab() || isActiveDatasetTab() || isActiveDFMTab() || isActiveProjectInstanceTab() || isActiveScriptingTab() || isActiveProjectSettingsReservingClassTypesTab() || isActiveProjectSettingsDatasetTypesTab();
   fileMenuDropdown.querySelectorAll(".menuItem").forEach((el) => {
     if (recentNotebookSubmenu?.contains(el)) return;
     if (el.hidden) { el.classList.remove("disabled"); return; }
@@ -320,6 +321,7 @@ export function sendDFMCommand(type) {
   shell.ensureIframe?.(tab);
   try { tab.iframe?.contentWindow?.postMessage({ type }, "*"); } catch {}
 }
+export function sendDatasetCommand(type) { const tab = shell.state.tabs.find(t => t.id === shell.state.activeId); if (!tab || tab.type !== "dataset") return; shell.ensureIframe?.(tab); try { tab.iframe?.contentWindow?.postMessage({ type }, "*"); } catch {} }
 export function sendProjectInstanceCommand(type) { const tab = shell.state.tabs.find(t => t.id === shell.state.activeId); if (!tab || tab.type !== "project_instance") return; shell.ensureIframe?.(tab); try { tab.iframe?.contentWindow?.postMessage({ type }, "*"); } catch {} }
 export function sendScriptingCommand(type) {
   const tab = shell.state.tabs.find(t => t.id === shell.state.activeId);
@@ -377,6 +379,7 @@ export function initShellMenus() {
     }
     else if (action === "save") {
       if (isActiveWorkflowTab()) { shell.updateStatusBar?.("Saving..."); sendWorkflowCommand("arcrho:workflow-save"); }
+      else if (isActiveDatasetTab()) { shell.updateStatusBar?.("Saving dataset..."); sendDatasetCommand("arcrho:dataset-save"); }
       else if (isActiveDFMTab()) { shell.updateStatusBar?.("Saving..."); sendDFMCommand("arcrho:dfm-save"); }
       else if (isActiveProjectInstanceTab()) { shell.updateStatusBar?.("Saving..."); sendProjectInstanceCommand("arcrho:dfm-save"); }
       else if (isActiveScriptingTab()) { shell.updateStatusBar?.("Saving..."); sendScriptingCommand("arcrho:scripting-save"); }
@@ -384,6 +387,7 @@ export function initShellMenus() {
       else if (isActiveProjectSettingsDatasetTypesTab()) { shell.updateStatusBar?.("Saving dataset types to local file..."); sendProjectSettingsCommand("arcrho:project-settings-dataset-types-save-local"); }
     } else if (action === "save-as") {
       if (isActiveWorkflowTab()) { shell.updateStatusBar?.("Saving as..."); sendWorkflowCommand("arcrho:workflow-save-as"); }
+      else if (isActiveDatasetTab()) { shell.updateStatusBar?.("Saving dataset..."); sendDatasetCommand("arcrho:dataset-save"); }
       else if (isActiveDFMTab()) { shell.updateStatusBar?.(isActiveDFMDetailsTab() ? "Saving template..." : "Saving as..."); sendDFMCommand(isActiveDFMDetailsTab() ? "arcrho:dfm-save-template" : "arcrho:dfm-save-as"); }
       else if (isActiveProjectInstanceTab()) { shell.updateStatusBar?.("Saving as..."); sendProjectInstanceCommand("arcrho:dfm-save-as"); }
       else if (isActiveScriptingTab()) { shell.updateStatusBar?.("Saving as..."); sendScriptingCommand("arcrho:scripting-save-as"); }
@@ -411,7 +415,7 @@ export function initShellMenus() {
       sendScriptingCommand("arcrho:scripting-toggle-exec-time");
     }
   });
-  settingsMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action) return; toggleSettingsMenu(false); if (action === "font-settings") shell.openFontSettingsModal?.(); else if (action === "root-path-settings") shell.openRootPathSettingsModal?.(); else if (action === "force-rebuild-settings") shell.openForceRebuildSettingsModal?.(); else if (action === "refresh-page") shell.refreshActiveTab?.(); else if (action === "clear-cache-reload") shell.clearCacheAndReload?.(); });
+  settingsMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action) return; toggleSettingsMenu(false); if (action === "font-settings") shell.openFontSettingsModal?.(); else if (action === "root-path-settings") shell.openRootPathSettingsModal?.(); else if (action === "force-rebuild-settings") shell.openForceRebuildSettingsModal?.(); else if (action === "refresh-page") shell.refreshActiveTab?.(); else if (action === "clear-cache-reload") Promise.resolve(shell.clearCacheAndReload?.()).catch((err) => { console.error("Clear Cache & Reload failed:", err); shell.updateStatusBar?.("Clear Cache & Reload failed."); }); });
   helpMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleHelpMenu(false); if (action === "view-dev-panel") openDevPanel(); else if (action === "reveal-project-instance-path") { shell.updateStatusBar?.("Opening reserving-class folder..."); sendProjectInstanceCommand("arcrho:project-instance-reveal-selected-path"); } else if (action === "open-dfm-json") { shell.updateStatusBar?.("Opening DFM JSON..."); sendDFMCommand("arcrho:dfm-open-method-json"); } });
   editMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleEditMenu(false); if (action === "dfm-undo") sendDFMCommand("arcrho:dfm-undo"); else if (action === "dfm-redo") sendDFMCommand("arcrho:dfm-redo"); else if (action === "dfm-exclude-high") sendDFMCommand("arcrho:dfm-exclude-high"); else if (action === "dfm-exclude-low") sendDFMCommand("arcrho:dfm-exclude-low"); else if (action === "dfm-include-all") sendDFMCommand("arcrho:dfm-include-all"); else if (action === "render-all-markdown") sendScriptingCommand("arcrho:scripting-render-all-markdown"); });
   document.addEventListener("pointerdown", (e) => { const hit = e.target?.closest?.(".menu, .menuDropdown, .tabMenu, .plusTab, #tabCtxMenu"); if (!hit) closeAllShellMenus(); }, true);

@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Fixed Project Instance DFM windows showing unsaved changes immediately after opening.",
+  "details": [
+    "Startup DFM population no longer briefly publishes a dirty state before the clean snapshot is recorded.",
+    "DFM dirty publishing now starts closed so early module boot work cannot mark Project Instance tabs dirty before the startup guard is installed.",
+    "Project Instance startup state requests now also respect the DFM startup clean guard."
+  ]
+}

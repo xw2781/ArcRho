@@ -14,7 +14,7 @@ from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 7
+INDEX_VERSION = 8
 DFM_METHOD_TYPE = "DFM"
 
 
@@ -170,8 +170,7 @@ def _cached_dataset_names_from_file(filename: str) -> Set[str]:
 
 def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
     names: Set[str] = set()
-    for key in ("dataset_name", "instance_name"):
-        _add_cached_dataset_name(names, _normalize_cached_dataset_name(payload.get(key)))
+    _add_cached_dataset_name(names, _normalize_cached_dataset_name(payload.get("dataset_name")))
     if names:
         return names
     details_tab = _json_tab(payload, "details tab")
@@ -204,6 +203,7 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
         "dataset_name": dataset_name,
         "dataset_type_name": dataset_name,
         "method_type": DFM_METHOD_TYPE,
+        "data_format": "Vector",
     }
 
 
@@ -246,8 +246,7 @@ def _numeric_timestamp(value: Any) -> float:
 
 def _file_dataset_names(item: Dict[str, Any]) -> Set[str]:
     names: Set[str] = set()
-    for key in ("dataset_name", "instance_name"):
-        _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get(key)))
+    _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get("dataset_name")))
     for value in item.get("dataset_names") or []:
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(value))
     if names:
@@ -284,6 +283,9 @@ def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dic
     source_kind = _clean_text(source.get("source_kind"))
     if source_kind and not _clean_text(existing.get("source_kind")):
         existing["source_kind"] = source_kind
+    data_format = _clean_text(source.get("data_format"))
+    if data_format and not _clean_text(existing.get("data_format")):
+        existing["data_format"] = data_format
     formula = _clean_text(source.get("formula"))
     if formula:
         existing["formula"] = formula
@@ -403,13 +405,14 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
             if file_names:
                 file_info["dataset_names"] = sorted(file_names, key=lambda item: item.lower())
             if metadata:
-                dataset_type_name = _normalize_cached_dataset_name(metadata.get("dataset_type_name") or metadata.get("dataset_type"))
+                dataset_type_name = _normalize_cached_dataset_name(metadata.get("dataset_type"))
                 if not legacy_length_only_name:
-                    file_info["dataset_name"] = _normalize_cached_dataset_name(metadata.get("dataset_name") or metadata.get("instance_name"))
+                    file_info["dataset_name"] = _normalize_cached_dataset_name(metadata.get("dataset_name"))
                     file_info["dataset_type_name"] = dataset_type_name
                     file_info["dataset_type"] = dataset_type_name
                 file_info["csv_file"] = _clean_text(metadata.get("csv_file"))
                 file_info["source_kind"] = _clean_text(metadata.get("source_kind"))
+                file_info["data_format"] = _clean_text(metadata.get("data_format"))
                 file_info["editable"] = metadata.get("editable")
                 file_info["generated"] = metadata.get("generated")
                 file_info["calculated"] = metadata.get("calculated")
@@ -443,6 +446,7 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 file_info["dataset_type_name"] = method_entry["dataset_type_name"]
                 file_info["dataset_type"] = method_entry["dataset_type_name"]
                 file_info["method_type"] = method_entry["method_type"]
+                file_info["data_format"] = method_entry.get("data_format", "")
             files.append(file_info)
 
     dataset_folder = os.path.join(folder_path, config.DATASET_CACHE_DIR)

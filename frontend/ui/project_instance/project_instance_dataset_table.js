@@ -733,12 +733,48 @@ function isDfmDatasetRecord(record) {
   return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "dfm";
 }
 
+function isDfmVectorDatasetRecord(record) {
+  return (
+    isDfmDatasetRecord(record)
+    && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
+  );
+}
+
 function openDfmTabForDataset(record) {
   const datasetName = toText(record?.datasetName);
   if (!datasetName || !state.selectedPath) return;
   openDfmWindow(datasetName, {
     methodType: getDatasetRecordValue(record, "methodType"),
   });
+}
+
+function openDatasetRecordAsVector(record) {
+  if (!record) return;
+  openDatasetWindow(record.datasetName, {
+    datasetTypeName: getDatasetRecordValue(record, "datasetTypeName"),
+    methodType: getDatasetRecordValue(record, "methodType"),
+    readOnly: !!record.generated,
+    generated: !!record.generated,
+  });
+}
+
+function addDfmForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName) {
+    setStatus("Select a dataset before adding a DFM object.", true);
+    return;
+  }
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before adding a DFM object.", true);
+    return;
+  }
+  openDfmWindow(datasetName, {
+    fresh: true,
+    initialTab: "details",
+    inputTriangle: datasetName,
+    methodType: "DFM",
+  });
+  setStatus(`Opened DFM for ${datasetName}.`);
 }
 
 function recordSelectedDfmObject(methodName) {
@@ -1452,7 +1488,14 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
   closeDatasetGroupContextMenu();
   closeDatasetTableFilterPopover();
   const viewItem = menu.querySelector("[data-row-action='view']");
-  if (viewItem) viewItem.disabled = emptyContext || !getDatasetRowViewRecord();
+  const viewRecord = emptyContext ? null : getDatasetRowViewRecord();
+  if (viewItem) viewItem.disabled = emptyContext || !viewRecord;
+  const showAsVectorItem = menu.querySelector("[data-row-action='show-as-vector']");
+  if (showAsVectorItem) {
+    const showAsVector = !!viewRecord && isDfmVectorDatasetRecord(viewRecord);
+    showAsVectorItem.hidden = !showAsVector;
+    showAsVectorItem.disabled = !showAsVector;
+  }
   const selectedCount = emptyContext ? 0 : getSelectedDatasetRecords().length;
   const deleteItem = menu.querySelector("[data-row-action='delete']");
   if (deleteItem) deleteItem.disabled = selectedCount === 0;
@@ -1534,12 +1577,7 @@ function openDatasetRecord(record) {
     openDfmTabForDataset(record);
     return;
   }
-  openDatasetWindow(record.datasetName, {
-    datasetTypeName: getDatasetRecordValue(record, "datasetTypeName"),
-    methodType: getDatasetRecordValue(record, "methodType"),
-    readOnly: !!record.generated,
-    generated: !!record.generated,
-  });
+  openDatasetRecordAsVector(record);
 }
 
 function getDatasetRowActionRecords() {
@@ -1738,10 +1776,12 @@ function applyDatasetRowContextAction(action) {
   closeDatasetRowContextMenu();
   if (normalized === "view") {
     openDatasetRecord(viewRecord);
+  } else if (normalized === "show-as-vector") {
+    openDatasetRecordAsVector(viewRecord);
   } else if (normalized === "add-dataset") {
     void addDatasetFromTypePicker();
   } else if (normalized === "add-dfm") {
-    setStatus("Development Factor Method is a placeholder.");
+    addDfmForDataset(viewRecord);
   } else if (normalized === "add-bsm") {
     setStatus("Berquist Sherman Method is a placeholder.");
   } else if (normalized === "delete") {

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed DFM User Entry formula highlighting so quoted average-formula names only match the exact referenced row."
+}

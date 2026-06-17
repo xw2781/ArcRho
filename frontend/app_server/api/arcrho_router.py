@@ -70,12 +70,14 @@ def arcrho_tri_precheck(req: ArcRhoTriRequest) -> Dict[str, Any]:
         pairs,
         allow_derived=bool(req.AllowDerived),
         materialize=False,
+        local_only=bool(req.LocalOnly),
     )
     local_available = bool(local_result.get("ok"))
     manual_source_found = bool(local_result.get("manual_source_found"))
-    need_request = not local_available and not req.LocalOnly and not manual_source_found
+    generated_source_found = bool(local_result.get("generated_source_found"))
+    need_request = not local_available and not manual_source_found and (not req.LocalOnly or generated_source_found)
     ds_id = "arcrhotri_" + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
-    return {
+    result = {
         "ok": True,
         "need_request": need_request,
         "cache_exists": local_available,
@@ -84,7 +86,9 @@ def arcrho_tri_precheck(req: ArcRhoTriRequest) -> Dict[str, Any]:
         "local_cache_status": local_result.get("status"),
         "local_cache_message": local_result.get("message"),
         "manual_source_found": manual_source_found,
+        "generated_source_found": generated_source_found,
     }
+    return result
 
 
 @router.post("/arcrho/tri")

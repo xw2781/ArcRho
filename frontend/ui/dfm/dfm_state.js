@@ -78,6 +78,7 @@ let ratioChartTooltipVisible = false;
 let ratioSyncChannel = null;
 let ratioSyncMuted = false;
 let dfmDirtyEvaluator = null;
+let dfmDirtyPublishSuppressor = () => true;
 
 export let summaryRowConfigs = [];
 export let summaryRowMap = new Map();
@@ -90,6 +91,10 @@ export function getDfmIsDirty() { return dfmIsDirty; }
 
 export function setDfmDirtyEvaluator(evaluator) {
   dfmDirtyEvaluator = typeof evaluator === "function" ? evaluator : null;
+}
+
+export function setDfmDirtyPublishSuppressor(suppressor) {
+  dfmDirtyPublishSuppressor = typeof suppressor === "function" ? suppressor : null;
 }
 
 export function getShowNaBorders() { return showNaBorders; }
@@ -155,15 +160,23 @@ export function getDfmInst() {
 }
 
 function notifyDfmDirtyState(dirty) {
-  if (dfmIsDirty === dirty) return;
-  dfmIsDirty = dirty;
+  const nextDirty = !!dirty;
+  if (nextDirty && typeof dfmDirtyPublishSuppressor === "function") {
+    try {
+      if (dfmDirtyPublishSuppressor()) return;
+    } catch {
+      // ignore
+    }
+  }
+  if (dfmIsDirty === nextDirty) return;
+  dfmIsDirty = nextDirty;
   try {
-    window.dispatchEvent(new CustomEvent("arcrho:dfm-dirty-state", { detail: { dirty } }));
+    window.dispatchEvent(new CustomEvent("arcrho:dfm-dirty-state", { detail: { dirty: nextDirty } }));
   } catch {
     // ignore
   }
   const inst = getDfmInst();
-  window.parent.postMessage({ type: "arcrho:dfm-dirty", inst, dirty }, "*");
+  window.parent.postMessage({ type: "arcrho:dfm-dirty", inst, dirty: nextDirty }, "*");
 }
 
 export function markDfmDirty() {

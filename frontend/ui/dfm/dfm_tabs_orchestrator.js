@@ -17,6 +17,7 @@ import {
   markDfmDirty,
   notifyDfmEditState,
   buildRatioSavePath,
+  setDfmDirtyPublishSuppressor,
 } from "/ui/dfm/dfm_state.js";
 import {
   renderRatioTable,
@@ -42,21 +43,22 @@ import {
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/dfm/dfm_details.js";
+} from "/ui/dfm/dfm_details.js?v=20260616a";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
   restoreCleanDfmMethodState,
+  recordCurrentDfmCleanState,
   saveDfmTemplate,
   loadDfmTemplate,
   applyDfmMethodPayload,
   buildDfmAssistantContextPayload,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
-} from "/ui/dfm/dfm_persistence.js?v=20260611a";
+} from "/ui/dfm/dfm_persistence.js?v=20260616d";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
-import { wireDfmRpcBridgePathBar } from "/ui/dfm/dfm_rpc_bridge_pathbar.js?v=20260514a";
-import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260613a";
+import { wireDfmRpcBridgePathBar } from "/ui/dfm/dfm_rpc_bridge_pathbar.js?v=20260616a";
+import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260616a";
 import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js";
 import {
   clearRatioHistoryTempSession,
@@ -69,6 +71,11 @@ import {
 const DEFAULT_TOKEN = "__DEFAULT__";
 let dfmSaveInFlight = false;
 let dfmCancelConfirmResolve = null;
+let dfmStartupCleanPending = true;
+let dfmStartupUserInteracted = false;
+let dfmStartupCleanTimer = 0;
+const DFM_STARTUP_CLEAN_WINDOW_MS = 5000;
+const dfmStartupCleanDeadline = Date.now() + DFM_STARTUP_CLEAN_WINDOW_MS;
 
 function getDfmInputSnapshotSafe() {
   try {
@@ -89,6 +96,7 @@ function getDfmInputSnapshotSafe() {
 
 function handleDatasetUpdated() {
   refreshDfmTabContent("dataset-updated");
+  scheduleDfmStartupCleanState();
 }
 
 function refreshDfmTabContent(reason = "") {
@@ -158,6 +166,47 @@ function updateDfmSaveUi() {
   }
 }
 
+function noteDfmStartupUserInteraction(event) {
+  if (!event?.isTrusted) return;
+  dfmStartupUserInteracted = true;
+  dfmStartupCleanPending = false;
+  if (dfmStartupCleanTimer) {
+    window.clearTimeout(dfmStartupCleanTimer);
+    dfmStartupCleanTimer = 0;
+  }
+}
+
+function shouldSuppressDfmStartupDirtyPublish() {
+  return (
+    dfmStartupCleanPending
+    && !dfmStartupUserInteracted
+    && Date.now() <= dfmStartupCleanDeadline
+  );
+}
+
+function wireDfmStartupCleanGuard() {
+  setDfmDirtyPublishSuppressor(shouldSuppressDfmStartupDirtyPublish);
+  window.addEventListener("pointerdown", noteDfmStartupUserInteraction, { capture: true });
+  window.addEventListener("keydown", noteDfmStartupUserInteraction, { capture: true });
+  window.addEventListener("input", noteDfmStartupUserInteraction, { capture: true });
+  window.addEventListener("change", noteDfmStartupUserInteraction, { capture: true });
+}
+
+function scheduleDfmStartupCleanState() {
+  if (!dfmStartupCleanPending || dfmStartupUserInteracted) return;
+  if (Date.now() > dfmStartupCleanDeadline) {
+    dfmStartupCleanPending = false;
+    return;
+  }
+  if (dfmStartupCleanTimer) window.clearTimeout(dfmStartupCleanTimer);
+  dfmStartupCleanTimer = window.setTimeout(() => {
+    dfmStartupCleanTimer = 0;
+    if (!dfmStartupCleanPending || dfmStartupUserInteracted) return;
+    dfmStartupCleanPending = false;
+    recordCurrentDfmCleanState();
+  }, 900);
+}
+
 function resolveDfmCancelConfirm(value) {
   const overlay = document.getElementById("dfmCancelConfirmOverlay");
   if (overlay) overlay.hidden = true;
@@ -176,6 +225,39 @@ function showDfmCancelConfirm() {
   return new Promise((resolve) => {
     dfmCancelConfirmResolve = resolve;
   });
+}
+
+function requestConfirmedDfmClose() {
+  try {
+    window.parent?.postMessage({
+      type: "arcrho:dfm-close-confirmed",
+      inst: getDfmInst(),
+    }, "*");
+  } catch {}
+}
+
+function postCurrentDfmDirtyState() {
+  const dirty = getDfmIsDirty();
+  try {
+    window.parent?.postMessage({
+      type: "arcrho:dfm-dirty",
+      inst: getDfmInst(),
+      dirty: dirty && !shouldSuppressDfmStartupDirtyPublish(),
+    }, "*");
+  } catch {}
+}
+
+function requestDfmCloseFromShell() {
+  if (dfmSaveInFlight) {
+    postDfmStatus("Finish the current DFM save before closing the tab.", "error");
+    return true;
+  }
+  if (!getDfmIsDirty()) return false;
+  void (async () => {
+    const discard = await showDfmCancelConfirm();
+    if (discard) requestConfirmedDfmClose();
+  })();
+  return true;
 }
 
 async function saveCurrentDfmMethodFromBar() {
@@ -232,6 +314,8 @@ function wireDfmSaveControls() {
     }
   });
   window.addEventListener("arcrho:dfm-dirty-state", updateDfmSaveUi);
+  window.__arcrho_request_close = requestDfmCloseFromShell;
+  window.__arcrho_consume_close_shortcut = requestDfmCloseFromShell;
   updateDfmSaveUi();
 }
 
@@ -409,6 +493,7 @@ function initDfmTabs() {
 
 export function initDfmRatios() {
   setStorageInstance(getDfmInst());
+  wireDfmStartupCleanGuard();
   initDfmTabs();
   notifyDfmEditState();
   syncMethodNameFromInputs();
@@ -462,6 +547,8 @@ export function initDfmRatios() {
     updatePathBar();
   }
   refreshDfmTabContent("dfm-open");
+  recordCurrentDfmCleanState();
+  scheduleDfmStartupCleanState();
 
   window.addEventListener("message", (e) => {
     if (e?.data?.type === "arcrho:open-path" && forwardChildOpenPathRequest(e.data, e.source)) {
@@ -574,6 +661,7 @@ export function initDfmRatios() {
     }
     if (e?.data?.type === "arcrho:dfm-request-state") {
       notifyDfmEditState();
+      postCurrentDfmDirtyState();
       const history = getRatioHistoryState();
       window.parent.postMessage({
         type: "arcrho:dfm-history-state",

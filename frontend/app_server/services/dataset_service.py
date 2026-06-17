@@ -269,8 +269,6 @@ def create_empty_cached_dataset(
     payload = {
         "dataset_name": instance,
         "dataset_type": ds_type,
-        "dataset_type_name": ds_type,
-        "instance_name": instance,
         "reserving_class": rc,
         "project_name": p,
         "source_kind": "input",
@@ -499,7 +497,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
             "dataset_name": ds,
             "path": path,
         }
-    dataset_type = str(payload.get("dataset_type") or payload.get("dataset_type_name") or ds)
+    dataset_type = str(payload.get("dataset_type") or ds)
     app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type)
     return {
         "ok": True,
@@ -508,10 +506,11 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "reserving_class": str(payload.get("reserving_class") or rc),
         "dataset_name": str(payload.get("dataset_name") or ds),
         "dataset_type": dataset_type,
-        "instance_name": str(payload.get("instance_name") or payload.get("dataset_name") or ds),
+        "instance_name": str(payload.get("dataset_name") or ds),
         "origin_length": payload.get("origin_length"),
         "development_length": payload.get("development_length"),
         "cumulative": payload.get("cumulative"),
+        "transposed": payload.get("transposed"),
         "calendar": payload.get("calendar"),
         "csv_file": str(payload.get("csv_file") or ""),
         "source_kind": str(payload.get("source_kind") or ""),
@@ -539,6 +538,7 @@ def save_dataset_sidecar(
     origin_length: int,
     development_length: int,
     cumulative: bool = True,
+    transposed: bool = False,
     calendar: bool = False,
     csv_file: str = "",
 ) -> Dict[str, Any]:
@@ -552,7 +552,7 @@ def save_dataset_sidecar(
     if not created:
         created = _now_utc_iso()
     user_name = getpass.getuser()
-    dataset_type_value = str(dataset_type or existing.get("dataset_type") or existing.get("dataset_type_name") or ds)
+    dataset_type_value = str(dataset_type or existing.get("dataset_type") or ds)
     app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type_value)
     source_kind_value = str(source_kind or existing.get("source_kind") or ("calculated" if app_calculated else "input"))
     data_format_value = str(data_format or existing.get("data_format") or "Triangle")
@@ -560,8 +560,6 @@ def save_dataset_sidecar(
         **existing,
         "dataset_name": ds,
         "dataset_type": dataset_type_value,
-        "dataset_type_name": dataset_type_value,
-        "instance_name": str(instance_name or existing.get("instance_name") or ds),
         "reserving_class": rc,
         "project_name": p,
         "source_kind": source_kind_value,
@@ -570,6 +568,7 @@ def save_dataset_sidecar(
         "origin_length": int(origin_length),
         "development_length": int(development_length),
         "cumulative": bool(cumulative),
+        "transposed": bool(transposed),
         "calendar": bool(calendar),
         "csv_file": str(csv_file or existing.get("csv_file") or ""),
         "editable": False if app_calculated else existing.get("editable"),
@@ -581,6 +580,8 @@ def save_dataset_sidecar(
         "modified_by": user_name,
         "updated_at": _now_utc_iso(),
     }
+    payload.pop("instance_name", None)
+    payload.pop("dataset_type_name", None)
     from app_server.services import calculated_dataset_service
 
     calculated_dataset_service.apply_sidecar_graph_fields(payload, p, dataset_type_value)
@@ -621,10 +622,11 @@ def save_dataset_sidecar(
         "reserving_class": rc,
         "dataset_name": ds,
         "dataset_type": payload["dataset_type"],
-        "instance_name": payload["instance_name"],
+        "instance_name": ds,
         "origin_length": payload["origin_length"],
         "development_length": payload["development_length"],
         "cumulative": payload["cumulative"],
+        "transposed": payload["transposed"],
         "calendar": payload["calendar"],
         "csv_file": payload["csv_file"],
         "source_kind": payload["source_kind"],

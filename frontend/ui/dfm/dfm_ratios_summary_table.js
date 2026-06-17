@@ -134,8 +134,10 @@ let _renderRatioTable = () => {};
 let _onRatioStateMutated = () => {};
 let summaryContextCellForNote = null;
 let formulaBarResizeObserver = null;
+let formulaBarScrollHost = null;
 let formulaBarResizeWired = false;
 let formulaBarResizeRaf = 0;
+const SUMMARY_FORMULA_BAR_FRAME_INSET_PX = 14;
 
 export function setSummaryTableCallbacks({ renderRatioTable, onRatioStateMutated } = {}) {
   if (typeof renderRatioTable === "function") _renderRatioTable = renderRatioTable;
@@ -586,15 +588,18 @@ function escapeRegExp(text) {
 }
 
 function findReferencedLabels(formula, allLabels) {
-  const txt = String(formula || "").trim();
-  const found = [];
-  for (const label of allLabels) {
-    const lit = escapeRegExp(String(label));
-    if (new RegExp(`["']${lit}["']`, "i").test(txt) || new RegExp(lit, "i").test(txt)) {
-      found.push(label);
-    }
-  }
-  return found;
+  const labels = Array.isArray(allLabels) ? allLabels : [];
+  if (!labels.length) return [];
+
+  const referencedNames = new Set(
+    tokenizeFormula(formula)
+      .filter((token) => token.type === "ref")
+      .map((token) => token.text.slice(1, -1).trim().toLowerCase())
+      .filter(Boolean)
+  );
+  if (!referencedNames.size) return [];
+
+  return labels.filter((label) => referencedNames.has(String(label || "").trim().toLowerCase()));
 }
 
 function getSummaryLabelToIdMap() {
@@ -1036,12 +1041,26 @@ function syncSummaryFormulaBarWidth(barEl, summaryTable) {
   const host = summaryTable.closest("#ratioWrapHost") || document.getElementById("ratioWrapHost");
   const hostWidth = Number(host?.clientWidth || 0);
   const tableWidth = Number(summaryTable.getBoundingClientRect?.().width || 0);
-  const visibleWidth = Math.max(0, Math.ceil(hostWidth || tableWidth));
-  if (!visibleWidth) return;
-  const px = `${visibleWidth}px`;
+  const frameWidth = Math.max(0, Math.ceil(tableWidth || hostWidth));
+  if (!frameWidth) return;
+  const viewportWidth = Math.max(0, Math.ceil(Math.min(frameWidth, hostWidth || frameWidth)));
+  const contentWidth = Math.max(0, viewportWidth - SUMMARY_FORMULA_BAR_FRAME_INSET_PX);
+  const contentOffset = Math.min(
+    Math.max(0, Number(host?.scrollLeft || 0)),
+    Math.max(0, frameWidth - contentWidth)
+  );
+  const px = `${frameWidth}px`;
   barEl.style.width = px;
   barEl.style.minWidth = px;
   barEl.style.maxWidth = px;
+  barEl.style.setProperty(
+    "--dfm-summary-formula-bar-content-width",
+    `${contentWidth}px`
+  );
+  barEl.style.setProperty(
+    "--dfm-summary-formula-bar-content-x",
+    `${contentOffset}px`
+  );
 }
 
 function scheduleSummaryFormulaBarResizeRefresh() {
@@ -1054,6 +1073,14 @@ function scheduleSummaryFormulaBarResizeRefresh() {
 
 function wireSummaryFormulaBarResizeWatcher(summaryTable) {
   const host = summaryTable?.closest?.("#ratioWrapHost") || document.getElementById("ratioWrapHost");
+  if (formulaBarScrollHost && formulaBarScrollHost !== host) {
+    formulaBarScrollHost.removeEventListener("scroll", scheduleSummaryFormulaBarResizeRefresh);
+    formulaBarScrollHost = null;
+  }
+  if (host && formulaBarScrollHost !== host) {
+    host.addEventListener("scroll", scheduleSummaryFormulaBarResizeRefresh, { passive: true });
+    formulaBarScrollHost = host;
+  }
   if (host && window.ResizeObserver) {
     if (formulaBarResizeObserver?.target !== host) {
       formulaBarResizeObserver?.observer?.disconnect?.();
@@ -1109,13 +1136,16 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     const display = document.createElement("div");
     display.id = "dfmSummaryFormulaBarDisplay";
     display.className = "dfmSummaryFormulaBarDisplay";
-    el.appendChild(fxIcon);
-    el.appendChild(label);
-    el.appendChild(input);
-    el.appendChild(display);
-    el.appendChild(xlBtn);
-    el.appendChild(refreshBtn);
-    el.appendChild(openBtn);
+    const content = document.createElement("div");
+    content.className = "dfmSummaryFormulaBarContent";
+    content.appendChild(fxIcon);
+    content.appendChild(label);
+    content.appendChild(input);
+    content.appendChild(display);
+    content.appendChild(xlBtn);
+    content.appendChild(refreshBtn);
+    content.appendChild(openBtn);
+    el.appendChild(content);
   }
   if (el.dataset.wired !== "1") {
     const input = el.querySelector("#dfmSummaryFormulaBarInput");
