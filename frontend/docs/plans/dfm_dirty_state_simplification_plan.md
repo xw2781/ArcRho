@@ -80,11 +80,24 @@ export function isDfmApplyingProgrammatically() {
   return dfmProgrammaticDepth > 0;
 }
 
-// Run a (sync or async) programmatic mutation with dirty tracking suppressed.
+// Run an async programmatic mutation with dirty tracking suppressed.
+// Returns a Promise — callers MUST await it, or the depth will already be
+// decremented before the async work runs.
 export async function runDfmProgrammatic(fn) {
   dfmProgrammaticDepth++;
   try {
     return await fn();
+  } finally {
+    dfmProgrammaticDepth--;
+  }
+}
+
+// Sync variant for purely-synchronous mutations, so we don't have to turn a
+// sync call site into an async one just to suppress dirty.
+export function runDfmProgrammaticSync(fn) {
+  dfmProgrammaticDepth++;
+  try {
+    return fn();
   } finally {
     dfmProgrammaticDepth--;
   }
@@ -110,27 +123,36 @@ inside the old `markDfmDirty`.
 
 ### 2. Wrap every programmatic-apply entry point
 
-These mutate DFM state without a user editing — wrap their bodies in
-`runDfmProgrammatic(...)` so the `markDfmDirty()` calls they trigger
-(renders, pattern applies, select syncs) are ignored:
+These mutate DFM state without a user editing. **Wrap only the mutation/apply
+portion** in `runDfmProgrammatic(...)` (never a surrounding "now mark it dirty"
+step) so the `markDfmDirty()` calls the apply triggers (renders, pattern
+applies, select syncs) are ignored:
 
 | Entry point | File | Notes |
 |---|---|---|
-| `applyDfmMethodPayload()` | `dfm_persistence.js` | Core apply used by load, macro, assistant, external watch, restore. Wrap the whole body. |
+| `applyDfmMethodPayload()` | `dfm_persistence.js` | Core apply used by load, macro, assistant, external watch, restore. Wrap the whole body; resulting state set via `markClean` option only (see rule). |
 | `loadRatioSelectionIfExists()` "missing file" reset branch | `dfm_persistence.js` | Clears strikes/notes/basis programmatically. |
 | `checkDfmMethodFileWatch()` reload | `dfm_persistence.js` | External-file reload re-applies payload. |
 | `restoreCleanDfmMethodState()` | `dfm_persistence.js` | Cancel/discard re-applies the saved payload. |
-| `loadDfmTemplate()` | `dfm_persistence.js` | Applies template; should it mark dirty? Yes — see below. |
+| `loadDfmTemplate()` | `dfm_persistence.js` | Applies template, then marks dirty (see rule). |
 
-After a programmatic apply completes, the caller decides the resulting state
-explicitly:
+#### Ownership rule (single, explicit)
 
-- **Load / external reload / restore (cancel):** call `markDfmClean()` —
-  matches "freshly loaded = clean".
-- **Macro / assistant / template apply (introduces unsaved content):** after the
-  wrapped apply, call `markDfmDirty()` *outside* the scope so it registers.
-  (Today the macro path already does this at
+`applyDfmMethodPayload()` **never decides dirty on its own.** It always runs its
+body inside the programmatic scope (so it cannot self-dirty), and sets the
+resulting state **only** through its existing `markClean` option:
+
+- `markClean: true` (default for **load / external reload / restore**) → calls
+  `markDfmClean()` at the end. "Freshly loaded = clean."
+- `markClean: false` → leaves dirty state untouched; the **caller** owns it.
+  Macro / assistant / template apply then call `markDfmDirty()` *after* the
+  await, **outside** the scope, so the new unsaved content registers. (The macro
+  path already does this at
   [`dfm_tabs_orchestrator.js:652`](../../ui/dfm/dfm_tabs_orchestrator.js).)
+
+This removes the §2-vs-§4 ambiguity: the end-of-`applyDfmMethodPayload` clean
+step is **gated by `markClean`, not unconditional**, and `markClean` is the one
+knob that decides clean/dirty for every programmatic apply.
 
 ### 3. `markDfmDirty()` call-site classification
 
@@ -149,9 +171,59 @@ are naturally outside any programmatic scope):
   outside the apply scope, so it still works).
 
 These keep working because programmatic applies now short-circuit inside
-`markDfmDirty()` rather than relying on each call site's local flag. The
-existing `silent`/`programmatic` flags can stay (harmless) or be cleaned up
-later; the scope guard is the new source of truth.
+`markDfmDirty()` rather than relying on each call site's local flag. The scope
+guard is the new single source of truth for "is this a user edit?".
+
+### 3a. Clean up the accumulated suppression layers
+
+This is the important part of this refactor. Over time **three+ overlapping
+layers** were added to fight load-time false dirties; each new layer was a patch
+on top of the last, and none fully worked. The scope guard makes all of them
+redundant. Removing them is the point — leaving them in place reintroduces the
+same tangle.
+
+**Safe to delete (pure dirty-suppression, no other responsibility):**
+
+- *Snapshot-comparison layer* — `dfmDirtyEvaluator`, `setDfmDirtyEvaluator`,
+  `isCurrentDfmDirtyComparedToCleanSnapshot`, `buildDfmDirtySnapshot`,
+  `serializeDfmDirtySnapshot`, `canonicalizeForDirtySnapshot`,
+  `lastCleanDfmDirtySnapshot`, `recordCleanDfmDirtySnapshot` (per §4).
+- *Publish-suppressor layer* — `dfmDirtyPublishSuppressor`,
+  `setDfmDirtyPublishSuppressor`, and its branch in `notifyDfmDirtyState`
+  (`dfm_state.js`).
+- *Startup-clean guard* — all `dfmStartupClean*` state, `DFM_STARTUP_CLEAN_*`,
+  `noteDfmStartupUserInteraction`, `shouldSuppressDfmStartupDirtyPublish`,
+  `wireDfmStartupCleanGuard`, `scheduleDfmStartupCleanState`, and the
+  `pointerdown/keydown/input/change` capture listeners (`dfm_tabs_orchestrator.js`).
+
+**Behavior-risk — do NOT blind-delete; review each first:**
+
+The per-call-site `programmatic`/`silent` flags often guard **more than dirty**.
+Confirmed example: `input.dataset.programmatic` in
+[`dfm_details.js:661-677`](../../ui/dfm/dfm_details.js) suppresses
+`markDfmDirty()` *and* the local-method lookup (`scheduleRatioSelectionLoad`) and
+the tab-title/lastLookup bookkeeping. The scope guard makes only their *dirty*
+role redundant; their other roles must stay.
+
+| Flag | File | Dirty role (now redundant) | Other role (must keep) |
+|---|---|---|---|
+| `input.dataset.programmatic` | `dfm_details.js`, `dfm_persistence.js`, `dfm_ratios_tab.js` | gate `markDfmDirty` | gate re-entrant lookups, dropdown revalidation, title sync |
+| `ratioBasisProgrammaticUpdate` | `dfm_results_tab.js` | gate `markDfmDirty` | guard async option-resolution re-entrancy |
+| `dfmNotesProgrammaticInput` | `dfm_notes_tab.js` | gate notes dirty | distinguish programmatic vs typed input in the editor |
+| `silent` / `markDirty` options | `dfm_results_tab.js` | skip `markDfmDirty` | also skip status/render side effects |
+
+Per repo `AGENTS.md` ("remove clearly obsolete code in the touched area; ask
+before broader cleanup or cleanup with behavior risk"):
+
+- **Phase A (this change):** delete the three safe layers above. Leave the
+  double-duty flags in place — they're now belt-and-suspenders for dirty but
+  still load-bearing for their other duties, so they're not yet "clearly
+  obsolete."
+- **Phase B (optional follow-up, separate review):** for each double-duty flag,
+  decide whether its non-dirty responsibility can be expressed more directly
+  (e.g. an explicit `skipLookup`/`fromProgrammatic` argument) so the flag can be
+  retired. This is behavior-risk cleanup and needs its own sign-off + testing;
+  do not bundle it into the bug fix.
 
 ### 4. Delete the snapshot + startup-guard machinery
 
@@ -178,8 +250,19 @@ Update it whenever a payload is loaded/saved.
 - The `pointerdown/keydown/input/change` capture listeners that fed it
 
 This guard exists only to mask load-time false positives, which the
-programmatic scope now removes at the source. `recordCurrentDfmCleanState()`
-stays but simplifies to `markDfmClean()` + post `dirty:false`.
+programmatic scope now removes at the source.
+
+`recordCurrentDfmCleanState()` simplifies to a **single call to
+`markDfmClean()`**. Do **not** keep the extra manual `postMessage({dirty:false})`
+it does today — `markDfmClean()` → `notifyDfmDirtyState(false)` already posts
+`arcrho:dfm-dirty` to the parent, so an extra post is a duplicate. One caveat to
+verify during implementation: `notifyDfmDirtyState` early-returns when state is
+unchanged (`dfmIsDirty === nextDirty`), so if local state is already clean it
+posts nothing. The old unconditional post was a force-resync of the parent. If
+we find any path that relies on that force-resync (parent shows dirty while the
+DFM thinks it's clean), handle it explicitly instead of restoring the blanket
+post — but the post-save and post-load paths both transition `true → false`, so
+`markDfmClean()` publishes correctly and no force-resync is expected.
 
 **Unaffected:** the external file watcher's revision-token logic
 (`getRevisionToken`, `rememberDfmMethodFileRevision`, …) — file-based, separate
@@ -187,8 +270,12 @@ from dirty tracking.
 
 ### 5. Sequencing
 
-1. Land §1 + §2 + §3 (scope guard + wrap applies) — fixes the flash.
-2. Land §4 (delete dead snapshot/startup code) — cleanup, no behavior change.
+1. Land §1 + §2 + §3 (scope guard + wrap applies) — fixes the flash and
+   establishes the new interaction-based dirty model.
+2. Land §4 (delete dead snapshot/startup code) — no *additional* intended
+   behavior change beyond the new interaction-based dirty model from step 1.
+   (The model switch itself is the behavior change; §4 removes the now-dead code
+   that backed the old model.)
 3. Verify against both repro objects + a normal annual method.
 
 ## New expected UX / UI behavior

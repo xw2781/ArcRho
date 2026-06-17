@@ -77,8 +77,7 @@ let ratioChartHoverKey = null;
 let ratioChartTooltipVisible = false;
 let ratioSyncChannel = null;
 let ratioSyncMuted = false;
-let dfmDirtyEvaluator = null;
-let dfmDirtyPublishSuppressor = () => true;
+let dfmProgrammaticDepth = 0;
 
 export let summaryRowConfigs = [];
 export let summaryRowMap = new Map();
@@ -88,14 +87,6 @@ export function getRatioColAllActive() { return ratioColAllActive; }
 export function setRatioColAllActive(v) { ratioColAllActive = v; }
 
 export function getDfmIsDirty() { return dfmIsDirty; }
-
-export function setDfmDirtyEvaluator(evaluator) {
-  dfmDirtyEvaluator = typeof evaluator === "function" ? evaluator : null;
-}
-
-export function setDfmDirtyPublishSuppressor(suppressor) {
-  dfmDirtyPublishSuppressor = typeof suppressor === "function" ? suppressor : null;
-}
 
 export function getShowNaBorders() { return showNaBorders; }
 export function setShowNaBorders(v) { showNaBorders = v; }
@@ -159,16 +150,31 @@ export function getDfmInst() {
   return params.get("inst") || "";
 }
 
-function notifyDfmDirtyState(dirty) {
-  const nextDirty = !!dirty;
-  if (nextDirty && typeof dfmDirtyPublishSuppressor === "function") {
-    try {
-      if (dfmDirtyPublishSuppressor()) return;
-    } catch {
-      // ignore
-    }
+export function isDfmApplyingProgrammatically() {
+  return dfmProgrammaticDepth > 0;
+}
+
+export async function runDfmProgrammatic(fn) {
+  dfmProgrammaticDepth++;
+  try {
+    return await fn();
+  } finally {
+    dfmProgrammaticDepth--;
   }
-  if (dfmIsDirty === nextDirty) return;
+}
+
+export function runDfmProgrammaticSync(fn) {
+  dfmProgrammaticDepth++;
+  try {
+    return fn();
+  } finally {
+    dfmProgrammaticDepth--;
+  }
+}
+
+function notifyDfmDirtyState(dirty, options = {}) {
+  const nextDirty = !!dirty;
+  if (dfmIsDirty === nextDirty && !options?.force) return;
   dfmIsDirty = nextDirty;
   try {
     window.dispatchEvent(new CustomEvent("arcrho:dfm-dirty-state", { detail: { dirty: nextDirty } }));
@@ -180,21 +186,12 @@ function notifyDfmDirtyState(dirty) {
 }
 
 export function markDfmDirty() {
-  if (typeof dfmDirtyEvaluator === "function") {
-    let dirty = true;
-    try {
-      dirty = !!dfmDirtyEvaluator();
-    } catch {
-      dirty = true;
-    }
-    notifyDfmDirtyState(dirty);
-    return;
-  }
+  if (dfmProgrammaticDepth > 0) return;
   notifyDfmDirtyState(true);
 }
 
-export function markDfmClean() {
-  notifyDfmDirtyState(false);
+export function markDfmClean(options = {}) {
+  notifyDfmDirtyState(false, options);
 }
 
 export function getDfmInputSnapshot() {

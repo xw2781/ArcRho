@@ -487,7 +487,15 @@ window.addEventListener("message", (event) => {
     const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
     if (frame) {
       setWindowDirtyState(frame, false);
-      closeDatasetWindow(frame);
+      closeDatasetWindow(frame, { skipChildCloseRequest: true });
+    }
+    return;
+  }
+  if (msg.type === "arcrho:dfm-close-confirmed") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isDfmWindow(frame)) {
+      setWindowDirtyState(frame, false);
+      closeDatasetWindow(frame, { skipChildCloseRequest: true });
     }
     return;
   }

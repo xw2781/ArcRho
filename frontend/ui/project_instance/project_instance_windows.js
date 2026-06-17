@@ -368,10 +368,10 @@ function getActiveDatasetWindow() {
   return nextActive;
 }
 
-function closeDatasetWindow(frame, { status = true } = {}) {
+function closeDatasetWindow(frame, { status = true, skipChildCloseRequest = false } = {}) {
   if (!frame?.isConnected) return false;
   const iframe = getWindowIframe(frame);
-  if (iframe?.contentWindow) {
+  if (!skipChildCloseRequest && iframe?.contentWindow) {
     try {
       const requestClose = iframe.contentWindow.__arcrho_request_close;
       if (typeof requestClose === "function" && requestClose() === true) return false;

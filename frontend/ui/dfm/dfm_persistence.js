@@ -18,7 +18,9 @@ import {
   getRatioSaveSuggestedName,
   getResultsCsvSuggestedName,
   buildSummaryRows,
+  markDfmDirty,
   markDfmClean,
+  runDfmProgrammatic,
   isRatiosTabVisible,
   isResultsTabVisible,
   getDfmIsDirty,
@@ -27,14 +29,12 @@ import {
   getResolvedProjectName,
   getResolvedReservingClass,
   getDfmDecimalPlaces,
-  getDfmInst,
   getEffectiveDevLabelsForModel,
   getRatioHeaderLabels,
   calcRatio,
   roundRatio,
   computeAverageForColumn,
   buildExcludedSetForColumn,
-  setDfmDirtyEvaluator,
 } from "/ui/dfm/dfm_state.js";
 import {
   getSummaryConfigKey,
@@ -93,7 +93,6 @@ const DFM_AVERAGE_FORMULA_DECIMALS = 6;
 const DFM_METHOD_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1";
 const DFM_METHOD_FILE_WATCH_INTERVAL_MS = 2000;
 const CALCULATED_DATASETS_UPDATED_MESSAGE = "arcrho:calculated-datasets-updated";
-let lastCleanDfmDirtySnapshot = "";
 
 function stripDatasetCacheVariantSuffix(value) {
   const text = String(value || "").trim();
@@ -832,86 +831,19 @@ function buildDfmGroupedMethodPayload(methodPayload) {
   return grouped;
 }
 
-function canonicalizeForDirtySnapshot(value) {
-  if (Array.isArray(value)) return value.map((item) => canonicalizeForDirtySnapshot(item));
-  if (!value || typeof value !== "object") return value;
-  const out = {};
-  Object.keys(value)
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-    .forEach((key) => {
-      const item = canonicalizeForDirtySnapshot(value[key]);
-      if (typeof item !== "undefined") out[key] = item;
-    });
-  return out;
-}
-
-function buildDfmDirtySnapshot(payload) {
-  const source = payload && typeof payload === "object" && !Array.isArray(payload)
-    ? payload
-    : buildDfmMethodPayload();
-  const detailsTab = getDfmDetailsTab(source);
-  const ratiosTab = getDfmRatiosTab(source);
-  const ratioTriangle = getDfmRatioTriangleTab(source);
-  const resultsTab = getDfmResultsTab(source);
-  const notesTab = getDfmNotesTab(source);
-  return {
-    "details tab": copyExistingFields(detailsTab, [
-      "name",
-      "output type",
-      "input triangle",
-      "origin length",
-      "development length",
-      "decimal places",
-    ]),
-    "ratios tab": {
-      "ratio triangle": copyExistingFields(ratioTriangle, [
-        "excluded",
-      ]),
-      ...copyExistingFields(ratiosTab, [
-        "average formulas",
-        "cell notes",
-      ]),
-    },
-    "results tab": copyExistingFields(resultsTab, [
-      "ratio basis dataset",
-      "ultimate ratio decimal places",
-    ]),
-    "notes tab": copyExistingFields(notesTab, [
-      "notes",
-    ]),
-  };
-}
-
-function serializeDfmDirtySnapshot(payload) {
-  return JSON.stringify(canonicalizeForDirtySnapshot(buildDfmDirtySnapshot(payload)));
-}
-
-function recordCleanDfmDirtySnapshot(payload = null) {
+function recordCleanDfmMethodPayload(payload = null) {
   const cleanPayload = payload || buildDfmMethodPayload();
   try {
     lastCleanDfmMethodPayload = JSON.parse(JSON.stringify(cleanPayload));
   } catch {
     lastCleanDfmMethodPayload = cleanPayload;
   }
-  lastCleanDfmDirtySnapshot = serializeDfmDirtySnapshot(cleanPayload);
 }
 
 export function recordCurrentDfmCleanState() {
-  recordCleanDfmDirtySnapshot();
-  markDfmClean();
-  try {
-    window.parent?.postMessage({ type: "arcrho:dfm-dirty", inst: getDfmInst(), dirty: false }, "*");
-  } catch {
-    // ignore
-  }
+  recordCleanDfmMethodPayload();
+  markDfmClean({ force: true });
 }
-
-function isCurrentDfmDirtyComparedToCleanSnapshot() {
-  if (!lastCleanDfmDirtySnapshot) return true;
-  return serializeDfmDirtySnapshot(buildDfmMethodPayload()) !== lastCleanDfmDirtySnapshot;
-}
-
-setDfmDirtyEvaluator(isCurrentDfmDirtyComparedToCleanSnapshot);
 
 export async function buildDfmAssistantContextPayload(options = {}) {
   return buildDfmMethodPayloadWithPaths(options);
@@ -933,6 +865,10 @@ async function refreshDfmDatasetAfterDetailsApply(options = {}) {
 }
 
 export async function applyDfmMethodPayload(payload, options = {}) {
+  return runDfmProgrammatic(() => applyDfmMethodPayloadProgrammatically(payload, options));
+}
+
+async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
   let datasetInputsChanged = false;
   if (payload && !Array.isArray(payload)) {
     datasetInputsChanged = applySavedSelectValueToUi("originLenSelect", getSavedOriginLengthValue(payload)) || datasetInputsChanged;
@@ -1008,9 +944,9 @@ export async function applyDfmMethodPayload(payload, options = {}) {
     renderResultsTable();
   }
   if (applied && options.markClean !== false) {
-    recordCleanDfmDirtySnapshot();
+    recordCleanDfmMethodPayload();
     markMethodSaved();
-    markDfmClean();
+    markDfmClean({ force: true });
   }
   return { ok: applied, datasetInputsChanged };
 }
@@ -1043,16 +979,18 @@ export async function loadRatioSelectionIfExists(reason) {
     if (getDfmIsDirty()) {
       return;
     }
-    ratioStrikeSet.clear();
-    selectedSummaryByCol.clear();
-    applyDfmCellNotesPayload(null);
-    setDfmNotesText("");
-    await setResultsRatioBasisSelection("", { silent: true, render: false });
-    clearMethodSavedFlag();
-    renderRatioTable();
-    renderResultsTable();
-    recordCleanDfmDirtySnapshot();
-    markDfmClean();
+    await runDfmProgrammatic(async () => {
+      ratioStrikeSet.clear();
+      selectedSummaryByCol.clear();
+      applyDfmCellNotesPayload(null);
+      setDfmNotesText("");
+      await setResultsRatioBasisSelection("", { silent: true, render: false });
+      clearMethodSavedFlag();
+      renderRatioTable();
+      renderResultsTable();
+      recordCleanDfmMethodPayload();
+      markDfmClean({ force: true });
+    });
     return;
   }
   emitDfmInstancePresence("found");
@@ -1373,7 +1311,7 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
       csvError = "desktop host does not support csv save";
     }
     markMethodSaved();
-    recordCleanDfmDirtySnapshot(data);
+    recordCleanDfmMethodPayload(data);
     markDfmClean();
     emitDfmInstancePresence("found");
     await refreshDfmMethodFileRevision(result.path);
@@ -1455,41 +1393,7 @@ export async function saveDfmTemplate() {
   }
 }
 
-export async function loadDfmTemplate() {
-  const hostApi = getHostApi();
-  if (!hostApi) {
-    alert("Load requires the desktop app.");
-    return;
-  }
-
-  const pickFn = hostApi.pickOpenFile || null;
-  if (!pickFn) {
-    alert("Load requires the desktop app.");
-    return;
-  }
-
-  let startDir = "";
-  try {
-    const dirRes = await fetch("/template/default_dir");
-    if (dirRes.ok) {
-      const dirData = await dirRes.json();
-      startDir = dirData.path || "";
-    }
-  } catch {}
-
-  const filePath = await pickFn({
-    startDir,
-    filters: [{ name: "DFM Template", extensions: ["arc-dfm"] }],
-  });
-  if (!filePath) return;
-
-  const fileResult = await hostApi.readJsonFile({ path: filePath });
-  if (!fileResult || !fileResult.exists || !fileResult.data) {
-    window.parent.postMessage({ type: "arcrho:status", text: "Failed to read template file." }, "*");
-    return;
-  }
-
-  const payload = fileResult.data;
+function applyDfmTemplatePayload(payload) {
   const detailsTab = getDfmDetailsTab(payload);
   const ratiosTab = getDfmRatiosTab(payload);
 
@@ -1535,6 +1439,45 @@ export async function loadDfmTemplate() {
 
   renderRatioTable();
   renderResultsTable();
+}
 
+export async function loadDfmTemplate() {
+  const hostApi = getHostApi();
+  if (!hostApi) {
+    alert("Load requires the desktop app.");
+    return;
+  }
+
+  const pickFn = hostApi.pickOpenFile || null;
+  if (!pickFn) {
+    alert("Load requires the desktop app.");
+    return;
+  }
+
+  let startDir = "";
+  try {
+    const dirRes = await fetch("/template/default_dir");
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      startDir = dirData.path || "";
+    }
+  } catch {}
+
+  const filePath = await pickFn({
+    startDir,
+    filters: [{ name: "DFM Template", extensions: ["arc-dfm"] }],
+  });
+  if (!filePath) return;
+
+  const fileResult = await hostApi.readJsonFile({ path: filePath });
+  if (!fileResult || !fileResult.exists || !fileResult.data) {
+    window.parent.postMessage({ type: "arcrho:status", text: "Failed to read template file." }, "*");
+    return;
+  }
+
+  const payload = fileResult.data;
+  await runDfmProgrammatic(() => applyDfmTemplatePayload(payload));
+
+  markDfmDirty();
   window.parent.postMessage({ type: "arcrho:status", text: `Template loaded: ${filePath}` }, "*");
 }

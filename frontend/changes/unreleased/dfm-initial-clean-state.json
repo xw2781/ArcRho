@@ -2,5 +2,9 @@
   "type": "fix",
   "scope": "dfm",
   "audience": "user",
-  "summary": "Stopped newly opened DFM tabs from showing unsaved changes before any edits are made."
+  "summary": "Stopped newly opened DFM tabs from showing unsaved changes before any edits are made.",
+  "details": [
+    "DFM tabs now track unsaved changes from user edits instead of model recomputation during method load.",
+    "After a user edit, manually changing the value back still leaves the tab unsaved until Save or Cancel."
+  ]
 }

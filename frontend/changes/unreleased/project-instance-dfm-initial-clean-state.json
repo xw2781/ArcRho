@@ -2,10 +2,9 @@
   "type": "fix",
   "scope": "project instance",
   "audience": "user",
-  "summary": "Fixed Project Instance DFM windows showing unsaved changes immediately after opening.",
+  "summary": "Fixed Project Instance DFM windows showing unsaved changes immediately after opening and closing after discard confirmation.",
   "details": [
-    "Startup DFM population no longer briefly publishes a dirty state before the clean snapshot is recorded.",
-    "DFM dirty publishing now starts closed so early module boot work cannot mark Project Instance tabs dirty before the startup guard is installed.",
-    "Project Instance startup state requests now also respect the DFM startup clean guard."
+    "DFM windows now force a clean-state sync after programmatic method load.",
+    "Clicking Yes in the unsaved-changes confirmation now clears the floating window dirty flag and closes the window."
   ]
 }
