@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added a Result Selection Method toggle for viewing read-only effective percentage weights."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Updated the DFM Details Decimal Places input so direct typing refreshes Ratios tab number formatting immediately."
+}

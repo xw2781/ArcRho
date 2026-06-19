@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Removed DFM and Result Selection prefixes from Project Instance floating window titles."
+}

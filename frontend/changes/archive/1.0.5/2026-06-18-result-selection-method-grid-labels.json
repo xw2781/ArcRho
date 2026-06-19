@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Fixed Result Selection Method tab grid sizing and origin labels to match the selected origin length."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Updated shell and Arcode tabs to use crisp SVG close icons, removed the blue drag insertion line, and kept the detached-tab preview above floating windows."
+}

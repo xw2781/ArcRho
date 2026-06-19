@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Made Dataset Details panels resize with the window like DFM Details panels."
+}

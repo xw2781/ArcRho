@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Added a Snowflake SQL editor in Arcode with local SQL files, connection profiles, query execution, and result previews."
+}

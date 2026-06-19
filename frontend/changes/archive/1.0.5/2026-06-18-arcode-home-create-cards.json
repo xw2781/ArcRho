@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Added Arcode home cards for creating Python, notebook, and SQL files in the selected workspace folder."
+}

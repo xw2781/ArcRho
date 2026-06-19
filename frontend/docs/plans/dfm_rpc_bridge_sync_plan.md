@@ -9,7 +9,7 @@ Last updated: 2026-05-10
 
 Add a DFM-level sync workflow that sends the current DFM method context to the data-engine through the existing request-file bridge, waits for a returned method JSON, compares it with the local method JSON, and presents one contextual action based on which version is newer.
 
-The feature should start from a new Sync button in `dfmPathBar`.
+The feature should start from a new Sync button in `dfmTabBar`.
 
 ---
 
@@ -98,7 +98,7 @@ Old local DFM filenames and JSON files are explicitly out of scope.
 ## 3. Proposed User Workflow
 
 1. User opens a DFM tab.
-2. User clicks Sync in `dfmPathBar`.
+2. User clicks Sync in `dfmTabBar`.
 3. If the current DFM tab has unsaved edits, frontend asks whether to save and proceed:
    - Save and Proceed: save the current local method JSON, then continue sync.
    - Cancel: stop sync and leave local state unchanged.
@@ -394,9 +394,9 @@ Add new files instead of placing new feature logic into existing DFM files:
      - `Keep Using Local` when local JSON is newer.
      - `Use Remote Version` when remote JSON is newer.
 
-3. `frontend/ui/dfm/dfm_rpc_bridge_pathbar.js`
-   - Creates and wires the Sync button in `dfmPathBar`.
-   - Keeps path bar UI changes isolated.
+3. `frontend/ui/dfm/dfm_rpc_bridge_tabbar.js`
+   - Creates and wires the Sync button in `dfmTabBar`.
+   - Keeps tab bar UI changes isolated.
 
 4. Optional: `frontend/ui/dfm/dfm_rpc_bridge.css`
    - Only if the dialog styling grows enough to justify a separate stylesheet.
@@ -514,7 +514,7 @@ Backend tests:
 
 Frontend tests/manual verification:
 
-1. Sync button appears in `dfmPathBar` and does not disturb path text.
+1. Sync button appears in `dfmTabBar` and does not disturb tab selection.
 2. Click sends expected request payload.
 3. Floating compare window shows local and remote JSON `last modified` timestamps.
 4. When local JSON is newer, primary button label is `Keep Using Local`.

@@ -34,6 +34,9 @@ Detected `fetch(...)` targets in key JS files:
 - Loads as `/ui/arcode/main.html` in Electron app mode `ARCRHO_APP_MODE=arcode` or in a secondary Arcode window launched from ArcRho.
 - Uses the same custom app-frame structure as ArcRho, including `win10-borders` and `win11-frame` body classes from the Electron Windows-version bridge.
 - Hosts each open file as an isolated `ui/arcode/scripting-console/` iframe with a tab-scoped scripting instance id.
+- Hosts Snowflake SQL files whose name contains `snowflake` or ends in `.sf.sql` in an isolated `ui/arcode/snowflake-console/` iframe with a Monaco SQL editor, connection status strip, Run/Test/Save controls, and a results grid.
+- Shows recent files in the File > Recent Files submenu; the home content area does not duplicate the recent-file list.
+- Shows home create cards for Python Script, Notebook, SQL Server, and Snowflake; each card creates a timestamped local file in the selected workspace folder, with Snowflake files opened in the Snowflake SQL editor.
 - Sends scripting commands to the active iframe using `arcode:scripting-*` messages and receives `arcode:update-active-tab-title`, `arcode:scripting-dirty`, and `arcode:status` responses.
 - Uses the scripting HTTP API for execution, variables, notebooks, preferences, and object inspection. ArcRho extends the same service with macro endpoints for the main app only.
 - Uses the shared `ui/ai-assistant/` widget through the Arcode adapter, which keeps `arcode:*` notebook context messages and `arcode_ai_assistant_*` UI storage separate from ArcRho.
@@ -43,7 +46,8 @@ Detected `fetch(...)` targets in key JS files:
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Stores Arcode recent files in browser local storage under `arcode_recent_files_v1`.
+- Stores Arcode recent files and the last selected workspace folder in the local Arcode user settings JSON, `%APPDATA%\Arcode\user_settings.json`, with browser local storage used only as a non-Electron fallback.
+- Stores Snowflake connection profiles in `%APPDATA%\Arcode\snowflake_connections.json`; if that file is missing, the app-server can seed `my_example_connection` from `E:\XWSpace\Snowflake Config.txt` when present.
 - Leaves notebook persistence, execution, autosave, disk conflict checks, and shortcut preferences inside the Arcode scripting-console modules.
 - Uses Electron host dialogs for opening and saving files, parented to the requesting Arcode window.
 - Standalone Arcode mode stores scripts under `Documents\Arcode\scripts` by default and uses `%APPDATA%\Arcode` for Arcode settings.

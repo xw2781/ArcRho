@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection now shows a single in-page confirmation when closing or canceling unsaved changes."
+}

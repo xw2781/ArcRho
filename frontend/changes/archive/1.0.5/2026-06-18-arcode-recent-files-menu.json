@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Moved Arcode recent files from the home page into a File menu submenu backed by local settings."
+}

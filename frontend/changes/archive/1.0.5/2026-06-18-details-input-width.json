@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset/dfm",
+  "audience": "user",
+  "summary": "Expanded Dataset and DFM Details input fields to use wider editing space."
+}

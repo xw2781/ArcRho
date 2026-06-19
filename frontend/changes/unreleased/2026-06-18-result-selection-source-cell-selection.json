@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added Method source-cell selection for Selected Ultimate calculations, row highlighting, keyboard-copyable highlighted grid ranges, and grid-style Weight editing with clearer range, ultimate, and weight formatting."
+}

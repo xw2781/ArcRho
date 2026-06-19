@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Updated the DFM Data tab so input triangle values use the selected triangle sidecar number format."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Made the Dataset Chart tab resize automatically while docked in the normal tab area."
+}

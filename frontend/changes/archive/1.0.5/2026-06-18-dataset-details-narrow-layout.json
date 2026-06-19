@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Kept Dataset Details fields aligned with their labels when the window is resized very small."
+}

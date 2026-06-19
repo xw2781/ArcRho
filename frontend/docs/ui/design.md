@@ -47,9 +47,12 @@ Keep surfaces pale, borders precise, typography compact, and motion short. Favor
 - Inputs: 30px high, white fill, 6px radius, blue focus ring `rgba(96, 165, 250, 0.16)`.
 - Switches: compact 42px by 20px with green enabled state.
 - Chips: small rounded status labels with optional dot; use sparingly for state and counts.
+- Drag/drop: dashed neutral border at rest, blue-tinted surface on hover/over state, clear drop result text.
+
+## Table Design Rules
 - Tables: compact row height around 31px, pale header, hover row highlight.
 - Sticky table headers: prevent scroll bleed-through with paint-only header-cell covers, not layout spacers. Use separated borders (`border-collapse: separate; border-spacing: 0;`) when sticky header borders need to stay opaque, and place seam masks on `th`/`thead` pseudo-elements that are absolutely positioned so they do not create white gaps above the header.
-- Drag/drop: dashed neutral border at rest, blue-tinted surface on hover/over state, clear drop result text.
+- Resizable table columns: follow the `pi-table` pattern. Store an explicit width for every column, render a `colgroup`, set each `col` width directly, and set the table `width`/`min-width` to the sum of the current column widths. During drag, update only the target column width and then resync the total table width; let the whole table grow or shrink instead of allowing the browser to redistribute neighboring columns. Use fixed table layout and keep resize handles outside normal layout flow.
 
 ## Motion
 - Keep transitions short: 120ms to 190ms.

@@ -693,6 +693,15 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("ui/shell/ui_automation.js", "Shell-side command polling and execution."),
         ],
     },
+    "snowflake": {
+        "doc": "docs/app_server/domains/snowflake.md",
+        "files": [
+            ("app_server/api/snowflake_router.py", "Snowflake connection, test, and query routes."),
+            ("app_server/services/snowflake_service.py", "Connection profile loading and Snowflake query execution."),
+            ("app_server/schemas/scripting.py", "Snowflake request models shared with scripting schemas."),
+            ("ui/arcode/snowflake-console/index.js", "Arcode Snowflake SQL editor client."),
+        ],
+    },
 }
 
 
@@ -1030,6 +1039,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Keeps pending commands in memory only; no ArcRho Server request files or project data are written.",
             "1. Add a UI automation command: update schema/service if needed, shell executor, page handler, Python helper, and docs together.",
             "- Commands depend on active UI state and should fail clearly when the expected page/window is not active.",
+        ),
+        "snowflake": (
+            "Snowflake SQL execution domain for Arcode.",
+            "- `GET /snowflake/connections` returns local connection profiles and connector availability.\n- `POST /snowflake/query` and `/snowflake/test-connection` execute SQL through the app-server runtime.",
+            "- Stores connection profiles in `%APPDATA%\\Arcode\\snowflake_connections.json` in Arcode mode and can seed the default profile from `E:\\XWSpace\\Snowflake Config.txt`.",
+            "1. Add a Snowflake route: keep schemas in `app_server/schemas/scripting.py`, router delegation, and `snowflake_service` behavior aligned.\n2. Change connection storage: update `config.py`, this domain doc, and Arcode UI callers together.",
+            "- Query execution requires `snowflake-connector-python`; missing connectors must return explicit user-facing errors.",
         ),
     }
 

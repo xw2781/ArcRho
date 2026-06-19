@@ -5,6 +5,7 @@
   "summary": "Added Dataset sidecar audit logs for inserts and value updates.",
   "details": [
     "Dataset audit logs keep the latest 50 records in the sidecar JSON.",
-    "The Dataset Audit Log tab now displays event date, action, change info, and Windows user."
+    "The Dataset Audit Log tab now displays event date, action, change info, and Windows user.",
+    "Event dates use a compact 12-hour format such as 6/15/2026 11:17:51 AM."
   ]
 }

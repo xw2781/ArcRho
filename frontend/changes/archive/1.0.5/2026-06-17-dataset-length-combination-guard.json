@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Prevented Dataset refreshes from using invalid origin and development length combinations.",
+  "details": [
+    "Increasing Development Length above Origin Length now automatically raises Origin Length before the triangle refreshes."
+  ]
+}

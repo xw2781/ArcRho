@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Stopped Project Instance from showing duplicate cached dataset rows when a sidecar name and cache filename differ only as aliases."
+}

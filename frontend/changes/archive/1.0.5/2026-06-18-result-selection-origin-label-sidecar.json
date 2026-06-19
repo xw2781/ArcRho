@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Stored Result Selection origin labels in the output sidecar and tightened the Method grid text size."
+}

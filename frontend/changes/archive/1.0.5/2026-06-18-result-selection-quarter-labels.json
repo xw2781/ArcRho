@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Fixed Result Selection Method tab origin labels so quarterly outputs use quarterly header labels instead of stale annual labels."
+}

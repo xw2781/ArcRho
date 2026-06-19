@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Made the Result Selection Method grid rows use compact DFM-style table sizing."
+}

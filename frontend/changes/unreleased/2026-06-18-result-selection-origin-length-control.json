@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Limited Result Selection origin lengths to supported values and kept Method rows aligned with loaded ArcRho origin labels."
+}

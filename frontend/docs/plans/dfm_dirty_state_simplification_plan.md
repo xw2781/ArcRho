@@ -134,7 +134,6 @@ applies, select syncs) are ignored:
 | `loadRatioSelectionIfExists()` "missing file" reset branch | `dfm_persistence.js` | Clears strikes/notes/basis programmatically. |
 | `checkDfmMethodFileWatch()` reload | `dfm_persistence.js` | External-file reload re-applies payload. |
 | `restoreCleanDfmMethodState()` | `dfm_persistence.js` | Cancel/discard re-applies the saved payload. |
-| `loadDfmTemplate()` | `dfm_persistence.js` | Applies template, then marks dirty (see rule). |
 
 #### Ownership rule (single, explicit)
 
@@ -145,7 +144,7 @@ resulting state **only** through its existing `markClean` option:
 - `markClean: true` (default for **load / external reload / restore**) → calls
   `markDfmClean()` at the end. "Freshly loaded = clean."
 - `markClean: false` → leaves dirty state untouched; the **caller** owns it.
-  Macro / assistant / template apply then call `markDfmDirty()` *after* the
+  Macro / assistant apply then call `markDfmDirty()` *after* the
   await, **outside** the scope, so the new unsaved content registers. (The macro
   path already does this at
   [`dfm_tabs_orchestrator.js:652`](../../ui/dfm/dfm_tabs_orchestrator.js).)
@@ -316,7 +315,7 @@ from dirty tracking.
   §2 table enumerates all `applyDfmMethodPayload` callers; route every apply
   through it and wrap once at the core.
 - **A genuine edit routed through a wrapped path** → missed dirty (data-loss
-  risk). *Mitigation:* only load/external/restore/macro/assistant/template go
+  risk). *Mitigation:* only load/external/restore/macro/assistant go
   through the scope; live input handlers never do. Verify undo/redo and
   summary-table edits still mark dirty after a load.
 

@@ -20,6 +20,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `project_book` | [`app_server/api/project_book_router.py`](../../app_server/api/project_book_router.py) | 4 | [`project_book.md`](domains/project_book.md) |
 | `project_settings` | [`app_server/api/project_settings_router.py`](../../app_server/api/project_settings_router.py) | 11 | [`project_settings.md`](domains/project_settings.md) |
 | `reserving_class` | [`app_server/api/reserving_class_router.py`](../../app_server/api/reserving_class_router.py) | 11 | [`reserving_class.md`](domains/reserving_class.md) |
+| `snowflake` | [`app_server/api/snowflake_router.py`](../../app_server/api/snowflake_router.py) | 4 | [`snowflake.md`](domains/snowflake.md) |
 | `table_summary` | [`app_server/api/table_summary_router.py`](../../app_server/api/table_summary_router.py) | 2 | [`table_summary.md`](domains/table_summary.md) |
 | `ui_automation` | [`app_server/api/ui_automation_router.py`](../../app_server/api/ui_automation_router.py) | 3 | [`ui_automation.md`](domains/ui_automation.md) |
 | `workflow` | [`app_server/api/workflow_router.py`](../../app_server/api/workflow_router.py) | 5 | [`workflow.md`](domains/workflow.md) |

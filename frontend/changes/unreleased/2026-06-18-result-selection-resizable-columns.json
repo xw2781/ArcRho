@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added independent resizing for Result Selection Method columns, readable narrower Weight columns, and wrapped source dataset headers."
+}

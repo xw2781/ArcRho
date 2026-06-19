@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Prevented DFM Details Decimal Places edits from being reverted by the embedded Data tab refresh path."
+}

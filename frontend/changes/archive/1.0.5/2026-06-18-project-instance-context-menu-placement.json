@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Kept project instance dataset context submenus visible when opened near the bottom of the window."
+}
