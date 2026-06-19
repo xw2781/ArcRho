@@ -377,60 +377,6 @@ body.win10-borders::after {
   filter: brightness(0.98);
 }
 
-.arcodeHomeSectionTitle {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.arcodeRecentList {
-  display: grid;
-  gap: 8px;
-  max-width: 760px;
-}
-
-.arcodeRecentItem {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  min-height: 46px;
-  padding: 8px 10px;
-  border: 1px solid var(--arcode-border);
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1f2937;
-  cursor: pointer;
-  text-align: left;
-}
-
-.arcodeRecentItem:hover {
-  border-color: #abcac2;
-  background: #fbfefd;
-}
-
-.arcodeRecentName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.arcodeRecentPath {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--arcode-muted);
-  font-size: 11px;
-}
-
-.arcodeEmpty {
-  color: var(--arcode-muted);
-  font-size: 12px;
-}
-
 #arcodeFrameHost {
   position: absolute;
   inset: 0;
@@ -547,6 +493,7 @@ body.win10-borders::after {
 }
 
 .menuItem {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -568,6 +515,52 @@ body.win10-borders::after {
 
 .menuItem.disabled:hover {
   background: transparent;
+}
+
+.menuItem.hasSubmenu {
+  padding-right: 9px;
+}
+
+.menuItem.hasSubmenu.disabled .menuSubmenu {
+  display: none;
+}
+
+.menuItem.hasSubmenu:not(.disabled):hover .menuSubmenu {
+  display: block;
+}
+
+.menuArrow {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.menuSubmenu {
+  position: absolute;
+  top: -6px;
+  left: calc(100% - 1px);
+  z-index: 30001;
+  display: none;
+  min-width: 320px;
+  max-width: min(620px, calc(100vw - 32px));
+  padding: 5px 0;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--shell-floating-radius);
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+  color: #222;
+}
+
+.menuSubmenu .menuItem {
+  max-width: 100%;
+  gap: 12px;
+}
+
+.menuPath {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .menuShortcut {
@@ -686,17 +679,6 @@ body.win10-borders::after {
   transition: none;
 }
 
-#arcodeDropIndicator {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  width: 3px;
-  border-radius: 2px;
-  background: #2b6df6;
-  display: none;
-  pointer-events: none;
-}
-
 body.tab-dragging #arcodeTabs.tabs,
 body.tab-dragging #arcodeTabs.tabs .arcodeTab {
   cursor: grabbing;
@@ -756,6 +738,15 @@ body.tab-dragging #arcodeTabs.tabs {
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
+}
+
+.arcodeTabClose svg {
+  width: 10px;
+  height: 10px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  pointer-events: none;
 }
 
 .arcodeTab.dirty .arcodeTabTitle::after {
@@ -1096,11 +1087,81 @@ body.tab-dragging #arcodeTabs.tabs {
   background: #ffffff;
 }
 
-.arcodeHomeContent .arcodeHomeSectionTitle {
-  margin-bottom: 12px;
+.arcodeCreateCards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+  max-width: 760px;
+}
+
+.arcodeCreateCard {
+  min-width: 0;
+  min-height: 104px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d8dde3;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #1f2937;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.arcodeCreateCard:hover {
+  border-color: #b9c8d8;
+  background: #f8fafc;
+}
+
+.arcodeCreateCard.disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.arcodeCreateCard.disabled:hover {
+  border-color: #d8dde3;
+  background: #fbfcfe;
+}
+
+.arcodeCreateCardIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
   color: #334155;
   font-size: 11px;
-  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.arcodeCreateCardTitle {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 940px) {
+  .arcodeCreateCards {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .arcodeHomeLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .arcodeCreateCards {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ===== Arcode Explorer entries ===== */

@@ -118,7 +118,7 @@ export function initShellMessages() {
     }
     if (msg.type === "arcrho:dataset-dirty") {
       const inst = String(msg.inst || "");
-      const tab = shell.state.tabs.find(t => t.type === "dataset" && (
+      const tab = shell.state.tabs.find(t => (t.type === "dataset" || t.type === "result_selection") && (
         (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
       ));
       if (!tab) return;
@@ -286,7 +286,7 @@ export function initShellMessages() {
     if (msg.type === "arcrho:workflow-import") return shell.importWorkflow?.();
     if (msg.type === "arcrho:dataset-close-confirmed") {
       const inst = String(msg.inst || "");
-      const tab = shell.state.tabs.find(t => t.type === "dataset" && (
+      const tab = shell.state.tabs.find(t => (t.type === "dataset" || t.type === "result_selection") && (
         (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
       ));
       if (tab) return shell.closeTab?.(tab.id, true);

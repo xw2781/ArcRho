@@ -57,8 +57,13 @@
   </div>
 
   <div id="fileMenuDropdown" class="menuDropdown">
-    <div class="menuItem" data-action="new-notebook"><span>New Notebook</span><span class="menuShortcut">Ctrl+N</span></div>
     <div class="menuItem" data-action="open-file"><span>Open File...</span><span class="menuShortcut">Ctrl+O</span></div>
+    <div class="menuItem hasSubmenu disabled" id="recentFilesMenuItem" data-action="recent-files">
+      <span>Recent Files</span><span class="menuArrow">›</span>
+      <div class="menuSubmenu" id="recentFilesSubmenu">
+        <div class="menuItem disabled"><span>No recent files</span></div>
+      </div>
+    </div>
     <div class="menuItem" data-action="select-folder"><span>Select Workspace Folder...</span></div>
     <div class="menuItem" data-action="add-folder"><span>Add Workspace Folder...</span></div>
     <div class="menuSep"></div>

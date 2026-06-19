@@ -4,7 +4,6 @@ import { FLOAT_VERTICAL_RETURN_THRESHOLD_PX, FLOAT_VERTICAL_THRESHOLD_PX, isFloa
 let draggedTabId = null;
 let dragEl = null;
 let placeholderEl = null;
-let dropIndicatorEl = null;
 let tabsHostPrevStyle = null;
 let dragElPrevStyle = null;
 let dragElBaseLeft = 0;
@@ -27,6 +26,29 @@ const SCRIPTING_PATH_ACTIONS = new Set(["open-file-location", "copy-file-path"])
 const SCRIPTING_PATH_TOOLTIP_DELAY_MS = 2000;
 
 export function isTabStripDragging() { return isDragging; }
+
+function createTabCloseIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "tabCloseIcon");
+  svg.setAttribute("viewBox", "0 0 10 10");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+
+  const lineA = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  lineA.setAttribute("x1", "2.5");
+  lineA.setAttribute("y1", "2.5");
+  lineA.setAttribute("x2", "7.5");
+  lineA.setAttribute("y2", "7.5");
+
+  const lineB = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  lineB.setAttribute("x1", "7.5");
+  lineB.setAttribute("y1", "2.5");
+  lineB.setAttribute("x2", "2.5");
+  lineB.setAttribute("y2", "7.5");
+
+  svg.append(lineA, lineB);
+  return svg;
+}
 
 function getScriptingFilePath(tab) {
   if (!tab || tab.type !== "scripting") return "";
@@ -157,28 +179,6 @@ function restoreTabsOverflowAfterDrag() {
   } else host.style.overflowX = "";
 }
 
-function ensureDropIndicator(host) {
-  if (dropIndicatorEl && dropIndicatorEl.isConnected) return dropIndicatorEl;
-  let el = document.getElementById("dropIndicator");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "dropIndicator";
-    host.appendChild(el);
-  }
-  dropIndicatorEl = el;
-  return el;
-}
-
-function showIndicatorAt(host, x) {
-  const ind = ensureDropIndicator(host);
-  const r = host.getBoundingClientRect();
-  const left = Math.max(0, Math.min(r.width, x - r.left));
-  ind.style.left = `${left}px`;
-  ind.style.display = "block";
-}
-
-function hideIndicator() { if (dropIndicatorEl) dropIndicatorEl.style.display = "none"; }
-
 function lockTabsHostLayout(host) {
   if (!host || tabsHostPrevStyle) return;
   const r = host.getBoundingClientRect();
@@ -212,7 +212,6 @@ function unlockTabsHostLayout() {
 
 function cleanupDragUI() {
   restoreTabsOverflowAfterDrag();
-  hideIndicator();
   shell.removeFloatPreview?.();
   if (dragEl) dragEl.classList.remove("dragging");
   if (placeholderEl && placeholderEl.parentNode) placeholderEl.parentNode.removeChild(placeholderEl);
@@ -316,7 +315,6 @@ function enterFloatDragMode(clientX, clientY) {
   tabDragMode = "float";
   ptrMoved = true;
   isDragging = true;
-  hideIndicator();
   removePlaceholder();
   setDraggedTabHidden(true);
   try { document.body.style.cursor = "grabbing"; } catch {}
@@ -344,10 +342,9 @@ function updateReorderDrag(clientX, pointerId) {
   if (!host || !placeholderEl) return;
   const tabs = [...host.querySelectorAll('.tab[data-tab-id]')].filter(n => n.getAttribute("data-tab-id") !== draggedTabId);
   let targetNode = null;
-  let indicatorX = null;
   for (const node of tabs) {
     const rect = node.getBoundingClientRect();
-    if (clientX < rect.left + rect.width / 2) { targetNode = node; indicatorX = rect.left; break; }
+    if (clientX < rect.left + rect.width / 2) { targetNode = node; break; }
   }
   const beforeRects = new Map();
   host.querySelectorAll('.tab[data-tab-id]').forEach(el => {
@@ -355,8 +352,8 @@ function updateReorderDrag(clientX, pointerId) {
     if (!id || id === draggedTabId || el.classList.contains("placeholder")) return;
     beforeRects.set(id, el.getBoundingClientRect());
   });
-  if (targetNode) { if (placeholderEl.nextSibling !== targetNode) host.insertBefore(placeholderEl, targetNode); showIndicatorAt(host, indicatorX); }
-  else { if (placeholderEl.parentNode !== host || placeholderEl !== host.lastChild) host.appendChild(placeholderEl); showIndicatorAt(host, host.getBoundingClientRect().right - 2); }
+  if (targetNode) { if (placeholderEl.nextSibling !== targetNode) host.insertBefore(placeholderEl, targetNode); }
+  else if (placeholderEl.parentNode !== host || placeholderEl !== host.lastChild) host.appendChild(placeholderEl);
   const newIndex = Array.from(host.children).indexOf(placeholderEl);
   if (newIndex !== lastPlaceholderIndex) { lastPlaceholderIndex = newIndex; flipAnimateTabs(host, beforeRects); }
 }
@@ -398,7 +395,6 @@ function wireTabDnDHostOnce() {
   const host = $("tabs");
   if (!host || host.dataset.dndWired === "1") return;
   host.dataset.dndWired = "1";
-  ensureDropIndicator(host);
 }
 
 function flipAnimateTabs(host, beforeRects) {
@@ -485,7 +481,6 @@ export function renderTabs() {
   if (!host) return;
   host.querySelectorAll(".tab").forEach(n => n.remove());
   wireTabDnDHostOnce();
-  ensureDropIndicator(host);
   for (const t of shell.state.tabs) {
     if (isFloatingTab(t)) continue;
     const el = document.createElement("div");
@@ -544,7 +539,9 @@ export function renderTabs() {
     if (t.id !== "home") {
       const x = document.createElement("button");
       x.className = "x" + (t.isDirty ? " dirty" : "");
-      x.textContent = "x";
+      x.type = "button";
+      x.setAttribute("aria-label", "Close tab");
+      x.appendChild(createTabCloseIcon());
       if (t.isDirty) { const dot = document.createElement("span"); dot.className = "dirtyDot"; x.appendChild(dot); x.title = "Unsaved changes (close tab)"; }
       else x.title = "Close";
       x.addEventListener("click", (e) => { e.stopPropagation(); shell.closeTab?.(t.id); });

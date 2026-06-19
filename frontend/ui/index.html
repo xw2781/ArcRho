@@ -579,6 +579,14 @@
       padding: 0;
       border-radius: 3px;
     }
+    .tab .x svg {
+      width: 10px;
+      height: 10px;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      pointer-events: none;
+    }
     .tab .x.dirty { color: transparent; position: relative; }
     .tab .x.dirty:hover { color: #000; }
     .tab .x.dirty:hover .dirtyDot { opacity: 0; }
@@ -649,17 +657,6 @@
       background: transparent;
     }
 
-    #dropIndicator {
-      position: absolute;
-      top: 2px;
-      bottom: 2px;
-      width: 3px;
-      border-radius: 2px;
-      background: #2b6df6;
-      display: none;
-      pointer-events: none;
-    }
-
     .actions { margin-left:auto; display:flex; gap:8px; align-items:center; }
     button { padding: 6px 10px; cursor:pointer; }
     .content { 
@@ -686,7 +683,7 @@
       background: rgba(43,109,246,0.08);
       box-shadow: 0 16px 34px rgba(15,23,42,0.16);
       pointer-events: none;
-      z-index: 40;
+      z-index: 2147483600;
     }
     #floatingSnapPreview {
       position: absolute;
@@ -2278,7 +2275,7 @@
       </div>
       <div id="aboutBody">
         <div id="aboutAppName">ArcRho</div>
-        <div id="aboutVersion">Version 1.0.4</div>
+        <div id="aboutVersion">Version 1.0.5</div>
         <div id="aboutDesc">Actuarial Data & Analytics System</div>
         <div id="aboutActions">
           <button id="aboutCheckUpdatesBtn" type="button">Check for Updates</button>

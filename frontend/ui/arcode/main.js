@@ -18,6 +18,28 @@ const MAX_ZOOM_PERCENT = 160;
 const ZOOM_STEP = 10;
 const DROP_FILE_EXTENSIONS = new Set([".py", ".sql", ".ipynb"]);
 const TAB_DRAG_THRESHOLD_PX = 6;
+const EMPTY_NOTEBOOK_TEMPLATE = {
+  cells: [],
+  metadata: {
+    kernelspec: {
+      display_name: "Python 3",
+      language: "python",
+      name: "python3",
+    },
+    language_info: {
+      name: "python",
+      pygments_lexer: "ipython3",
+    },
+  },
+  nbformat: 4,
+  nbformat_minor: 5,
+};
+const HOME_CREATE_ITEMS = [
+  { kind: "python", title: "Python Script", extension: ".py" },
+  { kind: "notebook", title: "Notebook", extension: ".ipynb" },
+  { kind: "sqlserver", title: "SQL Server", extension: ".sql" },
+  { kind: "snowflake", title: "Snowflake", extension: ".sql" },
+];
 const FILE_ICON_BASE_PATH = "/ui/arcode/shared/file-icons/";
 const FILE_ICON_MAP_URL = `${FILE_ICON_BASE_PATH}file-icon-map.json?v=20260614a`;
 let resolveFileIconPath = null;
@@ -50,6 +72,19 @@ function filenameFromPath(pathLike) {
   return parts.length ? parts[parts.length - 1] : "";
 }
 
+function joinPath(folderPath, fileName) {
+  const folder = String(folderPath || "").trim();
+  const name = String(fileName || "").trim();
+  if (!folder) return name;
+  const separator = folder.includes("\\") ? "\\" : "/";
+  return `${folder.replace(/[\\/]+$/, "")}${separator}${name.replace(/^[\\/]+/, "")}`;
+}
+
+function timestampForFileName() {
+  const value = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "");
+  return value.replace("T", "_");
+}
+
 function normalizeRecentFiles(value) {
   const entries = Array.isArray(value) ? value : [];
   const seen = new Set();
@@ -64,6 +99,22 @@ function normalizeRecentFiles(value) {
     if (files.length >= 20) break;
   }
   return files;
+}
+
+function normalizeWorkspaceFolders(value) {
+  const entries = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const folders = [];
+  for (const item of entries) {
+    const folderPath = String(item || "").trim();
+    if (!folderPath) continue;
+    const key = folderPath.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    folders.push(folderPath);
+    if (folders.length >= 20) break;
+  }
+  return folders;
 }
 
 function normalizeZoomPercent(value, fallback = DEFAULT_ZOOM_PERCENT) {
@@ -87,8 +138,13 @@ function readRecentFiles() {
 }
 
 function currentUserSettingsPayload() {
+  const workspaceFolders = normalizeWorkspaceFolders(state.workspaceFolders);
+  const activeWorkspaceFolder = String(state.activeWorkspaceFolder || workspaceFolders[0] || "").trim();
   return {
     recentFiles: readRecentFiles(),
+    workspaceFolders,
+    activeWorkspaceFolder,
+    lastWorkspaceFolderPath: activeWorkspaceFolder,
     windowScalePercent: normalizeZoomPercent(state.zoomPercent),
   };
 }
@@ -158,6 +214,8 @@ async function saveArcodeUserSettings({ reportFailure = false } = {}) {
   const payload = currentUserSettingsPayload();
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(payload.recentFiles));
+    localStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(payload.workspaceFolders));
+    localStorage.setItem(ACTIVE_WORKSPACE_FOLDER_KEY, payload.activeWorkspaceFolder || "");
   } catch {
     // Browser fallback only.
   }
@@ -174,22 +232,57 @@ async function saveArcodeUserSettings({ reportFailure = false } = {}) {
   }
 }
 
+function normalizeLoadedArcodeSettings(result) {
+  if (result?.settings && typeof result.settings === "object" && !Array.isArray(result.settings)) {
+    return result.settings;
+  }
+  if (result && typeof result === "object" && !Array.isArray(result) && result.ok !== false) {
+    return result;
+  }
+  return {};
+}
+
 async function loadArcodeUserSettings() {
   const host = getHostApi();
   if (typeof host?.loadArcodeUserSettings === "function") {
     try {
       const result = await host.loadArcodeUserSettings();
-      const settings = result?.settings && typeof result.settings === "object" ? result.settings : {};
+      const settings = normalizeLoadedArcodeSettings(result);
       const recentFiles = normalizeRecentFiles(settings.recentFiles);
+      const settingsFolders = normalizeWorkspaceFolders(settings.workspaceFolders);
+      const fallbackFolders = readWorkspaceFolders();
+      const workspaceFolders = settingsFolders.length ? settingsFolders : fallbackFolders;
+      const activeWorkspaceFolder = String(
+        settings.activeWorkspaceFolder
+        || settings.lastWorkspaceFolderPath
+        || readActiveWorkspaceFolder()
+        || workspaceFolders[0]
+        || "",
+      ).trim();
       state.recentFiles = recentFiles.length ? recentFiles : readRecentFilesFallback();
+      state.workspaceFolders = workspaceFolders;
+      state.activeWorkspaceFolder = activeWorkspaceFolder;
+      if (activeWorkspaceFolder && !state.workspaceFolders.some((item) => item.toLowerCase() === activeWorkspaceFolder.toLowerCase())) {
+        state.workspaceFolders = [activeWorkspaceFolder, ...state.workspaceFolders].slice(0, 20);
+      }
       state.zoomPercent = normalizeZoomPercent(settings.windowScalePercent, DEFAULT_ZOOM_PERCENT);
-      if (!result?.exists || !recentFiles.length) await saveArcodeUserSettings();
+      saveWorkspaceFolders({ persistSettings: false });
+      if (activeWorkspaceFolder && !isExplorerPathExpanded(activeWorkspaceFolder)) {
+        setExplorerPathExpanded(activeWorkspaceFolder, true, { rerender: false });
+      }
+      const needsSettingsBackfill = !Object.prototype.hasOwnProperty.call(settings, "recentFiles")
+        || !Object.prototype.hasOwnProperty.call(settings, "workspaceFolders")
+        || !Object.prototype.hasOwnProperty.call(settings, "activeWorkspaceFolder")
+        || !Object.prototype.hasOwnProperty.call(settings, "lastWorkspaceFolderPath");
+      if (needsSettingsBackfill) await saveArcodeUserSettings();
       return;
     } catch (err) {
       updateStatus(`Unable to load Arcode settings: ${String(err?.message || err)}`);
     }
   }
   state.recentFiles = readRecentFilesFallback();
+  state.workspaceFolders = readWorkspaceFolders();
+  state.activeWorkspaceFolder = readActiveWorkspaceFolder() || state.workspaceFolders[0] || "";
   state.zoomPercent = DEFAULT_ZOOM_PERCENT;
 }
 
@@ -198,15 +291,14 @@ function saveRecentFile(pathLike) {
   if (!filePath) return;
   const lower = filePath.toLowerCase();
   state.recentFiles = [filePath, ...readRecentFiles().filter((item) => item.toLowerCase() !== lower)].slice(0, 20);
+  renderRecentFilesMenu();
   void saveArcodeUserSettings();
 }
 
 function readWorkspaceFolders() {
   try {
-    const parsed = JSON.parse(sessionStorage.getItem(WORKSPACE_FOLDERS_KEY) || "[]");
-    return Array.isArray(parsed)
-      ? parsed.map((item) => String(item || "").trim()).filter(Boolean)
-      : [];
+    const parsed = JSON.parse(localStorage.getItem(WORKSPACE_FOLDERS_KEY) || sessionStorage.getItem(WORKSPACE_FOLDERS_KEY) || "[]");
+    return normalizeWorkspaceFolders(parsed);
   } catch {
     return [];
   }
@@ -214,7 +306,7 @@ function readWorkspaceFolders() {
 
 function readActiveWorkspaceFolder() {
   try {
-    return String(sessionStorage.getItem(ACTIVE_WORKSPACE_FOLDER_KEY) || "").trim();
+    return String(localStorage.getItem(ACTIVE_WORKSPACE_FOLDER_KEY) || sessionStorage.getItem(ACTIVE_WORKSPACE_FOLDER_KEY) || "").trim();
   } catch {
     return "";
   }
@@ -245,13 +337,20 @@ function readExpandedExplorerPaths() {
   }
 }
 
-function saveWorkspaceFolders() {
+function saveWorkspaceFolders({ persistSettings = true } = {}) {
+  const workspaceFolders = normalizeWorkspaceFolders(state.workspaceFolders);
+  const activeWorkspaceFolder = String(state.activeWorkspaceFolder || workspaceFolders[0] || "").trim();
+  state.workspaceFolders = workspaceFolders;
+  state.activeWorkspaceFolder = activeWorkspaceFolder;
   try {
-    sessionStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(state.workspaceFolders || []));
-    sessionStorage.setItem(ACTIVE_WORKSPACE_FOLDER_KEY, state.activeWorkspaceFolder || "");
+    sessionStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(workspaceFolders));
+    sessionStorage.setItem(ACTIVE_WORKSPACE_FOLDER_KEY, activeWorkspaceFolder);
+    localStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(workspaceFolders));
+    localStorage.setItem(ACTIVE_WORKSPACE_FOLDER_KEY, activeWorkspaceFolder);
   } catch {
-    // Workspace folders are scoped to this window and best-effort.
+    // Browser fallback only.
   }
+  if (persistSettings) void saveArcodeUserSettings();
 }
 
 function saveExpandedExplorerPaths() {
@@ -461,10 +560,67 @@ function tabTitle(tab) {
   return tab?.title || filenameFromPath(tab?.path) || "Untitled Notebook";
 }
 
+function getHomeCreateItem(kind) {
+  return HOME_CREATE_ITEMS.find((item) => item.kind === kind) || null;
+}
+
+function baseFileNameForCreateItem(item) {
+  if (item?.kind === "python") return "python_script";
+  if (item?.kind === "notebook") return "notebook";
+  if (item?.kind === "sqlserver") return "sql_server";
+  if (item?.kind === "snowflake") return "snowflake_query";
+  return "untitled";
+}
+
+function refreshWorkspaceFolder(folderPath) {
+  const folder = String(folderPath || "").trim();
+  if (!folder) return;
+  delete state.folderListings[folder];
+  if (isExplorerPathExpanded(folder)) void loadWorkspaceFolder(folder);
+}
+
+async function createHomeFile(kind) {
+  const item = getHomeCreateItem(kind);
+  if (!item?.extension) return;
+  const folderPath = String(state.activeWorkspaceFolder || state.workspaceFolders[0] || "").trim();
+  if (!folderPath) {
+    window.alert("Select a workspace folder before creating a file.");
+    return;
+  }
+  const host = getHostApi();
+  if (typeof host?.saveTextFile !== "function" || typeof host?.saveJsonFile !== "function") {
+    window.alert("File creation requires the desktop app host.");
+    return;
+  }
+  const fileName = `${baseFileNameForCreateItem(item)}_${timestampForFileName()}${item.extension}`;
+  const filePath = joinPath(folderPath, fileName);
+  updateStatus(`Creating ${fileName}...`);
+  const result = item.kind === "notebook"
+    ? await host.saveJsonFile({ path: filePath, data: EMPTY_NOTEBOOK_TEMPLATE })
+    : await host.saveTextFile({ path: filePath, data: "" });
+  if (result?.error) {
+    updateStatus(`Could not create ${fileName}: ${result.error}`);
+    window.alert(`Could not create ${fileName}.\n\n${result.error}`);
+    return;
+  }
+  const createdPath = String(result?.path || filePath).trim();
+  refreshWorkspaceFolder(folderPath);
+  openCodeTab({ path: createdPath, type: item.kind === "snowflake" ? "snowflake" : "scripting" });
+  updateStatus(`Created ${createdPath}.`);
+}
+
+function renderHomeCreateCards() {
+  return HOME_CREATE_ITEMS.map((item) => `
+    <button class="arcodeCreateCard" type="button" data-create-kind="${item.kind}">
+      <span class="arcodeCreateCardIcon" aria-hidden="true">${escapeHtml(item.extension || "--")}</span>
+      <span class="arcodeCreateCardTitle">${escapeHtml(item.title)}</span>
+    </button>
+  `).join("");
+}
+
 function renderHome() {
   const home = $("arcodeHome");
   if (!home) return;
-  const recent = readRecentFiles();
   const folders = state.workspaceFolders || [];
   const activeFolder = state.activeWorkspaceFolder || folders[0] || "";
   home.innerHTML = `
@@ -495,18 +651,9 @@ function renderHome() {
           <button id="arcodeHomeNewBtn" class="arcodeHomeBtn" type="button">New Notebook</button>
         </div>
       </aside>
-      <section class="arcodeHomeContent">
-        <h2 class="arcodeHomeSectionTitle">Recent Files</h2>
-        <div class="arcodeRecentList">
-          ${recent.length ? recent.map((filePath) => `
-            <button class="arcodeRecentItem" type="button" data-path="${encodeURIComponent(filePath)}">
-              <span>
-                <span class="arcodeRecentName">${escapeHtml(filenameFromPath(filePath) || filePath)}</span>
-                <span class="arcodeRecentPath">${escapeHtml(filePath)}</span>
-              </span>
-              <span>Open</span>
-            </button>
-          `).join("") : `<div class="arcodeEmpty">No recent files yet.</div>`}
+      <section class="arcodeHomeContent" aria-label="Arcode home content">
+        <div class="arcodeCreateCards" aria-label="Create files">
+          ${renderHomeCreateCards()}
         </div>
       </section>
     </div>
@@ -531,10 +678,9 @@ function renderHome() {
       else updateStatus("Only .py, .sql, and .ipynb files open in Arcode tabs right now.");
     });
   });
-  home.querySelectorAll(".arcodeRecentItem").forEach((button) => {
+  home.querySelectorAll(".arcodeCreateCard").forEach((button) => {
     button.addEventListener("click", () => {
-      const filePath = decodeURIComponent(button.getAttribute("data-path") || "");
-      if (filePath) openCodeTab({ path: filePath });
+      void createHomeFile(button.dataset.createKind || "");
     });
   });
 }
@@ -552,7 +698,6 @@ let tabPointerDrag = null;
 let suppressNextTabClick = false;
 let tabDragEl = null;
 let tabPlaceholderEl = null;
-let tabDropIndicatorEl = null;
 let tabHostPrevStyle = null;
 let tabDragPrevStyle = null;
 let tabDragBaseLeft = 0;
@@ -569,31 +714,6 @@ function consumeSuppressedTabClick(event) {
 
 function codeTabElements() {
   return Array.from($("arcodeTabs")?.querySelectorAll(".arcodeTab[data-tab-id]:not(.arcodeHomeTab):not(.placeholder)") || []);
-}
-
-function ensureTabDropIndicator(host) {
-  if (tabDropIndicatorEl && tabDropIndicatorEl.isConnected) return tabDropIndicatorEl;
-  let el = $("arcodeDropIndicator");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "arcodeDropIndicator";
-    host?.appendChild(el);
-  }
-  tabDropIndicatorEl = el;
-  return el;
-}
-
-function showTabDropIndicator(host, x) {
-  const indicator = ensureTabDropIndicator(host);
-  const rect = host?.getBoundingClientRect?.();
-  if (!indicator || !rect) return;
-  const left = Math.max(0, Math.min(rect.width, x - rect.left));
-  indicator.style.left = `${left}px`;
-  indicator.style.display = "block";
-}
-
-function hideTabDropIndicator() {
-  if (tabDropIndicatorEl) tabDropIndicatorEl.style.display = "none";
 }
 
 function lockTabHostLayout(host) {
@@ -701,12 +821,10 @@ function updateTabReorderDrag(clientX) {
   if (!host || !tabDragEl || !tabPlaceholderEl) return;
   const tabs = codeTabElements().filter((el) => el.dataset.tabId !== tabPointerDrag?.tabId);
   let targetNode = null;
-  let indicatorX = null;
   for (const node of tabs) {
     const rect = node.getBoundingClientRect();
     if (clientX < rect.left + rect.width / 2) {
       targetNode = node;
-      indicatorX = rect.left;
       break;
     }
   }
@@ -717,13 +835,8 @@ function updateTabReorderDrag(clientX) {
   });
   if (targetNode) {
     if (tabPlaceholderEl.nextSibling !== targetNode) host.insertBefore(tabPlaceholderEl, targetNode);
-    showTabDropIndicator(host, indicatorX);
   } else {
-    const insertBeforeNode = $("arcodeDropIndicator");
-    if (tabPlaceholderEl.parentNode !== host || tabPlaceholderEl.nextSibling !== insertBeforeNode) {
-      host.insertBefore(tabPlaceholderEl, insertBeforeNode);
-    }
-    showTabDropIndicator(host, host.getBoundingClientRect().right - 2);
+    if (tabPlaceholderEl.parentNode !== host || tabPlaceholderEl !== host.lastChild) host.appendChild(tabPlaceholderEl);
   }
   const newIndex = Array.from(host.children).indexOf(tabPlaceholderEl);
   if (newIndex !== tabLastPlaceholderIndex) {
@@ -765,7 +878,6 @@ function clearTabPointerDrag({ suppressClick = false } = {}) {
       suppressNextTabClick = false;
     }, 0);
   }
-  hideTabDropIndicator();
   if (tabDragEl) tabDragEl.classList.remove("dragging");
   if (tabPlaceholderEl?.parentNode) tabPlaceholderEl.parentNode.removeChild(tabPlaceholderEl);
   if (tabDragEl && tabDragPrevStyle) {
@@ -845,6 +957,29 @@ function startTabPointerDrag(event, tabId) {
   window.addEventListener("pointercancel", handleTabPointerCancel, true);
 }
 
+function createTabCloseIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "tabCloseIcon");
+  svg.setAttribute("viewBox", "0 0 10 10");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+
+  const lineA = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  lineA.setAttribute("x1", "2.5");
+  lineA.setAttribute("y1", "2.5");
+  lineA.setAttribute("x2", "7.5");
+  lineA.setAttribute("y2", "7.5");
+
+  const lineB = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  lineB.setAttribute("x1", "7.5");
+  lineB.setAttribute("y1", "2.5");
+  lineB.setAttribute("x2", "2.5");
+  lineB.setAttribute("y2", "7.5");
+
+  svg.append(lineA, lineB);
+  return svg;
+}
+
 function renderTabs() {
   const container = $("arcodeTabs");
   if (!container) return;
@@ -878,7 +1013,7 @@ function renderTabs() {
     close.type = "button";
     close.title = "Close";
     close.setAttribute("aria-label", `Close ${tabTitle(tab)}`);
-    close.textContent = "x";
+    close.appendChild(createTabCloseIcon());
     if (tab.dirty) {
       close.classList.add("dirty");
       close.title = "Unsaved changes (close tab)";
@@ -904,7 +1039,6 @@ function renderTabs() {
     });
     container.appendChild(item);
   }
-  ensureTabDropIndicator(container);
   const count = $("arcodeTabCount");
   if (count) {
     count.textContent = state.tabs.length === 1
@@ -951,13 +1085,32 @@ function buildScriptingUrl(tab) {
   return `/ui/arcode/scripting-console/?${params.toString()}`;
 }
 
+function isSnowflakeSqlPath(pathLike) {
+  const name = filenameFromPath(pathLike).toLowerCase();
+  return getPathExtension(pathLike) === ".sql" && (name.includes("snowflake") || name.endsWith(".sf.sql"));
+}
+
+function buildSnowflakeUrl(tab) {
+  const params = new URLSearchParams();
+  params.set("inst", tab.scInst);
+  if (tab.path) params.set("path", tab.path);
+  params.set("v", UI_VERSION_PARAM);
+  return `/ui/arcode/snowflake-console/?${params.toString()}`;
+}
+
+function buildFrameUrl(tab) {
+  return tab.type === "snowflake" ? buildSnowflakeUrl(tab) : buildScriptingUrl(tab);
+}
+
 function createFrameForTab(tab) {
   const iframe = document.createElement("iframe");
   iframe.className = "arcodeFrame";
   iframe.dataset.tabId = tab.id;
-  iframe.src = buildScriptingUrl(tab);
+  iframe.src = buildFrameUrl(tab);
   iframe.addEventListener("load", () => {
-    if (tab.path) {
+    if (tab.path && tab.type === "snowflake") {
+      postToTab(tab, { type: "arcode:snowflake-open-path", path: tab.path });
+    } else if (tab.path) {
       postToTab(tab, { type: "arcode:scripting-open-path", path: tab.path });
     }
     postToTab(tab, { type: "arcode:autosave-toggle", enabled: state.autoSaveEnabled });
@@ -974,6 +1127,7 @@ function openCodeTab(options = {}) {
     ? state.tabs.find((tab) => String(tab.path || "").toLowerCase() === filePath.toLowerCase())
     : null;
   if (existing) {
+    saveRecentFile(filePath);
     setActiveTab(existing.id);
     updateStatus(`Opened ${tabTitle(existing)}.`);
     return existing;
@@ -983,7 +1137,7 @@ function openCodeTab(options = {}) {
   const tab = {
     id,
     title: String(options.title || "").trim() || filenameFromPath(filePath) || "Untitled Notebook",
-    type: "scripting",
+    type: String(options.type || "").trim() || (isSnowflakeSqlPath(filePath) ? "snowflake" : "scripting"),
     path: filePath,
     scInst: `${id}_${Date.now()}`,
     dirty: false,
@@ -1193,6 +1347,38 @@ function setMenuItemDisabled(action, disabled) {
   });
 }
 
+function renderRecentFilesMenu() {
+  const menuItem = $("recentFilesMenuItem");
+  const submenu = $("recentFilesSubmenu");
+  if (!menuItem || !submenu) return;
+  const recentFiles = readRecentFiles();
+  submenu.textContent = "";
+  menuItem.classList.toggle("disabled", recentFiles.length === 0);
+  if (!recentFiles.length) {
+    const empty = document.createElement("div");
+    empty.className = "menuItem disabled";
+    const label = document.createElement("span");
+    label.textContent = "No recent files";
+    empty.appendChild(label);
+    submenu.appendChild(empty);
+    return;
+  }
+  recentFiles.slice(0, 10).forEach((filePath) => {
+    const item = document.createElement("div");
+    item.className = "menuItem";
+    item.dataset.action = "open-recent-file";
+    item.dataset.path = encodeURIComponent(filePath);
+    item.title = filePath;
+
+    const label = document.createElement("span");
+    label.className = "menuPath";
+    label.textContent = filePath;
+
+    item.appendChild(label);
+    submenu.appendChild(item);
+  });
+}
+
 function updateMenuState() {
   const hasTab = !!activeTab();
   const hasPath = !!activeTab()?.path;
@@ -1201,6 +1387,7 @@ function updateMenuState() {
   });
   setMenuItemDisabled("open-file-location", !hasPath);
   setMenuItemDisabled("copy-file-path", !hasPath);
+  renderRecentFilesMenu();
 }
 
 function closeTabsExcept(keepId) {
@@ -1230,7 +1417,7 @@ function reloadActiveTab({ hard = false } = {}) {
   if (hard) {
     tab.forceFresh = false;
     tab.scInst = `${tab.id}_${Date.now()}`;
-    tab.iframe.src = buildScriptingUrl(tab);
+    tab.iframe.src = buildFrameUrl(tab);
   } else {
     tab.iframe.contentWindow?.location?.reload();
   }
@@ -1342,14 +1529,19 @@ function toggleCreateMenu(forceOpen) {
   dropdown.classList.toggle("open", shouldOpen);
   if (shouldOpen) positionMenu(button, dropdown);
 }
-async function runShellAction(action) {
+async function runShellAction(action, detail = {}) {
   if (!action) return;
-  if (action === "new-notebook") return openCodeTab({ forceFresh: true });
   if (action === "create-notebook") return openCodeTab({ forceFresh: true });
   if (action === "create-python") return updateStatus("Python item creation is a placeholder.");
   if (action === "create-mssql") return updateStatus("MSSQL connection item is a placeholder.");
-  if (action === "create-snowflake") return updateStatus("Snowflake connection item is a placeholder.");
+  if (action === "create-snowflake") return createHomeFile("snowflake");
   if (action === "open-file") return openFileDialog();
+  if (action === "recent-files") return;
+  if (action === "open-recent-file") {
+    const filePath = String(detail.path || "").trim();
+    if (filePath) return openCodeTab({ path: filePath });
+    return updateStatus("Recent file path is unavailable.");
+  }
   if (action === "select-folder") return pickWorkspaceFolder({ replace: true });
   if (action === "add-folder") return pickWorkspaceFolder({ replace: false });
   if (action === "save") return sendScriptingCommand("arcode:scripting-save");
@@ -1409,8 +1601,10 @@ function initShellMenus() {
     dropdown.addEventListener("click", (event) => {
       const item = event.target?.closest?.(".menuItem");
       if (!item || item.classList.contains("disabled")) return;
+      if (item.dataset.action === "recent-files") return;
       closeAllShellMenus();
-      void runShellAction(item.dataset.action || "");
+      const path = item.dataset.path ? decodeURIComponent(item.dataset.path) : "";
+      void runShellAction(item.dataset.action || "", { path });
     });
   });
   window.addEventListener("click", () => closeAllShellMenus());
