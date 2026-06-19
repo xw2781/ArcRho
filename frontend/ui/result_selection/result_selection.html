@@ -8,8 +8,16 @@
   <style>
     :root {
       --rs-font: Arial, "Segoe UI", Tahoma, sans-serif;
-      --rs-cell-h: 24px;
+      --rs-table-font-size: 14px;
+      --rs-cell-h: 20px;
+      --rs-header-h: 34px;
+      --rs-header-line-h: 14px;
+      --rs-cell-min-w: 80px;
+      --rs-cell-max-w: 100px;
+      --rs-weight-cell-w: 58px;
       --rs-border: #cfd6df;
+      --rs-grid-border: #f3f1f1;
+      --rs-ultimate-cell: #fff176;
       --rs-header: #eef2f6;
     }
     html, body { height: 100%; }
@@ -22,21 +30,6 @@
       display: flex;
       flex-direction: column;
     }
-    .rsPathBar {
-      flex: 0 0 auto;
-      min-height: 28px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
-      box-sizing: border-box;
-      border-bottom: 1px solid #d8dde3;
-      background: #f3f6fa;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .rsPathSep { color: #64748b; }
     .rsTabBar {
       flex: 0 0 auto;
       display: flex;
@@ -123,6 +116,7 @@
     }
     .rsInput { width: min(100%, 980px); }
     .rsNumber { width: 70px; }
+    .rsOriginLengthSelect { width: 70px; }
     .rsButton {
       height: 28px;
       min-width: 32px;
@@ -135,6 +129,11 @@
     }
     .rsButton:hover:not(:disabled) { background: #e2e8f0; }
     .rsButton:disabled { opacity: 0.55; cursor: default; }
+    .rsToggleButton[aria-pressed="true"] {
+      border-color: #9fb9ff;
+      background: #eaf2ff;
+      color: #0d6efd;
+    }
     .rsBasisPanel {
       grid-column: 2;
       width: min(100%, 960px);
@@ -177,81 +176,223 @@
       color: #334155;
     }
     .rsGridHost {
+      position: relative;
       flex: 1 1 auto;
       min-height: 0;
+      min-width: 0;
       margin-top: 4px;
-      border: 1px solid #b8c2cf;
+      border: 1px solid var(--rs-grid-border);
       overflow: auto;
       background: #fff;
+      box-sizing: border-box;
     }
     .rsGrid {
       border-collapse: separate;
       border-spacing: 0;
       width: max-content;
-      min-width: 100%;
+      min-width: max-content;
       table-layout: fixed;
-      font: 12px var(--rs-font);
+      font-size: var(--rs-table-font-size);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .rsGrid col.rsWeightCol {
+      width: var(--rs-weight-cell-w);
+    }
+    .rsGrid tr {
+      height: var(--rs-cell-h);
     }
     .rsGrid th,
     .rsGrid td {
+      border: 0;
+      border-right: 1px solid var(--rs-grid-border);
+      border-bottom: 1px solid var(--rs-grid-border);
+      max-width: none;
+      min-width: 0;
       height: var(--rs-cell-h);
-      min-width: 92px;
-      max-width: 126px;
-      padding: 0 6px;
-      border-right: 1px solid #e2e8f0;
-      border-bottom: 1px solid #e2e8f0;
+      line-height: var(--rs-cell-h);
+      padding: 0 3px;
       box-sizing: border-box;
       text-align: right;
+      vertical-align: middle;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      user-select: none;
+      -webkit-user-select: none;
     }
     .rsGrid th {
       position: sticky;
       top: 0;
       z-index: 4;
-      min-height: 48px;
-      height: 48px;
-      line-height: 1.15;
-      white-space: normal;
+      min-height: 0;
+      height: var(--rs-header-h);
+      line-height: var(--rs-header-line-h);
+      padding-top: 2px;
+      padding-bottom: 2px;
+      white-space: nowrap;
       text-align: center;
       background: #d9dde2;
       color: #1f2937;
-      font-weight: 700;
+      font-weight: 400;
+      font-size: var(--rs-table-font-size);
+    }
+    .rsHeaderText {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: var(--rs-header-line-h);
+      pointer-events: none;
+    }
+    .rsColumnResizeHandle {
+      position: absolute;
+      top: 0;
+      right: -6px;
+      z-index: 30;
+      width: 13px;
+      height: 100%;
+      cursor: col-resize;
+      touch-action: none;
+    }
+    .rsColumnResizeHandle::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      left: 6px;
+      width: 1px;
+      background: transparent;
+    }
+    .rsGrid th:hover .rsColumnResizeHandle::after,
+    .rsColumnResizeHandle:hover::after {
+      background: #64748b;
+    }
+    .rsResizingColumns,
+    .rsResizingColumns * {
+      cursor: col-resize !important;
+      user-select: none !important;
     }
     .rsGrid th:first-child,
     .rsGrid td:first-child {
       position: sticky;
       left: 0;
       z-index: 3;
-      min-width: 76px;
-      max-width: 76px;
+      min-width: 0;
+      max-width: none;
       background: #e5e7eb;
       color: #111827;
       text-align: center;
-      font-weight: 700;
-      border-left: 1px solid #e2e8f0;
+      border-left: 1px solid var(--rs-grid-border);
     }
+    .rsGrid td.rsOriginCell { font-weight: 400; }
+    .rsGrid th.rsHighlightedColumnLabel,
+    .rsGrid td.rsHighlightedRowLabel { font-weight: 700; }
     .rsGrid th:first-child { z-index: 5; }
     .rsWeightCell,
     .rsGrid th.rsWeightHeader {
-      background: #dff8f8;
+      width: var(--rs-weight-cell-w);
+      min-width: 0;
+      max-width: none;
       color: #64748b;
       font-style: italic;
     }
+    .rsWeightCell {
+      background: #dff8f8;
+    }
+    .rsGrid th.rsWeightHeader {
+      background: #d9dde2;
+    }
+    .rsMethodCell {
+      cursor: cell;
+    }
+    .rsGrid td.rsMethodCell.rsHighlightedCell {
+      background: #30358b;
+      color: #fff;
+    }
+    .rsGrid td.rsMethodCell.rsHighlightedCell input {
+      color: #fff;
+    }
+    .rsGrid td.rsWeightCell.rsHighlightedCell {
+      background: #a8eeee;
+      color: #0284c7;
+    }
+    .rsGrid td.rsWeightCell.rsHighlightedCell input,
+    .rsGrid td.rsWeightCell.rsHighlightedCell .rsWeightPercent {
+      color: #0284c7;
+    }
+    .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightInput,
+    .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightPercent {
+      color: #003fff;
+      font-style: normal;
+    }
+    .rsGrid td.rsWeightCell.rsWeightZero .rsWeightInput,
+    .rsGrid td.rsWeightCell.rsWeightZero .rsWeightPercent {
+      color: #8aa3a9;
+      font-style: italic;
+    }
+    .rsGrid td.rsMethodCell.rsHighlightedUltimateCell {
+      background: var(--rs-ultimate-cell);
+      color: #111827;
+    }
+    .rsGrid td.rsSourceCell.rsSelectedSourceCell {
+      background: #d9e98b;
+      color: #111827;
+    }
+    .rsGrid td.rsSourceCell.rsSelectedSourceCell.rsHighlightedCell {
+      background: #9dcc00;
+      color: #111827;
+    }
+    .rsGrid td.rsMethodCell.rsHighlightAnchorCell {
+      outline: 1px dashed #0f172a;
+      outline-offset: -2px;
+    }
     .rsWeightInput {
-      width: 100%;
-      height: 22px;
+      display: block;
+      width: calc(100% - 1px);
+      height: var(--rs-cell-h);
+      line-height: var(--rs-cell-h);
+      margin: 0;
+      padding: 0 1px 0 0;
       border: 0;
       background: transparent;
       color: #0284c7;
       text-align: right;
-      font: italic 12px var(--rs-font);
+      font-family: var(--rs-font);
+      font-size: var(--rs-table-font-size);
+      font-style: italic;
       outline: none;
+      box-sizing: border-box;
+      caret-color: transparent;
+      cursor: cell;
+      pointer-events: none;
+      user-select: none;
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+    .rsWeightInput::-webkit-outer-spin-button,
+    .rsWeightInput::-webkit-inner-spin-button {
+      margin: 0;
+      -webkit-appearance: none;
+    }
+    .rsWeightPercent {
+      display: block;
+      width: calc(100% - 1px);
+      height: var(--rs-cell-h);
+      line-height: var(--rs-cell-h);
+      padding-right: 1px;
+      overflow: hidden;
+      color: #0284c7;
+      font-family: var(--rs-font);
+      font-size: var(--rs-table-font-size);
+      font-style: italic;
+      text-align: right;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
     }
     .rsUltimateCell,
     .rsGrid th.rsUltimateHeader {
-      background: #fff176;
+      background: var(--rs-ultimate-cell);
       font-weight: 700;
     }
     .rsRatioCell,
@@ -263,18 +404,55 @@
       font-weight: 700;
       background: #f8fafc;
     }
-    .rsSourceHeader {
-      position: relative;
+    .rsSourceHeader .rsHeaderText {
+      display: -webkit-box;
+      max-height: calc(var(--rs-header-line-h) * 2);
+      padding-right: 18px;
+      white-space: normal;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
     .rsSourceRemove {
-      float: right;
-      width: 18px;
-      height: 18px;
+      position: absolute;
+      top: 2px;
+      right: 10px;
+      width: 13px;
+      height: 13px;
       padding: 0;
       border: 1px solid #aab3c2;
       background: #eef2f7;
       cursor: pointer;
-      font-size: 10px;
+      font-size: 8px;
+      line-height: 11px;
+      box-sizing: border-box;
+    }
+    .rsCellContextMenu {
+      position: fixed;
+      z-index: 10000;
+      min-width: 132px;
+      display: none;
+      padding: 4px;
+      border: 1px solid #c9ced5;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      box-sizing: border-box;
+    }
+    .rsCellContextMenu.open {
+      display: block;
+    }
+    .rsCellContextMenu button {
+      width: 100%;
+      height: 24px;
+      border: 0;
+      background: transparent;
+      color: #111827;
+      font: 12px var(--rs-font);
+      text-align: left;
+      cursor: pointer;
+    }
+    .rsCellContextMenu button:hover {
+      background: #eaf2ff;
+      color: #0d6efd;
     }
     .rsSaveBar {
       flex: 0 0 38px;
@@ -405,12 +583,76 @@
       font: 12px var(--rs-font);
     }
     .rsPicker button:hover { background: #edf3ff; }
+    .rsConfirmOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 11000;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 58px;
+      background: rgba(15, 23, 42, 0.08);
+      box-sizing: border-box;
+    }
+    .rsConfirmOverlay[hidden] {
+      display: none;
+    }
+    .rsConfirmBox {
+      position: relative;
+      width: min(380px, calc(100vw - 36px));
+      border: 1px solid #4f6fb3;
+      background: #fff;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+      box-sizing: border-box;
+    }
+    .rsConfirmTitleBar {
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-left: 9px;
+      background: #9b96dc;
+      color: #111827;
+      font: 12px var(--rs-font);
+      box-sizing: border-box;
+    }
+    .rsConfirmClose {
+      width: 34px;
+      height: 26px;
+      border: 0;
+      border-left: 1px solid #6b7280;
+      background: #d65245;
+      color: #000;
+      font: 700 13px var(--rs-font);
+      cursor: pointer;
+    }
+    .rsConfirmMessage {
+      padding: 18px 12px 20px;
+      color: #111827;
+      font: 12px/1.35 var(--rs-font);
+    }
+    .rsConfirmActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 0 12px 12px;
+    }
+    .rsConfirmActions button {
+      min-width: 70px;
+      height: 22px;
+      border: 1px solid #8f98a6;
+      background: #e9e9e9;
+      color: #111827;
+      font: 12px var(--rs-font);
+      cursor: pointer;
+    }
+    .rsConfirmActions button:focus {
+      outline: 1px dotted #111827;
+      outline-offset: -3px;
+    }
   </style>
 </head>
 <body>
-  <div class="rsPathBar">
-    <span id="rsPathProject">-</span><span class="rsPathSep">&gt;</span><span id="rsPathClass">-</span>
-  </div>
   <div class="rsTabBar" id="rsTabBar">
     <button class="rsTab active" data-page="details" type="button">Details</button>
     <button class="rsTab" data-page="method" type="button">Method</button>
@@ -432,7 +674,12 @@
         </div>
         <label for="rsOriginLengthInput">Origin Length</label>
         <div class="rsFieldRow">
-          <input id="rsOriginLengthInput" class="rsNumber" type="number" min="1" step="1" value="12"/>
+          <select id="rsOriginLengthInput" class="rsSelect rsOriginLengthSelect">
+            <option value="12">12</option>
+            <option value="6">6</option>
+            <option value="3">3</option>
+            <option value="1">1</option>
+          </select>
         </div>
         <label>Ratio Basis</label>
         <div class="rsBasisPanel">
@@ -455,6 +702,7 @@
         <div class="rsToolGroup">
           <span class="rsToolTitle">Formatting</span>
           <label><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights</label>
+          <button id="rsToggleWeightsDisplayBtn" class="rsButton rsToggleButton" type="button" aria-pressed="false">Toggle Weights Display</button>
         </div>
         <div class="rsToolGroup">
           <span class="rsToolTitle">Sources</span>
@@ -503,6 +751,24 @@
     <button id="rsCancelBtn" class="rsCancelBtn" type="button" disabled>Cancel</button>
   </div>
   <div id="rsPicker" class="rsPicker" aria-hidden="true"></div>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260617a"></script>
+  <div id="rsCellContextMenu" class="rsCellContextMenu" aria-hidden="true">
+    <button type="button" data-rs-cell-action="copy-values">Copy Values</button>
+  </div>
+  <div id="rsCloseConfirmOverlay" class="rsConfirmOverlay" hidden>
+    <div class="rsConfirmBox" role="dialog" aria-modal="true" aria-labelledby="rsCloseConfirmTitle">
+      <div class="rsConfirmTitleBar">
+        <span id="rsCloseConfirmTitle">arcrho-electron</span>
+        <button id="rsCloseConfirmClose" class="rsConfirmClose" type="button" aria-label="Close">x</button>
+      </div>
+      <div id="rsCloseConfirmMessage" class="rsConfirmMessage">
+        Result Selection has unsaved changes. Close it anyway?
+      </div>
+      <div class="rsConfirmActions">
+        <button id="rsCloseConfirmOk" type="button">OK</button>
+        <button id="rsCloseConfirmCancel" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260618j"></script>
 </body>
 </html>
