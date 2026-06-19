@@ -14,6 +14,7 @@ from . import field_mapping_service
 from . import dfm_rpc_bridge_service
 from . import project_user_preferences_service
 from . import ui_automation_service
+from . import snowflake_service
 
 __all__ = [
     "workflow_service",
@@ -32,4 +33,5 @@ __all__ = [
     "dfm_rpc_bridge_service",
     "project_user_preferences_service",
     "ui_automation_service",
+    "snowflake_service",
 ]

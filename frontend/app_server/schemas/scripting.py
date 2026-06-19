@@ -27,6 +27,28 @@ class ScriptInspectRequest(BaseModel):
     cursor_pos: int
 
 
+class SnowflakeConnectionProfile(BaseModel):
+    name: str = ""
+    account: str = ""
+    user: str = ""
+    authenticator: str = "externalbrowser"
+    role: str = ""
+    warehouse: str = ""
+    database: str = ""
+    schema_name: str = ""
+
+
+class SnowflakeQueryRequest(BaseModel):
+    sql: str
+    connection: str = "my_example_connection"
+    limit: int = 1000
+
+
+class SnowflakeConnectionSaveRequest(BaseModel):
+    connection: str = "my_example_connection"
+    profile: SnowflakeConnectionProfile
+
+
 class ScriptMacroRunRequest(BaseModel):
     macro_id: str
     active_context: Dict[str, Any] = Field(default_factory=dict)

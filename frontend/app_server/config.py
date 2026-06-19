@@ -62,6 +62,7 @@ def _get_user_appdata_dir() -> str:
 
 
 WORKSPACE_PATHS_PATH = os.path.join(_get_user_appdata_dir(), "workspace_paths.json")
+SNOWFLAKE_CONNECTIONS_PATH = os.path.join(_get_user_appdata_dir(), "snowflake_connections.json")
 
 
 def workspace_paths_file_exists() -> bool:

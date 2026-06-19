@@ -17,6 +17,7 @@ from .dfm_rpc_bridge_router import router as dfm_rpc_bridge_router
 from .dfm_method_index_router import router as dfm_method_index_router
 from .project_user_preferences_router import router as project_user_preferences_router
 from .ui_automation_router import router as ui_automation_router
+from .snowflake_router import router as snowflake_router
 
 __all__ = [
     "workflow_router",
@@ -38,4 +39,5 @@ __all__ = [
     "dfm_method_index_router",
     "project_user_preferences_router",
     "ui_automation_router",
+    "snowflake_router",
 ]
