@@ -38,25 +38,23 @@ import { wireNotesInput } from "/ui/dfm/dfm_notes_tab.js";
 import {
   syncMethodNameFromInputs,
   syncOutputTypeFromProject,
-  updatePathBar,
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/dfm/dfm_details.js?v=20260616a";
+} from "/ui/dfm/dfm_details.js?v=20260618a";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
   restoreCleanDfmMethodState,
   recordCurrentDfmCleanState,
   saveDfmTemplate,
-  loadDfmTemplate,
   applyDfmMethodPayload,
   buildDfmAssistantContextPayload,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
 } from "/ui/dfm/dfm_persistence.js?v=20260616d";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
-import { wireDfmRpcBridgePathBar } from "/ui/dfm/dfm_rpc_bridge_pathbar.js?v=20260616a";
+import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260618a";
 import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260616a";
 import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js";
 import {
@@ -97,7 +95,6 @@ function refreshDfmTabContent(reason = "") {
   renderResultsTable();
   syncMethodNameFromInputs();
   syncOutputTypeFromProject();
-  updatePathBar();
   if (!getDfmIsDirty()) {
     scheduleRatioSelectionLoad(reason || "dfm-refresh");
   }
@@ -449,18 +446,14 @@ export function initDfmRatios() {
   notifyDfmEditState();
   syncMethodNameFromInputs();
   syncOutputTypeFromProject();
-  updatePathBar();
-  wireDfmRpcBridgePathBar();
+  wireDfmRpcBridgeTabBar();
   setTimeout(() => {
     syncOutputTypeFromProject();
-    updatePathBar();
   }, 500);
 
-  document.getElementById("loadDfmSettingsBtn")?.addEventListener("click", () => loadDfmTemplate());
   window.addEventListener("arcrho:workflow-defaults-updated", () => {
     syncMethodNameFromInputs();
     syncOutputTypeFromProject();
-    updatePathBar();
   });
   wireRatioSyncChannel();
   requestRatioStateSync();
@@ -495,7 +488,6 @@ export function initDfmRatios() {
     if (_urlInputTriangle && triEl) triEl.value = _urlInputTriangle;
     syncMethodNameFromInputs();
     syncOutputTypeFromProject({ forceReload: true });
-    updatePathBar();
   }
   refreshDfmTabContent("dfm-open");
   recordCurrentDfmCleanState();
@@ -528,7 +520,6 @@ export function initDfmRatios() {
       if (!inputSnap.defaults?.projectDefault && !inputSnap.defaults?.reservingClassDefault) return;
       syncMethodNameFromInputs();
       syncOutputTypeFromProject({ forceReload: true });
-      updatePathBar();
       scheduleRatioSelectionLoad("global-changed");
       return;
     }

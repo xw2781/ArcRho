@@ -843,6 +843,58 @@ export function wireRatioStrikeToggle() {
 export function wireDfmSpinnerControls() {
   const spinners = Array.from(document.querySelectorAll(".dfmSpinner"));
   if (!spinners.length) return;
+  let openSelectMenu = null;
+  const closeSelectMenu = () => {
+    const menu = openSelectMenu;
+    openSelectMenu = null;
+    if (!menu) return;
+    menu.closest(".dfmSpinner")?.classList.remove("dfmSelectOpen");
+    menu.remove();
+  };
+  const toggleSelectMenu = (selectEl, spinner) => {
+    if (!selectEl || !spinner) return;
+    if (openSelectMenu?.closest(".dfmSpinner") === spinner) {
+      closeSelectMenu();
+      return;
+    }
+    closeSelectMenu();
+    const menu = document.createElement("div");
+    menu.className = "dfmSelectMenu";
+    menu.setAttribute("role", "listbox");
+    Array.from(selectEl.options || []).forEach((option, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "dfmSelectMenuOption";
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", index === selectEl.selectedIndex ? "true" : "false");
+      if (index === selectEl.selectedIndex) item.classList.add("active");
+      item.textContent = option.textContent || option.value || "";
+      item.addEventListener("mousedown", (e) => e.preventDefault());
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (selectEl.selectedIndex !== index) {
+          selectEl.selectedIndex = index;
+          selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        closeSelectMenu();
+        selectEl.focus();
+      });
+      menu.appendChild(item);
+    });
+    spinner.appendChild(menu);
+    spinner.classList.add("dfmSelectOpen");
+    openSelectMenu = menu;
+  };
+  if (document.body?.dataset.dfmSelectDropdownWired !== "1") {
+    document.body.dataset.dfmSelectDropdownWired = "1";
+    document.addEventListener("mousedown", (e) => {
+      if (!e.target?.closest?.(".dfmSpinner")) closeSelectMenu();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeSelectMenu();
+    });
+  }
   const bumpSelect = (selectEl, delta) => {
     if (!selectEl || !selectEl.options?.length) return;
     const maxIdx = selectEl.options.length - 1;
@@ -900,13 +952,33 @@ export function wireDfmSpinnerControls() {
     upBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      closeSelectMenu();
       bump(1);
     });
     downBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      closeSelectMenu();
       bump(-1);
     });
+    if (control.tagName?.toLowerCase() === "select") {
+      control.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        toggleSelectMenu(control, spinner);
+      });
+      control.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      control.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          toggleSelectMenu(control, spinner);
+        }
+      });
+    }
   });
 
   const decimalInput = document.getElementById("decimalPlaces");
@@ -927,6 +999,7 @@ export function wireDfmSpinnerControls() {
       }
       if (isRatioChartOpen()) scheduleRatioChartRender();
     };
+    decimalInput.addEventListener("input", applyDecimalPlaces);
     decimalInput.addEventListener("change", applyDecimalPlaces);
     decimalInput.addEventListener("blur", applyDecimalPlaces);
   }

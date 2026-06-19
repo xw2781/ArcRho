@@ -5,11 +5,27 @@ import { $ } from "/ui/shared/dom.js";
 import { openContextMenu } from "/ui/shared/menu_utils.js";
 import { renderChart as renderChartCanvas, setupChartHover } from "/ui/dataset/dataset_chart.js";
 import {
+  clampDatasetDecimalPlaces,
   formatDatasetNumberValue,
   normalizeDatasetNumberFormat,
 } from "/ui/dataset/dataset_number_format.js";
 
 let ctxMenuWired = false;
+let renderNumberFormatSettings = null;
+
+function normalizeRenderNumberFormatSettings(settings = null) {
+  if (!settings || typeof settings !== "object") return null;
+  return {
+    numberFormat: normalizeDatasetNumberFormat(
+      settings.number_format ?? settings.numberFormat ?? settings.num_format,
+    ),
+    decimalPlaces: clampDatasetDecimalPlaces(settings.decimal_places ?? settings.decimalPlaces),
+  };
+}
+
+export function setDatasetRenderNumberFormatSettings(settings = null) {
+  renderNumberFormatSettings = normalizeRenderNumberFormatSettings(settings);
+}
 
 // --- keyboard focus sink: make sure this document receives keydown after clicking a cell ---
 function ensureKeySink() {
@@ -133,6 +149,8 @@ function hideCtxMenu() {
 }
 
 function getDecimalPlaces() {
+  if (renderNumberFormatSettings) return renderNumberFormatSettings.decimalPlaces;
+  if (!document.getElementById("numberFormatSelect")) return 1;
   const el = document.getElementById("decimalPlaces");
   const n = parseInt(el?.value, 10);
   if (!Number.isFinite(n)) return 1;
@@ -140,7 +158,9 @@ function getDecimalPlaces() {
 }
 
 function getNumberFormatPattern() {
-  return normalizeDatasetNumberFormat(document.getElementById("numberFormatSelect")?.value);
+  if (renderNumberFormatSettings) return renderNumberFormatSettings.numberFormat;
+  const input = document.getElementById("numberFormatSelect");
+  return input ? normalizeDatasetNumberFormat(input.value) : "";
 }
 
 function getPercentDecimalPlaces() {

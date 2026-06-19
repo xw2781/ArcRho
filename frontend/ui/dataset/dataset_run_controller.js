@@ -389,13 +389,17 @@ export function createDatasetRunController(deps) {
       state.model.dev_labels = state.devHeaderLabels.map(String);
     }
 
+    if (window.ADA_DFM_CONTEXT && typeof syncSidecarForCurrentDataset === "function") {
+      await syncSidecarForCurrentDataset({ applyLengths: false, forceReload: true });
+    }
+
     renderTable();
     notifyDatasetUpdated();
     applyGridSelectionFromState();
     if (typeof syncNotesForCurrentDataset === "function") {
       await syncNotesForCurrentDataset();
     }
-    if (typeof syncSidecarForCurrentDataset === "function") {
+    if (!window.ADA_DFM_CONTEXT && typeof syncSidecarForCurrentDataset === "function") {
       await syncSidecarForCurrentDataset({ applyLengths: false, forceReload: true });
     }
 

@@ -92,10 +92,11 @@
     ========================= */
     #dsDetailsPage {
       max-width: 100%;
+      overflow: auto;
     }
 
     #topFrame{
-      width: min(100%, 860px);
+      width: 100%;
       margin: 0 0 12px;
       border: 1px solid #d9dee8;
       border-radius: 8px;
@@ -113,7 +114,7 @@
 
     .topField {
       display: grid;
-      grid-template-columns: 120px minmax(280px, 1fr);
+      grid-template-columns: 120px minmax(0, 1fr);
       column-gap: 14px;
       align-items: center;
     }
@@ -130,7 +131,7 @@
 
     .topField input,
     .topField select{
-      width: min(100%, 420px);
+      width: min(100%, 560px);
       height: 30px;
       line-height: 30px;
       padding: 0 10px;
@@ -152,7 +153,7 @@
     .datasetSelectWrap,
     .reservingClassWrap{
       position: relative;
-      width: min(100%, 420px);
+      width: min(100%, 560px);
     }
 
     .reservingClassWrap #pathInput{
@@ -169,7 +170,7 @@
 
     .dsDetailNameWrap {
       position: relative;
-      width: min(100%, 420px);
+      width: min(100%, 560px);
       max-width: 100%;
     }
 
@@ -467,7 +468,7 @@
       padding: 0 10px 0 7px;
       border: 1px solid #d6dbe2;
       border-radius: 6px;
-      background: #f8fafc;
+      background: transparent;
       box-sizing: border-box;
     }
 
@@ -673,7 +674,7 @@
       position: absolute;
       left: 50%;
       top: 50%;
-      width: 12px;
+      width: 22px;
       height: 12px;
       transform: translate(-50%, -50%);
       display: block;
@@ -1314,6 +1315,10 @@
     #dsDataPage[style*="display: block"] {
       display: flex !important;
     }
+    #dsChartPage[style*="display: block"] {
+      display: flex !important;
+      flex-direction: column;
+    }
     #dsDataPage #triPanel {
       padding: 0;
       border-radius: 0;
@@ -1343,6 +1348,22 @@
     #dsChartPage .panel {
       border: none;
       border-radius: 0;
+    }
+    #dsChartPage[style*="display: block"] .right {
+      flex: 1 1 auto;
+      width: 100%;
+      min-height: 0;
+      min-width: 0;
+      align-items: stretch;
+    }
+    #dsChartPage[style*="display: block"] #chartPanel {
+      flex: 1 1 auto;
+      width: 100%;
+      height: auto;
+      min-height: 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
     }
     #dsDataPage.dsTabFloatingPage {
       padding-bottom: 3px;
@@ -1921,7 +1942,7 @@
       Details Tab Fields
     ========================= */
     .dsDetailsPanel {
-      width: min(100%, 860px);
+      width: 100%;
       border: 1px solid #d9dee8;
       border-radius: 8px;
       background: #fbfcff;
@@ -1930,7 +1951,7 @@
     }
     .dsDetailsGrid {
       display: grid;
-      grid-template-columns: 120px minmax(280px, 1fr);
+      grid-template-columns: 120px minmax(0, 1fr);
       column-gap: 14px;
       row-gap: 10px;
       align-items: center;
@@ -1952,7 +1973,7 @@
     .dsDetailInput input,
     .dsDetailInput select,
     .dsDetailInput textarea {
-      width: min(100%, 420px);
+      width: min(100%, 560px);
       height: 30px;
       line-height: 30px;
       padding: 0 10px;
@@ -1983,37 +2004,6 @@
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
-    @media (max-width: 760px) {
-      .topField {
-        grid-template-columns: 1fr;
-        row-gap: 6px;
-      }
-      .topField label {
-        text-align: left;
-        padding-right: 0;
-      }
-      .projectSelectWrap,
-      .datasetSelectWrap,
-      .reservingClassWrap,
-      .topField input,
-      .topField select {
-        width: 100%;
-      }
-      .dsDetailsGrid {
-        grid-template-columns: 1fr;
-        row-gap: 6px;
-      }
-      .dsDetailLabel {
-        text-align: left;
-        padding-right: 0;
-      }
-      .dsDetailInput input,
-      .dsDetailInput select,
-      .dsDetailInput textarea {
-        width: 100%;
-      }
-    }
-
     /* =========================
       Context Menu
     ========================= */

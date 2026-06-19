@@ -192,6 +192,16 @@ function mergeCachedDatasetMetadata(existing, item) {
     meta.formula = formula;
     meta._formulaModifiedTs = lastModifiedTs;
   }
+
+  const originLength = Number(item?.origin_length);
+  if (Number.isFinite(originLength) && originLength > 0 && (!meta.originLength || lastModifiedTs >= (meta._originLengthModifiedTs || 0))) {
+    meta.originLength = Math.trunc(originLength);
+    meta._originLengthModifiedTs = lastModifiedTs;
+  }
+  if (Array.isArray(item?.origin_labels) && item.origin_labels.length && (!meta.originLabels?.length || lastModifiedTs >= (meta._originLabelsModifiedTs || 0))) {
+    meta.originLabels = item.origin_labels.map((label) => String(label));
+    meta._originLabelsModifiedTs = lastModifiedTs;
+  }
   return meta;
 }
 

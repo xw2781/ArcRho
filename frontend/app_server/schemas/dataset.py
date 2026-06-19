@@ -54,6 +54,7 @@ class DatasetSidecarSaveRequest(BaseModel):
     calendar: bool = False
     number_format: str = ""
     decimal_places: int = Field(1, ge=0, le=6)
+    origin_labels: Optional[List[str]] = None
     csv_file: str = ""
 
 

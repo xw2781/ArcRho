@@ -101,6 +101,12 @@ def _normalize_decimal_places(value: Any) -> int:
     return max(0, min(6, n))
 
 
+def _normalize_origin_labels(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
+
+
 DATASET_AUDIT_LOG_MAX_ENTRIES = 50
 
 
@@ -581,6 +587,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "instance_name": str(payload.get("dataset_name") or ds),
         "origin_length": payload.get("origin_length"),
         "development_length": payload.get("development_length"),
+        "origin_labels": _normalize_origin_labels(payload.get("origin_labels")),
         "cumulative": payload.get("cumulative"),
         "transposed": payload.get("transposed"),
         "calendar": payload.get("calendar"),
@@ -662,6 +669,7 @@ def load_cached_dataset_values(project_name: str, reserving_class: str, dataset_
         "data_format": str(sidecar.get("data_format") or ""),
         "origin_length": _int_or_default(sidecar.get("origin_length"), max(1, len(values))),
         "development_length": _int_or_default(sidecar.get("development_length"), max(1, len(values[0]) if values else 1)),
+        "origin_labels": _normalize_origin_labels(sidecar.get("origin_labels")),
         "csv_file": os.path.basename(csv_path),
         "path": csv_path,
         "sidecar_path": sidecar_path,
@@ -685,6 +693,7 @@ def save_dataset_sidecar(
     calendar: bool = False,
     number_format: str = "",
     decimal_places: int = 1,
+    origin_labels: List[str] | None = None,
     csv_file: str = "",
 ) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
@@ -731,6 +740,8 @@ def save_dataset_sidecar(
         "modified_by": user_name,
         "updated_at": updated_at,
     }
+    if origin_labels is not None:
+        payload["origin_labels"] = _normalize_origin_labels(origin_labels)
     _append_dataset_audit_entry(payload, action_value, event_date=updated_at, user_name=user_name)
     payload.pop("instance_name", None)
     payload.pop("dataset_type_name", None)
@@ -757,6 +768,7 @@ def save_dataset_sidecar(
         "instance_name": ds,
         "origin_length": payload["origin_length"],
         "development_length": payload["development_length"],
+        "origin_labels": _normalize_origin_labels(payload.get("origin_labels")),
         "cumulative": payload["cumulative"],
         "transposed": payload["transposed"],
         "calendar": payload["calendar"],

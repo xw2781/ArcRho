@@ -767,6 +767,7 @@ function openResultSelectionTabForDataset(record) {
     methodType: getDatasetRecordValue(record, "methodType"),
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
+    originLength: Number(record?.meta?.originLength) || undefined,
   });
 }
 
@@ -826,7 +827,7 @@ function addResultSelectionForDataset(record) {
     methodType: "Result Selection",
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
-    originLength: 12,
+    originLength: Number(record?.meta?.originLength) || undefined,
   });
   setStatus(`Opened Result Selection for ${datasetName}.`);
 }
@@ -1478,6 +1479,34 @@ function positionFixedMenu(el, x, y) {
   el.style.top = `${Math.round(top)}px`;
 }
 
+function positionContextSubmenus(menu) {
+  if (!menu) return;
+  const pad = 8;
+  for (const submenu of menu.querySelectorAll(".pi-context-submenu")) {
+    const panel = Array.from(submenu.children).find((child) => child.classList?.contains("pi-context-submenu-menu"));
+    if (!panel) continue;
+    panel.style.left = "";
+    panel.style.top = "";
+    panel.style.visibility = "hidden";
+    panel.style.display = "block";
+    const triggerRect = submenu.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    panel.style.display = "";
+    panel.style.visibility = "";
+
+    const maxLeft = Math.max(pad, window.innerWidth - panelRect.width - pad);
+    const preferredLeft = triggerRect.right + 4;
+    const flippedLeft = triggerRect.left - panelRect.width - 4;
+    const viewportLeft = preferredLeft <= maxLeft || flippedLeft < pad
+      ? Math.min(preferredLeft, maxLeft)
+      : flippedLeft;
+    const maxTop = Math.max(pad, window.innerHeight - panelRect.height - pad);
+    const viewportTop = Math.max(pad, Math.min(triggerRect.top - 4, maxTop));
+    panel.style.left = `${Math.round(viewportLeft - triggerRect.left)}px`;
+    panel.style.top = `${Math.round(viewportTop - triggerRect.top)}px`;
+  }
+}
+
 function closeDatasetTableContextMenu() {
   els.datasetTableContextMenu?.classList?.remove("open");
   els.datasetTableContextMenu?.setAttribute("aria-hidden", "true");
@@ -1508,6 +1537,7 @@ function showDatasetTableContextMenu(x, y) {
   menu.classList.add("open");
   menu.setAttribute("aria-hidden", "false");
   positionFixedMenu(menu, x, y);
+  positionContextSubmenus(menu);
 }
 
 function showDatasetGroupContextMenu(groupId, x, y) {
@@ -1552,6 +1582,7 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
   menu.classList.add("open");
   menu.setAttribute("aria-hidden", "false");
   positionFixedMenu(menu, x, y);
+  positionContextSubmenus(menu);
 }
 
 function canShowDatasetEmptyAddContextMenu() {

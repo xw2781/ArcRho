@@ -29,21 +29,6 @@
       margin: 0;
       overflow: hidden;
     }
-    .dfmPathBar {
-      padding: 6px 10px;
-      font-size: 13px;
-      color: #555;
-      background: #f9f9f9;
-      border-bottom: 1px solid #e0e0e0;
-      flex-shrink: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .dfmPathBar .pathSep {
-      margin: 0 6px;
-      color: #999;
-    }
     .dfmTabBar {
       display: flex;
       gap: 0;
@@ -469,13 +454,6 @@
       flex-direction: column;
       gap: 10px;
     }
-    .dfmDetailsPageActions {
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      margin-top: 14px;
-      padding-right: 3px;
-    }
     .dfmFormGrid {
       display: grid;
       grid-template-columns: 170px minmax(0, 1fr);
@@ -485,7 +463,7 @@
     }
     .dfmFormGrid3 {
       display: grid;
-      grid-template-columns: 170px 450px minmax(0, 1fr);
+      grid-template-columns: 170px 560px minmax(0, 1fr);
       column-gap: 14px;
       row-gap: 10px;
       align-items: center;
@@ -545,7 +523,7 @@
     .dfmFormField .reservingClassWrap,
     .dfmFormField .dfmMethodNameWrap,
     .dfmFormField .dfmOutputVectorWrap {
-      width: 450px;
+      width: 560px;
       max-width: 100%;
     }
     #projectSelect,
@@ -553,7 +531,7 @@
     #pathInput,
     #triInput,
     #dfmOutputVector {
-      width: 450px;
+      width: 560px;
       max-width: 100%;
     }
     #projectSelect,
@@ -585,6 +563,7 @@
     #decimalPlaces {
       width: 100%;
       max-width: 100%;
+      text-align: left;
     }
     .dfmSpinner {
       position: relative;
@@ -640,6 +619,43 @@
     }
     .dfmSpinBtn:hover {
       background-color: #eeeeee;
+    }
+    .dfmSpinner.dfmSelectOpen {
+      z-index: 40;
+    }
+    .dfmSelectMenu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 45;
+      padding: 3px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #ffffff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    }
+    .dfmSelectMenuOption {
+      display: block;
+      width: 100%;
+      height: 25px;
+      border: none;
+      border-radius: 5px;
+      padding: 0 10px;
+      background: transparent;
+      color: #1f2937;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .dfmSelectMenuOption:hover,
+    .dfmSelectMenuOption:focus {
+      outline: none;
+      background: #eef4ff;
+    }
+    .dfmSelectMenuOption.active {
+      background: #2b6df6;
+      color: #ffffff;
     }
     .dfmActionBtn {
       height: 30px;
@@ -1626,9 +1642,6 @@
 </head>
 
 <body>
-  <div class="dfmPathBar" id="dfmPathBar">
-    <span id="dfmPathProject">-</span><span class="pathSep">&gt;</span><span id="dfmPathClass">-</span>
-  </div>
   <div class="dfmTabBar">
     <button class="dfmTab active" data-page="details" type="button">Details</button>
     <button class="dfmTab" data-page="data" type="button">Data</button>
@@ -1734,9 +1747,6 @@
         <input id="linkLenChk" type="checkbox" style="display:none;" />
         <input type="radio" name="timeMode" value="development" checked style="display:none;" />
       </div>
-    </div>
-    <div class="dfmDetailsPageActions">
-      <button class="dfmActionBtn" id="loadDfmSettingsBtn" type="button">Load Settings From Template</button>
     </div>
     <div class="dfmHiddenControls" style="display:none;">
       <button id="reloadBtn" type="button">Reload</button>
@@ -2004,7 +2014,7 @@
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/dfm/dfm_main.js?v=20260616h");
+      await import("/ui/dfm/dfm_main.js?v=20260618a");
     })();
   </script>
 </body>

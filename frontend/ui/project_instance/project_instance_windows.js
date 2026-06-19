@@ -950,7 +950,7 @@ function openDfmWindow(datasetName, options = {}) {
   const inst = `pi_dfm_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "dfm",
-    name: `DFM: ${name}`,
+    name,
     itemName: name,
     title,
     windowKey,
@@ -973,7 +973,7 @@ function openResultSelectionWindow(datasetName, options = {}) {
   const inst = `pi_rs_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "result_selection",
-    name: `RS: ${name}`,
+    name,
     itemName: name,
     title,
     windowKey,

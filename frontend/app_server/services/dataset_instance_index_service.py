@@ -14,7 +14,7 @@ from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 9
+INDEX_VERSION = 10
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
 
@@ -274,6 +274,19 @@ def _file_dataset_names(item: Dict[str, Any]) -> Set[str]:
     return names
 
 
+def _logical_file_dataset_names(item: Dict[str, Any]) -> Set[str]:
+    names: Set[str] = set()
+    _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get("dataset_name")))
+    if names:
+        return names
+    for value in item.get("dataset_names") or []:
+        _add_cached_dataset_name(names, _normalize_cached_dataset_name(value))
+    if names:
+        return names
+    _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get("name")))
+    return names
+
+
 def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
     last_modified_ts = _numeric_timestamp(source.get("last_modified_timestamp") or source.get("mtime"))
     if last_modified_ts and last_modified_ts >= _numeric_timestamp(existing.get("last_modified_timestamp")):
@@ -319,7 +332,7 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
     method_types = _method_type_by_name(methods)
 
     for item in files:
-        for dataset_name in _file_dataset_names(item):
+        for dataset_name in _logical_file_dataset_names(item):
             key = dataset_name.lower()
             display_names.setdefault(key, dataset_name)
             logical = by_name.get(key)
@@ -431,6 +444,9 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 file_info["csv_file"] = _clean_text(metadata.get("csv_file"))
                 file_info["source_kind"] = _clean_text(metadata.get("source_kind"))
                 file_info["data_format"] = _clean_text(metadata.get("data_format"))
+                file_info["origin_length"] = metadata.get("origin_length")
+                if isinstance(metadata.get("origin_labels"), list):
+                    file_info["origin_labels"] = [str(item) for item in metadata.get("origin_labels")]
                 file_info["editable"] = metadata.get("editable")
                 file_info["generated"] = metadata.get("generated")
                 file_info["calculated"] = metadata.get("calculated")

@@ -446,7 +446,6 @@ function applyLastReservingClassPathFromProjectPrefs(prefs, options = {}) {
   if (!path) return false;
   if (toText(input.value) === path) return false;
   input.value = path;
-  updatePathBar();
   return true;
 }
 
@@ -639,16 +638,6 @@ export function syncMethodNameFromInputs() {
   updateAppTabTitle(next || getDefaultMethodName());
 }
 
-export function updatePathBar() {
-  const projectEl = document.getElementById("dfmPathProject");
-  const classEl = document.getElementById("dfmPathClass");
-  if (!projectEl || !classEl) return;
-  const project = document.getElementById("projectSelect")?.value?.trim() || "-";
-  const reservingClass = document.getElementById("pathInput")?.value?.trim() || "-";
-  projectEl.textContent = project;
-  classEl.textContent = reservingClass;
-}
-
 export function wireMethodName() {
   const input = document.getElementById("dfmMethodName");
   if (!input || input.dataset.wired === "1") return;
@@ -692,16 +681,12 @@ export function wireMethodName() {
   originLen?.addEventListener("change", syncMethodNameFromInputs);
   devLen?.addEventListener("change", syncMethodNameFromInputs);
 
-  projectInput?.addEventListener("change", updatePathBar);
-  projectInput?.addEventListener("input", updatePathBar);
   projectInput?.addEventListener("change", () => {
     commitSelectedDfmProject(projectInput.value);
   });
   projectInput?.addEventListener("arcrho:project-selected", (event) => {
     commitSelectedDfmProject(event?.detail?.projectName || projectInput.value);
   });
-  pathInput?.addEventListener("change", updatePathBar);
-  pathInput?.addEventListener("input", updatePathBar);
   pathInput?.addEventListener("change", saveLastReservingClassPathForCurrentProject);
 
   const markDirtyOnChange = () => markDfmDirty();
@@ -719,7 +704,6 @@ export function wireMethodName() {
   wireDfmMethodNamePicker();
   wireOutputTypePicker();
   wireTriangleTypePicker();
-  updatePathBar();
   void applyLastLocalProjectNameIfBlank();
 }
 

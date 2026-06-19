@@ -6,6 +6,25 @@ import {
   normalizeDatasetNumberFormat,
 } from "/ui/dataset/dataset_number_format.js";
 
+function wireChartPanelResize(redrawChartSafely) {
+  const panel = document.getElementById("chartPanel");
+  if (!panel || typeof ResizeObserver !== "function") return;
+  if (panel.__datasetChartResizeObserver) return;
+
+  let resizeFrame = 0;
+  const scheduleRedraw = () => {
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      redrawChartSafely();
+    });
+  };
+
+  const observer = new ResizeObserver(scheduleRedraw);
+  observer.observe(panel);
+  panel.__datasetChartResizeObserver = observer;
+}
+
 export function wireDatasetInputController(deps) {
   const {
     state,
@@ -226,7 +245,7 @@ export function wireDatasetInputController(deps) {
     }
   }
 
-  if (dec) {
+  if (dec && numberFormatSelect) {
     dec.addEventListener("change", () => {
       syncNumberFormatFromDecimalPlaces();
       refreshNumberDisplaySettings();
@@ -533,6 +552,7 @@ export function wireDatasetInputController(deps) {
   if (devSel) {
     devSel.addEventListener("change", async () => {
       syncLen("dev");
+      enforceDevLenRule({ source: "dev" });
       saveTriInputsToStorage();
 
       const project = getResolvedProjectValue();
@@ -572,6 +592,7 @@ export function wireDatasetInputController(deps) {
   window.addEventListener("resize", () => {
     requestAnimationFrame(redrawChartSafely);
   });
+  wireChartPanelResize(redrawChartSafely);
 
   wireDatasetHostBridge({
     getTriInputsForStorage,

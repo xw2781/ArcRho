@@ -11,7 +11,13 @@ import {
   saveDatasetNotes,
   saveDatasetSidecar,
 } from "/ui/shared/api.js";
-import { renderTable, renderActiveCellUI, renderChart, redrawChartSafely} from "/ui/dataset/dataset_render.js";
+import {
+  renderTable,
+  renderActiveCellUI,
+  renderChart,
+  redrawChartSafely,
+  setDatasetRenderNumberFormatSettings,
+} from "/ui/dataset/dataset_render.js";
 import { createTabbedPage } from "/ui/shared/tabbed_page.js";
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { createDatasetDependencyGuard } from "/ui/dataset/dataset_dependency_guard.js";
@@ -307,6 +313,18 @@ function normalizeDatasetAuditLog(value) {
     .slice(-50);
 }
 
+function formatDatasetAuditEventDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  const hours = date.getHours();
+  const hour12 = hours % 12 || 12;
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const pad2 = (n) => String(n).padStart(2, "0");
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} ${hour12}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())} ${ampm}`;
+}
+
 function renderDatasetAuditLog(entries = []) {
   const body = document.getElementById("datasetAuditLogBody");
   const empty = document.getElementById("datasetAuditLogEmpty");
@@ -315,7 +333,7 @@ function renderDatasetAuditLog(entries = []) {
   body.replaceChildren();
   for (const entry of rows) {
     const tr = document.createElement("tr");
-    for (const value of [entry.eventDate, entry.action, entry.changeInfo, entry.user]) {
+    for (const value of [formatDatasetAuditEventDate(entry.eventDate), entry.action, entry.changeInfo, entry.user]) {
       const td = document.createElement("td");
       td.textContent = value;
       td.title = value;
@@ -2104,6 +2122,7 @@ function hideDatasetLoadingPopup() {
 }
 
 function getTriInputs() {
+  enforceDevLenRule();
   const project = getResolvedProjectValue();
   const path = getResolvedReservingClassValue();
   const tri = (document.getElementById("triInput")?.value || "").trim();
@@ -2203,6 +2222,7 @@ datasetDependencyGuard = createDatasetDependencyGuard({
 });
 
 function getTriInputsForStorage() {
+  enforceDevLenRule();
   const projectInput = document.getElementById("projectSelect");
   const pathInput = document.getElementById("pathInput");
   const tri = (document.getElementById("triInput")?.value || "").trim();
@@ -2376,6 +2396,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
   sidecarContextPayload = hasDatasetSidecarContext(context) ? context : null;
   sidecarContextKey = key;
   if (!key) {
+    if (window.ADA_DFM_CONTEXT) setDatasetRenderNumberFormatSettings(null);
     isSidecarReadOnlyDataset = false;
     lastSavedDatasetSettings = null;
     datasetSettingsDirty = false;
@@ -2388,6 +2409,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
   const resp = await loadDatasetSidecar(context);
   if (nonce !== sidecarSyncNonce) return false;
   if (!resp.ok) {
+    if (window.ADA_DFM_CONTEXT) setDatasetRenderNumberFormatSettings(null);
     setStatus(`Dataset settings load failed: ${resp?.data?.detail || "Unknown error."}`);
     lastSavedDatasetSettings = normalizeDatasetSettings(getCurrentDatasetSettings());
     datasetSettingsDirty = false;
@@ -2417,6 +2439,9 @@ async function syncSidecarForCurrentDataset(options = {}) {
   const settings = data.exists
     ? normalizeDatasetSettings(data)
     : normalizeDatasetSettings(getCurrentDatasetSettings());
+  if (window.ADA_DFM_CONTEXT) {
+    setDatasetRenderNumberFormatSettings(data.exists ? settings : null);
+  }
   lastSavedDatasetSettings = settings;
   if (options?.applyLengths !== false && data.exists) {
     applyDatasetSettingsToControls(settings);
@@ -3110,13 +3135,25 @@ function getValidDevelopmentLengthForOrigin(origin, currentDev) {
   return String(candidates[0]);
 }
 
+function getValidOriginLengthForDevelopment(dev, currentOrigin) {
+  if (!Number.isFinite(dev) || dev <= 0) return "";
+  const originSelect = document.getElementById("originLenSelect");
+  const candidates = Array.from(originSelect?.options || [])
+    .map((opt) => Number.parseInt(String(opt.value || opt.textContent || ""), 10))
+    .filter((value) => Number.isFinite(value) && value > 0 && value >= dev && value % dev === 0)
+    .sort((a, b) => a - b);
+  if (!candidates.length) return "";
+  if (Number.isFinite(currentOrigin) && candidates.includes(currentOrigin)) return String(currentOrigin);
+  return String(candidates[0]);
+}
+
 function enforceDevLenRule(options = {}) {
-  if (options?.source !== "origin") return false;
+  const source = String(options?.source || "auto");
   const o = document.getElementById("originLenSelect");
   const d = document.getElementById("devLenSelect");
   if (!o || !d) return false;
 
-  const origin = parseInt(o.value, 10);
+  let origin = parseInt(o.value, 10);
   let dev = parseInt(d.value, 10);
 
   const ok =
@@ -3125,15 +3162,35 @@ function enforceDevLenRule(options = {}) {
     dev <= origin &&
     origin % dev === 0;
 
+  let changed = false;
   if (!ok) {
-    const nextDev = getValidDevelopmentLengthForOrigin(origin, dev);
-    if (nextDev) {
-      setLenSelectValue("devLenSelect", nextDev);
-      dev = parseInt(d.value, 10);
+    if (source === "dev" || (source !== "origin" && dev > origin)) {
+      const nextOrigin = getValidOriginLengthForDevelopment(dev, origin);
+      if (nextOrigin) {
+        changed = setLenSelectValue("originLenSelect", nextOrigin) || changed;
+        origin = parseInt(o.value, 10);
+      }
+    } else {
+      const nextDev = getValidDevelopmentLengthForOrigin(origin, dev);
+      if (nextDev) {
+        changed = setLenSelectValue("devLenSelect", nextDev) || changed;
+        dev = parseInt(d.value, 10);
+      }
+    }
+    const validAfterFirstPass =
+      Number.isFinite(origin) &&
+      Number.isFinite(dev) &&
+      dev <= origin &&
+      origin % dev === 0;
+    if (!validAfterFirstPass) {
+      const nextDev = getValidDevelopmentLengthForOrigin(origin, dev);
+      if (nextDev) {
+        changed = setLenSelectValue("devLenSelect", nextDev) || changed;
+      }
     }
   }
   refreshLenDropdowns();
-  return !ok;
+  return changed;
 }
 
 // -----------------------------
