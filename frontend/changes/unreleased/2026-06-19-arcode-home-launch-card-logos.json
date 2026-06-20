@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Arcode home launch cards now show technology logos for supported file templates.",
+  "details": [
+    "The launch card icons appear directly on fixed square cards without framed badges.",
+    "Text, Markdown, and Python template cards use SVG icons from the local JupyterLab launcher style.",
+    "Home launch cards are grouped into Scripting, Data & Query, and Other sections."
+  ]
+}

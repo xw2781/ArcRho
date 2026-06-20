@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Aligned Arcode outer workspace gutter, flush menu bar, bordered main frame, flush status bar, resize indicator, and zoom control spacing with the ArcRho main shell."
+}

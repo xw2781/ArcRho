@@ -305,10 +305,24 @@ export function updateHelpMenuState() {
   applyScopedMenuVisibility(helpMenuDropdown);
   const activeTab = getActiveTab();
   const selectedProjectPath = String(activeTab?.projectInstanceState?.selectedPath || "").trim();
+  const projectWindows = Array.isArray(activeTab?.projectInstanceState?.windows) ? activeTab.projectInstanceState.windows : [];
+  const activeProjectWindow = projectWindows.find((item) => item?.active) || activeTab?.projectInstanceState?.activeWindow || null;
+  const activeProjectWindowMethod = String(activeProjectWindow?.methodType || activeProjectWindow?.method_type || "").trim().toLowerCase();
+  const activeProjectWindowKind = String(activeProjectWindow?.kind || "").trim().toLowerCase();
+  const hasActiveProjectWindow = !!activeProjectWindow?.name;
+  const hasActiveMethodJson = hasActiveProjectWindow && (
+    activeProjectWindowKind === "dfm"
+    || activeProjectWindowKind === "result_selection"
+    || activeProjectWindowMethod === "dfm"
+    || activeProjectWindowMethod === "result selection"
+  );
   helpMenuDropdown.querySelectorAll(".menuItem").forEach((el) => {
     if (el.hidden) { el.classList.remove("disabled"); return; }
     const action = el.getAttribute("data-action") || "";
-    el.classList.toggle("disabled", action === "reveal-project-instance-path" && !selectedProjectPath);
+    const shouldDisable = (action === "reveal-project-instance-path" && !selectedProjectPath)
+      || (action === "open-project-instance-dataset-sidecar" && !hasActiveProjectWindow)
+      || (action === "open-project-instance-dataset-json" && !hasActiveMethodJson);
+    el.classList.toggle("disabled", shouldDisable);
   });
   normalizeMenuSeparators(helpMenuDropdown);
 }
@@ -416,7 +430,7 @@ export function initShellMenus() {
     }
   });
   settingsMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action) return; toggleSettingsMenu(false); if (action === "font-settings") shell.openFontSettingsModal?.(); else if (action === "root-path-settings") shell.openRootPathSettingsModal?.(); else if (action === "force-rebuild-settings") shell.openForceRebuildSettingsModal?.(); else if (action === "refresh-page") shell.refreshActiveTab?.(); else if (action === "clear-cache-reload") Promise.resolve(shell.clearCacheAndReload?.()).catch((err) => { console.error("Clear Cache & Reload failed:", err); shell.updateStatusBar?.("Clear Cache & Reload failed."); }); });
-  helpMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleHelpMenu(false); if (action === "view-dev-panel") openDevPanel(); else if (action === "reveal-project-instance-path") { shell.updateStatusBar?.("Opening reserving-class folder..."); sendProjectInstanceCommand("arcrho:project-instance-reveal-selected-path"); } else if (action === "open-dfm-json") { shell.updateStatusBar?.("Opening DFM JSON..."); sendDFMCommand("arcrho:dfm-open-method-json"); } });
+  helpMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleHelpMenu(false); if (action === "view-dev-panel") openDevPanel(); else if (action === "reveal-project-instance-path") { shell.updateStatusBar?.("Opening reserving-class folder..."); sendProjectInstanceCommand("arcrho:project-instance-reveal-selected-path"); } else if (action === "open-project-instance-dataset-json") { shell.updateStatusBar?.("Opening dataset JSON file..."); sendProjectInstanceCommand("arcrho:project-instance-open-active-dataset-json"); } else if (action === "open-project-instance-dataset-sidecar") { shell.updateStatusBar?.("Opening dataset sidecar..."); sendProjectInstanceCommand("arcrho:project-instance-open-active-dataset-sidecar"); } else if (action === "open-dfm-json") { shell.updateStatusBar?.("Opening DFM JSON..."); sendDFMCommand("arcrho:dfm-open-method-json"); } });
   editMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleEditMenu(false); if (action === "dfm-undo") sendDFMCommand("arcrho:dfm-undo"); else if (action === "dfm-redo") sendDFMCommand("arcrho:dfm-redo"); else if (action === "dfm-exclude-high") sendDFMCommand("arcrho:dfm-exclude-high"); else if (action === "dfm-exclude-low") sendDFMCommand("arcrho:dfm-exclude-low"); else if (action === "dfm-include-all") sendDFMCommand("arcrho:dfm-include-all"); else if (action === "render-all-markdown") sendScriptingCommand("arcrho:scripting-render-all-markdown"); });
   document.addEventListener("pointerdown", (e) => { const hit = e.target?.closest?.(".menu, .menuDropdown, .tabMenu, .plusTab, #tabCtxMenu"); if (!hit) closeAllShellMenus(); }, true);
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllShellMenus(); }, true);

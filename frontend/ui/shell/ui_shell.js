@@ -7,11 +7,11 @@ import { clearCacheAndReload, customHardRefresh, initAppLifecycle, refreshActive
 import { clearTestData, getLastWorkflowDir, getLastWorkflowPath, getWorkflowTabState, importWorkflow, postToWorkflowTab, setLastWorkflowPath } from "./workflow_host_actions.js?v=20260510a";
 import { closeTab, closeTabsExcept, dockTab, floatTab, openAgentGuideTab, openBrowsingHistoryTab, openDatasetTab, openDFMTab, openProjectInstanceTab, openProjectSettingsTab, openScriptingTab, openShellActivityHistoryEntry, openWorkflowTab, recordActiveTabHistory, setActive, setDockedActive } from "./tab_actions.js?v=20260520a";
 import { applyDockedIframeLayout, clampFloatingTabsToContent, clampFloatRect, defaultFloatRectFromPointer, ensureContentContainers, ensureIframe, notifyBrowsingHistoryTabs, notifyCalculatedDatasetTabs, notifyServerConnectionUpdated, notifyTabActivated, printActiveTab, removeFloatPreview, renderContent, renderFloatingWindows, updateFloatPreview } from "./shell_content.js?v=20260531a";
-import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, renderTabs, togglePlusMenu } from "./tab_strip.js?v=20260617a";
-import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260608a";
-import { initHotkeys, runHotkeyAction } from "./shell_hotkeys.js?v=20260608a";
-import { initShellMessages } from "./shell_messages.js?v=20260531a";
-import { initUiAutomation } from "./ui_automation.js?v=20260617a";
+import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, renderTabs, togglePlusMenu } from "./tab_strip.js?v=20260620a";
+import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260619a";
+import { initHotkeys, runHotkeyAction } from "./shell_hotkeys.js?v=20260620a";
+import { initShellMessages } from "./shell_messages.js?v=20260619a";
+import { initUiAutomation } from "./ui_automation.js?v=20260619a";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260615a";

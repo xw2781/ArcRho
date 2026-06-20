@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Reduced the ArcRho and Arcode shell side gutters from 12px to 10px."
+}

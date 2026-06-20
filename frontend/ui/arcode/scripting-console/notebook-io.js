@@ -54,7 +54,32 @@ function isIpynbPath(pathLike) {
 
 function isCodeTextFilePath(pathLike) {
   const extension = getNotebookExtension(pathLike).toLowerCase();
-  return extension === ".py" || extension === ".sql";
+  return extension === ".py" || extension === ".sql" || extension === ".md" || extension === ".txt" || extension === ".json";
+}
+
+function getTextFileCellType(pathLike) {
+  const extension = getNotebookExtension(pathLike).toLowerCase();
+  if (extension === ".md") return CELL_TYPES.MARKDOWN;
+  if (extension === ".txt") return CELL_TYPES.RAW;
+  return CELL_TYPES.CODE;
+}
+
+function isJsonTextFilePath(pathLike) {
+  return getNotebookExtension(pathLike).toLowerCase() === ".json";
+}
+
+function formatJsonText(text) {
+  const raw = String(text ?? "");
+  if (!raw.trim()) return "";
+  try {
+    return `${JSON.stringify(JSON.parse(raw), null, 2)}\n`;
+  } catch {
+    return raw;
+  }
+}
+
+function formatTextFileForEditor(pathLike, text) {
+  return isJsonTextFilePath(pathLike) ? formatJsonText(text) : String(text ?? "");
 }
 
 function isAbsoluteFilePath(pathLike) {
@@ -79,8 +104,8 @@ function normalizeNotebookRenameInput(rawName) {
   const dot = raw.lastIndexOf(".");
   const nextName = dot > 0 ? raw : `${raw}${currentExt}`;
   const nextExt = getNotebookExtension(nextName).toLowerCase();
-  if (nextExt !== ".ipynb" && nextExt !== ".arcnb" && nextExt !== ".py" && nextExt !== ".sql") {
-    return { ok: false, error: "Notebook name must end with .ipynb, .arcnb, .py, or .sql." };
+  if (nextExt !== ".ipynb" && nextExt !== ".arcnb" && nextExt !== ".py" && nextExt !== ".sql" && nextExt !== ".md" && nextExt !== ".txt" && nextExt !== ".json") {
+    return { ok: false, error: "Notebook name must end with .ipynb, .arcnb, .py, .sql, .md, .txt, or .json." };
   }
   return { ok: true, name: nextName };
 }
@@ -253,7 +278,17 @@ function buildNotebookFileData() {
 }
 
 function buildCodeTextFile(pathLike = currentNotebookPath || currentNotebookFilename) {
-  const separator = getNotebookExtension(pathLike).toLowerCase() === ".sql" ? "\n\n-- %%\n\n" : "\n\n# %%\n\n";
+  const extension = getNotebookExtension(pathLike).toLowerCase();
+  if (extension === ".json") {
+    const jsonText = getNotebookSavePayload()
+      .map((cell) => sourceToText(cell.source))
+      .join("\n")
+      .trim();
+    return formatJsonText(jsonText || "");
+  }
+  const separator = extension === ".sql"
+    ? "\n\n-- %%\n\n"
+    : (extension === ".py" ? "\n\n# %%\n\n" : "\n\n");
   return getNotebookSavePayload()
     .map((cell) => sourceToText(cell.source))
     .join(separator)
@@ -769,7 +804,7 @@ async function reloadCurrentNotebookFromDisk({ reason = "manual" } = {}) {
         return false;
       }
       const revision = result.revision || await readNotebookDiskRevision(currentNotebookPath);
-      applyLoadedNotebookCells([{ type: CELL_TYPES.CODE, source: result.text || "" }], currentNotebookPath, {
+      applyLoadedNotebookCells([{ type: getTextFileCellType(currentNotebookPath), source: formatTextFileForEditor(currentNotebookPath, result.text || "") }], currentNotebookPath, {
         revision,
         recordUndo: reason !== "external",
       });
@@ -821,7 +856,7 @@ async function openNotebookFromAnyFolder() {
     filePath = await hostApi.pickOpenFile({
       startDir,
       filters: [
-        { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py", "sql"] },
+        { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py", "sql", "md", "txt", "json"] },
         { name: "All Files", extensions: ["*"] },
       ],
     });
@@ -845,8 +880,8 @@ async function openNotebookFilePath(filePath, options = {}) {
     postShellStatus("Open failed");
     return false;
   }
-  if (extension !== ".ipynb" && extension !== ".arcnb" && extension !== ".py" && extension !== ".sql") {
-    const msg = "Only .ipynb, .arcnb, .py, and .sql files can be opened in Arcode.";
+  if (extension !== ".ipynb" && extension !== ".arcnb" && extension !== ".py" && extension !== ".sql" && extension !== ".md" && extension !== ".txt" && extension !== ".json") {
+    const msg = "Only .ipynb, .arcnb, .py, .sql, .md, .txt, and .json files can be opened in Arcode.";
     setStatus(msg);
     postShellStatus(msg);
     return false;
@@ -864,7 +899,7 @@ async function openNotebookFilePath(filePath, options = {}) {
         return false;
       }
       const revision = await readNotebookDiskRevision(targetPath);
-      applyLoadedNotebookCells([{ type: CELL_TYPES.CODE, source: result.text || "" }], targetPath, { revision });
+      applyLoadedNotebookCells([{ type: getTextFileCellType(targetPath), source: formatTextFileForEditor(targetPath, result.text || "") }], targetPath, { revision });
       setStatus(`Opened ${getNotebookFilenameFromPath(targetPath)}`);
       postShellStatus(`Opened ${targetPath}`);
       return true;
@@ -936,7 +971,7 @@ async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConfl
       path: currentNotebookPath,
       data: codeTextFile ? buildCodeTextFile(currentNotebookPath || currentNotebookFilename) : buildNotebookFileData(),
       filters: [
-        { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py", "sql"] },
+        { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py", "sql", "md", "txt", "json"] },
         { name: "All Files", extensions: ["*"] },
       ],
     });
@@ -956,7 +991,7 @@ async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConfl
     markNotebookSavedBaseline(savedPath, lastNotebookDiskRevision);
     const savedName = getNotebookFilenameFromPath(savedPath);
     const msg = source === "auto" ? `Auto-saved ${savedName}` : `Saved ${savedName}`;
-    if (!pythonScript) rememberLastOpenedIpynbPath(savedPath);
+    if (!codeTextFile) rememberLastOpenedIpynbPath(savedPath);
     setStatus(msg);
     postShellStatus(`${msg}${source === "auto" ? "" : ` (${savedPath})`}`);
     if (closeDialog) closeSaveNbDialog();

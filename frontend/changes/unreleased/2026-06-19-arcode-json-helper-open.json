@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Opened ArcRho JSON helper files in Arcode with JSON syntax highlighting and formatting."
+}

@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Arcode home now includes Text File and Markdown File templates.",
+  "details": [
+    "Arcode can open, save, and drag/drop .txt and .md files alongside existing scripting file types."
+  ]
+}

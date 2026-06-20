@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Arcode Snowflake queries now reuse the authenticated session so external-browser sign-in is not repeated on every run.",
+  "details": [
+    "Saving a Snowflake connection profile closes the cached session so changed settings are used on the next query."
+  ]
+}

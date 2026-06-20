@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Removed Rename Notebook from ArcRho and Arcode tab context menus."
+}

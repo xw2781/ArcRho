@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Replaced the Arcode New and Open topbar buttons with a tab-strip plus button for creating new items."
+}

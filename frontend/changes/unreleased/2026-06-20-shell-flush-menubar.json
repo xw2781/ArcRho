@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Updated the ArcRho main menubar to use the same flush layout and menu label spacing as Arcode."
+}

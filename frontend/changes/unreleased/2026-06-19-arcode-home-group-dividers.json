@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Added Jupyter-style group dividers and inline SVG group icons to the Arcode home launcher."
+}

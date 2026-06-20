@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Separated scrolling for the Arcode home explorer and launcher content panes."
+}

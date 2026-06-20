@@ -1883,6 +1883,10 @@ ipcMain.handle("open-path", async (_event, payload) => {
       return openExcelWorkbookReadOnly(targetPath);
     }
     let preferredError = "";
+    if (preferredApp === "arcode") {
+      createArcodeWindow({ path: targetPath });
+      return { ok: true, opener: "arcode" };
+    }
     if (preferredApp === "vscode" || preferredApp === "code") {
       const preferred = await openPathInVsCode(targetPath);
       if (preferred?.ok) return { ok: true, opener: preferred.opener || "vscode" };
@@ -1906,6 +1910,54 @@ ipcMain.handle("show-item-in-folder", async (_event, payload) => {
     }
     shell.showItemInFolder(targetPath);
     return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
+
+ipcMain.handle("open-terminal", async (_event, payload) => {
+  const folderPath = String(payload?.cwd || payload?.path || "").trim();
+  if (!folderPath) return { ok: false, error: "Empty terminal folder." };
+  try {
+    const stat = await fs.promises.stat(folderPath);
+    if (!stat.isDirectory()) return { ok: false, error: `Not a folder: ${folderPath}` };
+    if (process.platform === "win32") {
+      const folder = quotePowerShellString(folderPath);
+      const script = [
+        `$folder = ${folder}`,
+        "if (Get-Command wt.exe -ErrorAction SilentlyContinue) {",
+        "  Start-Process -FilePath 'wt.exe' -ArgumentList @('-d', $folder)",
+        "} else {",
+        "  Start-Process -FilePath 'powershell.exe' -WorkingDirectory $folder",
+        "}",
+      ].join("; ");
+      const result = await runHostCommand("powershell.exe", [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        script,
+      ], {
+        cwd: folderPath,
+        shell: false,
+        timeoutMs: 5000,
+      });
+      if (!result.ok) {
+        return { ok: false, error: result.stderr || result.stdout || result.error || "Could not open terminal." };
+      }
+      return { ok: true, cwd: folderPath };
+    }
+    const opener = process.platform === "darwin" ? "open" : "x-terminal-emulator";
+    const args = process.platform === "darwin" ? ["-a", "Terminal", folderPath] : [];
+    const result = await runHostCommand(opener, args, {
+      cwd: folderPath,
+      shell: false,
+      timeoutMs: 5000,
+      windowsHide: false,
+    });
+    return result.ok
+      ? { ok: true, cwd: folderPath }
+      : { ok: false, error: result.stderr || result.stdout || result.error || "Could not open terminal." };
   } catch (err) {
     return { ok: false, error: String(err?.message || err) };
   }

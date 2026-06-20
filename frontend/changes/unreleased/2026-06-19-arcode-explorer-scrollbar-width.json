@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Reduced the Arcode explorer scrollbar width for a slimmer folder tree."
+}

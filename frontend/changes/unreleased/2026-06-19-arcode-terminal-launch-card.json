@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Added an Arcode home Terminal card that opens a desktop terminal in the selected workspace folder.",
+  "details": [
+    "The Terminal card appears in the Other group with the JupyterLab terminal icon.",
+    "The Electron host opens Windows Terminal when available and falls back to PowerShell."
+  ]
+}

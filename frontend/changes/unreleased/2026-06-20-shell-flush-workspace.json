@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Updated the ArcRho main shell so only the status bar runs flush to the window border."
+}

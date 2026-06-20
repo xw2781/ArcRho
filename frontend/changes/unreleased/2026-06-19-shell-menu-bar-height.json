@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Matched the main ArcRho app menu bar height to the Arcode menu bar."
+}

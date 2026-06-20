@@ -16,7 +16,7 @@ const DEFAULT_ZOOM_PERCENT = 100;
 const MIN_ZOOM_PERCENT = 70;
 const MAX_ZOOM_PERCENT = 160;
 const ZOOM_STEP = 10;
-const DROP_FILE_EXTENSIONS = new Set([".py", ".sql", ".ipynb"]);
+const DROP_FILE_EXTENSIONS = new Set([".py", ".sql", ".ipynb", ".md", ".txt", ".json"]);
 const TAB_DRAG_THRESHOLD_PX = 6;
 const EMPTY_NOTEBOOK_TEMPLATE = {
   cells: [],
@@ -35,10 +35,18 @@ const EMPTY_NOTEBOOK_TEMPLATE = {
   nbformat_minor: 5,
 };
 const HOME_CREATE_ITEMS = [
-  { kind: "python", title: "Python Script", extension: ".py" },
-  { kind: "notebook", title: "Notebook", extension: ".ipynb" },
-  { kind: "sqlserver", title: "SQL Server", extension: ".sql" },
-  { kind: "snowflake", title: "Snowflake", extension: ".sql" },
+  { kind: "python", title: "Python File", extension: ".py", icon: "/ui/arcode/shared/launch-card-icons/jupyterlab-python.svg" },
+  { kind: "notebook", title: "Notebook", extension: ".ipynb", icon: "/ui/arcode/shared/launch-card-icons/jupyter.png" },
+  { kind: "text", title: "Text File", extension: ".txt", icon: "/ui/arcode/shared/launch-card-icons/jupyterlab-text-editor.svg" },
+  { kind: "markdown", title: "Markdown File", extension: ".md", icon: "/ui/arcode/shared/launch-card-icons/jupyterlab-markdown.svg" },
+  { kind: "sqlserver", title: "SQL Server", extension: ".sql", icon: "/ui/arcode/shared/launch-card-icons/sql-server.png" },
+  { kind: "snowflake", title: "Snowflake", extension: ".sql", icon: "/ui/arcode/shared/launch-card-icons/snowflake.png" },
+  { kind: "terminal", title: "Terminal", extension: "", icon: "/ui/arcode/shared/launch-card-icons/jupyterlab-terminal.svg" },
+];
+const HOME_CREATE_GROUPS = [
+  { title: "Scripting", icon: "notebook", kinds: ["python", "notebook"] },
+  { title: "Data & Query", icon: "database", kinds: ["sqlserver", "snowflake"] },
+  { title: "Other", icon: "terminal", kinds: ["terminal", "text", "markdown"] },
 ];
 const FILE_ICON_BASE_PATH = "/ui/arcode/shared/file-icons/";
 const FILE_ICON_MAP_URL = `${FILE_ICON_BASE_PATH}file-icon-map.json?v=20260614a`;
@@ -567,6 +575,8 @@ function getHomeCreateItem(kind) {
 function baseFileNameForCreateItem(item) {
   if (item?.kind === "python") return "python_script";
   if (item?.kind === "notebook") return "notebook";
+  if (item?.kind === "text") return "text_file";
+  if (item?.kind === "markdown") return "markdown_file";
   if (item?.kind === "sqlserver") return "sql_server";
   if (item?.kind === "snowflake") return "snowflake_query";
   return "untitled";
@@ -581,6 +591,10 @@ function refreshWorkspaceFolder(folderPath) {
 
 async function createHomeFile(kind) {
   const item = getHomeCreateItem(kind);
+  if (item?.kind === "terminal") {
+    await openTerminalFromHome();
+    return;
+  }
   if (!item?.extension) return;
   const folderPath = String(state.activeWorkspaceFolder || state.workspaceFolders[0] || "").trim();
   if (!folderPath) {
@@ -609,13 +623,88 @@ async function createHomeFile(kind) {
   updateStatus(`Created ${createdPath}.`);
 }
 
-function renderHomeCreateCards() {
-  return HOME_CREATE_ITEMS.map((item) => `
+async function openTerminalFromHome() {
+  const folderPath = String(state.activeWorkspaceFolder || state.workspaceFolders[0] || "").trim();
+  if (!folderPath) {
+    window.alert("Select a workspace folder before opening a terminal.");
+    return;
+  }
+  const host = getHostApi();
+  if (typeof host?.openTerminal !== "function") {
+    window.alert("Terminal launch requires the desktop app host.");
+    return;
+  }
+  updateStatus(`Opening terminal in ${folderPath}...`);
+  const result = await host.openTerminal({ cwd: folderPath });
+  if (result?.error || result?.ok === false) {
+    const error = String(result?.error || "Could not open terminal.");
+    updateStatus(`Could not open terminal: ${error}`);
+    window.alert(`Could not open terminal.\n\n${error}`);
+    return;
+  }
+  updateStatus(`Opened terminal in ${folderPath}.`);
+}
+
+function renderHomeCreateCard(item) {
+  return `
     <button class="arcodeCreateCard" type="button" data-create-kind="${item.kind}">
-      <span class="arcodeCreateCardIcon" aria-hidden="true">${escapeHtml(item.extension || "--")}</span>
+      <span class="arcodeCreateCardIcon" aria-hidden="true">
+        <img class="arcodeCreateCardLogo" src="${escapeHtml(item.icon || "")}" alt="" loading="lazy" />
+        <span class="arcodeCreateCardExtension">${escapeHtml(item.extension || "--")}</span>
+      </span>
       <span class="arcodeCreateCardTitle">${escapeHtml(item.title)}</span>
     </button>
-  `).join("");
+  `;
+}
+
+function renderHomeGroupIcon(kind) {
+  if (kind === "database") {
+    return `
+      <svg class="arcodeCreateGroupIcon" viewBox="0 0 24 24" aria-hidden="true">
+        <ellipse cx="12" cy="5.5" rx="7" ry="3"></ellipse>
+        <path d="M5 5.5v8c0 1.7 3.1 3 7 3s7-1.3 7-3v-8"></path>
+        <path d="M5 9.5c0 1.7 3.1 3 7 3s7-1.3 7-3"></path>
+      </svg>
+    `;
+  }
+  if (kind === "terminal") {
+    return `
+      <svg class="arcodeCreateGroupIcon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 6h16v12H4z"></path>
+        <path d="m8 10 3 2-3 2"></path>
+        <path d="M13 15h4"></path>
+      </svg>
+    `;
+  }
+  return `
+    <svg class="arcodeCreateGroupIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4h10v16l-5-3-5 3z"></path>
+      <path d="M9.5 7h5"></path>
+    </svg>
+  `;
+}
+
+function renderHomeCreateGroups() {
+  return HOME_CREATE_GROUPS.map((group) => {
+    const cards = group.kinds
+      .map(getHomeCreateItem)
+      .filter(Boolean)
+      .map(renderHomeCreateCard)
+      .join("");
+    if (!cards) return "";
+    const groupId = `arcode-create-group-${group.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    return `
+      <section class="arcodeCreateGroup" aria-labelledby="${escapeHtml(groupId)}">
+        <div class="arcodeCreateGroupHeader">
+          ${renderHomeGroupIcon(group.icon)}
+          <h2 id="${escapeHtml(groupId)}" class="arcodeCreateGroupTitle">${escapeHtml(group.title)}</h2>
+        </div>
+        <div class="arcodeCreateCards">
+          ${cards}
+        </div>
+      </section>
+    `;
+  }).join("");
 }
 
 function renderHome() {
@@ -646,20 +735,14 @@ function renderHome() {
             </div>
           `}
         </div>
-        <div class="arcodeHomeActions">
-          <button id="arcodeHomeOpenBtn" class="arcodeHomeBtn primary" type="button">Open File</button>
-          <button id="arcodeHomeNewBtn" class="arcodeHomeBtn" type="button">New Notebook</button>
-        </div>
       </aside>
       <section class="arcodeHomeContent" aria-label="Arcode home content">
-        <div class="arcodeCreateCards" aria-label="Create files">
-          ${renderHomeCreateCards()}
+        <div class="arcodeCreateGroups" aria-label="Create files">
+          ${renderHomeCreateGroups()}
         </div>
       </section>
     </div>
   `;
-  $("arcodeHomeOpenBtn")?.addEventListener("click", openFileDialog);
-  $("arcodeHomeNewBtn")?.addEventListener("click", () => openCodeTab({ forceFresh: true }));
   $("arcodeExplorerEmptySelectBtn")?.addEventListener("click", () => pickWorkspaceFolder({ replace: true }));
   home.querySelectorAll(".arcodeExplorerEntry").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -675,7 +758,7 @@ function renderHome() {
         return;
       }
       if (isSupportedCodeFile(filePath)) openCodeTab({ path: filePath });
-      else updateStatus("Only .py, .sql, and .ipynb files open in Arcode tabs right now.");
+      else updateStatus("Only .py, .sql, .ipynb, .md, .txt, and .json files open in Arcode tabs right now.");
     });
   });
   home.querySelectorAll(".arcodeCreateCard").forEach((button) => {
@@ -836,7 +919,12 @@ function updateTabReorderDrag(clientX) {
   if (targetNode) {
     if (tabPlaceholderEl.nextSibling !== targetNode) host.insertBefore(tabPlaceholderEl, targetNode);
   } else {
-    if (tabPlaceholderEl.parentNode !== host || tabPlaceholderEl !== host.lastChild) host.appendChild(tabPlaceholderEl);
+    const plusTab = $("arcodePlusTab");
+    if (plusTab?.parentNode === host) {
+      if (tabPlaceholderEl.nextSibling !== plusTab) host.insertBefore(tabPlaceholderEl, plusTab);
+    } else if (tabPlaceholderEl.parentNode !== host || tabPlaceholderEl !== host.lastChild) {
+      host.appendChild(tabPlaceholderEl);
+    }
   }
   const newIndex = Array.from(host.children).indexOf(tabPlaceholderEl);
   if (newIndex !== tabLastPlaceholderIndex) {
@@ -1039,6 +1127,25 @@ function renderTabs() {
     });
     container.appendChild(item);
   }
+  const plusItem = document.createElement("div");
+  plusItem.className = "arcodePlusTab";
+  plusItem.id = "arcodePlusTab";
+  plusItem.textContent = "+";
+  plusItem.title = "New";
+  plusItem.setAttribute("role", "button");
+  plusItem.setAttribute("aria-label", "New");
+  plusItem.tabIndex = 0;
+  plusItem.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleCreateMenu();
+  });
+  plusItem.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    toggleCreateMenu();
+  });
+  container.appendChild(plusItem);
   const count = $("arcodeTabCount");
   if (count) {
     count.textContent = state.tabs.length === 1
@@ -1056,7 +1163,7 @@ function renderFrames() {
   for (const tab of state.tabs) {
     tab.iframe?.classList.toggle("active", tab.id === state.activeId);
   }
-  document.title = hasActiveTab ? `${tabTitle(activeTab())} - Arcode` : "Arcode";
+  document.title = hasActiveTab ? `${tabTitle(activeTab())} - Arcode Scripting Console` : "Arcode Scripting Console";
 }
 
 function render() {
@@ -1514,14 +1621,8 @@ async function copyActiveFilePath() {
   }
 }
 
-function requestActiveRename() {
-  const tab = activeTab();
-  if (!tab) return;
-  postToTab(tab, { type: "arcode:scripting-rename-notebook" });
-}
-
 function toggleCreateMenu(forceOpen) {
-  const button = $("arcodeNewBtn");
+  const button = $("arcodePlusTab");
   const dropdown = $("arcodeCreateMenu");
   if (!button || !dropdown) return;
   const shouldOpen = typeof forceOpen === "boolean" ? forceOpen : !dropdown.classList.contains("open");
@@ -1585,7 +1686,6 @@ async function runShellAction(action, detail = {}) {
     return maximized ? window.ADAHost?.restoreWindow?.() : window.ADAHost?.maximizeWindow?.();
   }
   if (action === "view-dev-panel") return window.ADAHost?.toggleDevPanel?.();
-  if (action === "rename") return requestActiveRename();
   if (action === "open-file-location") return openActiveFileLocation();
   if (action === "copy-file-path") return copyActiveFilePath();
 }
@@ -1682,14 +1782,6 @@ function initHotkeys() {
     adjustZoomByDelta(event.deltaY || event.deltaX, { quiet: true });
   }, { capture: true, passive: false });
 }
-function initToolbarControls() {
-  $("arcodeOpenBtn")?.addEventListener("click", openFileDialog);
-  $("arcodeNewBtn")?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleCreateMenu();
-  });
-}
-
 let arcodeFileDropsWired = false;
 let arcodeDropOverlayTimer = 0;
 const arcodeFrameDropTargets = new WeakSet();
@@ -1753,7 +1845,7 @@ function ensureDropOverlay() {
   overlay.innerHTML = `
     <div class="arcodeFileDropPanel">
       <div id="arcodeFileDropTitle" class="arcodeFileDropTitle">Drop to open in Arcode</div>
-      <div id="arcodeFileDropDetail" class="arcodeFileDropDetail">.py, .sql, and .ipynb files are supported.</div>
+      <div id="arcodeFileDropDetail" class="arcodeFileDropDetail">.py, .sql, .ipynb, .md, .txt, and .json files are supported.</div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -1776,10 +1868,10 @@ function showDropOverlay(event) {
   }
   if (detail) {
     detail.textContent = unsupported
-      ? "Only .py, .sql, and .ipynb files are supported."
+      ? "Only .py, .sql, .ipynb, .md, .txt, and .json files are supported."
       : supported.length === 1
-        ? (supported[0].name || supported[0].path || ".py, .sql, and .ipynb files are supported.")
-        : ".py, .sql, and .ipynb files are supported.";
+        ? (supported[0].name || supported[0].path || ".py, .sql, .ipynb, .md, .txt, and .json files are supported.")
+        : ".py, .sql, .ipynb, .md, .txt, and .json files are supported.";
   }
   overlay.classList.toggle("unsupported", unsupported);
   overlay.classList.add("open");
@@ -1809,7 +1901,7 @@ function handleArcodeFileDrop(event) {
   hideDropOverlay();
   const paths = getSupportedDroppedPaths(event);
   if (!paths.length) {
-    updateStatus("Drop a .py, .sql, or .ipynb file to open it in Arcode.");
+    updateStatus("Drop a .py, .sql, .ipynb, .md, .txt, or .json file to open it in Arcode.");
     return true;
   }
   for (const path of paths) openCodeTab({ path });
@@ -1882,7 +1974,6 @@ async function boot() {
   initWindowControls();
   initShellMenus();
   initTabContextMenu();
-  initToolbarControls();
   initAutoSaveControl();
   initZoomControls();
   initHotkeys();

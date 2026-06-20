@@ -577,32 +577,11 @@ export function openTabCtxMenu(tabId, x, y) {
   tabCtxMenu.querySelectorAll(".tabCtxItem").forEach((el) => {
     const action = el.getAttribute("data-action");
     const disabled = tabId === "home" ||
-      (action === "rename" && tab?.type !== "scripting") ||
       (SCRIPTING_PATH_ACTIONS.has(action) && !scriptingPath);
     el.classList.toggle("disabled", disabled);
   });
   tabCtxMenu.classList.add("open");
   positionTabCtxMenu(x, y);
-}
-
-function requestScriptingNotebookRename(tab) {
-  if (!tab || tab.type !== "scripting") return;
-  shell.setActive?.(tab.id);
-  shell.ensureIframe?.(tab);
-  const iframe = tab.iframe;
-  if (!iframe) return;
-  const send = () => {
-    try { iframe.contentWindow?.postMessage({ type: "arcode:scripting-rename-notebook" }, "*"); } catch {}
-  };
-  try {
-    if (iframe.contentDocument?.readyState === "complete") {
-      send();
-    } else {
-      iframe.addEventListener("load", send, { once: true });
-    }
-  } catch {
-    send();
-  }
 }
 
 export function initTabStrip() {
@@ -615,10 +594,7 @@ export function initTabStrip() {
     const id = tabCtxId;
     closeTabCtxMenu();
     if (!id) return;
-    if (action === "rename") {
-      const tab = shell.state.tabs.find(t => t.id === id);
-      requestScriptingNotebookRename(tab);
-    } else if (action === "open-file-location") openScriptingFileLocation(shell.state.tabs.find(t => t.id === id));
+    if (action === "open-file-location") openScriptingFileLocation(shell.state.tabs.find(t => t.id === id));
     else if (action === "copy-file-path") copyScriptingFilePath(shell.state.tabs.find(t => t.id === id));
     else if (action === "close") shell.closeTab?.(id);
     else if (action === "close-others") shell.closeTabsExcept?.([id]);

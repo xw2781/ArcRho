@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   listFolder: (payload) => invoke("arcode-list-folder", payload),
   openPath: (payload) => invoke("open-path", payload),
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
+  openTerminal: (payload) => invoke("open-terminal", payload),
   codexAssistantStatus: () => invoke("codex-assistant-status"),
   codexAssistantInstall: () => invoke("codex-assistant-install"),
   codexAssistantLogin: (payload) => invoke("codex-assistant-login", payload),

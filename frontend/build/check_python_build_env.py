@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+import warnings
 from pathlib import Path
 
 
@@ -25,6 +26,7 @@ REQUIRED_MODULES = {
     "pandas": "pandas",
     "numpy": "numpy",
     "openpyxl": "openpyxl",
+    "snowflake.connector": "snowflake-connector-python",
     "watchdog": "watchdog",
     "pythoncom": "pywin32",
     "pywintypes": "pywin32",
@@ -37,7 +39,9 @@ def main() -> int:
     missing: list[tuple[str, str | None]] = []
     for module_name, package_name in REQUIRED_MODULES.items():
         try:
-            importlib.import_module(module_name)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                importlib.import_module(module_name)
         except Exception:
             missing.append((module_name, package_name))
 

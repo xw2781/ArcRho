@@ -17,6 +17,12 @@ function getCellEditorLanguage(cellType) {
   const type = normalizeCellType(cellType);
   if (type === CELL_TYPES.MARKDOWN) return "markdown";
   if (type === CELL_TYPES.RAW) return "plaintext";
+  const currentPath = typeof currentNotebookPath !== "undefined" ? currentNotebookPath : "";
+  const currentName = typeof currentNotebookFilename !== "undefined" ? currentNotebookFilename : "";
+  const extension = typeof getNotebookExtension === "function"
+    ? getNotebookExtension(currentPath || currentName)
+    : "";
+  if (extension === ".json" || extension === ".jsonc") return "json";
   return "python";
 }
 

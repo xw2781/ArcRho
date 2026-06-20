@@ -54,13 +54,14 @@ Electron main entry: `electron/main.js`
 - `build/publish_update_feed.ps1 -InstallerPath dist\ArcRho-Setup-<version>.exe` publishes that feed shape to `E:\ArcRho Server\releases\installers` by default.
 - `npm run build:arcode` builds the standalone Arcode product from the ArcRho-owned Arcode source, using `build/arcode_server.spec`, `electron-builder.arcode.json`, and the `python_dist/arcode_server` extra resource.
 - Standalone Arcode packaging uses product name `Arcode`, appId `com.arcode.app`, artifact `Arcode-Setup-<version>.exe`, and a slim scripting-only app server.
+- The Arcode Python server bundle includes `snowflake-connector-python` for the Snowflake SQL console; `build/check_python_build_env.py` fails fast when the selected Python 3.10 environment is missing it.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Build outputs: `dist/`, `python_build/`, `python_dist/`.
 - The packaged server bundle is expected to contain `python_dist/arcrho_server/_internal/ui/index.html` and `python_dist/arcrho_server/_internal/icons/icon.png`; `build/build_python_server.bat` fails fast when either served asset tree is missing.
-- The packaged Arcode server bundle is expected to contain `python_dist/arcode_server/_internal/ui/arcode/main.html`, `python_dist/arcode_server/_internal/ui/ai-assistant/index.js`, and `python_dist/arcode_server/_internal/ui/libs/monaco-editor/min/vs/loader.js`; `build/build_arcode_python_server.bat` fails fast when required served assets are missing.
+- The packaged Arcode server bundle is expected to contain `python_dist/arcode_server/_internal/ui/arcode/main.html`, `python_dist/arcode_server/_internal/ui/ai-assistant/index.js`, `python_dist/arcode_server/_internal/ui/libs/monaco-editor/min/vs/loader.js`, and the Snowflake connector runtime modules; `build/build_arcode_python_server.bat` fails fast when required served assets are missing.
 - Build logs: `build/log/build_app_<timestamp>.log`.
 - Installer settings in `package.json`, `build/installer.nsh`, and `build/patch_nsis_installer_progress.js`.
 - Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.

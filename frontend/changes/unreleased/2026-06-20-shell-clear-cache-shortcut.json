@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added Alt+Q as a Settings menu shortcut for Clear Cache & Reload."
+}

@@ -8,23 +8,24 @@
   <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260615a"/>
   <style>
     .menubar{
-      height: 16px;
+      box-sizing: border-box;
+      flex: 0 0 25px;
+      height: 25px;
       display:flex;
       align-items:center;
       gap: 9px;
-      padding: 2px 0px;
+      padding: 3px 10px 3px 6px;
+      margin: 0 -10px;
       /* border-top: 1px solid var(--border); */
       border-bottom: 1px solid var(--border);
       user-select:none;
       font-size: 13px;
-      margin-bottom: 4px;
     }
     .menu{
       padding: 4px 8px;
       border-radius: 6px;
       cursor:pointer;
       line-height: 1;  
-      transform: translateY(-4px);
     }
     .menu:hover{
       background: rgba(0,0,0,0.05);
@@ -129,7 +130,7 @@
       display: flex;
       align-items: center;
       padding: 0 10px;
-      margin: -12px -12px 8px -12px;
+      margin: -12px -10px 0 -10px;
       font-size: 13px;
       color: #222;
       box-sizing: border-box;
@@ -204,7 +205,7 @@
     body {
       font-family: var(--app-font);
       margin: 0;
-      padding: 12px 12px 0 12px;
+      padding: 12px 10px 0 10px;
       background: var(--bg);
       display: flex;
       flex-direction: column;
@@ -441,7 +442,7 @@
     #forceRebuildToggle {
       width: 15px;
       height: 15px;
-      margin: 0;
+      margin: -12px -12px 0 -12px;
     }
     #forceRebuildHint {
       margin-top: 10px;
@@ -1677,7 +1678,8 @@
       background: #e6e6e681;
       display: flex;
       align-items: center;
-      /* padding: 0 10px; */
+      padding: 0 4px 0 10px;
+      margin: 0 -10px;
       font-size: 12px;
       color: var(--muted);
       box-sizing: border-box;
@@ -1706,7 +1708,7 @@
     .shellResizeGlyph {
       width: 18px;
       height: 16px;
-      margin-right: 4px;
+      margin-right: 0;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -2074,12 +2076,14 @@
     <div class="menuItem" data-action="force-rebuild-settings"><span>Force Rebuild...</span></div>
     <div class="menuSep"></div>
     <div class="menuItem" data-action="refresh-page"><span>Refresh Page</span><span class="menuShortcut">Ctrl+F5</span></div>
-    <div class="menuItem" data-action="clear-cache-reload"><span>Clear Cache & Reload</span></div>
+    <div class="menuItem" data-action="clear-cache-reload"><span>Clear Cache & Reload</span><span class="menuShortcut">Alt+Q</span></div>
   </div>
   <div id="helpMenuDropdown" class="menuDropdown" data-requires-page-scope="1">
     <div class="menuItem" data-action="view-dev-panel" data-page-scopes="*"><span>View Dev Panel</span><span class="menuShortcut">Ctrl+Shift+I</span></div>
     <div class="menuSep"></div>
     <div class="menuItem" data-action="reveal-project-instance-path" data-page-scopes="project_instance"><span>Reveal in File Explorer</span></div>
+    <div class="menuItem" data-action="open-project-instance-dataset-json" data-page-scopes="project_instance"><span>Open Dataset JSON File</span></div>
+    <div class="menuItem" data-action="open-project-instance-dataset-sidecar" data-page-scopes="project_instance"><span>Open Dataset Sidecar</span></div>
     <div class="menuItem" data-action="open-dfm-json" data-page-scopes="dfm"><span>Open DFM JSON</span></div>
   </div>
 
@@ -2130,7 +2134,6 @@
   </section>
 
   <div id="tabCtxMenu">
-    <div class="tabCtxItem" data-action="rename">Rename Notebook</div>
     <div class="tabCtxItem" data-action="open-file-location">Open File Location</div>
     <div class="tabCtxItem" data-action="copy-file-path">Copy File Path</div>
     <div class="tabCtxItem" data-action="close">Close</div>
@@ -2297,7 +2300,7 @@
       }
     })();
   </script>
-  <script type="module" src="/ui/shell/ui_shell.js?v=20260616a"></script>
+  <script type="module" src="/ui/shell/ui_shell.js?v=20260620a"></script>
 </body>
 </html>
 

@@ -45,6 +45,7 @@ const hotkeys = {
   "Ctrl+Shift+E": "view_toggle_exec_time",
   "Ctrl+Shift+I": "help_view_dev_panel",
   "Ctrl+Q": "app_shutdown",
+  "Alt+Q": "settings_clear_cache_reload",
   "Ctrl+Alt+R": "file_restart",
 };
 
@@ -100,6 +101,12 @@ export function runHotkeyAction(action) {
   if (action === "view_toggle_line_numbers") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-line-numbers"); return; }
   if (action === "view_toggle_exec_time") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-exec-time"); return; }
   if (action === "help_view_dev_panel") return shell.openDevPanel?.();
+  if (action === "settings_clear_cache_reload") {
+    return Promise.resolve(shell.clearCacheAndReload?.()).catch((err) => {
+      console.error("Clear Cache & Reload failed:", err);
+      shell.updateStatusBar?.("Clear Cache & Reload failed.");
+    });
+  }
   if (action === "file_restart") return shell.restartApplication?.();
   if (action === "app_shutdown") return shell.shutdownApplication?.();
 }

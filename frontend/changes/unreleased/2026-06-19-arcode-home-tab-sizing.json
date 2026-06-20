@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Aligned the Arcode Home tab sizing with the main ArcRho tab strip and removed the duplicate Arcode label."
+}

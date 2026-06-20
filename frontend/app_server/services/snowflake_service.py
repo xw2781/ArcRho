@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from typing import Any, Dict, List
 
 from app_server import config
@@ -13,6 +14,8 @@ DEFAULT_CONNECTION_NAME = "my_example_connection"
 SNOWFLAKE_CONFIG_IMPORT_PATH = r"E:\XWSpace\Snowflake Config.txt"
 _MAX_QUERY_ROWS = 5000
 _CONNECTOR_IMPORT_ERROR = ""
+_CONNECTION_CACHE: Dict[str, Dict[str, Any]] = {}
+_CONNECTION_CACHE_LOCK = threading.Lock()
 
 try:
     import snowflake.connector  # type: ignore
@@ -142,6 +145,7 @@ def save_connection(name: str, profile: Dict[str, Any]) -> Dict[str, Any]:
     existing[connection_name] = _normalize_profile(profile, connection_name)
     payload = {"connections": existing}
     _write_json(config.SNOWFLAKE_CONNECTIONS_PATH, payload)
+    _close_cached_connection(connection_name)
     return load_connections()
 
 
@@ -155,6 +159,70 @@ def _connection_params(profile: Dict[str, str]) -> Dict[str, str]:
     if schema_value:
         params["schema"] = schema_value
     return params
+
+
+def _connection_signature(params: Dict[str, str]) -> str:
+    return json.dumps(params, sort_keys=True, separators=(",", ":"))
+
+
+def _close_connection(conn: Any) -> None:
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
+def _connection_is_open(conn: Any) -> bool:
+    if conn is None:
+        return False
+    try:
+        is_closed = getattr(conn, "is_closed", None)
+        if callable(is_closed):
+            return not bool(is_closed())
+        if isinstance(is_closed, bool):
+            return not is_closed
+    except Exception:
+        return False
+    return True
+
+
+def _get_cached_connection(name: str, profile: Dict[str, str]) -> tuple[Any, Any]:
+    params = _connection_params(profile)
+    signature = _connection_signature(params)
+    with _CONNECTION_CACHE_LOCK:
+        cached = _CONNECTION_CACHE.get(name)
+        if (
+            cached
+            and cached.get("signature") == signature
+            and _connection_is_open(cached.get("conn"))
+        ):
+            return cached["conn"], cached["lock"]
+
+        if cached:
+            _close_connection(cached.get("conn"))
+
+        conn = snowflake.connector.connect(**params)  # type: ignore[union-attr]
+        entry = {"signature": signature, "conn": conn, "lock": threading.RLock()}
+        _CONNECTION_CACHE[name] = entry
+        return conn, entry["lock"]
+
+
+def _discard_cached_connection(name: str, conn: Any) -> None:
+    with _CONNECTION_CACHE_LOCK:
+        cached = _CONNECTION_CACHE.get(name)
+        if not cached or cached.get("conn") is not conn:
+            return
+        _CONNECTION_CACHE.pop(name, None)
+    _close_connection(conn)
+
+
+def _close_cached_connection(name: str) -> None:
+    with _CONNECTION_CACHE_LOCK:
+        cached = _CONNECTION_CACHE.pop(name, None)
+    if not cached:
+        return
+    with cached["lock"]:
+        _close_connection(cached.get("conn"))
 
 
 def _validate_query_request(sql: str, profile: Dict[str, str]) -> str:
@@ -188,35 +256,36 @@ def run_query(sql: str, connection: str = DEFAULT_CONNECTION_NAME, limit: int = 
     conn = None
     cur = None
     try:
-        conn = snowflake.connector.connect(**_connection_params(profile))  # type: ignore[union-attr]
-        cur = conn.cursor()
-        cur.execute(str(sql))
-        columns = [col[0] for col in (cur.description or [])]
-        rows: List[List[Any]] = []
-        for row in cur.fetchmany(row_limit):
-            rows.append([_json_safe_cell(cell) for cell in row])
+        conn, conn_lock = _get_cached_connection(name, profile)
+        with conn_lock:
+            try:
+                cur = conn.cursor()
+                cur.execute(str(sql))
+                columns = [col[0] for col in (cur.description or [])]
+                rows: List[List[Any]] = []
+                for row in cur.fetchmany(row_limit):
+                    rows.append([_json_safe_cell(cell) for cell in row])
+                query_id = getattr(cur, "sfqid", "") or ""
+            finally:
+                try:
+                    if cur is not None:
+                        cur.close()
+                except Exception:
+                    pass
+                cur = None
         return {
             "ok": True,
             "connection": name,
-            "queryId": getattr(cur, "sfqid", "") or "",
+            "queryId": query_id,
             "columns": columns,
             "rows": rows,
             "rowCount": len(rows),
             "truncated": len(rows) >= row_limit,
         }
     except Exception as exc:
+        if conn is not None:
+            _discard_cached_connection(name, conn)
         return {"ok": False, "error": str(exc), "rows": [], "columns": [], "connection": name}
-    finally:
-        try:
-            if cur is not None:
-                cur.close()
-        except Exception:
-            pass
-        try:
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
 
 
 def test_connection(connection: str = DEFAULT_CONNECTION_NAME) -> Dict[str, Any]:

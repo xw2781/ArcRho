@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Reduced the extra spacing to the right of the native window resize indicator."
+}

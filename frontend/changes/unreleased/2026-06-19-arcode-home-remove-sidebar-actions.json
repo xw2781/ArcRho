@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Removed the Open File and New Notebook buttons from the Arcode home sidebar."
+}

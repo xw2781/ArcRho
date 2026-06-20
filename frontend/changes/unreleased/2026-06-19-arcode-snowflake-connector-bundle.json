@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Packaged Arcode now includes the Snowflake connector needed by the Snowflake SQL console.",
+  "details": [
+    "Arcode Python builds now fail early when the selected Python 3.10 environment is missing snowflake-connector-python."
+  ]
+}
