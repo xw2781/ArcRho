@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Made the Result Selection Method Total row selectable and kept separator headers visually connected with the grey table header."
+}

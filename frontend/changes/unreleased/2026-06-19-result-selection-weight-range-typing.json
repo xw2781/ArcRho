@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Allowed typed numbers to batch-enter multi-digit Weight values across selected Result Selection Method grid ranges."
+}

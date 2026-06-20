@@ -10,14 +10,17 @@
       --rs-font: Arial, "Segoe UI", Tahoma, sans-serif;
       --rs-table-font-size: 14px;
       --rs-cell-h: 20px;
-      --rs-header-h: 34px;
+      --rs-header-h: 48px;
       --rs-header-line-h: 14px;
       --rs-cell-min-w: 80px;
       --rs-cell-max-w: 100px;
       --rs-weight-cell-w: 58px;
+      --rs-spacer-col-w: 14px;
       --rs-border: #cfd6df;
       --rs-grid-border: #f3f1f1;
-      --rs-ultimate-cell: #fff176;
+      --rs-label-cell: #d9dde2;
+      --rs-ultimate-cell: #fdf5a9;
+      --rs-ultimate-highlight-cell: #fde047;
       --rs-header: #eef2f6;
     }
     html, body { height: 100%; }
@@ -196,8 +199,15 @@
       user-select: none;
       -webkit-user-select: none;
     }
+    .rsGrid:focus,
+    .rsGrid:focus-visible {
+      outline: none;
+    }
     .rsGrid col.rsWeightCol {
       width: var(--rs-weight-cell-w);
+    }
+    .rsGrid col.rsSpacerCol {
+      width: var(--rs-spacer-col-w);
     }
     .rsGrid tr {
       height: var(--rs-cell-h);
@@ -232,17 +242,25 @@
       padding-bottom: 2px;
       white-space: nowrap;
       text-align: center;
-      background: #d9dde2;
+      background: var(--rs-label-cell);
       color: #1f2937;
       font-weight: 400;
       font-size: var(--rs-table-font-size);
     }
+    .rsGrid thead tr.rsColumnHeaderRow {
+      height: var(--rs-header-h);
+    }
     .rsHeaderText {
-      display: block;
+      display: -webkit-box;
       min-width: 0;
+      max-height: calc(var(--rs-header-line-h) * 3);
       overflow: hidden;
       text-overflow: ellipsis;
       line-height: var(--rs-header-line-h);
+      white-space: normal;
+      -webkit-box-orient: vertical;
+      line-clamp: 3;
+      -webkit-line-clamp: 3;
       pointer-events: none;
     }
     .rsColumnResizeHandle {
@@ -264,7 +282,6 @@
       width: 1px;
       background: transparent;
     }
-    .rsGrid th:hover .rsColumnResizeHandle::after,
     .rsColumnResizeHandle:hover::after {
       background: #64748b;
     }
@@ -280,7 +297,7 @@
       z-index: 3;
       min-width: 0;
       max-width: none;
-      background: #e5e7eb;
+      background: var(--rs-label-cell);
       color: #111827;
       text-align: center;
       border-left: 1px solid var(--rs-grid-border);
@@ -300,8 +317,26 @@
     .rsWeightCell {
       background: #dff8f8;
     }
+    .rsGrid td.rsWeightCell {
+      padding: 0;
+    }
     .rsGrid th.rsWeightHeader {
-      background: #d9dde2;
+      background: var(--rs-label-cell);
+    }
+    .rsGrid th.rsSectionSpacerHeader,
+    .rsGrid td.rsSectionSpacerCell {
+      width: var(--rs-spacer-col-w);
+      min-width: 0;
+      max-width: none;
+      padding: 0;
+      background: #fff;
+      border-left: 1px solid #d7dde5;
+      border-right: 1px solid #d7dde5;
+    }
+    .rsGrid thead tr.rsColumnHeaderRow th.rsSectionSpacerHeader {
+      background: var(--rs-label-cell);
+      color: transparent;
+      box-shadow: inset -1px 0 #bfc7d2;
     }
     .rsMethodCell {
       cursor: cell;
@@ -332,7 +367,7 @@
       font-style: italic;
     }
     .rsGrid td.rsMethodCell.rsHighlightedUltimateCell {
-      background: var(--rs-ultimate-cell);
+      background: var(--rs-ultimate-highlight-cell);
       color: #111827;
     }
     .rsGrid td.rsSourceCell.rsSelectedSourceCell {
@@ -349,11 +384,11 @@
     }
     .rsWeightInput {
       display: block;
-      width: calc(100% - 1px);
+      width: 100%;
       height: var(--rs-cell-h);
       line-height: var(--rs-cell-h);
       margin: 0;
-      padding: 0 1px 0 0;
+      padding: 0 5px 0 2px;
       border: 0;
       background: transparent;
       color: #0284c7;
@@ -377,10 +412,10 @@
     }
     .rsWeightPercent {
       display: block;
-      width: calc(100% - 1px);
+      width: 100%;
       height: var(--rs-cell-h);
       line-height: var(--rs-cell-h);
-      padding-right: 1px;
+      padding: 0 5px 0 2px;
       overflow: hidden;
       color: #0284c7;
       font-family: var(--rs-font);
@@ -390,49 +425,49 @@
       text-overflow: ellipsis;
       box-sizing: border-box;
     }
-    .rsUltimateCell,
-    .rsGrid th.rsUltimateHeader {
+    .rsUltimateCell {
       background: var(--rs-ultimate-cell);
+      font-weight: 400;
+    }
+    .rsGrid td.rsUltimateCell.rsUltimateCustomValue,
+    .rsGrid td.rsUltimateCell.rsUltimateCustomValue.rsHighlightedUltimateCell {
+      color: #dc2626;
       font-weight: 700;
     }
-    .rsRatioCell,
-    .rsGrid th.rsRatioHeader {
+    .rsGrid th.rsUltimateHeader {
+      background: var(--rs-label-cell);
+    }
+    .rsRatioCell {
       background: #edf7ff;
+      color: #0f172a;
+    }
+    .rsGrid th.rsRatioHeader {
+      background: var(--rs-label-cell);
       color: #0f172a;
     }
     .rsTotalRow td {
       font-weight: 700;
       background: #f8fafc;
     }
-    .rsSourceHeader .rsHeaderText {
-      display: -webkit-box;
-      max-height: calc(var(--rs-header-line-h) * 2);
-      padding-right: 18px;
-      white-space: normal;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
+    .rsTotalRow td.rsSectionSpacerCell {
+      background: #fff;
+      font-weight: 400;
     }
-    .rsSourceRemove {
-      position: absolute;
-      top: 2px;
-      right: 10px;
-      width: 13px;
-      height: 13px;
-      padding: 0;
-      border: 1px solid #aab3c2;
-      background: #eef2f7;
+    .rsTotalRow td.rsUltimateCell {
+      font-weight: 400;
+    }
+    .rsGrid th.rsSourceHeader {
       cursor: pointer;
-      font-size: 8px;
-      line-height: 11px;
-      box-sizing: border-box;
     }
     .rsCellContextMenu {
       position: fixed;
       z-index: 10000;
-      min-width: 132px;
+      width: 190px;
+      max-width: min(190px, calc(100vw - 16px));
       display: none;
       padding: 4px;
       border: 1px solid #c9ced5;
+      border-radius: 6px;
       background: #fff;
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
       box-sizing: border-box;
@@ -448,6 +483,7 @@
       color: #111827;
       font: 12px var(--rs-font);
       text-align: left;
+      white-space: nowrap;
       cursor: pointer;
     }
     .rsCellContextMenu button:hover {
@@ -588,67 +624,89 @@
       inset: 0;
       z-index: 11000;
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: center;
-      padding-top: 58px;
-      background: rgba(15, 23, 42, 0.08);
-      box-sizing: border-box;
+      background: rgba(15, 23, 42, 0.18);
     }
     .rsConfirmOverlay[hidden] {
       display: none;
     }
     .rsConfirmBox {
       position: relative;
-      width: min(380px, calc(100vw - 36px));
-      border: 1px solid #4f6fb3;
+      width: min(360px, calc(100vw - 40px));
+      border: 1px solid #c9d1dc;
+      border-radius: 8px;
       background: #fff;
-      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
+      padding: 16px 18px 14px;
       box-sizing: border-box;
-    }
-    .rsConfirmTitleBar {
-      height: 26px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding-left: 9px;
-      background: #9b96dc;
       color: #111827;
-      font: 12px var(--rs-font);
-      box-sizing: border-box;
+      cursor: move;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .rsConfirmBox.is-dragging {
+      box-shadow: 0 20px 46px rgba(15, 23, 42, 0.28);
     }
     .rsConfirmClose {
-      width: 34px;
-      height: 26px;
-      border: 0;
-      border-left: 1px solid #6b7280;
-      background: #d65245;
-      color: #000;
-      font: 700 13px var(--rs-font);
+      position: absolute;
+      top: 7px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: #64748b;
+      font-size: 15px;
+      line-height: 24px;
       cursor: pointer;
     }
+    .rsConfirmClose:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+    .rsConfirmTitle {
+      padding-right: 26px;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
     .rsConfirmMessage {
-      padding: 18px 12px 20px;
-      color: #111827;
-      font: 12px/1.35 var(--rs-font);
+      margin-top: 8px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.4;
     }
     .rsConfirmActions {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
-      padding: 0 12px 12px;
+      margin-top: 16px;
     }
     .rsConfirmActions button {
-      min-width: 70px;
-      height: 22px;
-      border: 1px solid #8f98a6;
-      background: #e9e9e9;
-      color: #111827;
-      font: 12px var(--rs-font);
+      min-width: 72px;
+      height: 28px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
     }
-    .rsConfirmActions button:focus {
-      outline: 1px dotted #111827;
-      outline-offset: -3px;
+    .rsConfirmPrimary {
+      border: 1px solid #2563eb;
+      background: #2563eb;
+      color: #fff;
+    }
+    .rsConfirmPrimary:hover:not(:disabled) {
+      background: #1d4ed8;
+    }
+    .rsConfirmSecondary {
+      border: 1px solid rgba(21, 34, 54, 0.18);
+      background: #fff;
+      color: #1f2937;
+    }
+    .rsConfirmSecondary:hover:not(:disabled) {
+      background: #f4f7fb;
     }
   </style>
 </head>
@@ -752,23 +810,30 @@
   </div>
   <div id="rsPicker" class="rsPicker" aria-hidden="true"></div>
   <div id="rsCellContextMenu" class="rsCellContextMenu" aria-hidden="true">
-    <button type="button" data-rs-cell-action="copy-values">Copy Values</button>
+    <button type="button" data-rs-cell-action="copy-values">Copy</button>
+    <button type="button" data-rs-cell-action="paste-values">Paste</button>
+    <button type="button" data-rs-cell-action="remove-highlights">Remove Highlights</button>
+    <button type="button" data-rs-cell-action="revert-ultimate" data-rs-ultimate-action hidden>Revert Ultimate Value</button>
+    <button type="button" data-rs-cell-action="revert-all-ultimate" data-rs-ultimate-action hidden>Revert All Ultimate Values</button>
+  </div>
+  <div id="rsSourceContextMenu" class="rsCellContextMenu" aria-hidden="true">
+    <button type="button" data-rs-source-action="view-edit">View/Edit</button>
+    <button type="button" data-rs-source-action="add">Add</button>
+    <button type="button" data-rs-source-action="delete">Delete</button>
   </div>
   <div id="rsCloseConfirmOverlay" class="rsConfirmOverlay" hidden>
-    <div class="rsConfirmBox" role="dialog" aria-modal="true" aria-labelledby="rsCloseConfirmTitle">
-      <div class="rsConfirmTitleBar">
-        <span id="rsCloseConfirmTitle">arcrho-electron</span>
-        <button id="rsCloseConfirmClose" class="rsConfirmClose" type="button" aria-label="Close">x</button>
-      </div>
+    <div id="rsCloseConfirmBox" class="rsConfirmBox" role="dialog" aria-modal="true" aria-labelledby="rsCloseConfirmTitle">
+      <button id="rsCloseConfirmClose" class="rsConfirmClose" type="button" aria-label="Close">x</button>
+      <div id="rsCloseConfirmTitle" class="rsConfirmTitle">Cancel and close?</div>
       <div id="rsCloseConfirmMessage" class="rsConfirmMessage">
         Result Selection has unsaved changes. Close it anyway?
       </div>
       <div class="rsConfirmActions">
-        <button id="rsCloseConfirmOk" type="button">OK</button>
-        <button id="rsCloseConfirmCancel" type="button">Cancel</button>
+        <button id="rsCloseConfirmOk" class="rsConfirmPrimary" type="button">Yes</button>
+        <button id="rsCloseConfirmCancel" class="rsConfirmSecondary" type="button">Cancel</button>
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260618j"></script>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260620a"></script>
 </body>
 </html>

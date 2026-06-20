@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Made double-clicking Result Selection source cells update the paired Weight value."
+}

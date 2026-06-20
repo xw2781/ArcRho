@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Fixed typing into a single selected Weight cell in the Result Selection Method grid."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Kept Result Selection Method grid range highlighting active when clicking inside an existing range."
+}

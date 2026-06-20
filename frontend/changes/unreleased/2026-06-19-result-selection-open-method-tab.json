@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Opened existing Result Selection vector rows directly on the Method tab."
+}

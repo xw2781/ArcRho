@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Restored the darker highlight fill for selected Selected Ultimate cells in the Result Selection Method grid."
+}

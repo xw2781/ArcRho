@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Removed the browser focus border from the Result Selection Method grid after selecting cells."
+}

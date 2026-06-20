@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Allowed typing Weight values from highlighted Result Selection source-value cells."
+}

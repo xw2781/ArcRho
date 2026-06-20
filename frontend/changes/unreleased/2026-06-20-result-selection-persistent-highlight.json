@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Kept the Result Selection Method grid highlight active at all times and removed click-to-clear highlight behavior."
+}

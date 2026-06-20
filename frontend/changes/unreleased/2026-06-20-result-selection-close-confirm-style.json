@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Matched the Result Selection close confirmation dialog styling to the Dataset close confirmation dialog."
+}

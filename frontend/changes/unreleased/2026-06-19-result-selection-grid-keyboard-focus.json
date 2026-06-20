@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Kept Result Selection Method grid keyboard entry focused after selecting Weight cells."
+}

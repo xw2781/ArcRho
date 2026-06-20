@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Improved the Method-grid context menu sizing, renamed Copy, and added Paste for highlighted editable cells."
+}

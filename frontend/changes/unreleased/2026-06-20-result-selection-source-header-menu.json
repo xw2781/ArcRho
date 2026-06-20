@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Updated Result Selection Method source headers to wrap up to three lines and use a right-click menu for source View/Edit, Add, and Delete actions."
+}

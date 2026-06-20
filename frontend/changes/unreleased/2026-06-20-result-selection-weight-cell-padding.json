@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Fixed Method tab Weight values so narrow cells no longer clip the right edge of displayed numbers."
+}

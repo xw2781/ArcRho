@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added Method-grid keyboard paste and allowed Excel ranges to fill multiple Selected Ultimate rows from a selected cell."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Saved source dataset origin lengths in Result Selection methods and limited the Details Origin Length choices to compatible display levels."
+}

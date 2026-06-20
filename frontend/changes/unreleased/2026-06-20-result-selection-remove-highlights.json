@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Let Result Selection Method grids open without a highlighted cell and added a Remove Highlights context-menu action."
+}

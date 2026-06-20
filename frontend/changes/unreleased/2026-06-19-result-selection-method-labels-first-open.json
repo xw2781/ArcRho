@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Opened migrated Result Selection methods with their saved origin labels on the first load."
+}

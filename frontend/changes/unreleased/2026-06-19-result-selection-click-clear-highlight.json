@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Allowed clicking a highlighted Result Selection Method grid cell to clear the highlight."
+}

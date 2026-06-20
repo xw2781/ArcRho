@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Stored Result Selection sidecar precedents as a simple list of source dataset names."
+}

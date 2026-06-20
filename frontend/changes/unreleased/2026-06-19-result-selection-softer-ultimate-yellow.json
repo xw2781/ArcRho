@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Softened the Selected Ultimate column highlight color in the Result Selection Method grid."
+}

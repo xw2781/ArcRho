@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Allowed Result Selection Method users to type custom Selected Ultimate values and revert them from the column context menu."
+}

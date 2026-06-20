@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Stopped Method grid column resize guide lines from appearing when hovering over column label text."
+}

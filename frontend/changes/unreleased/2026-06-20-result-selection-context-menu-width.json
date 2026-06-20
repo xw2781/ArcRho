@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Kept the Result Selection Method context menu compact when opened near the right edge of the grid."
+}

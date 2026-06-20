@@ -22,6 +22,7 @@ const METHOD_COL_DEFAULT_WIDTHS = {
   weight: 58,
   ultimate: 100,
   ratio: 100,
+  spacer: 14,
 };
 const METHOD_COL_MIN_WIDTHS = {
   origin: 58,
@@ -29,6 +30,7 @@ const METHOD_COL_MIN_WIDTHS = {
   weight: 58,
   ultimate: 70,
   ratio: 70,
+  spacer: 14,
 };
 const METHOD_COL_MAX_WIDTH = 320;
 
@@ -58,6 +60,8 @@ const state = {
   showEffectiveWeights: false,
   methodHighlight: null,
   methodHighlightDragging: false,
+  weightEditSession: null,
+  ultimateOverrides: [],
   activeTab: text(params.get("tab") || "details") || "details",
 };
 
@@ -81,7 +85,10 @@ const els = {
   notesInput: document.getElementById("rsNotesInput"),
   picker: document.getElementById("rsPicker"),
   cellContextMenu: document.getElementById("rsCellContextMenu"),
+  sourceContextMenu: document.getElementById("rsSourceContextMenu"),
   closeConfirmOverlay: document.getElementById("rsCloseConfirmOverlay"),
+  closeConfirmBox: document.getElementById("rsCloseConfirmBox"),
+  closeConfirmTitle: document.getElementById("rsCloseConfirmTitle"),
   closeConfirmMessage: document.getElementById("rsCloseConfirmMessage"),
   closeConfirmOk: document.getElementById("rsCloseConfirmOk"),
   closeConfirmCancel: document.getElementById("rsCloseConfirmCancel"),
@@ -110,6 +117,11 @@ function positiveInt(value, fallback = DEFAULT_ORIGIN_LENGTH) {
 function validOriginLength(value, fallback = DEFAULT_ORIGIN_LENGTH) {
   const n = positiveInt(value, fallback);
   return VALID_ORIGIN_LENGTHS.includes(n) ? n : fallback;
+}
+
+function validSourceOriginLength(value) {
+  const n = validOriginLength(value, 0);
+  return VALID_ORIGIN_LENGTHS.includes(n) ? n : null;
 }
 
 function nonNegativeInt(value, fallback = 0) {
@@ -185,17 +197,68 @@ function resolveCloseConfirm(value) {
   if (resolve) resolve(!!value);
 }
 
+function resetCloseConfirmPosition() {
+  const box = els.closeConfirmBox;
+  if (!box) return;
+  box.classList.remove("is-dragging");
+  box.style.position = "";
+  box.style.left = "";
+  box.style.top = "";
+  box.style.width = "";
+}
+
+function placeCloseConfirmBox(left, top) {
+  const box = els.closeConfirmBox;
+  if (!box) return;
+  const rect = box.getBoundingClientRect();
+  const pad = 8;
+  const maxLeft = Math.max(pad, window.innerWidth - rect.width - pad);
+  const maxTop = Math.max(pad, window.innerHeight - rect.height - pad);
+  box.style.left = `${Math.round(Math.max(pad, Math.min(left, maxLeft)))}px`;
+  box.style.top = `${Math.round(Math.max(pad, Math.min(top, maxTop)))}px`;
+}
+
+function startCloseConfirmDrag(event) {
+  if (event.button !== 0) return;
+  if (event.target?.closest?.("button,input,select,textarea,a,[contenteditable='true']")) return;
+  const box = els.closeConfirmBox;
+  if (!box) return;
+  event.preventDefault();
+  const rect = box.getBoundingClientRect();
+  const offsetX = event.clientX - rect.left;
+  const offsetY = event.clientY - rect.top;
+  box.style.position = "fixed";
+  box.style.width = `${Math.round(rect.width)}px`;
+  box.classList.add("is-dragging");
+  placeCloseConfirmBox(rect.left, rect.top);
+  const onMove = (moveEvent) => {
+    moveEvent.preventDefault();
+    placeCloseConfirmBox(moveEvent.clientX - offsetX, moveEvent.clientY - offsetY);
+  };
+  const onUp = () => {
+    box.classList.remove("is-dragging");
+    document.removeEventListener("mousemove", onMove, true);
+    document.removeEventListener("mouseup", onUp, true);
+  };
+  document.addEventListener("mousemove", onMove, true);
+  document.addEventListener("mouseup", onUp, true);
+}
+
 function showCloseConfirm(reason = "close") {
   if (closeConfirmResolve) return Promise.resolve(false);
   if (!els.closeConfirmOverlay || !els.closeConfirmOk) return Promise.resolve(false);
   const displayName = getResultSelectionDisplayName();
+  const isClose = reason === "close";
+  if (els.closeConfirmTitle) els.closeConfirmTitle.textContent = isClose ? "Cancel and close?" : "Cancel changes?";
   if (els.closeConfirmMessage) {
-    els.closeConfirmMessage.textContent = reason === "cancel"
-      ? `${displayName} has unsaved changes. Discard them?`
-      : `${displayName} has unsaved changes. Close it anyway?`;
+    els.closeConfirmMessage.textContent = isClose
+      ? `Unsaved changes to ${displayName} will be discarded and the window will close.`
+      : `Unsaved changes to ${displayName} will be discarded.`;
   }
   closeCellContextMenu();
+  closeSourceContextMenu();
   closePicker();
+  resetCloseConfirmPosition();
   els.closeConfirmOverlay.hidden = false;
   requestAnimationFrame(() => els.closeConfirmOk?.focus());
   return new Promise((resolve) => {
@@ -243,6 +306,7 @@ function normalizeDatasetRows(payload) {
         name,
         datasetType,
         dataFormat: text(item?.data_format || typeInfo.dataFormat),
+        originLength: validSourceOriginLength(item?.origin_length),
         category: text(typeInfo.category || item?.category),
         methodType: text(item?.method_type),
         path: text(item?.path),
@@ -332,6 +396,7 @@ async function buildSourceFromRecord(record, existing = null) {
     name: text(record?.name || existing?.name),
     datasetType: text(record?.datasetType || existing?.dataset_type || existing?.datasetType),
     dataFormat: text(record?.dataFormat || existing?.data_format || existing?.dataFormat),
+    originLength: validSourceOriginLength(record?.originLength ?? record?.origin_length ?? existing?.origin_length ?? existing?.originLength),
     methodType: text(record?.methodType || existing?.method_type || existing?.methodType),
     category: text(record?.category || existing?.category),
     valueSource: "vector",
@@ -345,6 +410,7 @@ async function buildSourceFromRecord(record, existing = null) {
     const payload = await loadDatasetValues(source.name);
     source.datasetType = source.datasetType || text(payload?.dataset_type || source.name);
     source.dataFormat = source.dataFormat || text(payload?.data_format);
+    source.originLength = validSourceOriginLength(payload?.origin_length) || source.originLength;
     const isTriangle = norm(source.dataFormat) === "triangle";
     source.valueSource = isTriangle ? "latest_diagonal" : "vector";
     source.values = isTriangle ? latestDiagonal(payload?.values) : vectorValues(payload?.values);
@@ -407,6 +473,41 @@ function applyOriginLength(value) {
   withProgrammatic(() => {
     els.originLengthInput.value = String(n);
   });
+  return true;
+}
+
+function allowedOriginLengthsForSources() {
+  const required = state.sources.reduce((max, source) => {
+    const originLength = validSourceOriginLength(source?.originLength);
+    return originLength ? Math.max(max, originLength) : max;
+  }, 0);
+  return VALID_ORIGIN_LENGTHS.filter((originLength) => !required || originLength >= required);
+}
+
+function syncOriginLengthOptions() {
+  const input = els.originLengthInput;
+  if (!input) return false;
+  const allowed = allowedOriginLengthsForSources();
+  const current = validOriginLength(input.value, DEFAULT_ORIGIN_LENGTH);
+  const fallback = allowed[allowed.length - 1] || DEFAULT_ORIGIN_LENGTH;
+  const next = allowed.includes(current) ? current : fallback;
+  const existing = Array.from(input.options || []).map((option) => Number.parseInt(option.value, 10));
+  const needsOptions = existing.length !== allowed.length || existing.some((value, index) => value !== allowed[index]);
+  if (needsOptions) {
+    input.replaceChildren(...allowed.map((originLength) => {
+      const option = document.createElement("option");
+      option.value = String(originLength);
+      option.textContent = String(originLength);
+      return option;
+    }));
+  }
+  withProgrammatic(() => {
+    input.value = String(next);
+  });
+  if (next === current) return false;
+  state.sidecarOriginLength = null;
+  state.sidecarOriginLabels = [];
+  setOriginLabels([], next);
   return true;
 }
 
@@ -518,6 +619,84 @@ function setWeightValue(sourceIndex, rowIndex, rawValue) {
   return weight;
 }
 
+function isUltimateOverridden(rowIndex) {
+  return Object.prototype.hasOwnProperty.call(state.ultimateOverrides, rowIndex)
+    && numberOrNull(state.ultimateOverrides[rowIndex]) !== null;
+}
+
+function calculatedSelectedUltimateAt(rowIndex) {
+  let numerator = 0;
+  let denominator = 0;
+  for (let sourceIndex = 0; sourceIndex < state.sources.length; sourceIndex += 1) {
+    const source = state.sources[sourceIndex];
+    const value = numberOrNull(source.values[rowIndex]);
+    const weight = Math.max(0, numberOrNull(source.weights[rowIndex]) ?? 0);
+    if (value === null || weight <= 0 || !isSourceCellSelected(sourceIndex, rowIndex)) continue;
+    numerator += value * weight;
+    denominator += weight;
+  }
+  return denominator > 0 ? numerator / denominator : null;
+}
+
+function setUltimateOverride(rowIndex, rawValue) {
+  const value = numberOrNull(rawValue);
+  if (value === null) return false;
+  state.ultimateOverrides[rowIndex] = value;
+  return true;
+}
+
+function clearUltimateOverride(rowIndex) {
+  if (!isUltimateOverridden(rowIndex)) return false;
+  delete state.ultimateOverrides[rowIndex];
+  return true;
+}
+
+function isMethodDataRow(rowIndex) {
+  return rowIndex >= 0 && rowIndex < getRowCount();
+}
+
+function applyHighlightedUltimateValue(rawValue) {
+  const h = normalizedMethodHighlight();
+  if (!h) return false;
+  const columns = buildMethodColumns(getDetails());
+  let changed = false;
+  for (let rowIndex = h.startRow; rowIndex <= h.endRow; rowIndex += 1) {
+    if (!isMethodDataRow(rowIndex)) continue;
+    for (let colIndex = h.startCol; colIndex <= h.endCol; colIndex += 1) {
+      const column = columns[colIndex];
+      if (column?.type !== "ultimate") continue;
+      if (setUltimateOverride(rowIndex, rawValue)) changed = true;
+    }
+  }
+  return changed;
+}
+
+function highlightedHasWeightTargets(highlight = normalizedMethodHighlight()) {
+  if (!highlight) return false;
+  const columns = buildMethodColumns(getDetails());
+  for (let rowIndex = highlight.startRow; rowIndex <= highlight.endRow; rowIndex += 1) {
+    if (!isMethodDataRow(rowIndex)) continue;
+    for (let colIndex = highlight.startCol; colIndex <= highlight.endCol; colIndex += 1) {
+      const column = columns[colIndex];
+      if (column?.type === "weight") return true;
+      if (column?.type === "source" && isSourceCellSelectable(column.sourceIndex, rowIndex)) return true;
+    }
+  }
+  return false;
+}
+
+function highlightedHasUltimateCells(highlight = normalizedMethodHighlight()) {
+  if (!highlight) return false;
+  const columns = buildMethodColumns(getDetails());
+  for (let rowIndex = highlight.startRow; rowIndex <= highlight.endRow; rowIndex += 1) {
+    if (!isMethodDataRow(rowIndex)) continue;
+    for (let colIndex = highlight.startCol; colIndex <= highlight.endCol; colIndex += 1) {
+      if (columns[colIndex]?.type === "ultimate") return true;
+    }
+  }
+  return false;
+}
+
 function visibleWeightSourceIndices() {
   return buildMethodColumns(getDetails())
     .filter((column) => column.type === "weight")
@@ -554,9 +733,11 @@ function applyHighlightedWeightValue(rawValue) {
   const columns = buildMethodColumns(getDetails());
   let changed = false;
   for (let rowIndex = h.startRow; rowIndex <= h.endRow; rowIndex += 1) {
+    if (!isMethodDataRow(rowIndex)) continue;
     for (let colIndex = h.startCol; colIndex <= h.endCol; colIndex += 1) {
       const column = columns[colIndex];
-      if (!column || column.type !== "weight") continue;
+      if (!column || (column.type !== "weight" && column.type !== "source")) continue;
+      if (column.type === "source" && !isSourceCellSelectable(column.sourceIndex, rowIndex)) continue;
       setWeightValue(column.sourceIndex, rowIndex, rawValue);
       changed = true;
     }
@@ -564,8 +745,110 @@ function applyHighlightedWeightValue(rawValue) {
   return changed;
 }
 
-function toggleSourceCellSelected(sourceIndex, rowIndex) {
-  return setSourceCellSelected(sourceIndex, rowIndex, !isSourceCellSelected(sourceIndex, rowIndex));
+function parseClipboardGrid(rawText) {
+  const rows = String(rawText ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n");
+  if (rows.length > 1 && rows[rows.length - 1] === "") rows.pop();
+  return rows.map((row) => row.split("\t"));
+}
+
+function clipboardGridValue(grid, rowOffset, colOffset) {
+  if (!grid.length) return "";
+  if (grid.length === 1 && grid[0].length === 1) return grid[0][0] ?? "";
+  return grid[rowOffset]?.[colOffset] ?? "";
+}
+
+function clipboardGridColumnCount(grid) {
+  return grid.reduce((max, row) => Math.max(max, row.length), 0);
+}
+
+function pasteTargetEndRow(highlight, grid) {
+  return Math.max(highlight.endRow, highlight.startRow + Math.max(1, grid.length) - 1);
+}
+
+function pasteTargetEndCol(highlight, grid) {
+  return Math.max(highlight.endCol, highlight.startCol + Math.max(1, clipboardGridColumnCount(grid)) - 1);
+}
+
+function applyHighlightedWeightGrid(grid) {
+  const h = normalizedMethodHighlight();
+  if (!h) return false;
+  const columns = buildMethodColumns(getDetails());
+  let changed = false;
+  const endRow = pasteTargetEndRow(h, grid);
+  const endCol = pasteTargetEndCol(h, grid);
+  for (let rowIndex = h.startRow; rowIndex <= endRow; rowIndex += 1) {
+    if (!isMethodDataRow(rowIndex)) continue;
+    const rowOffset = rowIndex - h.startRow;
+    for (let colIndex = h.startCol; colIndex <= endCol; colIndex += 1) {
+      const column = columns[colIndex];
+      if (!column || (column.type !== "weight" && column.type !== "source")) continue;
+      if (column.type === "source" && !isSourceCellSelectable(column.sourceIndex, rowIndex)) continue;
+      setWeightValue(column.sourceIndex, rowIndex, clipboardGridValue(grid, rowOffset, colIndex - h.startCol));
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function applyHighlightedUltimateGrid(grid) {
+  const h = normalizedMethodHighlight();
+  if (!h) return false;
+  const columns = buildMethodColumns(getDetails());
+  let changed = false;
+  const endRow = pasteTargetEndRow(h, grid);
+  const endCol = pasteTargetEndCol(h, grid);
+  for (let rowIndex = h.startRow; rowIndex <= endRow; rowIndex += 1) {
+    if (!isMethodDataRow(rowIndex)) continue;
+    const rowOffset = rowIndex - h.startRow;
+    for (let colIndex = h.startCol; colIndex <= endCol; colIndex += 1) {
+      if (columns[colIndex]?.type !== "ultimate") continue;
+      if (setUltimateOverride(rowIndex, clipboardGridValue(grid, rowOffset, colIndex - h.startCol))) changed = true;
+    }
+  }
+  return changed;
+}
+
+function applyHighlightedPasteText(rawText) {
+  const h = normalizedMethodHighlight();
+  if (!h) return false;
+  resetWeightEditSession();
+  const grid = parseClipboardGrid(rawText);
+  if (highlightedHasWeightTargets(h)) return applyHighlightedWeightGrid(grid);
+  if (highlightedHasUltimateCells(h)) return applyHighlightedUltimateGrid(grid);
+  return false;
+}
+
+function methodHighlightSessionKey(highlight = normalizedMethodHighlight()) {
+  if (!highlight) return "";
+  return `${highlight.startCol}:${highlight.startRow}:${highlight.endCol}:${highlight.endRow}`;
+}
+
+function resetWeightEditSession() {
+  state.weightEditSession = null;
+}
+
+function applyHighlightedWeightKey(key) {
+  const h = normalizedMethodHighlight();
+  if (!h || !/^[0-9.]$/.test(key || "")) return false;
+  const sessionKey = methodHighlightSessionKey(h);
+  const current = state.weightEditSession?.key === sessionKey ? state.weightEditSession.value : "";
+  if (key === "." && current.includes(".")) return false;
+  const nextValue = current
+    ? `${current}${key}`
+    : key === "."
+      ? "0."
+      : key;
+  state.weightEditSession = { key: sessionKey, value: nextValue };
+  if (highlightedHasWeightTargets(h)) {
+    if (applyHighlightedWeightValue(nextValue)) return true;
+  } else if (highlightedHasUltimateCells(h)) {
+    if (applyHighlightedUltimateValue(nextValue)) return true;
+  }
+  resetWeightEditSession();
+  return false;
 }
 
 function normalizedMethodHighlight() {
@@ -577,12 +860,6 @@ function normalizedMethodHighlight() {
     startCol: Math.min(h.startCol, h.endCol),
     endCol: Math.max(h.startCol, h.endCol),
   };
-}
-
-function isSingleCellHighlight(highlight = normalizedMethodHighlight()) {
-  return !!highlight
-    && highlight.startRow === highlight.endRow
-    && highlight.startCol === highlight.endCol;
 }
 
 function isMethodCellHighlighted(colIndex, rowIndex) {
@@ -610,27 +887,40 @@ function isMethodHighlightAnchor(colIndex, rowIndex) {
 }
 
 function setMethodHighlight(startCol, startRow, endCol = startCol, endRow = startRow) {
+  resetWeightEditSession();
   state.methodHighlight = { startCol, startRow, endCol, endRow };
   applyMethodHighlightDom();
 }
 
-function clearMethodHighlight() {
+function removeMethodHighlights() {
+  resetWeightEditSession();
   state.methodHighlight = null;
   applyMethodHighlightDom();
 }
 
-function isMethodRowHighlighted(rowIndex, columnCount) {
-  const h = normalizedMethodHighlight();
-  return !!h
-    && h.startRow === rowIndex
-    && h.endRow === rowIndex
-    && h.startCol === 0
-    && h.endCol === Math.max(0, columnCount - 1);
+function normalizeMethodHighlight(columns = buildMethodColumns(getDetails()), rowCount = getRowCount()) {
+  const h = state.methodHighlight;
+  if (!h) return;
+  const maxCol = Math.max(0, columns.length - 1);
+  const maxRow = Math.max(0, rowCount - 1);
+  const next = {
+    startCol: Math.max(0, Math.min(maxCol, h.startCol)),
+    startRow: Math.max(0, Math.min(maxRow, h.startRow)),
+    endCol: Math.max(0, Math.min(maxCol, h.endCol)),
+    endRow: Math.max(0, Math.min(maxRow, h.endRow)),
+  };
+  const changed = h.startCol !== next.startCol
+    || h.startRow !== next.startRow
+    || h.endCol !== next.endCol
+    || h.endRow !== next.endRow;
+  if (changed) {
+    resetWeightEditSession();
+    state.methodHighlight = next;
+  }
 }
 
-function toggleMethodRowHighlight(rowIndex, columnCount) {
-  if (isMethodRowHighlighted(rowIndex, columnCount)) clearMethodHighlight();
-  else setMethodHighlight(0, rowIndex, Math.max(0, columnCount - 1), rowIndex);
+function setMethodRowHighlight(rowIndex, columnCount) {
+  setMethodHighlight(0, rowIndex, Math.max(0, columnCount - 1), rowIndex);
 }
 
 function applyMethodHighlightDom() {
@@ -655,6 +945,7 @@ function startMethodCellHighlight(event, colIndex, rowIndex, options = {}) {
   closeCellContextMenu();
   state.methodHighlightDragging = true;
   setMethodHighlight(colIndex, rowIndex);
+  focusMethodGrid();
   const onUp = () => {
     state.methodHighlightDragging = false;
     document.removeEventListener("mouseup", onUp, true);
@@ -664,23 +955,15 @@ function startMethodCellHighlight(event, colIndex, rowIndex, options = {}) {
 
 function extendMethodCellHighlight(colIndex, rowIndex) {
   if (!state.methodHighlightDragging || !state.methodHighlight) return;
+  resetWeightEditSession();
   state.methodHighlight.endCol = colIndex;
   state.methodHighlight.endRow = rowIndex;
   applyMethodHighlightDom();
 }
 
 function selectedUltimateAt(rowIndex) {
-  let numerator = 0;
-  let denominator = 0;
-  for (let sourceIndex = 0; sourceIndex < state.sources.length; sourceIndex += 1) {
-    const source = state.sources[sourceIndex];
-    const value = numberOrNull(source.values[rowIndex]);
-    const weight = Math.max(0, numberOrNull(source.weights[rowIndex]) ?? 0);
-    if (value === null || weight <= 0 || !isSourceCellSelected(sourceIndex, rowIndex)) continue;
-    numerator += value * weight;
-    denominator += weight;
-  }
-  return denominator > 0 ? numerator / denominator : null;
+  if (isUltimateOverridden(rowIndex)) return numberOrNull(state.ultimateOverrides[rowIndex]);
+  return calculatedSelectedUltimateAt(rowIndex);
 }
 
 function effectiveWeightAt(sourceIndex, rowIndex) {
@@ -743,34 +1026,77 @@ function methodColumnId(type, index = "") {
   return index === "" ? type : `${type}:${index}`;
 }
 
-function buildMethodColumns(details) {
-  const columns = [{
-    id: methodColumnId("origin"),
-    type: "origin",
-    label: getDatasetOriginLabelText(details.originLength),
-    className: "rsOriginHeader",
-  }];
-  state.sources.forEach((source, idx) => {
+function sourceMethodSection(source) {
+  return norm(source?.dataFormat) === "triangle" ? "triangle" : "vector";
+}
+
+function sourceMethodSectionOrder(section) {
+  return section === "triangle" ? 0 : 1;
+}
+
+function orderedSourceEntries() {
+  return state.sources
+    .map((source, index) => ({ source, index, section: sourceMethodSection(source) }))
+    .sort((left, right) => {
+      const sectionDelta = sourceMethodSectionOrder(left.section) - sourceMethodSectionOrder(right.section);
+      if (sectionDelta) return sectionDelta;
+      const nameDelta = compareSourceNames(left.source, right.source);
+      return nameDelta || left.index - right.index;
+    });
+}
+
+function appendSourceColumns(columns, entries, details, section) {
+  entries.forEach(({ source, index }) => {
     columns.push({
-      id: methodColumnId("source", idx),
+      id: methodColumnId("source", index),
       type: "source",
-      sourceIndex: idx,
-      label: source.name || `Source ${idx + 1}`,
+      section,
+      sourceIndex: index,
+      label: source.name || `Source ${index + 1}`,
       className: "rsSourceHeader",
     });
     if (details.showWeights) {
       columns.push({
-        id: methodColumnId("weight", idx),
+        id: methodColumnId("weight", index),
         type: "weight",
-        sourceIndex: idx,
+        section,
+        sourceIndex: index,
         label: state.showEffectiveWeights ? "Weight %" : "Weight",
         className: "rsWeightHeader",
       });
     }
   });
+}
+
+function appendMethodSectionSpacer(columns, id) {
+  columns.push({
+    id: methodColumnId("spacer", id),
+    type: "spacer",
+    section: "spacer",
+    label: "",
+    className: "rsSectionSpacerHeader",
+  });
+}
+
+function buildMethodColumns(details) {
+  const columns = [{
+    id: methodColumnId("origin"),
+    type: "origin",
+    section: "origin",
+    label: getDatasetOriginLabelText(details.originLength),
+    className: "rsOriginHeader",
+  }];
+  const entries = orderedSourceEntries();
+  const triangleEntries = entries.filter((entry) => entry.section === "triangle");
+  const vectorEntries = entries.filter((entry) => entry.section === "vector");
+  appendSourceColumns(columns, triangleEntries, details, "triangle");
+  if (triangleEntries.length && vectorEntries.length) appendMethodSectionSpacer(columns, "triangle-vector");
+  appendSourceColumns(columns, vectorEntries, details, "vector");
+  if (triangleEntries.length || vectorEntries.length) appendMethodSectionSpacer(columns, "sources-stats");
   columns.push({
     id: methodColumnId("ultimate"),
     type: "ultimate",
+    section: "stats",
     label: "Selected Ultimate",
     className: "rsUltimateHeader",
   });
@@ -778,6 +1104,7 @@ function buildMethodColumns(details) {
     columns.push({
       id: methodColumnId("ratio"),
       type: "ratio",
+      section: "stats",
       label: "Ultimate / Basis",
       className: "rsRatioHeader",
     });
@@ -859,6 +1186,15 @@ function syncToggleWeightsDisplayControl(details = getDetails()) {
     : "Showing editable numeric weights";
 }
 
+function focusMethodGrid() {
+  if (!els.methodGrid) return;
+  try {
+    els.methodGrid.focus({ preventScroll: true });
+  } catch {
+    els.methodGrid.focus?.();
+  }
+}
+
 function wireMethodCell(td, column, colIndex, rowIndex, copyValue = "", options = {}) {
   td.classList.add("rsMethodCell");
   td.dataset.colIndex = String(colIndex);
@@ -874,7 +1210,8 @@ function wireMethodCell(td, column, colIndex, rowIndex, copyValue = "", options 
       event.preventDefault();
       event.stopPropagation();
       closeCellContextMenu();
-      toggleMethodRowHighlight(rowIndex, options.rowToggleColumnCount);
+      setMethodRowHighlight(rowIndex, options.rowToggleColumnCount);
+      focusMethodGrid();
     });
   } else {
     td.addEventListener("mousedown", (event) => {
@@ -893,34 +1230,29 @@ function wireMethodCell(td, column, colIndex, rowIndex, copyValue = "", options 
 function renderMethodGrid() {
   const grid = els.methodGrid;
   if (!grid) return;
+  grid.tabIndex = -1;
+  syncOriginLengthOptions();
   const details = getDetails();
   const count = getRowCount();
   const hasBasis = !!details.ratioBasis;
   const columns = buildMethodColumns(details);
+  normalizeMethodHighlight(columns, count + 1);
   syncToggleWeightsDisplayControl(details);
   els.ratioBasisStatus.textContent = hasBasis ? `Basis: ${details.ratioBasis}` : "Basis: None";
   syncMethodTableTotalWidth(columns);
   const colgroup = buildMethodColGroup(columns);
   const thead = document.createElement("thead");
   const hrow = document.createElement("tr");
+  hrow.className = "rsColumnHeaderRow";
   columns.forEach((column, colIndex) => {
     const th = headerCell(column.label, column);
     th.className = column.className || "";
-    th.dataset.colIndex = String(colIndex);
-    th.classList.toggle("rsHighlightedColumnLabel", isMethodColumnHighlighted(colIndex));
+    if (column.type !== "spacer") {
+      th.dataset.colIndex = String(colIndex);
+      th.classList.toggle("rsHighlightedColumnLabel", isMethodColumnHighlighted(colIndex));
+    }
     if (column.type === "source") {
-      const remove = document.createElement("button");
-      remove.className = "rsSourceRemove";
-      remove.type = "button";
-      remove.title = "Remove source";
-      remove.textContent = "x";
-      remove.addEventListener("click", (event) => {
-        event.stopPropagation();
-        state.sources.splice(column.sourceIndex, 1);
-        markDirty();
-        renderMethodGrid();
-      });
-      th.appendChild(remove);
+      th.addEventListener("contextmenu", (event) => openSourceContextMenu(event, column.sourceIndex));
     }
     hrow.appendChild(th);
   });
@@ -956,7 +1288,9 @@ function renderMethodGrid() {
         td.addEventListener("dblclick", (event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (!toggleSourceCellSelected(column.sourceIndex, r)) return;
+          if (!isSourceCellSelectable(column.sourceIndex, r)) return;
+          const nextWeight = isSourceCellSelected(column.sourceIndex, r) ? 0 : 1;
+          setWeightValue(column.sourceIndex, r, nextWeight);
           markDirty();
           renderMethodGrid();
         });
@@ -1018,6 +1352,7 @@ function renderMethodGrid() {
         if (rowUltimateValue !== null) totals.ultimate += rowUltimateValue;
         const ucell = bodyCell(fmtNumber(rowUltimateValue));
         ucell.className = "rsUltimateCell";
+        ucell.classList.toggle("rsUltimateCustomValue", isUltimateOverridden(r));
         tr.appendChild(wireMethodCell(ucell, column, colIndex, r, rowUltimateValue === null ? "" : String(rowUltimateValue)));
       } else if (column.type === "ratio") {
         const basis = numberOrNull(state.ratioBasisValues[r]);
@@ -1026,28 +1361,55 @@ function renderMethodGrid() {
         const rcell = bodyCell(fmtRatio(ratioValue));
         rcell.className = "rsRatioCell";
         tr.appendChild(wireMethodCell(rcell, column, colIndex, r, fmtRatio(ratioValue)));
+      } else if (column.type === "spacer") {
+        tr.appendChild(bodyCell("", "rsSectionSpacerCell"));
       }
     });
     tbody.appendChild(tr);
   }
   const totalRow = document.createElement("tr");
   totalRow.className = "rsTotalRow";
-  columns.forEach((column) => {
+  const totalRowIndex = count;
+  columns.forEach((column, colIndex) => {
     if (column.type === "origin") {
-      totalRow.appendChild(bodyCell("Total", "rsOriginCell"));
+      totalRow.appendChild(wireMethodCell(
+        bodyCell("Total", "rsOriginCell"),
+        column,
+        colIndex,
+        totalRowIndex,
+        "Total",
+        { rowToggleColumnCount: columns.length }
+      ));
     } else if (column.type === "source") {
-      totalRow.appendChild(bodyCell(fmtNumber(totals.source[column.sourceIndex])));
+      const totalValue = fmtNumber(totals.source[column.sourceIndex]);
+      totalRow.appendChild(wireMethodCell(
+        bodyCell(totalValue, "rsSourceCell"),
+        column,
+        colIndex,
+        totalRowIndex,
+        totalValue
+      ));
     } else if (column.type === "weight") {
-      totalRow.appendChild(bodyCell("", "rsWeightCell"));
+      totalRow.appendChild(wireMethodCell(
+        bodyCell("", "rsWeightCell"),
+        column,
+        colIndex,
+        totalRowIndex,
+        ""
+      ));
     } else if (column.type === "ultimate") {
-      const totalUltimate = bodyCell(fmtNumber(totals.ultimate));
+      const totalUltimateValue = fmtNumber(totals.ultimate);
+      const totalUltimate = bodyCell(totalUltimateValue);
       totalUltimate.className = "rsUltimateCell";
-      totalRow.appendChild(totalUltimate);
+      totalRow.appendChild(wireMethodCell(totalUltimate, column, colIndex, totalRowIndex, totalUltimateValue));
     } else if (column.type === "ratio") {
       const ratio = totals.basis > 0 ? totals.ultimate / totals.basis : null;
-      const ratioCell = bodyCell(fmtRatio(ratio));
+      const ratioValue = fmtRatio(ratio);
+      const ratioCell = bodyCell(ratioValue);
       ratioCell.className = "rsRatioCell";
-      totalRow.appendChild(ratioCell);
+      totalRow.appendChild(wireMethodCell(ratioCell, column, colIndex, totalRowIndex, ratioValue));
+    } else if (column.type === "spacer") {
+      totalRow.appendChild(bodyCell("", "rsSectionSpacerCell"));
     }
   });
   tbody.appendChild(totalRow);
@@ -1060,7 +1422,7 @@ function headerCell(label, column = null) {
   textSpan.className = "rsHeaderText";
   textSpan.textContent = String(label || "");
   th.appendChild(textSpan);
-  if (column) {
+  if (column && column.type !== "spacer") {
     th.dataset.colId = column.id;
     const handle = document.createElement("span");
     handle.className = "rsColumnResizeHandle";
@@ -1084,22 +1446,103 @@ function closeCellContextMenu() {
   els.cellContextMenu.setAttribute("aria-hidden", "true");
 }
 
+function closeSourceContextMenu() {
+  if (!els.sourceContextMenu) return;
+  els.sourceContextMenu.classList.remove("open");
+  els.sourceContextMenu.setAttribute("aria-hidden", "true");
+  delete els.sourceContextMenu.dataset.sourceIndex;
+  delete els.sourceContextMenu.dataset.anchorLeft;
+  delete els.sourceContextMenu.dataset.anchorTop;
+}
+
+function positionContextMenu(menu, x, y) {
+  if (!menu) return;
+  const pad = 8;
+  menu.style.maxWidth = `${Math.max(120, window.innerWidth - (pad * 2))}px`;
+  const rect = menu.getBoundingClientRect();
+  const left = Math.max(pad, Math.min(x, window.innerWidth - rect.width - pad));
+  const top = Math.max(pad, Math.min(y, window.innerHeight - rect.height - pad));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+}
+
 function openCellContextMenu(event, colIndex, rowIndex) {
   event.preventDefault();
   event.stopPropagation();
+  closeSourceContextMenu();
   if (!isMethodCellHighlighted(colIndex, rowIndex)) {
     setMethodHighlight(colIndex, rowIndex);
   }
   const menu = els.cellContextMenu;
   if (!menu) return;
-  const pad = 8;
+  setUltimateContextMenuVisibility();
   menu.classList.add("open");
   menu.setAttribute("aria-hidden", "false");
-  const rect = menu.getBoundingClientRect();
-  const left = Math.max(pad, Math.min(event.clientX, window.innerWidth - rect.width - pad));
-  const top = Math.max(pad, Math.min(event.clientY, window.innerHeight - rect.height - pad));
-  menu.style.left = `${Math.round(left)}px`;
-  menu.style.top = `${Math.round(top)}px`;
+  positionContextMenu(menu, event.clientX, event.clientY);
+}
+
+function openSourceContextMenu(event, sourceIndex) {
+  event.preventDefault();
+  event.stopPropagation();
+  closeCellContextMenu();
+  closePicker();
+  const menu = els.sourceContextMenu;
+  if (!menu || !state.sources[sourceIndex]) return;
+  menu.dataset.sourceIndex = String(sourceIndex);
+  menu.dataset.anchorLeft = String(event.clientX);
+  menu.dataset.anchorTop = String(event.clientY);
+  menu.classList.add("open");
+  menu.setAttribute("aria-hidden", "false");
+  positionContextMenu(menu, event.clientX, event.clientY);
+}
+
+function sourceContextIndex() {
+  const n = Number.parseInt(els.sourceContextMenu?.dataset?.sourceIndex || "", 10);
+  return Number.isInteger(n) && n >= 0 && n < state.sources.length ? n : -1;
+}
+
+function sourceRecordForIndex(sourceIndex) {
+  const source = state.sources[sourceIndex];
+  if (!source) return null;
+  return cachedRows.find((row) => norm(row.name) === norm(source.name)) || null;
+}
+
+function viewOrEditSourceDataset(sourceIndex) {
+  const source = state.sources[sourceIndex];
+  if (!source?.name) return;
+  const record = sourceRecordForIndex(sourceIndex);
+  const requestId = `rs_open_source_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const onMessage = (event) => {
+    const msg = event.data || {};
+    if (msg.type !== "arcrho:automation-command-result" || msg.requestId !== requestId) return;
+    window.removeEventListener("message", onMessage);
+    if (msg.ok === false) postStatus(`Open source dataset failed: ${msg.error || "Unknown error."}`, "error");
+  };
+  window.addEventListener("message", onMessage);
+  window.setTimeout(() => window.removeEventListener("message", onMessage), 10000);
+  try {
+    window.parent?.postMessage({
+      type: "arcrho:automation-open-dataset",
+      requestId,
+      args: {
+        datasetName: source.name,
+        datasetTypeName: text(source.datasetType || record?.datasetTypeName || record?.datasetType || source.name),
+        methodType: text(source.methodType || record?.methodType),
+        readOnly: !!record?.generated,
+        generated: !!record?.generated,
+      },
+    }, "*");
+  } catch (err) {
+    window.removeEventListener("message", onMessage);
+    postStatus(`Open source dataset failed: ${err?.message || err}`, "error");
+  }
+}
+
+function removeSourceAt(sourceIndex) {
+  if (sourceIndex < 0 || sourceIndex >= state.sources.length) return;
+  state.sources.splice(sourceIndex, 1);
+  markDirty();
+  renderMethodGrid();
 }
 
 function methodCellCopyValue(colIndex, rowIndex) {
@@ -1139,12 +1582,78 @@ async function writeClipboardText(value) {
   area.remove();
 }
 
+async function readClipboardText() {
+  if (!navigator.clipboard?.readText) throw new Error("Clipboard paste is not available in this browser.");
+  return navigator.clipboard.readText();
+}
+
 async function copyHighlightedMethodValues() {
   const data = highlightedMethodValuesText();
   if (!data) return;
   await writeClipboardText(data);
   closeCellContextMenu();
   postStatus("Copied selected Result Selection values.");
+}
+
+async function pasteHighlightedMethodValues() {
+  const data = await readClipboardText();
+  if (!data) return;
+  if (!applyHighlightedPasteText(data)) return;
+  markDirty();
+  closeCellContextMenu();
+  renderMethodGrid();
+  postStatus("Pasted Result Selection values.");
+}
+
+function normalizeUltimateOverrides(rawOverrides, count = getRowCount()) {
+  const overrides = [];
+  if (Array.isArray(rawOverrides)) {
+    rawOverrides.forEach((value, index) => {
+      if (index >= count) return;
+      const n = numberOrNull(value);
+      if (n !== null) overrides[index] = n;
+    });
+  } else if (rawOverrides && typeof rawOverrides === "object") {
+    Object.entries(rawOverrides).forEach(([key, value]) => {
+      const index = Number.parseInt(key, 10);
+      const n = numberOrNull(value);
+      if (Number.isInteger(index) && index >= 0 && index < count && n !== null) overrides[index] = n;
+    });
+  }
+  return overrides;
+}
+
+function serializedUltimateOverrides() {
+  const count = getRowCount();
+  return Array.from({ length: count }, (_, index) => (
+    isUltimateOverridden(index) ? numberOrNull(state.ultimateOverrides[index]) : null
+  ));
+}
+
+function setUltimateContextMenuVisibility() {
+  const showUltimateActions = highlightedHasUltimateCells();
+  els.cellContextMenu?.querySelectorAll?.("[data-rs-ultimate-action]").forEach((button) => {
+    button.hidden = !showUltimateActions;
+  });
+}
+
+function revertHighlightedUltimateValues() {
+  const h = normalizedMethodHighlight();
+  if (!h) return false;
+  const columns = buildMethodColumns(getDetails());
+  let changed = false;
+  for (let rowIndex = h.startRow; rowIndex <= h.endRow; rowIndex += 1) {
+    for (let colIndex = h.startCol; colIndex <= h.endCol; colIndex += 1) {
+      if (columns[colIndex]?.type === "ultimate" && clearUltimateOverride(rowIndex)) changed = true;
+    }
+  }
+  return changed;
+}
+
+function revertAllUltimateValues() {
+  const changed = state.ultimateOverrides.some((value, index) => isUltimateOverridden(index));
+  state.ultimateOverrides = [];
+  return changed;
 }
 
 function buildPayload() {
@@ -1166,6 +1675,7 @@ function buildPayload() {
         name: source.name,
         dataset_type: source.datasetType,
         data_format: source.dataFormat,
+        origin_length: source.originLength || null,
         method_type: source.methodType,
         category: source.category,
         value_source: source.valueSource,
@@ -1174,6 +1684,7 @@ function buildPayload() {
         selected: ensureSourceSelection(source).slice(),
       })),
       selected_ultimate: selectedUltimateVector(),
+      ultimate_overrides: serializedUltimateOverrides(),
       ratio_basis_values: state.ratioBasisValues,
     },
     results_tab: {},
@@ -1209,18 +1720,17 @@ async function applyPayload(payload) {
     if (built) sources.push(built);
   }
   state.sources = sources;
+  syncOriginLengthOptions();
   if (text(els.ratioBasisInput.value)) await refreshRatioBasisValues();
   const methodOriginLabels = Array.isArray(method.origin_labels) ? method.origin_labels.map(String) : [];
-  if (state.sidecarOriginLabels.length && !shouldRejectOriginLabels(getDetails().originLength, state.sidecarOriginLabels)) {
-    setOriginLabels(state.sidecarOriginLabels, getDetails().originLength);
-  } else if (
-    methodOriginLabels.length
-    && !shouldRejectOriginLabels(getDetails().originLength, methodOriginLabels)
-  ) {
+  if (methodOriginLabels.length && !shouldRejectOriginLabels(getDetails().originLength, methodOriginLabels)) {
     setOriginLabels(methodOriginLabels, getDetails().originLength);
+  } else if (state.sidecarOriginLabels.length && !shouldRejectOriginLabels(getDetails().originLength, state.sidecarOriginLabels)) {
+    setOriginLabels(state.sidecarOriginLabels, getDetails().originLength);
   } else {
     await refreshOriginLabels({ render: false });
   }
+  state.ultimateOverrides = normalizeUltimateOverrides(method.ultimate_overrides, getRowCount());
   renderMethodGrid();
 }
 
@@ -1309,6 +1819,19 @@ function vectorCsv(values) {
   return `${(Array.isArray(values) ? values : []).map((v) => v == null ? "" : String(v)).join("\n")}\n`;
 }
 
+function getSourcePrecedentNames() {
+  const seen = new Set();
+  const out = [];
+  for (const source of state.sources || []) {
+    const name = text(source?.name);
+    const key = norm(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
 async function saveSidecar(csvPath, originLabels = []) {
   const details = getDetails();
   const resp = await fetch("/dataset/sidecar/save", {
@@ -1321,6 +1844,8 @@ async function saveSidecar(csvPath, originLabels = []) {
       dataset_type: details.outputType || details.name,
       instance_name: details.name,
       source_kind: "result_selection",
+      method_type: "Result Selection",
+      status: 0,
       data_format: "Vector",
       origin_length: details.originLength,
       development_length: details.originLength,
@@ -1329,6 +1854,7 @@ async function saveSidecar(csvPath, originLabels = []) {
       calendar: false,
       origin_labels: Array.isArray(originLabels) ? originLabels.map(String) : [],
       csv_file: csvPath.split(/[\\/]/).pop(),
+      precedents: getSourcePrecedentNames(),
     }),
   });
   const payload = await resp.json().catch(() => ({}));
@@ -1426,7 +1952,12 @@ function closePicker() {
 
 function openPicker(anchor, rows, onPick) {
   closePicker();
-  const rect = anchor.getBoundingClientRect();
+  const rect = typeof anchor?.getBoundingClientRect === "function"
+    ? anchor.getBoundingClientRect()
+    : {
+        left: Number(anchor?.left) || 8,
+        bottom: Number(anchor?.bottom ?? anchor?.top) || 8,
+      };
   rows.forEach((row) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1453,6 +1984,29 @@ function openPicker(anchor, rows, onPick) {
   els.picker.setAttribute("aria-hidden", "false");
 }
 
+function openAddSourcePicker(anchor = els.addSourceBtn) {
+  const rows = cachedRows.filter((row) => norm(row.name) !== norm(els.nameInput.value));
+  openPicker(anchor, rows, (row) => void addSource(row));
+}
+
+function compareSourceNames(left, right) {
+  return text(left?.name).localeCompare(text(right?.name), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function compareSourceDisplayOrder(left, right) {
+  const sectionDelta = sourceMethodSectionOrder(sourceMethodSection(left)) - sourceMethodSectionOrder(sourceMethodSection(right));
+  return sectionDelta || compareSourceNames(left, right);
+}
+
+function insertSourceAlphabetically(source) {
+  const insertAt = state.sources.findIndex((existing) => compareSourceDisplayOrder(existing, source) > 0);
+  if (insertAt === -1) state.sources.push(source);
+  else state.sources.splice(insertAt, 0, source);
+}
+
 async function addSource(record) {
   if (state.sources.some((source) => norm(source.name) === norm(record.name))) return;
   const source = await buildSourceFromRecord(record);
@@ -1460,7 +2014,7 @@ async function addSource(record) {
   const count = Math.max(getRowCount(), source.values.length);
   while (source.weights.length < count) source.weights.push(0);
   ensureSourceSelection(source, count);
-  state.sources.push(source);
+  insertSourceAlphabetically(source);
   markDirty();
   renderMethodGrid();
 }
@@ -1549,15 +2103,54 @@ function wireEvents() {
     const action = event.target?.closest?.("[data-rs-cell-action]")?.dataset?.rsCellAction || "";
     if (action === "copy-values") {
       void copyHighlightedMethodValues().catch((err) => postStatus(`Copy failed: ${err?.message || err}`, "error"));
+      closeCellContextMenu();
+    } else if (action === "paste-values") {
+      void pasteHighlightedMethodValues().catch((err) => postStatus(`Paste failed: ${err?.message || err}`, "error"));
+    } else if (action === "remove-highlights") {
+      removeMethodHighlights();
+      closeCellContextMenu();
+    } else if (action === "revert-ultimate") {
+      if (revertHighlightedUltimateValues()) {
+        markDirty();
+        renderMethodGrid();
+      }
+      closeCellContextMenu();
+    } else if (action === "revert-all-ultimate") {
+      if (revertAllUltimateValues()) {
+        markDirty();
+        renderMethodGrid();
+      }
+      closeCellContextMenu();
+    }
+  });
+  els.sourceContextMenu?.addEventListener("click", (event) => {
+    const action = event.target?.closest?.("[data-rs-source-action]")?.dataset?.rsSourceAction || "";
+    if (!action) return;
+    const sourceIndex = sourceContextIndex();
+    const anchor = {
+      left: Number(els.sourceContextMenu.dataset.anchorLeft) || 8,
+      bottom: Number(els.sourceContextMenu.dataset.anchorTop) || 8,
+    };
+    closeSourceContextMenu();
+    if (action === "view-edit") {
+      viewOrEditSourceDataset(sourceIndex);
+    } else if (action === "add") {
+      openAddSourcePicker(anchor);
+    } else if (action === "delete") {
+      removeSourceAt(sourceIndex);
     }
   });
   document.addEventListener("mousedown", (event) => {
     if (els.cellContextMenu?.contains(event.target)) return;
+    if (els.sourceContextMenu?.contains(event.target)) return;
     closeCellContextMenu();
+    closeSourceContextMenu();
   }, true);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      resetWeightEditSession();
       closeCellContextMenu();
+      closeSourceContextMenu();
       return;
     }
     if (
@@ -1571,14 +2164,24 @@ function wireEvents() {
       return;
     }
     if (
+      (event.ctrlKey || event.metaKey)
+      && event.key?.toLowerCase?.() === "v"
+      && normalizedMethodHighlight()
+      && !event.target?.closest?.("input,textarea,[contenteditable='true']")
+    ) {
+      event.preventDefault();
+      void pasteHighlightedMethodValues().catch((err) => postStatus(`Paste failed: ${err?.message || err}`, "error"));
+      return;
+    }
+    if (
       normalizedMethodHighlight()
       && !event.ctrlKey
       && !event.metaKey
       && !event.altKey
       && /^[0-9.]$/.test(event.key || "")
     ) {
-      if (event.target?.closest?.("input,textarea,[contenteditable='true']") && isSingleCellHighlight()) return;
-      if (applyHighlightedWeightValue(event.key)) {
+      if (event.target?.closest?.("input:not(.rsWeightInput),textarea,[contenteditable='true']")) return;
+      if (applyHighlightedWeightKey(event.key)) {
         event.preventDefault();
         markDirty();
         renderMethodGrid();
@@ -1608,8 +2211,7 @@ function wireEvents() {
     });
   });
   els.addSourceBtn?.addEventListener("click", () => {
-    const rows = cachedRows.filter((row) => norm(row.name) !== norm(els.nameInput.value));
-    openPicker(els.addSourceBtn, rows, (row) => void addSource(row));
+    openAddSourcePicker(els.addSourceBtn);
   });
   els.saveBtn?.addEventListener("click", () => {
     saveResultSelection().catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));
@@ -1623,6 +2225,7 @@ function wireEvents() {
   els.closeConfirmOk?.addEventListener("click", () => resolveCloseConfirm(true));
   els.closeConfirmCancel?.addEventListener("click", () => resolveCloseConfirm(false));
   els.closeConfirmClose?.addEventListener("click", () => resolveCloseConfirm(false));
+  els.closeConfirmBox?.addEventListener("mousedown", startCloseConfirmDrag);
   els.closeConfirmOverlay?.addEventListener("mousedown", (event) => {
     if (event.target === event.currentTarget) resolveCloseConfirm(false);
   });
@@ -1633,7 +2236,11 @@ function wireEvents() {
     }
   });
   document.addEventListener("mousedown", (event) => {
-    if (!els.picker.contains(event.target) && !event.target?.closest?.(".rsButton")) closePicker();
+    if (
+      !els.picker.contains(event.target)
+      && !els.sourceContextMenu?.contains(event.target)
+      && !event.target?.closest?.(".rsButton")
+    ) closePicker();
   });
   window.addEventListener("message", (event) => {
     const msg = event.data || {};

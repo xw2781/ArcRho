@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Grouped Result Selection Method columns into Triangle, Vector, and Selected Ultimate/statistics areas with narrow blank separators and a connected single-row header."
+}

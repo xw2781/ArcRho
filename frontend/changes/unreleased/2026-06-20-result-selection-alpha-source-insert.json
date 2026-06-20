@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Inserted newly added Result Selection source columns in alphabetic dataset-name order instead of always appending them to the right."
+}
