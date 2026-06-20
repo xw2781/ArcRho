@@ -81,7 +81,15 @@ export function wireDatasetInputController(deps) {
     syncSidecarForCurrentDataset,
     instanceId,
     wireGridInteractions,
+    isProjectInstanceDraft = false,
+    refreshProjectInstanceDraftModel = null,
   } = deps;
+
+  async function refreshDraftModelAfterInputChange() {
+    if (!isProjectInstanceDraft || typeof refreshProjectInstanceDraftModel !== "function") return false;
+    await refreshProjectInstanceDraftModel();
+    return true;
+  }
 
   document.getElementById("reloadBtn")?.addEventListener("click", loadDataset);
   document.getElementById("clearCacheReloadBtn")?.addEventListener("click", () => {
@@ -506,10 +514,14 @@ export function wireDatasetInputController(deps) {
       enforceDevLenRule({ source: "origin" });
       saveTriInputsToStorage();
 
+      if (await refreshDraftModelAfterInputChange()) {
+        originSel.blur();
+        return;
+      }
+
       const project = getResolvedProjectValue();
       await ensureHeadersForProject(project);
       await ensureDevHeadersForProject(project);
-
       renderTable();
       notifyDatasetUpdated();
       setStatus("Loading dataset...");
@@ -529,6 +541,10 @@ export function wireDatasetInputController(deps) {
       enforceDevLenRule({ source: "origin" });
 
       saveTriInputsToStorage();
+
+      if (await refreshDraftModelAfterInputChange()) {
+        return;
+      }
 
       const project = getResolvedProjectValue();
       if (project) {
@@ -554,6 +570,11 @@ export function wireDatasetInputController(deps) {
       syncLen("dev");
       enforceDevLenRule({ source: "dev" });
       saveTriInputsToStorage();
+
+      if (await refreshDraftModelAfterInputChange()) {
+        devSel.blur();
+        return;
+      }
 
       const project = getResolvedProjectValue();
       // If len is linked, origin may change too; ensure both headers are consistent.

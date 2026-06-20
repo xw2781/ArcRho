@@ -1,6 +1,7 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
 import { normalizeProjectInstanceState, normalizeShellActivityEntry } from "/ui/shell/shell_activity_history.js";
+import { showAutomationMessageBox } from "/ui/shell/ui_automation.js?v=20260619a";
 
 let shellMessagesWired = false;
 
@@ -21,6 +22,31 @@ function tryConsumeActiveFrameCloseShortcut() {
   }
 }
 
+async function handleDatasetCloseConfirmRequest(source, msg) {
+  const requestId = String(msg?.requestId || "");
+  if (!source || !requestId) return;
+  try {
+    source.postMessage({ type: "arcrho:dataset-close-confirm-ack", requestId }, "*");
+  } catch {}
+  const isClose = String(msg?.reason || "close") === "close";
+  const result = await showAutomationMessageBox({
+    title: isClose ? "Cancel and close?" : "Cancel changes?",
+    message: isClose
+      ? "Unsaved dataset changes will be discarded and the window will close."
+      : "Unsaved dataset changes will be discarded.",
+    kind: "warning",
+    buttons: ["Yes", "Cancel"],
+    presentation: "floating",
+  });
+  try {
+    source.postMessage({
+      type: "arcrho:dataset-close-confirm-result",
+      requestId,
+      discard: result?.button === "Yes",
+    }, "*");
+  } catch {}
+}
+
 export function initShellMessages() {
   if (shellMessagesWired) return;
   shellMessagesWired = true;
@@ -28,6 +54,10 @@ export function initShellMessages() {
     const msg = e.data;
     if (!msg) return;
     if (msg.type === "arcrho:close-shell-menus") return shell.closeAllShellMenus?.();
+    if (msg.type === "arcrho:dataset-close-confirm-request") {
+      void handleDatasetCloseConfirmRequest(e.source, msg);
+      return;
+    }
     if (msg.type === "arcrho:dfm-edit-state") return shell.setDfmEditEnabled?.(!!msg.enabled);
     if (msg.type === "arcrho:dfm-history-state") {
       const inst = String(msg.inst || "");
@@ -263,7 +293,10 @@ export function initShellMessages() {
       if (tab && state) {
         tab.projectInstanceState = state;
         shell.saveState?.();
-        if (shell.state.activeId === tab.id) shell.recordActiveTabHistory?.(tab);
+        if (shell.state.activeId === tab.id) {
+          shell.recordActiveTabHistory?.(tab);
+          shell.updateHelpMenuState?.();
+        }
         shell.notifyBrowsingHistoryTabs?.({ projectInstanceState: state });
       }
       return;

@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance Add Dataset now uses the shared dataset picker window.",
+  "details": [
+    "Generated dataset types now show a custom message box when the selected reserving-class path already has that generated dataset.",
+    "Non-generated dataset types now open a new Dataset Viewer draft on Details so the instance name can be reviewed or changed before saving."
+  ]
+}

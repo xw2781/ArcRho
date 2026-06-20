@@ -1,5 +1,5 @@
 import { getTopLeftRangeCell, writeTextToClipboard } from "/ui/shared/table_selection.js";
-import { getDisplayDatasetModel } from "/ui/dataset/dataset_render.js";
+import { getDisplayDatasetModel, setDatasetGridEditConfig } from "/ui/dataset/dataset_render.js";
 
 export function wireDatasetGridInteractions(deps) {
   const {
@@ -11,6 +11,27 @@ export function wireDatasetGridInteractions(deps) {
     notifyDatasetUpdated = () => {},
   } = deps;
 
+  setDatasetGridEditConfig({
+    isEditableCell: (displayR, displayC) => !!canEditDisplayCell(displayR, displayC, { silent: true }),
+    onCellFocus: (displayR, displayC) => selectSingleCell(displayR, displayC),
+    onCellInput: (displayR, displayC, rawValue, input, td) => {
+      const nextValue = setDisplayCellValue(displayR, displayC, rawValue, { silentInvalid: true });
+      syncInputCellDisplay(td, input, nextValue);
+    },
+    onCellPaste: (displayR, displayC, event) => {
+      const data = event.clipboardData?.getData("text/plain") || "";
+      if (!data.includes("\t") && !data.includes("\n") && !data.includes("\r")) return;
+      event.preventDefault();
+      applyPastedGridText(data, { r: displayR, c: displayC });
+    },
+    onCellCommit: (displayR, displayC, rawValue, input, td) => {
+      const nextValue = setDisplayCellValue(displayR, displayC, rawValue);
+      syncInputCellDisplay(td, input, nextValue);
+      renderTable();
+      notifyDatasetUpdated();
+      applySelectionFromState();
+    },
+  });
   wireArrowKeyNavigation();
   wireRectSelectionAndCopy();
 
@@ -136,6 +157,161 @@ export function wireDatasetGridInteractions(deps) {
         ? t.closest("input, textarea, select, option, button, [contenteditable='true']")
         : (t.matches && t.matches("input, textarea, select, option, button, [contenteditable='true']"))
     ) || !!t.isContentEditable;
+  }
+
+  function displayToActualCell(displayR, displayC) {
+    return document.getElementById("transposedChk")?.checked === true
+      ? { r: displayC, c: displayR }
+      : { r: displayR, c: displayC };
+  }
+
+  function parseEditableCellValue(rawInput) {
+    const raw = String(rawInput ?? "").trim().replace(/,/g, "");
+    if (raw === "") return { ok: true, value: null };
+    let value = null;
+    if (raw.endsWith("%")) {
+      const pct = Number(raw.slice(0, -1));
+      value = Number.isFinite(pct) ? pct / 100 : NaN;
+    } else {
+      value = Number(raw);
+    }
+    return Number.isFinite(value) ? { ok: true, value } : { ok: false, value: null };
+  }
+
+  function canEditDisplayCell(displayR, displayC, options = {}) {
+    if (isReadOnly()) {
+      if (!options?.silent) setStatus("Generated datasets are read-only.");
+      return null;
+    }
+    const model = getDisplayDatasetModel();
+    const sourceModel = state.model;
+    if (!model || !sourceModel) return null;
+    if (displayR < 0 || displayC < 0) return null;
+    if (displayR >= (model.origin_labels?.length || 0) || displayC >= (model.dev_labels?.length || 0)) return null;
+    const actual = displayToActualCell(displayR, displayC);
+    if (!sourceModel.mask?.[actual.r]?.[actual.c]) return null;
+    if (!Array.isArray(sourceModel.values?.[actual.r])) return null;
+    return actual;
+  }
+
+  function setDisplayCellValue(displayR, displayC, rawValue, options = {}) {
+    const actual = canEditDisplayCell(displayR, displayC);
+    if (!actual) return null;
+    const parsed = parseEditableCellValue(rawValue);
+    if (!parsed.ok) {
+      if (!options?.silentInvalid) setStatus("Enter a numeric value.");
+      return null;
+    }
+    state.model.values[actual.r][actual.c] = parsed.value;
+    state.dirty.set(`${actual.r},${actual.c}`, parsed.value);
+    return parsed.value;
+  }
+
+  function syncInputCellDisplay(td, input, value) {
+    if (td) {
+      td.dataset.copyValue = value == null ? "" : String(value);
+    }
+    if (input) {
+      input.classList.toggle("dsCellInputBlank", value == null);
+    }
+  }
+
+  function selectSingleCell(displayR, displayC) {
+    state.activeCell = { r: displayR, c: displayC };
+    state.selRanges = [normalizeRange(displayR, displayC, displayR, displayC)];
+    applySelectionFromState();
+  }
+
+  function commitDisplayCellValue(displayR, displayC, rawValue) {
+    const value = setDisplayCellValue(displayR, displayC, rawValue);
+    if (value === null && String(rawValue ?? "").trim() !== "") return false;
+    selectSingleCell(displayR, displayC);
+    renderTable();
+    notifyDatasetUpdated();
+    applySelectionFromState();
+    setStatus("Updated cell.");
+    return true;
+  }
+
+  function parseClipboardRows(text) {
+    return String(text || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n")
+      .filter((row, index, arr) => index < arr.length - 1 || row !== "")
+      .map((row) => row.split("\t"));
+  }
+
+  function applyPastedGridText(text, start) {
+    if (isReadOnly()) {
+      setStatus("Generated datasets are read-only.");
+      return 0;
+    }
+    const model = getDisplayDatasetModel();
+    const sourceModel = state.model;
+    if (!model || !sourceModel || !start) return 0;
+
+    const rows = parseClipboardRows(text);
+    if (!rows.length) return 0;
+
+    let applied = 0;
+    for (let rr = 0; rr < rows.length; rr += 1) {
+      for (let cc = 0; cc < rows[rr].length; cc += 1) {
+        const displayR = start.r + rr;
+        const displayC = start.c + cc;
+        if (displayR < 0 || displayC < 0) continue;
+        if (displayR >= (model.origin_labels?.length || 0) || displayC >= (model.dev_labels?.length || 0)) continue;
+
+        const actual = displayToActualCell(displayR, displayC);
+        if (!sourceModel.mask?.[actual.r]?.[actual.c]) continue;
+
+        const parsed = parseEditableCellValue(rows[rr][cc]);
+        if (!parsed.ok) continue;
+
+        if (!Array.isArray(sourceModel.values[actual.r])) continue;
+        sourceModel.values[actual.r][actual.c] = parsed.value;
+        state.dirty.set(`${actual.r},${actual.c}`, parsed.value);
+        applied += 1;
+      }
+    }
+    if (!applied) return 0;
+    state.activeCell = { r: start.r, c: start.c };
+    state.selRanges = [normalizeRange(
+      start.r,
+      start.c,
+      start.r + rows.length - 1,
+      start.c + Math.max(0, rows.reduce((max, row) => Math.max(max, row.length), 0) - 1),
+    )];
+    renderTable();
+    notifyDatasetUpdated();
+    applySelectionFromState();
+    setStatus(`Pasted ${applied} cell${applied === 1 ? "" : "s"}.`);
+    return applied;
+  }
+
+  function focusCellInput(displayR, displayC, initialText = null) {
+    const input = document.querySelector(`#tableWrap .dsCellInput[data-r="${displayR}"][data-c="${displayC}"]`);
+    if (!input) {
+      canEditDisplayCell(displayR, displayC);
+      return false;
+    }
+    selectSingleCell(displayR, displayC);
+    if (initialText !== null) {
+      input.value = initialText === "." ? "0." : String(initialText);
+      setDisplayCellValue(displayR, displayC, input.value, { silentInvalid: true });
+      const actual = displayToActualCell(displayR, displayC);
+      syncInputCellDisplay(input.closest("td"), input, state.model?.values?.[actual.r]?.[actual.c]);
+      notifyDatasetUpdated();
+    }
+    requestAnimationFrame(() => {
+      input.focus({ preventScroll: true });
+      if (initialText === null) {
+        try { input.select(); } catch { /* number inputs do not expose text selection consistently */ }
+      } else {
+        try { input.setSelectionRange(input.value.length, input.value.length); } catch { /* keep browser default cursor placement */ }
+      }
+    });
+    return true;
   }
 
   function clearSelectionClasses() {
@@ -452,6 +628,15 @@ export function wireDatasetGridInteractions(deps) {
       state.dragSel = null;
     });
 
+    wrap.addEventListener("dblclick", (e) => {
+      const td = e.target.closest('td[data-r][data-c]');
+      if (!td) return;
+      const rc = rcFromTd(td);
+      if (!rc) return;
+      e.preventDefault();
+      focusCellInput(rc.r, rc.c);
+    });
+
     // Click row header -> select entire row
     // Click row header -> select / deselect entire row
     wrap.addEventListener("click", (e) => {
@@ -534,6 +719,23 @@ export function wireDatasetGridInteractions(deps) {
       copyActiveRangeToClipboard();
     });
 
+    document.addEventListener("keydown", (e) => {
+      if (isTypingTarget(e.target)) return;
+      if (!state.activeCell) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        commitDisplayCellValue(state.activeCell.r, state.activeCell.c, "");
+        return;
+      }
+
+      if (e.key === "Enter" || e.key === "F2" || /^[0-9.]$/.test(e.key || "")) {
+        e.preventDefault();
+        focusCellInput(state.activeCell.r, state.activeCell.c, e.key.length === 1 ? e.key : null);
+      }
+    });
+
     document.addEventListener("paste", (e) => {
       if (isTypingTarget(e.target)) return;
       if (isReadOnly()) {
@@ -544,46 +746,9 @@ export function wireDatasetGridInteractions(deps) {
       if (!text) return;
       const start = state.activeCell || getTopLeftRangeCell(state.selRanges || []);
       if (!start) return;
-      const model = getDisplayDatasetModel();
-      const sourceModel = state.model;
-      if (!model || !sourceModel) return;
-
-      const rows = text
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n")
-        .split("\n")
-        .filter((row, index, arr) => index < arr.length - 1 || row !== "")
-        .map((row) => row.split("\t"));
-      if (!rows.length) return;
-
-      let applied = 0;
-      for (let rr = 0; rr < rows.length; rr += 1) {
-        for (let cc = 0; cc < rows[rr].length; cc += 1) {
-          const displayR = start.r + rr;
-          const displayC = start.c + cc;
-          if (displayR < 0 || displayC < 0) continue;
-          if (displayR >= (model.origin_labels?.length || 0) || displayC >= (model.dev_labels?.length || 0)) continue;
-
-          const actualR = document.getElementById("transposedChk")?.checked === true ? displayC : displayR;
-          const actualC = document.getElementById("transposedChk")?.checked === true ? displayR : displayC;
-          if (!sourceModel.mask?.[actualR]?.[actualC]) continue;
-
-          const raw = String(rows[rr][cc] ?? "").trim().replace(/,/g, "");
-          const value = raw === "" ? null : Number(raw.endsWith("%") ? Number(raw.slice(0, -1)) / 100 : raw);
-          if (value !== null && !Number.isFinite(value)) continue;
-
-          if (!Array.isArray(sourceModel.values[actualR])) continue;
-          sourceModel.values[actualR][actualC] = value;
-          state.dirty.set(`${actualR},${actualC}`, value);
-          applied += 1;
-        }
-      }
+      const applied = applyPastedGridText(text, start);
       if (!applied) return;
       e.preventDefault();
-      renderTable();
-      notifyDatasetUpdated();
-      applySelectionFromState();
-      setStatus(`Pasted ${applied} cell${applied === 1 ? "" : "s"}.`);
     });
   }
 

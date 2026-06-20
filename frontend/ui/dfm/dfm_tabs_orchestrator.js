@@ -368,8 +368,8 @@ async function openCurrentDfmMethodJson() {
   try {
     const hostApi = window.ADAHost || null;
     const result = hostApi && typeof hostApi.openPath === "function"
-      ? await hostApi.openPath({ path: methodPath, preferredApp: "vscode" })
-      : await openPathViaShellBridge(methodPath, "vscode");
+      ? await hostApi.openPath({ path: methodPath, preferredApp: "arcode" })
+      : await openPathViaShellBridge(methodPath, "arcode");
     if (result?.ok) {
       postDfmStatus(`Opened DFM JSON: ${methodPath}`);
     } else {

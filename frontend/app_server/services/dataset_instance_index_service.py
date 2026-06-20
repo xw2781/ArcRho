@@ -12,9 +12,10 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
+from app_server.services import dataset_sidecar_status_service
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 10
+INDEX_VERSION = 11
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
 
@@ -212,6 +213,7 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
             "dataset_type_name": dataset_type or dataset_name,
             "method_type": RESULT_SELECTION_METHOD_TYPE,
             "data_format": "Vector",
+            "status": dataset_sidecar_status_service.STATUS_CURRENT,
         }
     details_tab = _json_tab(payload, "details tab")
     dataset_name = _normalize_cached_dataset_name(details_tab.get("output type"))
@@ -222,6 +224,7 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
         "dataset_type_name": dataset_name,
         "method_type": DFM_METHOD_TYPE,
         "data_format": "Vector",
+        "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
 
 
@@ -317,6 +320,17 @@ def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dic
     data_format = _clean_text(source.get("data_format"))
     if data_format and not _clean_text(existing.get("data_format")):
         existing["data_format"] = data_format
+    method_type = dataset_sidecar_status_service.normalize_method_type(
+        source.get("method_type"),
+        source.get("source_kind"),
+    )
+    existing_method_type = dataset_sidecar_status_service.normalize_method_type(existing.get("method_type"))
+    if method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE or existing_method_type == dataset_sidecar_status_service.METHOD_TYPE_NONE:
+        existing["method_type"] = method_type
+    if "status" in source:
+        existing["status"] = dataset_sidecar_status_service.normalize_status(source.get("status"))
+    elif "status" not in existing:
+        existing["status"] = dataset_sidecar_status_service.STATUS_CURRENT
     formula = _clean_text(source.get("formula"))
     if formula:
         existing["formula"] = formula
@@ -371,6 +385,8 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
             }
             by_name[key] = logical
         logical["method_type"] = method_type
+        if "status" not in logical:
+            logical["status"] = dataset_sidecar_status_service.STATUS_CURRENT
 
     return sorted(by_name.values(), key=lambda item: _clean_text(item.get("dataset_name")).lower())
 
@@ -444,6 +460,11 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 file_info["csv_file"] = _clean_text(metadata.get("csv_file"))
                 file_info["source_kind"] = _clean_text(metadata.get("source_kind"))
                 file_info["data_format"] = _clean_text(metadata.get("data_format"))
+                file_info["method_type"] = dataset_sidecar_status_service.normalize_method_type(
+                    metadata.get("method_type"),
+                    metadata.get("source_kind"),
+                )
+                file_info["status"] = dataset_sidecar_status_service.normalize_status(metadata.get("status"))
                 file_info["origin_length"] = metadata.get("origin_length")
                 if isinstance(metadata.get("origin_labels"), list):
                     file_info["origin_labels"] = [str(item) for item in metadata.get("origin_labels")]
@@ -480,6 +501,7 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 file_info["dataset_type_name"] = method_entry["dataset_type_name"]
                 file_info["dataset_type"] = method_entry["dataset_type_name"]
                 file_info["method_type"] = method_entry["method_type"]
+                file_info["status"] = method_entry.get("status", dataset_sidecar_status_service.STATUS_CURRENT)
                 file_info["data_format"] = method_entry.get("data_format", "")
             files.append(file_info)
 

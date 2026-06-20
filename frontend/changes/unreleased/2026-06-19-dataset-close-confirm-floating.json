@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset dirty-close confirmation now appears above shell pop-out tabs."
+}

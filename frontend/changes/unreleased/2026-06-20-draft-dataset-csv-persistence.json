@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance non-generated dataset drafts now save entered Data-tab values to backing CSV files.",
+  "details": [
+    "Draft Save now stores the CSV file name in the dataset sidecar.",
+    "Draft grid edits participate in the normal dirty, save, and close-confirmation flow."
+  ]
+}

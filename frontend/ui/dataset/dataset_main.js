@@ -101,6 +101,7 @@ applyAppFont(loadAppFontFromStorage());
 
 function notifyDatasetUpdated() {
   window.dispatchEvent(new CustomEvent("arcrho:dataset-updated"));
+  updateDatasetSaveUi();
 }
 
 function normalizeDatasetMatchText(value) {
@@ -390,6 +391,7 @@ let datasetSettingsDirty = false;
 let datasetSaveInFlight = false;
 let datasetInstanceNameConflict = false;
 let datasetInstanceNameConflictMessage = "";
+let savedProjectInstanceDraftName = "";
 let cachedDatasetInstanceRows = [];
 let cachedDatasetInstanceKey = "";
 let cachedDatasetInstanceLoadPromise = null;
@@ -440,11 +442,90 @@ function readDatasetInputsFromQueryParams() {
   const instanceName = String(qs.get("instance_name") || qs.get("instanceName") || "").trim();
   const originLen = String(qs.get("origin_len") || qs.get("originLen") || "").trim();
   const devLen = String(qs.get("dev_len") || qs.get("devLen") || "").trim();
+  const dataFormat = String(qs.get("data_format") || qs.get("dataFormat") || "").trim();
+  const numberFormat = String(qs.get("number_format") || qs.get("numberFormat") || "").trim();
+  const decimalPlaces = String(qs.get("decimal_places") || qs.get("decimalPlaces") || "").trim();
   const normalized = normalizeBrowsingHistoryEntry({ project, path, tri });
   if (normalized && instanceName) normalized.instanceName = instanceName;
   if (normalized && originLen) normalized.originLen = originLen;
   if (normalized && devLen) normalized.devLen = devLen;
+  if (normalized && dataFormat) normalized.dataFormat = dataFormat;
+  if (normalized && numberFormat) normalized.numberFormat = numberFormat;
+  if (normalized && decimalPlaces) normalized.decimalPlaces = decimalPlaces;
   return normalized;
+}
+
+function normalizeDraftDataFormat(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase() === "vector"
+    ? "Vector"
+    : "Triangle";
+}
+
+function getProjectInstanceDraftDataFormat() {
+  const queryInputs = readDatasetInputsFromQueryParams();
+  return normalizeDraftDataFormat(queryInputs?.dataFormat);
+}
+
+function numericFallbackLabels(count) {
+  const safeCount = Number.isFinite(count) && count > 0 ? Math.trunc(count) : 12;
+  return Array.from({ length: safeCount }, (_, index) => String(index + 1));
+}
+
+function labelsFromProjectSettings(labels, fallbackCount) {
+  if (Array.isArray(labels) && labels.length) return labels.map(String);
+  return numericFallbackLabels(fallbackCount);
+}
+
+function buildProjectInstanceDraftMask(originCount, devCount, dataFormat) {
+  const isVector = normalizeDraftDataFormat(dataFormat) === "Vector";
+  return Array.from({ length: originCount }, (_, r) => (
+    Array.from({ length: devCount }, (_, c) => isVector || r + c < devCount)
+  ));
+}
+
+function buildProjectInstanceDraftModel() {
+  const { originLen, devLen } = getTriInputs();
+  const dataFormat = getProjectInstanceDraftDataFormat();
+  const isVector = dataFormat === "Vector";
+  const originLabels = labelsFromProjectSettings(state.headerLabels, originLen);
+  const projectDevLabels = labelsFromProjectSettings(state.devHeaderLabels, devLen);
+  const devLabels = isVector ? [projectDevLabels[0] || "1"] : projectDevLabels;
+  const originCount = Math.max(1, originLabels.length);
+  const devCount = Math.max(1, devLabels.length);
+  const mask = buildProjectInstanceDraftMask(originCount, devCount, dataFormat);
+  const values = mask.map((row) => row.map((hasValue) => (hasValue ? 0 : null)));
+  return {
+    id: `draft:${getDatasetInstanceNameValue() || getTriInputs().tri || "dataset"}`,
+    origin_labels: originLabels,
+    dev_labels: devLabels,
+    values,
+    mask,
+    data_format: dataFormat,
+    mtime: null,
+  };
+}
+
+function initializeProjectInstanceDraftModel() {
+  state.dirty.clear();
+  state.fileMtime = null;
+  state.model = buildProjectInstanceDraftModel();
+  const meta = document.getElementById("dsMeta");
+  if (meta) {
+    meta.textContent = `draft | origins=${state.model.origin_labels.length} | dev=${state.model.dev_labels.length}`;
+  }
+}
+
+async function refreshProjectInstanceDraftModel() {
+  const project = getResolvedProjectValue();
+  if (project) {
+    await ensureHeadersForProject(project, { forceRefresh: true });
+    await ensureDevHeadersForProject(project, { forceRefresh: true });
+  }
+  initializeProjectInstanceDraftModel();
+  renderTable();
+  notifyDatasetUpdated();
+  renderChart();
+  setStatus("Ready to edit new dataset draft.");
 }
 
 function normalizeProjectText(s) {
@@ -1041,6 +1122,10 @@ async function refreshDatasetInstanceNameConflict() {
   }
   const instanceName = getDatasetInstanceNameValue();
   if (!instanceName) {
+    setDatasetInstanceNameConflict(false);
+    return false;
+  }
+  if (savedProjectInstanceDraftName && normalizeDatasetInstanceKey(instanceName) === normalizeDatasetInstanceKey(savedProjectInstanceDraftName)) {
     setDatasetInstanceNameConflict(false);
     return false;
   }
@@ -1905,6 +1990,12 @@ function applyTriInputsFromQueryParams() {
   if (devSel && queryInputs.devLen && [...devSel.options].some(o => o.value === String(queryInputs.devLen))) {
     devSel.value = String(queryInputs.devLen);
   }
+  if (queryInputs.decimalPlaces !== undefined || queryInputs.decimal_places !== undefined) {
+    setDatasetDecimalPlacesValue(queryInputs.decimalPlaces ?? queryInputs.decimal_places);
+  }
+  if (typeof queryInputs.numberFormat === "string") {
+    setDatasetNumberFormatValue(queryInputs.numberFormat);
+  }
   refreshLenDropdowns();
   if (!window.ADA_DFM_CONTEXT) {
     setLastViewedDatasetInputs(queryInputs);
@@ -2274,6 +2365,7 @@ function getCurrentDatasetSettings() {
   return {
     dataset_type: triInputs.tri,
     instance_name: triInputs.instanceName || triInputs.tri,
+    data_format: isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : undefined,
     origin_length: triInputs.originLen,
     development_length: triInputs.devLen,
     cumulative: !!triInputs.cumulative,
@@ -2281,6 +2373,24 @@ function getCurrentDatasetSettings() {
     calendar: !!triInputs.calendar,
     decimal_places: getDatasetDecimalPlacesValue(),
     number_format: getDatasetSyncedNumberFormatValue(),
+  };
+}
+
+function getProjectInstanceDraftValuePayload() {
+  if (!isProjectInstanceDraft || !state.model) return {};
+  const values = Array.isArray(state.model.values)
+    ? state.model.values.map((row) => (Array.isArray(row) ? row.map((value) => (value == null ? null : Number(value))) : []))
+    : null;
+  const mask = Array.isArray(state.model.mask)
+    ? state.model.mask.map((row) => (Array.isArray(row) ? row.map(Boolean) : []))
+    : null;
+  if (!Array.isArray(values) || !values.length) return {};
+  return {
+    source_kind: "input",
+    data_format: getProjectInstanceDraftDataFormat(),
+    origin_labels: Array.isArray(state.model.origin_labels) ? state.model.origin_labels.map(String) : undefined,
+    values,
+    mask,
   };
 }
 
@@ -2322,8 +2432,16 @@ function sameDatasetSettings(a, b) {
   );
 }
 
+function hasProjectInstanceDraftGridChanges() {
+  return isProjectInstanceDraft && state.dirty.size > 0;
+}
+
+function hasUnsavedDatasetChanges() {
+  return datasetSettingsDirty || notesDirty || hasProjectInstanceDraftGridChanges();
+}
+
 function notifyDatasetDirtyState() {
-  const dirty = datasetSettingsDirty || notesDirty;
+  const dirty = hasUnsavedDatasetChanges();
   try {
     window.parent?.postMessage({
       type: "arcrho:dataset-dirty",
@@ -2340,7 +2458,7 @@ function updateDatasetSaveUi() {
   const runBtn = document.getElementById("runArcRhoTriBtn");
   const clearBtn = document.getElementById("clearCacheReloadBtn");
   const hasContext = hasDatasetSidecarContext(sidecarContextPayload) || hasNotesContext(notesContextPayload);
-  const dirty = datasetSettingsDirty || notesDirty;
+  const dirty = hasUnsavedDatasetChanges();
   if (bar) bar.hidden = !hasContext;
   if (saveBtn) {
     saveBtn.disabled = datasetSaveInFlight || datasetInstanceNameConflict || !hasContext || !dirty;
@@ -2419,6 +2537,9 @@ async function syncSidecarForCurrentDataset(options = {}) {
   }
 
   const data = resp.data || {};
+  if (isProjectInstanceDraft && data.exists && !String(data.csv_file || "").trim()) {
+    savedProjectInstanceDraftName = String(data.dataset_name || context.dataset_name || "").trim();
+  }
   renderDatasetAuditLog(data.exists ? data.audit_log : []);
   const sidecarEditable = data.editable;
   const sidecarCalculated = data.calculated;
@@ -2466,6 +2587,7 @@ async function saveDatasetSidecarForCurrentContext() {
   const resp = await saveDatasetSidecar({
     ...context,
     ...settings,
+    ...getProjectInstanceDraftValuePayload(),
   });
   if (!resp.ok) {
     return { ok: false, error: resp?.data?.detail || "Failed to save dataset settings." };
@@ -2473,6 +2595,17 @@ async function saveDatasetSidecarForCurrentContext() {
   sidecarContextPayload = context;
   sidecarContextKey = buildDatasetSidecarContextKey(context);
   lastSavedDatasetSettings = normalizeDatasetSettings(settings);
+  if (isProjectInstanceDraft) {
+    savedProjectInstanceDraftName = context.dataset_name;
+    state.dirty.clear();
+    if (resp.data?.ds_id) {
+      config.DS_ID = String(resp.data.ds_id);
+      saveLastDsId(config.DS_ID);
+    }
+    if (resp.data?.file_mtime !== undefined && resp.data?.file_mtime !== null) {
+      state.fileMtime = resp.data.file_mtime;
+    }
+  }
   renderDatasetAuditLog(resp.data?.audit_log);
   invalidateCachedDatasetInstances();
   datasetSettingsDirty = false;
@@ -2486,7 +2619,7 @@ async function saveDatasetChanges(options = {}) {
   datasetSaveInFlight = true;
   updateDatasetSaveUi();
   try {
-    if (datasetSettingsDirty) {
+    if (datasetSettingsDirty || hasProjectInstanceDraftGridChanges()) {
       const sidecarResult = await saveDatasetSidecarForCurrentContext();
       if (!sidecarResult.ok) return sidecarResult;
     }
@@ -2522,6 +2655,7 @@ async function discardDatasetChanges(options = {}) {
     }
   }
   if (notesDirty) applyNotesInputValue(lastSavedNotesText);
+  state.dirty.clear();
   datasetSettingsDirty = false;
   updateDatasetSaveUi();
 }
@@ -2532,6 +2666,52 @@ function resolveDatasetCancelConfirm(value) {
   const resolve = datasetCancelConfirmResolve;
   datasetCancelConfirmResolve = null;
   if (resolve) resolve(!!value);
+}
+
+function showHostDatasetCancelConfirm(reason = "close") {
+  const host = window.parent;
+  if (!host || host === window) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    const requestId = `dataset_close_confirm_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    let acknowledged = false;
+    let done = false;
+    let fallbackTimer = 0;
+
+    const cleanup = () => {
+      window.removeEventListener("message", onMessage);
+      clearTimeout(fallbackTimer);
+    };
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      cleanup();
+      resolve(value);
+    };
+    const onMessage = (event) => {
+      if (event.source !== host) return;
+      const msg = event.data || {};
+      if (msg.requestId !== requestId) return;
+      if (msg.type === "arcrho:dataset-close-confirm-ack") {
+        acknowledged = true;
+        return;
+      }
+      if (msg.type === "arcrho:dataset-close-confirm-result") {
+        finish(!!msg.discard);
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+    try {
+      host.postMessage({ type: "arcrho:dataset-close-confirm-request", requestId, reason }, "*");
+    } catch {
+      finish(null);
+      return;
+    }
+    fallbackTimer = window.setTimeout(() => {
+      if (!acknowledged) finish(null);
+    }, 300);
+  });
 }
 
 function showDatasetCancelConfirm(reason = "close") {
@@ -2558,8 +2738,9 @@ function showDatasetCancelConfirm(reason = "close") {
 }
 
 async function confirmCancelDatasetChanges(reason = "close") {
-  if (!(datasetSettingsDirty || notesDirty)) return true;
-  const discard = await showDatasetCancelConfirm(reason);
+  if (!hasUnsavedDatasetChanges()) return true;
+  const hostDiscard = await showHostDatasetCancelConfirm(reason);
+  const discard = hostDiscard == null ? await showDatasetCancelConfirm(reason) : hostDiscard;
   if (!discard) return false;
   await discardDatasetChanges({ reload: reason !== "close" });
   return true;
@@ -2612,7 +2793,7 @@ function wireDatasetSaveControls() {
     }
   });
   window.__arcrho_request_close = () => {
-    if (!(datasetSettingsDirty || notesDirty)) return false;
+    if (!hasUnsavedDatasetChanges()) return false;
     void (async () => {
       const ok = await confirmCancelDatasetChanges("close");
       if (ok) requestConfirmedDatasetClose();
@@ -2621,7 +2802,7 @@ function wireDatasetSaveControls() {
   };
   window.__arcrho_consume_close_shortcut = window.__arcrho_request_close;
   window.addEventListener("beforeunload", (event) => {
-    if (!(datasetSettingsDirty || notesDirty)) return;
+    if (!hasUnsavedDatasetChanges()) return;
     event.preventDefault();
     event.returnValue = "";
   });
@@ -3441,6 +3622,8 @@ function wireEvents() {
     syncSidecarForCurrentDataset,
     instanceId,
     wireGridInteractions,
+    isProjectInstanceDraft,
+    refreshProjectInstanceDraftModel,
   });
   wireDatasetInstanceNameInput();
   wireNotesEditor();
@@ -3520,7 +3703,8 @@ async function boot() {
     await ensureHeadersForProject(project, { forceRefresh: true });
     await ensureDevHeadersForProject(project, { forceRefresh: true });
     if (isProjectInstanceDraft) {
-      setStatus("Ready to generate dataset instance.");
+      initializeProjectInstanceDraftModel();
+      setStatus("Ready to edit new dataset draft.");
       renderTable();
       notifyDatasetUpdated();
       renderChart();

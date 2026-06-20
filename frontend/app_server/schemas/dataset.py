@@ -56,6 +56,11 @@ class DatasetSidecarSaveRequest(BaseModel):
     decimal_places: int = Field(1, ge=0, le=6)
     origin_labels: Optional[List[str]] = None
     csv_file: str = ""
+    method_type: str = ""
+    status: Optional[int] = None
+    precedents: Optional[List[str]] = None
+    values: Optional[List[List[Optional[float]]]] = None
+    mask: Optional[List[List[bool]]] = None
 
 
 class EmptyDatasetCacheCreateRequest(BaseModel):

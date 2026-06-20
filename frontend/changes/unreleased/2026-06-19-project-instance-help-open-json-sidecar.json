@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added Help menu actions to open the active Project Instance dataset JSON and sidecar files in VS Code."
+}

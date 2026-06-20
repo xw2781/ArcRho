@@ -134,6 +134,7 @@ async function saveDatasetSidecar(_hostApi, csvPath, datasetName) {
   const csvFile = String(csvPath || "").split(/[\\/]/).pop() || "";
   const name = decodeDatasetNameFromCsvStem(datasetName);
   const outputType = String(document.getElementById("dfmOutputVector")?.value || "").trim();
+  const inputTriangle = String(document.getElementById("triInput")?.value || "").trim();
 
   if (!projectName || !reservingClass || !name || !csvFile) {
     return {
@@ -153,12 +154,15 @@ async function saveDatasetSidecar(_hostApi, csvPath, datasetName) {
         dataset_type: outputType || name,
         instance_name: name,
         source_kind: "dfm",
+        method_type: "DFM",
+        status: 0,
         data_format: "Vector",
         origin_length: readSelectedLengthNumber("originLenSelect"),
         development_length: readSelectedLengthNumber("devLenSelect"),
         cumulative: true,
         calendar: false,
         csv_file: csvFile,
+        precedents: inputTriangle ? [inputTriangle] : [],
       }),
     });
     const data = await response.json().catch(() => ({}));

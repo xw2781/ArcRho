@@ -1,3 +1,5 @@
+import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
+
 export function installProjectInstanceDatasetTable(ctx) {
   const { api, els, projectName, state } = ctx;
   const {
@@ -18,14 +20,21 @@ export function installProjectInstanceDatasetTable(ctx) {
   const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
+  const openNewDatasetDraftWindow = (...args) => api.openNewDatasetDraftWindow(...args);
   const postProjectInstanceStatus = (...args) => api.postProjectInstanceStatus(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const shouldUseCachedDatasetFilter = (...args) => api.shouldUseCachedDatasetFilter(...args);
-  const showDatasetAddPicker = (...args) => api.showDatasetAddPicker(...args);
   const syncCachedDatasetToolbar = (...args) => api.syncCachedDatasetToolbar(...args);
   const toText = (...args) => api.toText(...args);
+  const addDatasetSelectionInFlightKeys = new Set();
+
+function isDatasetColumnFilterable(key) {
+  const normalized = toText(key);
+  return normalized !== "status" && !!getDatasetColumn(normalized);
+}
 
 function getDatasetFilterActiveValues(key, context = null) {
+  if (!isDatasetColumnFilterable(key)) return [];
   if (!context) {
     const selected = datasetTableView.filters.get(key);
     return selected instanceof Set ? Array.from(selected).map((value) => String(value)) : [];
@@ -63,6 +72,10 @@ function getDatasetActiveFilterSummaries(context = null) {
 
 function clearDatasetColumnFilter(key) {
   const normalized = toText(key);
+  if (!isDatasetColumnFilterable(normalized)) {
+    datasetTableView.filters.delete(normalized);
+    return;
+  }
   if (!getDatasetColumn(normalized) || !datasetTableView.filters.has(normalized)) return;
   hideDatasetFilterTooltip();
   datasetTableView.filters.delete(normalized);
@@ -381,6 +394,10 @@ function getDatasetTablePreferencePayload() {
   const filters = {};
   for (const col of DATASET_TABLE_COLUMNS) {
     const key = col.key;
+    if (!isDatasetColumnFilterable(key)) {
+      filters[key] = [];
+      continue;
+    }
     const selected = datasetTableView.filters.get(key);
     if (!known.has(key) || !(selected instanceof Set) || selected.size === 0) {
       filters[key] = [];
@@ -449,7 +466,7 @@ function applyDatasetTablePreferences(source) {
   const filters = prefs.filters && typeof prefs.filters === "object" && !Array.isArray(prefs.filters) ? prefs.filters : {};
   Object.entries(filters).forEach(([key, values]) => {
     const normalized = toText(key);
-    if (!known.has(normalized) || !Array.isArray(values)) return;
+    if (!known.has(normalized) || !isDatasetColumnFilterable(normalized) || !Array.isArray(values)) return;
     const selected = new Set(values.map((value) => String(value)).filter(Boolean));
     if (selected.size) datasetTableView.filters.set(normalized, selected);
   });
@@ -562,6 +579,21 @@ function getMethodType(row) {
   return cachedDatasetFilter.methodTypesByName.get(normalizeLookupKey(getDatasetName(row))) || "None";
 }
 
+function normalizeDatasetStatus(value) {
+  const status = Number(value);
+  return status === 2 ? 2 : 0;
+}
+
+function getDatasetStatusLabel(status) {
+  return normalizeDatasetStatus(status) === 2 ? "Needs review" : "Updated";
+}
+
+function getDatasetStatus(record, instanceName = "") {
+  const name = instanceName || record?.datasetName || getDatasetName(record?.row);
+  const meta = record?.meta || getCachedDatasetMetadataByName(name) || getCachedDatasetMetadata(record?.row);
+  return normalizeDatasetStatus(meta?.status ?? record?.instance?.status ?? record?.status);
+}
+
 function getCachedDatasetMetadata(row) {
   if (!hasCachedDatasetMetadataForSelectedPath()) return null;
   const key = getCachedDatasetKey(getDatasetName(row));
@@ -624,6 +656,8 @@ function getDatasetCellValue(row, key) {
     case "name":
     case "datasetTypeName":
       return datasetName;
+    case "status":
+      return getDatasetStatusLabel(getDatasetStatus({ row }));
     case "dataFormat":
       return toText(row?.[1]);
     case "formula":
@@ -652,6 +686,8 @@ function getDatasetRecordCellValue(row, key, instance = null) {
       return instanceName;
     case "datasetTypeName":
       return datasetTypeName;
+    case "status":
+      return getDatasetStatusLabel(getDatasetStatus({ row, instance }, instanceName));
     case "dataFormat":
       return toText(row?.[1]);
     case "formula":
@@ -764,6 +800,7 @@ function openResultSelectionTabForDataset(record) {
   const datasetName = toText(record?.datasetName);
   if (!datasetName || !state.selectedPath) return;
   openResultSelectionWindow(datasetName, {
+    initialTab: "method",
     methodType: getDatasetRecordValue(record, "methodType"),
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
@@ -861,8 +898,13 @@ function clampInitialDatasetTableWidth(width, col) {
   return Math.max(minWidth, Math.min(DATASET_TABLE_AUTOFIT_MAX_WIDTH, measured));
 }
 
+function getDatasetStatusAutoFitWidth(col = getDatasetColumn("status")) {
+  return Math.max(col?.minWidth || 52, 58);
+}
+
 function getInitialDatasetTableColumnWidth(col, rows = state.datasetRows) {
   if (!col) return 120;
+  if (col.key === "status") return getDatasetStatusAutoFitWidth(col);
   let width = measureDatasetTableText(col.label) + DATASET_TABLE_AUTOFIT_HEADER_EXTRA_WIDTH;
   const sourceRows = Array.isArray(rows) ? rows : [];
   for (const row of sourceRows) {
@@ -895,6 +937,10 @@ function buildDatasetTableRenderContext() {
   const selectionsByKey = new Map();
 
   for (const col of DATASET_TABLE_COLUMNS) {
+    if (!isDatasetColumnFilterable(col.key)) {
+      optionsByKey.set(col.key, []);
+      continue;
+    }
     const seen = new Set();
     const options = [];
     for (const record of records) {
@@ -961,6 +1007,7 @@ function getSortIconSvg(dir) {
 }
 
 function getDatasetColumnOptions(key, context = null) {
+  if (!isDatasetColumnFilterable(key)) return [];
   const cached = context?.optionsByKey?.get?.(key);
   if (cached) return cached;
   const seen = new Set();
@@ -985,6 +1032,10 @@ function getDatasetColumnOptions(key, context = null) {
 }
 
 function getDatasetFilterSelection(key, options = getDatasetColumnOptions(key)) {
+  if (!isDatasetColumnFilterable(key)) {
+    datasetTableView.filters.delete(key);
+    return new Set();
+  }
   const optionKeys = new Set(options.map((opt) => opt.key));
   let selected = datasetTableView.filters.get(key);
   if (!(selected instanceof Set)) {
@@ -999,6 +1050,7 @@ function getDatasetFilterSelection(key, options = getDatasetColumnOptions(key)) 
 }
 
 function isDatasetColumnFilterActive(key, context = null) {
+  if (!isDatasetColumnFilterable(key)) return false;
   const options = getDatasetColumnOptions(key, context);
   if (!options.length) return false;
   const selected = context?.selectionsByKey?.get?.(key) || getDatasetFilterSelection(key, options);
@@ -1009,6 +1061,7 @@ function isDatasetColumnFilterActive(key, context = null) {
 
 function rowMatchesDatasetTableFilters(record, context) {
   for (const col of DATASET_TABLE_COLUMNS) {
+    if (!isDatasetColumnFilterable(col.key)) continue;
     const options = getDatasetColumnOptions(col.key, context);
     if (!options.length) continue;
     const selected = context?.selectionsByKey?.get?.(col.key) || getDatasetFilterSelection(col.key, options);
@@ -1122,22 +1175,24 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
   });
   cell.appendChild(label);
 
-  const filterBtn = document.createElement("button");
-  filterBtn.type = "button";
-  filterBtn.className = "pi-table-filter-btn";
-  filterBtn.title = `${col.label} Filter`;
-  filterBtn.classList.toggle("active", isDatasetColumnFilterActive(col.key, context));
-  filterBtn.innerHTML = `
-    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M2 3h12L9.5 8v4l-3 1V8z"></path>
-    </svg>
-  `;
-  filterBtn.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    toggleDatasetTableFilterPopover(col.key, filterBtn);
-  });
-  cell.appendChild(filterBtn);
+  if (isDatasetColumnFilterable(col.key)) {
+    const filterBtn = document.createElement("button");
+    filterBtn.type = "button";
+    filterBtn.className = "pi-table-filter-btn";
+    filterBtn.title = `${col.label} Filter`;
+    filterBtn.classList.toggle("active", isDatasetColumnFilterActive(col.key, context));
+    filterBtn.innerHTML = `
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="M2 3h12L9.5 8v4l-3 1V8z"></path>
+      </svg>
+    `;
+    filterBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleDatasetTableFilterPopover(col.key, filterBtn);
+    });
+    cell.appendChild(filterBtn);
+  }
 
   const resizer = document.createElement("div");
   resizer.className = "pi-table-col-resizer";
@@ -1153,6 +1208,37 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
   return th;
 }
 
+function getDatasetStatusIconSvg(status) {
+  if (normalizeDatasetStatus(status) === 2) {
+    return `
+      <svg class="pi-status-icon warning" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+        <path class="pi-status-stroke" d="M9 2.3 16 15.2H2z"></path>
+        <path class="pi-status-dark-mark" d="M8.25 6h1.5v4.8h-1.5zm0 5.9h1.5v1.45h-1.5z"></path>
+      </svg>
+    `;
+  }
+  return `
+    <svg class="pi-status-icon updated" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+      <circle class="pi-status-stroke" cx="9" cy="9" r="7"></circle>
+      <circle class="pi-status-soft-fill" cx="9" cy="9" r="4.8"></circle>
+      <path class="pi-status-stroke" d="m6 9 2 2 4.1-4.2"></path>
+    </svg>
+  `;
+}
+
+function appendDatasetStatusCell(td, item) {
+  const status = getDatasetStatus(item);
+  const label = getDatasetStatusLabel(status);
+  const wrap = document.createElement("span");
+  wrap.className = `pi-status-cell ${status === 2 ? "warning" : "updated"}`;
+  wrap.title = status === 2
+    ? "Needs review because an input dependency was updated after this method output."
+    : "Dataset is updated.";
+  wrap.setAttribute("aria-label", label);
+  wrap.innerHTML = getDatasetStatusIconSvg(status);
+  td.appendChild(wrap);
+}
+
 function createDatasetRecordRow(item, columns) {
   state.datasetTableVisibleRecords.push(item);
   const tr = document.createElement("tr");
@@ -1165,6 +1251,12 @@ function createDatasetRecordRow(item, columns) {
   for (const col of columns) {
     const value = getDatasetRecordValue(item, col.key);
     const td = document.createElement("td");
+    if (col.key === "status") {
+      td.className = "pi-table-status-td";
+      appendDatasetStatusCell(td, item);
+      tr.appendChild(td);
+      continue;
+    }
     const text = document.createElement("span");
     text.className = "pi-table-cell-text";
     text.textContent = value;
@@ -1370,11 +1462,22 @@ function startDatasetTableColumnResize(event, key) {
 function autoFitDatasetTableColumn(key, colIndex) {
   const col = getDatasetColumn(key);
   if (!col) return;
+  if (col.key === "status") {
+    setDatasetTableColumnWidth(key, getDatasetStatusAutoFitWidth(col));
+    datasetTablePreferenceWidthKeys.add(key);
+    saveDatasetTablePreferences();
+    return;
+  }
   let width = col.minWidth || 80;
   const rows = els.datasetTableSurface?.querySelectorAll?.(".pi-table tbody tr") || [];
   for (const tr of rows) {
     const td = tr.children[colIndex];
-    if (!td || td.classList.contains("pi-table-empty")) continue;
+    if (
+      !td
+      || td.classList.contains("pi-table-empty")
+      || tr.classList.contains("pi-table-group-row")
+      || Number(td.colSpan || 1) > 1
+    ) continue;
     width = Math.max(
       width,
       Math.min(
@@ -1705,7 +1808,52 @@ async function refreshDatasetsAfterAdd(datasetName = "") {
   return selectDatasetRecordByName(datasetName);
 }
 
+async function ensureCachedDatasetSnapshotForAdd() {
+  const loadedPath = normalizePath(cachedDatasetFilter.loadedPath).toLowerCase();
+  const selectedPath = normalizePath(state.selectedPath).toLowerCase();
+  if (!selectedPath) return;
+  if (loadedPath !== selectedPath || cachedDatasetFilter.loading) {
+    await loadCachedDatasetFilterForSelectedPath();
+  }
+  if (cachedDatasetFilter.error) {
+    throw new Error(cachedDatasetFilter.error);
+  }
+}
+
+function datasetInstanceExistsInSelectedPath(instanceName) {
+  const key = getCachedDatasetKey(instanceName);
+  return !!key && cachedDatasetFilter.names instanceof Set && cachedDatasetFilter.names.has(key);
+}
+
+function hideDatasetAddMessageBox() {
+  els.datasetAddMessageOverlay?.setAttribute("hidden", "");
+}
+
+function showAddDatasetMessageBox(message, title = "Add Dataset") {
+  const text = toText(message);
+  if (!text) return;
+  setStatus(text, true);
+  if (!els.datasetAddMessageOverlay || !els.datasetAddMessageText) return;
+  if (els.datasetAddMessageTitle) els.datasetAddMessageTitle.textContent = toText(title) || "Add Dataset";
+  els.datasetAddMessageText.textContent = text;
+  if (els.datasetAddMessageBox) {
+    els.datasetAddMessageBox.style.left = "50%";
+    els.datasetAddMessageBox.style.top = "50%";
+    els.datasetAddMessageBox.style.transform = "translate(-50%, -50%)";
+  }
+  els.datasetAddMessageOverlay.removeAttribute("hidden");
+  els.datasetAddMessageOk?.focus?.({ preventScroll: true });
+}
+
 async function addGeneratedDataset(record, lengths) {
+  await ensureCachedDatasetSnapshotForAdd();
+  if (datasetInstanceExistsInSelectedPath(record.datasetName)) {
+    showAddDatasetMessageBox(
+      `Dataset "${record.datasetName}" already exists in this reserving class path.`,
+      "Dataset Already Exists",
+    );
+    return;
+  }
   setStatus(`Requesting generated dataset ${record.datasetName}...`);
   const res = await fetch("/arcrho/tri/refresh", {
     method: "POST",
@@ -1728,32 +1876,91 @@ async function addGeneratedDataset(record, lengths) {
     : `Generated dataset request completed for ${record.datasetName}.`);
 }
 
-async function addEmptyEditableDataset(record, lengths) {
-  setStatus(`Creating empty dataset ${record.datasetName}...`);
-  const res = await fetch("/datasets/cached/empty", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project_name: projectName,
-      reserving_class: state.selectedPath,
-      dataset_type: record.datasetName,
-      instance_name: record.datasetName,
-      data_format: getDatasetRecordValue(record, "dataFormat") || "Triangle",
-      origin_length: lengths.originLen,
-      development_length: lengths.devLen,
-      cumulative: true,
-      calendar: false,
-    }),
+function openNonGeneratedDatasetDraft(record, lengths) {
+  const frame = openNewDatasetDraftWindow(record.datasetName, {
+    datasetTypeName: record.datasetTypeName || record.datasetName,
+    dataFormat: getDatasetRecordValue(record, "dataFormat") || "Triangle",
+    originLen: lengths.originLen,
+    devLen: lengths.devLen,
+    initialTab: "details",
+    draft: true,
   });
-  const out = await res.json().catch(() => ({}));
-  if (!res.ok || out?.ok === false) {
-    const detail = toText(out?.detail || out?.status) || `HTTP ${res.status}`;
-    throw new Error(detail);
+  if (frame) {
+    setStatus(`Opened new dataset draft for ${record.datasetName}.`);
   }
-  const selected = await refreshDatasetsAfterAdd(record.datasetName);
-  setStatus(selected
-    ? `Created empty editable dataset ${record.datasetName}. Selected the new dataset.`
-    : `Created empty editable dataset ${record.datasetName}.`);
+}
+
+function buildDatasetRowFromPickerItem(item) {
+  if (!item || typeof item !== "object") return null;
+  const name = toText(item.name);
+  if (!name) return null;
+  return [
+    name,
+    toText(item.dataFormat),
+    toText(item.category),
+    !!item.calculated,
+    toText(item.formula),
+    !!item.generated,
+  ];
+}
+
+function getDatasetAddRecordFromPickerSelection(name, item) {
+  const datasetName = toText(name || item?.name);
+  if (!datasetName) return null;
+  const existingRow = getDatasetTypeRowByName(datasetName);
+  const row = existingRow || buildDatasetRowFromPickerItem(item);
+  if (!row) return null;
+  const rowIndex = existingRow ? state.datasetRows.indexOf(existingRow) : state.datasetRows.length;
+  return buildDatasetRecord(row, rowIndex);
+}
+
+async function processDatasetAddSelection(selected) {
+  const datasetName = toText(selected?.datasetName);
+  if (!datasetName) return;
+  const key = `${selected.generated ? "generated" : "draft"}\u0001${normalizeLookupKey(datasetName)}`;
+  if (addDatasetSelectionInFlightKeys.has(key)) return;
+  addDatasetSelectionInFlightKeys.add(key);
+  try {
+    const lengths = await getAddDatasetDefaultLengths();
+    if (selected.generated) {
+      await addGeneratedDataset(selected, lengths);
+    } else {
+      openNonGeneratedDatasetDraft(selected, lengths);
+    }
+  } catch (err) {
+    setStatus(`Add dataset failed: ${toText(err?.message) || "Unknown error."}`, true);
+  } finally {
+    addDatasetSelectionInFlightKeys.delete(key);
+  }
+}
+
+async function openDatasetAddSharedPicker() {
+  closeDatasetRowContextMenu();
+  closeDatasetTableContextMenu();
+  closeDatasetGroupContextMenu();
+  closeDatasetTableFilterPopover();
+
+  await openDatasetNamePicker({
+    projectName,
+    initialName: "",
+    anchorElement: els.datasetTableSurface || els.datasetTableWrap || null,
+    title: "Add Dataset",
+    emptyMessage: "No dataset types are available.",
+    setStatus: (message) => {
+      const text = toText(message);
+      if (text) setStatus(text, true);
+    },
+    onError: (err) => {
+      console.error("Failed to open dataset add picker:", err);
+      setStatus(`Dataset type picker failed: ${toText(err?.message || err) || "Unknown error."}`, true);
+    },
+    onSelect: (name, item) => {
+      void processDatasetAddSelection(getDatasetAddRecordFromPickerSelection(name, item));
+    },
+  }).catch((err) => {
+    console.error("Failed to open dataset add picker:", err);
+    setStatus(`Dataset type picker failed: ${toText(err?.message || err) || "Unknown error."}`, true);
+  });
 }
 
 async function addDatasetFromTypePicker() {
@@ -1761,19 +1968,7 @@ async function addDatasetFromTypePicker() {
     setStatus("Select a reserving class path before adding a dataset.", true);
     return;
   }
-  const selected = await showDatasetAddPicker();
-  const datasetName = toText(selected?.datasetName);
-  if (!datasetName) return;
-  try {
-    const lengths = await getAddDatasetDefaultLengths();
-    if (selected.generated) {
-      await addGeneratedDataset(selected, lengths);
-    } else {
-      await addEmptyEditableDataset(selected, lengths);
-    }
-  } catch (err) {
-    setStatus(`Add dataset failed: ${toText(err?.message) || "Unknown error."}`, true);
-  }
+  await openDatasetAddSharedPicker();
 }
 
 function resolveDatasetDeleteConfirm(value) {
@@ -1897,7 +2092,7 @@ function positionDatasetTableFilterPopover() {
 function openDatasetTableFilterPopover(key, anchor) {
   const col = getDatasetColumn(key);
   const pop = els.datasetTableFilterPopover;
-  if (!col || !pop) return;
+  if (!col || !pop || !isDatasetColumnFilterable(key)) return;
   closeDatasetTableContextMenu();
   closeDatasetGroupContextMenu();
   closeDatasetRowContextMenu();
@@ -1966,6 +2161,10 @@ function openDatasetTableFilterPopover(key, anchor) {
 }
 
 function toggleDatasetTableFilterPopover(key, anchor) {
+  if (!isDatasetColumnFilterable(key)) {
+    closeDatasetTableFilterPopover();
+    return;
+  }
   const pop = els.datasetTableFilterPopover;
   if (
     pop?.classList?.contains("open")
@@ -2049,6 +2248,10 @@ function initDatasetTableInteractions() {
   }, true);
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (!els.datasetAddMessageOverlay?.hasAttribute?.("hidden")) {
+      hideDatasetAddMessageBox();
+      return;
+    }
     if (!els.datasetDeleteConfirmOverlay?.hasAttribute?.("hidden")) {
       resolveDatasetDeleteConfirm(false);
     }
@@ -2064,7 +2267,18 @@ function initDatasetTableInteractions() {
     positionDatasetTableFilterPopover();
   });
   els.datasetTableWrap?.addEventListener("scroll", positionDatasetTableFilterPopover, true);
+  initDatasetAddMessageBoxInteractions();
   initDatasetDeleteConfirmInteractions();
+}
+
+function initDatasetAddMessageBoxInteractions() {
+  if (!els.datasetAddMessageOverlay || els.datasetAddMessageOverlay.dataset.wired === "1") return;
+  els.datasetAddMessageOverlay.dataset.wired = "1";
+  els.datasetAddMessageOk?.addEventListener("click", hideDatasetAddMessageBox);
+  els.datasetAddMessageClose?.addEventListener("click", hideDatasetAddMessageBox);
+  els.datasetAddMessageOverlay.addEventListener("mousedown", (event) => {
+    if (event.target === event.currentTarget) hideDatasetAddMessageBox();
+  });
 }
 
 function initDatasetDeleteConfirmInteractions() {

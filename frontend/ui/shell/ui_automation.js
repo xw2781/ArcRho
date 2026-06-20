@@ -25,6 +25,10 @@ function installAutomationStyles() {
       background: rgba(15, 23, 42, 0.22);
     }
     .uiAutomationOverlay.open { display: block; }
+    .uiAutomationOverlay.floating {
+      background: transparent;
+      pointer-events: none;
+    }
     .uiAutomationDialog {
       position: absolute;
       width: min(460px, calc(100vw - 40px));
@@ -35,6 +39,10 @@ function installAutomationStyles() {
       box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22);
       color: #1f2937;
       overflow: hidden;
+    }
+    .uiAutomationOverlay.floating .uiAutomationDialog {
+      width: min(360px, calc(100vw - 40px));
+      pointer-events: auto;
     }
     .uiAutomationDialogHeader {
       display: flex;
@@ -187,11 +195,12 @@ function enableDialogDrag(overlay, dialog) {
   };
 }
 
-function showAutomationMessageBox(args = {}) {
+export function showAutomationMessageBox(args = {}) {
   if (messageBoxPromise) return messageBoxPromise;
   installAutomationStyles();
   const overlay = document.createElement("div");
   overlay.className = "uiAutomationOverlay host-nodrag";
+  if (args.presentation === "floating") overlay.classList.add("floating");
   overlay.setAttribute("role", "presentation");
   const buttons = Array.isArray(args.buttons) && args.buttons.length
     ? args.buttons.map((item) => toText(item)).filter(Boolean).slice(0, 4)

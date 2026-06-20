@@ -604,6 +604,11 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   if (instanceName && instanceName !== datasetTypeName) params.set("instance_name", instanceName);
   if (options?.originLen) params.set("origin_len", String(options.originLen));
   if (options?.devLen) params.set("dev_len", String(options.devLen));
+  if (options?.dataFormat) params.set("data_format", toText(options.dataFormat));
+  if (options?.numberFormat) params.set("number_format", toText(options.numberFormat));
+  if (options?.decimalPlaces !== undefined && options?.decimalPlaces !== null) {
+    params.set("decimal_places", String(options.decimalPlaces));
+  }
   if (options?.dsId) params.set("ds", toText(options.dsId));
   if (options?.readOnly) params.set("readonly", "1");
   if (options?.generated) params.set("generated_dataset", "1");
@@ -921,6 +926,9 @@ function openNewDatasetDraftWindow(datasetName, options = {}) {
       datasetTypeName,
       originLen: options?.originLen || 12,
       devLen: options?.devLen || 12,
+      dataFormat: options?.dataFormat,
+      numberFormat: isDraft ? (options?.numberFormat || "0,000") : options?.numberFormat,
+      decimalPlaces: isDraft ? (options?.decimalPlaces ?? 0) : options?.decimalPlaces,
       dsId: options?.dsId,
       readOnly: options?.readOnly,
       generated: options?.generated,

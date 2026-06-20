@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added dataset sidecar review status and Project Instance status icons for method-backed outputs.",
+  "details": [
+    "Result Selection and DFM saves now record method type, precedents, and clear review warnings.",
+    "Method-backed outputs are flagged when an input dependency is updated after the method output."
+  ]
+}

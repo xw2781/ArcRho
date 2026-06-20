@@ -14,7 +14,7 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name, set_data_path_like_vba, send_request_like_vba, wait_for_file
-from app_server.services import dataset_instance_index_service, project_settings_service
+from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service, project_settings_service
 
 def _pair_value(pairs: list, key: str) -> str:
     key_l = key.strip().lower()
@@ -353,20 +353,39 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
     if not instance_name:
         return
     sidecar_path = _dataset_sidecar_path(data_path, pairs)
-    if os.path.exists(sidecar_path):
-        return
+    project_name = _pair_value(pairs, "ProjectName")
+    reserving_class = _pair_value(pairs, "Path")
     user_name = getpass.getuser()
+    updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    if os.path.exists(sidecar_path):
+        payload = dataset_sidecar_status_service.read_sidecar(sidecar_path)
+        if not payload:
+            return
+        payload["method_type"] = dataset_sidecar_status_service.METHOD_TYPE_NONE
+        payload["status"] = dataset_sidecar_status_service.STATUS_CURRENT
+        payload["updated_at"] = updated_at
+        payload["modified_by"] = user_name
+        payload["user"] = user_name
+        from app_server.services.dataset_service import _append_dataset_audit_entry
+
+        _append_dataset_audit_entry(payload, "Update", event_date=updated_at, user_name=user_name)
+        dataset_sidecar_status_service.write_sidecar(sidecar_path, payload)
+        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+            project_name,
+            reserving_class,
+            [instance_name, dataset_type],
+        )
+        return
     created = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     try:
         created = _utc_timestamp_from_stat(os.stat(data_path).st_ctime)
     except OSError:
         pass
-    updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     payload = {
         "dataset_name": instance_name,
         "dataset_type": dataset_type,
-        "reserving_class": _pair_value(pairs, "Path"),
-        "project_name": _pair_value(pairs, "ProjectName"),
+        "reserving_class": reserving_class,
+        "project_name": project_name,
         "source_kind": "engine",
         "generated": True,
         "editable": False,
@@ -381,6 +400,8 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "created": created,
         "modified_by": user_name,
         "updated_at": updated_at,
+        "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
+        "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
     from app_server.services import calculated_dataset_service
     from app_server.services.dataset_service import _append_dataset_audit_entry
@@ -397,6 +418,11 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         json.dump(payload, f, indent=2, ensure_ascii=False)
         f.write("\n")
     os.replace(tmp_path, sidecar_path)
+    dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+        project_name,
+        reserving_class,
+        [instance_name, dataset_type],
+    )
 
 
 def _refresh_dataset_instance_index_after_cache_write(pairs: list) -> None:

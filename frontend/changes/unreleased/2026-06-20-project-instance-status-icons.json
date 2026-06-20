@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Changed project instance dataset status cells to use the selected hybrid icon-only indicators and expanded the preview page."
+}

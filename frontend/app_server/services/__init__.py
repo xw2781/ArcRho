@@ -1,6 +1,7 @@
 from . import workflow_service
 from . import audit_service
 from . import book_service
+from . import dataset_sidecar_status_service
 from . import dataset_instance_index_service
 from . import dataset_service
 from . import excel_service
@@ -21,6 +22,7 @@ __all__ = [
     "audit_service",
     "book_service",
     "dataset_instance_index_service",
+    "dataset_sidecar_status_service",
     "dataset_service",
     "excel_service",
     "arcrho_runtime_service",

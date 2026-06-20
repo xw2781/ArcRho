@@ -15,7 +15,7 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import atomic_write_csv, build_length_scoped_dataset_file_name, sanitize_dataset_file_name
-from app_server.services import dataset_instance_index_service
+from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service
 
 
 def make_annual_labels(start_year: int, n_origin: int, n_dev: int) -> Tuple[List[str], List[str]]:
@@ -107,6 +107,21 @@ def _normalize_origin_labels(value: Any) -> List[str]:
     return [str(item) for item in value]
 
 
+def _normalize_name_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in value:
+        name = str(item or "").strip()
+        key = name.lower()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        out.append(name)
+    return out
+
+
 DATASET_AUDIT_LOG_MAX_ENTRIES = 50
 
 
@@ -195,6 +210,39 @@ def _empty_dataset_values(
             mask = triangle_mask(n_origin, n_dev)
         values = np.where(mask, 0.0, np.nan)
     return pd.DataFrame(values)
+
+
+def _dataset_values_to_frame(
+    values: List[List[Any]],
+    mask: List[List[bool]] | None = None,
+) -> pd.DataFrame:
+    if not isinstance(values, list) or not values:
+        raise HTTPException(400, "values must include at least one row.")
+    width = 0
+    for row in values:
+        if not isinstance(row, list):
+            raise HTTPException(400, "values must be a rectangular array.")
+        width = max(width, len(row))
+    if width <= 0:
+        raise HTTPException(400, "values must include at least one column.")
+
+    out: List[List[float]] = []
+    for r, row in enumerate(values):
+        if len(row) != width:
+            raise HTTPException(400, "values must be a rectangular array.")
+        out_row: List[float] = []
+        mask_row = mask[r] if isinstance(mask, list) and r < len(mask) and isinstance(mask[r], list) else None
+        for c, raw in enumerate(row):
+            has_value = True if mask_row is None or c >= len(mask_row) else bool(mask_row[c])
+            if not has_value or raw is None:
+                out_row.append(np.nan)
+                continue
+            try:
+                out_row.append(float(raw))
+            except (TypeError, ValueError):
+                raise HTTPException(400, "values must contain only numeric or null cells.")
+        out.append(out_row)
+    return pd.DataFrame(out, dtype="float64")
 
 
 def _ym_to_month_index(value: Any) -> int | None:
@@ -376,6 +424,8 @@ def create_empty_cached_dataset(
         "updated_at": now,
         "editable": True,
         "generated": False,
+        "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
+        "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
     _append_dataset_audit_entry(payload, "Insert", event_date=now, user_name=user_name)
     from app_server.services import calculated_dataset_service
@@ -595,6 +645,11 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "decimal_places": _normalize_decimal_places(payload.get("decimal_places")),
         "csv_file": str(payload.get("csv_file") or ""),
         "source_kind": str(payload.get("source_kind") or ""),
+        "method_type": dataset_sidecar_status_service.normalize_method_type(
+            payload.get("method_type"),
+            payload.get("source_kind"),
+        ),
+        "status": dataset_sidecar_status_service.normalize_status(payload.get("status")),
         "editable": False if app_calculated else payload.get("editable"),
         "generated": False if app_calculated else payload.get("generated"),
         "calculated": True if app_calculated else payload.get("calculated"),
@@ -695,6 +750,11 @@ def save_dataset_sidecar(
     decimal_places: int = 1,
     origin_labels: List[str] | None = None,
     csv_file: str = "",
+    method_type: str = "",
+    status: int | None = None,
+    precedents: List[str] | None = None,
+    values: List[List[Any]] | None = None,
+    mask: List[List[bool]] | None = None,
 ) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     if origin_length <= 0 or development_length <= 0:
@@ -702,6 +762,8 @@ def save_dataset_sidecar(
 
     path = _get_dataset_sidecar_path(p, rc, ds, csv_file=csv_file)
     existing = _read_dataset_sidecar(path)
+    existing_precedents = dataset_sidecar_status_service.entry_names(existing.get("Precedents"))
+    existing_dependents = existing.get("Dependents")
     created = str(existing.get("created") or "") if existing else ""
     if not created:
         created = _now_utc_iso()
@@ -710,8 +772,23 @@ def save_dataset_sidecar(
     app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type_value)
     source_kind_value = str(source_kind or existing.get("source_kind") or ("calculated" if app_calculated else "input"))
     data_format_value = str(data_format or existing.get("data_format") or "Triangle")
+    method_type_value = dataset_sidecar_status_service.normalize_method_type(method_type or existing.get("method_type"), source_kind_value)
     number_format_value = _normalize_number_format(number_format or existing.get("number_format") or "0,000")
     decimal_places_value = _normalize_decimal_places(decimal_places)
+    if values is not None and app_calculated:
+        raise HTTPException(400, "Calculated datasets cannot save editable grid values.")
+
+    csv_path = ""
+    csv_file_value = str(csv_file or existing.get("csv_file") or "")
+    if values is not None:
+        try:
+            data_dir = config.get_project_dataset_cache_dir(p, rc)
+        except ValueError as err:
+            raise HTTPException(404, str(err))
+        csv_stem = build_length_scoped_dataset_file_name(ds, origin_length, development_length, cumulative, calendar)
+        csv_file_value = f"{csv_stem}.csv"
+        csv_path = os.path.join(data_dir, csv_file_value)
+
     action_value = "Update" if existing else "Insert"
     updated_at = _now_utc_iso()
     payload = {
@@ -730,11 +807,12 @@ def save_dataset_sidecar(
         "calendar": bool(calendar),
         "number_format": number_format_value,
         "decimal_places": decimal_places_value,
-        "csv_file": str(csv_file or existing.get("csv_file") or ""),
-        "editable": False if app_calculated else existing.get("editable"),
-        "generated": False if app_calculated else existing.get("generated"),
-        "calculated": True if app_calculated else existing.get("calculated"),
+        "csv_file": csv_file_value,
+        "editable": False if app_calculated else (True if values is not None else existing.get("editable")),
+        "generated": False if (app_calculated or values is not None) else existing.get("generated"),
+        "calculated": True if app_calculated else (False if values is not None else existing.get("calculated")),
         "formula": formula or str(existing.get("formula") or ""),
+        "method_type": method_type_value,
         "user": user_name,
         "created": created,
         "modified_by": user_name,
@@ -748,7 +826,59 @@ def save_dataset_sidecar(
     from app_server.services import calculated_dataset_service
 
     calculated_dataset_service.apply_sidecar_graph_fields(payload, p, dataset_type_value)
+    if existing_dependents:
+        payload["Dependents"] = dataset_sidecar_status_service.merge_name_entries(
+            existing_dependents,
+            payload.get("Dependents"),
+        )
+    if precedents is not None:
+        if method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
+            payload["Precedents"] = _normalize_name_list(precedents)
+        else:
+            payload["Precedents"] = dataset_sidecar_status_service.name_entries(precedents)
+    elif method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
+        payload["Precedents"] = []
+    elif method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE and existing_precedents:
+        payload["Precedents"] = dataset_sidecar_status_service.name_entries(existing_precedents)
+    force_status = status
+    if force_status is None and method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE:
+        force_status = existing.get("status")
+    dataset_sidecar_status_service.apply_status_fields(
+        payload,
+        p,
+        rc,
+        ds,
+        path=path,
+        method_type=method_type_value,
+        force_status=force_status,
+    )
+    if values is not None:
+        df = _dataset_values_to_frame(values, mask)
+        try:
+            atomic_write_csv(df, csv_path)
+        except PermissionError:
+            raise HTTPException(423, "Dataset cache CSV is locked or inaccessible.")
+        except OSError as err:
+            raise HTTPException(500, f"Failed to write dataset cache CSV: {str(err)}")
     _write_dataset_sidecar_payload(path, payload)
+    ds_id = ""
+    file_mtime = None
+    if csv_path:
+        ds_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
+        config.DATASETS[ds_id] = csv_path
+        try:
+            file_mtime = os.stat(csv_path).st_mtime
+        except OSError:
+            file_mtime = None
+    if precedents is not None:
+        dataset_sidecar_status_service.update_precedent_dependents(
+            p,
+            rc,
+            ds,
+            existing_precedents,
+            precedents,
+        )
+    status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [ds])
 
     try:
         dataset_instance_index_service.rebuild_index(p, rc)
@@ -776,10 +906,16 @@ def save_dataset_sidecar(
         "decimal_places": payload["decimal_places"],
         "csv_file": payload["csv_file"],
         "source_kind": payload["source_kind"],
+        "method_type": payload["method_type"],
+        "status": payload["status"],
         "updated_at": payload["updated_at"],
         "audit_log": payload["audit_log"],
         "path": path,
+        "csv_path": csv_path,
+        "ds_id": ds_id,
+        "file_mtime": file_mtime,
         "calculated_updates": calculated_updates,
+        "status_updates": status_updates,
     }
 
 
@@ -911,7 +1047,24 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
             sidecar_payload["modified_by"] = user_name
             sidecar_payload["user"] = user_name
             _append_dataset_audit_entry(sidecar_payload, "Update", event_date=audit_at, user_name=user_name)
+            dataset_name = str(sidecar_payload.get("dataset_name") or sidecar_payload.get("dataset_type") or "").strip()
+            if dataset_name:
+                dataset_sidecar_status_service.apply_status_fields(
+                    sidecar_payload,
+                    str(sidecar_payload.get("project_name") or ""),
+                    str(sidecar_payload.get("reserving_class") or ""),
+                    dataset_name,
+                    path=sidecar_path,
+                )
             _write_dataset_sidecar_payload(sidecar_path, sidecar_payload)
+            try:
+                dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+                    str(sidecar_payload.get("project_name") or ""),
+                    str(sidecar_payload.get("reserving_class") or ""),
+                    [sidecar_payload.get("dataset_name") or sidecar_payload.get("dataset_type")],
+                )
+            except Exception:
+                pass
     calculated_updates = None
     try:
         from app_server.services import calculated_dataset_service

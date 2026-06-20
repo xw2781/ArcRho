@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "New non-generated Project Instance dataset drafts now open with editable zero-filled Data-tab placeholders using project labels.",
+  "details": [
+    "Triangle drafts use the standard triangle shape, while Vector drafts use a one-column vector shape.",
+    "Draft origin and development period lengths default to 12.",
+    "Editable Data grids now use Result Selection-style inline numeric inputs in addition to Excel-style paste."
+  ]
+}

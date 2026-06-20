@@ -12,6 +12,7 @@ import {
 
 let ctxMenuWired = false;
 let renderNumberFormatSettings = null;
+let gridEditConfig = null;
 
 function normalizeRenderNumberFormatSettings(settings = null) {
   if (!settings || typeof settings !== "object") return null;
@@ -25,6 +26,10 @@ function normalizeRenderNumberFormatSettings(settings = null) {
 
 export function setDatasetRenderNumberFormatSettings(settings = null) {
   renderNumberFormatSettings = normalizeRenderNumberFormatSettings(settings);
+}
+
+export function setDatasetGridEditConfig(config = null) {
+  gridEditConfig = config && typeof config === "object" ? config : null;
 }
 
 // --- keyboard focus sink: make sure this document receives keydown after clicking a cell ---
@@ -358,7 +363,8 @@ export function renderTable() {
       td.dataset.r = String(r);
       td.dataset.c = String(c);
 
-      td.addEventListener("click", () => {
+      td.addEventListener("click", (event) => {
+        if (event.target?.closest?.(".dsCellInput")) return;
         claimDatasetFocus();
       });
 
@@ -382,7 +388,24 @@ export function renderTable() {
         }
       } else {
         const v = vals[r][c];
-        td.textContent = formatCellValue(v);
+        if (gridEditConfig?.isEditableCell?.(r, c)) {
+          const input = document.createElement("input");
+          input.className = "dsCellInput";
+          input.type = "number";
+          input.step = "any";
+          input.value = v == null ? "" : String(v);
+          input.classList.toggle("dsCellInputBlank", v == null);
+          input.dataset.r = String(r);
+          input.dataset.c = String(c);
+          input.addEventListener("focus", () => gridEditConfig?.onCellFocus?.(r, c));
+          input.addEventListener("mousedown", (event) => event.stopPropagation());
+          input.addEventListener("input", () => gridEditConfig?.onCellInput?.(r, c, input.value, input, td));
+          input.addEventListener("paste", (event) => gridEditConfig?.onCellPaste?.(r, c, event));
+          input.addEventListener("change", () => gridEditConfig?.onCellCommit?.(r, c, input.value, input, td));
+          td.appendChild(input);
+        } else {
+          td.textContent = formatCellValue(v);
+        }
       }
 
       tr.appendChild(td);

@@ -20,7 +20,7 @@ from app_server.helpers import (
     build_length_scoped_dataset_file_name,
     sanitize_dataset_file_name,
 )
-from app_server.services import dataset_instance_index_service, dataset_types_service
+from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service, dataset_types_service
 
 
 def _clean_text(value: Any) -> str:
@@ -826,6 +826,8 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         "generated": False,
         "calculated": True,
         "formula": row.get("formula") or "",
+        "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
+        "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
     apply_sidecar_graph_fields(payload, project_name, row["name"], precedents)
     from app_server.services.dataset_service import _append_dataset_audit_entry
@@ -840,6 +842,11 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         json.dump(payload, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
     os.replace(tmp_sidecar, sidecar_path)
+    status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+        project_name,
+        reserving_class,
+        [row["name"]],
+    )
     config.DATASETS["arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]] = csv_path
 
     return {
@@ -849,6 +856,7 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         "sidecar_path": sidecar_path,
         "Precedents": payload.get("Precedents", []),
         "Dependents": payload.get("Dependents", []),
+        "status_updates": status_updates,
     }
 
 

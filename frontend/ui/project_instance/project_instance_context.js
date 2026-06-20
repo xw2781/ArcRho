@@ -2,6 +2,7 @@ const qs = new URLSearchParams(window.location.search);
 
 export const DATASET_TABLE_COLUMNS = Object.freeze([
   { key: "name", label: "Name", minWidth: 150 },
+  { key: "status", label: "Status", minWidth: 52 },
   { key: "datasetTypeName", label: "Dataset Type Name", minWidth: 150 },
   { key: "dataFormat", label: "Data Format", minWidth: 120 },
   { key: "formula", label: "Formula", minWidth: 160 },
@@ -14,6 +15,7 @@ export const DATASET_TABLE_COLUMNS = Object.freeze([
 
 export const DATASET_TABLE_DEFAULT_WIDTHS = Object.freeze({
   name: 180,
+  status: 58,
   datasetTypeName: 180,
   dataFormat: 140,
   formula: 180,
@@ -70,6 +72,12 @@ export function createProjectInstanceContext(deps = {}) {
     datasetDeleteConfirmDelete: document.getElementById("datasetDeleteConfirmDelete"),
     datasetDeleteConfirmCancel: document.getElementById("datasetDeleteConfirmCancel"),
     datasetDeleteConfirmClose: document.getElementById("datasetDeleteConfirmClose"),
+    datasetAddMessageOverlay: document.getElementById("datasetAddMessageOverlay"),
+    datasetAddMessageBox: document.getElementById("datasetAddMessageBox"),
+    datasetAddMessageTitle: document.getElementById("datasetAddMessageTitle"),
+    datasetAddMessageText: document.getElementById("datasetAddMessageText"),
+    datasetAddMessageOk: document.getElementById("datasetAddMessageOk"),
+    datasetAddMessageClose: document.getElementById("datasetAddMessageClose"),
     windowLayer: document.getElementById("datasetWindowLayer"),
   };
   const constants = {

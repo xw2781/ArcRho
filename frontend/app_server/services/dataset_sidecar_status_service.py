@@ -1,0 +1,256 @@
+"""Dataset sidecar method dependency status helpers."""
+from __future__ import annotations
+
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Set
+
+from app_server import config
+from app_server.helpers import _canon_dataset_name, sanitize_dataset_file_name
+
+METHOD_TYPE_NONE = "None"
+METHOD_TYPE_DFM = "DFM"
+METHOD_TYPE_RESULT_SELECTION = "Result Selection"
+STATUS_CURRENT = 0
+STATUS_REVIEW_NEEDED = 2
+
+
+def _clean_text(value: Any) -> str:
+    return str(value if value is not None else "").strip()
+
+
+def normalize_method_type(value: Any = "", source_kind: Any = "") -> str:
+    text = _clean_text(value)
+    if text and text.lower() not in {"none", "null"}:
+        if text.lower() == "dfm":
+            return METHOD_TYPE_DFM
+        if text.lower().replace("_", " ") == "result selection":
+            return METHOD_TYPE_RESULT_SELECTION
+        return text
+    source = _clean_text(source_kind).lower()
+    if source == "dfm":
+        return METHOD_TYPE_DFM
+    if source == "result_selection":
+        return METHOD_TYPE_RESULT_SELECTION
+    return METHOD_TYPE_NONE
+
+
+def normalize_status(value: Any) -> int:
+    try:
+        status = int(value)
+    except (TypeError, ValueError):
+        return STATUS_CURRENT
+    return STATUS_REVIEW_NEEDED if status == STATUS_REVIEW_NEEDED else STATUS_CURRENT
+
+
+def name_entries(names: Iterable[Any]) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    for raw in names or []:
+        name = _clean_text(raw)
+        key = _canon_dataset_name(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append({"dataset_type_name": name})
+    return out
+
+
+def entry_names(entries: Any) -> List[str]:
+    if not isinstance(entries, list):
+        return []
+    out: List[str] = []
+    seen: Set[str] = set()
+    for item in entries:
+        if isinstance(item, dict):
+            name = _clean_text(item.get("dataset_type_name") or item.get("dataset_name") or item.get("name"))
+        else:
+            name = _clean_text(item)
+        key = _canon_dataset_name(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(name)
+    return out
+
+
+def merge_name_entries(*entry_lists: Any) -> List[Dict[str, str]]:
+    names: List[str] = []
+    for entries in entry_lists:
+        names.extend(entry_names(entries))
+    return name_entries(names)
+
+
+def sidecar_path(project_name: str, reserving_class: str, dataset_name: str) -> str:
+    return os.path.join(
+        config.get_project_dataset_sidecar_dir(project_name, reserving_class),
+        f"{sanitize_dataset_file_name(dataset_name)}.json",
+    )
+
+
+def read_sidecar(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def write_sidecar(path: str, payload: Dict[str, Any]) -> None:
+    tmp_path = f"{path}.{uuid.uuid4()}.tmp"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(payload, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    os.replace(tmp_path, path)
+
+
+def _timestamp_from_text(value: Any) -> float:
+    text = _clean_text(value)
+    if not text:
+        return 0.0
+    numeric = None
+    try:
+        numeric = float(text)
+    except ValueError:
+        numeric = None
+    if numeric and numeric > 0:
+        return numeric / 1000.0 if numeric > 1000000000000 else numeric
+    try:
+        parsed = text.replace("Z", "+00:00")
+        return datetime.fromisoformat(parsed).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def sidecar_timestamp(path: str, payload: Dict[str, Any]) -> float:
+    for key in ("updated_at", "updated", "modified_at", "modified", "last_modified"):
+        ts = _timestamp_from_text(payload.get(key))
+        if ts > 0:
+            return ts
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0
+
+
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds") + "Z"
+
+
+def compute_status(project_name: str, reserving_class: str, dataset_name: str, payload: Dict[str, Any], path: str = "") -> int:
+    method_type = normalize_method_type(payload.get("method_type"), payload.get("source_kind"))
+    if method_type == METHOD_TYPE_NONE:
+        return STATUS_CURRENT
+    sidecar_file = path or sidecar_path(project_name, reserving_class, dataset_name)
+    current_ts = sidecar_timestamp(sidecar_file, payload)
+    if current_ts <= 0:
+        return normalize_status(payload.get("status"))
+    for precedent_name in entry_names(payload.get("Precedents")):
+        dep_path = sidecar_path(project_name, reserving_class, precedent_name)
+        dep_payload = read_sidecar(dep_path)
+        if not dep_payload:
+            continue
+        if sidecar_timestamp(dep_path, dep_payload) > current_ts + 0.000001:
+            return STATUS_REVIEW_NEEDED
+    return STATUS_CURRENT
+
+
+def apply_status_fields(
+    payload: Dict[str, Any],
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    *,
+    path: str = "",
+    method_type: Any = "",
+    force_status: int | None = None,
+) -> Dict[str, Any]:
+    payload["method_type"] = normalize_method_type(method_type or payload.get("method_type"), payload.get("source_kind"))
+    if payload["method_type"] == METHOD_TYPE_NONE:
+        payload["status"] = STATUS_CURRENT
+    elif force_status is not None:
+        payload["status"] = normalize_status(force_status)
+    else:
+        payload["status"] = compute_status(project_name, reserving_class, dataset_name, payload, path)
+    return payload
+
+
+def _remove_dependent(payload: Dict[str, Any], dependent_name: str) -> bool:
+    old = entry_names(payload.get("Dependents"))
+    key = _canon_dataset_name(dependent_name)
+    next_names = [name for name in old if _canon_dataset_name(name) != key]
+    if len(next_names) == len(old):
+        return False
+    payload["Dependents"] = name_entries(next_names)
+    return True
+
+
+def _add_dependent(payload: Dict[str, Any], dependent_name: str) -> bool:
+    old = entry_names(payload.get("Dependents"))
+    key = _canon_dataset_name(dependent_name)
+    if not key or key in {_canon_dataset_name(name) for name in old}:
+        return False
+    payload["Dependents"] = name_entries([*old, dependent_name])
+    return True
+
+
+def update_precedent_dependents(
+    project_name: str,
+    reserving_class: str,
+    dependent_name: str,
+    old_precedents: Iterable[Any],
+    new_precedents: Iterable[Any],
+) -> List[str]:
+    old_by_key = {_canon_dataset_name(name): _clean_text(name) for name in old_precedents if _canon_dataset_name(name)}
+    new_by_key = {_canon_dataset_name(name): _clean_text(name) for name in new_precedents if _canon_dataset_name(name)}
+    touched: List[str] = []
+    for key, source_name in {**old_by_key, **new_by_key}.items():
+        path = sidecar_path(project_name, reserving_class, source_name)
+        payload = read_sidecar(path)
+        if not payload:
+            continue
+        changed = False
+        if key not in new_by_key:
+            changed = _remove_dependent(payload, dependent_name) or changed
+        else:
+            changed = _add_dependent(payload, dependent_name) or changed
+        if not changed:
+            continue
+        apply_status_fields(payload, project_name, reserving_class, source_name, path=path)
+        write_sidecar(path, payload)
+        touched.append(source_name)
+    return touched
+
+
+def refresh_method_statuses_for_dependents(
+    project_name: str,
+    reserving_class: str,
+    changed_dataset_names: Iterable[Any],
+) -> List[Dict[str, Any]]:
+    touched: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for source_name in changed_dataset_names or []:
+        source_path = sidecar_path(project_name, reserving_class, _clean_text(source_name))
+        source_payload = read_sidecar(source_path)
+        if not source_payload:
+            continue
+        for dependent_name in entry_names(source_payload.get("Dependents")):
+            dep_key = _canon_dataset_name(dependent_name)
+            if not dep_key or dep_key in seen:
+                continue
+            seen.add(dep_key)
+            dep_path = sidecar_path(project_name, reserving_class, dependent_name)
+            dep_payload = read_sidecar(dep_path)
+            if not dep_payload:
+                continue
+            before = normalize_status(dep_payload.get("status"))
+            apply_status_fields(dep_payload, project_name, reserving_class, dependent_name, path=dep_path)
+            after = normalize_status(dep_payload.get("status"))
+            if after != before:
+                write_sidecar(dep_path, dep_payload)
+                touched.append({"dataset_name": dependent_name, "status": after})
+    return touched

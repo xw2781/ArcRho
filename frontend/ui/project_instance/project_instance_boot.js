@@ -10,12 +10,12 @@ import { createProjectInstanceContext } from "./project_instance_context.js?v=20
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260607d";
 import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260611b";
-import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260617a";
+import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260620a";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260611b";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260617a";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260607d";
-import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260617a";
+import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260619b";
 
 export async function bootProjectInstance() {
   const ctx = createProjectInstanceContext({

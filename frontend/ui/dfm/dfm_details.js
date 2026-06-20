@@ -16,17 +16,16 @@ import {
   scheduleRatioSelectionLoad,
 } from "/ui/dfm/dfm_persistence.js?v=20260616d";
 import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js";
+import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
 } from "/ui/shared/project_user_preferences.js";
 import { fetchProjectDatasetTypeItems } from "/ui/dataset/dataset_types_source.js";
 
-const cachedDatasetNamesByProjectPathFormat = new Map();
 const outputTypeNamesByProject = new Map();
 const dfmMethodNamesByProjectPath = new Map();
 let outputTypeRequestSeq = 0;
-let triangleInputRequestSeq = 0;
 let dfmMethodNameRequestSeq = 0;
 let pendingOutputTypeFromUrl = null;
 let localProjectPreferenceLoadPromise = null;
@@ -58,64 +57,6 @@ function isReservingClassDefaultBound() {
   return !!getInputSnapshotSafe()?.defaults?.reservingClassDefault;
 }
 
-function getCachedDatasetDataFormat(record) {
-  return normalizeKey(record?.data_format || record?.dataFormat || record?.values?.dataFormat);
-}
-
-function getCachedDatasetInstanceName(record) {
-  return toText(
-    record?.dataset_name
-    || record?.instance_name
-    || record?.name
-    || (Array.isArray(record?.dataset_names) ? record.dataset_names[0] : "")
-  );
-}
-
-function extractCachedDatasetInstanceNames(payload, dataFormat) {
-  const expectedFormat = normalizeKey(dataFormat);
-  const seen = new Set();
-  const out = [];
-  for (const record of Array.isArray(payload?.files) ? payload.files : []) {
-    if (expectedFormat && getCachedDatasetDataFormat(record) !== expectedFormat) continue;
-    const name = getCachedDatasetInstanceName(record);
-    const key = normalizeKey(name);
-    if (!name || !key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(name);
-  }
-  out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
-  return out;
-}
-
-async function loadCachedDatasetInstanceNames(projectName, pathValue, dataFormat, options = {}) {
-  const project = toText(projectName);
-  const path = toText(pathValue);
-  const format = normalizeKey(dataFormat);
-  if (!project || !path || !format) return [];
-  const cacheKey = `${normalizeKey(project)}\n${normalizeKey(path)}\n${format}`;
-  if (!options?.forceReload && cachedDatasetNamesByProjectPathFormat.has(cacheKey)) {
-    return cachedDatasetNamesByProjectPathFormat.get(cacheKey);
-  }
-
-  const query = new URLSearchParams({
-    project_name: project,
-    reserving_class: path,
-    refresh: options?.forceReload ? "true" : "false",
-  });
-  const response = await fetch(`/datasets/cached?${query.toString()}`);
-  if (!response.ok) {
-    let detail = "";
-    try {
-      detail = toText(await response.text());
-    } catch {}
-    throw new Error(detail || `HTTP ${response.status}`);
-  }
-  const payload = await response.json().catch(() => ({}));
-  const names = extractCachedDatasetInstanceNames(payload, format);
-  cachedDatasetNamesByProjectPathFormat.set(cacheKey, names);
-  return names;
-}
-
 async function loadOutputTypeNames(projectName, _pathValue = "", options = {}) {
   const project = toText(projectName);
   if (!project) return [];
@@ -137,10 +78,6 @@ async function loadOutputTypeNames(projectName, _pathValue = "", options = {}) {
   names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
   outputTypeNamesByProject.set(cacheKey, names);
   return names;
-}
-
-function loadTriangleInputNames(projectName, pathValue, options = {}) {
-  return loadCachedDatasetInstanceNames(projectName, pathValue, "triangle", options);
 }
 
 function closeOutputTypeDropdown() {
@@ -212,63 +149,6 @@ function applyOutputTypeSelection(value, options = {}) {
   scheduleRatioSelectionLoad("details-change");
 }
 
-function getFilteredNames(names, query) {
-  const list = Array.isArray(names) ? names : [];
-  const q = normalizeKey(query);
-  if (!q) return list;
-  return list.filter((name) => normalizeKey(name).includes(q));
-}
-
-function renderOutputTypeDropdown(names, options = {}) {
-  const dropdown = document.getElementById("dfmOutputVectorDropdown");
-  const input = document.getElementById("dfmOutputVector");
-  if (!dropdown || !input) return;
-
-  const query = toText(options?.query);
-  const filteredNames = getFilteredNames(names, query);
-  dropdown.innerHTML = "";
-  if (!Array.isArray(names) || names.length === 0) {
-    const option = document.createElement("div");
-    option.className = "datasetOption";
-    option.textContent = "No output vectors found (Vector).";
-    option.style.cursor = "default";
-    option.style.color = "#666";
-    dropdown.appendChild(option);
-    dropdown.classList.add("open");
-    return;
-  }
-  if (filteredNames.length === 0) {
-    const option = document.createElement("div");
-    option.className = "datasetOption";
-    option.textContent = "No matching output vectors.";
-    option.style.cursor = "default";
-    option.style.color = "#666";
-    dropdown.appendChild(option);
-    dropdown.classList.add("open");
-    return;
-  }
-
-  const selectedKey = normalizeKey(input.value);
-  for (const name of filteredNames) {
-    const option = document.createElement("div");
-    option.className = "datasetOption";
-    option.textContent = name;
-    if (normalizeKey(name) === selectedKey) option.classList.add("active");
-    option.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-    });
-    option.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      applyOutputTypeSelection(name);
-      input.dispatchEvent(new CustomEvent("arcrho:output-type-selected", { detail: { value: name } }));
-      closeOutputTypeDropdown();
-    });
-    dropdown.appendChild(option);
-  }
-  dropdown.classList.add("open");
-}
-
 function applyTriangleSelection(value) {
   const input = document.getElementById("triInput");
   if (!input) return;
@@ -278,55 +158,6 @@ function applyTriangleSelection(value) {
   input.value = next;
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-function renderTriangleTypeDropdown(names, options = {}) {
-  const dropdown = document.getElementById("dfmTriTypeDropdown");
-  const input = document.getElementById("triInput");
-  if (!dropdown || !input) return;
-
-  const query = toText(options?.query);
-  const filteredNames = getFilteredNames(names, query);
-  dropdown.innerHTML = "";
-  if (!Array.isArray(names) || names.length === 0) {
-    const option = document.createElement("div");
-    option.className = "datasetOption";
-    option.textContent = "No triangle names found (Triangle).";
-    option.style.cursor = "default";
-    option.style.color = "#666";
-    dropdown.appendChild(option);
-    dropdown.classList.add("open");
-    return;
-  }
-  if (filteredNames.length === 0) {
-    const option = document.createElement("div");
-    option.className = "datasetOption";
-    option.textContent = "No matching triangle names.";
-    option.style.cursor = "default";
-    option.style.color = "#666";
-    dropdown.appendChild(option);
-    dropdown.classList.add("open");
-    return;
-  }
-
-  const selectedKey = normalizeKey(input.value);
-  for (const name of filteredNames) {
-    const option = document.createElement("div");
-    option.className = "datasetOption";
-    option.textContent = name;
-    if (normalizeKey(name) === selectedKey) option.classList.add("active");
-    option.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-    });
-    option.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      applyTriangleSelection(name);
-      closeTriangleTypeDropdown();
-    });
-    dropdown.appendChild(option);
-  }
-  dropdown.classList.add("open");
 }
 
 function normalizeLocalProjectPreference(raw) {
@@ -866,9 +697,31 @@ function wireOutputTypePicker() {
     }
     button.disabled = true;
     try {
-      const out = await ensurePickerNames({ forceReload: !!options?.forceReload });
-      if (!out) return;
-      renderOutputTypeDropdown(out.names, { query: input.value });
+      closeOutputTypeDropdown();
+      await openDatasetNamePicker({
+        projectName,
+        initialName: input.value,
+        anchorElement: input,
+        title: "Select Output Vector",
+        allowedDataFormats: ["Vector"],
+        forceReload: !!options?.forceReload,
+        emptyMessage: "No output vectors found (Vector).",
+        setStatus: (message) => {
+          const text = toText(message);
+          if (text) postDfmStatus(text, { tone: "warn" });
+        },
+        onError: (err) => {
+          console.error("Failed to open output vector picker:", err);
+          postDfmStatus(`Error loading output vectors: ${String(err?.message || err)}`, { tone: "error" });
+        },
+        onSelect: (name) => {
+          const selected = toText(name);
+          if (!selected) return;
+          applyOutputTypeSelection(selected);
+          committedOutputType = selected;
+          input.dispatchEvent(new CustomEvent("arcrho:output-type-selected", { detail: { value: selected } }));
+        },
+      });
     } catch (err) {
       console.error("Failed to load output vector options:", err);
       alert(`Error loading output vectors: ${err?.message || err}`);
@@ -905,18 +758,23 @@ function wireOutputTypePicker() {
     void openPicker({ forceReload: true, alertOnProjectMissing: true });
   });
 
+  let suppressNextClickOpen = false;
+
   input.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (suppressNextClickOpen) return;
     void openPicker({ forceReload: false, alertOnProjectMissing: false });
   });
 
   input.addEventListener("focus", () => {
     committedOutputType = toText(input.value);
+    suppressNextClickOpen = true;
+    setTimeout(() => { suppressNextClickOpen = false; }, 0);
     void openPicker({ forceReload: false, alertOnProjectMissing: false });
   });
 
   input.addEventListener("input", () => {
-    void openPicker({ forceReload: false, alertOnProjectMissing: false });
+    closeOutputTypeDropdown();
   });
 
   input.addEventListener("change", () => {
@@ -937,19 +795,9 @@ function wireOutputTypePicker() {
       closeOutputTypeDropdown();
       return;
     }
-    if (e.key === "ArrowDown" && !dropdown.classList.contains("open")) {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       void openPicker({ forceReload: false, alertOnProjectMissing: false });
-      return;
-    }
-    if (e.key === "Enter" && dropdown.classList.contains("open")) {
-      const first = dropdown.querySelector(".datasetOption");
-      const text = toText(first?.textContent);
-      if (text && text !== "No output vectors found (Vector)." && text !== "No matching output vectors.") {
-        e.preventDefault();
-        applyOutputTypeSelection(text);
-        closeOutputTypeDropdown();
-      }
     }
   });
 
@@ -1001,51 +849,43 @@ function wireTriangleTypePicker() {
   if (!triInput || !button || !dropdown || button.dataset.wired === "1") return;
   button.dataset.wired = "1";
 
-  let pickerProjectPathKey = "";
-  let pickerNames = [];
-  let pickerLoaded = false;
-
   const resetPickerCache = () => {
-    pickerProjectPathKey = "";
-    pickerNames = [];
-    pickerLoaded = false;
-  };
-
-  const ensurePickerNames = async (options = {}) => {
-    const projectName = toText(getResolvedProjectName());
-    const pathValue = toText(getResolvedReservingClass());
-    if (!projectName || !pathValue) {
-      resetPickerCache();
-      return { projectName: "", pathValue: "", names: [] };
-    }
-    const projectPathKey = `${normalizeKey(projectName)}\n${normalizeKey(pathValue)}`;
-    const forceReload = !!options?.forceReload;
-    const pathChanged = projectPathKey !== pickerProjectPathKey;
-    if (forceReload || pathChanged || !pickerLoaded) {
-      const names = await loadTriangleInputNames(projectName, pathValue, {
-        forceReload: forceReload || pathChanged || !pickerLoaded,
-      });
-      pickerProjectPathKey = projectPathKey;
-      pickerNames = Array.isArray(names) ? names : [];
-      pickerLoaded = true;
-    }
-    return { projectName, pathValue, names: pickerNames };
+    closeTriangleTypeDropdown();
+    const nativeDatasetDropdown = document.getElementById("datasetDropdown");
+    nativeDatasetDropdown?.classList.remove("open");
   };
 
   const openPicker = async (options = {}) => {
     const projectName = toText(getResolvedProjectName());
-    const pathValue = toText(getResolvedReservingClass());
     closeTriangleTypeDropdown();
     const nativeDatasetDropdown = document.getElementById("datasetDropdown");
     nativeDatasetDropdown?.classList.remove("open");
-    if (!projectName || !pathValue) {
-      if (options?.alertOnContextMissing) alert("Select a project and reserving class path first.");
+    if (!projectName) {
+      if (options?.alertOnContextMissing) alert("Select a project first.");
       return;
     }
     button.disabled = true;
     try {
-      const out = await ensurePickerNames({ forceReload: !!options?.forceReload });
-      renderTriangleTypeDropdown(out.names, { query: triInput.value });
+      await openDatasetNamePicker({
+        projectName,
+        initialName: triInput.value,
+        anchorElement: triInput,
+        title: "Select Input Triangle",
+        allowedDataFormats: ["Triangle"],
+        forceReload: !!options?.forceReload,
+        emptyMessage: "No input triangles found (Triangle).",
+        setStatus: (message) => {
+          const text = toText(message);
+          if (text) postDfmStatus(text, { tone: "warn" });
+        },
+        onError: (err) => {
+          console.error("Failed to open input triangle picker:", err);
+          postDfmStatus(`Error loading triangle names: ${String(err?.message || err)}`, { tone: "error" });
+        },
+        onSelect: (name) => {
+          applyTriangleSelection(name);
+        },
+      });
     } catch (err) {
       console.error("Failed to load input-triangle options:", err);
       postDfmStatus(`Error loading triangle names: ${String(err?.message || err)}`, { tone: "error" });
@@ -1060,17 +900,24 @@ function wireTriangleTypePicker() {
     void openPicker({ forceReload: true, alertOnContextMissing: true });
   });
 
+  let suppressNextClickOpen = false;
+
   triInput.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (suppressNextClickOpen) return;
     void openPicker({ forceReload: false, alertOnContextMissing: false });
   });
 
   triInput.addEventListener("focus", () => {
+    suppressNextClickOpen = true;
+    setTimeout(() => { suppressNextClickOpen = false; }, 0);
     void openPicker({ forceReload: false, alertOnContextMissing: false });
   });
 
   triInput.addEventListener("input", () => {
-    void openPicker({ forceReload: false, alertOnContextMissing: false });
+    closeTriangleTypeDropdown();
+    const nativeDatasetDropdown = document.getElementById("datasetDropdown");
+    nativeDatasetDropdown?.classList.remove("open");
   });
 
   triInput.addEventListener("keydown", (e) => {
@@ -1078,19 +925,9 @@ function wireTriangleTypePicker() {
       closeTriangleTypeDropdown();
       return;
     }
-    if (e.key === "ArrowDown" && !dropdown.classList.contains("open")) {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       void openPicker({ forceReload: false, alertOnContextMissing: false });
-      return;
-    }
-    if (e.key === "Enter" && dropdown.classList.contains("open")) {
-      const first = dropdown.querySelector(".datasetOption");
-      const text = toText(first?.textContent);
-      if (text && text !== "No triangle names found (Triangle)." && text !== "No matching triangle names.") {
-        e.preventDefault();
-        applyTriangleSelection(text);
-        closeTriangleTypeDropdown();
-      }
     }
   });
 

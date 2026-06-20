@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Details Output Vector and Input Triangle now open the shared dataset picker window."
+}

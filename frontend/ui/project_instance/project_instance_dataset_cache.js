@@ -159,6 +159,7 @@ function mergeCachedDatasetMetadata(existing, item) {
     created: "",
     user: "",
     formula: "",
+    status: 0,
     _lastModifiedTs: 0,
     _createdTs: 0,
     _userModifiedTs: 0,
@@ -201,6 +202,11 @@ function mergeCachedDatasetMetadata(existing, item) {
   if (Array.isArray(item?.origin_labels) && item.origin_labels.length && (!meta.originLabels?.length || lastModifiedTs >= (meta._originLabelsModifiedTs || 0))) {
     meta.originLabels = item.origin_labels.map((label) => String(label));
     meta._originLabelsModifiedTs = lastModifiedTs;
+  }
+  const status = Number(item?.status);
+  if (Number.isFinite(status) && (status === 0 || status === 2) && (!meta._statusModifiedTs || lastModifiedTs >= meta._statusModifiedTs)) {
+    meta.status = status;
+    meta._statusModifiedTs = lastModifiedTs;
   }
   return meta;
 }

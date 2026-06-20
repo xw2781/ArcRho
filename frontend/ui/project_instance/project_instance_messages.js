@@ -1,3 +1,5 @@
+import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/filename_sanitizer.js";
+
 export function installProjectInstanceMessages(ctx) {
   const { api, els, projectName, state } = ctx;
   const activateDatasetWindow = (...args) => api.activateDatasetWindow(...args);
@@ -16,6 +18,7 @@ export function installProjectInstanceMessages(ctx) {
   const hideDatasetWindow = (...args) => api.hideDatasetWindow(...args);
   const isDatasetWindowMaximized = (...args) => api.isDatasetWindowMaximized(...args);
   const isDfmWindow = (...args) => api.isDfmWindow(...args);
+  const isResultSelectionWindow = (...args) => api.isResultSelectionWindow(...args);
   const loadCachedDatasetFilterForSelectedPath = (...args) => api.loadCachedDatasetFilterForSelectedPath(...args);
   const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
@@ -36,10 +39,36 @@ function getReservingClassFolderPathFromSnapshot(payload) {
   return toText(folderPaths?.data || payload?.folder_path || payload?.folderPath);
 }
 
-function requestShellOpenPath(targetPath) {
+function getFolderPathsFromSnapshot(payload) {
+  const folderPaths = payload?.folder_paths && typeof payload.folder_paths === "object"
+    ? payload.folder_paths
+    : payload?.folderPaths && typeof payload.folderPaths === "object"
+      ? payload.folderPaths
+      : {};
+  const data = toText(folderPaths.data || payload?.folder_path || payload?.folderPath);
+  return {
+    data,
+    methods: toText(folderPaths.methods) || (data ? `${data}\\methods` : ""),
+    sidecars: toText(folderPaths.sidecars) || (data ? `${data}\\sidecars` : ""),
+  };
+}
+
+function joinWindowsPath(...parts) {
+  return parts
+    .map((part, index) => {
+      const text = toText(part);
+      if (!text) return "";
+      return index === 0 ? text.replace(/[\\/]+$/g, "") : text.replace(/^[\\/]+|[\\/]+$/g, "");
+    })
+    .filter(Boolean)
+    .join("\\");
+}
+
+function requestShellOpenPath(targetPath, options = {}) {
   const path = toText(targetPath);
   if (!path) return Promise.resolve({ ok: false, error: "Empty path." });
   const requestId = `pi_reveal_path_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const preferredApp = toText(options.preferredApp);
   return new Promise((resolve) => {
     let done = false;
     const finish = (payload) => {
@@ -56,11 +85,69 @@ function requestShellOpenPath(targetPath) {
     window.addEventListener("message", onMessage);
     window.setTimeout(() => finish({ ok: false, error: "Timed out opening path." }), 6000);
     try {
-      window.parent?.postMessage({ type: "arcrho:open-path", requestId, path }, "*");
+      window.parent?.postMessage({ type: "arcrho:open-path", requestId, path, preferredApp }, "*");
     } catch (err) {
       finish({ ok: false, error: toText(err?.message) || "Failed to send open-path request." });
     }
   });
+}
+
+function getActiveWindowJsonKind(frame) {
+  const methodType = toText(getWindowMethodType(frame)).toLowerCase();
+  if (isDfmWindow(frame) || methodType === "dfm") return "dfm";
+  if (isResultSelectionWindow(frame) || methodType === "result selection") return "result_selection";
+  return "";
+}
+
+async function openActiveDatasetRelatedFile(fileKind) {
+  const activeFrame = getActiveDatasetWindow();
+  const datasetName = toText(activeFrame?.dataset?.windowItemName || activeFrame?.dataset?.windowDatasetName);
+  const windowPath = toText(getWindowPath(activeFrame) || activeFrame?.dataset?.windowPath || state.selectedPath);
+  if (!activeFrame || !datasetName || !windowPath) {
+    setStatus("No active Project Instance dataset window.", true);
+    return false;
+  }
+
+  let payload = null;
+  try {
+    payload = await fetchCachedDatasetSnapshot(windowPath);
+  } catch (err) {
+    setStatus(toText(err?.message) || "Could not resolve dataset file folders.", true);
+    return false;
+  }
+  const folders = getFolderPathsFromSnapshot(payload);
+  let targetPath = "";
+  if (fileKind === "sidecar") {
+    if (!folders.sidecars) {
+      setStatus("Could not resolve dataset sidecar folder.", true);
+      return false;
+    }
+    targetPath = joinWindowsPath(folders.sidecars, `${sanitizeFileNamePart(datasetName, "Dataset")}.json`);
+  } else {
+    const jsonKind = getActiveWindowJsonKind(activeFrame);
+    if (!jsonKind) {
+      setStatus("The active dataset does not have a method JSON file.", true);
+      return false;
+    }
+    if (!folders.methods) {
+      setStatus("Could not resolve dataset JSON folder.", true);
+      return false;
+    }
+    const filename = jsonKind === "dfm"
+      ? `DFM@${sanitizeFileNamePart(datasetName, "Name")}.json`
+      : `RS@${sanitizeDataFolderPart(windowPath, "ReservingClass")}@${sanitizeFileNamePart(datasetName, "Name")}.json`;
+    targetPath = joinWindowsPath(folders.methods, filename);
+  }
+
+  const label = fileKind === "sidecar" ? "dataset sidecar" : "dataset JSON file";
+  setStatus(`Opening ${label}...`);
+  const result = await requestShellOpenPath(targetPath, { preferredApp: "arcode" });
+  if (result?.ok) {
+    setStatus(`Opened ${label}: ${targetPath}`);
+    return true;
+  }
+  setStatus(toText(result?.error) || `Could not open ${label}.`, true);
+  return false;
 }
 
 function forwardOpenPathRequestToShell(message, sourceWindow) {
@@ -110,6 +197,67 @@ function forwardOpenPathRequestToShell(message, sourceWindow) {
     }, "*");
   } catch (err) {
     finish({ ok: false, error: toText(err?.message) || "Failed to send open-path request." });
+  }
+  return true;
+}
+
+function forwardDatasetCloseConfirmRequestToShell(message, sourceWindow) {
+  const source = sourceWindow || null;
+  const sourceFrame = findWindowByMessageSource(source);
+  if (!sourceFrame) return false;
+
+  const requestId = toText(message?.requestId);
+  if (!requestId) return true;
+
+  let acknowledged = false;
+  let done = false;
+  let noAckTimer = null;
+  const cleanup = () => {
+    if (noAckTimer != null) window.clearTimeout(noAckTimer);
+    window.removeEventListener("message", onMessage);
+  };
+  const finish = (payload) => {
+    if (done) return;
+    done = true;
+    cleanup();
+    try {
+      source?.postMessage({
+        type: "arcrho:dataset-close-confirm-result",
+        requestId,
+        discard: !!payload?.discard,
+      }, "*");
+    } catch {}
+  };
+  const onMessage = (event) => {
+    if (event.source !== window.parent) return;
+    const msg = event.data || {};
+    if (toText(msg.requestId) !== requestId) return;
+    if (msg.type === "arcrho:dataset-close-confirm-ack") {
+      acknowledged = true;
+      if (noAckTimer != null) {
+        window.clearTimeout(noAckTimer);
+        noAckTimer = null;
+      }
+      try { source?.postMessage({ type: msg.type, requestId }, "*"); } catch {}
+      return;
+    }
+    if (msg.type === "arcrho:dataset-close-confirm-result") {
+      finish({ discard: !!msg.discard });
+    }
+  };
+
+  window.addEventListener("message", onMessage);
+  noAckTimer = window.setTimeout(() => {
+    if (!acknowledged) cleanup();
+  }, 250);
+  try {
+    window.parent?.postMessage({
+      type: "arcrho:dataset-close-confirm-request",
+      requestId,
+      reason: toText(message?.reason) || "close",
+    }, "*");
+  } catch {
+    cleanup();
   }
   return true;
 }
@@ -560,8 +708,19 @@ window.addEventListener("message", (event) => {
     void revealSelectedReservingClassFolder();
     return;
   }
+  if (msg.type === "arcrho:project-instance-open-active-dataset-json") {
+    void openActiveDatasetRelatedFile("json");
+    return;
+  }
+  if (msg.type === "arcrho:project-instance-open-active-dataset-sidecar") {
+    void openActiveDatasetRelatedFile("sidecar");
+    return;
+  }
   if (msg.type === "arcrho:open-path") {
     if (forwardOpenPathRequestToShell(msg, event.source)) return;
+  }
+  if (msg.type === "arcrho:dataset-close-confirm-request") {
+    if (forwardDatasetCloseConfirmRequestToShell(msg, event.source)) return;
   }
   if (msg.type === "arcrho:tab-activated") {
     notifyActiveDfmWindowState();

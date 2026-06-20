@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Kept the project instance dataset Status column narrow when double-click auto-fitting its resize handle."
+}

@@ -1041,6 +1041,45 @@
       line-height: 16px;
       white-space: normal;
     }
+    .pi-table th[data-col-key="status"] .pi-table-header-cell {
+      justify-content: center;
+      padding-left: 6px;
+      padding-right: 12px;
+    }
+    .pi-table td.pi-table-status-td {
+      text-align: center;
+      vertical-align: middle;
+    }
+    .pi-status-cell {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      max-width: 100%;
+      color: #65a30d;
+    }
+    .pi-status-cell.warning {
+      color: #eab308;
+    }
+    .pi-status-icon {
+      width: 15px;
+      height: 15px;
+      flex: 0 0 auto;
+      fill: currentColor;
+    }
+    .pi-status-stroke {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .pi-status-soft-fill {
+      fill: color-mix(in srgb, currentColor 16%, #ffffff);
+    }
+    .pi-status-dark-mark {
+      fill: currentColor;
+    }
     .pi-table-col-label {
       min-width: 0;
       flex: 1 1 auto;
@@ -1257,6 +1296,87 @@
       color: #fff;
     }
     .pi-delete-confirm-actions button:hover {
+      filter: brightness(0.97);
+    }
+    .pi-message-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10160;
+      background: rgba(15, 23, 42, 0.16);
+    }
+    .pi-message-overlay[hidden] {
+      display: none;
+    }
+    .pi-message-box {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: min(400px, calc(100vw - 28px));
+      transform: translate(-50%, -50%);
+      border: 1px solid #c9ced5;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.26);
+      overflow: hidden;
+    }
+    .pi-message-header {
+      height: 36px;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid #e1e5ea;
+      background: #f7f9fc;
+      user-select: none;
+    }
+    .pi-message-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #263244;
+    }
+    .pi-message-close {
+      width: 24px;
+      height: 24px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #637083;
+      cursor: pointer;
+      font-size: 17px;
+      line-height: 1;
+    }
+    .pi-message-close:hover {
+      background: #e9eef6;
+      color: #263244;
+    }
+    .pi-message-body {
+      padding: 16px 14px 12px;
+      color: #334155;
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .pi-message-actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 10px 12px 12px;
+      border-top: 1px solid #e1e5ea;
+      background: #fbfcfe;
+    }
+    .pi-message-actions button {
+      height: 28px;
+      min-width: 72px;
+      border: 1px solid #2b6df6;
+      border-radius: 5px;
+      padding: 0 14px;
+      background: #eff5ff;
+      color: #1f4fd1;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .pi-message-actions button:hover {
       filter: brightness(0.97);
     }
     .pi-table-context-menu,
@@ -2038,6 +2158,18 @@
     </div>
     <div class="pi-table-filter-popover" id="datasetTableFilterPopover" aria-hidden="true"></div>
     <div class="pi-table-filter-popover pi-add-picker-filter-popover" id="datasetAddPickerFilterPopover" aria-hidden="true"></div>
+    <div class="pi-message-overlay" id="datasetAddMessageOverlay" hidden>
+      <div class="pi-message-box" id="datasetAddMessageBox" role="dialog" aria-modal="true" aria-labelledby="datasetAddMessageTitle">
+        <div class="pi-message-header">
+          <div class="pi-message-title" id="datasetAddMessageTitle">Add Dataset</div>
+          <button class="pi-message-close" id="datasetAddMessageClose" type="button" aria-label="Close">x</button>
+        </div>
+        <div class="pi-message-body" id="datasetAddMessageText"></div>
+        <div class="pi-message-actions">
+          <button id="datasetAddMessageOk" type="button">OK</button>
+        </div>
+      </div>
+    </div>
     <div class="pi-delete-confirm-overlay" id="datasetDeleteConfirmOverlay" hidden>
       <div class="pi-delete-confirm-box" id="datasetDeleteConfirmBox" role="dialog" aria-modal="true" aria-labelledby="datasetDeleteConfirmTitle">
         <div class="pi-delete-confirm-header">
@@ -2055,6 +2187,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260617a"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260620a"></script>
 </body>
 </html>
