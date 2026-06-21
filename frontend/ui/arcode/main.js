@@ -1,5 +1,5 @@
 import { getHostApi, registerShellApi } from "/ui/arcode/shared/host_context.js?v=20260614a";
-import { initAiAssistant } from "/ui/ai-assistant/arcode.js?v=20260615a";
+import { initAiAssistant } from "/ui/ai-assistant/arcode.js?v=20260620q";
 import { createFileIconResolver } from "/ui/arcode/shared/file-icons/fileIconResolver.js?v=20260614a";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
@@ -11,12 +11,20 @@ const EXPANDED_EXPLORER_PATHS_KEY = "arcode_expanded_explorer_paths_v1";
 const ZOOM_STORAGE_KEY = "arcode_ui_zoom_pct";
 const ZOOM_MODE_KEY = "arcode_zoom_mode";
 const STATUSBAR_H_KEY = "arcode_statusbar_h";
+const EXPLORER_WIDTH_KEY = "arcode_explorer_sidebar_width_v1";
 const CLEAR_CACHE_RESTORE_KIND = "arcode-clear-cache-reload-restore-v1";
 const DEFAULT_ZOOM_PERCENT = 100;
 const MIN_ZOOM_PERCENT = 70;
 const MAX_ZOOM_PERCENT = 160;
 const ZOOM_STEP = 10;
-const DROP_FILE_EXTENSIONS = new Set([".py", ".sql", ".ipynb", ".md", ".txt", ".json"]);
+const DEFAULT_EXPLORER_WIDTH = 286;
+const MIN_EXPLORER_WIDTH = 210;
+const MAX_EXPLORER_WIDTH = 520;
+const EXPLORER_RESIZE_STEP = 16;
+const EXPLORER_REFRESH_DEBOUNCE_MS = 220;
+const NOTEBOOK_FILE_EXTENSIONS = new Set([".ipynb", ".arcnb"]);
+const CODE_FILE_EXTENSIONS = new Set([".py", ".r", ".sql", ".js", ".ts", ".json", ".md", ".txt", ".css", ".html", ".htm"]);
+const DROP_FILE_EXTENSIONS = new Set([...NOTEBOOK_FILE_EXTENSIONS, ...CODE_FILE_EXTENSIONS]);
 const TAB_DRAG_THRESHOLD_PX = 6;
 const EMPTY_NOTEBOOK_TEMPLATE = {
   cells: [],
@@ -63,7 +71,13 @@ const state = {
   activeWorkspaceFolder: readActiveWorkspaceFolder(),
   expandedExplorerPaths: readExpandedExplorerPaths(),
   folderListings: {},
+  explorerWidth: readExplorerWidth(),
 };
+
+const explorerFolderWatchers = new Map();
+let explorerRefreshTimer = 0;
+const pendingExplorerRefreshRoots = new Set();
+let explorerResizeState = null;
 
 if (!state.expandedExplorerPaths && state.workspaceFolders.length) {
   state.expandedExplorerPaths = [state.activeWorkspaceFolder || state.workspaceFolders[0]];
@@ -132,6 +146,23 @@ function normalizeZoomPercent(value, fallback = DEFAULT_ZOOM_PERCENT) {
   return Math.max(MIN_ZOOM_PERCENT, Math.min(MAX_ZOOM_PERCENT, numeric));
 }
 
+function normalizeExplorerWidth(value, fallback = DEFAULT_EXPLORER_WIDTH) {
+  const numeric = Math.round(Number(value));
+  const safeFallback = Number.isFinite(Number(fallback)) ? Math.round(Number(fallback)) : DEFAULT_EXPLORER_WIDTH;
+  if (!Number.isFinite(numeric)) {
+    return Math.max(MIN_EXPLORER_WIDTH, Math.min(MAX_EXPLORER_WIDTH, safeFallback));
+  }
+  return Math.max(MIN_EXPLORER_WIDTH, Math.min(MAX_EXPLORER_WIDTH, numeric));
+}
+
+function readExplorerWidth() {
+  try {
+    return normalizeExplorerWidth(localStorage.getItem(EXPLORER_WIDTH_KEY));
+  } catch {
+    return DEFAULT_EXPLORER_WIDTH;
+  }
+}
+
 function readRecentFilesFallback() {
   try {
     const parsed = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
@@ -154,6 +185,7 @@ function currentUserSettingsPayload() {
     activeWorkspaceFolder,
     lastWorkspaceFolderPath: activeWorkspaceFolder,
     windowScalePercent: normalizeZoomPercent(state.zoomPercent),
+    explorerSidebarWidth: normalizeExplorerWidth(state.explorerWidth),
   };
 }
 
@@ -274,6 +306,8 @@ async function loadArcodeUserSettings() {
         state.workspaceFolders = [activeWorkspaceFolder, ...state.workspaceFolders].slice(0, 20);
       }
       state.zoomPercent = normalizeZoomPercent(settings.windowScalePercent, DEFAULT_ZOOM_PERCENT);
+      state.explorerWidth = normalizeExplorerWidth(settings.explorerSidebarWidth, readExplorerWidth());
+      persistExplorerWidth(state.explorerWidth);
       saveWorkspaceFolders({ persistSettings: false });
       if (activeWorkspaceFolder && !isExplorerPathExpanded(activeWorkspaceFolder)) {
         setExplorerPathExpanded(activeWorkspaceFolder, true, { rerender: false });
@@ -281,7 +315,8 @@ async function loadArcodeUserSettings() {
       const needsSettingsBackfill = !Object.prototype.hasOwnProperty.call(settings, "recentFiles")
         || !Object.prototype.hasOwnProperty.call(settings, "workspaceFolders")
         || !Object.prototype.hasOwnProperty.call(settings, "activeWorkspaceFolder")
-        || !Object.prototype.hasOwnProperty.call(settings, "lastWorkspaceFolderPath");
+        || !Object.prototype.hasOwnProperty.call(settings, "lastWorkspaceFolderPath")
+        || !Object.prototype.hasOwnProperty.call(settings, "explorerSidebarWidth");
       if (needsSettingsBackfill) await saveArcodeUserSettings();
       return;
     } catch (err) {
@@ -317,6 +352,26 @@ function readActiveWorkspaceFolder() {
     return String(localStorage.getItem(ACTIVE_WORKSPACE_FOLDER_KEY) || sessionStorage.getItem(ACTIVE_WORKSPACE_FOLDER_KEY) || "").trim();
   } catch {
     return "";
+  }
+}
+
+function persistExplorerWidth(width) {
+  try {
+    localStorage.setItem(EXPLORER_WIDTH_KEY, String(normalizeExplorerWidth(width)));
+  } catch {
+    // Browser fallback only.
+  }
+}
+
+function applyExplorerWidth(width, { persist = true } = {}) {
+  state.explorerWidth = normalizeExplorerWidth(width);
+  const layout = $("arcodeHome")?.querySelector(".arcodeHomeLayout");
+  if (layout) layout.style.setProperty("--arcode-explorer-width", `${state.explorerWidth}px`);
+  const resizer = $("arcodeExplorerResizer");
+  if (resizer) resizer.setAttribute("aria-valuenow", String(state.explorerWidth));
+  if (persist) {
+    persistExplorerWidth(state.explorerWidth);
+    void saveArcodeUserSettings();
   }
 }
 
@@ -358,6 +413,7 @@ function saveWorkspaceFolders({ persistSettings = true } = {}) {
   } catch {
     // Browser fallback only.
   }
+  syncExplorerFolderWatchers();
   if (persistSettings) void saveArcodeUserSettings();
 }
 
@@ -383,6 +439,7 @@ function setExplorerPathExpanded(pathLike, expanded, { rerender = true } = {}) {
     .filter((item) => item.toLowerCase() !== folderKey);
   state.expandedExplorerPaths = expanded ? [folderPath, ...existing] : existing;
   saveExpandedExplorerPaths();
+  syncExplorerFolderWatchers();
   if (rerender) render();
 }
 
@@ -411,6 +468,23 @@ async function pickWorkspaceFolder({ replace = false } = {}) {
 
 function isSupportedCodeFile(pathLike) {
   return DROP_FILE_EXTENSIONS.has(getPathExtension(pathLike));
+}
+
+function isNotebookPath(pathLike) {
+  return NOTEBOOK_FILE_EXTENSIONS.has(getPathExtension(pathLike));
+}
+
+function isCodeEditorPath(pathLike) {
+  return CODE_FILE_EXTENSIONS.has(getPathExtension(pathLike));
+}
+
+function inferTabType(pathLike, fallback = "notebook") {
+  const filePath = String(pathLike || "").trim();
+  if (!filePath) return fallback;
+  if (isSnowflakeSqlPath(filePath)) return "snowflake";
+  if (isNotebookPath(filePath)) return "notebook";
+  if (isCodeEditorPath(filePath)) return "editor";
+  return fallback;
 }
 
 async function loadExplorerFileIcons() {
@@ -589,6 +663,177 @@ function refreshWorkspaceFolder(folderPath) {
   if (isExplorerPathExpanded(folder)) void loadWorkspaceFolder(folder);
 }
 
+function normalizeExplorerWatchPath(pathLike) {
+  return String(pathLike || "").trim();
+}
+
+function explorerPathKey(pathLike) {
+  return normalizeExplorerWatchPath(pathLike).replace(/[\\/]+$/, "").toLowerCase();
+}
+
+function explorerPathWithin(rootPath, candidatePath) {
+  const root = explorerPathKey(rootPath);
+  const candidate = explorerPathKey(candidatePath);
+  if (!root || !candidate) return false;
+  return candidate === root || candidate.startsWith(`${root}\\`) || candidate.startsWith(`${root}/`);
+}
+
+function getExplorerVisibleFolderPaths() {
+  const folders = [];
+  const add = (pathLike) => {
+    const folder = normalizeExplorerWatchPath(pathLike);
+    if (!folder) return;
+    if (!folders.some((item) => explorerPathKey(item) === explorerPathKey(folder))) folders.push(folder);
+  };
+  normalizeWorkspaceFolders(state.workspaceFolders).forEach(add);
+  normalizeExplorerPaths(state.expandedExplorerPaths).forEach((folderPath) => {
+    if (state.workspaceFolders.some((rootPath) => explorerPathWithin(rootPath, folderPath))) add(folderPath);
+  });
+  return folders;
+}
+
+async function stopExplorerFolderWatcher(folderPath) {
+  const key = explorerPathKey(folderPath);
+  const watcher = explorerFolderWatchers.get(key);
+  if (!watcher) return;
+  explorerFolderWatchers.delete(key);
+  const host = getHostApi();
+  if (typeof host?.stopArcodeFolderWatch !== "function") return;
+  try {
+    await host.stopArcodeFolderWatch({ watchId: watcher.watchId });
+  } catch {
+    // Watch cleanup is best-effort when windows are closing.
+  }
+}
+
+async function syncExplorerFolderWatchers() {
+  const host = getHostApi();
+  if (typeof host?.startArcodeFolderWatch !== "function" || typeof host?.stopArcodeFolderWatch !== "function") return;
+  const folders = getExplorerVisibleFolderPaths();
+  const wantedKeys = new Set(folders.map(explorerPathKey));
+  for (const [key, watcher] of Array.from(explorerFolderWatchers.entries())) {
+    if (!wantedKeys.has(key)) await stopExplorerFolderWatcher(watcher.path);
+  }
+  for (const folderPath of folders) {
+    const key = explorerPathKey(folderPath);
+    if (!key || explorerFolderWatchers.has(key)) continue;
+    try {
+      const result = await host.startArcodeFolderWatch({ path: folderPath });
+      if (result?.ok && result.watchId) {
+        explorerFolderWatchers.set(key, { path: result.path || folderPath, watchId: result.watchId });
+      }
+    } catch {
+      // Manual refresh remains available if a folder cannot be watched.
+    }
+  }
+}
+
+function refreshExplorerVisibleFolders(rootPath = "") {
+  const root = normalizeExplorerWatchPath(rootPath);
+  const candidates = getExplorerVisibleFolderPaths().filter((folderPath) => !root || explorerPathWithin(root, folderPath));
+  if (!candidates.length && root) candidates.push(root);
+  candidates.forEach(refreshWorkspaceFolder);
+}
+
+function scheduleExplorerAutoRefresh(folderPath) {
+  const folder = normalizeExplorerWatchPath(folderPath);
+  if (folder) pendingExplorerRefreshRoots.add(folder);
+  window.clearTimeout(explorerRefreshTimer);
+  explorerRefreshTimer = window.setTimeout(() => {
+    const roots = Array.from(pendingExplorerRefreshRoots);
+    pendingExplorerRefreshRoots.clear();
+    explorerRefreshTimer = 0;
+    if (!roots.length) {
+      refreshExplorerVisibleFolders();
+    } else {
+      roots.forEach((root) => refreshExplorerVisibleFolders(root));
+    }
+    updateStatus("File explorer refreshed.");
+  }, EXPLORER_REFRESH_DEBOUNCE_MS);
+}
+
+async function refreshExplorerFromButton() {
+  const activeFolder = String(state.activeWorkspaceFolder || state.workspaceFolders[0] || "").trim();
+  if (!activeFolder) {
+    updateStatus("Select a workspace folder before refreshing the explorer.");
+    return;
+  }
+  refreshExplorerVisibleFolders(activeFolder);
+  await syncExplorerFolderWatchers();
+  updateStatus("File explorer refreshed.");
+}
+
+function initExplorerFolderWatchEvents() {
+  const host = getHostApi();
+  if (typeof host?.onArcodeFolderChanged !== "function") return;
+  host.onArcodeFolderChanged((payload = {}) => {
+    const folderPath = String(payload.path || "").trim();
+    if (!folderPath) return;
+    if (payload.error) {
+      updateStatus(`File explorer watch stopped: ${payload.error}`);
+      explorerFolderWatchers.delete(explorerPathKey(folderPath));
+      return;
+    }
+    scheduleExplorerAutoRefresh(folderPath);
+  });
+  void syncExplorerFolderWatchers();
+}
+
+function stopExplorerResize(event) {
+  if (!explorerResizeState) return;
+  const resizer = explorerResizeState.resizer;
+  if (event?.pointerId != null && resizer?.hasPointerCapture?.(event.pointerId)) {
+    resizer.releasePointerCapture(event.pointerId);
+  }
+  document.body.classList.remove("arcodeExplorerResizing");
+  window.removeEventListener("pointermove", updateExplorerResize);
+  window.removeEventListener("pointerup", stopExplorerResize);
+  window.removeEventListener("pointercancel", stopExplorerResize);
+  applyExplorerWidth(state.explorerWidth);
+  explorerResizeState = null;
+}
+
+function updateExplorerResize(event) {
+  if (!explorerResizeState) return;
+  const nextWidth = explorerResizeState.startWidth + (event.clientX - explorerResizeState.startX);
+  applyExplorerWidth(nextWidth, { persist: false });
+}
+
+function startExplorerResize(event) {
+  if (event.button !== 0) return;
+  const resizer = event.currentTarget;
+  explorerResizeState = {
+    resizer,
+    startX: event.clientX,
+    startWidth: normalizeExplorerWidth(state.explorerWidth),
+  };
+  document.body.classList.add("arcodeExplorerResizing");
+  resizer.setPointerCapture?.(event.pointerId);
+  window.addEventListener("pointermove", updateExplorerResize);
+  window.addEventListener("pointerup", stopExplorerResize);
+  window.addEventListener("pointercancel", stopExplorerResize);
+  event.preventDefault();
+}
+
+function handleExplorerResizerKeydown(event) {
+  let nextWidth = state.explorerWidth;
+  if (event.key === "ArrowLeft") nextWidth -= EXPLORER_RESIZE_STEP;
+  else if (event.key === "ArrowRight") nextWidth += EXPLORER_RESIZE_STEP;
+  else if (event.key === "Home") nextWidth = MIN_EXPLORER_WIDTH;
+  else if (event.key === "End") nextWidth = MAX_EXPLORER_WIDTH;
+  else return;
+  event.preventDefault();
+  applyExplorerWidth(nextWidth);
+}
+
+function initExplorerResizer() {
+  const resizer = $("arcodeExplorerResizer");
+  if (!resizer) return;
+  resizer.addEventListener("pointerdown", startExplorerResize);
+  resizer.addEventListener("keydown", handleExplorerResizerKeydown);
+  applyExplorerWidth(state.explorerWidth, { persist: false });
+}
+
 async function createHomeFile(kind) {
   const item = getHomeCreateItem(kind);
   if (item?.kind === "terminal") {
@@ -619,7 +864,7 @@ async function createHomeFile(kind) {
   }
   const createdPath = String(result?.path || filePath).trim();
   refreshWorkspaceFolder(folderPath);
-  openCodeTab({ path: createdPath, type: item.kind === "snowflake" ? "snowflake" : "scripting" });
+  openCodeTab({ path: createdPath, type: item.kind === "snowflake" ? "snowflake" : inferTabType(createdPath) });
   updateStatus(`Created ${createdPath}.`);
 }
 
@@ -713,10 +958,18 @@ function renderHome() {
   const folders = state.workspaceFolders || [];
   const activeFolder = state.activeWorkspaceFolder || folders[0] || "";
   home.innerHTML = `
-    <div class="arcodeHomeLayout">
+    <div class="arcodeHomeLayout" style="--arcode-explorer-width: ${normalizeExplorerWidth(state.explorerWidth)}px;">
       <aside class="arcodeHomeSidebar" aria-label="Explorer">
         <div class="arcodeExplorerWorkspace">
           <div class="arcodeExplorerWorkspaceName">Arcode Workspace</div>
+          <button id="arcodeExplorerRefreshBtn" class="arcodeExplorerRefreshBtn" type="button" title="Refresh file explorer" aria-label="Refresh file explorer">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 6v5h-5"></path>
+              <path d="M4 18v-5h5"></path>
+              <path d="M18 9a7 7 0 0 0-11-3"></path>
+              <path d="M6 15a7 7 0 0 0 11 3"></path>
+            </svg>
+          </button>
         </div>
         <div class="arcodeExplorerFolders" role="tree" aria-label="Workspace folders">
           ${folders.length ? folders.map((folderPath) => `
@@ -736,6 +989,18 @@ function renderHome() {
           `}
         </div>
       </aside>
+      <div
+        id="arcodeExplorerResizer"
+        class="arcodeExplorerResizer"
+        role="separator"
+        aria-label="Resize file explorer"
+        aria-orientation="vertical"
+        aria-valuemin="${MIN_EXPLORER_WIDTH}"
+        aria-valuemax="${MAX_EXPLORER_WIDTH}"
+        aria-valuenow="${normalizeExplorerWidth(state.explorerWidth)}"
+        tabindex="0"
+        title="Resize file explorer"
+      ></div>
       <section class="arcodeHomeContent" aria-label="Arcode home content">
         <div class="arcodeCreateGroups" aria-label="Create files">
           ${renderHomeCreateGroups()}
@@ -743,7 +1008,11 @@ function renderHome() {
       </section>
     </div>
   `;
+  initExplorerResizer();
   $("arcodeExplorerEmptySelectBtn")?.addEventListener("click", () => pickWorkspaceFolder({ replace: true }));
+  $("arcodeExplorerRefreshBtn")?.addEventListener("click", () => {
+    void refreshExplorerFromButton();
+  });
   home.querySelectorAll(".arcodeExplorerEntry").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -758,7 +1027,7 @@ function renderHome() {
         return;
       }
       if (isSupportedCodeFile(filePath)) openCodeTab({ path: filePath });
-      else updateStatus("Only .py, .sql, .ipynb, .md, .txt, and .json files open in Arcode tabs right now.");
+      else updateStatus("Only notebook, code, SQL, JSON, Markdown, and text files open in Arcode tabs right now.");
     });
   });
   home.querySelectorAll(".arcodeCreateCard").forEach((button) => {
@@ -1163,7 +1432,7 @@ function renderFrames() {
   for (const tab of state.tabs) {
     tab.iframe?.classList.toggle("active", tab.id === state.activeId);
   }
-  document.title = hasActiveTab ? `${tabTitle(activeTab())} - Arcode Scripting Console` : "Arcode Scripting Console";
+  document.title = hasActiveTab ? `${tabTitle(activeTab())} - Arcode` : "Arcode";
 }
 
 function render() {
@@ -1183,13 +1452,13 @@ function setActiveTab(id) {
   render();
 }
 
-function buildScriptingUrl(tab) {
+function buildNotebookEditorUrl(tab) {
   const params = new URLSearchParams();
   params.set("inst", tab.scInst);
   if (tab.forceFresh) params.set("fresh", "1");
   if (tab.path) params.set("skipLast", "1");
   params.set("v", UI_VERSION_PARAM);
-  return `/ui/arcode/scripting-console/?${params.toString()}`;
+  return `/ui/arcode/notebook-editor/?${params.toString()}`;
 }
 
 function isSnowflakeSqlPath(pathLike) {
@@ -1205,8 +1474,18 @@ function buildSnowflakeUrl(tab) {
   return `/ui/arcode/snowflake-console/?${params.toString()}`;
 }
 
+function buildCodeEditorUrl(tab) {
+  const params = new URLSearchParams();
+  params.set("inst", tab.scInst);
+  if (tab.path) params.set("path", tab.path);
+  params.set("v", UI_VERSION_PARAM);
+  return `/ui/arcode/code-editor/?${params.toString()}`;
+}
+
 function buildFrameUrl(tab) {
-  return tab.type === "snowflake" ? buildSnowflakeUrl(tab) : buildScriptingUrl(tab);
+  if (tab.type === "snowflake") return buildSnowflakeUrl(tab);
+  if (tab.type === "editor") return buildCodeEditorUrl(tab);
+  return buildNotebookEditorUrl(tab);
 }
 
 function createFrameForTab(tab) {
@@ -1217,7 +1496,7 @@ function createFrameForTab(tab) {
   iframe.addEventListener("load", () => {
     if (tab.path && tab.type === "snowflake") {
       postToTab(tab, { type: "arcode:snowflake-open-path", path: tab.path });
-    } else if (tab.path) {
+    } else if (tab.path && tab.type === "notebook") {
       postToTab(tab, { type: "arcode:scripting-open-path", path: tab.path });
     }
     postToTab(tab, { type: "arcode:autosave-toggle", enabled: state.autoSaveEnabled });
@@ -1244,7 +1523,7 @@ function openCodeTab(options = {}) {
   const tab = {
     id,
     title: String(options.title || "").trim() || filenameFromPath(filePath) || "Untitled Notebook",
-    type: String(options.type || "").trim() || (isSnowflakeSqlPath(filePath) ? "snowflake" : "scripting"),
+    type: String(options.type || "").trim() || inferTabType(filePath, "notebook"),
     path: filePath,
     scInst: `${id}_${Date.now()}`,
     dirty: false,
@@ -1284,7 +1563,7 @@ async function openFileDialog() {
   }
   const filePath = await host.pickOpenFile({
     filters: [
-      { name: "Scripting Files", extensions: ["ipynb", "arcnb", "py", "r", "sql", "js", "ts", "json", "md", "txt"] },
+      { name: "Arcode Files", extensions: ["ipynb", "arcnb", "py", "r", "sql", "js", "ts", "json", "md", "txt", "css", "html", "htm"] },
       { name: "All Files", extensions: ["*"] },
     ],
   });
@@ -1633,8 +1912,8 @@ function toggleCreateMenu(forceOpen) {
 async function runShellAction(action, detail = {}) {
   if (!action) return;
   if (action === "create-notebook") return openCodeTab({ forceFresh: true });
-  if (action === "create-python") return updateStatus("Python item creation is a placeholder.");
-  if (action === "create-mssql") return updateStatus("MSSQL connection item is a placeholder.");
+  if (action === "create-python") return createHomeFile("python");
+  if (action === "create-mssql") return createHomeFile("sqlserver");
   if (action === "create-snowflake") return createHomeFile("snowflake");
   if (action === "open-file") return openFileDialog();
   if (action === "recent-files") return;
@@ -1845,7 +2124,7 @@ function ensureDropOverlay() {
   overlay.innerHTML = `
     <div class="arcodeFileDropPanel">
       <div id="arcodeFileDropTitle" class="arcodeFileDropTitle">Drop to open in Arcode</div>
-      <div id="arcodeFileDropDetail" class="arcodeFileDropDetail">.py, .sql, .ipynb, .md, .txt, and .json files are supported.</div>
+      <div id="arcodeFileDropDetail" class="arcodeFileDropDetail">Notebook, code, SQL, JSON, Markdown, and text files are supported.</div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -1868,10 +2147,10 @@ function showDropOverlay(event) {
   }
   if (detail) {
     detail.textContent = unsupported
-      ? "Only .py, .sql, .ipynb, .md, .txt, and .json files are supported."
+      ? "Only notebook, code, SQL, JSON, Markdown, and text files are supported."
       : supported.length === 1
-        ? (supported[0].name || supported[0].path || ".py, .sql, .ipynb, .md, .txt, and .json files are supported.")
-        : ".py, .sql, .ipynb, .md, .txt, and .json files are supported.";
+        ? (supported[0].name || supported[0].path || "Notebook, code, SQL, JSON, Markdown, and text files are supported.")
+        : "Notebook, code, SQL, JSON, Markdown, and text files are supported.";
   }
   overlay.classList.toggle("unsupported", unsupported);
   overlay.classList.add("open");
@@ -1979,6 +2258,7 @@ async function boot() {
   initHotkeys();
   initArcodeFileDrops();
   initMessages();
+  initExplorerFolderWatchEvents();
   window.__arcode_confirm_window_close = confirmWindowClose;
   await loadExplorerFileIcons();
   render();

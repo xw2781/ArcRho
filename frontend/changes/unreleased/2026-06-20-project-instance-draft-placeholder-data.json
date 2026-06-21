@@ -6,6 +6,7 @@
   "details": [
     "Triangle drafts use the standard triangle shape, while Vector drafts use a one-column vector shape.",
     "Draft origin and development period lengths default to 12.",
-    "Editable Data grids now use Result Selection-style inline numeric inputs in addition to Excel-style paste."
+    "Editable Data grids now open inline editing only after numeric typing, edit only the first selected cell, preserve column widths while editing, let Escape cancel the edit, and let Delete set the selected range to 0.",
+    "Manual input Triangle/Vector datasets now lock cumulative/calendar mode and block lower period lengths while any cell value is non-zero."
   ]
 }

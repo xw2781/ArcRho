@@ -127,6 +127,50 @@ function setEditorText(text) {
   setDirty(false);
 }
 
+function serializeRange(range) {
+  if (!range) return null;
+  return {
+    startLineNumber: range.startLineNumber,
+    startColumn: range.startColumn,
+    endLineNumber: range.endLineNumber,
+    endColumn: range.endColumn,
+  };
+}
+
+function getSelectedTextContext() {
+  if (!editor) return { text: "", selection: null, selectionOnly: false };
+  const model = editor.getModel();
+  const selection = editor.getSelection();
+  const selected = selection && model ? model.getValueInRange(selection) : "";
+  if (!selected.trim()) {
+    return { text: editor.getValue(), selection: null, selectionOnly: false };
+  }
+  return {
+    text: selected,
+    selection: serializeRange(selection),
+    selectionOnly: true,
+  };
+}
+
+function buildAssistantContext() {
+  const selected = getSelectedTextContext();
+  return {
+    available: true,
+    tabType: "snowflake",
+    pageType: "snowflake",
+    title: filenameFromPath(currentPath) || "Snowflake SQL",
+    targetPath: currentPath || "",
+    path: currentPath || "",
+    dirty,
+    fileState: dirty ? "unsaved-changes" : "saved",
+    language: "sql",
+    text: selected.text,
+    fullText: editor?.getValue() || "",
+    selection: selected.selection,
+    selectionOnly: selected.selectionOnly,
+  };
+}
+
 async function loadSqlFile(pathLike) {
   const path = String(pathLike || "").trim();
   if (!path) return;
@@ -301,6 +345,81 @@ function initEvents() {
     }
     if (msg.type === "arcode:set-zoom") {
       window.ArcodeZoomBridge?.applyPageZoomValue?.(Number(msg.zoom) || 100, Number(msg.statusBarHeight) || 28);
+    }
+    if (msg.type === "arcode:assistant-context-request") {
+      window.parent?.postMessage({
+        type: "arcode:assistant-context-result",
+        requestId: msg.requestId || "",
+        context: buildAssistantContext(),
+      }, "*");
+    }
+    if (msg.type === "arcode:assistant-replace-text") {
+      const requestId = msg.requestId || "";
+      if (!editor) {
+        window.parent?.postMessage({
+          type: "arcode:assistant-replace-text-result",
+          requestId,
+          ok: false,
+          error: "The editor is not ready.",
+        }, "*");
+        return;
+      }
+      const model = editor.getModel();
+      const range = msg.range || msg.selection || null;
+      if (range && model && window.monaco?.Range) {
+        const rangeValues = [
+          Number(range.startLineNumber),
+          Number(range.startColumn),
+          Number(range.endLineNumber),
+          Number(range.endColumn),
+        ];
+        if (!rangeValues.every(Number.isFinite)) {
+          window.parent?.postMessage({
+            type: "arcode:assistant-replace-text-result",
+            requestId,
+            ok: false,
+            error: "The selected SQL range is no longer valid. Run the skill again before applying.",
+          }, "*");
+          return;
+        }
+        const monacoRange = new window.monaco.Range(
+          rangeValues[0],
+          rangeValues[1],
+          rangeValues[2],
+          rangeValues[3],
+        );
+        const currentSelectionText = model.getValueInRange(monacoRange);
+        if (typeof msg.expectedText === "string" && msg.expectedText !== currentSelectionText) {
+          window.parent?.postMessage({
+            type: "arcode:assistant-replace-text-result",
+            requestId,
+            ok: false,
+            error: "The selected SQL changed after the review opened. Run the skill again before applying.",
+          }, "*");
+          return;
+        }
+        editor.executeEdits("arcbot-sql-format", [{ range: monacoRange, text: String(msg.text ?? ""), forceMoveMarkers: true }]);
+      } else {
+        const current = editor.getValue() || "";
+        if (typeof msg.expectedText === "string" && msg.expectedText !== current) {
+          window.parent?.postMessage({
+            type: "arcode:assistant-replace-text-result",
+            requestId,
+            ok: false,
+            error: "The editor changed after the SQL review opened. Run the skill again before applying.",
+          }, "*");
+          return;
+        }
+        editor.setValue(String(msg.text ?? ""));
+      }
+      setDirty((editor.getValue() || "") !== savedText);
+      setStatus(range ? "Applied ArcBot SQL formatting to selection." : "Applied ArcBot SQL formatting.");
+      window.parent?.postMessage({
+        type: "arcode:assistant-replace-text-result",
+        requestId,
+        ok: true,
+        dirty,
+      }, "*");
     }
   });
   window.addEventListener("keydown", (event) => {

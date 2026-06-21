@@ -1,5 +1,5 @@
 function resetArcodeConsoleZoom() {
-  if (!/^\/ui\/arcode\/scripting-console(?:\/|$)/i.test(window.location.pathname || "")) return;
+  if (!/^\/ui\/arcode\/notebook-editor(?:\/|$)/i.test(window.location.pathname || "")) return;
   try {
     localStorage.setItem("arcode_ui_zoom_pct", "100");
     localStorage.setItem("arcode_zoom_mode", "css");

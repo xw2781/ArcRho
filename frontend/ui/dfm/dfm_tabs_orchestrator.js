@@ -66,6 +66,13 @@ import {
 } from "/ui/dfm/dfm_ratio_history.js";
 
 const DEFAULT_TOKEN = "__DEFAULT__";
+const DFM_TAB_DEFS = Object.freeze([
+  { id: "details", label: "Details" },
+  { id: "data", label: "Data" },
+  { id: "ratios", label: "Ratios" },
+  { id: "results", label: "Results" },
+  { id: "notes", label: "Notes" },
+]);
 let dfmSaveInFlight = false;
 let dfmCancelConfirmResolve = null;
 
@@ -406,13 +413,7 @@ function initDfmTabs() {
   const initialTab = ALLOWED_DFM_TABS.has(urlTab) ? urlTab : "details";
 
   const tabSystem = createTabbedPage(document.body, {
-    tabs: [
-      { id: "details", label: "Details" },
-      { id: "data", label: "Data" },
-      { id: "ratios", label: "Ratios" },
-      { id: "results", label: "Results" },
-      { id: "notes", label: "Notes" }
-    ],
+    tabs: DFM_TAB_DEFS,
     cssPrefix: "dfm",
     initialTab,
     injectTabBar: false,
@@ -431,6 +432,7 @@ function initDfmTabs() {
   });
 
   window.dfmTabSystem = tabSystem;
+  wireDfmTabSwitchShortcuts(tabSystem);
   wireDfmTabPopoutWindows({
     onPopoutTab: (tabId) => {
       if (tabId === "ratios") renderRatioTable();
@@ -438,6 +440,40 @@ function initDfmTabs() {
       notifyDfmEditState();
     },
   });
+}
+
+function wireDfmTabSwitchShortcuts(tabSystem) {
+  if (!tabSystem || document.body?.dataset.dfmTabSwitchShortcutsWired === "1") return;
+  if (document.body) document.body.dataset.dfmTabSwitchShortcutsWired = "1";
+  const tabIds = DFM_TAB_DEFS.map((tab) => tab.id);
+  const switchDfmTab = (direction) => {
+    const currentTab = tabSystem.getCurrentTab?.() || getCurrentDfmTab();
+    const currentIndex = tabIds.indexOf(currentTab);
+    if (currentIndex < 0) return false;
+    const nextIndex = (currentIndex + direction + tabIds.length) % tabIds.length;
+    tabSystem.setActive(tabIds[nextIndex]);
+    return true;
+  };
+  window.addEventListener("message", (event) => {
+    if (event?.data?.type === "arcrho:dfm-tab-prev") {
+      switchDfmTab(-1);
+      return;
+    }
+    if (event?.data?.type === "arcrho:dfm-tab-next") {
+      switchDfmTab(1);
+      return;
+    }
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || !event.ctrlKey || event.altKey || event.metaKey) return;
+    const key = String(event.key || "").toLowerCase();
+    if (key !== "pageup" && key !== "pagedown") return;
+    if (event.target?.closest?.(".dfmCancelConfirmOverlay:not([hidden]), .dfmRpcOverlay, [aria-modal='true']")) return;
+    const direction = key === "pagedown" ? 1 : -1;
+    if (!switchDfmTab(direction)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, { capture: true });
 }
 
 export function initDfmRatios() {

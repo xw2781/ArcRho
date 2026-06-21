@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Made DFM RPC sync timestamp display consistent and correctly report matching local and remote methods as already in sync."
+}

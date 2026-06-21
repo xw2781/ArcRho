@@ -36,6 +36,8 @@ const hotkeys = {
   "Ctrl+I": "dfm_include_all",
   "Ctrl+Z": "dfm_undo",
   "Ctrl+Y": "dfm_redo",
+  "Ctrl+PageUp": "dfm_tab_prev",
+  "Ctrl+PageDown": "dfm_tab_next",
   "Ctrl+S": "file_save",
   "Ctrl+Shift+S": "file_save_as",
   "Ctrl+O": "file_import",
@@ -71,6 +73,8 @@ export function runHotkeyAction(action) {
   if (action === "dfm_include_all") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-include-all"); return; }
   if (action === "dfm_undo") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-undo"); return; }
   if (action === "dfm_redo") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-redo"); return; }
+  if (action === "dfm_tab_prev") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-tab-prev"); return; }
+  if (action === "dfm_tab_next") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-tab-next"); return; }
   if (action === "file_save") {
     if (shell.isActiveWorkflowTab?.()) shell.sendWorkflowCommand?.("arcrho:workflow-save");
     else if (shell.isActiveDatasetTab?.()) shell.sendDatasetCommand?.("arcrho:dataset-save");

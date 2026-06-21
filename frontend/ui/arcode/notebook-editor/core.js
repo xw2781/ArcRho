@@ -1,13 +1,11 @@
 // ---------------------------------------------------------------------------
-// Scripting Console — JupyterLab-style cell-based execution
+// Notebook Editor - JupyterLab-style cell-based execution
 // ---------------------------------------------------------------------------
 
-const API_BASE = window.location.origin;
-const SCRIPTING_SESSION_STORAGE_KEY = "sc_session_id";
-const SCRIPTING_SESSION_HEADER = "X-Scripting-Session-Id";
-const scriptingSessionId = getOrCreateScriptingSessionId();
+const arcodeShared = window.ArcodeEditorShared || {};
+const scriptingSessionId = arcodeShared.getOrCreateScriptingSessionId();
 const scriptingQueryParams = new URLSearchParams(window.location.search);
-const scriptingTabInstanceId = sanitizeStorageId(scriptingQueryParams.get("inst") || "");
+const scriptingTabInstanceId = arcodeShared.sanitizeStorageId(scriptingQueryParams.get("inst") || "");
 const forceFreshNotebook = scriptingQueryParams.get("fresh") === "1";
 const skipLastNotebookLoad = scriptingQueryParams.get("skipLast") === "1";
 const LEGACY_CELLS_STORAGE_KEY = "sc_cells";
@@ -15,33 +13,8 @@ const CELLS_STORAGE_KEY = scriptingTabInstanceId
   ? `${LEGACY_CELLS_STORAGE_KEY}_${scriptingTabInstanceId}`
   : LEGACY_CELLS_STORAGE_KEY;
 
-function sanitizeStorageId(raw) {
-  const normalized = String(raw || "").trim();
-  if (!normalized) return "";
-  return normalized.replace(/[^a-zA-Z0-9_-]/g, "");
-}
-
-function getOrCreateScriptingSessionId() {
-  const fallback = `sc-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-  try {
-    const existing = sessionStorage.getItem(SCRIPTING_SESSION_STORAGE_KEY);
-    if (existing) return existing;
-    const next = (window.crypto && typeof window.crypto.randomUUID === "function")
-      ? window.crypto.randomUUID()
-      : fallback;
-    sessionStorage.setItem(SCRIPTING_SESSION_STORAGE_KEY, next);
-    return next;
-  } catch {
-    return fallback;
-  }
-}
-
 function scriptingFetch(path, options = {}) {
-  const headers = {
-    [SCRIPTING_SESSION_HEADER]: scriptingSessionId,
-    ...(options.headers || {}),
-  };
-  return fetch(`${API_BASE}${path}`, { ...options, headers });
+  return arcodeShared.scriptingFetch(path, options, scriptingSessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +141,7 @@ const selectedCellIds = new Set();
 const dropPlaceholderEl = document.createElement("div");
 dropPlaceholderEl.className = "sc-drop-placeholder";
 
-const SAMPLE_CODE = `# Arcode Scripting Console
+const SAMPLE_CODE = `# Arcode Notebook Editor
 # Variables persist between cells. Shift+Enter to run & advance.
 # Available: read_json, write_json, read_csv, write_csv,
 #            list_files, get_project_path, get_data_path,

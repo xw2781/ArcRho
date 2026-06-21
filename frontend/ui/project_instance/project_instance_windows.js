@@ -531,7 +531,7 @@ function resizeRectFromCorner(start, corner, dx, dy) {
   return next;
 }
 
-function lockDatasetViewerInputs(iframe, datasetTypeName) {
+function lockDatasetViewerInputs(iframe, datasetTypeName, pathValue = state.selectedPath) {
   let doc = null;
   try {
     doc = iframe.contentDocument || iframe.contentWindow?.document || null;
@@ -549,7 +549,7 @@ function lockDatasetViewerInputs(iframe, datasetTypeName) {
     projectInput.title = "Project is set by the project instance tab.";
   }
   if (pathInput) {
-    pathInput.value = state.selectedPath;
+    pathInput.value = pathValue;
     pathInput.readOnly = true;
     pathInput.title = "Reserving class path is set by the project instance tab.";
   }
@@ -597,7 +597,7 @@ function wireDatasetViewerWindowShortcuts(iframe, frame) {
 function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   params.set("project", projectName);
-  params.set("path", state.selectedPath);
+  params.set("path", toText(options?.path) || state.selectedPath);
   const instanceName = toText(datasetName);
   const datasetTypeName = toText(options?.datasetTypeName) || instanceName;
   if (datasetTypeName) params.set("tri", datasetTypeName);
@@ -627,8 +627,9 @@ function buildDfmViewerUrl(datasetName, inst, options = {}) {
   const methodName = options?.fresh ? "" : toText(options?.methodName || name);
   const outputType = options?.fresh ? "" : toText(options?.outputType || name);
   const inputTriangle = toText(options?.inputTriangle || "");
+  const targetPath = normalizePath(options?.path || state.selectedPath);
   params.set("project", projectName);
-  params.set("class", state.selectedPath);
+  params.set("class", targetPath);
   if (methodName) params.set("method_name", methodName);
   if (outputType) params.set("output_type", outputType);
   if (inputTriangle) params.set("input_triangle", inputTriangle);
@@ -643,8 +644,9 @@ function buildResultSelectionViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   const name = toText(datasetName);
   const initialTab = toText(options?.initialTab || options?.rsTab || "details") || "details";
+  const targetPath = normalizePath(options?.path || state.selectedPath);
   params.set("project", projectName);
-  params.set("class", state.selectedPath);
+  params.set("class", targetPath);
   if (name) params.set("name", name);
   if (options?.outputType) params.set("output_type", toText(options.outputType));
   if (options?.datasetTypeName) params.set("dataset_type", toText(options.datasetTypeName));
@@ -873,14 +875,15 @@ function createFloatingContentWindow(options = {}) {
 function openDatasetWindow(datasetName, options = {}) {
   const name = toText(datasetName);
   const datasetTypeName = toText(options?.datasetTypeName) || name;
+  const targetPath = normalizePath(options?.path || state.selectedPath);
   if (!name) return;
-  if (!state.selectedPath) {
+  if (!targetPath) {
     setStatus("Select a reserving class path before opening a dataset.", true);
     return;
   }
 
-  const windowKey = getDatasetWindowKey(name);
-  const title = `${state.selectedPath}\\${name}`;
+  const windowKey = getDatasetWindowKey(name, targetPath);
+  const title = `${targetPath}\\${name}`;
   const inst = `pi_ds_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "dataset",
@@ -891,13 +894,15 @@ function openDatasetWindow(datasetName, options = {}) {
     inst,
     iframeSrc: buildDatasetViewerUrl(name, inst, {
       datasetTypeName,
+      path: targetPath,
       readOnly: options?.readOnly,
       generated: options?.generated,
     }),
+    path: targetPath,
     methodType: options?.methodType,
     onIframeLoad: (iframe) => {
-      lockDatasetViewerInputs(iframe, datasetTypeName);
-      window.setTimeout(() => lockDatasetViewerInputs(iframe, datasetTypeName), 250);
+      lockDatasetViewerInputs(iframe, datasetTypeName, targetPath);
+      window.setTimeout(() => lockDatasetViewerInputs(iframe, datasetTypeName, targetPath), 250);
     },
   });
 }
@@ -946,14 +951,15 @@ function openNewDatasetDraftWindow(datasetName, options = {}) {
 function openDfmWindow(datasetName, options = {}) {
   const name = toText(datasetName);
   if (!name) return;
-  if (!state.selectedPath) {
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  if (!targetPath) {
     setStatus("Select a reserving class path before opening a DFM object.", true);
     return;
   }
 
   recordSelectedDfmObject(name);
-  const windowKey = getDfmWindowKey(name);
-  const title = `${state.selectedPath}\\DFM\\${name}`;
+  const windowKey = getDfmWindowKey(name, targetPath);
+  const title = `${targetPath}\\DFM\\${name}`;
   const initialTab = toText(options.initialTab || options.dfmTab || "ratios") || "ratios";
   const inst = `pi_dfm_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
@@ -963,7 +969,8 @@ function openDfmWindow(datasetName, options = {}) {
     title,
     windowKey,
     inst,
-    iframeSrc: buildDfmViewerUrl(name, inst, { ...options, initialTab }),
+    iframeSrc: buildDfmViewerUrl(name, inst, { ...options, path: targetPath, initialTab }),
+    path: targetPath,
     methodType: options.methodType || "DFM",
   });
 }
@@ -971,13 +978,14 @@ function openDfmWindow(datasetName, options = {}) {
 function openResultSelectionWindow(datasetName, options = {}) {
   const name = toText(datasetName);
   if (!name) return;
-  if (!state.selectedPath) {
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  if (!targetPath) {
     setStatus("Select a reserving class path before opening a Result Selection object.", true);
     return;
   }
 
-  const windowKey = `rs\u0001${normalizePath(state.selectedPath)}\u0001${name.toLowerCase()}`;
-  const title = `${state.selectedPath}\\Result Selection\\${name}`;
+  const windowKey = `rs\u0001${targetPath}\u0001${name.toLowerCase()}`;
+  const title = `${targetPath}\\Result Selection\\${name}`;
   const inst = `pi_rs_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "result_selection",
@@ -986,7 +994,8 @@ function openResultSelectionWindow(datasetName, options = {}) {
     title,
     windowKey,
     inst,
-    iframeSrc: buildResultSelectionViewerUrl(name, inst, options),
+    iframeSrc: buildResultSelectionViewerUrl(name, inst, { ...options, path: targetPath }),
+    path: targetPath,
     methodType: options.methodType || "Result Selection",
   });
 }

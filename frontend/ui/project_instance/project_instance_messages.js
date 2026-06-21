@@ -23,7 +23,10 @@ export function installProjectInstanceMessages(ctx) {
   const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
   const notifyProjectInstanceStateChanged = (...args) => api.notifyProjectInstanceStateChanged(...args);
+  const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
   const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
+  const openDfmWindow = (...args) => api.openDfmWindow(...args);
+  const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
   const restoreDatasetWindow = (...args) => api.restoreDatasetWindow(...args);
   const setStatus = (...args) => api.setStatus(...args);
@@ -425,6 +428,60 @@ function handleAutomationOpenDataset(message, sourceWindow) {
   return true;
 }
 
+function handleOpenDependentDataset(message, sourceWindow) {
+  const datasetName = toText(message?.datasetName || message?.dataset_name || message?.name);
+  if (!datasetName) {
+    setStatus("Dependent dataset name is required.", true);
+    return true;
+  }
+  const sourceFrame = findWindowByMessageSource(sourceWindow);
+  const targetPath = toText(message?.reservingClass || message?.reserving_class)
+    || toText(getWindowPath(sourceFrame) || sourceFrame?.dataset?.windowPath)
+    || state.selectedPath;
+  if (!targetPath) {
+    setStatus("Select a reserving class path before opening a dependent dataset.", true);
+    return true;
+  }
+  const openMethod = !!message?.openMethod || !!message?.open_method;
+  const datasetTypeName = toText(message?.datasetTypeName || message?.dataset_type_name) || datasetName;
+  const methodTypeMap = state.cachedDatasetFilter?.methodTypesByName instanceof Map
+    ? state.cachedDatasetFilter.methodTypesByName
+    : new Map();
+  const resolvedMethodType = toText(message?.methodType || message?.method_type)
+    || toText(methodTypeMap.get(normalizeLookupKey(datasetName)))
+    || toText(methodTypeMap.get(normalizeLookupKey(datasetTypeName)));
+  const methodType = resolvedMethodType.toLowerCase();
+  let frame = null;
+  if (openMethod && methodType === "dfm") {
+    frame = openDfmWindow(datasetName, {
+      path: targetPath,
+      methodType: "DFM",
+    });
+  } else if (openMethod && methodType === "result selection") {
+    frame = openResultSelectionWindow(datasetName, {
+      path: targetPath,
+      initialTab: "method",
+      methodType: "Result Selection",
+    });
+  } else {
+    frame = openDatasetWindow(datasetName, {
+      datasetTypeName,
+      path: targetPath,
+      methodType: resolvedMethodType,
+    });
+  }
+  if (frame) {
+    setStatus(openMethod && methodType
+      ? `Opened ${methodType === "dfm" ? "DFM" : "Result Selection"} method ${datasetName}.`
+      : `Opened dependent dataset ${datasetName}.`);
+  } else {
+    setStatus(openMethod && methodType
+      ? `Could not open method ${datasetName}.`
+      : `Could not open dependent dataset ${datasetName}.`, true);
+  }
+  return true;
+}
+
 function handleAutomationWindowCommand(message, sourceWindow) {
   const requestId = toText(message?.requestId);
   const args = message?.args && typeof message.args === "object" ? message.args : {};
@@ -638,6 +695,8 @@ function routeDfmRatioHotkey(event) {
     i: "arcrho:dfm-include-all",
     z: "arcrho:dfm-undo",
     y: "arcrho:dfm-redo",
+    pageup: "arcrho:dfm-tab-prev",
+    pagedown: "arcrho:dfm-tab-next",
   };
   const command = commandByKey[key];
   if (!command) return false;
@@ -745,6 +804,8 @@ window.addEventListener("message", (event) => {
     || msg.type === "arcrho:dfm-include-all"
     || msg.type === "arcrho:dfm-undo"
     || msg.type === "arcrho:dfm-redo"
+    || msg.type === "arcrho:dfm-tab-prev"
+    || msg.type === "arcrho:dfm-tab-next"
   ) {
     routeDfmWindowCommand(msg.type);
     return;
@@ -769,6 +830,10 @@ window.addEventListener("message", (event) => {
   }
   if (msg.type === "arcrho:automation-open-dataset") {
     handleAutomationOpenDataset(msg, event.source);
+    return;
+  }
+  if (msg.type === "arcrho:project-instance-open-dependent-dataset") {
+    handleOpenDependentDataset(msg, event.source);
     return;
   }
   if (msg.type === "arcrho:automation-window-command") {

@@ -3,10 +3,7 @@
 // ---------------------------------------------------------------------------
 
 function getNotebookFilenameFromPath(pathLike) {
-  const normalized = String(pathLike || "").replace(/\\/g, "/").trim();
-  if (!normalized) return "";
-  const parts = normalized.split("/").filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : "";
+  return arcodeShared.filenameFromPath(pathLike);
 }
 
 function getNotebookDisplayTitle() {
@@ -15,14 +12,7 @@ function getNotebookDisplayTitle() {
 
 function updateNotebookTitleUI() {
   const title = getNotebookDisplayTitle();
-  try {
-    window.parent?.postMessage({
-      type: "arcode:update-active-tab-title",
-      title,
-      inst: scriptingTabInstanceId,
-      path: currentNotebookPath || "",
-    }, "*");
-  } catch {}
+  arcodeShared.postTabTitle({ title, inst: scriptingTabInstanceId, path: currentNotebookPath || "" });
 }
 
 function setCurrentNotebookFilename(pathLike) {
@@ -32,20 +22,15 @@ function setCurrentNotebookFilename(pathLike) {
 }
 
 function getNotebookDirectoryFromPath(pathLike) {
-  const raw = String(pathLike || "").trim();
-  if (!raw) return "";
-  const slash = Math.max(raw.lastIndexOf("\\"), raw.lastIndexOf("/"));
-  return slash >= 0 ? raw.slice(0, slash) : "";
+  return arcodeShared.directoryFromPath(pathLike);
 }
 
 function getNotebookHostApi() {
-  return window.ADAHost || window.parent?.ADAHost || window.top?.ADAHost || null;
+  return arcodeShared.getHostApi();
 }
 
 function getNotebookExtension(pathLike) {
-  const name = getNotebookFilenameFromPath(pathLike).toLowerCase();
-  const dot = name.lastIndexOf(".");
-  return dot >= 0 ? name.slice(dot) : "";
+  return arcodeShared.extensionFromPath(pathLike);
 }
 
 function isIpynbPath(pathLike) {
@@ -83,8 +68,7 @@ function formatTextFileForEditor(pathLike, text) {
 }
 
 function isAbsoluteFilePath(pathLike) {
-  const value = String(pathLike || "").trim();
-  return /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("\\\\") || value.startsWith("/");
+  return arcodeShared.isAbsoluteFilePath(pathLike);
 }
 
 function getNotebookCopyFilename(pathLike) {
@@ -118,9 +102,7 @@ function revisionToken(revision) {
 }
 
 function sameRevision(left, right) {
-  const leftToken = revisionToken(left);
-  const rightToken = revisionToken(right);
-  return !!leftToken && !!rightToken && leftToken === rightToken;
+  return arcodeShared.sameRevision(left, right);
 }
 
 function getNotebookStateText() {
@@ -137,7 +119,7 @@ function setNotebookDirty(nextDirty) {
   notebookDirty = dirty;
   updateNotebookTitleUI();
   try {
-    window.parent?.postMessage({ type: "arcode:scripting-dirty", inst: scriptingTabInstanceId, dirty }, "*");
+    arcodeShared.postDirty({ inst: scriptingTabInstanceId, dirty });
   } catch {}
 }
 
@@ -402,11 +384,7 @@ function closeSaveNbDialog() {
 }
 
 function postShellStatus(text) {
-  const msg = String(text || "").trim();
-  if (!msg) return;
-  try {
-    window.parent?.postMessage({ type: "arcode:status", text: msg }, "*");
-  } catch {}
+  arcodeShared.postStatus(text);
 }
 
 function getNotebookSavePayload() {

@@ -66,6 +66,14 @@ contextBridge.exposeInMainWorld("ADAHost", {
   openArcodeWindow: (payload) => invoke("arcode-window-open", payload),
   pickOpenFile: (payload) => invoke("pick-open-file", payload),
   listFolder: (payload) => invoke("arcode-list-folder", payload),
+  startArcodeFolderWatch: (payload) => invoke("arcode-folder-watch-start", payload),
+  stopArcodeFolderWatch: (payload) => invoke("arcode-folder-watch-stop", payload),
+  onArcodeFolderChanged: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("arcode-folder-changed", listener);
+    return () => ipcRenderer.removeListener("arcode-folder-changed", listener);
+  },
   openPath: (payload) => invoke("open-path", payload),
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
   openTerminal: (payload) => invoke("open-terminal", payload),

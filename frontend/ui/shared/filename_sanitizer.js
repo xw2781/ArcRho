@@ -21,6 +21,13 @@ export function encodeFileNameSegment(value) {
   }).join("");
 }
 
+export function decodeFileNameSegment(value) {
+  return String(value ?? "").replace(/_%([0-9A-Fa-f]{2})_/g, (match, hex) => {
+    const code = Number.parseInt(hex, 16);
+    return Number.isFinite(code) ? String.fromCharCode(code) : match;
+  });
+}
+
 export function sanitizeFileNamePart(value, fallback = "File") {
   const cleaned = encodeFileNameSegment(String(value ?? "").trim())
     .replace(/\s+/g, " ")

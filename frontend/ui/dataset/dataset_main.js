@@ -35,6 +35,7 @@ import {
 import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js";
 import { openProjectNameTreePicker } from "/ui/shared/project_name_tree_picker.js";
 import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
+import { decodeFileNameSegment } from "/ui/shared/filename_sanitizer.js";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -279,6 +280,7 @@ const LS_FORM_KEY = "arcrho_tri_inputs";
 // Per-instance storage (e.g. workflow embeds)
 const qs = new URLSearchParams(window.location.search);
 const instanceId = qs.get("inst") || "default";
+const isProjectInstanceHost = qs.get("project_instance") === "1";
 const isProjectInstanceDraft = qs.get("draft_instance") === "1" || qs.get("draft") === "1";
 const isReadOnlyDatasetViewer = qs.get("readonly") === "1" || qs.get("generated_dataset") === "1";
 let isSidecarReadOnlyDataset = false;
@@ -345,6 +347,363 @@ function renderDatasetAuditLog(entries = []) {
   if (empty) empty.hidden = rows.length > 0;
 }
 
+function normalizeDatasetDependencyEntries(entries = []) {
+  if (!Array.isArray(entries)) return [];
+  const seen = new Set();
+  return entries
+    .map((entry) => {
+      const source = entry && typeof entry === "object" ? entry : { dataset_type_name: entry };
+      const datasetName = String(
+        source.dataset_name
+          ?? source.datasetName
+          ?? source.dataset_type_name
+          ?? source.datasetTypeName
+          ?? source.name
+          ?? "",
+      ).trim();
+      const datasetTypeName = String(
+        source.dataset_type_name
+          ?? source.datasetTypeName
+          ?? source.dataset_type
+          ?? source.datasetType
+          ?? datasetName,
+      ).trim();
+      const name = datasetName || datasetTypeName;
+      if (!name) return null;
+      const key = normalizeProjectText(name);
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return {
+        datasetName: name,
+        datasetTypeName: datasetTypeName || name,
+        formula: String(source.formula ?? source.Formula ?? "").trim(),
+        methodType: String(source.method_type ?? source.methodType ?? "").trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
+function escapeFormulaRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getFormulaComponentNames(precedents = []) {
+  const names = [];
+  const seen = new Set();
+  const add = (value) => {
+    const text = String(value || "").trim();
+    const key = normalizeProjectText(text);
+    if (!text || !key || seen.has(key)) return;
+    seen.add(key);
+    names.push(text);
+  };
+  for (const entry of normalizeDatasetDependencyEntries(precedents)) {
+    add(entry.datasetName);
+    add(entry.datasetTypeName);
+  }
+  for (const name of allDatasetTypes) add(name);
+  return names.sort((a, b) => b.length - a.length);
+}
+
+function findFormulaComponentMatches(formula, precedents = []) {
+  const text = String(formula || "");
+  if (!text.trim()) return [];
+  const names = getFormulaComponentNames(precedents);
+  const matches = [];
+
+  const quotedRe = /"([^"]+)"/g;
+  let quotedMatch;
+  while ((quotedMatch = quotedRe.exec(text)) !== null) {
+    const token = String(quotedMatch[1] || "").trim();
+    if (!token) continue;
+    matches.push({
+      start: quotedMatch.index,
+      end: quotedMatch.index + String(quotedMatch[0] || "").length,
+      token,
+    });
+  }
+
+  for (const name of names) {
+    const re = new RegExp(`(^|[^A-Za-z0-9_])(${escapeFormulaRegExp(name)})(?=$|[^A-Za-z0-9_])`, "gi");
+    let match;
+    while ((match = re.exec(text)) !== null) {
+      const prefixLen = String(match[1] || "").length;
+      const token = String(match[2] || "").trim();
+      const start = match.index + prefixLen;
+      if (token) matches.push({ start, end: start + token.length, token });
+      if (re.lastIndex === match.index) re.lastIndex += 1;
+    }
+  }
+
+  matches.sort((a, b) => (a.start - b.start) || ((b.end - b.start) - (a.end - a.start)));
+  const used = [];
+  const out = [];
+  for (const hit of matches) {
+    const overlaps = used.some((range) => hit.start < range.end && hit.end > range.start);
+    if (overlaps) continue;
+    const key = normalizeProjectText(hit.token);
+    if (!key) continue;
+    used.push({ start: hit.start, end: hit.end });
+    out.push(hit);
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+function findFormulaDependencyEntry(token, precedents = []) {
+  const tokenKey = normalizeProjectText(token);
+  if (!tokenKey) return { datasetName: String(token || "").trim(), datasetTypeName: String(token || "").trim() };
+  const entries = normalizeDatasetDependencyEntries(precedents);
+  const match = entries.find((entry) => (
+    normalizeProjectText(entry.datasetName) === tokenKey
+    || normalizeProjectText(entry.datasetTypeName) === tokenKey
+  ));
+  return match || { datasetName: String(token || "").trim(), datasetTypeName: String(token || "").trim() };
+}
+
+function createFormulaSvgIcon(paths) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of paths) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.appendChild(path);
+  }
+  return svg;
+}
+
+function createFormulaOperatorIcon(value) {
+  const op = String(value || "").trim();
+  if (op === "+") return createFormulaSvgIcon(["M12 5v14", "M5 12h14"]);
+  if (op === "-") return createFormulaSvgIcon(["M5 12h14"]);
+  if (op === "*") return createFormulaSvgIcon(["M6 6l12 12", "M18 6L6 18"]);
+  if (op === "/") return createFormulaSvgIcon(["M16 5L8 19"]);
+  return document.createTextNode(op);
+}
+
+function createFormulaCalculatedIcon() {
+  const icon = document.createElement("span");
+  icon.className = "dsFormulaCalculatedIcon";
+  icon.appendChild(createFormulaSvgIcon(["M4 7h8v6H4zM12 11h8v6h-8zM12 3h8v6h-8z"]));
+  return icon;
+}
+
+function datasetFormulaEntryHasFormula(entry) {
+  const datasetTypeName = String(entry?.datasetTypeName || entry?.datasetName || "").trim();
+  return !!String(entry?.formula || getDatasetTypeFormulaByName(datasetTypeName) || "").trim();
+}
+
+function normalizeDatasetMethodType(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "dfm") return "DFM";
+  if (text === "result selection") return "Result Selection";
+  return "";
+}
+
+function appendDatasetChipLabel(parent, text) {
+  const label = document.createElement("span");
+  label.className = "dsFormulaTokenText";
+  label.textContent = text;
+  parent.appendChild(label);
+}
+
+function appendFormulaRawText(parent, text) {
+  const value = String(text || "").trim();
+  if (!value || !parent) return;
+  const span = document.createElement("span");
+  span.className = "dsFormulaRawText";
+  span.textContent = value;
+  parent.appendChild(span);
+}
+
+function appendRichFormulaText(parent, text) {
+  const segment = String(text || "");
+  if (!segment || !parent) return;
+  const operatorRe = /[+\-*/()]/g;
+  let cursor = 0;
+  let match;
+  while ((match = operatorRe.exec(segment)) !== null) {
+    if (match.index > cursor) {
+      appendFormulaRawText(parent, segment.slice(cursor, match.index));
+    }
+    const op = document.createElement("span");
+    const opClass = match[0] === "+" ? " plus" : (match[0] === "-" ? " minus" : "");
+    op.className = `dsFormulaOperatorToken${opClass}`;
+    op.appendChild(createFormulaOperatorIcon(match[0]));
+    parent.appendChild(op);
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < segment.length) {
+    appendFormulaRawText(parent, segment.slice(cursor));
+  }
+}
+
+function appendFormulaComponentChip(parent, entry, label, options = {}) {
+  const interactive = !!options.interactive;
+  const methodType = normalizeDatasetMethodType(entry?.methodType);
+  const openMethod = !!options.openMethod;
+  const chip = document.createElement(interactive ? "button" : "span");
+  if (interactive) chip.type = "button";
+  chip.className = "dsFormulaComponentChip";
+  if (datasetFormulaEntryHasFormula(entry)) chip.appendChild(createFormulaCalculatedIcon());
+  appendDatasetChipLabel(chip, label);
+  if (interactive) {
+    chip.setAttribute("aria-label", openMethod && methodType
+      ? `Open ${methodType} method ${entry.datasetName || label}`
+      : `Open ${entry.datasetName || label}`);
+    chip.addEventListener("click", () => openRelatedDataset(entry, { openMethod }));
+  }
+  parent.appendChild(chip);
+}
+
+function renderRichFormulaTokens(parent, formula, precedents = [], options = {}) {
+  const formulaText = String(formula || "").trim();
+  if (!parent || !formulaText) return;
+  const matches = findFormulaComponentMatches(formulaText, precedents);
+  if (!matches.length) {
+    appendRichFormulaText(parent, formulaText);
+    return;
+  }
+
+  let cursor = 0;
+  for (const hit of matches) {
+    if (hit.start > cursor) {
+      appendRichFormulaText(parent, formulaText.slice(cursor, hit.start));
+    }
+    const entry = findFormulaDependencyEntry(hit.token, precedents);
+    appendFormulaComponentChip(parent, entry, hit.token, options);
+    cursor = hit.end;
+  }
+  if (cursor < formulaText.length) {
+    appendRichFormulaText(parent, formulaText.slice(cursor));
+  }
+}
+
+function renderDetailFormula(formula, precedents = []) {
+  const formulaText = String(formula || "").trim();
+  const formulaInput = document.getElementById("dsDetailFormula");
+  const formulaBox = document.getElementById("dsDetailFormulaBox");
+  if (formulaInput) {
+    formulaInput.value = formulaText;
+    formulaInput.removeAttribute("title");
+  }
+  if (!formulaBox) return;
+  formulaBox.replaceChildren();
+  formulaBox.removeAttribute("title");
+  formulaBox.classList.toggle("empty", !formulaText);
+  if (!formulaText) {
+    return;
+  }
+
+  renderRichFormulaTokens(formulaBox, formulaText, precedents, { interactive: true, openMethod: true });
+}
+
+function ensureDependentFormulaTooltip() {
+  let tooltip = document.getElementById("dsDependentFormulaTooltip");
+  if (tooltip) return tooltip;
+  tooltip = document.createElement("div");
+  tooltip.id = "dsDependentFormulaTooltip";
+  tooltip.className = "dsDependentFormulaTooltip";
+  tooltip.hidden = true;
+  document.body.appendChild(tooltip);
+  return tooltip;
+}
+
+function positionDependentFormulaTooltip(tooltip, event) {
+  if (!tooltip || tooltip.hidden) return;
+  const margin = 12;
+  const rect = tooltip.getBoundingClientRect();
+  let left = event.clientX + margin;
+  let top = event.clientY + margin;
+  if (left + rect.width > window.innerWidth - margin) {
+    left = Math.max(margin, event.clientX - rect.width - margin);
+  }
+  if (top + rect.height > window.innerHeight - margin) {
+    top = Math.max(margin, event.clientY - rect.height - margin);
+  }
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function showDependentFormulaTooltip(dependent, event) {
+  const formula = String(dependent?.formula || "").trim();
+  if (!formula) return;
+  const tooltip = ensureDependentFormulaTooltip();
+  tooltip.replaceChildren();
+  const title = document.createElement("div");
+  title.className = "dsDependentFormulaTooltipTitle";
+  title.textContent = dependent.datasetName || "Dependent dataset";
+  const body = document.createElement("div");
+  body.className = "dsDependentFormulaTooltipBody";
+  renderRichFormulaTokens(body, formula);
+  tooltip.append(title, body);
+  tooltip.hidden = false;
+  positionDependentFormulaTooltip(tooltip, event);
+}
+
+function hideDependentFormulaTooltip() {
+  const tooltip = document.getElementById("dsDependentFormulaTooltip");
+  if (tooltip) tooltip.hidden = true;
+}
+
+function openRelatedDataset(entry, options = {}) {
+  const datasetName = String(entry?.datasetName || "").trim();
+  if (!datasetName) return;
+  if (!isProjectInstanceHost) {
+    setStatus("Dataset links open from Project Instance dataset windows.");
+    return;
+  }
+  const methodType = normalizeDatasetMethodType(entry?.methodType);
+  const payload = buildDatasetSidecarContextPayload();
+  try {
+    window.parent?.postMessage({
+      type: "arcrho:project-instance-open-dependent-dataset",
+      inst: instanceId,
+      datasetName,
+      datasetTypeName: String(entry?.datasetTypeName || datasetName).trim(),
+      methodType,
+      openMethod: !!options.openMethod,
+      projectName: payload.project_name,
+      reservingClass: payload.reserving_class,
+    }, "*");
+    setStatus(options.openMethod
+      ? `Opening related item: ${datasetName}`
+      : `Opening dataset: ${datasetName}`);
+  } catch {
+    setStatus("Could not open dataset from this window.");
+  }
+}
+
+function renderDatasetDependents(entries = []) {
+  const list = document.getElementById("dsDependentsList");
+  if (!list) return;
+  hideDependentFormulaTooltip();
+  const dependents = normalizeDatasetDependencyEntries(entries);
+  list.replaceChildren();
+  if (!dependents.length) {
+    return;
+  }
+  for (const dependent of dependents) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "dsDependentLink";
+    if (datasetFormulaEntryHasFormula(dependent)) button.appendChild(createFormulaCalculatedIcon());
+    appendDatasetChipLabel(button, dependent.datasetName);
+    button.setAttribute("aria-label", dependent.formula
+      ? `Open ${dependent.datasetName}. Formula: ${dependent.formula}`
+      : `Open ${dependent.datasetName}`);
+    button.addEventListener("mouseenter", (event) => showDependentFormulaTooltip(dependent, event));
+    button.addEventListener("mousemove", (event) => {
+      const tooltip = document.getElementById("dsDependentFormulaTooltip");
+      positionDependentFormulaTooltip(tooltip, event);
+    });
+    button.addEventListener("mouseleave", hideDependentFormulaTooltip);
+    button.addEventListener("blur", hideDependentFormulaTooltip);
+    button.addEventListener("click", () => openRelatedDataset(dependent));
+    list.appendChild(button);
+  }
+}
+
 function getDatasetInitialTab() {
   const requested = String(qs.get("tab") || qs.get("initial_tab") || "").trim();
   return DATASET_TABS.some((tab) => tab.id === requested) ? requested : "data";
@@ -398,6 +757,9 @@ let cachedDatasetInstanceLoadPromise = null;
 let sidecarContextKey = "";
 let sidecarContextPayload = null;
 let lastSavedDatasetSettings = null;
+let currentDatasetSidecarSourceKind = "";
+let currentDatasetSidecarDataFormat = "";
+let currentDatasetPrecedents = [];
 let sidecarSyncNonce = 0;
 let datasetCancelConfirmResolve = null;
 const lenDropdownActiveIndexBySelect = new Map();
@@ -988,11 +1350,9 @@ function getDatasetTypeFormulaByName(datasetTypeName) {
 }
 
 function resizeDetailFormulaInput() {
-  const formulaInput = document.getElementById("dsDetailFormula");
-  if (!formulaInput) return;
-  formulaInput.style.height = "30px";
-  if (!formulaInput.offsetParent) return;
-  formulaInput.style.height = `${Math.max(30, formulaInput.scrollHeight)}px`;
+  const formulaBox = document.getElementById("dsDetailFormulaBox");
+  if (!formulaBox) return;
+  formulaBox.style.maxHeight = "140px";
 }
 
 window.addEventListener("resize", () => {
@@ -1000,11 +1360,8 @@ window.addEventListener("resize", () => {
 });
 
 function syncDetailFormulaFromDatasetType(datasetTypeName) {
-  const formulaInput = document.getElementById("dsDetailFormula");
-  if (!formulaInput) return;
   const formula = getDatasetTypeFormulaByName(datasetTypeName);
-  formulaInput.value = formula;
-  formulaInput.title = formula;
+  renderDetailFormula(formula, currentDatasetPrecedents);
   resizeDetailFormulaInput();
 }
 
@@ -2376,10 +2733,18 @@ function getCurrentDatasetSettings() {
   };
 }
 
-function getProjectInstanceDraftValuePayload() {
-  if (!isProjectInstanceDraft || !state.model) return {};
+function getManualInputDatasetValuePayload() {
+  if (!hasManualInputGridChanges() || !state.model) return {};
   const values = Array.isArray(state.model.values)
-    ? state.model.values.map((row) => (Array.isArray(row) ? row.map((value) => (value == null ? null : Number(value))) : []))
+    ? state.model.values.map((row) => (
+      Array.isArray(row)
+        ? row.map((value) => {
+          if (value == null || value === "") return null;
+          const numeric = Number(value);
+          return Number.isFinite(numeric) ? numeric : null;
+        })
+        : []
+    ))
     : null;
   const mask = Array.isArray(state.model.mask)
     ? state.model.mask.map((row) => (Array.isArray(row) ? row.map(Boolean) : []))
@@ -2387,7 +2752,7 @@ function getProjectInstanceDraftValuePayload() {
   if (!Array.isArray(values) || !values.length) return {};
   return {
     source_kind: "input",
-    data_format: getProjectInstanceDraftDataFormat(),
+    data_format: currentDatasetSidecarDataFormat || state.model?.data_format || getProjectInstanceDraftDataFormat(),
     origin_labels: Array.isArray(state.model.origin_labels) ? state.model.origin_labels.map(String) : undefined,
     values,
     mask,
@@ -2432,12 +2797,106 @@ function sameDatasetSettings(a, b) {
   );
 }
 
-function hasProjectInstanceDraftGridChanges() {
-  return isProjectInstanceDraft && state.dirty.size > 0;
+function hasManualInputGridChanges() {
+  return state.dirty.size > 0 && currentDatasetIsManualTriangleOrVector();
 }
 
 function hasUnsavedDatasetChanges() {
-  return datasetSettingsDirty || notesDirty || hasProjectInstanceDraftGridChanges();
+  return datasetSettingsDirty || notesDirty || hasManualInputGridChanges();
+}
+
+function normalizeDatasetModeText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function currentDatasetIsManualTriangleOrVector() {
+  const sourceKind = normalizeDatasetModeText(currentDatasetSidecarSourceKind || state.model?.source_kind || "");
+  const format = normalizeDatasetModeText(
+    currentDatasetSidecarDataFormat
+      || state.model?.data_format
+      || (isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : ""),
+  );
+  const isManualInput = isProjectInstanceDraft || sourceKind === "input";
+  const isTriangleOrVector = !format || format === "triangle" || format === "vector";
+  return isManualInput && isTriangleOrVector;
+}
+
+function datasetValuesAreAllZero() {
+  const values = Array.isArray(state.model?.values) ? state.model.values : [];
+  const mask = Array.isArray(state.model?.mask) ? state.model.mask : [];
+  for (let r = 0; r < values.length; r += 1) {
+    const row = Array.isArray(values[r]) ? values[r] : [];
+    for (let c = 0; c < row.length; c += 1) {
+      if (Array.isArray(mask[r]) && mask[r][c] === false) continue;
+      const raw = row[c];
+      if (raw == null || raw === "") continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value) || Math.abs(value) > 1e-12) return false;
+    }
+  }
+  return true;
+}
+
+function getManualDatasetLengthBaseline() {
+  const settings = lastSavedDatasetSettings;
+  if (!settings) {
+    return {
+      origin_length: 12,
+      development_length: 12,
+    };
+  }
+  return {
+    origin_length: Number(settings.origin_length) || 12,
+    development_length: Number(settings.development_length) || 12,
+  };
+}
+
+function getCurrentLengthControlValues() {
+  const origin = Number.parseInt(document.getElementById("originLenSelect")?.value || "", 10);
+  const dev = Number.parseInt(document.getElementById("devLenSelect")?.value || "", 10);
+  return {
+    origin_length: Number.isFinite(origin) ? origin : 12,
+    development_length: Number.isFinite(dev) ? dev : 12,
+  };
+}
+
+function validateManualDatasetLengthChange() {
+  if (!currentDatasetIsManualTriangleOrVector()) return true;
+  if (datasetValuesAreAllZero()) return true;
+  const baseline = getManualDatasetLengthBaseline();
+  const current = getCurrentLengthControlValues();
+  if (current.origin_length >= baseline.origin_length && current.development_length >= baseline.development_length) {
+    return true;
+  }
+  setLenSelectValue("originLenSelect", String(baseline.origin_length));
+  setLenSelectValue("devLenSelect", String(baseline.development_length));
+  refreshLenDropdowns();
+  setStatus("Manual input datasets with non-zero values cannot use a lower period length. Set all values to 0 before changing to a lower level.");
+  return false;
+}
+
+function updateManualDatasetModeControls() {
+  const locked = currentDatasetIsManualTriangleOrVector();
+  const message = "Manual input Triangle/Vector datasets keep their cumulative and development/calendar mode fixed.";
+  const cumulativeChk = document.getElementById("cumulativeChk");
+  if (cumulativeChk) {
+    cumulativeChk.disabled = locked;
+    cumulativeChk.title = locked ? message : "";
+  }
+  document.querySelectorAll('input[name="timeMode"]').forEach((input) => {
+    input.disabled = locked;
+    input.title = locked ? message : "";
+  });
+}
+
+function restoreManualDatasetModeControls() {
+  const settings = normalizeDatasetSettings(lastSavedDatasetSettings || getCurrentDatasetSettings());
+  const cumulativeChk = document.getElementById("cumulativeChk");
+  if (cumulativeChk) cumulativeChk.checked = settings.cumulative;
+  const mode = settings.calendar ? "calendar" : "development";
+  const modeInput = document.querySelector(`input[name="timeMode"][value="${mode}"]`);
+  if (modeInput) modeInput.checked = true;
+  updateManualDatasetModeControls();
 }
 
 function notifyDatasetDirtyState() {
@@ -2480,6 +2939,7 @@ function updateDatasetSaveUi() {
       delete button.dataset.duplicateNameBlocked;
     }
   }
+  updateManualDatasetModeControls();
   notifyDatasetDirtyState();
 }
 
@@ -2516,9 +2976,14 @@ async function syncSidecarForCurrentDataset(options = {}) {
   if (!key) {
     if (window.ADA_DFM_CONTEXT) setDatasetRenderNumberFormatSettings(null);
     isSidecarReadOnlyDataset = false;
+    currentDatasetSidecarSourceKind = "";
+    currentDatasetSidecarDataFormat = "";
+    currentDatasetPrecedents = [];
     lastSavedDatasetSettings = null;
     datasetSettingsDirty = false;
     renderDatasetAuditLog([]);
+    renderDetailFormula("", currentDatasetPrecedents);
+    renderDatasetDependents([]);
     updateDatasetSaveUi();
     return false;
   }
@@ -2529,18 +2994,33 @@ async function syncSidecarForCurrentDataset(options = {}) {
   if (!resp.ok) {
     if (window.ADA_DFM_CONTEXT) setDatasetRenderNumberFormatSettings(null);
     setStatus(`Dataset settings load failed: ${resp?.data?.detail || "Unknown error."}`);
+    currentDatasetSidecarSourceKind = isProjectInstanceDraft ? "input" : "";
+    currentDatasetSidecarDataFormat = isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : "";
+    currentDatasetPrecedents = [];
     lastSavedDatasetSettings = normalizeDatasetSettings(getCurrentDatasetSettings());
     datasetSettingsDirty = false;
     renderDatasetAuditLog([]);
+    renderDetailFormula(getDatasetTypeFormulaByName(document.getElementById("triInput")?.value || ""), currentDatasetPrecedents);
+    renderDatasetDependents([]);
     updateDatasetSaveUi();
     return false;
   }
 
   const data = resp.data || {};
+  currentDatasetSidecarSourceKind = data.exists ? String(data.source_kind || "") : (isProjectInstanceDraft ? "input" : "");
+  currentDatasetSidecarDataFormat = data.exists ? String(data.data_format || "") : (isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : "");
+  currentDatasetPrecedents = data.exists ? normalizeDatasetDependencyEntries(data.Precedents) : [];
   if (isProjectInstanceDraft && data.exists && !String(data.csv_file || "").trim()) {
     savedProjectInstanceDraftName = String(data.dataset_name || context.dataset_name || "").trim();
   }
   renderDatasetAuditLog(data.exists ? data.audit_log : []);
+  renderDetailFormula(
+    data.exists
+      ? (String(data.formula || "").trim() || getDatasetTypeFormulaByName(data.dataset_type || context.dataset_name || ""))
+      : getDatasetTypeFormulaByName(document.getElementById("triInput")?.value || ""),
+    currentDatasetPrecedents,
+  );
+  renderDatasetDependents(data.exists ? data.Dependents : []);
   const sidecarEditable = data.editable;
   const sidecarCalculated = data.calculated;
   const sidecarGenerated = data.generated;
@@ -2587,7 +3067,7 @@ async function saveDatasetSidecarForCurrentContext() {
   const resp = await saveDatasetSidecar({
     ...context,
     ...settings,
-    ...getProjectInstanceDraftValuePayload(),
+    ...getManualInputDatasetValuePayload(),
   });
   if (!resp.ok) {
     return { ok: false, error: resp?.data?.detail || "Failed to save dataset settings." };
@@ -2595,18 +3075,32 @@ async function saveDatasetSidecarForCurrentContext() {
   sidecarContextPayload = context;
   sidecarContextKey = buildDatasetSidecarContextKey(context);
   lastSavedDatasetSettings = normalizeDatasetSettings(settings);
+  currentDatasetSidecarSourceKind = String(resp.data?.source_kind || (isProjectInstanceDraft ? "input" : currentDatasetSidecarSourceKind) || "");
+  currentDatasetSidecarDataFormat = String(resp.data?.data_format || settings.data_format || currentDatasetSidecarDataFormat || "");
+  currentDatasetPrecedents = normalizeDatasetDependencyEntries(resp.data?.Precedents);
   if (isProjectInstanceDraft) {
     savedProjectInstanceDraftName = context.dataset_name;
+  }
+  if (hasManualInputGridChanges()) {
     state.dirty.clear();
-    if (resp.data?.ds_id) {
-      config.DS_ID = String(resp.data.ds_id);
-      saveLastDsId(config.DS_ID);
-    }
-    if (resp.data?.file_mtime !== undefined && resp.data?.file_mtime !== null) {
-      state.fileMtime = resp.data.file_mtime;
-    }
+  }
+  if (state.model && currentDatasetIsManualTriangleOrVector()) {
+    state.model.source_kind = currentDatasetSidecarSourceKind;
+    state.model.data_format = currentDatasetSidecarDataFormat;
+  }
+  if (resp.data?.ds_id) {
+    config.DS_ID = String(resp.data.ds_id);
+    saveLastDsId(config.DS_ID);
+  }
+  if (resp.data?.file_mtime !== undefined && resp.data?.file_mtime !== null) {
+    state.fileMtime = resp.data.file_mtime;
   }
   renderDatasetAuditLog(resp.data?.audit_log);
+  renderDetailFormula(
+    String(resp.data?.formula || "").trim() || getDatasetTypeFormulaByName(settings.dataset_type),
+    currentDatasetPrecedents,
+  );
+  renderDatasetDependents(resp.data?.Dependents);
   invalidateCachedDatasetInstances();
   datasetSettingsDirty = false;
   updateDatasetSaveUi();
@@ -2619,7 +3113,7 @@ async function saveDatasetChanges(options = {}) {
   datasetSaveInFlight = true;
   updateDatasetSaveUi();
   try {
-    if (datasetSettingsDirty || hasProjectInstanceDraftGridChanges()) {
+    if (datasetSettingsDirty || hasManualInputGridChanges()) {
       const sidecarResult = await saveDatasetSidecarForCurrentContext();
       if (!sidecarResult.ok) return sidecarResult;
     }
@@ -3106,6 +3600,14 @@ function collectCalculationSteps(report) {
   });
 }
 
+function calculationStepReservingPath(step, report = null) {
+  const explicit = String(step?.reserving_class || report?.reserving_class || "").trim();
+  if (explicit) return decodeFileNameSegment(explicit);
+  const path = String(step?.path || step?.sidecar_path || "").trim();
+  const match = path.match(/[\\/]data[\\/](.*?)[\\/](?:datasets|sidecars|methods)[\\/]/i);
+  return match ? decodeFileNameSegment(match[1]) : "";
+}
+
 function showCalculationUpdatesDialog(report, source = "Dataset save") {
   const steps = collectCalculationSteps(report);
   if (!steps.length) return;
@@ -3135,7 +3637,8 @@ function showCalculationUpdatesDialog(report, source = "Dataset save") {
     const meta = document.createElement("div");
     meta.className = "datasetRecalcMeta";
     const parts = [];
-    if (step?.path) parts.push(String(step.path));
+    const reservingPath = calculationStepReservingPath(step, report);
+    if (reservingPath) parts.push(reservingPath);
     if (step?.reason) parts.push(`Reason: ${step.reason}`);
     if (Array.isArray(step?.errors) && step.errors.length) parts.push(`Errors: ${step.errors.join("; ")}`);
     meta.textContent = parts.join(" | ") || (skipped ? "Skipped" : "CSV refreshed");
@@ -3624,6 +4127,9 @@ function wireEvents() {
     wireGridInteractions,
     isProjectInstanceDraft,
     refreshProjectInstanceDraftModel,
+    validateManualDatasetLengthChange,
+    isManualDatasetModeLocked: currentDatasetIsManualTriangleOrVector,
+    restoreManualDatasetModeControls,
   });
   wireDatasetInstanceNameInput();
   wireNotesEditor();

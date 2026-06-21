@@ -13,7 +13,11 @@ export function wireDatasetGridInteractions(deps) {
 
   setDatasetGridEditConfig({
     isEditableCell: (displayR, displayC) => !!canEditDisplayCell(displayR, displayC, { silent: true }),
-    onCellFocus: (displayR, displayC) => selectSingleCell(displayR, displayC),
+    isEditingCell: (displayR, displayC) => state.editingCell?.r === displayR && state.editingCell?.c === displayC,
+    onCellFocus: (displayR, displayC) => {
+      state.activeCell = { r: displayR, c: displayC };
+      applySelectionFromState();
+    },
     onCellInput: (displayR, displayC, rawValue, input, td) => {
       const nextValue = setDisplayCellValue(displayR, displayC, rawValue, { silentInvalid: true });
       syncInputCellDisplay(td, input, nextValue);
@@ -25,11 +29,19 @@ export function wireDatasetGridInteractions(deps) {
       applyPastedGridText(data, { r: displayR, c: displayC });
     },
     onCellCommit: (displayR, displayC, rawValue, input, td) => {
+      if (state.editingCell?.r !== displayR || state.editingCell?.c !== displayC) return;
       const nextValue = setDisplayCellValue(displayR, displayC, rawValue);
       syncInputCellDisplay(td, input, nextValue);
+      state.editingCell = null;
       renderTable();
       notifyDatasetUpdated();
       applySelectionFromState();
+    },
+    onCellKeyDown: (displayR, displayC, event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancelCellEdit(displayR, displayC);
     },
   });
   wireArrowKeyNavigation();
@@ -207,6 +219,32 @@ export function wireDatasetGridInteractions(deps) {
     return parsed.value;
   }
 
+  function restoreDirtyValue(key, edit) {
+    if (!state.dirty || typeof state.dirty.set !== "function") return;
+    if (edit.hadDirtyValue) {
+      state.dirty.set(key, edit.previousDirtyValue);
+    } else if (typeof state.dirty.delete === "function") {
+      state.dirty.delete(key);
+    }
+  }
+
+  function cancelCellEdit(displayR, displayC) {
+    const edit = state.editingCell;
+    if (!edit || edit.r !== displayR || edit.c !== displayC) return false;
+    const actualR = Number.isInteger(edit.actualR) ? edit.actualR : null;
+    const actualC = Number.isInteger(edit.actualC) ? edit.actualC : null;
+    if (actualR !== null && actualC !== null && Array.isArray(state.model?.values?.[actualR])) {
+      state.model.values[actualR][actualC] = edit.previousValue;
+      restoreDirtyValue(`${actualR},${actualC}`, edit);
+    }
+    state.editingCell = null;
+    renderTable();
+    notifyDatasetUpdated();
+    applySelectionFromState();
+    setStatus("Edit canceled.");
+    return true;
+  }
+
   function syncInputCellDisplay(td, input, value) {
     if (td) {
       td.dataset.copyValue = value == null ? "" : String(value);
@@ -216,21 +254,44 @@ export function wireDatasetGridInteractions(deps) {
     }
   }
 
-  function selectSingleCell(displayR, displayC) {
-    state.activeCell = { r: displayR, c: displayC };
-    state.selRanges = [normalizeRange(displayR, displayC, displayR, displayC)];
-    applySelectionFromState();
+  function getPrimaryEditCell() {
+    const ranges = Array.isArray(state.selRanges) ? state.selRanges : [];
+    return getTopLeftRangeCell(ranges) || state.activeCell;
   }
 
-  function commitDisplayCellValue(displayR, displayC, rawValue) {
-    const value = setDisplayCellValue(displayR, displayC, rawValue);
-    if (value === null && String(rawValue ?? "").trim() !== "") return false;
-    selectSingleCell(displayR, displayC);
+  function zeroSelectedCells() {
+    if (isReadOnly()) {
+      setStatus("Generated datasets are read-only.");
+      return 0;
+    }
+    const ranges = Array.isArray(state.selRanges) && state.selRanges.length
+      ? state.selRanges
+      : (state.activeCell ? [normalizeRange(state.activeCell.r, state.activeCell.c, state.activeCell.r, state.activeCell.c)] : []);
+    if (!ranges.length) return 0;
+
+    const seen = new Set();
+    let applied = 0;
+    for (const range of ranges) {
+      for (let r = range.r0; r <= range.r1; r += 1) {
+        for (let c = range.c0; c <= range.c1; c += 1) {
+          const key = `${r},${c}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const actual = canEditDisplayCell(r, c, { silent: true });
+          if (!actual) continue;
+          state.model.values[actual.r][actual.c] = 0;
+          state.dirty.set(`${actual.r},${actual.c}`, 0);
+          applied += 1;
+        }
+      }
+    }
+    if (!applied) return 0;
+    state.editingCell = null;
     renderTable();
     notifyDatasetUpdated();
     applySelectionFromState();
-    setStatus("Updated cell.");
-    return true;
+    setStatus(`Set ${applied} cell${applied === 1 ? "" : "s"} to 0.`);
+    return applied;
   }
 
   function parseClipboardRows(text) {
@@ -290,14 +351,33 @@ export function wireDatasetGridInteractions(deps) {
   }
 
   function focusCellInput(displayR, displayC, initialText = null) {
+    const actual = canEditDisplayCell(displayR, displayC);
+    if (!actual) return false;
+    const dirtyKey = `${actual.r},${actual.c}`;
+    const hadDirtyValue = !!state.dirty?.has?.(dirtyKey);
+    state.editingCell = {
+      r: displayR,
+      c: displayC,
+      actualR: actual.r,
+      actualC: actual.c,
+      previousValue: state.model?.values?.[actual.r]?.[actual.c],
+      hadDirtyValue,
+      previousDirtyValue: hadDirtyValue ? state.dirty.get(dirtyKey) : undefined,
+    };
+    state.activeCell = { r: displayR, c: displayC };
+    renderTable();
+    applySelectionFromState();
+
     const input = document.querySelector(`#tableWrap .dsCellInput[data-r="${displayR}"][data-c="${displayC}"]`);
     if (!input) {
+      state.editingCell = null;
       canEditDisplayCell(displayR, displayC);
+      renderTable();
+      applySelectionFromState();
       return false;
     }
-    selectSingleCell(displayR, displayC);
     if (initialText !== null) {
-      input.value = initialText === "." ? "0." : String(initialText);
+      input.value = String(initialText);
       setDisplayCellValue(displayR, displayC, input.value, { silentInvalid: true });
       const actual = displayToActualCell(displayR, displayC);
       syncInputCellDisplay(input.closest("td"), input, state.model?.values?.[actual.r]?.[actual.c]);
@@ -571,16 +651,6 @@ export function wireDatasetGridInteractions(deps) {
       if (!rc) return;
       window.__arcRhoCopyActiveGridSelection = copyActiveRangeToClipboard;
 
-      // Toggle: click the already-active cell to deselect
-      if (state.activeCell && state.activeCell.r === rc.r && state.activeCell.c === rc.c) {
-        state.activeCell = null;
-        state.selRanges = [];
-        state.dragSel = null;
-        clearSelectionClasses();
-        renderActiveCellUI();
-        return;
-      }
-
       const append = !!e.ctrlKey;
 
       // if not appending, replace selection
@@ -619,22 +689,12 @@ export function wireDatasetGridInteractions(deps) {
 
       state.selRanges[lastIdx] = normalizeRange(anchor.r, anchor.c, rc.r, rc.c);
 
-      setActiveCell(rc.r, rc.c);
       applySelectionFromState();
     });
 
     // end drag anywhere
     document.addEventListener("mouseup", () => {
       state.dragSel = null;
-    });
-
-    wrap.addEventListener("dblclick", (e) => {
-      const td = e.target.closest('td[data-r][data-c]');
-      if (!td) return;
-      const rc = rcFromTd(td);
-      if (!rc) return;
-      e.preventDefault();
-      focusCellInput(rc.r, rc.c);
     });
 
     // Click row header -> select entire row
@@ -724,15 +784,17 @@ export function wireDatasetGridInteractions(deps) {
       if (!state.activeCell) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (e.key === "Backspace" || e.key === "Delete") {
+      if (e.key === "Delete") {
         e.preventDefault();
-        commitDisplayCellValue(state.activeCell.r, state.activeCell.c, "");
+        zeroSelectedCells();
         return;
       }
 
-      if (e.key === "Enter" || e.key === "F2" || /^[0-9.]$/.test(e.key || "")) {
+      if (/^[0-9]$/.test(e.key || "")) {
+        const cell = getPrimaryEditCell();
+        if (!cell) return;
         e.preventDefault();
-        focusCellInput(state.activeCell.r, state.activeCell.c, e.key.length === 1 ? e.key : null);
+        focusCellInput(cell.r, cell.c, e.key);
       }
     });
 

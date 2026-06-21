@@ -61,6 +61,6 @@ Routes:
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Request and return-path filename rules must match data-engine expectations exactly.
-- Timestamp comparison uses the canonical `last modified` value inside each DFM JSON file.
+- Timestamp comparison uses the canonical `last modified` value inside each DFM JSON file. Timezone-less ResQ metadata is parsed as UTC so a value like `2026-06-05 15:23:59.777` compares equal to the matching ArcRho ISO value `2026-06-05T15:23:59.777Z`.
 - Sync waits are intentionally short; timeout handling must remain clear to users.
 <!-- MANUAL:END -->

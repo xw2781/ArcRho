@@ -25,7 +25,7 @@ const ARCBOT_SERVER_INSTRUCTION_PLACEHOLDERS = [
   ["dfm_workflow.md", "# DFM Workflow\n\nAdd DFM-specific review, analysis, and editing practices.\n"],
   ["reserving_practice.md", "# Reserving Practice\n\nAdd reserving workflow expectations, review standards, and business judgment notes.\n"],
   ["project_workflow.md", "# Project Workflow\n\nAdd project, reserving class, and folder conventions.\n"],
-  ["scripting_console.md", "# Scripting Console\n\nAdd notebook and scripting-console usage guidance.\n"],
+  ["scripting_console.md", "# Arcode Scripting\n\nAdd notebook-editor and code-editor usage guidance.\n"],
   ["excel_addin.md", "# Excel Add-in\n\nAdd Excel add-in, UDF, and request-handler workflow guidance.\n"],
 ];
 

@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Arcode Code Editor</title>
+  <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
+  <link rel="stylesheet" href="/ui/arcode/code-editor/code-editor.css?v=20260620e"/>
+</head>
+<body>
+  <main class="ce-app">
+    <header class="ce-toolbar">
+      <button class="ce-btn" id="saveBtn" type="button">Save</button>
+      <button class="ce-btn" id="saveAsBtn" type="button">Save As</button>
+      <span class="ce-sep"></span>
+      <button class="ce-btn primary" id="runBtn" type="button">Run</button>
+      <button class="ce-btn" id="runSelectionBtn" type="button">Run Selection</button>
+      <button class="ce-btn danger" id="stopBtn" type="button" hidden>Stop</button>
+      <button class="ce-btn danger" id="restartBtn" type="button">Restart</button>
+      <span class="ce-sep"></span>
+      <button class="ce-btn" id="formatBtn" type="button">Format</button>
+      <button class="ce-btn" id="clearOutputBtn" type="button">Clear Output</button>
+      <span class="ce-spacer"></span>
+      <span class="ce-file" id="fileLabel">Untitled</span>
+      <span class="ce-status" id="statusText">Ready</span>
+    </header>
+
+    <div class="ce-file-banner" id="fileBanner" role="status" aria-live="polite">
+      <span class="ce-file-banner-message" id="fileBannerMessage"></span>
+      <span class="ce-file-banner-actions">
+        <button class="ce-btn" id="reloadDiskBtn" type="button">Reload</button>
+        <button class="ce-btn" id="saveCopyBtn" type="button">Save Copy</button>
+        <button class="ce-btn primary" id="overwriteDiskBtn" type="button">Overwrite</button>
+      </span>
+    </div>
+
+    <section class="ce-body">
+      <div class="ce-main">
+        <div id="editorHost" class="ce-editor-host" aria-label="Code editor"></div>
+        <section class="ce-output-panel" aria-label="Output">
+          <div class="ce-panel-header">
+            <span>Output</span>
+            <span id="runInfo" class="ce-run-info"></span>
+          </div>
+          <pre id="outputText" class="ce-output-text"></pre>
+        </section>
+      </div>
+      <aside class="ce-side-panel" aria-label="Variables">
+        <div class="ce-panel-header">Variables</div>
+        <div id="varsBody" class="ce-vars-body">
+          <div class="ce-empty">No variables yet.</div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script src="/ui/libs/monaco-editor/min/vs/loader.js"></script>
+  <script src="/ui/arcode/shared/zoom_bridge.js?v=20260614a"></script>
+  <script src="/ui/arcode/shared/editor_shared.js?v=20260620a"></script>
+  <script src="/ui/arcode/code-editor/index.js?v=20260620b"></script>
+</body>
+</html>

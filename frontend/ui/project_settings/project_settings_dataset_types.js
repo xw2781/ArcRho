@@ -8,6 +8,15 @@ import {
   matchesDatasetTypeNameSearch,
   tokenizeDatasetTypeNameSearch,
 } from "/ui/dataset/dataset_types_view_model.js";
+import { decodeFileNameSegment } from "/ui/shared/filename_sanitizer.js";
+
+function calculationStepReservingPath(step) {
+  const explicit = String(step?.reserving_class || "").trim();
+  if (explicit) return decodeFileNameSegment(explicit);
+  const path = String(step?.path || step?.sidecar_path || "").trim();
+  const match = path.match(/[\\/]data[\\/](.*?)[\\/](?:datasets|sidecars|methods)[\\/]/i);
+  return match ? decodeFileNameSegment(match[1]) : "";
+}
 
 export function createDatasetTypesFeature(deps = {}) {
   const {
@@ -1525,8 +1534,7 @@ export function createDatasetTypesFeature(deps = {}) {
       const meta = document.createElement("div");
       meta.className = "datasetTypesRecalcMeta";
       meta.textContent = [
-        String(step?.reserving_class || "").trim(),
-        step?.path ? String(step.path) : "",
+        calculationStepReservingPath(step),
         step?.reason ? `Reason: ${step.reason}` : "",
       ].filter(Boolean).join(" | ") || (step?.ok ? "CSV refreshed" : "Skipped");
       item.append(name, meta);

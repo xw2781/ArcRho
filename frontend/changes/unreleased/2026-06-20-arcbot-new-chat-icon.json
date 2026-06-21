@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "Updated the ArcBot new chat button with a clearer fresh-session icon."
+}

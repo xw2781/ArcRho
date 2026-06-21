@@ -1,0 +1,24 @@
+{
+  "type": "feature",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "Added an ArcBot SQL Format Validation skill for Arcode SQL tabs.",
+  "details": [
+    "Typing / in the ArcBot composer now opens a Skills menu.",
+    "The SQL skill shows a unified review diff and requires confirmation before replacing the active editor text.",
+    "The SQL review diff uses old/new line-number gutters with addition and deletion markers.",
+    "The SQL review dialog can be dragged by its header, and optional AI review runs in the ArcBot chat with a visible user prompt, thinking message, and progress animation.",
+    "When SQL text is selected in the active editor, the skill reviews and replaces only that selected range.",
+    "The SQL review dialog is resizable, and activating the ArcBot chat panel brings the chat back above the diff window.",
+    "Whole-file SQL reviews now explicitly ask ArcBot to inspect every statement block, not only the first section.",
+    "The SQL review diff has its own visible vertical and horizontal scrollbars.",
+    "The optional AI review now groups material findings into syntax/formatting and performance/optimization sections without forcing notes for every SQL block.",
+    "SQL AI review responses include a clickable link to the local SQL coding standards page.",
+    "SQL AI review findings now request original SQL line numbers before each issue and avoid duplicate standards links.",
+    "The SQL review diff now uses clearer red/green rows with sticky line-number gutters while horizontally scrolling.",
+    "SQL AI review responses now avoid visible Markdown heading markers and render the main issue group labels in bold.",
+    "The SQL review diff now extends red/green row backgrounds across the full horizontal diff width, including short or blank changed lines.",
+    "The deterministic SQL formatter now preserves full-line -- comments without splitting or reindenting them.",
+    "The SQL review diff now syntax-highlights SQL keywords, functions, datatypes, strings, comments, numbers, and bracketed identifiers."
+  ]
+}

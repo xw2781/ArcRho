@@ -16,7 +16,8 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 | `ui/project_settings/project_settings.html` | 1 external script | - |
 | `ui/project_instance/project_instance.html` | 1 external script | - |
 | `ui/arcode/main.html` | 1 external script | - |
-| `ui/arcode/scripting-console/index.html` | 9 external scripts | - |
+| `ui/arcode/notebook-editor/index.html` | 10 external scripts | - |
+| `ui/arcode/code-editor/index.html` | 4 external scripts | - |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
@@ -43,7 +44,7 @@ High-risk files that must follow contracts:
 - `ui/dataset/dataset_main.js`
 - `ui/dfm/dfm.html` and `ui/dfm/dfm_*.js`
 - `ui/project_settings/project_settings.js`
-- `ui/arcode/main.js`, `ui/arcode/main.html`, and `ui/arcode/scripting-console/*`
+- `ui/arcode/main.js`, `ui/arcode/main.html`, `ui/arcode/notebook-editor/*`, `ui/arcode/code-editor/*`, and `ui/arcode/shared/editor_shared.js`
 - `ui/ai-assistant/*`
 <!-- MANUAL:END -->
 

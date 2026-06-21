@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "Arcode",
+  "audience": "user",
+  "summary": "Added a resize handle for the Arcode file explorer.",
+  "details": [
+    "The Arcode workspace sidebar can now be resized by dragging the divider.",
+    "The preferred explorer width is saved in the local Arcode user settings JSON and remembered for the next Arcode session."
+  ]
+}

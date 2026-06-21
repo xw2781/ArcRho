@@ -701,6 +701,119 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .dataset-group-status {
+      min-width: 210px;
+      max-width: min(460px, 48vw);
+      min-height: 24px;
+      flex: 0 1 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-sizing: border-box;
+      padding: 2px 6px;
+      border: 1px dashed #c8d2df;
+      border-radius: 6px;
+      background: #f8fafc;
+      color: #667085;
+      font-size: 12px;
+      overflow: hidden;
+      transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+    }
+    .dataset-group-status.drag-over {
+      border-color: #2f6fec;
+      background: #edf5ff;
+      color: #174ea6;
+    }
+    .dataset-group-status.drag-invalid {
+      border-color: #d39b2a;
+      background: #fff8e7;
+      color: #8a5a00;
+    }
+    .dataset-group-placeholder {
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dataset-group-status.has-groups .dataset-group-placeholder {
+      flex: 1 1 auto;
+      color: #8a94a6;
+      font-size: 11px;
+    }
+    .dataset-group-chip {
+      max-width: 150px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 7px;
+      border: 1px solid #aebdd0;
+      border-radius: 4px;
+      background: #ffffff;
+      color: #344054;
+      box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: grab;
+    }
+    .dataset-group-chip:active {
+      cursor: grabbing;
+    }
+    .dataset-group-chip.group-drag-before,
+    .dataset-group-chip.group-drag-after {
+      position: relative;
+    }
+    .dataset-group-chip.group-drag-before::before,
+    .dataset-group-chip.group-drag-after::after {
+      content: "";
+      position: absolute;
+      top: -3px;
+      bottom: -3px;
+      width: 3px;
+      border-radius: 3px;
+      background: #2f6fec;
+      box-shadow: 0 0 0 1px rgba(47, 111, 236, 0.22), 0 0 8px rgba(47, 111, 236, 0.35);
+      pointer-events: none;
+    }
+    .dataset-group-chip.group-drag-before::before {
+      left: -5px;
+    }
+    .dataset-group-chip.group-drag-after::after {
+      right: -5px;
+    }
+    .dataset-group-chip-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dataset-group-chip-remove {
+      color: #667085;
+      cursor: default;
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .dataset-group-chip-remove:hover {
+      background: #dc2626;
+      color: #ffffff;
+    }
+    .dataset-group-chip-remove svg {
+      width: 10px;
+      height: 10px;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
     .dataset-active-filters {
       flex: 0 1 auto;
       min-width: 0;
@@ -795,6 +908,10 @@
       background: #fff;
       scrollbar-gutter: stable both-edges;
       padding: 0 0 0 0px;
+    }
+    .pi-table-wrap.group-remove-target {
+      outline: 2px solid rgba(47, 111, 236, 0.34);
+      outline-offset: -2px;
     }
     .pi-table-surface {
       min-width: 1120px;
@@ -1115,20 +1232,47 @@
     .pi-table th.pi-col-drag-after::after {
       content: "";
       position: absolute;
-      top: 4px;
-      bottom: 4px;
-      width: 2px;
-      border-radius: 2px;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      border-radius: 3px;
       background: #2f6fec;
-      box-shadow: 0 0 0 1px rgba(47, 111, 236, 0.14);
+      box-shadow:
+        0 0 0 1px rgba(47, 111, 236, 0.22),
+        0 0 8px rgba(47, 111, 236, 0.35);
       pointer-events: none;
-      z-index: 3;
+      z-index: 6;
     }
     .pi-table th.pi-col-drag-before::before {
-      left: -1px;
+      left: -2px;
     }
     .pi-table th.pi-col-drag-after::after {
-      right: -1px;
+      right: -2px;
+    }
+    .pi-table-column-drag-image {
+      position: fixed;
+      left: 0;
+      top: 0;
+      z-index: 10070;
+      max-width: 260px;
+      height: 30px;
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 11px;
+      border: 1px solid #2f6fec;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #174ea6;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16), inset 3px 0 0 #2f6fec;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      transform: translate(-9999px, -9999px);
     }
     .pi-table-filter-btn {
       width: 18px;
@@ -2063,6 +2207,7 @@
               <path d="M5.4 15A7 7 0 0 0 17.7 17.6L20 15.2"></path>
             </svg>
           </button>
+          <div class="dataset-group-status" id="datasetGroupByStatus" aria-label="Dataset table grouping" role="region"></div>
           <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Active dataset table filters" hidden></div>
           <div class="dataset-toolbar-status" id="cachedDatasetStatus" aria-live="polite"></div>
         </div>

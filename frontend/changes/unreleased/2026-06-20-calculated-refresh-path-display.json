@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Calculated dataset refresh alerts now show decoded reserving-class paths instead of full CSV file paths."
+}

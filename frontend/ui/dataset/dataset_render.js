@@ -280,9 +280,34 @@ export function getDisplayDatasetModel() {
   };
 }
 
+function captureRenderedColumnWidths(wrap) {
+  const headers = Array.from(wrap?.querySelectorAll?.("thead tr:first-child > th") || []);
+  if (!headers.length) return [];
+  return headers.map((cell) => {
+    const width = cell.getBoundingClientRect?.().width;
+    return Number.isFinite(width) && width > 0 ? Math.ceil(width) : 0;
+  });
+}
+
+function applyColumnWidthLock(table, widths, expectedCount) {
+  if (!table || !Array.isArray(widths) || widths.length !== expectedCount) return;
+  if (widths.some((width) => !Number.isFinite(width) || width <= 0)) return;
+  const colgroup = document.createElement("colgroup");
+  let totalWidth = 0;
+  for (const width of widths) {
+    totalWidth += width;
+    const col = document.createElement("col");
+    col.style.width = `${width}px`;
+    colgroup.appendChild(col);
+  }
+  table.appendChild(colgroup);
+  table.style.width = `${totalWidth}px`;
+}
+
 export function renderTable() {
 
   const wrap = $("tableWrap");
+  const lockedColumnWidths = state.editingCell ? captureRenderedColumnWidths(wrap) : [];
   wrap.innerHTML = "";
   ensureCtxMenuWired();
 
@@ -315,6 +340,7 @@ export function renderTable() {
   }
 
   const tbl = document.createElement("table");
+  applyColumnWidthLock(tbl, lockedColumnWidths, devs.length + 1);
 
   // header
   const thead = document.createElement("thead");
@@ -388,20 +414,22 @@ export function renderTable() {
         }
       } else {
         const v = vals[r][c];
-        if (gridEditConfig?.isEditableCell?.(r, c)) {
+        if (gridEditConfig?.isEditableCell?.(r, c) && gridEditConfig?.isEditingCell?.(r, c)) {
           const input = document.createElement("input");
           input.className = "dsCellInput";
-          input.type = "number";
-          input.step = "any";
-          input.value = v == null ? "" : String(v);
+          input.type = "text";
+          input.inputMode = "decimal";
+          input.value = formatCellValue(v);
           input.classList.toggle("dsCellInputBlank", v == null);
           input.dataset.r = String(r);
           input.dataset.c = String(c);
           input.addEventListener("focus", () => gridEditConfig?.onCellFocus?.(r, c));
           input.addEventListener("mousedown", (event) => event.stopPropagation());
+          input.addEventListener("keydown", (event) => gridEditConfig?.onCellKeyDown?.(r, c, event));
           input.addEventListener("input", () => gridEditConfig?.onCellInput?.(r, c, input.value, input, td));
           input.addEventListener("paste", (event) => gridEditConfig?.onCellPaste?.(r, c, event));
           input.addEventListener("change", () => gridEditConfig?.onCellCommit?.(r, c, input.value, input, td));
+          input.addEventListener("blur", () => gridEditConfig?.onCellCommit?.(r, c, input.value, input, td));
           td.appendChild(input);
         } else {
           td.textContent = formatCellValue(v);

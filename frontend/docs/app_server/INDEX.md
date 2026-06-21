@@ -52,7 +52,7 @@ High-risk files that must follow contracts:
 <!-- MANUAL:BEGIN -->
 - Public interface is HTTP routes mounted by `app_server/main.py`; the frontend shell is served under `/ui` and shared icon assets under `/icons`.
 - Internal interface is router -> service -> filesystem/state helpers.
-- Packaged builds include the `arcrho_api` Python package in the frozen app server for scripting-console imports, ship a pip-installable wheel under app resources `python_packages/`, and publish the same wheel to the shared Server packages folder as `arcrho_api-latest.whl` for external notebook environments. API-only releases can publish that shared wheel from `python-api/tools` without rebuilding the desktop app.
+- Packaged builds include the `arcrho_api` Python package in the frozen app server for Arcode scripting imports, ship a pip-installable wheel under app resources `python_packages/`, and publish the same wheel to the shared Server packages folder as `arcrho_api-latest.whl` for external notebook environments. API-only releases can publish that shared wheel from `python-api/tools` without rebuilding the desktop app.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

@@ -5,7 +5,7 @@ import getpass
 import json
 import os
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import HTTPException
@@ -198,9 +198,12 @@ def _parse_last_modified_timestamp(value: Any) -> float | None:
 
     normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
     try:
-        return datetime.fromisoformat(normalized).timestamp()
+        parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
 
 
 def _json_last_modified_meta(path: str) -> Dict[str, Any]:

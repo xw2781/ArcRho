@@ -189,7 +189,7 @@ export function createIframeHost(deps) {
           tab.scOpenPath = "";
         }, { once: true });
       }
-      iframe.src = `/ui/arcode/scripting-console/?${params.toString()}`;
+      iframe.src = `/ui/arcode/notebook-editor/?${params.toString()}`;
       tab.scFresh = false;
     }
 

@@ -1,0 +1,14 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset Details now lists dependent datasets and lets Project Instance users open them directly.",
+  "details": [
+    "Formula and Dependents now align with the other Dataset Details fields instead of sitting inside a separate frame.",
+    "Formula components and operators reuse the rich token style from the Reserving Class Type formula editor.",
+    "Empty Formula and Dependents boxes no longer show placeholder text; Formula stays compact and grey.",
+    "Clickable formula chips open the related dataset, or the related DFM or Result Selection method window when the component is method-backed.",
+    "Dependent datasets now use richer chip styling inside the Dependents box.",
+    "Hovering a dependent dataset shows its formula with the same rich token formatting when the formula is available."
+  ]
+}

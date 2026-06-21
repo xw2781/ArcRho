@@ -24,7 +24,7 @@ import {
   createAssistantUserAvatarSvg,
   renderAssistantMessageContent,
   typeAssistantMessage as typeAssistantMessageContent,
-} from "./messages.js";
+} from "./messages.js?v=20260620b";
 import {
   normalizeActivities,
   normalizeDebugLogs,
@@ -47,6 +47,13 @@ import { formatElapsed, formatWorkDuration } from "./activity.js";
 import { normalizeReadableRootList } from "./settings.js";
 import { clampAssistantPanelSize } from "./layout.js";
 import { getHostErrorMessage } from "./host.js";
+import {
+  SQL_FORMAT_VALIDATION_SKILL,
+  SQL_CODING_STANDARDS_MARKDOWN_LINK,
+  buildSqlFormatFindings,
+  buildSqlReviewPrompt,
+  formatMssqlSql,
+} from "./skills.js?v=20260620g";
 
 const defaultShell = {};
 let shell = defaultShell;
@@ -100,6 +107,37 @@ let assistantUserAvatarName = "Arcode";
 let assistantAuthStatus = "";
 const assistantActivityTypingStates = new Map();
 let assistantActivityTypingTimer = null;
+let assistantSkillMenuOpen = false;
+let assistantSkillFilter = "";
+let assistantSqlReviewState = null;
+let assistantSqlReviewDragState = null;
+let assistantSqlReviewDialogPosition = null;
+let assistantSqlReviewResizeState = null;
+let assistantSqlReviewDialogSize = null;
+const assistantSkills = [SQL_FORMAT_VALIDATION_SKILL];
+const SQL_REVIEW_DIALOG_MIN_WIDTH = 520;
+const SQL_REVIEW_DIALOG_MIN_HEIGHT = 360;
+const SQL_REVIEW_DIALOG_Z = 9400;
+const SQL_REVIEW_DIALOG_ACTIVE_Z = 9500;
+const ASSISTANT_PANEL_FRONT_Z = 9600;
+const SQL_DIFF_KEYWORDS = new Set([
+  "ADD", "ALL", "ALTER", "AND", "AS", "ASC", "BEGIN", "BETWEEN", "BY", "CASE", "CREATE",
+  "CROSS", "DELETE", "DESC", "DISTINCT", "DROP", "ELSE", "END", "EXCEPT", "EXEC", "EXISTS",
+  "FROM", "FULL", "GROUP", "HAVING", "IF", "IN", "INNER", "INSERT", "INTERSECT", "INTO",
+  "IS", "JOIN", "LEFT", "LIKE", "MERGE", "NOT", "NULL", "ON", "OR", "ORDER", "OUTER",
+  "OVER", "PARTITION", "RIGHT", "SELECT", "SET", "TABLE", "THEN", "TOP", "TRUNCATE",
+  "UNION", "UPDATE", "VALUES", "WHEN", "WHERE", "WITH",
+]);
+const SQL_DIFF_FUNCTIONS = new Set([
+  "AVG", "CAST", "COALESCE", "CONVERT", "COUNT", "DATEADD", "DATEDIFF", "DATENAME",
+  "DATEPART", "EOMONTH", "GETDATE", "IIF", "ISNULL", "LEN", "LOWER", "MAX", "MIN",
+  "NULLIF", "REPLACE", "ROUND", "ROW_NUMBER", "RTRIM", "SUM", "TRY_CAST", "TRY_CONVERT", "UPPER",
+]);
+const SQL_DIFF_DATATYPES = new Set([
+  "BIGINT", "BINARY", "BIT", "CHAR", "DATE", "DATETIME", "DATETIME2", "DECIMAL", "FLOAT",
+  "INT", "MONEY", "NCHAR", "NUMERIC", "NVARCHAR", "REAL", "SMALLDATETIME", "SMALLINT",
+  "TEXT", "TIME", "TIMESTAMP", "TINYINT", "UNIQUEIDENTIFIER", "VARBINARY", "VARCHAR", "XML",
+]);
 
 export function configureAiAssistant(config = {}) {
   assistantConfig = {
@@ -1562,6 +1600,830 @@ function autoGrowAssistantInput() {
   input.style.overflowY = input.scrollHeight > 300 ? "auto" : "hidden";
 }
 
+function isSlashSkillQuery(input) {
+  if (!input) return false;
+  const value = String(input.value || "");
+  const cursor = Number(input.selectionStart ?? value.length);
+  const before = value.slice(0, cursor);
+  const after = value.slice(cursor);
+  if (before.includes("\n") || after.trim()) return false;
+  return /^\s*\/[A-Za-z0-9_-]*$/.test(before);
+}
+
+function getSlashSkillFilter(input) {
+  if (!input) return "";
+  const value = String(input.value || "");
+  const cursor = Number(input.selectionStart ?? value.length);
+  const match = value.slice(0, cursor).match(/\/([A-Za-z0-9_-]*)$/);
+  return String(match?.[1] || "").toLowerCase();
+}
+
+function getFilteredAssistantSkills(filter = assistantSkillFilter) {
+  const text = String(filter || "").trim().toLowerCase();
+  if (!text) return assistantSkills;
+  return assistantSkills.filter((skill) => (
+    `${skill.title} ${skill.subtitle} ${skill.badge}`.toLowerCase().includes(text)
+  ));
+}
+
+function ensureAssistantSkillDom() {
+  const composer = $("aiAssistantComposer");
+  if (composer && !$("aiAssistantSkillsMenu")) {
+    const menu = document.createElement("div");
+    menu.id = "aiAssistantSkillsMenu";
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "ArcBot skills");
+    composer.appendChild(menu);
+  }
+  if (!$("aiAssistantSqlReviewDialog")) {
+    const dialog = document.createElement("section");
+    dialog.id = "aiAssistantSqlReviewDialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-label", "SQL Format Validation review");
+    dialog.innerHTML = `
+      <div class="aiAssistantSqlReviewHeader">
+        <div class="aiAssistantSqlReviewTitleWrap">
+          <div class="aiAssistantSqlReviewTitle">SQL Format Validation</div>
+          <div id="aiAssistantSqlReviewSubtitle" class="aiAssistantSqlReviewSubtitle"></div>
+        </div>
+        <button id="aiAssistantSqlReviewCloseBtn" class="aiAssistantSqlReviewIconBtn" type="button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10"></path><path d="M17 7L7 17"></path></svg>
+        </button>
+      </div>
+      <div id="aiAssistantSqlReviewStatus" class="aiAssistantSqlReviewStatus"></div>
+      <div id="aiAssistantSqlReviewFindings" class="aiAssistantSqlReviewFindings"></div>
+      <div class="aiAssistantSqlReviewDiff">
+        <div class="aiAssistantSqlReviewPane">
+          <div class="aiAssistantSqlReviewPaneLabel">Review diff</div>
+          <pre id="aiAssistantSqlReviewUnified" class="aiAssistantSqlReviewCode" aria-label="SQL formatting diff"></pre>
+        </div>
+      </div>
+      <div class="aiAssistantSqlReviewFooter">
+        <div id="aiAssistantSqlReviewMeta" class="aiAssistantSqlReviewMeta"></div>
+        <button id="aiAssistantSqlReviewApplyBtn" class="aiAssistantBtn primary" type="button">Apply formatted SQL</button>
+        <button id="aiAssistantSqlReviewCancelBtn" class="aiAssistantBtn" type="button">Cancel</button>
+      </div>
+      <div class="aiAssistantSqlReviewResizeHandle aiAssistantSqlReviewResizeNw" data-sql-review-resize-edge="nw" aria-hidden="true"></div>
+      <div class="aiAssistantSqlReviewResizeHandle aiAssistantSqlReviewResizeN" data-sql-review-resize-edge="n" aria-hidden="true"></div>
+      <div class="aiAssistantSqlReviewResizeHandle aiAssistantSqlReviewResizeNe" data-sql-review-resize-edge="ne" aria-hidden="true"></div>
+      <div class="aiAssistantSqlReviewResizeHandle aiAssistantSqlReviewResizeE" data-sql-review-resize-edge="e" aria-hidden="true"></div>
+      <div class="aiAssistantSqlReviewResizeHandle aiAssistantSqlReviewResizeSe" data-sql-review-resize-edge="se" aria-hidden="true"></div>
+      <div class="aiAssistantSqlReviewResizeHandle aiAssistantSqlReviewResizeS" data-sql-review-resize-edge="s" aria-hidden="true"></div>
+      <div class="aiAssistantSqlReviewResizeHandle aiAssistantSqlReviewResizeSw" data-sql-review-resize-edge="sw" aria-hidden="true"></div>
+      <div class="aiAssistantSqlReviewResizeHandle aiAssistantSqlReviewResizeW" data-sql-review-resize-edge="w" aria-hidden="true"></div>
+    `;
+    document.body.appendChild(dialog);
+    $("aiAssistantSqlReviewCloseBtn")?.addEventListener("click", closeSqlReviewDialog);
+    $("aiAssistantSqlReviewCancelBtn")?.addEventListener("click", closeSqlReviewDialog);
+    $("aiAssistantSqlReviewApplyBtn")?.addEventListener("click", () => {
+      void applySqlReviewReplacement();
+    });
+    dialog.querySelector(".aiAssistantSqlReviewHeader")?.addEventListener("pointerdown", startSqlReviewDialogDrag);
+    dialog.addEventListener("pointerdown", bringSqlReviewDialogToFront);
+    dialog.querySelectorAll(".aiAssistantSqlReviewResizeHandle").forEach((handle) => {
+      handle.addEventListener("pointerdown", startSqlReviewDialogResize);
+    });
+  }
+}
+
+function renderAssistantSkillMenu() {
+  ensureAssistantSkillDom();
+  const menu = $("aiAssistantSkillsMenu");
+  if (!menu) return;
+  const skills = getFilteredAssistantSkills();
+  menu.textContent = "";
+  const header = document.createElement("div");
+  header.className = "aiAssistantSkillsHeader";
+  header.textContent = "Skills";
+  menu.appendChild(header);
+  if (!skills.length) {
+    const empty = document.createElement("div");
+    empty.className = "aiAssistantSkillsEmpty";
+    empty.textContent = "No matching skills";
+    menu.appendChild(empty);
+  }
+  skills.forEach((skill, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `aiAssistantSkillItem${index === 0 ? " active" : ""}`;
+    button.dataset.skillId = skill.id;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", index === 0 ? "true" : "false");
+    button.innerHTML = `
+      <span class="aiAssistantSkillIcon" aria-hidden="true">${skill.badge || "/"}</span>
+      <span class="aiAssistantSkillText">
+        <span class="aiAssistantSkillTitle"></span>
+        <span class="aiAssistantSkillSubtitle"></span>
+      </span>
+    `;
+    button.querySelector(".aiAssistantSkillTitle").textContent = skill.title;
+    button.querySelector(".aiAssistantSkillSubtitle").textContent = skill.subtitle;
+    button.addEventListener("click", () => {
+      closeAssistantSkillMenu();
+      void runAssistantSkill(skill.id);
+    });
+    menu.appendChild(button);
+  });
+  menu.classList.toggle("open", assistantSkillMenuOpen);
+}
+
+function openAssistantSkillMenu() {
+  assistantSkillMenuOpen = true;
+  renderAssistantSkillMenu();
+}
+
+function closeAssistantSkillMenu() {
+  assistantSkillMenuOpen = false;
+  $("aiAssistantSkillsMenu")?.classList.remove("open");
+}
+
+function updateAssistantSkillMenuFromInput() {
+  const input = $("aiAssistantInput");
+  if (!isSlashSkillQuery(input)) {
+    closeAssistantSkillMenu();
+    return;
+  }
+  assistantSkillFilter = getSlashSkillFilter(input);
+  openAssistantSkillMenu();
+}
+
+function moveAssistantSkillSelection(delta) {
+  const menu = $("aiAssistantSkillsMenu");
+  const items = Array.from(menu?.querySelectorAll?.(".aiAssistantSkillItem") || []);
+  if (!items.length) return;
+  const current = Math.max(0, items.findIndex((item) => item.classList.contains("active")));
+  const next = (current + delta + items.length) % items.length;
+  items.forEach((item, index) => {
+    item.classList.toggle("active", index === next);
+    item.setAttribute("aria-selected", index === next ? "true" : "false");
+  });
+}
+
+function activateSelectedAssistantSkill() {
+  const item = $("aiAssistantSkillsMenu")?.querySelector?.(".aiAssistantSkillItem.active")
+    || $("aiAssistantSkillsMenu")?.querySelector?.(".aiAssistantSkillItem");
+  const skillId = item?.dataset?.skillId || "";
+  if (!skillId) return false;
+  closeAssistantSkillMenu();
+  void runAssistantSkill(skillId);
+  return true;
+}
+
+function isSqlAssistantContext(context) {
+  const language = String(context?.language || "").trim().toLowerCase();
+  const path = String(context?.targetPath || context?.path || "").trim().toLowerCase();
+  const tabType = String(context?.tabType || context?.pageType || "").trim().toLowerCase();
+  return language === "sql" || path.endsWith(".sql") || tabType === "snowflake";
+}
+
+function countChangedLines(original, proposed) {
+  const oldLines = normalizeDiffText(original).split("\n");
+  const newLines = normalizeDiffText(proposed).split("\n");
+  const max = Math.max(oldLines.length, newLines.length);
+  let changed = 0;
+  for (let i = 0; i < max; i += 1) {
+    if ((oldLines[i] || "") !== (newLines[i] || "")) changed += 1;
+  }
+  return changed;
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeSqlReviewGroupLabels(text) {
+  const groupLabels = new Map([
+    ["1", "Syntax and formatting suggestions beyond deterministic validation"],
+    ["2", "Performance and optimizations"],
+  ]);
+  return String(text || "").split(/\r?\n/).map((line) => {
+    const trimmed = line.trim();
+    const plain = trimmed
+      .replace(/^\*\*\s*/, "")
+      .replace(/\s*\*\*$/, "")
+      .replace(/^([12])[.)]\s+\*\*(.+)\*\*$/, "$1. $2");
+    const match = plain.match(/^([12])[.)]\s+(.+)$/);
+    if (!match) return line;
+    const expected = groupLabels.get(match[1]);
+    if (!expected || match[2].trim().toLowerCase() !== expected.toLowerCase()) return line;
+    return `**${match[1]}. ${expected}**`;
+  }).join("\n");
+}
+
+function normalizeDiffText(value) {
+  return String(value ?? "").replace(/\r\n?/g, "\n").replace(/\s+$/g, "");
+}
+
+function computeUnifiedDiff(original, proposed) {
+  const oldLines = normalizeDiffText(original).split("\n");
+  const newLines = normalizeDiffText(proposed).split("\n");
+  const oldCount = oldLines.length;
+  const newCount = newLines.length;
+  if (oldCount * newCount > 120000) {
+    if (normalizeDiffText(original) === normalizeDiffText(proposed)) {
+      return {
+        lines: oldLines.map((text, index) => ({ text, type: "same", oldLine: index + 1, newLine: index + 1 })),
+      };
+    }
+    return {
+      lines: [
+        ...oldLines.map((text, index) => ({ text, type: "deleted", oldLine: index + 1, newLine: null })),
+        ...newLines.map((text, index) => ({ text, type: "added", oldLine: null, newLine: index + 1 })),
+      ],
+    };
+  }
+  const dp = Array.from({ length: oldCount + 1 }, () => Array(newCount + 1).fill(0));
+  for (let i = oldCount - 1; i >= 0; i -= 1) {
+    for (let j = newCount - 1; j >= 0; j -= 1) {
+      dp[i][j] = oldLines[i] === newLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const lines = [];
+  let i = 0;
+  let j = 0;
+  while (i < oldCount || j < newCount) {
+    if (i < oldCount && j < newCount && oldLines[i] === newLines[j]) {
+      lines.push({ text: oldLines[i], type: "same", oldLine: i + 1, newLine: j + 1 });
+      i += 1;
+      j += 1;
+    } else if (i < oldCount && (j >= newCount || dp[i + 1][j] >= dp[i][j + 1])) {
+      lines.push({ text: oldLines[i], type: "deleted", oldLine: i + 1, newLine: null });
+      i += 1;
+    } else {
+      lines.push({ text: newLines[j], type: "added", oldLine: null, newLine: j + 1 });
+      j += 1;
+    }
+  }
+  return { lines };
+}
+
+function appendSqlDiffToken(parent, text, className = "") {
+  if (!text) return;
+  if (!className) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+  const token = document.createElement("span");
+  token.className = `aiAssistantSqlToken ${className}`;
+  token.textContent = text;
+  parent.appendChild(token);
+}
+
+function appendHighlightedSqlDiffCode(parent, text) {
+  const source = String(text || " ");
+  let index = 0;
+  while (index < source.length) {
+    const rest = source.slice(index);
+    if (rest.startsWith("--")) {
+      appendSqlDiffToken(parent, rest, "comment");
+      return;
+    }
+    if (rest.startsWith("/*")) {
+      const end = source.indexOf("*/", index + 2);
+      const next = end >= 0 ? end + 2 : source.length;
+      appendSqlDiffToken(parent, source.slice(index, next), "comment");
+      index = next;
+      continue;
+    }
+    const ch = source[index];
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      const start = index;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === quote && source[index + 1] === quote) {
+          index += 2;
+        } else if (source[index] === quote) {
+          index += 1;
+          break;
+        } else {
+          index += 1;
+        }
+      }
+      appendSqlDiffToken(parent, source.slice(start, index), "string");
+      continue;
+    }
+    if (ch === "[") {
+      const end = source.indexOf("]", index + 1);
+      if (end >= 0) {
+        appendSqlDiffToken(parent, source.slice(index, end + 1), "identifier");
+        index = end + 1;
+        continue;
+      }
+    }
+    const number = rest.match(/^\b\d+(?:\.\d+)?\b/);
+    if (number) {
+      appendSqlDiffToken(parent, number[0], "number");
+      index += number[0].length;
+      continue;
+    }
+    const word = rest.match(/^[A-Za-z_][A-Za-z0-9_]*/);
+    if (word) {
+      const value = word[0];
+      const upper = value.toUpperCase();
+      const after = source.slice(index + value.length).trimStart();
+      if (SQL_DIFF_KEYWORDS.has(upper)) appendSqlDiffToken(parent, value, "keyword");
+      else if (SQL_DIFF_FUNCTIONS.has(upper) && after.startsWith("(")) appendSqlDiffToken(parent, value, "function");
+      else if (SQL_DIFF_DATATYPES.has(upper)) appendSqlDiffToken(parent, value, "datatype");
+      else appendSqlDiffToken(parent, value);
+      index += value.length;
+      continue;
+    }
+    appendSqlDiffToken(parent, ch);
+    index += 1;
+  }
+}
+
+function renderUnifiedDiff(container, lines) {
+  if (!container) return;
+  container.textContent = "";
+  container.style.removeProperty("--ai-assistant-sql-diff-width");
+  lines.forEach((line) => {
+    const row = document.createElement("div");
+    row.className = `aiAssistantSqlDiffLine ${line.type || "same"}`;
+    const oldNumber = document.createElement("span");
+    oldNumber.className = "aiAssistantSqlDiffNumber old";
+    oldNumber.textContent = line.oldLine == null ? "" : String(line.oldLine);
+    const newNumber = document.createElement("span");
+    newNumber.className = "aiAssistantSqlDiffNumber new";
+    newNumber.textContent = line.newLine == null ? "" : String(line.newLine);
+    const marker = document.createElement("span");
+    marker.className = "aiAssistantSqlDiffMarker";
+    marker.textContent = line.type === "added" ? "+" : line.type === "deleted" ? "-" : " ";
+    const code = document.createElement("span");
+    code.className = "aiAssistantSqlDiffCode";
+    appendHighlightedSqlDiffCode(code, line.text || " ");
+    row.append(oldNumber, newNumber, marker, code);
+    container.appendChild(row);
+  });
+  window.requestAnimationFrame(() => {
+    if (!container.isConnected) return;
+    const rows = Array.from(container.querySelectorAll(".aiAssistantSqlDiffLine"));
+    const widest = rows.reduce((max, row) => Math.max(max, row.scrollWidth), container.clientWidth);
+    if (widest > 0) container.style.setProperty("--ai-assistant-sql-diff-width", `${Math.ceil(widest)}px`);
+  });
+}
+
+function renderSqlReviewDialog() {
+  ensureAssistantSkillDom();
+  const state = assistantSqlReviewState;
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (!dialog || !state) return;
+  const wasOpen = dialog.classList.contains("open");
+  const changedLines = countChangedLines(state.original, state.proposed);
+  const diff = computeUnifiedDiff(state.original, state.proposed);
+  const subtitle = state.selectionOnly
+    ? `${state.context?.title || state.context?.targetPath || "Active SQL tab"} - selected lines`
+    : state.context?.title || state.context?.targetPath || "Active SQL tab";
+  setText($("aiAssistantSqlReviewSubtitle"), subtitle);
+  setText($("aiAssistantSqlReviewStatus"), state.status || "Review the proposed formatting before applying it to the active tab.");
+  setText($("aiAssistantSqlReviewMeta"), `${changedLines} changed line${changedLines === 1 ? "" : "s"}`);
+  renderUnifiedDiff($("aiAssistantSqlReviewUnified"), diff.lines);
+  const findingsEl = $("aiAssistantSqlReviewFindings");
+  if (findingsEl) {
+    findingsEl.textContent = "";
+    const list = document.createElement("ul");
+    (state.findings || []).forEach((finding) => {
+      const item = document.createElement("li");
+      item.textContent = finding;
+      list.appendChild(item);
+    });
+    findingsEl.appendChild(list);
+  }
+  dialog.classList.add("open");
+  if (!wasOpen) bringSqlReviewDialogToFront();
+  applyStoredSqlReviewDialogPosition();
+}
+
+function closeSqlReviewDialog() {
+  assistantSqlReviewState = null;
+  stopSqlReviewDialogDrag();
+  stopSqlReviewDialogResize();
+  $("aiAssistantSqlReviewDialog")?.classList.remove("open");
+}
+
+function bringSqlReviewDialogToFront() {
+  const dialog = $("aiAssistantSqlReviewDialog");
+  const panel = $("aiAssistantPanel");
+  if (dialog?.classList.contains("open")) dialog.style.zIndex = String(SQL_REVIEW_DIALOG_ACTIVE_Z);
+  if (panel) panel.style.zIndex = "";
+}
+
+function bringAssistantPanelToFront() {
+  const panel = $("aiAssistantPanel");
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (panel?.classList.contains("open")) panel.style.zIndex = String(ASSISTANT_PANEL_FRONT_Z);
+  if (dialog) dialog.style.zIndex = String(SQL_REVIEW_DIALOG_Z);
+}
+
+function clampSqlReviewDialogPosition(left, top, rect) {
+  const margin = 12;
+  const width = rect?.width || $("aiAssistantSqlReviewDialog")?.getBoundingClientRect?.().width || 980;
+  const height = rect?.height || $("aiAssistantSqlReviewDialog")?.getBoundingClientRect?.().height || 720;
+  const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+  const maxTop = Math.max(margin, window.innerHeight - height - margin);
+  return {
+    left: Math.min(maxLeft, Math.max(margin, left)),
+    top: Math.min(maxTop, Math.max(margin, top)),
+  };
+}
+
+function applySqlReviewDialogPosition(left, top, rect = null) {
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (!dialog) return;
+  const position = clampSqlReviewDialogPosition(left, top, rect);
+  assistantSqlReviewDialogPosition = position;
+  dialog.style.left = `${position.left}px`;
+  dialog.style.top = `${position.top}px`;
+  dialog.style.transform = "none";
+}
+
+function clampSqlReviewDialogSize(width, height) {
+  const margin = 12;
+  const maxWidth = Math.max(SQL_REVIEW_DIALOG_MIN_WIDTH, window.innerWidth - (margin * 2));
+  const maxHeight = Math.max(SQL_REVIEW_DIALOG_MIN_HEIGHT, window.innerHeight - (margin * 2));
+  return {
+    width: Math.min(maxWidth, Math.max(SQL_REVIEW_DIALOG_MIN_WIDTH, width)),
+    height: Math.min(maxHeight, Math.max(SQL_REVIEW_DIALOG_MIN_HEIGHT, height)),
+  };
+}
+
+function applySqlReviewDialogSize(width, height) {
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (!dialog) return null;
+  const size = clampSqlReviewDialogSize(width, height);
+  assistantSqlReviewDialogSize = size;
+  dialog.style.width = `${Math.round(size.width)}px`;
+  dialog.style.height = `${Math.round(size.height)}px`;
+  return size;
+}
+
+function resetSqlReviewDialogPosition() {
+  assistantSqlReviewDialogPosition = null;
+  assistantSqlReviewDialogSize = null;
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (!dialog) return;
+  dialog.style.left = "";
+  dialog.style.top = "";
+  dialog.style.width = "";
+  dialog.style.height = "";
+  dialog.style.transform = "";
+  dialog.style.zIndex = "";
+}
+
+function applyStoredSqlReviewDialogPosition() {
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (!dialog || (!assistantSqlReviewDialogPosition && !assistantSqlReviewDialogSize)) return;
+  window.requestAnimationFrame(() => {
+    if (assistantSqlReviewDialogSize) {
+      applySqlReviewDialogSize(assistantSqlReviewDialogSize.width, assistantSqlReviewDialogSize.height);
+    }
+    const rect = dialog.getBoundingClientRect();
+    if (assistantSqlReviewDialogPosition) {
+      applySqlReviewDialogPosition(assistantSqlReviewDialogPosition.left, assistantSqlReviewDialogPosition.top, rect);
+    }
+  });
+}
+
+function clampOpenSqlReviewDialogToViewport() {
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (!dialog?.classList.contains("open")) return;
+  if (assistantSqlReviewDialogSize) applySqlReviewDialogSize(assistantSqlReviewDialogSize.width, assistantSqlReviewDialogSize.height);
+  const rect = dialog.getBoundingClientRect();
+  if (assistantSqlReviewDialogPosition) applySqlReviewDialogPosition(rect.left, rect.top, rect);
+}
+
+function updateSqlReviewDialogDrag(event) {
+  if (!assistantSqlReviewDragState) return;
+  const nextLeft = assistantSqlReviewDragState.startLeft + (event.clientX - assistantSqlReviewDragState.startX);
+  const nextTop = assistantSqlReviewDragState.startTop + (event.clientY - assistantSqlReviewDragState.startY);
+  applySqlReviewDialogPosition(nextLeft, nextTop, assistantSqlReviewDragState.rect);
+}
+
+function stopSqlReviewDialogDrag(event = null) {
+  if (!assistantSqlReviewDragState) return;
+  const handle = assistantSqlReviewDragState.handle;
+  if (event?.pointerId != null && handle?.hasPointerCapture?.(event.pointerId)) {
+    handle.releasePointerCapture(event.pointerId);
+  }
+  document.body.classList.remove("aiAssistantSqlReviewDragging");
+  window.removeEventListener("pointermove", updateSqlReviewDialogDrag);
+  window.removeEventListener("pointerup", stopSqlReviewDialogDrag);
+  window.removeEventListener("pointercancel", stopSqlReviewDialogDrag);
+  assistantSqlReviewDragState = null;
+}
+
+function startSqlReviewDialogDrag(event) {
+  if (event.button !== 0 || event.target?.closest?.("button")) return;
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (!dialog) return;
+  bringSqlReviewDialogToFront();
+  const rect = dialog.getBoundingClientRect();
+  assistantSqlReviewDragState = {
+    handle: event.currentTarget,
+    rect,
+    startX: event.clientX,
+    startY: event.clientY,
+    startLeft: rect.left,
+    startTop: rect.top,
+  };
+  dialog.style.width = `${rect.width}px`;
+  dialog.style.height = `${rect.height}px`;
+  applySqlReviewDialogPosition(rect.left, rect.top, rect);
+  document.body.classList.add("aiAssistantSqlReviewDragging");
+  event.currentTarget?.setPointerCapture?.(event.pointerId);
+  window.addEventListener("pointermove", updateSqlReviewDialogDrag);
+  window.addEventListener("pointerup", stopSqlReviewDialogDrag);
+  window.addEventListener("pointercancel", stopSqlReviewDialogDrag);
+  event.preventDefault();
+}
+
+function updateSqlReviewDialogResize(event) {
+  if (!assistantSqlReviewResizeState) return;
+  const state = assistantSqlReviewResizeState;
+  const dx = event.clientX - state.startX;
+  const dy = event.clientY - state.startY;
+  let width = state.width;
+  let height = state.height;
+  let left = state.left;
+  let top = state.top;
+  if (state.edge.includes("e")) width = state.width + dx;
+  if (state.edge.includes("w")) width = state.width - dx;
+  if (state.edge.includes("s")) height = state.height + dy;
+  if (state.edge.includes("n")) height = state.height - dy;
+  const nextSize = applySqlReviewDialogSize(width, height);
+  if (!nextSize) return;
+  if (state.edge.includes("w")) left = state.left + state.width - nextSize.width;
+  if (state.edge.includes("n")) top = state.top + state.height - nextSize.height;
+  applySqlReviewDialogPosition(left, top, { width: nextSize.width, height: nextSize.height });
+}
+
+function stopSqlReviewDialogResize(event = null) {
+  if (!assistantSqlReviewResizeState) return;
+  const handle = assistantSqlReviewResizeState.handle;
+  if (event?.pointerId != null && handle?.hasPointerCapture?.(event.pointerId)) {
+    handle.releasePointerCapture(event.pointerId);
+  }
+  document.body.classList.remove("aiAssistantSqlReviewResizing");
+  window.removeEventListener("pointermove", updateSqlReviewDialogResize);
+  window.removeEventListener("pointerup", stopSqlReviewDialogResize);
+  window.removeEventListener("pointercancel", stopSqlReviewDialogResize);
+  assistantSqlReviewResizeState = null;
+}
+
+function startSqlReviewDialogResize(event) {
+  if (event.button !== 0) return;
+  const dialog = $("aiAssistantSqlReviewDialog");
+  if (!dialog) return;
+  bringSqlReviewDialogToFront();
+  const rect = dialog.getBoundingClientRect();
+  assistantSqlReviewResizeState = {
+    handle: event.currentTarget,
+    edge: String(event.currentTarget?.dataset?.sqlReviewResizeEdge || "se"),
+    startX: event.clientX,
+    startY: event.clientY,
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+  dialog.style.transform = "none";
+  applySqlReviewDialogSize(rect.width, rect.height);
+  applySqlReviewDialogPosition(rect.left, rect.top, rect);
+  document.body.classList.add("aiAssistantSqlReviewResizing");
+  event.currentTarget?.setPointerCapture?.(event.pointerId);
+  window.addEventListener("pointermove", updateSqlReviewDialogResize);
+  window.addEventListener("pointerup", stopSqlReviewDialogResize);
+  window.addEventListener("pointercancel", stopSqlReviewDialogResize);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function requestActiveTextReplacement({ proposed, original, range = null }) {
+  const activeTab = shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId) || null;
+  const iframe = activeTab?.iframe || null;
+  if (!iframe?.contentWindow) {
+    return Promise.resolve({ ok: false, error: "No active editor tab is available." });
+  }
+  return new Promise((resolve) => {
+    const requestId = `arcbot_replace_text_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    let done = false;
+    const finish = (payload) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", onMessage);
+      resolve(payload || { ok: false, error: "The active editor did not return a replacement result." });
+    };
+    const onMessage = (event) => {
+      if (event.source !== iframe.contentWindow) return;
+      const msg = event.data || {};
+      if (msg.type !== assistantMessageType("replace-text-result") || msg.requestId !== requestId) return;
+      finish(msg);
+    };
+    window.addEventListener("message", onMessage);
+    try {
+      iframe.contentWindow.postMessage({
+        type: assistantMessageType("replace-text"),
+        requestId,
+        text: proposed,
+        expectedText: original,
+        range,
+      }, "*");
+    } catch (err) {
+      finish({ ok: false, error: String(err?.message || err || "Could not send replacement to the active editor.") });
+      return;
+    }
+    window.setTimeout(() => finish({ ok: false, error: "Timed out waiting for the active editor to apply the SQL." }), 120000);
+  });
+}
+
+async function applySqlReviewReplacement() {
+  const state = assistantSqlReviewState;
+  if (!state) return;
+  setText($("aiAssistantSqlReviewStatus"), "Applying formatted SQL to the active tab...");
+  const result = await requestActiveTextReplacement({
+    proposed: state.proposed,
+    original: state.original,
+    range: state.selection || null,
+  });
+  if (!result?.ok) {
+    const message = result?.error || "Could not apply formatted SQL.";
+    setText($("aiAssistantSqlReviewStatus"), message);
+    setStatus(message, "error");
+    return;
+  }
+  closeSqlReviewDialog();
+  const message = state.selectionOnly
+    ? "Applied formatted SQL to the selected lines."
+    : "Applied formatted SQL to the active tab.";
+  setStatus(message);
+  shell.updateStatusBar?.(message);
+}
+
+async function updateSqlReviewWithLlm(context, original, proposed, findings) {
+  const host = getHostApi();
+  if (!host?.codexAssistantSend || !assistantReady || assistantBusy) {
+    if (assistantSqlReviewState) {
+      assistantSqlReviewState.status = "Optional AI review skipped; deterministic formatting is ready to apply.";
+      renderSqlReviewDialog();
+    }
+    return;
+  }
+  await ensureAssistantSession();
+  const title = String(context?.title || context?.targetPath || context?.path || "Active SQL tab").trim();
+  const visiblePrompt = [
+    context?.selectionOnly ? "Run SQL Format Validation AI review on selected SQL lines." : "Run SQL Format Validation AI review on the entire SQL file.",
+    title ? `File: ${title}` : "",
+    context?.selectionOnly
+      ? "Review the deterministic formatting changes and call out SQL risks before I apply them."
+      : "Review every SQL block in the file, not only the first section, and call out SQL risks before I apply the formatting.",
+  ].filter(Boolean).join("\n");
+  assistantMessages.push({ role: "user", content: visiblePrompt, timestamp: nowIso() });
+  appendMessage("user", visiblePrompt);
+  currentSessionTitle = assistantMessages.find((message) => message.role === "user")?.content?.slice(0, 42) || currentSessionTitle;
+  updateAssistantSettingsPanel();
+  currentRequestId = `arcbot_sql_review_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  currentRunStartedAt = performance.now();
+  currentStepStartedAt = currentRunStartedAt;
+  assistantProgressSteps = createAssistantProgressSteps();
+  assistantWorkCardExpanded = true;
+  startAssistantProgressTicker();
+  assistantCancelRequested = false;
+  assistantHostRequestSubmitted = false;
+  assistantActivities = [];
+  resetAssistantActivityTyping();
+  assistantDebugLogs = [];
+  renderActivities();
+  renderDebugLog();
+  appendActivity("Reading your SQL Format Validation review request.", "activity", { elapsedMs: 0 });
+  appendActivity("Reviewing deterministic SQL formatting changes.", "activity", { save: false });
+  const pending = appendMessage("assistant", "Thinking ...");
+  pending?.classList.add("thinking");
+  currentPendingMessageEl = pending;
+  await saveCurrentSession();
+  assistantBusy = true;
+  assistantHostRequestSubmitted = true;
+  setComposerEnabled(false);
+  if (assistantSqlReviewState) {
+    assistantSqlReviewState.status = "Deterministic formatting is ready. Optional AI review is running...";
+    renderSqlReviewDialog();
+  }
+  try {
+    const result = await host.codexAssistantSend({
+      requestId: currentRequestId,
+      sessionId: currentSessionId,
+      mode: "review",
+      model: assistantModel,
+      reasoningEffort: assistantReasoningEffort,
+      messages: [{ role: "user", content: buildSqlReviewPrompt({ title: context?.title, path: context?.targetPath || context?.path, original, proposed, findings }) }],
+      activeContext: { ...context, text: proposed },
+      attachments: [],
+    });
+    const reviewStateMatches = !!assistantSqlReviewState && assistantSqlReviewState.original === original;
+    if (assistantCancelRequested) {
+      const message = "SQL AI review canceled.";
+      await resolveAssistantPendingMessage(pending, message);
+      assistantMessages.push({ role: "assistant", content: message, timestamp: nowIso() });
+      appendActivity("SQL AI review canceled.", "activity");
+      failAssistantProgress("Review canceled");
+      if (reviewStateMatches) assistantSqlReviewState.status = "Optional AI review canceled; deterministic formatting is ready to apply.";
+    } else if (result?.ok && result?.text) {
+      const standardsLinkRe = new RegExp(`\\n?\\s*(?:(?:Standards|Reference):\\s*)?${escapeRegExp(SQL_CODING_STANDARDS_MARKDOWN_LINK)}\\s*$`, "i");
+      const reviewText = normalizeSqlReviewGroupLabels(String(result.text).replace(standardsLinkRe, "").trim());
+      const reply = [
+        "**SQL Format Validation AI Review**",
+        title ? `For: ${title}${context?.selectionOnly ? " (selected lines)" : ""}` : "",
+        `Reference: ${SQL_CODING_STANDARDS_MARKDOWN_LINK}`,
+        "",
+        reviewText,
+      ].filter((part) => part !== "").join("\n");
+      await resolveAssistantPendingMessage(pending, reply, { animate: true });
+      assistantMessages.push({ role: "assistant", content: reply, timestamp: nowIso() });
+      appendActivity("SQL AI review completed.", "activity");
+      completeAssistantProgress("Review completed");
+      if (reviewStateMatches) assistantSqlReviewState.status = "Optional AI review completed. Review the diff before applying.";
+    } else {
+      const message = result?.error
+        ? `Optional AI review unavailable: ${result.error}`
+        : "Optional AI review unavailable; deterministic formatting is ready to apply.";
+      await resolveAssistantPendingMessage(pending, message);
+      assistantMessages.push({ role: "assistant", content: message, timestamp: nowIso() });
+      appendActivity("SQL AI review unavailable.", "error");
+      failAssistantProgress("Review unavailable");
+      if (reviewStateMatches) assistantSqlReviewState.status = message;
+    }
+  } catch (err) {
+    const message = `Optional AI review unavailable: ${String(err?.message || err)}`;
+    await resolveAssistantPendingMessage(pending, message);
+    assistantMessages.push({ role: "assistant", content: message, timestamp: nowIso() });
+    appendActivity("SQL AI review failed.", "error");
+    failAssistantProgress("Review failed");
+    if (assistantSqlReviewState && assistantSqlReviewState.original === original) {
+      assistantSqlReviewState.status = message;
+    }
+  } finally {
+    currentRequestId = "";
+    currentRunStartedAt = 0;
+    currentStepStartedAt = 0;
+    stopAssistantProgressTicker();
+    renderActivities();
+    currentPendingMessageEl = null;
+    await saveCurrentSession();
+    await refreshSessionList(currentSessionId);
+    assistantBusy = false;
+    assistantCancelRequested = false;
+    assistantHostRequestSubmitted = false;
+    setComposerEnabled(assistantReady);
+  }
+  renderSqlReviewDialog();
+}
+
+async function runSqlFormatValidationSkill() {
+  const input = $("aiAssistantInput");
+  if (input && isSlashSkillQuery(input)) {
+    input.value = "";
+    autoGrowAssistantInput();
+  }
+  setStatus("Preparing SQL Format Validation...");
+  let context = null;
+  try {
+    context = await requestActivePageContext();
+  } catch (err) {
+    setStatus(String(err?.message || err || "Could not read the active tab."), "error");
+    return;
+  }
+  if (!context?.available || !String(context?.text || "").trim()) {
+    setStatus("Open an Arcode SQL editor tab before running SQL Format Validation.", "error");
+    return;
+  }
+  if (!isSqlAssistantContext(context)) {
+    setStatus("SQL Format Validation only runs on active SQL tabs.", "error");
+    return;
+  }
+  const original = String(context.text || "");
+  const proposed = formatMssqlSql(original);
+  const findings = buildSqlFormatFindings(original, proposed);
+  resetSqlReviewDialogPosition();
+  assistantSqlReviewState = {
+    context,
+    original,
+    proposed,
+    findings,
+    selection: context.selection || null,
+    selectionOnly: !!context.selectionOnly,
+    status: "Review the proposed formatting before applying it to the active tab.",
+  };
+  renderSqlReviewDialog();
+  void updateSqlReviewWithLlm(context, original, proposed, findings);
+}
+
+async function runAssistantSkill(skillId) {
+  if (skillId === SQL_FORMAT_VALIDATION_SKILL.id) {
+    await runSqlFormatValidationSkill();
+  }
+}
+
 async function loadAssistantUserAvatarName() {
   const host = getHostApi();
   if (!host?.getWindowsUserName) return;
@@ -2545,6 +3407,9 @@ export function initAiAssistant() {
     launcher.style.display = "none";
     return;
   }
+  panel.addEventListener("pointerdown", bringAssistantPanelToFront);
+  panel.addEventListener("focusin", bringAssistantPanelToFront);
+  ensureAssistantSkillDom();
   setAiAssistantLauncherVisible(isAiAssistantLauncherVisible());
   ensureAssistantSession();
   host.onCodexAssistantEvent?.(handleAssistantEvent);
@@ -2671,12 +3536,36 @@ export function initAiAssistant() {
     }
   });
   $("aiAssistantInput")?.addEventListener("keydown", (event) => {
+    if (assistantSkillMenuOpen) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveAssistantSkillSelection(1);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveAssistantSkillSelection(-1);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeAssistantSkillMenu();
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && activateSelectedAssistantSkill()) {
+        event.preventDefault();
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (!assistantBusy) sendAssistantMessage();
     }
   });
-  $("aiAssistantInput")?.addEventListener("input", autoGrowAssistantInput);
+  $("aiAssistantInput")?.addEventListener("input", () => {
+    autoGrowAssistantInput();
+    updateAssistantSkillMenuFromInput();
+  });
   autoGrowAssistantInput();
 
   document.addEventListener("pointerdown", (event) => {
@@ -2686,17 +3575,23 @@ export function initAiAssistant() {
     }
     if (event.target?.closest?.(".aiAssistantSelectWrap")) return;
     if (event.target?.closest?.("#aiAssistantAttachMenu") || event.target?.closest?.("#aiAssistantAttachBtn")) return;
+    if (!event.target?.closest?.("#aiAssistantSkillsMenu") && !event.target?.closest?.("#aiAssistantInput")) {
+      closeAssistantSkillMenu();
+    }
     closeSelectMenus();
     closeAttachMenu();
   }, true);
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      closeSqlReviewDialog();
+      closeAssistantSkillMenu();
       closeFolderPermissionsPage();
       closeAssistantSettingsPanel();
       closeSelectMenus();
       closeAttachMenu();
     }
   }, true);
+  window.addEventListener("resize", clampOpenSqlReviewDialogToViewport);
   initAssistantDrag(panel);
   initAssistantResize(panel);
   initAssistantLauncherDrag(launcher);

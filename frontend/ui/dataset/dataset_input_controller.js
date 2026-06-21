@@ -83,6 +83,9 @@ export function wireDatasetInputController(deps) {
     wireGridInteractions,
     isProjectInstanceDraft = false,
     refreshProjectInstanceDraftModel = null,
+    validateManualDatasetLengthChange = null,
+    isManualDatasetModeLocked = null,
+    restoreManualDatasetModeControls = null,
   } = deps;
 
   async function refreshDraftModelAfterInputChange() {
@@ -149,6 +152,11 @@ export function wireDatasetInputController(deps) {
   const cumulativeChk = document.getElementById("cumulativeChk");
   if (cumulativeChk) {
     cumulativeChk.addEventListener("change", () => {
+      if (typeof isManualDatasetModeLocked === "function" && isManualDatasetModeLocked()) {
+        if (typeof restoreManualDatasetModeControls === "function") restoreManualDatasetModeControls();
+        setStatus("Manual input Triangle/Vector datasets keep their cumulative mode fixed.");
+        return;
+      }
       saveTriInputsToStorage();
       scheduleAutoRun(0);
     });
@@ -170,6 +178,11 @@ export function wireDatasetInputController(deps) {
   for (const input of timeModeInputs) {
     input.addEventListener("change", async () => {
       if (!input.checked) return;
+      if (typeof isManualDatasetModeLocked === "function" && isManualDatasetModeLocked()) {
+        if (typeof restoreManualDatasetModeControls === "function") restoreManualDatasetModeControls();
+        setStatus("Manual input Triangle/Vector datasets keep their development/calendar mode fixed.");
+        return;
+      }
       saveTriInputsToStorage();
       const project = getResolvedProjectValue();
       if (project) {
@@ -512,6 +525,10 @@ export function wireDatasetInputController(deps) {
     originSel.addEventListener("change", async () => {
       syncLen("origin");
       enforceDevLenRule({ source: "origin" });
+      if (typeof validateManualDatasetLengthChange === "function" && !validateManualDatasetLengthChange()) {
+        originSel.blur();
+        return;
+      }
       saveTriInputsToStorage();
 
       if (await refreshDraftModelAfterInputChange()) {
@@ -539,6 +556,9 @@ export function wireDatasetInputController(deps) {
       const devBefore = document.getElementById("devLenSelect")?.value || "";
       if (isLenLinked()) syncLen("init");
       enforceDevLenRule({ source: "origin" });
+      if (typeof validateManualDatasetLengthChange === "function" && !validateManualDatasetLengthChange()) {
+        return;
+      }
 
       saveTriInputsToStorage();
 
@@ -569,6 +589,10 @@ export function wireDatasetInputController(deps) {
     devSel.addEventListener("change", async () => {
       syncLen("dev");
       enforceDevLenRule({ source: "dev" });
+      if (typeof validateManualDatasetLengthChange === "function" && !validateManualDatasetLengthChange()) {
+        devSel.blur();
+        return;
+      }
       saveTriInputsToStorage();
 
       if (await refreshDraftModelAfterInputChange()) {

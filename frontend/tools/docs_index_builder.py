@@ -60,7 +60,8 @@ FRONTEND_ENTRY_HTMLS = [
     "ui/project_settings/project_settings.html",
     "ui/project_instance/project_instance.html",
     "ui/arcode/main.html",
-    "ui/arcode/scripting-console/index.html",
+    "ui/arcode/notebook-editor/index.html",
+    "ui/arcode/code-editor/index.html",
 ]
 
 FRONTEND_PURPOSE_MAX_LINES = 6
@@ -537,18 +538,21 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
     },
     "arcode": {
         "doc": "docs/ui/arcode.md",
-        "html": ["ui/arcode/main.html", "ui/arcode/scripting-console/index.html"],
+        "html": ["ui/arcode/main.html", "ui/arcode/notebook-editor/index.html", "ui/arcode/code-editor/index.html"],
         "files": [
             ("ui/arcode/main.html", "Arcode workspace app frame and menus."),
             ("ui/arcode/main.js", "Arcode shell, tabs, explorer, file opening, and command routing."),
-            ("ui/arcode/main.css", "Arcode workspace and scripting-console styling."),
-            ("ui/arcode/scripting-console/index.html", "Arcode notebook/code editor page layout."),
-            ("ui/arcode/scripting-console/core.js", "Notebook state, cell model, and command-mode helpers."),
-            ("ui/arcode/scripting-console/cells.js", "Cell rendering, selection, markdown, and drag/drop behavior."),
-            ("ui/arcode/scripting-console/execution.js", "Code execution, streaming output, and cancellation handling."),
-            ("ui/arcode/scripting-console/shortcuts.js", "Keyboard shortcut parsing, customization, and persistence."),
-            ("ui/arcode/scripting-console/panels.js", "Sidebar, TOC, variables, and API reference panels."),
-            ("ui/arcode/scripting-console/notebook-io.js", "Notebook save/open and `.ipynb` import/export helpers."),
+            ("ui/arcode/main.css", "Arcode workspace and tab shell styling."),
+            ("ui/arcode/notebook-editor/index.html", "Arcode notebook editor page layout."),
+            ("ui/arcode/notebook-editor/core.js", "Notebook state, cell model, and command-mode helpers."),
+            ("ui/arcode/notebook-editor/cells.js", "Cell rendering, selection, markdown, and drag/drop behavior."),
+            ("ui/arcode/notebook-editor/execution.js", "Notebook cell execution, streaming output, and cancellation handling."),
+            ("ui/arcode/notebook-editor/shortcuts.js", "Notebook keyboard shortcut parsing, customization, and persistence."),
+            ("ui/arcode/notebook-editor/panels.js", "Notebook sidebar, TOC, and variables panels."),
+            ("ui/arcode/notebook-editor/notebook-io.js", "Notebook save/open and `.ipynb` import/export helpers."),
+            ("ui/arcode/code-editor/index.html", "Plain code/text editor page layout."),
+            ("ui/arcode/code-editor/index.js", "Plain text-file open/save, dirty state, Python run output, and variables."),
+            ("ui/arcode/shared/editor_shared.js", "Shared Arcode editor host bridge, path, tab message, revision, and scripting session helpers."),
         ],
     },
     "ai_assistant": {
@@ -902,9 +906,9 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
         },
         "arcode": {
             "purpose": "Canonical Arcode workspace for notebooks, scripts, SQL files, execution output, file explorer, and assistant context.",
-            "external": "- Opened by ArcRho through the Electron `openArcodeWindow` bridge or as standalone `ARCRHO_APP_MODE=arcode`.\n- Uses `/scripting/*` app-server routes for execution, variables, preferences, and notebook persistence.\n- Sends `arcode:*` status and command messages between the Arcode shell and scripting-console iframes.",
+            "external": "- Opened by ArcRho through the Electron `openArcodeWindow` bridge or as standalone `ARCRHO_APP_MODE=arcode`.\n- Uses `/scripting/*` app-server routes for execution, variables, preferences, and notebook persistence.\n- Sends `arcode:*` status and command messages between the Arcode shell and notebook-editor iframes.",
             "data": "- Stores Arcode recent files, workspace folders, zoom, and tab-local notebook drafts in browser storage.\n- Saves notebooks and scripts through Electron host file APIs or under the user scripting directory by default.\n- Standalone Arcode mode uses `Documents\\Arcode\\scripts` and `%APPDATA%\\Arcode` defaults.",
-            "tasks": "1. Change Arcode shell behavior: update `ui/arcode/main.js`, Electron host APIs, and docs together.\n2. Change notebook model or persistence: update `ui/arcode/scripting-console/*`, app-server scripting routes if needed, and docs together.\n3. Change standalone packaging: update `electron-builder.arcode.json`, `build/arcode_server.spec`, package scripts, and build docs.",
+            "tasks": "1. Change Arcode shell behavior: update `ui/arcode/main.js`, Electron host APIs, and docs together.\n2. Change notebook model or persistence: update `ui/arcode/notebook-editor/*`, app-server scripting routes if needed, and docs together.\n3. Change standalone packaging: update `electron-builder.arcode.json`, `build/arcode_server.spec`, package scripts, and build docs.",
             "risks": "- Keyboard handling is sensitive to edit mode, command mode, IME/composition, and Monaco focus.\n- Multi-cell selection, queueing, markdown folding, and drag/drop share state and can regress each other.\n- ArcRho macros rely on ArcRho-only scripting macro endpoints that are intentionally excluded from the standalone Arcode route surface.",
         },
         "ai_assistant": {

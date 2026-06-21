@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Split Arcode notebooks and plain scripts into separate notebook and code editors.",
+  "details": [
+    "Notebook files now open in the renamed notebook editor.",
+    "Plain script and text files now open in a simpler Monaco-based code editor with save, format, and Python run output."
+  ]
+}

@@ -612,6 +612,72 @@ def _is_app_calculated_dataset_type(project_name: str, dataset_type_name: str) -
     return False, ""
 
 
+def _method_type_from_dataset_index(project_name: str, reserving_class: str, dataset_name: str) -> str:
+    name_key = str(dataset_name or "").strip().lower()
+    if not name_key:
+        return dataset_sidecar_status_service.METHOD_TYPE_NONE
+    try:
+        index = dataset_instance_index_service.get_index(project_name, reserving_class, refresh=False)
+    except Exception:
+        return dataset_sidecar_status_service.METHOD_TYPE_NONE
+    for item in index.get("files") or []:
+        if not isinstance(item, dict):
+            continue
+        names = [
+            item.get("dataset_name"),
+            item.get("instance_name"),
+            item.get("dataset_type_name"),
+            item.get("name"),
+        ]
+        if isinstance(item.get("dataset_names"), list):
+            names.extend(item.get("dataset_names") or [])
+        item_keys = {str(value or "").strip().lower() for value in names if str(value or "").strip()}
+        if name_key not in item_keys:
+            continue
+        return dataset_sidecar_status_service.normalize_method_type(item.get("method_type"))
+    return dataset_sidecar_status_service.METHOD_TYPE_NONE
+
+
+def _sidecar_graph_entries(
+    project_name: str,
+    reserving_class: str,
+    entries: Any,
+    *,
+    include_formula: bool = False,
+    include_method_type: bool = False,
+) -> List[Dict[str, str]]:
+    out = dataset_sidecar_status_service.name_entries(
+        dataset_sidecar_status_service.entry_names(entries)
+    )
+    if not include_formula and not include_method_type:
+        return out
+    for item in out:
+        name = str(item.get("dataset_type_name") or "").strip()
+        if not name:
+            continue
+        try:
+            dep_payload = _read_dataset_sidecar(_get_dataset_sidecar_path(project_name, reserving_class, name))
+        except Exception:
+            dep_payload = {}
+        dataset_name = str(dep_payload.get("dataset_name") or name).strip()
+        dataset_type = str(dep_payload.get("dataset_type") or name).strip()
+        _, type_formula = _is_app_calculated_dataset_type(project_name, dataset_type)
+        formula = str(dep_payload.get("formula") or type_formula or "").strip()
+        item["dataset_name"] = dataset_name or name
+        item["dataset_type"] = dataset_type or name
+        if include_method_type:
+            method_type = dataset_sidecar_status_service.normalize_method_type(
+                dep_payload.get("method_type"),
+                dep_payload.get("source_kind"),
+            )
+            if method_type == dataset_sidecar_status_service.METHOD_TYPE_NONE:
+                method_type = _method_type_from_dataset_index(project_name, reserving_class, dataset_name or name)
+            item["method_type"] = method_type
+        if formula:
+            item["formula"] = formula
+    return out
+
+
 def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     path = _get_dataset_sidecar_path(p, rc, ds)
@@ -654,6 +720,8 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "generated": False if app_calculated else payload.get("generated"),
         "calculated": True if app_calculated else payload.get("calculated"),
         "formula": formula or str(payload.get("formula") or ""),
+        "Precedents": _sidecar_graph_entries(p, rc, payload.get("Precedents"), include_method_type=True),
+        "Dependents": _sidecar_graph_entries(p, rc, payload.get("Dependents"), include_formula=True),
         "user": str(payload.get("user") or ""),
         "modified_by": str(payload.get("modified_by") or ""),
         "created": str(payload.get("created") or ""),
@@ -908,6 +976,8 @@ def save_dataset_sidecar(
         "source_kind": payload["source_kind"],
         "method_type": payload["method_type"],
         "status": payload["status"],
+        "Precedents": _sidecar_graph_entries(p, rc, payload.get("Precedents"), include_method_type=True),
+        "Dependents": _sidecar_graph_entries(p, rc, payload.get("Dependents"), include_formula=True),
         "updated_at": payload["updated_at"],
         "audit_log": payload["audit_log"],
         "path": path,

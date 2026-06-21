@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Existing manual input datasets now show dirty state for grid edits and persist edited cells through the Dataset Save action."
+}

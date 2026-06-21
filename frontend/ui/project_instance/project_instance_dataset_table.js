@@ -9,6 +9,8 @@ export function installProjectInstanceDatasetTable(ctx) {
   } = ctx;
   const { DATASET_TABLE_COLUMNS, DATASET_COLUMNS, DATASET_TABLE_AUTOFIT_MAX_WIDTH, DATASET_TABLE_AUTOFIT_CELL_EXTRA_WIDTH, DATASET_TABLE_AUTOFIT_HEADER_EXTRA_WIDTH, DATASET_TABLE_BLANK_LABEL, DATASET_FILTER_CHIP_VALUE_LIMIT } = ctx.constants;
   const { datasetTablePreferenceWidthKeys, datasetTableView, cachedDatasetFilter, datasetTableSelection } = state;
+  const DATASET_COLUMN_DRAG_TYPE = "text/x-pi-column";
+  const DATASET_GROUP_DRAG_TYPE = "text/x-pi-group-key";
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
   const finishPageLoading = (...args) => api.finishPageLoading(...args);
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
@@ -31,6 +33,14 @@ export function installProjectInstanceDatasetTable(ctx) {
 function isDatasetColumnFilterable(key) {
   const normalized = toText(key);
   return normalized !== "status" && !!getDatasetColumn(normalized);
+}
+
+function hasDataTransferType(dataTransfer, type) {
+  return Array.from(dataTransfer?.types || []).includes(type);
+}
+
+function isDatasetColumnGroupable(key) {
+  return !!getDatasetColumn(toText(key));
 }
 
 function getDatasetFilterActiveValues(key, context = null) {
@@ -148,6 +158,116 @@ function syncDatasetActiveFiltersToolbar(context = null) {
     chip.addEventListener("mouseleave", hideDatasetFilterTooltip);
     wrap.appendChild(chip);
   }
+}
+
+function clearDatasetGroupDropState() {
+  els.datasetGroupByStatus?.classList?.remove("drag-over", "drag-invalid");
+  els.datasetTableWrap?.classList?.remove("group-remove-target");
+  for (const chip of els.datasetGroupByStatus?.querySelectorAll?.(".dataset-group-chip.group-drag-before, .dataset-group-chip.group-drag-after") || []) {
+    chip.classList.remove("group-drag-before", "group-drag-after");
+  }
+}
+
+function syncDatasetGroupByToolbar() {
+  const wrap = els.datasetGroupByStatus;
+  if (!wrap) return;
+  const keys = getDatasetGroupByKeys();
+  wrap.replaceChildren();
+  wrap.classList.toggle("has-groups", keys.length > 0);
+  const placeholder = document.createElement("span");
+  placeholder.className = "dataset-group-placeholder";
+  placeholder.textContent = "Drag a column header here to group by that column";
+  if (!keys.length) {
+    wrap.appendChild(placeholder);
+    return;
+  }
+  for (const key of keys) {
+    const col = getDatasetColumn(key);
+    if (!col) continue;
+    const chip = document.createElement("span");
+    chip.className = "dataset-group-chip";
+    chip.draggable = true;
+    chip.dataset.groupKey = key;
+    const label = document.createElement("span");
+    label.className = "dataset-group-chip-label";
+    label.textContent = col.label;
+    const remove = document.createElement("span");
+    remove.className = "dataset-group-chip-remove";
+    remove.innerHTML = `
+      <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+        <path d="M3 3l6 6M9 3L3 9"></path>
+      </svg>
+    `;
+    remove.setAttribute("aria-hidden", "true");
+    chip.append(label, remove);
+    chip.addEventListener("dragstart", (event) => {
+      if (event.target?.closest?.(".dataset-group-chip-remove")) {
+        event.preventDefault();
+        return;
+      }
+      event.dataTransfer?.setData(DATASET_GROUP_DRAG_TYPE, key);
+      event.dataTransfer?.setData(DATASET_COLUMN_DRAG_TYPE, key);
+      event.dataTransfer?.setData("text/plain", col.label);
+      event.dataTransfer.effectAllowed = "move";
+      state.datasetGroupDragSourceKey = key;
+      state.datasetTableColumnDragSourceKey = key;
+      setDatasetColumnDragImage(event, col.label);
+    });
+    chip.addEventListener("dragover", (event) => {
+      if (!hasDataTransferType(event.dataTransfer, DATASET_GROUP_DRAG_TYPE)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      updateDatasetGroupChipDragIndicator(chip, event.dataTransfer?.getData(DATASET_GROUP_DRAG_TYPE) || state.datasetGroupDragSourceKey || "", key, getDatasetGroupChipDropPosition(event, chip));
+    });
+    chip.addEventListener("dragleave", () => {
+      chip.classList.remove("group-drag-before", "group-drag-after");
+    });
+    chip.addEventListener("drop", (event) => {
+      if (!hasDataTransferType(event.dataTransfer, DATASET_GROUP_DRAG_TYPE)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const sourceKey = event.dataTransfer?.getData(DATASET_GROUP_DRAG_TYPE) || state.datasetGroupDragSourceKey || "";
+      const position = getDatasetGroupChipDropPosition(event, chip);
+      clearDatasetGroupDropState();
+      reorderDatasetGroupKey(sourceKey, key, position);
+    });
+    chip.addEventListener("dragend", () => {
+      clearDatasetGroupDropState();
+      clearDatasetColumnDragIndicators();
+      removeDatasetColumnDragImage();
+      state.datasetGroupDragSourceKey = "";
+      state.datasetTableColumnDragSourceKey = "";
+    });
+    wrap.appendChild(chip);
+  }
+  wrap.appendChild(placeholder);
+}
+
+function getDatasetGroupChipDropPosition(event, chip) {
+  const rect = chip?.getBoundingClientRect?.();
+  if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.width) || rect.width <= 0) return "before";
+  return event.clientX > rect.left + rect.width / 2 ? "after" : "before";
+}
+
+function updateDatasetGroupChipDragIndicator(targetChip, sourceKey, targetKey, position = "before") {
+  for (const chip of els.datasetGroupByStatus?.querySelectorAll?.(".dataset-group-chip.group-drag-before, .dataset-group-chip.group-drag-after") || []) {
+    chip.classList.remove("group-drag-before", "group-drag-after");
+  }
+  if (!targetChip || !sourceKey || !targetKey || sourceKey === targetKey) return;
+  targetChip.classList.add(position === "after" ? "group-drag-after" : "group-drag-before");
+}
+
+function reorderDatasetGroupKey(sourceKey, targetKey, position = "before") {
+  const source = toText(sourceKey);
+  const target = toText(targetKey);
+  const keys = getDatasetGroupByKeys();
+  if (!keys.includes(source) || !keys.includes(target) || source === target) return false;
+  const next = keys.filter((key) => key !== source);
+  const targetIndex = next.indexOf(target);
+  if (targetIndex < 0) return false;
+  next.splice(targetIndex + (position === "after" ? 1 : 0), 0, source);
+  applyDatasetGroupByKeys(next);
+  return true;
 }
 
 
@@ -471,7 +591,7 @@ function applyDatasetTablePreferences(source) {
     if (selected.size) datasetTableView.filters.set(normalized, selected);
   });
   if (Array.isArray(prefs.groupBy)) {
-    datasetTableView.groupBy = prefs.groupBy.map(toText).filter((key) => ["dataFormat", "category"].includes(key)).slice(0, 2);
+    datasetTableView.groupBy = prefs.groupBy.map(toText).filter((key, index, list) => known.has(key) && list.indexOf(key) === index);
   }
   datasetTableView.collapsedGroups = new Set(
     Array.isArray(prefs.collapsedGroups)
@@ -509,6 +629,7 @@ function setEmptyTable(message, options = {}) {
   } else {
     delete els.datasetTableSurface.dataset.emptyAddDataset;
   }
+  syncDatasetGroupByToolbar();
   syncDatasetActiveFiltersToolbar();
   const table = document.createElement("table");
   table.className = "pi-table";
@@ -620,34 +741,60 @@ function getOrderedDatasetColumns() {
   return ordered.map(getDatasetColumn).filter(Boolean);
 }
 
+function getVisibleDatasetColumns() {
+  const groupKeys = new Set(getDatasetGroupByKeys());
+  return getOrderedDatasetColumns().filter((col) => !groupKeys.has(col.key));
+}
+
 function getDatasetGroupByKeys() {
   const raw = Array.isArray(datasetTableView.groupBy)
     ? datasetTableView.groupBy
     : [datasetTableView.groupBy];
-  const allowed = new Set(["dataFormat", "category"]);
   const keys = [];
   for (const key of raw) {
     const normalized = toText(key);
-    if (!allowed.has(normalized) || keys.includes(normalized)) continue;
+    if (!isDatasetColumnGroupable(normalized) || keys.includes(normalized)) continue;
     keys.push(normalized);
-    if (keys.length >= 2) break;
   }
   datasetTableView.groupBy = keys;
   return keys;
 }
 
+function applyDatasetGroupByKeys(keys) {
+  datasetTableView.groupBy = (Array.isArray(keys) ? keys : [])
+    .map(toText)
+    .filter((key, index, list) => isDatasetColumnGroupable(key) && list.indexOf(key) === index);
+  datasetTableView.collapsedGroups.clear();
+  saveDatasetTablePreferences();
+  renderDatasetTable();
+}
+
+function addDatasetGroupByKey(key) {
+  const normalized = toText(key);
+  if (!isDatasetColumnGroupable(normalized)) return false;
+  const keys = getDatasetGroupByKeys();
+  if (keys.includes(normalized)) return true;
+  applyDatasetGroupByKeys([...keys, normalized]);
+  return true;
+}
+
+function removeDatasetGroupByKey(key) {
+  const normalized = toText(key);
+  const keys = getDatasetGroupByKeys();
+  if (!keys.includes(normalized)) return false;
+  applyDatasetGroupByKeys(keys.filter((item) => item !== normalized));
+  return true;
+}
+
 function setDatasetGroupByKey(key) {
   const normalized = toText(key);
-  if (!["dataFormat", "category"].includes(normalized)) return;
+  if (!isDatasetColumnGroupable(normalized)) return;
   const keys = getDatasetGroupByKeys();
   const next = keys.includes(normalized)
     ? keys.filter((item) => item !== normalized)
-    : [...keys, normalized].slice(-2);
-  datasetTableView.groupBy = next;
-  datasetTableView.collapsedGroups.clear();
+    : [...keys, normalized];
   closeDatasetTableContextMenu();
-  saveDatasetTablePreferences();
-  renderDatasetTable();
+  applyDatasetGroupByKeys(next);
 }
 
 function getDatasetCellValue(row, key) {
@@ -1078,7 +1225,7 @@ function getDatasetTableWidth(key) {
 }
 
 function getDatasetTableTotalWidth() {
-  return getOrderedDatasetColumns().reduce((sum, col) => sum + getDatasetTableWidth(col.key), 0);
+  return getVisibleDatasetColumns().reduce((sum, col) => sum + getDatasetTableWidth(col.key), 0);
 }
 
 function syncDatasetTableTotalWidth() {
@@ -1114,31 +1261,65 @@ function clearDatasetColumnDragIndicators() {
   }
 }
 
-function updateDatasetColumnDragIndicator(targetHeader, sourceKey, targetKey) {
+function removeDatasetColumnDragImage() {
+  state.datasetColumnDragImage?.remove?.();
+  state.datasetColumnDragImage = null;
+}
+
+function setDatasetColumnDragImage(event, label) {
+  removeDatasetColumnDragImage();
+  if (!event.dataTransfer?.setDragImage) return;
+  const ghost = document.createElement("div");
+  ghost.className = "pi-table-column-drag-image";
+  ghost.textContent = label || "Column";
+  document.body.appendChild(ghost);
+  state.datasetColumnDragImage = ghost;
+  const rect = ghost.getBoundingClientRect();
+  event.dataTransfer.setDragImage(ghost, Math.min(110, Math.max(24, rect.width / 2)), 15);
+}
+
+function getDatasetColumnDropPosition(event, targetHeader) {
+  const rect = targetHeader?.getBoundingClientRect?.();
+  if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.width) || rect.width <= 0) return "before";
+  return event.clientX > rect.left + rect.width / 2 ? "after" : "before";
+}
+
+function updateDatasetColumnDragIndicator(targetHeader, sourceKey, targetKey, position = "before") {
   clearDatasetColumnDragIndicators();
   if (!targetHeader || !sourceKey || !targetKey || sourceKey === targetKey) return;
   const columns = datasetTableView.columns.slice();
   const sourceIndex = columns.indexOf(sourceKey);
   const targetIndex = columns.indexOf(targetKey);
   if (sourceIndex < 0 || targetIndex < 0) return;
-  targetHeader.classList.add(sourceIndex < targetIndex ? "pi-col-drag-after" : "pi-col-drag-before");
+  targetHeader.classList.add(position === "after" ? "pi-col-drag-after" : "pi-col-drag-before");
 }
 
 function createDatasetTableHeaderCell(col, colIndex, context = null) {
   const th = document.createElement("th");
   th.dataset.colKey = col.key;
   th.addEventListener("dragover", (event) => {
-    if (!event.dataTransfer?.types?.includes("text/x-pi-column")) return;
+    if (!hasDataTransferType(event.dataTransfer, DATASET_COLUMN_DRAG_TYPE)) return;
     event.preventDefault();
-    updateDatasetColumnDragIndicator(th, event.dataTransfer?.getData("text/x-pi-column") || "", col.key);
+    updateDatasetColumnDragIndicator(
+      th,
+      event.dataTransfer?.getData(DATASET_COLUMN_DRAG_TYPE) || state.datasetTableColumnDragSourceKey || "",
+      col.key,
+      getDatasetColumnDropPosition(event, th)
+    );
   });
   th.addEventListener("dragleave", () => th.classList.remove("pi-col-drag-before", "pi-col-drag-after"));
   th.addEventListener("drop", (event) => {
-    const sourceKey = event.dataTransfer?.getData("text/x-pi-column") || "";
+    const sourceKey = event.dataTransfer?.getData(DATASET_COLUMN_DRAG_TYPE) || "";
     clearDatasetColumnDragIndicators();
     if (!sourceKey || sourceKey === col.key) return;
     event.preventDefault();
-    moveDatasetTableColumn(sourceKey, col.key);
+    event.stopPropagation();
+    const position = getDatasetColumnDropPosition(event, th);
+    if (hasDataTransferType(event.dataTransfer, DATASET_GROUP_DRAG_TYPE)) {
+      moveDatasetGroupedColumnToTable(sourceKey, col.key, position);
+    } else {
+      moveDatasetTableColumn(sourceKey, col.key, position);
+    }
   });
 
   const cell = document.createElement("div");
@@ -1164,13 +1345,18 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
   });
   label.addEventListener("dragstart", (event) => {
     state.datasetTableColumnDragStarted = true;
-    event.dataTransfer?.setData("text/x-pi-column", col.key);
+    state.datasetTableColumnDragSourceKey = col.key;
+    event.dataTransfer?.setData(DATASET_COLUMN_DRAG_TYPE, col.key);
+    event.dataTransfer?.setData("text/plain", col.label);
     event.dataTransfer.effectAllowed = "move";
+    setDatasetColumnDragImage(event, col.label);
   });
   label.addEventListener("dragend", () => {
     clearDatasetColumnDragIndicators();
+    removeDatasetColumnDragImage();
     window.setTimeout(() => {
       state.datasetTableColumnDragStarted = false;
+      state.datasetTableColumnDragSourceKey = "";
     }, 0);
   });
   cell.appendChild(label);
@@ -1292,14 +1478,16 @@ function createDatasetGroupRow(part, depth, columns) {
   const groupId = getDatasetGroupId(part.path);
   const collapsed = datasetTableView.collapsedGroups.has(groupId);
   const tr = document.createElement("tr");
-  tr.className = `pi-table-group-row depth-${Math.min(1, depth)}`;
+  tr.className = `pi-table-group-row depth-${depth}`;
   tr.classList.toggle("collapsed", collapsed);
   tr.dataset.groupId = groupId;
+  tr.dataset.groupDepth = String(depth);
   const td = document.createElement("td");
-  td.colSpan = columns.length;
+  td.colSpan = Math.max(1, columns.length);
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "pi-table-group-button";
+  btn.style.paddingLeft = `${9 + Math.max(0, depth) * 13}px`;
   btn.innerHTML = `
     <svg class="pi-table-group-caret" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
       <path d="M3.2 4.2h5.6L6 7.7z"></path>
@@ -1385,7 +1573,7 @@ function createDatasetTable(records, context = null) {
   table.style.width = `${tableWidth}px`;
   table.style.minWidth = `${tableWidth}px`;
   const colgroup = document.createElement("colgroup");
-  const columns = getOrderedDatasetColumns();
+  const columns = getVisibleDatasetColumns();
   columns.forEach((col) => {
     const colEl = document.createElement("col");
     colEl.dataset.colKey = col.key;
@@ -1416,6 +1604,7 @@ function createDatasetTable(records, context = null) {
     if (groupKeys.length) appendGroupedDatasetRows(tbody, records, groupKeys, columns);
     else for (const item of sortDatasetRecords(records)) tbody.appendChild(createDatasetRecordRow(item, columns));
   }
+  syncDatasetGroupByToolbar();
   syncDatasetActiveFiltersToolbar(context);
   pruneDatasetTableSelection();
   syncDatasetTableSelectionDom();
@@ -1424,14 +1613,37 @@ function createDatasetTable(records, context = null) {
   return group;
 }
 
-function moveDatasetTableColumn(sourceKey, targetKey) {
+function getDatasetColumnInsertIndex(columns, sourceKey, targetKey, position = "before") {
+  const withoutSource = columns.filter((key) => key !== sourceKey);
+  const targetIndex = withoutSource.indexOf(targetKey);
+  if (targetIndex < 0) return -1;
+  return targetIndex + (position === "after" ? 1 : 0);
+}
+
+function moveDatasetTableColumn(sourceKey, targetKey, position = "before") {
   const columns = datasetTableView.columns.slice();
-  const from = columns.indexOf(sourceKey);
-  const to = columns.indexOf(targetKey);
-  if (from < 0 || to < 0 || from === to) return;
-  columns.splice(from, 1);
-  columns.splice(to, 0, sourceKey);
-  datasetTableView.columns = columns;
+  if (!columns.includes(sourceKey) || !columns.includes(targetKey) || sourceKey === targetKey) return;
+  const next = columns.filter((key) => key !== sourceKey);
+  const insertIndex = getDatasetColumnInsertIndex(columns, sourceKey, targetKey, position);
+  if (insertIndex < 0) return;
+  next.splice(insertIndex, 0, sourceKey);
+  datasetTableView.columns = next;
+  saveDatasetTablePreferences();
+  renderDatasetTable();
+}
+
+function moveDatasetGroupedColumnToTable(sourceKey, targetKey, position = "before") {
+  const normalized = toText(sourceKey);
+  if (!getDatasetGroupByKeys().includes(normalized) || !getDatasetColumn(targetKey) || normalized === targetKey) return;
+  const columns = datasetTableView.columns.slice();
+  if (!columns.includes(normalized)) columns.push(normalized);
+  const next = columns.filter((key) => key !== normalized);
+  const insertIndex = getDatasetColumnInsertIndex(columns, normalized, targetKey, position);
+  if (insertIndex < 0) return;
+  next.splice(insertIndex, 0, normalized);
+  datasetTableView.columns = next;
+  datasetTableView.groupBy = getDatasetGroupByKeys().filter((key) => key !== normalized);
+  datasetTableView.collapsedGroups.clear();
   saveDatasetTablePreferences();
   renderDatasetTable();
 }
@@ -2181,13 +2393,81 @@ function findDatasetFilterButton(key) {
   return th?.querySelector?.(".pi-table-filter-btn") || null;
 }
 
+function handleDatasetGroupZoneDragOver(event) {
+  if (!hasDataTransferType(event.dataTransfer, DATASET_COLUMN_DRAG_TYPE)) return;
+  event.preventDefault();
+  const key = event.dataTransfer?.getData(DATASET_COLUMN_DRAG_TYPE) || "";
+  const valid = !key || isDatasetColumnGroupable(key);
+  event.dataTransfer.dropEffect = valid ? "move" : "none";
+  els.datasetGroupByStatus?.classList?.toggle("drag-over", valid);
+  els.datasetGroupByStatus?.classList?.toggle("drag-invalid", !valid);
+}
+
+function handleDatasetGroupZoneDrop(event) {
+  if (!hasDataTransferType(event.dataTransfer, DATASET_COLUMN_DRAG_TYPE)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (hasDataTransferType(event.dataTransfer, DATASET_GROUP_DRAG_TYPE)) {
+    const groupKey = event.dataTransfer?.getData(DATASET_GROUP_DRAG_TYPE) || state.datasetGroupDragSourceKey || "";
+    const keys = getDatasetGroupByKeys();
+    if (keys.includes(groupKey) && keys[keys.length - 1] !== groupKey) {
+      applyDatasetGroupByKeys([...keys.filter((key) => key !== groupKey), groupKey]);
+    }
+    clearDatasetGroupDropState();
+    return;
+  }
+  const key = event.dataTransfer?.getData(DATASET_COLUMN_DRAG_TYPE) || "";
+  clearDatasetGroupDropState();
+  if (!addDatasetGroupByKey(key)) {
+    const col = getDatasetColumn(key);
+    setStatus(`${col?.label || "This column"} cannot be grouped.`);
+  }
+}
+
+function handleDatasetGroupRemoveDragOver(event) {
+  if (!hasDataTransferType(event.dataTransfer, DATASET_GROUP_DRAG_TYPE)) return;
+  if (event.target?.closest?.(".pi-table thead th")) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  els.datasetTableWrap?.classList?.add("group-remove-target");
+}
+
+function handleDatasetGroupRemoveDrop(event) {
+  if (!hasDataTransferType(event.dataTransfer, DATASET_GROUP_DRAG_TYPE)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const key = event.dataTransfer?.getData(DATASET_GROUP_DRAG_TYPE) || "";
+  clearDatasetGroupDropState();
+  removeDatasetGroupByKey(key);
+}
+
 function initDatasetTableInteractions() {
   if (els.rightPanel?.dataset?.tableInteractionsWired === "1") return;
   if (els.rightPanel) els.rightPanel.dataset.tableInteractionsWired = "1";
+  syncDatasetGroupByToolbar();
   if (els.datasetTableSurface) {
     els.datasetTableSurface.tabIndex = 0;
     els.datasetTableSurface.addEventListener("keydown", handleDatasetTableKeyDown);
   }
+  els.datasetGroupByStatus?.addEventListener("dragover", handleDatasetGroupZoneDragOver);
+  els.datasetGroupByStatus?.addEventListener("dragleave", (event) => {
+    if (els.datasetGroupByStatus?.contains(event.relatedTarget)) return;
+    clearDatasetGroupDropState();
+  });
+  els.datasetGroupByStatus?.addEventListener("drop", handleDatasetGroupZoneDrop);
+  els.datasetGroupByStatus?.addEventListener("click", (event) => {
+    const chip = event.target?.closest?.(".dataset-group-chip");
+    if (!chip || !event.target?.closest?.(".dataset-group-chip-remove")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    removeDatasetGroupByKey(chip.dataset.groupKey);
+  });
+  els.datasetTableWrap?.addEventListener("dragover", handleDatasetGroupRemoveDragOver);
+  els.datasetTableWrap?.addEventListener("dragleave", (event) => {
+    if (els.datasetTableWrap?.contains(event.relatedTarget)) return;
+    clearDatasetGroupDropState();
+  });
+  els.datasetTableWrap?.addEventListener("drop", handleDatasetGroupRemoveDrop);
   els.datasetTableSurface?.addEventListener("contextmenu", (event) => {
     if (event.target?.closest?.(".pi-table thead th")) {
       event.preventDefault();

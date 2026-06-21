@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added a visible Project Instance dataset table grouping drop zone with reorderable chips, inline guidance, clearer drag previews, and deeper nested grouping.",
+  "details": [
+    "Group chip close icons now use an SVG mark with a red circular hover state."
+  ]
+}

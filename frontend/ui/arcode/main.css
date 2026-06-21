@@ -1060,7 +1060,7 @@ body.tab-dragging #arcodeTabs.tabs {
 }
 
 .arcodeHomeLayout {
-  grid-template-columns: 286px minmax(0, 1fr);
+  grid-template-columns: var(--arcode-explorer-width, 286px) 6px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
   height: 100%;
@@ -1080,16 +1080,51 @@ body.tab-dragging #arcodeTabs.tabs {
   flex-direction: column;
 }
 
+.arcodeExplorerResizer {
+  position: relative;
+  min-width: 6px;
+  height: 100%;
+  background: #ffffff;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.arcodeExplorerResizer::before {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.arcodeExplorerResizer:hover::before,
+.arcodeExplorerResizer:focus-visible::before,
+.arcodeExplorerResizing .arcodeExplorerResizer::before {
+  background: #2f7ed8;
+}
+
+.arcodeExplorerResizer:focus-visible {
+  outline: 2px solid rgba(47, 126, 216, 0.35);
+  outline-offset: -2px;
+}
+
+.arcodeExplorerResizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .arcodeExplorerWorkspace {
   flex: 0 0 26px;
   display: flex;
   align-items: center;
+  gap: 6px;
   padding: 0 12px;
   border-bottom: 1px solid #e2e8f0;
   background: #f3f6fa;
 }
 
 .arcodeExplorerWorkspaceName {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1098,6 +1133,37 @@ body.tab-dragging #arcodeTabs.tabs {
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.arcodeExplorerRefreshBtn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.arcodeExplorerRefreshBtn:hover {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+.arcodeExplorerRefreshBtn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .arcodeExplorerFolders {
@@ -1270,6 +1336,10 @@ body.tab-dragging #arcodeTabs.tabs {
 @media (max-width: 640px) {
   .arcodeHomeLayout {
     grid-template-columns: 1fr;
+  }
+
+  .arcodeExplorerResizer {
+    display: none;
   }
 
   .arcodeCreateCards {

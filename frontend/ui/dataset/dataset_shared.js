@@ -67,10 +67,20 @@ export function injectDatasetMarkup(container) {
         </div>
 
         <div class="dsDetailLabel">
-          <label class="small" for="dsDetailFormula">Formula</label>
+          <label class="small" id="dsFormulaLabel" for="dsDetailFormulaBox">Formula</label>
         </div>
         <div class="dsDetailInput">
-          <textarea id="dsDetailFormula" autocomplete="off" readonly rows="1"></textarea>
+          <div id="dsDetailFormulaBox" class="dsDetailFormulaBox" role="group" aria-labelledby="dsFormulaLabel"></div>
+          <textarea id="dsDetailFormula" autocomplete="off" readonly rows="1" tabindex="-1" aria-hidden="true"></textarea>
+        </div>
+
+        <div class="dsDetailLabel">
+          <label class="small" id="dsDependentsTitle">Dependents</label>
+        </div>
+        <div class="dsDetailInput">
+          <div class="dsDatasetChipBox">
+            <div id="dsDependentsList" class="dsDependentsList" aria-live="polite"></div>
+          </div>
         </div>
       </div>
     </div>

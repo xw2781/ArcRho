@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "Arcode",
+  "audience": "user",
+  "summary": "Added manual and automatic refresh behavior to the Arcode file explorer.",
+  "details": [
+    "The Arcode workspace sidebar now has a refresh button.",
+    "Visible workspace folders refresh automatically when files change on disk."
+  ]
+}

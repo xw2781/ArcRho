@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added Ctrl+PageUp and Ctrl+PageDown keyboard shortcuts for switching between DFM tabs, including immediately after opening a DFM frame."
+}

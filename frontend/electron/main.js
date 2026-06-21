@@ -63,7 +63,8 @@ function resolveDfmRatioUndoDir(dirPath) {
 
 const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const MAIN_WINDOW_PREFS_FILE = "main_window_prefs.json";
-const ARCODE_USER_SETTINGS_FILE = "settings.json";
+const ARCODE_USER_SETTINGS_FILE = "user_settings.json";
+const ARCODE_LEGACY_USER_SETTINGS_FILE = "settings.json";
 const SCRIPTING_SHORTCUTS_FILE = "scripting_shortcuts.json";
 const SCRIPTING_NOTEBOOK_PREFS_FILE = "scripting_notebook_prefs.json";
 const WORKSPACE_PATHS_FILE = "workspace_paths.json";
@@ -73,6 +74,8 @@ const BACKEND_CONTROL_FLAGS = [
   ".restart_electron",
   ".shutdown_electron",
 ];
+const arcodeFolderWatchers = new Map();
+const arcodeFolderWatchCleanupWindowIds = new Set();
 const BACKEND_STARTUP_TIMEOUT_MS = Math.max(
   5000,
   parseInt(
@@ -715,8 +718,11 @@ function getArcodeUserSettingsPath() {
   return path.join(app.getPath("appData"), "Arcode", ARCODE_USER_SETTINGS_FILE);
 }
 
-function readArcodeUserSettingsFile() {
-  const filePath = getArcodeUserSettingsPath();
+function getArcodeLegacyUserSettingsPath() {
+  return path.join(app.getPath("appData"), "Arcode", ARCODE_LEGACY_USER_SETTINGS_FILE);
+}
+
+function readJsonObjectFile(filePath) {
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
@@ -725,23 +731,30 @@ function readArcodeUserSettingsFile() {
   }
 }
 
+function readArcodeUserSettingsFile() {
+  const settings = readJsonObjectFile(getArcodeUserSettingsPath());
+  if (Object.keys(settings).length) return settings;
+  return readJsonObjectFile(getArcodeLegacyUserSettingsPath());
+}
+
 function writeArcodeUserSettingsFile(settingsLike) {
   const settings = settingsLike && typeof settingsLike === "object" && !Array.isArray(settingsLike)
     ? settingsLike
     : {};
   const filePath = getArcodeUserSettingsPath();
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  let existing = {};
-  try { existing = JSON.parse(fs.readFileSync(filePath, "utf8")) || {}; } catch { existing = {}; }
+  const current = readJsonObjectFile(filePath);
+  const legacy = Object.keys(current).length ? {} : readJsonObjectFile(getArcodeLegacyUserSettingsPath());
+  const existing = Object.keys(current).length ? current : legacy;
   const payload = {
-    ...(existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {}),
+    ...existing,
     ...settings,
     updatedAt: new Date().toISOString(),
   };
   const tmpPath = `${filePath}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), "utf8");
   fs.renameSync(tmpPath, filePath);
-  return { ok: true, settings: payload };
+  return { ok: true, path: filePath, settings: payload };
 }
 
 function isWindowsAppsPath(filePath) {
@@ -1867,6 +1880,79 @@ ipcMain.handle("arcode-list-folder", async (_event, payload) => {
   }
 });
 
+function closeArcodeFolderWatch(watchId) {
+  const id = String(watchId || "").trim();
+  if (!id) return false;
+  const entry = arcodeFolderWatchers.get(id);
+  if (!entry) return false;
+  arcodeFolderWatchers.delete(id);
+  try {
+    entry.watcher.close();
+  } catch {
+    // Watchers may already be closed while a window is tearing down.
+  }
+  return true;
+}
+
+function closeArcodeFolderWatchesForWindow(windowId) {
+  for (const [watchId, entry] of Array.from(arcodeFolderWatchers.entries())) {
+    if (entry.windowId === windowId) closeArcodeFolderWatch(watchId);
+  }
+  arcodeFolderWatchCleanupWindowIds.delete(windowId);
+}
+
+ipcMain.handle("arcode-folder-watch-start", async (event, payload) => {
+  const folderPath = String(payload?.path || "").trim();
+  if (!folderPath) return { ok: false, error: "Empty folder path." };
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow || targetWindow.isDestroyed()) return { ok: false, error: "Window is unavailable." };
+  try {
+    const resolvedFolderPath = path.resolve(folderPath);
+    for (const [existingWatchId, entry] of arcodeFolderWatchers.entries()) {
+      if (entry.windowId === targetWindow.id && path.resolve(entry.path) === resolvedFolderPath) {
+        return { ok: true, watchId: existingWatchId, path: entry.path };
+      }
+    }
+    const stat = await fs.promises.stat(resolvedFolderPath);
+    if (!stat.isDirectory()) return { ok: false, error: `Not a folder: ${folderPath}` };
+    const watchId = `arcode_watch_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const watcher = fs.watch(resolvedFolderPath, { persistent: false }, (eventType, filename) => {
+      if (targetWindow.isDestroyed()) {
+        closeArcodeFolderWatch(watchId);
+        return;
+      }
+      targetWindow.webContents.send("arcode-folder-changed", {
+        watchId,
+        path: resolvedFolderPath,
+        eventType: String(eventType || ""),
+        filename: filename ? String(filename) : "",
+      });
+    });
+    watcher.on("error", (err) => {
+      if (!targetWindow.isDestroyed()) {
+        targetWindow.webContents.send("arcode-folder-changed", {
+          watchId,
+          path: resolvedFolderPath,
+          error: String(err?.message || err || "Folder watch failed."),
+        });
+      }
+      closeArcodeFolderWatch(watchId);
+    });
+    arcodeFolderWatchers.set(watchId, { watcher, path: resolvedFolderPath, windowId: targetWindow.id });
+    if (!arcodeFolderWatchCleanupWindowIds.has(targetWindow.id)) {
+      arcodeFolderWatchCleanupWindowIds.add(targetWindow.id);
+      targetWindow.once("closed", () => closeArcodeFolderWatchesForWindow(targetWindow.id));
+    }
+    return { ok: true, watchId, path: resolvedFolderPath };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not watch folder.") };
+  }
+});
+
+ipcMain.handle("arcode-folder-watch-stop", async (_event, payload) => {
+  return { ok: closeArcodeFolderWatch(payload?.watchId) };
+});
+
 ipcMain.handle("open-path", async (_event, payload) => {
   const targetPath = String(payload?.path || "").trim();
   const preferredApp = String(payload?.preferredApp || payload?.preferred_app || "").trim().toLowerCase();
@@ -2489,6 +2575,9 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", async () => {
   allowClose = true;
+  for (const watchId of Array.from(arcodeFolderWatchers.keys())) {
+    closeArcodeFolderWatch(watchId);
+  }
   arcBotHost?.stop();
   await requestBackendShutdown();
   unregisterBackendClient();
