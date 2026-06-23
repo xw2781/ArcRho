@@ -1319,7 +1319,7 @@
       border: 1px solid #c9ced6;
       border-radius: var(--shell-floating-radius);
       box-shadow: 0 14px 34px rgba(17, 24, 39, 0.16);
-      z-index: 9000;
+      z-index: 90;
       overflow: hidden;
       opacity: 0;
       visibility: hidden;
@@ -1340,6 +1340,9 @@
         opacity 170ms ease,
         transform 170ms ease,
         visibility 0s linear 0s;
+    }
+    #macroWindow.pinned {
+      z-index: 12000;
     }
     .macroHeader {
       height: 34px;
@@ -1384,6 +1387,15 @@
     }
     .macroIconBtn:hover {
       background: #dfe3e8;
+    }
+    .macroIconBtn.active,
+    .macroIconBtn[aria-pressed="true"] {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+    .macroIconBtn.active:hover,
+    .macroIconBtn[aria-pressed="true"]:hover {
+      background: #cfe2ff;
     }
     .macroIconBtn:disabled {
       opacity: 0.45;
@@ -1503,9 +1515,10 @@
       cursor: ns-resize !important;
       user-select: none;
     }
-    .macroSplitContextMenu {
+    .macroSplitContextMenu,
+    .macroItemContextMenu {
       position: fixed;
-      z-index: 9100;
+      z-index: 12100;
       display: none;
       min-width: 136px;
       padding: 4px;
@@ -1514,12 +1527,14 @@
       background: #ffffff;
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
     }
-    .macroSplitContextMenu.open {
+    .macroSplitContextMenu.open,
+    .macroItemContextMenu.open {
       display: flex;
       flex-direction: column;
       gap: 2px;
     }
-    .macroSplitContextMenu button {
+    .macroSplitContextMenu button,
+    .macroItemContextMenu button {
       height: 26px;
       padding: 0 9px;
       border: 0;
@@ -1531,20 +1546,31 @@
       cursor: pointer;
     }
     .macroSplitContextMenu button:hover,
-    .macroSplitContextMenu button:focus-visible {
+    .macroSplitContextMenu button:focus-visible,
+    .macroItemContextMenu button:hover,
+    .macroItemContextMenu button:focus-visible {
       background: #eef6ff;
       outline: none;
     }
-    .macroSplitContextMenu button.danger {
+    .macroSplitContextMenu button.danger,
+    .macroItemContextMenu button.danger {
       color: #be123c;
     }
-    .macroSplitContextMenu button:disabled {
+    .macroSplitContextMenu button:disabled,
+    .macroItemContextMenu button:disabled {
       color: #94a3b8;
       cursor: default;
     }
     .macroSplitContextMenu button:disabled:hover,
-    .macroSplitContextMenu button:disabled:focus-visible {
+    .macroSplitContextMenu button:disabled:focus-visible,
+    .macroItemContextMenu button:disabled:hover,
+    .macroItemContextMenu button:disabled:focus-visible {
       background: transparent;
+    }
+    .macroContextMenuSep {
+      height: 1px;
+      margin: 3px 4px;
+      background: #e2e8f0;
     }
     .macroListItem {
       display: block;
@@ -2107,6 +2133,13 @@
           <path d="M6 15a7 7 0 0 0 11 3"></path>
         </svg>
       </button>
+      <button id="macroPinBtn" class="macroIconBtn" type="button" title="Pin macros on top" aria-label="Pin macros on top" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 17v5"></path>
+          <path d="M5 17h14"></path>
+          <path d="M8 3h8l-1 7 3 3v4H6v-4l3-3-1-7z"></path>
+        </svg>
+      </button>
       <button id="macroEditBtn" class="macroIconBtn" type="button" title="Edit macro" aria-label="Edit macro" disabled>
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 20h9"></path>
@@ -2121,7 +2154,7 @@
       </button>
     </div>
     <div class="macroBody">
-      <div class="macroContent">
+      <div id="macroContent" class="macroContent">
         <div id="macroList" class="macroList" role="listbox" aria-label="Available macros"></div>
         <div id="macroSplitHandle" class="macroSplitHandle" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize macro list and description sections" title="Drag to resize sections"></div>
         <div id="macroDescription" class="macroDescription">Select a macro to view its description.</div>
@@ -2278,7 +2311,7 @@
       </div>
       <div id="aboutBody">
         <div id="aboutAppName">ArcRho</div>
-        <div id="aboutVersion">Version 1.0.6</div>
+        <div id="aboutVersion">Version 1.1.0</div>
         <div id="aboutDesc">Actuarial Data & Analytics System</div>
         <div id="aboutActions">
           <button id="aboutCheckUpdatesBtn" type="button">Check for Updates</button>
@@ -2300,7 +2333,7 @@
       }
     })();
   </script>
-  <script type="module" src="/ui/shell/ui_shell.js?v=20260620h"></script>
+  <script type="module" src="/ui/shell/ui_shell.js?v=20260622a"></script>
 </body>
 </html>
 

@@ -475,6 +475,155 @@ class ProjectInstanceAutomation:
         return ArcRhoWindow(self._ui, window_id)
 
 
+class TaskDesignerAutomation:
+    """Automation entry point for the shell Task Designer window."""
+
+    def __init__(self, ui: "ArcRhoUI") -> None:
+        self._ui = ui
+
+    @staticmethod
+    def _target_args(
+        *,
+        window_id: str | None = None,
+        session_id: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        args = dict(kwargs)
+        args["windowId"] = str(window_id or "task-designer-main")
+        if session_id is not None:
+            args["sessionId"] = str(session_id)
+        return args
+
+    def open(
+        self,
+        *,
+        title: str = "Task Designer",
+        context: str = "",
+        macro_id: str = "",
+        window_id: str | None = None,
+        session_id: str | None = None,
+        timeout_sec: float = 30.0,
+    ) -> UiCommandResult:
+        return self._ui.send_command(
+            "taskDesigner.open",
+            args=self._target_args(
+                window_id=window_id,
+                session_id=session_id,
+                title=str(title or "Task Designer"),
+                context=str(context or ""),
+                macroId=str(macro_id or ""),
+            ),
+            timeout_sec=timeout_sec,
+        )
+
+    def set_tasks(
+        self,
+        tasks: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+        *,
+        window_id: str | None = None,
+        session_id: str | None = None,
+        timeout_sec: float = 30.0,
+    ) -> UiCommandResult:
+        return self._ui.send_command(
+            "taskDesigner.setTasks",
+            args=self._target_args(window_id=window_id, session_id=session_id, tasks=list(tasks or [])),
+            timeout_sec=timeout_sec,
+        )
+
+    def register_task(
+        self,
+        task_id: str,
+        name: str,
+        description: str = "",
+        *,
+        window_id: str | None = None,
+        session_id: str | None = None,
+        timeout_sec: float = 30.0,
+    ) -> UiCommandResult:
+        return self._ui.send_command(
+            "taskDesigner.registerTask",
+            args=self._target_args(
+                window_id=window_id,
+                session_id=session_id,
+                taskId=str(task_id or ""),
+                name=str(name or task_id or ""),
+                description=str(description or ""),
+            ),
+            timeout_sec=timeout_sec,
+        )
+
+    def start_task(
+        self,
+        task_id: str,
+        *,
+        window_id: str | None = None,
+        session_id: str | None = None,
+        timeout_sec: float = 30.0,
+    ) -> UiCommandResult:
+        return self._ui.send_command(
+            "taskDesigner.startTask",
+            args=self._target_args(window_id=window_id, session_id=session_id, taskId=str(task_id or "")),
+            timeout_sec=timeout_sec,
+        )
+
+    def complete_task(
+        self,
+        task_id: str,
+        result: str,
+        *,
+        message: str = "",
+        details: Any = None,
+        window_id: str | None = None,
+        session_id: str | None = None,
+        timeout_sec: float = 30.0,
+    ) -> UiCommandResult:
+        return self._ui.send_command(
+            "taskDesigner.completeTask",
+            args=self._target_args(
+                window_id=window_id,
+                session_id=session_id,
+                taskId=str(task_id or ""),
+                result=str(result or ""),
+                message=str(message or ""),
+                details=details,
+            ),
+            timeout_sec=timeout_sec,
+        )
+
+    def update_task(
+        self,
+        task_id: str,
+        *,
+        status: str | None = None,
+        message: str | None = None,
+        details: Any = None,
+        window_id: str | None = None,
+        session_id: str | None = None,
+        timeout_sec: float = 30.0,
+    ) -> UiCommandResult:
+        args = self._target_args(window_id=window_id, session_id=session_id, taskId=str(task_id or ""))
+        if status is not None:
+            args["status"] = str(status)
+        if message is not None:
+            args["message"] = str(message)
+        if details is not None:
+            args["details"] = details
+        return self._ui.send_command("taskDesigner.updateTask", args=args, timeout_sec=timeout_sec)
+
+    def close(
+        self,
+        *,
+        window_id: str | None = None,
+        session_id: str | None = None,
+        timeout_sec: float = 30.0,
+    ) -> UiCommandResult:
+        return self._ui.send_command(
+            "taskDesigner.close",
+            args=self._target_args(window_id=window_id, session_id=session_id),
+            timeout_sec=timeout_sec,
+        )
+
+
 class ArcRhoUI:
     """Convenience object for ArcRho UI automation commands."""
 
@@ -488,6 +637,10 @@ class ArcRhoUI:
     @property
     def project_instance(self) -> ProjectInstanceAutomation:
         return ProjectInstanceAutomation(self)
+
+    @property
+    def task_designer(self) -> TaskDesignerAutomation:
+        return TaskDesignerAutomation(self)
 
     def get_app_health(self, **kwargs: Any) -> dict[str, Any]:
         kwargs.setdefault("app_url", self.app_url)
@@ -525,3 +678,6 @@ class ArcRhoUI:
 
     def window(self, window_id: str) -> ArcRhoWindow:
         return ArcRhoWindow(self, window_id)
+
+
+task_designer = TaskDesignerAutomation(ArcRhoUI())

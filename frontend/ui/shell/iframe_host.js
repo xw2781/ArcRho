@@ -6,6 +6,7 @@ export function createIframeHost(deps) {
     getState,
     normalizeBrowsingHistoryEntry,
     refreshActiveTab,
+    runHotkeyAction,
     setActive,
     handleShellFileDragOver,
     handleShellFileDrop,
@@ -66,6 +67,15 @@ export function createIframeHost(deps) {
         frameWin.addEventListener("keydown", (e) => {
           if (e.key === "Escape") closeMenus();
           const key = String(e.key || "");
+          const lowerKey = key.toLowerCase();
+          const isAltQ = e.altKey && !e.ctrlKey && !e.shiftKey && (lowerKey === "q" || e.code === "KeyQ");
+          if (isAltQ) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+            runHotkeyAction?.("settings_clear_cache_reload");
+            return;
+          }
           const isRefreshKey = (key === "F5" && e.ctrlKey) || ((key === "r" || key === "R") && e.ctrlKey && !e.shiftKey);
           if (isRefreshKey) {
             e.preventDefault();
@@ -172,6 +182,16 @@ export function createIframeHost(deps) {
       iframe.src = `/ui/shell/browsing_history.html?v=${encodeURIComponent(uiVersionParam)}`;
     } else if (tab.type === "agent_guide") {
       iframe.src = `/ui/agent_guide/agent_guide.html?v=${encodeURIComponent(uiVersionParam)}`;
+    } else if (tab.type === "task_designer") {
+      const params = new URLSearchParams();
+      const options = tab.taskDesignerOptions && typeof tab.taskDesignerOptions === "object" ? tab.taskDesignerOptions : {};
+      params.set("v", uiVersionParam);
+      if (options.title) params.set("title", String(options.title));
+      if (options.contextLabel) params.set("context", String(options.contextLabel));
+      if (options.macroId) params.set("macro", String(options.macroId));
+      if (options.autoRun) params.set("autorun", "1");
+      if (options.contextTabId) params.set("contextTabId", String(options.contextTabId));
+      iframe.src = `/ui/task_designer/task_designer.html?${params.toString()}`;
     } else if (tab.type === "scripting") {
       const inst = tab.scInst || tab.id || `sc_${Date.now()}`;
       const openPath = String(tab.scOpenPath || "").trim();

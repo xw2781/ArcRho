@@ -4,17 +4,21 @@ const API_BASE = window.location.origin;
 const macroWindow = document.getElementById("macroWindow");
 const macroCloseBtn = document.getElementById("macroCloseBtn");
 const macroRefreshBtn = document.getElementById("macroRefreshBtn");
+const macroPinBtn = document.getElementById("macroPinBtn");
 const macroRunBtn = document.getElementById("macroRunBtn");
 const macroEditBtn = document.getElementById("macroEditBtn");
 const macroList = document.getElementById("macroList");
 const macroDescription = document.getElementById("macroDescription");
 const macroStatus = document.getElementById("macroStatus");
 const macroHeader = document.getElementById("macroHeader");
-const macroContent = document.getElementById("macroContent");
+const macroContent = document.getElementById("macroContent") || macroWindow?.querySelector?.(".macroContent");
 const macroSplitHandle = document.getElementById("macroSplitHandle");
 
+const TASK_DESIGNER_COMMAND_MESSAGE = "arcrho:task-designer-automation-command";
 const MACRO_WINDOW_POSITION_KEY = "arcrho_macro_window_position";
 const MACRO_SPLIT_HEIGHT_KEY = "arcrho_macro_window_split_height";
+const MACRO_ORDER_KEY = "arcrho_macro_order";
+const MACRO_PINNED_KEY = "arcrho_macro_window_pinned";
 const MACRO_MIN_LIST_HEIGHT = 100;
 const MACRO_MIN_DESCRIPTION_HEIGHT = 76;
 const DEMO_MACROS = [
@@ -49,6 +53,7 @@ let selectedMacroId = "";
 let macroWindowWired = false;
 let macroSplitCustomized = false;
 let macroSplitContextMenu = null;
+let macroItemContextMenu = null;
 
 function setMacroStatus(text, tone = "", options = {}) {
   const message = String(text || "");
@@ -61,6 +66,38 @@ function setMacroStatus(text, tone = "", options = {}) {
   }
 }
 
+function readMacroPinned() {
+  try {
+    return localStorage.getItem(MACRO_PINNED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveMacroPinned(pinned) {
+  try {
+    localStorage.setItem(MACRO_PINNED_KEY, pinned ? "1" : "0");
+  } catch {}
+}
+
+function applyMacroPinned(pinned) {
+  if (!macroWindow) return;
+  const isPinned = !!pinned;
+  macroWindow.classList.toggle("pinned", isPinned);
+  if (macroPinBtn) {
+    macroPinBtn.classList.toggle("active", isPinned);
+    macroPinBtn.setAttribute("aria-pressed", isPinned ? "true" : "false");
+    macroPinBtn.title = isPinned ? "Unpin macros from top" : "Pin macros on top";
+    macroPinBtn.setAttribute("aria-label", isPinned ? "Unpin macros from top" : "Pin macros on top");
+  }
+}
+
+function toggleMacroPinned() {
+  const next = !macroWindow?.classList.contains("pinned");
+  applyMacroPinned(next);
+  saveMacroPinned(next);
+}
+
 function getSelectedMacro() {
   return macros.find((macro) => macro.id === selectedMacroId) || null;
 }
@@ -69,12 +106,74 @@ function isDemoMacro(macro) {
   return !!macro?.demo;
 }
 
+function isDfmTab(tab) {
+  return !!tab && (tab.type === "dfm" || (tab.type === "project_instance" && tab.piDfmActive));
+}
+
+function isTaskDesignerWrapperMacro(macro) {
+  if (!macro || isDemoMacro(macro)) return false;
+  if (macro.task_designer_wrapper || macro.taskDesignerWrapper) return true;
+  const haystack = `${macro.name || ""} ${macro.description || ""} ${macro.id || ""}`.toLowerCase();
+  return haystack.includes("task designer wrapper") || haystack.includes("task instance");
+}
+
 function canDeleteMacro(macro) {
   return !!macro?.path && !isDemoMacro(macro);
 }
 
+function readMacroOrder() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MACRO_ORDER_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.map((id) => String(id || "")).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMacroOrder(order) {
+  try {
+    localStorage.setItem(MACRO_ORDER_KEY, JSON.stringify(Array.isArray(order) ? order : []));
+  } catch {}
+}
+
+function orderedMacroList(items) {
+  const list = Array.isArray(items) ? items : [];
+  const order = readMacroOrder();
+  if (!order.length) return list;
+  const rank = new Map(order.map((id, index) => [id, index]));
+  return [...list].sort((a, b) => {
+    const aRank = rank.has(a.id) ? rank.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bRank = rank.has(b.id) ? rank.get(b.id) : Number.MAX_SAFE_INTEGER;
+    if (aRank !== bRank) return aRank - bRank;
+    return list.indexOf(a) - list.indexOf(b);
+  });
+}
+
+function persistCurrentMacroOrder() {
+  saveMacroOrder(macros.map((macro) => macro.id).filter(Boolean));
+}
+
+function moveSelectedMacro(delta) {
+  const index = macros.findIndex((macro) => macro.id === selectedMacroId);
+  if (index < 0) {
+    setMacroStatus("Select a macro before moving it.", "error", { statusBar: true });
+    return;
+  }
+  const nextIndex = index + delta;
+  if (nextIndex < 0 || nextIndex >= macros.length) {
+    setMacroStatus(delta < 0 ? "Macro is already at the top." : "Macro is already at the bottom.", "", { statusBar: true });
+    return;
+  }
+  const [item] = macros.splice(index, 1);
+  macros.splice(nextIndex, 0, item);
+  persistCurrentMacroOrder();
+  renderMacroList();
+  renderMacroDescription();
+  setMacroStatus(`Moved ${item.name || item.id} ${delta < 0 ? "up" : "down"}.`, "", { statusBar: true });
+}
+
 function buildMacroDisplayList(loadedMacros) {
-  return [...(Array.isArray(loadedMacros) ? loadedMacros : []), ...DEMO_MACROS];
+  return orderedMacroList([...(Array.isArray(loadedMacros) ? loadedMacros : []), ...DEMO_MACROS]);
 }
 
 function renderMacroList() {
@@ -108,6 +207,14 @@ function renderMacroList() {
       renderMacroList();
       renderMacroDescription();
     });
+    item.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectedMacroId = macro.id;
+      renderMacroList();
+      renderMacroDescription();
+      showMacroItemContextMenu(event.clientX, event.clientY);
+    });
     macroList.appendChild(item);
   });
 }
@@ -117,13 +224,13 @@ function renderMacroDescription() {
   if (!macroDescription) return;
   if (!macro) {
     macroDescription.textContent = "Select a macro to view its description.";
-    if (macroRunBtn) macroRunBtn.disabled = true;
-    if (macroEditBtn) macroEditBtn.disabled = true;
+    if (macroRunBtn) macroRunBtn.disabled = false;
+    if (macroEditBtn) macroEditBtn.disabled = false;
     return;
   }
   macroDescription.textContent = macro.description || "This macro has no description section yet.";
-  if (macroRunBtn) macroRunBtn.disabled = isDemoMacro(macro);
-  if (macroEditBtn) macroEditBtn.disabled = isDemoMacro(macro) || !macro.path;
+  if (macroRunBtn) macroRunBtn.disabled = false;
+  if (macroEditBtn) macroEditBtn.disabled = false;
 }
 
 async function loadMacros() {
@@ -145,15 +252,19 @@ async function loadMacros() {
   }
 }
 
-function getActiveDfmTab() {
-  return shell.state?.tabs?.find?.((tab) => (
-    tab.id === shell.state.activeId
-    && (tab.type === "dfm" || (tab.type === "project_instance" && tab.piDfmActive))
-  )) || null;
+function getActiveDfmTab(preferredTabId = "") {
+  const tabs = shell.state?.tabs || [];
+  const preferred = preferredTabId ? tabs.find((tab) => tab.id === preferredTabId) : null;
+  if (isDfmTab(preferred)) return preferred;
+  const active = tabs.find((tab) => tab.id === shell.state.activeId);
+  if (isDfmTab(active)) return active;
+  const lastDocked = tabs.find((tab) => tab.id === shell.state.lastDockedActiveId);
+  if (isDfmTab(lastDocked)) return lastDocked;
+  return null;
 }
 
-function requestActiveDfmContext() {
-  const tab = getActiveDfmTab();
+function requestActiveDfmContext(tabOverride = null) {
+  const tab = isDfmTab(tabOverride) ? tabOverride : getActiveDfmTab();
   if (!tab) return Promise.resolve({ available: false, error: "Open or activate a DFM tab/window before running a macro." });
   shell.ensureIframe?.(tab);
   const iframe = tab.iframe;
@@ -184,6 +295,60 @@ function requestActiveDfmContext() {
     }
     setTimeout(() => finish({ available: false, error: "Timed out reading active DFM context." }), 1500);
   });
+}
+
+function macroTaskRows(macro) {
+  const tasks = Array.isArray(macro?.tasks) ? macro.tasks : [];
+  return tasks.map((task, index) => ({
+    taskId: String(task.task_id || task.taskId || `task_${index + 1}`),
+    name: String(task.name || task.macro_id || task.macroId || `Task ${index + 1}`),
+    description: String(task.description || ""),
+    status: "pending",
+    message: "",
+  }));
+}
+
+function taskDesignerTitleForMacro(macro) {
+  return String(macro?.name || "Task Designer").replace(/\s+Task\s+Instance\s*$/i, "").trim() || "Task Designer";
+}
+
+function waitForIframeReady(iframe, timeoutMs = 2500) {
+  if (!iframe) return Promise.resolve(false);
+  try {
+    const doc = iframe.contentDocument;
+    if (doc && (doc.readyState === "interactive" || doc.readyState === "complete")) {
+      return Promise.resolve(true);
+    }
+  } catch {}
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      iframe.removeEventListener("load", onLoad);
+      window.clearTimeout(timer);
+      resolve(!!ok);
+    };
+    const onLoad = () => finish(true);
+    const timer = window.setTimeout(() => finish(false), timeoutMs);
+    iframe.addEventListener("load", onLoad, { once: true });
+  });
+}
+
+async function seedTaskDesignerRows(tab, rows, sessionId = "") {
+  if (!tab || !rows.length) return;
+  shell.ensureIframe?.(tab);
+  const iframe = tab.iframe;
+  if (!iframe?.contentWindow) return;
+  await waitForIframeReady(iframe);
+  try {
+    iframe.contentWindow.postMessage({
+      type: TASK_DESIGNER_COMMAND_MESSAGE,
+      requestId: `macro_task_seed_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      command: "taskDesigner.setTasks",
+      args: { windowId: "task-designer-main", sessionId, tasks: rows },
+    }, "*");
+  } catch {}
 }
 
 function applyPayloadToActiveDfm(payload) {
@@ -559,18 +724,41 @@ function showMacroNotesPreview(preview) {
 
 async function runSelectedMacro() {
   const macro = getSelectedMacro();
-  if (!macro) return;
+  if (!macro) {
+    setMacroStatus("Select a macro before running.", "error", { statusBar: true });
+    return;
+  }
   if (isDemoMacro(macro)) {
     setMacroStatus("Demo macro examples are placeholders and cannot be run yet.", "error", { statusBar: true });
+    return;
+  }
+  if (!macro.id) {
+    setMacroStatus("Selected macro is missing an id.", "error", { statusBar: true });
     return;
   }
   setMacroStatus(`Running macro: ${macro.name || macro.id}...`, "", { statusBar: true });
   if (macroRunBtn) macroRunBtn.disabled = true;
   try {
-    const hasActiveDfm = !!getActiveDfmTab();
-    const activeContext = hasActiveDfm ? await requestActiveDfmContext() : {
+    const isTaskWrapper = isTaskDesignerWrapperMacro(macro);
+    const contextTab = getActiveDfmTab();
+    const taskSessionId = isTaskWrapper ? `macro_task_${Date.now()}_${Math.random().toString(36).slice(2)}` : "";
+    if (isTaskWrapper) {
+      const taskTab = shell.openTaskDesigner?.({
+        title: taskDesignerTitleForMacro(macro),
+        contextLabel: contextTab ? "Preparing active DFM validation..." : "Activate a DFM tab/window to validate live DFM data.",
+        macroId: macro.id,
+        contextTabId: contextTab?.id || "",
+        sessionId: taskSessionId,
+        reset: true,
+      });
+      setMacroStatus("Opened Task Designer; preparing validation context...", "", { statusBar: true });
+      await seedTaskDesignerRows(taskTab, macroTaskRows(macro), taskSessionId);
+    }
+    const hasActiveDfm = !!contextTab;
+    const activeContext = hasActiveDfm ? await requestActiveDfmContext(contextTab) : {
       available: false,
       pageType: shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId)?.type || "",
+      error: "Open or activate a DFM tab/window before running a macro.",
     };
     if (hasActiveDfm && (!activeContext?.available || !activeContext?.activeJson)) {
       throw new Error(activeContext?.error || "Active DFM JSON is not available.");
@@ -578,10 +766,22 @@ async function runSelectedMacro() {
     const response = await fetch(`${API_BASE}/scripting/run-macro`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ macro_id: macro.id, active_context: activeContext }),
+      body: JSON.stringify({
+        macro_id: macro.id,
+        active_context: activeContext,
+        task_window_id: isTaskWrapper ? "task-designer-main" : "",
+        task_session_id: taskSessionId,
+        task_mode: isTaskWrapper ? "wrapper" : "",
+      }),
     });
     const result = await response.json();
-    if (!result?.success) throw new Error(result?.message || "Macro failed.");
+    if (!result?.success) {
+      if (isTaskWrapper) {
+        setMacroStatus(result?.message || "Task Designer validation completed with issues.", "error", { statusBar: true });
+        return;
+      }
+      throw new Error(result?.message || "Macro failed.");
+    }
     const preview = result.preview || null;
     if (preview?.type === "notes_diff") {
       if (!preview.has_changes) {
@@ -614,9 +814,31 @@ async function runSelectedMacro() {
 
 function editSelectedMacro() {
   const macro = getSelectedMacro();
-  if (!macro?.path || isDemoMacro(macro)) return;
+  if (!macro) {
+    setMacroStatus("Select a macro before editing.", "error", { statusBar: true });
+    return;
+  }
+  if (isDemoMacro(macro)) {
+    setMacroStatus("Demo macro examples do not have editable files.", "error", { statusBar: true });
+    return;
+  }
+  if (!macro.path) {
+    setMacroStatus("Selected macro does not have a file path to edit.", "error", { statusBar: true });
+    return;
+  }
   shell.openScriptingTab?.({ forceNew: true, notebookPath: macro.path });
   setMacroStatus(`Opened ${macro.name || macro.id} in Arcode.`, "", { statusBar: true });
+}
+
+function openSelectedMacroInTaskDesigner() {
+  const macro = getSelectedMacro();
+  const macroId = macro && !isDemoMacro(macro) ? macro.id : "";
+  shell.openTaskDesigner?.({
+    title: "DFM Validation",
+    contextLabel: "Active DFM validation",
+    macroId,
+  });
+  setMacroStatus("Opened Task Designer.", "", { statusBar: true });
 }
 
 async function deleteSelectedMacro() {
@@ -648,6 +870,45 @@ async function deleteSelectedMacro() {
   }
 }
 
+async function renameSelectedMacro() {
+  const macro = getSelectedMacro();
+  if (!canDeleteMacro(macro)) {
+    setMacroStatus("Select a real macro before renaming.", "error", { statusBar: true });
+    return;
+  }
+  const currentName = String(macro.id || macro.name || "").replace(/\.py$/i, "");
+  const nextName = window.prompt("Rename macro file:", currentName);
+  if (nextName == null) return;
+  const trimmed = String(nextName || "").trim();
+  if (!trimmed) {
+    setMacroStatus("Macro rename canceled; name is empty.", "error", { statusBar: true });
+    return;
+  }
+  setMacroStatus(`Renaming macro: ${macro.name || macro.id}...`);
+  try {
+    const response = await fetch(`${API_BASE}/scripting/rename-macro`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ macro_id: macro.id, new_name: trimmed }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.message || "Macro rename failed.");
+    }
+    const nextId = String(result.macro_id || "").trim();
+    if (nextId) {
+      const order = readMacroOrder().map((id) => (id === macro.id ? nextId : id));
+      saveMacroOrder(order);
+      selectedMacroId = nextId;
+    }
+    await loadMacros();
+    setMacroStatus(result.message || "Macro renamed.", "", { statusBar: true });
+  } catch (err) {
+    const message = String(err?.message || err || "Macro rename failed.");
+    setMacroStatus(`Macro rename failed: ${message}`, "error", { statusBar: true });
+  }
+}
+
 function syncMacroSplitContextMenu() {
   if (!macroSplitContextMenu) return;
   const macro = getSelectedMacro();
@@ -667,6 +928,30 @@ function hideMacroSplitContextMenu() {
   macroSplitContextMenu.setAttribute("aria-hidden", "true");
 }
 
+function hideMacroItemContextMenu() {
+  if (!macroItemContextMenu) return;
+  macroItemContextMenu.classList.remove("open");
+  macroItemContextMenu.setAttribute("aria-hidden", "true");
+}
+
+function hideMacroContextMenus() {
+  hideMacroSplitContextMenu();
+  hideMacroItemContextMenu();
+}
+
+function positionMacroContextMenu(menu, x, y) {
+  if (!menu) return;
+  menu.classList.add("open");
+  menu.setAttribute("aria-hidden", "false");
+  const rect = menu.getBoundingClientRect();
+  const margin = 6;
+  const left = Math.min(Math.max(margin, x), Math.max(margin, window.innerWidth - rect.width - margin));
+  const top = Math.min(Math.max(margin, y), Math.max(margin, window.innerHeight - rect.height - margin));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  menu.querySelector("button:not(:disabled)")?.focus?.();
+}
+
 function ensureMacroSplitContextMenu() {
   if (macroSplitContextMenu) return macroSplitContextMenu;
   const menu = document.createElement("div");
@@ -682,7 +967,7 @@ function ensureMacroSplitContextMenu() {
     const item = event.target?.closest?.("[data-action]");
     if (!item || item.disabled) return;
     const action = item.dataset.action;
-    hideMacroSplitContextMenu();
+    hideMacroContextMenus();
     if (action === "run") void runSelectedMacro();
     else if (action === "edit") editSelectedMacro();
     else if (action === "delete") void deleteSelectedMacro();
@@ -695,15 +980,63 @@ function ensureMacroSplitContextMenu() {
 function showMacroSplitContextMenu(x, y) {
   const menu = ensureMacroSplitContextMenu();
   syncMacroSplitContextMenu();
-  menu.classList.add("open");
-  menu.setAttribute("aria-hidden", "false");
-  const rect = menu.getBoundingClientRect();
-  const margin = 6;
-  const left = Math.min(Math.max(margin, x), Math.max(margin, window.innerWidth - rect.width - margin));
-  const top = Math.min(Math.max(margin, y), Math.max(margin, window.innerHeight - rect.height - margin));
-  menu.style.left = `${Math.round(left)}px`;
-  menu.style.top = `${Math.round(top)}px`;
-  menu.querySelector("button:not(:disabled)")?.focus?.();
+  hideMacroItemContextMenu();
+  positionMacroContextMenu(menu, x, y);
+}
+
+function syncMacroItemContextMenu() {
+  if (!macroItemContextMenu) return;
+  const macro = getSelectedMacro();
+  const isDemo = isDemoMacro(macro);
+  const canUseRealMacro = !!macro && !isDemo;
+  const index = macros.findIndex((item) => item.id === selectedMacroId);
+  const runItem = macroItemContextMenu.querySelector("[data-action='run']");
+  const renameItem = macroItemContextMenu.querySelector("[data-action='rename']");
+  const deleteItem = macroItemContextMenu.querySelector("[data-action='delete']");
+  const upItem = macroItemContextMenu.querySelector("[data-action='move-up']");
+  const downItem = macroItemContextMenu.querySelector("[data-action='move-down']");
+  if (runItem) runItem.disabled = !canUseRealMacro;
+  if (renameItem) renameItem.disabled = !canDeleteMacro(macro);
+  if (deleteItem) deleteItem.disabled = !canDeleteMacro(macro);
+  if (upItem) upItem.disabled = index <= 0;
+  if (downItem) downItem.disabled = index < 0 || index >= macros.length - 1;
+}
+
+function ensureMacroItemContextMenu() {
+  if (macroItemContextMenu) return macroItemContextMenu;
+  const menu = document.createElement("div");
+  menu.className = "macroItemContextMenu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-hidden", "true");
+  menu.innerHTML = `
+    <button type="button" role="menuitem" data-action="run">Run</button>
+    <button type="button" role="menuitem" data-action="rename">Rename</button>
+    <button type="button" role="menuitem" data-action="delete" class="danger">Delete</button>
+    <div class="macroContextMenuSep" role="separator"></div>
+    <button type="button" role="menuitem" data-action="move-up">Move Up</button>
+    <button type="button" role="menuitem" data-action="move-down">Move Down</button>
+  `;
+  menu.addEventListener("click", (event) => {
+    const item = event.target?.closest?.("[data-action]");
+    if (!item || item.disabled) return;
+    const action = item.dataset.action;
+    hideMacroItemContextMenu();
+    if (action === "run") void runSelectedMacro();
+    else if (action === "rename") void renameSelectedMacro();
+    else if (action === "delete") void deleteSelectedMacro();
+    else if (action === "move-up") moveSelectedMacro(-1);
+    else if (action === "move-down") moveSelectedMacro(1);
+  });
+  document.body.appendChild(menu);
+  macroItemContextMenu = menu;
+  return menu;
+}
+
+function showMacroItemContextMenu(x, y) {
+  const menu = ensureMacroItemContextMenu();
+  syncMacroItemContextMenu();
+  hideMacroSplitContextMenu();
+  positionMacroContextMenu(menu, x, y);
 }
 
 function getMacroWindowBounds() {
@@ -869,7 +1202,7 @@ function initMacroContentSplit() {
 
   const startSplit = (event) => {
     if (event.button !== 0) return;
-    hideMacroSplitContextMenu();
+    hideMacroContextMenus();
     splitState = {
       pointerId: event.pointerId,
       startY: event.clientY,
@@ -928,12 +1261,13 @@ function initMacroContentSplit() {
     applyMacroSplitHeight(next, { markCustom: true, save: true });
   });
   document.addEventListener("mousedown", (event) => {
-    if (!macroSplitContextMenu?.classList.contains("open")) return;
-    if (event.target?.closest?.(".macroSplitContextMenu")) return;
-    hideMacroSplitContextMenu();
+    const anyMenuOpen = macroSplitContextMenu?.classList.contains("open") || macroItemContextMenu?.classList.contains("open");
+    if (!anyMenuOpen) return;
+    if (event.target?.closest?.(".macroSplitContextMenu, .macroItemContextMenu")) return;
+    hideMacroContextMenus();
   }, true);
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") hideMacroSplitContextMenu();
+    if (event.key === "Escape") hideMacroContextMenus();
   }, true);
 }
 
@@ -1015,6 +1349,28 @@ function initMacroWindowResize() {
   });
 }
 
+function initTaskDesignerButton() {
+  if (!macroHeader || macroHeader.querySelector("[data-macro-task-designer='1']")) return;
+  const button = document.createElement("button");
+  button.className = "macroIconBtn";
+  button.type = "button";
+  button.title = "Open Task Designer";
+  button.setAttribute("aria-label", "Open Task Designer");
+  button.dataset.macroTaskDesigner = "1";
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 6h13"></path>
+      <path d="M8 12h13"></path>
+      <path d="M8 18h13"></path>
+      <path d="M3 6h.01"></path>
+      <path d="M3 12h.01"></path>
+      <path d="M3 18h.01"></path>
+    </svg>
+  `;
+  button.addEventListener("click", openSelectedMacroInTaskDesigner);
+  macroEditBtn?.insertAdjacentElement("beforebegin", button);
+}
+
 function initMacroWindowDrag() {
   if (!macroWindow || !macroHeader) return;
   let dragState = null;
@@ -1050,6 +1406,7 @@ function initMacroWindowDrag() {
 }
 
 export function openMacroWindow() {
+  applyMacroPinned(readMacroPinned());
   restoreMacroWindowPosition();
   macroWindow?.classList.add("open");
   restoreMacroSplitHeight();
@@ -1065,8 +1422,11 @@ export function initMacroWindow() {
   macroWindowWired = true;
   macroCloseBtn?.addEventListener("click", closeMacroWindow);
   macroRefreshBtn?.addEventListener("click", () => loadMacros());
+  macroPinBtn?.addEventListener("click", toggleMacroPinned);
   macroRunBtn?.addEventListener("click", runSelectedMacro);
   macroEditBtn?.addEventListener("click", editSelectedMacro);
+  applyMacroPinned(readMacroPinned());
+  initTaskDesignerButton();
   initMacroWindowDrag();
   initMacroWindowResize();
   initMacroContentSplit();

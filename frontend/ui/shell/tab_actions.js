@@ -19,6 +19,7 @@ const RESTORABLE_ACTIVITY_TYPES = new Set([
   "scripting",
   "agent_guide",
 ]);
+const TASK_DESIGNER_TYPE = "task_designer";
 let activeHistorySaveTimer = 0;
 let pendingActiveHistoryEntry = null;
 
@@ -376,6 +377,62 @@ export function openAgentGuideTab() {
   };
   shell.state.tabs.push(tab);
   setDockedActive(id);
+  shell.render?.();
+  shell.saveState?.();
+  return tab;
+}
+
+export function openTaskDesigner(options = {}) {
+  const existing = shell.state.tabs.find(t => t.type === TASK_DESIGNER_TYPE);
+  const title = String(options?.title || "Task Designer").trim() || "Task Designer";
+  const contextLabel = String(options?.contextLabel || options?.context || "Active DFM validation").trim();
+  const macroId = String(options?.macroId || options?.macro_id || "").trim();
+  const activeDfm = shell.state.tabs.find(t => (
+    t.id === shell.state.activeId
+    && (t.type === "dfm" || (t.type === "project_instance" && t.piDfmActive))
+  ));
+  const lastDockedDfm = shell.state.tabs.find(t => (
+    t.id === shell.state.lastDockedActiveId
+    && (t.type === "dfm" || (t.type === "project_instance" && t.piDfmActive))
+  ));
+  const contextTabId = String(options?.contextTabId || activeDfm?.id || lastDockedDfm?.id || "").trim();
+  const sessionId = String(options?.sessionId || options?.session_id || "").trim();
+  const taskDesignerOptions = {
+    title,
+    contextLabel,
+    macroId,
+    autoRun: !!options?.autoRun,
+    contextTabId,
+    sessionId,
+    reset: options?.reset === true,
+  };
+  const tab = existing || {
+    id: `td_${shell.state.nextId++}`,
+    title,
+    type: TASK_DESIGNER_TYPE,
+    iframe: null,
+  };
+  tab.title = title;
+  tab.taskDesignerOptions = taskDesignerOptions;
+  tab.layout = "floating";
+  tab.floatRect = shell.clampFloatRect?.(
+    tab.floatRect || shell.defaultFloatRectFromPointer?.(window.innerWidth * 0.64, window.innerHeight * 0.42),
+  );
+  tab.floatZ = shell.state.nextFloatZ++;
+  tab.floatMinimized = false;
+  tab.floatAnimateIn = true;
+  if (!existing) shell.state.tabs.push(tab);
+  shell.state.activeId = tab.id;
+  if (shell.state.lastDockedActiveId === tab.id) shell.state.lastDockedActiveId = shell.getFirstDockedTabId?.() || "home";
+  shell.ensureIframe?.(tab);
+  if (tab.iframe?.contentWindow) {
+    try {
+      tab.iframe.contentWindow.postMessage({
+        type: "arcrho:task-designer-open",
+        options: taskDesignerOptions,
+      }, "*");
+    } catch {}
+  }
   shell.render?.();
   shell.saveState?.();
   return tab;

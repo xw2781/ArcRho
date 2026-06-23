@@ -1,5 +1,5 @@
 import { $, shell } from "./shell_context.js?v=20260510a";
-import { createIframeHost } from "./iframe_host.js?v=20260520a";
+import { createIframeHost } from "./iframe_host.js?v=20260621b";
 import { createFloatingTabsController, isFloatingTab } from "./floating_tabs.js?v=20260520b";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
 import { renderHomeViewOnce } from "./home_view.js?v=20260510a";
@@ -23,6 +23,7 @@ function initShellControllers() {
       handleShellFileDrop: (event) => shell.handleShellFileDrop?.(event),
       normalizeBrowsingHistoryEntry,
       refreshActiveTab: () => shell.refreshActiveTab?.(),
+      runHotkeyAction: (action) => shell.runHotkeyAction?.(action),
       setActive: (id) => shell.setActive?.(id),
       uiVersionParam: shell.uiVersionParam,
     });

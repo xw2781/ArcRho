@@ -90,6 +90,15 @@ export function loadState() {
       projectSettingsRibbon: t.type === "project_settings"
         ? (String(t.projectSettingsRibbon || "").trim().toLowerCase() || "summary")
         : undefined,
+      taskDesignerOptions: t.type === "task_designer" && t.taskDesignerOptions && typeof t.taskDesignerOptions === "object"
+        ? {
+          title: String(t.taskDesignerOptions.title || "Task Designer"),
+          contextLabel: String(t.taskDesignerOptions.contextLabel || "Active DFM validation"),
+          macroId: String(t.taskDesignerOptions.macroId || ""),
+          autoRun: false,
+          contextTabId: String(t.taskDesignerOptions.contextTabId || ""),
+        }
+        : undefined,
       layout: t.id === "home" ? "docked" : (t.layout === "floating" ? "floating" : "docked"),
       floatRect: normalizeFloatRect(t.floatRect),
       floatZ: Number.isFinite(Number(t.floatZ)) ? Number(t.floatZ) : 0,
@@ -152,6 +161,15 @@ export function buildShellStateSnapshot() {
       projectInstanceState: t.type === "project_instance" ? normalizeProjectInstanceState(t.projectInstanceState || null) || undefined : undefined,
       projectSettingsRibbon: t.type === "project_settings"
         ? String(t.projectSettingsRibbon || "").trim().toLowerCase()
+        : undefined,
+      taskDesignerOptions: t.type === "task_designer" && t.taskDesignerOptions && typeof t.taskDesignerOptions === "object"
+        ? {
+          title: String(t.taskDesignerOptions.title || "Task Designer"),
+          contextLabel: String(t.taskDesignerOptions.contextLabel || "Active DFM validation"),
+          macroId: String(t.taskDesignerOptions.macroId || ""),
+          autoRun: false,
+          contextTabId: String(t.taskDesignerOptions.contextTabId || ""),
+        }
         : undefined,
       layout: isFloatingTab(t) ? "floating" : "docked",
       floatRect: isFloatingTab(t) ? t.floatRect : undefined,

@@ -52,7 +52,22 @@ class SnowflakeConnectionSaveRequest(BaseModel):
 class ScriptMacroRunRequest(BaseModel):
     macro_id: str
     active_context: Dict[str, Any] = Field(default_factory=dict)
+    task_window_id: str = ""
+    task_session_id: str = ""
+    task_mode: str = ""
 
 
 class ScriptMacroDeleteRequest(BaseModel):
     macro_id: str
+
+
+class ScriptMacroRenameRequest(BaseModel):
+    macro_id: str
+    new_name: str
+
+
+class ScriptTaskWrapperSaveRequest(BaseModel):
+    title: str
+    description: str = ""
+    filename: str = ""
+    tasks: List[Dict[str, Any]] = Field(default_factory=list)

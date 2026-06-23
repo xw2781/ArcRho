@@ -54,7 +54,7 @@ import {
   stopDfmMethodFileWatcher,
 } from "/ui/dfm/dfm_persistence.js?v=20260616d";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
-import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260618a";
+import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260621c";
 import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260616a";
 import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js";
 import {

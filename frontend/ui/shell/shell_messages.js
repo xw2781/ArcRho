@@ -1,7 +1,7 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
 import { normalizeProjectInstanceState, normalizeShellActivityEntry } from "/ui/shell/shell_activity_history.js";
-import { showAutomationMessageBox } from "/ui/shell/ui_automation.js?v=20260619a";
+import { showAutomationMessageBox } from "/ui/shell/ui_automation.js?v=20260621c";
 
 let shellMessagesWired = false;
 
@@ -47,6 +47,75 @@ async function handleDatasetCloseConfirmRequest(source, msg) {
   } catch {}
 }
 
+function getDfmContextTargetTab(contextTabId = "") {
+  const requested = String(contextTabId || "").trim();
+  const isDfmCapable = (tab) => !!tab && (tab.type === "dfm" || (tab.type === "project_instance" && tab.piDfmActive));
+  if (requested) {
+    const tab = shell.state.tabs.find((item) => item.id === requested);
+    if (isDfmCapable(tab)) return tab;
+  }
+  const active = shell.state.tabs.find((item) => item.id === shell.state.activeId);
+  if (isDfmCapable(active)) return active;
+  const lastDocked = shell.state.tabs.find((item) => item.id === shell.state.lastDockedActiveId);
+  if (isDfmCapable(lastDocked)) return lastDocked;
+  return shell.state.tabs.find(isDfmCapable) || null;
+}
+
+function handleTaskDesignerContextRequest(source, msg) {
+  const requestId = String(msg?.requestId || "");
+  if (!source || !requestId) return;
+  const targetTab = getDfmContextTargetTab(msg?.contextTabId || "");
+  if (!targetTab) {
+    try {
+      source.postMessage({
+        type: "arcrho:task-designer-context-response",
+        requestId,
+        context: { available: false, error: "Activate a DFM tab/window before running validation." },
+      }, "*");
+    } catch {}
+    return;
+  }
+  shell.ensureIframe?.(targetTab);
+  const iframe = targetTab.iframe;
+  if (!iframe?.contentWindow) {
+    try {
+      source.postMessage({
+        type: "arcrho:task-designer-context-response",
+        requestId,
+        context: { available: false, error: "The active DFM target is not ready yet." },
+      }, "*");
+    } catch {}
+    return;
+  }
+  let done = false;
+  const finish = (context) => {
+    if (done) return;
+    done = true;
+    window.removeEventListener("message", onContextMessage);
+    try {
+      source.postMessage({
+        type: "arcrho:task-designer-context-response",
+        requestId,
+        context: context || { available: false, error: "DFM context failed." },
+      }, "*");
+    } catch {}
+  };
+  const onContextMessage = (event) => {
+    if (event.source !== iframe.contentWindow) return;
+    const response = event.data || {};
+    if (response.type !== "arcrho:assistant-context-result" || response.requestId !== requestId) return;
+    finish(response.context || { available: false, error: "DFM context failed." });
+  };
+  window.addEventListener("message", onContextMessage);
+  try {
+    iframe.contentWindow.postMessage({ type: "arcrho:assistant-context-request", requestId }, "*");
+  } catch {
+    finish({ available: false, error: "Could not request DFM context." });
+    return;
+  }
+  window.setTimeout(() => finish({ available: false, error: "Timed out reading active DFM context." }), 2500);
+}
+
 export function initShellMessages() {
   if (shellMessagesWired) return;
   shellMessagesWired = true;
@@ -54,6 +123,26 @@ export function initShellMessages() {
     const msg = e.data;
     if (!msg) return;
     if (msg.type === "arcrho:close-shell-menus") return shell.closeAllShellMenus?.();
+    if (msg.type === "arcrho:open-task-designer") {
+      const sourceTab = shell.state.tabs.find((tab) => tab.iframe?.contentWindow === e.source);
+      shell.openTaskDesigner?.({
+        title: String(msg.title || "DFM Validation"),
+        contextLabel: String(msg.contextLabel || "Active DFM validation"),
+        macroId: String(msg.macroId || ""),
+        autoRun: !!msg.autoRun,
+        contextTabId: sourceTab?.id || "",
+      });
+      return;
+    }
+    if (msg.type === "arcrho:close-task-designer") {
+      const tab = shell.state.tabs.find((item) => item.type === "task_designer" && item.iframe?.contentWindow === e.source);
+      if (tab) shell.closeTab?.(tab.id);
+      return;
+    }
+    if (msg.type === "arcrho:task-designer-context-request") {
+      handleTaskDesignerContextRequest(e.source, msg);
+      return;
+    }
     if (msg.type === "arcrho:dataset-close-confirm-request") {
       void handleDatasetCloseConfirmRequest(e.source, msg);
       return;

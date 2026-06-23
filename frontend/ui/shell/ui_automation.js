@@ -3,6 +3,8 @@ import { shell } from "./shell_context.js?v=20260510a";
 const API_BASE = window.location.origin;
 const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const RESULT_MESSAGE_TYPE = "arcrho:automation-command-result";
+const TASK_DESIGNER_COMMAND_MESSAGE = "arcrho:task-designer-automation-command";
+const TASK_DESIGNER_RESULT_MESSAGE = "arcrho:task-designer-automation-result";
 
 let automationStarted = false;
 let automationStopped = false;
@@ -335,11 +337,84 @@ function sendCommandToProjectInstance(command) {
   });
 }
 
+function waitForIframeReady(iframe, timeoutMs = 5000) {
+  if (!iframe) return Promise.resolve(false);
+  try {
+    const ready = iframe.contentDocument?.readyState;
+    if (ready === "interactive" || ready === "complete") return Promise.resolve(true);
+  } catch {}
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      iframe.removeEventListener("load", onLoad);
+      window.clearTimeout(timer);
+      resolve(!!ok);
+    };
+    const onLoad = () => finish(true);
+    const timer = window.setTimeout(() => finish(false), timeoutMs);
+    iframe.addEventListener("load", onLoad, { once: true });
+  });
+}
+
+async function sendCommandToTaskDesigner(command) {
+  const args = command?.args || {};
+  const name = toText(command?.command);
+  let tab = shell.state.tabs.find((item) => item.type === "task_designer");
+  if (!tab || name === "taskDesigner.open") {
+    tab = shell.openTaskDesigner?.({
+      title: args.title || "Task Designer",
+      contextLabel: args.context || args.contextLabel || "Active DFM validation",
+      macroId: args.macroId || args.macro_id || "",
+      autoRun: false,
+    }) || tab;
+  }
+  if (!tab) return { ok: false, error: "Could not open Task Designer." };
+  shell.ensureIframe?.(tab);
+  const iframe = tab.iframe;
+  if (!iframe?.contentWindow) return { ok: false, error: "Task Designer page is not ready." };
+  await waitForIframeReady(iframe);
+
+  return new Promise((resolve) => {
+    const requestId = `task_designer_auto_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    let done = false;
+    const finish = (payload) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", onMessage);
+      resolve(payload || { ok: false, error: "Task Designer command failed." });
+    };
+    const onMessage = (event) => {
+      if (event.source !== iframe.contentWindow) return;
+      const msg = event.data || {};
+      if (msg.type !== TASK_DESIGNER_RESULT_MESSAGE || msg.requestId !== requestId) return;
+      finish({ ok: !!msg.ok, result: msg.result || {}, error: toText(msg.error) });
+    };
+    window.addEventListener("message", onMessage);
+    try {
+      iframe.contentWindow.postMessage({
+        type: TASK_DESIGNER_COMMAND_MESSAGE,
+        requestId,
+        command: name,
+        args,
+      }, "*");
+    } catch (err) {
+      finish({ ok: false, error: toText(err?.message) || "Failed to send Task Designer command." });
+      return;
+    }
+    window.setTimeout(() => finish({ ok: false, error: "Timed out waiting for Task Designer." }), 10000);
+  });
+}
+
 async function executeAutomationCommand(command) {
   const name = toText(command?.command);
   if (name === "ui.messageBox") {
     const result = await showAutomationMessageBox(command.args || {});
     return { ok: true, result };
+  }
+  if (name.startsWith("taskDesigner.")) {
+    return sendCommandToTaskDesigner(command);
   }
   if (name === "projectInstance.openDataset") {
     return sendCommandToProjectInstance(command);

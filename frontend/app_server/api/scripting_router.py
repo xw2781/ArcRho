@@ -13,6 +13,8 @@ from app_server.schemas.scripting import (
     ScriptInspectRequest,
     ScriptMacroRunRequest,
     ScriptMacroDeleteRequest,
+    ScriptMacroRenameRequest,
+    ScriptTaskWrapperSaveRequest,
 )
 from app_server.services import scripting_service
 
@@ -81,12 +83,28 @@ def scripting_list_macros() -> List[Dict[str, Any]]:
 
 @router.post("/scripting/run-macro")
 def scripting_run_macro(req: ScriptMacroRunRequest) -> Dict[str, Any]:
-    return scripting_service.run_macro(req.macro_id, req.active_context)
+    return scripting_service.run_macro(
+        req.macro_id,
+        req.active_context,
+        task_window_id=req.task_window_id,
+        task_session_id=req.task_session_id,
+        task_mode=req.task_mode,
+    )
 
 
 @router.post("/scripting/delete-macro")
 def scripting_delete_macro(req: ScriptMacroDeleteRequest) -> Dict[str, Any]:
     return scripting_service.delete_macro(req.macro_id)
+
+
+@router.post("/scripting/rename-macro")
+def scripting_rename_macro(req: ScriptMacroRenameRequest) -> Dict[str, Any]:
+    return scripting_service.rename_macro(req.macro_id, req.new_name)
+
+
+@router.post("/scripting/save-task-wrapper")
+def scripting_save_task_wrapper(req: ScriptTaskWrapperSaveRequest) -> Dict[str, Any]:
+    return scripting_service.save_task_wrapper_macro(req.title, req.description, req.filename, req.tasks)
 
 
 @router.post("/scripting/inspect")

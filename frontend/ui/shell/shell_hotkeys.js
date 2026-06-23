@@ -10,7 +10,9 @@ function normalizeKeyCombo(e) {
   if (e.altKey) parts.push("Alt");
   if (e.shiftKey) parts.push("Shift");
   let k = e.key;
+  if ((!k || k === "Unidentified") && e.code === "KeyQ") k = "Q";
   if (k === "r" || k === "R") k = "R";
+  if (k === "q" || k === "Q") k = "Q";
   if (k === "F5") k = "F5";
   if (k && k.length === 1 && k >= "a" && k <= "z") k = k.toUpperCase();
   parts.push(k);
@@ -141,6 +143,13 @@ export function initHotkeys() {
       runHotkeyAction("help_view_dev_panel");
       return;
     }
+    const action = hotkeys[combo];
+    if (action === "settings_clear_cache_reload") {
+      e.preventDefault();
+      e.stopPropagation();
+      runHotkeyAction(action);
+      return;
+    }
     if (shouldIgnoreHotkey(e)) return;
     if (combo === "Ctrl+W") {
       e.preventDefault();
@@ -149,7 +158,6 @@ export function initHotkeys() {
       shell.closeTab?.(shell.state.activeId);
       return;
     }
-    const action = hotkeys[combo];
     if (!action) return;
     e.preventDefault();
     e.stopPropagation();
