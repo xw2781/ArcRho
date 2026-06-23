@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Arcode</title>
   <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/arcode/main.css?v=20260620f"/>
+  <link rel="stylesheet" href="/ui/arcode/main.css?v=20260621d"/>
   <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260620m"/>
 </head>
 <body>
@@ -125,7 +125,12 @@
 
     <main id="arcodeMain">
       <section id="arcodeHome" aria-label="Arcode home"></section>
-      <section id="arcodeFrameHost" aria-label="Open code files"></section>
+      <section id="arcodeFrameHost" aria-label="Open code files">
+        <div id="arcodeFrameWorkspace" class="arcodeFrameWorkspace">
+          <div id="arcodeFrameExplorerHost"></div>
+          <section id="arcodeFrameStack" aria-label="Open editor frames"></section>
+        </div>
+      </section>
     </main>
 
     <footer id="arcodeStatus">
@@ -145,7 +150,7 @@
     </footer>
   </div>
 
-  <script type="module" src="/ui/arcode/main.js?v=20260620j"></script>
+  <script type="module" src="/ui/arcode/main.js?v=20260622a"></script>
 </body>
 </html>
 

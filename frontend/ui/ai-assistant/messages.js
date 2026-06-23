@@ -1,5 +1,24 @@
 import { TYPING_FRAME_MS, TYPING_MAX_FRAMES } from "./state.js";
 
+const SQL_CHAT_KEYWORDS = new Set([
+  "ADD", "ALL", "ALTER", "AND", "AS", "ASC", "BEGIN", "BETWEEN", "BY", "CASE", "CREATE",
+  "CROSS", "DELETE", "DESC", "DISTINCT", "DROP", "ELSE", "END", "EXCEPT", "EXEC", "EXISTS",
+  "FROM", "FULL", "GROUP", "HAVING", "IF", "IN", "INNER", "INSERT", "INTERSECT", "INTO",
+  "IS", "JOIN", "LEFT", "LIKE", "MERGE", "NOT", "NULL", "ON", "OR", "ORDER", "OUTER",
+  "OVER", "PARTITION", "RIGHT", "SELECT", "SET", "TABLE", "THEN", "TOP", "TRUNCATE",
+  "UNION", "UPDATE", "VALUES", "WHEN", "WHERE", "WITH",
+]);
+const SQL_CHAT_FUNCTIONS = new Set([
+  "AVG", "CAST", "COALESCE", "CONVERT", "COUNT", "DATEADD", "DATEDIFF", "DATENAME",
+  "DATEPART", "EOMONTH", "GETDATE", "IIF", "ISNULL", "LEN", "LOWER", "MAX", "MIN",
+  "NULLIF", "REPLACE", "ROUND", "ROW_NUMBER", "RTRIM", "SUM", "TRY_CAST", "TRY_CONVERT", "UPPER",
+]);
+const SQL_CHAT_DATATYPES = new Set([
+  "BIGINT", "BINARY", "BIT", "CHAR", "DATE", "DATETIME", "DATETIME2", "DECIMAL", "FLOAT",
+  "INT", "MONEY", "NCHAR", "NUMERIC", "NVARCHAR", "REAL", "SMALLDATETIME", "SMALLINT",
+  "TEXT", "TIME", "TIMESTAMP", "TINYINT", "UNIQUEIDENTIFIER", "VARBINARY", "VARCHAR", "XML",
+]);
+
 export function getAssistantBrandInitial(name) {
   const text = String(name || "").trim();
   const firstAscii = Array.from(text).find((char) => /^[A-Za-z0-9]$/.test(char));
@@ -78,11 +97,132 @@ export function appendAssistantInlineMarkdown(parent, text) {
       continue;
     }
     const el = token.startsWith("**") ? document.createElement("strong") : document.createElement("code");
-    el.textContent = token.startsWith("**") ? token.slice(2, -2) : token.slice(1, -1);
+    const content = token.startsWith("**") ? token.slice(2, -2) : token.slice(1, -1);
+    if (token.startsWith("**")) {
+      el.textContent = content;
+    } else if (shouldHighlightAssistantInlineSql(content)) {
+      el.className = "aiAssistantSqlInlineCode";
+      appendAssistantHighlightedSql(el, content);
+    } else {
+      el.textContent = content;
+    }
     parent.appendChild(el);
     lastIndex = match.index + token.length;
   }
   if (lastIndex < raw.length) parent.appendChild(document.createTextNode(raw.slice(lastIndex)));
+}
+
+function isAssistantSqlLanguage(language) {
+  return /^(sql|mssql|tsql|t-sql)$/i.test(String(language || "").trim());
+}
+
+function shouldHighlightAssistantInlineSql(text) {
+  const source = String(text || "").trim();
+  if (!source) return false;
+  const words = source.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+  return words.some((word, index) => {
+    const upper = word.toUpperCase();
+    const next = String(words[index + 1] || "").toUpperCase();
+    return SQL_CHAT_KEYWORDS.has(upper) ||
+      SQL_CHAT_FUNCTIONS.has(upper) ||
+      SQL_CHAT_DATATYPES.has(upper) ||
+      (upper === "ORDER" && next === "BY") ||
+      (upper === "GROUP" && next === "BY") ||
+      (upper === "LEFT" && next === "JOIN") ||
+      (upper === "INNER" && next === "JOIN") ||
+      (upper === "RIGHT" && next === "JOIN") ||
+      (upper === "FULL" && next === "JOIN");
+  });
+}
+
+function appendAssistantSqlToken(parent, text, className = "") {
+  if (!text) return;
+  if (!className) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+  const token = document.createElement("span");
+  token.className = `aiAssistantSqlToken ${className}`;
+  token.textContent = text;
+  parent.appendChild(token);
+}
+
+function appendAssistantHighlightedSql(parent, text) {
+  const source = String(text || "");
+  let index = 0;
+  let inBlockComment = false;
+  while (index < source.length) {
+    const rest = source.slice(index);
+    if (inBlockComment) {
+      const end = source.indexOf("*/", index);
+      const next = end >= 0 ? end + 2 : source.length;
+      appendAssistantSqlToken(parent, source.slice(index, next), "comment");
+      index = next;
+      inBlockComment = end < 0;
+      continue;
+    }
+    if (rest.startsWith("--")) {
+      const newline = source.indexOf("\n", index);
+      const next = newline >= 0 ? newline : source.length;
+      appendAssistantSqlToken(parent, source.slice(index, next), "comment");
+      index = next;
+      continue;
+    }
+    if (rest.startsWith("/*")) {
+      const end = source.indexOf("*/", index + 2);
+      const next = end >= 0 ? end + 2 : source.length;
+      appendAssistantSqlToken(parent, source.slice(index, next), "comment");
+      index = next;
+      inBlockComment = end < 0;
+      continue;
+    }
+    const ch = source[index];
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      const start = index;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === quote && source[index + 1] === quote) {
+          index += 2;
+        } else if (source[index] === quote) {
+          index += 1;
+          break;
+        } else {
+          index += 1;
+        }
+      }
+      appendAssistantSqlToken(parent, source.slice(start, index), "string");
+      continue;
+    }
+    if (ch === "[") {
+      const end = source.indexOf("]", index + 1);
+      if (end >= 0) {
+        appendAssistantSqlToken(parent, source.slice(index, end + 1), "identifier");
+        index = end + 1;
+        continue;
+      }
+    }
+    const number = rest.match(/^\b\d+(?:\.\d+)?\b/);
+    if (number) {
+      appendAssistantSqlToken(parent, number[0], "number");
+      index += number[0].length;
+      continue;
+    }
+    const word = rest.match(/^[A-Za-z_][A-Za-z0-9_]*/);
+    if (word) {
+      const value = word[0];
+      const upper = value.toUpperCase();
+      const after = source.slice(index + value.length).trimStart();
+      if (SQL_CHAT_KEYWORDS.has(upper)) appendAssistantSqlToken(parent, value, "keyword");
+      else if (SQL_CHAT_FUNCTIONS.has(upper) && after.startsWith("(")) appendAssistantSqlToken(parent, value, "function");
+      else if (SQL_CHAT_DATATYPES.has(upper)) appendAssistantSqlToken(parent, value, "datatype");
+      else appendAssistantSqlToken(parent, value);
+      index += value.length;
+      continue;
+    }
+    appendAssistantSqlToken(parent, ch);
+    index += 1;
+  }
 }
 
 function flushAssistantMarkdownList(container, listState) {
@@ -108,20 +248,30 @@ export function renderAssistantMarkdown(el, text) {
   const lines = raw.split(/\r?\n/);
   const listState = { items: [], ordered: false, start: 1 };
   let inCodeBlock = false;
+  let codeLanguage = "";
   let codeLines = [];
   const flushCodeBlock = () => {
     if (!codeLines.length) return;
     const pre = document.createElement("pre");
     const code = document.createElement("code");
-    code.textContent = codeLines.join("\n");
+    const codeText = codeLines.join("\n");
+    if (isAssistantSqlLanguage(codeLanguage)) {
+      code.className = "aiAssistantSqlCode";
+      appendAssistantHighlightedSql(code, codeText);
+    } else {
+      code.textContent = codeText;
+    }
     pre.appendChild(code);
     el.appendChild(pre);
     codeLines = [];
+    codeLanguage = "";
   };
   for (const line of lines) {
-    if (/^\s*```/.test(line)) {
+    const fence = line.match(/^\s*```\s*([A-Za-z0-9_-]+)?\s*$/);
+    if (fence) {
       flushAssistantMarkdownList(el, listState);
       if (inCodeBlock) flushCodeBlock();
+      else codeLanguage = fence[1] || "";
       inCodeBlock = !inCodeBlock;
       continue;
     }

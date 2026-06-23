@@ -1,5 +1,5 @@
 import { getHostApi, registerShellApi } from "/ui/arcode/shared/host_context.js?v=20260614a";
-import { initAiAssistant } from "/ui/ai-assistant/arcode.js?v=20260620q";
+import { initAiAssistant } from "/ui/ai-assistant/arcode.js?v=20260622a";
 import { createFileIconResolver } from "/ui/arcode/shared/file-icons/fileIconResolver.js?v=20260614a";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
@@ -365,10 +365,12 @@ function persistExplorerWidth(width) {
 
 function applyExplorerWidth(width, { persist = true } = {}) {
   state.explorerWidth = normalizeExplorerWidth(width);
-  const layout = $("arcodeHome")?.querySelector(".arcodeHomeLayout");
-  if (layout) layout.style.setProperty("--arcode-explorer-width", `${state.explorerWidth}px`);
-  const resizer = $("arcodeExplorerResizer");
-  if (resizer) resizer.setAttribute("aria-valuenow", String(state.explorerWidth));
+  document.querySelectorAll(".arcodeWorkspaceLayout, .arcodeFrameWorkspace").forEach((layout) => {
+    layout.style.setProperty("--arcode-explorer-width", `${state.explorerWidth}px`);
+  });
+  document.querySelectorAll("#arcodeExplorerResizer").forEach((resizer) => {
+    resizer.setAttribute("aria-valuenow", String(state.explorerWidth));
+  });
   if (persist) {
     persistExplorerWidth(state.explorerWidth);
     void saveArcodeUserSettings();
@@ -952,68 +954,63 @@ function renderHomeCreateGroups() {
   }).join("");
 }
 
-function renderHome() {
-  const home = $("arcodeHome");
-  if (!home) return;
+function renderExplorerWorkspacePanel() {
   const folders = state.workspaceFolders || [];
   const activeFolder = state.activeWorkspaceFolder || folders[0] || "";
-  home.innerHTML = `
-    <div class="arcodeHomeLayout" style="--arcode-explorer-width: ${normalizeExplorerWidth(state.explorerWidth)}px;">
-      <aside class="arcodeHomeSidebar" aria-label="Explorer">
-        <div class="arcodeExplorerWorkspace">
-          <div class="arcodeExplorerWorkspaceName">Arcode Workspace</div>
-          <button id="arcodeExplorerRefreshBtn" class="arcodeExplorerRefreshBtn" type="button" title="Refresh file explorer" aria-label="Refresh file explorer">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M20 6v5h-5"></path>
-              <path d="M4 18v-5h5"></path>
-              <path d="M18 9a7 7 0 0 0-11-3"></path>
-              <path d="M6 15a7 7 0 0 0 11 3"></path>
-            </svg>
-          </button>
-        </div>
-        <div class="arcodeExplorerFolders" role="tree" aria-label="Workspace folders">
-          ${folders.length ? folders.map((folderPath) => `
-            ${renderExplorerRow({
-              path: folderPath,
-              name: filenameFromPath(folderPath) || folderPath,
-              kind: "root-folder",
-              depth: 0,
-              active: folderPath === activeFolder,
-            })}
-            ${renderExplorerChildren(folderPath)}
-          `).join("") : `
-            <div class="arcodeExplorerEmpty">
-              <div>No folder selected.</div>
-              <button id="arcodeExplorerEmptySelectBtn" class="arcodeHomeBtn primary" type="button">Select Folder</button>
-            </div>
-          `}
-        </div>
-      </aside>
-      <div
-        id="arcodeExplorerResizer"
-        class="arcodeExplorerResizer"
-        role="separator"
-        aria-label="Resize file explorer"
-        aria-orientation="vertical"
-        aria-valuemin="${MIN_EXPLORER_WIDTH}"
-        aria-valuemax="${MAX_EXPLORER_WIDTH}"
-        aria-valuenow="${normalizeExplorerWidth(state.explorerWidth)}"
-        tabindex="0"
-        title="Resize file explorer"
-      ></div>
-      <section class="arcodeHomeContent" aria-label="Arcode home content">
-        <div class="arcodeCreateGroups" aria-label="Create files">
-          ${renderHomeCreateGroups()}
-        </div>
-      </section>
-    </div>
+  return `
+    <aside class="arcodeHomeSidebar" aria-label="Explorer">
+      <div class="arcodeExplorerWorkspace">
+        <div class="arcodeExplorerWorkspaceName">Arcode Workspace</div>
+        <button id="arcodeExplorerRefreshBtn" class="arcodeExplorerRefreshBtn" type="button" title="Refresh file explorer" aria-label="Refresh file explorer">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 6v5h-5"></path>
+            <path d="M4 18v-5h5"></path>
+            <path d="M18 9a7 7 0 0 0-11-3"></path>
+            <path d="M6 15a7 7 0 0 0 11 3"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="arcodeExplorerFolders" role="tree" aria-label="Workspace folders">
+        ${folders.length ? folders.map((folderPath) => `
+          ${renderExplorerRow({
+            path: folderPath,
+            name: filenameFromPath(folderPath) || folderPath,
+            kind: "root-folder",
+            depth: 0,
+            active: folderPath === activeFolder,
+          })}
+          ${renderExplorerChildren(folderPath)}
+        `).join("") : `
+          <div class="arcodeExplorerEmpty">
+            <div>No folder selected.</div>
+            <button id="arcodeExplorerEmptySelectBtn" class="arcodeHomeBtn primary" type="button">Select Folder</button>
+          </div>
+        `}
+      </div>
+    </aside>
+    <div
+      id="arcodeExplorerResizer"
+      class="arcodeExplorerResizer"
+      role="separator"
+      aria-label="Resize file explorer"
+      aria-orientation="vertical"
+      aria-valuemin="${MIN_EXPLORER_WIDTH}"
+      aria-valuemax="${MAX_EXPLORER_WIDTH}"
+      aria-valuenow="${normalizeExplorerWidth(state.explorerWidth)}"
+      tabindex="0"
+      title="Resize file explorer"
+    ></div>
   `;
+}
+
+function wireExplorerWorkspace(container) {
+  const root = container || document;
   initExplorerResizer();
-  $("arcodeExplorerEmptySelectBtn")?.addEventListener("click", () => pickWorkspaceFolder({ replace: true }));
-  $("arcodeExplorerRefreshBtn")?.addEventListener("click", () => {
+  root.querySelector("#arcodeExplorerEmptySelectBtn")?.addEventListener("click", () => pickWorkspaceFolder({ replace: true }));
+  root.querySelector("#arcodeExplorerRefreshBtn")?.addEventListener("click", () => {
     void refreshExplorerFromButton();
   });
-  home.querySelectorAll(".arcodeExplorerEntry").forEach((button) => {
+  root.querySelectorAll(".arcodeExplorerEntry").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       const filePath = decodeURIComponent(button.getAttribute("data-path") || "");
@@ -1030,6 +1027,26 @@ function renderHome() {
       else updateStatus("Only notebook, code, SQL, JSON, Markdown, and text files open in Arcode tabs right now.");
     });
   });
+}
+
+function renderHome() {
+  const home = $("arcodeHome");
+  if (!home) return;
+  if (state.activeId !== "home") {
+    home.textContent = "";
+    return;
+  }
+  home.innerHTML = `
+    <div class="arcodeHomeLayout arcodeWorkspaceLayout" style="--arcode-explorer-width: ${normalizeExplorerWidth(state.explorerWidth)}px;">
+      ${renderExplorerWorkspacePanel()}
+      <section class="arcodeHomeContent" aria-label="Arcode home content">
+        <div class="arcodeCreateGroups" aria-label="Create files">
+          ${renderHomeCreateGroups()}
+        </div>
+      </section>
+    </div>
+  `;
+  wireExplorerWorkspace(home);
   home.querySelectorAll(".arcodeCreateCard").forEach((button) => {
     button.addEventListener("click", () => {
       void createHomeFile(button.dataset.createKind || "");
@@ -1426,13 +1443,29 @@ function renderTabs() {
 function renderFrames() {
   const home = $("arcodeHome");
   const host = $("arcodeFrameHost");
-  const hasActiveTab = !!activeTab();
+  const tab = activeTab();
+  const hasActiveTab = !!tab;
+  const usesExplorerWorkspace = tab?.type === "editor";
   home?.classList.toggle("open", !hasActiveTab);
   host?.classList.toggle("open", hasActiveTab);
+  renderFrameExplorerWorkspace(usesExplorerWorkspace);
   for (const tab of state.tabs) {
     tab.iframe?.classList.toggle("active", tab.id === state.activeId);
   }
   document.title = hasActiveTab ? `${tabTitle(activeTab())} - Arcode` : "Arcode";
+}
+
+function renderFrameExplorerWorkspace(enabled) {
+  const workspace = $("arcodeFrameWorkspace");
+  const explorerHost = $("arcodeFrameExplorerHost");
+  if (!workspace || !explorerHost) return;
+  workspace.classList.toggle("withExplorer", !!enabled);
+  if (!enabled) {
+    explorerHost.textContent = "";
+    return;
+  }
+  explorerHost.innerHTML = renderExplorerWorkspacePanel();
+  wireExplorerWorkspace(explorerHost);
 }
 
 function render() {
@@ -1503,7 +1536,7 @@ function createFrameForTab(tab) {
     postToTab(tab, { type: "arcode:set-zoom", zoom: state.zoomPercent, statusBarHeight: 28 });
     wireFrameFileDropTarget(iframe);
   });
-  $("arcodeFrameHost")?.appendChild(iframe);
+  ($("arcodeFrameStack") || $("arcodeFrameHost"))?.appendChild(iframe);
   tab.iframe = iframe;
 }
 

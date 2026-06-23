@@ -24,7 +24,7 @@ import {
   createAssistantUserAvatarSvg,
   renderAssistantMessageContent,
   typeAssistantMessage as typeAssistantMessageContent,
-} from "./messages.js?v=20260620b";
+} from "./messages.js?v=20260622a";
 import {
   normalizeActivities,
   normalizeDebugLogs,
@@ -114,12 +114,15 @@ let assistantSqlReviewDragState = null;
 let assistantSqlReviewDialogPosition = null;
 let assistantSqlReviewResizeState = null;
 let assistantSqlReviewDialogSize = null;
+let assistantSqlReviewRevealTimer = null;
+let assistantSqlReviewRevealPending = false;
 const assistantSkills = [SQL_FORMAT_VALIDATION_SKILL];
 const SQL_REVIEW_DIALOG_MIN_WIDTH = 520;
 const SQL_REVIEW_DIALOG_MIN_HEIGHT = 360;
 const SQL_REVIEW_DIALOG_Z = 9400;
 const SQL_REVIEW_DIALOG_ACTIVE_Z = 9500;
 const ASSISTANT_PANEL_FRONT_Z = 9600;
+const SQL_REVIEW_DIALOG_REVEAL_DELAY_MS = 5000;
 const SQL_DIFF_KEYWORDS = new Set([
   "ADD", "ALL", "ALTER", "AND", "AS", "ASC", "BEGIN", "BETWEEN", "BY", "CASE", "CREATE",
   "CROSS", "DELETE", "DESC", "DISTINCT", "DROP", "ELSE", "END", "EXCEPT", "EXEC", "EXISTS",
@@ -1965,7 +1968,7 @@ function renderUnifiedDiff(container, lines) {
   });
 }
 
-function renderSqlReviewDialog() {
+function renderSqlReviewDialog({ allowOpen = true } = {}) {
   ensureAssistantSkillDom();
   const state = assistantSqlReviewState;
   const dialog = $("aiAssistantSqlReviewDialog");
@@ -1991,13 +1994,34 @@ function renderSqlReviewDialog() {
     });
     findingsEl.appendChild(list);
   }
+  if (!allowOpen) return;
   dialog.classList.add("open");
   if (!wasOpen) bringSqlReviewDialogToFront();
   applyStoredSqlReviewDialogPosition();
 }
 
+function renderSqlReviewDialogIfAllowed() {
+  renderSqlReviewDialog({ allowOpen: !assistantSqlReviewRevealPending });
+}
+
+function clearSqlReviewRevealTimer() {
+  if (!assistantSqlReviewRevealTimer) return;
+  window.clearTimeout(assistantSqlReviewRevealTimer);
+  assistantSqlReviewRevealTimer = null;
+}
+
+function revealSqlReviewDialog(expectedState = null) {
+  if (expectedState && assistantSqlReviewState !== expectedState) return;
+  if (!assistantSqlReviewState) return;
+  assistantSqlReviewRevealPending = false;
+  clearSqlReviewRevealTimer();
+  renderSqlReviewDialog();
+}
+
 function closeSqlReviewDialog() {
   assistantSqlReviewState = null;
+  assistantSqlReviewRevealPending = false;
+  clearSqlReviewRevealTimer();
   stopSqlReviewDialogDrag();
   stopSqlReviewDialogResize();
   $("aiAssistantSqlReviewDialog")?.classList.remove("open");
@@ -2266,7 +2290,7 @@ async function updateSqlReviewWithLlm(context, original, proposed, findings) {
   if (!host?.codexAssistantSend || !assistantReady || assistantBusy) {
     if (assistantSqlReviewState) {
       assistantSqlReviewState.status = "Optional AI review skipped; deterministic formatting is ready to apply.";
-      renderSqlReviewDialog();
+      renderSqlReviewDialogIfAllowed();
     }
     return;
   }
@@ -2307,7 +2331,7 @@ async function updateSqlReviewWithLlm(context, original, proposed, findings) {
   setComposerEnabled(false);
   if (assistantSqlReviewState) {
     assistantSqlReviewState.status = "Deterministic formatting is ready. Optional AI review is running...";
-    renderSqlReviewDialog();
+    renderSqlReviewDialogIfAllowed();
   }
   try {
     const result = await host.codexAssistantSend({
@@ -2376,7 +2400,7 @@ async function updateSqlReviewWithLlm(context, original, proposed, findings) {
     assistantHostRequestSubmitted = false;
     setComposerEnabled(assistantReady);
   }
-  renderSqlReviewDialog();
+  renderSqlReviewDialogIfAllowed();
 }
 
 async function runSqlFormatValidationSkill() {
@@ -2414,8 +2438,12 @@ async function runSqlFormatValidationSkill() {
     selectionOnly: !!context.selectionOnly,
     status: "Review the proposed formatting before applying it to the active tab.",
   };
-  renderSqlReviewDialog();
-  void updateSqlReviewWithLlm(context, original, proposed, findings);
+  assistantSqlReviewRevealPending = true;
+  clearSqlReviewRevealTimer();
+  const reviewState = assistantSqlReviewState;
+  assistantSqlReviewRevealTimer = window.setTimeout(() => revealSqlReviewDialog(reviewState), SQL_REVIEW_DIALOG_REVEAL_DELAY_MS);
+  setStatus("SQL formatting is ready. Waiting briefly for AI review before opening the diff...");
+  void updateSqlReviewWithLlm(context, original, proposed, findings).finally(() => revealSqlReviewDialog(reviewState));
 }
 
 async function runAssistantSkill(skillId) {

@@ -2,7 +2,7 @@ import { $, getHostApi, shell } from "../arcode/shared/host_context.js?v=2026061
 import {
   configureAiAssistant,
   initAiAssistant as initSharedAiAssistant,
-} from "./index.js?v=20260620q";
+} from "./index.js?v=20260622a";
 
 configureAiAssistant({
   appName: "Arcode",

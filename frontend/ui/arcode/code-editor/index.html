@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Arcode Code Editor</title>
   <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/arcode/code-editor/code-editor.css?v=20260620e"/>
+  <link rel="stylesheet" href="/ui/arcode/code-editor/code-editor.css?v=20260621b"/>
 </head>
 <body>
   <main class="ce-app">
@@ -37,7 +37,15 @@
     <section class="ce-body">
       <div class="ce-main">
         <div id="editorHost" class="ce-editor-host" aria-label="Code editor"></div>
-        <section class="ce-output-panel" aria-label="Output">
+        <section class="ce-output-panel" id="outputPanel" aria-label="Output">
+          <div
+            class="ce-output-resize-handle"
+            id="outputResizeHandle"
+            role="separator"
+            aria-label="Resize output panel"
+            aria-orientation="horizontal"
+            tabindex="0"
+          ></div>
           <div class="ce-panel-header">
             <span>Output</span>
             <span id="runInfo" class="ce-run-info"></span>
@@ -45,18 +53,12 @@
           <pre id="outputText" class="ce-output-text"></pre>
         </section>
       </div>
-      <aside class="ce-side-panel" aria-label="Variables">
-        <div class="ce-panel-header">Variables</div>
-        <div id="varsBody" class="ce-vars-body">
-          <div class="ce-empty">No variables yet.</div>
-        </div>
-      </aside>
     </section>
   </main>
 
   <script src="/ui/libs/monaco-editor/min/vs/loader.js"></script>
   <script src="/ui/arcode/shared/zoom_bridge.js?v=20260614a"></script>
   <script src="/ui/arcode/shared/editor_shared.js?v=20260620a"></script>
-  <script src="/ui/arcode/code-editor/index.js?v=20260620b"></script>
+  <script src="/ui/arcode/code-editor/index.js?v=20260621b"></script>
 </body>
 </html>

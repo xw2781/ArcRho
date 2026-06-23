@@ -14,6 +14,8 @@ let autoSaveTimer = 0;
 let revisionPollTimer = 0;
 let isRunning = false;
 let lineNumbersVisible = true;
+let outputPanelHeight = 180;
+const OUTPUT_PANEL_HIDE_THRESHOLD = 28;
 
 const $ = (id) => document.getElementById(id);
 
@@ -66,14 +68,85 @@ function setOutput(text, { error = false, append = false } = {}) {
   output.scrollTop = output.scrollHeight;
 }
 
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
+function getOutputPanelBounds() {
+  const main = document.querySelector(".ce-main");
+  const mainHeight = main?.getBoundingClientRect?.().height || window.innerHeight || 0;
+  const min = 0;
+  const max = Math.max(min, Math.floor(mainHeight - 190));
+  return { min, max };
+}
+
+function applyOutputPanelHeight(height) {
+  const panel = $("outputPanel");
+  const handle = $("outputResizeHandle");
+  if (!panel) return;
+  const { min, max } = getOutputPanelBounds();
+  const nextHeight = Number(height);
+  const rawHeight = Number.isFinite(nextHeight) ? nextHeight : outputPanelHeight;
+  const boundedHeight = Math.max(min, Math.min(max, Math.round(rawHeight)));
+  const minVisibleHeight = Math.min(88, max);
+  outputPanelHeight = boundedHeight <= OUTPUT_PANEL_HIDE_THRESHOLD ? 0 : Math.max(minVisibleHeight, boundedHeight);
+  panel.style.setProperty("--ce-output-height", `${outputPanelHeight}px`);
+  panel.classList.toggle("hidden", outputPanelHeight <= OUTPUT_PANEL_HIDE_THRESHOLD);
+  handle?.setAttribute("aria-valuemin", String(min));
+  handle?.setAttribute("aria-valuemax", String(max));
+  handle?.setAttribute("aria-valuenow", String(outputPanelHeight));
+  editor?.layout?.();
+}
+
+function initOutputPanelControls() {
+  const panel = $("outputPanel");
+  const handle = $("outputResizeHandle");
+  if (!panel) return;
+
+  const initialHeight = panel.getBoundingClientRect?.().height || outputPanelHeight;
+  applyOutputPanelHeight(initialHeight);
+
+  handle?.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = panel.getBoundingClientRect().height || outputPanelHeight;
+    handle.setPointerCapture?.(event.pointerId);
+    document.body.classList.add("ce-resizing-output");
+
+    const move = (moveEvent) => {
+      applyOutputPanelHeight(startHeight + startY - moveEvent.clientY);
+    };
+    const stop = (upEvent) => {
+      if (handle.hasPointerCapture?.(upEvent.pointerId)) {
+        handle.releasePointerCapture?.(upEvent.pointerId);
+      }
+      document.body.classList.remove("ce-resizing-output");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  });
+
+  handle?.addEventListener("keydown", (event) => {
+    const { min, max } = getOutputPanelBounds();
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      applyOutputPanelHeight(outputPanelHeight <= OUTPUT_PANEL_HIDE_THRESHOLD ? 88 : outputPanelHeight + 12);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      applyOutputPanelHeight(outputPanelHeight - 12);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      applyOutputPanelHeight(min);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      applyOutputPanelHeight(max);
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    applyOutputPanelHeight(outputPanelHeight);
+  });
 }
 
 function updateCommandState() {
@@ -347,40 +420,7 @@ async function runPython(code) {
     const elapsed = Math.max(1, Math.round(performance.now() - started));
     $("runInfo").textContent = `${elapsed} ms`;
     setStatus(donePayload?.success === false ? "Error" : "Done");
-    await refreshVariables();
     setRunning(false);
-  }
-}
-
-async function refreshVariables() {
-  const body = $("varsBody");
-  if (!body) return;
-  if (!isPythonFile()) {
-    body.innerHTML = `<div class="ce-empty">Variables are available for Python files.</div>`;
-    return;
-  }
-  try {
-    const vars = await shared.scriptingFetch("/scripting/variables", {}, scriptingSessionId).then((r) => r.json());
-    if (!Array.isArray(vars) || !vars.length) {
-      body.innerHTML = `<div class="ce-empty">No variables yet.</div>`;
-      return;
-    }
-    body.innerHTML = `
-      <table class="ce-var-table">
-        <thead><tr><th>Name</th><th>Type</th><th>Value</th></tr></thead>
-        <tbody>
-          ${vars.map((item) => `
-            <tr>
-              <td class="ce-var-name">${escapeHtml(item.name)}</td>
-              <td>${escapeHtml(item.type)}</td>
-              <td class="ce-var-preview" title="${escapeHtml(item.preview)}">${escapeHtml(item.preview)}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    `;
-  } catch {
-    body.innerHTML = `<div class="ce-empty">Variables unavailable.</div>`;
   }
 }
 
@@ -389,7 +429,6 @@ async function restartSession() {
   try {
     await shared.scriptingFetch("/scripting/reset", { method: "POST" }, scriptingSessionId);
     setOutput("");
-    await refreshVariables();
     setStatus("Session restarted");
   } catch {
     setStatus("Restart failed");
@@ -593,11 +632,11 @@ function initEvents() {
 async function boot() {
   window.ArcodeZoomBridge?.wirePageZoomBridge();
   await initEditor();
+  initOutputPanelControls();
   initEvents();
   updateTitle();
   if (currentPath) await openFilePath(currentPath);
   else setEditorText("", { path: "" });
-  await refreshVariables();
   updateCommandState();
 }
 
