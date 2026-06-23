@@ -529,11 +529,19 @@ async function getCodexAssistantProjectRoots(options = {}) {
 
 function getBundledNpmCommand() {
   if (process.platform === "win32") {
-    const bundled = path.join(APP_ROOT, "node-portable", "npm.cmd");
+    const bundled = path.join(getBundledNodePortableRoot(), "npm.cmd");
     return fs.existsSync(bundled) ? bundled : "";
   }
-  const bundled = path.join(APP_ROOT, "node-portable", "npm");
+  const bundled = path.join(getBundledNodePortableRoot(), "npm");
   return fs.existsSync(bundled) ? bundled : "";
+}
+
+function getBundledResourceRoot() {
+  return app?.isPackaged && process.resourcesPath ? process.resourcesPath : APP_ROOT;
+}
+
+function getBundledNodePortableRoot() {
+  return path.join(getBundledResourceRoot(), "node-portable");
 }
 
 function getNpmCommand() {
@@ -552,7 +560,7 @@ function getCodexCommand() {
 
   if (process.platform === "win32") {
     const candidates = [
-      path.join(APP_ROOT, "node-portable", "codex.cmd"),
+      path.join(getBundledNodePortableRoot(), "codex.cmd"),
       readArcBotCodexCommandHint(),
       process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "codex.cmd") : "",
       process.env.LOCALAPPDATA
@@ -622,10 +630,11 @@ function runCodexCommand(args = [], options = {}) {
     });
   }
   if (process.platform === "win32") {
-    const bundledCodexCmd = path.join(APP_ROOT, "node-portable", "codex.cmd");
+    const bundledNodePortableRoot = getBundledNodePortableRoot();
+    const bundledCodexCmd = path.join(bundledNodePortableRoot, "codex.cmd");
     if (command.toLowerCase() === bundledCodexCmd.toLowerCase()) {
-      const bundledNode = path.join(APP_ROOT, "node-portable", "node.exe");
-      const bundledCodexJs = path.join(APP_ROOT, "node-portable", "node_modules", "@openai", "codex", "bin", "codex.js");
+      const bundledNode = path.join(bundledNodePortableRoot, "node.exe");
+      const bundledCodexJs = path.join(bundledNodePortableRoot, "node_modules", "@openai", "codex", "bin", "codex.js");
       if (fs.existsSync(bundledNode) && fs.existsSync(bundledCodexJs)) {
         return runHostCommand(bundledNode, [bundledCodexJs, ...args], {
           ...options,
@@ -658,10 +667,11 @@ function getCodexSpawnSpec(args = []) {
   if (!command) return null;
   const nextArgs = args.map((arg) => String(arg));
   if (process.platform === "win32") {
-    const bundledCodexCmd = path.join(APP_ROOT, "node-portable", "codex.cmd");
+    const bundledNodePortableRoot = getBundledNodePortableRoot();
+    const bundledCodexCmd = path.join(bundledNodePortableRoot, "codex.cmd");
     if (command.toLowerCase() === bundledCodexCmd.toLowerCase()) {
-      const bundledNode = path.join(APP_ROOT, "node-portable", "node.exe");
-      const bundledCodexJs = path.join(APP_ROOT, "node-portable", "node_modules", "@openai", "codex", "bin", "codex.js");
+      const bundledNode = path.join(bundledNodePortableRoot, "node.exe");
+      const bundledCodexJs = path.join(bundledNodePortableRoot, "node_modules", "@openai", "codex", "bin", "codex.js");
       if (fs.existsSync(bundledNode) && fs.existsSync(bundledCodexJs)) {
         return { command: bundledNode, args: [bundledCodexJs, ...nextArgs], shell: false };
       }

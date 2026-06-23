@@ -47,11 +47,19 @@ def is_strictly_greater_version(candidate: str, current: str) -> bool:
     return parse_version(candidate) > parse_version(current)
 
 
-def resolve_target_version(current_version: str, requested_version: str | None) -> str:
+def resolve_target_version(
+    current_version: str,
+    requested_version: str | None,
+    require_increase: bool = False,
+) -> str:
     if requested_version:
         requested_version = requested_version.strip()
         parse_version(requested_version)
-        if parse_version(requested_version) < parse_version(current_version):
+        if require_increase and parse_version(requested_version) <= parse_version(current_version):
+            raise ValueError(
+                f"Requested version '{requested_version}' must be higher than current version '{current_version}'."
+            )
+        if not require_increase and parse_version(requested_version) < parse_version(current_version):
             raise ValueError(
                 f"Requested version '{requested_version}' must not be lower than current version '{current_version}'."
             )
@@ -106,6 +114,11 @@ def main() -> int:
         "--version-file",
         help="Optional file that receives the computed version.",
     )
+    parser.add_argument(
+        "--require-increase",
+        action="store_true",
+        help="Require an explicit version to be higher than the current package version.",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
@@ -122,7 +135,11 @@ def main() -> int:
     if not package_name:
         raise ValueError(f"package.json is missing a name: {package_json_path}")
 
-    target_version = resolve_target_version(current_version, args.version)
+    target_version = resolve_target_version(
+        current_version,
+        args.version,
+        require_increase=args.require_increase,
+    )
 
     if args.dry_run:
         if args.version_file:

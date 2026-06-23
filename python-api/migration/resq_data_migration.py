@@ -27,14 +27,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+# PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
 
 # RC_PATH = r"PRNJ - PA\PA\NY\Direct Group\MP+PIP"
 # RC_PATH = r"PRNJ - PA\PA\NJ\Direct Group\BIR51+UMBIR51"
-RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
+# RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
 # RC_PATH = r'PRNJ - PA\PA\All States\Direct Group\COL'
+RC_PATH = r"PRNJ - PA\PA\NJ\Direct Group\BIR51+UMBIR51"
 
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 USER_NAME = ""

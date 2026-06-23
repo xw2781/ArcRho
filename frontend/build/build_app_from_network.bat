@@ -6,6 +6,7 @@ REM Usage from another PC:
 REM   "\\Ne7saswpn02\e\XWSpace\Repos\ArcRho\frontend\build\build_app_from_network.bat"
 REM Optional:
 REM   set PYTHON_EXE=C:\Path\To\Python310\python.exe
+REM   set ARCRHO_INSTALL_PYTHON_DEPS=1
 REM Installer update feed publishing is handled by the delegated build_app.bat.
 
 set "SCRIPT_DIR=%~dp0"
@@ -47,6 +48,17 @@ if /i "%~1"=="--check" (
     popd
     cd /d "%ORIGINAL_DIR%" >nul 2>nul
     exit /b 0
+)
+
+if /i "%ARCRHO_INSTALL_PYTHON_DEPS%"=="1" (
+    "%PYTHON_EXE%" check_python_build_env.py --install-missing
+    if errorlevel 1 (
+        echo ERROR: Failed to install required Python build dependencies.
+        popd
+        cd /d "%ORIGINAL_DIR%" >nul 2>nul
+        pause
+        exit /b 1
+    )
 )
 
 call :enable_sign_and_edit_executable

@@ -26,6 +26,10 @@
     {
       "from": "python_dist/arcode_server",
       "to": "arcode_server"
+    },
+    {
+      "from": "node-portable",
+      "to": "node-portable"
     }
   ],
   "win": {

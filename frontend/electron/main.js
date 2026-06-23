@@ -108,6 +108,9 @@ const UPDATE_INSTALLER_NAME_RE = APP_MODE === "arcode"
   ? /^Arcode-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i
   : /^ArcRho-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i;
 const SHA256_RE = /\b[a-fA-F0-9]{64}\b/;
+const DEV_UPDATE_CHECK_ENABLED = String(
+  APP_MODE === "arcode" ? process.env.ARCODE_ENABLE_DEV_UPDATE_CHECK : process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK
+).trim() === "1";
 
 function getBundledServerPath() {
   // Check if running as packaged app
@@ -362,6 +365,10 @@ function isInstallableUpdate(updateInfo) {
   return !!(updateInfo && !updateInfo.status && updateInfo.version && updateInfo.installerPath && updateInfo.sha256);
 }
 
+function areInstallerUpdateChecksEnabled() {
+  return app.isPackaged || DEV_UPDATE_CHECK_ENABLED;
+}
+
 async function updateInfoFromManifest(manifest, options = {}) {
   const reportIssues = options.reportIssues === true;
   const version = String(manifest?.version || "").trim();
@@ -606,6 +613,22 @@ async function checkForUpdate(options = {}) {
       });
     }
     return { status: "unsupported" };
+  }
+  if (!areInstallerUpdateChecksEnabled()) {
+    if (showNoUpdate) {
+      await showMainWindowMessageBox({
+        type: "info",
+        title: "Update check unavailable",
+        message: "ArcRho installer update checks are disabled in development mode.",
+        detail: [
+          "Development launches run from the local source tree instead of an installed package.",
+          "Set ARCRHO_ENABLE_DEV_UPDATE_CHECK=1 before launch to test installer update checks from a dev app.",
+        ].join("\n"),
+        buttons: ["OK"],
+        noLink: true,
+      });
+    }
+    return { status: "development" };
   }
 
   let updateInfo = null;

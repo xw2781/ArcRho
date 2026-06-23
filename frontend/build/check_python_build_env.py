@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import importlib
+import subprocess
 import sys
 import warnings
 from pathlib import Path
@@ -35,7 +37,7 @@ REQUIRED_MODULES = {
 }
 
 
-def main() -> int:
+def find_missing_modules() -> list[tuple[str, str | None]]:
     missing: list[tuple[str, str | None]] = []
     for module_name, package_name in REQUIRED_MODULES.items():
         try:
@@ -44,11 +46,10 @@ def main() -> int:
                 importlib.import_module(module_name)
         except Exception:
             missing.append((module_name, package_name))
+    return missing
 
-    if not missing:
-        print("Python build dependencies validated.")
-        return 0
 
+def print_missing_modules(missing: list[tuple[str, str | None]]) -> list[str]:
     print("ERROR: Missing Python build dependencies for the packaged app server.")
     print()
     for module_name, package_name in missing:
@@ -62,6 +63,52 @@ def main() -> int:
         print()
         print("Install missing packages for the selected Python 3.10 interpreter:")
         print(f"  {sys.executable} -m pip install {' '.join(packages)}")
+    return packages
+
+
+def install_missing_packages(packages: list[str]) -> int:
+    if not packages:
+        print()
+        print("ERROR: Missing modules do not have installable package mappings.")
+        return 1
+
+    print()
+    print("Installing missing Python build dependencies...")
+    return subprocess.call([sys.executable, "-m", "pip", "install", *packages])
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate ArcRho Python build dependencies.")
+    parser.add_argument(
+        "--install-missing",
+        action="store_true",
+        help="Install missing package-mapped dependencies with pip, then validate again.",
+    )
+    args = parser.parse_args()
+
+    missing = find_missing_modules()
+
+    if not missing:
+        print("Python build dependencies validated.")
+        return 0
+
+    packages = print_missing_modules(missing)
+    if not args.install_missing:
+        return 1
+
+    result = install_missing_packages(packages)
+    if result != 0:
+        return result
+
+    missing = find_missing_modules()
+    if not missing:
+        print()
+        print("Python build dependencies validated.")
+        return 0
+
+    print()
+    print("ERROR: Python build dependencies are still missing after pip install.")
+    print_missing_modules(missing)
     return 1
 
 

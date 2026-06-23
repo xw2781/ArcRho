@@ -27,7 +27,10 @@ if "%~1"=="--version" (
     exit /b %ERRORLEVEL%
 )
 
-"%PYTHON_EXE%" build\check_python_build_env.py
+set "CHECK_PYTHON_BUILD_ENV_ARGS=build\check_python_build_env.py"
+if /i "%ARCRHO_INSTALL_PYTHON_DEPS%"=="1" set "CHECK_PYTHON_BUILD_ENV_ARGS=%CHECK_PYTHON_BUILD_ENV_ARGS% --install-missing"
+
+"%PYTHON_EXE%" %CHECK_PYTHON_BUILD_ENV_ARGS%
 if errorlevel 1 exit /b 1
 
 set "PYINSTALLER_ARGS=build\server.spec --distpath python_dist --workpath python_build --noconfirm"
