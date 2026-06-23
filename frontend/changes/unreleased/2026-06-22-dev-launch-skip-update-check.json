@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "startup",
+  "audience": "user",
+  "summary": "Development launches no longer prompt users to install packaged app updates.",
+  "details": [
+    "Installer update checks now run by default only in packaged desktop builds.",
+    "Set ARCRHO_ENABLE_DEV_UPDATE_CHECK=1 before launching a dev app when intentionally testing installer update behavior."
+  ]
+}

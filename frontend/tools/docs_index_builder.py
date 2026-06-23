@@ -551,7 +551,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/arcode/notebook-editor/panels.js", "Notebook sidebar, TOC, and variables panels."),
             ("ui/arcode/notebook-editor/notebook-io.js", "Notebook save/open and `.ipynb` import/export helpers."),
             ("ui/arcode/code-editor/index.html", "Plain code/text editor page layout."),
-            ("ui/arcode/code-editor/index.js", "Plain text-file open/save, dirty state, Python run output, and variables."),
+            ("ui/arcode/code-editor/index.js", "Plain text-file open/save, dirty state, Python run output, and output panel controls."),
             ("ui/arcode/shared/editor_shared.js", "Shared Arcode editor host bridge, path, tab message, revision, and scripting session helpers."),
         ],
     },

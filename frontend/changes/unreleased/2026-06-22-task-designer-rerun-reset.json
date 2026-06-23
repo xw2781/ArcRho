@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Task Designer wrapper macros can be run again while the Task Designer tab is already open without showing a stale-session error."
+}

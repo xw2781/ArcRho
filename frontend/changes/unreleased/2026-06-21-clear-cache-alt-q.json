@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Fixed Alt+Q so it triggers Clear Cache & Reload consistently.",
+  "details": [
+    "The shortcut now works from shell focus and from top-level feature tabs."
+  ]
+}

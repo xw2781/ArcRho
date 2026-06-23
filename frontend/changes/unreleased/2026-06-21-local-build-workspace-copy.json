@@ -1,0 +1,15 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Added helper scripts for preparing and building from a local workspace copied from a network source.",
+  "details": [
+    "The workspace helper copies the frontend build tree and Python API sources while skipping generated build outputs and logs.",
+    "The batch wrapper copies to the local user profile Documents\\build_arcrho_app folder and runs the build from there.",
+    "Set ARCRHO_LOCAL_BUILD_ROOT to choose a different local build workspace.",
+    "Set ARCRHO_LOCAL_BUILD_COPY_THREADS to tune robocopy threading for faster network-to-local copies.",
+    "Copy progress is shown by default; set ARCRHO_LOCAL_BUILD_SHOW_PROGRESS=0 to disable the progress scan.",
+    "The batch wrapper now asks whether to copy source files before building, and ARCRHO_LOCAL_BUILD_SKIP_COPY=1 can skip the prompt.",
+    "When copying is selected, the existing local build workspace is deleted before fresh source files are copied."
+  ]
+}

@@ -19,6 +19,8 @@
     "SQL AI review responses now avoid visible Markdown heading markers and render the main issue group labels in bold.",
     "The SQL review diff now extends red/green row backgrounds across the full horizontal diff width, including short or blank changed lines.",
     "The deterministic SQL formatter now preserves full-line -- comments without splitting or reindenting them.",
-    "The SQL review diff now syntax-highlights SQL keywords, functions, datatypes, strings, comments, numbers, and bracketed identifiers."
+    "The SQL review diff now syntax-highlights SQL keywords, functions, datatypes, strings, comments, numbers, and bracketed identifiers.",
+    "The SQL review diff waits up to five seconds for optional AI review content before opening, and opens sooner if that review finishes.",
+    "ArcBot chat responses now syntax-highlight SQL-looking inline code plus fenced SQL, MSSQL, and T-SQL code blocks with the same SQL colors as the review diff."
   ]
 }

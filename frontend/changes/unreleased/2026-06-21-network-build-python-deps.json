@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Builds can now install missing Python build dependencies before packaging.",
+  "details": [
+    "Set ARCRHO_INSTALL_PYTHON_DEPS=1 before running build_app.bat or build_app_from_network.bat to let the selected Python 3.10 interpreter install missing package-mapped dependencies."
+  ]
+}

@@ -2,5 +2,5 @@
   "type": "improvement",
   "scope": "dfm",
   "audience": "user",
-  "summary": "Moved the DFM RPC Sync button into the DFM tab bar and removed the separate path bar row."
+  "summary": "Moved the DFM RPC Sync button into the right side of the DFM tab bar and removed the separate path bar row."
 }

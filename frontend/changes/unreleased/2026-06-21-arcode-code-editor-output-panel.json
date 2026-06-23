@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Made the generic Arcode code editor use a wider single-pane layout with a highlighted output resize handle that can hide the panel."
+}

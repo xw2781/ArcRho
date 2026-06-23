@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Removed the DFM tab Validate button.",
+  "details": [
+    "Task Designer remains available through macros and scripts instead of a DFM toolbar button."
+  ]
+}

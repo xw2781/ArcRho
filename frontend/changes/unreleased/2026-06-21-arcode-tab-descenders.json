@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Prevented Arcode tab title descenders from being clipped at some display scales."
+}

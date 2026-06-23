@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Task Designer wrapper macros now open the Task Designer progress tab when run from the Macro window.",
+  "details": [
+    "Wrapper macros can call the injected Task Designer helper without requiring an existing Task Designer launch session.",
+    "Generated wrappers fall back to the public Python UI API when the injected helper is unavailable."
+  ]
+}

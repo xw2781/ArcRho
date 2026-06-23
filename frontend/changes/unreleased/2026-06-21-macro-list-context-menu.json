@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Added a right-click action menu for Macro window list items.",
+  "details": [
+    "Macro rows now offer Run, Rename, Delete, Move Up, and Move Down actions.",
+    "The Macro window now has a pin toggle to stay above floating main tabs when needed.",
+    "Macro list ordering is saved locally, and user macro renames are applied through the macros folder path guard.",
+    "Fixed the Macro window splitter so the list and description panes can be resized."
+  ]
+}

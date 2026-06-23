@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Packaged ArcBot builds now include the portable Node.js runtime so Codex CLI installation does not depend on user-installed npm."
+}

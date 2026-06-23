@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Showed the Arcode workspace explorer beside generic code editor tabs."
+}

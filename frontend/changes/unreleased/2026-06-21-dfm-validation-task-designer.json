@@ -1,0 +1,17 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added a Task Designer tab for showing live DFM validation progress.",
+  "details": [
+    "DFM tabs and scripts can open Task Designer as a live progress monitor.",
+    "Task Designer is now a normal shell tab that starts in floating pop-out layout and can be docked to the tab strip.",
+    "Task Designer now shows only live task rows and removes UI-side macro compose, preview, save, run, and stop controls.",
+    "Task Designer task rows now keep long text to two lines and show macro messages in a dedicated Comments column.",
+    "Running Task Designer rows now show a Dataset-style sweep spinner in the Duration column and an animated activity indicator in the Status column until the task finishes.",
+    "Running task duration refreshes now update elapsed text in place so row animations continue smoothly.",
+    "Clicking a Task Designer row now opens a nested floating details window with full comments and task properties.",
+    "Macro execution now provides __file__ to wrapper and child macros so sibling macro imports work consistently.",
+    "Validation macros can update task rows live through the ArcRho Python UI API or injected Task Designer helper."
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Added a manual helper for updating app version metadata while rejecting equal or lower versions."
+}

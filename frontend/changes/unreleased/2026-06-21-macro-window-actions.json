@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Fixed Macro window Run and Edit actions so they respond from the Macro menu.",
+  "details": [
+    "The Macro menu now opens the same macro module instance that wires the window controls.",
+    "Run and Edit now show clear status feedback when no runnable or editable macro is selected."
+  ]
+}
