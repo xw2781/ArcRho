@@ -2,7 +2,7 @@
 Option Private Module
 Option Explicit
 
-Public Const ARCRHO_VERSION As String = "2.1.0"
+Public Const ARCRHO_VERSION As String = "2.2.0"
 
 ' User-specific config (C:\Users\...\AppData\Local\ArcRho\config.txt)
 Public configDir As String
@@ -31,22 +31,29 @@ Public disableWatcher As Boolean
 Public triangle_tool_row As Long
 Public triangle_tool_col As Long
 
-Private Const DATA_STORAGE_GENERATED As String = "generated"
-Private Const DATA_STORAGE_MANUAL As String = "manual"
+Private Const DATA_REQUEST_ENGINE As String = "engine"
+Private Const DATA_REQUEST_LOCAL As String = "local"
 Private Const DATASET_CACHE_DIR As String = "datasets"
+Private Const DATASET_INDEX_FILE As String = "index.json"
 
 Private Type DatasetRequestSpec
     FunctionName As String
     ProjectName As String
     ReservingClassPath As String
     DatasetName As String
+    InstanceName As String
     ProjectDataPath As String
     DataPath As String
-    StorageKind As String
+    DatasetIndexPath As String
+    DatasetIndexChecked As Boolean
+    DatasetIndexAvailable As Boolean
+    RequestMode As String
 End Type
 
 Private datasetTypesCache As Object
 Private datasetTypesStampCache As Object
+Private datasetIndexCache As Object
+Private datasetIndexStampCache As Object
 
 Public Function FirstExistingPath(ParamArray paths() As Variant) As String
     Dim i As Long
@@ -153,15 +160,23 @@ Public Function GetDataset(funcArgs As String)
     End If
     requestInfo = funcArgs & "#DataPath = " & dataPath
 
-    ' Non-generated datasets are read-only from Excel. Missing non-generated
+    ' Local datasets are read-only from Excel. Missing local
     ' datasets should not create request files or clear existing cache files.
-    If spec.StorageKind = DATA_STORAGE_MANUAL Then
+    If spec.RequestMode = DATA_REQUEST_LOCAL Then
         If FileExists(dataPath) Then
             GetDataset = GetDataArray(dataPath)
             errCount = 0
         Else
-            Debug.Print "[error] - non-generated dataset file not found: "; dataPath
-            GetDataset = "(non-generated dataset not found)"
+            Debug.Print "[error] - local dataset file not found: "; dataPath
+            If spec.DatasetIndexChecked Then
+                If spec.DatasetIndexAvailable Then
+                    GetDataset = "(local dataset cache not found)"
+                Else
+                    GetDataset = "(dataset instance not found)"
+                End If
+            Else
+                GetDataset = "(local dataset not found)"
+            End If
         End If
         GoTo CleanExit
     End If
@@ -438,10 +453,12 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     Dim cumulativeMode As String
     Dim calendarMode As String
     Dim projectDataPath As String
-    Dim storageKind As String
+    Dim requestMode As String
     Dim rcFolder As String
     Dim rcDataPath As String
     Dim datasetDataPath As String
+    Dim requestedInstanceName As String
+    Dim requestLookupName As String
     Dim datasetFile As String
     Dim spec As DatasetRequestSpec
 
@@ -515,16 +532,19 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     Else
         projectDataPath = basePath & "data"
     End If
-    storageKind = ResolveDatasetStorageKind(proj, datasetName, functionName)
+    requestLookupName = FirstNonBlank(datasetName, instanceName)
+    requestMode = ResolveDatasetRequestMode(proj, requestLookupName)
 
-    ' Storage contract shared with the frontend app:
+    ' Data path contract shared with the frontend app:
     ' data\<reserving-class>\datasets\<dataset>.csv. Dataset Types "Generated"
     ' controls whether Excel sends an engine request or only reads the file.
-    If Len(reservingClassPath) > 0 And Len(datasetName) > 0 Then
+    If Len(reservingClassPath) > 0 And Len(requestLookupName) > 0 Then
+        reservingClassPath = NormalizeReservingClassPath(reservingClassPath)
         rcFolder = SanitizeReservingClassFolderName(reservingClassPath)
         rcDataPath = projectDataPath & "\" & rcFolder
         datasetDataPath = rcDataPath & "\" & DATASET_CACHE_DIR
-        datasetFile = SanitizeDataFileName(FirstNonBlank(instanceName, datasetName))
+        requestedInstanceName = FirstNonBlank(instanceName, datasetName)
+        datasetFile = SanitizeDataFileName(requestedInstanceName)
         If LCase$(Trim$(functionName)) = "arcrhotri" _
                 And Len(Trim$(originLength)) > 0 _
                 And Len(Trim$(developmentLength)) > 0 Then
@@ -533,6 +553,13 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
                 & "@" & RequestBoolSuffix(calendarMode, "cal", "dev")
         End If
         spec.DataPath = datasetDataPath & "\" & datasetFile & ".csv"
+        spec.DatasetIndexPath = rcDataPath & "\" & DATASET_INDEX_FILE
+        If requestMode = DATA_REQUEST_LOCAL Then
+            spec.DatasetIndexChecked = FileExists(spec.DatasetIndexPath)
+            If spec.DatasetIndexChecked Then
+                spec.DatasetIndexAvailable = DatasetInstanceExistsInIndex(spec.DatasetIndexPath, requestedInstanceName)
+            End If
+        End If
     Else
         ' Fallback for requests that are not scoped by reserving class and dataset
         ' name, such as ArcRhoHeaders and ArcRhoProjectSettings.
@@ -544,8 +571,9 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     spec.ProjectName = proj
     spec.ReservingClassPath = reservingClassPath
     spec.DatasetName = datasetName
+    spec.InstanceName = requestedInstanceName
     spec.ProjectDataPath = projectDataPath
-    spec.StorageKind = storageKind
+    spec.RequestMode = requestMode
     BuildDatasetRequestSpec = spec
 End Function
 
@@ -558,12 +586,12 @@ Private Function RequestBoolSuffix(ByVal value As String, ByVal trueSuffix As St
     End Select
 End Function
 
-Private Function ResolveDatasetStorageKind(ByVal projectName As String, ByVal datasetName As String, ByVal functionName As String) As String
+Private Function ResolveDatasetRequestMode(ByVal projectName As String, ByVal datasetName As String) As String
     Dim generatedMap As Object
     Dim key As String
 
     If Len(Trim$(datasetName)) = 0 Then
-        ResolveDatasetStorageKind = DATA_STORAGE_GENERATED
+        ResolveDatasetRequestMode = DATA_REQUEST_ENGINE
         Exit Function
     End If
 
@@ -571,13 +599,37 @@ Private Function ResolveDatasetStorageKind(ByVal projectName As String, ByVal da
     key = NormalizeDatasetKey(datasetName)
     If generatedMap.Exists(key) Then
         If CBool(generatedMap(key)) Then
-            ResolveDatasetStorageKind = DATA_STORAGE_GENERATED
+            ResolveDatasetRequestMode = DATA_REQUEST_ENGINE
         Else
-            ResolveDatasetStorageKind = DATA_STORAGE_MANUAL
+            ResolveDatasetRequestMode = DATA_REQUEST_LOCAL
         End If
     Else
-        ResolveDatasetStorageKind = DATA_STORAGE_MANUAL
+        ResolveDatasetRequestMode = DATA_REQUEST_LOCAL
     End If
+End Function
+
+Private Function NormalizeReservingClassPath(ByVal value As String) As String
+    Dim text As String
+    Dim firstSegment As String
+    Dim sepPos As Long
+    Dim slashPos As Long
+
+    text = Trim$(value)
+    Do While Left$(text, 1) = "\" Or Left$(text, 1) = "/"
+        text = Mid$(text, 2)
+    Loop
+
+    sepPos = InStr(1, text, "\", vbTextCompare)
+    slashPos = InStr(1, text, "/", vbTextCompare)
+    If sepPos = 0 Or (slashPos > 0 And slashPos < sepPos) Then sepPos = slashPos
+    If sepPos > 0 Then
+        firstSegment = LCase$(Trim$(Left$(text, sepPos - 1)))
+        If firstSegment = "manual" Or firstSegment = "generated" Then
+            text = Mid$(text, sepPos + 1)
+        End If
+    End If
+
+    NormalizeReservingClassPath = text
 End Function
 
 Private Function GetDatasetTypesGeneratedMap(ByVal projectName As String) As Object
@@ -684,6 +736,113 @@ Private Sub EnsureDatasetTypesCache()
         datasetTypesStampCache.CompareMode = vbTextCompare
     End If
 End Sub
+
+Private Function DatasetInstanceExistsInIndex(ByVal indexPath As String, ByVal instanceName As String) As Boolean
+    Dim instanceMap As Object
+    Dim key As String
+
+    If Len(Trim$(instanceName)) = 0 Then Exit Function
+
+    Set instanceMap = GetDatasetIndexInstanceMap(indexPath)
+    key = NormalizeDatasetKey(instanceName)
+    DatasetInstanceExistsInIndex = instanceMap.Exists(key)
+End Function
+
+Private Function GetDatasetIndexInstanceMap(ByVal indexPath As String) As Object
+    Dim cacheKey As String
+    Dim stamp As String
+    Dim instanceMap As Object
+
+    EnsureDatasetIndexCache
+
+    cacheKey = LCase$(indexPath)
+    If FileExists(indexPath) Then
+        stamp = CStr(FileDateTime(indexPath))
+    Else
+        stamp = "<missing>"
+    End If
+
+    If datasetIndexCache.Exists(cacheKey) Then
+        If datasetIndexStampCache.Exists(cacheKey) Then
+            If CStr(datasetIndexStampCache(cacheKey)) = stamp Then
+                Set GetDatasetIndexInstanceMap = datasetIndexCache(cacheKey)
+                Exit Function
+            End If
+        End If
+    End If
+
+    If FileExists(indexPath) Then
+        Set instanceMap = LoadDatasetIndexInstanceMap(indexPath)
+    Else
+        Set instanceMap = CreateObject("Scripting.Dictionary")
+        instanceMap.CompareMode = vbTextCompare
+    End If
+
+    If datasetIndexCache.Exists(cacheKey) Then datasetIndexCache.Remove cacheKey
+    If datasetIndexStampCache.Exists(cacheKey) Then datasetIndexStampCache.Remove cacheKey
+    datasetIndexCache.Add cacheKey, instanceMap
+    datasetIndexStampCache.Add cacheKey, stamp
+
+    Set GetDatasetIndexInstanceMap = instanceMap
+End Function
+
+Private Function LoadDatasetIndexInstanceMap(ByVal indexPath As String) As Object
+    Dim instanceMap As Object
+    Dim root As Object
+    Dim files As Collection
+    Dim item As Object
+    Dim i As Long
+    Dim name As String
+    Dim key As String
+
+    Set instanceMap = CreateObject("Scripting.Dictionary")
+    instanceMap.CompareMode = vbTextCompare
+
+    On Error GoTo LoadFailed
+    Set root = JsonParse(ReadUtf8TextFile(indexPath))
+    If Not root.Exists("files") Then GoTo LoadFinished
+
+    Set files = root("files")
+    For i = 1 To files.Count
+        If IsObject(files.Item(i)) Then
+            Set item = files.Item(i)
+            name = JsonObjectString(item, "name")
+            If Len(name) = 0 Then name = JsonObjectString(item, "dataset_name")
+            If Len(name) > 0 Then
+                key = NormalizeDatasetKey(name)
+                If Not instanceMap.Exists(key) Then instanceMap.Add key, True
+            End If
+        End If
+    Next i
+
+LoadFinished:
+    Set LoadDatasetIndexInstanceMap = instanceMap
+    Exit Function
+
+LoadFailed:
+    Debug.Print "Failed to load dataset index: "; indexPath; " - "; Err.Description
+    Set LoadDatasetIndexInstanceMap = instanceMap
+End Function
+
+Private Sub EnsureDatasetIndexCache()
+    If datasetIndexCache Is Nothing Then
+        Set datasetIndexCache = CreateObject("Scripting.Dictionary")
+        datasetIndexCache.CompareMode = vbTextCompare
+    End If
+    If datasetIndexStampCache Is Nothing Then
+        Set datasetIndexStampCache = CreateObject("Scripting.Dictionary")
+        datasetIndexStampCache.CompareMode = vbTextCompare
+    End If
+End Sub
+
+Private Function JsonObjectString(ByVal obj As Object, ByVal key As String) As String
+    If obj.Exists(key) Then
+        If IsObject(obj(key)) Then Exit Function
+        If Not IsNull(obj(key)) And Not IsEmpty(obj(key)) Then
+            JsonObjectString = Trim$(CStr(obj(key)))
+        End If
+    End If
+End Function
 
 Private Function GetProjectDatasetTypesJsonPath(ByVal projectName As String) As String
     Dim projectFolder As String
