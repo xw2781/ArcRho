@@ -45,8 +45,6 @@ Private Type DatasetRequestSpec
     ProjectDataPath As String
     DataPath As String
     DatasetIndexPath As String
-    DatasetIndexChecked As Boolean
-    DatasetIndexAvailable As Boolean
     RequestMode As String
 End Type
 
@@ -168,15 +166,7 @@ Public Function GetDataset(funcArgs As String)
             errCount = 0
         Else
             Debug.Print "[error] - local dataset file not found: "; dataPath
-            If spec.DatasetIndexChecked Then
-                If spec.DatasetIndexAvailable Then
-                    GetDataset = "(local dataset cache not found)"
-                Else
-                    GetDataset = "(dataset instance not found)"
-                End If
-            Else
-                GetDataset = "(local dataset not found)"
-            End If
+            GetDataset = MissingLocalDatasetMessage(spec)
         End If
         GoTo CleanExit
     End If
@@ -554,12 +544,6 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
         End If
         spec.DataPath = datasetDataPath & "\" & datasetFile & ".csv"
         spec.DatasetIndexPath = rcDataPath & "\" & DATASET_INDEX_FILE
-        If requestMode = DATA_REQUEST_LOCAL Then
-            spec.DatasetIndexChecked = FileExists(spec.DatasetIndexPath)
-            If spec.DatasetIndexChecked Then
-                spec.DatasetIndexAvailable = DatasetInstanceExistsInIndex(spec.DatasetIndexPath, requestedInstanceName)
-            End If
-        End If
     Else
         ' Fallback for requests that are not scoped by reserving class and dataset
         ' name, such as ArcRhoHeaders and ArcRhoProjectSettings.
@@ -575,6 +559,21 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     spec.ProjectDataPath = projectDataPath
     spec.RequestMode = requestMode
     BuildDatasetRequestSpec = spec
+End Function
+
+Private Function MissingLocalDatasetMessage(ByRef spec As DatasetRequestSpec) As String
+    Dim requestedInstanceName As String
+
+    requestedInstanceName = FirstNonBlank(spec.InstanceName, spec.DatasetName)
+    If Len(spec.DatasetIndexPath) > 0 And FileExists(spec.DatasetIndexPath) Then
+        If DatasetInstanceExistsInIndex(spec.DatasetIndexPath, requestedInstanceName) Then
+            MissingLocalDatasetMessage = "(local dataset cache not found)"
+        Else
+            MissingLocalDatasetMessage = "(dataset instance not found)"
+        End If
+    Else
+        MissingLocalDatasetMessage = "(dataset not found)"
+    End If
 End Function
 
 Private Function RequestBoolSuffix(ByVal value As String, ByVal trueSuffix As String, ByVal falseSuffix As String) As String
