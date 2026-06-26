@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Development launches now show the latest released ArcRho version with a trailing plus marker in the splash page and About dialog."
+}

@@ -28,7 +28,21 @@ if not exist "node_modules" (
   )
 )
 
-for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMddHHmmss"') do set "ARCRHO_UI_VERSION=%%i"
+if not defined ARCRHO_UPDATE_DIR set "ARCRHO_UPDATE_DIR=E:\ArcRho Server\releases\installers"
+
+set "ARCRHO_RELEASE_VERSION="
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$versions = @(); $dir = $env:ARCRHO_UPDATE_DIR; $manifest = Join-Path $dir 'latest.json'; if (Test-Path -LiteralPath $manifest) { try { $version = [string]((Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).version); if ($version -match '^\d+\.\d+\.\d+$') { $versions += $version } } catch {} }; if (Test-Path -LiteralPath $dir -PathType Container) { Get-ChildItem -LiteralPath $dir -Filter 'ArcRho-Setup-*.exe' -File -ErrorAction SilentlyContinue | ForEach-Object { if ($_.Name -match '^ArcRho-Setup-(\d+\.\d+\.\d+)\.exe$') { $versions += $Matches[1] } } }; $versions | Sort-Object { [version]$_ } -Descending | Select-Object -First 1" 2^>nul`) do set "ARCRHO_RELEASE_VERSION=%%i"
+if not defined ARCRHO_RELEASE_VERSION (
+  for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "try { $version = [string]((Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json).version); if ($version -match '^\d+\.\d+\.\d+$') { $version } } catch {}" 2^>nul`) do set "ARCRHO_RELEASE_VERSION=%%i"
+)
+
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMddHHmmss"') do set "ARCRHO_UI_VERSION_STAMP=%%i"
+if defined ARCRHO_RELEASE_VERSION (
+  if not defined ARCRHO_DISPLAY_VERSION set "ARCRHO_DISPLAY_VERSION=%ARCRHO_RELEASE_VERSION%+"
+  set "ARCRHO_UI_VERSION=%ARCRHO_RELEASE_VERSION%+%ARCRHO_UI_VERSION_STAMP%"
+) else (
+  set "ARCRHO_UI_VERSION=%ARCRHO_UI_VERSION_STAMP%"
+)
 set "ARCRHO_BACKEND_CONSOLE=hidden"
 
 if not defined PYTHON_EXE (

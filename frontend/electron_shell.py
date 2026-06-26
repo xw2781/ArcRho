@@ -42,9 +42,9 @@ def terminate_process_tree(proc: subprocess.Popen) -> None:
 
 def start_electron(env: dict, mode: str) -> subprocess.Popen:
     npm_cmd, env = resolve_npm_cmd(BASE_DIR)
-    cmd = npm_cmd + ["run", "arcode" if mode == "arcode" else "electron"]
+    cmd = npm_cmd + ["--silent", "run", "arcode" if mode == "arcode" else "electron"]
     if os.name == "nt":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     else:
         creationflags = 0
     return subprocess.Popen(cmd, cwd=str(BASE_DIR), env=env, creationflags=creationflags)

@@ -484,7 +484,7 @@ Minimum tests:
 5. DFM JSON loads grouped `arcrho-dfm-method-by-tab-v1` payloads.
 6. Updating details preserves unrelated JSON fields.
 7. Saving writes atomically and updates `last modified`.
-8. Rebuilding `method_index.json` produces sorted `{dataset_name, method_type}` entries in each reserving-class folder.
+8. Rebuilding `method_index.json` produces sorted `{name, dataset_type, method_type}` entries in each reserving-class folder.
 9. Missing project and malformed JSON raise package-specific exceptions.
 10. Production-style DFM helper calls update the expected grouped JSON sections without dropping unrelated fields.
 11. Migration session helper can scope project/reserving class and open `DFM(name)` without global process state.

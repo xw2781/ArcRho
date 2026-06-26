@@ -35,6 +35,14 @@ const HOST = process.env.ARCRHO_HOST || "127.0.0.1";
 const DEFAULT_PORT = APP_MODE === "arcode" ? "28766" : "28765";
 const PORT = parseInt(process.env.ARCRHO_PORT || process.env.ARCODE_PORT || DEFAULT_PORT, 10);
 const UI_VERSION = process.env.ARCRHO_UI_VERSION || process.env.ARCODE_UI_VERSION || String(Date.now());
+const DISPLAY_VERSION_OVERRIDE = APP_MODE === "arcode"
+  ? process.env.ARCODE_DISPLAY_VERSION
+  : process.env.ARCRHO_DISPLAY_VERSION;
+const APP_DISPLAY_VERSION = String(
+  DISPLAY_VERSION_OVERRIDE
+  || process.env.ARCRHO_DISPLAY_VERSION
+  || (app.isPackaged ? app.getVersion() : `${app.getVersion()}+`)
+).trim() || app.getVersion();
 const URL = `http://${HOST}:${PORT}/ui/?v=${encodeURIComponent(UI_VERSION)}`;
 const ARCODE_URL = `http://${HOST}:${PORT}/ui/arcode/main.html?v=${encodeURIComponent(UI_VERSION)}`;
 const BACKEND_HEALTH_URL = `http://${HOST}:${PORT}/app/health`;
@@ -1134,7 +1142,9 @@ function createSplashWindow() {
     },
   });
 
-  splashWin.loadFile(path.join(APP_ROOT, "ui", "splash.html"));
+  splashWin.loadFile(path.join(APP_ROOT, "ui", "splash.html"), {
+    query: { version: APP_DISPLAY_VERSION },
+  });
   return splashWin;
 }
 
@@ -2385,6 +2395,13 @@ ipcMain.handle("app-shutdown", async () => {
 });
 
 ipcMain.handle("app-check-for-update", async () => checkForUpdate({ showNoUpdate: true }));
+
+ipcMain.handle("app-info", async () => ({
+  mode: APP_MODE,
+  version: app.getVersion(),
+  displayVersion: APP_DISPLAY_VERSION,
+  isPackaged: app.isPackaged,
+}));
 
 ipcMain.handle("app-toggle-dev-panel", () => {
   return toggleDevPanelForWindow();
