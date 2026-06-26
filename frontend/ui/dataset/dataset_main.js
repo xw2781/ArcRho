@@ -1402,11 +1402,7 @@ function getCachedInstanceNamesFromItem(item = {}) {
     const text = String(value || "").trim();
     if (text) names.push(text);
   };
-  add(item.dataset_name);
-  add(item.instance_name);
-  if (Array.isArray(item.dataset_names)) {
-    for (const value of item.dataset_names) add(value);
-  }
+  add(item.name);
   return names;
 }
 

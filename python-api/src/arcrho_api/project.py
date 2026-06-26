@@ -147,15 +147,16 @@ class Project:
                 if not dataset_name:
                     continue
                 methods.append({
-                    "dataset_name": dataset_name,
+                    "name": dataset_name,
+                    "dataset_type": dataset_name,
                     "method_type": "DFM",
                 })
-            methods.sort(key=lambda item: (item["dataset_name"].lower(), item["method_type"].lower()))
+            methods.sort(key=lambda item: (item["name"].lower(), item["method_type"].lower()))
             write_json_atomic(
                 self.data_dir / folder_name / RESERVING_CLASS_INDEX_FILE_NAME,
                 {
                     "ok": True,
-                    "version": 6,
+                    "version": 7,
                     "project_name": self.name,
                     "reserving_class": folder_name,
                     "folder_paths": {
@@ -166,8 +167,8 @@ class Project:
                     },
                     "files": [
                         {
-                            "dataset_name": item["dataset_name"],
-                            "dataset_type_name": item["dataset_name"],
+                            "name": item["name"],
+                            "dataset_type": item["dataset_type"],
                             "method_type": item["method_type"],
                         }
                         for item in methods

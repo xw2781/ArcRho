@@ -138,7 +138,7 @@ async function openActiveDatasetRelatedFile(fileKind) {
     }
     const filename = jsonKind === "dfm"
       ? `DFM@${sanitizeFileNamePart(datasetName, "Name")}.json`
-      : `RS@${sanitizeDataFolderPart(windowPath, "ReservingClass")}@${sanitizeFileNamePart(datasetName, "Name")}.json`;
+      : `RS@${sanitizeFileNamePart(datasetName, "Name")}.json`;
     targetPath = joinWindowsPath(folders.methods, filename);
   }
 
@@ -423,6 +423,40 @@ function handleAutomationOpenDataset(message, sourceWindow) {
       ...windowInfo,
       datasetName,
       window: windowInfo,
+    },
+  });
+  return true;
+}
+
+function handleAutomationProjectInstanceContext(message, sourceWindow) {
+  const requestId = toText(message?.requestId);
+  const reply = (payload) => replyAutomationResult(sourceWindow, requestId, payload);
+  if (!requestId) return true;
+  const selectedPath = toText(state.selectedPath);
+  if (!projectName || !selectedPath) {
+    reply({
+      ok: false,
+      result: {
+        projectName,
+        project_name: projectName,
+        selectedPath,
+        selected_path: selectedPath,
+        path: selectedPath,
+      },
+      error: "Select a reserving class path in the active Project Instance page before running this UI command.",
+    });
+    return true;
+  }
+  reply({
+    ok: true,
+    result: {
+      pageType: "project_instance",
+      tabType: "project_instance",
+      projectName,
+      project_name: projectName,
+      selectedPath,
+      selected_path: selectedPath,
+      path: selectedPath,
     },
   });
   return true;
@@ -830,6 +864,10 @@ window.addEventListener("message", (event) => {
   }
   if (msg.type === "arcrho:automation-open-dataset") {
     handleAutomationOpenDataset(msg, event.source);
+    return;
+  }
+  if (msg.type === "arcrho:automation-project-instance-context") {
+    handleAutomationProjectInstanceContext(msg, event.source);
     return;
   }
   if (msg.type === "arcrho:project-instance-open-dependent-dataset") {

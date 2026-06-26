@@ -15,7 +15,7 @@ from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import dataset_sidecar_status_service
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 11
+INDEX_VERSION = 12
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
 
@@ -210,7 +210,7 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
             return None
         return {
             "dataset_name": dataset_name,
-            "dataset_type_name": dataset_type or dataset_name,
+            "dataset_type": dataset_type or dataset_name,
             "method_type": RESULT_SELECTION_METHOD_TYPE,
             "data_format": "Vector",
             "status": dataset_sidecar_status_service.STATUS_CURRENT,
@@ -221,7 +221,7 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
         return None
     return {
         "dataset_name": dataset_name,
-        "dataset_type_name": dataset_name,
+        "dataset_type": dataset_name,
         "method_type": DFM_METHOD_TYPE,
         "data_format": "Vector",
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
@@ -311,9 +311,9 @@ def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dic
     metadata_created = _clean_text(source.get("metadata_created"))
     if metadata_created and not _clean_text(existing.get("metadata_created")):
         existing["metadata_created"] = metadata_created
-    dataset_type_name = _clean_text(source.get("dataset_type_name") or source.get("dataset_type"))
-    if dataset_type_name and not _clean_text(existing.get("dataset_type_name")):
-        existing["dataset_type_name"] = dataset_type_name
+    dataset_type = _clean_text(source.get("dataset_type"))
+    if dataset_type and not _clean_text(existing.get("dataset_type")):
+        existing["dataset_type"] = dataset_type
     source_kind = _clean_text(source.get("source_kind"))
     if source_kind and not _clean_text(existing.get("source_kind")):
         existing["source_kind"] = source_kind
@@ -353,7 +353,6 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
             if logical is None:
                 logical = {
                     "name": display_names[key],
-                    "dataset_name": display_names[key],
                     "last_modified": "",
                     "last_modified_timestamp": 0,
                     "created": "",
@@ -366,29 +365,28 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
     for key, method_type in method_types.items():
         logical = by_name.get(key)
         if logical is None:
-            name = display_names.get(key) or next(
-                (
-                    _clean_text(item.get("dataset_name"))
-                    for item in methods
-                    if _clean_text(item.get("dataset_name")).lower() == key
-                ),
-                key,
+            method_item = next(
+                (item for item in methods if _clean_text(item.get("dataset_name")).lower() == key),
+                {},
             )
+            name = display_names.get(key) or _clean_text(method_item.get("dataset_name")) or key
             logical = {
                 "name": name,
-                "dataset_name": name,
                 "last_modified": "",
                 "last_modified_timestamp": 0,
                 "created": "",
                 "created_timestamp": 0,
                 "user": "",
             }
+            dataset_type = _clean_text(method_item.get("dataset_type"))
+            if dataset_type:
+                logical["dataset_type"] = dataset_type
             by_name[key] = logical
         logical["method_type"] = method_type
         if "status" not in logical:
             logical["status"] = dataset_sidecar_status_service.STATUS_CURRENT
 
-    return sorted(by_name.values(), key=lambda item: _clean_text(item.get("dataset_name")).lower())
+    return sorted(by_name.values(), key=lambda item: _clean_text(item.get("name")).lower())
 
 
 def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -452,11 +450,10 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
             if file_names:
                 file_info["dataset_names"] = sorted(file_names, key=lambda item: item.lower())
             if metadata:
-                dataset_type_name = _normalize_cached_dataset_name(metadata.get("dataset_type"))
+                dataset_type = _normalize_cached_dataset_name(metadata.get("dataset_type"))
                 if not legacy_length_only_name:
                     file_info["dataset_name"] = _normalize_cached_dataset_name(metadata.get("dataset_name"))
-                    file_info["dataset_type_name"] = dataset_type_name
-                    file_info["dataset_type"] = dataset_type_name
+                    file_info["dataset_type"] = dataset_type
                 file_info["csv_file"] = _clean_text(metadata.get("csv_file"))
                 file_info["source_kind"] = _clean_text(metadata.get("source_kind"))
                 file_info["data_format"] = _clean_text(metadata.get("data_format"))
@@ -498,8 +495,7 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 ))
             if method_entry:
                 file_info["dataset_name"] = method_entry["dataset_name"]
-                file_info["dataset_type_name"] = method_entry["dataset_type_name"]
-                file_info["dataset_type"] = method_entry["dataset_type_name"]
+                file_info["dataset_type"] = method_entry["dataset_type"]
                 file_info["method_type"] = method_entry["method_type"]
                 file_info["status"] = method_entry.get("status", dataset_sidecar_status_service.STATUS_CURRENT)
                 file_info["data_format"] = method_entry.get("data_format", "")
@@ -537,6 +533,7 @@ def _dedupe_methods(methods: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         seen.add(key)
         out.append({
             "dataset_name": dataset_name,
+            "dataset_type": _clean_text(item.get("dataset_type")) or dataset_name,
             "method_type": method_type,
         })
     out.sort(key=lambda item: (

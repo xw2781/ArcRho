@@ -292,26 +292,21 @@ function normalizeDatasetRows(payload) {
   const rows = [];
   const seen = new Set();
   for (const item of files) {
-    const names = Array.isArray(item?.dataset_names) && item.dataset_names.length
-      ? item.dataset_names
-      : [item?.dataset_name || item?.name];
-    for (const rawName of names) {
-      const name = stripDatasetCacheVariantSuffix(text(rawName || item?.dataset_name || item?.name));
-      const key = norm(name);
-      if (!name || seen.has(key)) continue;
-      seen.add(key);
-      const datasetType = text(item?.dataset_type_name || item?.dataset_type || item?.dataset_name || name);
-      const typeInfo = byType.get(norm(datasetType)) || byType.get(norm(name)) || {};
-      rows.push({
-        name,
-        datasetType,
-        dataFormat: text(item?.data_format || typeInfo.dataFormat),
-        originLength: validSourceOriginLength(item?.origin_length),
-        category: text(typeInfo.category || item?.category),
-        methodType: text(item?.method_type),
-        path: text(item?.path),
-      });
-    }
+    const name = stripDatasetCacheVariantSuffix(text(item?.name));
+    const key = norm(name);
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    const datasetType = text(item?.dataset_type || name);
+    const typeInfo = byType.get(norm(datasetType)) || byType.get(norm(name)) || {};
+    rows.push({
+      name,
+      datasetType,
+      dataFormat: text(item?.data_format || typeInfo.dataFormat),
+      originLength: validSourceOriginLength(item?.origin_length),
+      category: text(typeInfo.category || item?.category),
+      methodType: text(item?.method_type),
+      path: text(item?.path),
+    });
   }
   return rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
 }
@@ -399,10 +394,8 @@ async function buildSourceFromRecord(record, existing = null) {
     originLength: validSourceOriginLength(record?.originLength ?? record?.origin_length ?? existing?.origin_length ?? existing?.originLength),
     methodType: text(record?.methodType || existing?.method_type || existing?.methodType),
     category: text(record?.category || existing?.category),
-    valueSource: "vector",
     values: Array.isArray(existing?.values) ? existing.values.map(numberOrNull) : [],
     weights: Array.isArray(existing?.weights) ? existing.weights.map((v) => Math.max(0, numberOrNull(v) ?? 0)) : [],
-    selected: Array.isArray(existing?.selected) ? existing.selected.map(Boolean) : [],
     unavailable: false,
   };
   if (!source.name) return null;
@@ -412,7 +405,6 @@ async function buildSourceFromRecord(record, existing = null) {
     source.dataFormat = source.dataFormat || text(payload?.data_format);
     source.originLength = validSourceOriginLength(payload?.origin_length) || source.originLength;
     const isTriangle = norm(source.dataFormat) === "triangle";
-    source.valueSource = isTriangle ? "latest_diagonal" : "vector";
     source.values = isTriangle ? latestDiagonal(payload?.values) : vectorValues(payload?.values);
   } catch (err) {
     console.warn("Result Selection source load failed:", source.name, err);
@@ -421,11 +413,6 @@ async function buildSourceFromRecord(record, existing = null) {
   if (source.weights.length < source.values.length) {
     source.weights = source.weights.concat(new Array(source.values.length - source.weights.length).fill(0));
   }
-  while (source.selected.length < source.values.length) {
-    const idx = source.selected.length;
-    source.selected.push(numberOrNull(source.values[idx]) !== null && Math.max(0, numberOrNull(source.weights[idx]) ?? 0) > 0);
-  }
-  if (source.selected.length > source.values.length) source.selected = source.selected.slice(0, source.values.length);
   return source;
 }
 
@@ -577,14 +564,6 @@ async function loadOutputSidecarSettings() {
   return true;
 }
 
-function ensureSourceSelection(source, count = getRowCount()) {
-  if (!source) return [];
-  if (!Array.isArray(source.selected)) source.selected = [];
-  while (source.selected.length < count) source.selected.push(false);
-  if (source.selected.length > count) source.selected = source.selected.slice(0, count);
-  return source.selected;
-}
-
 function isSourceCellSelectable(sourceIndex, rowIndex) {
   return numberOrNull(state.sources[sourceIndex]?.values?.[rowIndex]) !== null;
 }
@@ -592,14 +571,7 @@ function isSourceCellSelectable(sourceIndex, rowIndex) {
 function isSourceCellSelected(sourceIndex, rowIndex) {
   const source = state.sources[sourceIndex];
   if (!source || !isSourceCellSelectable(sourceIndex, rowIndex)) return false;
-  return !!ensureSourceSelection(source, Math.max(getRowCount(), rowIndex + 1))[rowIndex];
-}
-
-function setSourceCellSelected(sourceIndex, rowIndex, selected) {
-  const source = state.sources[sourceIndex];
-  if (!source || !isSourceCellSelectable(sourceIndex, rowIndex)) return false;
-  ensureSourceSelection(source, Math.max(getRowCount(), rowIndex + 1))[rowIndex] = !!selected;
-  return true;
+  return Math.max(0, numberOrNull(source.weights?.[rowIndex]) ?? 0) > 0;
 }
 
 function syncSourceCellSelectionDom(sourceIndex, rowIndex) {
@@ -614,7 +586,6 @@ function setWeightValue(sourceIndex, rowIndex, rawValue) {
   const weight = Math.max(0, numberOrNull(rawValue) ?? 0);
   while (source.weights.length <= rowIndex) source.weights.push(0);
   source.weights[rowIndex] = weight;
-  setSourceCellSelected(sourceIndex, rowIndex, weight > 0);
   syncSourceCellSelectionDom(sourceIndex, rowIndex);
   return weight;
 }
@@ -1665,6 +1636,7 @@ function buildPayload() {
       output_type: details.outputType,
       origin_length: details.originLength,
       ratio_basis: details.ratioBasis,
+      ratio_basis_dataset: details.ratioBasis,
       show_ratios_as_percentages: details.showRatiosAsPercentages,
       statistic_decimal_places: details.statisticDecimalPlaces,
     },
@@ -1678,10 +1650,8 @@ function buildPayload() {
         origin_length: source.originLength || null,
         method_type: source.methodType,
         category: source.category,
-        value_source: source.valueSource,
         values: source.values,
         weights: source.weights,
-        selected: ensureSourceSelection(source).slice(),
       })),
       selected_ultimate: selectedUltimateVector(),
       ultimate_overrides: serializedUltimateOverrides(),
@@ -1707,7 +1677,7 @@ async function applyPayload(payload) {
     els.outputTypeInput.value = text(details.output_type || els.outputTypeInput.value);
     els.originLengthInput.value = String(validOriginLength(details.origin_length || els.originLengthInput.value));
     if (state.sidecarOriginLength) els.originLengthInput.value = String(state.sidecarOriginLength);
-    els.ratioBasisInput.value = text(details.ratio_basis || "");
+    els.ratioBasisInput.value = text(details.ratio_basis_dataset || details.ratio_basis || "");
     els.showRatiosPctInput.checked = details.show_ratios_as_percentages !== false;
     els.statisticDecimalsInput.value = String(Math.max(0, Math.min(8, nonNegativeInt(details.statistic_decimal_places, 1))));
     els.showWeightsInput.checked = method.show_weights !== false;
@@ -1797,8 +1767,7 @@ async function getDatasetDir() {
 
 function getMethodFilename() {
   const name = getDetails().name || "Result Selection";
-  const rc = sanitizeDataFolderPart(state.reservingClass, "ReservingClass");
-  return `RS@${rc}@${sanitizeFileNamePart(name, "Name")}.json`;
+  return `RS@${sanitizeFileNamePart(name, "Name")}.json`;
 }
 
 async function getMethodPath() {
@@ -2013,7 +1982,6 @@ async function addSource(record) {
   if (!source) return;
   const count = Math.max(getRowCount(), source.values.length);
   while (source.weights.length < count) source.weights.push(0);
-  ensureSourceSelection(source, count);
   insertSourceAlphabetically(source);
   markDirty();
   renderMethodGrid();

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "internal",
+  "summary": "Standardized cached dataset index entries to store instance names as name and dataset types as dataset_type."
+}

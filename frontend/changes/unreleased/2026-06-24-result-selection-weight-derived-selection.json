@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection method JSON now uses simplified filenames, records the ratio-basis dataset explicitly, and derives source behavior from weights and vectorized values."
+}

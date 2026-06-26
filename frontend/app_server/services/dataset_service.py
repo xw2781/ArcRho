@@ -623,14 +623,7 @@ def _method_type_from_dataset_index(project_name: str, reserving_class: str, dat
     for item in index.get("files") or []:
         if not isinstance(item, dict):
             continue
-        names = [
-            item.get("dataset_name"),
-            item.get("instance_name"),
-            item.get("dataset_type_name"),
-            item.get("name"),
-        ]
-        if isinstance(item.get("dataset_names"), list):
-            names.extend(item.get("dataset_names") or [])
+        names = [item.get("name")]
         item_keys = {str(value or "").strip().lower() for value in names if str(value or "").strip()}
         if name_key not in item_keys:
             continue

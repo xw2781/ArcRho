@@ -279,7 +279,7 @@ Use a grouped method JSON shape similar to DFM, with a distinct format marker. U
 Local method filename:
 
 ```text
-RS@<reserving_class_path_with_caret_separators>@<Name>.json
+RS@<Name>.json
 ```
 
 On save:

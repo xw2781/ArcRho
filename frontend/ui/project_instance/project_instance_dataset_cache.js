@@ -100,17 +100,7 @@ function getCachedFileDatasetNames(item) {
     const text = stripDatasetCacheVariantSuffix(value);
     if (text) names.push(text);
   };
-  if (Array.isArray(item?.dataset_names)) {
-    for (const name of item.dataset_names) add(name);
-  }
-  add(item?.dataset_name);
-  add(item?.instance_name);
-
-  const filename = toText(item?.name);
-  const stem = filename.replace(/\.[^.]*$/u, "");
-  if (stem.startsWith("ArcRhoTriNotes@")) add(stem.slice("ArcRhoTriNotes@".length));
-  else if (stem.startsWith("DFM@")) add(stem.slice("DFM@".length));
-  else add(stem);
+  add(item?.name);
 
   const seen = new Set();
   return names.filter((name) => {
@@ -220,9 +210,6 @@ function normalizeCachedDatasetSnapshot(payload) {
     const key = getCachedDatasetKey(name);
     if (key) datasetKeys.add(key);
   };
-  if (Array.isArray(payload?.dataset_names)) {
-    for (const name of payload.dataset_names) addDatasetKey(name);
-  }
   const addMethodType = (name, methodType) => {
     const key = normalizeLookupKey(name);
     const type = toText(methodType);

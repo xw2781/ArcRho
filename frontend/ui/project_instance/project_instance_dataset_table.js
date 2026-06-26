@@ -13,6 +13,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const DATASET_GROUP_DRAG_TYPE = "text/x-pi-group-key";
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
   const finishPageLoading = (...args) => api.finishPageLoading(...args);
+  const focusProjectInstancePage = (...args) => api.focusProjectInstancePage(...args);
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
   const hasCachedDatasetMetadataForSelectedPath = (...args) => api.hasCachedDatasetMetadataForSelectedPath(...args);
   const isDatasetRecordCached = (...args) => api.isDatasetRecordCached(...args);
@@ -675,11 +676,11 @@ function getDatasetTypeRowByName(name) {
 }
 
 function getInstanceDatasetName(item) {
-  return stripDatasetCacheVariantSuffix(toText(item?.dataset_name || item?.instance_name || item?.name));
+  return stripDatasetCacheVariantSuffix(toText(item?.name));
 }
 
 function getInstanceDatasetTypeName(item, instanceName = "") {
-  return toText(item?.dataset_type_name || item?.dataset_type || item?.datasetTypeName || item?.datasetType) || instanceName;
+  return toText(item?.dataset_type) || instanceName;
 }
 
 function parseDatasetGeneratedFlag(value) {
@@ -2449,6 +2450,7 @@ function initDatasetTableInteractions() {
     els.datasetTableSurface.tabIndex = 0;
     els.datasetTableSurface.addEventListener("keydown", handleDatasetTableKeyDown);
   }
+  els.datasetTableWrap?.addEventListener("mousedown", () => focusProjectInstancePage(), true);
   els.datasetGroupByStatus?.addEventListener("dragover", handleDatasetGroupZoneDragOver);
   els.datasetGroupByStatus?.addEventListener("dragleave", (event) => {
     if (els.datasetGroupByStatus?.contains(event.relatedTarget)) return;

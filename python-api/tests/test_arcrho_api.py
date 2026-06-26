@@ -158,8 +158,8 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertEqual(refs[0].name, "Paid DFM")
         index = json.loads((self.rc_data_dir / "index.json").read_text(encoding="utf-8"))
         self.assertEqual(index["files"], [{
-            "dataset_name": "Paid Ultimate",
-            "dataset_type_name": "Paid Ultimate",
+            "name": "Paid Ultimate",
+            "dataset_type": "Paid Ultimate",
             "method_type": "DFM",
         }])
 
