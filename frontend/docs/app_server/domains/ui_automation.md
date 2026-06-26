@@ -27,7 +27,10 @@ Local UI automation command bridge for Python macros and scripts that need to as
 - `POST /ui_automation/commands` submits a typed command from local Python code and waits for the frontend shell result.
 - `POST /ui_automation/commands/poll` is consumed by the active shell to receive pending commands.
 - `POST /ui_automation/commands/{command_id}/complete` lets the shell return `{ ok, result, error }` for the waiting Python caller.
-- The first supported commands are `ui.messageBox` and `projectInstance.openDataset`.
+- Supported commands include `ui.messageBox`, `ui.progressOpen`, `ui.progressUpdate`, `ui.progressClose`, `taskDesigner.*`, `projectInstance.context`, `projectInstance.openDataset`, and Project Instance window actions.
+- `ui.messageBox` accepts optional `autoCloseMs`/`auto_close_ms` arguments for informational dialogs that should close themselves after a short delay.
+- `ui.progressOpen`/`ui.progressUpdate`/`ui.progressClose` drive a shell-owned floating progress dialog with a close icon, resize handle, visible progress bar, and one-decimal percent text for long-running Python macros.
+- `projectInstance.context` returns the active Project Instance `projectName` and selected reserving-class `selectedPath`, and fails clearly when no path is selected.
 - Requests are restricted to local clients; the bridge is for the running desktop/local app session and does not use the shared ArcRho Server `requests` folder.
 <!-- MANUAL:END -->
 

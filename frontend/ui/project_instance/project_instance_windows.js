@@ -159,7 +159,7 @@ function getProjectInstanceAssistantContextSummary() {
   return {
     projectName,
     selectedPath: state.selectedPath,
-    activeNestedWindow: openNestedWindows.find((item) => item.active) || openNestedWindows[0] || null,
+    activeNestedWindow: openNestedWindows.find((item) => item.active) || null,
     openNestedWindows,
     ignoredMinimizedWindowCount: hiddenWindows.size,
   };
@@ -340,6 +340,7 @@ function getNextDatasetWindowRect(offset = 0) {
 function raiseWindow(frame) {
   frame.style.zIndex = String(++state.nextWindowZ);
   if (frame?.classList?.contains("pi-window") && frame.dataset.hidden !== "1") {
+    state.projectInstancePageFocused = false;
     state.activeDatasetWindow = frame;
   }
   syncDatasetWindowChrome();
@@ -348,6 +349,7 @@ function raiseWindow(frame) {
 }
 
 function getActiveDatasetWindow() {
+  if (state.projectInstancePageFocused) return null;
   if (
     state.activeDatasetWindow?.isConnected
     && state.activeDatasetWindow.dataset.hidden !== "1"
@@ -367,6 +369,15 @@ function getActiveDatasetWindow() {
   }
   state.activeDatasetWindow = nextActive;
   return nextActive;
+}
+
+function focusProjectInstancePage() {
+  if (state.projectInstancePageFocused && !state.activeDatasetWindow) return;
+  state.projectInstancePageFocused = true;
+  state.activeDatasetWindow = null;
+  syncDatasetWindowChrome();
+  notifyActiveDfmWindowState();
+  notifyProjectInstanceStateChanged();
 }
 
 function closeDatasetWindow(frame, { status = true, skipChildCloseRequest = false } = {}) {
@@ -484,6 +495,7 @@ function notifyActiveDfmWindowState() {
 }
 
 function getActiveDfmWindow() {
+  if (state.projectInstancePageFocused) return null;
   const active = getActiveDatasetWindow();
   if (isDfmWindow(active)) return active;
   let topDfm = null;
@@ -1077,6 +1089,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     createFloatingContentWindow,
     findWindowByInstance,
     findWindowByMessageSource,
+    focusProjectInstancePage,
     getActiveDatasetWindow,
     getActiveDfmWindow,
     getDatasetWindowKey,

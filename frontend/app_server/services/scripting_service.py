@@ -1185,6 +1185,28 @@ def list_notebooks() -> List[Dict[str, str]]:
 
 _MACRO_META_BEGIN = "# <arcrho-macro>"
 _MACRO_META_END = "# </arcrho-macro>"
+_MACRO_SCOPE_LABELS = {
+    "dfm": "DFM",
+    "result selection": "Result Selection",
+    "result_selection": "Result Selection",
+    "restult selection": "Result Selection",
+    "reserving class": "Reserving Class",
+    "reserving_class": "Reserving Class",
+}
+
+
+def _normalize_macro_scopes(value: Any) -> List[str]:
+    parts = re.split(r"[,;/|]+", str(value or ""))
+    scopes: List[str] = []
+    seen: Set[str] = set()
+    for part in parts:
+        key = re.sub(r"\s+", " ", str(part or "").strip().lower())
+        label = _MACRO_SCOPE_LABELS.get(key)
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        scopes.append(label)
+    return scopes or ["DFM"]
 
 
 def _get_macros_dir() -> str:
@@ -1199,6 +1221,7 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, Any]:
     title = os.path.splitext(os.path.basename(filename))[0].replace("_", " ").title()
     description_parts: List[str] = []
     generated = ""
+    scope_text = ""
     active_key = ""
     in_block = False
     for raw_line in str(text or "").splitlines():
@@ -1228,12 +1251,23 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, Any]:
                 generated = value
                 active_key = "generated"
                 continue
+            if key == "scope":
+                scope_text = value
+                active_key = "scope"
+                continue
         if active_key == "description" and line:
             description_parts.append(line)
             continue
         active_key = ""
     description = " ".join(part for part in description_parts if part).strip()
-    return {"title": title, "description": description, "generated": generated}
+    scopes = _normalize_macro_scopes(scope_text)
+    return {
+        "title": title,
+        "description": description,
+        "generated": generated,
+        "scope": scopes[0],
+        "scopes": scopes,
+    }
 
 
 def _parse_task_wrapper_tasks(text: str) -> List[Dict[str, str]]:
@@ -1285,7 +1319,7 @@ def _safe_macro_path(macro_id: str) -> str:
 
 def list_macros() -> List[Dict[str, Any]]:
     macro_dir = _get_macros_dir()
-    result: List[Dict[str, str]] = []
+    result: List[Dict[str, Any]] = []
     for entry in sorted(os.listdir(macro_dir)):
         if not entry.lower().endswith(".py"):
             continue
@@ -1306,6 +1340,8 @@ def list_macros() -> List[Dict[str, Any]]:
                 "id": entry,
                 "name": meta["title"],
                 "description": meta["description"],
+                "scope": meta["scope"],
+                "scopes": meta["scopes"],
                 "path": path,
                 "modified": str(int(stat.st_mtime)),
                 "builtin": False,

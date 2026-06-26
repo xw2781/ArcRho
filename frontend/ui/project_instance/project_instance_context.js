@@ -114,6 +114,7 @@ export function createProjectInstanceContext(deps = {}) {
     lastExpandedLeftWidth: constants.LEFT_PANEL_DEFAULT_WIDTH,
     lastDatasetWindowSize: null,
     activeDatasetWindow: null,
+    projectInstancePageFocused: false,
     lastDatasetWindowShortcutCloseAt: 0,
     hiddenWindows: new Map(),
     datasetWindows: new Map(),

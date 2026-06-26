@@ -1,6 +1,6 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260620q";
-import { openMacroWindow } from "../macro/macro_window.js?v=20260621g";
+import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260625c";
 
 const fileMenuBtn = document.querySelector('.menu[data-menu="file"]');
 const fileMenuDropdown = document.getElementById("fileMenuDropdown");
@@ -16,6 +16,7 @@ const helpMenuBtn = document.querySelector('.menu[data-menu="help"]');
 const helpMenuDropdown = document.getElementById("helpMenuDropdown");
 const menuBarEl = document.getElementById("menubar");
 const aboutOverlay = document.getElementById("aboutOverlay");
+const aboutVersion = document.getElementById("aboutVersion");
 const aboutCheckUpdatesBtn = document.getElementById("aboutCheckUpdatesBtn");
 let dfmEditEnabled = false;
 let dfmUndoEnabled = false;
@@ -23,6 +24,7 @@ let dfmRedoEnabled = false;
 let shellMenusWired = false;
 let recentNotebookLoadToken = 0;
 let aboutUpdateCheckRunning = false;
+let aboutVersionLoaded = false;
 
 function positionDropdown(btn, dropdown) {
   if (!btn || !dropdown) return;
@@ -68,9 +70,31 @@ export function closeAllShellMenus() {
   toggleHelpMenu(false);
   shell.togglePlusMenu?.(false);
   shell.closeTabCtxMenu?.();
+  closeMacroContextMenus();
 }
 
-function openAboutDialog() { aboutOverlay?.classList.add("open"); }
+function setAboutVersionText(version) {
+  const text = String(version || "").trim();
+  if (aboutVersion && text) aboutVersion.textContent = `Version ${text}`;
+}
+
+async function refreshAboutVersion() {
+  if (aboutVersionLoaded) return;
+  const hostApi = shell.getHostApi?.();
+  if (typeof hostApi?.getAppInfo !== "function") return;
+  try {
+    const info = await hostApi.getAppInfo();
+    setAboutVersionText(info?.displayVersion || info?.version);
+    aboutVersionLoaded = true;
+  } catch {
+    // Keep the build-time version text if host app info is unavailable.
+  }
+}
+
+function openAboutDialog() {
+  void refreshAboutVersion();
+  aboutOverlay?.classList.add("open");
+}
 function closeAboutDialog() { aboutOverlay?.classList.remove("open"); }
 async function checkForUpdatesFromAbout() {
   if (aboutUpdateCheckRunning) return;
@@ -363,6 +387,11 @@ export async function openDevPanel() {
 export function initShellMenus() {
   if (shellMenusWired) return;
   shellMenusWired = true;
+  void refreshAboutVersion();
+  window.addEventListener("adaHostReady", () => {
+    aboutVersionLoaded = false;
+    void refreshAboutVersion();
+  });
   aboutCheckUpdatesBtn?.addEventListener("click", checkForUpdatesFromAbout);
   aboutOverlay?.addEventListener("click", (e) => { if (e.target === aboutOverlay) closeAboutDialog(); });
   menuBarEl?.addEventListener("click", (e) => {
@@ -370,7 +399,7 @@ export function initShellMenus() {
     if (!btn) return;
     const type = btn.getAttribute("data-menu") || "";
     if (type === "about") { closeAllShellMenus(); openAboutDialog(); return; }
-    if (type === "macro") { closeAllShellMenus(); openMacroWindow(); return; }
+    if (type === "macro") { closeAllShellMenus(); void openMacroWindow(); return; }
     if (!shellMenuToggles[type]) { closeAllShellMenus(); return; }
     e.stopPropagation();
     openShellMenu(type);
@@ -432,7 +461,17 @@ export function initShellMenus() {
   settingsMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action) return; toggleSettingsMenu(false); if (action === "font-settings") shell.openFontSettingsModal?.(); else if (action === "root-path-settings") shell.openRootPathSettingsModal?.(); else if (action === "force-rebuild-settings") shell.openForceRebuildSettingsModal?.(); else if (action === "refresh-page") shell.refreshActiveTab?.(); else if (action === "clear-cache-reload") Promise.resolve(shell.clearCacheAndReload?.()).catch((err) => { console.error("Clear Cache & Reload failed:", err); shell.updateStatusBar?.("Clear Cache & Reload failed."); }); });
   helpMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleHelpMenu(false); if (action === "view-dev-panel") openDevPanel(); else if (action === "reveal-project-instance-path") { shell.updateStatusBar?.("Opening reserving-class folder..."); sendProjectInstanceCommand("arcrho:project-instance-reveal-selected-path"); } else if (action === "open-project-instance-dataset-json") { shell.updateStatusBar?.("Opening dataset JSON file..."); sendProjectInstanceCommand("arcrho:project-instance-open-active-dataset-json"); } else if (action === "open-project-instance-dataset-sidecar") { shell.updateStatusBar?.("Opening dataset sidecar..."); sendProjectInstanceCommand("arcrho:project-instance-open-active-dataset-sidecar"); } else if (action === "open-dfm-json") { shell.updateStatusBar?.("Opening DFM JSON..."); sendDFMCommand("arcrho:dfm-open-method-json"); } });
   editMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleEditMenu(false); if (action === "dfm-undo") sendDFMCommand("arcrho:dfm-undo"); else if (action === "dfm-redo") sendDFMCommand("arcrho:dfm-redo"); else if (action === "dfm-exclude-high") sendDFMCommand("arcrho:dfm-exclude-high"); else if (action === "dfm-exclude-low") sendDFMCommand("arcrho:dfm-exclude-low"); else if (action === "dfm-include-all") sendDFMCommand("arcrho:dfm-include-all"); else if (action === "render-all-markdown") sendScriptingCommand("arcrho:scripting-render-all-markdown"); });
-  document.addEventListener("pointerdown", (e) => { const hit = e.target?.closest?.(".menu, .menuDropdown, .tabMenu, .plusTab, #tabCtxMenu"); if (!hit) closeAllShellMenus(); }, true);
-  window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllShellMenus(); }, true);
+  document.addEventListener("pointerdown", (e) => { const hit = e.target?.closest?.(".menu, .menuDropdown, .tabMenu, .plusTab, #tabCtxMenu, .macroSplitContextMenu, .macroItemContextMenu"); if (!hit) closeAllShellMenus(); }, true);
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (isMacroContextMenuOpen()) {
+      closeMacroContextMenus();
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+      return;
+    }
+    closeAllShellMenus();
+  }, true);
   window.addEventListener("resize", () => { if (fileMenuDropdown?.classList.contains("open")) positionDropdown(fileMenuBtn, fileMenuDropdown); if (editMenuDropdown?.classList.contains("open")) positionDropdown(editMenuBtn, editMenuDropdown); if (viewMenuDropdown?.classList.contains("open")) positionDropdown(viewMenuBtn, viewMenuDropdown); if (settingsMenuDropdown?.classList.contains("open")) positionDropdown(settingsMenuBtn, settingsMenuDropdown); if (helpMenuDropdown?.classList.contains("open")) positionDropdown(helpMenuBtn, helpMenuDropdown); shell.clampFloatingTabsToContent?.(); });
 }

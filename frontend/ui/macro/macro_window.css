@@ -1,0 +1,449 @@
+#macroWindow {
+  position: fixed;
+  right: 18px;
+  top: 72px;
+  width: min(430px, calc(100vw - 24px));
+  height: min(520px, calc(100vh - var(--statusbar-h) - 88px));
+  min-width: 360px;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  background: #f4f5f6;
+  border: 1px solid #c9ced6;
+  border-radius: var(--shell-floating-radius);
+  box-shadow: 0 14px 34px rgba(17, 24, 39, 0.16);
+  z-index: 90;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(12px) scale(0.98);
+  transform-origin: top right;
+  transition:
+    opacity 170ms ease,
+    transform 170ms ease,
+    visibility 0s linear 170ms;
+}
+
+#macroWindow.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 170ms ease,
+    transform 170ms ease,
+    visibility 0s linear 0s;
+}
+
+#macroWindow.pinned {
+  z-index: 12000;
+}
+
+.macroHeader {
+  height: 34px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: #edf0f3;
+  border-bottom: 1px solid #cfd4dc;
+  box-sizing: border-box;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2933;
+  cursor: move;
+}
+
+.macroHeaderTitle {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macroHeaderSpacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.macroIconBtn {
+  position: relative;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #4b5563;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.macroIconBtn:hover {
+  background: #dfe3e8;
+}
+
+.macroIconBtn.active,
+.macroIconBtn[aria-pressed="true"] {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.macroIconBtn.active:hover,
+.macroIconBtn[aria-pressed="true"]:hover {
+  background: #cfe2ff;
+}
+
+.macroIconBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.macroIconBtn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.macroResizeHandle {
+  position: absolute;
+  z-index: 2;
+  pointer-events: auto;
+  background: transparent;
+}
+
+.macroResizeN,
+.macroResizeS {
+  left: 18px;
+  right: 18px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.macroResizeN { top: 0; }
+.macroResizeS { bottom: 0; }
+
+.macroResizeE,
+.macroResizeW {
+  top: 18px;
+  bottom: 18px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.macroResizeE { right: 0; }
+.macroResizeW { left: 0; }
+
+.macroResizeNw,
+.macroResizeNe,
+.macroResizeSw,
+.macroResizeSe {
+  width: 18px;
+  height: 18px;
+}
+
+.macroResizeNw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.macroResizeNe {
+  right: 0;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.macroResizeSw {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+.macroResizeSe {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.macroBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.macroContent {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(100px, 1fr) 12px minmax(76px, 0.72fr);
+  gap: 6px;
+}
+
+.macroList {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #d9dee7;
+  border-radius: 4px;
+  background: #fbfdff;
+}
+
+.macroSplitHandle {
+  position: relative;
+  min-height: 12px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  cursor: ns-resize;
+  outline: none;
+}
+
+.macroSplitHandle::before {
+  content: "";
+  position: absolute;
+  left: 38%;
+  right: 38%;
+  top: 5px;
+  height: 2px;
+  border-radius: 2px;
+  background: #c3ccd8;
+}
+
+.macroSplitHandle:hover,
+.macroSplitHandle:focus-visible {
+  background: #e8edf4;
+}
+
+.macroSplitHandle:hover::before,
+.macroSplitHandle:focus-visible::before {
+  background: #6b87b6;
+}
+
+body.macroSplitResizeActive,
+body.macroSplitResizeActive * {
+  cursor: ns-resize !important;
+  user-select: none;
+}
+
+.macroSplitContextMenu,
+.macroItemContextMenu {
+  position: fixed;
+  z-index: 12100;
+  display: none;
+  min-width: 136px;
+  padding: 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.macroSplitContextMenu.open,
+.macroItemContextMenu.open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.macroSplitContextMenu button,
+.macroItemContextMenu button {
+  height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #243244;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.macroSplitContextMenu button:hover,
+.macroSplitContextMenu button:focus-visible,
+.macroItemContextMenu button:hover,
+.macroItemContextMenu button:focus-visible {
+  background: #eef6ff;
+  outline: none;
+}
+
+.macroSplitContextMenu button.danger,
+.macroItemContextMenu button.danger {
+  color: #be123c;
+}
+
+.macroSplitContextMenu button:disabled,
+.macroItemContextMenu button:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.macroSplitContextMenu button:disabled:hover,
+.macroSplitContextMenu button:disabled:focus-visible,
+.macroItemContextMenu button:disabled:hover,
+.macroItemContextMenu button:disabled:focus-visible {
+  background: transparent;
+}
+
+.macroContextMenuSep {
+  height: 1px;
+  margin: 3px 4px;
+  background: #e2e8f0;
+}
+
+.macroListItem {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid #edf2f7;
+  background: transparent;
+  color: #243244;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.macroListItemTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.macroListItemName {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macroScopeTags {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  max-width: 50%;
+  overflow: hidden;
+}
+
+.macroScopeTag {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  max-width: 112px;
+  padding: 0 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.macroScopeTag.dfm {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.macroScopeTag.result-selection {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.macroScopeTag.reserving-class {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.macroListItem:hover { background: #eef6ff; }
+
+.macroListItem:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: -2px;
+}
+
+.macroListItem.active {
+  background: #dbeafe;
+  color: #12315f;
+}
+
+.macroEmpty {
+  padding: 16px;
+  color: #64748b;
+  text-align: center;
+}
+
+.macroDescription {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid #d9dee7;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #334155;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.macroFooter {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.macroRunButton {
+  min-width: 76px;
+  height: 28px;
+  border: 1px solid #93b5e8;
+  border-radius: 4px;
+  background: #e7f0ff;
+  color: #222;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.macroRunButton:hover {
+  background: #dbeafe;
+}
+
+.macroRunButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.macroStatus {
+  flex: 1 1 auto;
+  min-height: 18px;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.macroStatus[data-tone="error"] { color: #b91c1c; }

@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance now returns focus to the reserving-class page when users click the tree or dataset table.",
+  "details": [
+    "Clicking the reserving-class tree or dataset table clears the active nested Dataset, DFM, or Result Selection window.",
+    "Shell DFM commands and active-window context no longer target a previously active nested DFM after page-level focus moves back to the reserving class."
+  ]
+}

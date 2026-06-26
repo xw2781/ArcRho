@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Macro context menus now close when clicking the macro titlebar or other app tabs."
+}

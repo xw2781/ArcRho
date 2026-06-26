@@ -9,6 +9,7 @@ export function installProjectInstancePathPanel(ctx) {
   const { datasetTableSelection } = state;
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
   const finishPageLoading = (...args) => api.finishPageLoading(...args);
+  const focusProjectInstancePage = (...args) => api.focusProjectInstancePage(...args);
   const loadCachedDatasetFilterForSelectedPath = (...args) => api.loadCachedDatasetFilterForSelectedPath(...args);
   const normalizePath = (...args) => api.normalizePath(...args);
   const notifyProjectInstanceStateChanged = (...args) => api.notifyProjectInstanceStateChanged(...args);
@@ -399,6 +400,10 @@ function initLeftPanelResizer() {
 
 async function loadPathTree() {
   if (!els.pathTree) return;
+  if (els.pathTree.dataset.focusWired !== "1") {
+    els.pathTree.dataset.focusWired = "1";
+    els.pathTree.addEventListener("mousedown", () => focusProjectInstancePage(), true);
+  }
   beginPageLoading("paths");
   if (!projectName) {
     els.pathTree.innerHTML = '<div class="ptree-empty">Project name is missing.</div>';

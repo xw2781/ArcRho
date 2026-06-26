@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "automation",
+  "audience": "user",
+  "summary": "Added shell progress dialogs for Python UI automation commands.",
+  "details": [
+    "Python macros can now open, update, close, and resize a draggable progress window with a close icon, visible progress bar, and one-decimal percentage text.",
+    "The ResQ import macro reports one current dataset or method detail at a time instead of filling the Macro window with import logs."
+  ]
+}

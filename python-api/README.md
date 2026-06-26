@@ -58,10 +58,13 @@ from arcrho_api import ArcRhoUI
 ui = ArcRhoUI()
 ui.wait_for_app(timeout_sec=10)
 ui.message_box("Notebook started.", title="ArcRho UI Automation")
+progress = ui.progress_bar(title="Long Import", total=3, label="Importing datasets")
+progress.update(completed=1, label="Imported Paid Loss")
 window = ui.project_instance.open_dataset("Paid Loss")
 window.maximize()
 print(window.properties.as_dict())
 window.restore()
+progress.close(auto_close_ms=1000)
 ```
 
 UI automation targets active app state. For example, `open_dataset_in_active_project_instance(...)` requires an active Project Instance page with a reserving-class path selected.

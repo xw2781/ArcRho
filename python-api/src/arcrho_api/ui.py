@@ -23,6 +23,10 @@ class UiCommandResult:
     def button(self) -> str:
         return str(self.result.get("button") or "")
 
+    @property
+    def progress_id(self) -> str:
+        return str(self.result.get("progressId") or self.result.get("progress_id") or "")
+
 
 @dataclass
 class ArcRhoWindowProperties:
@@ -221,22 +225,176 @@ def message_box(
     title: str = "ArcRho",
     buttons: list[str] | tuple[str, ...] | None = None,
     kind: str = "info",
+    auto_close_ms: int | float | None = None,
+    presentation: str | None = None,
     timeout_sec: float = 30.0,
     app_url: str | None = None,
 ) -> UiCommandResult:
     """Show a message box in the active ArcRho app and return the clicked button."""
 
+    args = {
+        "message": str(message or ""),
+        "title": str(title or "ArcRho"),
+        "buttons": list(buttons or ["OK"]),
+        "kind": str(kind or "info"),
+    }
+    if auto_close_ms is not None:
+        args["autoCloseMs"] = max(0, int(float(auto_close_ms)))
+    if presentation is not None:
+        args["presentation"] = str(presentation or "")
     return send_command(
         "ui.messageBox",
+        args=args,
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
+def progress_open(
+    *,
+    progress_id: str = "default",
+    title: str = "ArcRho Progress",
+    label: str = "Starting...",
+    detail: str = "",
+    total: int | float = 0,
+    completed: int | float = 0,
+    timeout_sec: float = 10.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Open or update a shell-owned progress window."""
+
+    return send_command(
+        "ui.progressOpen",
         args={
-            "message": str(message or ""),
-            "title": str(title or "ArcRho"),
-            "buttons": list(buttons or ["OK"]),
-            "kind": str(kind or "info"),
+            "progressId": str(progress_id or "default"),
+            "title": str(title or "ArcRho Progress"),
+            "label": str(label or ""),
+            "detail": str(detail or ""),
+            "total": max(0, int(float(total or 0))),
+            "completed": max(0, int(float(completed or 0))),
         },
         timeout_sec=timeout_sec,
         app_url=app_url,
     )
+
+
+def progress_update(
+    *,
+    progress_id: str = "default",
+    label: str | None = None,
+    detail: str | None = None,
+    total: int | float | None = None,
+    completed: int | float | None = None,
+    tone: str | None = None,
+    timeout_sec: float = 10.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Update a shell-owned progress window."""
+
+    args: dict[str, Any] = {"progressId": str(progress_id or "default")}
+    if label is not None:
+        args["label"] = str(label)
+    if detail is not None:
+        args["detail"] = str(detail)
+    if total is not None:
+        args["total"] = max(0, int(float(total or 0)))
+    if completed is not None:
+        args["completed"] = max(0, int(float(completed or 0)))
+    if tone is not None:
+        args["tone"] = str(tone or "")
+    return send_command(
+        "ui.progressUpdate",
+        args=args,
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
+def progress_close(
+    *,
+    progress_id: str = "default",
+    auto_close_ms: int | float | None = None,
+    timeout_sec: float = 10.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Close a shell-owned progress window."""
+
+    args: dict[str, Any] = {"progressId": str(progress_id or "default")}
+    if auto_close_ms is not None:
+        args["autoCloseMs"] = max(0, int(float(auto_close_ms)))
+    return send_command(
+        "ui.progressClose",
+        args=args,
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
+class ProgressBar:
+    """Convenience wrapper for a shell-owned progress window."""
+
+    def __init__(
+        self,
+        ui: "ArcRhoUI",
+        *,
+        progress_id: str = "default",
+        title: str = "ArcRho Progress",
+        total: int = 0,
+        label: str = "Starting...",
+        detail: str = "",
+    ) -> None:
+        self._ui = ui
+        self.progress_id = str(progress_id or "default")
+        self.title = str(title or "ArcRho Progress")
+        self.total = max(0, int(total or 0))
+        self.completed = 0
+        self.open(label=label, detail=detail, total=self.total, completed=0)
+
+    def open(
+        self,
+        *,
+        label: str = "Starting...",
+        detail: str = "",
+        total: int | None = None,
+        completed: int | None = None,
+    ) -> UiCommandResult:
+        if total is not None:
+            self.total = max(0, int(total or 0))
+        if completed is not None:
+            self.completed = max(0, int(completed or 0))
+        return self._ui.progress_open(
+            progress_id=self.progress_id,
+            title=self.title,
+            label=label,
+            detail=detail,
+            total=self.total,
+            completed=self.completed,
+        )
+
+    def update(
+        self,
+        *,
+        label: str | None = None,
+        detail: str | None = None,
+        total: int | None = None,
+        completed: int | None = None,
+        tone: str | None = None,
+    ) -> UiCommandResult:
+        if total is not None:
+            self.total = max(0, int(total or 0))
+        if completed is not None:
+            self.completed = max(0, int(completed or 0))
+        return self._ui.progress_update(
+            progress_id=self.progress_id,
+            label=label,
+            detail=detail,
+            total=self.total,
+            completed=self.completed,
+            tone=tone,
+        )
+
+    def close(self, *, auto_close_ms: int | float | None = None) -> UiCommandResult:
+        return self._ui.progress_close(progress_id=self.progress_id, auto_close_ms=auto_close_ms)
 
 
 def open_dataset_in_active_project_instance(
@@ -304,6 +462,22 @@ def active_project_instance_window(
         "projectInstance.activeWindow",
         target={"scope": "activeProjectInstance"},
         args={"action": "properties"},
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
+def project_instance_context(
+    *,
+    timeout_sec: float = 30.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Return project and selected reserving-class path for the active Project Instance page."""
+
+    return send_command(
+        "projectInstance.context",
+        target={"scope": "activeProjectInstance"},
+        args={},
         timeout_sec=timeout_sec,
         app_url=app_url,
     )
@@ -470,6 +644,10 @@ class ProjectInstanceAutomation:
         )
         properties = ArcRhoWindowProperties.from_result(result.result)
         return ArcRhoWindow(self._ui, properties.window_id, properties) if properties.window_id else None
+
+    def context(self, *, timeout_sec: float = 30.0) -> dict[str, Any]:
+        result = self._ui.project_instance_context(timeout_sec=timeout_sec)
+        return dict(result.result or {})
 
     def window(self, window_id: str) -> ArcRhoWindow:
         return ArcRhoWindow(self._ui, window_id)
@@ -661,6 +839,25 @@ class ArcRhoUI:
     def message_box(self, message: str, **kwargs: Any) -> UiCommandResult:
         kwargs.setdefault("app_url", self.app_url)
         return message_box(message, **kwargs)
+
+    def progress_open(self, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return progress_open(**kwargs)
+
+    def progress_update(self, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return progress_update(**kwargs)
+
+    def progress_close(self, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return progress_close(**kwargs)
+
+    def progress_bar(self, **kwargs: Any) -> ProgressBar:
+        return ProgressBar(self, **kwargs)
+
+    def project_instance_context(self, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return project_instance_context(**kwargs)
 
     def open_dataset_in_active_project_instance(self, dataset_name: str, **kwargs: Any) -> UiCommandResult:
         kwargs.setdefault("app_url", self.app_url)

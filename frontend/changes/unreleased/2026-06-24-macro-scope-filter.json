@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Added macro scope tags and an active-context filter to the Macro window.",
+  "details": [
+    "Macros can declare Scope metadata for DFM, Result Selection, and Reserving Class contexts.",
+    "The Macro window filter can hide macros that do not match the active tab or selected Project Instance reserving-class path."
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "The Macro window now shows only real user macros instead of demo placeholder entries."
+}
