@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Added UI automation support for a user-managed Import from ResQ macro that targets the selected Project Instance reserving-class path.",
+  "details": [
+    "The macro shows an ArcRho message box when the ResQ COM connection fails.",
+    "Successful imports report the imported dataset count and auto-close the message after three seconds."
+  ]
+}

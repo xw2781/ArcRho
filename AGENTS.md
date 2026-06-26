@@ -13,10 +13,17 @@ Before changing files under `frontend/`, read `frontend/AGENTS.md`.
 ## Bug Fix Cleanup Review
 When fixing a bug, remove clearly obsolete code in the touched area. Ask before broader cleanup or cleanup with behavior risk.
 
+## Data Migration and JSON Contract Consistency
+When changing dataset sidecar JSON or reserving-class `index.json` formats, structures, or field names, keep the migration script and frontend-generated JSON in sync. Coordinate updates to `python-api/migration/resq_data_migration.py` with the frontend app code that writes dataset sidecars or per-reserving-class `index.json` files. In the current phase, do not add legacy-format compatibility unless explicitly requested; prefer a clean, coordinated refactor across all producers and consumers of the JSON contract.
+If a user asks to revise the JSON structure emitted by `python-api/migration/resq_data_migration.py`, treat that as a cross-component JSON contract change and proactively update the corresponding frontend JSON writers/readers in the same task unless the user explicitly scopes the request to migration-only exploration.
+Use the ResQ API examples in `python-api/migration/references` when migration tasks need ResQ API behavior guidance.
+The user macro `C:\Users\xwei.PRCINS\Documents\ArcRho\macros\import_from_resq.py` is currently the primary runnable ResQ import/migration entrypoint. When changing ResQ migration behavior in this repository, keep that macro's behavior in sync with `python-api/migration/resq_data_migration.py`; if editing the user macro is blocked by filesystem permissions, clearly report the required matching change.
+
 ## Agent Project Data Access
 Agents may view, inspect, or modify ArcRho Server project data only for project `NJ_Annual_Prod_202605_Fake`.
 Do not read directory listings, file contents, metadata, or derived data from any other project under `E:\ArcRho Server\projects`, and do not write, copy, delete, or regenerate files for any other project.
 If a user references another ArcRho Server project, ask them to switch the task to `NJ_Annual_Prod_202605_Fake` or provide the needed excerpts directly in the chat.
+When inspecting sidecars, method JSON, dataset JSON, or related migration/refactor issues and the request does not explicitly specify a reserving-class data path, use `E:\ArcRho Server\projects\NJ_Annual_Prod_202605_Fake\data\PRNJ - PA_%5C_PA_%5C_All States_%5C_Direct Group_%5C_COL` as the default ArcRho Server data folder.
 This restriction applies to agent tool use and analysis only; it does not change runnable scripts that a human may execute, such as `python-api/resq_data_migration.py`.
 
 ## Commit Workflow
@@ -27,3 +34,4 @@ Always prefer Python 3.10 for this repository. When validating Python code, runn
 
 ## Validation Runtime Limit
 No validation command should run for more than 120 seconds by default. Use targeted fast checks first, and put tests, docs checks, syntax checks, and smoke checks behind a timeout of 120 seconds or less. If a broader validation is expected to exceed 120 seconds, ask before running it and explain why the longer run is needed. When a validation times out, stop it and report the timeout instead of retrying indefinitely.
+Validation commands must not write files to the C drive. If temporary files are needed, write them only inside the current repository folder.

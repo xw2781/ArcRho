@@ -7,6 +7,7 @@ Output: E:\\ArcRho Server\\projects\\{PROJECT_NAME}\\data\\<ReservingClassFolder
 
 Run:
   python resq_data_migration.py
+  python resq_data_migration.py --no-cleanup-target
   python resq_dfm_export.py --export triangles
   python resq_dfm_export.py --export vectors
   python resq_dfm_export.py --export dfm
@@ -20,22 +21,51 @@ import csv
 import hashlib
 import json
 import re
+import shutil
 import sys
 import traceback
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
+
+
+def _configured_rc_paths(value: object) -> list[str]:
+    raw = value if isinstance(value, (list, tuple, set)) else [value]
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-# PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
 
-# RC_PATH = r"PRNJ - PA\PA\NY\Direct Group\MP+PIP"
-# RC_PATH = r"PRNJ - PA\PA\NJ\Direct Group\BIR51+UMBIR51"
-# RC_PATH = r"HPPREF\HO+DF\NJ\Legacy\HOL"
-# RC_PATH = r'PRNJ - PA\PA\All States\Direct Group\COL'
-RC_PATH = r"PRNJ - PA\PA\NJ\Direct Group\BIR51+UMBIR51"
+# RC_PATH may be a string or a list of reserving-class paths.
+RC_PATH = [
+    r"PRNJ - PA\PA\NY\Direct Group\BI Total",
+    r"PRNJ - PA\PA\NY\Direct Group\MP+PIP",
+    r"PRNJ - PA\PA\Penn+CT\Direct Group\BI Total",
+    r"PRNJ - PA\PA\Penn+CT\Direct Group\MP+PIP",
+    r"PRNJ - PA\PA\All States\Direct Group\PD+UMPD",
+    r"PRNJ - PA\PA\All States\Direct Group\COL",
+    r"PRNJ - PA\PA\All States\Direct Group\CMPxCAT",
+    r"PRNJ - PA\PA\NJ\Direct Group\MP+PIP",
+    r"PRNJ - PA\PA\NJ\Direct Group\BIR51+UMBIR51",
+    r"PRNJ - PA\PA\NJ\Direct Group\BIx51+UMBIx51",
+    r"HPPREF\HO+DF\NJ\Legacy\HOL",
+    r"HPPREF\HO+DF\NJ\Legacy\HOPxCAT",
+]
+
 
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 USER_NAME = ""
@@ -46,7 +76,7 @@ PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 7
+INDEX_VERSION = 8
 DATASET_CACHE_DIR = "datasets"
 METHOD_DATA_DIR = "methods"
 DATASET_SIDECAR_DIR = "sidecars"
@@ -61,8 +91,9 @@ MAX_AVERAGE_FORMULA_PROBE = 30
 EXPORT_DFMS = True
 EXPORT_TRIANGLES = True
 EXPORT_VECTORS = True
+CLEAN_TARGET_RC = True
 TRIANGLE_NAMES: list[str] = []  # Empty means export all triangles in RC_PATH
-VECTOR_NAMES: list[str] = []  # Empty means export all methodless and Result Selection vectors in RC_PATH
+VECTOR_NAMES: list[str] = []  # Empty means export all vectors in RC_PATH
 DFM_NAMES: list[str] = []  # Empty means export all DFM methods in RC_PATH
 
 METHOD_TYPE_NONE_CODE = 0
@@ -75,7 +106,7 @@ METHOD_TYPE_NAMES = {
     3: "CC",
     METHOD_TYPE_RESULT_SELECTION_CODE: "Result Selection",
 }
-EXPORTABLE_VECTOR_METHOD_TYPES = {METHOD_TYPE_NONE_CODE, METHOD_TYPE_RESULT_SELECTION_CODE}
+ProgressCallback = Callable[[dict], None]
 
 
 # ── JSON formatting ────────────────────────────────────────────────────────────
@@ -232,22 +263,46 @@ def _safe_read_json(path: Path) -> dict:
         return {}
 
 
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(_format_json(payload))
+        fh.write("\n")
+
+
 def _dataset_type_rows() -> list[dict]:
     path = SERVER_ROOT / "projects" / PROJECT_NAME / "dataset_types.json"
     data = _safe_read_json(path)
     rows = data.get("rows") if isinstance(data, dict) else []
+    columns = data.get("columns") if isinstance(data, dict) else []
+    col_idx: dict[str, int] = {}
+    if isinstance(columns, list):
+        for idx, column in enumerate(columns):
+            text = _clean_name(column)
+            if text:
+                col_idx[text.casefold()] = idx
+
+    def row_value(row: list, column: str, fallback_idx: int, default: object = "") -> object:
+        idx = col_idx.get(column.casefold(), fallback_idx)
+        if 0 <= idx < len(row):
+            return row[idx]
+        return default
+
     out: list[dict] = []
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, list):
             continue
-        name = _clean_name(row[0] if len(row) > 0 else "")
+        name = _clean_name(row_value(row, "Name", 0))
         if not name:
             continue
         out.append({
             "name": name,
-            "calculated": _bool_value(row[3] if len(row) > 3 else False),
-            "formula": _clean_name(row[4] if len(row) > 4 else ""),
-            "generated": _bool_value(row[6] if len(row) > 6 else False),
+            "data_format": _clean_name(row_value(row, "Data Format", 1, "Triangle")) or "Triangle",
+            "category": _clean_name(row_value(row, "Category", 2)),
+            "calculated": _bool_value(row_value(row, "Calculated", 3, False)),
+            "formula": _clean_name(row_value(row, "Formula", 4)),
+            "source": _clean_name(row_value(row, "Source", 5)),
+            "generated": _bool_value(row_value(row, "Generated", 6, False)),
         })
     return out
 
@@ -294,32 +349,164 @@ def _formula_components(formula: str, known_names: list[str]) -> list[str]:
     return out
 
 
-def _dataset_type_graph_fields(dataset_type_name: str) -> dict:
-    rows = _dataset_type_rows()
+def _dataset_type_rows_by_key(rows: list[dict]) -> dict[str, dict]:
+    return {
+        _canon_dataset_name(row.get("name")): row
+        for row in rows
+        if _canon_dataset_name(row.get("name"))
+    }
+
+
+def _direct_precedent_names(rows: list[dict], dataset_type_name: str) -> list[str]:
     known_names = [row["name"] for row in rows]
     target_key = _canon_dataset_name(dataset_type_name)
-    precedents: list[dict] = []
-    dependents: list[dict] = []
     for row in rows:
-        row_key = _canon_dataset_name(row.get("name"))
+        if _canon_dataset_name(row.get("name")) != target_key:
+            continue
         formula = _clean_name(row.get("formula"))
-        if row_key == target_key and row.get("calculated") and not row.get("generated") and formula:
-            precedents = [
-                {"dataset_type_name": name}
-                for name in _formula_components(formula, known_names)
-            ]
-        if row.get("calculated") and not row.get("generated") and formula:
-            component_keys = {
-                _canon_dataset_name(name)
-                for name in _formula_components(formula, known_names)
-            }
-            if target_key and target_key in component_keys:
-                dependents.append({"dataset_type_name": row["name"]})
+        if not row.get("calculated") or row.get("generated") or not formula:
+            return []
+        return _formula_components(formula, known_names)
+    return []
+
+
+def _direct_dependent_names(rows: list[dict], dataset_type_name: str) -> list[str]:
+    known_names = [row["name"] for row in rows]
+    target_key = _canon_dataset_name(dataset_type_name)
+    out: list[str] = []
+    seen: set[str] = set()
+    if not target_key:
+        return out
+    for row in rows:
+        formula = _clean_name(row.get("formula"))
+        if not row.get("calculated") or row.get("generated") or not formula:
+            continue
+        component_keys = {
+            _canon_dataset_name(name)
+            for name in _formula_components(formula, known_names)
+        }
+        if target_key not in component_keys:
+            continue
+        dep_key = _canon_dataset_name(row.get("name"))
+        if dep_key and dep_key not in seen:
+            seen.add(dep_key)
+            out.append(row["name"])
+    return out
+
+
+def _physical_item_matches_dataset(item: dict, dataset_key: str) -> bool:
+    names: set[str] = set()
+    _add_cached_dataset_name(names, item.get("dataset_name"))
+    _add_cached_dataset_name(names, item.get("dataset_type"))
+    for value in item.get("dataset_names") or []:
+        _add_cached_dataset_name(names, value)
+    return dataset_key in {_canon_dataset_name(name) for name in names}
+
+
+def _dependency_item_score(item: dict, dataset_key: str) -> tuple[int, float]:
+    path = Path(_clean_name(item.get("path")))
+    score = 0
+    if path.suffix.lower() == ".csv":
+        score += 30
+    elif _clean_name(item.get("method_type")).lower() == "dfm":
+        score += 25
+    elif path.parent.name == DATASET_SIDECAR_DIR:
+        score += 10
+    if _canon_dataset_name(item.get("dataset_name")) == dataset_key:
+        score += 4
+    if _canon_dataset_name(item.get("dataset_type")) == dataset_key:
+        score += 2
+    return score, _numeric_timestamp(item.get("last_modified_timestamp") or item.get("mtime"))
+
+
+def _dependency_file_info(rc_dir: Path | None, dataset_type_name: str) -> dict:
+    if rc_dir is None or not rc_dir.is_dir():
+        return {}
+    dataset_key = _canon_dataset_name(dataset_type_name)
+    if not dataset_key:
+        return {}
+    matches = [
+        item
+        for item in _scan_physical_dataset_files(rc_dir)
+        if _physical_item_matches_dataset(item, dataset_key)
+    ]
+    if not matches:
+        return {}
+    item = sorted(matches, key=lambda entry: _dependency_item_score(entry, dataset_key), reverse=True)[0]
+    out: dict = {}
+    for key in ("path", "mtime", "mtime_ns"):
+        if key in item:
+            out[key] = item[key]
+    dataset_name = _clean_name(item.get("dataset_name"))
+    if dataset_name:
+        out["dataset_name"] = dataset_name
+    dataset_type = _clean_name(item.get("dataset_type"))
+    if dataset_type:
+        out["dataset_type"] = dataset_type
+    method_type = _clean_name(item.get("method_type"))
+    if method_type:
+        out["method_type"] = method_type
+    source_kind = _clean_name(item.get("source_kind"))
+    if not source_kind and method_type.lower() == "dfm":
+        source_kind = "dfm_method"
+    if source_kind:
+        out["source_kind"] = source_kind
+    formula = _clean_name(item.get("formula"))
+    if formula:
+        out["formula"] = formula
+
+    if method_type.lower() == "dfm" and _clean_name(out.get("path")):
+        payload = _safe_read_json(Path(out["path"]))
+        data_tab = payload.get("data tab") if isinstance(payload.get("data tab"), dict) else {}
+        input_path = _clean_name(data_tab.get("input data triangle csv path"))
+        if input_path:
+            out["input_path"] = input_path
+    return out
+
+
+def _dependency_entry(
+    name: str,
+    rows_by_key: dict[str, dict],
+    rc_dir: Path | None,
+    *,
+    include_formula: bool = False,
+) -> dict:
+    entry = {"dataset_type_name": name}
+    entry.update(_dependency_file_info(rc_dir, name))
+    row = rows_by_key.get(_canon_dataset_name(name))
+    if include_formula and row:
+        formula = _clean_name(row.get("formula"))
+        if formula:
+            entry["formula"] = formula
+    return entry
+
+
+def _dataset_type_graph_fields(dataset_type_name: str, rc_dir: Path | None = None) -> dict:
+    rows = _dataset_type_rows()
+    rows_by_key = _dataset_type_rows_by_key(rows)
+    precedents = [
+        _dependency_entry(name, rows_by_key, rc_dir)
+        for name in _direct_precedent_names(rows, dataset_type_name)
+    ]
+    dependents = [
+        _dependency_entry(name, rows_by_key, rc_dir, include_formula=True)
+        for name in _direct_dependent_names(rows, dataset_type_name)
+    ]
     return {"Precedents": precedents, "Dependents": dependents}
 
 
-def _apply_sidecar_graph_meta(meta: dict, dataset_type_name: str) -> None:
-    meta.update(_dataset_type_graph_fields(dataset_type_name))
+def _apply_sidecar_graph_meta(
+    meta: dict,
+    dataset_type_name: str,
+    rc_dir: Path | None = None,
+    *,
+    preserve_precedents: bool = False,
+) -> None:
+    fields = _dataset_type_graph_fields(dataset_type_name, rc_dir)
+    if preserve_precedents:
+        meta["Dependents"] = fields["Dependents"]
+    else:
+        meta.update(fields)
     meta.pop("dependencies", None)
 
 
@@ -394,7 +581,7 @@ def _cached_dataset_names_from_payload(payload: dict) -> set[str]:
     return names
 
 
-def _dataset_type_name_from_payload(payload: dict) -> str:
+def _dataset_type_from_payload(payload: dict) -> str:
     if _clean_name(payload.get("json_format")).lower() == RS_JSON_FORMAT:
         details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
         text = _normalize_cached_dataset_name(details_tab.get("output_type"))
@@ -460,7 +647,7 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
         metadata: dict = {}
         method_type = ""
         method_dataset_name = ""
-        method_dataset_type_name = ""
+        method_dataset_type = ""
         legacy_length_only_name = _has_legacy_length_only_suffix(entry.stem)
 
         if ext == ".csv":
@@ -475,13 +662,13 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
                 details_tab = metadata.get("details tab") if isinstance(metadata.get("details tab"), dict) else {}
                 _add_cached_dataset_name(file_names, details_tab.get("output type"))
                 method_dataset_name = _normalize_cached_dataset_name(details_tab.get("output type"))
-                method_dataset_type_name = method_dataset_name
+                method_dataset_type = method_dataset_name
                 method_type = "DFM" if file_names else ""
             elif not is_sidecar and entry.name.startswith("RS@"):
                 details_tab = metadata.get("details_tab") if isinstance(metadata.get("details_tab"), dict) else {}
                 _add_cached_dataset_name(file_names, details_tab.get("name"))
                 method_dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
-                method_dataset_type_name = _normalize_cached_dataset_name(details_tab.get("output_type")) or method_dataset_name
+                method_dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type")) or method_dataset_name
                 method_type = "Result Selection" if file_names else ""
             else:
                 payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
@@ -507,13 +694,12 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
             file_info["dataset_name"] = first_name
         if metadata:
             metadata_dataset_name = _normalize_cached_dataset_name(metadata.get("dataset_name"))
-            dataset_type_name = _dataset_type_name_from_payload(metadata)
+            dataset_type = _dataset_type_from_payload(metadata)
             if not legacy_length_only_name:
                 if metadata_dataset_name:
                     file_info["dataset_name"] = metadata_dataset_name
-                if dataset_type_name:
-                    file_info["dataset_type_name"] = dataset_type_name
-                    file_info["dataset_type"] = dataset_type_name
+                if dataset_type:
+                    file_info["dataset_type"] = dataset_type
             file_info["source_kind"] = _clean_name(metadata.get("source_kind"))
             if "editable" in metadata:
                 file_info["editable"] = metadata.get("editable")
@@ -551,9 +737,8 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
         if method_type:
             if method_dataset_name:
                 file_info["dataset_name"] = method_dataset_name
-            if method_dataset_type_name:
-                file_info["dataset_type_name"] = method_dataset_type_name
-                file_info["dataset_type"] = method_dataset_type_name
+            if method_dataset_type:
+                file_info["dataset_type"] = method_dataset_type
             file_info["method_type"] = method_type
         files.append(file_info)
     return files
@@ -596,9 +781,9 @@ def _merge_logical_file(existing: dict, source: dict) -> dict:
     method_type = _clean_name(source.get("method_type"))
     if method_type:
         existing["method_type"] = method_type
-    dataset_type_name = _clean_name(source.get("dataset_type_name") or source.get("dataset_type"))
-    if dataset_type_name and not _clean_name(existing.get("dataset_type_name")):
-        existing["dataset_type_name"] = dataset_type_name
+    dataset_type = _clean_name(source.get("dataset_type"))
+    if dataset_type and not _clean_name(existing.get("dataset_type")):
+        existing["dataset_type"] = dataset_type
     source_kind = _clean_name(source.get("source_kind"))
     if source_kind and not _clean_name(existing.get("source_kind")):
         existing["source_kind"] = source_kind
@@ -622,7 +807,6 @@ def _logical_files_from_physical_files(files: list[dict]) -> list[dict]:
             if logical is None:
                 logical = {
                     "name": display_names[key],
-                    "dataset_name": display_names[key],
                     "last_modified": "",
                     "last_modified_timestamp": 0,
                     "created": "",
@@ -631,7 +815,7 @@ def _logical_files_from_physical_files(files: list[dict]) -> list[dict]:
                 }
                 by_name[key] = logical
             _merge_logical_file(logical, item)
-    return sorted(by_name.values(), key=lambda item: _clean_name(item.get("dataset_name")).lower())
+    return sorted(by_name.values(), key=lambda item: _clean_name(item.get("name")).lower())
 
 
 def _cached_folder_signature(files: list[dict], folder_paths: dict[str, str]) -> str:
@@ -682,15 +866,79 @@ def rebuild_dataset_instance_index(project_name: str, rc_path: str, rc_dir: Path
     rc_dir.mkdir(parents=True, exist_ok=True)
     index_path = rc_dir / INDEX_FILE_NAME
     temp_path = index_path.with_name(f"{index_path.name}.tmp")
-    with temp_path.open("w", encoding="utf-8", newline="\n") as fh:
-        fh.write(_format_json(payload))
-        fh.write("\n")
+    _write_json(temp_path, payload)
     temp_path.replace(index_path)
     print(f"    OK  {INDEX_FILE_NAME} ({len(files)} entries, version {INDEX_VERSION})")
     return index_path
 
 
 # ── Average formula helpers ────────────────────────────────────────────────────
+
+def _require_safe_target_rc_dir(rc_dir: Path) -> Path:
+    target = rc_dir.resolve(strict=False)
+    project_data = PROJECT_DATA_DIR.resolve(strict=False)
+    if target == project_data or target.parent != project_data:
+        raise ValueError(
+            "Refusing to clean target reserving-class folder outside the configured project data directory: "
+            f"{target}"
+        )
+    if not target.name:
+        raise ValueError("Refusing to clean target reserving-class folder with an empty folder name.")
+    return target
+
+
+def cleanup_target_reserving_class_dir(rc_dir: Path) -> tuple[int, int]:
+    """Remove the existing target reserving-class folder contents before export."""
+    target = _require_safe_target_rc_dir(rc_dir)
+    if not target.exists():
+        return 0, 0
+    if target.is_symlink():
+        raise ValueError(f"Refusing to clean symlinked reserving-class folder: {target}")
+
+    files = 0
+    dirs = 0
+    for item in target.rglob("*"):
+        if item.is_dir():
+            dirs += 1
+        else:
+            files += 1
+    shutil.rmtree(target)
+    return files, dirs
+
+
+def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
+    """Refresh formula-derived graph metadata for all dataset sidecars in one RC folder."""
+    sidecar_dir = rc_dir / DATASET_SIDECAR_DIR
+    if not sidecar_dir.is_dir():
+        return 0
+    updated = 0
+    for path in sorted(sidecar_dir.glob("*.json"), key=lambda item: item.name.lower()):
+        if path.name.startswith("ArcRhoTriNotes@"):
+            continue
+        meta = _safe_read_json(path)
+        if not meta:
+            continue
+        dataset_type = _clean_name(meta.get("dataset_type") or meta.get("dataset_name"))
+        if not dataset_type:
+            continue
+        before = json.dumps(meta, sort_keys=True, ensure_ascii=False, default=str)
+        is_result_selection = (
+            _clean_name(meta.get("source_kind")).lower() == "result_selection"
+            or _is_result_selection_method_type(meta.get("method_type"))
+        )
+        _apply_sidecar_graph_meta(
+            meta,
+            dataset_type,
+            rc_dir,
+            preserve_precedents=is_result_selection,
+        )
+        after = json.dumps(meta, sort_keys=True, ensure_ascii=False, default=str)
+        if before == after:
+            continue
+        _write_json(path, meta)
+        updated += 1
+    return updated
+
 
 def _strip_formula_index_prefix(raw: str) -> str:
     """Remove leading '0: ' or '13: ' index that ResQ prepends to formula names."""
@@ -1233,13 +1481,9 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "modified_by": payload.get("user", ""),
         "updated_at": updated_at,
     }
-    _apply_sidecar_graph_meta(meta, dataset_type)
-    meta_dir = rc_dir / DATASET_SIDECAR_DIR
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    meta_path = meta_dir / _json_sidecar_name(name)
-    with meta_path.open("w", encoding="utf-8", newline="\n") as fh:
-        fh.write(_format_json(meta))
-        fh.write("\n")
+    _apply_sidecar_graph_meta(meta, dataset_type, rc_dir)
+    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    _write_json(meta_path, meta)
     return csv_path
 
 
@@ -1355,13 +1599,9 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         meta["Precedents"] = source_names
         meta["Dependents"] = []
     else:
-        _apply_sidecar_graph_meta(meta, dataset_type)
-    meta_dir = rc_dir / DATASET_SIDECAR_DIR
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    meta_path = meta_dir / _json_sidecar_name(name)
-    with meta_path.open("w", encoding="utf-8", newline="\n") as fh:
-        fh.write(_format_json(meta))
-        fh.write("\n")
+        _apply_sidecar_graph_meta(meta, dataset_type, rc_dir)
+    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    _write_json(meta_path, meta)
     return csv_path
 
 
@@ -1421,11 +1661,17 @@ def _result_selection_ultimate(result_selection, origin_index: int, origin_lengt
     return _try_call_member(result_selection, "Ultimates", call_shapes)
 
 
-def _positive_weight(value: object) -> bool:
+def _result_selection_ratio_basis_dataset_name(result_selection) -> str:
+    call_shapes = [
+        ((1,), {}),
+        ((), {"DatasetIndex": 1}),
+        ((), {"arg0": 1}),
+    ]
     try:
-        return float(value) > 0
-    except (TypeError, ValueError):
-        return False
+        dataset = _try_call_member(result_selection, "RatioBasisDataset", call_shapes)
+    except Exception:
+        return ""
+    return _clean_name(_safe_attr(dataset, "Name", ""))
 
 
 def _result_selection_source_payload(result_selection, dataset_index: int, origin_count: int, origin_length: int) -> dict:
@@ -1451,13 +1697,8 @@ def _result_selection_source_payload(result_selection, dataset_index: int, origi
         "data_format": data_format,
         "method_type": _method_type_name(method_type_code),
         "category": _clean_name(_safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")),
-        "value_source": "latest_diagonal" if data_format == "Triangle" else "vector",
         "values": values,
         "weights": weights,
-        "selected": [
-            value is not None and _positive_weight(weight)
-            for value, weight in zip(values, weights)
-        ],
     }
 
 
@@ -1477,6 +1718,7 @@ def export_result_selection(result_selection) -> dict:
         _result_selection_source_payload(result_selection, dataset_index, origin_count, origin_length)
         for dataset_index in range(1, dataset_count + 1)
     ]
+    ratio_basis_dataset = _result_selection_ratio_basis_dataset_name(result_selection)
     selected_ultimate: list = []
     for origin_index in range(1, origin_count + 1):
         try:
@@ -1499,7 +1741,8 @@ def export_result_selection(result_selection) -> dict:
             "name": name,
             "output_type": output_type,
             "origin_length": origin_length,
-            "ratio_basis": "",
+            "ratio_basis": ratio_basis_dataset,
+            "ratio_basis_dataset": ratio_basis_dataset,
             "show_ratios_as_percentages": True,
             "statistic_decimal_places": 1,
         },
@@ -1535,15 +1778,26 @@ def _result_selection_source_names(payload: dict) -> list[str]:
     return names
 
 
+def _result_selection_origin_labels_from_payload(payload: dict) -> list[str]:
+    method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
+    labels = method_tab.get("origin_labels") if isinstance(method_tab.get("origin_labels"), list) else []
+    return [_clean_name(label) for label in labels if _clean_name(label)]
+
+
+def _apply_result_selection_vector_metadata(payload: dict, result_selection_payload: dict) -> None:
+    payload["precedents"] = _result_selection_source_names(result_selection_payload)
+    origin_labels = _result_selection_origin_labels_from_payload(result_selection_payload)
+    if origin_labels:
+        payload["origin_labels"] = origin_labels
+        payload["origin_count"] = len(origin_labels)
+
+
 def write_result_selection_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
     name = _clean_name(details_tab.get("name")) or "Result Selection"
-    file_name = f"RS@{_encode_rc_folder(rc_path)}@{_encode_name_part(name)}.json"
+    file_name = f"RS@{_encode_name_part(name)}.json"
     out_path = rc_dir / METHOD_DATA_DIR / file_name
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8", newline="\n") as fh:
-        fh.write(_format_json(payload))
-        fh.write("\n")
+    _write_json(out_path, payload)
     return out_path
 
 
@@ -1679,43 +1933,202 @@ def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) 
         "modified_by": payload.get("user", ""),
         "updated_at": updated_at,
     }
-    _apply_sidecar_graph_meta(meta, dataset_type)
-    meta_dir = rc_dir / DATASET_SIDECAR_DIR
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    meta_path = meta_dir / _json_sidecar_name(name)
-    with meta_path.open("w", encoding="utf-8", newline="\n") as fh:
-        fh.write(_format_json(meta))
-        fh.write("\n")
+    _apply_sidecar_graph_meta(meta, dataset_type, rc_dir)
+    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    _write_json(meta_path, meta)
     return csv_path
+
+
+def _dfm_methods_by_output_name(reserving_class, dfm_names: list[str] | None = None) -> dict[str, tuple[str, object]]:
+    try:
+        dfm_collection = reserving_class.DFMMethods()
+    except Exception:
+        return {}
+    names = list(dfm_names) if dfm_names is not None else _dfm_export_names(reserving_class)
+    out: dict[str, tuple[str, object]] = {}
+    for dfm_name in names:
+        clean_name = _clean_name(dfm_name)
+        if not clean_name:
+            continue
+        try:
+            dfm = dfm_collection.Item(clean_name)
+        except Exception:
+            continue
+        output_vector = _safe_attr(dfm, "OutputVector", None)
+        output_name = _clean_name(_safe_attr(output_vector, "Name", ""))
+        key = output_name.lower()
+        if key and key not in out:
+            out[key] = (clean_name, dfm)
+    return out
+
+
+def _export_dfm_output_dataset(
+    dfm,
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    verbose: bool = True,
+) -> tuple[str, str]:
+    dfm_name = _clean_name(_safe_attr(dfm, "Name", ""))
+    file_name = f"DFM@{_encode_name_part(dfm_name)}.json"
+    out_path = rc_dir / METHOD_DATA_DIR / file_name
+    payload = export_dfm(dfm, rc_path)
+    details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
+    output_dataset_name = _clean_name(details_tab.get("output type")) or dfm_name
+    _debug_log(
+        "dfm_export_payload",
+        project_name=PROJECT_NAME,
+        reserving_class=rc_path,
+        method_name=payload.get("details tab", {}).get("name") if isinstance(payload.get("details tab"), dict) else dfm_name,
+        input_triangle=payload.get("details tab", {}).get("input triangle") if isinstance(payload.get("details tab"), dict) else "",
+        origin_length=payload.get("details tab", {}).get("origin length") if isinstance(payload.get("details tab"), dict) else "",
+        development_length=payload.get("details tab", {}).get("development length") if isinstance(payload.get("details tab"), dict) else "",
+        input_csv_path=payload.get("data tab", {}).get("input data triangle csv path") if isinstance(payload.get("data tab"), dict) else "",
+    )
+    _warn_if_dfm_input_sidecar_missing(payload, verbose=verbose)
+    ultimate_payload = export_dfm_ultimate_vector(
+        dfm,
+        payload["data tab"]["origin labels"],
+        payload["details tab"]["origin length"],
+        payload["details tab"]["development length"],
+    )
+    ultimate_csv_path = write_dfm_ultimate_vector_export(ultimate_payload, rc_path, rc_dir)
+    existing_payload = _safe_read_json(out_path)
+    payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
+    _write_json(out_path, payload)
+
+    suffix = f" (preserved {', '.join(sorted(preserved))})" if preserved else ""
+    _log(verbose, f"    OK  {_clean_name(ultimate_csv_path.name)}")
+    detail = f"    OK  {file_name}{suffix}"
+    _log(verbose, detail)
+    return output_dataset_name, detail
+
+
+def _log(verbose: bool, message: str) -> None:
+    if verbose:
+        print(message)
+
+
+def _report_progress(progress_callback: ProgressCallback | None, **payload: object) -> None:
+    if not progress_callback:
+        return
+    try:
+        progress_callback(dict(payload))
+    except Exception:
+        pass
+
+
+def _triangle_export_names(reserving_class) -> list[str]:
+    triangle_collection = reserving_class.Triangles()
+    if TRIANGLE_NAMES:
+        return [name.strip() for name in TRIANGLE_NAMES if str(name or "").strip()]
+    return [_clean_name(_safe_attr(item, "Name", "")) for item in triangle_collection if _clean_name(_safe_attr(item, "Name", ""))]
+
+
+def _vector_export_names(reserving_class) -> list[str]:
+    vector_collection = reserving_class.Vectors()
+    if VECTOR_NAMES:
+        return [name.strip() for name in VECTOR_NAMES if str(name or "").strip()]
+    return [_clean_name(_safe_attr(item, "Name", "")) for item in vector_collection if _clean_name(_safe_attr(item, "Name", ""))]
+
+
+def _dfm_export_names(reserving_class) -> list[str]:
+    dfm_collection = reserving_class.DFMMethods()
+    if DFM_NAMES:
+        return [name.strip() for name in DFM_NAMES if str(name or "").strip()]
+    return [_clean_name(_safe_attr(item, "Name", "")) for item in dfm_collection if _clean_name(_safe_attr(item, "Name", ""))]
+
+
+def resq_export_dataset_counts(
+    reserving_class,
+    *,
+    run_triangles: bool = True,
+    run_vectors: bool = True,
+    run_dfms: bool = True,
+) -> dict:
+    """Return ResQ dataset counts plus method counts for one reserving class."""
+
+    triangle_names = _triangle_export_names(reserving_class) if run_triangles else []
+    vector_names = _vector_export_names(reserving_class) if run_vectors else []
+    dfm_names = _dfm_export_names(reserving_class) if run_dfms else []
+    return {
+        "triangles": len(triangle_names),
+        "vectors": len(vector_names),
+        "dfms": len(dfm_names),
+        "methods": len(dfm_names),
+        "total": len(triangle_names) + len(vector_names),
+        "triangle_names": triangle_names,
+        "vector_names": vector_names,
+        "dfm_names": dfm_names,
+    }
 
 
 def export_triangles_for_rc(
     reserving_class,
     rc_path: str,
     rc_dir: Path,
+    *,
+    progress_callback: ProgressCallback | None = None,
+    progress_state: dict | None = None,
+    triangle_names: list[str] | None = None,
+    verbose: bool = True,
 ) -> tuple[int, int]:
     """Export triangle datasets for one reserving class. Returns (written, errors)."""
     triangle_collection = reserving_class.Triangles()
-    all_triangle_names = [t.Name.strip() for t in triangle_collection]
-    triangle_names = [name.strip() for name in TRIANGLE_NAMES] if TRIANGLE_NAMES else all_triangle_names
+    triangle_names = list(triangle_names) if triangle_names is not None else _triangle_export_names(reserving_class)
 
-    print(f"Triangles: {len(triangle_names)}")
+    _log(verbose, f"Triangles: {len(triangle_names)}")
     written = errors = 0
+    progress_state = progress_state if isinstance(progress_state, dict) else {"completed": 0, "total": len(triangle_names)}
     for triangle_name in triangle_names:
+        _report_progress(
+            progress_callback,
+            event="start",
+            kind="triangle",
+            name=triangle_name,
+            completed=int(progress_state.get("completed") or 0),
+            total=int(progress_state.get("total") or len(triangle_names)),
+            message=f"Importing triangle: {triangle_name}",
+        )
         try:
             triangle = triangle_collection.Item(triangle_name)
             payload = export_triangle(triangle)
             write_triangle_export(payload, rc_path, rc_dir)
             source_kind = _triangle_source_kind(payload["name"], payload.get("dataset_type", ""))
-            print(
+            detail = (
                 f"    OK  {source_kind} "
                 f"{_dataset_cache_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
             )
+            _log(verbose, detail)
             written += 1
+            progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+            _report_progress(
+                progress_callback,
+                event="finish",
+                kind="triangle",
+                name=payload.get("name") or triangle_name,
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or len(triangle_names)),
+                status="success",
+                message=detail.strip(),
+            )
         except Exception as exc:
-            print(f"    ERR triangle {triangle_name}: {exc}")
-            traceback.print_exc(file=sys.stdout)
+            detail = f"    ERR triangle {triangle_name}: {exc}"
+            _log(verbose, detail)
+            if verbose:
+                traceback.print_exc(file=sys.stdout)
             errors += 1
+            progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+            _report_progress(
+                progress_callback,
+                event="finish",
+                kind="triangle",
+                name=triangle_name,
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or len(triangle_names)),
+                status="error",
+                message=detail.strip(),
+            )
     return written, errors
 
 
@@ -1723,51 +2136,108 @@ def export_vectors_for_rc(
     reserving_class,
     rc_path: str,
     rc_dir: Path,
+    *,
+    progress_callback: ProgressCallback | None = None,
+    progress_state: dict | None = None,
+    vector_names: list[str] | None = None,
+    include_dfm_methods: bool = False,
+    dfm_names: list[str] | None = None,
+    method_counts: dict | None = None,
+    verbose: bool = True,
 ) -> tuple[int, int]:
-    """Export methodless and Result Selection vector datasets for one reserving class. Returns (written, errors)."""
+    """Export vector datasets for one reserving class. Returns (written, errors)."""
     vector_collection = reserving_class.Vectors()
-    if VECTOR_NAMES:
-        vector_names = [name.strip() for name in VECTOR_NAMES]
-    else:
-        vector_names = []
-        for vector in vector_collection:
-            if _safe_int_attr(vector, "MethodType", -1) in EXPORTABLE_VECTOR_METHOD_TYPES:
-                name = _clean_name(_safe_attr(vector, "Name", ""))
-                if name:
-                    vector_names.append(name)
+    vector_names = list(vector_names) if vector_names is not None else _vector_export_names(reserving_class)
+    dfm_by_output = _dfm_methods_by_output_name(reserving_class, dfm_names) if include_dfm_methods else {}
 
-    print("Vectors (MethodType=None or Result Selection): " + str(len(vector_names)))
+    _log(verbose, "Vectors: " + str(len(vector_names)))
     written = errors = 0
+    progress_state = progress_state if isinstance(progress_state, dict) else {"completed": 0, "total": len(vector_names)}
     for vector_name in vector_names:
+        _report_progress(
+            progress_callback,
+            event="start",
+            kind="vector",
+            name=vector_name,
+            completed=int(progress_state.get("completed") or 0),
+            total=int(progress_state.get("total") or len(vector_names)),
+            message=f"Importing vector: {vector_name}",
+        )
         try:
             vector = vector_collection.Item(vector_name)
             method_type = _safe_int_attr(vector, "MethodType", -1)
-            if method_type not in EXPORTABLE_VECTOR_METHOD_TYPES:
-                print(f"    SKIP vector {vector_name} (MethodType {method_type})")
+            dfm_entry = dfm_by_output.get(vector_name.lower()) if method_type == METHOD_TYPE_DFM_CODE else None
+            if dfm_entry is not None:
+                dfm_name, dfm = dfm_entry
+                output_dataset_name, detail = _export_dfm_output_dataset(dfm, rc_path, rc_dir, verbose=verbose)
+                if isinstance(method_counts, dict):
+                    method_counts["dfms_written"] = int(method_counts.get("dfms_written") or 0) + 1
+                written += 1
+                progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+                _report_progress(
+                    progress_callback,
+                    event="finish",
+                    kind="vector",
+                    name=output_dataset_name or vector_name,
+                    dataset_name=output_dataset_name or vector_name,
+                    method_name=dfm_name,
+                    completed=int(progress_state.get("completed") or 0),
+                    total=int(progress_state.get("total") or len(vector_names)),
+                    status="success",
+                    message=detail.strip(),
+                )
                 continue
+            if method_type == METHOD_TYPE_DFM_CODE and include_dfm_methods:
+                _log(verbose, f"    WARN DFM method not found for vector {vector_name}; exporting vector only")
+
             result_selection_payload = None
             if method_type == METHOD_TYPE_RESULT_SELECTION_CODE:
                 result_selection = _find_result_selection_for_vector(reserving_class, vector_name)
                 if result_selection is None:
-                    print(f"    WARN result selection method not found for vector {vector_name}; exporting vector only")
+                    _log(verbose, f"    WARN result selection method not found for vector {vector_name}; exporting vector only")
                 else:
                     result_selection_payload = export_result_selection(result_selection)
             payload = export_vector(vector)
             if result_selection_payload:
-                payload["precedents"] = _result_selection_source_names(result_selection_payload)
+                _apply_result_selection_vector_metadata(payload, result_selection_payload)
             write_vector_export(payload, rc_path, rc_dir)
-            print(
+            detail = (
                 f"    OK  {_method_type_name(method_type)} vector "
                 f"{_dataset_cache_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
             )
+            _log(verbose, detail)
             if result_selection_payload:
                 method_path = write_result_selection_export(result_selection_payload, rc_path, rc_dir)
-                print(f"    OK  {method_path.name}")
+                _log(verbose, f"    OK  {method_path.name}")
             written += 1
+            progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+            _report_progress(
+                progress_callback,
+                event="finish",
+                kind="vector",
+                name=payload.get("name") or vector_name,
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or len(vector_names)),
+                status="success",
+                message=detail.strip(),
+            )
         except Exception as exc:
-            print(f"    ERR vector {vector_name}: {exc}")
-            traceback.print_exc(file=sys.stdout)
+            detail = f"    ERR vector {vector_name}: {exc}"
+            _log(verbose, detail)
+            if verbose:
+                traceback.print_exc(file=sys.stdout)
             errors += 1
+            progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+            _report_progress(
+                progress_callback,
+                event="finish",
+                kind="vector",
+                name=vector_name,
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or len(vector_names)),
+                status="error",
+                message=detail.strip(),
+            )
     return written, errors
 
 
@@ -1974,9 +2444,9 @@ def export_dfm(dfm, rc_path: str) -> dict:
     }
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+# Main
 
-def _warn_if_dfm_input_sidecar_missing(payload: dict) -> None:
+def _warn_if_dfm_input_sidecar_missing(payload: dict, *, verbose: bool = True) -> None:
     details = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
     data_tab = payload.get("data tab") if isinstance(payload.get("data tab"), dict) else {}
     input_path = _clean_name(data_tab.get("input data triangle csv path"))
@@ -1998,27 +2468,52 @@ def _warn_if_dfm_input_sidecar_missing(payload: dict) -> None:
     )
     if sidecar_path.is_file():
         return
-    print(
+    _log(
+        verbose,
         "    WARN missing DFM input sidecar "
         f"{sidecar_path.name} for {_clean_name(details.get('name')) or 'DFM method'}; "
         "export the input triangle before opening the DFM in ArcRho."
     )
 
 
-def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int, int]:
+def export_dfms_for_rc(
+    reserving_class,
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    progress_callback: ProgressCallback | None = None,
+    progress_state: dict | None = None,
+    dfm_names: list[str] | None = None,
+    verbose: bool = True,
+) -> tuple[int, int]:
     """Export DFM method JSON/metadata for one reserving class. Returns (written, errors)."""
     dfm_collection = reserving_class.DFMMethods()
-    all_dfm_names = [d.Name.strip() for d in dfm_collection]
-    dfm_names = [name.strip() for name in DFM_NAMES] if DFM_NAMES else all_dfm_names
+    dfm_names = list(dfm_names) if dfm_names is not None else _dfm_export_names(reserving_class)
 
-    print(f"DFMs: {len(dfm_names)}")
+    _log(verbose, f"DFMs: {len(dfm_names)}")
     written = errors = 0
+    progress_state = progress_state if isinstance(progress_state, dict) else {"completed": 0, "total": len(dfm_names)}
+    methods_increment_progress = progress_state.get("count_methods", True) is not False
     for dfm_name in dfm_names:
         file_name = f"DFM@{_encode_name_part(dfm_name)}.json"
         out_path = rc_dir / METHOD_DATA_DIR / file_name
+        output_dataset_name = ""
         try:
             dfm = dfm_collection.Item(dfm_name)
             payload = export_dfm(dfm, rc_path)
+            details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
+            output_dataset_name = _clean_name(details_tab.get("output type")) or dfm_name
+            _report_progress(
+                progress_callback,
+                event="method",
+                kind="dfm",
+                name=output_dataset_name,
+                dataset_name=output_dataset_name,
+                method_name=dfm_name,
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or 0),
+                message=f"Finalizing dataset: {output_dataset_name}",
+            )
             _debug_log(
                 "dfm_export_payload",
                 project_name=PROJECT_NAME,
@@ -2029,7 +2524,7 @@ def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int
                 development_length=payload.get("details tab", {}).get("development length") if isinstance(payload.get("details tab"), dict) else "",
                 input_csv_path=payload.get("data tab", {}).get("input data triangle csv path") if isinstance(payload.get("data tab"), dict) else "",
             )
-            _warn_if_dfm_input_sidecar_missing(payload)
+            _warn_if_dfm_input_sidecar_missing(payload, verbose=verbose)
             ultimate_payload = export_dfm_ultimate_vector(
                 dfm,
                 payload["data tab"]["origin labels"],
@@ -2039,17 +2534,46 @@ def export_dfms_for_rc(reserving_class, rc_path: str, rc_dir: Path) -> tuple[int
             ultimate_csv_path = write_dfm_ultimate_vector_export(ultimate_payload, rc_path, rc_dir)
             existing_payload = _safe_read_json(out_path)
             payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
-            with out_path.open("w", encoding="utf-8", newline="\n") as fh:
-                fh.write(_format_json(payload))
-                fh.write("\n")
+            _write_json(out_path, payload)
 
             suffix = f" (preserved {', '.join(sorted(preserved))})" if preserved else ""
-            print(f"    OK  {_clean_name(ultimate_csv_path.name)}")
-            print(f"    OK  {file_name}{suffix}")
+            _log(verbose, f"    OK  {_clean_name(ultimate_csv_path.name)}")
+            detail = f"    OK  {file_name}{suffix}"
+            _log(verbose, detail)
+            if methods_increment_progress:
+                progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+            _report_progress(
+                progress_callback,
+                event="method",
+                kind="dfm",
+                name=output_dataset_name or dfm_name,
+                dataset_name=output_dataset_name or dfm_name,
+                method_name=dfm_name,
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or 0),
+                status="success",
+                message=detail.strip(),
+            )
             written += 1
         except Exception as exc:
-            print(f"    ERR {dfm_name}: {exc}")
-            traceback.print_exc(file=sys.stdout)
+            detail = f"    ERR {dfm_name}: {exc}"
+            _log(verbose, detail)
+            if verbose:
+                traceback.print_exc(file=sys.stdout)
+            if methods_increment_progress:
+                progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+            _report_progress(
+                progress_callback,
+                event="method",
+                kind="dfm",
+                name=output_dataset_name or dfm_name,
+                dataset_name=output_dataset_name or dfm_name,
+                method_name=dfm_name,
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or 0),
+                status="error",
+                message=detail.strip(),
+            )
             errors += 1
 
     return written, errors
@@ -2062,6 +2586,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=("configured", "all", "triangles", "vectors", "vector", "dfm", "dfms"),
         default="configured",
         help="Export phase to run. 'configured' uses EXPORT_TRIANGLES/EXPORT_VECTORS/EXPORT_DFMS constants.",
+    )
+    parser.add_argument(
+        "--cleanup-target",
+        dest="cleanup_target",
+        action="store_true",
+        default=CLEAN_TARGET_RC,
+        help="Clean the target reserving-class data folder before export. Enabled by default.",
+    )
+    parser.add_argument(
+        "--no-cleanup-target",
+        dest="cleanup_target",
+        action="store_false",
+        help="Preserve existing files in the target reserving-class data folder before export.",
     )
     return parser.parse_args(argv)
 
@@ -2076,6 +2613,218 @@ def _selected_exports(export_mode: str) -> tuple[bool, bool, bool]:
     if export_mode in {"dfm", "dfms"}:
         return False, False, True
     return bool(EXPORT_TRIANGLES), bool(EXPORT_VECTORS), bool(EXPORT_DFMS)
+
+
+def _apply_runtime_scope(project_name: str, server_root: str | Path | None = None) -> tuple[Path, str, Path]:
+    global SERVER_ROOT, PROJECT_NAME, PROJECT_DATA_DIR
+
+    previous = (SERVER_ROOT, PROJECT_NAME, PROJECT_DATA_DIR)
+    clean_project_name = str(project_name or "").strip()
+    if not clean_project_name:
+        raise ValueError("project_name is required.")
+    if server_root is not None:
+        SERVER_ROOT = Path(server_root).expanduser().resolve()
+    PROJECT_NAME = clean_project_name
+    PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
+    return previous
+
+
+def _restore_runtime_scope(previous: tuple[Path, str, Path]) -> None:
+    global SERVER_ROOT, PROJECT_NAME, PROJECT_DATA_DIR
+
+    SERVER_ROOT, PROJECT_NAME, PROJECT_DATA_DIR = previous
+
+
+def import_reserving_class_from_resq(
+    project_name: str,
+    rc_path: str,
+    *,
+    server_root: str | Path | None = None,
+    export_mode: str = "configured",
+    cleanup_target: bool | None = None,
+    connection_name: str = CONNECTION_NAME,
+    user_name: str = USER_NAME,
+    password: str = PASSWORD,
+    progress_callback: ProgressCallback | None = None,
+    verbose: bool = True,
+) -> dict:
+    """Import one ResQ reserving class into ArcRho using caller-provided UI context."""
+
+    previous_scope = _apply_runtime_scope(project_name, server_root)
+    try:
+        rc_path = str(rc_path or "").strip()
+        if not rc_path:
+            raise ValueError("rc_path is required.")
+        run_triangles, run_vectors, run_dfms = _selected_exports(str(export_mode or "configured"))
+        should_cleanup = CLEAN_TARGET_RC if cleanup_target is None else bool(cleanup_target)
+        try:
+            import win32com.client
+        except ImportError as exc:
+            raise RuntimeError("pywin32 is required: pip install pywin32") from exc
+
+        _report_progress(
+            progress_callback,
+            event="connect",
+            completed=0,
+            total=0,
+            message=f"Connecting to ResQ: {connection_name}",
+        )
+        _log(verbose, f"Connecting to ResQ: {connection_name}")
+        ResQApp = win32com.client.Dispatch("ResQ3Automation.ResQApplication")
+        try:
+            ResQApp.ConnectByName(connection_name, user_name, password)
+        except Exception as exc:
+            raise RuntimeError(f"Could not connect to ResQ COM API ({connection_name}): {exc}") from exc
+        _report_progress(progress_callback, event="connect", completed=0, total=0, message="Connected to ResQ.")
+        _log(verbose, "Connected.\n")
+
+        counts = {
+            "triangles_written": 0,
+            "vectors_written": 0,
+            "dfms_written": 0,
+            "errors": 0,
+        }
+
+        try:
+            project = ResQApp.Projects().Item(PROJECT_NAME)
+            _log(verbose, f"Project: {PROJECT_NAME}")
+            PROJECT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+            rc_folder = _encode_rc_folder(rc_path)
+            rc_dir = PROJECT_DATA_DIR / rc_folder
+
+            reserving_class = project.ReservingClasses().Item(rc_path)
+            dataset_counts = resq_export_dataset_counts(
+                reserving_class,
+                run_triangles=run_triangles,
+                run_vectors=run_vectors,
+                run_dfms=run_dfms,
+            )
+            method_only_progress = bool(run_dfms and not run_triangles and not run_vectors)
+            progress_total = int(dataset_counts.get("dfms") or 0) if method_only_progress else int(dataset_counts.get("total") or 0)
+            progress_state = {
+                "completed": 0,
+                "total": progress_total,
+                "count_methods": method_only_progress,
+            }
+            total_message = (
+                f"Found {progress_state['total']} DFM method(s)."
+                if method_only_progress
+                else (
+                    f"Found {progress_state['total']} dataset(s) "
+                    f"({dataset_counts.get('triangles', 0)} triangle(s), "
+                    f"{dataset_counts.get('vectors', 0)} vector(s))."
+                )
+            )
+            _report_progress(
+                progress_callback,
+                event="total",
+                completed=0,
+                total=progress_state["total"],
+                triangles=dataset_counts.get("triangles", 0),
+                vectors=dataset_counts.get("vectors", 0),
+                dfms=dataset_counts.get("dfms", 0),
+                methods=dataset_counts.get("methods", 0),
+                message=total_message,
+            )
+            _log(verbose, f"RC: {rc_path}")
+            _log(verbose, f"Export mode: {export_mode} (triangles={run_triangles}, vectors={run_vectors}, dfm={run_dfms})")
+            if should_cleanup:
+                cleaned_files, cleaned_dirs = cleanup_target_reserving_class_dir(rc_dir)
+                _log(verbose, f"    OK  cleaned target RC folder ({cleaned_files} files, {cleaned_dirs} folders)")
+            else:
+                _log(verbose, "    SKIP target RC folder cleanup")
+            rc_dir.mkdir(parents=True, exist_ok=True)
+            (rc_dir / DATASET_CACHE_DIR).mkdir(parents=True, exist_ok=True)
+            (rc_dir / METHOD_DATA_DIR).mkdir(parents=True, exist_ok=True)
+            (rc_dir / DATASET_SIDECAR_DIR).mkdir(parents=True, exist_ok=True)
+
+            rc_written = 0
+
+            if run_triangles:
+                written, errors = export_triangles_for_rc(
+                    reserving_class,
+                    rc_path,
+                    rc_dir,
+                    progress_callback=progress_callback,
+                    progress_state=progress_state,
+                    triangle_names=dataset_counts.get("triangle_names") if isinstance(dataset_counts.get("triangle_names"), list) else None,
+                    verbose=verbose,
+                )
+                rc_written += written
+                counts["triangles_written"] += written
+                counts["errors"] += errors
+
+            if run_vectors:
+                written, errors = export_vectors_for_rc(
+                    reserving_class,
+                    rc_path,
+                    rc_dir,
+                    progress_callback=progress_callback,
+                    progress_state=progress_state,
+                    vector_names=dataset_counts.get("vector_names") if isinstance(dataset_counts.get("vector_names"), list) else None,
+                    include_dfm_methods=run_dfms,
+                    dfm_names=dataset_counts.get("dfm_names") if isinstance(dataset_counts.get("dfm_names"), list) else None,
+                    method_counts=counts,
+                    verbose=verbose,
+                )
+                rc_written += written
+                counts["vectors_written"] += written
+                counts["errors"] += errors
+
+            if run_dfms and not run_vectors:
+                written, errors = export_dfms_for_rc(
+                    reserving_class,
+                    rc_path,
+                    rc_dir,
+                    progress_callback=progress_callback,
+                    progress_state=progress_state,
+                    dfm_names=dataset_counts.get("dfm_names") if isinstance(dataset_counts.get("dfm_names"), list) else None,
+                    verbose=verbose,
+                )
+                rc_written += written
+                counts["dfms_written"] += written
+                counts["errors"] += errors
+
+            if rc_written:
+                refreshed = refresh_sidecar_graphs_for_rc(rc_dir)
+                if refreshed:
+                    _log(verbose, f"    OK  refreshed sidecar graph metadata ({refreshed} files)")
+                rebuild_dataset_instance_index(PROJECT_NAME, rc_path, rc_dir)
+
+            datasets_written = counts["triangles_written"] + counts["vectors_written"]
+            total_written = datasets_written + counts["dfms_written"]
+            result = {
+                "project_name": PROJECT_NAME,
+                "reserving_class": rc_path,
+                "rc_dir": str(rc_dir),
+                "datasets_imported": datasets_written,
+                "total_written": total_written,
+                "datasets_total": progress_state["total"],
+                "triangles_total": dataset_counts.get("triangles", 0),
+                "vectors_total": dataset_counts.get("vectors", 0),
+                "dfms_total": dataset_counts.get("dfms", 0),
+                "methods_total": dataset_counts.get("methods", 0),
+                "grand_total": progress_state["total"],
+                **counts,
+            }
+            _report_progress(
+                progress_callback,
+                event="complete",
+                completed=progress_state["completed"],
+                total=progress_state["total"],
+                status="error" if counts["errors"] else "success",
+                message=f"Finished - written: {total_written}, errors: {counts['errors']}",
+            )
+            _log(verbose, f"\nFinished - written: {total_written}, errors: {counts['errors']}")
+            return result
+        finally:
+            try:
+                ResQApp.Disconnect()
+            except Exception:
+                pass
+    finally:
+        _restore_runtime_scope(previous_scope)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -2098,40 +2847,60 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Project: {PROJECT_NAME}")
         PROJECT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-        rc_path = RC_PATH
-        rc_folder = _encode_rc_folder(rc_path)
-        rc_dir = PROJECT_DATA_DIR / rc_folder
+        rc_paths = _configured_rc_paths(RC_PATH)
+        if not rc_paths:
+            sys.exit("No reserving-class paths configured in RC_PATH.")
+        print(f"Reserving classes: {len(rc_paths)}")
 
-        reserving_class = project.ReservingClasses().Item(rc_path)
-        print(f"RC: {rc_path}")
-        print(f"Export mode: {args.export} (triangles={run_triangles}, vectors={run_vectors}, dfm={run_dfms})")
-        rc_dir.mkdir(parents=True, exist_ok=True)
-        (rc_dir / DATASET_CACHE_DIR).mkdir(parents=True, exist_ok=True)
-        (rc_dir / METHOD_DATA_DIR).mkdir(parents=True, exist_ok=True)
-        (rc_dir / DATASET_SIDECAR_DIR).mkdir(parents=True, exist_ok=True)
+        for rc_index, rc_path in enumerate(rc_paths, start=1):
+            rc_folder = _encode_rc_folder(rc_path)
+            rc_dir = PROJECT_DATA_DIR / rc_folder
 
-        rc_written = 0
+            reserving_class = project.ReservingClasses().Item(rc_path)
+            print(f"\nRC {rc_index}/{len(rc_paths)}: {rc_path}")
+            print(f"Export mode: {args.export} (triangles={run_triangles}, vectors={run_vectors}, dfm={run_dfms})")
+            if args.cleanup_target:
+                cleaned_files, cleaned_dirs = cleanup_target_reserving_class_dir(rc_dir)
+                print(f"    OK  cleaned target RC folder ({cleaned_files} files, {cleaned_dirs} folders)")
+            else:
+                print("    SKIP target RC folder cleanup (--no-cleanup-target)")
+            rc_dir.mkdir(parents=True, exist_ok=True)
+            (rc_dir / DATASET_CACHE_DIR).mkdir(parents=True, exist_ok=True)
+            (rc_dir / METHOD_DATA_DIR).mkdir(parents=True, exist_ok=True)
+            (rc_dir / DATASET_SIDECAR_DIR).mkdir(parents=True, exist_ok=True)
 
-        if run_triangles:
-            written, errors = export_triangles_for_rc(reserving_class, rc_path, rc_dir)
-            rc_written += written
-            total_written += written
-            total_errors += errors
+            rc_written = 0
 
-        if run_vectors:
-            written, errors = export_vectors_for_rc(reserving_class, rc_path, rc_dir)
-            rc_written += written
-            total_written += written
-            total_errors += errors
+            if run_triangles:
+                written, errors = export_triangles_for_rc(reserving_class, rc_path, rc_dir)
+                rc_written += written
+                total_written += written
+                total_errors += errors
 
-        if run_dfms:
-            written, errors = export_dfms_for_rc(reserving_class, rc_path, rc_dir)
-            rc_written += written
-            total_written += written
-            total_errors += errors
+            if run_vectors:
+                method_counts = {"dfms_written": 0}
+                written, errors = export_vectors_for_rc(
+                    reserving_class,
+                    rc_path,
+                    rc_dir,
+                    include_dfm_methods=run_dfms,
+                    method_counts=method_counts,
+                )
+                rc_written += written
+                total_written += written + int(method_counts.get("dfms_written") or 0)
+                total_errors += errors
 
-        if rc_written:
-            rebuild_dataset_instance_index(PROJECT_NAME, rc_path, rc_dir)
+            if run_dfms and not run_vectors:
+                written, errors = export_dfms_for_rc(reserving_class, rc_path, rc_dir)
+                rc_written += written
+                total_written += written
+                total_errors += errors
+
+            if rc_written:
+                refreshed = refresh_sidecar_graphs_for_rc(rc_dir)
+                if refreshed:
+                    print(f"    OK  refreshed sidecar graph metadata ({refreshed} files)")
+                rebuild_dataset_instance_index(PROJECT_NAME, rc_path, rc_dir)
 
     finally:
         ResQApp.Disconnect()
