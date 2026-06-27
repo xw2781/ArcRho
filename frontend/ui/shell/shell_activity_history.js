@@ -27,19 +27,31 @@ function normalizeRect(raw) {
 
 function normalizeNestedWindow(raw) {
   if (!raw || typeof raw !== "object") return null;
-  const kind = toText(raw.kind).toLowerCase() === "dfm" ? "dfm" : "dataset";
+  const rawKind = toText(raw.kind).toLowerCase();
+  const methodType = toText(raw.methodType || raw.method_type);
+  const title = toText(raw.title) || toText(raw.name || raw.datasetName || raw.methodName);
+  const isLegacyResultSelectionMethod = (
+    rawKind === "dataset"
+    && methodType.toLowerCase() === "result selection"
+    && /(^|[\\/])result selection([\\/]|$)/i.test(title)
+  );
+  const kind = rawKind === "dfm"
+    ? "dfm"
+    : rawKind === "result_selection" || isLegacyResultSelectionMethod
+      ? "result_selection"
+      : "dataset";
   const name = toText(raw.name || raw.datasetName || raw.methodName);
   if (!name) return null;
-  const title = toText(raw.title) || name;
   const hidden = !!raw.hidden;
   const active = !!raw.active;
   const maximized = !!raw.maximized;
   const dirty = !!raw.dirty;
-  const methodType = toText(raw.methodType || raw.method_type);
   const dfmTab = toText(raw.dfmTab || raw.tab).toLowerCase();
+  const rsTab = toText(raw.rsTab || raw.resultSelectionTab || raw.tab).toLowerCase();
   const out = { kind, name, title, hidden, active, maximized, dirty };
   if (methodType) out.methodType = methodType;
-  if (dfmTab) out.dfmTab = dfmTab;
+  if (dfmTab && kind === "dfm") out.dfmTab = dfmTab;
+  if (rsTab && kind === "result_selection") out.rsTab = rsTab;
   const rect = normalizeRect(raw.rect);
   if (rect) out.rect = rect;
   return out;

@@ -6,6 +6,7 @@ import {
 } from "/ui/dataset/dataset_origin_labels.js";
 import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/filename_sanitizer.js";
 import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interactions.js";
+import { startResultSelectionRpcBridgeSync } from "/ui/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
 const DEFAULT_ORIGIN_LENGTH = 12;
@@ -78,6 +79,7 @@ const els = {
   showWeightsInput: document.getElementById("rsShowWeightsInput"),
   toggleWeightsDisplayBtn: document.getElementById("rsToggleWeightsDisplayBtn"),
   addSourceBtn: document.getElementById("rsAddSourceBtn"),
+  syncBtn: document.getElementById("rsSyncBtn"),
   ratioBasisStatus: document.getElementById("rsRatioBasisStatus"),
   methodGrid: document.getElementById("rsMethodGrid"),
   saveBtn: document.getElementById("rsSaveBtn"),
@@ -2180,6 +2182,17 @@ function wireEvents() {
   });
   els.addSourceBtn?.addEventListener("click", () => {
     openAddSourcePicker(els.addSourceBtn);
+  });
+  els.syncBtn?.addEventListener("click", () => {
+    startResultSelectionRpcBridgeSync({
+      getDetails,
+      getProject: () => state.project,
+      getReservingClass: () => state.reservingClass,
+      getIsDirty: () => isDirty,
+      save: saveResultSelection,
+      applyPayload,
+      postStatus,
+    }, els.syncBtn).catch((err) => postStatus(`Result Selection sync failed: ${err?.message || err}`, "error"));
   });
   els.saveBtn?.addEventListener("click", () => {
     saveResultSelection().catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));

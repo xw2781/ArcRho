@@ -15,7 +15,7 @@ from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import dataset_sidecar_status_service
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 12
+INDEX_VERSION = 14
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
 
@@ -265,6 +265,48 @@ def _numeric_timestamp(value: Any) -> float:
         return 0.0
 
 
+def _parse_metadata_datetime(value: Any) -> datetime | None:
+    text = _clean_text(value)
+    if not text:
+        return None
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    try:
+        return parsed.replace(tzinfo=None)
+    except Exception:
+        return parsed
+
+
+def _metadata_modified_timestamp(metadata: Dict[str, Any]) -> Tuple[str, float]:
+    raw = _metadata_text(metadata, (
+        "last_modified",
+        "last modified",
+        "updated_at",
+        "updated",
+        "modified_at",
+        "modified",
+    ))
+    parsed = _parse_metadata_datetime(raw)
+    if parsed is None:
+        return raw, 0.0
+    return parsed.isoformat(), parsed.timestamp()
+
+
+def _metadata_created_timestamp(metadata: Dict[str, Any]) -> Tuple[str, float]:
+    raw = _metadata_text(metadata, (
+        "created_at",
+        "created",
+        "creation_time",
+    ))
+    parsed = _parse_metadata_datetime(raw)
+    if parsed is None:
+        return raw, 0.0
+    return parsed.isoformat(), parsed.timestamp()
+
+
 def _file_dataset_names(item: Dict[str, Any]) -> Set[str]:
     names: Set[str] = set()
     _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get("dataset_name")))
@@ -292,25 +334,40 @@ def _logical_file_dataset_names(item: Dict[str, Any]) -> Set[str]:
 
 def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
     last_modified_ts = _numeric_timestamp(source.get("last_modified_timestamp") or source.get("mtime"))
-    if last_modified_ts and last_modified_ts >= _numeric_timestamp(existing.get("last_modified_timestamp")):
+    source_sidecar_ts = bool(source.get("_last_modified_from_sidecar"))
+    existing_sidecar_ts = bool(existing.get("_last_modified_from_sidecar"))
+    should_update_modified = (
+        last_modified_ts
+        and (
+            (source_sidecar_ts and not existing_sidecar_ts)
+            or (source_sidecar_ts == existing_sidecar_ts and last_modified_ts >= _numeric_timestamp(existing.get("last_modified_timestamp")))
+        )
+    )
+    if should_update_modified:
         existing["last_modified"] = _clean_text(source.get("last_modified"))
         existing["last_modified_timestamp"] = last_modified_ts
+        if source_sidecar_ts:
+            existing["_last_modified_from_sidecar"] = True
         user = _clean_text(source.get("user"))
         if user:
             existing["user"] = user
 
     created_ts = _numeric_timestamp(source.get("created_timestamp"))
     existing_created_ts = _numeric_timestamp(existing.get("created_timestamp"))
-    if created_ts and (not existing_created_ts or created_ts < existing_created_ts):
+    source_created_sidecar = bool(source.get("_created_from_sidecar"))
+    existing_created_sidecar = bool(existing.get("_created_from_sidecar"))
+    should_update_created = (
+        created_ts
+        and (
+            (source_created_sidecar and not existing_created_sidecar)
+            or (source_created_sidecar == existing_created_sidecar and (not existing_created_ts or created_ts < existing_created_ts))
+        )
+    )
+    if should_update_created:
         existing["created"] = _clean_text(source.get("created"))
         existing["created_timestamp"] = created_ts
-
-    metadata_last_modified = _clean_text(source.get("metadata_last_modified"))
-    if metadata_last_modified and not _clean_text(existing.get("metadata_last_modified")):
-        existing["metadata_last_modified"] = metadata_last_modified
-    metadata_created = _clean_text(source.get("metadata_created"))
-    if metadata_created and not _clean_text(existing.get("metadata_created")):
-        existing["metadata_created"] = metadata_created
+        if source_created_sidecar:
+            existing["_created_from_sidecar"] = True
     dataset_type = _clean_text(source.get("dataset_type"))
     if dataset_type and not _clean_text(existing.get("dataset_type")):
         existing["dataset_type"] = dataset_type
@@ -386,6 +443,9 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
         if "status" not in logical:
             logical["status"] = dataset_sidecar_status_service.STATUS_CURRENT
 
+    for item in by_name.values():
+        item.pop("_last_modified_from_sidecar", None)
+        item.pop("_created_from_sidecar", None)
     return sorted(by_name.values(), key=lambda item: _clean_text(item.get("name")).lower())
 
 
@@ -416,11 +476,13 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 file_names = set(_cached_dataset_names_from_file(entry.name))
                 metadata_path = _dataset_sidecar_path_for_cached_csv(entry.path)
                 metadata = metadata_cache.setdefault(metadata_path, _safe_read_json(metadata_path))
+                metadata_is_sidecar = True
                 legacy_length_only_name = legacy_length_only_name or _has_legacy_length_only_suffix(
                     os.path.splitext(os.path.basename(metadata_path))[0]
                 )
             elif ext == ".json":
                 metadata = metadata_cache.setdefault(entry.path, _safe_read_json(entry.path))
+                metadata_is_sidecar = sidecar_metadata
                 payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
                 if not sidecar_metadata and (entry.name.startswith("DFM@") or entry.name.startswith("RS@")):
                     method_entry = _method_entry_from_payload(metadata)
@@ -444,8 +506,6 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 "mtime_ns": stat.st_mtime_ns,
                 "last_modified": _format_file_timestamp(stat.st_mtime),
                 "last_modified_timestamp": stat.st_mtime,
-                "created": _format_file_timestamp(stat.st_ctime),
-                "created_timestamp": stat.st_ctime,
             }
             if file_names:
                 file_info["dataset_names"] = sorted(file_names, key=lambda item: item.lower())
@@ -480,19 +540,19 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                     "owner",
                     "author",
                 ))
-                file_info["metadata_last_modified"] = _metadata_text(metadata, (
-                    "last_modified",
-                    "last modified",
-                    "updated_at",
-                    "updated",
-                    "modified_at",
-                    "modified",
-                ))
-                file_info["metadata_created"] = _metadata_text(metadata, (
-                    "created_at",
-                    "created",
-                    "creation_time",
-                ))
+                metadata_modified, metadata_modified_ts = _metadata_modified_timestamp(metadata)
+                if metadata_modified:
+                    file_info["last_modified"] = metadata_modified
+                    if metadata_is_sidecar:
+                        file_info["_last_modified_from_sidecar"] = True
+                    if metadata_modified_ts > 0:
+                        file_info["last_modified_timestamp"] = metadata_modified_ts
+                metadata_created, metadata_created_ts = _metadata_created_timestamp(metadata)
+                if metadata_created and metadata_is_sidecar:
+                    file_info["created"] = metadata_created
+                    file_info["_created_from_sidecar"] = True
+                    if metadata_created_ts > 0:
+                        file_info["created_timestamp"] = metadata_created_ts
             if method_entry:
                 file_info["dataset_name"] = method_entry["dataset_name"]
                 file_info["dataset_type"] = method_entry["dataset_type"]

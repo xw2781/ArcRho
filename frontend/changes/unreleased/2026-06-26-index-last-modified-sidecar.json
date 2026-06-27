@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Consolidated reserving-class index timestamps so Last Modified and Created use sidecar metadata instead of filesystem timestamps."
+}

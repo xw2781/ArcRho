@@ -958,6 +958,14 @@ window.addEventListener("message", (event) => {
     }
     return;
   }
+  if (msg.type === "arcrho:result-selection-tab-changed") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isResultSelectionWindow(frame)) {
+      frame.dataset.rsTab = toText(msg.tab || "");
+      notifyProjectInstanceStateChanged();
+    }
+    return;
+  }
   if (msg.type === "arcrho:hotkey") {
     const action = toText(msg.action);
     if (action === "file_save") {

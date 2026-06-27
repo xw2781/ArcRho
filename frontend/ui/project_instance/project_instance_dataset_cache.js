@@ -156,7 +156,7 @@ function mergeCachedDatasetMetadata(existing, item) {
     _formulaModifiedTs: 0,
   };
 
-  const lastModifiedRaw = item?.last_modified || item?.last_modified_timestamp || item?.mtime || item?.metadata_last_modified;
+  const lastModifiedRaw = item?.last_modified || item?.last_modified_timestamp || item?.mtime;
   const lastModified = formatCachedTimestamp(lastModifiedRaw);
   const lastModifiedTs = getTimestampNumber(lastModifiedRaw) || getTimestampNumber(item?.last_modified_timestamp) || getTimestampNumber(item?.mtime);
   if (lastModified && (!meta.lastModified || lastModifiedTs >= meta._lastModifiedTs)) {
@@ -164,7 +164,7 @@ function mergeCachedDatasetMetadata(existing, item) {
     meta._lastModifiedTs = lastModifiedTs;
   }
 
-  const createdRaw = item?.created || item?.created_timestamp || item?.metadata_created;
+  const createdRaw = item?.created || item?.created_timestamp;
   const created = formatCachedTimestamp(createdRaw);
   const createdTs = getTimestampNumber(createdRaw) || getTimestampNumber(item?.created_timestamp);
   if (created && (!meta.created || !meta._createdTs || (createdTs && createdTs < meta._createdTs))) {

@@ -215,11 +215,20 @@ class BridgeRequestHandler(FileSystemEventHandler):
                 request["MethodName"] = normalize_method_name(request.get("MethodName", ""))
                 self._validate_request(request)
                 self.client.write_dfm_payload(request)
+            elif function_name == "ResultSelection":
+                request["MethodName"] = str(request.get("MethodName", "")).strip()
+                self._validate_request(request)
+                self.client.write_result_selection_payload(request)
             elif function_name == "SyncDFM":
                 request["MethodName"] = normalize_method_name(request.get("MethodName", ""))
                 self._validate_request(request)
                 self._validate_sync_dfm_request(request)
                 self.client.write_sync_dfm_payload(request)
+            elif function_name == "SyncResultSelection":
+                request["MethodName"] = str(request.get("MethodName", "")).strip()
+                self._validate_request(request)
+                self._validate_sync_result_selection_request(request)
+                self.client.write_sync_result_selection_payload(request)
             else:
                 self.client.write_error(request, f"Invalid function name: {request.get('Function', '')}")
         except Exception as exc:
@@ -242,6 +251,12 @@ class BridgeRequestHandler(FileSystemEventHandler):
             raise ValueError("Missing request field(s): " + ", ".join(missing))
 
     def _validate_sync_dfm_request(self, request):
+        self._validate_sync_method_request(request, "SyncDFM")
+
+    def _validate_sync_result_selection_request(self, request):
+        self._validate_sync_method_request(request, "SyncResultSelection")
+
+    def _validate_sync_method_request(self, request, function_name):
         missing = [
             key
             for key in (
@@ -251,9 +266,9 @@ class BridgeRequestHandler(FileSystemEventHandler):
             if not request.get(key)
         ]
         if missing:
-            raise ValueError("Missing SyncDFM request field(s): " + ", ".join(missing))
+            raise ValueError(f"Missing {function_name} request field(s): " + ", ".join(missing))
         if str(request.get("RPCServerWriteConfirmed", "")).strip().lower() not in {"1", "true", "yes"}:
-            raise ValueError("SyncDFM requires explicit RPC server write confirmation.")
+            raise ValueError(f"{function_name} requires explicit RPC server write confirmation.")
 
 
 def run_bridge_worker():

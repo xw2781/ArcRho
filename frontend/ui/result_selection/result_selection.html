@@ -157,26 +157,64 @@
     .rsMethodToolbar {
       flex: 0 0 auto;
       display: flex;
-      align-items: center;
-      gap: 16px;
-      min-height: 76px;
-      padding: 6px 8px;
+      align-items: stretch;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 48px;
+      padding: 7px;
       border: 1px solid #d8dde3;
-      background: #f5f7fa;
+      border-radius: 6px;
+      background: #f8fafc;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
       box-sizing: border-box;
     }
     .rsToolGroup {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-height: 54px;
-      padding: 4px 10px;
-      border-right: 1px solid #d8dde3;
+      display: grid;
+      grid-template-columns: auto;
+      align-content: center;
+      gap: 5px;
+      min-width: 158px;
+      padding: 6px 9px;
+      border: 1px solid #dbe3ee;
+      border-radius: 6px;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .rsToolGroup.rsToolGroupWide {
+      min-width: 250px;
+    }
+    .rsToolGroup.rsToolGroupStatus {
+      min-width: 180px;
+      max-width: 320px;
     }
     .rsToolTitle {
-      align-self: flex-start;
-      font-weight: 700;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .rsToolControls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 28px;
+    }
+    .rsToolCheck {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 28px;
+      color: #1f2937;
+      white-space: nowrap;
+    }
+    .rsToolStatus {
+      overflow: hidden;
       color: #334155;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .rsGridHost {
       position: relative;
@@ -501,6 +539,18 @@
       background: #fff;
       box-sizing: border-box;
     }
+    @media (max-width: 760px) {
+      .rsMethodToolbar {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+      .rsToolGroup,
+      .rsToolGroup.rsToolGroupWide,
+      .rsToolGroup.rsToolGroupStatus {
+        min-width: 0;
+        max-width: none;
+      }
+    }
     .rsSaveBtn,
     .rsCancelBtn {
       min-width: 74px;
@@ -757,18 +807,28 @@
     </section>
     <section id="rsMethodPage" class="rsPage">
       <div class="rsMethodToolbar">
-        <div class="rsToolGroup">
+        <div class="rsToolGroup rsToolGroupWide">
           <span class="rsToolTitle">Formatting</span>
-          <label><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights</label>
-          <button id="rsToggleWeightsDisplayBtn" class="rsButton rsToggleButton" type="button" aria-pressed="false">Toggle Weights Display</button>
+          <div class="rsToolControls">
+            <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights</label>
+            <button id="rsToggleWeightsDisplayBtn" class="rsButton rsToggleButton" type="button" aria-pressed="false">Toggle Weights Display</button>
+          </div>
         </div>
         <div class="rsToolGroup">
           <span class="rsToolTitle">Sources</span>
-          <button id="rsAddSourceBtn" class="rsButton" type="button">Add Dataset</button>
+          <div class="rsToolControls">
+            <button id="rsAddSourceBtn" class="rsButton" type="button">Add Dataset</button>
+          </div>
         </div>
         <div class="rsToolGroup">
+          <span class="rsToolTitle">ResQ</span>
+          <div class="rsToolControls">
+            <button id="rsSyncBtn" class="rsButton" type="button" title="Compare and sync local Result Selection JSON with ResQ">Sync</button>
+          </div>
+        </div>
+        <div class="rsToolGroup rsToolGroupStatus">
           <span class="rsToolTitle">Display as Ratios</span>
-          <span id="rsRatioBasisStatus">Basis: None</span>
+          <span id="rsRatioBasisStatus" class="rsToolStatus">Basis: None</span>
         </div>
       </div>
       <div class="rsGridHost">
@@ -834,6 +894,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260620a"></script>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260626a"></script>
 </body>
 </html>

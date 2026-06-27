@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added Result Selection Method sync for comparing local JSON with ResQ JSON.",
+  "details": [
+    "The Method toolbar now includes a ResQ Sync action with a side-by-side version comparison.",
+    "The ArcRho bridge can now smart-match normalized ArcRho Result Selection names to nonstandard ResQ instance names, export JSON using OriginCount, and write local weights, ultimate overrides, Origin Length, and notes back to ResQ.",
+    "The comparison cards focus on version details and surface bridge status or error JSON instead of rendering it as an empty method.",
+    "The toolbar layout was tightened into compact grouped controls."
+  ]
+}

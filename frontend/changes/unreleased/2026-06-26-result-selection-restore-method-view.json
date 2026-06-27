@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Kept restored Project Instance Result Selection windows on the Result Selection method view after restart or Clear Cache & Reload."
+}

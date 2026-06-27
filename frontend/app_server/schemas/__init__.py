@@ -32,6 +32,11 @@ from .scripting import (
     ScriptTaskWrapperSaveRequest,
 )
 from .dfm_rpc_bridge import DfmRpcBridgeRequest, DfmRpcBridgeApplyRequest, DfmRpcBridgeUpdateRemoteRequest
+from .result_selection_rpc_bridge import (
+    ResultSelectionRpcBridgeApplyRequest,
+    ResultSelectionRpcBridgeRequest,
+    ResultSelectionRpcBridgeUpdateRemoteRequest,
+)
 from .dfm_method_index import DfmMethodIndexRefreshRequest
 from .project_user_preferences import ProjectUserPreferencesUpdateRequest
 
@@ -61,4 +66,7 @@ __all__ = [
     "DfmRpcBridgeRequest",
     "DfmRpcBridgeApplyRequest",
     "DfmRpcBridgeUpdateRemoteRequest",
+    "ResultSelectionRpcBridgeRequest",
+    "ResultSelectionRpcBridgeApplyRequest",
+    "ResultSelectionRpcBridgeUpdateRemoteRequest",
 ]

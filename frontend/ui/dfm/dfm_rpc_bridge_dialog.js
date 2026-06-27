@@ -453,17 +453,39 @@ function formatTime(meta) {
 
 function formatTimestampText(value) {
   const raw = String(value || "").trim();
-  const match = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?/);
-  if (!match) return "";
-  const millis = match[3] ? `.${match[3].slice(0, 3).padEnd(3, "0")}` : ".000";
-  return `${match[1]} ${match[2]}${millis}`;
+  if (!raw) return "";
+  const parsed = parseTimestampDate(raw);
+  if (parsed) return formatTimestampLabel(parsed);
+  const match = raw.match(/\b(\d{2}:\d{2}:\d{2})\b/);
+  return match ? match[1] : "";
+}
+
+function parseTimestampDate(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/i);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, fraction, zone] = match;
+  if (zone) {
+    const normalizedZone = zone === "Z" ? "Z" : zone.replace(/^([+-]\d{2})(\d{2})$/, "$1:$2");
+    const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}.${(fraction || "0").slice(0, 3).padEnd(3, "0")}${normalizedZone}`);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+    Number((fraction || "0").slice(0, 3).padEnd(3, "0"))
+  );
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function formatTimestampLabel(date) {
   if (!(date instanceof Date) || !Number.isFinite(date.getTime())) return "";
-  const iso = date.toISOString();
-  const normalized = iso.replace("T", " ").replace("Z", "");
-  return normalized.replace(/(\.\d{3})\d*/, "$1");
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function escapeHtml(value) {

@@ -76,7 +76,7 @@ PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 8
+INDEX_VERSION = 10
 DATASET_CACHE_DIR = "datasets"
 METHOD_DATA_DIR = "methods"
 DATASET_SIDECAR_DIR = "sidecars"
@@ -618,6 +618,48 @@ def _numeric_timestamp(value: object) -> float:
         return 0.0
 
 
+def _parse_metadata_datetime(value: object) -> datetime | None:
+    text = _clean_name(value)
+    if not text:
+        return None
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    try:
+        return parsed.replace(tzinfo=None)
+    except Exception:
+        return parsed
+
+
+def _metadata_modified_timestamp(metadata: dict) -> tuple[str, float]:
+    raw = _metadata_text(metadata, (
+        "last_modified",
+        "last modified",
+        "updated_at",
+        "updated",
+        "modified_at",
+        "modified",
+    ))
+    parsed = _parse_metadata_datetime(raw)
+    if parsed is None:
+        return raw, 0.0
+    return parsed.isoformat(), parsed.timestamp()
+
+
+def _metadata_created_timestamp(metadata: dict) -> tuple[str, float]:
+    raw = _metadata_text(metadata, (
+        "created_at",
+        "created",
+        "creation_time",
+    ))
+    parsed = _parse_metadata_datetime(raw)
+    if parsed is None:
+        return raw, 0.0
+    return parsed.isoformat(), parsed.timestamp()
+
+
 def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
     files: list[dict] = []
     if not folder_path.is_dir():
@@ -654,10 +696,12 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
             file_names = _cached_dataset_names_from_file(entry.name)
             metadata_path = _dataset_sidecar_path_for_cached_csv(entry)
             metadata = metadata_cache.setdefault(metadata_path, _safe_read_json(metadata_path))
+            metadata_is_sidecar = True
             legacy_length_only_name = legacy_length_only_name or _has_legacy_length_only_suffix(metadata_path.stem)
         else:
             metadata = metadata_cache.setdefault(entry, _safe_read_json(entry))
             is_sidecar = entry.parent.name == DATASET_SIDECAR_DIR
+            metadata_is_sidecar = is_sidecar
             if not is_sidecar and entry.name.startswith("DFM@"):
                 details_tab = metadata.get("details tab") if isinstance(metadata.get("details tab"), dict) else {}
                 _add_cached_dataset_name(file_names, details_tab.get("output type"))
@@ -685,8 +729,6 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
             "mtime_ns": stat.st_mtime_ns,
             "last_modified": _format_file_timestamp(stat.st_mtime),
             "last_modified_timestamp": stat.st_mtime,
-            "created": _format_file_timestamp(stat.st_ctime),
-            "created_timestamp": stat.st_ctime,
         }
         if file_names:
             file_info["dataset_names"] = sorted(file_names, key=lambda item: item.lower())
@@ -721,19 +763,19 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
                 "owner",
                 "author",
             ))
-            file_info["metadata_last_modified"] = _metadata_text(metadata, (
-                "last_modified",
-                "last modified",
-                "updated_at",
-                "updated",
-                "modified_at",
-                "modified",
-            ))
-            file_info["metadata_created"] = _metadata_text(metadata, (
-                "created_at",
-                "created",
-                "creation_time",
-            ))
+            metadata_modified, metadata_modified_ts = _metadata_modified_timestamp(metadata)
+            if metadata_modified:
+                file_info["last_modified"] = metadata_modified
+                if metadata_is_sidecar:
+                    file_info["_last_modified_from_sidecar"] = True
+                if metadata_modified_ts > 0:
+                    file_info["last_modified_timestamp"] = metadata_modified_ts
+            metadata_created, metadata_created_ts = _metadata_created_timestamp(metadata)
+            if metadata_created and metadata_is_sidecar:
+                file_info["created"] = metadata_created
+                file_info["_created_from_sidecar"] = True
+                if metadata_created_ts > 0:
+                    file_info["created_timestamp"] = metadata_created_ts
         if method_type:
             if method_dataset_name:
                 file_info["dataset_name"] = method_dataset_name
@@ -757,26 +799,40 @@ def _file_dataset_names(item: dict) -> set[str]:
 
 def _merge_logical_file(existing: dict, source: dict) -> dict:
     last_modified_ts = _numeric_timestamp(source.get("last_modified_timestamp") or source.get("mtime"))
-    if last_modified_ts and last_modified_ts >= _numeric_timestamp(existing.get("last_modified_timestamp")):
+    source_sidecar_ts = bool(source.get("_last_modified_from_sidecar"))
+    existing_sidecar_ts = bool(existing.get("_last_modified_from_sidecar"))
+    should_update_modified = (
+        last_modified_ts
+        and (
+            (source_sidecar_ts and not existing_sidecar_ts)
+            or (source_sidecar_ts == existing_sidecar_ts and last_modified_ts >= _numeric_timestamp(existing.get("last_modified_timestamp")))
+        )
+    )
+    if should_update_modified:
         existing["last_modified"] = _clean_name(source.get("last_modified"))
         existing["last_modified_timestamp"] = last_modified_ts
+        if source_sidecar_ts:
+            existing["_last_modified_from_sidecar"] = True
         user = _clean_name(source.get("user"))
         if user:
             existing["user"] = user
 
     created_ts = _numeric_timestamp(source.get("created_timestamp"))
     existing_created_ts = _numeric_timestamp(existing.get("created_timestamp"))
-    if created_ts and (not existing_created_ts or created_ts < existing_created_ts):
+    source_created_sidecar = bool(source.get("_created_from_sidecar"))
+    existing_created_sidecar = bool(existing.get("_created_from_sidecar"))
+    should_update_created = (
+        created_ts
+        and (
+            (source_created_sidecar and not existing_created_sidecar)
+            or (source_created_sidecar == existing_created_sidecar and (not existing_created_ts or created_ts < existing_created_ts))
+        )
+    )
+    if should_update_created:
         existing["created"] = _clean_name(source.get("created"))
         existing["created_timestamp"] = created_ts
-
-    for target, source_key in (
-        ("metadata_last_modified", "metadata_last_modified"),
-        ("metadata_created", "metadata_created"),
-    ):
-        value = _clean_name(source.get(source_key))
-        if value and not _clean_name(existing.get(target)):
-            existing[target] = value
+        if source_created_sidecar:
+            existing["_created_from_sidecar"] = True
 
     method_type = _clean_name(source.get("method_type"))
     if method_type:
@@ -815,6 +871,9 @@ def _logical_files_from_physical_files(files: list[dict]) -> list[dict]:
                 }
                 by_name[key] = logical
             _merge_logical_file(logical, item)
+    for item in by_name.values():
+        item.pop("_last_modified_from_sidecar", None)
+        item.pop("_created_from_sidecar", None)
     return sorted(by_name.values(), key=lambda item: _clean_name(item.get("name")).lower())
 
 
@@ -1187,7 +1246,12 @@ def _preserve_local_dfm_data(remote_payload: dict, local_payload: dict) -> tuple
 def _iso_or_text(value) -> str:
     if value is None:
         return ""
-    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+    if hasattr(value, "replace") and hasattr(value, "isoformat"):
+        try:
+            return value.replace(tzinfo=None).isoformat()
+        except Exception:
+            return value.isoformat()
+    return str(value)
 
 
 def _safe_attr(obj, attr: str, default=None):
@@ -2270,7 +2334,7 @@ def export_dfm(dfm, rc_path: str) -> dict:
 
     try:
         modified = dfm.OutputVector.Modified
-        last_modified = modified.isoformat() if hasattr(modified, "isoformat") else str(modified)
+        last_modified = _iso_or_text(modified)
     except Exception:
         last_modified = datetime.now(timezone.utc).astimezone().isoformat()
 

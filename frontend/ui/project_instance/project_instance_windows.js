@@ -104,6 +104,7 @@ function getProjectInstanceWindowSnapshot(frame) {
     dirty: frame.dataset.dirty === "1",
     methodType: getWindowMethodType(frame),
     dfmTab: kind === "dfm" ? toText(frame.dataset.dfmTab || "") : "",
+    rsTab: kind === "result_selection" ? toText(frame.dataset.rsTab || "") : "",
     rect: hiddenItem?.restoreRect || getFrameRect(frame),
   };
 }
@@ -143,6 +144,7 @@ function getVisibleProjectInstanceWindowSummaries() {
       maximized: !!snapshot.maximized,
       methodType: snapshot.methodType || getWindowMethodType(frame),
       dfmTab: snapshot.dfmTab || "",
+      rsTab: snapshot.rsTab || "",
       zIndex: Number.parseInt(frame.style.zIndex || "0", 10) || 0,
     });
   }
@@ -785,6 +787,9 @@ function createFloatingContentWindow(options = {}) {
   const methodType = toText(options.methodType || (frame.dataset.windowKind === "dfm" ? "DFM" : ""));
   if (methodType) frame.dataset.windowMethodType = methodType;
   if (frame.dataset.windowKind === "dfm") frame.dataset.dfmTab = "ratios";
+  if (frame.dataset.windowKind === "result_selection") {
+    frame.dataset.rsTab = toText(options.rsTab || options.initialTab || "details") || "details";
+  }
   frame.setAttribute("aria-label", title);
   frame.innerHTML = `
     <header class="pi-window-titlebar">
@@ -998,6 +1003,7 @@ function openResultSelectionWindow(datasetName, options = {}) {
 
   const windowKey = `rs\u0001${targetPath}\u0001${name.toLowerCase()}`;
   const title = `${targetPath}\\Result Selection\\${name}`;
+  const initialTab = toText(options.initialTab || options.rsTab || "details") || "details";
   const inst = `pi_rs_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "result_selection",
@@ -1006,9 +1012,10 @@ function openResultSelectionWindow(datasetName, options = {}) {
     title,
     windowKey,
     inst,
-    iframeSrc: buildResultSelectionViewerUrl(name, inst, { ...options, path: targetPath }),
+    iframeSrc: buildResultSelectionViewerUrl(name, inst, { ...options, path: targetPath, initialTab }),
     path: targetPath,
     methodType: options.methodType || "Result Selection",
+    initialTab,
   });
 }
 
@@ -1024,6 +1031,9 @@ function applyRestoredWindowState(frame, item = {}) {
   if (item?.maximized) maximizeDatasetWindow(frame);
   if (toText(item?.dfmTab) && isDfmWindow(frame)) {
     frame.dataset.dfmTab = toText(item.dfmTab);
+  }
+  if (toText(item?.rsTab) && isResultSelectionWindow(frame)) {
+    frame.dataset.rsTab = toText(item.rsTab);
   }
   const id = frame.dataset.windowId || "";
   if (item?.hidden) {
@@ -1055,14 +1065,25 @@ async function applyProjectInstanceRestoreState(rawState) {
   let activeTarget = null;
   for (const item of windows) {
     const rawKind = toText(item?.kind).toLowerCase();
-    const kind = rawKind === "dfm" ? "dfm" : rawKind === "result_selection" ? "result_selection" : "dataset";
+    const methodType = toText(item?.methodType || item?.method_type);
+    const title = toText(item?.title);
+    const isLegacyResultSelectionMethod = (
+      rawKind === "dataset"
+      && methodType.toLowerCase() === "result selection"
+      && /(^|[\\/])result selection([\\/]|$)/i.test(title)
+    );
+    const kind = rawKind === "dfm"
+      ? "dfm"
+      : rawKind === "result_selection" || isLegacyResultSelectionMethod
+        ? "result_selection"
+        : "dataset";
     const name = toText(item?.name || item?.datasetName || item?.methodName);
     if (!name) continue;
     const frame = kind === "dfm"
-      ? openDfmWindow(name, { initialTab: item?.dfmTab, methodType: item?.methodType })
+      ? openDfmWindow(name, { initialTab: item?.dfmTab, methodType })
       : kind === "result_selection"
-        ? openResultSelectionWindow(name, { methodType: item?.methodType })
-        : openDatasetWindow(name, { methodType: item?.methodType });
+        ? openResultSelectionWindow(name, { initialTab: item?.rsTab || "method", rsTab: item?.rsTab || "method", methodType })
+        : openDatasetWindow(name, { methodType });
     applyRestoredWindowState(frame, item);
     if (item?.active) activeTarget = frame;
   }

@@ -30,6 +30,7 @@ from app_server.api import (
     reserving_class_router,
     scripting_router,
     dfm_rpc_bridge_router,
+    result_selection_rpc_bridge_router,
     dfm_method_index_router,
     project_user_preferences_router,
     ui_automation_router,
@@ -59,6 +60,7 @@ app.include_router(dataset_types_router)
 app.include_router(reserving_class_router)
 app.include_router(scripting_router)
 app.include_router(dfm_rpc_bridge_router)
+app.include_router(result_selection_rpc_bridge_router)
 app.include_router(dfm_method_index_router)
 app.include_router(project_user_preferences_router)
 app.include_router(ui_automation_router)

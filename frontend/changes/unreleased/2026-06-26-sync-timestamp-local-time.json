@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "sync",
+  "audience": "user",
+  "summary": "Displayed DFM and Result Selection sync timestamps as local M/D/YYYY HH:mm:ss times instead of UTC-style raw JSON times."
+}
