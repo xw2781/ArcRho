@@ -300,13 +300,16 @@ function normalizeDatasetRows(payload) {
     seen.add(key);
     const datasetType = text(item?.dataset_type || name);
     const typeInfo = byType.get(norm(datasetType)) || byType.get(norm(name)) || {};
+    const sourceKind = text(item?.source_kind);
     rows.push({
       name,
       datasetType,
       dataFormat: text(item?.data_format || typeInfo.dataFormat),
       originLength: validSourceOriginLength(item?.origin_length),
-      category: text(typeInfo.category || item?.category),
+      category: text(item?.dataset_category || item?.category || typeInfo.category),
       methodType: text(item?.method_type),
+      sourceKind,
+      readOnly: !!sourceKind && norm(sourceKind) !== "input",
       path: text(item?.path),
     });
   }
@@ -395,7 +398,7 @@ async function buildSourceFromRecord(record, existing = null) {
     dataFormat: text(record?.dataFormat || existing?.data_format || existing?.dataFormat),
     originLength: validSourceOriginLength(record?.originLength ?? record?.origin_length ?? existing?.origin_length ?? existing?.originLength),
     methodType: text(record?.methodType || existing?.method_type || existing?.methodType),
-    category: text(record?.category || existing?.category),
+    category: text(record?.category || record?.dataset_category || existing?.dataset_category || existing?.category),
     values: Array.isArray(existing?.values) ? existing.values.map(numberOrNull) : [],
     weights: Array.isArray(existing?.weights) ? existing.weights.map((v) => Math.max(0, numberOrNull(v) ?? 0)) : [],
     unavailable: false,
@@ -1292,34 +1295,13 @@ function renderMethodGrid() {
             markDirty();
             renderMethodGrid();
           });
-          const input = document.createElement("input");
-          input.className = "rsWeightInput";
-          input.type = "number";
-          input.min = "0";
-          input.step = "any";
-          input.value = fmtWeightValue(weightValue);
+          const weightDisplay = document.createElement("span");
+          weightDisplay.className = "rsWeightValue";
+          weightDisplay.textContent = fmtWeightValue(weightValue);
           copyValue = fmtWeightValue(weightValue);
-          input.addEventListener("input", () => {
-            const nextWeight = setWeightValue(column.sourceIndex, r, input.value);
-            applyWeightValueClass(td, nextWeight);
-            td.dataset.copyValue = fmtWeightValue(nextWeight);
-            markDirty();
-          });
-          input.addEventListener("paste", (event) => {
-            const data = event.clipboardData?.getData("text/plain") || "";
-            if (!data.includes("\t") && !data.includes("\n") && !data.includes("\r")) return;
-            event.preventDefault();
-            if (applyWeightPaste(column.sourceIndex, r, data)) {
-              markDirty();
-              renderMethodGrid();
-            }
-          });
-          input.addEventListener("change", () => {
-            renderMethodGrid();
-          });
-          td.appendChild(input);
+          td.appendChild(weightDisplay);
         }
-        tr.appendChild(wireMethodCell(td, column, colIndex, r, copyValue, { allowInputSelection: true }));
+        tr.appendChild(wireMethodCell(td, column, colIndex, r, copyValue));
       } else if (column.type === "ultimate") {
         rowUltimateValue = selectedUltimateAt(r);
         if (rowUltimateValue !== null) totals.ultimate += rowUltimateValue;
@@ -1501,8 +1483,7 @@ function viewOrEditSourceDataset(sourceIndex) {
         datasetName: source.name,
         datasetTypeName: text(source.datasetType || record?.datasetTypeName || record?.datasetType || source.name),
         methodType: text(source.methodType || record?.methodType),
-        readOnly: !!record?.generated,
-        generated: !!record?.generated,
+        readOnly: !!record?.readOnly,
       },
     }, "*");
   } catch (err) {
@@ -2150,7 +2131,7 @@ function wireEvents() {
       && !event.altKey
       && /^[0-9.]$/.test(event.key || "")
     ) {
-      if (event.target?.closest?.("input:not(.rsWeightInput),textarea,[contenteditable='true']")) return;
+      if (event.target?.closest?.("input,textarea,[contenteditable='true']")) return;
       if (applyHighlightedWeightKey(event.key)) {
         event.preventDefault();
         markDirty();

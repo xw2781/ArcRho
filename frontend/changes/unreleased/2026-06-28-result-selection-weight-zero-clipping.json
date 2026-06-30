@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Fixed clipped zero values in Method tab weight columns at 100% display scale."
+}

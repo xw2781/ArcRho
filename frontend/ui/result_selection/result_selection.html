@@ -390,16 +390,16 @@
       background: #a8eeee;
       color: #0284c7;
     }
-    .rsGrid td.rsWeightCell.rsHighlightedCell input,
+    .rsGrid td.rsWeightCell.rsHighlightedCell .rsWeightValue,
     .rsGrid td.rsWeightCell.rsHighlightedCell .rsWeightPercent {
       color: #0284c7;
     }
-    .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightInput,
+    .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightValue,
     .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightPercent {
       color: #003fff;
       font-style: normal;
     }
-    .rsGrid td.rsWeightCell.rsWeightZero .rsWeightInput,
+    .rsGrid td.rsWeightCell.rsWeightZero .rsWeightValue,
     .rsGrid td.rsWeightCell.rsWeightZero .rsWeightPercent {
       color: #8aa3a9;
       font-style: italic;
@@ -420,40 +420,28 @@
       outline: 1px dashed #0f172a;
       outline-offset: -2px;
     }
-    .rsWeightInput {
+    .rsWeightValue {
       display: block;
       width: 100%;
       height: var(--rs-cell-h);
       line-height: var(--rs-cell-h);
       margin: 0;
-      padding: 0 5px 0 2px;
-      border: 0;
-      background: transparent;
+      padding: 0 10px 0 2px;
       color: #0284c7;
       text-align: right;
       font-family: var(--rs-font);
       font-size: var(--rs-table-font-size);
       font-style: italic;
-      outline: none;
       box-sizing: border-box;
-      caret-color: transparent;
-      cursor: cell;
-      pointer-events: none;
       user-select: none;
-      appearance: textfield;
-      -moz-appearance: textfield;
-    }
-    .rsWeightInput::-webkit-outer-spin-button,
-    .rsWeightInput::-webkit-inner-spin-button {
-      margin: 0;
-      -webkit-appearance: none;
+      -webkit-user-select: none;
     }
     .rsWeightPercent {
       display: block;
       width: 100%;
       height: var(--rs-cell-h);
       line-height: var(--rs-cell-h);
-      padding: 0 5px 0 2px;
+      padding: 0 10px 0 2px;
       overflow: hidden;
       color: #0284c7;
       font-family: var(--rs-font);
