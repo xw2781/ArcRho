@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - App Shell</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="shell">
+  <main class="manual-page" data-page-title="App Shell" data-page-intro="Use the shell to move between feature tabs, floating windows, menus, restore history, zoom, macros, and ArcBot.">
+    <section class="manual-section" id="overview">
+      <div class="section-head"><p class="eyebrow">Shell</p><h2>Main window layout</h2></div>
+      <div class="ar-app-window">
+        <div class="ar-titlebar"><div class="ar-logo">A</div><strong>ArcRho</strong><span class="status-pill ok">Connected</span><span class="window-controls">Min Max Close</span></div>
+        <div class="ar-menubar">
+          <span class="hotspot" data-tip="File dispatches Save to the active Dataset, DFM, or nested window.">File</span>
+          <span>Edit</span><span>View</span><span>Settings</span>
+          <span class="hotspot" data-tip="Macro opens the floating Python macro panel.">Macro</span>
+          <span class="hotspot" data-tip="Help changes based on the active page.">Help</span>
+          <span class="auto-toggle hotspot" data-tip="Autosave toggle is shell-owned."><span>Autosave</span><i></i></span>
+        </div>
+        <div class="ar-tabs">
+          <span class="active hotspot" data-tip="The active tab controls menu routing and keyboard shortcuts.">Project Instance</span>
+          <span>DFM - Paid Ultimate *</span>
+          <span>Arcode</span>
+          <span class="hotspot" data-tip="Open another tab or feature from the plus menu.">+</span>
+        </div>
+        <div class="atlas-body short">
+          <div class="atlas-rail"><button class="active">H</button><button>P</button><button>D</button><button>A</button></div>
+          <div class="atlas-tree">
+            <div class="tree-title">Restore pages</div>
+            <div class="tree-row active">Project Instance - NJ Annual</div>
+            <div class="tree-row">Dataset - Paid Loss</div>
+            <div class="tree-row">DFM - Paid Ultimate</div>
+          </div>
+          <div class="atlas-board">
+            <div class="command-strip"><input value="Search command or recent page"><button>Open</button><button>Clear Cache</button></div>
+            <div class="shell-window-stack">
+              <div class="floating-window active"><b>Paid Loss Dataset</b><span>Data tab dirty</span></div>
+              <div class="floating-window"><b>Paid Ultimate DFM</b><span>Ratios tab</span></div>
+            </div>
+            <div class="manual-cursor"></div>
+          </div>
+        </div>
+        <div class="ar-statusbar">Ready | Active tab: Project Instance | Ctrl+S saves active window</div>
+      </div>
+      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+    </section>
+
+    <section class="manual-section" id="daily-use">
+      <div class="section-head"><p class="eyebrow">Daily use</p><h2>What users do here</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Open and switch work</h3><ul><li>Use top tabs for Project Settings, Project Instance, Dataset, DFM, Workflow, Agent Guide, and Arcode.</li><li>Floating windows stay inside the shell and keep their live state.</li><li>Right-click tab surfaces in Dataset or DFM to pop a tab into a floating window.</li></ul></article>
+        <article class="task-card"><h3>Save and close safely</h3><ul><li>Ctrl+S saves the active Dataset or DFM, including nested windows inside Project Instance.</li><li>Dirty Dataset, DFM, Workflow, and scripting tabs show dirty state.</li><li>Close actions ask for confirmation before discarding unsaved work.</li></ul></article>
+        <article class="task-card"><h3>Recover state</h3><ul><li>Browsing History records restore-capable pages.</li><li>Clear Cache and Reload preserves one-shot restore state through the Electron host.</li><li>Project Instance restore includes selected path and nested Dataset, DFM, and Result Selection windows.</li></ul></article>
+        <article class="task-card"><h3>Use context menus</h3><ul><li>Help menu changes when a DFM or Project Instance window is active.</li><li>Open DFM JSON and sidecar commands launch Arcode.</li><li>Reveal in File Explorer opens the selected reserving-class data folder.</li></ul></article>
+      </div>
+    </section>
+
+    <section class="manual-section" id="shortcuts">
+      <div class="section-head"><p class="eyebrow">Shortcuts</p><h2>Keyboard and menu reference</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>Action</th><th>How</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Save active work</td><td>Ctrl+S or File &gt; Save</td><td>Routes to active Dataset, DFM, or nested Project Instance window.</td></tr>
+          <tr><td>Close active work</td><td>Ctrl+W</td><td>Nested Project Instance windows close before the top-level tab.</td></tr>
+          <tr><td>Clear cache and reload</td><td>Alt+Q or Settings menu</td><td>Restores open pages after clearing cache/storage.</td></tr>
+          <tr><td>Cycle DFM tabs</td><td>Ctrl+PageUp / Ctrl+PageDown</td><td>Works for standalone and nested DFM windows.</td></tr>
+          <tr><td>Open dev panel</td><td>Ctrl+Shift+I</td><td>Use for troubleshooting with developers.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

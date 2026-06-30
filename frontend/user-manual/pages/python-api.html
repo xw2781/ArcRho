@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Python API</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="python-api">
+  <main class="manual-page" data-page-title="Python API" data-page-intro="Use arcrho_api to script project access, DFM review, dataset reads, UI automation, and compact agent helper commands.">
+    <section class="manual-section" id="install">
+      <div class="section-head"><p class="eyebrow">Install</p><h2>Install the first-party package</h2></div>
+      <pre class="code-sample"><code class="language-powershell">python -m pip install "&lt;ArcRho install folder&gt;\resources\python_packages\arcrho_api-0.1.0-py3-none-any.whl"
+
+# Development build from this repo
+python python-api\tools\build_wheel.py --out-dir python-api\dist
+python -m pip install python-api\dist\arcrho_api-0.1.0-py3-none-any.whl</code></pre>
+    </section>
+    <section class="manual-section" id="client">
+      <div class="section-head"><p class="eyebrow">Client</p><h2>Open a project and reserving class</h2></div>
+      <pre class="code-sample"><code class="language-python">from arcrho_api import ArcRhoClient, get_server_root, set_server_root
+
+set_server_root(r"E:\ArcRho Server")
+print(get_server_root())
+
+client = ArcRhoClient()
+project = client.project("NJ Annual Production 2026")
+rc = project.reserving_class(r"PA\Direct Group\Collision")
+
+print(rc.list_datasets())
+print(rc.list_dfm_methods(refresh=True))</code></pre>
+    </section>
+    <section class="manual-section" id="dfm">
+      <div class="section-head"><p class="eyebrow">DFM scripting</p><h2>Review and edit a method</h2></div>
+      <pre class="code-sample"><code class="language-python">dfm = rc.dfm("Paid Ultimate")
+
+dfm.clear()
+dfm.exclude_covid_years(years=[2020, 2021])
+dfm.exclude_high(dev_period=1, count=1, reason="High ratio reviewed.")
+dfm.set_selected_average("Simple - 3")
+dfm.set_selected_average_cell_note(1, "Selected after review.", clear_column=True)
+dfm.add_notes("Updated by Python API review script.")
+dfm.save()</code></pre>
+      <div class="task-grid">
+        <article class="task-card"><h3>Common DFM helpers</h3><ul><li><code>clear()</code></li><li><code>exclude_ratio()</code></li><li><code>include_ratio()</code></li><li><code>exclude_high()</code></li><li><code>exclude_low()</code></li><li><code>set_selected_average()</code></li></ul></article>
+        <article class="task-card"><h3>Read helpers</h3><ul><li><code>agent_summary()</code></li><li><code>agent_inspect()</code></li><li><code>ratio_row()</code></li><li><code>ultimate_vector()</code></li><li><code>results_dataframe()</code></li></ul></article>
+      </div>
+    </section>
+    <section class="manual-section" id="ui">
+      <div class="section-head"><p class="eyebrow">UI automation</p><h2>Drive active app windows</h2></div>
+      <pre class="code-sample"><code class="language-python">from arcrho_api import ArcRhoUI
+
+ui = ArcRhoUI()
+ui.wait_for_app(timeout_sec=10)
+
+ui.message_box("Starting review.", title="ArcRho Automation")
+window = ui.project_instance.open_dataset("Paid Loss")
+window.maximize()
+print(window.properties.as_dict())
+window.restore()</code></pre>
+    </section>
+    <section class="manual-section" id="agent-helper">
+      <div class="section-head"><p class="eyebrow">Agent helper</p><h2>Compact command-line DFM inspection</h2></div>
+      <pre class="code-sample"><code class="language-powershell">python -m arcrho_api.agent --file active-method.json inspect --include summary,average-formulas,ratio-triangle --origin 2020
+python -m arcrho_api.agent --file active-method.json exclude-ratio --origin 2020 --development 12 --reason "Reviewed outlier"
+python -m arcrho_api.agent --file active-method.json select-average --label "Simple - 3" --development all
+python -m arcrho_api.agent --file active-method.json validate</code></pre>
+    </section>
+    <section class="manual-section" id="read-only">
+      <div class="section-head"><p class="eyebrow">Safety</p><h2>Read-only and explicit writes</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Read-only mode</h3><pre class="code-sample"><code class="language-python">client = ArcRhoClient(read_only=True)
+dfm = client.project("NJ Annual Production 2026").reserving_class(r"PA\Direct Group\Collision").dfm("Paid Ultimate")
+dfm.add_notes("In memory only")
+dfm.save()  # raises ReadOnlyError</code></pre></article>
+        <article class="task-card"><h3>Explicit writes</h3><ul><li>DFM mutations stay in memory until <code>save()</code>.</li><li>Dataset generation writes through the app/data-engine file contract.</li><li>UI automation targets the active running app state.</li></ul></article>
+      </div>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

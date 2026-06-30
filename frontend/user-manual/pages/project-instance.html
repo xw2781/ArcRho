@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Project Instance</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="project-instance">
+  <main class="manual-page" data-page-title="Project Instance" data-page-intro="Project Instance is the daily reserving workspace for one project. Pick a reserving-class path, review cached datasets, and open nested Dataset, DFM, and Result Selection windows.">
+    <section class="manual-section" id="workspace">
+      <div class="section-head"><p class="eyebrow">Workspace</p><h2>Reserving-class path plus cached dataset table</h2></div>
+      <div class="pi-demo">
+        <div class="pi-toolbar">
+          <button class="path-seg hotspot" data-tip="Click a path segment to switch one level without losing valid lower-level choices.">PA</button>
+          <span>/</span><button class="path-seg">Direct Group</button><span>/</span><button class="path-seg active">Collision</button>
+          <div class="hidden-tabs"><span>Paid Loss</span><span>Paid Ultimate DFM *</span></div>
+          <button class="icon-btn hotspot" data-tip="Refresh rebuilds the selected path index and preserves table state.">Refresh</button>
+        </div>
+        <div class="pi-layout-demo">
+          <aside class="pi-left">
+            <div class="tree-title">All Paths</div>
+            <div class="tree-row">Shortcut</div>
+            <div class="tree-row active hotspot" data-tip="Single-click a final path row to select it.">PA / Direct Group / Collision</div>
+            <div class="tree-row">PA / Direct Group / Liability</div>
+            <div class="tree-row">PA / Agency / Collision</div>
+            <div class="tree-row muted">Hidden paths...</div>
+          </aside>
+          <section class="pi-right">
+            <div class="table-toolbar">
+              <button class="eye active hotspot" data-tip="Cached dataset view is active by default.">Cached</button>
+              <span class="group-zone hotspot" data-tip="Drag a column header here to group rows.">Grouped by Category</span>
+              <span class="filter-chip">Method Type: DFM</span>
+              <button>Add</button>
+            </div>
+            <table class="manual-table dense pi-table">
+              <thead><tr><th>Status</th><th>Name</th><th>Dataset Type Name</th><th>Data Format</th><th>Category</th><th>Method Type</th><th>Last Modified</th></tr></thead>
+              <tbody>
+                <tr><td><span class="dot ok"></span></td><td>Paid Loss</td><td>Paid Loss</td><td>Triangle</td><td>Loss</td><td>None</td><td>6/27/2026 9:41 AM</td></tr>
+                <tr class="selected-row hotspot" data-tip="Double-click a DFM vector row to open the method window, not the raw vector."><td><span class="dot warn"></span></td><td>Paid Ultimate</td><td>Paid Ultimate</td><td>Vector</td><td>Ultimate</td><td>DFM</td><td>6/27/2026 10:02 AM</td></tr>
+                <tr><td><span class="dot ok"></span></td><td>Selected Ultimate</td><td>Selected Ultimate</td><td>Vector</td><td>Ultimate</td><td>Result Selection</td><td>6/27/2026 10:18 AM</td></tr>
+              </tbody>
+            </table>
+            <div class="nested-window">
+              <div class="nested-title">Paid Ultimate - DFM <span>Ratios</span><button>Min</button><button>Max</button><button>Close</button></div>
+              <div class="nested-body">Nested method window. Ctrl+S saves this active window.</div>
+            </div>
+          </section>
+        </div>
+        <div class="manual-cursor"></div>
+      </div>
+      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+    </section>
+
+    <section class="manual-section" id="table-work">
+      <div class="section-head"><p class="eyebrow">Dataset table</p><h2>Review, filter, group, and open items</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Selection</h3><ul><li>Click selects one row.</li><li>Ctrl-click toggles rows.</li><li>Shift-click selects a visible range.</li><li>Enter opens the focused row.</li></ul></article>
+        <article class="task-card"><h3>Filters and grouping</h3><ul><li>All columns except Status can filter.</li><li>No checked values means no filter.</li><li>Drag headers to the grouping zone.</li><li>Group chips can be reordered or removed.</li></ul></article>
+        <article class="task-card"><h3>Open behavior</h3><ul><li>Normal dataset opens Dataset Viewer.</li><li>DFM vector opens a DFM window on Ratios.</li><li>Result Selection vector opens the Method tab.</li><li>Show as vector opens the saved output as a normal dataset.</li></ul></article>
+        <article class="task-card"><h3>Add behavior</h3><ul><li>Add Dataset opens the shared dataset picker.</li><li>Generated types run ArcRhoTri refresh.</li><li>Manual types open an editable draft.</li><li>Add DFM and Add Result Selection open method windows.</li></ul></article>
+      </div>
+    </section>
+
+    <section class="manual-section" id="window-management">
+      <div class="section-head"><p class="eyebrow">Nested windows</p><h2>Floating Dataset, DFM, and Result Selection windows</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>Control</th><th>What it does</th><th>Important behavior</th></tr></thead>
+        <tbody>
+          <tr><td>Minimize</td><td>Sends the window to the hidden-tab strip.</td><td>Dirty marker stays visible on minimized tabs.</td></tr>
+          <tr><td>Maximize</td><td>Fills the Project Instance frame below the toolbar.</td><td>Double-click titlebar also toggles maximize.</td></tr>
+          <tr><td>Close</td><td>Closes the active nested window.</td><td>Dirty windows ask before discard.</td></tr>
+          <tr><td>Ctrl+S</td><td>Saves the active nested Dataset or DFM.</td><td>Routed through Project Instance to the iframe.</td></tr>
+          <tr><td>Help menu</td><td>Opens related JSON, sidecar, or folder.</td><td>Targets the active nested window when one is active.</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="manual-section" id="status-and-restore">
+      <div class="section-head"><p class="eyebrow">State</p><h2>Status, refresh, and restore details</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Status column</h3><ul><li>Green means sidecar status is current.</li><li>Yellow means a method-backed output has stale precedents.</li><li>Method Type comes from the selected path index.</li></ul></article>
+        <article class="task-card"><h3>Manual refresh</h3><ul><li>Refresh rebuilds the selected path <code>index.json</code>.</li><li>Table scroll, grouping, filters, and selection are preserved.</li><li>Nested saves do not auto-refresh the table.</li></ul></article>
+        <article class="task-card"><h3>Dependency links</h3><ul><li>Dataset formula chips open dependent datasets.</li><li>DFM and Result Selection chips open method windows.</li><li>The source window path is used even if the left path changed.</li></ul></article>
+        <article class="task-card"><h3>Restore snapshot</h3><ul><li>Selected path is saved.</li><li>Nested window kind, title, active tab, dirty flag, hidden flag, and rectangle are saved.</li><li>Clear Cache and Reload can restore this workspace.</li></ul></article>
+      </div>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

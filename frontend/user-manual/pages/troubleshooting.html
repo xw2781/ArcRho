@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Troubleshooting</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="troubleshooting">
+  <main class="manual-page" data-page-title="Troubleshooting" data-page-intro="Use this page when a project, dataset, method, macro, assistant request, Python script, or Excel formula does not behave as expected.">
+    <section class="manual-section" id="common">
+      <div class="section-head"><p class="eyebrow">Common issues</p><h2>Fast checks first</h2></div>
+      <div class="accordion" data-accordion>
+        <button class="accordion-trigger">Projects are missing</button>
+        <div class="accordion-panel"><p>Check Settings &gt; Server Connection. Confirm the root contains the expected <code>projects</code> folder. Then use Clear Cache and Reload.</p></div>
+        <button class="accordion-trigger">Dataset values look stale</button>
+        <div class="accordion-panel"><p>Refresh the selected path index in Project Instance, rerun the Dataset, and check the sidecar Audit Log. If labels changed, clear cache first.</p></div>
+        <button class="accordion-trigger">A DFM or Result Selection row shows warning status</button>
+        <div class="accordion-panel"><p>A recorded precedent may be newer than the method output. Open the method, review inputs, then save to regenerate the output and reset status.</p></div>
+        <button class="accordion-trigger">Dirty tab will not close</button>
+        <div class="accordion-panel"><p>Save, Cancel, or confirm discard. Nested Project Instance windows protect their own dirty state before the top-level tab can close.</p></div>
+        <button class="accordion-trigger">Excel formulas show update messages</button>
+        <div class="accordion-panel"><p>Use Calculate Worksheet or Calculate Workbook. Confirm project, path, dataset name, and period length match ArcRho cached data.</p></div>
+        <button class="accordion-trigger">Python UI automation cannot find the app</button>
+        <div class="accordion-panel"><p>Confirm ArcRho is running locally. For a non-default URL, set <code>ARCRHO_APP_URL</code> or pass <code>ArcRhoUI(app_url="http://127.0.0.1:28765")</code>.</p></div>
+      </div>
+    </section>
+    <section class="manual-section" id="diagnostics">
+      <div class="section-head"><p class="eyebrow">Diagnostics</p><h2>Useful places to inspect</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>Area</th><th>Where to look</th><th>What it tells you</th></tr></thead>
+        <tbody>
+          <tr><td>Dataset</td><td>Sidecar Audit Log tab</td><td>Last saves, value patches, generated sidecar creation, calculated refresh.</td></tr>
+          <tr><td>Project Instance</td><td>Status column and selected path index</td><td>Method type, stale method status, cached dataset metadata.</td></tr>
+          <tr><td>DFM</td><td>Help &gt; Open DFM JSON</td><td>Saved method payload and last modified metadata.</td></tr>
+          <tr><td>ArcBot</td><td>Debug drawer and request logs</td><td>Prompt context, timing, stdout, stderr, apply flow state.</td></tr>
+          <tr><td>Arcode</td><td>Output panel</td><td>Script run output, errors, and save status.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

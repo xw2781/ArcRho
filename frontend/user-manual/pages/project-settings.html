@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Project Settings</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="project-settings">
+  <main class="manual-page" data-page-title="Project Settings" data-page-intro="Use Project Settings to create projects, map source data, define dataset types, and define reserving-class hierarchy rules.">
+    <section class="manual-section" id="workspace">
+      <div class="section-head"><p class="eyebrow">Workspace</p><h2>Project configuration surface</h2></div>
+      <div class="project-settings-demo">
+        <div class="ps-ribbon">
+          <button class="active hotspot" data-tip="Projects manages folders and project rows.">Projects</button>
+          <button>Source Data</button>
+          <button class="hotspot" data-tip="Field Mapping defines source columns and hierarchy levels.">Field Mapping</button>
+          <button class="hotspot" data-tip="Dataset Types controls formulas, formats, categories, and calculated flags.">Dataset Types</button>
+          <button>Reserving Class Types</button>
+          <button>Audit Log</button>
+        </div>
+        <div class="ps-body">
+          <div class="ps-tree">
+            <div class="tree-title">Project folders</div>
+            <div class="tree-row">Reserve Reviews</div>
+            <div class="tree-row active hotspot" data-tip="Hover a project row to open the project instance icon.">NJ Annual Production 2026</div>
+            <div class="tree-row">NY Quarterly Review</div>
+          </div>
+          <div class="ps-board">
+            <div class="form-band">
+              <label>Project Name<input value="NJ Annual Production 2026"></label>
+              <label>Source Table<input value="claims.monthly_loss_detail"></label>
+              <label>First Origin<input value="Jan 2015"></label>
+              <label>Last Evaluation<input value="Dec 2025"></label>
+            </div>
+            <div class="table-toolbar"><span>Dataset Types</span><input value="paid loss"><button>Save Dataset Types</button><button>Load Dataset Types</button></div>
+            <table class="manual-table dense">
+              <thead><tr><th>Name</th><th>Data Format</th><th>Category</th><th>Source</th><th>Formula</th><th>Calculated</th></tr></thead>
+              <tbody>
+                <tr><td>Paid Loss</td><td>Triangle</td><td>Loss</td><td>Paid Amount</td><td></td><td>No</td></tr>
+                <tr><td>Case Reserve</td><td>Triangle</td><td>Loss</td><td>Case Reserve</td><td></td><td>No</td></tr>
+                <tr><td>Paid Ultimate</td><td>Vector</td><td>Ultimate</td><td></td><td>"Paid Loss" + "Case Reserve"</td><td>Yes</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="manual-cursor"></div>
+      </div>
+      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+    </section>
+
+    <section class="manual-section" id="panes">
+      <div class="section-head"><p class="eyebrow">Panes</p><h2>What each ribbon page does</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Projects</h3><ul><li>Create project folders.</li><li>Rename, duplicate, delete, and organize projects.</li><li>Open a project as a Project Instance tab.</li></ul></article>
+        <article class="task-card"><h3>Source Data</h3><ul><li>Set source table path.</li><li>Edit First Origin, Last Origin, and Last Evaluation dates.</li><li>Reload table summary and clear project header caches.</li></ul></article>
+        <article class="task-card"><h3>Field Mapping</h3><ul><li>Map fields to Dataset or Reserving Class significance.</li><li>Assign hierarchy levels.</li><li>Pick Dataset Type values from filtered suggestions.</li></ul></article>
+        <article class="task-card"><h3>Dataset Types</h3><ul><li>Define Name, Source, Formula, Data Format, Category, Calculated, and Generated state.</li><li>Use header search and filters.</li><li>Import/export JSON or XLSX templates.</li></ul></article>
+        <article class="task-card"><h3>Reserving Class Types</h3><ul><li>Define hierarchy names and levels.</li><li>Edit Formula and EEX Formula with component trays.</li><li>Quote names that contain operators.</li></ul></article>
+        <article class="task-card"><h3>Audit Log</h3><ul><li>Review settings changes.</li><li>Confirm project save activity.</li><li>Use when investigating unexpected project setup changes.</li></ul></article>
+      </div>
+    </section>
+
+    <section class="manual-section" id="save-effects">
+      <div class="section-head"><p class="eyebrow">Save effects</p><h2>What changes update downstream</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>Change</th><th>What ArcRho updates</th><th>What users should do next</th></tr></thead>
+        <tbody>
+          <tr><td>Field Mapping save</td><td>Project field mapping and Dataset Type source sync.</td><td>Refresh affected cached datasets.</td></tr>
+          <tr><td>Dataset Type formula save</td><td>Sidecar formulas, Precedents, Dependents, calculated outputs.</td><td>Review refresh report and downstream warnings.</td></tr>
+          <tr><td>Reserving Class Type save</td><td>Hierarchy definition JSON and mirror workbook.</td><td>Reopen pickers if hierarchy appears stale.</td></tr>
+          <tr><td>Project duplicate</td><td>Copies canonical data folder and settings.</td><td>Confirm user preferences and source table path.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

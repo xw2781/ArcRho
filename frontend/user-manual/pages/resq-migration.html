@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - ResQ Migration</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="resq-migration">
+  <main class="manual-page" data-page-title="ResQ Migration" data-page-intro="Use the migration helpers to export ResQ reserving-class content into ArcRho dataset, sidecar, method, and index files.">
+    <section class="manual-section" id="what-exports">
+      <div class="section-head"><p class="eyebrow">Exports</p><h2>What the migration writes</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Triangles</h3><ul><li>Writes length and mode scoped CSV files.</li><li>Writes sidecars with source metadata.</li><li>Uses shared filename escaping.</li></ul></article>
+        <article class="task-card"><h3>Vectors</h3><ul><li>Writes vector CSV files.</li><li>Writes sidecars.</li><li>Preserves origin labels when available.</li></ul></article>
+        <article class="task-card"><h3>DFM methods</h3><ul><li>Writes grouped ArcRho DFM JSON.</li><li>Exports output vector data.</li><li>Imports ratio selections, formulas, notes, and cell notes where available.</li></ul></article>
+        <article class="task-card"><h3>Result Selection</h3><ul><li>Writes <code>RS@Name.json</code>.</li><li>Writes selected ultimate vector CSV.</li><li>Stores source weights and labels.</li></ul></article>
+      </div>
+    </section>
+    <section class="manual-section" id="commands">
+      <div class="section-head"><p class="eyebrow">Commands</p><h2>Run migration from command line</h2></div>
+      <pre class="code-sample"><code class="language-powershell">python python-api\migration\resq_data_migration.py --export configured
+python python-api\migration\resq_data_migration.py --export all
+python python-api\migration\resq_data_migration.py --export triangles
+python python-api\migration\resq_data_migration.py --export vectors
+python python-api\migration\resq_data_migration.py --export dfms --no-cleanup-target</code></pre>
+    </section>
+    <section class="manual-section" id="api">
+      <div class="section-head"><p class="eyebrow">Python entrypoint</p><h2>Import one reserving class</h2></div>
+      <pre class="code-sample"><code class="language-python">import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(r"E:\XWSpace\Repos\ArcRho\python-api\migration")))
+from resq_data_migration import import_reserving_class_from_resq
+
+result = import_reserving_class_from_resq(
+    project_name="NJ Annual Production 2026",
+    rc_path=r"PA\Direct Group\Collision",
+    server_root=r"E:\ArcRho Server",
+    export_mode="all",
+    cleanup_target=True,
+)
+print(result)</code></pre>
+    </section>
+    <section class="manual-section" id="macro">
+      <div class="section-head"><p class="eyebrow">Macro entrypoint</p><h2>Primary user workflow</h2></div>
+      <p class="compact-copy">The current user-facing runnable import workflow is the macro at <code>Documents\ArcRho\macros\import_from_resq.py</code>. Keep it aligned with <code>python-api\migration\resq_data_migration.py</code> whenever migration behavior changes.</p>
+      <table class="manual-table">
+        <thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>--export configured</code></td><td>Uses the configured export flags.</td></tr>
+          <tr><td><code>--export all</code></td><td>Exports triangles, vectors, and DFMs.</td></tr>
+          <tr><td><code>--cleanup-target</code></td><td>Cleans the target reserving-class folder first.</td></tr>
+          <tr><td><code>--no-cleanup-target</code></td><td>Preserves existing files before export.</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="manual-section" id="checks">
+      <div class="section-head"><p class="eyebrow">After import</p><h2>What to check in ArcRho</h2></div>
+      <ol class="step-list">
+        <li>Open Project Instance for the imported project.</li>
+        <li>Select the imported reserving-class path.</li>
+        <li>Refresh the cached dataset table.</li>
+        <li>Open imported triangles and vectors in Dataset Viewer.</li>
+        <li>Open imported DFM outputs as DFM methods.</li>
+        <li>Review imported Result Selection methods from vector rows.</li>
+        <li>Check sidecar status and method notes before using outputs.</li>
+      </ol>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - ArcBot</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="arcbot">
+  <main class="manual-page" data-page-title="ArcBot" data-page-intro="ArcBot helps explain, inspect, and safely edit ArcRho context. It is shared by ArcRho and Arcode with host-specific behavior.">
+    <section class="manual-section" id="panel">
+      <div class="section-head"><p class="eyebrow">Assistant panel</p><h2>Modes, context, messages, and settings</h2></div>
+      <div class="assistant-demo">
+        <div class="assistant-header">
+          <strong>ArcBot</strong><span class="status-pill ok">Online</span><button>New Chat</button><button>History</button><button class="hotspot" data-tip="Settings controls model, reasoning, folders, prompt guide, and status.">Settings</button>
+        </div>
+        <div class="assistant-messages">
+          <div class="msg user">Explain the active DFM changes.</div>
+          <div class="msg bot">I can review the active DFM context, ratio exclusions, notes, and selected averages.</div>
+        </div>
+        <div class="assistant-modes">
+          <button class="active hotspot" data-tip="Read Only is best for explanation and planning.">Read Only</button>
+          <button class="hotspot" data-tip="Ask for Approval opens DFM version compare before applying edits.">Ask for Approval</button>
+          <button>Edit Automatically</button>
+        </div>
+        <div class="assistant-context"><label><input type="checkbox" checked> App Context</label><span>Project Instance / Paid Ultimate DFM / Ratios</span></div>
+        <div class="composer"><input value="Ask about the active tab"><button class="primary">Send</button></div>
+        <div class="manual-cursor"></div>
+      </div>
+    </section>
+    <section class="manual-section" id="modes">
+      <div class="section-head"><p class="eyebrow">Modes</p><h2>Choose the right edit level</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>Mode</th><th>Use it for</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td>Read Only</td><td>Questions, summaries, planning, method review.</td><td>ArcBot does not apply edits.</td></tr>
+          <tr><td>Ask for Approval</td><td>DFM changes that require user review.</td><td>Proposal is shown in a version comparison dialog.</td></tr>
+          <tr><td>Edit Automatically</td><td>Controlled edits after you trust the request.</td><td>Host validates JSON, backs up, applies, and can revert latest edit.</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="manual-section" id="context">
+      <div class="section-head"><p class="eyebrow">Context</p><h2>What ArcBot can see</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Active tab context</h3><ul><li>Dataset, DFM, scripting, SQL, or Project Instance metadata.</li><li>Nested Project Instance windows can become the active context.</li><li>Minimized nested windows are excluded.</li></ul></article>
+        <article class="task-card"><h3>Folder permissions</h3><ul><li>Default read access includes configured Server Connection root.</li><li>User-added folders can be granted.</li><li>Write access remains scoped to controlled edit flow.</li></ul></article>
+        <article class="task-card"><h3>Prompt guide</h3><ul><li>Reads shared prompt from <code>config\arcbot</code>.</li><li>Team instruction files are Markdown.</li><li>Prompt Guide opens inside the shell.</li></ul></article>
+      </div>
+    </section>
+    <section class="manual-section" id="safe-edits">
+      <div class="section-head"><p class="eyebrow">Safe edits</p><h2>How DFM edits are controlled</h2></div>
+      <ol class="step-list">
+        <li>The host writes active DFM context to a temporary ArcBot workspace file.</li>
+        <li>ArcBot edits only the temporary copy.</li>
+        <li>The host validates JSON and strips accidental extra text when possible.</li>
+        <li>A backup is created before applying the edit.</li>
+        <li>Ask for Approval shows the DFM comparison dialog before the live tab changes.</li>
+        <li>The latest ArcBot edit can be reverted when the target file has not changed again.</li>
+      </ol>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

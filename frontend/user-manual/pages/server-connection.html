@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Server Connection</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="server-connection">
+  <main class="manual-page" data-page-title="Server Connection" data-page-intro="Point ArcRho to the shared ArcRho Server root that contains project data, team prompts, packages, and optional release feeds.">
+    <section class="manual-section" id="connect">
+      <div class="section-head"><p class="eyebrow">Setup</p><h2>Choose the data root</h2></div>
+      <div class="dialog-demo">
+        <div class="dialog-title">Server Connection</div>
+        <label>ArcRho Server Root<input value="E:\ArcRho Server"></label>
+        <div class="dialog-actions"><button class="hotspot" data-tip="Browse to the shared root folder.">Browse...</button><button class="primary hotspot" data-tip="Save broadcasts the new root to open feature pages.">Save</button></div>
+        <div class="manual-cursor"></div>
+      </div>
+      <ol class="step-list">
+        <li>Open Settings &gt; Server Connection.</li>
+        <li>Browse to a root such as <code>E:\ArcRho Server</code>.</li>
+        <li>Save the setting.</li>
+        <li>Use Clear Cache and Reload if an already-open page still shows stale paths.</li>
+      </ol>
+    </section>
+
+    <section class="manual-section" id="folders">
+      <div class="section-head"><p class="eyebrow">Folders</p><h2>What should be under the root</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>Folder</th><th>Used for</th><th>User impact</th></tr></thead>
+        <tbody>
+          <tr><td><code>projects</code></td><td>Project settings, data folders, datasets, sidecars, DFM methods, Result Selection methods, and user preferences.</td><td>Required for normal app work.</td></tr>
+          <tr><td><code>config\arcbot</code></td><td>ArcBot prompt and team instruction files.</td><td>Controls shared assistant guidance.</td></tr>
+          <tr><td><code>packages</code></td><td>Optional shared Python API wheels.</td><td>Helps install scripting tools.</td></tr>
+          <tr><td><code>releases\installers</code></td><td>Optional desktop update feed.</td><td>Used by packaged app update checks.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Macros And Tasks</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="macros-tasks">
+  <main class="manual-page" data-page-title="Macros And Task Designer" data-page-intro="Run Python macros from the shell, edit them in Arcode, and show live task progress in Task Designer.">
+    <section class="manual-section" id="macro-panel">
+      <div class="section-head"><p class="eyebrow">Macro window</p><h2>Shell-owned floating macro panel</h2></div>
+      <div class="macro-demo">
+        <div class="macro-header">
+          <strong>Macros</strong>
+          <button>Refresh</button><button class="hotspot" data-tip="Scope filter hides macros unrelated to the active context.">Filter</button><button>Pin</button><button>Edit</button><button>Close</button>
+        </div>
+        <div class="macro-body">
+          <div class="macro-list">
+            <div class="macro-row active hotspot" data-tip="Select a macro to review scope, description, and run options.">Import From ResQ <span>Reserving Class</span></div>
+            <div class="macro-row">Refresh DFM Notes <span>DFM</span></div>
+            <div class="macro-row">Open Dataset Review <span>Project Instance</span></div>
+          </div>
+          <div class="macro-desc">
+            <b>Import From ResQ</b>
+            <p>Imports triangles, vectors, Result Selections, and DFM methods for the active reserving-class path.</p>
+          </div>
+        </div>
+        <div class="macro-footer"><span>Ready</span><button class="primary hotspot" data-tip="Run passes active context to the selected macro.">Run</button></div>
+        <div class="manual-cursor"></div>
+      </div>
+    </section>
+    <section class="manual-section" id="task-designer">
+      <div class="section-head"><p class="eyebrow">Task Designer</p><h2>Progress-only task table</h2></div>
+      <table class="manual-table dense">
+        <thead><tr><th>Task</th><th>Description</th><th>Duration</th><th>Status</th><th>Comments</th></tr></thead>
+        <tbody>
+          <tr><td>Connect to ResQ</td><td>Open COM session</td><td>00:04</td><td><span class="status-pill ok">Done</span></td><td>Connected to production model.</td></tr>
+          <tr><td>Export triangles</td><td>Write CSV and sidecars</td><td><span class="spinner"></span></td><td><span class="status-pill warn">Running</span></td><td>7 of 12 written.</td></tr>
+          <tr><td>Rebuild index</td><td>Refresh selected path cache</td><td></td><td>Pending</td><td></td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="manual-section" id="python-example">
+      <div class="section-head"><p class="eyebrow">Example</p><h2>Send progress from Python</h2></div>
+      <pre class="code-sample"><code class="language-python">from arcrho_api import ArcRhoUI
+
+ui = ArcRhoUI()
+ui.wait_for_app(timeout_sec=10)
+
+tasks = ui.task_designer()
+tasks.open(title="Import from ResQ")
+tasks.set_tasks([
+    {"name": "Connect", "description": "Open ResQ COM session"},
+    {"name": "Export", "description": "Write ArcRho files"},
+])
+tasks.start_task("Connect")
+tasks.complete_task("Connect", comments="Connected.")
+tasks.start_task("Export")
+tasks.update_task("Export", comments="Writing DFM methods...")</code></pre>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

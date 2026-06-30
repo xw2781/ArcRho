@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - DFM</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="dfm">
+  <main class="manual-page" data-page-title="DFM Methods" data-page-intro="A DFM method connects an input triangle to an output vector through ratio selections, average formulas, results, notes, and saved method JSON.">
+    <section class="manual-section" id="ratios">
+      <div class="section-head"><p class="eyebrow">Ratios</p><h2>Main method review surface</h2></div>
+      <div class="dfm-demo">
+        <div class="dfm-tabs"><button>Details</button><button>Data</button><button class="active">Ratios</button><button>Results</button><button>Notes</button><button class="sync hotspot" data-tip="Sync compares local ArcRho JSON with a remote RPC or ResQ export.">Sync</button></div>
+        <div class="dfm-ratio-layout">
+          <div class="ratio-grid-wrap">
+            <table class="manual-table dense ratio-grid">
+              <thead><tr><th>Origin</th><th>(1) 12-24</th><th>(2) 24-36</th><th>(3) 36-48</th><th>(4) 48-60</th></tr></thead>
+              <tbody>
+                <tr><th class="hotspot" data-tip="Click an origin label to exclude or include the full valid row.">2020</th><td>1.482</td><td>1.203</td><td class="excluded">1.050</td><td>1.010</td></tr>
+                <tr><th>2021</th><td>1.500</td><td class="selected-cell hotspot" data-tip="Click cells to exclude/include individual ratios.">1.225</td><td>1.041</td><td></td></tr>
+                <tr><th>2022</th><td class="excluded">1.602</td><td>1.214</td><td></td><td></td></tr>
+                <tr><th>2023</th><td>1.428</td><td></td><td></td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <aside class="avg-panel">
+            <div class="panel-title">Average Formulas</div>
+            <div class="avg-row"><span>Volume - all</span><b>1.470</b></div>
+            <div class="avg-row active hotspot" data-tip="Click a formula row label to select that formula across development columns."><span>Simple - 3</span><b>1.485</b></div>
+            <div class="avg-row"><span>User Entry</span><b>=AVERAGE("Simple - 3")</b></div>
+            <div class="formula-bar">fx = "Simple - 3"</div>
+          </aside>
+        </div>
+        <div class="save-row"><span>Dirty: ratio selections changed</span><button>Cancel</button><button class="primary">Save</button></div>
+        <div class="manual-cursor"></div>
+      </div>
+      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+    </section>
+
+    <section class="manual-section" id="workflow">
+      <div class="section-head"><p class="eyebrow">Workflow</p><h2>How to build or review a DFM</h2></div>
+      <ol class="step-list">
+        <li>Open a DFM from Project Instance or create one from Add &gt; DFM.</li>
+        <li>Complete Details: Project, Reserving Class, Name, Output Vector, Input Triangle, lengths, and decimal places.</li>
+        <li>Use Data to verify the input triangle values and period labels.</li>
+        <li>Use Ratios to exclude outliers, select formulas, add cell notes, and review charts.</li>
+        <li>Use Results to review Latest, Reserve, Ultimate, Ratio Basis, Ultimate Ratio, and Total.</li>
+        <li>Use Notes for support and review comments.</li>
+        <li>Save the method JSON and output vector CSV.</li>
+      </ol>
+    </section>
+
+    <section class="manual-section" id="tools">
+      <div class="section-head"><p class="eyebrow">Tools</p><h2>Controls users should know</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Undo and redo</h3><ul><li>Ctrl+Z undoes ratio changes.</li><li>Ctrl+Y redoes ratio changes.</li><li>Stacks are per DFM tab and limited.</li></ul></article>
+        <article class="task-card"><h3>Ratio chart</h3><ul><li>Drag thresholds to exclude or restore unprotected points.</li><li>Click Included All Ratios to clear current chart column exclusions.</li><li>Y-axis labels support custom boundaries.</li></ul></article>
+        <article class="task-card"><h3>Average formula plot</h3><ul><li>Right-click summary table and choose Plot Table Data.</li><li>Use zoom, hand pan, and pencil selection.</li><li>Toggle Ratios or Percent Developed view.</li></ul></article>
+        <article class="task-card"><h3>Percent developed curve</h3><ul><li>Right-click selected-summary table.</li><li>Show curve segments by period.</li><li>Add prior project overlay for comparison.</li></ul></article>
+        <article class="task-card"><h3>Cell notes</h3><ul><li>Right-click ratio or average formula cells.</li><li>Add, edit, or clear notes.</li><li>Notes show yellow corner markers.</li></ul></article>
+        <article class="task-card"><h3>Sync and review</h3><ul><li>Sync saves first if dirty.</li><li>Review local vs remote snapshots.</li><li>Choose local or remote version.</li></ul></article>
+      </div>
+    </section>
+
+    <section class="manual-section" id="json">
+      <div class="section-head"><p class="eyebrow">Files</p><h2>DFM saved format</h2></div>
+      <pre class="code-sample"><code>Method:
+projects\...\data\PA_%5C_Direct Group_%5C_Collision\methods\DFM@Paid Ultimate.json
+
+Output CSV:
+projects\...\data\PA_%5C_Direct Group_%5C_Collision\datasets\Paid Ultimate@12@12@cum@dev.csv
+
+JSON shape:
+{
+  "json format": "arcrho-dfm-method-by-tab-v1",
+  "details tab": {},
+  "data tab": {},
+  "ratios tab": {},
+  "results tab": {},
+  "notes tab": {},
+  "method metadata": {}
+}</code></pre>
+    </section>
+    <section class="manual-section" id="details-results-notes">
+      <div class="section-head"><p class="eyebrow">Tabs</p><h2>Details, Results, and Notes behavior</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Details</h3><ul><li>Name is the method identity inside the selected project and path.</li><li>Output Vector uses vector dataset types.</li><li>Input Triangle uses triangle dataset types.</li><li>Name selector reads local method index for the selected path.</li></ul></article>
+        <article class="task-card"><h3>Data</h3><ul><li>Loads exact input cache when available.</li><li>Manual/imported inputs stay local-cache-only.</li><li>Header labels refresh before Data and Ratios render.</li></ul></article>
+        <article class="task-card"><h3>Results</h3><ul><li>Shows Latest, Reserve, and Ultimate.</li><li>Optional Ratio Basis adds Ratio Basis and Ultimate Ratio columns.</li><li>Total row sums numeric columns and computes total Ultimate Ratio.</li></ul></article>
+        <article class="task-card"><h3>Notes</h3><ul><li>Uses the shared notes editor.</li><li>Tab and Shift+Tab indent text.</li><li>Path links work even when DFM is nested in Project Instance.</li></ul></article>
+      </div>
+    </section>
+    <section class="manual-section" id="sync-review">
+      <div class="section-head"><p class="eyebrow">Sync review</p><h2>Local vs remote comparison</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>Review area</th><th>What users see</th></tr></thead>
+        <tbody>
+          <tr><td>Timestamps</td><td>Local and remote modified times in local date/time format. Newer card is marked new.</td></tr>
+          <tr><td>Ratio triangle</td><td>Common exclusions, newly excluded cells, removed exclusions, and missing-data cells.</td></tr>
+          <tr><td>Average formulas</td><td>Selected formula differences by formula row and development column.</td></tr>
+          <tr><td>Cell notes</td><td>Differences imported from ResQ when available.</td></tr>
+          <tr><td>Notes</td><td>Added and removed text highlighted in the comparison cards.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

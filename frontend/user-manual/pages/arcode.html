@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Arcode</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="arcode">
+  <main class="manual-page" data-page-title="Arcode" data-page-intro="Arcode is the code, notebook, JSON, text, and SQL workspace launched from ArcRho or packaged standalone.">
+    <section class="manual-section" id="workspace">
+      <div class="section-head"><p class="eyebrow">Workspace</p><h2>Explorer, tabs, editors, and output</h2></div>
+      <div class="arcode-demo">
+        <div class="arcode-tabs"><span class="active">Home</span><span>DFM@Paid Ultimate.json</span><span>review_notebook.ipynb *</span><span>snowflake_loss.sf.sql</span></div>
+        <div class="arcode-body">
+          <aside>
+            <div class="tree-title">Explorer</div>
+            <div class="tree-row active">workspace</div>
+            <div class="tree-row nested">DFM@Paid Ultimate.json</div>
+            <div class="tree-row nested">review_notebook.ipynb</div>
+            <div class="tree-row nested">snowflake_loss.sf.sql</div>
+          </aside>
+          <section>
+            <div class="editor-toolbar"><button>Save</button><button>Format JSON</button><button class="hotspot" data-tip="Run Python files and review output in the output panel.">Run</button></div>
+            <pre class="editor-surface">{
+  "json format": "arcrho-dfm-method-by-tab-v1",
+  "details tab": {
+    "name": "Paid Ultimate"
+  }
+}</pre>
+            <div class="output-panel">Output: ready</div>
+          </section>
+        </div>
+        <div class="manual-cursor"></div>
+      </div>
+    </section>
+    <section class="manual-section" id="file-types">
+      <div class="section-head"><p class="eyebrow">File types</p><h2>What opens where</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>File type</th><th>Editor</th><th>Typical use</th></tr></thead>
+        <tbody>
+          <tr><td><code>.ipynb</code>, <code>.arcnb</code></td><td>Notebook editor</td><td>Review notebooks and saved outputs.</td></tr>
+          <tr><td><code>.py</code>, <code>.r</code>, <code>.json</code>, <code>.md</code>, <code>.txt</code></td><td>Code editor</td><td>Macros, scripts, JSON, docs, text.</td></tr>
+          <tr><td><code>.sql</code>, <code>.sf.sql</code></td><td>SQL or Snowflake SQL editor</td><td>Query work and Snowflake connections.</td></tr>
+          <tr><td>DFM JSON and sidecars</td><td>Code editor</td><td>Open from ArcRho Help menu actions.</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="manual-section" id="workflow">
+      <div class="section-head"><p class="eyebrow">Typical work</p><h2>Common Arcode tasks</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Review JSON</h3><ul><li>Open DFM JSON or sidecars from ArcRho Help menu.</li><li>Use JSON syntax highlighting.</li><li>Use Format for valid JSON.</li></ul></article>
+        <article class="task-card"><h3>Edit macros</h3><ul><li>Open macros from the Macro panel Edit action.</li><li>Save changes in Arcode.</li><li>Refresh the Macro panel before running changed scripts.</li></ul></article>
+        <article class="task-card"><h3>Run code</h3><ul><li>Run supported Python files.</li><li>Review output in the output panel.</li><li>Dirty tabs prompt before close.</li></ul></article>
+        <article class="task-card"><h3>SQL work</h3><ul><li>Snowflake-style files open in Snowflake SQL editor.</li><li>Connection profiles live under Arcode app data.</li><li>ArcBot SQL format validation can propose replacements.</li></ul></article>
+      </div>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

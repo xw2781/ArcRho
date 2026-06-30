@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Excel Add-In</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="excel-addin">
+  <main class="manual-page" data-page-title="Excel Add-In" data-page-intro="Use the ArcRho Excel ribbon and worksheet functions to pull project datasets, vectors, headers, and reserving-class metadata into Excel.">
+    <section class="manual-section" id="ribbon">
+      <div class="section-head"><p class="eyebrow">Ribbon</p><h2>ArcRho tab in Excel</h2></div>
+      <div class="excel-demo">
+        <div class="excel-group"><strong>Unlimited Remote Access</strong><button class="hotspot" data-tip="Set workbook connection and login.">Connect and Login</button><button>Calculate Worksheet</button><button>Calculate Workbook</button></div>
+        <div class="excel-group"><strong>Shortcuts</strong><button>Insert Function</button><button>Clear Formulas</button><button class="hotspot" data-tip="Pick reserving class path values from the user form.">Load Reserving Classes</button><button>Select Datasets</button></div>
+        <div class="excel-group"><strong>Add-in Settings</strong><button>Reset Add-in References</button><button>Load and Calculate</button><button>Unload Add-In</button></div>
+        <div class="excel-group"><strong>Options</strong><button>Check Updates</button><button>Settings</button><button>About</button></div>
+        <div class="manual-cursor"></div>
+      </div>
+    </section>
+    <section class="manual-section" id="functions">
+      <div class="section-head"><p class="eyebrow">Functions</p><h2>Worksheet formulas</h2></div>
+      <div class="code-tabs" data-code-tabs>
+        <div class="tab-buttons"><button class="active" data-tab="tri">Triangle</button><button data-tab="vec">Vector</button><button data-tab="headers">Headers</button><button data-tab="metadata">Metadata</button></div>
+        <pre class="code-sample active" data-panel="tri"><code>=ArcRhoTri("PA\Direct Group\Collision","Paid Loss",TRUE,FALSE,FALSE,"NJ Annual Production 2026",12,12)
+
+=ArcRhoTriDiag("PA\Direct Group\Collision","Paid Loss",0,TRUE,FALSE,"NJ Annual Production 2026",12,12)
+
+=ArcRhoTriCell("PA\Direct Group\Collision","Paid Loss",3,2,TRUE,"NJ Annual Production 2026",12,12)</code></pre>
+        <pre class="code-sample" data-panel="vec"><code>=ArcRhoVec("PA\Direct Group\Collision","Paid Ultimate",FALSE,"NJ Annual Production 2026",12)
+
+=ArcRhoVecCell("PA\Direct Group\Collision","Paid Ultimate",4,"NJ Annual Production 2026",12)</code></pre>
+        <pre class="code-sample" data-panel="headers"><code>=ArcRhoHeaders(1,FALSE,12,"NJ Annual Production 2026",-1,FALSE)
+
+periodType examples:
+1 = origin labels
+2 = development labels</code></pre>
+        <pre class="code-sample" data-panel="metadata"><code>=ArcRhoProjectSettings("NJ Annual Production 2026")
+=ArcRhoReservingClasses(3,TRUE,"NJ Annual Production 2026")
+=ArcRhoNodeContents("PA\Direct Group","Children","NJ Annual Production 2026")</code></pre>
+      </div>
+    </section>
+    <section class="manual-section" id="ribbon-actions">
+      <div class="section-head"><p class="eyebrow">Actions</p><h2>When to use each ribbon command</h2></div>
+      <table class="manual-table">
+        <thead><tr><th>Command</th><th>Use it when</th></tr></thead>
+        <tbody>
+          <tr><td>Connect and Login</td><td>A workbook needs a connection or login setup.</td></tr>
+          <tr><td>Calculate Worksheet</td><td>Refresh formulas only on the active sheet.</td></tr>
+          <tr><td>Calculate Workbook</td><td>Refresh all ArcRho formulas in the workbook.</td></tr>
+          <tr><td>Clear Formulas</td><td>Remove ArcRho formulas during workbook cleanup.</td></tr>
+          <tr><td>Load Reserving Classes</td><td>Use a picker to insert path components.</td></tr>
+          <tr><td>Select Datasets</td><td>Pick dataset names with format/category/search filters.</td></tr>
+          <tr><td>Reset Add-in References</td><td>Fix broken workbook references after moving or updating the add-in.</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="manual-section" id="formula-rules">
+      <div class="section-head"><p class="eyebrow">Formula rules</p><h2>Useful formula behavior</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Triangle options</h3><ul><li>Cumulative TRUE returns cumulative triangle.</li><li>Transposed TRUE flips display orientation.</li><li>Calendar TRUE requests calendar view.</li><li>Origin and Development Length choose period aggregation.</li></ul></article>
+        <article class="task-card"><h3>Workbook refresh</h3><ul><li>Worksheet refresh scans active sheet only.</li><li>Workbook refresh scans every workbook sheet.</li><li>Missing datasets can trigger request files and wait for outputs.</li></ul></article>
+        <article class="task-card"><h3>Pickers</h3><ul><li>Load Reserving Classes writes path parts into active cells.</li><li>Select Datasets filters by category and format.</li><li>Settings stores paths used by the add-in.</li></ul></article>
+      </div>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

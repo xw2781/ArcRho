@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Dataset Viewer</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="dataset">
+  <main class="manual-page" data-page-title="Dataset Viewer" data-page-intro="Dataset Viewer loads, displays, edits, charts, annotates, audits, and saves dataset instances.">
+    <section class="manual-section" id="data-tab">
+      <div class="section-head"><p class="eyebrow">Data tab</p><h2>Controls and grid interactions</h2></div>
+      <div class="ds-demo">
+        <div class="ds-tabs"><button>Details</button><button class="active">Data</button><button>Chart</button><button>Notes</button><button>Audit Log</button></div>
+        <div class="ds-topbar">
+          <label>Cumulative <input type="checkbox" checked></label>
+          <label>Transposed <input type="checkbox"></label>
+          <div class="seg-control"><button class="active">Development</button><button>Calendar</button></div>
+          <label>Origin Length <button class="select-like hotspot" data-tip="Origin Length and Development Length must stay valid.">12</button></label>
+          <label>Development Length <button class="select-like">12</button></label>
+          <label>Number Format <input value="0,000"></label>
+          <label>Decimal Places <input value="1"></label>
+        </div>
+        <div class="grid-wrap">
+          <table class="manual-table dense triangle-grid">
+            <thead><tr><th>Origin</th><th>12m</th><th>24m</th><th>36m</th><th>48m</th><th>Total</th></tr></thead>
+            <tbody>
+              <tr><th>2021</th><td>1,240</td><td>1,860</td><td>2,030</td><td>2,115</td><td>7,245</td></tr>
+              <tr><th>2022</th><td class="selected-cell hotspot" data-tip="Click selects cells. Drag creates rectangular selections.">1,310</td><td class="selected-cell">1,925</td><td>2,102</td><td></td><td>5,337</td></tr>
+              <tr><th>2023</th><td class="selected-cell">1,408</td><td class="selected-cell">2,012</td><td></td><td></td><td>3,420</td></tr>
+              <tr><th>2024</th><td>1,502</td><td></td><td></td><td></td><td>1,502</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="save-row"><span>Unsaved manual values</span><button>Cancel</button><button class="primary hotspot" data-tip="Save writes sidecar settings and manual CSV values when editable.">Save</button></div>
+        <div class="manual-cursor"></div>
+      </div>
+      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+    </section>
+
+    <section class="manual-section" id="tabs">
+      <div class="section-head"><p class="eyebrow">Tabs</p><h2>What each tab is for</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Details</h3><ul><li>Choose Project, Reserving Class, Name, and Dataset Type.</li><li>Formula shows clickable source chips.</li><li>Dependents show downstream calculated datasets.</li></ul></article>
+        <article class="task-card"><h3>Data</h3><ul><li>Run or load cached dataset values.</li><li>Copy, paste, type, and delete editable manual cells.</li><li>Set cumulative, transposed, time mode, lengths, and number format.</li></ul></article>
+        <article class="task-card"><h3>Chart</h3><ul><li>Review curves by row or column.</li><li>Legend controls visibility.</li><li>Chart redraws after pop-out, dock, and resize.</li></ul></article>
+        <article class="task-card"><h3>Notes</h3><ul><li>Add review notes.</li><li>Use formatting toolbar.</li><li>File paths become clickable links after editing.</li></ul></article>
+        <article class="task-card"><h3>Audit Log</h3><ul><li>Shows newest events first.</li><li>Records insert, metadata update, values update, and calculated refresh.</li><li>Sidecar log is capped.</li></ul></article>
+        <article class="task-card"><h3>Pop-out tabs</h3><ul><li>Right-click a Dataset tab to float it inside the Dataset page.</li><li>The live DOM moves, so state is preserved.</li><li>Close or right-click titlebar docks it again.</li></ul></article>
+      </div>
+    </section>
+
+    <section class="manual-section" id="save-files">
+      <div class="section-head"><p class="eyebrow">Files</p><h2>What Dataset Save writes</h2></div>
+      <pre class="code-sample"><code>CSV:
+projects\NJ Annual Production 2026\data\PA_%5C_Direct Group_%5C_Collision\datasets\Paid Loss@12@12@cum@dev.csv
+
+Sidecar:
+projects\NJ Annual Production 2026\data\PA_%5C_Direct Group_%5C_Collision\sidecars\Paid Loss.json
+
+Sidecar examples:
+source_kind: engine | input | dfm | result_selection
+generated: true | false
+editable: true | false
+number_format: 0,000
+decimal_places: 1</code></pre>
+    </section>
+    <section class="manual-section" id="edge-cases">
+      <div class="section-head"><p class="eyebrow">Rules</p><h2>Important dataset rules</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Generated datasets</h3><ul><li>ArcRhoTri can create missing generated caches when source inputs resolve.</li><li>Generated and calculated outputs are read-only in the grid.</li><li>Refresh can trigger dependent calculated datasets.</li></ul></article>
+        <article class="task-card"><h3>Manual input datasets</h3><ul><li>Drafts open on Details with zero-filled placeholder data.</li><li>Triangle drafts use a triangular mask.</li><li>Vector drafts use one value column.</li><li>Duplicate names are blocked in the selected path.</li></ul></article>
+        <article class="task-card"><h3>Period lengths</h3><ul><li>Development Length cannot exceed Origin Length.</li><li>Origin Length must be a valid multiple of Development Length.</li><li>Saved sidecar lengths load before the triangle renders.</li></ul></article>
+        <article class="task-card"><h3>Notes links</h3><ul><li>Path text is plain while editing.</li><li>After edit, known file paths become underlined links.</li><li>Right-click links to open, copy, or open Excel read-only.</li></ul></article>
+      </div>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

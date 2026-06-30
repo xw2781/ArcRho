@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Workflow</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="workflow">
+  <main class="manual-page" data-page-title="Workflow" data-page-intro="Workflow files organize repeatable review steps and shared defaults for embedded Dataset and DFM pages.">
+    <section class="manual-section" id="workspace">
+      <div class="section-head"><p class="eyebrow">Workflow editor</p><h2>Step sidebar and embedded pages</h2></div>
+      <div class="workflow-demo">
+        <aside>
+          <div class="workflow-title hotspot" data-tip="Rename the workflow from the sidebar title.">Monthly Review Workflow</div>
+          <div class="tree-row active">Global Control</div>
+          <div class="tree-row">Folder: Loss Review</div>
+          <div class="tree-row nested">Paid Loss Dataset</div>
+          <div class="tree-row nested">Paid Ultimate DFM</div>
+        </aside>
+        <section>
+          <div class="table-toolbar"><span>Global Control</span><button>Add Row</button><button>Delete Row</button></div>
+          <table class="manual-table dense">
+            <thead><tr><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>&lt;Default Project&gt;</td><td>Project</td><td>NJ Annual Production 2026</td></tr>
+              <tr><td>Default Path</td><td>Reserving Class</td><td>PA\Direct Group\Collision</td></tr>
+              <tr><td>Prior Project</td><td>Project</td><td>NJ Annual Production 2025</td></tr>
+            </tbody>
+          </table>
+        </section>
+        <div class="manual-cursor"></div>
+      </div>
+    </section>
+    <section class="manual-section" id="use">
+      <div class="section-head"><p class="eyebrow">Use</p><h2>Build a reusable workflow</h2></div>
+      <ol class="step-list">
+        <li>Create or open a workflow file.</li>
+        <li>Add one Global Control step.</li>
+        <li>Set Default Project and Default Path.</li>
+        <li>Add Dataset and DFM steps.</li>
+        <li>Organize steps into folders if the workflow is long.</li>
+        <li>Save the workflow as a <code>.arcwf</code> file.</li>
+      </ol>
+    </section>
+    <section class="manual-section" id="details">
+      <div class="section-head"><p class="eyebrow">Details</p><h2>Behavior to remember</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Global Control</h3><ul><li>Only one Global Control step is allowed.</li><li>Fresh workflows initialize defaults from last project and path preferences.</li><li>Dataset and DFM steps can bind to defaults.</li></ul></article>
+        <article class="task-card"><h3>Sidebar</h3><ul><li>Steps and folders can be reordered.</li><li>Folders can nest up to three levels.</li><li>Context menus create folders and manage rows.</li></ul></article>
+        <article class="task-card"><h3>Save/load</h3><ul><li>Workflow state persists in <code>.arcwf</code>.</li><li>Dirty state is sent to the shell.</li><li>Embedded DFM settings include output vector when present.</li></ul></article>
+      </div>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

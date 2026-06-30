@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Manual - Result Selection</title>
+  <link rel="stylesheet" href="../manual.css">
+</head>
+<body data-page="result-selection">
+  <main class="manual-page" data-page-title="Result Selection" data-page-intro="Result Selection combines source estimates into a weighted selected ultimate vector for one reserving-class path.">
+    <section class="manual-section" id="method-tab">
+      <div class="section-head"><p class="eyebrow">Method tab</p><h2>Weighted source selection</h2></div>
+      <div class="rs-demo">
+        <div class="rs-tabs"><button>Details</button><button class="active">Method</button><button>Results</button><button>Validation</button><button>Notes</button></div>
+        <div class="rs-toolbar">
+          <div><span>Formatting</span><button>Show Weights</button><button>Toggle Weights Display</button></div>
+          <div><span>Sources</span><button>Add Source</button><button>Delete Source</button></div>
+          <div><span>ResQ</span><button class="hotspot" data-tip="Sync opens a local-vs-ResQ comparison dialog.">Sync</button></div>
+        </div>
+        <table class="manual-table dense rs-grid">
+          <thead><tr><th>Origin</th><th>Paid Ultimate</th><th>Weight</th><th>Incurred Ultimate</th><th>Weight</th><th>Selected Ultimate</th><th>Ultimate Ratio</th></tr></thead>
+          <tbody>
+            <tr><th>2021</th><td class="source-on">2,420</td><td class="weight-on hotspot" data-tip="Positive weights select the paired source value.">1.0</td><td class="source-on">2,510</td><td class="weight-on">1.0</td><td class="ultimate">2,465</td><td>71.4%</td></tr>
+            <tr><th>2022</th><td class="source-on">2,610</td><td class="weight-on">1.0</td><td>2,700</td><td class="weight-off hotspot" data-tip="Zero weight clears the paired source-cell selection.">0.0</td><td class="ultimate">2,610</td><td>69.2%</td></tr>
+            <tr><th>Total</th><td>5,030</td><td></td><td>5,210</td><td></td><td class="ultimate">5,075</td><td>70.2%</td></tr>
+          </tbody>
+        </table>
+        <div class="manual-cursor"></div>
+      </div>
+      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+    </section>
+
+    <section class="manual-section" id="how-it-calculates">
+      <div class="section-head"><p class="eyebrow">Calculation</p><h2>How selected ultimate is calculated</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Source values</h3><ul><li>Vector sources use vector row values.</li><li>Triangle sources use latest available diagonal values.</li><li>Default sources are DFM outputs in the same category.</li></ul></article>
+        <article class="task-card"><h3>Weights</h3><ul><li>Positive weight means selected.</li><li>Zero weight means not selected.</li><li>Double-click source cells or weight cells to toggle.</li></ul></article>
+        <article class="task-card"><h3>Selected Ultimate</h3><ul><li>Uses weighted average by row.</li><li>Blank when no positive weighted numeric source exists.</li><li>Custom overrides can replace calculated values.</li></ul></article>
+        <article class="task-card"><h3>Ratio Basis</h3><ul><li>Optional basis dataset adds a ratio column.</li><li>Percent and decimal settings control display.</li><li>Total ratio is Total Ultimate divided by Total Basis.</li></ul></article>
+      </div>
+    </section>
+
+    <section class="manual-section" id="save">
+      <div class="section-head"><p class="eyebrow">Save</p><h2>What saving writes</h2></div>
+      <pre class="code-sample"><code>Method JSON:
+methods\RS@Selected Ultimate.json
+
+Output vector CSV:
+datasets\Selected Ultimate@12@12@cum@dev.csv
+
+Sidecar:
+sidecars\Selected Ultimate.json
+
+JSON format marker:
+arcrho-result-selection-method-by-tab-v1</code></pre>
+    </section>
+  </main>
+  <script src="../manual.js"></script>
+</body>
+</html>

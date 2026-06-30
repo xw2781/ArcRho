@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho User Manual</title>
+  <link rel="stylesheet" href="manual.css">
+</head>
+<body data-page="home">
+  <main class="manual-page" data-page-title="ArcRho User Manual" data-page-intro="Learn the ArcRho app from the main workflows first, then drill into each feature page.">
+    <section class="home-hero manual-panel">
+      <div>
+        <p class="eyebrow">Standalone user guide</p>
+        <h1>Learn ArcRho by workflow, not by wall of text.</h1>
+        <p class="lead">
+          Start with the app map, then open the focused pages for Project Settings,
+          Project Instance, Dataset, DFM, Result Selection, Workflow, automation,
+          Python, Excel, and ResQ migration.
+        </p>
+      </div>
+      <div class="home-status">
+        <div><span>Sample project</span><strong>NJ Annual Production 2026</strong></div>
+        <div><span>Sample path</span><strong>PA / Direct Group / Collision</strong></div>
+        <div class="metric-row">
+          <strong>42 datasets</strong>
+          <strong>8 DFMs</strong>
+          <strong>3 review items</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="manual-section" id="navigation">
+      <div class="section-head">
+        <p class="eyebrow">Navigation</p>
+        <h2>Choose what you want to do</h2>
+      </div>
+      <div class="home-grid">
+        <a class="nav-card" href="pages/project-settings.html">
+          <span>01</span>
+          <strong>Set up a project</strong>
+          <p>Create project folders, map source fields, and define dataset and reserving-class types.</p>
+        </a>
+        <a class="nav-card" href="pages/project-instance.html">
+          <span>02</span>
+          <strong>Open a project workspace</strong>
+          <p>Select a reserving class, review cached datasets, and open nested work windows.</p>
+        </a>
+        <a class="nav-card" href="pages/dataset.html">
+          <span>03</span>
+          <strong>Review or edit data</strong>
+          <p>Run triangles, inspect charts, add notes, save manual inputs, and check audit logs.</p>
+        </a>
+        <a class="nav-card" href="pages/dfm.html">
+          <span>04</span>
+          <strong>Build a DFM</strong>
+          <p>Review ratios, select averages, save ultimate vectors, sync with ResQ, and add support notes.</p>
+        </a>
+        <a class="nav-card" href="pages/result-selection.html">
+          <span>05</span>
+          <strong>Select final results</strong>
+          <p>Blend vectors and triangle latest diagonals into a weighted selected ultimate vector.</p>
+        </a>
+        <a class="nav-card" href="pages/python-api.html">
+          <span>06</span>
+          <strong>Automate with Python</strong>
+          <p>Use the API for scripted DFM review, dataset access, UI automation, and task progress.</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="manual-section" id="app-map">
+      <div class="section-head">
+        <p class="eyebrow">App map</p>
+        <h2>How the pieces fit together</h2>
+      </div>
+      <div class="ar-app-window home-map-demo">
+        <div class="ar-titlebar">
+          <div class="ar-logo">A</div>
+          <strong>ArcRho</strong>
+          <span class="status-pill ok">Connected</span>
+          <span class="window-controls">Min Max Close</span>
+        </div>
+        <div class="ar-menubar">
+          <span>File</span><span>Edit</span><span>View</span><span>Settings</span><span>Macro</span><span>Help</span>
+        </div>
+        <div class="ar-tabs">
+          <span class="active">Project Instance</span>
+          <span>DFM - Paid Ultimate</span>
+          <span>Arcode</span>
+          <span>+</span>
+        </div>
+        <div class="atlas-body">
+          <div class="atlas-rail">
+            <button>H</button><button class="active">P</button><button>D</button><button>A</button>
+          </div>
+          <div class="atlas-tree">
+            <div class="tree-title">Projects</div>
+            <div class="tree-row active">NJ Annual Production 2026</div>
+            <div class="tree-row">NY Quarterly Review</div>
+            <div class="tree-title">Recent</div>
+            <div class="tree-row">Paid Ultimate DFM</div>
+          </div>
+          <div class="atlas-board">
+            <div class="command-strip">
+              <input value="Search project, dataset, DFM, command">
+              <button>Open</button>
+              <button>Refresh</button>
+            </div>
+            <div class="mini-workflow">
+              <div class="flow-box hotspot" data-tip="Project Settings defines the data contract.">Project Settings</div>
+              <div class="flow-box hotspot" data-tip="Project Instance is the daily workspace.">Project Instance</div>
+              <div class="flow-box hotspot" data-tip="Dataset, DFM, and Result Selection windows open from the selected path.">Dataset / DFM / RS</div>
+              <div class="flow-box hotspot" data-tip="Python, Excel, macros, ArcBot, and ResQ migration use the same project files.">Automation</div>
+            </div>
+            <div class="manual-cursor"></div>
+          </div>
+        </div>
+        <div class="ar-statusbar">Ready | Zoom 100% | Active path: PA / Direct Group / Collision</div>
+      </div>
+    </section>
+
+    <section class="manual-section" id="learning-paths">
+      <div class="section-head">
+        <p class="eyebrow">Learning paths</p>
+        <h2>Pick a path and move through it</h2>
+      </div>
+      <div class="path-grid">
+        <article class="task-card">
+          <h3>New user path</h3>
+          <ol>
+            <li><a href="pages/shell.html">Learn the shell and tabs</a></li>
+            <li><a href="pages/server-connection.html">Set Server Connection</a></li>
+            <li><a href="pages/project-instance.html">Open a Project Instance</a></li>
+            <li><a href="pages/dataset.html">Open and review a dataset</a></li>
+          </ol>
+        </article>
+        <article class="task-card">
+          <h3>Actuarial review path</h3>
+          <ol>
+            <li><a href="pages/project-instance.html">Choose a reserving-class path</a></li>
+            <li><a href="pages/dfm.html">Review DFM ratios and notes</a></li>
+            <li><a href="pages/result-selection.html">Select final ultimate values</a></li>
+            <li><a href="pages/excel-addin.html">Pull results into Excel</a></li>
+          </ol>
+        </article>
+        <article class="task-card">
+          <h3>Automation path</h3>
+          <ol>
+            <li><a href="pages/macros-tasks.html">Run macros and Task Designer</a></li>
+            <li><a href="pages/python-api.html">Use Python API objects</a></li>
+            <li><a href="pages/arcbot.html">Use ArcBot with app context</a></li>
+            <li><a href="pages/resq-migration.html">Import from ResQ</a></li>
+          </ol>
+        </article>
+      </div>
+    </section>
+  </main>
+  <script src="manual.js"></script>
+</body>
+</html>

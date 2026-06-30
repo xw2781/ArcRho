@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "manual",
+  "audience": "user",
+  "summary": "Added a multi-page standalone ArcRho user manual that can be opened directly from the frontend folder.",
+  "details": [
+    "The manual now uses separate topic pages for shell navigation, project setup, project instance workflows, datasets, DFM, Result Selection, Workflow, macros, ArcBot, Arcode, Python API, Excel add-in usage, ResQ migration, and troubleshooting.",
+    "Embedded HTML UI examples use sample data, highlighted controls, and simulated interaction animations to show common ArcRho screens without requiring a running app."
+  ]
+}
