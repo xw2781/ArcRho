@@ -86,6 +86,13 @@ class ResQClient:
         self._connect()
         try:
             dfm = self._dfm_method(request)
+            output_vector = self._optional_value(dfm, "OutputVector", None)
+            output_dataset = self._clean_label(request.get("OutputVector") or self._nested_name(dfm, "OutputVector"))
+            output_type = self._clean_label(self._nested_name(output_vector, "DatasetType") if output_vector is not None else "")
+            output_category = self._clean_label(
+                self._nested_name(self._optional_value(output_vector, "DatasetType", None), "Category")
+                if output_vector is not None else ""
+            )
             average_data = self._average_data(dfm)
             origin_labels, data_development_labels = self._labels(dfm)
             ratio_development_labels = self._ratio_development_labels(data_development_labels)
@@ -98,8 +105,11 @@ class ResQClient:
             payload = {
                 "json format": DFM_METHOD_JSON_FORMAT,
                 "details tab": {
-                    "name": request.get("MethodName", self._optional_value(dfm, "Name", "")),
-                    "output type": request.get("OutputVector", self._nested_name(dfm, "OutputVector")),
+                    "name": self._clean_label(request.get("MethodName") or self._optional_value(dfm, "Name", "")),
+                    "output type": output_type or output_dataset,
+                    "output dataset": output_dataset,
+                    "output dataset_category": output_category,
+                    "output category": output_category,
                     "input triangle": self._nested_name(dfm, "InputTriangle"),
                     "origin length": self._optional_value(dfm, "OriginLength", ""),
                     "development length": self._optional_value(dfm, "DevelopmentLength", ""),
@@ -191,13 +201,23 @@ class ResQClient:
                     selected_ultimate.append(None)
 
             output_vector = self._optional_value(result_selection, "OutputVector", None)
-            name = request.get("MethodName") or self._nested_name(result_selection, "OutputVector") or self._optional_value(result_selection, "Name", "")
+            name = self._clean_label(
+                request.get("MethodName")
+                or self._nested_name(result_selection, "OutputVector")
+                or self._optional_value(result_selection, "Name", "")
+            )
             output_type = self._nested_name(output_vector, "DatasetType") if output_vector is not None else ""
+            output_category = (
+                self._nested_name(self._optional_value(output_vector, "DatasetType", None), "Category")
+                if output_vector is not None else ""
+            )
             payload = {
                 "json_format": RESULT_SELECTION_JSON_FORMAT,
                 "details_tab": {
                     "name": name,
-                    "output_type": request.get("OutputType") or output_type or name,
+                    "output_type": self._clean_label(request.get("OutputType") or output_type or name),
+                    "dataset_category": output_category,
+                    "output_category": output_category,
                     "origin_length": origin_length,
                     "ratio_basis": self._result_selection_ratio_basis_dataset_name(result_selection),
                     "ratio_basis_dataset": self._result_selection_ratio_basis_dataset_name(result_selection),
@@ -359,8 +379,8 @@ class ResQClient:
             except Exception:
                 weights.append(0)
         return {
-            "name": self._optional_value(dataset, "Name", "") or f"Source {dataset_index}",
-            "dataset_type": self._optional_value(dataset_type, "Name", ""),
+            "name": self._clean_label(self._optional_value(dataset, "Name", "")) or f"Source {dataset_index}",
+            "dataset_type": self._clean_label(self._optional_value(dataset_type, "Name", "")),
             "data_format": "Triangle" if int(data_format_code or -1) == 0 else "Vector",
             "method_type": self._method_type_name(method_type_code),
             "category": self._nested_name(dataset_type, "Category") if dataset_type is not None else "",
@@ -377,7 +397,7 @@ class ResQClient:
         ):
             try:
                 dataset = result_selection.RatioBasisDataset(*args, **kwargs)
-                return self._optional_value(dataset, "Name", "")
+                return self._clean_label(self._optional_value(dataset, "Name", ""))
             except Exception:
                 continue
         return ""
@@ -965,7 +985,7 @@ class ResQClient:
                 try:
                     attr = getattr(obj, attr_name)
                     value = attr(index) if callable(attr) else attr[index - 1]
-                    values.append(self._json_value(value))
+                    values.append(self._clean_label(value))
                 except Exception:
                     values = []
                     break
@@ -991,7 +1011,7 @@ class ResQClient:
     def _nested_name(self, obj, attr_name):
         try:
             value = getattr(obj, attr_name)
-            return value.Name
+            return self._clean_label(value.Name)
         except Exception:
             return ""
 

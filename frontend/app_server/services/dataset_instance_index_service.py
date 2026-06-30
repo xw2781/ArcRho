@@ -15,7 +15,7 @@ from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import dataset_sidecar_status_service
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 14
+INDEX_VERSION = 15
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
 
@@ -200,30 +200,66 @@ def _metadata_text(metadata: Dict[str, Any], keys: Tuple[str, ...]) -> str:
     return ""
 
 
+def _dataset_type_categories(project_name: str) -> Dict[str, str]:
+    try:
+        from app_server.services import dataset_types_service
+
+        path = config.get_dataset_types_path(project_name)
+        if not os.path.exists(path):
+            return {}
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+        data = dataset_types_service.normalize_dataset_types_data(raw)
+    except Exception:
+        return {}
+    out: Dict[str, str] = {}
+    for row in data.get("rows") or []:
+        if not isinstance(row, list):
+            continue
+        name = _clean_text(row[0] if len(row) > 0 else "")
+        category = _clean_text(row[2] if len(row) > 2 else "")
+        if name and category:
+            out[name.lower()] = category
+    return out
+
+
+def _dataset_type_category(dataset_type: Any, categories_by_name: Dict[str, str]) -> str:
+    name = _clean_text(dataset_type)
+    if not name:
+        return ""
+    return categories_by_name.get(name.lower(), "")
+
+
 def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None:
     json_format = _clean_text(payload.get("json_format") or payload.get("json format")).lower()
     if json_format == "arcrho-result-selection-method-by-tab-v1":
         details_tab = _json_tab(payload, "details_tab")
         dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
         dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type"))
+        dataset_category = _clean_text(details_tab.get("dataset_category") or details_tab.get("output_category"))
         if not dataset_name:
             return None
         return {
             "dataset_name": dataset_name,
             "dataset_type": dataset_type or dataset_name,
+            "dataset_category": dataset_category,
             "method_type": RESULT_SELECTION_METHOD_TYPE,
             "data_format": "Vector",
+            "source_kind": "result_selection",
             "status": dataset_sidecar_status_service.STATUS_CURRENT,
         }
     details_tab = _json_tab(payload, "details tab")
     dataset_name = _normalize_cached_dataset_name(details_tab.get("output type"))
+    dataset_category = _clean_text(details_tab.get("output dataset_category") or details_tab.get("output category"))
     if not dataset_name:
         return None
     return {
         "dataset_name": dataset_name,
         "dataset_type": dataset_name,
+        "dataset_category": dataset_category,
         "method_type": DFM_METHOD_TYPE,
         "data_format": "Vector",
+        "source_kind": "dfm",
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
 
@@ -371,6 +407,9 @@ def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dic
     dataset_type = _clean_text(source.get("dataset_type"))
     if dataset_type and not _clean_text(existing.get("dataset_type")):
         existing["dataset_type"] = dataset_type
+    dataset_category = _clean_text(source.get("dataset_category") or source.get("category"))
+    if dataset_category and not _clean_text(existing.get("dataset_category")):
+        existing["dataset_category"] = dataset_category
     source_kind = _clean_text(source.get("source_kind"))
     if source_kind and not _clean_text(existing.get("source_kind")):
         existing["source_kind"] = source_kind
@@ -391,7 +430,7 @@ def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dic
     formula = _clean_text(source.get("formula"))
     if formula:
         existing["formula"] = formula
-    for flag in ("editable", "generated", "calculated"):
+    for flag in ("calculated",):
         if flag in source and flag not in existing:
             existing[flag] = source.get(flag)
     return existing
@@ -438,6 +477,12 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
             dataset_type = _clean_text(method_item.get("dataset_type"))
             if dataset_type:
                 logical["dataset_type"] = dataset_type
+            dataset_category = _clean_text(method_item.get("dataset_category"))
+            if dataset_category:
+                logical["dataset_category"] = dataset_category
+            source_kind = _clean_text(method_item.get("source_kind"))
+            if source_kind:
+                logical["source_kind"] = source_kind
             by_name[key] = logical
         logical["method_type"] = method_type
         if "status" not in logical:
@@ -447,6 +492,18 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
         item.pop("_last_modified_from_sidecar", None)
         item.pop("_created_from_sidecar", None)
     return sorted(by_name.values(), key=lambda item: _clean_text(item.get("name")).lower())
+
+
+def _apply_dataset_type_categories(files: List[Dict[str, Any]], project_name: str) -> None:
+    categories = _dataset_type_categories(project_name)
+    if not categories:
+        return
+    for item in files:
+        if _clean_text(item.get("dataset_category")):
+            continue
+        category = _dataset_type_category(item.get("dataset_type") or item.get("name"), categories)
+        if category:
+            item["dataset_category"] = category
 
 
 def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -514,6 +571,7 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 if not legacy_length_only_name:
                     file_info["dataset_name"] = _normalize_cached_dataset_name(metadata.get("dataset_name"))
                     file_info["dataset_type"] = dataset_type
+                    file_info["dataset_category"] = _clean_text(metadata.get("dataset_category") or metadata.get("category"))
                 file_info["csv_file"] = _clean_text(metadata.get("csv_file"))
                 file_info["source_kind"] = _clean_text(metadata.get("source_kind"))
                 file_info["data_format"] = _clean_text(metadata.get("data_format"))
@@ -525,8 +583,6 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 file_info["origin_length"] = metadata.get("origin_length")
                 if isinstance(metadata.get("origin_labels"), list):
                     file_info["origin_labels"] = [str(item) for item in metadata.get("origin_labels")]
-                file_info["editable"] = metadata.get("editable")
-                file_info["generated"] = metadata.get("generated")
                 file_info["calculated"] = metadata.get("calculated")
                 file_info["formula"] = _clean_text(metadata.get("formula"))
                 file_info["user"] = _metadata_text(metadata, (
@@ -556,6 +612,8 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
             if method_entry:
                 file_info["dataset_name"] = method_entry["dataset_name"]
                 file_info["dataset_type"] = method_entry["dataset_type"]
+                file_info["dataset_category"] = method_entry.get("dataset_category", "")
+                file_info["source_kind"] = method_entry.get("source_kind", "")
                 file_info["method_type"] = method_entry["method_type"]
                 file_info["status"] = method_entry.get("status", dataset_sidecar_status_service.STATUS_CURRENT)
                 file_info["data_format"] = method_entry.get("data_format", "")
@@ -594,6 +652,8 @@ def _dedupe_methods(methods: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out.append({
             "dataset_name": dataset_name,
             "dataset_type": _clean_text(item.get("dataset_type")) or dataset_name,
+            "dataset_category": _clean_text(item.get("dataset_category")),
+            "source_kind": _clean_text(item.get("source_kind")),
             "method_type": method_type,
         })
     out.sort(key=lambda item: (
@@ -663,6 +723,7 @@ def rebuild_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
     methods = _dedupe_methods(methods)
     _apply_method_types_to_files(physical_files, methods)
     files = _logical_files_from_physical_files(physical_files, methods)
+    _apply_dataset_type_categories(files, project)
     data = {
         "ok": True,
         "version": INDEX_VERSION,

@@ -375,7 +375,6 @@ def create_empty_cached_dataset(
                 "path": csv_path,
                 "sidecar_path": str(calc_result.get("sidecar_path") or ""),
                 "calculated": True,
-                "editable": False,
             }
     if calc_result.get("reason") not in {"not_calculated"}:
         detail = "; ".join(str(item) for item in calc_result.get("errors") or [])
@@ -422,8 +421,6 @@ def create_empty_cached_dataset(
         "created": now,
         "modified_by": user_name,
         "updated_at": now,
-        "editable": True,
-        "generated": False,
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
@@ -709,8 +706,6 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
             payload.get("source_kind"),
         ),
         "status": dataset_sidecar_status_service.normalize_status(payload.get("status")),
-        "editable": False if app_calculated else payload.get("editable"),
-        "generated": False if app_calculated else payload.get("generated"),
         "calculated": True if app_calculated else payload.get("calculated"),
         "formula": formula or str(payload.get("formula") or ""),
         "Precedents": _sidecar_graph_entries(p, rc, payload.get("Precedents"), include_method_type=True),
@@ -869,8 +864,6 @@ def save_dataset_sidecar(
         "number_format": number_format_value,
         "decimal_places": decimal_places_value,
         "csv_file": csv_file_value,
-        "editable": False if app_calculated else (True if values is not None else existing.get("editable")),
-        "generated": False if (app_calculated or values is not None) else existing.get("generated"),
         "calculated": True if app_calculated else (False if values is not None else existing.get("calculated")),
         "formula": formula or str(existing.get("formula") or ""),
         "method_type": method_type_value,

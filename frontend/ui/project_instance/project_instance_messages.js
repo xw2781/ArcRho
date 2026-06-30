@@ -408,7 +408,6 @@ function handleAutomationOpenDataset(message, sourceWindow) {
   const frame = openDatasetWindow(datasetName, {
     datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
     readOnly: args.readOnly,
-    generated: args.generated,
     methodType: toText(args.methodType || args.method_type),
   });
   if (!frame) {

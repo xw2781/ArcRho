@@ -223,8 +223,6 @@ class ReservingClass:
             "reserving_class": self.path,
             "project_name": self.project.name,
             "source_kind": "engine",
-            "generated": True,
-            "editable": False,
             "calculated": False,
             "csv_file": data_path.name,
             "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",

@@ -101,7 +101,7 @@ export function wireDatasetInputController(deps) {
     void runArcRhoTri({ clearCache: true, showValidationMessage: true });
   });
   const saveBtn = $("saveBtn");
-  if (window.location.search.includes("readonly=1") || window.location.search.includes("generated_dataset=1")) {
+  if (window.location.search.includes("readonly=1")) {
     saveBtn.disabled = true;
     saveBtn.title = "Generated datasets are read-only.";
   }

@@ -98,10 +98,7 @@ def _triangle_sidecar_payload(data_path: str, pairs: list, *, local_only: bool =
     if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
         return {}
     source_kind = _clean_cache_text(payload.get("source_kind")).lower()
-    generated = str(payload.get("generated") or "").strip().lower() in {"true", "1", "yes"}
     if not local_only and source_kind != "input":
-        return {}
-    if not local_only and generated:
         return {}
     data_format = _clean_cache_text(payload.get("data_format") or "Triangle").lower()
     if data_format and data_format != "triangle":
@@ -115,8 +112,7 @@ def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]
 
 def _is_generated_triangle_payload(payload: Dict[str, Any]) -> bool:
     source_kind = _clean_cache_text(payload.get("source_kind")).lower()
-    generated = str(payload.get("generated") or "").strip().lower() in {"true", "1", "yes"}
-    return generated or source_kind == "engine"
+    return source_kind == "engine"
 
 
 def _parse_cache_variant(filename: str) -> Dict[str, Any]:
@@ -387,8 +383,6 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "reserving_class": reserving_class,
         "project_name": project_name,
         "source_kind": "engine",
-        "generated": True,
-        "editable": False,
         "data_format": "Triangle",
         "data_format_code": 0,
         "origin_length": _pair_int_value(pairs, "OriginLength", 12),

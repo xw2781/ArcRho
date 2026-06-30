@@ -683,10 +683,23 @@ function getInstanceDatasetTypeName(item, instanceName = "") {
   return toText(item?.dataset_type) || instanceName;
 }
 
+function getInstanceDatasetCategory(item) {
+  return toText(item?.dataset_category || item?.category);
+}
+
 function parseDatasetGeneratedFlag(value) {
   if (typeof value === "boolean") return value;
   const text = toText(value).toLowerCase();
   return text === "true" || text === "1" || text === "yes" || text === "y";
+}
+
+function normalizeDatasetSourceKind(value) {
+  return toText(value).toLowerCase();
+}
+
+function isReadOnlyDatasetSourceKind(value) {
+  const sourceKind = normalizeDatasetSourceKind(value);
+  return !!sourceKind && sourceKind !== "input";
 }
 
 function getDatasetGenerated(row) {
@@ -841,7 +854,7 @@ function getDatasetRecordCellValue(row, key, instance = null) {
     case "formula":
       return instance ? (meta?.formula || toText(instance?.formula)) : toText(row?.[4]);
     case "category":
-      return toText(row?.[2]);
+      return instance ? (getInstanceDatasetCategory(instance) || toText(row?.[2])) : toText(row?.[2]);
     case "methodType":
       return instance?.method_type || cachedDatasetFilter.methodTypesByName.get(normalizeLookupKey(instanceName)) || getMethodType(row);
     case "lastModified":
@@ -896,7 +909,9 @@ function buildDatasetRecord(row, rowIndex, instance = null) {
     values[col.key] = getDatasetRecordCellValue(typeRow, col.key, instance);
   }
   const datasetName = values.name || instanceName || getDatasetName(typeRow);
-  const generated = parseDatasetGeneratedFlag(instance?.generated) || getDatasetGenerated(typeRow);
+  const sourceKind = instance ? toText(instance?.source_kind) : "";
+  const readOnly = instance ? isReadOnlyDatasetSourceKind(sourceKind) : false;
+  const generated = instance ? normalizeDatasetSourceKind(sourceKind) === "engine" : getDatasetGenerated(typeRow);
   const meta = getCachedDatasetMetadataByName(datasetName);
   return {
     row: typeRow,
@@ -904,6 +919,8 @@ function buildDatasetRecord(row, rowIndex, instance = null) {
     instance,
     datasetName,
     datasetTypeName,
+    sourceKind,
+    readOnly,
     generated,
     values,
     meta,
@@ -961,8 +978,7 @@ function openDatasetRecordAsVector(record) {
   openDatasetWindow(record.datasetName, {
     datasetTypeName: getDatasetRecordValue(record, "datasetTypeName"),
     methodType: getDatasetRecordValue(record, "methodType"),
-    readOnly: !!record.generated,
-    generated: !!record.generated,
+    readOnly: !!record.readOnly,
   });
 }
 

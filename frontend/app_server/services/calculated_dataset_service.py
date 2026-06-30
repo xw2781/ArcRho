@@ -228,8 +228,6 @@ def apply_sidecar_graph_fields(
         is_calculated = bool(row.get("calculated") and not row.get("generated") and formula)
         payload["formula"] = formula if is_calculated else ""
         payload["calculated"] = is_calculated
-        payload["editable"] = False if is_calculated else payload.get("editable")
-        payload["generated"] = False if is_calculated else payload.get("generated")
 
     payload.update(sidecar_graph_fields(project, dataset_type, dependency_info))
     payload.pop("dependencies", None)
@@ -822,8 +820,6 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         "updated_at": now,
         "modified_by": user_name,
         "user": user_name,
-        "editable": False,
-        "generated": False,
         "calculated": True,
         "formula": row.get("formula") or "",
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,

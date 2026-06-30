@@ -282,7 +282,7 @@ const qs = new URLSearchParams(window.location.search);
 const instanceId = qs.get("inst") || "default";
 const isProjectInstanceHost = qs.get("project_instance") === "1";
 const isProjectInstanceDraft = qs.get("draft_instance") === "1" || qs.get("draft") === "1";
-const isReadOnlyDatasetViewer = qs.get("readonly") === "1" || qs.get("generated_dataset") === "1";
+const isReadOnlyDatasetViewer = qs.get("readonly") === "1";
 let isSidecarReadOnlyDataset = false;
 const stepId = instanceId.startsWith("step_") ? instanceId : null;
 const scopedKey = (k) => `${k}::${instanceId}`;
@@ -2805,6 +2805,11 @@ function normalizeDatasetModeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function sourceKindIsReadOnly(value) {
+  const sourceKind = normalizeDatasetModeText(value);
+  return !!sourceKind && sourceKind !== "input";
+}
+
 function currentDatasetIsManualTriangleOrVector() {
   const sourceKind = normalizeDatasetModeText(currentDatasetSidecarSourceKind || state.model?.source_kind || "");
   const format = normalizeDatasetModeText(
@@ -3017,17 +3022,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
     currentDatasetPrecedents,
   );
   renderDatasetDependents(data.exists ? data.Dependents : []);
-  const sidecarEditable = data.editable;
-  const sidecarCalculated = data.calculated;
-  const sidecarGenerated = data.generated;
-  isSidecarReadOnlyDataset = !!data.exists && (
-    sidecarEditable === false
-    || String(sidecarEditable).trim().toLowerCase() === "false"
-    || sidecarCalculated === true
-    || String(sidecarCalculated).trim().toLowerCase() === "true"
-    || sidecarGenerated === true
-    || String(sidecarGenerated).trim().toLowerCase() === "true"
-  );
+  isSidecarReadOnlyDataset = !!data.exists && sourceKindIsReadOnly(currentDatasetSidecarSourceKind);
   const patchSaveBtn = document.getElementById("saveBtn");
   if (patchSaveBtn && !isReadOnlyDatasetViewer) {
     patchSaveBtn.disabled = isSidecarReadOnlyDataset;

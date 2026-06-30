@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset instance metadata now uses source kind as the single read-only signal and stores category directly in the cached index.",
+  "details": [
+    "Project Instance reads cached dataset categories from index.json instead of deriving them separately.",
+    "Dataset sidecars and index entries no longer write redundant generated or editable flags."
+  ]
+}

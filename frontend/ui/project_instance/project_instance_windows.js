@@ -625,7 +625,6 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   }
   if (options?.dsId) params.set("ds", toText(options.dsId));
   if (options?.readOnly) params.set("readonly", "1");
-  if (options?.generated) params.set("generated_dataset", "1");
   if (options?.draft) params.set("draft_instance", "1");
   if (options?.initialTab) params.set("tab", toText(options.initialTab));
   params.set("inst", inst);
@@ -913,7 +912,6 @@ function openDatasetWindow(datasetName, options = {}) {
       datasetTypeName,
       path: targetPath,
       readOnly: options?.readOnly,
-      generated: options?.generated,
     }),
     path: targetPath,
     methodType: options?.methodType,
@@ -953,7 +951,6 @@ function openNewDatasetDraftWindow(datasetName, options = {}) {
       decimalPlaces: isDraft ? (options?.decimalPlaces ?? 0) : options?.decimalPlaces,
       dsId: options?.dsId,
       readOnly: options?.readOnly,
-      generated: options?.generated,
       draft: isDraft,
       initialTab: options?.initialTab || "details",
     }),
