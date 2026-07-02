@@ -27,10 +27,13 @@ When inspecting sidecars, method JSON, dataset JSON, or related migration/refact
 This restriction applies to agent tool use and analysis only; it does not change runnable scripts that a human may execute, such as `python-api/resq_data_migration.py`.
 
 ## Commit Workflow
-Before creating a commit, follow `tools/agent_commit_workflow.md`. Agents must summarize repository changes in 1 to 7 logical groups, provide best-practice suggestions when applicable, and ask for the user's final review and explicit approval before staging or committing.
+Before creating a commit, follow `tools/agent_commit_workflow.md`. Agents must summarize repository changes in 1 to 7 logical groups and provide best-practice suggestions when applicable. If the user explicitly asks the agent to create a commit, treat that request as approval to stage and commit the current stated scope without asking for another approval prompt. When changes are wide across the repo, span multiple components, or include distinct themes, create multiple commits by logical group instead of one large commit. Do not push unless the user separately approves a push.
 
 ## Python Runtime Preference
 Always prefer Python 3.10 for this repository. When validating Python code, running scripts, installing dependencies, or creating virtual environments, use a Python 3.10 interpreter unless the user explicitly asks for another version or a toolchain requires a different runtime.
+
+## Node Runtime Preference
+The frontend includes a bundled portable Node runtime. When validating or running Node/npm commands for this repository, prefer `frontend\node-portable\node.exe` and `frontend\node-portable\npm.cmd` instead of plain `node` or `npm`, because Node is not expected to be installed globally or available on `PATH` in the agent environment. Do not report "Node is not installed in this environment" unless the bundled portable runtime is also missing or fails.
 
 ## Validation Runtime Limit
 No validation command should run for more than 120 seconds by default. Use targeted fast checks first, and put tests, docs checks, syntax checks, and smoke checks behind a timeout of 120 seconds or less. If a broader validation is expected to exceed 120 seconds, ask before running it and explain why the longer run is needed. When a validation times out, stop it and report the timeout instead of retrying indefinitely.
