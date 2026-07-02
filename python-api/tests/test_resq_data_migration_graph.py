@@ -100,6 +100,40 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(payload["Precedents"], ["Paid Loss"])
         self.assertEqual(payload["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
 
+    def test_refresh_adds_result_selection_to_precedent_dependents(self) -> None:
+        source_path = self.sidecars_dir / "DFM Ultimate.json"
+        source_path.write_text(json.dumps({
+            "dataset_name": "DFM Ultimate",
+            "dataset_type": "DFM Ultimate",
+            "source_kind": "dfm",
+            "method_type": "DFM",
+            "updated_at": "2026-07-01T14:51:31Z",
+            "Precedents": [{"dataset_type_name": "Paid Loss"}],
+            "Dependents": [],
+        }), encoding="utf-8")
+        dependent_path = self.sidecars_dir / "Current Selection.json"
+        dependent_path.write_text(json.dumps({
+            "dataset_name": "Current Selection",
+            "dataset_type": "Loaded Ultimate",
+            "source_kind": "result_selection",
+            "method_type": "Result Selection",
+            "updated_at": "2026-06-18T17:11:12Z",
+            "status": 0,
+            "Precedents": ["DFM Ultimate"],
+            "Dependents": [],
+        }), encoding="utf-8")
+
+        updated = self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
+
+        source_payload = json.loads(source_path.read_text(encoding="utf-8"))
+        dependent_payload = json.loads(dependent_path.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(updated, 1)
+        self.assertEqual(
+            [item["dataset_type_name"] for item in source_payload["Dependents"]],
+            ["Current Selection"],
+        )
+        self.assertEqual(dependent_payload["status"], 2)
+
     def test_result_selection_vector_metadata_uses_method_tab_origin_labels(self) -> None:
         payload = {
             "origin_labels": ["1", "2"],

@@ -12,9 +12,12 @@ METHOD_TYPE_RESULT_SELECTION_CODE = 4
 METHOD_TYPE_NAMES = {
     METHOD_TYPE_NONE_CODE: "None",
     METHOD_TYPE_DFM_CODE: "DFM",
-    2: "BF",
-    3: "CC",
+    2: "Bornhutter Ferguson",
+    3: "Cape Cod",
     METHOD_TYPE_RESULT_SELECTION_CODE: "Result Selection",
+    6: "Boottrap",
+    7: "Stochastic Consolidation",
+    8: "Berquist Sherman"
 }
 
 

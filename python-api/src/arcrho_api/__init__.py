@@ -32,6 +32,7 @@ from .ui import (
     progress_update,
     project_instance_context,
     project_instance_window_action,
+    reload_project_instance_dataset_table,
     send_command,
     wait_for_app,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "ProjectInstanceAutomation",
     "active_project_instance_window",
     "project_instance_window_action",
+    "reload_project_instance_dataset_table",
     "send_command",
     "TaskDesignerAutomation",
     "TriangleCacheResult",

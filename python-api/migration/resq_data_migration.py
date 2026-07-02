@@ -86,8 +86,8 @@ def _configured_rc_paths(value: object) -> list[str]:
     return out
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+# PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
 
 # RC_PATH may be a string or a list of reserving-class paths.

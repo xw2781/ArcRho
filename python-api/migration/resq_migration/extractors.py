@@ -280,8 +280,16 @@ def export_vector(vector) -> dict:
     data_format = _safe_int_attr(dataset_type_obj, "DataFormat", 1)
     method_type_code = _safe_int_attr(vector, "MethodType", -1)
     method_type = _method_type_name(method_type_code)
-    origin_length = _safe_int_attr(vector, "OriginLength", 12)
-    dev_length = _safe_int_attr(vector, "DevelopmentLength", 12)
+    # ResQ vectors expose their period granularity (in months) as PeriodLength. They do
+    # not have the triangle/method-style OriginLength member, so reading "OriginLength"
+    # here always missed and fell back to the default 12. Use PeriodLength, falling back
+    # to OriginLength then 12 only if PeriodLength is unavailable. A vector is 1-D, so the
+    # same period length applies to both the origin and (nominal) development axis.
+    period_length = _safe_int_attr(vector, "PeriodLength", 0)
+    if period_length <= 0:
+        period_length = _safe_int_attr(vector, "OriginLength", 12)
+    origin_length = period_length
+    dev_length = period_length
     origin_count = _vector_origin_count(vector)
     if origin_count <= 0:
         raise ValueError(f"Vector {name!r} does not expose a positive OriginCount/Count.")

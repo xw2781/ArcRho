@@ -483,6 +483,22 @@ def project_instance_context(
     )
 
 
+def reload_project_instance_dataset_table(
+    *,
+    timeout_sec: float = 30.0,
+    app_url: str | None = None,
+) -> UiCommandResult:
+    """Reload the dataset table in the active Project Instance page from disk."""
+
+    return send_command(
+        "projectInstance.refreshDatasets",
+        target={"scope": "activeProjectInstance"},
+        args={},
+        timeout_sec=timeout_sec,
+        app_url=app_url,
+    )
+
+
 class ArcRhoWindow:
     """COM-style wrapper for a floating ArcRho UI window."""
 
@@ -647,6 +663,10 @@ class ProjectInstanceAutomation:
 
     def context(self, *, timeout_sec: float = 30.0) -> dict[str, Any]:
         result = self._ui.project_instance_context(timeout_sec=timeout_sec)
+        return dict(result.result or {})
+
+    def reload_dataset_table(self, *, timeout_sec: float = 30.0) -> dict[str, Any]:
+        result = self._ui.reload_project_instance_dataset_table(timeout_sec=timeout_sec)
         return dict(result.result or {})
 
     def window(self, window_id: str) -> ArcRhoWindow:
@@ -858,6 +878,10 @@ class ArcRhoUI:
     def project_instance_context(self, **kwargs: Any) -> UiCommandResult:
         kwargs.setdefault("app_url", self.app_url)
         return project_instance_context(**kwargs)
+
+    def reload_project_instance_dataset_table(self, **kwargs: Any) -> UiCommandResult:
+        kwargs.setdefault("app_url", self.app_url)
+        return reload_project_instance_dataset_table(**kwargs)
 
     def open_dataset_in_active_project_instance(self, dataset_name: str, **kwargs: Any) -> UiCommandResult:
         kwargs.setdefault("app_url", self.app_url)

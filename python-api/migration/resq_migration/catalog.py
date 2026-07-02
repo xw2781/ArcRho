@@ -263,6 +263,52 @@ def _dependency_entry(
             entry["formula"] = formula
     return entry
 
+
+def _entry_names(entries: object) -> list[str]:
+    if not isinstance(entries, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in entries:
+        if isinstance(item, dict):
+            name = _clean_name(item.get("dataset_type_name") or item.get("dataset_name") or item.get("name"))
+        else:
+            name = _clean_name(item)
+        key = _canon_dataset_name(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(name)
+    return out
+
+
+def _merge_dependency_entries(existing: object, additions: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    seen: set[str] = set()
+    for item in (existing if isinstance(existing, list) else []):
+        if isinstance(item, dict):
+            name = _clean_name(item.get("dataset_type_name") or item.get("dataset_name") or item.get("name"))
+            entry = dict(item)
+            if name and not _clean_name(entry.get("dataset_type_name")):
+                entry["dataset_type_name"] = name
+        else:
+            name = _clean_name(item)
+            entry = {"dataset_type_name": name}
+        key = _canon_dataset_name(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(entry)
+    for item in additions:
+        name = _clean_name(item.get("dataset_type_name") or item.get("dataset_name") or item.get("name"))
+        key = _canon_dataset_name(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(dict(item))
+    return out
+
+
 def _dataset_type_graph_fields(dataset_type_name: str, rc_dir: Path | None = None) -> dict:
     rows = _dataset_type_rows()
     rows_by_key = _dataset_type_rows_by_key(rows)
@@ -275,6 +321,7 @@ def _dataset_type_graph_fields(dataset_type_name: str, rc_dir: Path | None = Non
         for name in _direct_dependent_names(rows, dataset_type_name)
     ]
     return {"Precedents": precedents, "Dependents": dependents}
+
 
 def _apply_sidecar_graph_meta(
     meta: dict,
@@ -289,6 +336,98 @@ def _apply_sidecar_graph_meta(
     else:
         meta.update(fields)
     meta.pop("dependencies", None)
+
+
+def _reconcile_sidecar_dependents(sidecars: list[tuple[Path, dict]], rc_dir: Path) -> int:
+    rows_by_key = _dataset_type_rows_by_key(_dataset_type_rows())
+    by_key: dict[str, tuple[Path, dict]] = {}
+    additions_by_key: dict[str, list[dict]] = {}
+    for path, meta in sidecars:
+        dataset_identity = _clean_name(meta.get("dataset_name") or meta.get("dataset_type") or path.stem)
+        dataset_type = _clean_name(meta.get("dataset_type") or dataset_identity)
+        dataset_key = _canon_dataset_name(dataset_identity)
+        if dataset_key:
+            by_key.setdefault(dataset_key, (path, meta))
+        type_key = _canon_dataset_name(dataset_type)
+        if type_key:
+            by_key.setdefault(type_key, (path, meta))
+        for precedent_name in _entry_names(meta.get("Precedents")):
+            precedent_key = _canon_dataset_name(precedent_name)
+            if not precedent_key or not dataset_identity:
+                continue
+            additions_by_key.setdefault(precedent_key, []).append(
+                _dependency_entry(dataset_identity, rows_by_key, rc_dir, include_formula=True)
+            )
+
+    updated = 0
+    for key, additions in additions_by_key.items():
+        target = by_key.get(key)
+        if not target:
+            continue
+        _path, meta = target
+        before = json.dumps(meta.get("Dependents"), sort_keys=True, ensure_ascii=False, default=str)
+        meta["Dependents"] = _merge_dependency_entries(meta.get("Dependents"), additions)
+        after = json.dumps(meta.get("Dependents"), sort_keys=True, ensure_ascii=False, default=str)
+        if before != after:
+            updated += 1
+    return updated
+
+
+def _sidecar_status_timestamp(path: Path, meta: dict) -> float:
+    for key in ("updated_at", "updated", "modified_at", "modified", "last_modified"):
+        parsed = _parse_metadata_datetime(meta.get(key))
+        if parsed is not None:
+            try:
+                return parsed.timestamp()
+            except Exception:
+                pass
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _sidecar_is_method(meta: dict) -> bool:
+    source_kind = _clean_name(meta.get("source_kind")).lower()
+    if source_kind in {"dfm", "result_selection"}:
+        return True
+    method_type = _clean_name(meta.get("method_type")).lower().replace("_", " ")
+    return method_type in {"dfm", "result selection"}
+
+
+def _refresh_sidecar_statuses(sidecars: list[tuple[Path, dict]]) -> None:
+    by_key: dict[str, tuple[Path, dict]] = {}
+    for path, meta in sidecars:
+        for name in (
+            meta.get("dataset_name"),
+            meta.get("dataset_type"),
+            path.stem,
+        ):
+            key = _canon_dataset_name(name)
+            if key:
+                by_key.setdefault(key, (path, meta))
+
+    for path, meta in sidecars:
+        if not _sidecar_is_method(meta):
+            continue
+        current_ts = _sidecar_status_timestamp(path, meta)
+        status = 0
+        if current_ts > 0:
+            for precedent_name in _entry_names(meta.get("Precedents")):
+                source = by_key.get(_canon_dataset_name(precedent_name))
+                if not source:
+                    continue
+                source_path, source_meta = source
+                if _sidecar_status_timestamp(source_path, source_meta) > current_ts + 0.000001:
+                    status = 2
+                    break
+        else:
+            try:
+                status = 2 if int(meta.get("status")) == 2 else 0
+            except Exception:
+                status = 0
+        meta["status"] = status
+
 
 def _cached_dataset_names_from_payload(payload: dict) -> set[str]:
     names: set[str] = set()
@@ -675,7 +814,7 @@ def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
     sidecar_dir = rc_dir / DATASET_SIDECAR_DIR
     if not sidecar_dir.is_dir():
         return 0
-    updated = 0
+    sidecars: list[tuple[Path, dict]] = []
     for path in sorted(sidecar_dir.glob("*.json"), key=lambda item: item.name.lower()):
         if path.name.startswith("ArcRhoTriNotes@"):
             continue
@@ -685,7 +824,6 @@ def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
         dataset_type = _clean_name(meta.get("dataset_type") or meta.get("dataset_name"))
         if not dataset_type:
             continue
-        before = json.dumps(meta, sort_keys=True, ensure_ascii=False, default=str)
         is_result_selection = (
             _clean_name(meta.get("source_kind")).lower() == "result_selection"
             or _is_result_selection_method_type(meta.get("method_type"))
@@ -696,8 +834,13 @@ def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
             rc_dir,
             preserve_precedents=is_result_selection,
         )
-        after = json.dumps(meta, sort_keys=True, ensure_ascii=False, default=str)
-        if before == after:
+        sidecars.append((path, meta))
+    _reconcile_sidecar_dependents(sidecars, rc_dir)
+    _refresh_sidecar_statuses(sidecars)
+    updated = 0
+    for path, meta in sidecars:
+        before = _safe_read_json(path)
+        if json.dumps(before, sort_keys=True, ensure_ascii=False, default=str) == json.dumps(meta, sort_keys=True, ensure_ascii=False, default=str):
             continue
         _write_json(path, meta)
         updated += 1

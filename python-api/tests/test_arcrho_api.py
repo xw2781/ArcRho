@@ -16,7 +16,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import arcrho_api.config as api_config
 from arcrho_api.agent import main as agent_main
-from arcrho_api import ArcRhoClient, DfmDataError, ReadOnlyError, get_config_path, get_server_root, set_server_root
+from arcrho_api import (
+    ArcRhoClient,
+    ArcRhoUI,
+    DfmDataError,
+    ReadOnlyError,
+    get_config_path,
+    get_server_root,
+    reload_project_instance_dataset_table,
+    set_server_root,
+)
 from arcrho_api.paths import dfm_filename, parse_dfm_filename
 from arcrho_api.migration import ArcRhoSession
 
@@ -390,6 +399,36 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertEqual(payload["components"]["average formulas"]["api method"], "DfmMethod.average_formula_summary")
         self.assertEqual(payload["components"]["ratio triangle"]["values"][0], [1.1, 1.2])
         self.assertEqual(payload["ratio rows"][0]["origin label"], "2020")
+
+    def test_reload_project_instance_dataset_table_command(self) -> None:
+        calls: list[tuple[str, dict, float, str | None]] = []
+
+        def fake_post_json(path: str, payload: dict, timeout_sec: float, *, app_url=None):
+            calls.append((path, payload, timeout_sec, app_url))
+            return {"ok": True, "result": {"refreshed": True, "selectedPath": "Auto\\PP"}}
+
+        with patch("arcrho_api.ui._post_json", fake_post_json):
+            result = reload_project_instance_dataset_table(timeout_sec=12, app_url="http://127.0.0.1:28765")
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.result["refreshed"], True)
+        self.assertEqual(calls[0][0], "/ui_automation/commands")
+        self.assertEqual(calls[0][1]["command"], "projectInstance.refreshDatasets")
+        self.assertEqual(calls[0][1]["target"], {"scope": "activeProjectInstance"})
+        self.assertEqual(calls[0][3], "http://127.0.0.1:28765")
+
+    def test_project_instance_reload_dataset_table_object_api(self) -> None:
+        ui = ArcRhoUI()
+
+        with patch.object(
+            ui,
+            "reload_project_instance_dataset_table",
+            return_value=type("Result", (), {"result": {"refreshed": True}})(),
+        ) as mocked:
+            result = ui.project_instance.reload_dataset_table(timeout_sec=7)
+
+        self.assertEqual(result, {"refreshed": True})
+        mocked.assert_called_once_with(timeout_sec=7)
 
     def test_missing_ratio_data_raises(self) -> None:
         rc = ArcRhoClient(self.root).project("Demo").reserving_class(r"Auto\PP")
