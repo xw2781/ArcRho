@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Packaged builds now choose the next app version using the published installer feed as well as source metadata."
+}

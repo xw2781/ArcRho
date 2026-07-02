@@ -14,10 +14,11 @@ ABOUT_VERSION_RE = re.compile(
 SPLASH_VERSION_RE = re.compile(
     r'(<div class="version" id="version">)v\d+\.\d+\.\d+(</div>)'
 )
+INSTALLER_VERSION_RE = re.compile(r"^ArcRho-Setup-(\d+\.\d+\.\d+)\.exe$")
 
 
 def load_json(path: Path) -> dict:
-    with path.open("r", encoding="utf-8") as handle:
+    with path.open("r", encoding="utf-8-sig") as handle:
         data = json.load(handle)
     if not isinstance(data, dict):
         raise ValueError(f"{path} does not contain a JSON object")
@@ -47,9 +48,45 @@ def is_strictly_greater_version(candidate: str, current: str) -> bool:
     return parse_version(candidate) > parse_version(current)
 
 
+def max_version(versions: list[str]) -> str:
+    return max(versions, key=parse_version)
+
+
+def collect_release_feed_versions(feed_dir: Path | None) -> list[str]:
+    if feed_dir is None or not feed_dir.exists() or not feed_dir.is_dir():
+        return []
+
+    versions: list[str] = []
+    manifest_path = feed_dir / "latest.json"
+    if manifest_path.exists():
+        try:
+            manifest_version = str(load_json(manifest_path).get("version", "")).strip()
+        except Exception as exc:
+            print(
+                f"WARNING: Could not read release manifest {manifest_path}: {exc}",
+                file=sys.stderr,
+            )
+        else:
+            if SEMVER_RE.fullmatch(manifest_version):
+                versions.append(manifest_version)
+            elif manifest_version:
+                print(
+                    f"WARNING: Ignoring non-semantic release manifest version '{manifest_version}'.",
+                    file=sys.stderr,
+                )
+
+    for installer_path in feed_dir.glob("ArcRho-Setup-*.exe"):
+        match = INSTALLER_VERSION_RE.fullmatch(installer_path.name)
+        if match:
+            versions.append(match.group(1))
+
+    return versions
+
+
 def resolve_target_version(
     current_version: str,
     requested_version: str | None,
+    release_feed_versions: list[str] | None = None,
     require_increase: bool = False,
 ) -> str:
     if requested_version:
@@ -64,7 +101,11 @@ def resolve_target_version(
                 f"Requested version '{requested_version}' must not be lower than current version '{current_version}'."
             )
         return requested_version
-    return bump_patch(current_version)
+
+    baseline_versions = [current_version]
+    if release_feed_versions:
+        baseline_versions.extend(release_feed_versions)
+    return bump_patch(max_version(baseline_versions))
 
 
 def update_about_dialog(index_html_path: Path, version: str) -> None:
@@ -115,6 +156,13 @@ def main() -> int:
         help="Optional file that receives the computed version.",
     )
     parser.add_argument(
+        "--release-feed-dir",
+        help=(
+            "Optional published installer feed directory. When no explicit version is "
+            "provided, the patch bump starts from the newest package or feed version."
+        ),
+    )
+    parser.add_argument(
         "--require-increase",
         action="store_true",
         help="Require an explicit version to be higher than the current package version.",
@@ -138,6 +186,9 @@ def main() -> int:
     target_version = resolve_target_version(
         current_version,
         args.version,
+        release_feed_versions=collect_release_feed_versions(
+            Path(args.release_feed_dir) if args.release_feed_dir else None
+        ),
         require_increase=args.require_increase,
     )
 

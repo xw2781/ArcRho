@@ -62,7 +62,7 @@ echo ----------------------------------------
 set "APP_VERSION_FILE=build\app_version.txt"
 if exist "%APP_VERSION_FILE%" del /q "%APP_VERSION_FILE%" >nul 2>nul
 if "%~1"=="" (
-    "%PYTHON_EXE%" build\version_manager.py --version-file "%APP_VERSION_FILE%"
+    "%PYTHON_EXE%" build\version_manager.py --release-feed-dir "%UPDATE_FEED_DIR%" --version-file "%APP_VERSION_FILE%"
 ) else (
     "%PYTHON_EXE%" build\version_manager.py "%~1" --version-file "%APP_VERSION_FILE%"
 )
