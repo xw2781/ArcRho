@@ -491,6 +491,7 @@
       align-items: center;
       justify-content: flex-start;
       gap: 8px;
+      min-width: 0;
     }
     .dfmInstanceMissingNotice {
       display: none;
@@ -523,15 +524,16 @@
     .dfmFormField .reservingClassWrap,
     .dfmFormField .dfmMethodNameWrap,
     .dfmFormField .dfmOutputVectorWrap {
-      width: 560px;
+      width: 100%;
       max-width: 100%;
+      min-width: 0;
     }
     #projectSelect,
     #dfmMethodName,
     #pathInput,
     #triInput,
     #dfmOutputVector {
-      width: 560px;
+      width: 100%;
       max-width: 100%;
     }
     #projectSelect,
@@ -2008,13 +2010,13 @@
   <script type="module">
     (async () => {
       window.ADA_DFM_CONTEXT = true;
-      await import("/ui/dataset/dataset_main.js?v=20260611a");
+      await import("/ui/dataset/dataset_main.js?v=20260702a");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/dfm/dfm_main.js?v=20260621b");
+      await import("/ui/dfm/dfm_main.js?v=20260702a");
     })();
   </script>
 </body>

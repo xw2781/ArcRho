@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Details text and picker fields now resize to fill the available window width.",
+  "details": [
+    "Project, Reserving Class, Name, Output Vector, and Input Triangle fields expand with the Details panel while the length and decimal spinner boxes stay compact."
+  ]
+}

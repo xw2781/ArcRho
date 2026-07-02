@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset Details now shows sidecar Precedents as clickable chips above Dependents.",
+  "details": [
+    "The Precedents box uses the same compact dependency-chip style as Dependents and includes sources that are not visible in the formula text.",
+    "Dependency formula tooltips now show the formula directly with an equals token instead of repeating the hovered dataset name.",
+    "Formula tooltips have a wider cap and shrink to the widest wrapped row to avoid excess blank space.",
+    "Dataset Details inputs and graph boxes now fill the available panel width as the window resizes."
+  ]
+}

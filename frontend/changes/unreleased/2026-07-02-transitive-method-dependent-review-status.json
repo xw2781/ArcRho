@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Method-backed datasets now show Needs Review when any upstream dependency changes, including indirect upstream changes."
+}

@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Kept Result Selection ratio-basis statistic columns aligned with the active Method origin length.",
+  "details": [
+    "Engine-generated ratio-basis vectors are materialized at the Result Selection origin length when the matching cache does not already exist."
+  ]
+}

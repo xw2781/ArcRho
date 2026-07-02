@@ -8,6 +8,7 @@ import {
   loadDatasetNotes,
   loadDatasetSidecar,
   patchDataset,
+  previewCalculatedDatasetDependents,
   saveDatasetNotes,
   saveDatasetSidecar,
 } from "/ui/shared/api.js";
@@ -64,6 +65,9 @@ const FORCE_REBUILD_KEY = "arcrho_force_rebuild_enabled";
 const LOCAL_PROJECT_PREFS_ENDPOINT = "/local-project/preferences";
 const CALCULATED_DATASETS_UPDATED_MESSAGE = "arcrho:calculated-datasets-updated";
 let calculatedDatasetRefreshInFlight = false;
+let calculatedDependencyPreviewTimer = null;
+let calculatedDependencyPreviewSeq = 0;
+const activeCalculatedDependencyPreviewTargets = new Map();
 
 function buildFontStack(font) {
   const raw = String(font || "").trim();
@@ -103,6 +107,313 @@ applyAppFont(loadAppFontFromStorage());
 function notifyDatasetUpdated() {
   window.dispatchEvent(new CustomEvent("arcrho:dataset-updated"));
   updateDatasetSaveUi();
+  publishDatasetDependencyPreview();
+}
+
+function requestProjectInstanceDatasetTableRefresh() {
+  try {
+    window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+  } catch {
+    // ignore stale parent frames
+  }
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function latestDiagonalValues(values, mask) {
+  const rows = Array.isArray(values) ? values : [];
+  return rows.map((row, r) => {
+    if (!Array.isArray(row)) return null;
+    for (let c = row.length - 1; c >= 0; c -= 1) {
+      if (Array.isArray(mask?.[r]) && mask[r][c] === false) continue;
+      const value = numberOrNull(row[c]);
+      if (value !== null) return value;
+    }
+    return null;
+  });
+}
+
+function vectorValues(values) {
+  const rows = Array.isArray(values) ? values : [];
+  return rows.map((row) => numberOrNull(Array.isArray(row) ? row[0] : row));
+}
+
+function cloneDatasetMatrixValues(values) {
+  return Array.isArray(values)
+    ? values.map((row) => (Array.isArray(row) ? row.map(numberOrNull) : []))
+    : [];
+}
+
+function cloneDatasetMask(mask) {
+  return Array.isArray(mask)
+    ? mask.map((row) => (Array.isArray(row) ? row.map(Boolean) : []))
+    : [];
+}
+
+function datasetDependencySourceValues() {
+  const values = Array.isArray(state.model?.values) ? state.model.values : [];
+  const mask = Array.isArray(state.model?.mask) ? state.model.mask : [];
+  const format = normalizeDatasetModeText(currentDatasetSidecarDataFormat || state.model?.data_format || "");
+  return format === "triangle" ? latestDiagonalValues(values, mask) : vectorValues(values);
+}
+
+function buildDatasetDependencySourceMessage(type, reason = "") {
+  const datasetName = getDatasetInstanceNameValue() || document.getElementById("triInput")?.value || "";
+  const datasetTypeName = document.getElementById("triInput")?.value || datasetName;
+  const payload = {
+    type,
+    inst: instanceId,
+    project: getResolvedProjectValue(),
+    reservingClass: getResolvedReservingClassValue(),
+    datasetName,
+    datasetTypeName,
+    names: [datasetName, datasetTypeName].map((value) => String(value || "").trim()).filter(Boolean),
+    methodType: state.model?.method_type || "",
+    sourceKind: currentDatasetSidecarSourceKind || state.model?.source_kind || "",
+    dataFormat: currentDatasetSidecarDataFormat || state.model?.data_format || "",
+    reason,
+  };
+  if (type === "arcrho:dependency-source-preview") {
+    payload.values = datasetDependencySourceValues();
+    payload.matrixValues = cloneDatasetMatrixValues(state.model?.values);
+    payload.mask = cloneDatasetMask(state.model?.mask);
+    payload.originLabels = Array.isArray(state.model?.origin_labels) ? state.model.origin_labels.map(String) : [];
+    payload.developmentLabels = Array.isArray(state.model?.dev_labels) ? state.model.dev_labels.map(String) : [];
+    payload.originLength = payload.originLabels.length;
+    payload.developmentLength = payload.developmentLabels.length;
+  }
+  return payload;
+}
+
+function postDatasetDependencySourceMessage(type, reason = "") {
+  const message = buildDatasetDependencySourceMessage(type, reason);
+  if (!message.names.length) return;
+  try {
+    window.parent?.postMessage(message, "*");
+  } catch {}
+}
+
+function publishDatasetDependencyPreview() {
+  if (!hasManualInputGridChanges()) return;
+  postDatasetDependencySourceMessage("arcrho:dependency-source-preview", "dirty");
+  scheduleCalculatedDependencyPreview();
+}
+
+function clearDatasetDependencyPreview(reason = "") {
+  if (calculatedDependencyPreviewTimer != null) {
+    window.clearTimeout(calculatedDependencyPreviewTimer);
+    calculatedDependencyPreviewTimer = null;
+  }
+  calculatedDependencyPreviewSeq += 1;
+  postDatasetDependencySourceMessage("arcrho:dependency-source-cleared", reason || "clean");
+  clearCalculatedDependencyPreviewTargets(reason || "clean");
+}
+
+function postCalculatedDependencyPreviewTarget(step, reason = "calculated-preview") {
+  const datasetName = String(step?.dataset_name || step?.dataset_type_name || "").trim();
+  if (!datasetName) return "";
+  const message = {
+    type: "arcrho:dependency-source-preview",
+    inst: instanceId,
+    project: getResolvedProjectValue(),
+    reservingClass: getResolvedReservingClassValue(),
+    datasetName,
+    datasetTypeName: String(step?.dataset_type_name || datasetName).trim(),
+    names: [datasetName, step?.dataset_type_name].map((value) => String(value || "").trim()).filter(Boolean),
+    methodType: "Calculated Dataset",
+    sourceKind: "calculated_preview",
+    dataFormat: String(step?.data_format || step?.dataFormat || "").trim(),
+    reason,
+    values: Array.isArray(step?.values) ? step.values : [],
+    matrixValues: Array.isArray(step?.matrix_values) ? step.matrix_values : (Array.isArray(step?.matrixValues) ? step.matrixValues : []),
+    mask: Array.isArray(step?.mask) ? step.mask : [],
+    originLabels: Array.isArray(step?.origin_labels) ? step.origin_labels.map(String) : [],
+    developmentLabels: Array.isArray(step?.development_labels) ? step.development_labels.map(String) : [],
+  };
+  if (!message.names.length || !message.matrixValues.length) return "";
+  const key = dependencyMessageSourceKey(message);
+  activeCalculatedDependencyPreviewTargets.set(key, message);
+  try {
+    window.parent?.postMessage(message, "*");
+  } catch {}
+  return key;
+}
+
+function clearCalculatedDependencyPreviewTargets(reason = "clean", keepKeys = new Set()) {
+  for (const [key, message] of Array.from(activeCalculatedDependencyPreviewTargets.entries())) {
+    if (keepKeys?.has?.(key)) continue;
+    activeCalculatedDependencyPreviewTargets.delete(key);
+    try {
+      window.parent?.postMessage({
+        ...message,
+        type: "arcrho:dependency-source-cleared",
+        reason,
+      }, "*");
+    } catch {}
+  }
+}
+
+function scheduleCalculatedDependencyPreview() {
+  if (calculatedDependencyPreviewTimer != null) {
+    window.clearTimeout(calculatedDependencyPreviewTimer);
+  }
+  calculatedDependencyPreviewTimer = window.setTimeout(() => {
+    calculatedDependencyPreviewTimer = null;
+    void publishCalculatedDependencyPreview();
+  }, 120);
+}
+
+async function publishCalculatedDependencyPreview() {
+  if (!hasManualInputGridChanges()) {
+    clearCalculatedDependencyPreviewTargets("clean");
+    return;
+  }
+  const seq = ++calculatedDependencyPreviewSeq;
+  const sourceMessage = buildDatasetDependencySourceMessage("arcrho:dependency-source-preview", "dirty");
+  if (!sourceMessage.names.length || !Array.isArray(sourceMessage.matrixValues) || !sourceMessage.matrixValues.length) return;
+  const result = await previewCalculatedDatasetDependents({
+    project_name: sourceMessage.project,
+    reserving_class: sourceMessage.reservingClass,
+    changed_dataset_name: sourceMessage.datasetName,
+    changed_dataset_type_name: sourceMessage.datasetTypeName,
+    values: sourceMessage.matrixValues,
+    mask: sourceMessage.mask,
+    origin_labels: sourceMessage.originLabels,
+    development_labels: sourceMessage.developmentLabels,
+  }).catch(() => null);
+  if (seq !== calculatedDependencyPreviewSeq || !hasManualInputGridChanges()) return;
+  const steps = Array.isArray(result?.data?.steps) ? result.data.steps : [];
+  const keepKeys = new Set();
+  for (const step of steps) {
+    if (!step?.ok) continue;
+    const key = postCalculatedDependencyPreviewTarget(step);
+    if (key) keepKeys.add(key);
+  }
+  clearCalculatedDependencyPreviewTargets("preview-stale", keepKeys);
+}
+
+function dependencyMessageSourceKey(message = {}) {
+  const names = [
+    ...(Array.isArray(message.names) ? message.names : []),
+    message.datasetName,
+    message.datasetTypeName,
+    message.name,
+  ]
+    .map(normalizeDatasetMatchText)
+    .filter(Boolean)
+    .sort();
+  return [
+    normalizeDatasetMatchText(message.inst),
+    normalizeDatasetMatchText(message.project),
+    normalizeReservingClassPath(message.reservingClass || message.reserving_class || ""),
+    names.join("|"),
+  ].join("\u001f");
+}
+
+function dependencyMessageNames(message = {}) {
+  return new Set([
+    ...(Array.isArray(message.names) ? message.names : []),
+    message.datasetName,
+    message.datasetTypeName,
+    message.name,
+  ].map(normalizeDatasetMatchText).filter(Boolean));
+}
+
+function dependencyMessageMatchesCurrentContext(message = {}) {
+  if (!message || typeof message !== "object") return false;
+  if (String(message.inst || "") && String(message.inst || "") === String(instanceId || "")) return false;
+  const project = String(message.project || message.project_name || "").trim();
+  if (project && normalizeDatasetMatchText(project) !== normalizeDatasetMatchText(getResolvedProjectValue())) {
+    return false;
+  }
+  const reservingClass = String(message.reservingClass || message.reserving_class || "").trim();
+  if (reservingClass) {
+    const left = normalizeDatasetMatchText(normalizeReservingClassPath(reservingClass));
+    const right = normalizeDatasetMatchText(normalizeReservingClassPath(getResolvedReservingClassValue()));
+    if (left && right && left !== right) return false;
+  }
+  const names = dependencyMessageNames(message);
+  if (!names.size) return false;
+  const currentNames = collectCurrentDatasetNamesForMatch();
+  for (const name of currentNames) {
+    if (names.has(name)) return true;
+  }
+  return false;
+}
+
+function previewMatrixFromDependencyMessage(message = {}) {
+  const matrix = Array.isArray(message.matrixValues)
+    ? message.matrixValues
+    : (Array.isArray(message.values) ? message.values.map((value) => [value]) : []);
+  return matrix
+    .filter((row) => Array.isArray(row))
+    .map((row) => row.map(numberOrNull));
+}
+
+function labelsFromDependencyMessage(message = {}, key, fallback = []) {
+  const values = Array.isArray(message[key]) ? message[key] : [];
+  const labels = values.map((value) => String(value ?? "").trim()).filter(Boolean);
+  return labels.length ? labels : (Array.isArray(fallback) ? fallback.map(String) : []);
+}
+
+function buildDependencyPreviewMask(values, sourceMask) {
+  if (Array.isArray(sourceMask) && sourceMask.length) {
+    return values.map((row, r) => row.map((_, c) => !!sourceMask?.[r]?.[c]));
+  }
+  return values.map((row) => row.map(() => true));
+}
+
+function applyDependencySourcePreview(message = {}) {
+  if (!dependencyMessageMatchesCurrentContext(message)) return false;
+  if (hasUnsavedDatasetChanges()) {
+    setStatus("A live source preview is available. Save or discard local edits before applying it.");
+    return false;
+  }
+  const values = previewMatrixFromDependencyMessage(message);
+  if (!values.length) return false;
+  const currentModel = state.model || {};
+  const originLabels = labelsFromDependencyMessage(message, "originLabels", currentModel.origin_labels);
+  const developmentLabels = labelsFromDependencyMessage(
+    message,
+    "developmentLabels",
+    Array.isArray(currentModel.dev_labels) && currentModel.dev_labels.length
+      ? currentModel.dev_labels
+      : ["1"],
+  );
+  state.model = {
+    ...currentModel,
+    origin_labels: originLabels.length ? originLabels : values.map((_, index) => String(index + 1)),
+    dev_labels: developmentLabels.length ? developmentLabels : ["1"],
+    values,
+    mask: buildDependencyPreviewMask(values, message.mask),
+    data_format: message.dataFormat || currentModel.data_format || currentDatasetSidecarDataFormat || "",
+    source_kind: message.sourceKind || currentModel.source_kind || currentDatasetSidecarSourceKind || "",
+  };
+  activeDependencyPreviewKey = dependencyMessageSourceKey(message);
+  renderTable();
+  renderChart();
+  window.dispatchEvent(new CustomEvent("arcrho:dataset-updated", {
+    detail: { preview: true, source: message },
+  }));
+  return true;
+}
+
+async function clearDependencySourcePreview(message = {}) {
+  if (!activeDependencyPreviewKey) return false;
+  if (!dependencyMessageMatchesCurrentContext(message)) return false;
+  const sourceKey = dependencyMessageSourceKey(message);
+  if (sourceKey !== activeDependencyPreviewKey) return false;
+  activeDependencyPreviewKey = "";
+  try {
+    await loadDataset();
+  } catch (err) {
+    setStatus(`Dataset preview reload failed: ${String(err?.message || err)}`);
+  }
+  return true;
 }
 
 function normalizeDatasetMatchText(value) {
@@ -182,6 +493,14 @@ window.addEventListener("message", (e) => {
   }
   if (e?.data?.type === CALCULATED_DATASETS_UPDATED_MESSAGE) {
     void handleCalculatedDatasetsUpdatedMessage(e.data.report || null);
+    return;
+  }
+  if (e?.data?.type === "arcrho:dependency-source-preview") {
+    applyDependencySourcePreview(e.data);
+    return;
+  }
+  if (e?.data?.type === "arcrho:dependency-source-cleared") {
+    void clearDependencySourcePreview(e.data);
     return;
   }
   if (e?.data?.type === "arcrho:workflow-global-changed") {
@@ -478,6 +797,7 @@ function createFormulaOperatorIcon(value) {
   if (op === "-") return createFormulaSvgIcon(["M5 12h14"]);
   if (op === "*") return createFormulaSvgIcon(["M6 6l12 12", "M18 6L6 18"]);
   if (op === "/") return createFormulaSvgIcon(["M16 5L8 19"]);
+  if (op === "=") return createFormulaSvgIcon(["M6 9h12", "M6 15h12"]);
   return document.createTextNode(op);
 }
 
@@ -625,19 +945,58 @@ function positionDependentFormulaTooltip(tooltip, event) {
   tooltip.style.top = `${top}px`;
 }
 
-function showDependentFormulaTooltip(dependent, event) {
-  const formula = String(dependent?.formula || "").trim();
+function fitDependentFormulaTooltipWidth(tooltip) {
+  if (!tooltip || tooltip.hidden) return;
+  const body = tooltip.querySelector(".dsDependentFormulaTooltipBody");
+  const items = Array.from(body?.children || []);
+  if (!body || !items.length) return;
+
+  const tooltipStyle = window.getComputedStyle(tooltip);
+  const padBorderX = [
+    tooltipStyle.paddingLeft,
+    tooltipStyle.paddingRight,
+    tooltipStyle.borderLeftWidth,
+    tooltipStyle.borderRightWidth,
+  ].reduce((sum, value) => sum + (Number.parseFloat(value) || 0), 0);
+  const maxWidth = Number.parseFloat(tooltipStyle.maxWidth) || (window.innerWidth - 24);
+  const currentWidth = tooltip.getBoundingClientRect().width;
+  const lineExtents = new Map();
+  for (const item of items) {
+    const rect = item.getBoundingClientRect();
+    if (!rect.width || !rect.height) continue;
+    const key = String(Math.round(rect.top * 2) / 2);
+    const line = lineExtents.get(key) || { left: rect.left, right: rect.right };
+    line.left = Math.min(line.left, rect.left);
+    line.right = Math.max(line.right, rect.right);
+    lineExtents.set(key, line);
+  }
+  let widestLine = 0;
+  for (const line of lineExtents.values()) {
+    widestLine = Math.max(widestLine, line.right - line.left);
+  }
+  if (!widestLine) return;
+  const targetWidth = Math.ceil(Math.min(maxWidth, widestLine + padBorderX + 2));
+  if (targetWidth > 80 && targetWidth < currentWidth - 1) {
+    tooltip.style.width = `${targetWidth}px`;
+  }
+}
+
+function showDependentFormulaTooltip(dependency, event) {
+  const formula = String(dependency?.formula || "").trim();
   if (!formula) return;
   const tooltip = ensureDependentFormulaTooltip();
+  tooltip.style.width = "";
   tooltip.replaceChildren();
-  const title = document.createElement("div");
-  title.className = "dsDependentFormulaTooltipTitle";
-  title.textContent = dependent.datasetName || "Dependent dataset";
   const body = document.createElement("div");
   body.className = "dsDependentFormulaTooltipBody";
+  const equals = document.createElement("span");
+  equals.className = "dsFormulaOperatorToken equals";
+  equals.appendChild(createFormulaOperatorIcon("="));
+  body.appendChild(equals);
   renderRichFormulaTokens(body, formula);
-  tooltip.append(title, body);
+  tooltip.appendChild(body);
   tooltip.hidden = false;
+  fitDependentFormulaTooltipWidth(tooltip);
   positionDependentFormulaTooltip(tooltip, event);
 }
 
@@ -704,6 +1063,37 @@ function renderDatasetDependents(entries = []) {
   }
 }
 
+function renderDatasetPrecedents(entries = []) {
+  const list = document.getElementById("dsPrecedentsList");
+  if (!list) return;
+  hideDependentFormulaTooltip();
+  const precedents = normalizeDatasetDependencyEntries(entries);
+  list.replaceChildren();
+  if (!precedents.length) {
+    return;
+  }
+  for (const precedent of precedents) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "dsDependentLink";
+    if (datasetFormulaEntryHasFormula(precedent)) button.appendChild(createFormulaCalculatedIcon());
+    appendDatasetChipLabel(button, precedent.datasetName);
+    const methodType = normalizeDatasetMethodType(precedent.methodType);
+    button.setAttribute("aria-label", methodType
+      ? `Open ${methodType} method ${precedent.datasetName}`
+      : `Open related item ${precedent.datasetName}`);
+    button.addEventListener("mouseenter", (event) => showDependentFormulaTooltip(precedent, event));
+    button.addEventListener("mousemove", (event) => {
+      const tooltip = document.getElementById("dsDependentFormulaTooltip");
+      positionDependentFormulaTooltip(tooltip, event);
+    });
+    button.addEventListener("mouseleave", hideDependentFormulaTooltip);
+    button.addEventListener("blur", hideDependentFormulaTooltip);
+    button.addEventListener("click", () => openRelatedDataset(precedent, { openMethod: true }));
+    list.appendChild(button);
+  }
+}
+
 function getDatasetInitialTab() {
   const requested = String(qs.get("tab") || qs.get("initial_tab") || "").trim();
   return DATASET_TABS.some((tab) => tab.id === requested) ? requested : "data";
@@ -762,6 +1152,7 @@ let currentDatasetSidecarDataFormat = "";
 let currentDatasetPrecedents = [];
 let sidecarSyncNonce = 0;
 let datasetCancelConfirmResolve = null;
+let activeDependencyPreviewKey = "";
 const lenDropdownActiveIndexBySelect = new Map();
 
 function setLastProjectSelection(value) {
@@ -2984,6 +3375,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
     datasetSettingsDirty = false;
     renderDatasetAuditLog([]);
     renderDetailFormula("", currentDatasetPrecedents);
+    renderDatasetPrecedents([]);
     renderDatasetDependents([]);
     updateDatasetSaveUi();
     return false;
@@ -3002,6 +3394,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
     datasetSettingsDirty = false;
     renderDatasetAuditLog([]);
     renderDetailFormula(getDatasetTypeFormulaByName(document.getElementById("triInput")?.value || ""), currentDatasetPrecedents);
+    renderDatasetPrecedents([]);
     renderDatasetDependents([]);
     updateDatasetSaveUi();
     return false;
@@ -3021,6 +3414,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
       : getDatasetTypeFormulaByName(document.getElementById("triInput")?.value || ""),
     currentDatasetPrecedents,
   );
+  renderDatasetPrecedents(currentDatasetPrecedents);
   renderDatasetDependents(data.exists ? data.Dependents : []);
   isSidecarReadOnlyDataset = !!data.exists && sourceKindIsReadOnly(currentDatasetSidecarSourceKind);
   const patchSaveBtn = document.getElementById("saveBtn");
@@ -3091,10 +3485,12 @@ async function saveDatasetSidecarForCurrentContext() {
     String(resp.data?.formula || "").trim() || getDatasetTypeFormulaByName(settings.dataset_type),
     currentDatasetPrecedents,
   );
+  renderDatasetPrecedents(currentDatasetPrecedents);
   renderDatasetDependents(resp.data?.Dependents);
   invalidateCachedDatasetInstances();
   datasetSettingsDirty = false;
   updateDatasetSaveUi();
+  clearDatasetDependencyPreview("save");
   handleCalculationUpdates(resp.data?.calculated_updates, "Dataset settings save");
   return { ok: true, data: resp.data };
 }
@@ -3114,6 +3510,7 @@ async function saveDatasetChanges(options = {}) {
     }
     updateDatasetSaveUi();
     if (!options?.silentStatus) setStatus("Dataset settings saved.");
+    requestProjectInstanceDatasetTableRefresh();
     return { ok: true };
   } finally {
     datasetSaveInFlight = false;
@@ -3140,6 +3537,7 @@ async function discardDatasetChanges(options = {}) {
     }
   }
   if (notesDirty) applyNotesInputValue(lastSavedNotesText);
+  clearDatasetDependencyPreview("cancel");
   state.dirty.clear();
   datasetSettingsDirty = false;
   updateDatasetSaveUi();
@@ -3232,6 +3630,7 @@ async function confirmCancelDatasetChanges(reason = "close") {
 }
 
 function requestConfirmedDatasetClose() {
+  clearDatasetDependencyPreview("close-discard");
   try {
     window.parent?.postMessage({
       type: "arcrho:dataset-close-confirmed",

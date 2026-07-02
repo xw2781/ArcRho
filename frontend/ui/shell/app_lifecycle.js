@@ -109,6 +109,15 @@ async function buildClearCacheReloadRestorePayload() {
   };
 }
 
+async function clearBrowserCaches() {
+  try {
+    if (window.caches?.keys) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch {}
+}
+
 export async function clearCacheAndReload() {
   let confirmed = false;
   try {
@@ -144,12 +153,7 @@ export async function clearCacheAndReload() {
       shell.updateStatusBar?.("Host cache reload failed; using browser reload...");
     }
   }
-  try {
-    if (window.caches?.keys) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
-    }
-  } catch {}
+  await clearBrowserCaches();
   try { window.location.reload(); } catch {}
 }
 
@@ -158,11 +162,11 @@ function waitForServerThenReload(timeoutMs = 15000) {
   const attempt = async () => {
     try {
       await fetch("/", { cache: "no-store" });
-      window.location.reload();
+      reloadShellDocument();
       return;
     } catch {}
     if (Date.now() - start >= timeoutMs) {
-      window.location.reload();
+      reloadShellDocument();
       return;
     }
     setTimeout(attempt, 800);
@@ -172,6 +176,26 @@ function waitForServerThenReload(timeoutMs = 15000) {
 
 export async function restartApplication() {
   window.__appRestarting = true;
+  shell.updateStatusBar?.("Preparing restart...");
+  let restore = null;
+  try {
+    restore = await buildClearCacheReloadRestorePayload();
+  } catch (err) {
+    console.warn("Could not build restart restore payload:", err);
+  }
+  const hostApi = shell.getHostApi?.();
+  if (typeof hostApi?.clearAppCache === "function") {
+    try {
+      shell.updateStatusBar?.("Clearing cache before restart...");
+      const result = await hostApi.clearAppCache({ restore });
+      if (result === false) shell.updateStatusBar?.("Host cache clear unavailable; restarting...");
+    } catch (err) {
+      console.warn("Host cache clear before restart failed:", err);
+      shell.updateStatusBar?.("Host cache clear failed; restarting...");
+    }
+  } else {
+    await clearBrowserCaches();
+  }
   shell.updateStatusBar?.("Restarting application...");
   try { await fetch("/app/restart", { method: "POST" }); } catch {}
   try { await fetch("/app/restart_electron", { method: "POST" }); } catch {}

@@ -227,8 +227,10 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
     }
 
 
-def _register_arcrho_dataset(data_path: str) -> str:
-    ds_id = "arcrhotri_" + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
+def _register_arcrho_dataset(data_path: str, pairs: list | None = None) -> str:
+    function_name = _pair_value(pairs or [], "Function").strip().lower()
+    prefix = "arcrhovec_" if function_name == "arcrhovec" else "arcrhotri_"
+    ds_id = prefix + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
     config.DATASETS[ds_id] = data_path
     return ds_id
 
@@ -351,6 +353,8 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
     sidecar_path = _dataset_sidecar_path(data_path, pairs)
     project_name = _pair_value(pairs, "ProjectName")
     reserving_class = _pair_value(pairs, "Path")
+    is_vector = _pair_value(pairs, "Function").strip().lower() == "arcrhovec"
+    data_format = "Vector" if is_vector else "Triangle"
     user_name = getpass.getuser()
     updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     if os.path.exists(sidecar_path):
@@ -383,8 +387,8 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "reserving_class": reserving_class,
         "project_name": project_name,
         "source_kind": "engine",
-        "data_format": "Triangle",
-        "data_format_code": 0,
+        "data_format": data_format,
+        "data_format_code": 1 if is_vector else 0,
         "origin_length": _pair_int_value(pairs, "OriginLength", 12),
         "development_length": _pair_int_value(pairs, "DevelopmentLength", 12),
         "cumulative": _pair_bool_value(pairs, "Cumulative", True),
@@ -613,8 +617,8 @@ def arcrho_projects() -> Dict[str, Any]:
     return {"sheet": "Virtual Projects", "projects": out, "folders": index_data.get("folders", [])}
 
 
-def _local_cache_response(local_result: Dict[str, Any], data_path: str) -> Dict[str, Any]:
-    ds_id = _register_arcrho_dataset(data_path)
+def _local_cache_response(local_result: Dict[str, Any], data_path: str, pairs: list | None = None) -> Dict[str, Any]:
+    ds_id = _register_arcrho_dataset(data_path, pairs)
     return {
         "ok": True,
         "need_request": False,
@@ -634,13 +638,14 @@ def run_arcrho_tri(
     force_refresh: bool = False,
     local_only: bool = False,
     allow_derived: bool = True,
+    write_sidecar: bool = True,
 ) -> Dict[str, Any]:
     request_file = None
     cache_cleared = False
 
     local_result = resolve_local_triangle_cache(data_path, pairs, allow_derived=allow_derived, local_only=local_only)
     if local_result.get("ok") and not force_refresh:
-        return _local_cache_response(local_result, data_path)
+        return _local_cache_response(local_result, data_path, pairs)
     manual_source_found = bool(local_result.get("manual_source_found"))
     generated_source_found = bool(local_result.get("generated_source_found"))
     if (local_only and not generated_source_found) or manual_source_found:
@@ -687,6 +692,25 @@ def run_arcrho_tri(
                 timeout_out["cache_cleared"] = cache_cleared
             return timeout_out
 
+    if not write_sidecar:
+        try:
+            _refresh_dataset_instance_index_after_cache_write(pairs)
+        except Exception:
+            pass
+        ds_id = _register_arcrho_dataset(data_path, pairs)
+        out: Dict[str, Any] = {
+            "ok": True,
+            "need_request": need_request,
+            "ds_id": ds_id,
+            "request_file": request_file,
+            "data_path": data_path,
+            "calculated_updates": None,
+            "sidecar_written": False,
+        }
+        if force_refresh:
+            out["cache_cleared"] = cache_cleared
+        return out
+
     calculated_updates = None
     try:
         _write_dataset_sidecar(data_path, pairs)
@@ -705,7 +729,7 @@ def run_arcrho_tri(
     except OSError as err:
         raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")
 
-    ds_id = _register_arcrho_dataset(data_path)
+    ds_id = _register_arcrho_dataset(data_path, pairs)
 
     out: Dict[str, Any] = {
         "ok": True,

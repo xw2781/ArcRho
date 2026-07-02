@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance live dependency previews now update DFM input triangles and matching Dataset Viewer windows, not only Result Selection."
+}

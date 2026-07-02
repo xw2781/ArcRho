@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Updated Windows 10 floating window corners to use a softer 6px radius."
+}

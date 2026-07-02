@@ -131,7 +131,7 @@
 
     .topField input,
     .topField select{
-      width: min(100%, 560px);
+      width: 100%;
       height: 30px;
       line-height: 30px;
       padding: 0 10px;
@@ -153,7 +153,7 @@
     .datasetSelectWrap,
     .reservingClassWrap{
       position: relative;
-      width: min(100%, 560px);
+      width: 100%;
     }
 
     .reservingClassWrap #pathInput{
@@ -170,7 +170,7 @@
 
     .dsDetailNameWrap {
       position: relative;
-      width: min(100%, 560px);
+      width: 100%;
       max-width: 100%;
     }
 
@@ -2012,7 +2012,7 @@
     .dsDetailInput input,
     .dsDetailInput select,
     .dsDetailInput textarea {
-      width: min(100%, 560px);
+      width: 100%;
       height: 30px;
       line-height: 30px;
       padding: 0 10px;
@@ -2034,7 +2034,7 @@
       display: none;
     }
     .dsDetailFormulaBox {
-      width: min(100%, 560px);
+      width: 100%;
       min-height: 58px;
       max-height: 140px;
       padding: 6px;
@@ -2154,6 +2154,11 @@
       background: #fff9da;
       color: #7b650e;
     }
+    .dsFormulaOperatorToken.equals {
+      border-color: #b9c7e6;
+      background: #f3f7ff;
+      color: #315a9f;
+    }
     .dsFormulaOperatorToken svg {
       width: 13px;
       height: 13px;
@@ -2165,7 +2170,7 @@
       fill: none;
     }
     .dsDatasetChipBox {
-      width: min(100%, 560px);
+      width: 100%;
       min-height: 34px;
       padding: 6px;
       border: 1px solid #d7deea;
@@ -2173,6 +2178,7 @@
       background: #f8fafc;
       box-sizing: border-box;
     }
+    .dsDatasetChipList,
     .dsDependentsList {
       display: flex;
       flex-wrap: wrap;
@@ -2208,7 +2214,7 @@
     .dsDependentFormulaTooltip {
       position: fixed;
       z-index: 10000;
-      max-width: min(520px, calc(100vw - 24px));
+      max-width: min(624px, calc(100vw - 24px));
       padding: 9px 11px;
       border: 1px solid #cbd5e1;
       border-radius: 8px;
@@ -2216,12 +2222,6 @@
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
       color: #1e293b;
       pointer-events: none;
-    }
-    .dsDependentFormulaTooltipTitle {
-      margin-bottom: 5px;
-      font-size: 11px;
-      font-weight: 700;
-      color: #475569;
     }
     .dsDependentFormulaTooltipBody {
       display: flex;

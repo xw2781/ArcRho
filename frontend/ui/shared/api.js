@@ -59,6 +59,16 @@ export async function saveDatasetSidecar(payload) {
   return { ok: resp.ok, status: resp.status, data };
 }
 
+export async function previewCalculatedDatasetDependents(payload) {
+  const resp = await fetch(`${config.API_BASE}/dataset/calculated/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok, status: resp.status, data };
+}
+
 // =============================================================================
 // Excel Cell Linking
 // =============================================================================

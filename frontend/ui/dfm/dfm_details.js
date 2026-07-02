@@ -6,6 +6,7 @@ DFM Details Tab - method name, project selection, path bar, threshold reset
 import {
   getDfmInst,
   getDefaultMethodName,
+  getDfmIsDirty,
   getResolvedProjectName,
   getResolvedReservingClass,
   markDfmDirty,
@@ -14,7 +15,7 @@ import {
 import { resetRatioChartThresholds } from "/ui/dfm/dfm_ratios_tab.js";
 import {
   scheduleRatioSelectionLoad,
-} from "/ui/dfm/dfm_persistence.js?v=20260616d";
+} from "/ui/dfm/dfm_persistence.js?v=20260702a";
 import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js";
 import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
 import {
@@ -395,9 +396,11 @@ function renderDfmMethodNameDropdown(names) {
     option.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      input.dataset.programmatic = "1";
       input.value = name;
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("change", { bubbles: true }));
+      scheduleRatioSelectionLoad("details-change");
       closeDfmMethodNameDropdown();
     });
     dropdown.appendChild(option);
@@ -490,7 +493,7 @@ export function wireMethodName() {
       lastLookupCommittedValue = raw;
       return;
     }
-    if (options?.triggerLoad && lookupValueChanged) {
+    if (options?.triggerLoad && lookupValueChanged && !getDfmIsDirty()) {
       lastLookupCommittedValue = raw;
       scheduleRatioSelectionLoad("details-change");
     }

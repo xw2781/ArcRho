@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from app_server.schemas.dataset import (
     CachedDatasetDeleteRequest,
     DatasetCacheLoadRequest,
+    DatasetCalculatedPreviewRequest,
     DatasetNotesLoadRequest,
     DatasetNotesSaveRequest,
     DatasetSidecarLoadRequest,
@@ -15,6 +16,7 @@ from app_server.schemas.dataset import (
     PatchRequest,
 )
 from app_server.services import dataset_service
+from app_server.services import calculated_dataset_service
 
 router = APIRouter()
 
@@ -113,6 +115,25 @@ def load_dataset_cache(req: DatasetCacheLoadRequest) -> Dict[str, Any]:
         req.project_name,
         req.reserving_class,
         req.dataset_name,
+        csv_file=req.csv_file,
+        origin_length=req.origin_length,
+        development_length=req.development_length,
+        cumulative=req.cumulative,
+        calendar=req.calendar,
+    )
+
+
+@router.post("/dataset/calculated/preview")
+def preview_calculated_dataset_dependents(req: DatasetCalculatedPreviewRequest) -> Dict[str, Any]:
+    return calculated_dataset_service.preview_dependents(
+        req.project_name,
+        req.reserving_class,
+        req.changed_dataset_name,
+        changed_dataset_type_name=req.changed_dataset_type_name,
+        values=req.values,
+        mask=req.mask,
+        origin_labels=req.origin_labels,
+        development_labels=req.development_labels,
     )
 
 

@@ -11,6 +11,7 @@ Index cache/data files and refresh points used by app-server services.
 | --- | --- | --- | --- |
 | `POST` | `/arcrho/headers/cache/clear` | `arcrho` | `clear_arcrho_headers_cache` |
 | `POST` | `/arcrho/tri/refresh` | `arcrho` | `arcrho_tri_refresh` |
+| `POST` | `/arcrho/vec/refresh` | `arcrho` | `arcrho_vec_refresh` |
 | `POST` | `/dataset/cache/load` | `dataset` | `load_dataset_cache` |
 | `GET` | `/datasets/cached` | `dataset` | `list_cached_dataset_names` |
 | `POST` | `/datasets/cached/delete` | `dataset` | `delete_cached_datasets` |

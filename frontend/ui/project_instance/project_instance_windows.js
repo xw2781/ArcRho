@@ -441,9 +441,10 @@ function getWindowIframe(frame) {
   return frame?.querySelector?.(".pi-window-body iframe") || null;
 }
 
-function postMessageToDatasetWindows(message, excludeSource = null) {
+function postMessageToDatasetWindows(message, excludeSource = null, options = {}) {
+  const includeDfm = !!options?.includeDfm;
   for (const frame of datasetWindows.values()) {
-    if (!frame || isDfmWindow(frame)) continue;
+    if (!frame || (!includeDfm && isDfmWindow(frame))) continue;
     const iframe = getWindowIframe(frame);
     if (!iframe?.contentWindow || iframe.contentWindow === excludeSource) continue;
     try { iframe.contentWindow.postMessage(message, "*"); } catch {}

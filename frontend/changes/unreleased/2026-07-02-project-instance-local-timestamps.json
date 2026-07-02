@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance dataset table timestamps now display UTC sidecar metadata in local time instead of appearing several hours ahead."
+}

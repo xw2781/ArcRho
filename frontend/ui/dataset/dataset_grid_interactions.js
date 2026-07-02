@@ -11,6 +11,14 @@ export function wireDatasetGridInteractions(deps) {
     notifyDatasetUpdated = () => {},
   } = deps;
 
+  function requestProjectInstanceDatasetTableRefresh() {
+    try {
+      window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+    } catch {
+      // ignore stale parent frames
+    }
+  }
+
   setDatasetGridEditConfig({
     isEditableCell: (displayR, displayC) => !!canEditDisplayCell(displayR, displayC, { silent: true }),
     isEditingCell: (displayR, displayC) => state.editingCell?.r === displayR && state.editingCell?.c === displayC,
@@ -345,6 +353,7 @@ export function wireDatasetGridInteractions(deps) {
     )];
     renderTable();
     notifyDatasetUpdated();
+    requestProjectInstanceDatasetTableRefresh();
     applySelectionFromState();
     setStatus(`Pasted ${applied} cell${applied === 1 ? "" : "s"}.`);
     return applied;

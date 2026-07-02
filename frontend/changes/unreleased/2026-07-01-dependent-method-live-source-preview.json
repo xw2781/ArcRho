@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Method dependents now track imported and live-edited source updates more reliably.",
+  "details": [
+    "Imported Result Selection precedents now repair source Dependents and review status.",
+    "Open Result Selection windows can preview dirty upstream Dataset or DFM values and revert to disk data when those edits are discarded."
+  ]
+}

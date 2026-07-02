@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Allowed keyboard navigation to move or clear the active Result Selection Method highlight.",
+  "details": [
+    "Arrow-key navigation keeps the highlighted row fully visible below the sticky Method grid header."
+  ]
+}

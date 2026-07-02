@@ -7,6 +7,7 @@ Initializes all DFM tabs, wires event handlers, and coordinates modules.
 import { createTabbedPage } from "/ui/shared/tabbed_page.js";
 import { setStorageInstance, loadNaBorders } from "/ui/dfm/dfm_storage.js";
 import {
+  state as dfmState,
   getDfmInst,
   ALLOWED_DFM_TABS,
   setShowNaBorders,
@@ -16,7 +17,6 @@ import {
   getDfmIsDirty,
   markDfmDirty,
   notifyDfmEditState,
-  buildRatioSavePath,
 } from "/ui/dfm/dfm_state.js";
 import {
   renderRatioTable,
@@ -33,6 +33,7 @@ import {
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,
+  buildResultsVector,
 } from "/ui/dfm/dfm_results_tab.js";
 import { wireNotesInput } from "/ui/dfm/dfm_notes_tab.js";
 import {
@@ -50,9 +51,10 @@ import {
   saveDfmTemplate,
   applyDfmMethodPayload,
   buildDfmAssistantContextPayload,
+  resolveCurrentDfmMethodSavePath,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
-} from "/ui/dfm/dfm_persistence.js?v=20260616d";
+} from "/ui/dfm/dfm_persistence.js?v=20260702a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
 import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260621c";
 import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260616a";
@@ -75,6 +77,7 @@ const DFM_TAB_DEFS = Object.freeze([
 ]);
 let dfmSaveInFlight = false;
 let dfmCancelConfirmResolve = null;
+let dependencyPreviewTimer = 0;
 
 function getDfmInputSnapshotSafe() {
   try {
@@ -114,7 +117,7 @@ async function buildAssistantContext() {
   let activeJson = null;
   let activeJsonError = "";
   try {
-    methodPath = await buildRatioSavePath();
+    methodPath = await resolveCurrentDfmMethodSavePath();
   } catch (err) {
     pathError = String(err?.message || err || "Could not resolve DFM method path.");
   }
@@ -184,6 +187,7 @@ function showDfmCancelConfirm() {
 }
 
 function requestConfirmedDfmClose() {
+  clearDfmDependencyPreview("close-discard");
   try {
     window.parent?.postMessage({
       type: "arcrho:dfm-close-confirmed",
@@ -201,6 +205,53 @@ function postCurrentDfmDirtyState() {
       dirty,
     }, "*");
   } catch {}
+}
+
+function buildDfmDependencySourceMessage(type, reason = "") {
+  const inputSnap = getDfmInputSnapshotSafe();
+  const outputVector = document.getElementById("dfmOutputVector")?.value?.trim() || "";
+  const methodName = document.getElementById("dfmMethodName")?.value?.trim() || outputVector;
+  const model = dfmState?.model || null;
+  const payload = {
+    type,
+    inst: getDfmInst(),
+    project: inputSnap.resolved?.project || document.getElementById("projectSelect")?.value?.trim() || "",
+    reservingClass: inputSnap.resolved?.reservingClass || document.getElementById("pathInput")?.value?.trim() || "",
+    datasetName: outputVector || methodName,
+    datasetTypeName: outputVector || methodName,
+    names: [outputVector, methodName].filter(Boolean),
+    methodType: "DFM",
+    sourceKind: "dfm",
+    dataFormat: "Vector",
+    reason,
+  };
+  if (type === "arcrho:dependency-source-preview") {
+    payload.values = buildResultsVector();
+    payload.originLabels = Array.isArray(model?.origin_labels) ? model.origin_labels.map(String) : [];
+  }
+  return payload;
+}
+
+function postDfmDependencySourceMessage(type, reason = "") {
+  const message = buildDfmDependencySourceMessage(type, reason);
+  if (!message.datasetName && !message.names.length) return;
+  try {
+    window.parent?.postMessage(message, "*");
+  } catch {}
+}
+
+function scheduleDfmDependencyPreview() {
+  window.clearTimeout(dependencyPreviewTimer);
+  dependencyPreviewTimer = window.setTimeout(() => {
+    dependencyPreviewTimer = 0;
+    if (getDfmIsDirty()) postDfmDependencySourceMessage("arcrho:dependency-source-preview", "dirty");
+  }, 120);
+}
+
+function clearDfmDependencyPreview(reason = "") {
+  window.clearTimeout(dependencyPreviewTimer);
+  dependencyPreviewTimer = 0;
+  postDfmDependencySourceMessage("arcrho:dependency-source-cleared", reason || "clean");
 }
 
 function requestDfmCloseFromShell() {
@@ -237,6 +288,7 @@ async function cancelCurrentDfmChangesFromBar() {
   if (!discard) return;
   const result = await restoreCleanDfmMethodState();
   if (result?.ok) {
+    clearDfmDependencyPreview("cancel");
     postDfmStatus("DFM changes discarded.");
   } else {
     postDfmStatus(`DFM cancel failed: ${result?.error || "Could not restore saved method."}`, "error");
@@ -270,6 +322,10 @@ function wireDfmSaveControls() {
     }
   });
   window.addEventListener("arcrho:dfm-dirty-state", updateDfmSaveUi);
+  window.addEventListener("arcrho:dfm-dirty-state", (event) => {
+    if (event?.detail?.dirty) scheduleDfmDependencyPreview();
+    else clearDfmDependencyPreview("clean");
+  });
   window.__arcrho_request_close = requestDfmCloseFromShell;
   window.__arcrho_consume_close_shortcut = requestDfmCloseFromShell;
   updateDfmSaveUi();
@@ -363,7 +419,7 @@ function forwardChildOpenPathRequest(message, sourceWindow) {
 async function openCurrentDfmMethodJson() {
   let methodPath = "";
   try {
-    methodPath = await buildRatioSavePath();
+    methodPath = await resolveCurrentDfmMethodSavePath();
   } catch (err) {
     postDfmStatus(`Open DFM JSON failed: ${String(err?.message || err)}`, "error");
     return;

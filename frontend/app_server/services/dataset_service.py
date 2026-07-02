@@ -750,16 +750,70 @@ def _cached_csv_candidates(project_name: str, reserving_class: str, dataset_name
     return out
 
 
-def load_cached_dataset_values(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
+def _parse_length_scoped_cache_name(filename: str) -> Dict[str, Any]:
+    stem, ext = os.path.splitext(os.path.basename(filename))
+    if ext.lower() != ".csv":
+        return {}
+    parts = stem.split("@")
+    if len(parts) < 5:
+        return {}
+    origin = parts[-4].strip()
+    development = parts[-3].strip()
+    cumulative = parts[-2].strip().lower()
+    calendar = parts[-1].strip().lower()
+    if not origin.isdigit() or not development.isdigit():
+        return {}
+    if cumulative not in {"cum", "inc"} or calendar not in {"dev", "cal"}:
+        return {}
+    return {
+        "origin_length": int(origin),
+        "development_length": int(development),
+        "cumulative": cumulative == "cum",
+        "calendar": calendar == "cal",
+    }
+
+
+def load_cached_dataset_values(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    *,
+    csv_file: str = "",
+    origin_length: int | None = None,
+    development_length: int | None = None,
+    cumulative: bool = True,
+    calendar: bool = False,
+) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     sidecar_path = _get_dataset_sidecar_path(p, rc, ds)
     sidecar = _read_dataset_sidecar(sidecar_path)
+    try:
+        data_dir = config.get_project_dataset_cache_dir(p, rc)
+    except ValueError as err:
+        raise HTTPException(404, str(err))
+    candidates: List[str] = []
+    exact_requested = bool(csv_file or (origin_length and development_length))
+    if csv_file:
+        candidates.append(os.path.join(data_dir, os.path.basename(str(csv_file).strip())))
+    if origin_length and development_length:
+        cache_name = build_length_scoped_dataset_file_name(ds, origin_length, development_length, cumulative, calendar)
+        candidates.append(os.path.join(data_dir, f"{cache_name}.csv"))
+    if not exact_requested:
+        candidates.extend(_cached_csv_candidates(p, rc, ds, sidecar))
+
+    seen = set()
     csv_path = ""
-    for candidate in _cached_csv_candidates(p, rc, ds, sidecar):
+    for candidate in candidates:
+        key = os.path.normcase(os.path.abspath(candidate))
+        if key in seen:
+            continue
+        seen.add(key)
         if os.path.exists(candidate) and os.path.isfile(candidate):
             csv_path = candidate
             break
     if not csv_path:
+        if exact_requested:
+            raise HTTPException(404, f"Requested cached dataset CSV not found for '{ds}'.")
         raise HTTPException(404, f"Cached dataset CSV not found for '{ds}'.")
     try:
         df = pd.read_csv(csv_path, header=None)
@@ -771,6 +825,7 @@ def load_cached_dataset_values(project_name: str, reserving_class: str, dataset_
         raise HTTPException(500, f"Invalid dataset cache CSV format: {str(err)}")
     df = df.astype(object).where(pd.notnull(df), None)
     values = df.values.tolist()
+    parsed_name = _parse_length_scoped_cache_name(os.path.basename(csv_path))
     return {
         "ok": True,
         "project_name": p,
@@ -778,10 +833,11 @@ def load_cached_dataset_values(project_name: str, reserving_class: str, dataset_
         "dataset_name": str(sidecar.get("dataset_name") or ds),
         "dataset_type": str(sidecar.get("dataset_type") or ds),
         "data_format": str(sidecar.get("data_format") or ""),
-        "origin_length": _int_or_default(sidecar.get("origin_length"), max(1, len(values))),
-        "development_length": _int_or_default(sidecar.get("development_length"), max(1, len(values[0]) if values else 1)),
+        "origin_length": _int_or_default(parsed_name.get("origin_length") or sidecar.get("origin_length"), max(1, len(values))),
+        "development_length": _int_or_default(parsed_name.get("development_length") or sidecar.get("development_length"), max(1, len(values[0]) if values else 1)),
         "origin_labels": _normalize_origin_labels(sidecar.get("origin_labels")),
         "csv_file": os.path.basename(csv_path),
+        "source_kind": str(sidecar.get("source_kind") or ""),
         "path": csv_path,
         "sidecar_path": sidecar_path,
         "values": values,

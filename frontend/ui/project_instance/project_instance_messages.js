@@ -19,7 +19,6 @@ export function installProjectInstanceMessages(ctx) {
   const isDatasetWindowMaximized = (...args) => api.isDatasetWindowMaximized(...args);
   const isDfmWindow = (...args) => api.isDfmWindow(...args);
   const isResultSelectionWindow = (...args) => api.isResultSelectionWindow(...args);
-  const loadCachedDatasetFilterForSelectedPath = (...args) => api.loadCachedDatasetFilterForSelectedPath(...args);
   const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
   const notifyProjectInstanceStateChanged = (...args) => api.notifyProjectInstanceStateChanged(...args);
@@ -28,10 +27,138 @@ export function installProjectInstanceMessages(ctx) {
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
+  const refreshCachedDatasetTableFromDisk = (...args) => api.refreshCachedDatasetTableFromDisk(...args);
   const restoreDatasetWindow = (...args) => api.restoreDatasetWindow(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const setWindowDirtyState = (...args) => api.setWindowDirtyState(...args);
   const toText = (...args) => api.toText(...args);
+  const activeCalculatedPreviewTargetsBySource = new Map();
+
+function normalizeDependencyText(value) {
+  return toText(value).toLowerCase();
+}
+
+function normalizeReservingClassPath(value) {
+  return toText(value).replace(/\\+/g, "\\");
+}
+
+function dependencyMessageNames(message = {}) {
+  return [
+    ...(Array.isArray(message.names) ? message.names : []),
+    message.datasetName,
+    message.datasetTypeName,
+    message.name,
+  ].map(toText).filter(Boolean);
+}
+
+function dependencySourceKey(message = {}) {
+  return [
+    normalizeDependencyText(message.project || projectName),
+    normalizeDependencyText(normalizeReservingClassPath(message.reservingClass || message.reserving_class || state.selectedPath)),
+    ...dependencyMessageNames(message).map(normalizeDependencyText).sort(),
+  ].join("\u001f");
+}
+
+function matrixValuesFromDependencyMessage(message = {}) {
+  if (Array.isArray(message.matrixValues)) {
+    return message.matrixValues.filter((row) => Array.isArray(row));
+  }
+  if (Array.isArray(message.values)) {
+    return message.values.map((value) => [value]);
+  }
+  return [];
+}
+
+function buildCalculatedPreviewMessage(step = {}, sourceMessage = {}) {
+  const datasetName = toText(step.dataset_name || step.dataset_type_name);
+  if (!datasetName) return null;
+  const matrixValues = Array.isArray(step.matrix_values)
+    ? step.matrix_values
+    : (Array.isArray(step.matrixValues) ? step.matrixValues : []);
+  if (!matrixValues.length) return null;
+  const datasetTypeName = toText(step.dataset_type_name || datasetName);
+  return {
+    type: "arcrho:dependency-source-preview",
+    inst: toText(sourceMessage.inst),
+    project: toText(sourceMessage.project || projectName),
+    reservingClass: toText(sourceMessage.reservingClass || sourceMessage.reserving_class || state.selectedPath),
+    datasetName,
+    datasetTypeName,
+    names: [datasetName, datasetTypeName].filter(Boolean),
+    methodType: "Calculated Dataset",
+    sourceKind: "calculated_preview",
+    dataFormat: toText(step.data_format || step.dataFormat),
+    reason: "calculated-preview",
+    values: Array.isArray(step.values) ? step.values : [],
+    matrixValues,
+    mask: Array.isArray(step.mask) ? step.mask : [],
+    originLabels: Array.isArray(step.origin_labels) ? step.origin_labels.map(String) : [],
+    developmentLabels: Array.isArray(step.development_labels) ? step.development_labels.map(String) : [],
+    originLength: Array.isArray(step.origin_labels) ? step.origin_labels.length : undefined,
+    developmentLength: Array.isArray(step.development_labels) ? step.development_labels.length : undefined,
+  };
+}
+
+function clearCalculatedPreviewTargetsForSource(sourceMessage = {}, reason = "clean", keepKeys = new Set()) {
+  const sourceKey = dependencySourceKey(sourceMessage);
+  const targets = activeCalculatedPreviewTargetsBySource.get(sourceKey) || new Map();
+  for (const [targetKey, message] of Array.from(targets.entries())) {
+    if (keepKeys?.has?.(targetKey)) continue;
+    targets.delete(targetKey);
+    postMessageToDatasetWindows({
+      ...message,
+      type: "arcrho:dependency-source-cleared",
+      reason,
+    }, null, { includeDfm: true });
+  }
+  if (targets.size) {
+    activeCalculatedPreviewTargetsBySource.set(sourceKey, targets);
+  } else {
+    activeCalculatedPreviewTargetsBySource.delete(sourceKey);
+  }
+}
+
+async function publishCalculatedDependencyPreviews(sourceMessage = {}, excludeSource = null) {
+  const values = matrixValuesFromDependencyMessage(sourceMessage);
+  if (!values.length) {
+    clearCalculatedPreviewTargetsForSource(sourceMessage, "preview-stale");
+    return;
+  }
+  const names = dependencyMessageNames(sourceMessage);
+  const response = await fetch("/dataset/calculated/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_name: toText(sourceMessage.project || projectName),
+      reserving_class: toText(sourceMessage.reservingClass || sourceMessage.reserving_class || state.selectedPath),
+      changed_dataset_name: toText(sourceMessage.datasetName || names[0]),
+      changed_dataset_type_name: toText(sourceMessage.datasetTypeName || names[1] || names[0]),
+      values,
+      mask: Array.isArray(sourceMessage.mask) ? sourceMessage.mask : undefined,
+      origin_labels: Array.isArray(sourceMessage.originLabels) ? sourceMessage.originLabels : undefined,
+      development_labels: Array.isArray(sourceMessage.developmentLabels) ? sourceMessage.developmentLabels : undefined,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    clearCalculatedPreviewTargetsForSource(sourceMessage, "preview-stale");
+    return;
+  }
+  const sourceKey = dependencySourceKey(sourceMessage);
+  const targets = activeCalculatedPreviewTargetsBySource.get(sourceKey) || new Map();
+  const keepKeys = new Set();
+  for (const step of Array.isArray(payload.steps) ? payload.steps : []) {
+    if (!step?.ok) continue;
+    const message = buildCalculatedPreviewMessage(step, sourceMessage);
+    if (!message) continue;
+    const targetKey = dependencySourceKey(message);
+    targets.set(targetKey, message);
+    keepKeys.add(targetKey);
+    postMessageToDatasetWindows(message, excludeSource, { includeDfm: true });
+  }
+  activeCalculatedPreviewTargetsBySource.set(sourceKey, targets);
+  clearCalculatedPreviewTargetsForSource(sourceMessage, "preview-stale", keepKeys);
+}
 
 function getReservingClassFolderPathFromSnapshot(payload) {
   const folderPaths = payload?.folder_paths && typeof payload.folder_paths === "object"
@@ -461,6 +588,58 @@ function handleAutomationProjectInstanceContext(message, sourceWindow) {
   return true;
 }
 
+async function handleAutomationProjectInstanceRefreshDatasets(message, sourceWindow) {
+  const requestId = toText(message?.requestId);
+  const reply = (payload) => replyAutomationResult(sourceWindow, requestId, payload);
+  if (!requestId) return true;
+  const selectedPath = toText(state.selectedPath);
+  if (!projectName || !selectedPath) {
+    reply({
+      ok: false,
+      result: {
+        projectName,
+        project_name: projectName,
+        selectedPath,
+        selected_path: selectedPath,
+        path: selectedPath,
+      },
+      error: "Select a reserving class path in the active Project Instance page before reloading the dataset table.",
+    });
+    return true;
+  }
+  try {
+    const refreshed = await refreshCachedDatasetTableFromDisk();
+    reply({
+      ok: !!refreshed,
+      result: {
+        projectName,
+        project_name: projectName,
+        selectedPath,
+        selected_path: selectedPath,
+        path: selectedPath,
+        refreshed: !!refreshed,
+      },
+      error: refreshed ? "" : "Dataset table reload failed.",
+    });
+  } catch (err) {
+    const detail = toText(err?.message) || String(err || "Dataset table reload failed.");
+    setStatus(`Project Instance refresh failed: ${detail}`, true);
+    reply({
+      ok: false,
+      result: {
+        projectName,
+        project_name: projectName,
+        selectedPath,
+        selected_path: selectedPath,
+        path: selectedPath,
+        refreshed: false,
+      },
+      error: detail,
+    });
+  }
+  return true;
+}
+
 function handleOpenDependentDataset(message, sourceWindow) {
   const datasetName = toText(message?.datasetName || message?.dataset_name || message?.name);
   if (!datasetName) {
@@ -869,6 +1048,10 @@ window.addEventListener("message", (event) => {
     handleAutomationProjectInstanceContext(msg, event.source);
     return;
   }
+  if (msg.type === "arcrho:automation-project-instance-refresh-datasets") {
+    void handleAutomationProjectInstanceRefreshDatasets(msg, event.source);
+    return;
+  }
   if (msg.type === "arcrho:project-instance-open-dependent-dataset") {
     handleOpenDependentDataset(msg, event.source);
     return;
@@ -934,16 +1117,25 @@ window.addEventListener("message", (event) => {
   if (msg.type === "arcrho:calculated-datasets-updated") {
     const relay = { type: msg.type, report: msg?.report || null, source: msg?.source || "" };
     if (event.source === window.parent) {
-      postMessageToDatasetWindows(relay);
+      postMessageToDatasetWindows(relay, null, { includeDfm: true });
     } else {
       try { window.parent?.postMessage(relay, "*"); } catch {}
     }
     return;
   }
+  if (msg.type === "arcrho:dependency-source-preview" || msg.type === "arcrho:dependency-source-cleared") {
+    postMessageToDatasetWindows({ ...msg }, event.source, { includeDfm: true });
+    if (msg.type === "arcrho:dependency-source-preview") {
+      void publishCalculatedDependencyPreviews(msg, event.source).catch((err) => {
+        setStatus(`Calculated live preview failed: ${toText(err?.message) || err}`, true);
+      });
+    } else {
+      clearCalculatedPreviewTargetsForSource(msg, toText(msg.reason) || "clean");
+    }
+    return;
+  }
   if (msg.type === "arcrho:project-instance-refresh-datasets") {
-    void loadCachedDatasetFilterForSelectedPath({ refresh: true }).then(() => {
-      setStatus("Project Instance dataset table refreshed.");
-    }).catch((err) => {
+    void refreshCachedDatasetTableFromDisk().catch((err) => {
       setStatus(`Project Instance refresh failed: ${toText(err?.message) || err}`, true);
     });
     return;

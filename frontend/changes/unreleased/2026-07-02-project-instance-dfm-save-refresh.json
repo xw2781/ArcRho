@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Fixed Project Instance dataset table refresh after nested edits and prevented DFM Name edits from creating stale table entries.",
+  "details": [
+    "Renaming an existing DFM Name now keeps the current method data, saves the renamed files, and refreshes the Project Instance row."
+  ]
+}

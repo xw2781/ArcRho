@@ -605,6 +605,9 @@ function getProjectInstanceAutomationMessageType(commandName) {
   if (commandName === "projectInstance.context" || commandName === "projectInstance.getContext") {
     return "arcrho:automation-project-instance-context";
   }
+  if (commandName === "projectInstance.refreshDatasets" || commandName === "projectInstance.reloadDatasetTable") {
+    return "arcrho:automation-project-instance-refresh-datasets";
+  }
   if (commandName === "projectInstance.openDataset") return "arcrho:automation-open-dataset";
   if (
     commandName === "projectInstance.windowAction"
@@ -755,6 +758,8 @@ async function executeAutomationCommand(command) {
   if (
     name === "projectInstance.context"
     || name === "projectInstance.getContext"
+    || name === "projectInstance.refreshDatasets"
+    || name === "projectInstance.reloadDatasetTable"
     || name === "projectInstance.windowAction"
     || name === "projectInstance.windowProperties"
     || name === "projectInstance.activeWindow"

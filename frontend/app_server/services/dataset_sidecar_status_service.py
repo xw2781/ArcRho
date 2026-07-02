@@ -232,23 +232,48 @@ def refresh_method_statuses_for_dependents(
     changed_dataset_names: Iterable[Any],
 ) -> List[Dict[str, Any]]:
     touched: List[Dict[str, Any]] = []
-    seen: Set[str] = set()
+    processed_sources: Set[str] = set()
+    queued_sources: Set[str] = set()
+    marked_dependents: Set[str] = set()
+    queue: List[str] = []
     for source_name in changed_dataset_names or []:
-        source_path = sidecar_path(project_name, reserving_class, _clean_text(source_name))
+        clean_name = _clean_text(source_name)
+        source_key = _canon_dataset_name(clean_name)
+        if not source_key or source_key in queued_sources:
+            continue
+        queued_sources.add(source_key)
+        queue.append(clean_name)
+
+    while queue:
+        source_name = queue.pop(0)
+        source_key = _canon_dataset_name(source_name)
+        if not source_key or source_key in processed_sources:
+            continue
+        processed_sources.add(source_key)
+        source_path = sidecar_path(project_name, reserving_class, source_name)
         source_payload = read_sidecar(source_path)
         if not source_payload:
             continue
         for dependent_name in entry_names(source_payload.get("Dependents")):
             dep_key = _canon_dataset_name(dependent_name)
-            if not dep_key or dep_key in seen:
+            if not dep_key:
                 continue
-            seen.add(dep_key)
+            if dep_key not in queued_sources:
+                queued_sources.add(dep_key)
+                queue.append(dependent_name)
+            if dep_key in marked_dependents:
+                continue
+            marked_dependents.add(dep_key)
             dep_path = sidecar_path(project_name, reserving_class, dependent_name)
             dep_payload = read_sidecar(dep_path)
             if not dep_payload:
                 continue
+            method_type = normalize_method_type(dep_payload.get("method_type"), dep_payload.get("source_kind"))
+            if method_type == METHOD_TYPE_NONE:
+                continue
             before = normalize_status(dep_payload.get("status"))
-            apply_status_fields(dep_payload, project_name, reserving_class, dependent_name, path=dep_path)
+            dep_payload["method_type"] = method_type
+            dep_payload["status"] = STATUS_REVIEW_NEEDED
             after = normalize_status(dep_payload.get("status"))
             if after != before:
                 write_sidecar(dep_path, dep_payload)

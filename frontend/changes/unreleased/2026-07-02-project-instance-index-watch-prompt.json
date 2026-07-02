@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance now shows an Index updated reload prompt when the selected reserving-class dataset index changes on disk."
+}

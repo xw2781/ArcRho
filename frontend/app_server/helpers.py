@@ -123,7 +123,7 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
         else:
             values.append(value)
 
-    if function_name.strip().lower() == "arcrhotri" and reserving_class and dataset_name:
+    if function_name.strip().lower() in {"arcrhotri", "arcrhovec"} and reserving_class and dataset_name:
         dataset_file = build_length_scoped_dataset_file_name(
             instance_name or dataset_name,
             origin_length,

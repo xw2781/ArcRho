@@ -607,11 +607,28 @@ def _load_components(
     reserving_class: str,
     components: List[str],
     target_settings: Dict[str, Any],
+    component_overrides: Dict[str, np.ndarray] | None = None,
 ) -> Tuple[Dict[str, np.ndarray], List[Dict[str, Any]], List[str]]:
     values: Dict[str, np.ndarray] = {}
     dependency_info: List[Dict[str, Any]] = []
     errors: List[str] = []
+    overrides = component_overrides or {}
     for index, component in enumerate(components):
+        override = overrides.get(_canon_dataset_name(component))
+        if override is not None:
+            arr = np.asarray(override, dtype="float64")
+            if arr.ndim == 1:
+                arr = arr.reshape((-1, 1))
+            if arr.ndim != 2:
+                errors.append(f"Unsupported live preview shape for dependency: {component}")
+                continue
+            values[f"_d{index}"] = arr
+            dependency_info.append({
+                "dataset_type_name": component,
+                "path": "",
+                "source_kind": "live_preview",
+            })
+            continue
         candidates = _candidate_csvs(project_name, reserving_class, component, target_settings)
         if not candidates:
             method_candidates = _candidate_dfm_methods(project_name, reserving_class, component)
@@ -664,6 +681,66 @@ def _load_components(
             "mtime_ns": stat.st_mtime_ns,
         })
     return values, dependency_info, errors
+
+
+def _array_from_preview_values(
+    values: List[List[Any]] | None,
+    mask: List[List[bool]] | None = None,
+) -> np.ndarray:
+    rows = values if isinstance(values, list) else []
+    out: List[List[float]] = []
+    for r, row in enumerate(rows):
+        source_row = row if isinstance(row, list) else []
+        mask_row = mask[r] if isinstance(mask, list) and r < len(mask) and isinstance(mask[r], list) else None
+        converted: List[float] = []
+        for c, value in enumerate(source_row):
+            if mask_row is not None and c < len(mask_row) and not bool(mask_row[c]):
+                converted.append(np.nan)
+                continue
+            number = _finite_float(value)
+            converted.append(number if number is not None else np.nan)
+        out.append(converted)
+    return np.asarray(out, dtype="float64")
+
+
+def _jsonable_matrix(arr: np.ndarray) -> List[List[float | None]]:
+    matrix = np.asarray(arr, dtype="float64")
+    if matrix.ndim == 1:
+        matrix = matrix.reshape((-1, 1))
+    return [
+        [float(value) if np.isfinite(value) else None for value in row]
+        for row in matrix.tolist()
+    ]
+
+
+def _matrix_mask(arr: np.ndarray) -> List[List[bool]]:
+    matrix = np.asarray(arr, dtype="float64")
+    if matrix.ndim == 1:
+        matrix = matrix.reshape((-1, 1))
+    return [
+        [bool(np.isfinite(value)) for value in row]
+        for row in matrix.tolist()
+    ]
+
+
+def _latest_diagonal_or_vector_values(arr: np.ndarray, data_format: str) -> List[float | None]:
+    matrix = np.asarray(arr, dtype="float64")
+    if matrix.ndim == 1:
+        matrix = matrix.reshape((-1, 1))
+    if _clean_text(data_format).lower() == "vector":
+        return [
+            float(row[0]) if len(row) and np.isfinite(row[0]) else None
+            for row in matrix
+        ]
+    out: List[float | None] = []
+    for row in matrix:
+        picked: float | None = None
+        for value in reversed(row):
+            if np.isfinite(value):
+                picked = float(value)
+                break
+        out.append(picked)
+    return out
 
 
 def _calculated_rows_by_key(project_name: str) -> Dict[str, Dict[str, Any]]:
@@ -934,6 +1011,127 @@ def recalculate_dependents_for_csv(csv_path: str) -> Dict[str, Any]:
     if not project_name or not reserving_class or not dataset_name:
         return {"ok": False, "skipped": True, "reason": "missing_sidecar_context"}
     return recalculate_dependents(project_name, reserving_class, dataset_name, dataset_type)
+
+
+def preview_dependents(
+    project_name: str,
+    reserving_class: str,
+    changed_dataset_name: str,
+    changed_dataset_type_name: str = "",
+    values: List[List[Any]] | None = None,
+    mask: List[List[bool]] | None = None,
+    origin_labels: List[str] | None = None,
+    development_labels: List[str] | None = None,
+) -> Dict[str, Any]:
+    source_arr = _array_from_preview_values(values, mask)
+    if source_arr.ndim != 2 or source_arr.size == 0:
+        return {"ok": False, "skipped": True, "reason": "empty_preview_values", "steps": []}
+
+    changed = [changed_dataset_name, changed_dataset_type_name]
+    targets = _downstream_keys(project_name, changed)
+    rows_by_key = _calculated_rows_by_key(project_name)
+    overrides: Dict[str, np.ndarray] = {
+        _canon_dataset_name(name): source_arr
+        for name in changed
+        if _canon_dataset_name(name)
+    }
+    steps: List[Dict[str, Any]] = []
+
+    all_rows = _dataset_type_rows(project_name)
+    known_names = [item["name"] for item in all_rows]
+    for key in targets:
+        row = rows_by_key.get(key)
+        if not row:
+            continue
+
+        expr, refs = _replace_formula_refs(row["formula"], known_names)
+        ordered_components = [refs[var] for var in sorted(refs.keys(), key=lambda item: int(item[2:]))]
+        settings = _existing_target_settings(project_name, reserving_class, row["name"])
+        component_values, _precedents, errors = _load_components(
+            project_name,
+            reserving_class,
+            ordered_components,
+            settings,
+            component_overrides=overrides,
+        )
+        if errors:
+            steps.append({
+                "ok": False,
+                "status": "skipped",
+                "dataset_type_name": row["name"],
+                "reason": "dependency_error",
+                "errors": errors,
+            })
+            continue
+
+        eval_values: Dict[str, np.ndarray] = {}
+        for var, ref_name in refs.items():
+            try:
+                idx = ordered_components.index(ref_name)
+            except ValueError:
+                continue
+            if f"_d{idx}" in component_values:
+                eval_values[var] = component_values[f"_d{idx}"]
+        try:
+            parsed = ast.parse(expr, mode="eval")
+            with np.errstate(divide="ignore", invalid="ignore"):
+                result = _eval_ast(parsed, eval_values)
+        except Exception as exc:
+            steps.append({
+                "ok": False,
+                "status": "skipped",
+                "dataset_type_name": row["name"],
+                "reason": "formula_error",
+                "errors": [str(exc)],
+            })
+            continue
+
+        arr = np.asarray(result, dtype="float64")
+        if arr.ndim == 0:
+            first = next(iter(eval_values.values()), source_arr)
+            arr = np.full(first.shape, float(arr), dtype="float64")
+        if arr.ndim == 1:
+            arr = arr.reshape((-1, 1))
+        if arr.ndim != 2:
+            steps.append({
+                "ok": False,
+                "status": "skipped",
+                "dataset_type_name": row["name"],
+                "reason": "unsupported_result_shape",
+            })
+            continue
+
+        overrides[_canon_dataset_name(row["name"])] = arr
+        data_format = row.get("data_format") or "Triangle"
+        steps.append({
+            "ok": True,
+            "status": "preview",
+            "dataset_type_name": row["name"],
+            "dataset_name": row["name"],
+            "source_kind": "calculated_preview",
+            "data_format": data_format,
+            "values": _latest_diagonal_or_vector_values(arr, data_format),
+            "matrix_values": _jsonable_matrix(arr),
+            "mask": _matrix_mask(arr),
+            "origin_labels": [str(item) for item in (origin_labels or [])],
+            "development_labels": [str(item) for item in (development_labels or [])],
+        })
+
+    return {
+        "ok": True,
+        "project_name": project_name,
+        "reserving_class": reserving_class,
+        "changed_dataset_name": changed_dataset_name,
+        "changed_dataset_type_name": changed_dataset_type_name,
+        "targets": [
+            rows_by_key[key]["name"]
+            for key in targets
+            if key in rows_by_key
+        ],
+        "steps": steps,
+        "updated": [item for item in steps if item.get("ok")],
+        "skipped": [item for item in steps if not item.get("ok")],
+    }
 
 
 def _rows_by_key_from_normalized_rows(rows: List[List[Any]]) -> Dict[str, Dict[str, Any]]:

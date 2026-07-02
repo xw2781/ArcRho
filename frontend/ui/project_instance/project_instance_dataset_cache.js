@@ -1,6 +1,6 @@
 export function installProjectInstanceDatasetCache(ctx) {
   const { api, els, projectName, state } = ctx;
-  const { cachedDatasetFilter, cachedDatasetSnapshotRequests } = state;
+  const { cachedDatasetFilter, cachedDatasetSnapshotRequests, datasetIndexWatch } = state;
   const captureDatasetTableSelection = (...args) => api.captureDatasetTableSelection(...args);
   const closeDatasetTableFilterPopover = (...args) => api.closeDatasetTableFilterPopover(...args);
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
@@ -11,6 +11,14 @@ export function installProjectInstanceDatasetCache(ctx) {
   const restoreDatasetTableSelection = (...args) => api.restoreDatasetTableSelection(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const toText = (...args) => api.toText(...args);
+
+function syncDatasetIndexUpdatePrompt() {
+  const btn = els.datasetIndexUpdateBtn;
+  if (!btn) return;
+  const show = !!datasetIndexWatch.pending && !!state.selectedPath && !cachedDatasetFilter.loading;
+  btn.hidden = !show;
+  btn.disabled = cachedDatasetFilter.loading || !state.selectedPath;
+}
 
 function syncCachedDatasetToolbar() {
   const btn = els.cachedDatasetToggle;
@@ -27,6 +35,7 @@ function syncCachedDatasetToolbar() {
   if (els.datasetRefreshBtn) {
     els.datasetRefreshBtn.disabled = cachedDatasetFilter.loading || !state.selectedPath;
   }
+  syncDatasetIndexUpdatePrompt();
   if (!els.cachedDatasetStatus) return;
   if (!state.selectedPath) {
     els.cachedDatasetStatus.textContent = "";
@@ -44,6 +53,96 @@ function syncCachedDatasetToolbar() {
     ? cachedDatasetFilter.visibleCount
     : cachedDatasetFilter.names.size;
   els.cachedDatasetStatus.textContent = `(${count} ${count === 1 ? "record" : "records"})`;
+}
+
+function getSnapshotFolderPaths(payload) {
+  const raw = payload?.folder_paths && typeof payload.folder_paths === "object"
+    ? payload.folder_paths
+    : payload?.folderPaths && typeof payload.folderPaths === "object"
+      ? payload.folderPaths
+      : {};
+  return raw && typeof raw === "object" ? raw : {};
+}
+
+function getSnapshotDataFolder(payload) {
+  const folderPaths = getSnapshotFolderPaths(payload);
+  return toText(folderPaths.data || payload?.folder_path || payload?.folderPath);
+}
+
+function ensureDatasetIndexWatchListener() {
+  if (datasetIndexWatch.unsubscribe || typeof window.ADAHost?.onProjectInstanceIndexChanged !== "function") return;
+  datasetIndexWatch.unsubscribe = window.ADAHost.onProjectInstanceIndexChanged((payload) => {
+    if (!payload || payload.watchId !== datasetIndexWatch.watchId) return;
+    if (payload.error) {
+      datasetIndexWatch.error = toText(payload.error);
+      datasetIndexWatch.pending = false;
+      syncDatasetIndexUpdatePrompt();
+      return;
+    }
+    if (Date.now() < Number(datasetIndexWatch.suppressUntil || 0)) return;
+    datasetIndexWatch.pending = true;
+    datasetIndexWatch.error = "";
+    syncDatasetIndexUpdatePrompt();
+  });
+}
+
+async function stopDatasetIndexWatch(options = {}) {
+  const watchId = toText(datasetIndexWatch.watchId);
+  datasetIndexWatch.watchId = "";
+  datasetIndexWatch.path = "";
+  datasetIndexWatch.selectedPath = "";
+  datasetIndexWatch.error = "";
+  datasetIndexWatch.suppressUntil = 0;
+  if (options?.clearPending !== false) datasetIndexWatch.pending = false;
+  if (watchId && typeof window.ADAHost?.stopProjectInstanceIndexWatch === "function") {
+    try {
+      await window.ADAHost.stopProjectInstanceIndexWatch({ watchId });
+    } catch {
+      // Manual refresh remains available if a host watcher cannot be stopped.
+    }
+  }
+  syncDatasetIndexUpdatePrompt();
+}
+
+async function startDatasetIndexWatchForSnapshot(payload, selectedPath) {
+  const folderPath = getSnapshotDataFolder(payload);
+  const normalizedSelectedPath = normalizePath(selectedPath);
+  if (!folderPath || !normalizedSelectedPath || typeof window.ADAHost?.startProjectInstanceIndexWatch !== "function") {
+    await stopDatasetIndexWatch();
+    return;
+  }
+  if (
+    datasetIndexWatch.watchId
+    && datasetIndexWatch.path === folderPath
+    && normalizePath(datasetIndexWatch.selectedPath).toLowerCase() === normalizedSelectedPath.toLowerCase()
+  ) {
+    return;
+  }
+  await stopDatasetIndexWatch();
+  ensureDatasetIndexWatchListener();
+  try {
+    const result = await window.ADAHost.startProjectInstanceIndexWatch({ path: folderPath });
+    if (normalizePath(state.selectedPath).toLowerCase() !== normalizedSelectedPath.toLowerCase()) {
+      if (result?.watchId && typeof window.ADAHost?.stopProjectInstanceIndexWatch === "function") {
+        try { await window.ADAHost.stopProjectInstanceIndexWatch({ watchId: result.watchId }); } catch {}
+      }
+      return;
+    }
+    if (!result?.ok || !result.watchId) {
+      datasetIndexWatch.error = toText(result?.error);
+      syncDatasetIndexUpdatePrompt();
+      return;
+    }
+    datasetIndexWatch.watchId = toText(result.watchId);
+    datasetIndexWatch.path = toText(result.path) || folderPath;
+    datasetIndexWatch.selectedPath = normalizedSelectedPath;
+    datasetIndexWatch.pending = false;
+    datasetIndexWatch.error = "";
+    syncDatasetIndexUpdatePrompt();
+  } catch (err) {
+    datasetIndexWatch.error = toText(err?.message) || "Could not watch dataset index.";
+    syncDatasetIndexUpdatePrompt();
+  }
 }
 
 
@@ -274,6 +373,7 @@ function applyCachedDatasetSnapshot(payload, path = state.selectedPath) {
   cachedDatasetFilter.methodTypesByName = snapshot.methodTypesByName;
   cachedDatasetFilter.loadedPath = normalizedPath;
   cachedDatasetFilter.error = "";
+  void startDatasetIndexWatchForSnapshot(payload, normalizedPath);
 }
 
 async function loadCachedDatasetFilterForSelectedPath(options = {}) {
@@ -286,6 +386,9 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   cachedDatasetFilter.metadataByName = new Map();
   cachedDatasetFilter.methodTypesByName = new Map();
   cachedDatasetFilter.loadedPath = path;
+  if (!path || normalizePath(datasetIndexWatch.selectedPath).toLowerCase() !== path.toLowerCase()) {
+    await stopDatasetIndexWatch();
+  }
 
   if (!projectName || !path) {
     cachedDatasetFilter.loading = false;
@@ -329,11 +432,14 @@ async function refreshCachedDatasetTableFromDisk() {
   };
   const selectionState = captureDatasetTableSelection();
   closeDatasetTableFilterPopover();
+  datasetIndexWatch.suppressUntil = Date.now() + 1500;
   setStatus("Refreshing dataset table...");
   await loadCachedDatasetFilterForSelectedPath({ refresh: true });
   restoreDatasetTableSelection(selectionState);
   restoreDatasetTableScroll(scrollState);
   if (!cachedDatasetFilter.error) {
+    datasetIndexWatch.pending = false;
+    syncDatasetIndexUpdatePrompt();
     setStatus("Dataset table refreshed.");
     return true;
   }
@@ -376,6 +482,21 @@ function initCachedDatasetToolbar() {
       void refreshCachedDatasetTableFromDisk();
     });
   }
+  if (els.datasetIndexUpdateBtn && els.datasetIndexUpdateBtn.dataset.wired !== "1") {
+    els.datasetIndexUpdateBtn.dataset.wired = "1";
+    els.datasetIndexUpdateBtn.addEventListener("click", () => {
+      void refreshCachedDatasetTableFromDisk();
+    });
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", () => {
+      if (datasetIndexWatch.unsubscribe) {
+        try { datasetIndexWatch.unsubscribe(); } catch {}
+        datasetIndexWatch.unsubscribe = null;
+      }
+      void stopDatasetIndexWatch();
+    }, { once: true });
+  }
   syncCachedDatasetToolbar();
 }
 
@@ -393,8 +514,10 @@ function initCachedDatasetToolbar() {
     mergeCachedDatasetMetadata,
     normalizeCachedDatasetSnapshot,
     refreshCachedDatasetTableFromDisk,
+    startDatasetIndexWatchForSnapshot,
     setCachedDatasetFilterEnabled,
     shouldUseCachedDatasetFilter,
+    stopDatasetIndexWatch,
     stripDatasetCacheVariantSuffix,
     syncCachedDatasetToolbar
   });

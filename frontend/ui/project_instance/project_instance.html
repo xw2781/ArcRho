@@ -692,6 +692,38 @@
       stroke-linejoin: round;
       pointer-events: none;
     }
+    .dataset-index-update-btn {
+      height: 24px;
+      border: 1px solid #bfdbfe;
+      border-radius: 4px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 8px;
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .dataset-index-update-btn:hover {
+      border-color: #93c5fd;
+      background: #dbeafe;
+    }
+    .dataset-index-update-btn svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+    .dataset-index-update-btn[hidden] {
+      display: none;
+    }
     .dataset-toolbar-status {
       min-width: 0;
       flex: 1 1 auto;
@@ -1955,7 +1987,7 @@
       min-height: 280px;
       background: #fff;
       border: 1px solid #aeb8ca;
-      border-radius: 4px;
+      border-radius: 6px;
       box-shadow: var(--shadow);
       pointer-events: auto;
       display: flex;
@@ -1980,8 +2012,8 @@
       border-bottom: 1px solid #c9d1df;
       background: #f0f3f8;
       cursor: move;
-      border-top-left-radius: 4px;
-      border-top-right-radius: 4px;
+      border-top-left-radius: 6px;
+      border-top-right-radius: 6px;
       transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
     }
     .pi-window.active .pi-window-titlebar {
@@ -2207,6 +2239,15 @@
               <path d="M5.4 15A7 7 0 0 0 17.7 17.6L20 15.2"></path>
             </svg>
           </button>
+          <button class="dataset-index-update-btn" id="datasetIndexUpdateBtn" type="button" title="Reload dataset table from updated index" aria-label="Reload dataset table from updated index" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M20 6v5h-5"></path>
+              <path d="M4 18v-5h5"></path>
+              <path d="M18.6 9A7 7 0 0 0 6.3 6.4L4 8.8"></path>
+              <path d="M5.4 15A7 7 0 0 0 17.7 17.6L20 15.2"></path>
+            </svg>
+            <span>Index updated</span>
+          </button>
           <div class="dataset-group-status" id="datasetGroupByStatus" aria-label="Dataset table grouping" role="region"></div>
           <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Active dataset table filters" hidden></div>
           <div class="dataset-toolbar-status" id="cachedDatasetStatus" aria-live="polite"></div>
@@ -2332,6 +2373,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260624a"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260702a"></script>
 </body>
 </html>

@@ -86,6 +86,8 @@ let ratioFileWatchPath = "";
 let ratioFileWatchRevisionToken = "";
 let ratioFileWatchDirtyWarnToken = "";
 let lastCleanDfmMethodPayload = null;
+let normalDfmMethodSavePath = "";
+let normalDfmMethodSaveName = "";
 const DFM_INSTANCE_PRESENCE_EVENT = "arcrho:dfm-instance-presence";
 const DFM_LOCAL_LOOKUP_DEBUG_STATUS = true; // Temporary debug aid.
 const DFM_ANALYSIS_DECIMALS = 4;
@@ -109,6 +111,13 @@ function decodeFileNameSegment(value) {
 
 function decodeDatasetNameFromCsvStem(value) {
   return decodeFileNameSegment(stripDatasetCacheVariantSuffix(value));
+}
+
+function getDfmMethodNameFromPath(path) {
+  const filename = String(path || "").split(/[\\/]/).pop() || "";
+  const stem = filename.replace(/\.json$/i, "");
+  const rawName = stem.startsWith("DFM@") ? stem.slice(4) : stem;
+  return decodeFileNameSegment(rawName).trim();
 }
 
 function publishCalculatedDatasetUpdates(report, source = "DFM save") {
@@ -227,6 +236,45 @@ function postDfmStatus(text, options = {}) {
   );
 }
 
+function requestProjectInstanceDatasetTableRefresh() {
+  try {
+    window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+  } catch {
+    // ignore stale parent frames
+  }
+}
+
+function normalizeDfmIdentityKey(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+async function deleteOldDfmIdentityFiles(oldName, newName) {
+  const oldKey = normalizeDfmIdentityKey(oldName);
+  const newKey = normalizeDfmIdentityKey(newName);
+  if (!oldKey || oldKey === newKey) return { ok: true, skipped: true };
+  const projectName = String(getRatioSaveProjectName() || getResolvedProjectName() || "").trim();
+  const reservingClass = String(getResolvedReservingClass() || "").trim();
+  if (!projectName || !reservingClass) return { ok: false, error: "Missing project or reserving class for old DFM cleanup." };
+  try {
+    const response = await fetch("/datasets/cached/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_name: projectName,
+        reserving_class: reservingClass,
+        dataset_names: [oldName],
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok === false) {
+      return { ok: false, error: String(payload?.detail || payload?.error || `HTTP ${response.status}`), data: payload };
+    }
+    return { ok: true, data: payload };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Old DFM cleanup failed.") };
+  }
+}
+
 function postDfmLookupDebugStatus(text, options = {}) {
   if (!DFM_LOCAL_LOOKUP_DEBUG_STATUS) return;
   const reason = String(options?.reason || "").trim();
@@ -247,6 +295,15 @@ function rememberDfmMethodFileRevision(path, revision) {
   ratioFileWatchPath = String(path || revision?.path || "");
   ratioFileWatchRevisionToken = getRevisionToken(revision);
   ratioFileWatchDirtyWarnToken = "";
+}
+
+function rememberNormalDfmMethodSavePath(path) {
+  normalDfmMethodSavePath = String(path || "").trim();
+  normalDfmMethodSaveName = getDfmMethodNameFromPath(normalDfmMethodSavePath);
+}
+
+export async function resolveCurrentDfmMethodSavePath() {
+  return normalDfmMethodSavePath || await buildRatioSavePath();
 }
 
 function clearDfmMethodFileRevision(path = "") {
@@ -962,8 +1019,8 @@ export async function loadRatioSelectionIfExists(reason) {
     emitDfmInstancePresence("incomplete");
     return;
   }
-  if (getDfmIsDirty() && reason === "tab-activated") {
-    postDfmLookupDebugStatus("skipped (dirty + tab-activated)", { reason });
+  if (getDfmIsDirty()) {
+    postDfmLookupDebugStatus("skipped (dirty)", { reason });
     return;
   }
   const hostApi = getHostApi();
@@ -1001,6 +1058,7 @@ export async function loadRatioSelectionIfExists(reason) {
   const applied = await applyDfmMethodPayload(result.data);
   if (applied.ok) {
     rememberDfmMethodFileRevision(path, result.revision);
+    rememberNormalDfmMethodSavePath(path);
     postDfmStatus("Ready");
   } else if (reason) {
     postDfmStatus("Error: Ratio file found but could not be applied.");
@@ -1027,7 +1085,7 @@ export async function restoreCleanDfmMethodState() {
     return { ok: false, error: "desktop app required" };
   }
   try {
-    const path = await buildRatioSavePath();
+    const path = await resolveCurrentDfmMethodSavePath();
     const result = await hostApi.readJsonFile({ path });
     if (!result?.exists) {
       return { ok: false, error: "No saved DFM method is available to restore." };
@@ -1179,7 +1237,7 @@ async function checkDfmMethodFileWatch() {
   if (!hostApi || typeof hostApi.readJsonFile !== "function") return;
   ratioFileWatchInFlight = true;
   try {
-    const path = await buildRatioSavePath();
+    const path = await resolveCurrentDfmMethodSavePath();
     if (path !== ratioFileWatchPath) {
       clearDfmMethodFileRevision(path);
     }
@@ -1247,6 +1305,9 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
     window.parent.postMessage({ type: "arcrho:status", text: "Save failed: desktop app required." }, "*");
     return { ok: false, error: "desktop app required" };
   }
+  const previousSavePath = normalDfmMethodSavePath;
+  const previousSaveName = normalDfmMethodSaveName || getDfmMethodNameFromPath(previousSavePath);
+  const currentMethodName = getTrimmedInputValue("dfmMethodName");
   const data = await buildDfmMethodPayloadWithPaths();
   const resultVector = buildResultsVector();
   const payload = {
@@ -1317,6 +1378,7 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
     markMethodSaved();
     recordCleanDfmMethodPayload(data);
     markDfmClean();
+    rememberNormalDfmMethodSavePath(result.path);
     emitDfmInstancePresence("found");
     await refreshDfmMethodFileRevision(result.path);
     const objectSnapshot = recordCurrentDfmObjectSnapshot();
@@ -1334,10 +1396,24 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
     if (csvError) {
       statusText += ` | CSV save failed: ${csvError}`;
     }
+    if (!forceSaveAs) {
+      const newPath = String(result.path || "");
+      const renamed = previousSavePath
+        && newPath
+        && previousSavePath.toLowerCase() !== newPath.toLowerCase()
+        && normalizeDfmIdentityKey(previousSaveName) !== normalizeDfmIdentityKey(currentMethodName);
+      if (renamed) {
+        const cleanup = await deleteOldDfmIdentityFiles(previousSaveName, currentMethodName);
+        if (!cleanup.ok) {
+          statusText += ` | Old DFM cleanup failed: ${cleanup.error}`;
+        }
+      }
+    }
     window.parent.postMessage(
       { type: "arcrho:status", text: statusText },
       "*"
     );
+    requestProjectInstanceDatasetTableRefresh();
     publishCalculatedDatasetUpdates(calculatedUpdatesReport, "DFM save");
     return { ok: true, path: result.path, csvPath, csvError, aggregatedCsvPaths };
   } else if (result && result.error) {

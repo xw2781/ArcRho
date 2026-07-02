@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "File > Restart now clears Electron cache and storage before restarting the app."
+}

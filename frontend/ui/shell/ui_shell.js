@@ -3,7 +3,7 @@ import { buildShellStateSnapshot, ensureActiveTabInvariant, getFirstDockedTabId,
 import { applyAppFont, applyZoom, adjustZoomByDelta, broadcastAppFont, broadcastZoomToIframes, closeFontSettingsModal, closeForceRebuildSettingsModal, getAutoSaveEnabled, getForceRebuildEnabled, getZoomPercent, hideGlobalTooltip, hostZoomAvailable, initAutoSaveToggle, initFontSettingsModal, initForceRebuildSettingsModal, initShellPreferences, initZoomControls, loadAppFont, openFontSettingsModal, openForceRebuildSettingsModal, setAutoSaveEnabled, setForceRebuildEnabled, setZoomPercent, showGlobalTooltip, ZOOM_STEP } from "./shell_preferences.js?v=20260510a";
 import { clearSavedStatusOnDirty, formatStatusTimestamp, getStatusBarHeight, initClock, updateStatusBar } from "./status_bar.js?v=20260510a";
 import { closeRootPathSettingsModal, initRootPathSettingsModal, openRootPathSettingsModal } from "./root_path_settings.js?v=20260510a";
-import { clearCacheAndReload, customHardRefresh, initAppLifecycle, refreshActiveTab, restartApplication, sendShutdownSignal, showAppConfirm, shutdownApplication } from "./app_lifecycle.js?v=20260616a";
+import { clearCacheAndReload, customHardRefresh, initAppLifecycle, refreshActiveTab, restartApplication, sendShutdownSignal, showAppConfirm, shutdownApplication } from "./app_lifecycle.js?v=20260701a";
 import { clearTestData, getLastWorkflowDir, getLastWorkflowPath, getWorkflowTabState, importWorkflow, postToWorkflowTab, setLastWorkflowPath } from "./workflow_host_actions.js?v=20260510a";
 import { closeTab, closeTabsExcept, dockTab, floatTab, openAgentGuideTab, openBrowsingHistoryTab, openDatasetTab, openDFMTab, openProjectInstanceTab, openProjectSettingsTab, openScriptingTab, openShellActivityHistoryEntry, openTaskDesigner, openWorkflowTab, recordActiveTabHistory, setActive, setDockedActive } from "./tab_actions.js?v=20260621a";
 import { applyDockedIframeLayout, clampFloatingTabsToContent, clampFloatRect, defaultFloatRectFromPointer, ensureContentContainers, ensureIframe, notifyBrowsingHistoryTabs, notifyCalculatedDatasetTabs, notifyServerConnectionUpdated, notifyTabActivated, printActiveTab, removeFloatPreview, renderContent, renderFloatingWindows, updateFloatPreview } from "./shell_content.js?v=20260621b";
@@ -11,7 +11,7 @@ import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, rend
 import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260625c";
 import { initHotkeys, runHotkeyAction } from "./shell_hotkeys.js?v=20260621a";
 import { initShellMessages } from "./shell_messages.js?v=20260621c";
-import { initUiAutomation } from "./ui_automation.js?v=20260624a";
+import { initUiAutomation } from "./ui_automation.js?v=20260702a";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260622a";

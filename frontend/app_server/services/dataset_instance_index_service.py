@@ -180,7 +180,7 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
     details_tab = _json_tab(payload, "details tab")
-    _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("output type")))
+    _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
     return names
 
 
@@ -249,13 +249,14 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
             "status": dataset_sidecar_status_service.STATUS_CURRENT,
         }
     details_tab = _json_tab(payload, "details tab")
-    dataset_name = _normalize_cached_dataset_name(details_tab.get("output type"))
+    dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
+    dataset_type = _normalize_cached_dataset_name(details_tab.get("output type"))
     dataset_category = _clean_text(details_tab.get("output dataset_category") or details_tab.get("output category"))
     if not dataset_name:
         return None
     return {
         "dataset_name": dataset_name,
-        "dataset_type": dataset_name,
+        "dataset_type": dataset_type or dataset_name,
         "dataset_category": dataset_category,
         "method_type": DFM_METHOD_TYPE,
         "data_format": "Vector",
@@ -310,10 +311,9 @@ def _parse_metadata_datetime(value: Any) -> datetime | None:
         parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return None
-    try:
-        return parsed.replace(tzinfo=None)
-    except Exception:
-        return parsed
+    if parsed.tzinfo is not None:
+        return parsed.astimezone().replace(tzinfo=None)
+    return parsed
 
 
 def _metadata_modified_timestamp(metadata: Dict[str, Any]) -> Tuple[str, float]:

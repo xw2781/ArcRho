@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "automation",
+  "audience": "user",
+  "summary": "Added Python UI automation support for reloading the active Project Instance dataset table after scripts update datasets."
+}

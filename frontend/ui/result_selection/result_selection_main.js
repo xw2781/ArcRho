@@ -62,6 +62,7 @@ const state = {
   methodHighlight: null,
   methodHighlightDragging: false,
   weightEditSession: null,
+  sourceReloadSeq: 0,
   ultimateOverrides: [],
   activeTab: text(params.get("tab") || "details") || "details",
 };
@@ -126,6 +127,14 @@ function validSourceOriginLength(value) {
   return VALID_ORIGIN_LENGTHS.includes(n) ? n : null;
 }
 
+function isEngineSource(source) {
+  return norm(source?.sourceKind || source?.source_kind) === "engine";
+}
+
+function isVectorSource(source) {
+  return norm(source?.dataFormat || source?.data_format) === "vector";
+}
+
 function nonNegativeInt(value, fallback = 0) {
   const n = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
@@ -165,6 +174,108 @@ function postDirty(dirty, force = false) {
 function markDirty() {
   if (programmatic) return;
   postDirty(true);
+  postResultSelectionDependencyPreview();
+}
+
+function sourceMessageNames(message = {}) {
+  const names = Array.isArray(message.names) ? message.names : [message.datasetName, message.datasetTypeName, message.name];
+  return new Set(names.map((value) => norm(value)).filter(Boolean));
+}
+
+function sourceMessageMatchesContext(message = {}) {
+  const project = text(message.project);
+  const reservingClass = text(message.reservingClass || message.reserving_class);
+  if (project && norm(project) !== norm(state.project)) return false;
+  if (reservingClass && norm(reservingClass) !== norm(state.reservingClass)) return false;
+  return true;
+}
+
+function sourceMessageMatchesSource(message, source) {
+  if (!source) return false;
+  const names = sourceMessageNames(message);
+  return [source.name, source.datasetType, source.dataset_type]
+    .some((value) => names.has(norm(value)));
+}
+
+function normalizePreviewValues(values) {
+  return Array.isArray(values) ? values.map(numberOrNull) : [];
+}
+
+function buildResultSelectionDependencySourceMessage(type, reason = "") {
+  const details = getDetails();
+  const payload = {
+    type,
+    inst,
+    project: state.project,
+    reservingClass: state.reservingClass,
+    datasetName: details.name,
+    datasetTypeName: details.outputType,
+    names: [details.name, details.outputType].filter(Boolean),
+    methodType: "Result Selection",
+    sourceKind: "result_selection",
+    dataFormat: "Vector",
+    reason,
+  };
+  if (type === "arcrho:dependency-source-preview") {
+    payload.values = buildPayload().method_tab.selected_ultimate || [];
+    payload.originLabels = state.originLabels.map(String);
+  }
+  return payload;
+}
+
+function postResultSelectionDependencySourceMessage(type, reason = "") {
+  const message = buildResultSelectionDependencySourceMessage(type, reason);
+  if (!message.names.length) return;
+  try {
+    window.parent?.postMessage(message, "*");
+  } catch {}
+}
+
+function postResultSelectionDependencyPreview() {
+  postResultSelectionDependencySourceMessage("arcrho:dependency-source-preview", "dirty");
+}
+
+function clearResultSelectionDependencyPreview(reason = "") {
+  postResultSelectionDependencySourceMessage("arcrho:dependency-source-cleared", reason || "clean");
+}
+
+async function reloadSourcesMatchingMessage(message, options = {}) {
+  if (!sourceMessageMatchesContext(message)) return false;
+  const matches = [];
+  for (let index = 0; index < state.sources.length; index += 1) {
+    if (sourceMessageMatchesSource(message, state.sources[index])) matches.push(index);
+  }
+  if (!matches.length) return false;
+  if (options.refreshCache) await loadCachedRows(true).catch(() => {});
+  for (const index of matches) {
+    const existing = state.sources[index];
+    const record = cachedRows.find((row) => norm(row.name) === norm(existing.name)) || null;
+    const reloadExisting = { ...existing, values: [] };
+    const built = await buildSourceFromRecord(record || { name: existing.name }, reloadExisting);
+    if (built) state.sources[index] = built;
+  }
+  renderMethodGrid();
+  return true;
+}
+
+function applyDependencySourcePreview(message) {
+  if (!sourceMessageMatchesContext(message)) return false;
+  const values = normalizePreviewValues(message.values);
+  if (!values.length) return false;
+  let changed = false;
+  for (const source of state.sources) {
+    if (!sourceMessageMatchesSource(message, source)) continue;
+    source.values = values.slice();
+    source.dataFormat = text(message.dataFormat || message.data_format || source.dataFormat || "Vector");
+    source.sourceKind = text(message.sourceKind || message.source_kind || source.sourceKind);
+    source.methodType = text(message.methodType || message.method_type || source.methodType);
+    source.originLength = validSourceOriginLength(message.originLength || message.origin_length) || source.originLength;
+    if (!Array.isArray(source.weights)) source.weights = [];
+    while (source.weights.length < source.values.length) source.weights.push(0);
+    changed = true;
+  }
+  if (changed) renderMethodGrid();
+  return changed;
 }
 
 function withProgrammatic(fn) {
@@ -269,6 +380,7 @@ function showCloseConfirm(reason = "close") {
 }
 
 function requestConfirmedClose() {
+  clearResultSelectionDependencyPreview("close-discard");
   postDirty(false, true);
   try {
     window.parent?.postMessage({
@@ -354,20 +466,170 @@ async function loadCachedRows(refresh = false) {
   return cachedRows;
 }
 
-async function loadDatasetValues(datasetName) {
+function basenameFromPath(value) {
+  const parts = text(value).split(/[\\/]/);
+  return parts[parts.length - 1] || "";
+}
+
+async function loadDatasetValues(datasetName, options = {}) {
   const name = text(datasetName);
   if (!state.project || !state.reservingClass || !name) throw new Error("Missing project, reserving class, or dataset name.");
+  const body = {
+    project_name: state.project,
+    reserving_class: state.reservingClass,
+    dataset_name: name,
+  };
+  const csvFile = text(options.csvFile || options.csv_file);
+  const originLength = validSourceOriginLength(options.originLength ?? options.origin_length);
+  const developmentLength = validSourceOriginLength(options.developmentLength ?? options.development_length);
+  if (csvFile) body.csv_file = csvFile;
+  if (originLength && developmentLength) {
+    body.origin_length = originLength;
+    body.development_length = developmentLength;
+    body.cumulative = options.cumulative !== false;
+    body.calendar = !!options.calendar;
+  }
   const resp = await fetch("/dataset/cache/load", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project_name: state.project,
-      reserving_class: state.reservingClass,
-      dataset_name: name,
-    }),
+    body: JSON.stringify(body),
   });
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok || payload?.ok === false) throw new Error(payload?.detail || payload?.error || `Dataset load failed (${resp.status}).`);
+  return payload;
+}
+
+function engineRequestBase(source, originLength) {
+  const datasetType = text(source?.datasetType || source?.dataset_type || source?.name);
+  const instanceName = text(source?.name);
+  return {
+    Path: state.reservingClass,
+    ProjectName: state.project,
+    InstanceName: instanceName || datasetType,
+    DatasetTypeName: datasetType || instanceName,
+    Cumulative: true,
+    Calendar: false,
+    LocalOnly: !!window.ADA_DFM_CONTEXT,
+    AllowDerived: true,
+    WriteSidecar: false,
+    timeout_sec: 6.0,
+  };
+}
+
+async function materializeEngineSourceAtLength(source, originLength) {
+  const length = validSourceOriginLength(originLength);
+  if (!state.project || !state.reservingClass || !text(source?.name) || !length) {
+    throw new Error("Missing project, reserving class, source name, or origin length.");
+  }
+  const vector = isVectorSource(source);
+  const base = engineRequestBase(source, length);
+  const requestPayload = vector
+    ? {
+        ...base,
+        VectorName: base.DatasetTypeName,
+        PeriodLength: length,
+      }
+    : {
+        ...base,
+        TriangleName: base.DatasetTypeName,
+        OriginLength: length,
+        DevelopmentLength: length,
+      };
+  const routeRoot = vector ? "/arcrho/vec" : "/arcrho/tri";
+  const precheckResp = await fetch(`${routeRoot}/precheck`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestPayload),
+  });
+  const precheck = await precheckResp.json().catch(() => ({}));
+  if (precheckResp.ok && precheck?.ok && precheck.need_request === true) {
+    postStatus(`Generating ${text(source.name)} at origin length ${length}...`);
+  }
+  const resp = await fetch(routeRoot, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestPayload),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload?.ok === false) {
+    throw new Error(payload?.detail || payload?.message || `Engine source generation failed (${resp.status}).`);
+  }
+  return payload;
+}
+
+async function loadMaterializedEngineDatasetPayload(source, originLength, label = "Engine source") {
+  const length = validSourceOriginLength(originLength);
+  const materialized = await materializeEngineSourceAtLength(source, length);
+  const payload = await loadDatasetValues(source.name, {
+    csvFile: basenameFromPath(materialized?.data_path),
+    originLength: length,
+    developmentLength: length,
+    cumulative: true,
+    calendar: false,
+  });
+  const loadedOriginLength = validSourceOriginLength(payload?.origin_length);
+  if (loadedOriginLength !== length) {
+    throw new Error(`${label} '${text(source.name)}' loaded at origin length ${loadedOriginLength || "unknown"} instead of ${length}.`);
+  }
+  return payload;
+}
+
+async function loadSourceDatasetPayload(source) {
+  const rsOriginLength = getDetails().originLength;
+  const nativeOriginLength = validSourceOriginLength(source?.originLength ?? source?.origin_length);
+  if (isEngineSource(source) && rsOriginLength && nativeOriginLength !== rsOriginLength) {
+    return loadMaterializedEngineDatasetPayload(source, rsOriginLength);
+  }
+  return loadDatasetValues(source.name);
+}
+
+async function loadRatioBasisDatasetPayload(source) {
+  const rsOriginLength = getDetails().originLength;
+  if (!rsOriginLength) return loadSourceDatasetPayload(source);
+  const name = text(source?.name);
+  const nativeOriginLength = validSourceOriginLength(source?.originLength ?? source?.origin_length);
+  if (isEngineSource(source) && nativeOriginLength !== rsOriginLength) {
+    return loadSourceDatasetPayload(source);
+  }
+
+  let exactLoadError = null;
+  try {
+    const exactPayload = await loadDatasetValues(name, {
+      originLength: rsOriginLength,
+      developmentLength: rsOriginLength,
+      cumulative: true,
+      calendar: false,
+    });
+    const exactOriginLength = validSourceOriginLength(exactPayload?.origin_length);
+    if (exactOriginLength === rsOriginLength) return exactPayload;
+  } catch (err) {
+    exactLoadError = err;
+  }
+
+  if (isEngineSource(source)) {
+    try {
+      return await loadMaterializedEngineDatasetPayload(source, rsOriginLength, "Ratio Basis");
+    } catch (err) {
+      const exactMessage = exactLoadError?.message ? ` Exact cache load failed: ${exactLoadError.message}` : "";
+      throw new Error(`${err?.message || err}${exactMessage}`);
+    }
+  }
+
+  const payload = await loadSourceDatasetPayload(source);
+  const loadedOriginLength = validSourceOriginLength(payload?.origin_length);
+  if (loadedOriginLength !== rsOriginLength && isEngineSource(payload)) {
+    return loadMaterializedEngineDatasetPayload({
+      ...source,
+      datasetType: text(source?.datasetType || payload?.dataset_type || payload?.datasetName || name),
+      dataFormat: text(source?.dataFormat || payload?.data_format),
+      originLength: loadedOriginLength,
+      sourceKind: text(payload?.source_kind),
+    }, rsOriginLength, "Ratio Basis");
+  }
+  if (loadedOriginLength !== rsOriginLength) {
+    const exactMessage = exactLoadError?.message ? ` ${exactLoadError.message}` : "";
+    throw new Error(`Ratio Basis '${name}' loaded at origin length ${loadedOriginLength || "unknown"} instead of ${rsOriginLength}.${exactMessage}`);
+  }
   return payload;
 }
 
@@ -399,16 +661,22 @@ async function buildSourceFromRecord(record, existing = null) {
     originLength: validSourceOriginLength(record?.originLength ?? record?.origin_length ?? existing?.origin_length ?? existing?.originLength),
     methodType: text(record?.methodType || existing?.method_type || existing?.methodType),
     category: text(record?.category || record?.dataset_category || existing?.dataset_category || existing?.category),
+    sourceKind: text(record?.sourceKind || record?.source_kind || existing?.source_kind || existing?.sourceKind),
     values: Array.isArray(existing?.values) ? existing.values.map(numberOrNull) : [],
     weights: Array.isArray(existing?.weights) ? existing.weights.map((v) => Math.max(0, numberOrNull(v) ?? 0)) : [],
     unavailable: false,
   };
   if (!source.name) return null;
   try {
-    const payload = await loadDatasetValues(source.name);
+    const nativeOriginLength = source.originLength;
+    const loadedAtRsLength = isEngineSource(source) && getDetails().originLength && nativeOriginLength !== getDetails().originLength;
+    const payload = await loadSourceDatasetPayload(source);
     source.datasetType = source.datasetType || text(payload?.dataset_type || source.name);
     source.dataFormat = source.dataFormat || text(payload?.data_format);
-    source.originLength = validSourceOriginLength(payload?.origin_length) || source.originLength;
+    source.sourceKind = source.sourceKind || text(payload?.source_kind);
+    if (!loadedAtRsLength) {
+      source.originLength = validSourceOriginLength(payload?.origin_length) || source.originLength;
+    }
     const isTriangle = norm(source.dataFormat) === "triangle";
     source.values = isTriangle ? latestDiagonal(payload?.values) : vectorValues(payload?.values);
   } catch (err) {
@@ -470,6 +738,7 @@ function applyOriginLength(value) {
 
 function allowedOriginLengthsForSources() {
   const required = state.sources.reduce((max, source) => {
+    if (isEngineSource(source)) return max;
     const originLength = validSourceOriginLength(source?.originLength);
     return originLength ? Math.max(max, originLength) : max;
   }, 0);
@@ -838,6 +1107,10 @@ function normalizedMethodHighlight() {
   };
 }
 
+function isTextEntryTarget(target) {
+  return !!target?.closest?.("input,textarea,select,[contenteditable='true']");
+}
+
 function isMethodCellHighlighted(colIndex, rowIndex) {
   const h = normalizedMethodHighlight();
   return !!h
@@ -897,6 +1170,106 @@ function normalizeMethodHighlight(columns = buildMethodColumns(getDetails()), ro
 
 function setMethodRowHighlight(rowIndex, columnCount) {
   setMethodHighlight(0, rowIndex, Math.max(0, columnCount - 1), rowIndex);
+}
+
+function setMethodColumnHighlight(colIndex, rowCount) {
+  setMethodHighlight(colIndex, 0, colIndex, Math.max(0, rowCount - 1));
+}
+
+function isNavigableMethodColumn(column) {
+  return !!column && column.type !== "spacer";
+}
+
+function nextNavigableMethodColumnIndex(columns, colIndex, deltaCol) {
+  for (let nextCol = colIndex + deltaCol; nextCol >= 0 && nextCol < columns.length; nextCol += deltaCol) {
+    if (isNavigableMethodColumn(columns[nextCol])) return nextCol;
+  }
+  return colIndex;
+}
+
+function scrollMethodHighlightAnchorIntoView() {
+  const h = state.methodHighlight;
+  if (!h) return;
+  const cell = Array.from(els.methodGrid?.querySelectorAll?.(".rsMethodCell") || [])
+    .find((td) => Number(td.dataset.colIndex) === h.startCol && Number(td.dataset.rowIndex) === h.startRow);
+  if (!cell) return;
+  const host = els.methodGrid?.closest?.(".rsGridHost");
+  const header = els.methodGrid?.querySelector?.("thead");
+  if (!host) {
+    cell.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  const hostRect = host.getBoundingClientRect();
+  const cellRect = cell.getBoundingClientRect();
+  const headerHeight = Math.ceil(header?.getBoundingClientRect?.().height || 0);
+  const visibleTop = hostRect.top + headerHeight;
+  const visibleBottom = hostRect.bottom;
+  const visibleLeft = hostRect.left;
+  const visibleRight = hostRect.right;
+  if (cellRect.top < visibleTop) {
+    host.scrollTop += cellRect.top - visibleTop;
+  } else if (cellRect.bottom > visibleBottom) {
+    host.scrollTop += cellRect.bottom - visibleBottom;
+  }
+  if (cellRect.left < visibleLeft) {
+    host.scrollLeft += cellRect.left - visibleLeft;
+  } else if (cellRect.right > visibleRight) {
+    host.scrollLeft += cellRect.right - visibleRight;
+  }
+}
+
+function moveMethodHighlight(deltaCol, deltaRow) {
+  const raw = state.methodHighlight;
+  const h = normalizedMethodHighlight();
+  if (!raw || !h || state.activeTab !== "method") return false;
+  const columns = buildMethodColumns(getDetails());
+  if (!columns.length) return false;
+
+  const maxRow = Math.max(0, getRowCount());
+  const height = h.endRow - h.startRow;
+  const maxStartRow = Math.max(0, maxRow - height);
+  const nextStartRow = Math.max(0, Math.min(maxStartRow, h.startRow + deltaRow));
+
+  const width = h.endCol - h.startCol;
+  let nextStartCol = h.startCol;
+  if (deltaCol !== 0 && width === 0) {
+    nextStartCol = nextNavigableMethodColumnIndex(columns, h.startCol, deltaCol);
+  } else if (deltaCol !== 0) {
+    const maxStartCol = Math.max(0, columns.length - 1 - width);
+    nextStartCol = Math.max(0, Math.min(maxStartCol, h.startCol + deltaCol));
+  }
+
+  const actualDeltaCol = nextStartCol - h.startCol;
+  const actualDeltaRow = nextStartRow - h.startRow;
+  if (actualDeltaCol || actualDeltaRow) {
+    resetWeightEditSession();
+    state.methodHighlight = {
+      startCol: raw.startCol + actualDeltaCol,
+      startRow: raw.startRow + actualDeltaRow,
+      endCol: raw.endCol + actualDeltaCol,
+      endRow: raw.endRow + actualDeltaRow,
+    };
+    normalizeMethodHighlight(columns, maxRow + 1);
+    applyMethodHighlightDom();
+    scrollMethodHighlightAnchorIntoView();
+  }
+  return true;
+}
+
+function handleMethodHighlightArrowKey(event) {
+  const deltas = {
+    ArrowLeft: [-1, 0],
+    ArrowRight: [1, 0],
+    ArrowUp: [0, -1],
+    ArrowDown: [0, 1],
+  };
+  const delta = deltas[event.key];
+  if (!delta || event.ctrlKey || event.metaKey || event.altKey || isTextEntryTarget(event.target)) return false;
+  if (!normalizedMethodHighlight()) return false;
+  if (!moveMethodHighlight(delta[0], delta[1])) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  return true;
 }
 
 function applyMethodHighlightDom() {
@@ -1226,6 +1599,15 @@ function renderMethodGrid() {
     if (column.type !== "spacer") {
       th.dataset.colIndex = String(colIndex);
       th.classList.toggle("rsHighlightedColumnLabel", isMethodColumnHighlighted(colIndex));
+      th.addEventListener("click", (event) => {
+        if (event.target?.closest?.(".rsColumnResizeHandle")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        closeCellContextMenu();
+        closeSourceContextMenu();
+        setMethodColumnHighlight(colIndex, count + 1);
+        focusMethodGrid();
+      });
     }
     if (column.type === "source") {
       th.addEventListener("contextmenu", (event) => openSourceContextMenu(event, column.sourceIndex));
@@ -1258,8 +1640,9 @@ function renderMethodGrid() {
         const source = state.sources[column.sourceIndex];
         const value = numberOrNull(source?.values?.[r]);
         if (value !== null) totals.source[column.sourceIndex] += value;
-        const td = bodyCell(fmtNumber(value), "rsSourceCell");
+        const td = bodyCell(value === null ? "0" : fmtNumber(value), "rsSourceCell");
         td.dataset.sourceIndex = String(column.sourceIndex);
+        td.classList.toggle("rsSourceEmptyZero", value === null);
         td.classList.toggle("rsSelectedSourceCell", isSourceCellSelected(column.sourceIndex, r));
         td.addEventListener("dblclick", (event) => {
           event.preventDefault();
@@ -1633,6 +2016,7 @@ function buildPayload() {
         origin_length: source.originLength || null,
         method_type: source.methodType,
         category: source.category,
+        source_kind: source.sourceKind,
         values: source.values,
         weights: source.weights,
       })),
@@ -1673,7 +2057,10 @@ async function applyPayload(payload) {
     if (built) sources.push(built);
   }
   state.sources = sources;
-  syncOriginLengthOptions();
+  const originLengthChanged = syncOriginLengthOptions();
+  if (originLengthChanged) {
+    await reloadSourcesForCurrentOriginLength({ render: false });
+  }
   if (text(els.ratioBasisInput.value)) await refreshRatioBasisValues();
   const methodOriginLabels = Array.isArray(method.origin_labels) ? method.origin_labels.map(String) : [];
   if (methodOriginLabels.length && !shouldRejectOriginLabels(getDetails().originLength, methodOriginLabels)) {
@@ -1694,6 +2081,7 @@ function snapshotPayload() {
 function markClean() {
   cleanSnapshot = snapshotPayload();
   lastSavedNotesText = els.notesInput?.value || "";
+  clearResultSelectionDependencyPreview("clean");
   postDirty(false, true);
 }
 
@@ -1991,6 +2379,21 @@ async function initializeDefaultSources() {
   state.sources = sources;
 }
 
+async function reloadSourcesForCurrentOriginLength(options = {}) {
+  const seq = (state.sourceReloadSeq || 0) + 1;
+  state.sourceReloadSeq = seq;
+  const sources = [];
+  for (const existing of state.sources || []) {
+    const record = cachedRows.find((row) => norm(row.name) === norm(existing.name)) || null;
+    const source = await buildSourceFromRecord(record || { name: existing.name }, existing);
+    if (state.sourceReloadSeq !== seq) return false;
+    if (source) sources.push(source);
+  }
+  state.sources = sources;
+  if (options.render !== false) renderMethodGrid();
+  return true;
+}
+
 async function refreshRatioBasisValues() {
   const basis = text(els.ratioBasisInput.value);
   if (!basis) {
@@ -2000,7 +2403,14 @@ async function refreshRatioBasisValues() {
   }
   try {
     const record = cachedRows.find((row) => norm(row.name) === norm(basis)) || { name: basis };
-    const payload = await loadDatasetValues(record.name);
+    const source = {
+      name: text(record.name),
+      datasetType: text(record.datasetType || record.dataset_type || record.name),
+      dataFormat: text(record.dataFormat || record.data_format),
+      originLength: validSourceOriginLength(record.originLength ?? record.origin_length),
+      sourceKind: text(record.sourceKind || record.source_kind),
+    };
+    const payload = await loadRatioBasisDatasetPayload(source);
     state.ratioBasisValues = norm(record.dataFormat || payload.data_format) === "triangle"
       ? latestDiagonal(payload.values)
       : vectorValues(payload.values);
@@ -2040,7 +2450,17 @@ function wireEvents() {
         state.sidecarOriginLength = null;
         state.sidecarOriginLabels = [];
         setOriginLabels([], getDetails().originLength);
-        void refreshOriginLabels({ render: true });
+        void (async () => {
+          try {
+            await refreshOriginLabels({ render: false });
+            await reloadSourcesForCurrentOriginLength({ render: false });
+            if (text(els.ratioBasisInput.value)) await refreshRatioBasisValues();
+            else renderMethodGrid();
+          } catch (err) {
+            postStatus(`Origin length reload failed: ${err?.message || err}`, "error");
+            renderMethodGrid();
+          }
+        })();
         return;
       }
       renderMethodGrid();
@@ -2099,16 +2519,22 @@ function wireEvents() {
   }, true);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      resetWeightEditSession();
+      if (normalizedMethodHighlight()) {
+        removeMethodHighlights();
+        event.preventDefault();
+      } else {
+        resetWeightEditSession();
+      }
       closeCellContextMenu();
       closeSourceContextMenu();
       return;
     }
+    if (handleMethodHighlightArrowKey(event)) return;
     if (
       (event.ctrlKey || event.metaKey)
       && event.key?.toLowerCase?.() === "c"
       && normalizedMethodHighlight()
-      && !event.target?.closest?.("input,textarea,[contenteditable='true']")
+      && !isTextEntryTarget(event.target)
     ) {
       event.preventDefault();
       void copyHighlightedMethodValues().catch((err) => postStatus(`Copy failed: ${err?.message || err}`, "error"));
@@ -2118,7 +2544,7 @@ function wireEvents() {
       (event.ctrlKey || event.metaKey)
       && event.key?.toLowerCase?.() === "v"
       && normalizedMethodHighlight()
-      && !event.target?.closest?.("input,textarea,[contenteditable='true']")
+      && !isTextEntryTarget(event.target)
     ) {
       event.preventDefault();
       void pasteHighlightedMethodValues().catch((err) => postStatus(`Paste failed: ${err?.message || err}`, "error"));
@@ -2131,7 +2557,7 @@ function wireEvents() {
       && !event.altKey
       && /^[0-9.]$/.test(event.key || "")
     ) {
-      if (event.target?.closest?.("input,textarea,[contenteditable='true']")) return;
+      if (isTextEntryTarget(event.target)) return;
       if (applyHighlightedWeightKey(event.key)) {
         event.preventDefault();
         markDirty();
@@ -2208,6 +2634,15 @@ function wireEvents() {
     const msg = event.data || {};
     if (msg.type === "arcrho:dataset-save" || msg.type === "arcrho:result-selection-save") {
       saveResultSelection().catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));
+      return;
+    }
+    if (msg.type === "arcrho:dependency-source-preview") {
+      applyDependencySourcePreview(msg);
+      return;
+    }
+    if (msg.type === "arcrho:dependency-source-cleared") {
+      reloadSourcesMatchingMessage(msg, { refreshCache: msg.reason === "save" || msg.reason === "clean" })
+        .catch((err) => postStatus(`Source reload failed: ${err?.message || err}`, "error"));
     }
   });
   window.__arcrho_request_close = () => {

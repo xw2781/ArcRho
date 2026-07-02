@@ -75,6 +75,14 @@ contextBridge.exposeInMainWorld("ADAHost", {
     ipcRenderer.on("arcode-folder-changed", listener);
     return () => ipcRenderer.removeListener("arcode-folder-changed", listener);
   },
+  startProjectInstanceIndexWatch: (payload) => invoke("project-instance-index-watch-start", payload),
+  stopProjectInstanceIndexWatch: (payload) => invoke("project-instance-index-watch-stop", payload),
+  onProjectInstanceIndexChanged: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("project-instance-index-changed", listener);
+    return () => ipcRenderer.removeListener("project-instance-index-changed", listener);
+  },
   openPath: (payload) => invoke("open-path", payload),
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
   openTerminal: (payload) => invoke("open-terminal", payload),
@@ -99,6 +107,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
     ipcRenderer.on("codex-assistant-event", listener);
     return () => ipcRenderer.removeListener("codex-assistant-event", listener);
   },
+  clearAppCache: (payload) => invoke("app-clear-cache", payload),
   clearCacheAndReload: (payload) => invoke("app-clear-cache-reload", payload),
   consumeClearCacheReloadRestore: () => invoke("app-consume-clear-cache-reload-restore"),
   focusWindow: () => invoke("focus-window"),

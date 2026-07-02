@@ -187,6 +187,14 @@ function notifyDfmDirtyState(dirty, options = {}) {
 
 export function markDfmDirty() {
   if (dfmProgrammaticDepth > 0) return;
+  if (dfmIsDirty) {
+    try {
+      window.dispatchEvent(new CustomEvent("arcrho:dfm-dirty-state", { detail: { dirty: true } }));
+    } catch {
+      // ignore
+    }
+    return;
+  }
   notifyDfmDirtyState(true);
 }
 
@@ -328,9 +336,12 @@ export function getRatioSaveProjectName() {
   return project ? project : "UnknownProject";
 }
 
-export function getRatioSaveSuggestedName() {
+export function getRatioSaveSuggestedName(options = {}) {
+  const rawMethodName = typeof options.methodName === "string"
+    ? options.methodName
+    : document.getElementById("dfmMethodName")?.value?.trim();
   const methodName = sanitizeFileNamePart(
-    document.getElementById("dfmMethodName")?.value?.trim(),
+    rawMethodName,
     "Name",
   );
   return `DFM@${methodName}.json`;
@@ -350,9 +361,9 @@ export async function getRatioSaveBaseDir() {
   return joinWorkspacePath(projectsPath, project || "UnknownProject", "data", reservingClass, "methods");
 }
 
-export async function buildRatioSavePath() {
+export async function buildRatioSavePath(options = {}) {
   const baseDir = await getRatioSaveBaseDir();
-  const filename = getRatioSaveSuggestedName();
+  const filename = getRatioSaveSuggestedName(options);
   return `${baseDir}\\${filename}`;
 }
 

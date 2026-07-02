@@ -15,6 +15,23 @@ class ArcRhoTriRequest(BaseModel):
     DevelopmentLength: int = 12
     LocalOnly: bool = False
     AllowDerived: bool = True
+    WriteSidecar: bool = True
+    timeout_sec: float = 6.0
+
+
+class ArcRhoVecRequest(BaseModel):
+    Path: str
+    ProjectName: str
+    InstanceName: Optional[str] = None
+    DatasetTypeName: Optional[str] = None
+    VectorName: Optional[str] = None
+    PeriodLength: int = 12
+    Cumulative: bool = True
+    Calendar: bool = False
+    Transposed: bool = False
+    LocalOnly: bool = False
+    AllowDerived: bool = True
+    WriteSidecar: bool = True
     timeout_sec: float = 6.0
 
 

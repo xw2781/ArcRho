@@ -84,6 +84,8 @@ const BACKEND_CONTROL_FLAGS = [
 ];
 const arcodeFolderWatchers = new Map();
 const arcodeFolderWatchCleanupWindowIds = new Set();
+const projectInstanceIndexWatchers = new Map();
+const projectInstanceIndexWatchCleanupWindowIds = new Set();
 const BACKEND_STARTUP_TIMEOUT_MS = Math.max(
   5000,
   parseInt(
@@ -1934,11 +1936,48 @@ function closeArcodeFolderWatchesForWindow(windowId) {
   arcodeFolderWatchCleanupWindowIds.delete(windowId);
 }
 
+function closeProjectInstanceIndexWatch(watchId) {
+  const id = String(watchId || "").trim();
+  if (!id) return false;
+  const entry = projectInstanceIndexWatchers.get(id);
+  if (!entry) return false;
+  projectInstanceIndexWatchers.delete(id);
+  try {
+    entry.watcher.close();
+  } catch {
+    // Watchers may already be closed while a window is tearing down.
+  }
+  return true;
+}
+
+function closeProjectInstanceIndexWatchesForWindow(windowId) {
+  for (const [watchId, entry] of Array.from(projectInstanceIndexWatchers.entries())) {
+    if (entry.windowId === windowId) closeProjectInstanceIndexWatch(watchId);
+  }
+  projectInstanceIndexWatchCleanupWindowIds.delete(windowId);
+}
+
 ipcMain.handle("arcode-folder-watch-start", async (event, payload) => {
   const folderPath = String(payload?.path || "").trim();
   if (!folderPath) return { ok: false, error: "Empty folder path." };
   const targetWindow = getIpcWindow(event);
   if (!targetWindow || targetWindow.isDestroyed()) return { ok: false, error: "Window is unavailable." };
+  const targetFrame = event.senderFrame || null;
+  const sendToRequester = (channel, message) => {
+    try {
+      if (targetFrame && !targetFrame.isDestroyed()) {
+        targetFrame.send(channel, message);
+        return true;
+      }
+    } catch {
+      // Fall back to the window if the original frame is already gone.
+    }
+    if (!targetWindow.isDestroyed()) {
+      targetWindow.webContents.send(channel, message);
+      return true;
+    }
+    return false;
+  };
   try {
     const resolvedFolderPath = path.resolve(folderPath);
     for (const [existingWatchId, entry] of arcodeFolderWatchers.entries()) {
@@ -1984,6 +2023,92 @@ ipcMain.handle("arcode-folder-watch-start", async (event, payload) => {
 
 ipcMain.handle("arcode-folder-watch-stop", async (_event, payload) => {
   return { ok: closeArcodeFolderWatch(payload?.watchId) };
+});
+
+ipcMain.handle("project-instance-index-watch-start", async (event, payload) => {
+  const folderPath = String(payload?.path || "").trim();
+  if (!folderPath) return { ok: false, error: "Empty folder path." };
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow || targetWindow.isDestroyed()) return { ok: false, error: "Window is unavailable." };
+  const targetFrame = event.senderFrame || null;
+  const frameIsDestroyed = () => !!(targetFrame && typeof targetFrame.isDestroyed === "function" && targetFrame.isDestroyed());
+  const sendToRequester = (channel, message) => {
+    try {
+      if (targetFrame && !frameIsDestroyed()) {
+        targetFrame.send(channel, message);
+        return true;
+      }
+    } catch {
+      // Fall back to the window if the original frame is already gone.
+    }
+    if (!targetWindow.isDestroyed()) {
+      targetWindow.webContents.send(channel, message);
+      return true;
+    }
+    return false;
+  };
+  try {
+    const resolvedFolderPath = path.resolve(folderPath);
+    const stat = await fs.promises.stat(resolvedFolderPath);
+    if (!stat.isDirectory()) return { ok: false, error: `Not a folder: ${folderPath}` };
+    const watchId = `pi_index_watch_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    let lastSentAt = 0;
+    let lastSignature = "";
+    const sendIndexChanged = async (eventType, filename) => {
+      if (targetWindow.isDestroyed() || frameIsDestroyed()) {
+        closeProjectInstanceIndexWatch(watchId);
+        return;
+      }
+      const normalizedName = filename ? String(filename) : "";
+      if (normalizedName && normalizedName.toLowerCase() !== "index.json") return;
+      const indexPath = path.join(resolvedFolderPath, "index.json");
+      let indexStat = null;
+      try {
+        indexStat = await fs.promises.stat(indexPath);
+      } catch {
+        indexStat = null;
+      }
+      const signature = indexStat ? `${indexStat.mtimeMs}:${indexStat.size}` : "missing";
+      const now = Date.now();
+      if (signature === lastSignature && now - lastSentAt < 250) return;
+      lastSignature = signature;
+      lastSentAt = now;
+      sendToRequester("project-instance-index-changed", {
+        watchId,
+        path: resolvedFolderPath,
+        indexPath,
+        eventType: String(eventType || ""),
+        filename: normalizedName || "index.json",
+        mtimeMs: indexStat ? indexStat.mtimeMs : 0,
+        size: indexStat ? indexStat.size : 0,
+      });
+    };
+    const watcher = fs.watch(resolvedFolderPath, { persistent: false }, (eventType, filename) => {
+      void sendIndexChanged(eventType, filename);
+    });
+    watcher.on("error", (err) => {
+      if (!targetWindow.isDestroyed()) {
+        sendToRequester("project-instance-index-changed", {
+          watchId,
+          path: resolvedFolderPath,
+          error: String(err?.message || err || "Index watch failed."),
+        });
+      }
+      closeProjectInstanceIndexWatch(watchId);
+    });
+    projectInstanceIndexWatchers.set(watchId, { watcher, path: resolvedFolderPath, windowId: targetWindow.id });
+    if (!projectInstanceIndexWatchCleanupWindowIds.has(targetWindow.id)) {
+      projectInstanceIndexWatchCleanupWindowIds.add(targetWindow.id);
+      targetWindow.once("closed", () => closeProjectInstanceIndexWatchesForWindow(targetWindow.id));
+    }
+    return { ok: true, watchId, path: resolvedFolderPath };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not watch index file.") };
+  }
+});
+
+ipcMain.handle("project-instance-index-watch-stop", async (_event, payload) => {
+  return { ok: closeProjectInstanceIndexWatch(payload?.watchId) };
 });
 
 ipcMain.handle("open-path", async (_event, payload) => {
@@ -2412,8 +2537,7 @@ ipcMain.handle("arcode-window-open", async (_event, payload) => {
   return { ok: true };
 });
 
-ipcMain.handle("app-clear-cache-reload", async (event, payload) => {
-  const targetWindow = getIpcWindow(event) || win;
+async function clearWindowCacheAndStorage(targetWindow, payload) {
   if (!targetWindow || targetWindow.isDestroyed()) return false;
   pendingClearCacheReloadRestore = payload?.restore && typeof payload.restore === "object"
     ? payload.restore
@@ -2421,9 +2545,21 @@ ipcMain.handle("app-clear-cache-reload", async (event, payload) => {
   try {
     await targetWindow.webContents.session.clearCache();
     await targetWindow.webContents.session.clearStorageData();
+    return true;
   } catch {
-    // ignore
+    return false;
   }
+}
+
+ipcMain.handle("app-clear-cache", async (event, payload) => {
+  const targetWindow = getIpcWindow(event) || win;
+  return clearWindowCacheAndStorage(targetWindow, payload);
+});
+
+ipcMain.handle("app-clear-cache-reload", async (event, payload) => {
+  const targetWindow = getIpcWindow(event) || win;
+  if (!targetWindow || targetWindow.isDestroyed()) return false;
+  await clearWindowCacheAndStorage(targetWindow, payload);
   try {
     const uiVersion = String(Date.now());
     const isArcodeReload = APP_MODE === "arcode"
@@ -2617,6 +2753,9 @@ app.on("before-quit", async () => {
   allowClose = true;
   for (const watchId of Array.from(arcodeFolderWatchers.keys())) {
     closeArcodeFolderWatch(watchId);
+  }
+  for (const watchId of Array.from(projectInstanceIndexWatchers.keys())) {
+    closeProjectInstanceIndexWatch(watchId);
   }
   arcBotHost?.stop();
   await requestBackendShutdown();

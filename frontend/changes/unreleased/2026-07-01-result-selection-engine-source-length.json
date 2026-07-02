@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "result_selection",
+  "audience": "user",
+  "summary": "Result Selection now accepts engine-generated sources at the selected origin length by materializing matching caches on demand.",
+  "details": [
+    "Engine-generated triangle and vector sources no longer force the Result Selection origin length up to their stored length.",
+    "On-demand source caches are created at the Result Selection length without changing source sidecars or native caches.",
+    "Empty source cells display as muted zeroes while staying unavailable for source selection and calculations."
+  ]
+}

@@ -37,6 +37,22 @@ class DatasetCacheLoadRequest(BaseModel):
     project_name: str
     reserving_class: str
     dataset_name: str
+    csv_file: str = ""
+    origin_length: Optional[int] = Field(None, ge=1)
+    development_length: Optional[int] = Field(None, ge=1)
+    cumulative: bool = True
+    calendar: bool = False
+
+
+class DatasetCalculatedPreviewRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    changed_dataset_name: str
+    changed_dataset_type_name: str = ""
+    values: List[List[Optional[float]]] = Field(default_factory=list)
+    mask: Optional[List[List[bool]]] = None
+    origin_labels: Optional[List[str]] = None
+    development_labels: Optional[List[str]] = None
 
 
 class DatasetSidecarSaveRequest(BaseModel):

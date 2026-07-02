@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Open calculated dataset windows and method sources now preview downstream changes from unsaved upstream dataset or DFM edits."
+}
