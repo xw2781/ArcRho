@@ -19,7 +19,7 @@ import {
   redrawChartSafely,
   setDatasetRenderNumberFormatSettings,
 } from "/ui/dataset/dataset_render.js";
-import { createTabbedPage } from "/ui/shared/tabbed_page.js";
+import { applyTabbedPageSaveBar, createTabbedPage } from "/ui/shared/tabbed_page.js";
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { createDatasetDependencyGuard } from "/ui/dataset/dataset_dependency_guard.js";
 import { createDatasetHeadersService } from "/ui/dataset/dataset_headers_service.js";
@@ -4579,6 +4579,7 @@ async function boot() {
       }
     },
   });
+  applyTabbedPageSaveBar(document.getElementById("datasetSaveBar"));
   window.dsTabSystem = dsTabSystem;
   wireTabPopoutWindows({
     cssPrefix: "ds",

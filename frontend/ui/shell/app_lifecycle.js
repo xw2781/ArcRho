@@ -119,21 +119,6 @@ async function clearBrowserCaches() {
 }
 
 export async function clearCacheAndReload() {
-  let confirmed = false;
-  try {
-    confirmed = await showAppConfirm({
-      title: "Warning",
-      message: "Clear cache and reload the app?",
-      okText: "Reload",
-      cancelText: "Cancel",
-    });
-  } catch {
-    confirmed = window.confirm("Clear cache and reload the app?");
-  }
-  if (!confirmed) {
-    shell.updateStatusBar?.("Clear Cache & Reload canceled.");
-    return;
-  }
   shell.updateStatusBar?.("Preparing cache reload...");
   let restore = null;
   try {

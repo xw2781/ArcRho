@@ -4,7 +4,7 @@ DFM Tabs - Orchestrator
 Initializes all DFM tabs, wires event handlers, and coordinates modules.
 ===============================================================================
 */
-import { createTabbedPage } from "/ui/shared/tabbed_page.js";
+import { applyTabbedPageSaveBar, createTabbedPage } from "/ui/shared/tabbed_page.js";
 import { setStorageInstance, loadNaBorders } from "/ui/dfm/dfm_storage.js";
 import {
   state as dfmState,
@@ -56,7 +56,7 @@ import {
   stopDfmMethodFileWatcher,
 } from "/ui/dfm/dfm_persistence.js?v=20260702a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
-import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260621c";
+import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260703a";
 import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260616a";
 import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js";
 import {
@@ -486,6 +486,7 @@ function initDfmTabs() {
       window.parent.postMessage({ type: "arcrho:dfm-tab-changed", inst, tab: tabId }, "*");
     }
   });
+  applyTabbedPageSaveBar(document.getElementById("dfmSaveBar"));
 
   window.dfmTabSystem = tabSystem;
   wireDfmTabSwitchShortcuts(tabSystem);

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ui",
+  "audience": "user",
+  "summary": "Aligned Dataset, DFM, and Result Selection tabs with the main app tab-and-frame styling."
+}

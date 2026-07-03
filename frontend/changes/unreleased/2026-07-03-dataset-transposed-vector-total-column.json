@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Shows transposed vector dataset totals in a single right-side Total column instead of a footer row."
+}

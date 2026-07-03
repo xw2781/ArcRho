@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Clear Cache & Reload now runs directly from the Settings menu without a confirmation prompt."
+}

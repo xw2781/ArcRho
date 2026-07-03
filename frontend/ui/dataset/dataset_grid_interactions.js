@@ -577,52 +577,6 @@ export function wireDatasetGridInteractions(deps) {
     }, { passive: true });
   }
 
-  function wireTableScrollArrowButtons(wrap) {
-    if (!wrap) return;
-    const host = document.getElementById("tableWrapHost");
-    const upBtn = document.getElementById("tableScrollUpBtn");
-    const downBtn = document.getElementById("tableScrollDownBtn");
-    const leftBtn = document.getElementById("tableScrollLeftBtn");
-    const rightBtn = document.getElementById("tableScrollRightBtn");
-    if (!host || !upBtn || !downBtn || !leftBtn || !rightBtn) return;
-    if (host.__arcRhoScrollArrowWired) {
-      updateArrowState();
-      return;
-    }
-    host.__arcRhoScrollArrowWired = true;
-
-    function updateArrowState() {
-      const canVert = wrap.scrollHeight - wrap.clientHeight > 1;
-      const canHorz = wrap.scrollWidth - wrap.clientWidth > 1;
-      host.classList.toggle("has-v-scroll", canVert);
-      host.classList.toggle("has-h-scroll", canHorz);
-      upBtn.disabled = !canVert || wrap.scrollTop <= 0;
-      downBtn.disabled = !canVert || wrap.scrollTop >= (wrap.scrollHeight - wrap.clientHeight - 1);
-      leftBtn.disabled = !canHorz || wrap.scrollLeft <= 0;
-      rightBtn.disabled = !canHorz || wrap.scrollLeft >= (wrap.scrollWidth - wrap.clientWidth - 1);
-    }
-
-    function scrollOneRow(dir) {
-      const next = clampScrollTop(wrap, wrap.scrollTop + dir * getTableRowStepPx(wrap));
-      wrap.scrollTo({ top: next, behavior: "auto" });
-      snapTableScrollToGrid(wrap);
-    }
-    function scrollOneCol(dir) {
-      const next = clampScrollLeft(wrap, wrap.scrollLeft + dir * getTableColStepPx(wrap));
-      wrap.scrollTo({ left: next, behavior: "auto" });
-      snapTableScrollToGrid(wrap);
-    }
-
-    upBtn.addEventListener("click", () => scrollOneRow(-1));
-    downBtn.addEventListener("click", () => scrollOneRow(1));
-    leftBtn.addEventListener("click", () => scrollOneCol(-1));
-    rightBtn.addEventListener("click", () => scrollOneCol(1));
-
-    wrap.addEventListener("scroll", updateArrowState, { passive: true });
-    window.addEventListener("resize", updateArrowState);
-    requestAnimationFrame(updateArrowState);
-  }
-
   function wireRectSelectionAndCopy() {
     if (window.__arcRhoRectSelWired) return;
     window.__arcRhoRectSelWired = true;
@@ -637,7 +591,6 @@ export function wireDatasetGridInteractions(deps) {
     if (!wrap) return;
 
     wireTableScrollSnapAfterIdle(wrap);
-    wireTableScrollArrowButtons(wrap);
 
     // start drag
     wrap.addEventListener("mousedown", (e) => {

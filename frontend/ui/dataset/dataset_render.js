@@ -103,6 +103,29 @@ function shouldHideTotalRowByFormula() {
   return /[*/]/.test(formulaExpr);
 }
 
+function isDatasetVectorModel(model) {
+  const dataFormat = String(model?.data_format ?? model?.dataFormat ?? "").trim().toLowerCase();
+  return dataFormat === "vector";
+}
+
+function numericCellValue(value) {
+  const n = (typeof value === "number") ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function sumDisplayRow(vals, mask, rowIndex, columnCount) {
+  let sum = 0;
+  let count = 0;
+  for (let c = 0; c < columnCount; c++) {
+    if (!(mask[rowIndex] && mask[rowIndex][c])) continue;
+    const n = numericCellValue(vals[rowIndex]?.[c]);
+    if (n == null) continue;
+    sum += n;
+    count += 1;
+  }
+  return count > 0 ? sum : null;
+}
+
 function ensureCtxMenuWired() {
   if (ctxMenuWired) return;
   ctxMenuWired = true;
@@ -340,7 +363,10 @@ export function renderTable() {
   }
 
   const tbl = document.createElement("table");
-  applyColumnWidthLock(tbl, lockedColumnWidths, devs.length + 1);
+  const transposed = isTransposedView();
+  const showTotalRow = !shouldHideTotalRowByFormula();
+  const showRightSideTotal = showTotalRow && transposed && isDatasetVectorModel(state.model);
+  applyColumnWidthLock(tbl, lockedColumnWidths, devs.length + 1 + (showRightSideTotal ? 1 : 0));
 
   // header
   const thead = document.createElement("thead");
@@ -348,7 +374,6 @@ export function renderTable() {
 
   const th0 = document.createElement("th");
   const originLen = document.getElementById("originLenSelect")?.value || 12;
-  const transposed = isTransposedView();
   const calendar = document.querySelector('input[name="timeMode"][value="calendar"]')?.checked === true;
   th0.textContent = transposed ? (calendar ? "Calendar Period" : "Development Period") : getOriginLabelText(originLen);
   trh.appendChild(th0);
@@ -362,6 +387,13 @@ export function renderTable() {
 
     trh.appendChild(th);
   });
+
+  if (showRightSideTotal) {
+    const th = document.createElement("th");
+    th.textContent = "Total";
+    th.classList.add("totalColHdr");
+    trh.appendChild(th);
+  }
 
   thead.appendChild(trh);
   tbl.appendChild(thead);
@@ -439,15 +471,23 @@ export function renderTable() {
       tr.appendChild(td);
     }
 
+    if (showRightSideTotal) {
+      const td = document.createElement("td");
+      td.className = "totalCell";
+      const sum = sumDisplayRow(vals, mask, r, devs.length);
+      td.textContent = sum == null ? "" : formatCellValue(sum);
+      tr.appendChild(td);
+    }
+
     tbody.appendChild(tr);
   }
 
   tbl.appendChild(tbody);
 
-  const showTotalRow = !shouldHideTotalRowByFormula();
-  tbl.classList.toggle("has-total-row", showTotalRow);
+  tbl.classList.toggle("has-total-row", showTotalRow && !showRightSideTotal);
+  tbl.classList.toggle("has-total-column", showRightSideTotal);
 
-  if (showTotalRow) {
+  if (showTotalRow && !showRightSideTotal) {
     // Footer totals: sum each development column across all origin rows.
     const tfoot = document.createElement("tfoot");
     const trf = document.createElement("tr");
@@ -461,9 +501,8 @@ export function renderTable() {
       let count = 0;
       for (let r = 0; r < origins.length; r++) {
         if (!(mask[r] && mask[r][c])) continue;
-        const v = vals[r]?.[c];
-        const n = (typeof v === "number") ? v : Number(v);
-        if (!Number.isFinite(n)) continue;
+        const n = numericCellValue(vals[r]?.[c]);
+        if (n == null) continue;
         sum += n;
         count += 1;
       }

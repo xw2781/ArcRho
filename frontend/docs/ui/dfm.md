@@ -8,7 +8,7 @@ DFM Notes tab reuses `notes_editor_interactions.js` for path highlighting, `Tab`
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.dfm.entry_points -->
-- `ui/dfm/dfm.html`: external scripts _none_; inline imports `/ui/dataset/dataset_main.js?v=20260702a`, `/ui/dfm/dfm_main.js?v=20260702a`.
+- `ui/dfm/dfm.html`: external scripts _none_; inline imports `/ui/dataset/dataset_main.js?v=20260703a`, `/ui/dfm/dfm_main.js?v=20260702a`.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/tri`

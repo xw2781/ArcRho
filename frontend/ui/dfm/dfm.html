@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Edit Dataset</title>
-  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260129165558"/>
+  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260703a"/>
   <style>
     :root{
       --dfm-font: var(--app-font);
@@ -27,64 +27,85 @@
       display: flex;
       flex-direction: column;
       margin: 0;
+      background: #f5f7fa;
       overflow: hidden;
     }
     .dfmTabBar {
+      flex: 0 0 auto;
       display: flex;
+      align-items: flex-end;
       gap: 0;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       position: relative;
-      top: 2.5px;
-      margin-top: 6px;
-      margin-bottom: 0;
-      margin-left: 0;
+      height: calc(35px + var(--tabbed-tabbar-extra-y, 0px));
+      margin: 0;
+      padding: 4px var(--tabbed-page-gutter, 8px) 0;
+      border-bottom: 0;
+      background: #f5f7fa;
+      box-sizing: border-box;
       user-select: none;
+    }
+    .dfmTabBar::after {
+      content: "";
+      position: absolute;
+      left: var(--tabbed-page-gutter, 8px);
+      right: var(--tabbed-page-gutter, 8px);
+      bottom: 0;
+      height: 1px;
+      background: #d0d0d0;
+      pointer-events: none;
+      z-index: 0;
     }
     .dfmTab {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 6px 10px;
-      height: 28px;
-      background: #f3f3f3;
-      border: 1px solid #d0d0d0;
-      border-bottom: 1px solid #d0d0d0;
+      height: 26px;
+      padding: 0 10px;
+      background: #edf1f6;
+      border: 1px solid #cbd5e1;
+      border-bottom: 1px solid #cbd5e1;
       border-radius: 0;
-      font-size: 13px;
+      font-size: 12px;
       cursor: pointer;
       user-select: none;
-      color: #333;
+      color: #1f2937;
       box-sizing: border-box;
       white-space: nowrap;
       position: relative;
+      z-index: 1;
+      box-shadow: none;
     }
     .dfmTab.active {
       background: #ffffff;
-      font-weight: 600;
-      border-color: #c8c8c8;
-      border-bottom: none;
-      height: 30px;
+      font-weight: 700;
+      border-color: #cbd5e1;
+      border-bottom: 0;
+      height: 29px;
       z-index: 2;
       margin-bottom: 0;
       box-shadow: none;
-      transform: translateY(-2px);
+      transform: translateY(1px);
     }
     .dfmTab.active::after {
       content: "";
       position: absolute;
       left: -1px;
       right: -1px;
-      bottom: -2px;
-      height: 2px;
+      bottom: -1px;
+      height: 1px;
       background: #ffffff;
+      pointer-events: none;
     }
     #dfmDetailsPage,
     #dfmDataPage,
     #dfmRatiosPage,
     #dfmResultsPage,
     #dfmNotesPage {
-      border: 1px solid #ddd;
+      border: 1px solid #d8dde3;
+      border-top: 0;
       border-radius: 0;
+      margin: 0 var(--tabbed-page-gutter, 8px);
       padding: 10px;
       background: #fff;
       flex: 1 1 auto;
@@ -94,8 +115,10 @@
     #dfmRatiosPage,
     #dfmResultsPage,
     #dfmNotesPage {
-      border: 1px solid #ddd;
+      border: 1px solid #d8dde3;
+      border-top: 0;
       border-radius: 0;
+      margin: 0 var(--tabbed-page-gutter, 8px);
     }
     #dfmDataPage {
       padding: 3px 0 0 3px;
@@ -252,9 +275,7 @@
       justify-content: flex-end;
       gap: 8px;
       padding: 6px 10px 4px;
-      border-top: 1px solid #d7dce5;
       box-sizing: border-box;
-      background: #fff;
     }
     .dfmSaveBtn,
     .dfmCancelBtn {
@@ -2010,7 +2031,7 @@
   <script type="module">
     (async () => {
       window.ADA_DFM_CONTEXT = true;
-      await import("/ui/dataset/dataset_main.js?v=20260702a");
+      await import("/ui/dataset/dataset_main.js?v=20260703a");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {

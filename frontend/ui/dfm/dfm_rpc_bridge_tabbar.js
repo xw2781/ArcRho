@@ -9,17 +9,19 @@ function ensureStyles() {
   style.textContent = `
     .dfmTabBar .dfmRpcSyncBtn {
       flex: 0 0 auto;
-      height: 28px;
-      margin: 0 8px 4px auto;
+      height: 24px;
+      min-width: 56px;
+      margin: 0 2px 3px auto;
       padding: 0 10px;
-      border: 1px solid #b9c4d3;
+      border: 1px solid #cbd5e1;
       border-radius: 5px;
       background: #fff;
       color: #1f2937;
       cursor: pointer;
       font-size: 12px;
-      font-weight: 600;
-      align-self: flex-start;
+      font-weight: 500;
+      align-self: flex-end;
+      box-sizing: border-box;
     }
     .dfmTabBar .dfmRpcSyncBtn:hover:not(:disabled) {
       background: #eef5ff;

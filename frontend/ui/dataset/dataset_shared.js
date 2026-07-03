@@ -228,18 +228,6 @@ export function injectDatasetMarkup(container) {
     <div class="panel" id="triPanel">
       <div id="tableWrapHost">
         <div id="tableWrap"></div>
-        <button id="tableScrollUpBtn" class="tableScrollArrow" type="button" title="Scroll up" aria-label="Scroll up">
-          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M4.5 10.5 8 7l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-        </button>
-        <button id="tableScrollDownBtn" class="tableScrollArrow" type="button" title="Scroll down" aria-label="Scroll down">
-          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M4.5 5.5 8 9l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-        </button>
-        <button id="tableScrollLeftBtn" class="tableScrollArrow" type="button" title="Scroll left" aria-label="Scroll left">
-          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M10.5 4.5 7 8l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-        </button>
-        <button id="tableScrollRightBtn" class="tableScrollArrow" type="button" title="Scroll right" aria-label="Scroll right">
-          <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M5.5 4.5 9 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-        </button>
       </div>
     </div>
   </div>
