@@ -61,6 +61,7 @@ from resq_migration.dfm import (  # noqa: E402
 from resq_migration.extractors import (  # noqa: E402
     _apply_result_selection_vector_metadata,
     _find_result_selection_for_vector,
+    _result_selection_source_payload,
     configure_extractors,
     export_result_selection,
     export_triangle,

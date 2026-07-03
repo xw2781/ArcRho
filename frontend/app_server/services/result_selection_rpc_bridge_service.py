@@ -262,7 +262,7 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
         "origin_length": None,
         "source_count": 0,
         "selected_count": 0,
-        "sources": [],
+        "loaded_datasets": [],
         "origin_labels": [],
         "selected_ultimate_preview": [],
         "notes": "",
@@ -298,10 +298,10 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
     details = _json_tab(payload, "details_tab")
     method = _json_tab(payload, "method_tab")
     notes = _clean_text(_json_tab(payload, "notes_tab").get("notes"))
-    sources = [
-        item for item in (_source_snapshot(source) for source in method.get("sources", []))
+    loaded_datasets = [
+        item for item in (_source_snapshot(source) for source in method.get("loaded_datasets", []))
         if item is not None
-    ] if isinstance(method.get("sources"), list) else []
+    ] if isinstance(method.get("loaded_datasets"), list) else []
     return {
         "available": True,
         "error": "",
@@ -311,9 +311,9 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
         "name": _clean_text(details.get("name")),
         "output_type": _clean_text(details.get("output_type")),
         "origin_length": details.get("origin_length"),
-        "source_count": len(sources),
-        "selected_count": sum(int(source.get("selected_count") or 0) for source in sources),
-        "sources": sources,
+        "source_count": len(loaded_datasets),
+        "selected_count": sum(int(source.get("selected_count") or 0) for source in loaded_datasets),
+        "loaded_datasets": loaded_datasets,
         "origin_labels": method.get("origin_labels", []) if isinstance(method.get("origin_labels"), list) else [],
         "selected_ultimate_preview": method.get("selected_ultimate", [])[:12] if isinstance(method.get("selected_ultimate"), list) else [],
         "notes": notes,

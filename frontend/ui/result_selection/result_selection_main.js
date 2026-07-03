@@ -9,6 +9,7 @@ import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interaction
 import { startResultSelectionRpcBridgeSync } from "/ui/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
+const RS_JSON_VALUE_DECIMAL_PLACES = 6;
 const DEFAULT_ORIGIN_LENGTH = 12;
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
 const FALLBACK_ORIGIN_LABEL_COUNTS = {
@@ -110,6 +111,17 @@ function numberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function roundRsJsonNumber(value) {
+  const n = numberOrNull(value);
+  if (n === null) return null;
+  const factor = 10 ** RS_JSON_VALUE_DECIMAL_PLACES;
+  return Math.round(n * factor) / factor;
+}
+
+function roundRsJsonVector(values) {
+  return Array.isArray(values) ? values.map(roundRsJsonNumber) : [];
 }
 
 function positiveInt(value, fallback = DEFAULT_ORIGIN_LENGTH) {
@@ -2014,20 +2026,19 @@ function buildPayload() {
     method_tab: {
       origin_labels: Array.from({ length: getRowCount() }, (_, i) => originLabel(i)),
       show_weights: details.showWeights,
-      sources: state.sources.map((source) => ({
+      loaded_datasets: state.sources.map((source) => ({
         name: source.name,
         dataset_type: source.datasetType,
         data_format: source.dataFormat,
-        origin_length: source.originLength || null,
         method_type: source.methodType,
         category: source.category,
         source_kind: source.sourceKind,
-        values: source.values,
-        weights: source.weights,
+        values: roundRsJsonVector(source.values),
+        weights: roundRsJsonVector(source.weights),
       })),
-      selected_ultimate: selectedUltimateVector(),
-      ultimate_overrides: serializedUltimateOverrides(),
-      ratio_basis_values: state.ratioBasisValues,
+      selected_ultimate: roundRsJsonVector(selectedUltimateVector()),
+      ultimate_overrides: roundRsJsonVector(serializedUltimateOverrides()),
+      ratio_basis_values: roundRsJsonVector(state.ratioBasisValues),
     },
     results_tab: {},
     validation_tab: {},
@@ -2056,7 +2067,7 @@ async function applyPayload(payload) {
     setNotesText(text(data.notes_tab?.notes));
   });
   const sources = [];
-  for (const source of Array.isArray(method.sources) ? method.sources : []) {
+  for (const source of Array.isArray(method.loaded_datasets) ? method.loaded_datasets : []) {
     const record = cachedRows.find((row) => norm(row.name) === norm(source.name)) || null;
     const built = await buildSourceFromRecord(record || { name: source.name }, source);
     if (built) sources.push(built);
@@ -2351,7 +2362,7 @@ async function saveResultSelection() {
     data: payload,
   });
   if (!jsonOut?.path || jsonOut?.error) throw new Error(jsonOut?.error || "Method JSON save failed.");
-  const vector = payload.method_tab.selected_ultimate || [];
+  const vector = selectedUltimateVector();
   const csvPath = await getCsvPath();
   const csvOut = await hostApi.saveTextFile({
     path: csvPath,

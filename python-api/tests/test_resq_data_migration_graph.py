@@ -143,7 +143,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         result_selection_payload = {
             "method_tab": {
                 "origin_labels": ["2016", "2017", "2018"],
-                "sources": [
+                "loaded_datasets": [
                     {"name": "Paid Loss"},
                     {"name": "Reported Loss"},
                 ],
@@ -182,9 +182,11 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         self.assertNotIn("selected", payload)
         self.assertNotIn("value_source", payload)
+        self.assertNotIn("origin_length", payload)
+        self.assertEqual(payload["source_kind"], "input")
         self.assertEqual(payload["weights"], [1, 0])
 
-    def test_export_result_selection_includes_ratio_basis_dataset(self) -> None:
+    def test_export_result_selection_matches_frontend_method_shape(self) -> None:
         class OutputDatasetType:
             Name = "Selected Ultimate"
 
@@ -218,18 +220,26 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
                 return SourceDataset()
 
             def DatasetValues(self, _dataset_index, origin_index, _origin_length):
-                return origin_index * 10
+                return origin_index * 10.123456789
 
             def Weights(self, _dataset_index, _origin_index):
-                return 1
+                return 1.987654321
 
             def Ultimates(self, origin_index, _origin_length):
-                return origin_index * 100
+                return origin_index * 100.123456789
+
+            def UltimateOverridden(self, *, OriginIndex):
+                return OriginIndex == 2
 
             def RatioBasisDataset(self, dataset_index):
                 if dataset_index != 1:
                     raise IndexError(dataset_index)
                 return type("RatioBasisDataset", (), {"Name": "Earned Premium"})()
+
+            def RatioBasisValues(self, *, OriginIndex, OriginLength):
+                if OriginLength != self.OriginLength:
+                    raise ValueError(OriginLength)
+                return OriginIndex * 1000.123456789
 
         ResultSelection.OutputVector = OutputVector()
 
@@ -237,7 +247,16 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         self.assertEqual(payload["details_tab"]["ratio_basis_dataset"], "Earned Premium")
         self.assertEqual(payload["details_tab"]["ratio_basis"], "Earned Premium")
-        self.assertEqual(payload["method_tab"]["ratio_basis_values"], [])
+        self.assertNotIn("dataset_category", payload["details_tab"])
+        self.assertNotIn("output_category", payload["details_tab"])
+        self.assertNotIn("sources", payload["method_tab"])
+        self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["source_kind"], "input")
+        self.assertNotIn("origin_length", payload["method_tab"]["loaded_datasets"][0])
+        self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["values"], [10.123457, 20.246914])
+        self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["weights"], [1.987654, 1.987654])
+        self.assertEqual(payload["method_tab"]["selected_ultimate"], [100.123457, 200.246914])
+        self.assertEqual(payload["method_tab"]["ratio_basis_values"], [1000.123457, 2000.246914])
+        self.assertEqual(payload["method_tab"]["ultimate_overrides"], [None, 200.246914])
 
     def test_write_result_selection_export_uses_simplified_method_filename(self) -> None:
         payload = {

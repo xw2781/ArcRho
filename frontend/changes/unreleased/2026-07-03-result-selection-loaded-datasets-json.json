@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "internal",
+  "summary": "Renamed the Result Selection method JSON source dataset array to loaded_datasets."
+}

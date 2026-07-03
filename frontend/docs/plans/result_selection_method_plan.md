@@ -251,7 +251,7 @@ Use a grouped method JSON shape similar to DFM, with a distinct format marker. U
   "method_tab": {
     "origin_labels": [],
     "show_weights": true,
-    "sources": [
+    "loaded_datasets": [
       {
         "name": "",
         "dataset_type": "",

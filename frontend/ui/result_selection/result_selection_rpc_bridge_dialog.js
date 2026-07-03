@@ -488,7 +488,7 @@ function renderStats(snapshot) {
 }
 
 function renderSourceRows(snapshot) {
-  const sources = Array.isArray(snapshot?.sources) ? snapshot.sources : [];
+  const sources = Array.isArray(snapshot?.loaded_datasets) ? snapshot.loaded_datasets : [];
   if (!sources.length) return `<div class="small">No Method tab sources in this JSON.</div>`;
   return `
     <div class="rsRpcSourceList">

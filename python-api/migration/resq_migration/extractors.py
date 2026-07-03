@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,9 @@ from .core import (
     DEFAULT_CALENDAR,
     DEFAULT_CUMULATIVE,
     METHOD_TYPE_NONE_CODE,
+    METHOD_TYPE_DFM_CODE,
+    METHOD_TYPE_RESULT_SELECTION_CODE,
+    _bool_value,
     _call_member,
     _clean_name,
     _dataset_cache_csv_file_name,
@@ -35,6 +39,7 @@ from .number_formats import dataset_instance_decimal_places, dataset_instance_nu
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
 METHOD_DATA_DIR = "methods"
+RS_JSON_VALUE_DECIMAL_PLACES = 6
 
 
 def _apply_graph_meta_best_effort(meta: dict, dataset_type: str, rc_dir: Path, **kwargs) -> None:
@@ -443,6 +448,21 @@ def _result_selection_ultimate(result_selection, origin_index: int, origin_lengt
     ]
     return _try_call_member(result_selection, "Ultimates", call_shapes)
 
+def _result_selection_ultimate_overridden(result_selection, origin_index: int) -> bool:
+    call_shapes = [
+        ((origin_index,), {}),
+        ((), {"OriginIndex": origin_index}),
+    ]
+    return _bool_value(_try_call_member(result_selection, "UltimateOverridden", call_shapes))
+
+def _result_selection_ratio_basis_value(result_selection, origin_index: int, origin_length: int):
+    call_shapes = [
+        ((origin_index, origin_length), {}),
+        ((origin_index,), {}),
+        ((), {"OriginIndex": origin_index, "OriginLength": origin_length}),
+    ]
+    return _try_call_member(result_selection, "RatioBasisValues", call_shapes)
+
 def _result_selection_ratio_basis_dataset_name(result_selection) -> str:
     call_shapes = [
         ((1,), {}),
@@ -455,29 +475,55 @@ def _result_selection_ratio_basis_dataset_name(result_selection) -> str:
         return ""
     return _normalize_import_name(_safe_attr(dataset, "Name", ""))
 
+def _rs_json_number(value):
+    if value is None or isinstance(value, bool):
+        return value
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return value
+    if not math.isfinite(number):
+        return None
+    if isinstance(value, int):
+        return value
+    return round(number, RS_JSON_VALUE_DECIMAL_PLACES)
+
+def _result_selection_source_kind(name: str, dataset_type: str, data_format: str, method_type_code: int) -> str:
+    if method_type_code == METHOD_TYPE_DFM_CODE:
+        return "dfm"
+    if method_type_code == METHOD_TYPE_RESULT_SELECTION_CODE:
+        return "result_selection"
+    if _clean_name(data_format).lower() == "triangle":
+        return _triangle_source_kind(name, dataset_type)
+    return "input"
+
 def _result_selection_source_payload(result_selection, dataset_index: int, origin_count: int, origin_length: int) -> dict:
     dataset = _result_selection_dataset(result_selection, dataset_index)
     dataset_type_obj = _safe_attr(dataset, "DatasetType", None)
+    name = _normalize_import_name(_safe_attr(dataset, "Name", "")) or f"Source {dataset_index}"
+    dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", ""))
     data_format_code = _safe_int_attr(dataset_type_obj, "DataFormat", -1)
     data_format = "Triangle" if data_format_code == 0 else "Vector"
     method_type_code = _safe_int_attr(dataset, "MethodType", METHOD_TYPE_NONE_CODE)
+    method_type = _method_type_name(method_type_code)
     values: list = []
     weights: list = []
     for origin_index in range(1, origin_count + 1):
         try:
-            values.append(_result_selection_dataset_value(result_selection, dataset_index, origin_index, origin_length))
+            values.append(_rs_json_number(_result_selection_dataset_value(result_selection, dataset_index, origin_index, origin_length)))
         except Exception:
             values.append(None)
         try:
-            weights.append(_result_selection_weight(result_selection, dataset_index, origin_index))
+            weights.append(_rs_json_number(_result_selection_weight(result_selection, dataset_index, origin_index)))
         except Exception:
             weights.append(0)
     return {
-        "name": _normalize_import_name(_safe_attr(dataset, "Name", "")) or f"Source {dataset_index}",
-        "dataset_type": _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")),
+        "name": name,
+        "dataset_type": dataset_type,
         "data_format": data_format,
-        "method_type": _method_type_name(method_type_code),
+        "method_type": method_type,
         "category": _normalize_import_name(_safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")),
+        "source_kind": _result_selection_source_kind(name, dataset_type, data_format, method_type_code),
         "values": values,
         "weights": weights,
     }
@@ -488,24 +534,36 @@ def export_result_selection(result_selection) -> dict:
     name = _normalize_import_name(_safe_attr(output_vector, "Name", "")) or _normalize_import_name(_safe_attr(result_selection, "Name", ""))
     dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
     output_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
-    output_category = _normalize_import_name(_safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", ""))
     origin_length = _safe_int_attr(result_selection, "OriginLength", 12)
     origin_count = _result_selection_origin_count(result_selection)
     if origin_count <= 0:
         raise ValueError(f"Result Selection {name!r} does not expose a positive OriginCount.")
     dataset_count = _result_selection_dataset_count(result_selection)
     origin_labels = [_result_selection_origin_label(result_selection, i) for i in range(1, origin_count + 1)]
-    sources = [
+    loaded_datasets = [
         _result_selection_source_payload(result_selection, dataset_index, origin_count, origin_length)
         for dataset_index in range(1, dataset_count + 1)
     ]
     ratio_basis_dataset = _result_selection_ratio_basis_dataset_name(result_selection)
     selected_ultimate: list = []
+    ultimate_overrides: list = []
+    ratio_basis_values: list = []
     for origin_index in range(1, origin_count + 1):
         try:
-            selected_ultimate.append(_result_selection_ultimate(result_selection, origin_index, origin_length))
+            ultimate = _result_selection_ultimate(result_selection, origin_index, origin_length)
         except Exception:
-            selected_ultimate.append(None)
+            ultimate = None
+        ultimate = _rs_json_number(ultimate)
+        selected_ultimate.append(ultimate)
+        try:
+            ultimate_overrides.append(ultimate if _result_selection_ultimate_overridden(result_selection, origin_index) else None)
+        except Exception:
+            ultimate_overrides.append(None)
+        if ratio_basis_dataset:
+            try:
+                ratio_basis_values.append(_rs_json_number(_result_selection_ratio_basis_value(result_selection, origin_index, origin_length)))
+            except Exception:
+                ratio_basis_values.append(None)
 
     try:
         notes = _clean_name(result_selection.Notes)
@@ -521,8 +579,6 @@ def export_result_selection(result_selection) -> dict:
         "details_tab": {
             "name": name,
             "output_type": output_type,
-            "dataset_category": output_category,
-            "output_category": output_category,
             "origin_length": origin_length,
             "ratio_basis": ratio_basis_dataset,
             "ratio_basis_dataset": ratio_basis_dataset,
@@ -532,9 +588,10 @@ def export_result_selection(result_selection) -> dict:
         "method_tab": {
             "origin_labels": origin_labels,
             "show_weights": True,
-            "sources": sources,
+            "loaded_datasets": loaded_datasets,
             "selected_ultimate": selected_ultimate,
-            "ratio_basis_values": [],
+            "ultimate_overrides": ultimate_overrides,
+            "ratio_basis_values": ratio_basis_values,
         },
         "results_tab": {},
         "validation_tab": {},
@@ -548,11 +605,11 @@ def export_result_selection(result_selection) -> dict:
 
 def _result_selection_source_names(payload: dict) -> list[str]:
     method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
-    sources = method_tab.get("sources") if isinstance(method_tab.get("sources"), list) else []
+    loaded_datasets = method_tab.get("loaded_datasets") if isinstance(method_tab.get("loaded_datasets"), list) else []
     names: list[str] = []
     seen: set[str] = set()
-    for source in sources:
-        name = _normalize_import_name(source.get("name") if isinstance(source, dict) else "")
+    for dataset in loaded_datasets:
+        name = _normalize_import_name(dataset.get("name") if isinstance(dataset, dict) else "")
         key = name.lower()
         if name and key not in seen:
             seen.add(key)

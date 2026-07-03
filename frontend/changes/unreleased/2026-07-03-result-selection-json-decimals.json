@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Limited persisted Result Selection method JSON numeric values to six decimal places."
+}
