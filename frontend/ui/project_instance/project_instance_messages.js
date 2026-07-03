@@ -532,11 +532,25 @@ function handleAutomationOpenDataset(message, sourceWindow) {
     reply({ ok: false, error: "Select a reserving class path before opening a dataset." });
     return true;
   }
-  const frame = openDatasetWindow(datasetName, {
-    datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
-    readOnly: args.readOnly,
-    methodType: toText(args.methodType || args.method_type),
-  });
+  const requestedMethodType = toText(args.methodType || args.method_type);
+  const openMethod = !!args.openMethod || !!args.open_method;
+  const methodType = requestedMethodType.toLowerCase();
+  const frame = openMethod && methodType === "dfm"
+    ? openDfmWindow(datasetName, {
+      path: state.selectedPath,
+      methodType: "DFM",
+    })
+    : openMethod && methodType === "result selection"
+      ? openResultSelectionWindow(datasetName, {
+        path: state.selectedPath,
+        initialTab: "method",
+        methodType: "Result Selection",
+      })
+      : openDatasetWindow(datasetName, {
+        datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
+        readOnly: args.readOnly,
+        methodType: requestedMethodType,
+      });
   if (!frame) {
     reply({ ok: false, error: `Could not open dataset: ${datasetName}` });
     return true;

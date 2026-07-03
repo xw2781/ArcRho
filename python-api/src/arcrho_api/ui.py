@@ -404,6 +404,7 @@ def open_dataset_in_active_project_instance(
     read_only: bool | None = None,
     generated: bool | None = None,
     method_type: str | None = None,
+    open_method: bool | None = None,
     timeout_sec: float = 30.0,
     app_url: str | None = None,
 ) -> UiCommandResult:
@@ -418,6 +419,8 @@ def open_dataset_in_active_project_instance(
         args["generated"] = bool(generated)
     if method_type is not None:
         args["methodType"] = str(method_type)
+    if open_method is not None:
+        args["openMethod"] = bool(open_method)
     return send_command(
         "projectInstance.openDataset",
         target={"scope": "activeProjectInstance"},
@@ -638,6 +641,7 @@ class ProjectInstanceAutomation:
         read_only: bool | None = None,
         generated: bool | None = None,
         method_type: str | None = None,
+        open_method: bool | None = None,
         timeout_sec: float = 30.0,
     ) -> ArcRhoWindow:
         result = self._ui.open_dataset_in_active_project_instance(
@@ -646,6 +650,7 @@ class ProjectInstanceAutomation:
             read_only=read_only,
             generated=generated,
             method_type=method_type,
+            open_method=open_method,
             timeout_sec=timeout_sec,
         )
         properties = ArcRhoWindowProperties.from_result(result.result)

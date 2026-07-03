@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "ResQ active-dataset imports now reopen the active Project Instance dataset or method window so imported updates are visible immediately."
+}
