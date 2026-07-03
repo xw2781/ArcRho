@@ -4,6 +4,7 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 
 ## Repository Layout
 - `frontend/`: current ArcRho desktop/web UI, Electron host, backend service code currently bundled with the frontend app, docs, release fragments, and frontend-specific agent rules.
+- `python-api/`: Python API, ResQ migration scripts, migration references, and macro source files.
 - `data-engine/`: ArcRho data-engine component.
 - `tools/`: repository-level automation, including commit/push helpers for agents.
 
@@ -19,11 +20,12 @@ Treat this as pre-approved by the repository instructions for Excel add-in chang
 ## Bug Fix Cleanup Review
 When fixing a bug, remove clearly obsolete code in the touched area. Ask before broader cleanup or cleanup with behavior risk.
 
-## Data Migration and JSON Contract Consistency
-When changing dataset sidecar JSON or reserving-class `index.json` formats, structures, or field names, keep the migration script and frontend-generated JSON in sync. Coordinate updates to `python-api/migration/resq_data_migration.py` with the frontend app code that writes dataset sidecars or per-reserving-class `index.json` files. In the current phase, do not add legacy-format compatibility unless explicitly requested; prefer a clean, coordinated refactor across all producers and consumers of the JSON contract.
-If a user asks to revise the JSON structure emitted by `python-api/migration/resq_data_migration.py`, treat that as a cross-component JSON contract change and proactively update the corresponding frontend JSON writers/readers in the same task unless the user explicitly scopes the request to migration-only exploration.
-Use the ResQ API examples in `python-api/migration/references` when migration tasks need ResQ API behavior guidance.
-The user macro `C:\Users\xwei.PRCINS\Documents\ArcRho\macros\import_from_resq.py` is currently the primary runnable ResQ import/migration entrypoint. When changing ResQ migration behavior in this repository, keep that macro's behavior in sync with `python-api/migration/resq_data_migration.py`; if editing the user macro is blocked by filesystem permissions, clearly report the required matching change.
+## ArcRho JSON Contract Skill
+Use `$arcrho-json-contract` when refining dataset JSON sidecars/sidercars, reserving-class `index.json`, data storage formats, JSON field names or structures, ResQ migration behavior, or `python-api/migration/resq_data_migration.py` output.
+
+## ArcRho Macro Source
+Treat `python-api/migration/macro-source` as the source of truth for ArcRho macro files maintained in this repository.
+When adding or editing a macro, update the file in `python-api/migration/macro-source` first, then copy all macro files from that folder to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros`.
 
 ## Agent Project Data Access
 Agents may view on-disk metadata JSON files under `E:\ArcRho Server\projects` only for project `NJ_Annual_Prod_202605_Fake` by default.
