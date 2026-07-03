@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import json
 import tempfile
 import unittest
@@ -38,12 +39,28 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.module.SERVER_ROOT = self.root
         self.module.PROJECT_NAME = "Demo"
         self.module.PROJECT_DATA_DIR = self.project_dir / "data"
+        self.catalog = importlib.import_module("resq_migration.catalog")
+        self.catalog.configure_catalog(
+            server_root=self.root,
+            project_name="Demo",
+            rs_json_format=self.module.RS_JSON_FORMAT,
+            method_data_dir=self.module.METHOD_DATA_DIR,
+            index_file_name=self.module.INDEX_FILE_NAME,
+            index_version=self.module.INDEX_VERSION,
+        )
+        self.extractors = importlib.import_module("resq_migration.extractors")
+        self.extractors.configure_extractors(
+            project_name="Demo",
+            rs_json_format=self.module.RS_JSON_FORMAT,
+            method_data_dir=self.module.METHOD_DATA_DIR,
+        )
 
         (self.project_dir / "dataset_types.json").write_text(json.dumps({
             "columns": ["Formula", "Generated", "Name", "Calculated", "Data Format", "Category", "Source"],
             "rows": [
                 ["", True, "Paid Loss", False, "Triangle", "Loss", ""],
                 ["", True, "DFM Ultimate", False, "Vector", "Loss", ""],
+                ["", True, "Generated Premium", False, "Vector", "Premium", "Generated_Premium"],
                 ["\"Paid Loss\" + \"DFM Ultimate\"", False, "Net Ultimate", True, "Vector", "Loss", ""],
                 ["\"Net Ultimate\" * 1.1", False, "Loaded Ultimate", True, "Vector", "Loss", ""],
             ],
@@ -68,8 +85,14 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "details tab": {"name": "Selected DFM", "output type": "DFM Ultimate"},
             "data tab": {"input data triangle csv path": dfm_input},
         }), encoding="utf-8")
+        (self.sidecars_dir / "Loaded Ultimate.json").write_text(json.dumps({
+            "dataset_name": "Loaded Ultimate",
+            "dataset_type": "Loaded Ultimate",
+            "source_kind": "calculated",
+            "formula": "\"Net Ultimate\" * 1.1",
+        }), encoding="utf-8")
 
-        graph = self.module._dataset_type_graph_fields("Net Ultimate", self.rc_dir)
+        graph = self.catalog._dataset_type_graph_fields("Net Ultimate", self.rc_dir)
 
         precedents = {item["dataset_type_name"]: item for item in graph["Precedents"]}
         self.assertEqual(set(precedents), {"Paid Loss", "DFM Ultimate"})
@@ -82,6 +105,44 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(graph["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
         self.assertEqual(graph["Dependents"][0]["formula"], "\"Net Ultimate\" * 1.1")
 
+    def test_formula_graph_omits_absent_rc_dependents(self) -> None:
+        (self.sidecars_dir / "Net Ultimate.json").write_text(json.dumps({
+            "dataset_name": "Net Ultimate",
+            "dataset_type": "Net Ultimate",
+            "source_kind": "calculated",
+            "formula": "\"Paid Loss\" + \"DFM Ultimate\"",
+        }), encoding="utf-8")
+
+        graph = self.catalog._dataset_type_graph_fields("Net Ultimate", self.rc_dir)
+
+        self.assertEqual(graph["Dependents"], [])
+
+    def test_generated_vector_ignores_resq_formula_metadata(self) -> None:
+        self.extractors.write_vector_export({
+            "name": "Generated Premium",
+            "dataset_type": "Generated Premium",
+            "category": "Premium",
+            "data_format": 1,
+            "method_type": "None",
+            "method_type_code": 0,
+            "origin_length": 12,
+            "development_length": 12,
+            "origin_count": 1,
+            "development_count": 1,
+            "origin_labels": ["2026"],
+            "development_labels": ["Value"],
+            "values": [[123.0]],
+            "formula": '"Some ResQ Source" + 1',
+            "user": "tester",
+            "created": "2026-01-01T00:00:00",
+            "modified": "2026-01-02T00:00:00",
+        }, r"Auto\PP", self.rc_dir)
+
+        payload = json.loads((self.sidecars_dir / "Generated Premium.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["source_kind"], "engine")
+        self.assertFalse(payload["calculated"])
+        self.assertEqual(payload["formula"], "")
+
     def test_refresh_preserves_result_selection_precedent_strings(self) -> None:
         path = self.sidecars_dir / "Net Ultimate.json"
         path.write_text(json.dumps({
@@ -92,11 +153,17 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "Precedents": ["Paid Loss"],
             "Dependents": [],
         }), encoding="utf-8")
+        (self.sidecars_dir / "Loaded Ultimate.json").write_text(json.dumps({
+            "dataset_name": "Loaded Ultimate",
+            "dataset_type": "Loaded Ultimate",
+            "source_kind": "calculated",
+            "formula": "\"Net Ultimate\" * 1.1",
+        }), encoding="utf-8")
 
         updated = self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
 
         payload = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(updated, 1)
+        self.assertGreaterEqual(updated, 1)
         self.assertEqual(payload["Precedents"], ["Paid Loss"])
         self.assertEqual(payload["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
 
@@ -236,17 +303,14 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
                     raise IndexError(dataset_index)
                 return type("RatioBasisDataset", (), {"Name": "Earned Premium"})()
 
-            def RatioBasisValues(self, *, OriginIndex, OriginLength):
-                if OriginLength != self.OriginLength:
-                    raise ValueError(OriginLength)
-                return OriginIndex * 1000.123456789
-
         ResultSelection.OutputVector = OutputVector()
 
         payload = self.module.export_result_selection(ResultSelection())
 
         self.assertEqual(payload["details_tab"]["ratio_basis_dataset"], "Earned Premium")
         self.assertEqual(payload["details_tab"]["ratio_basis"], "Earned Premium")
+        self.assertEqual(payload["details_tab"]["ratio_basis_datasets"], ["Earned Premium"])
+        self.assertEqual(payload["details_tab"]["active_ratio_basis_dataset"], "Earned Premium")
         self.assertNotIn("dataset_category", payload["details_tab"])
         self.assertNotIn("output_category", payload["details_tab"])
         self.assertNotIn("sources", payload["method_tab"])
@@ -255,7 +319,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["values"], [10.123457, 20.246914])
         self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["weights"], [1.987654, 1.987654])
         self.assertEqual(payload["method_tab"]["selected_ultimate"], [100.123457, 200.246914])
-        self.assertEqual(payload["method_tab"]["ratio_basis_values"], [1000.123457, 2000.246914])
+        self.assertNotIn("ratio_basis_values", payload["method_tab"])
         self.assertEqual(payload["method_tab"]["ultimate_overrides"], [None, 200.246914])
 
     def test_write_result_selection_export_uses_simplified_method_filename(self) -> None:

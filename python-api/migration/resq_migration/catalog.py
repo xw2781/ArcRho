@@ -141,6 +141,19 @@ def _is_known_dataset_type(dataset_type_name: object, known_keys: set[str] | Non
         return False
     return key in (_dataset_type_keys() if known_keys is None else known_keys)
 
+def _dataset_type_row(dataset_type_name: object, rows: list[dict] | None = None) -> dict | None:
+    key = _dataset_type_lookup_key(dataset_type_name)
+    if not key:
+        return None
+    for row in (_dataset_type_rows() if rows is None else rows):
+        if _dataset_type_lookup_key(row.get("name")) == key:
+            return row
+    return None
+
+def _is_generated_dataset_type(dataset_type_name: object, rows: list[dict] | None = None) -> bool:
+    row = _dataset_type_row(dataset_type_name, rows)
+    return bool(row and row.get("generated"))
+
 def _unknown_dataset_type_skip_detail(kind: str, name: object, dataset_type_name: object) -> str:
     display_type = _clean_name(dataset_type_name) or "<blank>"
     return f"    SKIP {kind} {_clean_name(name) or '<unnamed>'}: dataset type {display_type!r} not found in dataset_types.json"
@@ -179,6 +192,31 @@ def _direct_dependent_names(rows: list[dict], dataset_type_name: str) -> list[st
             seen.add(dep_key)
             out.append(row["name"])
     return out
+
+def _rc_existing_dataset_keys(rc_dir: Path | None) -> set[str] | None:
+    if rc_dir is None or not rc_dir.is_dir():
+        return None
+    keys: set[str] = set()
+    for item in _scan_physical_dataset_files(rc_dir):
+        names: set[str] = set()
+        _add_cached_dataset_name(names, item.get("dataset_name"))
+        _add_cached_dataset_name(names, item.get("dataset_type"))
+        for value in item.get("dataset_names") or []:
+            _add_cached_dataset_name(names, value)
+        for name in names:
+            key = _canon_dataset_name(name)
+            if key:
+                keys.add(key)
+    return keys
+
+def _filter_existing_dependents(names: list[str], existing_dataset_keys: set[str] | None) -> list[str]:
+    if existing_dataset_keys is None:
+        return names
+    return [
+        name
+        for name in names
+        if _canon_dataset_name(name) in existing_dataset_keys
+    ]
 
 def _physical_item_matches_dataset(item: dict, dataset_key: str) -> bool:
     names: set[str] = set()
@@ -309,16 +347,25 @@ def _merge_dependency_entries(existing: object, additions: list[dict]) -> list[d
     return out
 
 
-def _dataset_type_graph_fields(dataset_type_name: str, rc_dir: Path | None = None) -> dict:
+def _dataset_type_graph_fields(
+    dataset_type_name: str,
+    rc_dir: Path | None = None,
+    *,
+    existing_dataset_keys: set[str] | None = None,
+) -> dict:
     rows = _dataset_type_rows()
     rows_by_key = _dataset_type_rows_by_key(rows)
+    rc_dataset_keys = _rc_existing_dataset_keys(rc_dir) if existing_dataset_keys is None else existing_dataset_keys
     precedents = [
         _dependency_entry(name, rows_by_key, rc_dir)
         for name in _direct_precedent_names(rows, dataset_type_name)
     ]
     dependents = [
         _dependency_entry(name, rows_by_key, rc_dir, include_formula=True)
-        for name in _direct_dependent_names(rows, dataset_type_name)
+        for name in _filter_existing_dependents(
+            _direct_dependent_names(rows, dataset_type_name),
+            rc_dataset_keys,
+        )
     ]
     return {"Precedents": precedents, "Dependents": dependents}
 
@@ -329,8 +376,9 @@ def _apply_sidecar_graph_meta(
     rc_dir: Path | None = None,
     *,
     preserve_precedents: bool = False,
+    existing_dataset_keys: set[str] | None = None,
 ) -> None:
-    fields = _dataset_type_graph_fields(dataset_type_name, rc_dir)
+    fields = _dataset_type_graph_fields(dataset_type_name, rc_dir, existing_dataset_keys=existing_dataset_keys)
     if preserve_precedents:
         meta["Dependents"] = fields["Dependents"]
     else:
@@ -815,6 +863,7 @@ def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
     if not sidecar_dir.is_dir():
         return 0
     sidecars: list[tuple[Path, dict]] = []
+    existing_dataset_keys = _rc_existing_dataset_keys(rc_dir)
     for path in sorted(sidecar_dir.glob("*.json"), key=lambda item: item.name.lower()):
         if path.name.startswith("ArcRhoTriNotes@"):
             continue
@@ -833,6 +882,7 @@ def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
             dataset_type,
             rc_dir,
             preserve_precedents=is_result_selection,
+            existing_dataset_keys=existing_dataset_keys,
         )
         sidecars.append((path, meta))
     _reconcile_sidecar_dependents(sidecars, rc_dir)

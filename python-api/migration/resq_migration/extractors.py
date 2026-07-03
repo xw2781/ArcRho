@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .catalog import _apply_sidecar_graph_meta
+from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
 from .core import (
     DATASET_CACHE_DIR,
     DATASET_SIDECAR_DIR,
@@ -349,11 +349,20 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     _write_csv_matrix(csv_path, payload["values"])
     _write_aggregated_vector_cache_exports(payload, rc_dir)
 
-    formula = _clean_name(payload.get("formula"))
+    raw_formula = _clean_name(payload.get("formula"))
     method_type = _method_type_name(payload.get("method_type"))
     is_result_selection = _is_result_selection_method_type(method_type)
+    is_engine_generated = (not is_result_selection) and _is_generated_dataset_type(dataset_type)
+    formula = "" if is_engine_generated else raw_formula
     updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
-    source_kind = "result_selection" if is_result_selection else ("calculated" if formula else "input")
+    if is_result_selection:
+        source_kind = "result_selection"
+    elif is_engine_generated:
+        source_kind = "engine"
+    elif formula:
+        source_kind = "calculated"
+    else:
+        source_kind = "input"
     meta = {
         "dataset_name": name,
         "dataset_type": dataset_type,
@@ -361,7 +370,7 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
-        "calculated": bool(formula or is_result_selection),
+        "calculated": bool((formula and not is_engine_generated) or is_result_selection),
         "formula": formula,
         "source": "resq_result_selection_vector" if is_result_selection else "resq_vector",
         "method_type": method_type,
@@ -455,14 +464,6 @@ def _result_selection_ultimate_overridden(result_selection, origin_index: int) -
     ]
     return _bool_value(_try_call_member(result_selection, "UltimateOverridden", call_shapes))
 
-def _result_selection_ratio_basis_value(result_selection, origin_index: int, origin_length: int):
-    call_shapes = [
-        ((origin_index, origin_length), {}),
-        ((origin_index,), {}),
-        ((), {"OriginIndex": origin_index, "OriginLength": origin_length}),
-    ]
-    return _try_call_member(result_selection, "RatioBasisValues", call_shapes)
-
 def _result_selection_ratio_basis_dataset_name(result_selection) -> str:
     call_shapes = [
         ((1,), {}),
@@ -545,9 +546,9 @@ def export_result_selection(result_selection) -> dict:
         for dataset_index in range(1, dataset_count + 1)
     ]
     ratio_basis_dataset = _result_selection_ratio_basis_dataset_name(result_selection)
+    ratio_basis_datasets = [ratio_basis_dataset] if ratio_basis_dataset else []
     selected_ultimate: list = []
     ultimate_overrides: list = []
-    ratio_basis_values: list = []
     for origin_index in range(1, origin_count + 1):
         try:
             ultimate = _result_selection_ultimate(result_selection, origin_index, origin_length)
@@ -559,11 +560,6 @@ def export_result_selection(result_selection) -> dict:
             ultimate_overrides.append(ultimate if _result_selection_ultimate_overridden(result_selection, origin_index) else None)
         except Exception:
             ultimate_overrides.append(None)
-        if ratio_basis_dataset:
-            try:
-                ratio_basis_values.append(_rs_json_number(_result_selection_ratio_basis_value(result_selection, origin_index, origin_length)))
-            except Exception:
-                ratio_basis_values.append(None)
 
     try:
         notes = _clean_name(result_selection.Notes)
@@ -582,6 +578,8 @@ def export_result_selection(result_selection) -> dict:
             "origin_length": origin_length,
             "ratio_basis": ratio_basis_dataset,
             "ratio_basis_dataset": ratio_basis_dataset,
+            "ratio_basis_datasets": ratio_basis_datasets,
+            "active_ratio_basis_dataset": ratio_basis_dataset,
             "show_ratios_as_percentages": True,
             "statistic_decimal_places": 1,
         },
@@ -591,7 +589,6 @@ def export_result_selection(result_selection) -> dict:
             "loaded_datasets": loaded_datasets,
             "selected_ultimate": selected_ultimate,
             "ultimate_overrides": ultimate_overrides,
-            "ratio_basis_values": ratio_basis_values,
         },
         "results_tab": {},
         "validation_tab": {},
