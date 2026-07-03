@@ -1,10 +1,10 @@
 VERSION 5.00
 Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} ufProgressBar 
    Caption         =   "Calculating Workbook"
-   ClientHeight    =   2940
-   ClientLeft      =   420
-   ClientTop       =   1605
-   ClientWidth     =   5505
+   ClientHeight    =   3015
+   ClientLeft      =   360
+   ClientTop       =   1365
+   ClientWidth     =   5445
    OleObjectBlob   =   "ufProgressBar.frx":0000
    StartUpPosition =   1  'CenterOwner
 End
@@ -13,7 +13,6 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
-
 
 Private Sub cmd_Cancel_Click()
     ufProgressBar.LabelTitle.Caption = "Stop updating ... "

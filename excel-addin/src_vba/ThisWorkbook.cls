@@ -1,6 +1,7 @@
 
 Private Sub Workbook_Open()
 
+    ' UDF help metadata is registered during the XLAM build.
     ' Register_ArcRhoTri_Help_Safe
     
     LoadConfig

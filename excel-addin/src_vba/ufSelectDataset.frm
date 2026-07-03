@@ -16,19 +16,25 @@ Attribute VB_Exposed = False
 
 Option Explicit
 
-' in-memory data from the sheet
+' in-memory data from dataset_types.json
 ' mData is a 2D array including headers (row 1)
-Private Const DATASET_TYPES_FILE As String = "Dataset Types.xlsx"
-Private Const DATASET_TYPES_SHEET As String = "Dataset Types"
-
 Private mData As Variant
 Private mColCat As Long, mColName As Long, mColFmt As Long
+Private mDatasetTypesPath As String
 
 Private Sub UserForm_Initialize()
-    Dim wb As Workbook, ws As Worksheet
     Dim oldScr As Boolean, oldEvt As Boolean, oldCalc As XlCalculation
+    Dim projectName As String
     
     'Me.lbl1.Font.Size = 12
+
+    projectName = CurrentWorkbookDefaultProject()
+    If Len(projectName) = 0 Then
+        ShowDefaultProjectWarning
+        Unload Me
+        Exit Sub
+    End If
+    mDatasetTypesPath = GetProjectDatasetTypesJsonPath(projectName)
     
     oldScr = Application.ScreenUpdating
     oldEvt = Application.EnableEvents
@@ -39,20 +45,19 @@ Private Sub UserForm_Initialize()
     
     On Error GoTo clean_fail
     
-    Set wb = Workbooks.Open(fileName:=DatasetTypesPath(), ReadOnly:=True, UpdateLinks:=False, AddToMru:=False)
-    Set ws = wb.Worksheets(DATASET_TYPES_SHEET)
-    
-    ' Load the used range to an array
-    mData = ws.UsedRange.Value2
+    ' Load dataset_types.json to an array compatible with the existing filter code.
+    mData = LoadDatasetTypesJsonData(mDatasetTypesPath)
     
     ' Find column indices by header names
     mColCat = FindHeaderCol("Category")
     mColName = FindHeaderCol("Name")
-    mColFmt = FindHeaderCol("Data Format") ' you asked to add this filter
+    mColFmt = FindHeaderCol("Data Format")
     
     ' Build filter dropdown lists (with "All" at top)
     PopulateComboFromUnique cboCategory, mColCat
     PopulateComboFromUnique cboFormat, mColFmt
+    lstNames.ColumnCount = 3
+    lstNames.ColumnWidths = "230 pt;80 pt;70 pt"
     
     ' Empty keyword to start
     txtSearch.text = ""
@@ -61,19 +66,122 @@ Private Sub UserForm_Initialize()
     ApplyFilters
     
 clean_exit:
-    If Not wb Is Nothing Then wb.Close SaveChanges:=False
     Application.Calculation = oldCalc
     Application.EnableEvents = oldEvt
     Application.ScreenUpdating = oldScr
     Exit Sub
 
 clean_fail:
-    MsgBox "Unable to load dataset list:" & vbCrLf & DatasetTypesPath() & " / " & DATASET_TYPES_SHEET & vbCrLf & Err.Description, vbExclamation
+    MsgBox "Unable to load dataset list:" & vbCrLf & mDatasetTypesPath & vbCrLf & Err.Description, vbExclamation
     Resume clean_exit
 End Sub
 
-Private Function DatasetTypesPath() As String
-    DatasetTypesPath = ProductPath("library\" & DATASET_TYPES_FILE)
+Private Sub UserForm_Activate()
+    EnableMouseWheelForListBox lstNames
+End Sub
+
+Private Sub UserForm_Deactivate()
+    DisableMouseWheelForListBox
+End Sub
+
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+    DisableMouseWheelForListBox
+End Sub
+
+Private Sub UserForm_Terminate()
+    DisableMouseWheelForListBox
+End Sub
+
+Private Function CurrentWorkbookDefaultProject() As String
+    Dim ws As Worksheet
+    Dim projectValue As String
+
+    On Error Resume Next
+    Set ws = ActiveWorkbook.Worksheets("ResQ Settings")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Function
+
+    projectValue = Trim$(CStr(ws.Range("B7").Value))
+    If Len(projectValue) = 0 Then Exit Function
+
+    CurrentWorkbookDefaultProject = Mid$(projectValue, InStrRev(projectValue, "\") + 1)
+End Function
+
+Private Sub ShowDefaultProjectWarning()
+    Dim msg As String
+
+    msg = "Please connect and log in, then select a default project before using Select Datasets."
+    On Error Resume Next
+    ufAlert.ShowMessage msg, "ArcRho"
+    If Err.Number <> 0 Then
+        Err.Clear
+        MsgBox msg, vbExclamation, "ArcRho"
+    End If
+    On Error GoTo 0
+End Sub
+
+Private Function LoadDatasetTypesJsonData(ByVal filePath As String) As Variant
+    Dim root As Object
+    Dim columns As Collection
+    Dim rows As Collection
+    Dim outData() As Variant
+    Dim row As Collection
+    Dim r As Long, c As Long
+    Dim rowCount As Long, colCount As Long
+
+    If Len(Dir$(filePath, vbNormal Or vbReadOnly Or vbHidden Or vbSystem)) = 0 Then
+        Err.Raise 53, , "File not found."
+    End If
+
+    Set root = JsonParse(ReadUtf8Text(filePath))
+    If Not root.Exists("columns") Or Not root.Exists("rows") Then
+        Err.Raise 5, , "dataset_types.json must contain columns and rows."
+    End If
+
+    Set columns = root("columns")
+    Set rows = root("rows")
+    colCount = columns.Count
+    rowCount = rows.Count
+    If colCount = 0 Then Err.Raise 5, , "dataset_types.json has no columns."
+
+    ReDim outData(1 To rowCount + 1, 1 To colCount)
+
+    For c = 1 To colCount
+        outData(1, c) = CStr(columns.Item(c))
+    Next c
+
+    For r = 1 To rowCount
+        If IsObject(rows.Item(r)) Then
+            Set row = rows.Item(r)
+            For c = 1 To colCount
+                If row.Count >= c Then
+                    If IsObject(row.Item(c)) Then
+                        outData(r + 1, c) = vbNullString
+                    ElseIf IsEmpty(row.Item(c)) Or IsNull(row.Item(c)) Then
+                        outData(r + 1, c) = vbNullString
+                    Else
+                        outData(r + 1, c) = CStr(row.Item(c))
+                    End If
+                Else
+                    outData(r + 1, c) = vbNullString
+                End If
+            Next c
+        End If
+    Next r
+
+    LoadDatasetTypesJsonData = outData
+End Function
+
+Private Function ReadUtf8Text(ByVal filePath As String) As String
+    Dim stream As Object
+
+    Set stream = CreateObject("ADODB.Stream")
+    stream.Type = 2
+    stream.Charset = "utf-8"
+    stream.Open
+    stream.LoadFromFile filePath
+    ReadUtf8Text = stream.ReadText(-1)
+    stream.Close
 End Function
 ' ==== Filtering ====
 
@@ -104,11 +212,23 @@ Private Sub ApplyFilters()
                    
                    If Not bag.Exists(nm) Then
                        bag.Add nm, True
-                       lstNames.AddItem nm
+                       AddDatasetListItem nm, CStr(mData(r, mColCat)), CStr(mData(r, mColFmt))
                    End If
             End If
         End If
     Next r
+End Sub
+
+Private Sub AddDatasetListItem(ByVal datasetName As String, ByVal category As String, ByVal dataFormat As String)
+    Dim rowIndex As Long
+
+    lstNames.AddItem datasetName
+    rowIndex = lstNames.ListCount - 1
+
+    On Error Resume Next
+    lstNames.List(rowIndex, 1) = category
+    lstNames.List(rowIndex, 2) = dataFormat
+    On Error GoTo 0
 End Sub
 
 Private Function MatchOrAll(ByVal Value As Variant, ByVal sel As String) As Boolean

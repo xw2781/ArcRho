@@ -19,6 +19,50 @@ function Get-VbaComponentName([System.IO.FileInfo]$File) {
     $name
 }
 
+function Get-VbaComponentOrNull([object]$VBProject, [string]$Name) {
+    try {
+        return $VBProject.VBComponents.Item($Name)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-CodeTextFromExportedComponent([string]$Path) {
+    $text = Get-Content -LiteralPath $Path -Raw
+    $lines = [regex]::Split($text, "\r?\n")
+    $startIndex = 0
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^Attribute VB_Exposed\s*=') {
+            $startIndex = $i + 1
+            break
+        }
+    }
+
+    if ($startIndex -ge $lines.Count) {
+        return ""
+    }
+
+    ($lines[$startIndex..($lines.Count - 1)] -join [Environment]::NewLine).TrimStart()
+}
+
+function Replace-CodeModuleFromText([object]$Component, [string]$CodeText) {
+    $codeModule = $Component.CodeModule
+    if ($null -eq $codeModule) {
+        Write-Warning "Could not replace code for $($Component.Name) because Excel returned no CodeModule."
+        return
+    }
+
+    if ($codeModule.CountOfLines -gt 0) {
+        $codeModule.DeleteLines(1, $codeModule.CountOfLines)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($CodeText)) {
+        $codeModule.AddFromString($CodeText)
+    }
+}
+
 function Remove-ExcelTempFiles([string]$Directory) {
     if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
         return
@@ -38,6 +82,17 @@ function Remove-ExcelTempFiles([string]$Directory) {
                 Write-Warning "Could not remove Excel temp file $($_.FullName): $($_.Exception.Message)"
             }
         }
+}
+
+function Get-ExcelMacroName([object]$Workbook, [string]$ProcedureName) {
+    $workbookName = $Workbook.Name -replace "'", "''"
+    "'$workbookName'!$ProcedureName"
+}
+
+function Invoke-WorkbookMacro([object]$Excel, [object]$Workbook, [string]$ProcedureName) {
+    $macroName = Get-ExcelMacroName $Workbook $ProcedureName
+    Write-Host "Running workbook macro: $macroName"
+    $Excel.Run($macroName) | Out-Null
 }
 
 function Get-RibbonLabelForWorkbook([string]$WorkbookPath) {
@@ -197,6 +252,7 @@ Update-WorkbookCoreProperties $targetPathFull (Get-RibbonLabelForWorkbook $targe
 
 $excel = $null
 $workbook = $null
+$tempTargetPath = Join-Path $targetDir ("_ARCRHO_BETA_build_{0}.xlam" -f ([Guid]::NewGuid().ToString("N")))
 
 try {
     $excel = New-Object -ComObject Excel.Application
@@ -206,11 +262,13 @@ try {
     $workbook = $excel.Workbooks.Open($targetPathFull)
     $vbProject = $workbook.VBProject
 
-    # Remove imported modules/forms/classes from the target. Document modules
-    # such as ThisWorkbook and worksheet modules cannot be removed.
+    # Remove imported modules/classes from the target. Preserve UserForms so
+    # their MSForms designer binaries do not get re-imported and DPI-scaled.
+    # Document modules such as ThisWorkbook and worksheet modules cannot be
+    # removed.
     $toRemove = @()
     foreach ($component in $vbProject.VBComponents) {
-        if ($component.Type -ne 100) {
+        if ($component.Type -ne 100 -and $component.Type -ne 3) {
             $toRemove += $component
         }
     }
@@ -235,8 +293,9 @@ try {
         }
     }
 
-    # Import standard modules and class modules before forms.
-    $importPatterns = @("*.bas", "*.cls", "*.frm")
+    # Import standard modules and class modules first. Existing UserForms are
+    # code-refreshed below while preserving their designer state.
+    $importPatterns = @("*.bas", "*.cls")
     foreach ($pattern in $importPatterns) {
         Get-ChildItem -LiteralPath $sourceDirFull -Filter $pattern -File |
             Where-Object { $_.Name -ne "ThisWorkbook.cls" } |
@@ -249,10 +308,31 @@ try {
             }
     }
 
+    Get-ChildItem -LiteralPath $sourceDirFull -Filter "*.frm" -File |
+        Sort-Object Name |
+        ForEach-Object {
+            $componentName = Get-VbaComponentName $_
+            $component = Get-VbaComponentOrNull $vbProject $componentName
+            if ($null -eq $component) {
+                Write-Warning "Importing new UserForm $($_.Name) as $componentName. Existing forms are preserved, but new forms still rely on Excel's importer."
+                $component = $vbProject.VBComponents.Import($_.FullName)
+                $component.Name = $componentName
+            }
+            else {
+                Write-Host "Updating UserForm code $($_.Name) as $componentName"
+                Replace-CodeModuleFromText $component (Get-CodeTextFromExportedComponent $_.FullName)
+            }
+        }
+
+    Invoke-WorkbookMacro $excel $workbook "Register_ArcRhoTri_Help_Safe"
+
     $workbook.IsAddin = $true
-    $workbook.SaveAs($targetPathFull, 55)
+    $workbook.SaveAs($tempTargetPath, 55)
     $workbook.Close($true)
     $workbook = $null
+
+    Copy-Item -LiteralPath $tempTargetPath -Destination $targetPathFull -Force
+    Remove-Item -LiteralPath $tempTargetPath -Force
 
     Write-Host "Updated XLAM: $targetPathFull"
 }
@@ -263,6 +343,9 @@ finally {
     if ($null -ne $excel) {
         $excel.Quit()
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null
+    }
+    if (Test-Path -LiteralPath $tempTargetPath -PathType Leaf) {
+        Remove-Item -LiteralPath $tempTargetPath -Force
     }
     Remove-ExcelTempFiles $targetDir
 }

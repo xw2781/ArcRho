@@ -10,6 +10,12 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 ## Mandatory Read Before Editing
 Before changing files under `frontend/`, read `frontend/AGENTS.md`.
 
+## Excel Add-in Build and Release
+After making changes under `excel-addin/`, automatically run the non-interactive build and release scripts unless the user explicitly asks not to build or release:
+- Step 1: `powershell -NoProfile -ExecutionPolicy Bypass -File "E:\XWSpace\Repos\ArcRho\excel-addin\tools\build_xlam.ps1"`
+- Step 2: `powershell -NoProfile -ExecutionPolicy Bypass -File "E:\XWSpace\Repos\ArcRho\excel-addin\tools\release_xlam.ps1"`
+Treat this as pre-approved by the repository instructions for Excel add-in changes, but still follow environment requirements for sandbox escalation because the scripts update the beta add-in and release add-in outside the repository. Do not use `Step 1+2 - Build and Release ArcRho.bat` for agent validation because its interactive prompt can hang in agent terminals. If either direct script is blocked, fails, or times out, report that clearly.
+
 ## Bug Fix Cleanup Review
 When fixing a bug, remove clearly obsolete code in the touched area. Ask before broader cleanup or cleanup with behavior risk.
 
@@ -26,9 +32,6 @@ If a user references another ArcRho Server project without giving session-specif
 When inspecting sidecars, method JSON, dataset JSON, or related migration/refactor issues and the request does not explicitly specify a reserving-class data path, use `E:\ArcRho Server\projects\NJ_Annual_Prod_202605_Fake\data\PRNJ - PA_%5C_PA_%5C_All States_%5C_Direct Group_%5C_COL` as the default ArcRho Server data folder.
 This restriction applies to agent tool use and analysis only; it does not change runnable scripts that a human may execute, such as `python-api/resq_data_migration.py`.
 
-## Commit Workflow
-Before creating a commit, follow `tools/agent_commit_workflow.md`. Agents must summarize repository changes in 1 to 7 logical groups and provide best-practice suggestions when applicable. If the user explicitly asks the agent to create a commit, treat that request as approval to stage and commit the current stated scope without asking for another approval prompt. When changes are wide across the repo, span multiple components, or include distinct themes, create multiple commits by logical group instead of one large commit. Do not push unless the user separately approves a push.
-
 ## Python Runtime Preference
 Always prefer Python 3.10 for this repository. When validating Python code, running scripts, installing dependencies, or creating virtual environments, use a Python 3.10 interpreter unless the user explicitly asks for another version or a toolchain requires a different runtime.
 
@@ -36,5 +39,5 @@ Always prefer Python 3.10 for this repository. When validating Python code, runn
 The frontend includes a bundled portable Node runtime. When validating or running Node/npm commands for this repository, prefer `frontend\node-portable\node.exe` and `frontend\node-portable\npm.cmd` instead of plain `node` or `npm`, because Node is not expected to be installed globally or available on `PATH` in the agent environment. Do not report "Node is not installed in this environment" unless the bundled portable runtime is also missing or fails.
 
 ## Validation Runtime Limit
-No validation command should run for more than 120 seconds by default. Use targeted fast checks first, and put tests, docs checks, syntax checks, and smoke checks behind a timeout of 120 seconds or less. If a broader validation is expected to exceed 120 seconds, ask before running it and explain why the longer run is needed. When a validation times out, stop it and report the timeout instead of retrying indefinitely.
+No validation command should run for more than 60 seconds by default. Use targeted fast checks first, and put tests, docs checks, syntax checks, and smoke checks behind a timeout of 60 seconds or less. If a broader validation is expected to exceed 60 seconds, ask before running it and explain why the longer run is needed. When a validation times out, stop it and report the timeout instead of retrying indefinitely.
 Validation commands must not write files to the C drive. If temporary files are needed, write them only inside the current repository folder.

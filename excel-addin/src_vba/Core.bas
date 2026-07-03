@@ -541,6 +541,9 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
             datasetFile = datasetFile & "@" & Trim$(originLength) & "@" & Trim$(developmentLength) _
                 & "@" & RequestBoolSuffix(cumulativeMode, "cum", "inc") _
                 & "@" & RequestBoolSuffix(calendarMode, "cal", "dev")
+        ElseIf LCase$(Trim$(functionName)) = "arcrhovec" _
+                And Len(Trim$(originLength)) > 0 Then
+            datasetFile = datasetFile & "@" & Trim$(originLength)
         End If
         spec.DataPath = datasetDataPath & "\" & datasetFile & ".csv"
         spec.DatasetIndexPath = rcDataPath & "\" & DATASET_INDEX_FILE
@@ -843,7 +846,7 @@ Private Function JsonObjectString(ByVal obj As Object, ByVal key As String) As S
     End If
 End Function
 
-Private Function GetProjectDatasetTypesJsonPath(ByVal projectName As String) As String
+Public Function GetProjectDatasetTypesJsonPath(ByVal projectName As String) As String
     Dim projectFolder As String
     If Len(Trim$(projectName)) > 0 Then
         projectFolder = SanitizeProjectFolderName(projectName)
@@ -1178,8 +1181,6 @@ Public Function GetDataArray(dataPath As String)
 
     GetDataArray = outputArray
 End Function
-
-
 
 
 
