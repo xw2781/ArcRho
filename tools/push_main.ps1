@@ -37,7 +37,7 @@ git status --short
 Write-Host ""
 
 Write-Host "Commits to push:"
-git log --oneline "$Remote/$Branch..$Branch"
+git --no-pager log --oneline "$Remote/$Branch..$Branch"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Could not compare against $Remote/$Branch. The push may create or update the remote branch." -ForegroundColor Yellow
 }
