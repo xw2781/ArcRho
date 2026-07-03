@@ -125,6 +125,8 @@ def _split_cache_variant_stem(stem: str) -> Tuple[str, bool]:
         and parts[-1].strip().lower() in {"dev", "cal", "calendar"}
     ):
         return "@".join(parts[:-4]), True
+    if len(parts) >= 2 and parts[-1].strip().isdigit():
+        return "@".join(parts[:-1]), True
     return str(stem or ""), False
 
 

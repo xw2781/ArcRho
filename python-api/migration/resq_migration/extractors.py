@@ -25,6 +25,7 @@ from .core import (
     _safe_int_attr,
     _triangle_source_kind,
     _try_call_member,
+    _vector_cache_csv_file_name,
     _write_csv_matrix,
     _write_json,
 )
@@ -338,15 +339,10 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
     origin_length = int(payload["origin_length"])
     dev_length = int(payload["development_length"])
-    csv_name = _dataset_cache_csv_file_name(
-        name,
-        origin_length,
-        dev_length,
-        cumulative=DEFAULT_CUMULATIVE,
-        calendar=DEFAULT_CALENDAR,
-    )
+    csv_name = _vector_cache_csv_file_name(name, origin_length)
     csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
     _write_csv_matrix(csv_path, payload["values"])
+    _write_aggregated_vector_cache_exports(payload, rc_dir)
 
     formula = _clean_name(payload.get("formula"))
     method_type = _method_type_name(payload.get("method_type"))
@@ -575,6 +571,128 @@ def _apply_result_selection_vector_metadata(payload: dict, result_selection_payl
         payload["origin_labels"] = origin_labels
         payload["origin_count"] = len(origin_labels)
 
+def _parse_origin_start_month(label: object, base_len: int) -> tuple[int, int] | None:
+    text = _clean_name(label)
+    if not text:
+        return None
+
+    if base_len == 1:
+        match = re.match(r"^(\d{4})(\d{2})$", text)
+        if match:
+            month = int(match.group(2))
+            if 1 <= month <= 12:
+                return int(match.group(1)), month
+        return None
+
+    if base_len == 3:
+        for pattern in (r"^(\d{4})\s*Q([1-4])$", r"^Q([1-4])\s*(\d{4})$"):
+            match = re.match(pattern, text, re.I)
+            if not match:
+                continue
+            if pattern.startswith("^(\\d"):
+                year, quarter = int(match.group(1)), int(match.group(2))
+            else:
+                quarter, year = int(match.group(1)), int(match.group(2))
+            return year, (quarter - 1) * 3 + 1
+        return None
+
+    if base_len == 6:
+        for pattern in (r"^(\d{4})\s*H([1-2])$", r"^H([1-2])\s*(\d{4})$"):
+            match = re.match(pattern, text, re.I)
+            if not match:
+                continue
+            if pattern.startswith("^(\\d"):
+                year, half = int(match.group(1)), int(match.group(2))
+            else:
+                half, year = int(match.group(1)), int(match.group(2))
+            return year, (half - 1) * 6 + 1
+        return None
+
+    if base_len == 12 and re.match(r"^\d{4}$", text):
+        return int(text), 1
+    return None
+
+def _numeric_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number == number else None
+
+def _vector_row_value(row: object) -> object:
+    if isinstance(row, list):
+        return row[0] if row else None
+    return row
+
+def _aggregate_vector_values_by_length(values: list, origin_labels: list, base_len: int, target_len: int) -> list[list]:
+    if not values:
+        return []
+    if base_len <= 0 or target_len <= base_len or target_len % base_len != 0:
+        return []
+    factor = target_len // base_len
+    vector = [_vector_row_value(row) for row in values]
+    labels = [str(label) for label in origin_labels] if isinstance(origin_labels, list) else []
+
+    if len(labels) == len(vector) and base_len in {1, 3, 6, 12}:
+        ordered_keys: list[tuple[int, int]] = []
+        buckets: dict[tuple[int, int], dict[str, object]] = {}
+        parse_failed = False
+        for label, raw in zip(labels, vector):
+            parsed = _parse_origin_start_month(label, base_len)
+            if parsed is None:
+                parse_failed = True
+                break
+            year, month = parsed
+            bucket_month = ((month - 1) // target_len) * target_len + 1
+            key = (year, bucket_month)
+            if key not in buckets:
+                buckets[key] = {"sum": 0.0, "has_value": False}
+                ordered_keys.append(key)
+            number = _numeric_or_none(raw)
+            if number is not None:
+                buckets[key]["sum"] = float(buckets[key]["sum"]) + number
+                buckets[key]["has_value"] = True
+        if not parse_failed:
+            return [[buckets[key]["sum"] if buckets[key]["has_value"] else None] for key in ordered_keys]
+
+    out: list[list] = []
+    for start in range(0, len(vector), factor):
+        total = 0.0
+        has_value = False
+        for raw in vector[start:start + factor]:
+            number = _numeric_or_none(raw)
+            if number is None:
+                continue
+            total += number
+            has_value = True
+        out.append([total if has_value else None])
+    return out
+
+def _write_aggregated_vector_cache_exports(payload: dict, rc_dir: Path) -> list[Path]:
+    try:
+        base_len = int(payload["origin_length"])
+    except (KeyError, TypeError, ValueError):
+        return []
+    paths: list[Path] = []
+    for target_len in (3, 6, 12):
+        if target_len <= base_len or target_len % base_len != 0:
+            continue
+        rows = _aggregate_vector_values_by_length(
+            payload.get("values") if isinstance(payload.get("values"), list) else [],
+            payload.get("origin_labels") if isinstance(payload.get("origin_labels"), list) else [],
+            base_len,
+            target_len,
+        )
+        if not rows:
+            continue
+        csv_name = _vector_cache_csv_file_name(_normalize_import_name(payload["name"]), target_len)
+        csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
+        _write_csv_matrix(csv_path, rows)
+        paths.append(csv_path)
+    return paths
+
 def write_result_selection_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
     name = _normalize_import_name(details_tab.get("name")) or "Result Selection"
@@ -674,15 +792,10 @@ def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) 
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
     origin_length = int(payload["origin_length"])
     dev_length = int(payload["development_length"])
-    csv_name = _dataset_cache_csv_file_name(
-        name,
-        origin_length,
-        dev_length,
-        cumulative=DEFAULT_CUMULATIVE,
-        calendar=DEFAULT_CALENDAR,
-    )
+    csv_name = _vector_cache_csv_file_name(name, origin_length)
     csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
     _write_csv_matrix(csv_path, payload["values"])
+    _write_aggregated_vector_cache_exports(payload, rc_dir)
 
     updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
     meta = {

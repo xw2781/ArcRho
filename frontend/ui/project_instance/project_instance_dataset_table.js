@@ -656,7 +656,8 @@ function getDatasetName(row) {
 
 function stripDatasetCacheVariantSuffix(value) {
   const text = toText(value);
-  const parts = text.split("@");
+  const stem = text.replace(/\.csv$/iu, "");
+  const parts = stem.split("@");
   if (
     parts.length >= 5
     && /^(dev|cal)$/i.test(parts[parts.length - 1])
@@ -665,6 +666,9 @@ function stripDatasetCacheVariantSuffix(value) {
     && /^\d+$/.test(parts[parts.length - 4])
   ) {
     return parts.slice(0, -4).join("@").trim();
+  }
+  if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) {
+    return parts.slice(0, -1).join("@").trim();
   }
   return text;
 }

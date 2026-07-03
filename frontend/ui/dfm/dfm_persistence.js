@@ -97,8 +97,10 @@ const DFM_METHOD_FILE_WATCH_INTERVAL_MS = 2000;
 const CALCULATED_DATASETS_UPDATED_MESSAGE = "arcrho:calculated-datasets-updated";
 
 function stripDatasetCacheVariantSuffix(value) {
-  const text = String(value || "").trim();
-  const match = text.match(/^(.*)@\d+@\d+@(?:cum|inc)@(?:dev|cal)$/i);
+  const text = String(value || "").trim().replace(/\.csv$/iu, "");
+  let match = text.match(/^(.*)@\d+@\d+@(?:cum|inc)@(?:dev|cal)$/i);
+  if (match) return match[1];
+  match = text.match(/^(.*)@\d+$/i);
   return match ? match[1] : text;
 }
 

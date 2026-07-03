@@ -386,8 +386,7 @@ export function getResultsCsvSuggestedName(options = {}) {
     ? options.datasetName
     : (String(document.getElementById("dfmMethodName")?.value || "").trim() || getDefaultMethodName());
   const originLen = normalizePositiveIntegerText(options.originLen ?? options.originLength ?? document.getElementById("originLenSelect")?.value);
-  const devLen = normalizePositiveIntegerText(options.devLen ?? options.developmentLength ?? document.getElementById("devLenSelect")?.value);
-  const cacheVariantSuffix = originLen && devLen ? `@${originLen}@${devLen}@cum@dev` : "";
+  const cacheVariantSuffix = originLen ? `@${originLen}` : "";
   return `${sanitizeFileNamePart(datasetNameRaw, "Dataset")}${cacheVariantSuffix}.csv`;
 }
 
@@ -395,10 +394,10 @@ export function getInputTriangleCsvSuggestedName(options = {}) {
   const triangleName = typeof options.datasetName === "string"
     ? options.datasetName
     : String(document.getElementById("triInput")?.value || "").trim();
-  return getResultsCsvSuggestedName({
-    ...options,
-    datasetName: triangleName,
-  });
+  const originLen = normalizePositiveIntegerText(options.originLen ?? options.originLength ?? document.getElementById("originLenSelect")?.value);
+  const devLen = normalizePositiveIntegerText(options.devLen ?? options.developmentLength ?? document.getElementById("devLenSelect")?.value);
+  const cacheVariantSuffix = originLen && devLen ? `@${originLen}@${devLen}@cum@dev` : "";
+  return `${sanitizeFileNamePart(triangleName, "Dataset")}${cacheVariantSuffix}.csv`;
 }
 
 export async function buildInputTriangleCsvPath(options = {}) {

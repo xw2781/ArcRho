@@ -51,6 +51,7 @@ from resq_migration.core import (  # noqa: E402
     _safe_int_attr,
     _method_type_name,
     _triangle_source_kind,
+    _vector_cache_csv_file_name,
 )
 from resq_migration.dfm import (  # noqa: E402
     configure_dfm,
@@ -530,7 +531,7 @@ def export_vectors_for_rc(
             write_vector_export(payload, rc_path, rc_dir)
             detail = (
                 f"    OK  {_method_type_name(method_type)} vector "
-                f"{_dataset_cache_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
+                f"{_vector_cache_csv_file_name(payload['name'], payload['origin_length'])}"
             )
             _log(verbose, detail)
             if result_selection_payload:

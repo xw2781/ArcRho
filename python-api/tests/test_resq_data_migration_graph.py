@@ -395,7 +395,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(payload["source_kind"], "input")
         self.assertEqual(payload["method_type"], "BF")
         self.assertEqual(payload["method_type_code"], 2)
-        self.assertTrue((self.datasets_dir / "BF Output@12@12@cum@dev.csv").exists())
+        self.assertTrue((self.datasets_dir / "BF Output@12.csv").exists())
 
     def test_export_dfm_method_with_matching_vector_progress_tick(self) -> None:
         self_module = self.module
@@ -515,7 +515,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual((written, errors), (1, 0))
         self.assertEqual(progress_state, {"completed": 1, "total": 1})
         self.assertEqual(method_counts["dfms_written"], 1)
-        self.assertTrue((self.datasets_dir / "Ultimate@12@12@cum@dev.csv").exists())
+        self.assertTrue((self.datasets_dir / "Ultimate@12.csv").exists())
         self.assertTrue((self.methods_dir / "DFM@Paid DFM.json").exists())
         sidecar = json.loads((self.sidecars_dir / "Ultimate.json").read_text(encoding="utf-8"))
         self.assertEqual(sidecar["source_kind"], "dfm")
@@ -567,7 +567,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             return {"name": "Ultimate"}
 
         def fake_write_dfm_ultimate_vector_export(*_args, **_kwargs):
-            return self.datasets_dir / "Ultimate@12@12@cum@dev.csv"
+            return self.datasets_dir / "Ultimate@12.csv"
 
         original_export_dfm = self.module.export_dfm
         original_export_dfm_ultimate_vector = self.module.export_dfm_ultimate_vector

@@ -1,7 +1,7 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
 import { normalizeProjectInstanceState, normalizeShellActivityEntry } from "/ui/shell/shell_activity_history.js";
-import { showAutomationMessageBox } from "/ui/shell/ui_automation.js?v=20260621c";
+import { showAutomationMessageBox } from "/ui/shell/ui_automation.js?v=20260702b";
 
 let shellMessagesWired = false;
 

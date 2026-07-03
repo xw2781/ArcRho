@@ -366,6 +366,13 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         payload["updated_at"] = updated_at
         payload["modified_by"] = user_name
         payload["user"] = user_name
+        payload["data_format"] = data_format
+        payload["data_format_code"] = 1 if is_vector else 0
+        payload["origin_length"] = _pair_int_value(pairs, "OriginLength", 12)
+        payload["development_length"] = _pair_int_value(pairs, "DevelopmentLength", 12)
+        payload["cumulative"] = _pair_bool_value(pairs, "Cumulative", True)
+        payload["calendar"] = _pair_bool_value(pairs, "Calendar", False)
+        payload["csv_file"] = os.path.basename(data_path)
         from app_server.services.dataset_service import _append_dataset_audit_entry
 
         _append_dataset_audit_entry(payload, "Update", event_date=updated_at, user_name=user_name)

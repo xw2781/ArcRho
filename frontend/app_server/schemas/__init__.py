@@ -9,6 +9,7 @@ from .project_settings import (
     RenameProjectFolderRequest,
     DuplicateProjectFolderRequest,
     DeleteProjectFolderRequest,
+    GeneratedDatasetCacheClearRequest,
     GeneralSettingsUpdateRequest,
 )
 from .field_mapping import FieldMappingRow, FieldMappingSaveRequest
@@ -48,7 +49,7 @@ __all__ = [
     "PatchItem", "PatchRequest",
     "ProjectSettingsUpdateRequest", "FolderStructureUpdateRequest",
     "RenameProjectFolderRequest", "DuplicateProjectFolderRequest", "DeleteProjectFolderRequest",
-    "GeneralSettingsUpdateRequest",
+    "GeneratedDatasetCacheClearRequest", "GeneralSettingsUpdateRequest",
     "FieldMappingRow", "FieldMappingSaveRequest",
     "ReservingClassTypesSaveRequest", "RefreshReservingClassValuesRequest",
     "ReservingClassHiddenPathsSaveRequest", "ReservingClassFilterSpecSaveRequest",

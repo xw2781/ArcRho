@@ -101,6 +101,8 @@ const dialogTitle = document.getElementById("dialogTitle");
 const dialogInput = document.getElementById("dialogInput");
 const dialogOk = document.getElementById("dialogOk");
 const dialogCancel = document.getElementById("dialogCancel");
+const projectOperationProgress = document.getElementById("projectOperationProgress");
+const projectOperationProgressTitle = document.getElementById("projectOperationProgressTitle");
 const confirmOverlay = document.getElementById("confirmOverlay");
 const confirmTitle = document.getElementById("confirmTitle");
 const confirmMessage = document.getElementById("confirmMessage");
@@ -333,6 +335,17 @@ function initTableColumnResizing(tableId, minWidths) {
 function setStatus(msg) {
   // Send status to app's statusbar
   window.parent.postMessage({ type: "arcrho:status", text: msg || "" }, "*");
+}
+
+function showProjectOperationProgress(title) {
+  if (!projectOperationProgress || !projectOperationProgressTitle) return;
+  projectOperationProgressTitle.textContent = String(title || "Working...").trim() || "Working...";
+  projectOperationProgress.hidden = false;
+}
+
+function hideProjectOperationProgress() {
+  if (!projectOperationProgress) return;
+  projectOperationProgress.hidden = true;
 }
 
 function notifyProjectSettingsRibbonChanged() {
@@ -2094,6 +2107,33 @@ async function clearArcRhoHeadersCacheForProject(projectName) {
   }
 }
 
+async function clearGeneratedDatasetCsvCachesForProject(projectName) {
+  const name = String(projectName || "").trim();
+  if (!name) return { ok: true, cleared_count: 0, preserved_count: 0 };
+  try {
+    const res = await fetch(`/project_settings/${DEFAULT_SOURCE}/generated_dataset_cache/clear`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_name: name }),
+    });
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const out = await res.json();
+        detail = String(out?.detail || "").trim();
+      } catch {
+        const text = await res.text();
+        detail = String(text || "").trim();
+      }
+      throw new Error(detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  } catch (err) {
+    setStatus(`Warning: failed to clear generated dataset caches for "${name}": ${err.message}`);
+    return { ok: false, error: String(err.message || err), cleared_count: 0, preserved_count: 0 };
+  }
+}
+
 async function loadTableSummary(tablePath, projectName = "", options = {}) {
   const forceRefresh = !!options?.forceRefresh;
   const forceFieldMappingReload = !!options?.forceFieldMappingReload;
@@ -2130,6 +2170,10 @@ async function loadTableSummary(tablePath, projectName = "", options = {}) {
   try {
     if (forceRefresh && projectName) {
       await clearArcRhoHeadersCacheForProject(projectName);
+      const generatedCacheClear = await clearGeneratedDatasetCsvCachesForProject(projectName);
+      if (generatedCacheClear?.ok && Number(generatedCacheClear.cleared_count || 0) > 0) {
+        setStatus(`Cleared ${generatedCacheClear.cleared_count} generated dataset cache file(s).`);
+      }
       if (requestSeq !== tableSummaryLoadSeq) return true;
     }
 
@@ -2694,6 +2738,19 @@ function ensureFolderPathInList(foldersList, folderPath) {
   }
 }
 
+async function updateCurrentMtimeFromResponse(response) {
+  try {
+    const result = await response.json();
+    const nextMtime = Number(result?.mtime);
+    if (Number.isFinite(nextMtime)) {
+      currentMtime = nextMtime;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 async function createProjectInFolder(folderNode) {
   const targetFolderPath = normalizeTreePath(folderNode?.fullPath) || "Uncategorized";
   const enteredName = await showDialog("Enter new project name:", "");
@@ -2763,6 +2820,7 @@ async function createProjectInFolder(folderNode) {
       const errText = await folderSaveRes.text();
       throw new Error(`Folder structure save failed: ${errText}`);
     }
+    await updateCurrentMtimeFromResponse(folderSaveRes);
     folderStructureSaved = true;
 
     // 3) Save new empty project row to settings JSON.
@@ -2827,6 +2885,8 @@ async function createProjectInFolder(folderNode) {
         if (!rollbackFsRes.ok) {
           const rollbackFsText = await rollbackFsRes.text();
           rollbackError += ` Folder structure rollback failed: ${rollbackFsText}`;
+        } else {
+          await updateCurrentMtimeFromResponse(rollbackFsRes);
         }
       } catch (rollbackFsErr) {
         rollbackError += ` Folder structure rollback failed: ${rollbackFsErr.message}`;
@@ -2945,6 +3005,7 @@ async function renameProject(project) {
       const errText = await folderSaveRes.text();
       throw new Error(`Folder structure save failed: ${errText}`);
     }
+    await updateCurrentMtimeFromResponse(folderSaveRes);
     folderStructureSaved = true;
 
     // 3) Save renamed project name into projects/index.json.
@@ -3010,6 +3071,8 @@ async function renameProject(project) {
         if (!rollbackFsRes.ok) {
           const rollbackFsText = await rollbackFsRes.text();
           rollbackError += ` Folder structure rollback failed: ${rollbackFsText}`;
+        } else {
+          await updateCurrentMtimeFromResponse(rollbackFsRes);
         }
       } catch (rollbackFsErr) {
         rollbackError += ` Folder structure rollback failed: ${rollbackFsErr.message}`;
@@ -3098,7 +3161,8 @@ async function duplicateProject(project) {
   const foldersBefore = Array.isArray(projectData.customFolders) ? [...projectData.customFolders] : [];
   const projectPathsBefore = Array.isArray(projectData.projectPaths) ? [...projectData.projectPaths] : [];
   try {
-    // 1) Copy folder first (exclude data content; server recreates empty top-level data folder).
+    // 1) Copy folder first.
+    showProjectOperationProgress(`Duplicating "${project.name}" to "${newProjectName}"...`);
     const copyRes = await fetch(`/project_settings/${DEFAULT_SOURCE}/duplicate_project_folder`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3113,6 +3177,7 @@ async function duplicateProject(project) {
       throw new Error(`Folder copy failed: ${copyResult.message}`);
     }
     folderCopied = true;
+    showProjectOperationProgress(`Finalizing "${newProjectName}"...`);
 
     // 2) Save folder structure with the new project path.
     const sourceFolderPath = getProjectFolderFromStructure(project.name);
@@ -3131,6 +3196,7 @@ async function duplicateProject(project) {
       const errText = await folderSaveRes.text();
       throw new Error(`Folder structure save failed: ${errText}`);
     }
+    await updateCurrentMtimeFromResponse(folderSaveRes);
     folderStructureSaved = true;
 
     // 3) Save duplicated project row to settings JSON.
@@ -3171,9 +3237,11 @@ async function duplicateProject(project) {
     projectData.projectPaths = projectPathsNext;
     buildTreeData();
     renderTree();
+    hideProjectOperationProgress();
     setStatus(`Duplicated "${newProjectName}"`);
     await appendAuditLogAction(newProjectName, `Duplicated from project "${project.name}"`);
   } catch (e) {
+    hideProjectOperationProgress();
     let rollbackError = "";
     if (folderStructureSaved) {
       try {
@@ -3185,6 +3253,8 @@ async function duplicateProject(project) {
         if (!rollbackFsRes.ok) {
           const rollbackFsText = await rollbackFsRes.text();
           rollbackError += ` Folder structure rollback failed: ${rollbackFsText}`;
+        } else {
+          await updateCurrentMtimeFromResponse(rollbackFsRes);
         }
       } catch (rollbackFsErr) {
         rollbackError += ` Folder structure rollback failed: ${rollbackFsErr.message}`;
@@ -3500,6 +3570,7 @@ async function saveProjectData(sourceKey = DEFAULT_SOURCE) {
       setStatus(`Saved projects, but project index folder save failed: ${foldersRes.status}`);
       return false;
     } else {
+      await updateCurrentMtimeFromResponse(foldersRes);
       setStatus("Saved successfully.");
       return true;
     }

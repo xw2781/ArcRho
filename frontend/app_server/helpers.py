@@ -76,6 +76,27 @@ def build_length_scoped_dataset_file_name(
     return dataset_file
 
 
+def build_dataset_cache_file_name(
+    dataset_name: Any,
+    data_format: Any,
+    origin_length: Any,
+    development_length: Any,
+    cumulative: Any = True,
+    calendar: Any = False,
+) -> str:
+    dataset_file = sanitize_dataset_file_name(dataset_name)
+    if str(data_format or "").strip().lower() == "vector":
+        period = str(origin_length if origin_length is not None else "").strip()
+        return f"{dataset_file}@{period}" if period else dataset_file
+    return build_length_scoped_dataset_file_name(
+        dataset_name,
+        origin_length,
+        development_length,
+        cumulative,
+        calendar,
+    )
+
+
 # ---------------------------------------------------------------------------
 # VBA-compat helpers
 # ---------------------------------------------------------------------------
@@ -123,9 +144,11 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
         else:
             values.append(value)
 
-    if function_name.strip().lower() in {"arcrhotri", "arcrhovec"} and reserving_class and dataset_name:
-        dataset_file = build_length_scoped_dataset_file_name(
+    normalized_function_name = function_name.strip().lower()
+    if normalized_function_name in {"arcrhotri", "arcrhovec"} and reserving_class and dataset_name:
+        dataset_file = build_dataset_cache_file_name(
             instance_name or dataset_name,
+            "Vector" if normalized_function_name == "arcrhovec" else "Triangle",
             origin_length,
             development_length,
             cumulative,

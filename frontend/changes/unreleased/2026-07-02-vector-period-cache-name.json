@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Vector dataset cache requests now include the selected period length in the CSV filename.",
+  "details": [
+    "Migrated and frontend-generated vector sidecars now point to `<DatasetName>@<PeriodLength>.csv` instead of triangle-style cache names.",
+    "Result Selection saves and migration exports now also emit coarser aggregate vector CSVs such as `@6` and `@12` when the native output period can roll up cleanly."
+  ]
+}

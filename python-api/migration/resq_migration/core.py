@@ -255,6 +255,10 @@ def _dataset_cache_csv_file_name(
     return f"{_encode_name_part(name)}@{origin_length}@{dev_length}{_mode_suffix(cumulative, calendar)}.csv"
 
 
+def _vector_cache_csv_file_name(name: str, period_length: int) -> str:
+    return f"{_encode_name_part(name)}@{period_length}.csv"
+
+
 def _json_sidecar_name(name: str) -> str:
     return f"{_encode_name_part(name)}.json"
 
@@ -269,6 +273,8 @@ def _split_cache_variant_stem(stem: str) -> tuple[str, bool]:
         and parts[-1].strip().lower() in {"dev", "cal", "calendar"}
     ):
         return "@".join(parts[:-4]), True
+    if len(parts) >= 2 and parts[-1].strip().isdigit():
+        return "@".join(parts[:-1]), True
     return str(stem or ""), False
 
 

@@ -429,7 +429,9 @@ function normalizeDatasetRows(payload) {
 }
 
 function stripDatasetCacheVariantSuffix(value) {
-  const parts = text(value).split("@");
+  const raw = text(value);
+  const stem = raw.replace(/\.csv$/iu, "");
+  const parts = stem.split("@");
   if (
     parts.length >= 5
     && /^(dev|cal)$/i.test(parts[parts.length - 1])
@@ -439,7 +441,10 @@ function stripDatasetCacheVariantSuffix(value) {
   ) {
     return parts.slice(0, -4).join("@").trim();
   }
-  return text(value).replace(/\.[^.]+$/u, "");
+  if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) {
+    return parts.slice(0, -1).join("@").trim();
+  }
+  return raw.replace(/\.[^.]+$/u, "");
 }
 
 async function loadDatasetTypes() {
@@ -2148,15 +2153,138 @@ async function getMethodPath() {
 function getCsvFilename() {
   const details = getDetails();
   const origin = validOriginLength(details.originLength);
-  return `${sanitizeFileNamePart(details.name || "Result Selection", "Dataset")}@${origin}@${origin}@cum@dev.csv`;
+  return `${sanitizeFileNamePart(details.name || "Result Selection", "Dataset")}@${origin}.csv`;
 }
 
 async function getCsvPath() {
   return `${await getDatasetDir()}\\${getCsvFilename()}`;
 }
 
+function getCsvFilenameForLength(originLength) {
+  const details = getDetails();
+  const origin = validOriginLength(originLength);
+  return `${sanitizeFileNamePart(details.name || "Result Selection", "Dataset")}@${origin}.csv`;
+}
+
 function vectorCsv(values) {
   return `${(Array.isArray(values) ? values : []).map((v) => v == null ? "" : String(v)).join("\n")}\n`;
+}
+
+const MONTH_NAME_TO_NUM = new Map([
+  ["jan", 1], ["january", 1],
+  ["feb", 2], ["february", 2],
+  ["mar", 3], ["march", 3],
+  ["apr", 4], ["april", 4],
+  ["may", 5],
+  ["jun", 6], ["june", 6],
+  ["jul", 7], ["july", 7],
+  ["aug", 8], ["august", 8],
+  ["sep", 9], ["sept", 9], ["september", 9],
+  ["oct", 10], ["october", 10],
+  ["nov", 11], ["november", 11],
+  ["dec", 12], ["december", 12],
+]);
+
+function parseOriginStartMonth(label, baseLen) {
+  const s = text(label);
+  if (!s) return null;
+  if (baseLen === 1) {
+    const yyyymm = s.match(/^(\d{4})(\d{2})$/);
+    if (yyyymm) {
+      const year = Number.parseInt(yyyymm[1], 10);
+      const month = Number.parseInt(yyyymm[2], 10);
+      if (Number.isFinite(year) && month >= 1 && month <= 12) return { year, month };
+    }
+    const monYear = s.match(/^([A-Za-z]{3,9})\s+(\d{4})$/);
+    if (monYear) {
+      const month = MONTH_NAME_TO_NUM.get(monYear[1].toLowerCase());
+      const year = Number.parseInt(monYear[2], 10);
+      if (month && Number.isFinite(year)) return { year, month };
+    }
+    return null;
+  }
+  if (baseLen === 3) {
+    let match = s.match(/^(\d{4})\s*Q([1-4])$/i);
+    if (match) return { year: Number.parseInt(match[1], 10), month: (Number.parseInt(match[2], 10) - 1) * 3 + 1 };
+    match = s.match(/^Q([1-4])\s*(\d{4})$/i);
+    if (match) return { year: Number.parseInt(match[2], 10), month: (Number.parseInt(match[1], 10) - 1) * 3 + 1 };
+    return null;
+  }
+  if (baseLen === 6) {
+    let match = s.match(/^(\d{4})\s*H([1-2])$/i);
+    if (match) return { year: Number.parseInt(match[1], 10), month: (Number.parseInt(match[2], 10) - 1) * 6 + 1 };
+    match = s.match(/^H([1-2])\s*(\d{4})$/i);
+    if (match) return { year: Number.parseInt(match[2], 10), month: (Number.parseInt(match[1], 10) - 1) * 6 + 1 };
+    return null;
+  }
+  if (baseLen === 12 && /^\d{4}$/.test(s)) {
+    return { year: Number.parseInt(s, 10), month: 1 };
+  }
+  return null;
+}
+
+function aggregateVectorByLength(vector, originLabels, baseLen, targetLen) {
+  if (!Array.isArray(vector) || !vector.length) return [];
+  const factor = targetLen / baseLen;
+  if (!Number.isFinite(factor) || factor <= 1 || Math.floor(factor) !== factor) return [];
+
+  const labels = Array.isArray(originLabels) ? originLabels : [];
+  if (labels.length === vector.length && [1, 3, 6, 12].includes(baseLen)) {
+    const orderedKeys = [];
+    const bucketMap = new Map();
+    let parseFailed = false;
+    for (let i = 0; i < vector.length; i += 1) {
+      const parsed = parseOriginStartMonth(labels[i], baseLen);
+      if (!parsed) {
+        parseFailed = true;
+        break;
+      }
+      const bucketMonth = Math.floor((parsed.month - 1) / targetLen) * targetLen + 1;
+      const key = `${parsed.year}-${bucketMonth}`;
+      if (!bucketMap.has(key)) {
+        bucketMap.set(key, { sum: 0, hasValue: false });
+        orderedKeys.push(key);
+      }
+      const bucket = bucketMap.get(key);
+      const num = numberOrNull(vector[i]);
+      if (num !== null) {
+        bucket.sum += num;
+        bucket.hasValue = true;
+      }
+    }
+    if (!parseFailed) {
+      return orderedKeys.map((key) => {
+        const bucket = bucketMap.get(key);
+        return bucket?.hasValue ? bucket.sum : null;
+      });
+    }
+  }
+
+  const out = [];
+  for (let i = 0; i < vector.length; i += factor) {
+    let sum = 0;
+    let hasValue = false;
+    const end = Math.min(i + factor, vector.length);
+    for (let j = i; j < end; j += 1) {
+      const num = numberOrNull(vector[j]);
+      if (num === null) continue;
+      sum += num;
+      hasValue = true;
+    }
+    out.push(hasValue ? sum : null);
+  }
+  return out;
+}
+
+function buildAggregatedResultVariants(vector, originLabels, baseLen) {
+  const nativeLen = validOriginLength(baseLen);
+  return [3, 6, 12]
+    .filter((len) => len > nativeLen && len % nativeLen === 0)
+    .map((originLen) => ({
+      originLen,
+      vector: aggregateVectorByLength(vector, originLabels, nativeLen, originLen),
+    }))
+    .filter((variant) => variant.vector.length);
 }
 
 function getSourcePrecedentNames() {
@@ -2231,13 +2359,25 @@ async function saveResultSelection() {
   });
   if (csvOut?.error) throw new Error(csvOut.error);
   await saveSidecar(csvPath, payload.method_tab.origin_labels || []);
+  const datasetDir = await getDatasetDir();
+  const aggregatedCsvPaths = [];
+  for (const variant of buildAggregatedResultVariants(vector, payload.method_tab.origin_labels || [], details.originLength)) {
+    const aggPath = `${datasetDir}\\${getCsvFilenameForLength(variant.originLen)}`;
+    if (aggPath.toLowerCase() === csvPath.toLowerCase()) continue;
+    const aggOut = await hostApi.saveTextFile({
+      path: aggPath,
+      data: vectorCsv(variant.vector),
+    });
+    if (aggOut?.error) throw new Error(aggOut.error);
+    aggregatedCsvPaths.push(aggPath);
+  }
   await loadCachedRows(true).catch(() => {});
   markClean();
   try {
     window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
   } catch {}
-  postStatus(`Result Selection saved: ${details.name}`);
-  return { ok: true, path: jsonOut.path, csvPath };
+  postStatus(`Result Selection saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`);
+  return { ok: true, path: jsonOut.path, csvPath, aggregatedCsvPaths };
 }
 
 async function tryLoadExistingMethod() {

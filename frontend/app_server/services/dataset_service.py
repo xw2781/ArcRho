@@ -14,7 +14,11 @@ import pandas as pd
 from fastapi import HTTPException
 
 from app_server import config
-from app_server.helpers import atomic_write_csv, build_length_scoped_dataset_file_name, sanitize_dataset_file_name
+from app_server.helpers import (
+    atomic_write_csv,
+    build_dataset_cache_file_name,
+    sanitize_dataset_file_name,
+)
 from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service
 
 
@@ -397,7 +401,7 @@ def create_empty_cached_dataset(
     )
     fmt = str(data_format or "Triangle").strip() or "Triangle"
     folder = data_dir
-    csv_stem = build_length_scoped_dataset_file_name(instance, origin_period_len, dev_period_len, cumulative, calendar)
+    csv_stem = build_dataset_cache_file_name(instance, fmt, origin_period_len, dev_period_len, cumulative, calendar)
     csv_path = os.path.join(folder, f"{csv_stem}.csv")
     sidecar_path = os.path.join(sidecar_dir, f"{sanitize_dataset_file_name(instance)}.json")
     now = _now_utc_iso()
@@ -755,6 +759,12 @@ def _parse_length_scoped_cache_name(filename: str) -> Dict[str, Any]:
     if ext.lower() != ".csv":
         return {}
     parts = stem.split("@")
+    if len(parts) >= 2 and parts[-1].strip().isdigit():
+        period = int(parts[-1].strip())
+        return {
+            "origin_length": period,
+            "development_length": period,
+        }
     if len(parts) < 5:
         return {}
     origin = parts[-4].strip()
@@ -796,7 +806,14 @@ def load_cached_dataset_values(
     if csv_file:
         candidates.append(os.path.join(data_dir, os.path.basename(str(csv_file).strip())))
     if origin_length and development_length:
-        cache_name = build_length_scoped_dataset_file_name(ds, origin_length, development_length, cumulative, calendar)
+        cache_name = build_dataset_cache_file_name(
+            ds,
+            sidecar.get("data_format") or "Triangle",
+            origin_length,
+            development_length,
+            cumulative,
+            calendar,
+        )
         candidates.append(os.path.join(data_dir, f"{cache_name}.csv"))
     if not exact_requested:
         candidates.extend(_cached_csv_candidates(p, rc, ds, sidecar))
@@ -897,7 +914,14 @@ def save_dataset_sidecar(
             data_dir = config.get_project_dataset_cache_dir(p, rc)
         except ValueError as err:
             raise HTTPException(404, str(err))
-        csv_stem = build_length_scoped_dataset_file_name(ds, origin_length, development_length, cumulative, calendar)
+        csv_stem = build_dataset_cache_file_name(
+            ds,
+            data_format_value,
+            origin_length,
+            development_length,
+            cumulative,
+            calendar,
+        )
         csv_file_value = f"{csv_stem}.csv"
         csv_path = os.path.join(data_dir, csv_file_value)
 

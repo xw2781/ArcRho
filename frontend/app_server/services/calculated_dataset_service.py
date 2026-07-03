@@ -17,7 +17,7 @@ from app_server import config
 from app_server.helpers import (
     _canon_dataset_name,
     atomic_write_csv,
-    build_length_scoped_dataset_file_name,
+    build_dataset_cache_file_name,
     sanitize_dataset_file_name,
 )
 from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service, dataset_types_service
@@ -570,10 +570,17 @@ def _candidate_csvs(
     return [item for item in out if int(item.get("score") or 0) == best_score]
 
 
-def _target_paths(project_name: str, reserving_class: str, dataset_name: str, settings: Dict[str, Any]) -> Tuple[str, str]:
+def _target_paths(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    settings: Dict[str, Any],
+    data_format: Any = "",
+) -> Tuple[str, str]:
     folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
-    csv_name = build_length_scoped_dataset_file_name(
+    csv_name = build_dataset_cache_file_name(
         dataset_name,
+        data_format or "Triangle",
         settings.get("origin_length") or 12,
         settings.get("development_length") or 12,
         settings.get("cumulative", True),
@@ -873,7 +880,13 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
     if arr.ndim != 2:
         return {"ok": False, "dataset_type_name": row["name"], "skipped": True, "reason": "unsupported_result_shape"}
 
-    csv_path, sidecar_path = _target_paths(project_name, reserving_class, row["name"], settings)
+    csv_path, sidecar_path = _target_paths(
+        project_name,
+        reserving_class,
+        row["name"],
+        settings,
+        row.get("data_format") or "Triangle",
+    )
     now = _now_utc_iso()
     existing_sidecar = _read_sidecar(sidecar_path)
     created = existing_sidecar.get("created") or settings.get("created") or now

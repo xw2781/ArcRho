@@ -39,7 +39,7 @@ ArcRho calculations/precheck domain.
 <!-- MANUAL:BEGIN -->
 - Integrates headers/project listing plus triangle and vector execution endpoints. Vector requests use `/arcrho/vec*` and map `PeriodLength` to both origin and development length for the shared engine handler.
 - Manages ArcRho request-result CSV caches under each project `data/<ReservingClassFolder>` folder; supports targeted ArcRhoHeaders cache clearing under the project `data` tree.
-- ArcRhoTri and ArcRhoVec write generated `<DatasetName>@<OriginLength>@<DevelopmentLength>@<cum|inc>@<dev|cal>.csv` caches under `data/<ReservingClassFolder>/datasets` plus a base `sidecars/<DatasetName>.json` metadata sidecar by default; the sidecar records `source_kind: "engine"`, the current Windows login user in `user` and `modified_by`, and the latest generated Cumulative/Calendar values. Requests with `WriteSidecar: false` materialize or reuse only the length-scoped CSV cache and return a registered `ds_id`/`data_path` without changing source sidecars or recalculating dependents.
+- ArcRhoTri writes generated `<DatasetName>@<OriginLength>@<DevelopmentLength>@<cum|inc>@<dev|cal>.csv` caches under `data/<ReservingClassFolder>/datasets`, while ArcRhoVec writes `<DatasetName>@<PeriodLength>.csv` vector caches. Both use a base `sidecars/<DatasetName>.json` metadata sidecar by default; the sidecar records `source_kind: "engine"`, the current Windows login user in `user` and `modified_by`, and the latest generated Cumulative/Calendar values. Requests with `WriteSidecar: false` materialize or reuse only the length-scoped CSV cache and return a registered `ds_id`/`data_path` without changing source sidecars or recalculating dependents.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

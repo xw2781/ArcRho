@@ -12,6 +12,7 @@ from app_server.schemas.project_settings import (
     CreateProjectFolderRequest,
     DeleteProjectFolderRequest,
     OpenProjectFolderRequest,
+    GeneratedDatasetCacheClearRequest,
     GeneralSettingsUpdateRequest,
 )
 from app_server.services import project_settings_service
@@ -52,6 +53,11 @@ def delete_project_folder(source: str, req: DeleteProjectFolderRequest) -> Dict[
 @router.post("/project_settings/{source}/open_project_folder")
 def open_project_folder(source: str, req: OpenProjectFolderRequest) -> Dict[str, Any]:
     return project_settings_service.open_project_folder(source, req.project_name)
+
+
+@router.post("/project_settings/{source}/generated_dataset_cache/clear")
+def clear_generated_dataset_csv_caches(source: str, req: GeneratedDatasetCacheClearRequest) -> Dict[str, Any]:
+    return project_settings_service.clear_generated_dataset_csv_caches(source, req.project_name)
 
 
 @router.get("/project_settings/{source}")

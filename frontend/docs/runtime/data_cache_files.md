@@ -17,6 +17,7 @@ Index cache/data files and refresh points used by app-server services.
 | `POST` | `/datasets/cached/delete` | `dataset` | `delete_cached_datasets` |
 | `POST` | `/datasets/cached/empty` | `dataset` | `create_empty_cached_dataset` |
 | `POST` | `/dfm/method-index/refresh` | `dfm_method_index` | `refresh_dfm_method_index` |
+| `POST` | `/project_settings/{source}/generated_dataset_cache/clear` | `project_settings` | `clear_generated_dataset_csv_caches` |
 | `POST` | `/reserving_class_values/refresh` | `reserving_class` | `refresh_reserving_class_values` |
 | `GET` | `/table_summary` | `table_summary` | `get_table_summary` |
 | `POST` | `/table_summary/refresh` | `table_summary` | `refresh_table_summary` |

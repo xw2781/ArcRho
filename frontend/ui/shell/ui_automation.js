@@ -82,8 +82,8 @@ function installAutomationStyles() {
       overflow-wrap: anywhere;
     }
     .uiAutomationDialogClose {
-      width: 24px;
-      height: 24px;
+      width: 32px;
+      height: 32px;
       flex: 0 0 auto;
       display: inline-flex;
       align-items: center;
@@ -93,16 +93,16 @@ function installAutomationStyles() {
       background: transparent;
       color: #64748b;
       font: inherit;
-      font-size: 16px;
+      font-size: 18px;
       line-height: 1;
       cursor: pointer;
     }
     .uiAutomationDialogClose svg {
-      width: 18px;
-      height: 18px;
+      width: 22px;
+      height: 22px;
       display: block;
       stroke: currentColor;
-      stroke-width: 2;
+      stroke-width: 2.4;
       stroke-linecap: round;
     }
     .uiAutomationDialogClose:hover {
@@ -515,9 +515,9 @@ function openAutomationProgress(args = {}) {
         <span class="uiAutomationDialogIcon" aria-hidden="true">i</span>
         <div class="uiAutomationDialogTitle"></div>
         <button class="uiAutomationDialogClose" type="button" aria-label="Close progress window" title="Close">
-          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path d="M4 4l8 8"></path>
-            <path d="M12 4l-8 8"></path>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6L6 18"></path>
           </svg>
         </button>
       </div>

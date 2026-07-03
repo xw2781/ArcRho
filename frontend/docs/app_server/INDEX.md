@@ -18,7 +18,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `excel` | [`app_server/api/excel_router.py`](../../app_server/api/excel_router.py) | 5 | [`excel.md`](domains/excel.md) |
 | `field_mapping` | [`app_server/api/field_mapping_router.py`](../../app_server/api/field_mapping_router.py) | 2 | [`field_mapping.md`](domains/field_mapping.md) |
 | `project_book` | [`app_server/api/project_book_router.py`](../../app_server/api/project_book_router.py) | 4 | [`project_book.md`](domains/project_book.md) |
-| `project_settings` | [`app_server/api/project_settings_router.py`](../../app_server/api/project_settings_router.py) | 11 | [`project_settings.md`](domains/project_settings.md) |
+| `project_settings` | [`app_server/api/project_settings_router.py`](../../app_server/api/project_settings_router.py) | 12 | [`project_settings.md`](domains/project_settings.md) |
 | `reserving_class` | [`app_server/api/reserving_class_router.py`](../../app_server/api/reserving_class_router.py) | 11 | [`reserving_class.md`](domains/reserving_class.md) |
 | `snowflake` | [`app_server/api/snowflake_router.py`](../../app_server/api/snowflake_router.py) | 4 | [`snowflake.md`](domains/snowflake.md) |
 | `table_summary` | [`app_server/api/table_summary_router.py`](../../app_server/api/table_summary_router.py) | 2 | [`table_summary.md`](domains/table_summary.md) |

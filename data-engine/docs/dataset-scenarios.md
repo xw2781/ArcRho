@@ -77,4 +77,8 @@ For `ArcRhoTri`, the Excel add-in has the full cache identity in the UDF argumen
 
 `data/<ReservingClass>/datasets/<InstanceName>@<OriginLength>@<DevelopmentLength>@<cum|inc>@<dev|cal>.csv`
 
+For `ArcRhoVec`, the cache identity only needs the vector period length:
+
+`data/<ReservingClass>/datasets/<InstanceName>@<PeriodLength>.csv`
+
 If the triangle/instance name is not found in `dataset_types.json`, Excel should treat it as a non-generated dataset instance, load that exact CSV if it exists, and never clear it because of `removeData=True`. No legacy unsuffixed CSV fallback is required.

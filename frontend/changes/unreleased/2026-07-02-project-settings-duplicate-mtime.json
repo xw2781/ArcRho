@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Fixed project duplication failing with a stale-file warning after the folder tree was saved."
+}

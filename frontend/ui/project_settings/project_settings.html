@@ -749,6 +749,47 @@
       color: #dc3545;
       font-size: 12px;
     }
+    .project-operation-progress {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      width: min(360px, calc(100vw - 36px));
+      padding: 12px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+      z-index: 8000;
+    }
+    .project-operation-progress[hidden] {
+      display: none;
+    }
+    .project-operation-progress-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1f2937;
+      margin-bottom: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .project-operation-progress-track {
+      height: 6px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e7eb;
+    }
+    .project-operation-progress-fill {
+      width: 42%;
+      height: 100%;
+      border-radius: inherit;
+      background: #2b6df6;
+      animation: projectOperationProgress 1.05s ease-in-out infinite;
+    }
+    @keyframes projectOperationProgress {
+      0% { transform: translateX(-110%); }
+      100% { transform: translateX(250%); }
+    }
 
     /* Ribbon bar */
     .ribbon-bar {
@@ -2319,6 +2360,13 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="project-operation-progress" id="projectOperationProgress" role="status" aria-live="polite" hidden>
+    <div class="project-operation-progress-title" id="projectOperationProgressTitle"></div>
+    <div class="project-operation-progress-track" aria-hidden="true">
+      <div class="project-operation-progress-fill"></div>
     </div>
   </div>
 

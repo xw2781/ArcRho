@@ -19,6 +19,7 @@ from app_server.helpers import (
     _split_project_tree_path,
     _add_folder_with_parents,
     _normalize_folder_structure_entry,
+    sanitize_dataset_file_name,
 )
 from app_server.services.audit_service import safe_append_project_audit_log
 
@@ -292,16 +293,34 @@ def update_project_folders(source: str, folders_input: List[str], project_paths_
             folder_by_project[project.lower()] = folder
     index_data = _read_project_index()
     projects = []
+    seen_project_keys: set[str] = set()
     for item in index_data["projects"]:
         name = str(item.get("name", "") or "").strip()
         if not name:
             continue
+        seen_project_keys.add(name.lower())
         projects.append({"name": name, "folder": folder_by_project.get(name.lower(), item.get("folder", ""))})
+    for full in project_paths:
+        folder, project = _split_project_tree_path(full)
+        project_name = str(project or "").strip()
+        project_key = project_name.lower()
+        if not project_name or project_key in seen_project_keys:
+            continue
+        seen_project_keys.add(project_key)
+        projects.append({"name": project_name, "folder": folder})
     folder_entries = [_folder_entry_from_path(path) for path in folders_final]
 
     try:
-        _write_project_index({"version": index_data.get("version", 1), "projects": projects, "folders": folder_entries})
-        return {"ok": True, "source": source, "folders_count": len(folders_final), "project_paths_count": len(project_paths)}
+        path = _write_project_index({"version": index_data.get("version", 1), "projects": projects, "folders": folder_entries})
+        st = os.stat(path)
+        return {
+            "ok": True,
+            "source": source,
+            "folders_count": len(folders_final),
+            "project_paths_count": len(project_paths),
+            "path": path,
+            "mtime": st.st_mtime,
+        }
     except PermissionError:
         raise HTTPException(423, "File is locked. Another user may have it open.")
     except Exception as e:
@@ -406,6 +425,121 @@ def duplicate_project_folder(source: str, old_name: str, new_name: str) -> Dict[
             except Exception:
                 pass
         raise HTTPException(500, f"Failed to duplicate folder: {str(e)}")
+
+
+def _csv_stem_base(file_name: str) -> str:
+    stem = os.path.splitext(os.path.basename(str(file_name or "")))[0]
+    return stem.split("@", 1)[0].strip().lower()
+
+
+def _input_dataset_cache_keys_from_index(index_path: str) -> Dict[str, set[str]]:
+    with open(index_path, "r", encoding="utf-8-sig") as f:
+        index_data = json.load(f)
+    files = index_data.get("files") if isinstance(index_data, dict) else []
+    keep_files: set[str] = set()
+    keep_base_names: set[str] = set()
+
+    for item in (files if isinstance(files, list) else []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("source_kind") or "").strip().lower() != "input":
+            continue
+
+        for key in ("csv_file", "name"):
+            value = str(item.get(key) or "").strip()
+            if value.lower().endswith(".csv"):
+                keep_files.add(os.path.basename(value).lower())
+
+        candidate_names = []
+        for key in ("dataset_name", "name", "dataset_type"):
+            candidate_names.append(item.get(key))
+        candidate_names.extend(item.get("dataset_names") or [])
+        for value in candidate_names:
+            text = str(value or "").strip()
+            if not text:
+                continue
+            if text.lower().endswith(".csv"):
+                keep_files.add(os.path.basename(text).lower())
+                text = os.path.splitext(os.path.basename(text))[0]
+            keep_base_names.add(sanitize_dataset_file_name(text).lower())
+
+    return {"files": keep_files, "base_names": keep_base_names}
+
+
+def clear_generated_dataset_csv_caches(source: str, project_name: str) -> Dict[str, Any]:
+    if source not in config.PROJECT_SETTINGS_SOURCES:
+        raise HTTPException(404, f"Unknown source: {source}")
+
+    project_name_clean = str(project_name or "").strip()
+    if not project_name_clean:
+        raise HTTPException(400, "project_name is required.")
+
+    try:
+        data_dir = config.get_project_data_dir(project_name_clean)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+    if not os.path.isdir(data_dir):
+        return {
+            "ok": True,
+            "project_name": project_name_clean,
+            "data_dir": data_dir,
+            "cleared_count": 0,
+            "preserved_count": 0,
+            "cleared_files": [],
+            "preserved_files": [],
+        }
+
+    cleared_files: List[str] = []
+    preserved_files: List[str] = []
+    try:
+        for current_dir, dirs, files in os.walk(data_dir):
+            if config.DATASET_CACHE_DIR not in dirs:
+                continue
+            index_path = os.path.join(current_dir, config.PROJECT_INDEX_FILE)
+            if not os.path.isfile(index_path):
+                continue
+
+            keep = _input_dataset_cache_keys_from_index(index_path)
+            dataset_dir = os.path.join(current_dir, config.DATASET_CACHE_DIR)
+            with os.scandir(dataset_dir) as it:
+                for entry in it:
+                    if not entry.is_file():
+                        continue
+                    if not entry.name.lower().endswith(".csv"):
+                        continue
+
+                    relative_path = os.path.relpath(entry.path, data_dir)
+                    entry_name = entry.name.lower()
+                    entry_base = _csv_stem_base(entry.name)
+                    if entry_name in keep["files"] or entry_base in keep["base_names"]:
+                        preserved_files.append(relative_path)
+                        continue
+
+                    os.remove(entry.path)
+                    cleared_files.append(relative_path)
+    except json.JSONDecodeError as e:
+        raise HTTPException(400, f"Invalid reserving-class dataset index JSON: {str(e)}")
+    except PermissionError:
+        raise HTTPException(423, "Cannot clear generated dataset cache files because a project data folder is locked.")
+    except OSError as e:
+        raise HTTPException(500, f"Failed to clear generated dataset cache files: {str(e)}")
+
+    if cleared_files:
+        safe_append_project_audit_log(
+            project_name=project_name_clean,
+            action=f"Cleared {len(cleared_files)} generated dataset CSV cache files after Source Data refresh",
+        )
+
+    return {
+        "ok": True,
+        "project_name": project_name_clean,
+        "data_dir": data_dir,
+        "cleared_count": len(cleared_files),
+        "preserved_count": len(preserved_files),
+        "cleared_files": cleared_files,
+        "preserved_files": preserved_files,
+    }
 
 
 def create_project_folder(source: str, name: str) -> Dict[str, Any]:

@@ -19,6 +19,7 @@ from .core import (
     _normalize_import_name,
     _safe_attr,
     _safe_read_json,
+    _vector_cache_csv_file_name,
     _write_json,
 )
 from .extractors import export_dfm_ultimate_vector, write_dfm_ultimate_vector_export
@@ -188,6 +189,10 @@ def _csv_abs_path(
     calendar: bool = DEFAULT_CALENDAR,
 ) -> str:
     filename = _dataset_cache_csv_file_name(name, origin_length, dev_length, cumulative=cumulative, calendar=calendar)
+    return str(project_data_dir / rc_folder / DATASET_CACHE_DIR / filename)
+
+def _vector_csv_abs_path(project_data_dir: Path, rc_folder: str, name: str, period_length: int) -> str:
+    filename = _vector_cache_csv_file_name(name, period_length)
     return str(project_data_dir / rc_folder / DATASET_CACHE_DIR / filename)
 
 def _strip_formula_index_prefix(raw: str) -> str:
@@ -435,14 +440,11 @@ def export_dfm(
         cumulative=DEFAULT_CUMULATIVE,
         calendar=DEFAULT_CALENDAR,
     )
-    output_csv = _csv_abs_path(
+    output_csv = _vector_csv_abs_path(
         project_data_dir,
         rc_folder,
         output_vec_name,
         origin_length,
-        dev_length,
-        cumulative=DEFAULT_CUMULATIVE,
-        calendar=DEFAULT_CALENDAR,
     )
 
     return {

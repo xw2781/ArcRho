@@ -35,6 +35,10 @@ class OpenProjectFolderRequest(BaseModel):
     project_name: str
 
 
+class GeneratedDatasetCacheClearRequest(BaseModel):
+    project_name: str
+
+
 class GeneralSettingsUpdateRequest(BaseModel):
     project_name: str
     origin_start_date: Optional[str] = ""

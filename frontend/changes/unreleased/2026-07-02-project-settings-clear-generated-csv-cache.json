@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data refresh now clears generated dataset CSV caches while preserving input CSV caches.",
+  "details": [
+    "Project duplication continues to copy the full data folder.",
+    "Only dataset CSVs marked with source_kind input in reserving-class index files are preserved during generated-cache clearing.",
+    "Sidecar JSON files, method files, and index files remain unchanged."
+  ]
+}

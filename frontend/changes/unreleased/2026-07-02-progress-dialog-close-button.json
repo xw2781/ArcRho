@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "automation",
+  "audience": "user",
+  "summary": "Made the macro progress dialog close icon larger and easier to see."
+}
