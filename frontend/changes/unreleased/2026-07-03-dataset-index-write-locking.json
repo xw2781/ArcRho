@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Reduced transient dataset index write failures during overlapping DFM saves, Sync pre-saves, and Project Instance refreshes."
+}

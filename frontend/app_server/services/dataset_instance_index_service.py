@@ -5,6 +5,8 @@ import json
 import os
 import re
 import hashlib
+import threading
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
 
@@ -18,10 +20,67 @@ INDEX_FILE_NAME = "index.json"
 INDEX_VERSION = 15
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
+_INDEX_WRITE_LOCKS: Dict[str, threading.Lock] = {}
+_INDEX_WRITE_LOCKS_GUARD = threading.Lock()
+_WINDOWS_LOCK_ERRORS = {32, 33}
+_INDEX_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.35, 0.5)
 
 
 def _clean_text(value: Any) -> str:
     return str(value if value is not None else "").strip()
+
+
+def _get_index_write_lock(index_path: str) -> threading.Lock:
+    key = os.path.normcase(os.path.abspath(index_path))
+    with _INDEX_WRITE_LOCKS_GUARD:
+        lock = _INDEX_WRITE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _INDEX_WRITE_LOCKS[key] = lock
+        return lock
+
+
+def _is_file_lock_error(err: OSError) -> bool:
+    winerror = getattr(err, "winerror", None)
+    if winerror in _WINDOWS_LOCK_ERRORS:
+        return True
+    return isinstance(err, PermissionError)
+
+
+def _unique_index_temp_path(index_path: str) -> str:
+    return (
+        f"{index_path}."
+        f"{os.getpid()}."
+        f"{threading.get_ident()}."
+        f"{time.monotonic_ns()}.tmp"
+    )
+
+
+def _replace_index_with_retry(temp_path: str, index_path: str) -> None:
+    for delay in (*_INDEX_REPLACE_RETRY_DELAYS, None):
+        try:
+            os.replace(temp_path, index_path)
+            return
+        except OSError as err:
+            if delay is None or not _is_file_lock_error(err):
+                raise
+            time.sleep(delay)
+
+
+def _write_index_file(index_path: str, data: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(index_path), exist_ok=True)
+    temp_path = _unique_index_temp_path(index_path)
+    try:
+        with open(temp_path, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        _replace_index_with_retry(temp_path, index_path)
+    except OSError:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _require_project_dir(project_name: str) -> str:
@@ -713,45 +772,39 @@ def rebuild_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
     if not os.path.isdir(folder_paths["data"]):
         return _empty_index(project, rc, folder_paths)
 
-    physical_files: List[Dict[str, Any]] = []
-    methods: List[Dict[str, Any]] = []
-    try:
-        _folder_names, physical_files, methods = _scan_cached_dataset_folder(folder_paths["data"])
-    except PermissionError:
-        raise HTTPException(423, "Dataset instance folder is locked or inaccessible.")
-    except OSError as err:
-        raise HTTPException(500, f"Failed to read dataset instance folder: {str(err)}")
-
-    methods = _dedupe_methods(methods)
-    _apply_method_types_to_files(physical_files, methods)
-    files = _logical_files_from_physical_files(physical_files, methods)
-    _apply_dataset_type_categories(files, project)
-    data = {
-        "ok": True,
-        "version": INDEX_VERSION,
-        "exists": True,
-        "project_name": project,
-        "reserving_class": rc,
-        "folder_paths": folder_paths,
-        "folder_signature": _cached_folder_signature(physical_files, folder_paths),
-        "files": files,
-    }
-
     index_path = _index_path(project, rc)
-    os.makedirs(os.path.dirname(index_path), exist_ok=True)
-    temp_path = f"{index_path}.tmp"
-    try:
-        with open(temp_path, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump(data, fh, indent=2, ensure_ascii=False)
-            fh.write("\n")
-        os.replace(temp_path, index_path)
-    except OSError as err:
+    with _get_index_write_lock(index_path):
+        physical_files: List[Dict[str, Any]] = []
+        methods: List[Dict[str, Any]] = []
         try:
-            os.remove(temp_path)
-        except OSError:
-            pass
-        raise HTTPException(500, f"Failed to write dataset instance index: {str(err)}")
-    return data
+            _folder_names, physical_files, methods = _scan_cached_dataset_folder(folder_paths["data"])
+        except PermissionError:
+            raise HTTPException(423, "Dataset instance folder is locked or inaccessible.")
+        except OSError as err:
+            raise HTTPException(500, f"Failed to read dataset instance folder: {str(err)}")
+
+        methods = _dedupe_methods(methods)
+        _apply_method_types_to_files(physical_files, methods)
+        files = _logical_files_from_physical_files(physical_files, methods)
+        _apply_dataset_type_categories(files, project)
+        data = {
+            "ok": True,
+            "version": INDEX_VERSION,
+            "exists": True,
+            "project_name": project,
+            "reserving_class": rc,
+            "folder_paths": folder_paths,
+            "folder_signature": _cached_folder_signature(physical_files, folder_paths),
+            "files": files,
+        }
+
+        try:
+            _write_index_file(index_path, data)
+        except PermissionError:
+            raise HTTPException(423, "Dataset instance index is locked or inaccessible.")
+        except OSError as err:
+            raise HTTPException(500, f"Failed to write dataset instance index: {str(err)}")
+        return data
 
 
 def _is_current_index(data: Dict[str, Any]) -> bool:

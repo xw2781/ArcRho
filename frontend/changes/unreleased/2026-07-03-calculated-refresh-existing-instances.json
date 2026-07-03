@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Calculated dataset refreshes now skip formula targets that do not exist in the selected reserving-class path."
+}

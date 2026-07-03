@@ -192,10 +192,20 @@ def sidecar_graph_fields(
     project_name: str,
     dataset_type_name: str,
     dependency_info: List[Dict[str, Any]] | None = None,
+    reserving_class: str = "",
 ) -> Dict[str, Any]:
+    dependent_names = _direct_dependent_names(project_name, dataset_type_name)
+    rc = _clean_text(reserving_class)
+    if rc:
+        existing_keys = _existing_dataset_keys(project_name, rc)
+        dependent_names = [
+            name
+            for name in dependent_names
+            if _canon_dataset_name(name) in existing_keys
+        ]
     return {
         "Precedents": _precedent_entries(project_name, dataset_type_name, dependency_info),
-        "Dependents": _name_entries(_direct_dependent_names(project_name, dataset_type_name)),
+        "Dependents": _name_entries(dependent_names),
     }
 
 
@@ -229,7 +239,12 @@ def apply_sidecar_graph_fields(
         payload["formula"] = formula if is_calculated else ""
         payload["calculated"] = is_calculated
 
-    payload.update(sidecar_graph_fields(project, dataset_type, dependency_info))
+    payload.update(sidecar_graph_fields(
+        project,
+        dataset_type,
+        dependency_info,
+        _clean_text(payload.get("reserving_class")),
+    ))
     payload.pop("dependencies", None)
     return payload
 
@@ -790,6 +805,22 @@ def _target_dependency_map(project_name: str) -> Dict[str, Set[str]]:
     return out
 
 
+def _existing_dataset_keys(project_name: str, reserving_class: str) -> Set[str]:
+    try:
+        folder = config.get_project_reserving_class_data_dir(project_name, reserving_class)
+    except ValueError:
+        return set()
+    _names, files, _methods = dataset_instance_index_service._scan_cached_dataset_folder(folder)
+    keys: Set[str] = set()
+    for item in files:
+        names = item.get("dataset_names") if isinstance(item.get("dataset_names"), list) else []
+        for value in [item.get("dataset_name"), item.get("dataset_type"), *names]:
+            key = _canon_dataset_name(value)
+            if key:
+                keys.add(key)
+    return keys
+
+
 def _downstream_keys(project_name: str, changed_names: List[str]) -> List[str]:
     dep_map = _dependency_map(project_name)
     seen: Set[str] = set()
@@ -826,6 +857,17 @@ def _downstream_keys(project_name: str, changed_names: List[str]) -> List[str]:
     for key in out:
         visit(key)
     return ordered
+
+
+def _existing_downstream_keys(project_name: str, reserving_class: str, changed_names: List[str]) -> List[str]:
+    existing_keys = _existing_dataset_keys(project_name, reserving_class)
+    if not existing_keys:
+        return []
+    return [
+        key
+        for key in _downstream_keys(project_name, changed_names)
+        if key in existing_keys
+    ]
 
 
 def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_name: str) -> Dict[str, Any]:
@@ -976,7 +1018,7 @@ def recalculate_dependents(
     changed_dataset_type_name: str = "",
 ) -> Dict[str, Any]:
     changed = [changed_dataset_name, changed_dataset_type_name]
-    targets = _downstream_keys(project_name, changed)
+    targets = _existing_downstream_keys(project_name, reserving_class, changed)
     rows_by_key = _calculated_rows_by_key(project_name)
     results: List[Dict[str, Any]] = []
     for key in targets:
