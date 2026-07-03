@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Moved Result Selection Sync to the tab bar and removed separate Sources and ResQ Method toolbar groups."
+}

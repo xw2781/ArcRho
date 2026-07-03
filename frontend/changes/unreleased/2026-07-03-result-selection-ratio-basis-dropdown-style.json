@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Refined the Result Selection active Ratio Basis dropdown menu to match the app control style."
+}

@@ -130,9 +130,9 @@ Fields:
 | `Name` | text input | Vector instance name for the Result Selection output. Required before save. |
 | `Output Type` | dataset picker/input | Vector dataset type. Required before save. |
 | `Origin Length` | select/spinner | Defaults to `12`. Controls row labels in the Method tab. |
-| `Ratio Basis` | dataset picker/input | Optional. Can be blank or select one dataset in the same reserving class path. |
+| `Ratio Basis` | dataset picker/input | Optional. Can define up to three datasets in the same reserving class path. |
 
-For v1, support a single ratio basis only. Do not implement the legacy `One / Two / Three` ratio-basis tabs yet.
+The Method tab chooses which defined Ratio Basis is active for the visible ratio statistic column.
 
 The Details tab can include ratio-display settings near the ratio basis, matching the screenshot style where practical:
 

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection now supports up to three ratio-basis datasets and lets Method users switch the active basis for ratio statistics."
+}

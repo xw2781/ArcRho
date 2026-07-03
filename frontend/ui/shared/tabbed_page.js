@@ -12,6 +12,52 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+function toCssLength(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return `${Math.max(0, value)}px`;
+  const text = String(value ?? "").trim();
+  return text || "0px";
+}
+
+const SAVE_BAR_STYLE_ID = "tabbed-page-save-bar-style";
+
+function ensureSaveBarStyles() {
+  if (document.getElementById(SAVE_BAR_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = SAVE_BAR_STYLE_ID;
+  style.textContent = `
+    .tabbedPageSaveBar {
+      flex: 0 0 38px;
+      width: 100%;
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 6px 10px 4px;
+      border: 0;
+      box-sizing: border-box;
+      background: #f5f7fa;
+    }
+    .tabbedPageSaveBar[hidden] {
+      display: none;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+/**
+ * Applies the shared tabbed-page save bar styling to an existing save bar.
+ *
+ * @param {HTMLElement|null|undefined} saveBar - Existing save bar element.
+ * @returns {HTMLElement|null|undefined}
+ */
+export function applyTabbedPageSaveBar(saveBar) {
+  if (!saveBar) return saveBar;
+  ensureSaveBarStyles();
+  saveBar.classList.add("tabbedPageSaveBar");
+  return saveBar;
+}
+
 /**
  * Creates a reusable tabbed page system.
  *
@@ -23,6 +69,8 @@ function capitalize(str) {
  * @param {string} [config.urlParamKey] - URL param to read initial tab from (e.g., 'tab')
  * @param {Function} [config.onTabChange] - Callback(tabId, prevTabId) called on tab switch
  * @param {boolean} [config.injectTabBar=true] - Whether to inject tab bar HTML (false if already in markup)
+ * @param {number|string} [config.tabBarExtraVerticalSpace=0] - Extra vertical space added to the tab bar.
+ * @param {number|string} [config.frameGutter=8] - Left/right gutter shared by the tab bar and page frame.
  * @returns {{setActive: Function, getCurrentTab: Function, getPageElement: Function, getAllPageElements: Function}}
  */
 export function createTabbedPage(container, config) {
@@ -32,7 +80,9 @@ export function createTabbedPage(container, config) {
     initialTab,
     urlParamKey,
     onTabChange,
-    injectTabBar = true
+    injectTabBar = true,
+    tabBarExtraVerticalSpace = 0,
+    frameGutter = 8
   } = config;
 
   if (!tabs || tabs.length === 0) {
@@ -52,6 +102,7 @@ export function createTabbedPage(container, config) {
     const pageId = getPageId(tab.id);
     const el = document.getElementById(pageId);
     if (el) {
+      el.classList.add("tabbedPagePanel");
       pageElements[tab.id] = el;
     }
   });
@@ -60,10 +111,10 @@ export function createTabbedPage(container, config) {
   let tabBar;
   if (injectTabBar) {
     tabBar = document.createElement('div');
-    tabBar.className = tabBarClass;
+    tabBar.className = `${tabBarClass} tabbedPageTabBar`;
     tabs.forEach(tab => {
       const btn = document.createElement('button');
-      btn.className = tabClass;
+      btn.className = `${tabClass} tabbedPageTab`;
       btn.type = 'button';
       btn.dataset.page = tab.id;
       btn.textContent = tab.label;
@@ -74,9 +125,16 @@ export function createTabbedPage(container, config) {
   } else {
     // Use existing tab bar
     tabBar = container.querySelector(`.${tabBarClass}`);
+    if (tabBar) tabBar.classList.add("tabbedPageTabBar");
+  }
+
+  container.style.setProperty("--tabbed-page-gutter", toCssLength(frameGutter));
+  if (tabBar) {
+    tabBar.style.setProperty("--tabbed-tabbar-extra-y", toCssLength(tabBarExtraVerticalSpace));
   }
 
   const tabButtons = tabBar ? Array.from(tabBar.querySelectorAll(`.${tabClass}`)) : [];
+  tabButtons.forEach((btn) => btn.classList.add("tabbedPageTab"));
 
   /**
    * Sets the active tab.

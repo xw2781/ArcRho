@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Removed the Result Selection ratio-status toolbar group and stopped persisting ratio-basis values in method JSON."
+}

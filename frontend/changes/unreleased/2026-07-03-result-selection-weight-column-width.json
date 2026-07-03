@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Widened Result Selection Weight columns so percentage weights such as 100.0% display fully."
+}

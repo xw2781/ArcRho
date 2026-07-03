@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Styled Result Selection Method toolbar group labels as compact legends over each group border."
+}

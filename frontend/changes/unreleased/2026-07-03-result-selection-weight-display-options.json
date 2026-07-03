@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Changed Result Selection Weight display from a toggle button to a custom styled Actual and Effective percentage dropdown menu."
+}

@@ -4,12 +4,15 @@ import {
   formatDatasetOriginLabel,
   getDatasetOriginLabelText,
 } from "/ui/dataset/dataset_origin_labels.js";
+import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
 import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/filename_sanitizer.js";
+import { applyTabbedPageSaveBar } from "/ui/shared/tabbed_page.js";
 import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interactions.js";
 import { startResultSelectionRpcBridgeSync } from "/ui/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
 const RS_JSON_VALUE_DECIMAL_PLACES = 6;
+const MAX_RATIO_BASIS_COUNT = 3;
 const DEFAULT_ORIGIN_LENGTH = 12;
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
 const FALLBACK_ORIGIN_LABEL_COUNTS = {
@@ -21,7 +24,7 @@ const FALLBACK_ORIGIN_LABEL_COUNTS = {
 const METHOD_COL_DEFAULT_WIDTHS = {
   origin: 90,
   source: 90,
-  weight: 58,
+  weight: 68,
   ultimate: 100,
   ratio: 100,
   spacer: 14,
@@ -29,7 +32,7 @@ const METHOD_COL_DEFAULT_WIDTHS = {
 const METHOD_COL_MIN_WIDTHS = {
   origin: 58,
   source: 52,
-  weight: 58,
+  weight: 68,
   ultimate: 70,
   ratio: 70,
   spacer: 14,
@@ -54,6 +57,7 @@ const state = {
   sources: [],
   ratioBasisValues: [],
   outputValues: [],
+  activeRatioBasisName: "",
   originLabels: [],
   originLabelsKey: "",
   sidecarOriginLength: null,
@@ -74,16 +78,35 @@ const els = {
   outputTypeInput: document.getElementById("rsOutputTypeInput"),
   outputTypeBtn: document.getElementById("rsOutputTypeBtn"),
   originLengthInput: document.getElementById("rsOriginLengthInput"),
-  ratioBasisInput: document.getElementById("rsRatioBasisInput"),
-  ratioBasisBtn: document.getElementById("rsRatioBasisBtn"),
+  ratioBasisInputs: [
+    document.getElementById("rsRatioBasisInput"),
+    document.getElementById("rsRatioBasisInput2"),
+    document.getElementById("rsRatioBasisInput3"),
+  ],
+  ratioBasisButtons: [
+    document.getElementById("rsRatioBasisBtn"),
+    document.getElementById("rsRatioBasisBtn2"),
+    document.getElementById("rsRatioBasisBtn3"),
+  ],
+  ratioBasisClearButtons: [
+    document.getElementById("rsRatioBasisClearBtn"),
+    document.getElementById("rsRatioBasisClearBtn2"),
+    document.getElementById("rsRatioBasisClearBtn3"),
+  ],
   showRatiosPctInput: document.getElementById("rsShowRatiosPctInput"),
   statisticDecimalsInput: document.getElementById("rsStatisticDecimalsInput"),
   showWeightsInput: document.getElementById("rsShowWeightsInput"),
-  toggleWeightsDisplayBtn: document.getElementById("rsToggleWeightsDisplayBtn"),
-  addSourceBtn: document.getElementById("rsAddSourceBtn"),
+  weightDisplayDropdown: document.getElementById("rsWeightDisplayDropdown"),
+  weightDisplayButton: document.getElementById("rsWeightDisplayButton"),
+  weightDisplayLabel: document.getElementById("rsWeightDisplayLabel"),
+  weightDisplayMenu: document.getElementById("rsWeightDisplayMenu"),
   syncBtn: document.getElementById("rsSyncBtn"),
-  ratioBasisStatus: document.getElementById("rsRatioBasisStatus"),
+  activeRatioBasisDropdown: document.getElementById("rsActiveRatioBasisDropdown"),
+  activeRatioBasisButton: document.getElementById("rsActiveRatioBasisButton"),
+  activeRatioBasisLabel: document.getElementById("rsActiveRatioBasisLabel"),
+  activeRatioBasisMenu: document.getElementById("rsActiveRatioBasisMenu"),
   methodGrid: document.getElementById("rsMethodGrid"),
+  saveBar: document.querySelector(".rsSaveBar"),
   saveBtn: document.getElementById("rsSaveBtn"),
   cancelBtn: document.getElementById("rsCancelBtn"),
   notesInput: document.getElementById("rsNotesInput"),
@@ -299,12 +322,211 @@ function withProgrammatic(fn) {
   }
 }
 
+function dropdownOptions(menu) {
+  return Array.from(menu?.querySelectorAll?.(".rsDropdownOption") || []);
+}
+
+function getDropdownValue(menu) {
+  const selected = dropdownOptions(menu).find((option) => option.getAttribute("aria-selected") === "true");
+  return text(selected?.dataset?.value);
+}
+
+function setDropdownOpen(dropdown, button, open) {
+  if (!dropdown || !button || button.disabled) return;
+  dropdown.classList.toggle("open", !!open);
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function closeDropdown(dropdown, button) {
+  if (!dropdown || !button) return;
+  dropdown.classList.remove("open");
+  button.setAttribute("aria-expanded", "false");
+}
+
+function closeAllDropdowns(except = null) {
+  const pairs = [
+    [els.weightDisplayDropdown, els.weightDisplayButton],
+    [els.activeRatioBasisDropdown, els.activeRatioBasisButton],
+  ];
+  for (const [dropdown, button] of pairs) {
+    if (!dropdown || dropdown === except) continue;
+    closeDropdown(dropdown, button);
+  }
+}
+
+function makeDropdownOption(value, label, selected = false) {
+  const option = document.createElement("button");
+  option.className = "rsDropdownOption";
+  option.type = "button";
+  option.setAttribute("role", "option");
+  option.dataset.value = text(value);
+  option.textContent = text(label);
+  option.setAttribute("aria-selected", selected ? "true" : "false");
+  return option;
+}
+
+function syncDropdownValue(menu, labelEl, value, fallbackLabel = "") {
+  const options = dropdownOptions(menu);
+  const wanted = text(value);
+  let selected = null;
+  for (const option of options) {
+    const isSelected = text(option.dataset.value) === wanted;
+    option.setAttribute("aria-selected", isSelected ? "true" : "false");
+    if (isSelected) selected = option;
+  }
+  if (!selected && options.length) {
+    selected = options[0];
+    selected.setAttribute("aria-selected", "true");
+  }
+  if (labelEl) labelEl.textContent = selected?.textContent || fallbackLabel;
+  return text(selected?.dataset?.value);
+}
+
+function wireDropdown(dropdown, button, menu, onSelect) {
+  if (!dropdown || !button || !menu) return;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    const nextOpen = !dropdown.classList.contains("open");
+    closeAllDropdowns(dropdown);
+    setDropdownOpen(dropdown, button, nextOpen);
+    if (nextOpen) {
+      const selected = dropdownOptions(menu).find((option) => option.getAttribute("aria-selected") === "true");
+      selected?.focus?.({ preventScroll: true });
+    }
+  });
+  menu.addEventListener("click", (event) => {
+    const option = event.target?.closest?.(".rsDropdownOption");
+    if (!option) return;
+    event.preventDefault();
+    const value = text(option.dataset.value);
+    onSelect?.(value);
+    closeDropdown(dropdown, button);
+    button.focus?.({ preventScroll: true });
+  });
+  dropdown.addEventListener("keydown", (event) => {
+    const key = event.key;
+    if (key === "Escape") {
+      event.preventDefault();
+      closeDropdown(dropdown, button);
+      button.focus?.({ preventScroll: true });
+      return;
+    }
+    if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Enter" && key !== " ") return;
+    const options = dropdownOptions(menu);
+    if (!options.length) return;
+    if (!dropdown.classList.contains("open")) {
+      event.preventDefault();
+      closeAllDropdowns(dropdown);
+      setDropdownOpen(dropdown, button, true);
+      const selected = options.find((option) => option.getAttribute("aria-selected") === "true") || options[0];
+      selected.focus?.({ preventScroll: true });
+      return;
+    }
+    const activeIndex = Math.max(0, options.indexOf(document.activeElement));
+    if (key === "ArrowDown" || key === "ArrowUp") {
+      event.preventDefault();
+      const delta = key === "ArrowDown" ? 1 : -1;
+      const nextIndex = (activeIndex + delta + options.length) % options.length;
+      options[nextIndex]?.focus?.({ preventScroll: true });
+      return;
+    }
+    if (document.activeElement?.classList?.contains("rsDropdownOption")) {
+      event.preventDefault();
+      document.activeElement.click();
+    }
+  });
+}
+
+function uniqueRatioBasisNames(names) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(names) ? names : []) {
+    const name = text(value);
+    const key = norm(name);
+    if (!name || !key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+    if (out.length >= MAX_RATIO_BASIS_COUNT) break;
+  }
+  return out;
+}
+
+function getRatioBasisNames() {
+  return uniqueRatioBasisNames((els.ratioBasisInputs || []).map((input) => input?.value));
+}
+
+function matchRatioBasisName(value, names = getRatioBasisNames()) {
+  const key = norm(value);
+  if (!key) return "";
+  return names.find((name) => norm(name) === key) || "";
+}
+
+function normalizeRatioBasisDetails(details = {}) {
+  const fromList = Array.isArray(details.ratio_basis_datasets)
+    ? details.ratio_basis_datasets
+    : [];
+  const fallback = text(details.ratio_basis_dataset || details.ratio_basis);
+  const names = uniqueRatioBasisNames(fromList.length ? fromList : [fallback]);
+  const active = text(details.active_ratio_basis_dataset || fallback);
+  if (active && !matchRatioBasisName(active, names) && names.length < MAX_RATIO_BASIS_COUNT) {
+    names.push(active);
+  }
+  return {
+    names: uniqueRatioBasisNames(names),
+    active: matchRatioBasisName(active, names) || names[0] || "",
+  };
+}
+
+function syncRatioBasisSelector() {
+  const menu = els.activeRatioBasisMenu;
+  const button = els.activeRatioBasisButton;
+  const names = getRatioBasisNames();
+  const active = matchRatioBasisName(state.activeRatioBasisName, names) || names[0] || "";
+  state.activeRatioBasisName = active;
+  if (!menu) return active;
+  const previous = getDropdownValue(menu);
+  menu.replaceChildren();
+  if (!names.length) {
+    menu.appendChild(makeDropdownOption("", "No basis", true));
+    if (button) {
+      button.disabled = true;
+      button.title = "No ratio basis";
+    }
+    syncDropdownValue(menu, els.activeRatioBasisLabel, "", "No basis");
+    closeDropdown(els.activeRatioBasisDropdown, button);
+    return "";
+  }
+  for (const name of names) {
+    menu.appendChild(makeDropdownOption(name, name, norm(name) === norm(active || names[0])));
+  }
+  if (button) button.disabled = false;
+  const selected = syncDropdownValue(menu, els.activeRatioBasisLabel, active || names[0], names[0]);
+  if (button && previous !== selected) {
+    button.title = selected ? `Active ratio basis: ${selected}` : "No ratio basis";
+  }
+  return selected;
+}
+
+function getActiveRatioBasisName() {
+  const selectValue = getDropdownValue(els.activeRatioBasisMenu);
+  const names = getRatioBasisNames();
+  const selected = matchRatioBasisName(selectValue, names)
+    || matchRatioBasisName(state.activeRatioBasisName, names)
+    || names[0]
+    || "";
+  state.activeRatioBasisName = selected;
+  return selected;
+}
+
 function getDetails() {
+  const ratioBases = getRatioBasisNames();
+  const ratioBasis = getActiveRatioBasisName();
   return {
     name: text(els.nameInput.value),
     outputType: text(els.outputTypeInput.value),
     originLength: validOriginLength(els.originLengthInput.value),
-    ratioBasis: text(els.ratioBasisInput.value),
+    ratioBasis,
+    ratioBases,
     showRatiosAsPercentages: !!els.showRatiosPctInput.checked,
     statisticDecimalPlaces: Math.max(0, Math.min(8, nonNegativeInt(els.statisticDecimalsInput.value, 1))),
     showWeights: !!els.showWeightsInput.checked,
@@ -1544,12 +1766,14 @@ function startMethodColumnResize(event, column) {
 }
 
 function syncToggleWeightsDisplayControl(details = getDetails()) {
-  if (!els.toggleWeightsDisplayBtn) return;
-  els.toggleWeightsDisplayBtn.disabled = !details.showWeights;
-  els.toggleWeightsDisplayBtn.setAttribute("aria-pressed", state.showEffectiveWeights ? "true" : "false");
-  els.toggleWeightsDisplayBtn.title = state.showEffectiveWeights
-    ? "Showing read-only effective row weights"
-    : "Showing editable numeric weights";
+  if (!els.weightDisplayButton) return;
+  const value = state.showEffectiveWeights ? "effective" : "actual";
+  els.weightDisplayButton.disabled = !details.showWeights;
+  els.weightDisplayButton.title = state.showEffectiveWeights
+    ? "Show read-only effective row weight percentages"
+    : "Show editable numeric weights";
+  syncDropdownValue(els.weightDisplayMenu, els.weightDisplayLabel, value, "Actual");
+  if (!details.showWeights) closeDropdown(els.weightDisplayDropdown, els.weightDisplayButton);
 }
 
 function focusMethodGrid() {
@@ -1598,13 +1822,13 @@ function renderMethodGrid() {
   if (!grid) return;
   grid.tabIndex = -1;
   syncOriginLengthOptions();
+  syncRatioBasisSelector();
   const details = getDetails();
   const count = getRowCount();
   const hasBasis = !!details.ratioBasis;
   const columns = buildMethodColumns(details);
   normalizeMethodHighlight(columns, count + 1);
   syncToggleWeightsDisplayControl(details);
-  els.ratioBasisStatus.textContent = hasBasis ? `Basis: ${details.ratioBasis}` : "Basis: None";
   syncMethodTableTotalWidth(columns);
   const colgroup = buildMethodColGroup(columns);
   const thead = document.createElement("thead");
@@ -2020,6 +2244,8 @@ function buildPayload() {
       origin_length: details.originLength,
       ratio_basis: details.ratioBasis,
       ratio_basis_dataset: details.ratioBasis,
+      ratio_basis_datasets: details.ratioBases,
+      active_ratio_basis_dataset: details.ratioBasis,
       show_ratios_as_percentages: details.showRatiosAsPercentages,
       statistic_decimal_places: details.statisticDecimalPlaces,
     },
@@ -2038,7 +2264,6 @@ function buildPayload() {
       })),
       selected_ultimate: roundRsJsonVector(selectedUltimateVector()),
       ultimate_overrides: roundRsJsonVector(serializedUltimateOverrides()),
-      ratio_basis_values: roundRsJsonVector(state.ratioBasisValues),
     },
     results_tab: {},
     validation_tab: {},
@@ -2055,12 +2280,17 @@ async function applyPayload(payload) {
   const data = payload && typeof payload === "object" ? payload : {};
   const details = data.details_tab || {};
   const method = data.method_tab || {};
+  const ratioBasisDetails = normalizeRatioBasisDetails(details);
   withProgrammatic(() => {
     els.nameInput.value = text(details.name || els.nameInput.value);
     els.outputTypeInput.value = text(details.output_type || els.outputTypeInput.value);
     els.originLengthInput.value = String(validOriginLength(details.origin_length || els.originLengthInput.value));
     if (state.sidecarOriginLength) els.originLengthInput.value = String(state.sidecarOriginLength);
-    els.ratioBasisInput.value = text(details.ratio_basis_dataset || details.ratio_basis || "");
+    (els.ratioBasisInputs || []).forEach((input, index) => {
+      if (input) input.value = ratioBasisDetails.names[index] || "";
+    });
+    state.activeRatioBasisName = ratioBasisDetails.active;
+    syncRatioBasisSelector();
     els.showRatiosPctInput.checked = details.show_ratios_as_percentages !== false;
     els.statisticDecimalsInput.value = String(Math.max(0, Math.min(8, nonNegativeInt(details.statistic_decimal_places, 1))));
     els.showWeightsInput.checked = method.show_weights !== false;
@@ -2077,7 +2307,7 @@ async function applyPayload(payload) {
   if (originLengthChanged) {
     await reloadSourcesForCurrentOriginLength({ render: false });
   }
-  if (text(els.ratioBasisInput.value)) await refreshRatioBasisValues();
+  if (getActiveRatioBasisName()) await refreshRatioBasisValues();
   const methodOriginLabels = Array.isArray(method.origin_labels) ? method.origin_labels.map(String) : [];
   if (methodOriginLabels.length && !shouldRejectOriginLabels(getDetails().originLength, methodOriginLabels)) {
     setOriginLabels(methodOriginLabels, getDetails().originLength);
@@ -2475,7 +2705,7 @@ function openPicker(anchor, rows, onPick) {
   els.picker.setAttribute("aria-hidden", "false");
 }
 
-function openAddSourcePicker(anchor = els.addSourceBtn) {
+function openAddSourcePicker(anchor = null) {
   const rows = cachedRows.filter((row) => norm(row.name) !== norm(els.nameInput.value));
   openPicker(anchor, rows, (row) => void addSource(row));
 }
@@ -2546,7 +2776,8 @@ async function reloadSourcesForCurrentOriginLength(options = {}) {
 }
 
 async function refreshRatioBasisValues() {
-  const basis = text(els.ratioBasisInput.value);
+  syncRatioBasisSelector();
+  const basis = getActiveRatioBasisName();
   if (!basis) {
     state.ratioBasisValues = [];
     renderMethodGrid();
@@ -2579,6 +2810,42 @@ async function restoreCleanState() {
   markClean();
 }
 
+async function openRatioBasisDatasetPicker(index) {
+  const input = els.ratioBasisInputs?.[index] || null;
+  const button = els.ratioBasisButtons?.[index] || null;
+  if (!input) return;
+  if (!state.project) {
+    postStatus("Select a project before choosing a Ratio Basis dataset.", "warn");
+    return;
+  }
+  if (button) button.disabled = true;
+  try {
+    await openDatasetNamePicker({
+      projectName: state.project,
+      initialName: input.value,
+      anchorElement: input,
+      title: `Select Ratio Basis ${index + 1}`,
+      includeCalculated: true,
+      setStatus: (message) => {
+        const msg = text(message);
+        if (msg) postStatus(msg, "warn");
+      },
+      onError: (err) => {
+        console.error("Failed to open Ratio Basis picker:", err);
+        postStatus(`Error loading ratio-basis dataset names: ${String(err?.message || err)}`, "error");
+      },
+      onSelect: (name) => {
+        const selected = text(name);
+        if (!selected) return;
+        input.value = selected;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      },
+    });
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function wireEvents() {
   els.tabBar?.addEventListener("click", (event) => {
     const btn = event.target?.closest?.(".rsTab");
@@ -2605,7 +2872,7 @@ function wireEvents() {
           try {
             await refreshOriginLabels({ render: false });
             await reloadSourcesForCurrentOriginLength({ render: false });
-            if (text(els.ratioBasisInput.value)) await refreshRatioBasisValues();
+            if (getActiveRatioBasisName()) await refreshRatioBasisValues();
             else renderMethodGrid();
           } catch (err) {
             postStatus(`Origin length reload failed: ${err?.message || err}`, "error");
@@ -2617,8 +2884,10 @@ function wireEvents() {
       renderMethodGrid();
     });
   });
-  els.toggleWeightsDisplayBtn?.addEventListener("click", () => {
-    state.showEffectiveWeights = !state.showEffectiveWeights;
+  wireDropdown(els.weightDisplayDropdown, els.weightDisplayButton, els.weightDisplayMenu, (value) => {
+    const next = text(value) === "effective";
+    if (state.showEffectiveWeights === next) return;
+    state.showEffectiveWeights = next;
     renderMethodGrid();
   });
   els.cellContextMenu?.addEventListener("click", (event) => {
@@ -2716,11 +2985,55 @@ function wireEvents() {
       }
     }
   });
-  els.ratioBasisInput?.addEventListener("change", () => {
+  (els.ratioBasisInputs || []).forEach((input, index) => {
+    input?.addEventListener("input", () => {
+      markDirty();
+      const previousActive = state.activeRatioBasisName;
+      syncRatioBasisSelector();
+      if (previousActive !== state.activeRatioBasisName) state.ratioBasisValues = [];
+      renderMethodGrid();
+    });
+    input?.addEventListener("change", () => {
+      markDirty();
+      syncRatioBasisSelector();
+      void refreshRatioBasisValues();
+    });
+    input?.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown") return;
+      event.preventDefault();
+      void openRatioBasisDatasetPicker(index);
+    });
+  });
+  (els.ratioBasisButtons || []).forEach((button, index) => {
+    button?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void openRatioBasisDatasetPicker(index);
+    });
+  });
+  (els.ratioBasisClearButtons || []).forEach((button, index) => {
+    button?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const input = els.ratioBasisInputs?.[index];
+      if (!input || !text(input.value)) return;
+      input.value = "";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  });
+  wireDropdown(els.activeRatioBasisDropdown, els.activeRatioBasisButton, els.activeRatioBasisMenu, (value) => {
+    state.activeRatioBasisName = text(value);
     markDirty();
     void refreshRatioBasisValues();
   });
-  els.ratioBasisInput?.addEventListener("input", markDirty);
+  document.addEventListener("mousedown", (event) => {
+    const target = event.target;
+    if (target instanceof Node && (
+      els.weightDisplayDropdown?.contains?.(target)
+      || els.activeRatioBasisDropdown?.contains?.(target)
+    )) return;
+    closeAllDropdowns();
+  });
   els.outputTypeBtn?.addEventListener("click", () => {
     const rows = datasetTypeItems
       .filter((item) => norm(item.dataFormat) === "vector")
@@ -2730,16 +3043,6 @@ function wireEvents() {
       state.outputCategory = row.category || state.outputCategory;
       markDirty();
     });
-  });
-  els.ratioBasisBtn?.addEventListener("click", () => {
-    openPicker(els.ratioBasisBtn, cachedRows, (row) => {
-      els.ratioBasisInput.value = row.name;
-      markDirty();
-      void refreshRatioBasisValues();
-    });
-  });
-  els.addSourceBtn?.addEventListener("click", () => {
-    openAddSourcePicker(els.addSourceBtn);
   });
   els.syncBtn?.addEventListener("click", () => {
     startResultSelectionRpcBridgeSync({
@@ -2814,6 +3117,7 @@ async function init() {
     els.originLengthInput.value = String(validOriginLength(params.get("origin_length"), DEFAULT_ORIGIN_LENGTH));
     state.outputCategory = text(params.get("category"));
   });
+  applyTabbedPageSaveBar(els.saveBar);
   wireEvents();
   wireNotes();
   await loadOutputSidecarSettings().catch((err) => console.warn("Result Selection sidecar settings load failed:", err));

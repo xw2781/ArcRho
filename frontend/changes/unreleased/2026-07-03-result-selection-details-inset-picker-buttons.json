@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Moved Result Selection Details picker buttons inside their input boxes for a cleaner field layout."
+}
