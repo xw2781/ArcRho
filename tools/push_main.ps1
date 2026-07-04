@@ -5,17 +5,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Run-Git {
+function Invoke-Git {
     git @args
     if ($LASTEXITCODE -ne 0) {
         throw "git $($args -join ' ') failed with exit code $LASTEXITCODE"
     }
 }
 
-$repoRoot = Run-Git rev-parse --show-toplevel
+$repoRoot = Invoke-Git rev-parse --show-toplevel
 Set-Location $repoRoot
 
-$currentBranch = (Run-Git branch --show-current).Trim()
+$currentBranch = (Invoke-Git branch --show-current).Trim()
 if ($currentBranch -ne $Branch) {
     Write-Host "Current branch is '$currentBranch', expected '$Branch'." -ForegroundColor Yellow
     $answer = Read-Host "Type YES to push '$currentBranch' to '$Remote/$currentBranch' anyway"
@@ -26,7 +26,7 @@ if ($currentBranch -ne $Branch) {
     $Branch = $currentBranch
 }
 
-$remoteUrl = (Run-Git remote get-url $Remote).Trim()
+$remoteUrl = (Invoke-Git remote get-url $Remote).Trim()
 Write-Host "Repository: $repoRoot"
 Write-Host "Remote:     $Remote ($remoteUrl)"
 Write-Host "Branch:     $Branch"
@@ -49,4 +49,4 @@ if ($confirm -cne "YES") {
     exit 1
 }
 
-Run-Git push $Remote $Branch
+Invoke-Git push $Remote $Branch

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "design",
+  "audience": "internal",
+  "summary": "Clarified that frontend UI fixes should apply the ArcRho UI design reference before implementation."
+}

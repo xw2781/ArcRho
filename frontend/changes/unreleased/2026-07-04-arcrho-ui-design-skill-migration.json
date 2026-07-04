@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "design",
+  "audience": "internal",
+  "summary": "Moved the ArcRho UI design reference into repo-local Codex skills."
+}

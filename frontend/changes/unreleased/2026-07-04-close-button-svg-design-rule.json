@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "design",
+  "audience": "internal",
+  "summary": "Broadened ArcRho UI guidance for close buttons to use consistent SVG stroke icons."
+}

@@ -13,7 +13,13 @@ These contracts are mandatory whenever a task touches:
 - App-server API, service, or runtime config files under `app_server/api/`, `app_server/services/`, or `app_server/config.py`.
 - Electron runtime bridge/host files under `electron/`.
 
-Before initiating a new window, table, UI design, layout, or styling task, also read `docs/ui/design.md` and follow its UI design reference guidance.
+Before initiating a new window, table, UI design, layout, or styling task, use `$arcrho-ui-design` and follow its UI design reference guidance. If the skill is not available in the current session, read `.codex/skills/arcrho-ui-design/SKILL.md` directly.
+
+## UI Fix Design Reference
+Before making any frontend UI fix or visual/styling/layout/control change, use:
+- `$arcrho-ui-design`
+
+Apply the existing rules in that skill during implementation. Do not edit the ArcRho UI Design skill unless the user explicitly asks to record, update, or codify a durable design rule; use `$update-arcrho-ui-design` for that post-fix update workflow.
 
 ## Hard Rules (MUST)
 1. Keep `arcrho:*` message names backward-compatible unless all producers/consumers are updated in the same change.

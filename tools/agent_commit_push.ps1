@@ -7,17 +7,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Run-Git {
+function Invoke-Git {
     git @args
     if ($LASTEXITCODE -ne 0) {
         throw "git $($args -join ' ') failed with exit code $LASTEXITCODE"
     }
 }
 
-$repoRoot = (Run-Git rev-parse --show-toplevel).Trim()
+$repoRoot = (Invoke-Git rev-parse --show-toplevel).Trim()
 Set-Location $repoRoot
 
-$currentBranch = (Run-Git branch --show-current).Trim()
+$currentBranch = (Invoke-Git branch --show-current).Trim()
 if (-not $Branch) {
     $Branch = $currentBranch
 }
@@ -72,7 +72,7 @@ if ($confirm -cne "COMMIT") {
     exit 1
 }
 
-Run-Git commit -m $Message
+Invoke-Git commit -m $Message
 
 if ($Push) {
     Write-Host ""
@@ -83,5 +83,5 @@ if ($Push) {
         exit 0
     }
 
-    Run-Git push $Remote $Branch
+    Invoke-Git push $Remote $Branch
 }
