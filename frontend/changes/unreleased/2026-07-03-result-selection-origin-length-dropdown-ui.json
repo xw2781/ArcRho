@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Styled the Result Selection Origin Length dropdown menu to match the app UI."
+}

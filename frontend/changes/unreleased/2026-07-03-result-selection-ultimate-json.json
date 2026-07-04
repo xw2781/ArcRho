@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection method JSON now separates calculated ultimate, user overrides, and final selected ultimate values."
+}

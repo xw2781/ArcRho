@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added a Method tab Decimals stepper linked to Statistic Decimal Places for statistic column formatting."
+}

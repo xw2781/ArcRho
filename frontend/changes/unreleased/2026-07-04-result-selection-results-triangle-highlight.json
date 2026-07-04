@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection Results now shows triangle diagonal columns and supports table highlighting.",
+  "details": [
+    "Reserve and ratio statistic columns now use the normal unfilled table background."
+  ]
+}

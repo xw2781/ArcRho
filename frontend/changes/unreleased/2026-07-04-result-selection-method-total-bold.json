@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Made every Result Selection Method total-row cell render in bold text."
+}

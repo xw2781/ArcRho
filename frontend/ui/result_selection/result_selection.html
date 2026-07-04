@@ -138,6 +138,12 @@
       padding: 4px;
       overflow: hidden;
     }
+    #rsResultsPage.active {
+      display: flex;
+      flex-direction: column;
+      padding: 4px;
+      overflow: hidden;
+    }
     .rsDetailsBlock {
       border: 1px solid #d7dde7;
       border-radius: 5px;
@@ -156,8 +162,7 @@
     .rsDetailsBlockTitle {
       color: #4b5563;
       font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
+      font-weight: 400;
     }
     .rsDetailsGrid {
       display: grid;
@@ -169,10 +174,10 @@
     }
     .rsDetailsGrid label {
       text-align: right;
-      font-weight: 600;
+      font-weight: 400;
       color: #111827;
     }
-    .rsDetailsGrid label::after { content: ":"; margin-left: 3px; }
+    .rsDetailsGrid label::after { content: none; }
     .rsFieldRow {
       display: flex;
       align-items: center;
@@ -193,6 +198,16 @@
     .rsInput { width: min(100%, 980px); }
     .rsNumber { width: 70px; }
     .rsOriginLengthSelect { width: 70px; }
+    .rsNativeSelectHidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
     .rsInputPicker {
       position: relative;
       width: min(100%, 980px);
@@ -204,28 +219,33 @@
     }
     .rsInputPicker .rsInputPickerBtn {
       position: absolute;
-      top: 3px;
-      right: 3px;
-      width: 24px;
-      min-width: 24px;
-      height: 24px;
+      top: 50%;
+      right: 6px;
+      width: 22px;
+      min-width: 22px;
+      height: 22px;
       padding: 0;
-      border-color: transparent;
-      border-radius: 4px;
-      background: transparent;
-      color: #475569;
-      font-weight: 700;
-      line-height: 20px;
+      transform: translateY(-50%);
+      border: 1px solid #d3d3d3;
+      border-radius: 5px;
+      background: #f8fbff;
+      color: #555;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0.4px;
     }
     .rsInputPicker .rsInputPickerBtn:hover:not(:disabled) {
-      border-color: #cbd5e1;
-      background: #eef2f7;
-      color: #0f172a;
+      border-color: #9fb9ff;
+      background: #e8f0fe;
     }
     .rsInputPicker .rsInputPickerBtn:focus {
       outline: none;
       border-color: #8aa8ff;
-      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.18);
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
     }
     .rsButton {
       height: 30px;
@@ -249,12 +269,11 @@
     }
     .rsBasisPanel .rsBasisLabel {
       text-align: right;
-      font-weight: 600;
+      font-weight: 400;
       color: #111827;
     }
     .rsBasisPanel .rsBasisLabel::after {
-      content: ":";
-      margin-left: 3px;
+      content: none;
     }
     .rsBasisSlot {
       display: grid;
@@ -302,7 +321,12 @@
       box-sizing: border-box;
     }
     .rsToolGroup.rsToolGroupWide {
-      min-width: 310px;
+      width: max-content;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .rsToolGroup.rsToolGroupWide .rsToolControls {
+      flex-wrap: nowrap;
     }
     .rsToolGroup.rsToolGroupBasis {
       min-width: 280px;
@@ -310,16 +334,16 @@
     }
     .rsToolTitle {
       position: absolute;
-      top: -4px;
+      top: -5px;
       left: 8px;
       z-index: 1;
       max-width: calc(100% - 16px);
-      padding: 0 4px;
+      padding: 0 4px 1px;
       background: #fff;
       color: #64748b;
       font-size: 11px;
       font-weight: 400;
-      line-height: 1;
+      line-height: 1.3;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -338,6 +362,93 @@
       min-height: 28px;
       color: #1f2937;
       white-space: nowrap;
+    }
+    .rsToolDecimalControl {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 28px;
+      color: #1f2937;
+      white-space: nowrap;
+    }
+    .rsToolControlLabel {
+      color: #475569;
+      font-size: 12px;
+    }
+    .rsNumberStepper {
+      position: relative;
+      display: inline-flex;
+      width: 70px;
+      height: 28px;
+      flex: 0 0 auto;
+    }
+    .rsStepperInput {
+      width: 100%;
+      height: 28px;
+      padding-left: 28px;
+      padding-right: 28px;
+      text-align: center;
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+    .rsStepperInput::-webkit-outer-spin-button,
+    .rsStepperInput::-webkit-inner-spin-button {
+      margin: 0;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .rsStepperButtons {
+      position: absolute;
+      top: 1px;
+      right: 1px;
+      bottom: 1px;
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      width: 28px;
+      overflow: hidden;
+      border-radius: 0 4px 4px 0;
+    }
+    .rsStepperBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      min-width: 28px;
+      height: 13px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+    }
+    .rsStepperBtn + .rsStepperBtn {
+      border-top: 0;
+    }
+    .rsStepperBtn:hover,
+    .rsStepperBtn:focus {
+      background: #eaf2ff;
+      color: #2f5fd3;
+      outline: none;
+    }
+    .rsStepperCaret {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid currentColor;
+      opacity: 0.32;
+      transform: translateX(2px);
+      transform-origin: center;
+      transition: opacity 120ms ease;
+    }
+    .rsStepperCaretUp {
+      transform: translateX(2px) rotate(180deg);
+    }
+    .rsNumberStepper:hover .rsStepperCaret,
+    .rsNumberStepper:focus-within .rsStepperCaret,
+    .rsStepperBtn:hover .rsStepperCaret,
+    .rsStepperBtn:focus .rsStepperCaret {
+      opacity: 1;
     }
     .rsDropdown {
       position: relative;
@@ -389,10 +500,11 @@
       border-left: 4px solid transparent;
       border-right: 4px solid transparent;
       border-top: 5px solid #64748b;
+      transform: translateX(5px);
       transition: transform 120ms ease, border-top-color 120ms ease;
     }
     .rsDropdown.open .rsDropdownCaret {
-      transform: rotate(180deg);
+      transform: translateX(5px) rotate(180deg);
       border-top-color: #2f5fd3;
     }
     .rsDropdownMenu {
@@ -441,8 +553,15 @@
       color: #0d6efd;
     }
     .rsWeightDisplayDropdown {
-      width: 118px;
-      min-width: 118px;
+      width: 106px;
+      min-width: 106px;
+    }
+    .rsOriginLengthDropdown {
+      width: 70px;
+      min-width: 60px;
+    }
+    .rsOriginLengthDropdown .rsDropdownMenu {
+      width: 70px;
     }
     .rsRatioBasisDropdown {
       width: min(340px, 32vw);
@@ -610,10 +729,12 @@
       color: transparent;
       box-shadow: inset -1px 0 #bfc7d2;
     }
-    .rsMethodCell {
+    .rsMethodCell,
+    .rsResultsCell {
       cursor: cell;
     }
-    .rsGrid td.rsMethodCell.rsHighlightedCell {
+    .rsGrid td.rsMethodCell.rsHighlightedCell,
+    .rsGrid td.rsResultsCell.rsHighlightedCell {
       background: #30358b;
       color: #fff;
     }
@@ -638,7 +759,8 @@
       color: #8aa3a9;
       font-style: italic;
     }
-    .rsGrid td.rsMethodCell.rsHighlightedUltimateCell {
+    .rsGrid td.rsMethodCell.rsHighlightedUltimateCell,
+    .rsGrid td.rsResultsCell.rsHighlightedUltimateCell {
       background: var(--rs-ultimate-highlight-cell);
       color: #111827;
     }
@@ -653,7 +775,8 @@
       background: #9dcc00;
       color: #111827;
     }
-    .rsGrid td.rsMethodCell.rsHighlightAnchorCell {
+    .rsGrid td.rsMethodCell.rsHighlightAnchorCell,
+    .rsGrid td.rsResultsCell.rsHighlightAnchorCell {
       outline: 1px dashed #0f172a;
       outline-offset: -2px;
     }
@@ -697,15 +820,21 @@
       color: #dc2626;
       font-weight: 700;
     }
-    .rsGrid th.rsUltimateHeader {
+    .rsGrid th.rsUltimateHeader,
+    .rsGrid th.rsReserveHeader,
+    .rsGrid th.rsRatioHeader {
       background: var(--rs-label-cell);
     }
+    .rsReserveCell {
+      color: #0f172a;
+    }
+    .rsGrid th.rsReserveHeader {
+      color: #0f172a;
+    }
     .rsRatioCell {
-      background: #edf7ff;
       color: #0f172a;
     }
     .rsGrid th.rsRatioHeader {
-      background: var(--rs-label-cell);
       color: #0f172a;
     }
     .rsTotalRow td {
@@ -718,6 +847,9 @@
     }
     .rsTotalRow td.rsUltimateCell {
       font-weight: 400;
+    }
+    #rsMethodGrid .rsTotalRow td {
+      font-weight: 700;
     }
     .rsGrid th.rsSourceHeader {
       cursor: pointer;
@@ -772,6 +904,9 @@
       .rsToolGroup.rsToolGroupBasis {
         min-width: 0;
         max-width: none;
+      }
+      .rsToolGroup.rsToolGroupWide .rsToolControls {
+        flex-wrap: wrap;
       }
     }
     .rsSaveBtn,
@@ -866,32 +1001,6 @@
       border: 1px solid #d8dde3;
       background: #f8fafc;
     }
-    .rsPicker {
-      position: fixed;
-      z-index: 2500;
-      display: none;
-      min-width: 360px;
-      max-height: 320px;
-      overflow: auto;
-      border: 1px solid #aeb8c8;
-      background: #fff;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
-    }
-    .rsPicker.open { display: block; }
-    .rsPicker button {
-      display: grid;
-      grid-template-columns: minmax(140px, 1fr) 90px 90px;
-      width: 100%;
-      gap: 8px;
-      border: 0;
-      border-bottom: 1px solid #edf2f7;
-      background: #fff;
-      text-align: left;
-      padding: 7px 9px;
-      cursor: pointer;
-      font: 12px var(--rs-font);
-    }
-    .rsPicker button:hover { background: #edf3ff; }
     .rsConfirmOverlay {
       position: fixed;
       inset: 0;
@@ -1011,14 +1120,26 @@
               <button id="rsOutputTypeBtn" class="rsButton rsInputPickerBtn" type="button" title="Select output vector">...</button>
             </div>
           </div>
-          <label for="rsOriginLengthInput">Origin Length</label>
+          <label for="rsOriginLengthButton">Origin Length</label>
           <div class="rsFieldRow">
-            <select id="rsOriginLengthInput" class="rsSelect rsOriginLengthSelect">
+            <select id="rsOriginLengthInput" class="rsSelect rsOriginLengthSelect rsNativeSelectHidden" tabindex="-1" aria-hidden="true">
               <option value="12">12</option>
               <option value="6">6</option>
               <option value="3">3</option>
               <option value="1">1</option>
             </select>
+            <div id="rsOriginLengthDropdown" class="rsDropdown rsOriginLengthDropdown">
+              <button id="rsOriginLengthButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Origin length">
+                <span id="rsOriginLengthLabel" class="rsDropdownLabel">12</span>
+                <span class="rsDropdownCaret" aria-hidden="true"></span>
+              </button>
+              <div id="rsOriginLengthMenu" class="rsDropdownMenu" role="listbox" aria-label="Origin length">
+                <button class="rsDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
+                <button class="rsDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
+                <button class="rsDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
+                <button class="rsDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1053,7 +1174,17 @@
           </div>
           <div class="rsBasisLabel">Statistic Decimal Places</div>
           <div class="rsFieldRow">
-            <input id="rsStatisticDecimalsInput" class="rsNumber" type="number" min="0" max="8" step="1" value="1"/>
+            <span class="rsNumberStepper">
+              <input id="rsStatisticDecimalsInput" class="rsNumber rsStepperInput" type="number" min="0" max="8" step="1" value="1"/>
+              <span class="rsStepperButtons">
+                <button id="rsStatisticDecimalsUp" class="rsStepperBtn" type="button" aria-label="Increase statistic decimal places">
+                  <span class="rsStepperCaret rsStepperCaretUp" aria-hidden="true"></span>
+                </button>
+                <button id="rsStatisticDecimalsDown" class="rsStepperBtn" type="button" aria-label="Decrease statistic decimal places">
+                  <span class="rsStepperCaret" aria-hidden="true"></span>
+                </button>
+              </span>
+            </span>
           </div>
           <div></div>
           <label class="rsCheckboxRow">
@@ -1071,13 +1202,27 @@
             <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights</label>
             <div id="rsWeightDisplayDropdown" class="rsDropdown rsWeightDisplayDropdown">
               <button id="rsWeightDisplayButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
-                <span id="rsWeightDisplayLabel" class="rsDropdownLabel">Actual</span>
+                <span id="rsWeightDisplayLabel" class="rsDropdownLabel">Index</span>
                 <span class="rsDropdownCaret" aria-hidden="true"></span>
               </button>
               <div id="rsWeightDisplayMenu" class="rsDropdownMenu" role="listbox" aria-label="Weight display mode">
-                <button class="rsDropdownOption" type="button" role="option" data-value="actual" aria-selected="true">Actual</button>
+                <button class="rsDropdownOption" type="button" role="option" data-value="actual" aria-selected="true">Index</button>
                 <button class="rsDropdownOption" type="button" role="option" data-value="effective" aria-selected="false">Effective %</button>
               </div>
+            </div>
+            <div class="rsToolDecimalControl">
+              <label class="rsToolControlLabel" for="rsMethodStatisticDecimalsInput">Decimals</label>
+              <span class="rsNumberStepper">
+                <input id="rsMethodStatisticDecimalsInput" class="rsNumber rsStepperInput" type="number" min="0" max="8" step="1" value="1"/>
+                <span class="rsStepperButtons">
+                  <button id="rsMethodStatisticDecimalsUp" class="rsStepperBtn" type="button" aria-label="Increase statistic decimal places">
+                    <span class="rsStepperCaret rsStepperCaretUp" aria-hidden="true"></span>
+                  </button>
+                  <button id="rsMethodStatisticDecimalsDown" class="rsStepperBtn" type="button" aria-label="Decrease statistic decimal places">
+                    <span class="rsStepperCaret" aria-hidden="true"></span>
+                  </button>
+                </span>
+              </span>
             </div>
           </div>
         </div>
@@ -1101,7 +1246,9 @@
       </div>
     </section>
     <section id="rsResultsPage" class="rsPage">
-      <div class="rsPlaceholder">Results tab placeholder for Result Selection v1.</div>
+      <div class="rsGridHost rsResultsGridHost">
+        <table class="rsGrid" id="rsResultsGrid"></table>
+      </div>
     </section>
     <section id="rsValidationPage" class="rsPage">
       <div class="rsPlaceholder">Validation tab placeholder for Result Selection v1.</div>
@@ -1133,7 +1280,6 @@
     <button id="rsSaveBtn" class="rsSaveBtn is-clean" type="button" disabled>Save</button>
     <button id="rsCancelBtn" class="rsCancelBtn" type="button" disabled>Cancel</button>
   </div>
-  <div id="rsPicker" class="rsPicker" aria-hidden="true"></div>
   <div id="rsCellContextMenu" class="rsCellContextMenu" aria-hidden="true">
     <button type="button" data-rs-cell-action="copy-values">Copy</button>
     <button type="button" data-rs-cell-action="paste-values">Paste</button>
@@ -1159,6 +1305,10 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260626a"></script>
+  <script src="/ui/result_selection/result_selection_ui.js?v=20260704a"></script>
+  <script src="/ui/result_selection/result_selection_data.js?v=20260704a"></script>
+  <script src="/ui/result_selection/result_selection_grids.js?v=20260704a"></script>
+  <script src="/ui/result_selection/result_selection_model.js?v=20260704a"></script>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260704a"></script>
 </body>
 </html>

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Renamed the Method tab weight display label from Actual to Index and refined the Formatting title spacing."
+}

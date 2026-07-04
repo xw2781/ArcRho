@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Restored the grey header fill for Result Selection statistic columns."
+}

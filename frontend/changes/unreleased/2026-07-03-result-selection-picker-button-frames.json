@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Matched Result Selection Details dataset picker buttons to the DFM and dataset picker style."
+}

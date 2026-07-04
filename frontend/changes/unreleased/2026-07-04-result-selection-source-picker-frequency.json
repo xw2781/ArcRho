@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection now uses the shared dataset picker for output/source selection and limits loaded sources to the output category.",
+  "details": [
+    "The ratio statistic is labeled Frequency for count outputs divided by exposure basis datasets."
+  ]
+}

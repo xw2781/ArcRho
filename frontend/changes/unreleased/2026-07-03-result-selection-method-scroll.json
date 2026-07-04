@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Fixed the Result Selection Method tab so the method grid scrolls inside the tab panel."
+}

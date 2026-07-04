@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added Result Selection Reserve statistics and mirrored the Method statistic columns on the Results tab."
+}

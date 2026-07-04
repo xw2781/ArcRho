@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added Ctrl and Shift click support for selecting multiple Method tab cells, rows, and columns."
+}
