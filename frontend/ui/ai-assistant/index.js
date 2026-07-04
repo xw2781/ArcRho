@@ -103,8 +103,10 @@ let assistantAppContextEnabled = true;
 let assistantStatusChecked = false;
 let assistantInstallJustSucceeded = false;
 let suppressLauncherClick = false;
+let assistantLauncherVisible = true;
 let assistantUserAvatarName = "Arcode";
 let assistantAuthStatus = "";
+let assistantLoginEmail = "";
 const assistantActivityTypingStates = new Map();
 let assistantActivityTypingTimer = null;
 let assistantSkillMenuOpen = false;
@@ -156,7 +158,9 @@ export function configureAiAssistant(config = {}) {
   ASSISTANT_LAUNCHER_POSITION_KEY = `${storagePrefix}_ai_assistant_launcher_position`;
   ASSISTANT_PANEL_SIZE_KEY = `${storagePrefix}_ai_assistant_panel_size`;
   ASSISTANT_PANEL_OPENED_SESSION_KEY = `${storagePrefix}_ai_assistant_panel_opened_session`;
+  assistantLauncherVisible = readAssistantLauncherVisibleFallback();
   assistantUserAvatarName = String(assistantConfig.appName || "Arcode").trim() || "Arcode";
+  assistantLoginEmail = "";
 }
 
 function assistantMessageType(name) {
@@ -203,12 +207,20 @@ function shouldShowAssistantTokenAlert() {
   return shouldShowTokenAlertFor(assistantModel, assistantReasoningEffort);
 }
 
+function extractAssistantLoginEmail(value) {
+  const match = String(value || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu);
+  return match ? match[0] : "";
+}
+
 function formatAssistantLoginDetail() {
   const appName = String(assistantConfig.appName || "Arcode").trim() || "Arcode";
   const user = assistantUserAvatarName && assistantUserAvatarName !== appName ? assistantUserAvatarName : "Unknown";
+  const email = extractAssistantLoginEmail(assistantLoginEmail);
   const auth = String(assistantAuthStatus || "").replace(/\s+/g, " ").trim();
-  if (!auth) return user;
-  return user === "Unknown" ? auth : `${user} - ${auth}`;
+  const userWithEmail = email && user !== "Unknown" ? `${user} (${email})` : user;
+  if (!auth) return email && user === "Unknown" ? email : userWithEmail;
+  if (user === "Unknown") return email ? `${email} - ${auth}` : auth;
+  return `${userWithEmail} - ${auth}`;
 }
 
 function setSetup({ open = false, text = "", install = false, login = false } = {}) {
@@ -1515,7 +1527,7 @@ async function closeHistoryPage() {
   await refreshSessionList(currentSessionId);
 }
 
-export function isAiAssistantLauncherVisible() {
+function readAssistantLauncherVisibleFallback() {
   try {
     return localStorage.getItem(ASSISTANT_LAUNCHER_VISIBLE_KEY) !== "0";
   } catch {
@@ -1523,11 +1535,59 @@ export function isAiAssistantLauncherVisible() {
   }
 }
 
-export function setAiAssistantLauncherVisible(visible) {
-  const show = !!visible;
+function persistAssistantLauncherVisibleFallback(show) {
   try {
     localStorage.setItem(ASSISTANT_LAUNCHER_VISIBLE_KEY, show ? "1" : "0");
   } catch {}
+}
+
+function getAssistantUiSettingsPayload() {
+  const prefix = String(assistantConfig.storagePrefix || assistantConfig.messageNamespace || "arcode").trim() || "arcode";
+  return {
+    launcherVisibleByApp: {
+      [prefix]: assistantLauncherVisible,
+    },
+  };
+}
+
+async function loadAssistantUiSettings() {
+  const host = getHostApi();
+  if (!host?.codexAssistantLoadUiSettings) {
+    setAiAssistantLauncherVisible(readAssistantLauncherVisibleFallback(), { save: false });
+    return;
+  }
+  try {
+    const result = await host.codexAssistantLoadUiSettings();
+    const settings = result?.settings && typeof result.settings === "object" ? result.settings : {};
+    const visibleByApp = settings.launcherVisibleByApp && typeof settings.launcherVisibleByApp === "object"
+      ? settings.launcherVisibleByApp
+      : {};
+    const prefix = String(assistantConfig.storagePrefix || assistantConfig.messageNamespace || "arcode").trim() || "arcode";
+    const savedValue = visibleByApp[prefix];
+    setAiAssistantLauncherVisible(typeof savedValue === "boolean" ? savedValue : readAssistantLauncherVisibleFallback(), { save: false });
+  } catch {
+    setAiAssistantLauncherVisible(readAssistantLauncherVisibleFallback(), { save: false });
+  }
+}
+
+async function saveAssistantUiSettings() {
+  const host = getHostApi();
+  if (!host?.codexAssistantSaveUiSettings) return;
+  try {
+    await host.codexAssistantSaveUiSettings(getAssistantUiSettingsPayload());
+  } catch {
+    // Launcher visibility still falls back to localStorage if host JSON persistence fails.
+  }
+}
+
+export function isAiAssistantLauncherVisible() {
+  return assistantLauncherVisible;
+}
+
+export function setAiAssistantLauncherVisible(visible, options = {}) {
+  const show = !!visible;
+  assistantLauncherVisible = show;
+  persistAssistantLauncherVisibleFallback(show);
   const launcher = $("aiAssistantLauncher");
   const panel = $("aiAssistantPanel");
   if (launcher) launcher.style.display = show ? "" : "none";
@@ -1539,11 +1599,54 @@ export function setAiAssistantLauncherVisible(visible) {
     launcher?.classList.add("assistant-open");
   }
   shell.updateViewMenuState?.();
+  if (options.save !== false) void saveAssistantUiSettings();
   return show;
 }
 
 export function toggleAiAssistantLauncherVisible() {
   return setAiAssistantLauncherVisible(!isAiAssistantLauncherVisible());
+}
+
+function ensureAssistantLauncherContextMenu() {
+  let menu = $("aiAssistantLauncherContextMenu");
+  if (menu) return menu;
+  menu = document.createElement("div");
+  menu.id = "aiAssistantLauncherContextMenu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "ArcBot launcher menu");
+
+  const hideBtn = document.createElement("button");
+  hideBtn.id = "aiAssistantLauncherHideBtn";
+  hideBtn.type = "button";
+  hideBtn.setAttribute("role", "menuitem");
+  hideBtn.textContent = "Hide";
+  hideBtn.addEventListener("click", () => {
+    closeAssistantLauncherContextMenu();
+    setAiAssistantLauncherVisible(false);
+    setStatus("ArcBot icon hidden. Use View > Show AI Bot Icon to restore it.");
+  });
+
+  menu.appendChild(hideBtn);
+  document.body.appendChild(menu);
+  return menu;
+}
+
+function closeAssistantLauncherContextMenu() {
+  const menu = $("aiAssistantLauncherContextMenu");
+  if (menu) menu.classList.remove("open");
+}
+
+function openAssistantLauncherContextMenu(event) {
+  const menu = ensureAssistantLauncherContextMenu();
+  const width = menu.offsetWidth || 132;
+  const height = menu.offsetHeight || 36;
+  const margin = 6;
+  const left = Math.min(Math.max(margin, event.clientX), Math.max(margin, window.innerWidth - width - margin));
+  const top = Math.min(Math.max(margin, event.clientY), Math.max(margin, window.innerHeight - height - margin));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  menu.classList.add("open");
+  menu.querySelector("button")?.focus?.();
 }
 
 function normalizeAssistantMode(mode) {
@@ -2526,6 +2629,7 @@ function scrollMessagesToBottom() {
 function applyStatus(status) {
   const usingClaude = isClaudeModel();
   assistantAuthStatus = String(status?.authStatus || status?.error || "").trim();
+  assistantLoginEmail = extractAssistantLoginEmail(status?.loginEmail || assistantAuthStatus);
   if (usingClaude) {
     assistantReady = !!status?.claudeAuthenticated;
     if (!assistantReady) {
@@ -3438,10 +3542,17 @@ export function initAiAssistant() {
   panel.addEventListener("pointerdown", bringAssistantPanelToFront);
   panel.addEventListener("focusin", bringAssistantPanelToFront);
   ensureAssistantSkillDom();
-  setAiAssistantLauncherVisible(isAiAssistantLauncherVisible());
+  setAiAssistantLauncherVisible(isAiAssistantLauncherVisible(), { save: false });
+  void loadAssistantUiSettings();
   ensureAssistantSession();
   host.onCodexAssistantEvent?.(handleAssistantEvent);
 
+  launcher.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isAiAssistantLauncherVisible()) return;
+    openAssistantLauncherContextMenu(event);
+  });
   launcher.addEventListener("click", (event) => {
     if (suppressLauncherClick) {
       event.preventDefault();
@@ -3601,6 +3712,10 @@ export function initAiAssistant() {
         !event.target?.closest?.("#aiAssistantSettingsBtn")) {
       closeAssistantSettingsPanel();
     }
+    if (!event.target?.closest?.("#aiAssistantLauncherContextMenu") &&
+        !event.target?.closest?.("#aiAssistantLauncher")) {
+      closeAssistantLauncherContextMenu();
+    }
     if (event.target?.closest?.(".aiAssistantSelectWrap")) return;
     if (event.target?.closest?.("#aiAssistantAttachMenu") || event.target?.closest?.("#aiAssistantAttachBtn")) return;
     if (!event.target?.closest?.("#aiAssistantSkillsMenu") && !event.target?.closest?.("#aiAssistantInput")) {
@@ -3612,6 +3727,7 @@ export function initAiAssistant() {
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeSqlReviewDialog();
+      closeAssistantLauncherContextMenu();
       closeAssistantSkillMenu();
       closeFolderPermissionsPage();
       closeAssistantSettingsPanel();
@@ -3619,7 +3735,10 @@ export function initAiAssistant() {
       closeAttachMenu();
     }
   }, true);
-  window.addEventListener("resize", clampOpenSqlReviewDialogToViewport);
+  window.addEventListener("resize", () => {
+    closeAssistantLauncherContextMenu();
+    clampOpenSqlReviewDialogToViewport();
+  });
   initAssistantDrag(panel);
   initAssistantResize(panel);
   initAssistantLauncherDrag(launcher);

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot settings now show the Codex login email alongside the local user name when available."
+}

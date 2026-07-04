@@ -66,6 +66,38 @@
 #aiAssistantLauncher.tucked-bottom {
   --ai-icon-rotate-y: 0deg;
 }
+#aiAssistantLauncherContextMenu {
+  position: fixed;
+  display: none;
+  min-width: 116px;
+  padding: 4px;
+  border: 1px solid #c8d1df;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+  z-index: 9700;
+}
+#aiAssistantLauncherContextMenu.open {
+  display: block;
+}
+#aiAssistantLauncherContextMenu button {
+  width: 100%;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #2f3f52;
+  font: 12px Arial, "Segoe UI", Tahoma, sans-serif;
+  text-align: left;
+  cursor: default;
+  padding: 0 10px;
+}
+#aiAssistantLauncherContextMenu button:hover,
+#aiAssistantLauncherContextMenu button:focus {
+  outline: none;
+  background: #edf4ff;
+  color: #1d4ed8;
+}
 #aiAssistantPanel {
   position: fixed;
   right: 18px;

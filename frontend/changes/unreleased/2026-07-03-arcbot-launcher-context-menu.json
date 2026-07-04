@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot's launcher icon now has a right-click Hide menu and saves its hidden state in local user settings."
+}

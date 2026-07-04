@@ -30,6 +30,7 @@ const ARCBOT_SERVER_INSTRUCTION_PLACEHOLDERS = [
 ];
 
 const ARCBOT_READABLE_ROOTS_FILE = "arcbot_readable_roots.json";
+const ARCBOT_UI_SETTINGS_FILE = "arcbot_ui_settings.json";
 const ARCBOT_CHAT_SESSIONS_DIR = "arcbot_chat_sessions";
 const ARCBOT_CODEX_COMMAND_HINT_FILE = "arcbot_codex_command.json";
 const CODEX_ASSISTANT_TIMEOUT_MS = Math.max(
@@ -59,6 +60,10 @@ let codexAppServerClient = null;
 
 function getArcBotReadableRootsPath() {
   return path.join(getPrefsDir(), ARCBOT_READABLE_ROOTS_FILE);
+}
+
+function getArcBotUiSettingsPath() {
+  return path.join(getPrefsDir(), ARCBOT_UI_SETTINGS_FILE);
 }
 
 function getPythonApiWheelPath() {
@@ -185,6 +190,90 @@ function loadClaudeAuthToken() {
   } catch {
     return null;
   }
+}
+
+function extractEmailFromText(value) {
+  const match = String(value || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu);
+  return match ? match[0] : "";
+}
+
+function decodeJwtPayload(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length < 2) return null;
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function findEmailInCodexAuthValue(value, depth = 0, keyHint = "") {
+  if (depth > 8 || value == null) return "";
+  if (typeof value === "string") {
+    const direct = extractEmailFromText(value);
+    if (direct) return direct;
+    if (/token|jwt/iu.test(keyHint)) {
+      const decoded = decodeJwtPayload(value);
+      const decodedEmail = findEmailInCodexAuthValue(decoded, depth + 1);
+      if (decodedEmail) return decodedEmail;
+    }
+    return "";
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const email = findEmailInCodexAuthValue(item, depth + 1);
+      if (email) return email;
+    }
+    return "";
+  }
+  if (typeof value !== "object") return "";
+
+  const entries = Object.entries(value);
+  const emailEntry = entries.find(([key, entryValue]) => (
+    /email/iu.test(key) && typeof entryValue === "string" && extractEmailFromText(entryValue)
+  ));
+  if (emailEntry) return extractEmailFromText(emailEntry[1]);
+
+  for (const [key, entryValue] of entries) {
+    const email = findEmailInCodexAuthValue(entryValue, depth + 1, key);
+    if (email) return email;
+  }
+  return "";
+}
+
+function getCodexAuthCandidatePaths() {
+  const candidates = new Set();
+  const addAuthFiles = (root) => {
+    const cleanRoot = String(root || "").trim();
+    if (!cleanRoot) return;
+    for (const name of ["auth.json", "credentials.json", "profile.json", "config.json"]) {
+      candidates.add(path.join(cleanRoot, name));
+    }
+  };
+  addAuthFiles(process.env.CODEX_HOME);
+  addAuthFiles(path.join(os.homedir(), ".codex"));
+  addAuthFiles(process.env.APPDATA ? path.join(process.env.APPDATA, "OpenAI", "Codex") : "");
+  addAuthFiles(process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "OpenAI", "Codex") : "");
+  return Array.from(candidates);
+}
+
+function readCodexLoginEmail(authOutput = "") {
+  const outputEmail = extractEmailFromText(authOutput);
+  if (outputEmail) return outputEmail;
+
+  for (const filePath of getCodexAuthCandidatePaths()) {
+    try {
+      if (!fs.existsSync(filePath)) continue;
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      const email = findEmailInCodexAuthValue(parsed);
+      if (email) return email;
+    } catch {
+      // Auth/profile file formats vary by Codex version; unreadable candidates are ignored.
+    }
+  }
+  return "";
 }
 
 function getClaudeCommand() {
@@ -748,6 +837,57 @@ function writeArcBotReadableRoots(paths = []) {
   }, null, 2), "utf8");
   fs.renameSync(tmpPath, filePath);
   return roots;
+}
+
+function normalizeArcBotStoragePrefix(value) {
+  return String(value || "arcrho").trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40) || "arcrho";
+}
+
+function normalizeArcBotUiSettings(settingsLike) {
+  const raw = settingsLike && typeof settingsLike === "object" && !Array.isArray(settingsLike)
+    ? settingsLike
+    : {};
+  const launcherVisibleByApp = raw.launcherVisibleByApp && typeof raw.launcherVisibleByApp === "object" && !Array.isArray(raw.launcherVisibleByApp)
+    ? raw.launcherVisibleByApp
+    : {};
+  const normalized = {};
+  for (const [key, value] of Object.entries(launcherVisibleByApp)) {
+    const prefix = normalizeArcBotStoragePrefix(key);
+    if (typeof value === "boolean") normalized[prefix] = value;
+  }
+  return {
+    version: 1,
+    launcherVisibleByApp: normalized,
+  };
+}
+
+function readArcBotUiSettings() {
+  const filePath = getArcBotUiSettingsPath();
+  if (!fs.existsSync(filePath)) return normalizeArcBotUiSettings();
+  try {
+    return normalizeArcBotUiSettings(JSON.parse(fs.readFileSync(filePath, "utf8")));
+  } catch {
+    return normalizeArcBotUiSettings();
+  }
+}
+
+function writeArcBotUiSettings(settingsLike) {
+  const current = readArcBotUiSettings();
+  const incoming = normalizeArcBotUiSettings(settingsLike);
+  const payload = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    launcherVisibleByApp: {
+      ...current.launcherVisibleByApp,
+      ...incoming.launcherVisibleByApp,
+    },
+  };
+  const filePath = getArcBotUiSettingsPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), "utf8");
+  fs.renameSync(tmpPath, filePath);
+  return payload;
 }
 
 function getCodexSandboxPolicy(sandboxMode, codexCwd, readableRoots = []) {
@@ -2184,6 +2324,7 @@ ipcMain.handle("codex-assistant-status", async () => {
       authenticated: false,
       claudeAuthenticated: !!loadClaudeAuthToken(),
       version: "",
+      loginEmail: "",
       error: normalizeHostError(version, "Codex CLI was not found."),
     };
   }
@@ -2196,12 +2337,14 @@ ipcMain.handle("codex-assistant-status", async () => {
       // The send path falls back to one-shot codex exec if the warm server is unavailable.
     });
   }
+  const authOutput = combinedCommandOutput(auth);
   return {
     installed: true,
     authenticated: auth.ok,
     claudeAuthenticated: !!loadClaudeAuthToken(),
     version: combinedCommandOutput(version).split(/\r?\n/)[0] || "codex",
-    authStatus: combinedCommandOutput(auth),
+    loginEmail: auth.ok ? readCodexLoginEmail(authOutput) : extractEmailFromText(authOutput),
+    authStatus: authOutput,
     error: auth.ok ? "" : normalizeHostError(auth, "Codex CLI is not signed in."),
   };
 });
@@ -2221,6 +2364,23 @@ ipcMain.handle("codex-assistant-readable-roots-save", async (_event, payload) =>
     return { ok: true, folders };
   } catch (err) {
     return { ok: false, error: String(err?.message || err || "Could not save ArcBot readable folders.") };
+  }
+});
+
+ipcMain.handle("codex-assistant-ui-settings-load", async () => {
+  try {
+    return { ok: true, settings: readArcBotUiSettings() };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not load ArcBot UI settings.") };
+  }
+});
+
+ipcMain.handle("codex-assistant-ui-settings-save", async (_event, payload) => {
+  try {
+    const settings = payload?.settings && typeof payload.settings === "object" ? payload.settings : {};
+    return { ok: true, settings: writeArcBotUiSettings(settings) };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not save ArcBot UI settings.") };
   }
 });
 

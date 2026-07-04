@@ -90,6 +90,8 @@ contextBridge.exposeInMainWorld("ADAHost", {
   codexAssistantInstall: () => invoke("codex-assistant-install"),
   codexAssistantLogin: (payload) => invoke("codex-assistant-login", payload),
   codexAssistantLoadPromptGuide: () => invoke("codex-assistant-prompt-guide-load"),
+  codexAssistantLoadUiSettings: () => invoke("codex-assistant-ui-settings-load"),
+  codexAssistantSaveUiSettings: (settings) => invoke("codex-assistant-ui-settings-save", { settings }),
   codexAssistantLoadReadableRoots: () => invoke("codex-assistant-readable-roots-load"),
   codexAssistantSaveReadableRoots: (folders) => invoke("codex-assistant-readable-roots-save", { folders }),
   codexAssistantListSessions: (payload) => invoke("codex-assistant-sessions-list", payload),

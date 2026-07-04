@@ -24,6 +24,8 @@ _No entrypoints configured._
 - Hosts configure the widget through `ui/ai-assistant/arcrho.js` or `ui/ai-assistant/arcode.js`.
 - Uses Electron preload `codexAssistant*` APIs without changing IPC names.
 - Exchanges assistant context/update messages with active iframes using host-specific namespaces.
+- Right-clicking the ArcBot launcher opens a compact launcher menu with a Hide action; the View menu remains the restore path when the launcher is hidden.
+- The settings popover's Current Chat login row shows the local user name, the Codex login email when available, and the current auth status/provider.
 - ArcBot chat responses render SQL-looking inline code snippets and fenced `sql`, `mssql`, and `tsql` code blocks with the same lightweight SQL token colors used by the SQL review diff.
 - Shows a slash-triggered Skills menu in the composer. The SQL Format Validation skill reads active Arcode SQL editor context or selected SQL lines, prepares deterministic MSSQL formatting, waits up to five seconds for optional AI review content before opening the diff, optionally runs that AI review as a normal ArcBot chat turn with a visible user prompt and progress animation, groups AI findings into syntax/formatting and performance/optimization sections, asks AI findings to start with original SQL line numbers, includes a single clickable SQL coding standards reference in the review response, and sends a host-namespaced `assistant-replace-text` message only after the user accepts the draggable and resizable syntax-highlighted unified review diff. Activating the ArcBot chat panel raises it above the SQL review window.
 - ArcRho supplies host-specific App Context tooltip rows for project-instance DFM windows, including project, path, method name, and DFM tab when available.
@@ -33,6 +35,7 @@ _No entrypoints configured._
 <!-- MANUAL:BEGIN -->
 - Uses host-specific storage prefixes so ArcRho keeps `arcrho_ai_assistant_*` keys and Arcode keeps `arcode_ai_assistant_*` keys.
 - Persists chat/session data through the existing Electron assistant host APIs.
+- Persists launcher visibility per host prefix in the local ArcBot UI settings JSON, with localStorage kept as a browser fallback.
 - Creates the assistant DOM once per host page at runtime.
 - Keeps SQL skill diff/review state in memory only; applying the proposed SQL relies on the active editor's normal dirty/autosave behavior.
 <!-- MANUAL:END -->
