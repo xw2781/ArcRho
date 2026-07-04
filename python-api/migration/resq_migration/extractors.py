@@ -339,12 +339,15 @@ def export_vector(vector) -> dict:
         "modified": modified,
     }
 
+def _vector_payload_period_length(payload: dict) -> int:
+    return int(payload.get("period_length") or payload.get("origin_length") or 0)
+
+
 def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
-    origin_length = int(payload["origin_length"])
-    dev_length = int(payload["development_length"])
-    csv_name = _vector_cache_csv_file_name(name, origin_length)
+    period_length = _vector_payload_period_length(payload)
+    csv_name = _vector_cache_csv_file_name(name, period_length)
     csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
     _write_csv_matrix(csv_path, payload["values"])
     _write_aggregated_vector_cache_exports(payload, rc_dir)
@@ -377,14 +380,10 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "method_type_code": payload.get("method_type_code", _method_type_code(method_type, 0)),
         "data_format": "Vector",
         "data_format_code": payload.get("data_format", 1),
-        "origin_length": origin_length,
-        "development_length": dev_length,
+        "period_length": period_length,
         "origin_count": payload.get("origin_count", 0),
-        "development_count": payload.get("development_count", 1),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
-        "cumulative": DEFAULT_CUMULATIVE,
-        "calendar": DEFAULT_CALENDAR,
         "number_format": dataset_instance_number_format(rc_path, name),
         "decimal_places": dataset_instance_decimal_places(rc_path, name),
         "csv_file": csv_name,
@@ -529,6 +528,36 @@ def _result_selection_source_payload(result_selection, dataset_index: int, origi
         "weights": weights,
     }
 
+
+def _result_selection_calculated_ultimate(loaded_datasets: list[dict], origin_count: int) -> list:
+    ultimate: list = []
+    for row_index in range(origin_count):
+        numerator = 0.0
+        denominator = 0.0
+        for dataset in loaded_datasets:
+            values = dataset.get("values") if isinstance(dataset.get("values"), list) else []
+            weights = dataset.get("weights") if isinstance(dataset.get("weights"), list) else []
+            try:
+                value = float(values[row_index])
+                weight = max(0.0, float(weights[row_index]))
+            except (IndexError, TypeError, ValueError):
+                continue
+            if not math.isfinite(value) or not math.isfinite(weight) or weight <= 0:
+                continue
+            numerator += value * weight
+            denominator += weight
+        ultimate.append(_rs_json_number(numerator / denominator) if denominator > 0 else None)
+    return ultimate
+
+
+def _result_selection_selected_ultimate(calculated_ultimate: list, ultimate_overrides: list, origin_count: int) -> list:
+    selected: list = []
+    for row_index in range(origin_count):
+        override = ultimate_overrides[row_index] if row_index < len(ultimate_overrides) else None
+        selected.append(override if override is not None else calculated_ultimate[row_index])
+    return selected
+
+
 def export_result_selection(result_selection) -> dict:
     """Extract a ResQ Result Selection method into ArcRho's method JSON shape."""
     output_vector = _safe_attr(result_selection, "OutputVector", None)
@@ -547,19 +576,21 @@ def export_result_selection(result_selection) -> dict:
     ]
     ratio_basis_dataset = _result_selection_ratio_basis_dataset_name(result_selection)
     ratio_basis_datasets = [ratio_basis_dataset] if ratio_basis_dataset else []
-    selected_ultimate: list = []
     ultimate_overrides: list = []
     for origin_index in range(1, origin_count + 1):
         try:
-            ultimate = _result_selection_ultimate(result_selection, origin_index, origin_length)
+            overridden = _result_selection_ultimate_overridden(result_selection, origin_index)
         except Exception:
-            ultimate = None
-        ultimate = _rs_json_number(ultimate)
-        selected_ultimate.append(ultimate)
+            overridden = False
+        if not overridden:
+            ultimate_overrides.append(None)
+            continue
         try:
-            ultimate_overrides.append(ultimate if _result_selection_ultimate_overridden(result_selection, origin_index) else None)
+            ultimate_overrides.append(_rs_json_number(_result_selection_ultimate(result_selection, origin_index, origin_length)))
         except Exception:
             ultimate_overrides.append(None)
+    calculated_ultimate = _result_selection_calculated_ultimate(loaded_datasets, origin_count)
+    selected_ultimate = _result_selection_selected_ultimate(calculated_ultimate, ultimate_overrides, origin_count)
 
     try:
         notes = _clean_name(result_selection.Notes)
@@ -587,6 +618,7 @@ def export_result_selection(result_selection) -> dict:
             "origin_labels": origin_labels,
             "show_weights": True,
             "loaded_datasets": loaded_datasets,
+            "calculated_ultimate": calculated_ultimate,
             "selected_ultimate": selected_ultimate,
             "ultimate_overrides": ultimate_overrides,
         },
@@ -726,8 +758,10 @@ def _aggregate_vector_values_by_length(values: list, origin_labels: list, base_l
 
 def _write_aggregated_vector_cache_exports(payload: dict, rc_dir: Path) -> list[Path]:
     try:
-        base_len = int(payload["origin_length"])
-    except (KeyError, TypeError, ValueError):
+        base_len = _vector_payload_period_length(payload)
+    except (TypeError, ValueError):
+        return []
+    if base_len <= 0:
         return []
     paths: list[Path] = []
     for target_len in (3, 6, 12):
@@ -844,9 +878,8 @@ def export_dfm_ultimate_vector(
 def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
-    origin_length = int(payload["origin_length"])
-    dev_length = int(payload["development_length"])
-    csv_name = _vector_cache_csv_file_name(name, origin_length)
+    period_length = _vector_payload_period_length(payload)
+    csv_name = _vector_cache_csv_file_name(name, period_length)
     csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
     _write_csv_matrix(csv_path, payload["values"])
     _write_aggregated_vector_cache_exports(payload, rc_dir)
@@ -866,14 +899,10 @@ def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) 
         "method_type_code": payload.get("method_type_code", _method_type_code(payload.get("method_type"), -1)),
         "data_format": "Vector",
         "data_format_code": payload.get("data_format", 1),
-        "origin_length": origin_length,
-        "development_length": dev_length,
+        "period_length": period_length,
         "origin_count": payload.get("origin_count", 0),
-        "development_count": payload.get("development_count", 1),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
-        "cumulative": DEFAULT_CUMULATIVE,
-        "calendar": DEFAULT_CALENDAR,
         "number_format": dataset_instance_number_format(rc_path, name),
         "decimal_places": dataset_instance_decimal_places(rc_path, name),
         "csv_file": csv_name,

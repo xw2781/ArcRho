@@ -416,10 +416,6 @@ def create_empty_cached_dataset(
         "source_kind": "input",
         "data_format": fmt,
         "data_format_code": _data_format_code(fmt),
-        "origin_length": origin_period_len,
-        "development_length": dev_period_len,
-        "cumulative": bool(cumulative),
-        "calendar": bool(calendar),
         "csv_file": os.path.basename(csv_path),
         "user": user_name,
         "created": now,
@@ -428,6 +424,13 @@ def create_empty_cached_dataset(
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
+    if fmt.strip().lower() == "vector":
+        payload["period_length"] = origin_period_len
+    else:
+        payload["origin_length"] = origin_period_len
+        payload["development_length"] = dev_period_len
+        payload["cumulative"] = bool(cumulative)
+        payload["calendar"] = bool(calendar)
     _append_dataset_audit_entry(payload, "Insert", event_date=now, user_name=user_name)
     from app_server.services import calculated_dataset_service
 
@@ -686,6 +689,11 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
             "path": path,
         }
     dataset_type = str(payload.get("dataset_type") or ds)
+    data_format = str(payload.get("data_format") or "")
+    is_vector = data_format.strip().lower() == "vector"
+    period_length = payload.get("period_length")
+    origin_length = period_length if is_vector else payload.get("origin_length")
+    development_length = period_length if is_vector else payload.get("development_length")
     app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type)
     return {
         "ok": True,
@@ -695,8 +703,10 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "dataset_name": str(payload.get("dataset_name") or ds),
         "dataset_type": dataset_type,
         "instance_name": str(payload.get("dataset_name") or ds),
-        "origin_length": payload.get("origin_length"),
-        "development_length": payload.get("development_length"),
+        "data_format": data_format,
+        "period_length": period_length if is_vector else None,
+        "origin_length": origin_length,
+        "development_length": development_length,
         "origin_labels": _normalize_origin_labels(payload.get("origin_labels")),
         "cumulative": payload.get("cumulative"),
         "transposed": payload.get("transposed"),
@@ -843,15 +853,20 @@ def load_cached_dataset_values(
     df = df.astype(object).where(pd.notnull(df), None)
     values = df.values.tolist()
     parsed_name = _parse_length_scoped_cache_name(os.path.basename(csv_path))
+    data_format = str(sidecar.get("data_format") or "")
+    sidecar_period_length = sidecar.get("period_length")
+    is_vector = data_format.strip().lower() == "vector"
+    sidecar_origin_length = sidecar_period_length if is_vector else sidecar.get("origin_length")
+    sidecar_development_length = sidecar_period_length if is_vector else sidecar.get("development_length")
     return {
         "ok": True,
         "project_name": p,
         "reserving_class": rc,
         "dataset_name": str(sidecar.get("dataset_name") or ds),
         "dataset_type": str(sidecar.get("dataset_type") or ds),
-        "data_format": str(sidecar.get("data_format") or ""),
-        "origin_length": _int_or_default(parsed_name.get("origin_length") or sidecar.get("origin_length"), max(1, len(values))),
-        "development_length": _int_or_default(parsed_name.get("development_length") or sidecar.get("development_length"), max(1, len(values[0]) if values else 1)),
+        "data_format": data_format,
+        "origin_length": _int_or_default(parsed_name.get("origin_length") or sidecar_origin_length, max(1, len(values))),
+        "development_length": _int_or_default(parsed_name.get("development_length") or sidecar_development_length, max(1, len(values[0]) if values else 1)),
         "origin_labels": _normalize_origin_labels(sidecar.get("origin_labels")),
         "csv_file": os.path.basename(csv_path),
         "source_kind": str(sidecar.get("source_kind") or ""),
@@ -901,6 +916,7 @@ def save_dataset_sidecar(
     app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type_value)
     source_kind_value = str(source_kind or existing.get("source_kind") or ("calculated" if app_calculated else "input"))
     data_format_value = str(data_format or existing.get("data_format") or "Triangle")
+    is_vector = data_format_value.strip().lower() == "vector"
     method_type_value = dataset_sidecar_status_service.normalize_method_type(method_type or existing.get("method_type"), source_kind_value)
     number_format_value = _normalize_number_format(number_format or existing.get("number_format") or "0,000")
     decimal_places_value = _normalize_decimal_places(decimal_places)
@@ -936,11 +952,7 @@ def save_dataset_sidecar(
         "source_kind": source_kind_value,
         "data_format": data_format_value,
         "data_format_code": _data_format_code(data_format_value),
-        "origin_length": int(origin_length),
-        "development_length": int(development_length),
-        "cumulative": bool(cumulative),
         "transposed": bool(transposed),
-        "calendar": bool(calendar),
         "number_format": number_format_value,
         "decimal_places": decimal_places_value,
         "csv_file": csv_file_value,
@@ -952,6 +964,16 @@ def save_dataset_sidecar(
         "modified_by": user_name,
         "updated_at": updated_at,
     }
+    if is_vector:
+        payload["period_length"] = int(origin_length)
+        for obsolete_key in ("origin_length", "development_length", "development_count", "cumulative", "calendar"):
+            payload.pop(obsolete_key, None)
+    else:
+        payload["origin_length"] = int(origin_length)
+        payload["development_length"] = int(development_length)
+        payload["cumulative"] = bool(cumulative)
+        payload["calendar"] = bool(calendar)
+        payload.pop("period_length", None)
     if origin_labels is not None:
         payload["origin_labels"] = _normalize_origin_labels(origin_labels)
     _append_dataset_audit_entry(payload, action_value, event_date=updated_at, user_name=user_name)
@@ -1030,12 +1052,14 @@ def save_dataset_sidecar(
         "dataset_name": ds,
         "dataset_type": payload["dataset_type"],
         "instance_name": ds,
-        "origin_length": payload["origin_length"],
-        "development_length": payload["development_length"],
+        "data_format": payload["data_format"],
+        "period_length": payload.get("period_length") if is_vector else None,
+        "origin_length": payload.get("period_length") if is_vector else payload["origin_length"],
+        "development_length": payload.get("period_length") if is_vector else payload["development_length"],
         "origin_labels": _normalize_origin_labels(payload.get("origin_labels")),
-        "cumulative": payload["cumulative"],
+        "cumulative": payload.get("cumulative"),
         "transposed": payload["transposed"],
-        "calendar": payload["calendar"],
+        "calendar": payload.get("calendar"),
         "number_format": payload["number_format"],
         "decimal_places": payload["decimal_places"],
         "csv_file": payload["csv_file"],

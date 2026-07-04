@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Vector dataset sidecars now store their single period granularity as period_length without triangle-only development or mode fields."
+}

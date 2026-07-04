@@ -19,7 +19,12 @@ import {
   redrawChartSafely,
   setDatasetRenderNumberFormatSettings,
 } from "/ui/dataset/dataset_render.js";
-import { applyTabbedPageSaveBar, createTabbedPage } from "/ui/shared/tabbed_page.js";
+import {
+  applyTabbedPageSaveBar,
+  createTabbedPage,
+  requestTabbedPageWindowClose,
+  updateTabbedPageSaveControls,
+} from "/ui/shared/tabbed_page.js";
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { createDatasetDependencyGuard } from "/ui/dataset/dataset_dependency_guard.js";
 import { createDatasetHeadersService } from "/ui/dataset/dataset_headers_service.js";
@@ -1740,6 +1745,14 @@ function getDatasetTypeFormulaByName(datasetTypeName) {
   return String(formulaMap.get(key) || "").trim();
 }
 
+function getDatasetTypeDataFormatByName(datasetTypeName) {
+  const key = normalizeProjectText(datasetTypeName);
+  if (!key) return "";
+  const dataFormatMap = state.datasetTypeDataFormatByKey instanceof Map ? state.datasetTypeDataFormatByKey : null;
+  if (!dataFormatMap) return "";
+  return String(dataFormatMap.get(key) || "").trim();
+}
+
 function resizeDetailFormulaInput() {
   const formulaBox = document.getElementById("dsDetailFormulaBox");
   if (!formulaBox) return;
@@ -1947,6 +1960,7 @@ async function refreshDatasetTypesForProject(project, useCache = true) {
     allDatasetTypes = [];
     state.datasetTypeSourceByKey = new Map();
     state.datasetTypeFormulaByKey = new Map();
+    state.datasetTypeDataFormatByKey = new Map();
     renderDatasetOptions([]);
     syncDetailDatasetTypeFromTopInput(document.getElementById("triInput")?.value || "", { syncName: false });
     showDatasetDropdown(false);
@@ -1966,6 +1980,7 @@ async function refreshDatasetTypesForProject(project, useCache = true) {
   } catch {
     state.datasetTypeSourceByKey = new Map();
     state.datasetTypeFormulaByKey = new Map();
+    state.datasetTypeDataFormatByKey = new Map();
   }
   renderDatasetOptions(allDatasetTypes);
   syncDetailDatasetTypeFromTopInput(document.getElementById("triInput")?.value || "", { syncName: false });
@@ -3046,15 +3061,66 @@ async function precheckArcRhoTriCsv(rawInputs = {}) {
   }
 }
 
+function buildVecRequestPayload(rawInputs = {}) {
+  const resolved = resolveTriRequestInputs(rawInputs);
+  return {
+    Path: resolved.path,
+    VectorName: resolved.tri,
+    DatasetTypeName: resolved.tri,
+    InstanceName: resolved.instanceName || resolved.tri,
+    ProjectName: resolved.project,
+    PeriodLength: resolved.originLen,
+    Cumulative: resolved.cumulative,
+    Calendar: resolved.calendar,
+    LocalOnly: !!window.ADA_DFM_CONTEXT,
+    AllowDerived: true,
+    timeout_sec: 6.0,
+  };
+}
+
+async function precheckArcRhoVecCsv(rawInputs = {}) {
+  const resolved = resolveTriRequestInputs(rawInputs);
+  if (!resolved.project || !resolved.path || !resolved.tri) {
+    return { ok: false, hasExistingCsv: false, skipped: true, data: null };
+  }
+  try {
+    const precheckResp = await fetch("/arcrho/vec/precheck", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildVecRequestPayload(resolved)),
+    });
+    if (!precheckResp.ok) {
+      return { ok: false, hasExistingCsv: false, skipped: false, data: null };
+    }
+    const data = await precheckResp.json().catch(() => ({}));
+    return {
+      ok: true,
+      hasExistingCsv: data?.need_request === false || data?.cache_exists === true,
+      skipped: false,
+      data,
+    };
+  } catch {
+    return { ok: false, hasExistingCsv: false, skipped: false, data: null };
+  }
+}
+
 datasetDependencyGuard = createDatasetDependencyGuard({
+  state,
   normalizeProjectText,
   getResolvedProjectValue,
   getTriInputs,
   precheckArcRhoTriCsv,
+  precheckArcRhoVecCsv,
   setInputInvalid,
   clearInputInvalid,
   setStatus,
 });
+
+function getDatasetRunDataFormat(datasetTypeName = "") {
+  const fromDatasetTypes = getDatasetTypeDataFormatByName(datasetTypeName || document.getElementById("triInput")?.value || "");
+  if (fromDatasetTypes) return fromDatasetTypes;
+  return currentDatasetSidecarDataFormat || state.model?.data_format || getProjectInstanceDraftDataFormat();
+}
 
 function getTriInputsForStorage() {
   enforceDevLenRule();
@@ -3311,11 +3377,14 @@ function updateDatasetSaveUi() {
   const hasContext = hasDatasetSidecarContext(sidecarContextPayload) || hasNotesContext(notesContextPayload);
   const dirty = hasUnsavedDatasetChanges();
   if (bar) bar.hidden = !hasContext;
-  if (saveBtn) {
-    saveBtn.disabled = datasetSaveInFlight || datasetInstanceNameConflict || !hasContext || !dirty;
-    saveBtn.classList.toggle("is-clean", !dirty);
-  }
-  if (cancelBtn) cancelBtn.disabled = datasetSaveInFlight || !dirty;
+  updateTabbedPageSaveControls({
+    saveButton: saveBtn,
+    cancelButton: cancelBtn,
+    dirty,
+    saving: datasetSaveInFlight,
+    saveBlocked: datasetInstanceNameConflict || !hasContext,
+    cancelBlocked: !hasContext,
+  });
   for (const button of [runBtn, clearBtn]) {
     if (!button) continue;
     if (datasetInstanceNameConflict) {
@@ -3631,12 +3700,10 @@ async function confirmCancelDatasetChanges(reason = "close") {
 
 function requestConfirmedDatasetClose() {
   clearDatasetDependencyPreview("close-discard");
-  try {
-    window.parent?.postMessage({
-      type: "arcrho:dataset-close-confirmed",
-      inst: instanceId,
-    }, "*");
-  } catch {}
+  requestTabbedPageWindowClose({
+    messageType: "arcrho:dataset-close-confirmed",
+    inst: instanceId,
+  });
 }
 
 function wireDatasetSaveControls() {
@@ -3644,8 +3711,8 @@ function wireDatasetSaveControls() {
     await handleDatasetSaveCommand();
   });
   document.getElementById("datasetCancelBtn")?.addEventListener("click", async () => {
-    const ok = await confirmCancelDatasetChanges("cancel");
-    if (ok) updateDatasetSaveUi();
+    const ok = await confirmCancelDatasetChanges("close");
+    if (ok) requestConfirmedDatasetClose();
   });
   document.getElementById("datasetCancelConfirmYes")?.addEventListener("click", () => {
     resolveDatasetCancelConfirm(true);
@@ -3767,19 +3834,13 @@ function getNotesErrorMessage(resp, fallback) {
 function getNotesEditorElements() {
   return {
     input: document.getElementById("dsNotesInput"),
-    saveBtn: document.getElementById("dsNotesSaveBtn"),
     saveState: document.getElementById("dsNotesSaveState"),
   };
 }
 
 function updateNotesSaveUi() {
-  const { saveBtn, saveState } = getNotesEditorElements();
+  const { saveState } = getNotesEditorElements();
   const hasContext = !!notesContextKey && hasNotesContext(notesContextPayload);
-
-  if (saveBtn) {
-    saveBtn.disabled = !hasContext;
-    saveBtn.classList.toggle("is-dirty", hasContext && notesDirty);
-  }
 
   if (!saveState) return;
   saveState.classList.remove("is-dirty", "is-clean", "is-hidden");
@@ -4083,7 +4144,10 @@ datasetRunController = createDatasetRunController({
   validateTriInputsBeforeRun,
   getTriInputs,
   buildTriRequestPayload,
+  buildVecRequestPayload,
   precheckArcRhoTriCsv,
+  precheckArcRhoVecCsv,
+  getDatasetRunDataFormat,
   clearHeadersCacheForProject: (project, options = {}) =>
     datasetHeadersService.clearHeadersCacheForProject(project, options),
   ensureHeadersForProject: (project, options = {}) =>
@@ -4439,7 +4503,6 @@ function wireNotesEditor() {
       notesDirty = !!value;
     },
     updateNotesSaveUi,
-    saveNotesForCurrentContext,
     setStatus,
   });
 }

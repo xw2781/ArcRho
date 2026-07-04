@@ -13,7 +13,10 @@ export function createDatasetRunController(deps) {
     validateTriInputsBeforeRun,
     getTriInputs,
     buildTriRequestPayload,
+    buildVecRequestPayload,
     precheckArcRhoTriCsv,
+    precheckArcRhoVecCsv,
+    getDatasetRunDataFormat = () => "",
     clearHeadersCacheForProject,
     ensureHeadersForProject,
     ensureDevHeadersForProject,
@@ -247,7 +250,16 @@ export function createDatasetRunController(deps) {
     const { cumulative, calendar, originLen, devLen, instanceName } = getTriInputs();
     const { project, path, tri } = validated;
     const triRequestInputs = { project, path, tri, instanceName, cumulative, calendar, originLen, devLen };
-    const requestPayload = buildTriRequestPayload(triRequestInputs);
+    const dataFormat = String(getDatasetRunDataFormat(tri) || "").trim().toLowerCase();
+    const isVector = dataFormat === "vector";
+    const requestPayload = isVector && typeof buildVecRequestPayload === "function"
+      ? buildVecRequestPayload(triRequestInputs)
+      : buildTriRequestPayload(triRequestInputs);
+    const precheckExistingCsv = isVector && typeof precheckArcRhoVecCsv === "function"
+      ? precheckArcRhoVecCsv
+      : precheckArcRhoTriCsv;
+    const routeRoot = isVector ? "/arcrho/vec" : "/arcrho/tri";
+    const runLabel = isVector ? "ArcRhoVec" : "ArcRhoTri";
     const loadingTarget = String(tri || config.DS_ID || "").trim() || "dataset";
     let loadingPopupVisible = false;
     const showLoadingPopup = () => {
@@ -271,17 +283,17 @@ export function createDatasetRunController(deps) {
     if (clearCache) {
       showLoadingPopup();
     } else {
-      const precheckResult = await precheckArcRhoTriCsv(triRequestInputs);
+      const precheckResult = await precheckExistingCsv(triRequestInputs);
       if (precheckResult.ok && precheckResult?.data?.ok && precheckResult.data.need_request === true) {
         // Show ASAP after the app server decides a request must be sent.
         showLoadingPopup();
       } else if (!precheckResult.ok && !precheckResult.skipped) {
-        console.warn("ArcRhoTri precheck failed.");
+        console.warn(`${runLabel} precheck failed.`);
       }
     }
 
     try {
-      const endpoint = clearCache ? "/arcrho/tri/refresh" : "/arcrho/tri";
+      const endpoint = clearCache ? `${routeRoot}/refresh` : routeRoot;
       const resp = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -291,7 +303,7 @@ export function createDatasetRunController(deps) {
       const data = await resp.json();
 
       if (!resp.ok) {
-        logLine(`${clearCache ? "ArcRhoTri refresh" : "ArcRhoTri"} failed: ${resp.status}`);
+        logLine(`${clearCache ? `${runLabel} refresh` : runLabel} failed: ${resp.status}`);
         if (status) status.textContent = `Error: ${resp.status}`;
         lastAutoKey = null;
         setStatus(`Error: ${resp.status}`);
@@ -304,7 +316,7 @@ export function createDatasetRunController(deps) {
           || (data?.status === "timeout" ? "Timeout waiting for csv (try again)." : "")
           || "Dataset cache is not available.",
         );
-        logLine(`${clearCache ? "ArcRhoTri refresh" : "ArcRhoTri"} failed: ${message} data_path=${data.data_path}`);
+        logLine(`${clearCache ? `${runLabel} refresh` : runLabel} failed: ${message} data_path=${data.data_path}`);
         if (status) status.textContent = message;
         lastAutoKey = null;
         setStatus(message);
@@ -312,7 +324,7 @@ export function createDatasetRunController(deps) {
         return;
       }
 
-      logLine(`${clearCache ? "ArcRhoTri refresh" : "ArcRhoTri"} OK. ds_id=${data.ds_id}`);
+      logLine(`${clearCache ? `${runLabel} refresh` : runLabel} OK. ds_id=${data.ds_id}`);
       if (status) status.textContent = `OK: ${data.ds_id}`;
 
       // switch dataset and load (and persist)

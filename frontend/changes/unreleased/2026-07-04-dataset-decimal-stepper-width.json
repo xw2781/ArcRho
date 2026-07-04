@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Adjusted the Dataset Data tab Decimal Places stepper arrows to better match the Number Format dropdown affordance."
+}

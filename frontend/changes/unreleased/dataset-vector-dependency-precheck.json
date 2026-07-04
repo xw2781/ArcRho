@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Imported Vector datasets now use ArcRhoVec cache checks and loads instead of the triangle path."
+}

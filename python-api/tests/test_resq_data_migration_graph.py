@@ -142,6 +142,42 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(payload["source_kind"], "engine")
         self.assertFalse(payload["calculated"])
         self.assertEqual(payload["formula"], "")
+        self.assertEqual(payload["period_length"], 12)
+        self.assertNotIn("origin_length", payload)
+        self.assertNotIn("development_length", payload)
+        self.assertNotIn("development_count", payload)
+        self.assertNotIn("cumulative", payload)
+        self.assertNotIn("calendar", payload)
+
+    def test_dfm_ultimate_vector_sidecar_uses_period_length(self) -> None:
+        self.extractors.write_dfm_ultimate_vector_export({
+            "name": "Ultimate",
+            "dataset_type": "DFM Ultimate",
+            "category": "Loss",
+            "data_format": 1,
+            "method_type": "DFM",
+            "method_type_code": 7,
+            "origin_length": 6,
+            "development_length": 6,
+            "origin_count": 1,
+            "development_count": 1,
+            "origin_labels": ["2026"],
+            "development_labels": ["Ultimate"],
+            "values": [[123.0]],
+            "method_name": "Paid DFM",
+            "user": "tester",
+            "created": "2026-01-01T00:00:00",
+            "modified": "2026-01-02T00:00:00",
+        }, r"Auto\PP", self.rc_dir)
+
+        payload = json.loads((self.sidecars_dir / "Ultimate.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["source_kind"], "dfm")
+        self.assertEqual(payload["period_length"], 6)
+        self.assertNotIn("origin_length", payload)
+        self.assertNotIn("development_length", payload)
+        self.assertNotIn("development_count", payload)
+        self.assertNotIn("cumulative", payload)
+        self.assertNotIn("calendar", payload)
 
     def test_refresh_preserves_result_selection_precedent_strings(self) -> None:
         path = self.sidecars_dir / "Net Ultimate.json"
@@ -318,7 +354,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertNotIn("origin_length", payload["method_tab"]["loaded_datasets"][0])
         self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["values"], [10.123457, 20.246914])
         self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["weights"], [1.987654, 1.987654])
-        self.assertEqual(payload["method_tab"]["selected_ultimate"], [100.123457, 200.246914])
+        self.assertEqual(payload["method_tab"]["calculated_ultimate"], [10.123457, 20.246914])
+        self.assertEqual(payload["method_tab"]["selected_ultimate"], [10.123457, 200.246914])
         self.assertNotIn("ratio_basis_values", payload["method_tab"])
         self.assertEqual(payload["method_tab"]["ultimate_overrides"], [None, 200.246914])
 
@@ -355,6 +392,41 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
     def test_cleanup_target_reserving_class_dir_rejects_project_data_dir(self) -> None:
         with self.assertRaises(ValueError):
             self.module.cleanup_target_reserving_class_dir(self.project_dir / "data")
+
+    def test_cleanup_target_dataset_artifacts_removes_selected_dataset_files(self) -> None:
+        files = [
+            self.datasets_dir / "Selected@12@12@cum@dev.csv",
+            self.datasets_dir / "Selected@3.csv",
+            self.sidecars_dir / "Selected.json",
+            self.methods_dir / "DFM@Selected Method.json",
+            self.methods_dir / "RS@Selected.json",
+        ]
+        for path in files:
+            path.write_text("{}", encoding="utf-8")
+        (self.methods_dir / "DFM@Output Lookup.json").write_text(json.dumps({
+            "details tab": {"name": "Output Lookup", "output dataset": "Selected"},
+        }), encoding="utf-8")
+        kept = [
+            self.datasets_dir / "Other@12@12@cum@dev.csv",
+            self.sidecars_dir / "Other.json",
+            self.methods_dir / "DFM@Other Method.json",
+        ]
+        for path in kept:
+            path.write_text("{}", encoding="utf-8")
+
+        removed, dirs = self.module.cleanup_target_dataset_artifacts(
+            self.rc_dir,
+            dataset_names=["Selected"],
+            method_names=["Selected Method"],
+        )
+
+        self.assertEqual(dirs, 0)
+        self.assertEqual(removed, 6)
+        for path in files:
+            self.assertFalse(path.exists(), path.name)
+        self.assertFalse((self.methods_dir / "DFM@Output Lookup.json").exists())
+        for path in kept:
+            self.assertTrue(path.exists(), path.name)
 
     def test_cleanup_target_flag_defaults_on_and_can_be_disabled(self) -> None:
         self.assertTrue(self.module._parse_args([]).cleanup_target)
@@ -603,6 +675,12 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         sidecar = json.loads((self.sidecars_dir / "Ultimate.json").read_text(encoding="utf-8"))
         self.assertEqual(sidecar["source_kind"], "dfm")
         self.assertEqual(sidecar["method_name"], "Paid DFM")
+        self.assertEqual(sidecar["period_length"], 12)
+        self.assertNotIn("origin_length", sidecar)
+        self.assertNotIn("development_length", sidecar)
+        self.assertNotIn("development_count", sidecar)
+        self.assertNotIn("cumulative", sidecar)
+        self.assertNotIn("calendar", sidecar)
         self.assertFalse([event for event in events if event.get("event") == "method"])
         finished = [event for event in events if event.get("event") == "finish"]
         self.assertEqual(finished[-1]["name"], "Ultimate")

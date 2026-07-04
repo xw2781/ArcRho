@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "frontend",
+  "audience": "user",
+  "summary": "Kept shared tabbed-page Cancel buttons clickable and made them close clean windows by default."
+}

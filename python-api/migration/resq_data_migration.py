@@ -43,9 +43,11 @@ from resq_migration.core import (  # noqa: E402
     DATASET_SIDECAR_DIR,
     METHOD_TYPE_DFM_CODE,
     METHOD_TYPE_RESULT_SELECTION_CODE,
+    _cached_dataset_names_from_file,
     _clean_name,
     _dataset_cache_csv_file_name,
     _encode_rc_folder,
+    _normalize_cached_dataset_name,
     _normalize_import_name,
     _safe_attr,
     _safe_int_attr,
@@ -212,6 +214,101 @@ def cleanup_target_reserving_class_dir(rc_dir: Path) -> tuple[int, int]:
         else:
             item.unlink()
     return files, dirs
+
+
+def _normalized_name_keys(values: object) -> set[str]:
+    raw = values if isinstance(values, (list, tuple, set)) else [values]
+    out: set[str] = set()
+    for value in raw:
+        text = _normalize_import_name(value)
+        if text:
+            out.add(text.casefold())
+    return out
+
+
+def _matches_cleanup_names(values: object, target_keys: set[str]) -> bool:
+    if not target_keys:
+        return False
+    return bool(_normalized_name_keys(values) & target_keys)
+
+
+def _method_file_names(path: Path) -> set[str]:
+    stem = path.stem
+    for prefix in ("DFM@", "RS@"):
+        if stem.startswith(prefix):
+            name = _normalize_cached_dataset_name(stem[len(prefix):])
+            return {name} if name else set()
+    return set()
+
+
+def _method_payload_dataset_names(path: Path) -> set[str]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    if not isinstance(payload, dict):
+        return set()
+
+    names: set[str] = set()
+    if path.name.startswith("DFM@"):
+        details = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
+        for key in ("output dataset", "output vector", "output type"):
+            name = _normalize_import_name(details.get(key))
+            if name:
+                names.add(name)
+    elif path.name.startswith("RS@"):
+        details = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+        for key in ("name", "output_type"):
+            name = _normalize_import_name(details.get(key))
+            if name:
+                names.add(name)
+    return names
+
+
+def cleanup_target_dataset_artifacts(
+    rc_dir: Path,
+    *,
+    dataset_names: list[str] | tuple[str, ...] | set[str] | None = None,
+    method_names: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> tuple[int, int]:
+    """Remove stale cached files for selected datasets/methods before single-item export."""
+    target = _require_safe_target_rc_dir(rc_dir)
+    if not target.exists():
+        return 0, 0
+    if target.is_symlink():
+        raise ValueError(f"Refusing to clean symlinked reserving-class folder: {target}")
+
+    dataset_keys = _normalized_name_keys(dataset_names or [])
+    method_keys = _normalized_name_keys(method_names or [])
+    files = 0
+
+    dataset_dir = target / DATASET_CACHE_DIR
+    if dataset_dir.is_dir():
+        for path in sorted(dataset_dir.glob("*.csv"), key=lambda item: item.name.lower()):
+            if _matches_cleanup_names(_cached_dataset_names_from_file(path.name), dataset_keys):
+                path.unlink()
+                files += 1
+
+    sidecar_dir = target / DATASET_SIDECAR_DIR
+    if sidecar_dir.is_dir():
+        for path in sorted(sidecar_dir.glob("*.json"), key=lambda item: item.name.lower()):
+            if _matches_cleanup_names(_cached_dataset_names_from_file(path.name), dataset_keys):
+                path.unlink()
+                files += 1
+
+    method_dir = target / METHOD_DATA_DIR
+    if method_dir.is_dir():
+        for path in sorted(method_dir.glob("*.json"), key=lambda item: item.name.lower()):
+            method_file_names = _method_file_names(path)
+            if (
+                _matches_cleanup_names(method_file_names, method_keys)
+                or _matches_cleanup_names(method_file_names, dataset_keys)
+                or _matches_cleanup_names(_method_payload_dataset_names(path), dataset_keys)
+            ):
+                path.unlink()
+                files += 1
+
+    return files, 0
 
 
 # ── Development-label helpers ──────────────────────────────────────────────────

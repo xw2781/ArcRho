@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed transposed Dataset Data tab totals so triangle totals appear as a right-side Total column instead of a repeated footer row."
+}

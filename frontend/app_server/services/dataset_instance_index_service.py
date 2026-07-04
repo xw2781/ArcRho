@@ -641,7 +641,10 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                     metadata.get("source_kind"),
                 )
                 file_info["status"] = dataset_sidecar_status_service.normalize_status(metadata.get("status"))
-                file_info["origin_length"] = metadata.get("origin_length")
+                if file_info["data_format"].strip().lower() == "vector":
+                    file_info["origin_length"] = metadata.get("period_length")
+                else:
+                    file_info["origin_length"] = metadata.get("origin_length")
                 if isinstance(metadata.get("origin_labels"), list):
                     file_info["origin_labels"] = [str(item) for item in metadata.get("origin_labels")]
                 file_info["calculated"] = metadata.get("calculated")

@@ -2,10 +2,12 @@ import { state } from "/ui/shared/state.js";
 
 export function createDatasetDependencyGuard(deps) {
   const {
+    state: appState = {},
     normalizeProjectText,
     getResolvedProjectValue,
     getTriInputs,
     precheckArcRhoTriCsv,
+    precheckArcRhoVecCsv,
     setInputInvalid,
     clearInputInvalid,
     setStatus,
@@ -37,6 +39,7 @@ export function createDatasetDependencyGuard(deps) {
         if (!name) continue;
         out.push({
           name,
+          dataFormat: String(row[1] ?? "").trim(),
           calculated: parseCalculatedFlag(row[3]),
           formula: String(row[4] ?? "").trim(),
           source: String(
@@ -52,6 +55,7 @@ export function createDatasetDependencyGuard(deps) {
         if (!name) continue;
         out.push({
           name,
+          dataFormat: String(row["Data Format"] ?? row.dataFormat ?? row.data_format ?? "").trim(),
           calculated: parseCalculatedFlag(row.Calculated ?? row.calculated),
           formula: String(row.Formula ?? row.formula ?? "").trim(),
           source: String(row.Source ?? row.source ?? "").trim(),
@@ -199,6 +203,7 @@ export function createDatasetDependencyGuard(deps) {
         const rows = parseDatasetTypeRows(datasetPayload);
         const sourceByKey = parseDatasetTypeSourceMap(datasetPayload);
         const formulaByKey = new Map();
+        const dataFormatByKey = new Map();
         const byKey = new Map();
         const knownNames = [];
         for (const row of rows) {
@@ -206,8 +211,10 @@ export function createDatasetDependencyGuard(deps) {
           if (!key) continue;
           if (!byKey.has(key)) knownNames.push(row.name);
           formulaByKey.set(key, String(row.formula || "").trim());
+          dataFormatByKey.set(key, String(row.dataFormat || "").trim());
           byKey.set(key, {
             name: row.name,
+            dataFormat: row.dataFormat || "",
             calculated: !!row.calculated,
             formula: row.formula || "",
             source: String(sourceByKey.get(key) || row.source || "").trim(),
@@ -222,15 +229,18 @@ export function createDatasetDependencyGuard(deps) {
           directKeys,
           sourceByKey,
           formulaByKey,
+          dataFormatByKey,
         };
-        state.datasetTypeSourceByKey = sourceByKey instanceof Map ? new Map(sourceByKey) : new Map();
-        state.datasetTypeFormulaByKey = formulaByKey instanceof Map ? new Map(formulaByKey) : new Map();
+        appState.datasetTypeSourceByKey = sourceByKey instanceof Map ? new Map(sourceByKey) : new Map();
+        appState.datasetTypeFormulaByKey = formulaByKey instanceof Map ? new Map(formulaByKey) : new Map();
+        appState.datasetTypeDataFormatByKey = dataFormatByKey instanceof Map ? new Map(dataFormatByKey) : new Map();
         dependencyModelCache.set(cacheKey, model);
         return model;
       } catch {
         const model = { available: false };
-        state.datasetTypeSourceByKey = new Map();
-        state.datasetTypeFormulaByKey = new Map();
+        appState.datasetTypeSourceByKey = new Map();
+        appState.datasetTypeFormulaByKey = new Map();
+        appState.datasetTypeDataFormatByKey = new Map();
         dependencyModelCache.set(cacheKey, model);
         return model;
       }
@@ -320,7 +330,13 @@ export function createDatasetDependencyGuard(deps) {
       const triInputsRaw = options?.precheckInputs && typeof options.precheckInputs === "object"
         ? options.precheckInputs
         : getTriInputs();
-      const precheckResult = await precheckArcRhoTriCsv({
+      const targetKey = normalizeProjectText(datasetName);
+      const targetRow = model.byKey instanceof Map ? model.byKey.get(targetKey) : null;
+      const dataFormat = String(targetRow?.dataFormat || "").trim().toLowerCase();
+      const precheckExistingCsv = dataFormat === "vector" && typeof precheckArcRhoVecCsv === "function"
+        ? precheckArcRhoVecCsv
+        : precheckArcRhoTriCsv;
+      const precheckResult = await precheckExistingCsv({
         ...(triInputsRaw || {}),
         project: triInputsRaw?.project || project,
         tri: triInputsRaw?.tri || datasetName,

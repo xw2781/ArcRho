@@ -124,6 +124,7 @@
       margin: 0;
       padding-right: 4px;
       font-size: 12px;
+      font-weight: 400;
       color: #555;
       text-align: right;
       white-space: nowrap;
@@ -546,28 +547,32 @@
 
     #datasetTopBar .lenSelectCaret{
       position: absolute;
-      right: 4px;
+      right: 6px;
       top: 50%;
       transform: translateY(-50%);
-      width: 14px;
-      height: 14px;
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid currentColor;
       color: #555;
+      opacity: 0.32;
       pointer-events: none;
-      transition: transform 120ms ease, color 120ms ease;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    #datasetTopBar .lenSelectCaret svg{
-      width: 100%;
-      height: 100%;
-      display: block;
+      transform-origin: center;
+      transition: opacity 120ms ease, transform 120ms ease, color 120ms ease;
     }
 
     #datasetTopBar .lenSelectWrap.open .lenSelectCaret{
       transform: translateY(-50%) rotate(180deg);
       color: #2f5fd3;
+      opacity: 1;
+    }
+
+    #datasetTopBar .lenSelectDisplay:hover .lenSelectCaret,
+    #datasetTopBar .lenSelectDisplay:focus .lenSelectCaret,
+    #datasetTopBar .numberFormatDropdownBtn:hover .lenSelectCaret,
+    #datasetTopBar .numberFormatDropdownBtn:focus .lenSelectCaret{
+      opacity: 1;
     }
 
     #datasetTopBar .numberFormatWrap{
@@ -597,15 +602,14 @@
     }
 
     #datasetTopBar .numberFormatDropdownBtn .lenSelectCaret{
-      right: 5px;
-      width: 14px;
-      height: 14px;
+      right: 8px;
       pointer-events: none;
     }
 
     #datasetTopBar .numberFormatWrap.open .numberFormatDropdownBtn .lenSelectCaret{
       transform: translateY(-50%) rotate(180deg);
       color: #2f5fd3;
+      opacity: 1;
     }
 
     #datasetTopBar .numberFormatDropdown{
@@ -629,7 +633,8 @@
 
     #decimalPlaces{
       width: 100%;
-      padding-right: 24px !important;
+      padding-left: 28px !important;
+      padding-right: 28px !important;
       text-align: center;
       appearance: textfield;
       -moz-appearance: textfield;
@@ -645,7 +650,7 @@
       position: absolute;
       right: 1px;
       top: 1px;
-      width: 22px;
+      width: 28px;
       height: calc(var(--topbar-control-height) - 2px);
       display: grid;
       grid-template-rows: 1fr 1fr;
@@ -657,7 +662,7 @@
 
     #datasetTopBar .decimalPlacesStepBtn{
       position: relative;
-      width: 22px;
+      width: 28px;
       height: calc((var(--topbar-control-height) - 2px) / 2);
       padding: 0;
       border: 0;
@@ -671,14 +676,30 @@
       background: #f5f8ff;
     }
 
-    #datasetTopBar .decimalPlacesStepBtn svg{
+    #datasetTopBar .datasetStepperCaret{
       position: absolute;
       left: 50%;
       top: 50%;
-      width: 22px;
-      height: 12px;
-      transform: translate(-50%, -50%);
-      display: block;
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid currentColor;
+      opacity: 0.32;
+      transform: translate(calc(-50% + 2px), -50%);
+      transform-origin: center;
+      transition: opacity 120ms ease;
+    }
+
+    #datasetTopBar .datasetStepperCaretUp{
+      transform: translate(calc(-50% + 2px), -50%) rotate(180deg);
+    }
+
+    #datasetTopBar .decimalPlacesWrap:hover .datasetStepperCaret,
+    #datasetTopBar .decimalPlacesWrap:focus-within .datasetStepperCaret,
+    #datasetTopBar .decimalPlacesStepBtn:hover .datasetStepperCaret,
+    #datasetTopBar .decimalPlacesStepBtn:focus .datasetStepperCaret{
+      opacity: 1;
     }
 
     #datasetTopBar .lenSelectNative{
@@ -1545,31 +1566,6 @@
       align-items: center;
       gap: 8px;
     }
-    #dsNotesSaveBtn {
-      min-width: 96px;
-      height: 28px;
-      border: 1px solid #8ba4d8;
-      border-radius: 6px;
-      background: linear-gradient(180deg, #f7faff 0%, #e8f0ff 100%);
-      color: #1c3f84;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 0 12px;
-      cursor: pointer;
-    }
-    #dsNotesSaveBtn:hover:not(:disabled) {
-      border-color: #5d7fc1;
-      background: linear-gradient(180deg, #eef4ff 0%, #dfe9ff 100%);
-    }
-    #dsNotesSaveBtn.is-dirty {
-      border-color: #b57b07;
-      color: #7a4f00;
-      background: linear-gradient(180deg, #fff8e9 0%, #ffefc7 100%);
-    }
-    #dsNotesSaveBtn:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
     .dsNotesSaveState {
       min-width: 118px;
       text-align: right;
@@ -1952,6 +1948,7 @@
       display: inline-block;
       margin: 0;
       font-size: 12px;
+      font-weight: 400;
       color: #555;
       white-space: nowrap;
     }

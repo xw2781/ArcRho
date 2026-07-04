@@ -1,5 +1,6 @@
 ﻿import re
 from pathlib import Path
+import math
 import threading
 
 import pythoncom
@@ -189,16 +190,13 @@ class ResQClient:
                 self._result_selection_origin_label(result_selection, origin_index)
                 for origin_index in range(1, origin_count + 1)
             ]
-            sources = [
+            loaded_datasets = [
                 self._result_selection_source_payload(result_selection, dataset_index, origin_count, origin_length)
                 for dataset_index in range(1, int(self._optional_value(result_selection, "DatasetCount", 0) or 0) + 1)
             ]
-            selected_ultimate = []
-            for origin_index in range(1, origin_count + 1):
-                try:
-                    selected_ultimate.append(self._json_value(self._result_selection_ultimate(result_selection, origin_index, origin_length)))
-                except Exception:
-                    selected_ultimate.append(None)
+            ultimate_overrides = self._result_selection_ultimate_overrides(result_selection, origin_count, origin_length)
+            calculated_ultimate = self._result_selection_calculated_ultimate(loaded_datasets, origin_count)
+            selected_ultimate = self._result_selection_selected_ultimate(calculated_ultimate, ultimate_overrides, origin_count)
 
             output_vector = self._optional_value(result_selection, "OutputVector", None)
             name = self._clean_label(
@@ -207,30 +205,27 @@ class ResQClient:
                 or self._optional_value(result_selection, "Name", "")
             )
             output_type = self._nested_name(output_vector, "DatasetType") if output_vector is not None else ""
-            output_category = (
-                self._nested_name(self._optional_value(output_vector, "DatasetType", None), "Category")
-                if output_vector is not None else ""
-            )
+            ratio_basis_dataset = self._result_selection_ratio_basis_dataset_name(result_selection)
             payload = {
                 "json_format": RESULT_SELECTION_JSON_FORMAT,
                 "details_tab": {
                     "name": name,
                     "output_type": self._clean_label(request.get("OutputType") or output_type or name),
-                    "dataset_category": output_category,
-                    "output_category": output_category,
                     "origin_length": origin_length,
-                    "ratio_basis": self._result_selection_ratio_basis_dataset_name(result_selection),
-                    "ratio_basis_dataset": self._result_selection_ratio_basis_dataset_name(result_selection),
+                    "ratio_basis": ratio_basis_dataset,
+                    "ratio_basis_dataset": ratio_basis_dataset,
+                    "ratio_basis_datasets": [ratio_basis_dataset] if ratio_basis_dataset else [],
+                    "active_ratio_basis_dataset": ratio_basis_dataset,
                     "show_ratios_as_percentages": True,
                     "statistic_decimal_places": 1,
                 },
                 "method_tab": {
                     "origin_labels": origin_labels,
                     "show_weights": True,
-                    "sources": sources,
+                    "loaded_datasets": loaded_datasets,
+                    "calculated_ultimate": calculated_ultimate,
                     "selected_ultimate": selected_ultimate,
-                    "ultimate_overrides": self._result_selection_ultimate_overrides(result_selection, origin_count, origin_length),
-                    "ratio_basis_values": [],
+                    "ultimate_overrides": ultimate_overrides,
                 },
                 "results_tab": {},
                 "validation_tab": {},
@@ -367,6 +362,10 @@ class ResQClient:
         dataset_type = self._optional_value(dataset, "DatasetType", None)
         data_format_code = self._optional_value(dataset_type, "DataFormat", -1)
         method_type_code = self._optional_value(dataset, "MethodType", 0)
+        data_format = "Triangle" if int(data_format_code or -1) == 0 else "Vector"
+        method_type = self._method_type_name(method_type_code)
+        name = self._clean_label(self._optional_value(dataset, "Name", "")) or f"Source {dataset_index}"
+        dataset_type_name = self._clean_label(self._optional_value(dataset_type, "Name", ""))
         values = []
         weights = []
         for origin_index in range(1, origin_count + 1):
@@ -379,15 +378,57 @@ class ResQClient:
             except Exception:
                 weights.append(0)
         return {
-            "name": self._clean_label(self._optional_value(dataset, "Name", "")) or f"Source {dataset_index}",
-            "dataset_type": self._clean_label(self._optional_value(dataset_type, "Name", "")),
-            "data_format": "Triangle" if int(data_format_code or -1) == 0 else "Vector",
-            "method_type": self._method_type_name(method_type_code),
+            "name": name,
+            "dataset_type": dataset_type_name,
+            "data_format": data_format,
+            "method_type": method_type,
             "category": self._nested_name(dataset_type, "Category") if dataset_type is not None else "",
-            "origin_length": self._optional_value(dataset, "OriginLength", None),
+            "source_kind": self._result_selection_source_kind(name, dataset_type_name, data_format, method_type_code),
             "values": values,
             "weights": weights,
         }
+
+    def _result_selection_source_kind(self, name, dataset_type, data_format, method_type_code):
+        try:
+            method_code = int(method_type_code)
+        except Exception:
+            method_code = 0
+        if method_code == 1:
+            return "dfm"
+        if method_code == 4:
+            return "result_selection"
+        if str(data_format or "").strip().lower() == "triangle":
+            return "engine" if self._clean_label(dataset_type) == self._clean_label(name) else "input"
+        return "input"
+
+    def _result_selection_calculated_ultimate(self, loaded_datasets, origin_count):
+        ultimate = []
+        for row_index in range(origin_count):
+            numerator = 0.0
+            denominator = 0.0
+            for source in loaded_datasets:
+                if not isinstance(source, dict):
+                    continue
+                values = source.get("values") if isinstance(source.get("values"), list) else []
+                weights = source.get("weights") if isinstance(source.get("weights"), list) else []
+                try:
+                    value = float(values[row_index])
+                    weight = max(0.0, float(weights[row_index]))
+                except (IndexError, TypeError, ValueError):
+                    continue
+                if not math.isfinite(value) or not math.isfinite(weight) or weight <= 0:
+                    continue
+                numerator += value * weight
+                denominator += weight
+            ultimate.append(self._rs_json_number(numerator / denominator) if denominator > 0 else None)
+        return ultimate
+
+    def _result_selection_selected_ultimate(self, calculated_ultimate, ultimate_overrides, origin_count):
+        selected = []
+        for row_index in range(origin_count):
+            override = ultimate_overrides[row_index] if row_index < len(ultimate_overrides) else None
+            selected.append(override if override is not None else calculated_ultimate[row_index])
+        return selected
 
     def _result_selection_ratio_basis_dataset_name(self, result_selection):
         for args, kwargs in (
@@ -487,7 +528,7 @@ class ResQClient:
 
     def _sync_result_selection_weights(self, result_selection, payload):
         method_tab = self._dict_path(payload, ("method_tab",))
-        sources = method_tab.get("sources") if isinstance(method_tab, dict) else None
+        sources = method_tab.get("loaded_datasets") if isinstance(method_tab, dict) else None
         if not isinstance(sources, list):
             return 0
         source_indexes = self._result_selection_dataset_indexes(result_selection)
@@ -560,6 +601,14 @@ class ResQClient:
     def _number_or_zero(self, value):
         number = self._number_or_none(value)
         return 0.0 if number is None else number
+
+    def _rs_json_number(self, value):
+        number = self._number_or_none(value)
+        if number is None or not math.isfinite(number):
+            return None
+        if isinstance(value, int):
+            return value
+        return round(number, 6)
 
     def _positive_int_member(self, obj, attr_name, default=0):
         try:

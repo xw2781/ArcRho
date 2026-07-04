@@ -59,6 +59,58 @@ export function applyTabbedPageSaveBar(saveBar) {
 }
 
 /**
+ * Applies the common Save/Cancel button state for tabbed pages.
+ * Cancel remains available while clean so users can click it without first
+ * making a change, but true blocking states such as an in-flight save still win.
+ *
+ * @param {Object} options
+ * @param {HTMLButtonElement|null|undefined} options.saveButton
+ * @param {HTMLButtonElement|null|undefined} options.cancelButton
+ * @param {boolean} [options.dirty=false]
+ * @param {boolean} [options.saving=false]
+ * @param {boolean} [options.saveBlocked=false]
+ * @param {boolean} [options.cancelBlocked=false]
+ */
+export function updateTabbedPageSaveControls({
+  saveButton,
+  cancelButton,
+  dirty = false,
+  saving = false,
+  saveBlocked = false,
+  cancelBlocked = false,
+} = {}) {
+  const isDirty = !!dirty;
+  const isSaving = !!saving;
+  if (saveButton) {
+    saveButton.disabled = isSaving || !!saveBlocked || !isDirty;
+    saveButton.classList.toggle("is-clean", !isDirty);
+  }
+  if (cancelButton) {
+    cancelButton.disabled = isSaving || !!cancelBlocked;
+  }
+}
+
+/**
+ * Requests the host shell or Project Instance window to close this tabbed page.
+ *
+ * @param {Object} options
+ * @param {string} [options.messageType='arcrho:close-active-tab']
+ * @param {string} [options.inst]
+ */
+export function requestTabbedPageWindowClose({
+  messageType = "arcrho:close-active-tab",
+  inst = "",
+} = {}) {
+  const type = String(messageType || "arcrho:close-active-tab");
+  const payload = { type };
+  const instanceId = String(inst || "").trim();
+  if (instanceId) payload.inst = instanceId;
+  try {
+    window.parent?.postMessage(payload, "*");
+  } catch {}
+}
+
+/**
  * Creates a reusable tabbed page system.
  *
  * @param {HTMLElement} container - Container element (tab bar will be inserted at the start)

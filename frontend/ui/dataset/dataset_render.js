@@ -103,11 +103,6 @@ function shouldHideTotalRowByFormula() {
   return /[*/]/.test(formulaExpr);
 }
 
-function isDatasetVectorModel(model) {
-  const dataFormat = String(model?.data_format ?? model?.dataFormat ?? "").trim().toLowerCase();
-  return dataFormat === "vector";
-}
-
 function numericCellValue(value) {
   const n = (typeof value === "number") ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -365,7 +360,7 @@ export function renderTable() {
   const tbl = document.createElement("table");
   const transposed = isTransposedView();
   const showTotalRow = !shouldHideTotalRowByFormula();
-  const showRightSideTotal = showTotalRow && transposed && isDatasetVectorModel(state.model);
+  const showRightSideTotal = showTotalRow && transposed;
   applyColumnWidthLock(tbl, lockedColumnWidths, devs.length + 1 + (showRightSideTotal ? 1 : 0));
 
   // header

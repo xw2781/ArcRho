@@ -187,6 +187,67 @@ def _resolve_single_export(migration, reserving_class, properties):
     }
 
 
+def _safe_collection_item(collection, name):
+    try:
+        return collection.Item(name)
+    except Exception:
+        return None
+
+
+def _output_vector_name(migration, item):
+    output_vector = migration._safe_attr(item, "OutputVector", None)
+    return migration._normalize_import_name(migration._safe_attr(output_vector, "Name", ""))
+
+
+def _cleanup_active_target_artifacts(migration, reserving_class, rc_dir, target):
+    dataset_names = set(target.get("names") or [])
+    method_names = set()
+    export_kind = str(target.get("export_kind") or "").strip().casefold()
+
+    if export_kind == "dfm":
+        dfm_collection = reserving_class.DFMMethods()
+        for dfm_name in list(target.get("names") or []):
+            method_names.add(dfm_name)
+            dfm = _safe_collection_item(dfm_collection, dfm_name)
+            output_name = _output_vector_name(migration, dfm) if dfm is not None else ""
+            if output_name:
+                dataset_names.add(output_name)
+
+    if export_kind == "vector":
+        vector_collection = reserving_class.Vectors()
+        dfm_by_output = None
+        for vector_name in list(target.get("names") or []):
+            vector = _safe_collection_item(vector_collection, vector_name)
+            method_type = migration._safe_int_attr(vector, "MethodType", -1) if vector is not None else -1
+            if method_type == migration.METHOD_TYPE_DFM_CODE and target.get("include_dfm_methods"):
+                if dfm_by_output is None:
+                    dfm_by_output = migration._dfm_methods_by_output_name(reserving_class, None)
+                dfm_entry = dfm_by_output.get(migration._normalize_import_name(vector_name).casefold())
+                if dfm_entry:
+                    dfm_name, dfm = dfm_entry
+                    method_names.add(dfm_name)
+                    output_name = _output_vector_name(migration, dfm)
+                    if output_name:
+                        dataset_names.add(output_name)
+            elif method_type == migration.METHOD_TYPE_RESULT_SELECTION_CODE:
+                method_names.add(vector_name)
+                result_selection = migration._find_result_selection_for_vector(reserving_class, vector_name)
+                if result_selection is not None:
+                    method_name = migration._normalize_import_name(migration._safe_attr(result_selection, "Name", ""))
+                    output_name = _output_vector_name(migration, result_selection)
+                    if method_name:
+                        method_names.add(method_name)
+                    if output_name:
+                        dataset_names.add(output_name)
+                        method_names.add(output_name)
+
+    return migration.cleanup_target_dataset_artifacts(
+        rc_dir,
+        dataset_names=sorted(name for name in dataset_names if str(name or "").strip()),
+        method_names=sorted(name for name in method_names if str(name or "").strip()),
+    )
+
+
 def _import_active_dataset_from_resq(migration, project_name, rc_path, properties, server_root, progress_callback):
     try:
         import win32com.client
@@ -213,6 +274,7 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
         reserving_class = project.ReservingClasses().Item(rc_path)
         target = _resolve_single_export(migration, reserving_class, properties)
         names = list(target["names"])
+        cleaned_files, cleaned_dirs = _cleanup_active_target_artifacts(migration, reserving_class, rc_dir, target)
         progress_state = {"completed": 0, "total": len(names), "skipped": 0, "count_methods": target["export_kind"] == "dfm"}
         progress_callback({"event": "total", "completed": 0, "total": len(names), "message": f"Importing {target['display_kind']}: {names[0]}"})
 
@@ -272,6 +334,8 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
             "written": total_written,
             "errors": counts["errors"],
             "skipped": int(progress_state.get("skipped") or 0),
+            "cleaned_files": cleaned_files,
+            "cleaned_dirs": cleaned_dirs,
             "refreshed_sidecars": refreshed,
             "migration_path": str(MIGRATION_SCRIPT),
         }

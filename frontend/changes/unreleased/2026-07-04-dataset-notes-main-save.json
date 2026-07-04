@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Removed the separate Notes tab save button so notes are saved through the main Dataset Save action."
+}

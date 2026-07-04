@@ -136,11 +136,7 @@ export function injectDatasetMarkup(container) {
                   aria-controls="originLenDropdown"
                 >
                   <span class="lenSelectValue">12</span>
-                  <span class="lenSelectCaret" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                      <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                  </span>
+                  <span class="lenSelectCaret" aria-hidden="true"></span>
                 </button>
                 <div id="originLenDropdown" class="datasetDropdown lenDropdown" role="listbox" aria-label="Origin Length options"></div>
                 <select id="originLenSelect" class="lenSelectNative" tabindex="-1" aria-hidden="true"></select>
@@ -157,11 +153,7 @@ export function injectDatasetMarkup(container) {
                   aria-controls="devLenDropdown"
                 >
                   <span class="lenSelectValue">12</span>
-                  <span class="lenSelectCaret" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                      <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                  </span>
+                  <span class="lenSelectCaret" aria-hidden="true"></span>
                 </button>
                 <div id="devLenDropdown" class="datasetDropdown lenDropdown" role="listbox" aria-label="Development Length options"></div>
                 <select id="devLenSelect" class="lenSelectNative" tabindex="-1" aria-hidden="true"></select>
@@ -181,11 +173,7 @@ export function injectDatasetMarkup(container) {
               <div id="numberFormatWrap" class="numberFormatWrap">
                 <input id="numberFormatSelect" type="text" value="0,000" aria-label="Number Format" aria-controls="numberFormatDropdown" aria-expanded="false" autocomplete="off" />
                 <button id="numberFormatDropdownBtn" class="numberFormatDropdownBtn" type="button" aria-label="Show Number Format presets" aria-controls="numberFormatDropdown" aria-expanded="false">
-                  <span class="lenSelectCaret" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                      <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                  </span>
+                  <span class="lenSelectCaret" aria-hidden="true"></span>
                 </button>
                 <div id="numberFormatDropdown" class="datasetDropdown numberFormatDropdown" role="listbox" aria-label="Number Format presets"></div>
               </div>
@@ -195,14 +183,10 @@ export function injectDatasetMarkup(container) {
                 <input id="decimalPlaces" type="number" min="0" max="6" value="1" aria-label="Decimal Places" />
                 <div class="decimalPlacesStepper">
                   <button id="decimalPlacesUpBtn" class="decimalPlacesStepBtn" type="button" aria-label="Increase Decimal Places">
-                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                      <path d="M4.5 9.5 8 6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
+                    <span class="datasetStepperCaret datasetStepperCaretUp" aria-hidden="true"></span>
                   </button>
                   <button id="decimalPlacesDownBtn" class="decimalPlacesStepBtn" type="button" aria-label="Decrease Decimal Places">
-                    <svg viewBox="0 0 16 16" focusable="false" aria-hidden="true">
-                      <path d="M4.5 6.5 8 10l3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
+                    <span class="datasetStepperCaret" aria-hidden="true"></span>
                   </button>
                 </div>
               </div>
@@ -308,7 +292,6 @@ export function injectDatasetMarkup(container) {
       <div class="dsNotesToolbar" id="dsNotesToolbar">
         <div class="dsNotesActions">
           <span id="dsNotesSaveState" class="small dsNotesSaveState">Not saved</span>
-          <button id="dsNotesSaveBtn" type="button">Save Notes</button>
         </div>
       </div>
     </div>

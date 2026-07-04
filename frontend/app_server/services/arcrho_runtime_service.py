@@ -345,6 +345,19 @@ def resolve_local_triangle_cache(
     }
 
 
+def _apply_dataset_sidecar_shape_fields(payload: Dict[str, Any], pairs: list, *, is_vector: bool) -> None:
+    if is_vector:
+        payload["period_length"] = _pair_int_value(pairs, "OriginLength", 12)
+        for obsolete_key in ("origin_length", "development_length", "development_count", "cumulative", "calendar"):
+            payload.pop(obsolete_key, None)
+        return
+    payload["origin_length"] = _pair_int_value(pairs, "OriginLength", 12)
+    payload["development_length"] = _pair_int_value(pairs, "DevelopmentLength", 12)
+    payload["cumulative"] = _pair_bool_value(pairs, "Cumulative", True)
+    payload["calendar"] = _pair_bool_value(pairs, "Calendar", False)
+    payload.pop("period_length", None)
+
+
 def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
     dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
     instance_name = _pair_value(pairs, "InstanceName") or dataset_type
@@ -368,10 +381,7 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         payload["user"] = user_name
         payload["data_format"] = data_format
         payload["data_format_code"] = 1 if is_vector else 0
-        payload["origin_length"] = _pair_int_value(pairs, "OriginLength", 12)
-        payload["development_length"] = _pair_int_value(pairs, "DevelopmentLength", 12)
-        payload["cumulative"] = _pair_bool_value(pairs, "Cumulative", True)
-        payload["calendar"] = _pair_bool_value(pairs, "Calendar", False)
+        _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)
         payload["csv_file"] = os.path.basename(data_path)
         from app_server.services.dataset_service import _append_dataset_audit_entry
 
@@ -396,10 +406,6 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "source_kind": "engine",
         "data_format": data_format,
         "data_format_code": 1 if is_vector else 0,
-        "origin_length": _pair_int_value(pairs, "OriginLength", 12),
-        "development_length": _pair_int_value(pairs, "DevelopmentLength", 12),
-        "cumulative": _pair_bool_value(pairs, "Cumulative", True),
-        "calendar": _pair_bool_value(pairs, "Calendar", False),
         "csv_file": os.path.basename(data_path),
         "user": user_name,
         "created": created,
@@ -408,6 +414,7 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
+    _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)
     from app_server.services import calculated_dataset_service
     from app_server.services.dataset_service import _append_dataset_audit_entry
 
