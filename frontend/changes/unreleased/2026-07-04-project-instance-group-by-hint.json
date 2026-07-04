@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Clarified the dataset grouping bar with a Group by label and follow-up grouping hint."
+}

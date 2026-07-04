@@ -21,17 +21,6 @@ function syncDatasetIndexUpdatePrompt() {
 }
 
 function syncCachedDatasetToolbar() {
-  const btn = els.cachedDatasetToggle;
-  if (btn) {
-    btn.classList.toggle("active", cachedDatasetFilter.enabled);
-    btn.setAttribute("aria-pressed", cachedDatasetFilter.enabled ? "true" : "false");
-    btn.disabled = cachedDatasetFilter.enabled && cachedDatasetFilter.loading;
-    if (cachedDatasetFilter.enabled) {
-      btn.title = "Show all datasets";
-    } else {
-      btn.title = "Show only datasets with cached CSV or JSON files";
-    }
-  }
   if (els.datasetRefreshBtn) {
     els.datasetRefreshBtn.disabled = cachedDatasetFilter.loading || !state.selectedPath;
   }
@@ -463,23 +452,7 @@ function restoreDatasetTableScroll(scrollState) {
   window.requestAnimationFrame(apply);
 }
 
-function setCachedDatasetFilterEnabled(enabled) {
-  const next = !!enabled;
-  if (cachedDatasetFilter.enabled === next) return;
-  cachedDatasetFilter.enabled = next;
-  closeDatasetTableFilterPopover();
-  syncCachedDatasetToolbar();
-  renderDatasetTable();
-}
-
-
 function initCachedDatasetToolbar() {
-  if (els.cachedDatasetToggle && els.cachedDatasetToggle.dataset.wired !== "1") {
-    els.cachedDatasetToggle.dataset.wired = "1";
-    els.cachedDatasetToggle.addEventListener("click", () => {
-      setCachedDatasetFilterEnabled(!cachedDatasetFilter.enabled);
-    });
-  }
   if (els.datasetRefreshBtn && els.datasetRefreshBtn.dataset.wired !== "1") {
     els.datasetRefreshBtn.dataset.wired = "1";
     els.datasetRefreshBtn.addEventListener("click", () => {
@@ -519,7 +492,6 @@ function initCachedDatasetToolbar() {
     normalizeCachedDatasetSnapshot,
     refreshCachedDatasetTableFromDisk,
     startDatasetIndexWatchForSnapshot,
-    setCachedDatasetFilterEnabled,
     shouldUseCachedDatasetFilter,
     stopDatasetIndexWatch,
     stripDatasetCacheVariantSuffix,

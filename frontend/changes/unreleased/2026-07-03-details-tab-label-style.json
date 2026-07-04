@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "details tabs",
+  "audience": "user",
+  "summary": "Aligned Dataset, DFM, and Result Selection Details tab labels with regular-weight text and shared tab styling."
+}

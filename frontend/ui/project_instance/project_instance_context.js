@@ -42,7 +42,6 @@ export function createProjectInstanceContext(deps = {}) {
     hiddenTabsButton: document.getElementById("hiddenTabsButton"),
     hiddenTabsLabel: document.getElementById("hiddenTabsLabel"),
     hiddenTabsMenu: document.getElementById("hiddenTabsMenu"),
-    cachedDatasetToggle: document.getElementById("cachedDatasetToggle"),
     datasetRefreshBtn: document.getElementById("datasetRefreshBtn"),
     datasetIndexUpdateBtn: document.getElementById("datasetIndexUpdateBtn"),
     datasetGroupByStatus: document.getElementById("datasetGroupByStatus"),
@@ -140,7 +139,6 @@ export function createProjectInstanceContext(deps = {}) {
       sort: { key: "", dir: "asc" },
     },
     cachedDatasetFilter: {
-      enabled: true,
       loading: false,
       loadedPath: "",
       names: new Set(),

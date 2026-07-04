@@ -4,7 +4,12 @@ DFM Tabs - Orchestrator
 Initializes all DFM tabs, wires event handlers, and coordinates modules.
 ===============================================================================
 */
-import { applyTabbedPageSaveBar, createTabbedPage } from "/ui/shared/tabbed_page.js";
+import {
+  applyTabbedPageSaveBar,
+  createTabbedPage,
+  requestTabbedPageWindowClose,
+  updateTabbedPageSaveControls,
+} from "/ui/shared/tabbed_page.js";
 import { setStorageInstance, loadNaBorders } from "/ui/dfm/dfm_storage.js";
 import {
   state as dfmState,
@@ -157,13 +162,12 @@ function updateDfmSaveUi() {
   const saveBtn = document.getElementById("dfmSaveBtn");
   const cancelBtn = document.getElementById("dfmCancelBtn");
   const dirty = getDfmIsDirty();
-  if (saveBtn) {
-    saveBtn.disabled = dfmSaveInFlight || !dirty;
-    saveBtn.classList.toggle("is-clean", !dirty);
-  }
-  if (cancelBtn) {
-    cancelBtn.disabled = dfmSaveInFlight || !dirty;
-  }
+  updateTabbedPageSaveControls({
+    saveButton: saveBtn,
+    cancelButton: cancelBtn,
+    dirty,
+    saving: dfmSaveInFlight,
+  });
 }
 
 function resolveDfmCancelConfirm(value) {
@@ -188,12 +192,10 @@ function showDfmCancelConfirm() {
 
 function requestConfirmedDfmClose() {
   clearDfmDependencyPreview("close-discard");
-  try {
-    window.parent?.postMessage({
-      type: "arcrho:dfm-close-confirmed",
-      inst: getDfmInst(),
-    }, "*");
-  } catch {}
+  requestTabbedPageWindowClose({
+    messageType: "arcrho:dfm-close-confirmed",
+    inst: getDfmInst(),
+  });
 }
 
 function postCurrentDfmDirtyState() {
@@ -283,13 +285,17 @@ async function saveCurrentDfmMethodFromBar() {
 }
 
 async function cancelCurrentDfmChangesFromBar() {
-  if (dfmSaveInFlight || !getDfmIsDirty()) return;
+  if (dfmSaveInFlight) return;
+  if (!getDfmIsDirty()) {
+    requestConfirmedDfmClose();
+    return;
+  }
   const discard = await showDfmCancelConfirm();
   if (!discard) return;
   const result = await restoreCleanDfmMethodState();
   if (result?.ok) {
-    clearDfmDependencyPreview("cancel");
     postDfmStatus("DFM changes discarded.");
+    requestConfirmedDfmClose();
   } else {
     postDfmStatus(`DFM cancel failed: ${result?.error || "Could not restore saved method."}`, "error");
   }

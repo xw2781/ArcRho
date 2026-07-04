@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Kept Project Instance dataset tables in cached view and moved the refresh control to the right side of the toolbar."
+}

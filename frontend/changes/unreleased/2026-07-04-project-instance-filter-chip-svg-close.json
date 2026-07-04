@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Updated Project Instance filter chips to use polished SVG clear icons."
+}

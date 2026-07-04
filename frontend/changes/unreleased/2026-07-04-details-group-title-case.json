@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "frontend",
+  "audience": "user",
+  "summary": "Updated Details group labels to use title case across DFM and Result Selection pages."
+}

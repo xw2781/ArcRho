@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ui",
+  "audience": "user",
+  "summary": "Standardized Dataset and DFM dropdown and stepper arrows on the filled caret style used by Result Selection."
+}

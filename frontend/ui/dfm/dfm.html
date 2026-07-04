@@ -459,9 +459,7 @@
     }
     .dfmDetailsBlockTitle {
       font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
+      font-weight: 400;
       color: #4b5563;
     }
     #dfmDetailsPage {
@@ -492,20 +490,20 @@
     .dfmFormGrid label,
     .dfmFormGrid .dfmFormLabel {
       font-size: 13px;
+      font-weight: 400;
       color: #000;
       text-align: right;
     }
     .dfmFormGrid3 label,
     .dfmFormGrid3 .dfmFormLabel {
       font-size: 13px;
+      font-weight: 400;
       color: #000;
       text-align: right;
     }
     .dfmFormGrid label::after,
     .dfmFormGrid3 label::after {
-      content: ":";
-      margin-left: 4px;
-      color: #000;
+      content: none;
     }
     .dfmFormField {
       display: flex;
@@ -597,11 +595,18 @@
     .dfmSpinner select,
     .dfmSpinner input {
       width: 100%;
+      padding-left: 28px;
       padding-right: 28px;
       -webkit-appearance: none;
       -moz-appearance: none;
       appearance: none;
       background: #fff;
+      text-align: center;
+    }
+    .dfmSpinner #decimalPlaces,
+    .dfmSpinner input[type="number"],
+    .dfmSpinner select {
+      text-align: center;
     }
     .dfmSpinner input[type="number"]::-webkit-inner-spin-button,
     .dfmSpinner input[type="number"]::-webkit-outer-spin-button {
@@ -613,35 +618,54 @@
       right: 1px;
       top: 1px;
       bottom: 1px;
-      width: 22px;
+      width: 28px;
       display: flex;
       flex-direction: column;
-      border-left: 1px solid #d6d6d6;
       border-radius: 0 5px 5px 0;
       overflow: hidden;
-      background: #f7f7f7;
     }
     .dfmSpinBtn {
       flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      min-width: 28px;
       border: none;
       padding: 0;
-      background: #f7f7f7;
+      background: transparent;
+      color: #555;
       cursor: pointer;
-      background-repeat: no-repeat;
-      background-position: center;
-      background-size: 10px 6px;
     }
     .dfmSpinBtn + .dfmSpinBtn {
-      border-top: 1px solid #d6d6d6;
+      border-top: 0;
     }
-    .dfmSpinBtn.up {
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M2 6 L6 2 L10 6' stroke='rgb(70,70,70)' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    .dfmSpinBtn:hover,
+    .dfmSpinBtn:focus {
+      background-color: #f5f8ff;
+      color: #2f5fd3;
+      outline: none;
     }
-    .dfmSpinBtn.down {
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M2 2 L6 6 L10 2' stroke='rgb(70,70,70)' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    .dfmStepperCaret {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid currentColor;
+      opacity: 0.32;
+      transform: translateX(2px);
+      transform-origin: center;
+      transition: opacity 120ms ease;
     }
-    .dfmSpinBtn:hover {
-      background-color: #eeeeee;
+    .dfmStepperCaretUp {
+      transform: translateX(2px) rotate(180deg);
+    }
+    .dfmSpinner:hover .dfmStepperCaret,
+    .dfmSpinner:focus-within .dfmStepperCaret,
+    .dfmSpinner.dfmSelectOpen .dfmStepperCaret,
+    .dfmSpinBtn:hover .dfmStepperCaret,
+    .dfmSpinBtn:focus .dfmStepperCaret {
+      opacity: 1;
     }
     .dfmSpinner.dfmSelectOpen {
       z-index: 40;
@@ -1737,8 +1761,8 @@
             <div class="dfmSpinner" data-target="originLenSelect">
               <select id="originLenSelect"></select>
               <div class="dfmSpinBtns">
-                <button class="dfmSpinBtn up" type="button" aria-label="Increase"></button>
-                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"></button>
+                <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
               </div>
             </div>
           </div>
@@ -1748,8 +1772,8 @@
             <div class="dfmSpinner" data-target="devLenSelect">
               <select id="devLenSelect"></select>
               <div class="dfmSpinBtns">
-                <button class="dfmSpinBtn up" type="button" aria-label="Increase"></button>
-                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"></button>
+                <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
               </div>
             </div>
           </div>
@@ -1759,8 +1783,8 @@
             <div class="dfmSpinner" data-target="decimalPlaces">
               <input id="decimalPlaces" type="number" min="0" max="6" value="4" />
               <div class="dfmSpinBtns">
-                <button class="dfmSpinBtn up" type="button" aria-label="Increase"></button>
-                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"></button>
+                <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
               </div>
             </div>
           </div>
@@ -1827,8 +1851,8 @@
               autocomplete="off"
             />
             <div class="dfmSpinBtns">
-              <button class="dfmSpinBtn up" type="button" aria-label="Increase"></button>
-              <button class="dfmSpinBtn down" type="button" aria-label="Decrease"></button>
+              <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+              <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
             </div>
           </div>
           <span id="dfmRatioBasisStatus" class="dfmResultsBasisStatus" aria-live="polite"></span>

@@ -149,7 +149,11 @@ function syncDatasetActiveFiltersToolbar(context = null) {
     close.className = "dataset-filter-chip-close";
     close.dataset.filterKey = item.key;
     close.setAttribute("aria-label", `Clear ${item.label} filter`);
-    close.textContent = "x";
+    close.innerHTML = `
+      <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+        <path d="M3 3l6 6M9 3L3 9"></path>
+      </svg>
+    `;
     const label = document.createElement("span");
     label.className = "dataset-filter-chip-label";
     label.textContent = item.text;
@@ -175,9 +179,15 @@ function syncDatasetGroupByToolbar() {
   const keys = getDatasetGroupByKeys();
   wrap.replaceChildren();
   wrap.classList.toggle("has-groups", keys.length > 0);
+  const label = document.createElement("span");
+  label.className = "dataset-group-label";
+  label.textContent = "Group by:";
   const placeholder = document.createElement("span");
   placeholder.className = "dataset-group-placeholder";
-  placeholder.textContent = "Drag a column header here to group by that column";
+  placeholder.textContent = keys.length
+    ? "Drag a column header here"
+    : "Drag a column header here to group by that column";
+  wrap.appendChild(label);
   if (!keys.length) {
     wrap.appendChild(placeholder);
     return;
@@ -192,20 +202,8 @@ function syncDatasetGroupByToolbar() {
     const label = document.createElement("span");
     label.className = "dataset-group-chip-label";
     label.textContent = col.label;
-    const remove = document.createElement("span");
-    remove.className = "dataset-group-chip-remove";
-    remove.innerHTML = `
-      <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-        <path d="M3 3l6 6M9 3L3 9"></path>
-      </svg>
-    `;
-    remove.setAttribute("aria-hidden", "true");
-    chip.append(label, remove);
+    chip.append(label);
     chip.addEventListener("dragstart", (event) => {
-      if (event.target?.closest?.(".dataset-group-chip-remove")) {
-        event.preventDefault();
-        return;
-      }
       event.dataTransfer?.setData(DATASET_GROUP_DRAG_TYPE, key);
       event.dataTransfer?.setData(DATASET_COLUMN_DRAG_TYPE, key);
       event.dataTransfer?.setData("text/plain", col.label);
@@ -1092,7 +1090,7 @@ function autoFitInitialDatasetTableWidths(rows = state.datasetRows) {
 }
 
 function buildDatasetTableRenderContext() {
-  const sourceRecords = cachedDatasetFilter.enabled && shouldUseCachedDatasetFilter()
+  const sourceRecords = shouldUseCachedDatasetFilter()
     ? (Array.isArray(cachedDatasetFilter.instanceRows) ? cachedDatasetFilter.instanceRows : [])
       .map((item, rowIndex) => {
         const instanceName = getInstanceDatasetName(item);
@@ -1615,9 +1613,7 @@ function createDatasetTable(records, context = null) {
     const td = document.createElement("td");
     td.className = "pi-table-empty";
     td.colSpan = columns.length;
-    td.textContent = cachedDatasetFilter.enabled
-      ? "No cached datasets match the selected table filters."
-      : "No rows for selected filters.";
+    td.textContent = "No cached datasets match the selected table filters.";
     tr.appendChild(td);
     tbody.appendChild(tr);
   } else {
@@ -1743,7 +1739,7 @@ function renderDatasetTable() {
     setEmptyTable("No dataset types are defined for this project.");
     return;
   }
-  if (cachedDatasetFilter.enabled && !state.selectedPath) {
+  if (!state.selectedPath) {
     cachedDatasetFilter.visibleCount = 0;
     syncCachedDatasetToolbar();
     els.datasetTableSurface.innerHTML = "";
@@ -1777,7 +1773,7 @@ function renderDatasetTable() {
       setEmptyTable("Loading cached dataset list...");
       return;
     }
-    if (cachedDatasetFilter.enabled && cachedDatasetFilter.names.size === 0) {
+    if (cachedDatasetFilter.names.size === 0) {
       cachedDatasetFilter.visibleCount = 0;
       syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
@@ -2477,13 +2473,6 @@ function initDatasetTableInteractions() {
     clearDatasetGroupDropState();
   });
   els.datasetGroupByStatus?.addEventListener("drop", handleDatasetGroupZoneDrop);
-  els.datasetGroupByStatus?.addEventListener("click", (event) => {
-    const chip = event.target?.closest?.(".dataset-group-chip");
-    if (!chip || !event.target?.closest?.(".dataset-group-chip-remove")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    removeDatasetGroupByKey(chip.dataset.groupKey);
-  });
   els.datasetTableWrap?.addEventListener("dragover", handleDatasetGroupRemoveDragOver);
   els.datasetTableWrap?.addEventListener("dragleave", (event) => {
     if (els.datasetTableWrap?.contains(event.relatedTarget)) return;

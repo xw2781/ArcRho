@@ -661,9 +661,6 @@
       padding: 0;
       cursor: pointer;
     }
-    #cachedDatasetToggle {
-      margin-left: 16px;
-    }
     .dataset-toolbar-btn:hover {
       border-color: #c9d7ef;
       background: #f1f6ff;
@@ -734,7 +731,7 @@
       text-overflow: ellipsis;
     }
     .dataset-group-status {
-      min-width: 210px;
+      min-width: 250px;
       max-width: min(460px, 48vw);
       min-height: 24px;
       flex: 0 1 auto;
@@ -750,6 +747,15 @@
       font-size: 12px;
       overflow: hidden;
       transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+    }
+    .dataset-group-label {
+      flex: 0 0 auto;
+      color: #475467;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+    .dataset-group-status.has-groups {
+      margin-left: 16px;
     }
     .dataset-group-status.drag-over {
       border-color: #2f6fec;
@@ -821,31 +827,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .dataset-group-chip-remove {
-      color: #667085;
-      cursor: default;
-      width: 16px;
-      height: 16px;
-      flex: 0 0 auto;
-      border-radius: 50%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 120ms ease, color 120ms ease;
-    }
-    .dataset-group-chip-remove:hover {
-      background: #dc2626;
-      color: #ffffff;
-    }
-    .dataset-group-chip-remove svg {
-      width: 10px;
-      height: 10px;
-      stroke: currentColor;
-      stroke-width: 2.2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      pointer-events: none;
-    }
     .dataset-active-filters {
       flex: 0 1 auto;
       min-width: 0;
@@ -881,25 +862,32 @@
       background: #e3efff;
     }
     .dataset-filter-chip-close {
-      width: 17px;
-      height: 17px;
+      color: #667085;
+      cursor: default;
+      width: 16px;
+      height: 16px;
       flex: 0 0 auto;
       border: 0;
-      border-radius: 4px;
+      border-radius: 50%;
       background: transparent;
-      color: #526f9f;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 0 0 1px;
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
+      padding: 0;
+      transition: background 120ms ease, color 120ms ease;
     }
     .dataset-filter-chip-close:hover {
-      background: #d9e8ff;
-      color: #174ea6;
+      background: #dc2626;
+      color: #ffffff;
+    }
+    .dataset-filter-chip-close svg {
+      width: 10px;
+      height: 10px;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
     }
     .dataset-filter-chip-label {
       min-width: 0;
@@ -2225,20 +2213,9 @@
       <div class="pi-left-resizer" id="leftPanelResizer" role="separator" aria-label="Resize reserving class panel" aria-orientation="vertical" aria-valuemin="0" aria-valuenow="0" tabindex="0"></div>
       <section class="pi-right" aria-label="Project datasets">
         <div class="dataset_toolbar" id="datasetToolbar" aria-label="Dataset table tools">
-          <button class="dataset-toolbar-btn active" id="cachedDatasetToggle" type="button" aria-pressed="true" title="Show all datasets">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
-              <circle cx="12" cy="12" r="2.8"></circle>
-            </svg>
-          </button>
-          <button class="dataset-toolbar-btn" id="datasetRefreshBtn" type="button" title="Refresh dataset table" aria-label="Refresh dataset table">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M20 6v5h-5"></path>
-              <path d="M4 18v-5h5"></path>
-              <path d="M18.6 9A7 7 0 0 0 6.3 6.4L4 8.8"></path>
-              <path d="M5.4 15A7 7 0 0 0 17.7 17.6L20 15.2"></path>
-            </svg>
-          </button>
+          <div class="dataset-group-status" id="datasetGroupByStatus" aria-label="Dataset table grouping" role="region"></div>
+          <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Active dataset table filters" hidden></div>
+          <div class="dataset-toolbar-status" id="cachedDatasetStatus" aria-live="polite"></div>
           <button class="dataset-index-update-btn" id="datasetIndexUpdateBtn" type="button" title="Reload dataset table from updated index" aria-label="Reload dataset table from updated index" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M20 6v5h-5"></path>
@@ -2248,9 +2225,14 @@
             </svg>
             <span>Index updated</span>
           </button>
-          <div class="dataset-group-status" id="datasetGroupByStatus" aria-label="Dataset table grouping" role="region"></div>
-          <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Active dataset table filters" hidden></div>
-          <div class="dataset-toolbar-status" id="cachedDatasetStatus" aria-live="polite"></div>
+          <button class="dataset-toolbar-btn" id="datasetRefreshBtn" type="button" title="Refresh dataset table" aria-label="Refresh dataset table">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M20 6v5h-5"></path>
+              <path d="M4 18v-5h5"></path>
+              <path d="M18.6 9A7 7 0 0 0 6.3 6.4L4 8.8"></path>
+              <path d="M5.4 15A7 7 0 0 0 17.7 17.6L20 15.2"></path>
+            </svg>
+          </button>
         </div>
         <div class="pi-table-wrap" id="datasetTableWrap">
           <div class="pi-table-surface" id="datasetTableSurface"></div>
