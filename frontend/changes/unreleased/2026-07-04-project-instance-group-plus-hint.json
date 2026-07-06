@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Replaced the active grouping toolbar hint with a compact plus icon and hover tooltip.",
+  "details": [
+    "The grouping frame keeps the same left alignment whether or not grouping is active.",
+    "When grouping is active, the frame now shrinks to the grouped chips and plus hint instead of keeping the empty-state width."
+  ]
+}

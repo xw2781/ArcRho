@@ -120,7 +120,7 @@ PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 15
+INDEX_VERSION = 17
 METHOD_DATA_DIR = "methods"
 DEBUG_LOG_PATH = Path(__file__).resolve().parent / "logs" / "resq_data_migration_debug.log"
 

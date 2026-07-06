@@ -26,7 +26,7 @@ SERVER_ROOT = Path(r"E:\ArcRho Server")
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 15
+INDEX_VERSION = 17
 METHOD_DATA_DIR = "methods"
 
 
@@ -37,7 +37,7 @@ def configure_catalog(
     rs_json_format: str,
     method_data_dir: str,
     index_file_name: str = "index.json",
-    index_version: int = 15,
+    index_version: int = 17,
 ) -> None:
     global SERVER_ROOT, PROJECT_NAME, RS_JSON_FORMAT, METHOD_DATA_DIR, INDEX_FILE_NAME, INDEX_VERSION
 
@@ -523,12 +523,79 @@ def _dataset_type_category(dataset_type_name: object, rows_by_key: dict[str, dic
     row = lookup.get(key)
     return _clean_name(row.get("category")) if row else ""
 
+def _dataset_type_formula(dataset_type_name: object, rows_by_key: dict[str, dict] | None = None) -> str:
+    key = _canon_dataset_name(dataset_type_name)
+    if not key:
+        return ""
+    lookup = rows_by_key if rows_by_key is not None else _dataset_type_rows_by_key(_dataset_type_rows())
+    row = lookup.get(key)
+    return _clean_name(row.get("formula")) if row else ""
+
 def _metadata_text(metadata: dict, keys: tuple[str, ...]) -> str:
     for key in keys:
         text = _clean_name(metadata.get(key))
         if text:
             return text
     return ""
+
+def _username_key(value: object) -> str:
+    return _clean_name(value).casefold()
+
+def _username_index_path() -> Path:
+    return SERVER_ROOT / "config" / "username_index.json"
+
+def _load_username_display_names() -> dict[str, str]:
+    raw = _safe_read_json(_username_index_path())
+    entries: list[object] = []
+    if isinstance(raw, dict):
+        raw_entries = raw.get("users")
+        if isinstance(raw_entries, list):
+            entries = raw_entries
+        else:
+            out: dict[str, str] = {}
+            for key, value in raw.items():
+                if key == "users":
+                    continue
+                login = _username_key(key)
+                full_name = _clean_name(value)
+                if login and full_name:
+                    out[login] = full_name
+            return out
+    elif isinstance(raw, list):
+        entries = raw
+
+    out: dict[str, str] = {}
+    for item in entries:
+        if isinstance(item, dict):
+            login = _username_key(
+                item.get("login_name")
+                or item.get("Login Name")
+                or item.get("username")
+                or item.get("user")
+            )
+            full_name = _clean_name(
+                item.get("full_name")
+                or item.get("Full Name")
+                or item.get("display_name")
+                or item.get("name")
+            )
+        elif isinstance(item, list) and len(item) >= 2:
+            login = _username_key(item[0])
+            full_name = _clean_name(item[1])
+        else:
+            continue
+        if login and full_name:
+            out[login] = full_name
+    return out
+
+def _apply_user_display_names(files: list[dict]) -> None:
+    display_names = _load_username_display_names()
+    if not display_names:
+        return
+    for item in files:
+        user = _clean_name(item.get("user"))
+        if user:
+            item["user"] = display_names.get(_username_key(user), user)
 
 def _format_file_timestamp(value: float) -> str:
     try:
@@ -801,8 +868,13 @@ def _logical_files_from_physical_files(files: list[dict]) -> list[dict]:
             item["dataset_type"] = _clean_name(item.get("name"))
         if not _clean_name(item.get("dataset_category")):
             item["dataset_category"] = _dataset_type_category(item.get("dataset_type"), dataset_type_rows_by_key)
+        if not _clean_name(item.get("formula")):
+            formula = _dataset_type_formula(item.get("dataset_type") or item.get("name"), dataset_type_rows_by_key)
+            if formula:
+                item["formula"] = formula
         item.pop("_last_modified_from_sidecar", None)
         item.pop("_created_from_sidecar", None)
+    _apply_user_display_names(list(by_name.values()))
     return sorted(by_name.values(), key=lambda item: _clean_name(item.get("name")).lower())
 
 def _cached_folder_signature(files: list[dict], folder_paths: dict[str, str]) -> str:

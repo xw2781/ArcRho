@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Refined Project Instance filter chips so All selections appear neutral and chips can be dragged out to clear filters."
+}

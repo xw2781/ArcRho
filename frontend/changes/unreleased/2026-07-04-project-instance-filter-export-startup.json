@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Fixed Project Instance startup after the dataset filter toolbar refactor."
+}

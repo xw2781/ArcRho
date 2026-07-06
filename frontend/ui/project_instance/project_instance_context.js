@@ -14,17 +14,35 @@ export const DATASET_TABLE_COLUMNS = Object.freeze([
 ]);
 
 export const DATASET_TABLE_DEFAULT_WIDTHS = Object.freeze({
-  name: 180,
-  status: 58,
-  datasetTypeName: 180,
-  dataFormat: 140,
-  formula: 180,
-  category: 140,
-  methodType: 120,
-  lastModified: 140,
-  created: 120,
-  user: 120,
+  name: 342,
+  status: 69,
+  datasetTypeName: 301,
+  dataFormat: 142,
+  formula: 330,
+  category: 133,
+  methodType: 137,
+  lastModified: 151,
+  created: 142,
+  user: 129,
 });
+
+export const DATASET_TABLE_DEFAULT_COLUMN_ORDER = Object.freeze([
+  "status",
+  "name",
+  "dataFormat",
+  "category",
+  "methodType",
+  "user",
+  "lastModified",
+  "created",
+  "datasetTypeName",
+  "formula",
+]);
+
+export const DATASET_TABLE_DEFAULT_GROUP_BY = Object.freeze([
+  "dataFormat",
+  "category",
+]);
 
 export function createProjectInstanceContext(deps = {}) {
   const projectName = String(qs.get("project") || "").trim();
@@ -89,7 +107,6 @@ export function createProjectInstanceContext(deps = {}) {
     DATASET_TABLE_AUTOFIT_CELL_EXTRA_WIDTH: 38,
     DATASET_TABLE_AUTOFIT_HEADER_EXTRA_WIDTH: 76,
     DATASET_TABLE_BLANK_LABEL: "(Blank)",
-    DATASET_FILTER_CHIP_VALUE_LIMIT: 2,
     LEFT_PANEL_DEFAULT_WIDTH: 400,
     LEFT_PANEL_MIN_WIDTH: 200,
     LEFT_PANEL_MAX_WIDTH: 600,
@@ -123,7 +140,6 @@ export function createProjectInstanceContext(deps = {}) {
     hiddenTabsHoverCloseTimer: 0,
     hiddenTabsMenuPinned: false,
     minimizedTabTooltip: null,
-    datasetFilterTooltip: null,
     pageLoadingFrameTimer: 0,
     pageLoadingStartedAt: 0,
     pendingProjectInstanceRestoreState: null,
@@ -131,8 +147,8 @@ export function createProjectInstanceContext(deps = {}) {
     datasetTablePreferencesLoaded: false,
     datasetTablePreferenceWidthKeys: new Set(),
     datasetTableView: {
-      groupBy: [],
-      columns: DATASET_TABLE_COLUMNS.map((col) => col.key),
+      groupBy: [...DATASET_TABLE_DEFAULT_GROUP_BY],
+      columns: [...DATASET_TABLE_DEFAULT_COLUMN_ORDER],
       widths: { ...DATASET_TABLE_DEFAULT_WIDTHS },
       filters: new Map(),
       collapsedGroups: new Set(),
@@ -161,6 +177,12 @@ export function createProjectInstanceContext(deps = {}) {
     },
     datasetTableFilterColumn: "",
     datasetTableFilterAnchor: null,
+    datasetTableFilterOpenMode: "",
+    datasetTableFilterHoverCloseTimer: 0,
+    datasetTableFilterHoveringTrigger: false,
+    datasetTableFilterHoveringPopover: false,
+    datasetTableExplicitAllFilterKeys: new Set(),
+    datasetTableFilterDragSourceKey: "",
     datasetTableColumnDragStarted: false,
     datasetGroupContextId: "",
     datasetRowContextKey: "",

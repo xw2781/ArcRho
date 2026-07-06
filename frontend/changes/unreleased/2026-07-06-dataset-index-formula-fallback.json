@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset indexes now include Dataset Types formula text when sidecar metadata has no formula.",
+  "details": [
+    "Migrated generated datasets can show formulas in Project Instance without frontend-only fallback logic.",
+    "Refreshing a dataset index keeps the same formula fallback behavior."
+  ]
+}

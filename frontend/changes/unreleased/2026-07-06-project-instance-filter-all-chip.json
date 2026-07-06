@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance filter chips now stay visible when users manually select every value in a filter menu."
+}

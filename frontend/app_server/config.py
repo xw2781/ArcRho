@@ -46,8 +46,7 @@ DEFAULT_WORKSPACE_PATHS = {
 }
 PROJECT_USER_PREFERENCES_FILE = "preferences.json"
 PROJECT_INSTANCE_DEFAULT_PREFS_ENV = "ARCRHO_PROJECT_INSTANCE_DEFAULT_PREFS_PATH"
-DEFAULT_PROJECT_INSTANCE_PREFS_PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb Test"
-DEFAULT_PROJECT_INSTANCE_PREFS_USER_NAME = "xwei"
+DEFAULT_PROJECT_INSTANCE_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_preferences" / "project_instance_preferences.json"
 
 
 def _is_arcode_mode() -> bool:
@@ -241,6 +240,7 @@ RESERVING_CLASS_PATH_TREE_MAX_GENERATED = 250000
 SCRIPTING_PREFS_FILE = "scripting_prefs.json"
 LOCAL_PROJECT_PREFS_FILE = "local_project_prefs.json"
 DATASET_TYPES_FILE = "dataset_types.json"
+USERNAME_INDEX_FILE = "username_index.json"
 PROJECT_SETTINGS_XLSX_FILE = "settings.xlsx"
 RESERVING_CLASS_TYPES_SHEET_NAME = "Reserving Class Types"
 RESERVING_CLASS_TYPES_COLUMNS = ["Name", "Level", "Formula", "EEX Formula"]
@@ -422,13 +422,10 @@ def get_project_instance_default_preferences_path() -> str:
     configured = str(os.environ.get(PROJECT_INSTANCE_DEFAULT_PREFS_ENV) or "").strip()
     if configured:
         return configured
-    return os.path.join(
-        PROJECT_SETTINGS_DIR,
-        DEFAULT_PROJECT_INSTANCE_PREFS_PROJECT_NAME,
-        "users",
-        DEFAULT_PROJECT_INSTANCE_PREFS_USER_NAME,
-        PROJECT_USER_PREFERENCES_FILE,
-    )
+    return str(DEFAULT_PROJECT_INSTANCE_PREFS_PATH)
+
+def get_username_index_path() -> str:
+    return os.path.join(get_root_path(), "config", USERNAME_INDEX_FILE)
 
 
 def get_project_settings_workbook_path(project_name: str) -> str:

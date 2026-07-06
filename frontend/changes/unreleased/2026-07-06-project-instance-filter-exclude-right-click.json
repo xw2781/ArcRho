@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance filter menus now let users right-click a value to select every other value."
+}

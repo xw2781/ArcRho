@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Prevented Project Instance startup from staying on the loading overlay when table preferences are slow to load."
+}

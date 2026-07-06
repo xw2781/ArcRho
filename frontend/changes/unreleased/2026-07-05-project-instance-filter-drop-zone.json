@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Allowed Project Instance table headers and grouped columns to be dragged into the filter frame."
+}

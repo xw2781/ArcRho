@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance dataset table sorting now clears on the third click of a sorted column.",
+  "details": [
+    "Column sort indicators now sit farther to the right so short column labels have a cleaner text area."
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Kept the project instance dataset table from touching the left panel resizer while horizontally scrolled."
+}

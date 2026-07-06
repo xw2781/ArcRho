@@ -71,9 +71,11 @@ function postProjectInstanceStatus(text, tone = "") {
 function getPageLoadingMessage() {
   const loadingPaths = pageLoadingTasks.has("paths");
   const loadingDatasets = pageLoadingTasks.has("datasets");
+  const loadingPreferences = pageLoadingTasks.has("preferences");
   if (loadingPaths && loadingDatasets) return "Loading reserving class paths and dataset types...";
   if (loadingPaths) return "Loading reserving class paths...";
   if (loadingDatasets) return "Loading dataset types...";
+  if (loadingPreferences) return "Loading project preferences...";
   return "Loading project contents...";
 }
 

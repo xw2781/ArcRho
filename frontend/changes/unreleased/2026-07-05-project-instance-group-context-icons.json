@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Refined the Project Instance dataset group collapse and expand menu icons."
+}

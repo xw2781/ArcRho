@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Updated the built-in Project Instance dataset table defaults from the latest curated preference snapshot.",
+  "details": [
+    "Double-clicking a dataset table column resize handle now restores that column to the built-in default width."
+  ]
+}

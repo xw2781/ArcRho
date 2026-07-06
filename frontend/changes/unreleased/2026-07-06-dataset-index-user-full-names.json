@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Project Instance dataset indexes now show configured full names instead of Windows login names.",
+  "details": [
+    "The index rebuild reads `config/username_index.json` under the ArcRho Server root.",
+    "Missing user mappings keep the original login name."
+  ]
+}

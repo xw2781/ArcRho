@@ -149,6 +149,34 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertNotIn("cumulative", payload)
         self.assertNotIn("calendar", payload)
 
+    def test_dataset_instance_index_uses_dataset_type_formula_fallback(self) -> None:
+        config_dir = self.root / "config"
+        config_dir.mkdir()
+        (config_dir / "username_index.json").write_text(json.dumps({
+            "users": [
+                {"login_name": "xwei", "full_name": "Wei, Xiao"},
+            ],
+        }), encoding="utf-8")
+        csv_path = self.datasets_dir / "Net Ultimate@12.csv"
+        csv_path.write_text("1\n", encoding="utf-8")
+        (self.sidecars_dir / "Net Ultimate.json").write_text(json.dumps({
+            "dataset_name": "Net Ultimate",
+            "dataset_type": "Net Ultimate",
+            "source_kind": "engine",
+            "data_format": "Vector",
+            "formula": "",
+            "user": "xwei",
+        }), encoding="utf-8")
+
+        index_path = self.catalog.rebuild_dataset_instance_index("Demo", r"Auto\PP", self.rc_dir)
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        rows = {item["name"]: item for item in payload["files"]}
+
+        self.assertEqual(payload["version"], self.module.INDEX_VERSION)
+        self.assertEqual(rows["Net Ultimate"]["formula"], "\"Paid Loss\" + \"DFM Ultimate\"")
+        self.assertEqual(rows["Net Ultimate"]["dataset_category"], "Loss")
+        self.assertEqual(rows["Net Ultimate"]["user"], "Wei, Xiao")
+
     def test_dfm_ultimate_vector_sidecar_uses_period_length(self) -> None:
         self.extractors.write_dfm_ultimate_vector_export({
             "name": "Ultimate",

@@ -735,6 +735,7 @@
       max-width: min(460px, 48vw);
       min-height: 24px;
       flex: 0 1 auto;
+      margin-left: 16px;
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -755,7 +756,9 @@
       white-space: nowrap;
     }
     .dataset-group-status.has-groups {
-      margin-left: 16px;
+      width: max-content;
+      min-width: 0;
+      overflow: visible;
     }
     .dataset-group-status.drag-over {
       border-color: #2f6fec;
@@ -775,9 +778,59 @@
       white-space: nowrap;
     }
     .dataset-group-status.has-groups .dataset-group-placeholder {
-      flex: 1 1 auto;
-      color: #8a94a6;
-      font-size: 11px;
+      position: relative;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: #ffffff;
+      color: #667085;
+      overflow: visible;
+    }
+    .dataset-group-status.has-groups .dataset-group-placeholder:hover {
+      border-color: #93b4ef;
+      background: #eef4ff;
+      color: #174ea6;
+    }
+    .dataset-group-add-hint svg {
+      width: 12px;
+      height: 12px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      pointer-events: none;
+    }
+    .dataset-group-hint-tooltip {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 7px);
+      z-index: 10090;
+      max-width: min(300px, calc(100vw - 16px));
+      padding: 6px 9px;
+      border: 1px solid #b8c9ef;
+      border-radius: 6px;
+      background: #ffffff;
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16);
+      color: #263244;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 16px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, -4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    .dataset-group-add-hint:hover .dataset-group-hint-tooltip,
+    .dataset-group-add-hint:focus-visible .dataset-group-hint-tooltip {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
     .dataset-group-chip {
       max-width: 150px;
@@ -828,105 +881,110 @@
       text-overflow: ellipsis;
     }
     .dataset-active-filters {
-      flex: 0 1 auto;
+      width: max-content;
       min-width: 0;
+      max-width: min(430px, 42vw);
+      min-height: 24px;
+      flex: 0 1 auto;
       display: inline-flex;
       align-items: center;
+      box-sizing: border-box;
       gap: 6px;
+      padding: 2px 6px;
+      border: 1px dashed #c8d2df;
+      border-radius: 6px;
+      background: #f8fafc;
+      color: #667085;
+      font-size: 12px;
       overflow: hidden;
     }
     .dataset-active-filters[hidden] {
       display: none;
     }
+    .dataset-active-filters.drag-over {
+      border-color: #2f6fec;
+      background: #eef4ff;
+      color: #174ea6;
+    }
+    .dataset-active-filters.drag-invalid {
+      border-color: #d92d20;
+      background: #fff5f5;
+      color: #b42318;
+    }
+    .dataset-filter-label {
+      flex: 0 0 auto;
+      color: #475467;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+    .dataset-filter-none {
+      flex: 0 0 auto;
+      min-width: 0;
+      color: #667085;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .dataset-filter-chip {
-      max-width: 220px;
-      height: 24px;
+      max-width: 150px;
+      height: 20px;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 0 9px 0 4px;
+      padding: 0 7px;
       border: 1px solid #78a4ee;
       border-radius: 4px;
       background: #edf5ff;
       color: #174ea6;
       box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.04);
-      font-size: 12px;
+      font: inherit;
+      font-size: 11px;
       font-weight: 700;
       line-height: 1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      cursor: grab;
     }
     .dataset-filter-chip:hover {
       border-color: #5a8fe6;
       background: #e3efff;
     }
-    .dataset-filter-chip-close {
-      color: #667085;
-      cursor: default;
-      width: 16px;
-      height: 16px;
-      flex: 0 0 auto;
-      border: 0;
-      border-radius: 50%;
-      background: transparent;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      transition: background 120ms ease, color 120ms ease;
+    .dataset-filter-chip.is-all {
+      border-color: #cbd5e1;
+      background: #ffffff;
+      color: #475467;
+      box-shadow: none;
+      font-weight: 600;
     }
-    .dataset-filter-chip-close:hover {
-      background: #dc2626;
-      color: #ffffff;
+    .dataset-filter-chip.is-all:hover {
+      border-color: #aeb8c7;
+      background: #f8fafc;
+      color: #334155;
     }
-    .dataset-filter-chip-close svg {
-      width: 10px;
-      height: 10px;
-      stroke: currentColor;
-      stroke-width: 2.2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      pointer-events: none;
+    .dataset-filter-chip.dragging {
+      opacity: 0.58;
+      cursor: grabbing;
+    }
+    .dataset-filter-chip:focus-visible {
+      outline: 2px solid rgba(96, 165, 250, 0.35);
+      outline-offset: 1px;
     }
     .dataset-filter-chip-label {
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .dataset-filter-chip-tooltip {
-      position: fixed;
-      z-index: 10060;
-      max-width: min(620px, calc(100vw - 16px));
-      padding: 8px 12px;
-      border: 1px solid #b8c9ef;
-      border-radius: 8px;
-      background: #ffffff;
-      box-shadow: 0 12px 24px rgba(20, 31, 51, 0.18);
-      color: #20242a;
-      font-size: 12px;
-      font-weight: 600;
-      line-height: 16px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      pointer-events: none;
-      opacity: 0;
-      transform: translateY(-4px);
-      transition: opacity 120ms ease, transform 120ms ease;
-    }
-    .dataset-filter-chip-tooltip.active {
-      opacity: 1;
-      transform: translateY(0);
-    }
     .pi-table-wrap {
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
+      margin-left: 20px;
+      box-sizing: border-box;
+      border: 1px solid var(--border);
       overflow: auto;
       position: relative;
       background: #fff;
-      scrollbar-gutter: stable both-edges;
+      scrollbar-gutter: stable;
       padding: 0 0 0 0px;
     }
     .pi-table-wrap.group-remove-target {
@@ -1141,10 +1199,16 @@
       color: #475467;
     }
     .pi-table tr > :first-child {
-      border-left: 1px solid var(--border);
+      border-left: 0;
+    }
+    .pi-table tr > :last-child {
+      border-right: 0;
     }
     .pi-table thead th {
-      border-top: 1px solid var(--border);
+      border-top: 0;
+    }
+    .pi-table tbody tr:last-child > * {
+      border-bottom: 0;
     }
     .pi-table th {
       position: sticky;
@@ -1218,15 +1282,18 @@
       fill: currentColor;
     }
     .pi-table-col-label {
+      position: relative;
       min-width: 0;
       flex: 1 1 auto;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       cursor: grab;
+    }
+    .pi-table-col-label.is-sorted {
+      padding-right: 12px;
     }
     .pi-table-col-label-text {
       min-width: 0;
@@ -1235,11 +1302,16 @@
       white-space: nowrap;
     }
     .pi-table-sort-icon {
+      position: absolute;
+      top: 50%;
+      right: 0;
       width: 10px;
       height: 10px;
       flex: 0 0 auto;
       color: #2f6fec;
       fill: currentColor;
+      pointer-events: none;
+      transform: translateY(-50%);
     }
     .pi-table-col-label:active {
       cursor: grabbing;
@@ -1572,6 +1644,9 @@
     .pi-context-menu-item {
       width: 100%;
       height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
       border: 0;
       border-radius: 5px;
       background: transparent;
@@ -1580,6 +1655,21 @@
       text-align: left;
       font-size: 12px;
       cursor: pointer;
+    }
+    .pi-context-menu-icon {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 14px;
+      color: #667085;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+    .pi-context-menu-item:hover .pi-context-menu-icon {
+      color: #2f6fec;
     }
     .pi-context-menu-item:hover,
     .pi-context-submenu:hover > .pi-context-menu-item,
@@ -2214,7 +2304,10 @@
       <section class="pi-right" aria-label="Project datasets">
         <div class="dataset_toolbar" id="datasetToolbar" aria-label="Dataset table tools">
           <div class="dataset-group-status" id="datasetGroupByStatus" aria-label="Dataset table grouping" role="region"></div>
-          <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Active dataset table filters" hidden></div>
+          <div class="dataset-active-filters" id="datasetActiveFilters" aria-label="Dataset table filters">
+            <span class="dataset-filter-label">Filter:</span>
+            <span class="dataset-filter-none">None</span>
+          </div>
           <div class="dataset-toolbar-status" id="cachedDatasetStatus" aria-live="polite"></div>
           <button class="dataset-index-update-btn" id="datasetIndexUpdateBtn" type="button" title="Reload dataset table from updated index" aria-label="Reload dataset table from updated index" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -2262,8 +2355,21 @@
       <button class="pi-context-menu-item" type="button" role="menuitem" disabled>Reset Columns</button>
     </div>
     <div class="pi-table-group-context-menu" id="datasetGroupContextMenu" role="menu" aria-hidden="true">
-      <button class="pi-context-menu-item" type="button" role="menuitem" data-group-action="collapse-all">Collapse all</button>
-      <button class="pi-context-menu-item" type="button" role="menuitem" data-group-action="expand-all">Expand all</button>
+      <button class="pi-context-menu-item" type="button" role="menuitem" data-group-action="collapse-all">
+        <svg class="pi-context-menu-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <rect x="3" y="3" width="10" height="10" rx="2"></rect>
+          <path d="M5.25 8h5.5"></path>
+        </svg>
+        <span>Collapse all</span>
+      </button>
+      <button class="pi-context-menu-item" type="button" role="menuitem" data-group-action="expand-all">
+        <svg class="pi-context-menu-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <rect x="3" y="3" width="10" height="10" rx="2"></rect>
+          <path d="M5.25 8h5.5"></path>
+          <path d="M8 5.25v5.5"></path>
+        </svg>
+        <span>Expand all</span>
+      </button>
     </div>
     <div class="pi-table-row-context-menu" id="datasetRowContextMenu" role="menu" aria-hidden="true">
       <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="view">View</button>
@@ -2355,6 +2461,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260702a"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260705b"></script>
 </body>
 </html>

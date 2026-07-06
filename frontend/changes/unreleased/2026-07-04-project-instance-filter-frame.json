@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Refined the Project Instance dataset filter toolbar to show a framed filter status with hoverable column chips."
+}

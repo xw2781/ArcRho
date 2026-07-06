@@ -1,0 +1,51 @@
+{
+  "projectInstance": {
+    "datasetTable": {
+      "columns": [
+        "name",
+        "dataFormat",
+        "category",
+        "methodType",
+        "status",
+        "user",
+        "formula",
+        "lastModified",
+        "created",
+        "datasetTypeName"
+      ],
+      "widths": {
+        "name": 342,
+        "status": 69,
+        "datasetTypeName": 301,
+        "dataFormat": 142,
+        "formula": 330,
+        "category": 133,
+        "methodType": 137,
+        "lastModified": 151,
+        "created": 142,
+        "user": 129
+      },
+      "filters": {
+        "name": [],
+        "status": [],
+        "datasetTypeName": [],
+        "dataFormat": [],
+        "formula": [],
+        "category": [],
+        "methodType": [],
+        "lastModified": [],
+        "created": [],
+        "user": []
+      },
+      "groupBy": [
+        "dataFormat",
+        "category"
+      ],
+      "collapsedGroups": [],
+      "sort": {
+        "key": "",
+        "dir": "asc"
+      }
+    }
+  }
+}

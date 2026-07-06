@@ -7,10 +7,12 @@ export function installProjectInstanceDatasetTable(ctx) {
     loadProjectUserPreferences,
     scheduleProjectUserPreferencesSave,
   } = ctx;
-  const { DATASET_TABLE_COLUMNS, DATASET_COLUMNS, DATASET_TABLE_AUTOFIT_MAX_WIDTH, DATASET_TABLE_AUTOFIT_CELL_EXTRA_WIDTH, DATASET_TABLE_AUTOFIT_HEADER_EXTRA_WIDTH, DATASET_TABLE_BLANK_LABEL, DATASET_FILTER_CHIP_VALUE_LIMIT } = ctx.constants;
+  const { DATASET_TABLE_COLUMNS, DATASET_COLUMNS, DATASET_TABLE_DEFAULT_WIDTHS, DATASET_TABLE_AUTOFIT_MAX_WIDTH, DATASET_TABLE_AUTOFIT_CELL_EXTRA_WIDTH, DATASET_TABLE_AUTOFIT_HEADER_EXTRA_WIDTH, DATASET_TABLE_BLANK_LABEL } = ctx.constants;
   const { datasetTablePreferenceWidthKeys, datasetTableView, cachedDatasetFilter, datasetTableSelection } = state;
   const DATASET_COLUMN_DRAG_TYPE = "text/x-pi-column";
   const DATASET_GROUP_DRAG_TYPE = "text/x-pi-group-key";
+  const DATASET_FILTER_DRAG_TYPE = "text/x-pi-filter-key";
+  const DATASET_TABLE_PREFERENCES_LOAD_TIMEOUT_MS = 5000;
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
   const finishPageLoading = (...args) => api.finishPageLoading(...args);
   const focusProjectInstancePage = (...args) => api.focusProjectInstancePage(...args);
@@ -65,17 +67,51 @@ function getDatasetFilterActiveValues(key, context = null) {
     );
 }
 
+function isDatasetFilterAllValuesSelected(selected, options) {
+  return (
+    selected instanceof Set
+    && Array.isArray(options)
+    && options.length > 0
+    && selected.size === options.length
+    && options.every((opt) => selected.has(opt.key))
+  );
+}
+
+function isDatasetExplicitAllFilter(key, context = null) {
+  const normalized = toText(key);
+  if (!isDatasetColumnFilterable(normalized)) return false;
+  if (!state.datasetTableExplicitAllFilterKeys?.has?.(normalized)) return false;
+  const options = getDatasetColumnOptions(normalized, context);
+  if (!options.length) return false;
+  const selected = context?.selectionsByKey?.get?.(normalized) || getDatasetFilterSelection(normalized, options);
+  if (!(selected instanceof Set)) return false;
+  if (selected.size === 0) return true;
+  return isDatasetFilterAllValuesSelected(selected, options);
+}
+
+function isPointInsideDatasetActiveFiltersFrame(clientX, clientY) {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return true;
+  if (clientX === 0 && clientY === 0) return true;
+  const rect = els.datasetActiveFilters?.getBoundingClientRect?.();
+  if (!rect) return true;
+  return (
+    clientX >= rect.left
+    && clientX <= rect.right
+    && clientY >= rect.top
+    && clientY <= rect.bottom
+  );
+}
+
 function getDatasetActiveFilterSummaries(context = null) {
   const summaries = [];
   for (const col of DATASET_TABLE_COLUMNS) {
     const values = getDatasetFilterActiveValues(col.key, context);
-    if (!values.length) continue;
-    const visible = values.slice(0, DATASET_FILTER_CHIP_VALUE_LIMIT).join(", ");
+    const explicitAll = isDatasetExplicitAllFilter(col.key, context);
+    if (!values.length && !explicitAll) continue;
     summaries.push({
       key: col.key,
       label: col.label,
-      text: `${col.label}: ${visible}${values.length > DATASET_FILTER_CHIP_VALUE_LIMIT ? "..." : ""}`,
-      title: `${col.label}: ${values.join(", ")}`,
+      explicitAll,
     });
   }
   return summaries;
@@ -83,85 +119,86 @@ function getDatasetActiveFilterSummaries(context = null) {
 
 function clearDatasetColumnFilter(key) {
   const normalized = toText(key);
+  if (!normalized) return;
+  state.datasetTableExplicitAllFilterKeys?.delete?.(normalized);
   if (!isDatasetColumnFilterable(normalized)) {
     datasetTableView.filters.delete(normalized);
     return;
   }
   if (!getDatasetColumn(normalized) || !datasetTableView.filters.has(normalized)) return;
-  hideDatasetFilterTooltip();
   datasetTableView.filters.delete(normalized);
   closeDatasetTableFilterPopover();
   saveDatasetTablePreferences();
   renderDatasetTable();
 }
 
-function ensureDatasetFilterTooltip() {
-  if (state.datasetFilterTooltip?.isConnected) return state.datasetFilterTooltip;
-  state.datasetFilterTooltip = document.createElement("div");
-  state.datasetFilterTooltip.className = "dataset-filter-chip-tooltip";
-  state.datasetFilterTooltip.setAttribute("role", "tooltip");
-  state.datasetFilterTooltip.setAttribute("aria-hidden", "true");
-  document.body.appendChild(state.datasetFilterTooltip);
-  return state.datasetFilterTooltip;
-}
-
-function positionDatasetFilterTooltip(chip) {
-  if (!state.datasetFilterTooltip?.classList?.contains("active") || !chip?.getBoundingClientRect) return;
-  const chipRect = chip.getBoundingClientRect();
-  const tooltipRect = state.datasetFilterTooltip.getBoundingClientRect();
-  const pad = 8;
-  const left = Math.max(pad, Math.min(chipRect.left, window.innerWidth - tooltipRect.width - pad));
-  const top = Math.max(pad, Math.min(chipRect.bottom + 6, window.innerHeight - tooltipRect.height - pad));
-  state.datasetFilterTooltip.style.left = `${Math.round(left)}px`;
-  state.datasetFilterTooltip.style.top = `${Math.round(top)}px`;
-}
-
-function showDatasetFilterTooltip(chip) {
-  const text = toText(chip?.dataset?.tooltip);
-  if (!text) return;
-  const tooltip = ensureDatasetFilterTooltip();
-  tooltip.textContent = text;
-  tooltip.classList.add("active");
-  tooltip.setAttribute("aria-hidden", "false");
-  window.requestAnimationFrame(() => positionDatasetFilterTooltip(chip));
-}
-
-function hideDatasetFilterTooltip() {
-  if (!state.datasetFilterTooltip) return;
-  state.datasetFilterTooltip.classList.remove("active");
-  state.datasetFilterTooltip.setAttribute("aria-hidden", "true");
-}
-
 function syncDatasetActiveFiltersToolbar(context = null) {
   const wrap = els.datasetActiveFilters;
   if (!wrap) return;
-  hideDatasetFilterTooltip();
   const summaries = getDatasetActiveFilterSummaries(context);
   wrap.replaceChildren();
-  wrap.hidden = summaries.length === 0;
+  wrap.hidden = false;
+  wrap.setAttribute("aria-label", summaries.length ? "Active dataset table filters" : "Dataset table filters: none");
+  const frameLabel = document.createElement("span");
+  frameLabel.className = "dataset-filter-label";
+  frameLabel.textContent = "Filter:";
+  wrap.appendChild(frameLabel);
+  if (!summaries.length) {
+    const none = document.createElement("span");
+    none.className = "dataset-filter-none";
+    none.textContent = "None";
+    wrap.appendChild(none);
+    if (state.datasetTableFilterOpenMode === "active-filter") closeDatasetTableFilterPopover();
+    return;
+  }
   for (const item of summaries) {
-    const chip = document.createElement("span");
+    const chip = document.createElement("button");
+    chip.type = "button";
     chip.className = "dataset-filter-chip";
+    chip.classList.toggle("is-all", !!item.explicitAll);
     chip.dataset.filterKey = item.key;
-    chip.dataset.tooltip = item.title;
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "dataset-filter-chip-close";
-    close.dataset.filterKey = item.key;
-    close.setAttribute("aria-label", `Clear ${item.label} filter`);
-    close.innerHTML = `
-      <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-        <path d="M3 3l6 6M9 3L3 9"></path>
-      </svg>
-    `;
+    chip.draggable = true;
+    chip.setAttribute("aria-label", item.explicitAll ? `Show ${item.label} filter: All` : `Show ${item.label} filter`);
+    chip.setAttribute("aria-haspopup", "menu");
     const label = document.createElement("span");
     label.className = "dataset-filter-chip-label";
-    label.textContent = item.text;
-    chip.append(close, label);
-    chip.addEventListener("mouseenter", () => showDatasetFilterTooltip(chip));
-    chip.addEventListener("mousemove", () => positionDatasetFilterTooltip(chip));
-    chip.addEventListener("mouseleave", hideDatasetFilterTooltip);
+    label.textContent = item.label;
+    chip.append(label);
+    chip.addEventListener("dragstart", (event) => {
+      event.dataTransfer?.setData(DATASET_FILTER_DRAG_TYPE, item.key);
+      event.dataTransfer?.setData("text/plain", item.label);
+      event.dataTransfer.effectAllowed = "move";
+      state.datasetTableFilterDragSourceKey = item.key;
+      chip.classList.add("dragging");
+      closeDatasetTableFilterPopover();
+    });
+    chip.addEventListener("dragend", (event) => {
+      chip.classList.remove("dragging");
+      const key = event.dataTransfer?.getData(DATASET_FILTER_DRAG_TYPE) || state.datasetTableFilterDragSourceKey || item.key;
+      state.datasetTableFilterDragSourceKey = "";
+      if (isPointInsideDatasetActiveFiltersFrame(event.clientX, event.clientY)) return;
+      clearDatasetColumnFilter(key);
+    });
+    chip.addEventListener("mouseenter", () => openDatasetActiveFilterChipPopover(chip));
+    chip.addEventListener("mouseleave", () => {
+      state.datasetTableFilterHoveringTrigger = false;
+      scheduleDatasetTableFilterHoverClose();
+    });
+    chip.addEventListener("focus", () => openDatasetActiveFilterChipPopover(chip));
+    chip.addEventListener("blur", () => {
+      state.datasetTableFilterHoveringTrigger = false;
+      scheduleDatasetTableFilterHoverClose();
+    });
     wrap.appendChild(chip);
+  }
+  if (state.datasetTableFilterOpenMode === "active-filter" && state.datasetTableFilterColumn) {
+    const nextAnchor = findDatasetActiveFilterChip(state.datasetTableFilterColumn);
+    if (nextAnchor) {
+      state.datasetTableFilterAnchor = nextAnchor;
+      positionDatasetTableFilterPopover();
+    } else {
+      closeDatasetTableFilterPopover();
+    }
   }
 }
 
@@ -171,6 +208,10 @@ function clearDatasetGroupDropState() {
   for (const chip of els.datasetGroupByStatus?.querySelectorAll?.(".dataset-group-chip.group-drag-before, .dataset-group-chip.group-drag-after") || []) {
     chip.classList.remove("group-drag-before", "group-drag-after");
   }
+}
+
+function clearDatasetActiveFilterDropState() {
+  els.datasetActiveFilters?.classList?.remove("drag-over", "drag-invalid");
 }
 
 function syncDatasetGroupByToolbar() {
@@ -184,9 +225,18 @@ function syncDatasetGroupByToolbar() {
   label.textContent = "Group by:";
   const placeholder = document.createElement("span");
   placeholder.className = "dataset-group-placeholder";
-  placeholder.textContent = keys.length
-    ? "Drag a column header here"
-    : "Drag a column header here to group by that column";
+  if (keys.length) {
+    placeholder.classList.add("dataset-group-add-hint");
+    placeholder.setAttribute("aria-label", "Drag a column header here to group by ...");
+    placeholder.innerHTML = `
+      <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+        <path d="M6 2v8M2 6h8"></path>
+      </svg>
+      <span class="dataset-group-hint-tooltip" role="tooltip">Drag a column header here to group by ...</span>
+    `;
+  } else {
+    placeholder.textContent = "Drag a column header here to group by that column";
+  }
   wrap.appendChild(label);
   if (!keys.length) {
     wrap.appendChild(placeholder);
@@ -232,6 +282,7 @@ function syncDatasetGroupByToolbar() {
     });
     chip.addEventListener("dragend", () => {
       clearDatasetGroupDropState();
+      clearDatasetActiveFilterDropState();
       clearDatasetColumnDragIndicators();
       removeDatasetColumnDragImage();
       state.datasetGroupDragSourceKey = "";
@@ -523,7 +574,7 @@ function getDatasetTablePreferencePayload() {
       continue;
     }
     const options = getDatasetColumnOptions(key);
-    if (options.length && selected.size === options.length && options.every((opt) => selected.has(opt.key))) {
+    if (isDatasetFilterAllValuesSelected(selected, options)) {
       filters[key] = [];
       continue;
     }
@@ -561,6 +612,7 @@ function getDatasetTablePreferencesSource(prefs) {
 
 function applyDatasetTablePreferences(source) {
   datasetTablePreferenceWidthKeys.clear();
+  state.datasetTableExplicitAllFilterKeys?.clear?.();
   const prefs = source && typeof source === "object" && !Array.isArray(source) ? source : {};
   const known = new Set(DATASET_TABLE_COLUMNS.map((col) => col.key));
   if (Array.isArray(prefs.columns)) {
@@ -604,18 +656,33 @@ function applyDatasetTablePreferences(source) {
   };
 }
 
+function withDatasetTablePreferencesTimeout(promise) {
+  let timer = 0;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => {
+      reject(new Error("Project Instance dataset table preferences timed out."));
+    }, DATASET_TABLE_PREFERENCES_LOAD_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) window.clearTimeout(timer);
+  });
+}
+
 async function loadDatasetTablePreferences() {
   if (!projectName || state.datasetTablePreferencesLoaded) {
     state.datasetTablePreferencesLoaded = true;
     return;
   }
+  beginPageLoading("preferences");
   try {
-    const prefs = await loadProjectUserPreferences(projectName);
+    const prefs = await withDatasetTablePreferencesTimeout(loadProjectUserPreferences(projectName));
     applyDatasetTablePreferences(getDatasetTablePreferencesSource(prefs));
   } catch (err) {
     console.warn("Failed to load project instance dataset table preferences:", err);
+    setStatus("Project Instance table preferences were not loaded; using defaults.", true);
   } finally {
     state.datasetTablePreferencesLoaded = true;
+    finishPageLoading("preferences");
   }
 }
 
@@ -1157,10 +1224,14 @@ function toggleDatasetTableSort(key) {
   if (!getDatasetColumn(key)) return;
   const currentKey = toText(datasetTableView.sort?.key);
   const currentDir = datasetTableView.sort?.dir === "desc" ? "desc" : "asc";
-  datasetTableView.sort = {
-    key,
-    dir: currentKey === key && currentDir === "asc" ? "desc" : "asc",
-  };
+  if (currentKey === key && currentDir === "desc") {
+    datasetTableView.sort = { key: "", dir: "asc" };
+  } else {
+    datasetTableView.sort = {
+      key,
+      dir: currentKey === key && currentDir === "asc" ? "desc" : "asc",
+    };
+  }
   saveDatasetTablePreferences();
   renderDatasetTable();
 }
@@ -1354,6 +1425,7 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
   label.appendChild(labelText);
   const isSorted = datasetTableView.sort?.key === col.key;
   if (isSorted) {
+    label.classList.add("is-sorted");
     label.insertAdjacentHTML("beforeend", getSortIconSvg(datasetTableView.sort?.dir));
   }
   label.addEventListener("click", (event) => {
@@ -1371,6 +1443,7 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
     setDatasetColumnDragImage(event, col.label);
   });
   label.addEventListener("dragend", () => {
+    clearDatasetActiveFilterDropState();
     clearDatasetColumnDragIndicators();
     removeDatasetColumnDragImage();
     window.setTimeout(() => {
@@ -1406,7 +1479,7 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
   resizer.addEventListener("dblclick", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    autoFitDatasetTableColumn(col.key, colIndex);
+    resetDatasetTableColumnDefaultWidth(col.key);
   });
   cell.appendChild(resizer);
   th.appendChild(cell);
@@ -1688,40 +1761,11 @@ function startDatasetTableColumnResize(event, key) {
   document.addEventListener("mouseup", onUp, true);
 }
 
-function autoFitDatasetTableColumn(key, colIndex) {
+function resetDatasetTableColumnDefaultWidth(key) {
   const col = getDatasetColumn(key);
   if (!col) return;
-  if (col.key === "status") {
-    setDatasetTableColumnWidth(key, getDatasetStatusAutoFitWidth(col));
-    datasetTablePreferenceWidthKeys.add(key);
-    saveDatasetTablePreferences();
-    return;
-  }
-  let width = col.minWidth || 80;
-  const rows = els.datasetTableSurface?.querySelectorAll?.(".pi-table tbody tr") || [];
-  for (const tr of rows) {
-    const td = tr.children[colIndex];
-    if (
-      !td
-      || td.classList.contains("pi-table-empty")
-      || tr.classList.contains("pi-table-group-row")
-      || Number(td.colSpan || 1) > 1
-    ) continue;
-    width = Math.max(
-      width,
-      Math.min(
-        DATASET_TABLE_AUTOFIT_MAX_WIDTH,
-        measureDatasetTableText(td.textContent || "") + DATASET_TABLE_AUTOFIT_CELL_EXTRA_WIDTH
-      )
-    );
-  }
-  width = Math.max(
-    width,
-    Math.min(
-      DATASET_TABLE_AUTOFIT_MAX_WIDTH,
-      measureDatasetTableText(col.label) + DATASET_TABLE_AUTOFIT_HEADER_EXTRA_WIDTH
-    )
-  );
+  const defaultWidth = Number(DATASET_TABLE_DEFAULT_WIDTHS?.[key]);
+  const width = Number.isFinite(defaultWidth) ? defaultWidth : col.minWidth || 120;
   setDatasetTableColumnWidth(key, width);
   datasetTablePreferenceWidthKeys.add(key);
   saveDatasetTablePreferences();
@@ -2300,14 +2344,57 @@ function applyDatasetRowContextAction(action) {
   }
 }
 
+function clearDatasetTableFilterHoverCloseTimer() {
+  if (!state.datasetTableFilterHoverCloseTimer) return;
+  window.clearTimeout(state.datasetTableFilterHoverCloseTimer);
+  state.datasetTableFilterHoverCloseTimer = 0;
+}
+
+function scheduleDatasetTableFilterHoverClose() {
+  if (state.datasetTableFilterOpenMode !== "active-filter") return;
+  clearDatasetTableFilterHoverCloseTimer();
+  state.datasetTableFilterHoverCloseTimer = window.setTimeout(() => {
+    state.datasetTableFilterHoverCloseTimer = 0;
+    if (state.datasetTableFilterHoveringTrigger || state.datasetTableFilterHoveringPopover) return;
+    closeDatasetTableFilterPopover();
+  }, 160);
+}
+
+function getDatasetTableFilterReopenAnchor(key, mode) {
+  if (mode === "active-filter") return findDatasetActiveFilterChip(key);
+  return findDatasetFilterButton(key);
+}
+
+function reopenDatasetTableFilterPopoverAfterChange(key) {
+  const mode = state.datasetTableFilterOpenMode || "button";
+  const nextAnchor = getDatasetTableFilterReopenAnchor(key, mode);
+  if (!nextAnchor) {
+    closeDatasetTableFilterPopover();
+    return;
+  }
+  openDatasetTableFilterPopover(key, nextAnchor, { mode });
+}
+
+function openDatasetActiveFilterChipPopover(chip) {
+  const key = toText(chip?.dataset?.filterKey);
+  if (!key || !isDatasetColumnFilterable(key)) return;
+  state.datasetTableFilterHoveringTrigger = true;
+  clearDatasetTableFilterHoverCloseTimer();
+  openDatasetTableFilterPopover(key, chip, { mode: "active-filter" });
+}
+
 function closeDatasetTableFilterPopover() {
   const pop = els.datasetTableFilterPopover;
   if (!pop) return;
+  clearDatasetTableFilterHoverCloseTimer();
   pop.classList.remove("open");
   pop.setAttribute("aria-hidden", "true");
   pop.innerHTML = "";
   state.datasetTableFilterColumn = "";
   state.datasetTableFilterAnchor = null;
+  state.datasetTableFilterOpenMode = "";
+  state.datasetTableFilterHoveringTrigger = false;
+  state.datasetTableFilterHoveringPopover = false;
 }
 
 function positionDatasetTableFilterPopover() {
@@ -2318,7 +2405,7 @@ function positionDatasetTableFilterPopover() {
   positionFixedMenu(pop, rect.left, rect.bottom + 6);
 }
 
-function openDatasetTableFilterPopover(key, anchor) {
+function openDatasetTableFilterPopover(key, anchor, popoverOptions = {}) {
   const col = getDatasetColumn(key);
   const pop = els.datasetTableFilterPopover;
   if (!col || !pop || !isDatasetColumnFilterable(key)) return;
@@ -2342,13 +2429,13 @@ function openDatasetTableFilterPopover(key, anchor) {
   allRow.className = "pi-table-filter-option";
   const allCb = document.createElement("input");
   allCb.type = "checkbox";
-  allCb.checked = selected.size === 0;
+  allCb.checked = selected.size === 0 || isDatasetFilterAllValuesSelected(selected, options);
   allCb.addEventListener("change", () => {
     selected.clear();
+    state.datasetTableExplicitAllFilterKeys?.add?.(key);
     saveDatasetTablePreferences();
     renderDatasetTable();
-    const nextAnchor = findDatasetFilterButton(key);
-    if (nextAnchor) openDatasetTableFilterPopover(key, nextAnchor);
+    reopenDatasetTableFilterPopoverAfterChange(key);
   });
   const allText = document.createElement("span");
   allText.textContent = "All";
@@ -2364,10 +2451,26 @@ function openDatasetTableFilterPopover(key, anchor) {
     cb.addEventListener("change", () => {
       if (cb.checked) selected.add(opt.key);
       else selected.delete(opt.key);
+      if (isDatasetFilterAllValuesSelected(selected, options)) {
+        state.datasetTableExplicitAllFilterKeys?.add?.(key);
+      } else {
+        state.datasetTableExplicitAllFilterKeys?.delete?.(key);
+      }
       saveDatasetTablePreferences();
       renderDatasetTable();
-      const nextAnchor = findDatasetFilterButton(key);
-      if (nextAnchor) openDatasetTableFilterPopover(key, nextAnchor);
+      reopenDatasetTableFilterPopoverAfterChange(key);
+    });
+    row.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.datasetTableExplicitAllFilterKeys?.delete?.(key);
+      selected.clear();
+      for (const item of options) {
+        if (item.key !== opt.key) selected.add(item.key);
+      }
+      saveDatasetTablePreferences();
+      renderDatasetTable();
+      reopenDatasetTableFilterPopoverAfterChange(key);
     });
     const text = document.createElement("span");
     text.textContent = opt.label;
@@ -2384,6 +2487,7 @@ function openDatasetTableFilterPopover(key, anchor) {
 
   state.datasetTableFilterColumn = key;
   state.datasetTableFilterAnchor = anchor || findDatasetFilterButton(key);
+  state.datasetTableFilterOpenMode = popoverOptions.mode || "button";
   pop.classList.add("open");
   pop.setAttribute("aria-hidden", "false");
   positionDatasetTableFilterPopover();
@@ -2410,10 +2514,62 @@ function findDatasetFilterButton(key) {
   return th?.querySelector?.(".pi-table-filter-btn") || null;
 }
 
+function findDatasetActiveFilterChip(key) {
+  return els.datasetActiveFilters?.querySelector?.(`.dataset-filter-chip[data-filter-key="${CSS.escape(key)}"]`) || null;
+}
+
+function getDatasetColumnDragKey(event) {
+  return event.dataTransfer?.getData(DATASET_COLUMN_DRAG_TYPE) || state.datasetTableColumnDragSourceKey || "";
+}
+
+function addDatasetColumnFilterFromDrop(key) {
+  const normalized = toText(key);
+  if (!isDatasetColumnFilterable(normalized)) {
+    const col = getDatasetColumn(normalized);
+    setStatus(`${col?.label || "This column"} cannot be filtered.`);
+    return false;
+  }
+  const options = getDatasetColumnOptions(normalized);
+  if (!options.length) {
+    const col = getDatasetColumn(normalized);
+    setStatus(`${col?.label || "This column"} has no filter values.`);
+    return false;
+  }
+  const selected = getDatasetFilterSelection(normalized, options);
+  selected.clear();
+  state.datasetTableExplicitAllFilterKeys?.add?.(normalized);
+  saveDatasetTablePreferences();
+  renderDatasetTable();
+  const chip = findDatasetActiveFilterChip(normalized);
+  if (chip) openDatasetActiveFilterChipPopover(chip);
+  return true;
+}
+
+function handleDatasetActiveFiltersDragOver(event) {
+  if (!hasDataTransferType(event.dataTransfer, DATASET_COLUMN_DRAG_TYPE)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const key = getDatasetColumnDragKey(event);
+  const valid = !key || isDatasetColumnFilterable(key);
+  event.dataTransfer.dropEffect = valid ? "move" : "none";
+  els.datasetActiveFilters?.classList?.toggle("drag-over", valid);
+  els.datasetActiveFilters?.classList?.toggle("drag-invalid", !valid);
+}
+
+function handleDatasetActiveFiltersDrop(event) {
+  if (!hasDataTransferType(event.dataTransfer, DATASET_COLUMN_DRAG_TYPE)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const key = getDatasetColumnDragKey(event);
+  clearDatasetActiveFilterDropState();
+  clearDatasetGroupDropState();
+  addDatasetColumnFilterFromDrop(key);
+}
+
 function handleDatasetGroupZoneDragOver(event) {
   if (!hasDataTransferType(event.dataTransfer, DATASET_COLUMN_DRAG_TYPE)) return;
   event.preventDefault();
-  const key = event.dataTransfer?.getData(DATASET_COLUMN_DRAG_TYPE) || "";
+  const key = getDatasetColumnDragKey(event);
   const valid = !key || isDatasetColumnGroupable(key);
   event.dataTransfer.dropEffect = valid ? "move" : "none";
   els.datasetGroupByStatus?.classList?.toggle("drag-over", valid);
@@ -2511,19 +2667,28 @@ function initDatasetTableInteractions() {
     event.stopPropagation();
     applyDatasetRowContextAction(item.dataset.rowAction);
   });
-  els.datasetActiveFilters?.addEventListener("click", (event) => {
-    const close = event.target?.closest?.(".dataset-filter-chip-close");
-    if (!close) return;
-    event.preventDefault();
-    event.stopPropagation();
-    clearDatasetColumnFilter(close.dataset.filterKey);
+  els.datasetActiveFilters?.addEventListener("dragover", handleDatasetActiveFiltersDragOver);
+  els.datasetActiveFilters?.addEventListener("dragleave", (event) => {
+    if (els.datasetActiveFilters?.contains(event.relatedTarget)) return;
+    clearDatasetActiveFilterDropState();
   });
-  els.datasetActiveFilters?.addEventListener("contextmenu", (event) => {
+  els.datasetActiveFilters?.addEventListener("drop", handleDatasetActiveFiltersDrop);
+  els.datasetActiveFilters?.addEventListener("click", (event) => {
     const chip = event.target?.closest?.(".dataset-filter-chip");
     if (!chip) return;
     event.preventDefault();
     event.stopPropagation();
-    clearDatasetColumnFilter(chip.dataset.filterKey);
+    openDatasetActiveFilterChipPopover(chip);
+  });
+  els.datasetTableFilterPopover?.addEventListener("mouseenter", () => {
+    if (state.datasetTableFilterOpenMode !== "active-filter") return;
+    state.datasetTableFilterHoveringPopover = true;
+    clearDatasetTableFilterHoverCloseTimer();
+  });
+  els.datasetTableFilterPopover?.addEventListener("mouseleave", () => {
+    if (state.datasetTableFilterOpenMode !== "active-filter") return;
+    state.datasetTableFilterHoveringPopover = false;
+    scheduleDatasetTableFilterHoverClose();
   });
   document.addEventListener("mousedown", (event) => {
     if (els.datasetTableContextMenu?.contains(event.target)) return;
@@ -2532,6 +2697,7 @@ function initDatasetTableInteractions() {
     if (els.datasetTableFilterPopover?.contains(event.target)) return;
     if (els.datasetAddPickerOverlay?.contains(event.target)) return;
     if (event.target?.closest?.(".pi-table-filter-btn")) return;
+    if (event.target?.closest?.(".dataset-filter-chip")) return;
     closeDatasetTableContextMenu();
     closeDatasetGroupContextMenu();
     closeDatasetRowContextMenu();
@@ -2641,7 +2807,6 @@ async function loadDatasets() {
     applyDatasetRowContextAction,
     applyDatasetRowSelection,
     applyDatasetTablePreferences,
-    autoFitDatasetTableColumn,
     autoFitInitialDatasetTableWidths,
     buildDatasetGroupParts,
     buildDatasetRecord,
@@ -2662,7 +2827,6 @@ async function loadDatasets() {
     createDatasetTable,
     createDatasetTableHeaderCell,
     deleteSelectedDatasetRows,
-    ensureDatasetFilterTooltip,
     findDatasetFilterButton,
     focusDatasetTableSurface,
     getActiveDatasetSelectionIndex,
@@ -2695,7 +2859,6 @@ async function loadDatasets() {
     getSelectedDatasetRecords,
     getSortIconSvg,
     handleDatasetTableKeyDown,
-    hideDatasetFilterTooltip,
     initDatasetDeleteConfirmInteractions,
     initDatasetTableInteractions,
     isDatasetColumnFilterActive,
@@ -2709,12 +2872,12 @@ async function loadDatasets() {
     openDatasetTableFilterPopover,
     openDfmTabForDataset,
     parseDatasetGroupId,
-    positionDatasetFilterTooltip,
     positionDatasetTableFilterPopover,
     positionFixedMenu,
     pruneDatasetTableSelection,
     recordSelectedDfmObject,
     renderDatasetTable,
+    resetDatasetTableColumnDefaultWidth,
     resolveDatasetDeleteConfirm,
     restoreDatasetTableSelection,
     rowMatchesDatasetTableFilters,
@@ -2727,7 +2890,6 @@ async function loadDatasets() {
     setDatasetTableColumnWidth,
     setEmptyTable,
     showDatasetDeleteConfirm,
-    showDatasetFilterTooltip,
     showDatasetGroupContextMenu,
     showDatasetRowContextMenu,
     showDatasetTableContextMenu,

@@ -40,6 +40,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `get_reserving_class_values_path`
   - `get_root_path`
   - `get_scripting_prefs_path`
+  - `get_username_index_path`
   - `load_workspace_paths`
   - `refresh_runtime_paths`
   - `save_workspace_paths`

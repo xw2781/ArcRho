@@ -17,7 +17,7 @@ from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import dataset_sidecar_status_service
 
 INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 15
+INDEX_VERSION = 17
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
 _INDEX_WRITE_LOCKS: Dict[str, threading.Lock] = {}
@@ -261,7 +261,78 @@ def _metadata_text(metadata: Dict[str, Any], keys: Tuple[str, ...]) -> str:
     return ""
 
 
-def _dataset_type_categories(project_name: str) -> Dict[str, str]:
+def _username_key(value: Any) -> str:
+    return _clean_text(value).casefold()
+
+
+def _load_username_display_names() -> Dict[str, str]:
+    try:
+        path = config.get_username_index_path()
+    except Exception:
+        return {}
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except Exception:
+        return {}
+
+    entries: List[Any]
+    if isinstance(raw, dict):
+        entries = raw.get("users") if isinstance(raw.get("users"), list) else []
+        if not entries:
+            out = {}
+            for key, value in raw.items():
+                if key == "users":
+                    continue
+                login = _username_key(key)
+                full_name = _clean_text(value)
+                if login and full_name:
+                    out[login] = full_name
+            return out
+    elif isinstance(raw, list):
+        entries = raw
+    else:
+        entries = []
+
+    out: Dict[str, str] = {}
+    for item in entries:
+        if isinstance(item, dict):
+            login = _username_key(
+                item.get("login_name")
+                or item.get("Login Name")
+                or item.get("username")
+                or item.get("user")
+            )
+            full_name = _clean_text(
+                item.get("full_name")
+                or item.get("Full Name")
+                or item.get("display_name")
+                or item.get("name")
+            )
+        elif isinstance(item, list) and len(item) >= 2:
+            login = _username_key(item[0])
+            full_name = _clean_text(item[1])
+        else:
+            continue
+        if login and full_name:
+            out[login] = full_name
+    return out
+
+
+def _apply_user_display_names(files: List[Dict[str, Any]]) -> None:
+    display_names = _load_username_display_names()
+    if not display_names:
+        return
+    for item in files:
+        user = _clean_text(item.get("user"))
+        if not user:
+            continue
+        item["user"] = display_names.get(_username_key(user), user)
+
+
+def _dataset_type_metadata(project_name: str) -> Dict[str, Dict[str, str]]:
     try:
         from app_server.services import dataset_types_service
 
@@ -273,22 +344,26 @@ def _dataset_type_categories(project_name: str) -> Dict[str, str]:
         data = dataset_types_service.normalize_dataset_types_data(raw)
     except Exception:
         return {}
-    out: Dict[str, str] = {}
+    out: Dict[str, Dict[str, str]] = {}
     for row in data.get("rows") or []:
         if not isinstance(row, list):
             continue
         name = _clean_text(row[0] if len(row) > 0 else "")
         category = _clean_text(row[2] if len(row) > 2 else "")
-        if name and category:
-            out[name.lower()] = category
+        formula = _clean_text(row[4] if len(row) > 4 else "")
+        if name:
+            out[name.lower()] = {
+                "category": category,
+                "formula": formula,
+            }
     return out
 
 
-def _dataset_type_category(dataset_type: Any, categories_by_name: Dict[str, str]) -> str:
+def _dataset_type_info(dataset_type: Any, metadata_by_name: Dict[str, Dict[str, str]]) -> Dict[str, str]:
     name = _clean_text(dataset_type)
     if not name:
-        return ""
-    return categories_by_name.get(name.lower(), "")
+        return {}
+    return metadata_by_name.get(name.lower(), {})
 
 
 def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -555,16 +630,20 @@ def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: Lis
     return sorted(by_name.values(), key=lambda item: _clean_text(item.get("name")).lower())
 
 
-def _apply_dataset_type_categories(files: List[Dict[str, Any]], project_name: str) -> None:
-    categories = _dataset_type_categories(project_name)
-    if not categories:
+def _apply_dataset_type_metadata(files: List[Dict[str, Any]], project_name: str) -> None:
+    metadata_by_name = _dataset_type_metadata(project_name)
+    if not metadata_by_name:
         return
     for item in files:
-        if _clean_text(item.get("dataset_category")):
+        info = _dataset_type_info(item.get("dataset_type") or item.get("name"), metadata_by_name)
+        if not info:
             continue
-        category = _dataset_type_category(item.get("dataset_type") or item.get("name"), categories)
-        if category:
+        category = _clean_text(info.get("category"))
+        if category and not _clean_text(item.get("dataset_category")):
             item["dataset_category"] = category
+        formula = _clean_text(info.get("formula"))
+        if formula and not _clean_text(item.get("formula")):
+            item["formula"] = formula
 
 
 def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -789,7 +868,8 @@ def rebuild_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
         methods = _dedupe_methods(methods)
         _apply_method_types_to_files(physical_files, methods)
         files = _logical_files_from_physical_files(physical_files, methods)
-        _apply_dataset_type_categories(files, project)
+        _apply_dataset_type_metadata(files, project)
+        _apply_user_display_names(files)
         data = {
             "ok": True,
             "version": INDEX_VERSION,

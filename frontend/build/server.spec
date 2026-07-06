@@ -8,9 +8,9 @@ repo_root = build_dir.parent
 monorepo_root = repo_root.parent
 python_api_src = monorepo_root / 'python-api' / 'src'
 
-# Collect the served frontend asset trees.
+# Collect served frontend assets and app-server data files.
 static_files = []
-for asset_dir_name in ('ui', 'icons'):
+for asset_dir_name in ('ui', 'icons', 'app_server/default_preferences'):
     asset_dir = repo_root / asset_dir_name
     if asset_dir.exists():
         for f in asset_dir.rglob('*'):
