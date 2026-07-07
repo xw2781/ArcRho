@@ -1117,7 +1117,6 @@ const LEN_DROPDOWN_CONFIG = {
   },
 };
 
-let syncingLen = false;
 let allProjects = [];
 let lastProjectSelection = "";
 let activeProjectIndex = -1;
@@ -2511,32 +2510,6 @@ function wireLenDropdowns() {
   });
 }
 
-function isLenLinked() {
-  return !!document.getElementById("linkLenChk")?.checked;
-}
-
-function syncLen(from) {
-  const o = document.getElementById("originLenSelect");
-  const d = document.getElementById("devLenSelect");
-  if (!o || !d) return;
-  if (!isLenLinked()) return;
-  if (syncingLen) return;
-
-  syncingLen = true;
-  try {
-    if (from === "origin") {
-      setLenSelectValue("devLenSelect", o.value);
-    } else if (from === "dev") {
-      setLenSelectValue("originLenSelect", d.value);
-    } else {
-      // init / unknown
-      setLenSelectValue("devLenSelect", o.value);
-    }
-  } finally {
-    syncingLen = false;
-  }
-}
-
 function saveLastDsId(dsId) {
   if (!dsId) return;
   try {
@@ -2560,9 +2533,6 @@ function saveTriInputsToStorage() {
     const projectInput = document.getElementById("projectSelect");
     const pathInput = document.getElementById("pathInput");
     const triInput = document.getElementById("triInput");
-    const linkLenChecked = window.ADA_DFM_CONTEXT
-      ? false
-      : !!document.getElementById("linkLenChk")?.checked;
     const payload = {
       project: getStoredInputValue(projectInput),
       path: getStoredInputValue(pathInput),
@@ -2570,7 +2540,6 @@ function saveTriInputsToStorage() {
       instanceName: getDatasetInstanceNameValue(),
       originLen: document.getElementById("originLenSelect")?.value || "",
       devLen: document.getElementById("devLenSelect")?.value || "",
-      linkLen: linkLenChecked,
       cumulative: !!document.getElementById("cumulativeChk")?.checked,
       transposed: !!document.getElementById("transposedChk")?.checked,
       calendar: document.querySelector('input[name="timeMode"][value="calendar"]')?.checked === true,
@@ -2692,11 +2661,6 @@ async function restoreTriInputsFromStorage() {
     devSel.value = String(s.devLen);
   }
   refreshLenDropdowns();
-
-  const linkChk = document.getElementById("linkLenChk");
-  if (linkChk) {
-    linkChk.checked = window.ADA_DFM_CONTEXT ? false : (typeof s.linkLen === "boolean" ? s.linkLen : linkChk.checked);
-  }
 
   const cumChk = document.getElementById("cumulativeChk");
   if (cumChk && typeof s.cumulative === "boolean") cumChk.checked = s.cumulative;
@@ -3413,10 +3377,6 @@ function applyDatasetSettingsToControls(settings = {}) {
   const normalized = normalizeDatasetSettings(settings);
   setLenSelectValue("originLenSelect", String(normalized.origin_length));
   setLenSelectValue("devLenSelect", String(normalized.development_length));
-  const linkChk = document.getElementById("linkLenChk");
-  if (linkChk && normalized.origin_length !== normalized.development_length) {
-    linkChk.checked = false;
-  }
   const cumulativeChk = document.getElementById("cumulativeChk");
   if (cumulativeChk) cumulativeChk.checked = normalized.cumulative;
   const transposedChk = document.getElementById("transposedChk");
@@ -4521,6 +4481,113 @@ function wireDatasetInstanceNameInput() {
   });
 }
 
+function setDatasetTopBarCollapsed(collapsed) {
+  const dataPage = document.getElementById("dsDataPage");
+  const topRow = dataPage?.querySelector(".topRow");
+  const dataTab = document.querySelector('.dsTab[data-page="data"]');
+  if (!dataPage || !topRow) return;
+
+  const isCollapsed = !!collapsed;
+  dataPage.classList.toggle("datasetTopBarCollapsed", isCollapsed);
+  topRow.hidden = isCollapsed;
+  if (dataTab) {
+    dataTab.removeAttribute("title");
+    if (isCollapsed) {
+      dataTab.dataset.datasetTopBarCollapsed = "1";
+      dataTab.dataset.tooltip = "Double-click to show Data controls";
+      if (dataTab.matches(":hover") || document.activeElement === dataTab) {
+        showDatasetDataTabTooltip(dataTab);
+      }
+    } else {
+      hideDatasetDataTabTooltip();
+      delete dataTab.dataset.datasetTopBarCollapsed;
+      delete dataTab.dataset.tooltip;
+    }
+  }
+
+  requestAnimationFrame(() => {
+    renderTable();
+  });
+}
+
+function isDatasetTopBarCollapsed() {
+  return document.getElementById("dsDataPage")?.classList.contains("datasetTopBarCollapsed") === true;
+}
+
+function getDatasetDataTabTooltip() {
+  let tooltip = document.getElementById("dsDataTabTooltip");
+  if (tooltip) return tooltip;
+  tooltip = document.createElement("div");
+  tooltip.id = "dsDataTabTooltip";
+  tooltip.className = "dsDataTabTooltip";
+  tooltip.setAttribute("role", "tooltip");
+  tooltip.hidden = true;
+  document.body.appendChild(tooltip);
+  return tooltip;
+}
+
+function positionDatasetDataTabTooltip(tab, tooltip) {
+  const rect = tab.getBoundingClientRect();
+  const margin = 6;
+  tooltip.style.left = "0px";
+  tooltip.style.top = "0px";
+  tooltip.hidden = false;
+  const width = tooltip.offsetWidth || 0;
+  const height = tooltip.offsetHeight || 0;
+  const belowTop = rect.bottom + margin;
+  const aboveTop = rect.top - height - margin;
+  const useAbove = belowTop + height > window.innerHeight - margin && aboveTop >= margin;
+  const top = useAbove ? aboveTop : belowTop;
+  const centeredLeft = rect.left + (rect.width / 2) - (width / 2);
+  const left = Math.max(margin, Math.min(centeredLeft, window.innerWidth - width - margin));
+  tooltip.style.left = `${Math.round(left)}px`;
+  tooltip.style.top = `${Math.round(Math.max(margin, top))}px`;
+}
+
+function showDatasetDataTabTooltip(tab) {
+  if (!tab || !isDatasetTopBarCollapsed()) return;
+  const text = tab.dataset.tooltip || "";
+  if (!text) return;
+  const tooltip = getDatasetDataTabTooltip();
+  tooltip.textContent = text;
+  tooltip.hidden = false;
+  positionDatasetDataTabTooltip(tab, tooltip);
+  tooltip.classList.add("open");
+}
+
+function hideDatasetDataTabTooltip() {
+  const tooltip = document.getElementById("dsDataTabTooltip");
+  if (!tooltip) return;
+  tooltip.classList.remove("open");
+  tooltip.hidden = true;
+}
+
+function toggleDatasetTopBarCollapsed() {
+  const dataPage = document.getElementById("dsDataPage");
+  const collapsed = !dataPage?.classList.contains("datasetTopBarCollapsed");
+  setDatasetTopBarCollapsed(collapsed);
+  setStatus(collapsed ? "Dataset Data controls hidden." : "Dataset Data controls shown.");
+}
+
+function wireDatasetDataTabTopBarToggle(tabSystem) {
+  const dataTab = document.querySelector('.dsTab[data-page="data"]');
+  if (!dataTab || dataTab.dataset.datasetTopBarToggleWired === "1") return;
+  dataTab.dataset.datasetTopBarToggleWired = "1";
+  setDatasetTopBarCollapsed(false);
+  dataTab.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (tabSystem?.getCurrentTab?.() !== "data") tabSystem?.setActive?.("data");
+    toggleDatasetTopBarCollapsed();
+  });
+  dataTab.addEventListener("mouseenter", () => showDatasetDataTabTooltip(dataTab));
+  dataTab.addEventListener("mouseleave", hideDatasetDataTabTooltip);
+  dataTab.addEventListener("focus", () => showDatasetDataTabTooltip(dataTab));
+  dataTab.addEventListener("blur", hideDatasetDataTabTooltip);
+  window.addEventListener("resize", hideDatasetDataTabTooltip);
+  window.addEventListener("scroll", hideDatasetDataTabTooltip, true);
+}
+
 function wireEvents() {
   wireDatasetInputController({
     state,
@@ -4566,11 +4633,9 @@ function wireEvents() {
     setLastProjectSelection,
     LEN_DROPDOWN_CONFIG,
     closeAllLenDropdowns,
-    syncLen,
     enforceDevLenRule,
     ensureHeadersForProject,
     ensureDevHeadersForProject,
-    isLenLinked,
     bindAutoRunOnEnter,
     redrawChartSafely,
     wireDatasetHostBridge,
@@ -4644,6 +4709,7 @@ async function boot() {
   });
   applyTabbedPageSaveBar(document.getElementById("datasetSaveBar"));
   window.dsTabSystem = dsTabSystem;
+  wireDatasetDataTabTopBarToggle(dsTabSystem);
   wireTabPopoutWindows({
     cssPrefix: "ds",
     tabs: DATASET_TABS,

@@ -69,11 +69,9 @@ export function wireDatasetInputController(deps) {
     setLastProjectSelection,
     LEN_DROPDOWN_CONFIG,
     closeAllLenDropdowns,
-    syncLen,
     enforceDevLenRule,
     ensureHeadersForProject,
     ensureDevHeadersForProject,
-    isLenLinked,
     bindAutoRunOnEnter,
     redrawChartSafely,
     wireDatasetHostBridge,
@@ -520,10 +518,9 @@ export function wireDatasetInputController(deps) {
     if (!inLenWrap) closeAllLenDropdowns();
   });
 
-  // Origin change -> (optional sync) -> enforce rule -> refresh headers -> auto run
+  // Origin change -> enforce rule -> refresh headers -> auto run
   if (originSel) {
     originSel.addEventListener("change", async () => {
-      syncLen("origin");
       enforceDevLenRule({ source: "origin" });
       if (typeof validateManualDatasetLengthChange === "function" && !validateManualDatasetLengthChange()) {
         originSel.blur();
@@ -547,47 +544,9 @@ export function wireDatasetInputController(deps) {
     });
   }
 
-  const linkChk = document.getElementById("linkLenChk");
-  if (linkChk) {
-    linkChk.addEventListener("change", async () => {
-      // Toggling link can change the effective period lengths (origin/dev),
-      // so refresh both header label sets to keep them aligned with the data.
-      const originBefore = document.getElementById("originLenSelect")?.value || "";
-      const devBefore = document.getElementById("devLenSelect")?.value || "";
-      if (isLenLinked()) syncLen("init");
-      enforceDevLenRule({ source: "origin" });
-      if (typeof validateManualDatasetLengthChange === "function" && !validateManualDatasetLengthChange()) {
-        return;
-      }
-
-      saveTriInputsToStorage();
-
-      if (await refreshDraftModelAfterInputChange()) {
-        return;
-      }
-
-      const project = getResolvedProjectValue();
-      if (project) {
-        await ensureHeadersForProject(project);
-        await ensureDevHeadersForProject(project);
-      }
-
-      renderTable();
-      notifyDatasetUpdated();
-      const originAfter = document.getElementById("originLenSelect")?.value || "";
-      const devAfter = document.getElementById("devLenSelect")?.value || "";
-      const changed = originBefore !== originAfter || devBefore !== devAfter;
-      if (changed) {
-        setStatus("Loading dataset...");
-        scheduleAutoRun(0);
-      }
-    });
-  }
-
-  // Dev change -> (optional sync) -> refresh dev headers -> auto run
+  // Dev change -> enforce rule -> refresh dev headers -> auto run
   if (devSel) {
     devSel.addEventListener("change", async () => {
-      syncLen("dev");
       enforceDevLenRule({ source: "dev" });
       if (typeof validateManualDatasetLengthChange === "function" && !validateManualDatasetLengthChange()) {
         devSel.blur();
@@ -601,7 +560,6 @@ export function wireDatasetInputController(deps) {
       }
 
       const project = getResolvedProjectValue();
-      // If len is linked, origin may change too; ensure both headers are consistent.
       if (project) {
         await ensureHeadersForProject(project);
         await ensureDevHeadersForProject(project);

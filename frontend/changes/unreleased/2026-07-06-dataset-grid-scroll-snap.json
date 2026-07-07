@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Removed automatic cell snapping while scrolling the dataset Data tab grid."
+}

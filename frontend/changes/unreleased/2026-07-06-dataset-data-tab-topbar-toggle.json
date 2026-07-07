@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added a Data tab double-click shortcut to hide or show the Dataset Data controls above the grid.",
+  "details": [
+    "The collapsed state now explicitly removes the controls row from layout so the grid can expand.",
+    "The Data tab tooltip appears only while the controls are hidden and uses a light app-styled floating surface."
+  ]
+}

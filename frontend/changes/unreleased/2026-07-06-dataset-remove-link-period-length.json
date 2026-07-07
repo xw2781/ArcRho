@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Removed the Dataset Data tab Link Period Length control so Origin Length and Development Length are adjusted independently.",
+  "details": [
+    "Dataset period lengths still enforce valid origin/development combinations before refresh."
+  ]
+}

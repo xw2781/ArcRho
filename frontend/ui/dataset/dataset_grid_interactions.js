@@ -492,91 +492,6 @@ export function wireDatasetGridInteractions(deps) {
     await writeTextToClipboard(text);
   }
 
-  function getTableRowStepPx(wrap) {
-    const td = wrap?.querySelector("tbody td[data-r][data-c]");
-    if (!td) return 20;
-    const cs = getComputedStyle(td);
-    const h = td.getBoundingClientRect().height;
-    const mt = parseFloat(cs.marginTop || "0") || 0;
-    const mb = parseFloat(cs.marginBottom || "0") || 0;
-    const step = h + mt + mb;
-    return Number.isFinite(step) && step > 0 ? step : 20;
-  }
-
-  function getTableColStepPx(wrap) {
-    const td = wrap?.querySelector("tbody td[data-r][data-c]");
-    if (!td) return 90;
-    const cs = getComputedStyle(td);
-    const w = td.getBoundingClientRect().width;
-    const ml = parseFloat(cs.marginLeft || "0") || 0;
-    const mr = parseFloat(cs.marginRight || "0") || 0;
-    const step = w + ml + mr;
-    return Number.isFinite(step) && step > 0 ? step : 90;
-  }
-
-  function clampScrollLeft(wrap, left) {
-    return Math.max(0, Math.min(left, wrap.scrollWidth - wrap.clientWidth));
-  }
-
-  function clampScrollTop(wrap, top) {
-    return Math.max(0, Math.min(top, wrap.scrollHeight - wrap.clientHeight));
-  }
-
-  function snapTableScrollToGrid(wrap) {
-    if (!wrap) return;
-
-    let targetLeft = wrap.scrollLeft;
-    let targetTop = wrap.scrollTop;
-
-    if (targetLeft > 0) {
-      const colStep = getTableColStepPx(wrap);
-      if (colStep > 0) {
-        targetLeft = clampScrollLeft(wrap, Math.round(targetLeft / colStep) * colStep);
-      }
-    }
-    if (targetTop > 0) {
-      const rowStep = getTableRowStepPx(wrap);
-      if (rowStep > 0) {
-        targetTop = clampScrollTop(wrap, Math.round(targetTop / rowStep) * rowStep);
-      }
-    }
-
-    wrap.scrollTo({
-      left: targetLeft,
-      top: targetTop,
-      behavior: "smooth",
-    });
-  }
-
-  function wireTableScrollSnapAfterIdle(wrap) {
-    if (!wrap || wrap.__arcRhoSnapWired) return;
-    wrap.__arcRhoSnapWired = true;
-
-    let snapTimer = null;
-    let wheelActiveTimer = null;
-    let wheelActive = false;
-
-    const scheduleSnap = () => {
-      if (snapTimer) clearTimeout(snapTimer);
-      snapTimer = setTimeout(() => {
-        if (wheelActive) return;
-        snapTableScrollToGrid(wrap);
-      }, 120);
-    };
-
-    wrap.addEventListener("scroll", scheduleSnap, { passive: true });
-
-    // Pause snap while wheel is active (e.g. Logitech MX Master thumb wheel)
-    wrap.addEventListener("wheel", () => {
-      wheelActive = true;
-      if (wheelActiveTimer) clearTimeout(wheelActiveTimer);
-      wheelActiveTimer = setTimeout(() => {
-        wheelActive = false;
-        scheduleSnap();
-      }, 120);
-    }, { passive: true });
-  }
-
   function wireRectSelectionAndCopy() {
     if (window.__arcRhoRectSelWired) return;
     window.__arcRhoRectSelWired = true;
@@ -589,8 +504,6 @@ export function wireDatasetGridInteractions(deps) {
 
     const wrap = document.getElementById("tableWrap");
     if (!wrap) return;
-
-    wireTableScrollSnapAfterIdle(wrap);
 
     // start drag
     wrap.addEventListener("mousedown", (e) => {

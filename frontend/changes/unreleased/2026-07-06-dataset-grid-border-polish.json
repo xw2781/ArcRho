@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Aligned the Dataset Data grid with the Project Instance table frame style so wrapper and cell borders render as a single clean grid."
+}

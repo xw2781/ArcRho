@@ -24,7 +24,6 @@
       --cell-max-w: 120px;
       --cell-min-w: 90px;
       --cell-h: 20px;
-      --table-scrollbar-size: 20px;
       --table-arrow-btn-size: 19px;
 
       --panel-w: 1000px;
@@ -350,6 +349,10 @@
       flex: 0 0 auto;
     }
 
+    #dsDataPage.datasetTopBarCollapsed .topRow{
+      display: none !important;
+    }
+
     /* =========================
       Dataset Top Bar
     ========================= */
@@ -367,14 +370,13 @@
       --topbar-left-col: max-content;
       --topbar-gap-1-2: 36px;
       --topbar-gap-3-4: 36px;
-      --topbar-gap-5-6: 24px;
       --topbar-input-offset: 0px;
       --topbar-control-height: 28px;
     }
 
     .topbar-grid{
       display: grid;
-      grid-template-columns: var(--topbar-left-col) max-content 72px max-content max-content max-content;
+      grid-template-columns: var(--topbar-left-col) max-content 72px max-content max-content;
       grid-template-rows: auto auto;
       column-gap: 0px;
       row-gap: 10px;
@@ -440,14 +442,6 @@
 
     .topbar-right-stack{
       margin-left: var(--topbar-gap-3-4);
-    }
-
-    .topbar-link-stack{
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      margin-left: var(--topbar-gap-5-6);
-      min-width: 0;
     }
 
     .chk, .rad{
@@ -732,74 +726,6 @@
       padding: 4px 10px;
     }
 
-    /* --- Link chip (🔗 Link + tooltip) --- */
-    #datasetTopBar .linkToggle{
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-
-      height: var(--topbar-control-height);
-      padding: 0 8px;
-
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: #fff;
-
-      cursor: pointer;
-      user-select: none;
-    }
-
-    #datasetTopBar .linkToggle .linkIcon{
-      font-size: 14px;
-      line-height: 1;
-    }
-    #datasetTopBar .linkToggle input{
-      position: absolute;
-      opacity: 0;
-      pointer-events: none;
-    }
-    #datasetTopBar .linkIcon{
-      font-size: 13px;
-      line-height: 1;
-      opacity: 0.65;
-    }
-    #datasetTopBar .linkText{
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    #datasetTopBar .linkToggle:has(input:checked){
-      border-color: #0747f8;
-      box-shadow: 0 0 0 2px rgba(7, 71, 248, 0.15);
-    }
-    #datasetTopBar .linkToggle:has(input:checked) .linkIcon,
-    #datasetTopBar .linkToggle:has(input:checked) .linkText{
-      opacity: 1;
-      color: #0747f8;
-    }
-
-    /* tooltip */
-    #datasetTopBar .linkTip{
-      position: absolute;
-      left: 50%;
-      top: calc(100% + 8px);
-      transform: translateX(-50%);
-
-      padding: 6px 8px;
-      border-radius: 6px;
-      background: #111;
-      color: #fff;
-      font-size: 12px;
-      white-space: nowrap;
-
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 120ms ease;
-      z-index: 10;
-    }
-    #datasetTopBar .linkToggle:hover .linkTip{ opacity: 0.92; }
-
     /* =========================
       Triangle + Chart Panels
     ========================= */
@@ -868,6 +794,10 @@
       outline: none;
       border-radius: 0;
       overflow: auto;
+      scrollbar-gutter: stable;
+      padding-right: 1px;
+      padding-bottom: 1px;
+      scrollbar-color: rgba(182, 182, 182, 0.2) #f1f3f5;
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
@@ -875,6 +805,26 @@
       height: 100%;
       background: transparent;
       box-sizing: border-box;
+    }
+
+    #tableWrap::-webkit-scrollbar-track,
+    #tableWrap::-webkit-scrollbar-corner{
+      background: #f1f3f5;
+    }
+
+    #tableWrap::-webkit-scrollbar-thumb{
+      background-color: rgba(182, 182, 182, 0.2);
+    }
+
+    #tableWrap.isScrolling,
+    #tableWrap.isScrollbarHover{
+      scrollbar-color: rgba(120, 120, 120, 0.267) #f1f3f5;
+    }
+
+    #tableWrap.isScrolling::-webkit-scrollbar-thumb,
+    #tableWrap.isScrollbarHover::-webkit-scrollbar-thumb,
+    #tableWrap::-webkit-scrollbar-thumb:hover{
+      background-color: rgba(120, 120, 120, 0.267);
     }
 
     #chartPanel{
@@ -1055,6 +1005,10 @@
       -webkit-user-select: none;
     }
 
+    #tableWrap tr > :last-child{
+      border-right: 1px solid #ddd;
+    }
+
     /* -------- Alignment rules (your requirement) -------- */
     /* 1) All header labels (grey top row) centered */
     #tableWrap thead th{
@@ -1067,7 +1021,7 @@
       top: 0;
       z-index: 3;
 
-      border-top: 1px solid #ddd;
+      border-top: 0;
       box-shadow: none;
     }
 
@@ -1096,7 +1050,7 @@
     /* -------- Sticky first column (row labels + top-left) -------- */
     #tableWrap th:first-child,
     #tableWrap td:first-child{
-      border-left: 1px solid #ddd;
+      border-left: 0;
       border-right: 0;
 
       position: sticky;
@@ -1168,6 +1122,10 @@
       background: transparent !important;
     }
 
+    #tableWrap tr > td.na:last-child{
+      border-right: 1px solid #ddd !important;
+    }
+
     #tableWrap tfoot th,
     #tableWrap tfoot td{
       color: #010c9e;
@@ -1175,9 +1133,12 @@
       border-top: 1px solid #ddd;
     }
 
-    /* Keep only one thin divider between body and Total row. */
-    #tableWrap table.has-total-row tbody tr:last-child th,
-    #tableWrap table.has-total-row tbody tr:last-child td{
+    #tableWrap tbody tr:last-child > *,
+    #tableWrap tfoot tr:last-child > *{
+      border-bottom: 1px solid #ddd;
+    }
+
+    #tableWrap table.has-total-row tbody tr:last-child > *{
       border-bottom: 0;
     }
 
@@ -1244,6 +1205,8 @@
       background: #f5f7fa;
       box-sizing: border-box;
       user-select: none;
+      overflow: visible;
+      z-index: 40;
     }
     .dsTabBar::after {
       content: "";
@@ -1296,6 +1259,29 @@
       height: 1px;
       background: #ffffff;
       pointer-events: none;
+    }
+    .dsDataTabTooltip {
+      position: fixed;
+      max-width: 240px;
+      padding: 6px 8px;
+      border: 1px solid #93c5fd;
+      border-radius: 6px;
+      background: #f8fbff;
+      color: #1f2937;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.25;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(2px);
+      transition: opacity 140ms ease, transform 140ms ease;
+      z-index: 10000;
+    }
+    .dsDataTabTooltip.open {
+      opacity: 1;
+      transform: translateY(0);
     }
     #dsDetailsPage,
     #dsDataPage,

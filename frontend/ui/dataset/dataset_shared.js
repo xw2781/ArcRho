@@ -193,17 +193,6 @@ export function injectDatasetMarkup(container) {
             </div>
           </div>
 
-          <!-- Col 6: Link toggle -->
-          <div class="topbar-link-stack" style="grid-column: 6; grid-row: 1;">
-            <div class="field linkField">
-              <label class="linkToggle">
-                <input id="linkLenChk" type="checkbox" checked />
-                <span class="linkIcon" aria-hidden="true">&#128279;</span>
-                <span class="linkText">Link Period Length</span>
-                <span class="linkTip" role="tooltip">Keep Origin Length and Development Length the same</span>
-              </label>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -372,5 +361,39 @@ export function injectDatasetMarkup(container) {
   while (wrapper.firstElementChild) {
     container.appendChild(wrapper.firstElementChild);
   }
+  wireTableScrollbarActivity(container);
   return container;
+}
+
+function wireTableScrollbarActivity(container) {
+  const wrap = container?.querySelector?.("#tableWrap");
+  if (!wrap || wrap.__arcRhoScrollbarActivityWired) return;
+  wrap.__arcRhoScrollbarActivityWired = true;
+
+  let idleTimer = null;
+  const syncScrollbarHover = (event) => {
+    const rect = wrap.getBoundingClientRect();
+    const verticalScrollbarWidth = Math.max(0, wrap.offsetWidth - wrap.clientWidth);
+    const horizontalScrollbarHeight = Math.max(0, wrap.offsetHeight - wrap.clientHeight);
+    const hasVerticalScrollbar = wrap.scrollHeight > wrap.clientHeight && verticalScrollbarWidth > 0;
+    const hasHorizontalScrollbar = wrap.scrollWidth > wrap.clientWidth && horizontalScrollbarHeight > 0;
+    const nearVerticalScrollbar = hasVerticalScrollbar
+      && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+    const nearHorizontalScrollbar = hasHorizontalScrollbar
+      && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+
+    wrap.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+  };
+
+  wrap.addEventListener("scroll", () => {
+    wrap.classList.add("isScrolling");
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      wrap.classList.remove("isScrolling");
+    }, 550);
+  }, { passive: true });
+  wrap.addEventListener("pointermove", syncScrollbarHover, { passive: true });
+  wrap.addEventListener("pointerleave", () => {
+    wrap.classList.remove("isScrollbarHover");
+  }, { passive: true });
 }
