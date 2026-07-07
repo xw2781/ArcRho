@@ -789,6 +789,11 @@
     }
 
     #tableWrap{
+      --dataset-table-scrollbar-chrome: #f1f3f5;
+      --dataset-table-scrollbar-button-hover: #e5e9ef;
+      --dataset-table-scrollbar-button-active: #d9dee7;
+      --dataset-table-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --dataset-table-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
       border: 1px solid var(--border);
       box-shadow: none;
       outline: none;
@@ -797,7 +802,6 @@
       scrollbar-gutter: stable;
       padding-right: 1px;
       padding-bottom: 1px;
-      scrollbar-color: rgba(182, 182, 182, 0.2) #f1f3f5;
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
@@ -807,24 +811,71 @@
       box-sizing: border-box;
     }
 
+    #tableWrap::-webkit-scrollbar{
+      width: 20px;
+      height: 20px;
+    }
+
     #tableWrap::-webkit-scrollbar-track,
     #tableWrap::-webkit-scrollbar-corner{
-      background: #f1f3f5;
+      background: var(--dataset-table-scrollbar-chrome);
     }
 
     #tableWrap::-webkit-scrollbar-thumb{
-      background-color: rgba(182, 182, 182, 0.2);
+      background-color: var(--dataset-table-scrollbar-thumb);
+      border: 3px solid var(--dataset-table-scrollbar-chrome);
+      border-radius: 5px;
+      background-clip: content-box;
     }
 
-    #tableWrap.isScrolling,
-    #tableWrap.isScrollbarHover{
-      scrollbar-color: rgba(120, 120, 120, 0.267) #f1f3f5;
+    #tableWrap::-webkit-scrollbar-button{
+      width: 16px;
+      height: 16px;
+      display: block;
+      background-color: var(--dataset-table-scrollbar-chrome);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 12px 12px;
+    }
+
+    #tableWrap::-webkit-scrollbar-button:hover{
+      background-color: var(--dataset-table-scrollbar-button-hover);
+    }
+
+    #tableWrap::-webkit-scrollbar-button:active{
+      background-color: var(--dataset-table-scrollbar-button-active);
+    }
+
+    #tableWrap::-webkit-scrollbar-button:horizontal:start:increment,
+    #tableWrap::-webkit-scrollbar-button:horizontal:end:decrement,
+    #tableWrap::-webkit-scrollbar-button:vertical:start:increment,
+    #tableWrap::-webkit-scrollbar-button:vertical:end:decrement{
+      width: 0;
+      height: 0;
+      display: none;
+      background-image: none;
+    }
+
+    #tableWrap::-webkit-scrollbar-button:horizontal:start:decrement{
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+
+    #tableWrap::-webkit-scrollbar-button:horizontal:end:increment{
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+
+    #tableWrap::-webkit-scrollbar-button:vertical:start:decrement{
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+
+    #tableWrap::-webkit-scrollbar-button:vertical:end:increment{
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
     }
 
     #tableWrap.isScrolling::-webkit-scrollbar-thumb,
     #tableWrap.isScrollbarHover::-webkit-scrollbar-thumb,
     #tableWrap::-webkit-scrollbar-thumb:hover{
-      background-color: rgba(120, 120, 120, 0.267);
+      background-color: var(--dataset-table-scrollbar-thumb-active);
     }
 
     #chartPanel{

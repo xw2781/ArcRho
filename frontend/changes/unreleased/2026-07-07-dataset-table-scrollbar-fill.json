@@ -2,8 +2,8 @@
   "type": "improvement",
   "scope": "dataset",
   "audience": "user",
-  "summary": "Added a light grey fill and scroll-aware idle thumb for visible Dataset Data tab table scrollbars.",
+  "summary": "Refined the Dataset Data tab table scrollbars with a quieter framed tray and compact arrow controls.",
   "details": [
-    "Removed stale Dataset scrollbar sizing CSS that was no longer used."
+    "Scrollbar thumbs now stay subtle until scrolling, hovering the scrollbar lane, or hovering the thumb."
   ]
 }

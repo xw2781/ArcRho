@@ -427,7 +427,19 @@ function scrollDatasetRecordIntoView(key) {
   const normalized = toText(key);
   if (!normalized) return;
   const row = els.datasetTableSurface?.querySelector?.(`tr[data-record-key="${CSS.escape(normalized)}"]`);
-  row?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  const wrap = els.datasetTableWrap;
+  if (!row || !wrap) return;
+  const rowRect = row.getBoundingClientRect();
+  const wrapRect = wrap.getBoundingClientRect();
+  const headerHeight = Math.ceil(
+    row.closest("table")?.querySelector?.("thead")?.getBoundingClientRect?.().height || 0,
+  );
+  const visibleTop = wrapRect.top + headerHeight;
+  if (rowRect.top < visibleTop) {
+    wrap.scrollTop -= visibleTop - rowRect.top;
+  } else if (rowRect.bottom > wrapRect.bottom) {
+    wrap.scrollTop += rowRect.bottom - wrapRect.bottom;
+  }
 }
 
 function getActiveDatasetSelectionIndex() {
@@ -2614,10 +2626,44 @@ function handleDatasetGroupRemoveDrop(event) {
   removeDatasetGroupByKey(key);
 }
 
+function wireScrollbarActivity(wrap) {
+  if (!wrap || wrap.dataset.scrollbarActivityWired === "1") return;
+  wrap.dataset.scrollbarActivityWired = "1";
+
+  let idleTimer = null;
+  const syncScrollbarHover = (event) => {
+    const rect = wrap.getBoundingClientRect();
+    const verticalScrollbarWidth = Math.max(0, wrap.offsetWidth - wrap.clientWidth);
+    const horizontalScrollbarHeight = Math.max(0, wrap.offsetHeight - wrap.clientHeight);
+    const hasVerticalScrollbar = wrap.scrollHeight > wrap.clientHeight && verticalScrollbarWidth > 0;
+    const hasHorizontalScrollbar = wrap.scrollWidth > wrap.clientWidth && horizontalScrollbarHeight > 0;
+    const nearVerticalScrollbar = hasVerticalScrollbar
+      && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+    const nearHorizontalScrollbar = hasHorizontalScrollbar
+      && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+
+    wrap.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+  };
+
+  wrap.addEventListener("scroll", () => {
+    wrap.classList.add("isScrolling");
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      wrap.classList.remove("isScrolling");
+    }, 550);
+  }, { passive: true });
+  wrap.addEventListener("pointermove", syncScrollbarHover, { passive: true });
+  wrap.addEventListener("pointerleave", () => {
+    wrap.classList.remove("isScrollbarHover");
+  }, { passive: true });
+}
+
 function initDatasetTableInteractions() {
   if (els.rightPanel?.dataset?.tableInteractionsWired === "1") return;
   if (els.rightPanel) els.rightPanel.dataset.tableInteractionsWired = "1";
   syncDatasetGroupByToolbar();
+  wireScrollbarActivity(els.datasetTableWrap);
+  wireScrollbarActivity(els.datasetAddPickerTableWrap);
   if (els.datasetTableSurface) {
     els.datasetTableSurface.tabIndex = 0;
     els.datasetTableSurface.addEventListener("keydown", handleDatasetTableKeyDown);

@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Refined Project Instance scrollbars and table frame edges.",
+  "details": [
+    "Dataset tables and the reserving-class path tree now use quieter scrollbar trays with active scrollbar-lane states.",
+    "The Project Instance dataset table header and scrollbar tray now share a slightly darker neutral tone.",
+    "The reserving-class path tree scrollbar tray no longer shows arrow buttons."
+  ]
+}

@@ -519,7 +519,9 @@
       min-height: 0;
       height: 100%;
       padding-left: 4px;
-      padding-right: 0;
+      padding-right: 4px;
+      padding-bottom: 8px;
+      scrollbar-gutter: stable;
     }
     .pi-path-tree .ptree-section {
       padding-left: 2px;
@@ -975,17 +977,122 @@
       text-overflow: ellipsis;
     }
     .pi-table-wrap {
+      --pi-dataset-table-chrome: #eeeeee7c;
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
       margin-left: 20px;
       box-sizing: border-box;
-      border: 1px solid var(--border);
+      border: 1px solid #cfd6df;
       overflow: auto;
       position: relative;
-      background: #fff;
+      background: #f4f7fa;
       scrollbar-gutter: stable;
-      padding: 0 0 0 0px;
+      padding: 0 8px 8px 0;
+      isolation: isolate;
+    }
+    .pi-table-wrap::-webkit-scrollbar-track,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-track,
+    .pi-table-wrap::-webkit-scrollbar-corner,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-corner {
+      background: var(--pi-dataset-table-chrome, #f1f3f5);
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button,
+    .pi-table-wrap::-webkit-scrollbar-button,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button {
+      width: 16px;
+      height: 16px;
+      display: block;
+      background-color: var(--pi-dataset-table-chrome, #f1f3f5);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 12px 12px;
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:hover,
+    .pi-table-wrap::-webkit-scrollbar-button:hover,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:hover {
+      background-color: #e5e9ef;
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:active,
+    .pi-table-wrap::-webkit-scrollbar-button:active,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:active {
+      background-color: #d9dee7;
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-track,
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-corner,
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button {
+      background-color: rgba(255, 255, 255, 0);
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:hover {
+      background-color: rgba(15, 23, 42, 0.06);
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:active {
+      background-color: rgba(15, 23, 42, 0.1);
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:horizontal:start:increment,
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:horizontal:end:decrement,
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:vertical:start:increment,
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:vertical:end:decrement,
+    .pi-table-wrap::-webkit-scrollbar-button:horizontal:start:increment,
+    .pi-table-wrap::-webkit-scrollbar-button:horizontal:end:decrement,
+    .pi-table-wrap::-webkit-scrollbar-button:vertical:start:increment,
+    .pi-table-wrap::-webkit-scrollbar-button:vertical:end:decrement,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:horizontal:start:increment,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:horizontal:end:decrement,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:vertical:start:increment,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:vertical:end:decrement {
+      width: 0;
+      height: 0;
+      display: none;
+      background-image: none;
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:horizontal:start:decrement,
+    .pi-table-wrap::-webkit-scrollbar-button:horizontal:start:decrement,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:horizontal:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:horizontal:end:increment,
+    .pi-table-wrap::-webkit-scrollbar-button:horizontal:end:increment,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:horizontal:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:vertical:start:decrement,
+    .pi-table-wrap::-webkit-scrollbar-button:vertical:start:decrement,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:vertical:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:vertical:end:increment,
+    .pi-table-wrap::-webkit-scrollbar-button:vertical:end:increment,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-button:vertical:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button {
+      width: 0;
+      height: 0;
+      display: none;
+      background-image: none;
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-thumb,
+    .pi-table-wrap::-webkit-scrollbar-thumb,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-thumb {
+      background-color: rgba(182, 182, 182, 0.2);
+      border: 3px solid var(--pi-dataset-table-chrome, #f1f3f5);
+      border-radius: 5px;
+      background-clip: content-box;
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-thumb {
+      border-color: transparent;
+    }
+    .pi-path-tree .ptree-window-embedded .ptree-body.isScrolling::-webkit-scrollbar-thumb,
+    .pi-path-tree .ptree-window-embedded .ptree-body.isScrollbarHover::-webkit-scrollbar-thumb,
+    .pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-thumb:hover,
+    .pi-table-wrap.isScrolling::-webkit-scrollbar-thumb,
+    .pi-table-wrap.isScrollbarHover::-webkit-scrollbar-thumb,
+    .pi-table-wrap::-webkit-scrollbar-thumb:hover,
+    .pi-add-picker-table-wrap.isScrolling::-webkit-scrollbar-thumb,
+    .pi-add-picker-table-wrap.isScrollbarHover::-webkit-scrollbar-thumb,
+    .pi-add-picker-table-wrap::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(120, 120, 120, 0.267);
     }
     .pi-table-wrap.group-remove-target {
       outline: 2px solid rgba(47, 111, 236, 0.34);
@@ -994,6 +1101,7 @@
     .pi-table-surface {
       min-width: 1120px;
       padding: 0;
+      background: #fff;
     }
     .pi-table-surface:focus {
       outline: none;
@@ -1154,6 +1262,7 @@
       border-spacing: 0;
       table-layout: fixed;
       font-size: 12px;
+      background: #fff;
     }
     .pi-table th,
     .pi-table td {
@@ -1202,19 +1311,19 @@
       border-left: 0;
     }
     .pi-table tr > :last-child {
-      border-right: 0;
+      border-right: 1px solid var(--border);
     }
     .pi-table thead th {
       border-top: 0;
     }
     .pi-table tbody tr:last-child > * {
-      border-bottom: 0;
+      border-bottom: 1px solid var(--border);
     }
     .pi-table th {
       position: sticky;
       top: 0;
       z-index: 5;
-      background: #f5f5f5;
+      background: var(--pi-dataset-table-chrome, #e9edf2);
       background-clip: padding-box;
       font-weight: 700;
       color: #444c5a;
@@ -1832,8 +1941,11 @@
       flex: 1 1 auto;
       position: relative;
       overflow: auto;
-      border: 0.5px solid #cfd6e1;
-      background: #fff;
+      border: 1px solid #cfd6df;
+      border-radius: 6px;
+      background: #f4f7fa;
+      scrollbar-gutter: stable;
+      padding: 0 8px 8px 0;
       isolation: isolate;
     }
     .pi-add-picker-table {
@@ -1847,10 +1959,21 @@
     }
     .pi-add-picker-table th,
     .pi-add-picker-table td {
-      border: 0.5px solid #cfd6e1;
+      border: 0;
+      border-right: 1px solid #cfd6df;
+      border-bottom: 1px solid #cfd6df;
       padding: 6px 10px;
       text-align: left;
       vertical-align: middle;
+    }
+    .pi-add-picker-table tr > :first-child {
+      border-left: 0;
+    }
+    .pi-add-picker-table tr > :last-child {
+      border-right: 1px solid #cfd6df;
+    }
+    .pi-add-picker-table tbody tr:last-child > * {
+      border-bottom: 1px solid #cfd6df;
     }
     .pi-add-picker-table th {
       position: sticky;

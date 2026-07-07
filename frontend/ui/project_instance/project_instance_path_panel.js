@@ -38,6 +38,39 @@ async function loadLastSelectedPath() {
   }
 }
 
+function wirePathTreeScrollbarActivity() {
+  const wrap = els.pathTree?.querySelector?.(".ptree-window-embedded .ptree-body");
+  if (!wrap || wrap.dataset.scrollbarActivityWired === "1") return;
+  wrap.dataset.scrollbarActivityWired = "1";
+
+  let idleTimer = null;
+  const syncScrollbarHover = (event) => {
+    const rect = wrap.getBoundingClientRect();
+    const verticalScrollbarWidth = Math.max(0, wrap.offsetWidth - wrap.clientWidth);
+    const horizontalScrollbarHeight = Math.max(0, wrap.offsetHeight - wrap.clientHeight);
+    const hasVerticalScrollbar = wrap.scrollHeight > wrap.clientHeight && verticalScrollbarWidth > 0;
+    const hasHorizontalScrollbar = wrap.scrollWidth > wrap.clientWidth && horizontalScrollbarHeight > 0;
+    const nearVerticalScrollbar = hasVerticalScrollbar
+      && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+    const nearHorizontalScrollbar = hasHorizontalScrollbar
+      && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+
+    wrap.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+  };
+
+  wrap.addEventListener("scroll", () => {
+    wrap.classList.add("isScrolling");
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      wrap.classList.remove("isScrolling");
+    }, 550);
+  }, { passive: true });
+  wrap.addEventListener("pointermove", syncScrollbarHover, { passive: true });
+  wrap.addEventListener("pointerleave", () => {
+    wrap.classList.remove("isScrollbarHover");
+  }, { passive: true });
+}
+
 function getPathParts(path = state.selectedPath) {
   return normalizePath(path).split("\\").map((part) => toText(part)).filter(Boolean);
 }
@@ -435,6 +468,7 @@ async function loadPathTree() {
       onSelect: (path) => setSelectedPath(path),
     });
     state.pathPickerModel = result?.model || null;
+    wirePathTreeScrollbarActivity();
     renderSelectedPathDisplay();
     markPathTreeActive(state.selectedPath);
     if (!result?.ok && !els.pathTree.querySelector(".ptree-window")) {
