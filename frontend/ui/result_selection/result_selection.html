@@ -38,12 +38,18 @@
       flex: 0 0 auto;
       display: flex;
       align-items: flex-end;
-      height: 35px;
+      gap: 0;
+      flex-wrap: nowrap;
+      position: relative;
+      height: calc(35px + var(--tabbed-tabbar-extra-y, 0px));
+      margin: 0;
       padding: 4px var(--tabbed-page-gutter, 8px) 0;
       border-bottom: 0;
       background: #f5f7fa;
       box-sizing: border-box;
-      position: relative;
+      user-select: none;
+      overflow: visible;
+      z-index: 40;
     }
     .rsTabBar::after {
       content: "";
@@ -70,6 +76,9 @@
       z-index: 1;
     }
     .rsTab {
+      display: flex;
+      align-items: center;
+      gap: 10px;
       height: 26px;
       padding: 0 10px;
       border: 1px solid #cbd5e1;
@@ -83,6 +92,7 @@
       position: relative;
       z-index: 1;
       box-shadow: none;
+      white-space: nowrap;
     }
     .rsTab.active {
       height: 29px;
@@ -143,6 +153,29 @@
       flex-direction: column;
       padding: 4px;
       overflow: hidden;
+    }
+    #rsDetailsPage.rsTabFloatingPage,
+    #rsMethodPage.rsTabFloatingPage,
+    #rsResultsPage.rsTabFloatingPage {
+      display: flex !important;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+    #rsMethodPage.rsTabFloatingPage,
+    #rsResultsPage.rsTabFloatingPage {
+      padding: 4px;
+      overflow: hidden;
+    }
+    #rsValidationPage.rsTabFloatingPage,
+    #rsNotesPage.rsTabFloatingPage {
+      display: block !important;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
     }
     .rsDetailsBlock {
       border: 1px solid #d7dde7;
@@ -569,6 +602,28 @@
       max-width: 340px;
       flex: 1 1 auto;
     }
+    .rsRatioBasisDropdown .rsDropdownButton {
+      position: relative;
+      padding-right: 30px;
+    }
+    .rsRatioBasisDropdown .rsDropdownCaret {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      color: #555;
+      opacity: 0.72;
+      border-top-color: currentColor;
+      transform: translateY(-50%);
+    }
+    .rsRatioBasisDropdown.open .rsDropdownCaret {
+      color: #2f5fd3;
+      opacity: 1;
+      transform: translateY(-50%) rotate(180deg);
+    }
+    .rsRatioBasisDropdown .rsDropdownButton:hover .rsDropdownCaret,
+    .rsRatioBasisDropdown .rsDropdownButton:focus .rsDropdownCaret {
+      opacity: 1;
+    }
     .rsGridHost {
       position: relative;
       flex: 1 1 auto;
@@ -579,6 +634,71 @@
       overflow: auto;
       background: #fff;
       box-sizing: border-box;
+    }
+    #rsMethodPage .rsGridHost {
+      --rs-method-scrollbar-chrome: #f1f3f5;
+      --rs-method-scrollbar-button-hover: #e5e9ef;
+      --rs-method-scrollbar-button-active: #d9dee7;
+      --rs-method-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --rs-method-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+      scrollbar-gutter: stable;
+      padding-right: 1px;
+      padding-bottom: 1px;
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar {
+      width: 20px;
+      height: 20px;
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-track,
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-corner {
+      background: var(--rs-method-scrollbar-chrome);
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-thumb {
+      background-color: var(--rs-method-scrollbar-thumb);
+      border: 3px solid var(--rs-method-scrollbar-chrome);
+      border-radius: 5px;
+      background-clip: content-box;
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button {
+      width: 16px;
+      height: 16px;
+      display: block;
+      background-color: var(--rs-method-scrollbar-chrome);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 12px 12px;
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:hover {
+      background-color: var(--rs-method-scrollbar-button-hover);
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:active {
+      background-color: var(--rs-method-scrollbar-button-active);
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:horizontal:start:increment,
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:horizontal:end:decrement,
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:vertical:start:increment,
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:vertical:end:decrement {
+      width: 0;
+      height: 0;
+      display: none;
+      background-image: none;
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:horizontal:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:horizontal:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:vertical:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:vertical:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+    }
+    #rsMethodPage .rsGridHost.isScrolling::-webkit-scrollbar-thumb,
+    #rsMethodPage .rsGridHost.isScrollbarHover::-webkit-scrollbar-thumb,
+    #rsMethodPage .rsGridHost::-webkit-scrollbar-thumb:hover {
+      background-color: var(--rs-method-scrollbar-thumb-active);
     }
     .rsGrid {
       border-collapse: separate;
@@ -1305,10 +1425,10 @@
       </div>
     </div>
   </div>
-  <script src="/ui/result_selection/result_selection_ui.js?v=20260704a"></script>
+  <script src="/ui/result_selection/result_selection_ui.js?v=20260707b"></script>
   <script src="/ui/result_selection/result_selection_data.js?v=20260704a"></script>
   <script src="/ui/result_selection/result_selection_grids.js?v=20260704a"></script>
   <script src="/ui/result_selection/result_selection_model.js?v=20260704a"></script>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260704a"></script>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260707a"></script>
 </body>
 </html>

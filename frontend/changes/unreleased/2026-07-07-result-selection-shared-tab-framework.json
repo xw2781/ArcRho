@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection tabs now use the shared tab pop-out behavior used by DFM and Dataset pages."
+}

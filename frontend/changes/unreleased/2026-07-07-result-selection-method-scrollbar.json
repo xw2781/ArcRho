@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Refined the Result Selection Method tab grid scrollbars with the quieter framed tray used by Dataset tables."
+}

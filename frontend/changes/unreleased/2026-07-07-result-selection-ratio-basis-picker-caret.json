@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Aligned the Method tab active Ratio Basis dropdown caret with the compact spacing used by dataset number-format controls."
+}

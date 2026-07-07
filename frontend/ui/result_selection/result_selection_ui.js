@@ -560,8 +560,13 @@
         const activePageId = getRsPageId(tab);
         document.querySelectorAll(".rsPage").forEach((page) => {
           const active = page.id === activePageId;
+          const floating = page.classList.contains("rsTabFloatingPage");
           page.classList.toggle("active", active);
-          if (!active) {
+          if (floating) {
+            page.style.display = page.id === "rsDetailsPage" || page.id === "rsMethodPage" || page.id === "rsResultsPage"
+              ? "flex"
+              : "block";
+          } else if (!active) {
             page.style.display = "none";
           } else if (page.id === "rsDetailsPage" || page.id === "rsMethodPage" || page.id === "rsResultsPage") {
             page.style.display = "flex";
@@ -598,6 +603,47 @@
           window.parent?.postMessage({ type: "arcrho:result-selection-tab-changed", inst, tab: next }, "*");
         } catch {}
       }
+
+      function refreshRsFloatingTabLayout(tabId) {
+        window.requestAnimationFrame(() => {
+          if (tabId === "method") renderMethodGrid();
+          if (tabId === "results") renderResultsGrid();
+        });
+      }
+
+      function wireRsMethodScrollbarActivity() {
+        const host = els.methodGrid?.closest?.(".rsGridHost");
+        if (!host || host.__arcRhoScrollbarActivityWired) return;
+        host.__arcRhoScrollbarActivityWired = true;
+
+        let idleTimer = null;
+        const syncScrollbarHover = (event) => {
+          const rect = host.getBoundingClientRect();
+          const verticalScrollbarWidth = Math.max(0, host.offsetWidth - host.clientWidth);
+          const horizontalScrollbarHeight = Math.max(0, host.offsetHeight - host.clientHeight);
+          const hasVerticalScrollbar = host.scrollHeight > host.clientHeight && verticalScrollbarWidth > 0;
+          const hasHorizontalScrollbar = host.scrollWidth > host.clientWidth && horizontalScrollbarHeight > 0;
+          const nearVerticalScrollbar = hasVerticalScrollbar
+            && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+          const nearHorizontalScrollbar = hasHorizontalScrollbar
+            && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+
+          host.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+        };
+
+        host.addEventListener("scroll", () => {
+          host.classList.add("isScrolling");
+          if (idleTimer) clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => {
+            host.classList.remove("isScrolling");
+          }, 550);
+        }, { passive: true });
+        host.addEventListener("pointermove", syncScrollbarHover, { passive: true });
+        host.addEventListener("pointerleave", () => {
+          host.classList.remove("isScrollbarHover");
+        }, { passive: true });
+      }
+
       function wireEvents() {
         [els.nameInput, els.outputTypeInput, els.originLengthInput, els.showRatiosPctInput, els.statisticDecimalsInput, els.showWeightsInput].forEach((el) => {
           el?.addEventListener("input", () => {
@@ -939,6 +985,14 @@
           onTabChange: onRsTabChanged,
         });
         window.rsTabSystem = rsTabSystem;
+        wireTabPopoutWindows({
+          cssPrefix: "rs",
+          tabs: RS_TAB_DEFS,
+          tabSystem: () => window.rsTabSystem,
+          onPopoutTab: refreshRsFloatingTabLayout,
+          onDockTab: refreshRsFloatingTabLayout,
+          onFocusTab: refreshRsFloatingTabLayout,
+        });
       }
 
       async function init() {
@@ -952,6 +1006,7 @@
         initTabs();
         syncOriginLengthDropdownOptions();
         wireEvents();
+        wireRsMethodScrollbarActivity();
         wireNotes();
         await loadOutputSidecarSettings().catch((err) => console.warn("Result Selection sidecar settings load failed:", err));
         if (!state.originLabels.length) await refreshOriginLabels({ render: false });
@@ -1029,6 +1084,8 @@
         syncRsPageState,
         onRsTabChanged,
         setTab,
+        refreshRsFloatingTabLayout,
+        wireRsMethodScrollbarActivity,
         wireEvents,
         initTabs,
         init

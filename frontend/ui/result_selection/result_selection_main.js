@@ -12,6 +12,7 @@ import {
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
 } from "/ui/shared/tabbed_page.js";
+import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interactions.js";
 import { startResultSelectionRpcBridgeSync } from "/ui/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
 
@@ -170,6 +171,7 @@ const ctx = {
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
+  wireTabPopoutWindows,
   wireNotesEditorInteractions,
   startResultSelectionRpcBridgeSync,
   RS_JSON_FORMAT,
