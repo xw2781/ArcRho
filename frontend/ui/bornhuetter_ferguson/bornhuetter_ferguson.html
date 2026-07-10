@@ -16,7 +16,7 @@
       --bf-accent-soft: #eaf1ff;
       --bf-danger: #b42318;
       --bf-table-head: #eef2f7;
-      --bf-method-font: Arial, "Segoe UI", Tahoma, sans-serif;
+      --bf-method-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
       --bf-method-grid-border: #f3f1f1;
       --bf-method-header-cell: #a6a6a6;
       --bf-method-label-cell: #d1d1d1;
@@ -93,8 +93,7 @@
       background: #edf1f6;
       color: #1f2937;
       cursor: pointer;
-      font: inherit;
-      font-size: 12px;
+      font: 12px var(--bf-method-font);
       white-space: nowrap;
       position: relative;
       z-index: 1;
@@ -391,14 +390,14 @@
       padding: 9px 10px 5px;
       border: 1px solid #cfd8e6;
       border-radius: 7px;
-      background: #fbfdff;
+      background: #fff;
     }
     .bfToolTitle {
       position: absolute;
       top: -8px;
       left: 9px;
       padding: 0 4px;
-      background: var(--bf-bg);
+      background: #fff;
       color: #64748b;
       font-size: 11px;
     }
@@ -417,6 +416,9 @@
       white-space: nowrap;
     }
     .bfToolCheck input { accent-color: var(--bf-accent); }
+    .bfWeightDisplayDropdown + .bfToolDecimalControl {
+      margin-left: 8px;
+    }
     .bfToolControlLabel {
       color: #475569;
       font-size: 12px;
@@ -1103,7 +1105,7 @@
             <div class="bfToolGroup">
               <span class="bfToolTitle">Formatting</span>
               <div class="bfToolControls">
-                <label class="bfToolCheck"><input id="bfShowWeightsInput" type="checkbox" checked> Show Weights</label>
+                <label class="bfToolCheck"><input id="bfShowWeightsInput" type="checkbox" checked> Show Weights As</label>
                 <div id="bfWeightDisplayDropdown" class="bfWeightDisplayDropdown">
                   <button id="bfWeightDisplayButton" class="bfDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
                     <span id="bfWeightDisplayLabel">Index</span>

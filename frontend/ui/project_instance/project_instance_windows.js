@@ -645,6 +645,10 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   if (options?.readOnly) params.set("readonly", "1");
   if (options?.draft) params.set("draft_instance", "1");
   if (options?.initialTab) params.set("tab", toText(options.initialTab));
+  const methodType = toText(options?.methodType).toLowerCase();
+  if (["dfm", "result selection", "rs", "bornhuetter ferguson", "bf"].includes(methodType)) {
+    params.set("vector_column_label", "Ultimate");
+  }
   params.set("inst", inst);
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
@@ -958,6 +962,7 @@ function openDatasetWindow(datasetName, options = {}) {
       datasetTypeName,
       path: targetPath,
       readOnly: options?.readOnly,
+      methodType: options?.methodType,
     }),
     path: targetPath,
     methodType: options?.methodType,

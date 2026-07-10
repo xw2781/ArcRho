@@ -2560,6 +2560,13 @@ ipcMain.handle("app-clear-cache-reload", async (event, payload) => {
   const targetWindow = getIpcWindow(event) || win;
   if (!targetWindow || targetWindow.isDestroyed()) return false;
   await clearWindowCacheAndStorage(targetWindow, payload);
+  const webContents = targetWindow.webContents;
+  const allowForcedReload = (unloadEvent) => {
+    // Clear Cache & Reload is an explicit destructive navigation. Electron's
+    // preventDefault here ignores renderer beforeunload cancellation.
+    unloadEvent.preventDefault();
+  };
+  webContents.on("will-prevent-unload", allowForcedReload);
   try {
     const uiVersion = String(Date.now());
     const isArcodeReload = APP_MODE === "arcode"
@@ -2569,14 +2576,15 @@ ipcMain.handle("app-clear-cache-reload", async (event, payload) => {
       ? buildArcodeUrl({ uiVersion })
       : `http://${HOST}:${PORT}/ui/?v=${encodeURIComponent(uiVersion)}`;
     await targetWindow.loadURL(reloadUrl);
-  } catch {
-    try {
-      targetWindow.webContents.reloadIgnoringCache();
-    } catch {
-      // ignore
+    return true;
+  } catch (error) {
+    console.error("Clear Cache & Reload navigation failed:", error);
+    return false;
+  } finally {
+    if (!webContents.isDestroyed()) {
+      webContents.removeListener("will-prevent-unload", allowForcedReload);
     }
   }
-  return true;
 });
 
 ipcMain.handle("app-consume-clear-cache-reload-restore", async () => {

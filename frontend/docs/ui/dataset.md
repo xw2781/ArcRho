@@ -11,7 +11,7 @@ Implementation details should stay in the generated entrypoint/key-file sections
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.dataset.entry_points -->
-- `ui/dataset/dataset_viewer.html`: external scripts _none_; inline imports `/ui/dataset/dataset_main.js?v=20260706e`, `/ui/dataset/dataset_shared.js?v=20260706a`.
+- `ui/dataset/dataset_viewer.html`: external scripts _none_; inline imports `/ui/dataset/dataset_main.js?v=20260710a`, `/ui/dataset/dataset_shared.js?v=20260706a`.
 
 Detected `fetch(...)` targets in key JS files:
 - `${config.API_BASE}/dataset/${dsId}/patch`
@@ -63,6 +63,7 @@ Detected `arcrho:*` message types in key JS files:
 - Publishes `arcrho:calculated-datasets-updated` after a save/run recalculates dependent datasets, and consumes the same shell-broadcast report from Dataset or DFM saves; open Dataset tabs/windows auto-reload when their current project, reserving class, and dataset name match an updated calculated output. Tabs with unsaved grid/settings/Notes edits show a status warning instead of reloading.
 - Publishes `arcrho:dataset-dirty` while saved sidecar settings or Notes have unsaved changes, then uses `arcrho:dataset-close-confirmed` after the user chooses Save or discard during close.
 - Dataset/DFM shared styles import the reusable 20px `ui/shared/scrollbars.css` WebKit scrollbar treatment that is also used by shell and scripting pages.
+- Inactive Dataset tabs use the same pale hover fill as Bornhuetter Ferguson tabs, while active-tab fill and weight remain unchanged.
 - In the Data tab, transposed datasets show totals as a single right-side `Total` column instead of repeating totals across a footer row under each origin column.
 <!-- MANUAL:END -->
 

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection and bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Result Selection and Bornhuetter Ferguson now separate Weight display and Decimals controls more clearly."
+}

@@ -94,6 +94,9 @@
       box-shadow: none;
       white-space: nowrap;
     }
+    .rsTab:hover {
+      background: #f8fafc;
+    }
     .rsTab.active {
       height: 29px;
       background: #fff;
@@ -403,6 +406,9 @@
       min-height: 28px;
       color: #1f2937;
       white-space: nowrap;
+    }
+    .rsWeightDisplayDropdown + .rsToolDecimalControl {
+      margin-left: 8px;
     }
     .rsToolControlLabel {
       color: #475569;
@@ -1319,7 +1325,7 @@
         <div class="rsToolGroup rsToolGroupWide">
           <span class="rsToolTitle">Formatting</span>
           <div class="rsToolControls">
-            <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights</label>
+            <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights As</label>
             <div id="rsWeightDisplayDropdown" class="rsDropdown rsWeightDisplayDropdown">
               <button id="rsWeightDisplayButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
                 <span id="rsWeightDisplayLabel" class="rsDropdownLabel">Index</span>

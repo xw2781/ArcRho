@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Method output vectors opened from Project Instance now label their value column Ultimate."
+}

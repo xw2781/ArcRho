@@ -1290,6 +1290,9 @@
       z-index: 1;
       box-shadow: none;
     }
+    .dsTab:hover {
+      background: #f8fafc;
+    }
     .dsTab.active {
       background: #ffffff;
       font-weight: 700;

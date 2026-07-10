@@ -18,7 +18,8 @@ import {
   renderChart,
   redrawChartSafely,
   setDatasetRenderNumberFormatSettings,
-} from "/ui/dataset/dataset_render.js";
+  setDatasetRenderVectorColumnLabel,
+} from "/ui/dataset/dataset_render.js?v=20260710a";
 import {
   applyTabbedPageSaveBar,
   createTabbedPage,
@@ -605,6 +606,7 @@ const LS_FORM_KEY = "arcrho_tri_inputs";
 const qs = new URLSearchParams(window.location.search);
 const instanceId = qs.get("inst") || "default";
 const isProjectInstanceHost = qs.get("project_instance") === "1";
+setDatasetRenderVectorColumnLabel(isProjectInstanceHost ? qs.get("vector_column_label") : "");
 const isProjectInstanceDraft = qs.get("draft_instance") === "1" || qs.get("draft") === "1";
 const isReadOnlyDatasetViewer = qs.get("readonly") === "1";
 let isSidecarReadOnlyDataset = false;
@@ -3220,6 +3222,9 @@ function hasManualInputGridChanges() {
 }
 
 function hasUnsavedDatasetChanges() {
+  // DFM imports the Dataset runtime for its Data tab, but DFM persistence owns
+  // the method's dirty state and close confirmation for the combined page.
+  if (window.ADA_DFM_CONTEXT) return false;
   return datasetSettingsDirty || notesDirty || hasManualInputGridChanges();
 }
 
@@ -3370,6 +3375,11 @@ function updateDatasetSaveUi() {
 }
 
 function refreshDatasetSettingsDirty() {
+  if (window.ADA_DFM_CONTEXT) {
+    datasetSettingsDirty = false;
+    updateDatasetSaveUi();
+    return;
+  }
   datasetSettingsDirty = !!lastSavedDatasetSettings && !sameDatasetSettings(getCurrentDatasetSettings(), lastSavedDatasetSettings);
   updateDatasetSaveUi();
 }

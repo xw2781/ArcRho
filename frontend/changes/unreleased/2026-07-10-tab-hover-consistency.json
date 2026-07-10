@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset, dfm, and result selection",
+  "audience": "user",
+  "summary": "Dataset, DFM, and Result Selection tabs now share the Bornhuetter Ferguson hover effect."
+}

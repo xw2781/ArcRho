@@ -12,6 +12,7 @@ import {
 
 let ctxMenuWired = false;
 let renderNumberFormatSettings = null;
+let renderVectorColumnLabel = "";
 let gridEditConfig = null;
 
 function normalizeRenderNumberFormatSettings(settings = null) {
@@ -26,6 +27,10 @@ function normalizeRenderNumberFormatSettings(settings = null) {
 
 export function setDatasetRenderNumberFormatSettings(settings = null) {
   renderNumberFormatSettings = normalizeRenderNumberFormatSettings(settings);
+}
+
+export function setDatasetRenderVectorColumnLabel(label = "") {
+  renderVectorColumnLabel = String(label || "").trim();
 }
 
 export function setDatasetGridEditConfig(config = null) {
@@ -375,7 +380,9 @@ export function renderTable() {
 
   devs.forEach((d, c) => {
     const th = document.createElement("th");
-    th.textContent = transposed ? formatOriginLabel(d, originLen) : d;
+    th.textContent = !transposed && devs.length === 1 && renderVectorColumnLabel
+      ? renderVectorColumnLabel
+      : (transposed ? formatOriginLabel(d, originLen) : d);
 
     th.classList.add("colhdr");
     th.dataset.c = String(c);

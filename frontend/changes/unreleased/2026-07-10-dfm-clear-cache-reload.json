@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Fixed Clear Cache & Reload when Project Instance contains an open DFM window.",
+  "details": [
+    "DFM now exclusively owns dirty-state and close-confirmation behavior for its embedded Dataset view.",
+    "The desktop host allows the explicit forced reload to proceed through descendant unload guards."
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson tabs now use the same font stack as Dataset tabs."
+}

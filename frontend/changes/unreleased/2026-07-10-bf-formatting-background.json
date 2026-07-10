@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "The Method tab Formatting group and title now share the same white background."
+}
