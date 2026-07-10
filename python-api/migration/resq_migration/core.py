@@ -8,11 +8,12 @@ from pathlib import Path
 
 METHOD_TYPE_NONE_CODE = 0
 METHOD_TYPE_DFM_CODE = 1
+METHOD_TYPE_BF_CODE = 2
 METHOD_TYPE_RESULT_SELECTION_CODE = 4
 METHOD_TYPE_NAMES = {
     METHOD_TYPE_NONE_CODE: "None",
     METHOD_TYPE_DFM_CODE: "DFM",
-    2: "Bornhutter Ferguson",
+    METHOD_TYPE_BF_CODE: "Bornhuetter Ferguson",
     3: "Cape Cod",
     METHOD_TYPE_RESULT_SELECTION_CODE: "Result Selection",
     6: "Boottrap",

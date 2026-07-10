@@ -159,9 +159,21 @@ def _resolve_single_export(migration, reserving_class, properties):
                 "export_kind": "vector",
                 "names": [vector_name],
                 "include_dfm_methods": False,
+                "include_bf_methods": False,
                 "display_kind": "Result Selection output",
             }
         raise ValueError(f"Active Result Selection output was not found in ResQ vectors: {candidates[0]}")
+
+    if kind == "bornhuetter_ferguson" or method_type in {"bornhuetter ferguson", "bornhuetter_ferguson"}:
+        if vector_name:
+            return {
+                "export_kind": "vector",
+                "names": [vector_name],
+                "include_dfm_methods": False,
+                "include_bf_methods": True,
+                "display_kind": "Bornhuetter Ferguson output",
+            }
+        raise ValueError(f"Active Bornhuetter Ferguson output was not found in ResQ vectors: {candidates[0]}")
 
     matches = []
     if triangle_name:
@@ -183,6 +195,7 @@ def _resolve_single_export(migration, reserving_class, properties):
         "export_kind": export_kind,
         "names": [name],
         "include_dfm_methods": export_kind == "vector",
+        "include_bf_methods": export_kind == "vector",
         "display_kind": export_kind,
     }
 
@@ -240,6 +253,17 @@ def _cleanup_active_target_artifacts(migration, reserving_class, rc_dir, target)
                     if output_name:
                         dataset_names.add(output_name)
                         method_names.add(output_name)
+            elif method_type == migration.METHOD_TYPE_BF_CODE and target.get("include_bf_methods"):
+                method_names.add(vector_name)
+                bf_method = migration._find_bornhuetter_ferguson_for_vector(reserving_class, vector_name)
+                if bf_method is not None:
+                    method_name = migration._normalize_import_name(migration._safe_attr(bf_method, "Name", ""))
+                    output_name = _output_vector_name(migration, bf_method)
+                    if method_name:
+                        method_names.add(method_name)
+                    if output_name:
+                        dataset_names.add(output_name)
+                        method_names.add(output_name)
 
     return migration.cleanup_target_dataset_artifacts(
         rc_dir,
@@ -278,7 +302,7 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
         progress_state = {"completed": 0, "total": len(names), "skipped": 0, "count_methods": target["export_kind"] == "dfm"}
         progress_callback({"event": "total", "completed": 0, "total": len(names), "message": f"Importing {target['display_kind']}: {names[0]}"})
 
-        counts = {"triangles_written": 0, "vectors_written": 0, "dfms_written": 0, "errors": 0}
+        counts = {"triangles_written": 0, "vectors_written": 0, "dfms_written": 0, "bfs_written": 0, "errors": 0}
         if target["export_kind"] == "triangle":
             written, errors = migration.export_triangles_for_rc(
                 reserving_class,
@@ -300,6 +324,7 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
                 progress_state=progress_state,
                 vector_names=names,
                 include_dfm_methods=bool(target.get("include_dfm_methods")),
+                include_bf_methods=bool(target.get("include_bf_methods")),
                 dfm_names=None,
                 method_counts=counts,
                 verbose=False,
@@ -321,7 +346,12 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
         else:
             raise ValueError(f"Unsupported export kind: {target['export_kind']}")
 
-        total_written = counts["triangles_written"] + counts["vectors_written"] + counts["dfms_written"]
+        total_written = (
+            counts["triangles_written"]
+            + counts["vectors_written"]
+            + counts["dfms_written"]
+            + counts["bfs_written"]
+        )
         refreshed = 0
         if total_written:
             refreshed = migration.refresh_sidecar_graphs_for_rc(rc_dir)
@@ -352,6 +382,8 @@ def _method_type_for_reopen(properties):
         return "DFM"
     if kind == "result_selection":
         return "Result Selection"
+    if kind == "bornhuetter_ferguson":
+        return "Bornhuetter Ferguson"
     return ""
 
 
@@ -361,7 +393,7 @@ def _reopen_active_target_window(ui, window, properties, target_name):
         return {"reopened": False, "reason": "missing_target_name"}
 
     method_type = _method_type_for_reopen(properties)
-    open_method = method_type.strip().casefold() in {"dfm", "result selection"}
+    open_method = method_type.strip().casefold() in {"dfm", "result selection", "bornhuetter ferguson"}
     closed = False
     try:
         closed = bool(window.close(timeout_sec=15))

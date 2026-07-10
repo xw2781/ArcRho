@@ -11,6 +11,7 @@ from .core import (
     DATASET_SIDECAR_DIR,
     DEFAULT_CALENDAR,
     DEFAULT_CUMULATIVE,
+    METHOD_TYPE_BF_CODE,
     METHOD_TYPE_NONE_CODE,
     METHOD_TYPE_DFM_CODE,
     METHOD_TYPE_RESULT_SELECTION_CODE,
@@ -38,8 +39,11 @@ from .number_formats import dataset_instance_decimal_places, dataset_instance_nu
 
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
+BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
 METHOD_DATA_DIR = "methods"
 RS_JSON_VALUE_DECIMAL_PLACES = 6
+BF_METHOD_TYPE = "Bornhuetter Ferguson"
+BF_SOURCE_KIND = "bornhuetter_ferguson"
 
 
 def _apply_graph_meta_best_effort(meta: dict, dataset_type: str, rc_dir: Path, **kwargs) -> None:
@@ -51,11 +55,13 @@ def _apply_graph_meta_best_effort(meta: dict, dataset_type: str, rc_dir: Path, *
         meta["graph_metadata_error"] = str(exc)
 
 
-def configure_extractors(*, project_name: str, rs_json_format: str, method_data_dir: str) -> None:
-    global PROJECT_NAME, RS_JSON_FORMAT, METHOD_DATA_DIR
+def configure_extractors(*, project_name: str, rs_json_format: str, method_data_dir: str, bf_json_format: str | None = None) -> None:
+    global PROJECT_NAME, RS_JSON_FORMAT, BF_JSON_FORMAT, METHOD_DATA_DIR
 
     PROJECT_NAME = str(project_name)
     RS_JSON_FORMAT = str(rs_json_format)
+    if bf_json_format:
+        BF_JSON_FORMAT = str(bf_json_format)
     METHOD_DATA_DIR = str(method_data_dir)
 
 
@@ -355,11 +361,17 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     raw_formula = _clean_name(payload.get("formula"))
     method_type = _method_type_name(payload.get("method_type"))
     is_result_selection = _is_result_selection_method_type(method_type)
-    is_engine_generated = (not is_result_selection) and _is_generated_dataset_type(dataset_type)
-    formula = "" if is_engine_generated else raw_formula
+    raw_method_type_code = _method_type_code(method_type, -1)
+    is_bornhuetter_ferguson = _clean_name(payload.get("source_kind")) == BF_SOURCE_KIND
+    meta_method_type = BF_METHOD_TYPE if is_bornhuetter_ferguson else ("None" if raw_method_type_code == METHOD_TYPE_BF_CODE else method_type)
+    meta_method_type_code = METHOD_TYPE_BF_CODE if is_bornhuetter_ferguson else (METHOD_TYPE_NONE_CODE if raw_method_type_code == METHOD_TYPE_BF_CODE else payload.get("method_type_code", _method_type_code(method_type, 0)))
+    is_engine_generated = (not is_result_selection) and (not is_bornhuetter_ferguson) and _is_generated_dataset_type(dataset_type)
+    formula = "" if is_engine_generated or is_bornhuetter_ferguson else raw_formula
     updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
     if is_result_selection:
         source_kind = "result_selection"
+    elif is_bornhuetter_ferguson:
+        source_kind = BF_SOURCE_KIND
     elif is_engine_generated:
         source_kind = "engine"
     elif formula:
@@ -373,11 +385,17 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
-        "calculated": bool((formula and not is_engine_generated) or is_result_selection),
+        "calculated": bool((formula and not is_engine_generated) or is_result_selection or is_bornhuetter_ferguson),
         "formula": formula,
-        "source": "resq_result_selection_vector" if is_result_selection else "resq_vector",
-        "method_type": method_type,
-        "method_type_code": payload.get("method_type_code", _method_type_code(method_type, 0)),
+        "source": (
+            "resq_result_selection_vector"
+            if is_result_selection
+            else "resq_bornhuetter_ferguson_vector"
+            if is_bornhuetter_ferguson
+            else "resq_vector"
+        ),
+        "method_type": meta_method_type,
+        "method_type_code": meta_method_type_code,
         "data_format": "Vector",
         "data_format_code": payload.get("data_format", 1),
         "period_length": period_length,
@@ -393,6 +411,16 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "updated_at": updated_at,
     }
     if is_result_selection:
+        meta["status"] = 0
+        source_names = [
+            _normalize_import_name(item)
+            for item in payload.get("precedents", [])
+            if _normalize_import_name(item)
+        ]
+        meta["Precedents"] = source_names
+        meta["Dependents"] = []
+    elif is_bornhuetter_ferguson:
+        meta.pop("formula", None)
         meta["status"] = 0
         source_names = [
             _normalize_import_name(item)
@@ -656,6 +684,201 @@ def _apply_result_selection_vector_metadata(payload: dict, result_selection_payl
     if origin_labels:
         payload["origin_labels"] = origin_labels
         payload["origin_count"] = len(origin_labels)
+
+PERCENTAGE_DEVELOPED_TYPES = {
+    0: "Latest/Ultimates",
+    1: "Pattern Vector",
+    2: "DFM dev factors",
+    3: "DFM dev factors (adj)",
+}
+PRIOR_TYPES = {
+    0: "Ultimates",
+}
+
+
+def _bf_source_name(method, attr_name: str) -> str:
+    source = _safe_attr(method, attr_name, None)
+    return _normalize_import_name(_safe_attr(source, "Name", ""))
+
+
+def _bf_origin_count(method, output_vector) -> int:
+    origin_count = _safe_int_attr(method, "OriginCount", 0)
+    if origin_count <= 0:
+        try:
+            origin_count = int(_call_member(method, "OriginCount"))
+        except Exception:
+            origin_count = 0
+    if origin_count <= 0:
+        origin_count = _vector_origin_count(output_vector)
+    return max(0, origin_count)
+
+
+def _bf_origin_label(method, origin_index: int) -> str:
+    for name in ("OriginLabel", "OriginLabels"):
+        try:
+            return _normalize_import_name(_try_call_member(method, name, [((), {"OriginIndex": origin_index}), ((origin_index,), {})]))
+        except Exception:
+            continue
+    return ""
+
+
+def _bf_origin_labels(method, output_vector, fallback_count: int = 0) -> list[str]:
+    origin_count = _bf_origin_count(method, output_vector)
+    if origin_count <= 0:
+        origin_count = max(0, int(fallback_count or 0))
+    labels: list[str] = []
+    for i in range(1, origin_count + 1):
+        labels.append(_bf_origin_label(method, i) or _vector_origin_label(output_vector, i))
+    return labels
+
+
+def _bf_type_label(value: object, labels: dict[int, str]) -> str:
+    try:
+        code = int(value)
+    except (TypeError, ValueError):
+        return _normalize_import_name(value)
+    return labels.get(code, str(code))
+
+
+def export_bornhuetter_ferguson(method) -> dict:
+    """Extract BF method configuration from ResQ into ArcRho's BF method JSON shape.
+
+    BF V2 stores prior sources as a weighted dataset list. A ResQ BF exposes one
+    Prior vector, so migration emits that vector as one source with row weights
+    of 1. ArcRho then loads the migrated sources and recalculates the Method table.
+    """
+    output_vector = _safe_attr(method, "OutputVector", None)
+    name = _normalize_import_name(_safe_attr(output_vector, "Name", "")) or _normalize_import_name(_safe_attr(method, "Name", ""))
+    dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
+    output_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
+    origin_length = _safe_int_attr(method, "OriginLength", _safe_int_attr(output_vector, "PeriodLength", 12))
+    latest_dataset = _bf_source_name(method, "Latest")
+    dfm_dataset = _bf_source_name(method, "PercentageDeveloped")
+    prior_dataset = _bf_source_name(method, "Prior")
+    pct_type_code = _safe_int_attr(method, "PercentageDevelopedType", -1)
+    prior_type_code = _safe_int_attr(method, "PriorType", -1)
+    origin_labels = _bf_origin_labels(method, output_vector)
+    try:
+        notes = _clean_name(method.Notes)
+    except Exception:
+        notes = ""
+    try:
+        modified = _iso_or_text(output_vector.Modified)
+    except Exception:
+        modified = datetime.now(timezone.utc).astimezone().isoformat()
+
+    return {
+        "json_format": BF_JSON_FORMAT,
+        "details_tab": {
+            "name": name,
+            "method_type": BF_METHOD_TYPE,
+            "output_type": output_type,
+            "origin_length": origin_length,
+            "statistic_decimal_places": 1,
+        },
+        "method_tab": {
+            "latest_dataset": latest_dataset,
+            "latest_type": "Triangle",
+            "dfm_dataset": dfm_dataset,
+            "percentage_developed_dataset": dfm_dataset,
+            "percentage_developed_type_code": pct_type_code,
+            "percentage_developed_type": _bf_type_label(pct_type_code, PERCENTAGE_DEVELOPED_TYPES),
+            "show_weights": True,
+            "prior_datasets": [
+                {
+                    "name": prior_dataset,
+                    "values": [],
+                    "weights": [1.0 for _ in origin_labels],
+                }
+            ] if prior_dataset else [],
+            "prior_type_code": prior_type_code,
+            "prior_type": _bf_type_label(prior_type_code, PRIOR_TYPES),
+            "origin_labels": origin_labels,
+            "latest_values": [],
+            "dfm_ultimate_values": [],
+            "percentage_developed": [],
+            "selected_prior_values": [],
+            "new_ultimate": [],
+        },
+        "chart_tab": {},
+        "notes_tab": {
+            "notes": notes,
+        },
+        "audit_log_tab": {},
+        "method_metadata": {
+            "method_type": BF_METHOD_TYPE,
+            "source_kind": BF_SOURCE_KIND,
+            "last_modified": modified,
+        },
+    }
+
+
+def _bornhuetter_ferguson_source_names(payload: dict) -> list[str]:
+    method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
+    names: list[str] = []
+    seen: set[str] = set()
+    for key in ("latest_dataset", "dfm_dataset"):
+        name = _normalize_import_name(method_tab.get(key))
+        name_key = name.lower()
+        if name and name_key not in seen:
+            seen.add(name_key)
+            names.append(name)
+    prior_datasets = method_tab.get("prior_datasets") if isinstance(method_tab.get("prior_datasets"), list) else []
+    for prior in prior_datasets:
+        name = _normalize_import_name(prior.get("name")) if isinstance(prior, dict) else ""
+        name_key = name.lower()
+        if name and name_key not in seen:
+            seen.add(name_key)
+            names.append(name)
+    if not prior_datasets:
+        legacy_prior_name = _normalize_import_name(method_tab.get("prior_dataset"))
+        legacy_prior_key = legacy_prior_name.lower()
+        if legacy_prior_name and legacy_prior_key not in seen:
+            names.append(legacy_prior_name)
+    return names
+
+
+def _apply_bornhuetter_ferguson_vector_metadata(payload: dict, bf_payload: dict) -> None:
+    payload["source_kind"] = BF_SOURCE_KIND
+    payload["method_type"] = BF_METHOD_TYPE
+    payload["method_type_code"] = METHOD_TYPE_BF_CODE
+    payload["precedents"] = _bornhuetter_ferguson_source_names(bf_payload)
+    method_tab = bf_payload.get("method_tab") if isinstance(bf_payload.get("method_tab"), dict) else {}
+    origin_labels = method_tab.get("origin_labels") if isinstance(method_tab.get("origin_labels"), list) else []
+    if origin_labels:
+        payload["origin_labels"] = [_normalize_import_name(label) for label in origin_labels]
+        payload["origin_count"] = len(origin_labels)
+
+
+def write_bornhuetter_ferguson_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
+    del rc_path
+    details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    name = _normalize_import_name(details_tab.get("name")) or BF_METHOD_TYPE
+    file_name = f"BF@{_encode_name_part(name)}.json"
+    out_path = rc_dir / METHOD_DATA_DIR / file_name
+    _write_json(out_path, payload)
+    return out_path
+
+
+def _find_bornhuetter_ferguson_for_vector(reserving_class, vector_name: str):
+    target = _normalize_import_name(vector_name).lower()
+    try:
+        collection = _call_member(reserving_class, "BFMethods")
+        try:
+            item = collection.Item(vector_name)
+            if item is not None:
+                return item
+        except Exception:
+            pass
+        for item in collection:
+            output_vector = _safe_attr(item, "OutputVector", None)
+            output_name = _normalize_import_name(_safe_attr(output_vector, "Name", "")).lower()
+            method_name = _normalize_import_name(_safe_attr(item, "Name", "")).lower()
+            if target and (output_name == target or method_name == target):
+                return item
+    except Exception:
+        return None
+    return None
 
 def _parse_origin_start_month(label: object, base_len: int) -> tuple[int, int] | None:
     text = _clean_name(label)
