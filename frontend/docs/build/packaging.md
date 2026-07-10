@@ -48,6 +48,7 @@ Electron main entry: `electron/main.js`
 - `build/build_app_from_network.bat` maps its UNC build directory with `pushd`, resolves Python 3.10, and delegates to `build/build_app.bat`; use it when starting the build from a shared path such as `\\Ne7saswpn02\e\XWSpace\Repos\ArcRho\frontend\build`.
 - Windows packaging currently sets `win.signAndEditExecutable` to `false` so local unsigned test installers skip Electron Builder's executable signing/resource-edit helper on locked-down PCs.
 - Electron packaging enables NSIS's built-in compressor path before `electron-builder` runs so installer file progress is visible during the main install phase.
+- The ArcRho assisted installer shows an Excel add-in option at the start of setup, checked by default. It first scans available drive roots for an existing `ArcRho Server` folder and uses that folder when found; otherwise, it asks the user to choose the root drive from a dropdown and derives `<drive>\ArcRho Server\Excel Add-ins\ArcRho.xlam` from that selection. When selected, the installer uses Excel COM automation to register the derived add-in path for the current Windows user after application files and shortcuts are installed.
 - Successful build flows now clean `python_dist/` and `python_build/` automatically.
 - Published Windows installers are staged in `E:\ArcRho Server\releases\installers` for the desktop startup update check. The preferred feed shape is `latest.json`, `ArcRho-Setup-<version>.exe`, and `ArcRho-Setup-<version>.exe.sha256`; `latest.json` should include `version`, `installer`, and `sha256`, with optional `releaseNotes`, `mandatory`, and `publishedAt`.
 - `build/build_app.bat` publishes the generated installer, checksum, and `latest.json` to `E:\ArcRho Server\releases\installers` after generating release notes.
@@ -63,7 +64,7 @@ Electron main entry: `electron/main.js`
 - The packaged server bundle is expected to contain `python_dist/arcrho_server/_internal/ui/index.html` and `python_dist/arcrho_server/_internal/icons/icon.png`; `build/build_python_server.bat` fails fast when either served asset tree is missing.
 - The packaged Arcode server bundle is expected to contain `python_dist/arcode_server/_internal/ui/arcode/main.html`, `python_dist/arcode_server/_internal/ui/ai-assistant/index.js`, `python_dist/arcode_server/_internal/ui/libs/monaco-editor/min/vs/loader.js`, and the Snowflake connector runtime modules; `build/build_arcode_python_server.bat` fails fast when required served assets are missing.
 - Build logs: `build/log/build_app_<timestamp>.log`.
-- Installer settings in `package.json`, `build/installer.nsh`, and `build/patch_nsis_installer_progress.js`.
+- Installer settings in `package.json`, `build/installer.nsh`, `build/install_arcrho_excel_addin.ps1`, and `build/patch_nsis_installer_progress.js`.
 - Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.
 - `python_dist/` and `python_build/` are transient and removed after successful packaging.
 - Runtime update feed files are external deployment artifacts under `E:\ArcRho Server\releases\installers`; `build/build_app.bat` writes them during release packaging.
