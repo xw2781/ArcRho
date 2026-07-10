@@ -5,7 +5,8 @@ for %%I in ("%SCRIPT_DIR%..") do set "APP_ROOT=%%~fI"
 
 if defined ARCRHO_BUILD_LOG_ACTIVE goto after_log_setup
 for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"`) do set "ARCRHO_BUILD_LOG_STAMP=%%I"
-set "ARCRHO_BUILD_LOG_FILE=%SCRIPT_DIR%log\build_app_%ARCRHO_BUILD_LOG_STAMP%.log"
+if not defined ARCRHO_BUILD_LOG_DIR set "ARCRHO_BUILD_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
+set "ARCRHO_BUILD_LOG_FILE=%ARCRHO_BUILD_LOG_DIR%\build_app_%ARCRHO_BUILD_LOG_STAMP%.log"
 echo Writing build log to: %ARCRHO_BUILD_LOG_FILE%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%run_with_log.ps1" -LogPath "%ARCRHO_BUILD_LOG_FILE%" -CommandPath "%~f0" %*
 exit /b %ERRORLEVEL%

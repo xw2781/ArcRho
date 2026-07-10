@@ -34,6 +34,7 @@ EXCLUDED_DIRS = {
     "python_dist",
     "python_build",
     "__pycache__",
+    "local_workspace_log",
 }
 
 SECTIONS = [

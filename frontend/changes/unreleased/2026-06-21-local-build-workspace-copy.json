@@ -4,7 +4,7 @@
   "audience": "user",
   "summary": "Added helper scripts for preparing and building from a local workspace seeded from the ArcRho ZIP archive.",
   "details": [
-    "The batch wrapper copies E:\\XWSpace\\Repos\\ArcRho.zip to the local user profile Documents\\build_arcrho_app folder, extracts it, and runs the build from there.",
+    "The batch wrapper copies E:\\XWSpace\\Build ArcRho App\\ArcRho.zip to the local user profile Documents\\build_arcrho_app folder, extracts it, and runs the build from there.",
     "Set ARCRHO_LOCAL_BUILD_ROOT to choose a different local build workspace.",
     "Set ARCRHO_LOCAL_BUILD_SOURCE_ZIP to choose a different source ZIP.",
     "The existing local build workspace is always deleted before the ZIP is extracted.",

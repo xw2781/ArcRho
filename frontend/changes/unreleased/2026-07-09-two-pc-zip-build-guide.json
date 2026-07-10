@@ -1,0 +1,15 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Added a clean build-source ZIP creator and documented the supported two-PC packaging workflow.",
+  "details": [
+    "The ZIP creator stages only required frontend and Python API build inputs, validates the archive, and writes ArcRho.zip with a SHA-256 sidecar.",
+    "Final archives, temporary staging data, and atomic replacement backups are isolated under E:\\XWSpace\\Build ArcRho App.",
+    "ZIP-creation and application-build logs from both PCs are centralized under per-computer folders in E:\\XWSpace\\Build ArcRho App\\logs.",
+    "The build-PC log captures the complete local-workspace flow, including ZIP extraction and failures that occur before application packaging starts.",
+    "Archive creation uses a streamed .NET ZIP writer with visible file-count progress instead of the hanging Windows PowerShell Compress-Archive path.",
+    "Repository metadata, generated build outputs, caches, notebooks, and local logs are excluded from the build-source archive.",
+    "Local workspace troubleshooting logs are excluded from the generated repository file inventory."
+  ]
+}

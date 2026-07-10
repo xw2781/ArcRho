@@ -44,11 +44,13 @@ Electron main entry: `electron/main.js`
 - PyInstaller spec (`build/server.spec`) builds backend executable artifacts and includes the served `ui/` and `icons/` asset trees.
 - `build/release_notes.py` validates unreleased change fragments and generates versioned release notes in `docs/releases/`.
 - `build/build_app.bat` updates the app version before packaging: by default it bumps the patch version, and an explicit semantic version argument overrides that default.
-- `build/build_app.bat` mirrors console output into timestamped `build/log/build_app_<timestamp>.log` files for troubleshooting packaging failures.
+- `build/build_app.bat` mirrors console output into timestamped `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\build_app_<timestamp>.log` files for troubleshooting packaging failures from either PC.
+- `build/create_build_source_zip.bat` creates and validates the curated `ArcRho.zip` consumed by the local-workspace build wrapper, preserving portable Node dependencies while excluding repository metadata and generated artifacts; it logs each run to `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\create_build_source_zip_<timestamp>.log`.
 - `build/build_app_from_network.bat` maps its UNC build directory with `pushd`, resolves Python 3.10, and delegates to `build/build_app.bat`; use it when starting the build from a shared path such as `\\Ne7saswpn02\e\XWSpace\Repos\ArcRho\frontend\build`.
 - Windows packaging currently sets `win.signAndEditExecutable` to `false` so local unsigned test installers skip Electron Builder's executable signing/resource-edit helper on locked-down PCs.
 - Electron packaging enables NSIS's built-in compressor path before `electron-builder` runs so installer file progress is visible during the main install phase.
-- The ArcRho assisted installer shows an Excel add-in option at the start of setup, checked by default. It first scans available drive roots for an existing `ArcRho Server` folder and uses that folder when found; otherwise, it asks the user to choose the root drive from a dropdown and derives `<drive>\ArcRho Server\Excel Add-ins\ArcRho.xlam` from that selection. When selected, the installer uses Excel COM automation to register the derived add-in path for the current Windows user after application files and shortcuts are installed.
+- The custom NSIS include loads `MUI2.nsh` before using Modern UI header macros because electron-builder prepends the custom include ahead of its base installer template.
+- The ArcRho assisted installer shows an Excel add-in option at the start of setup, checked by default. It first scans available drive roots for an existing `ArcRho Server` folder and uses that folder when found; otherwise, it asks the user to choose the root drive from a dropdown and derives `<drive>\ArcRho Server\Excel Add-ins\ArcRho.xlam` from that selection. When selected, the installer opens `User Guide.xlsm` in an isolated hidden Excel instance, runs its `InstallNetworkXLAM` macro with the derived add-in path, and verifies that Excel reports the add-in as installed. Excel's configured Trust Center policy remains in force; the installer does not lower macro security.
 - Successful build flows now clean `python_dist/` and `python_build/` automatically.
 - Published Windows installers are staged in `E:\ArcRho Server\releases\installers` for the desktop startup update check. The preferred feed shape is `latest.json`, `ArcRho-Setup-<version>.exe`, and `ArcRho-Setup-<version>.exe.sha256`; `latest.json` should include `version`, `installer`, and `sha256`, with optional `releaseNotes`, `mandatory`, and `publishedAt`.
 - `build/build_app.bat` publishes the generated installer, checksum, and `latest.json` to `E:\ArcRho Server\releases\installers` after generating release notes.
@@ -63,7 +65,7 @@ Electron main entry: `electron/main.js`
 - Build outputs: `dist/`, `python_build/`, `python_dist/`.
 - The packaged server bundle is expected to contain `python_dist/arcrho_server/_internal/ui/index.html` and `python_dist/arcrho_server/_internal/icons/icon.png`; `build/build_python_server.bat` fails fast when either served asset tree is missing.
 - The packaged Arcode server bundle is expected to contain `python_dist/arcode_server/_internal/ui/arcode/main.html`, `python_dist/arcode_server/_internal/ui/ai-assistant/index.js`, `python_dist/arcode_server/_internal/ui/libs/monaco-editor/min/vs/loader.js`, and the Snowflake connector runtime modules; `build/build_arcode_python_server.bat` fails fast when required served assets are missing.
-- Build logs: `build/log/build_app_<timestamp>.log`.
+- Shared build logs: `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\create_build_source_zip_<timestamp>.log`, `build_app_via_local_workspace_<timestamp>.log`, and `build_app_<timestamp>.log` for direct builds.
 - Installer settings in `package.json`, `build/installer.nsh`, `build/install_arcrho_excel_addin.ps1`, and `build/patch_nsis_installer_progress.js`.
 - Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.
 - `python_dist/` and `python_build/` are transient and removed after successful packaging.
@@ -76,8 +78,8 @@ Electron main entry: `electron/main.js`
 2. Update bundled backend: edit `build/server.spec` for ArcRho or `build/arcode_server.spec` for Arcode and verify `extraResources` mappings.
 3. Add or update unreleased change fragments in `changes/unreleased/` before packaging a release.
 4. If you need a specific release version, run `build\build_app.bat <version>` (for example `build\build_app.bat 2.0.0`); otherwise the script auto-increments the patch version.
-5. From another Windows PC, run `"\\Ne7saswpn02\e\XWSpace\Repos\ArcRho\frontend\build\build_app_from_network.bat"`; use `--check` first to verify the network path and Python 3.10 environment without starting a build.
-6. If a packaged build fails, inspect the newest `build\log\build_app_<timestamp>.log`.
+5. From another Windows PC, follow the [two-PC ZIP build workflow](../../build/BUILD_FROM_ZIP_ON_SECOND_PC.md) and run `build\build_app_via_local_workspace.bat` so packaging executes from a local filesystem; `build_app_from_network.bat` remains the direct network-build fallback.
+6. If a packaged build fails, inspect the newest `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\build_app_via_local_workspace_<timestamp>.log` (or `build_app_<timestamp>.log` for a direct build).
 7. If inspecting PyInstaller artifacts is needed, run `npm run build:python` or `npm run build:arcode:python` directly (the full build cleans them on success).
 8. If electron-builder is reinstalled or upgraded, rerun `npm run build:electron` or `build\build_app.bat`; both paths reapply the ArcRho NSIS installer-progress patch before packaging.
 9. After validating a release installer outside the normal build flow, publish it to the startup update feed with `build\publish_update_feed.ps1 -InstallerPath dist\ArcRho-Setup-<version>.exe -ReleaseNotes "<summary>"`.

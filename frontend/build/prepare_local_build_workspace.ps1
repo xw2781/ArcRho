@@ -243,11 +243,24 @@ $frontendExcludeDirs = @(
     (Join-Path $SourceRoot "frontend\python_dist"),
     (Join-Path $SourceRoot "frontend\python_build"),
     (Join-Path $SourceRoot "frontend\build\log"),
+    (Join-Path $SourceRoot "frontend\build\local_workspace_log"),
     (Join-Path $SourceRoot "frontend\build\python_packages"),
     (Join-Path $SourceRoot "frontend\build\__pycache__"),
+    (Join-Path $SourceRoot "frontend\logs"),
     "__pycache__",
     ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
     ".cache",
+    ".git",
+    ".agents",
+    ".codex",
+    ".claude",
+    ".idea",
+    ".vscode",
+    ".venv",
+    "venv",
+    "venv_*",
     "node-v*-win-x64"
 )
 
@@ -259,7 +272,7 @@ Invoke-RobocopyChecked `
     -Source (Join-Path $SourceRoot "frontend") `
     -Target (Join-Path $Destination "frontend") `
     -ExcludeDirs $frontendExcludeDirs `
-    -ExcludeFiles @("*.pyc", "*.pyo")
+    -ExcludeFiles @("*.pyc", "*.pyo", "*.log", "*.tmp", "*.ipynb")
 
 New-Item -ItemType Directory -Force -Path (Join-Path $Destination "python-api") | Out-Null
 foreach ($file in @("pyproject.toml", "README.md")) {
@@ -269,14 +282,14 @@ foreach ($file in @("pyproject.toml", "README.md")) {
 Invoke-RobocopyChecked `
     -Source (Join-Path $SourceRoot "python-api\src") `
     -Target (Join-Path $Destination "python-api\src") `
-    -ExcludeDirs @("__pycache__", ".pytest_cache") `
-    -ExcludeFiles @("*.pyc", "*.pyo")
+    -ExcludeDirs @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache") `
+    -ExcludeFiles @("*.pyc", "*.pyo", "*.log", "*.tmp")
 
 Invoke-RobocopyChecked `
     -Source (Join-Path $SourceRoot "python-api\tools") `
     -Target (Join-Path $Destination "python-api\tools") `
-    -ExcludeDirs @("__pycache__", ".pytest_cache") `
-    -ExcludeFiles @("*.pyc", "*.pyo")
+    -ExcludeDirs @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache") `
+    -ExcludeFiles @("*.pyc", "*.pyo", "*.log", "*.tmp")
 
 Write-Host ""
 Write-Host "Local build workspace is ready."

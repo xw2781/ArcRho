@@ -1,20 +1,34 @@
 @echo off
 setlocal EnableExtensions
 
+set "SCRIPT_DIR=%~dp0"
+if defined ARCRHO_LOCAL_WORKSPACE_LOG_ACTIVE goto after_wrapper_log_setup
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"`) do set "ARCRHO_LOCAL_WORKSPACE_LOG_STAMP=%%I"
+set "ARCRHO_LOCAL_WORKSPACE_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
+set "ARCRHO_LOCAL_WORKSPACE_LOG_FILE=%ARCRHO_LOCAL_WORKSPACE_LOG_DIR%\build_app_via_local_workspace_%ARCRHO_LOCAL_WORKSPACE_LOG_STAMP%.log"
+echo Writing local-workspace build log to: %ARCRHO_LOCAL_WORKSPACE_LOG_FILE%
+set "ARCRHO_LOCAL_WORKSPACE_LOG_ACTIVE=1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%run_with_log.ps1" -LogPath "%ARCRHO_LOCAL_WORKSPACE_LOG_FILE%" -CommandPath "%~f0" %*
+exit /b %ERRORLEVEL%
+
+:after_wrapper_log_setup
+
 REM Copies the network/source archive to a local Documents build workspace,
 REM then runs the ArcRho app build from that local workspace.
+REM Create or refresh the default source archive on the source PC with:
+REM   frontend\build\create_build_source_zip.bat
 REM Optional:
 REM   set ARCRHO_LOCAL_BUILD_ROOT=C:\Local\Path\build_arcrho_app
-REM   set ARCRHO_LOCAL_BUILD_SOURCE_ZIP=E:\XWSpace\Repos\ArcRho.zip
+REM   set ARCRHO_LOCAL_BUILD_SOURCE_ZIP=E:\XWSpace\Build ArcRho App\ArcRho.zip
 REM Optional arguments are forwarded to build_app.bat.
 
-set "SCRIPT_DIR=%~dp0"
-set "SOURCE_ZIP=E:\XWSpace\Repos\ArcRho.zip"
+set "SOURCE_ZIP=E:\XWSpace\Build ArcRho App\ArcRho.zip"
 if defined ARCRHO_LOCAL_BUILD_SOURCE_ZIP set "SOURCE_ZIP=%ARCRHO_LOCAL_BUILD_SOURCE_ZIP%"
 set "LOCAL_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
 if defined ARCRHO_LOCAL_BUILD_ROOT set "LOCAL_ROOT=%ARCRHO_LOCAL_BUILD_ROOT%"
 set "LOCAL_FRONTEND=%LOCAL_ROOT%\frontend"
 set "ZIP_TIMESTAMP_FILE=%LOCAL_ROOT%.source_zip_timestamp"
+set "ARCRHO_BUILD_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
 set "ARCRHO_LOCAL_BUILD_START_SECONDS="
 for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()" 2^>nul`) do set "ARCRHO_LOCAL_BUILD_START_SECONDS=%%I"
 
@@ -23,6 +37,7 @@ if /i "%~1"=="--check" (
     echo Source archive:              %SOURCE_ZIP%
     echo Local workspace:           %LOCAL_ROOT%
     echo ZIP timestamp marker:       %ZIP_TIMESTAMP_FILE%
+    echo Shared build log directory: %ARCRHO_BUILD_LOG_DIR%
     if not exist "%SCRIPT_DIR%prepare_local_build_workspace_from_zip.ps1" (
         echo ERROR: Missing prepare_local_build_workspace_from_zip.ps1 beside this batch file.
         exit /b 1
@@ -38,6 +53,7 @@ echo Source build script: %SCRIPT_DIR%
 echo Source archive:      %SOURCE_ZIP%
 echo Local workspace:     %LOCAL_ROOT%
 echo ZIP timestamp file:  %ZIP_TIMESTAMP_FILE%
+echo Shared log directory: %ARCRHO_BUILD_LOG_DIR%
 echo.
 
 call :check_source_zip_timestamp
@@ -85,7 +101,7 @@ popd
 if not "%BUILD_EXIT_CODE%"=="0" (
     echo.
     echo ERROR: Local ArcRho build failed with exit code %BUILD_EXIT_CODE%.
-    echo Local log directory: %LOCAL_FRONTEND%\build\log
+    echo Build log directory: %ARCRHO_BUILD_LOG_DIR%
     call :print_total_time
     pause
     exit /b %BUILD_EXIT_CODE%
