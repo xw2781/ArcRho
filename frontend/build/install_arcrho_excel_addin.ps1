@@ -1,5 +1,6 @@
 param(
-    [string]$AddInPath = "E:\ArcRho Server\Excel Add-ins\ArcRho.xlam"
+    [string]$AddInPath = "E:\ArcRho Server\Excel Add-ins\ArcRho.xlam",
+    [string]$UserGuidePath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,79 +11,139 @@ function Release-ComObject($Object) {
     }
 }
 
-function Get-ExcelApplication {
-    try {
-        return [System.Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application")
-    }
-    catch {
-        return $null
-    }
-}
-
 if (-not (Test-Path -LiteralPath $AddInPath -PathType Leaf)) {
     throw "ArcRho Excel add-in was not found: $AddInPath"
 }
 
 $resolvedAddInPath = [System.IO.Path]::GetFullPath($AddInPath)
+if ([string]::IsNullOrWhiteSpace($UserGuidePath)) {
+    $UserGuidePath = Join-Path ([System.IO.Path]::GetDirectoryName($resolvedAddInPath)) "User Guide.xlsm"
+}
+
+if (-not (Test-Path -LiteralPath $UserGuidePath -PathType Leaf)) {
+    throw "ArcRho Excel add-in installer workbook was not found: $UserGuidePath"
+}
+
+$resolvedUserGuidePath = [System.IO.Path]::GetFullPath($UserGuidePath)
 $excel = $null
+$workbooks = $null
+$userGuideWorkbook = $null
 $addIns = $null
-$addin = $null
-$createdExcel = $false
+$candidate = $null
 $previousDisplayAlerts = $null
+$previousEnableEvents = $null
+$previousAutomationSecurity = $null
 
 try {
-    $excel = Get-ExcelApplication
-    if ($null -eq $excel) {
-        $excel = New-Object -ComObject Excel.Application
-        $createdExcel = $true
-        $excel.Visible = $false
-    }
+    # Always use an isolated Excel instance. Attaching to an existing or stale
+    # instance can make AddIns.Add fail and can interfere with a user's workbooks.
+    $excel = New-Object -ComObject Excel.Application
+    $excel.Visible = $false
 
     $previousDisplayAlerts = $excel.DisplayAlerts
+    $previousEnableEvents = $excel.EnableEvents
+    $previousAutomationSecurity = $excel.AutomationSecurity
     $excel.DisplayAlerts = $false
+    $excel.EnableEvents = $false
+
+    # Respect Excel's configured Trust Center policy. The installer does not
+    # lower macro security or attempt to bypass a blocked workbook.
+    $msoAutomationSecurityByUI = 2
+    $excel.AutomationSecurity = $msoAutomationSecurityByUI
+
+    $workbooks = $excel.Workbooks
+    $userGuideWorkbook = $workbooks.Open($resolvedUserGuidePath, 0, $true)
+    Release-ComObject $workbooks
+    $workbooks = $null
+
+    $escapedWorkbookName = $userGuideWorkbook.Name.Replace("'", "''")
+    $macroName = "'$escapedWorkbookName'!InstallNetworkXLAM"
+    Write-Host "Running trusted Excel add-in installer macro: $macroName"
+
+    try {
+        $excel.Run($macroName, $resolvedAddInPath) | Out-Null
+    }
+    catch {
+        throw "Excel could not run the ArcRho add-in installer macro from '$resolvedUserGuidePath'. Ensure the workbook is trusted and its macros are permitted. $($_.Exception.Message)"
+    }
+
     $addIns = $excel.AddIns
-
-    foreach ($candidate in @($addIns)) {
+    $installedAddInPath = $null
+    $registeredButDisabledPath = $null
+    for ($index = 1; $index -le $addIns.Count; $index++) {
+        $candidate = $null
         try {
-            $candidateFullName = [System.IO.Path]::GetFullPath($candidate.FullName)
-            if ([string]::Equals($candidateFullName, $resolvedAddInPath, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $addin = $candidate
+            $candidate = $addIns.Item($index)
+            $candidatePath = [System.IO.Path]::GetFullPath([string]$candidate.FullName)
+            if ([string]::Equals($candidatePath, $resolvedAddInPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                if ($candidate.Installed) {
+                    $installedAddInPath = $candidatePath
+                }
+                else {
+                    $registeredButDisabledPath = $candidatePath
+                }
                 break
-            }
-
-            if (
-                [string]::Equals($candidate.Name, "ArcRho.xlam", [System.StringComparison]::OrdinalIgnoreCase) -and
-                $candidate.Installed
-            ) {
-                $candidate.Installed = $false
             }
         }
         catch {
             Write-Warning "Skipped an Excel add-in entry that could not be inspected: $($_.Exception.Message)"
         }
+        finally {
+            Release-ComObject $candidate
+            $candidate = $null
+        }
     }
 
-    if ($null -eq $addin) {
-        $addin = $addIns.Add($resolvedAddInPath, $false)
+    if ([string]::IsNullOrWhiteSpace($installedAddInPath)) {
+        if (-not [string]::IsNullOrWhiteSpace($registeredButDisabledPath)) {
+            throw "Excel registered the ArcRho add-in but did not mark it as installed: $registeredButDisabledPath"
+        }
+        throw "The ArcRho installer macro completed, but Excel did not report the add-in as installed: $resolvedAddInPath"
     }
 
-    if (-not $addin.Installed) {
-        $addin.Installed = $true
-    }
-
-    Write-Host "Installed ArcRho Excel add-in: $($addin.FullName)"
+    Write-Host "Installed ArcRho Excel add-in through Excel VBA: $installedAddInPath"
 }
 finally {
-    if ($null -ne $excel -and $null -ne $previousDisplayAlerts) {
+    Release-ComObject $candidate
+    Release-ComObject $addIns
+
+    if ($null -ne $userGuideWorkbook) {
         try {
-            $excel.DisplayAlerts = $previousDisplayAlerts
+            $userGuideWorkbook.Close($false)
         }
         catch {
-            Write-Warning "Could not restore Excel DisplayAlerts: $($_.Exception.Message)"
+            Write-Warning "Could not close the ArcRho add-in installer workbook: $($_.Exception.Message)"
         }
     }
+    Release-ComObject $userGuideWorkbook
+    Release-ComObject $workbooks
 
-    if ($createdExcel -and $null -ne $excel) {
+    if ($null -ne $excel) {
+        if ($null -ne $previousDisplayAlerts) {
+            try {
+                $excel.DisplayAlerts = $previousDisplayAlerts
+            }
+            catch {
+                Write-Warning "Could not restore Excel DisplayAlerts: $($_.Exception.Message)"
+            }
+        }
+        if ($null -ne $previousEnableEvents) {
+            try {
+                $excel.EnableEvents = $previousEnableEvents
+            }
+            catch {
+                Write-Warning "Could not restore Excel EnableEvents: $($_.Exception.Message)"
+            }
+        }
+        if ($null -ne $previousAutomationSecurity) {
+            try {
+                $excel.AutomationSecurity = $previousAutomationSecurity
+            }
+            catch {
+                Write-Warning "Could not restore Excel AutomationSecurity: $($_.Exception.Message)"
+            }
+        }
+
         try {
             $excel.Quit()
         }
@@ -91,8 +152,6 @@ finally {
         }
     }
 
-    Release-ComObject $addin
-    Release-ComObject $addIns
     Release-ComObject $excel
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()

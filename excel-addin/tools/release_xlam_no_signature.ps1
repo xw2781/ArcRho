@@ -8,6 +8,8 @@
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "xlam_package_helpers.ps1")
+
 function Resolve-FullPath([string]$Path) {
     $executionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
 }
@@ -133,39 +135,44 @@ function Update-XlamPackageFromUnpackedFiles(
     }
     New-Item -ItemType Directory -Path $WorkingDir | Out-Null
 
-    [System.IO.Compression.ZipFile]::ExtractToDirectory($WorkbookPath, $WorkingDir)
-
-    $customUIDir = Join-Path $WorkingDir "customUI"
-    if (-not (Test-Path -LiteralPath $customUIDir -PathType Container)) {
-        New-Item -ItemType Directory -Path $customUIDir | Out-Null
-    }
-
-    $tempRibbonXmlPath = New-CustomUIXmlForWorkbook $RibbonXmlPath $LabelWorkbookPath ([System.IO.Path]::GetTempPath())
+    $zipPath = [System.IO.Path]::ChangeExtension($WorkbookPath, ".zip")
     try {
-        Copy-Item -LiteralPath $tempRibbonXmlPath -Destination (Join-Path $customUIDir "customUI.xml") -Force
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($WorkbookPath, $WorkingDir)
+
+        $customUIDir = Join-Path $WorkingDir "customUI"
+        if (-not (Test-Path -LiteralPath $customUIDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $customUIDir | Out-Null
+        }
+
+        $tempRibbonXmlPath = New-CustomUIXmlForWorkbook $RibbonXmlPath $LabelWorkbookPath $WorkingDir
+        try {
+            Copy-Item -LiteralPath $tempRibbonXmlPath -Destination (Join-Path $customUIDir "customUI.xml") -Force
+        }
+        finally {
+            if (Test-Path -LiteralPath $tempRibbonXmlPath -PathType Leaf) {
+                Remove-Item -LiteralPath $tempRibbonXmlPath -Force
+            }
+        }
+        Write-Host "Updated ribbon XML: $RibbonXmlPath"
+
+        if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
+            Remove-Item -LiteralPath $zipPath -Force
+        }
+
+        Compress-XlamPackage $WorkingDir $zipPath
+        Assert-XlamPackage $zipPath
+
+        Clear-ReadOnly $WorkbookPath
+        Move-Item -LiteralPath $zipPath -Destination $WorkbookPath -Force
     }
     finally {
-        if (Test-Path -LiteralPath $tempRibbonXmlPath -PathType Leaf) {
-            Remove-Item -LiteralPath $tempRibbonXmlPath -Force
+        if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
+            Remove-Item -LiteralPath $zipPath -Force
+        }
+        if (Test-Path -LiteralPath $WorkingDir -PathType Container) {
+            Remove-Item -LiteralPath $WorkingDir -Recurse -Force
         }
     }
-    Write-Host "Updated ribbon XML: $RibbonXmlPath"
-
-    $zipPath = [System.IO.Path]::ChangeExtension($WorkbookPath, ".zip")
-    if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
-        Remove-Item -LiteralPath $zipPath -Force
-    }
-
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $WorkingDir,
-        $zipPath,
-        [System.IO.Compression.CompressionLevel]::Optimal,
-        $false
-    )
-
-    Clear-ReadOnly $WorkbookPath
-    Move-Item -LiteralPath $zipPath -Destination $WorkbookPath -Force
-    Remove-Item -LiteralPath $WorkingDir -Recurse -Force
 }
 
 $betaPathFull = Resolve-FullPath $BetaPath
@@ -188,6 +195,7 @@ if (-not (Test-Path -LiteralPath $archiveDirFull -PathType Container)) {
 
 Update-XlamPackageFromUnpackedFiles $betaPathFull $customUIPathFull $extractDirFull $betaPathFull
 Update-WorkbookCoreProperties $betaPathFull (Get-RibbonLabelForWorkbook $betaPathFull)
+Assert-XlamPackage $betaPathFull
 
 if (Test-Path -LiteralPath $releasePathFull -PathType Leaf) {
     Clear-ReadOnly $releasePathFull
@@ -202,6 +210,7 @@ if (Test-Path -LiteralPath $releasePathFull -PathType Leaf) {
 Copy-Item -LiteralPath $betaPathFull -Destination $releasePathFull -Force
 Update-XlamPackageFromUnpackedFiles $releasePathFull $customUIPathFull $extractDirFull $releasePathFull
 Update-WorkbookCoreProperties $releasePathFull (Get-RibbonLabelForWorkbook $releasePathFull)
+Assert-XlamPackage $releasePathFull
 (Get-Item -LiteralPath $releasePathFull).Attributes =
     (Get-Item -LiteralPath $releasePathFull).Attributes -bor [System.IO.FileAttributes]::ReadOnly
 

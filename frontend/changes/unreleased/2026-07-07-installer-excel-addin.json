@@ -5,6 +5,9 @@
   "summary": "Added an optional Windows installer step to register the ArcRho Excel add-in automatically.",
   "details": [
     "The add-in option is checked by default.",
-    "Setup detects an existing ArcRho Server folder across drive roots, or asks the user to choose the root drive before deriving the ArcRho.xlam path."
+    "Setup detects an existing ArcRho Server folder across drive roots, or asks the user to choose the root drive before deriving the ArcRho.xlam path.",
+    "The custom NSIS include now loads Modern UI definitions before rendering the Excel add-in options header.",
+    "Excel add-in releases now preserve valid Office package paths and validate required workbook parts before publishing the XLAM.",
+    "Setup now runs the known-working InstallNetworkXLAM macro inside an isolated Excel instance and verifies the installed add-in without weakening Trust Center settings."
   ]
 }

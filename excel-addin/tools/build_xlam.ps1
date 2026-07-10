@@ -6,6 +6,8 @@
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "xlam_package_helpers.ps1")
+
 function Resolve-FullPath([string]$Path) {
     $executionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
 }
@@ -202,7 +204,8 @@ function Update-CustomUIXml([string]$WorkbookPath, [string]$RibbonXmlPath) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-    $tempRibbonXmlPath = New-CustomUIXmlForWorkbook $RibbonXmlPath $WorkbookPath ([System.IO.Path]::GetTempPath())
+    $workbookDirectory = [System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($WorkbookPath))
+    $tempRibbonXmlPath = New-CustomUIXmlForWorkbook $RibbonXmlPath $WorkbookPath $workbookDirectory
     $zip = [System.IO.Compression.ZipFile]::Open($WorkbookPath, [System.IO.Compression.ZipArchiveMode]::Update)
     try {
         $entryPath = "customUI/customUI.xml"
@@ -333,6 +336,7 @@ try {
 
     Copy-Item -LiteralPath $tempTargetPath -Destination $targetPathFull -Force
     Remove-Item -LiteralPath $tempTargetPath -Force
+    Assert-XlamPackage $targetPathFull
 
     Write-Host "Updated XLAM: $targetPathFull"
 }

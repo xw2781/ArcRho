@@ -1,5 +1,11 @@
 ; Custom NSIS script for richer installation detail output and progress text.
 
+; electron-builder prepends this custom include before its own MUI2 include.
+; Load MUI2 here so MUI_HEADER_TEXT is defined when the functions below are parsed.
+!ifndef MUI_INCLUDED
+  !include "MUI2.nsh"
+!endif
+
 !include "LogicLib.nsh"
 !include "nsDialogs.nsh"
 
