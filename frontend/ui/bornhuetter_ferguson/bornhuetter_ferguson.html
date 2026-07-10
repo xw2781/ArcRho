@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bornhuetter Ferguson</title>
+  <style>
+    :root {
+      --bf-border: #d6dbe3;
+      --bf-border-strong: #b9c2cf;
+      --bf-bg: #f4f6f8;
+      --bf-panel: #ffffff;
+      --bf-text: #202733;
+      --bf-muted: #697386;
+      --bf-accent: #2f6fed;
+      --bf-accent-soft: #eaf1ff;
+      --bf-danger: #b42318;
+      --bf-table-head: #eef2f7;
+      --bf-method-font: Arial, "Segoe UI", Tahoma, sans-serif;
+      --bf-method-grid-border: #f3f1f1;
+      --bf-method-header-cell: #a6a6a6;
+      --bf-method-label-cell: #d1d1d1;
+      --bf-method-percent-cell: #dff8f8;
+      --bf-method-prior-cell: #d9e98b;
+      --bf-method-ultimate-cell: #fdf5a9;
+      --bf-method-ultimate-highlight-cell: #fde047;
+      --bf-method-cell-h: 20px;
+      --bf-method-header-h: 52px;
+      --bf-method-header-line-h: 14px;
+      --bf-method-cell-w: 100px;
+      --bf-method-weight-w: 68px;
+      --bf-method-origin-w: 100px;
+      color-scheme: light;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bf-bg);
+      color: var(--bf-text);
+      font: 12px/1.45 "Segoe UI", Arial, sans-serif;
+    }
+    .bfShell {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      min-width: 760px;
+    }
+    .bfTabbed {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .bfTabBar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: flex-end;
+      gap: 0;
+      flex-wrap: nowrap;
+      position: relative;
+      height: calc(35px + var(--tabbed-tabbar-extra-y, 0px));
+      margin: 0;
+      padding: 4px var(--tabbed-page-gutter, 8px) 0;
+      background: #f5f7fa;
+      border-bottom: 0;
+      box-sizing: border-box;
+      user-select: none;
+    }
+    .bfTabBar::after {
+      content: "";
+      position: absolute;
+      left: var(--tabbed-page-gutter, 8px);
+      right: var(--tabbed-page-gutter, 8px);
+      bottom: 0;
+      height: 1px;
+      background: #d0d0d0;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .bfTabButton,
+    .bfTab {
+      appearance: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 26px;
+      padding: 0 10px;
+      border: 1px solid #cbd5e1;
+      border-bottom: 1px solid #cbd5e1;
+      border-radius: 0;
+      background: #edf1f6;
+      color: #1f2937;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      white-space: nowrap;
+      position: relative;
+      z-index: 1;
+      box-shadow: none;
+      box-sizing: border-box;
+      user-select: none;
+    }
+    .bfTabButton:hover,
+    .bfTab:hover { background: #f8fafc; }
+    .bfTabButton.active,
+    .bfTab.active {
+      height: 29px;
+      margin-bottom: 0;
+      border-color: #cbd5e1;
+      border-bottom: 0;
+      background: #ffffff;
+      color: #1f2937;
+      font-weight: 700;
+      z-index: 2;
+      box-shadow: none;
+      transform: translateY(1px);
+    }
+    .bfTabButton.active::after,
+    .bfTab.active::after {
+      content: "";
+      position: absolute;
+      left: -1px;
+      right: -1px;
+      bottom: -1px;
+      height: 1px;
+      background: #ffffff;
+    }
+    .bfPageHost {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid #d8dde3;
+      border-top: 0;
+      border-radius: 0;
+      background: #ffffff;
+      margin: 0 var(--tabbed-page-gutter, 8px);
+      padding: 10px;
+    }
+    .bfPage { display: none; }
+    .bfPage.active { display: block; }
+    .bfDetailsStack {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .bfPanel {
+      background: var(--bf-panel);
+      border: 1px solid #d7dde7;
+      border-radius: 5px;
+      overflow: hidden;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+    .bfDetailsStack > .bfPanel:first-child {
+      position: relative;
+      z-index: 2;
+      overflow: visible;
+    }
+    .bfPanelBody { padding: 12px 14px 14px; }
+    .bfFieldGrid {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      gap: 10px 14px;
+      align-items: center;
+    }
+    .bfLabel {
+      color: #000;
+      font-size: 13px;
+      font-weight: 400;
+      text-align: right;
+    }
+    .bfFieldControl {
+      position: relative;
+      min-width: 0;
+      width: 100%;
+    }
+    .bfInput,
+    .bfTextarea {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid #cfcfcf;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--bf-text);
+      font: inherit;
+      font-size: 13px;
+    }
+    .bfInput {
+      height: 30px;
+      padding: 0 10px;
+    }
+    .bfInput[readonly] {
+      background: #f5f7fa;
+      color: #586274;
+    }
+    .bfInput:focus,
+    .bfTextarea:focus {
+      outline: none;
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+    }
+    .bfFieldControl.withPicker .bfInput {
+      padding-right: 36px;
+    }
+    .bfPriorPicker {
+      position: relative;
+      min-height: 32px;
+    }
+    .bfPriorList {
+      display: flex;
+      min-height: 32px;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding: 4px 6px;
+      border: 1px solid #cfcfcf;
+      border-radius: 6px;
+      background: #fff;
+    }
+    .bfPriorList:focus-within {
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+    }
+    .bfPriorList.bfPriorDragActive { border-style: dashed; }
+    .bfPriorList.bfPriorDragOutside {
+      border-color: #e7a1ad;
+      background: #fff8f9;
+    }
+    .bfPriorEmpty {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .bfPriorToken {
+      display: inline-flex;
+      min-width: 0;
+      max-width: min(420px, 100%);
+      height: 22px;
+      min-height: 22px;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 9px;
+      border: 1px solid #d4d4d4;
+      border-radius: 14px;
+      background: #ffffff;
+      color: #323232;
+      font-size: 12px;
+      line-height: 16px;
+      white-space: nowrap;
+      cursor: grab;
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    .bfPriorToken.bfPriorDragging {
+      opacity: 0.48;
+      border-style: dashed;
+    }
+    .bfPriorToken:hover,
+    .bfPriorToken:focus-within {
+      border-color: #9d9d9d;
+      background: #f6f9ff;
+    }
+    .bfPriorTokenLabel {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .bfPriorOpen {
+      display: inline-flex;
+      min-width: 0;
+      height: 100%;
+      align-items: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      line-height: inherit;
+      cursor: grab;
+    }
+    .bfPriorOpen:focus { outline: none; }
+    .bfPriorAddSlot {
+      display: inline-flex;
+      width: 22px;
+      height: 22px;
+      flex: 0 0 22px;
+    }
+    .bfPriorAdd {
+      appearance: none;
+      display: inline-flex;
+      width: 22px;
+      min-width: 22px;
+      height: 22px;
+      min-height: 22px;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 50%;
+      background: #ffffff;
+      color: #64748b;
+      cursor: pointer;
+      transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+    .bfPriorAdd:hover,
+    .bfPriorAdd:focus {
+      outline: none;
+      border-color: #8aa8ff;
+      background: #eaf2ff;
+      color: #2b6df6;
+    }
+    .bfPriorAdd svg {
+      display: block;
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .bfButton,
+    .bfIconButton {
+      appearance: none;
+      height: 30px;
+      border: 1px solid #c8c8c8;
+      border-radius: 6px;
+      background: #f1f1f1;
+      color: #263241;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
+    }
+    .bfButton { padding: 0 12px; }
+    .bfIconButton {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      width: 22px;
+      height: 22px;
+      transform: translateY(-50%);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border-color: #d3d3d3;
+      border-radius: 5px;
+      background: #f8fbff;
+      color: #555;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0.4px;
+    }
+    .bfButton:hover,
+    .bfIconButton:hover {
+      background: #e8f0fe;
+      border-color: #9fb9ff;
+    }
+    .bfButton:focus,
+    .bfIconButton:focus {
+      outline: none;
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+    }
+    .bfButton.primary {
+      border-color: var(--bf-accent);
+      background: var(--bf-accent-soft);
+      color: #1d4ed8;
+    }
+    .bfButton.primary:hover {
+      background: #dbe8ff;
+    }
+    .bfButton:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+    .bfMethodToolbar {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .bfToolGroup {
+      position: relative;
+      display: flex;
+      min-height: 42px;
+      align-items: center;
+      padding: 9px 10px 5px;
+      border: 1px solid #cfd8e6;
+      border-radius: 7px;
+      background: #fbfdff;
+    }
+    .bfToolTitle {
+      position: absolute;
+      top: -8px;
+      left: 9px;
+      padding: 0 4px;
+      background: var(--bf-bg);
+      color: #64748b;
+      font-size: 11px;
+    }
+    .bfToolControls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .bfToolCheck,
+    .bfToolDecimalControl {
+      display: inline-flex;
+      min-height: 28px;
+      align-items: center;
+      gap: 5px;
+      color: #1f2937;
+      white-space: nowrap;
+    }
+    .bfToolCheck input { accent-color: var(--bf-accent); }
+    .bfToolControlLabel {
+      color: #475569;
+      font-size: 12px;
+    }
+    .bfWeightDisplayDropdown {
+      position: relative;
+      width: 106px;
+      height: 28px;
+    }
+    .bfOriginLengthDropdown {
+      position: relative;
+      width: 70px;
+      min-width: 60px;
+      height: 30px;
+    }
+    .bfDropdownButton {
+      display: inline-flex;
+      width: 100%;
+      height: 28px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 8px;
+      border: 1px solid #cfcfcf;
+      border-radius: 6px;
+      background: #fff;
+      color: #111;
+      font: 12px var(--bf-method-font);
+      cursor: pointer;
+    }
+    .bfDropdownButton:hover:not(:disabled) { background: #f8fafc; border-color: #b8c3d3; }
+    .bfDropdownButton:focus { outline: none; border-color: #8aa8ff; box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2); }
+    .bfDropdownButton:disabled { color: #94a3b8; cursor: default; opacity: 0.72; }
+    .bfOriginLengthButton {
+      height: 30px;
+      padding: 0 10px;
+      color: var(--bf-text);
+      font: inherit;
+      font-size: 13px;
+    }
+    .bfDropdownCaret,
+    .bfStepperCaret {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid #64748b;
+    }
+    .bfDropdownCaret { transform: translateX(5px); }
+    .bfWeightDisplayDropdown.open .bfDropdownCaret,
+    .bfOriginLengthDropdown.open .bfDropdownCaret { transform: translateX(5px) rotate(180deg); border-top-color: #2f5fd3; }
+    .bfDropdownMenu {
+      position: absolute;
+      top: calc(100% + 3px);
+      left: 0;
+      z-index: 80;
+      width: 100%;
+      display: none;
+      padding: 3px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+    }
+    .bfWeightDisplayDropdown.open .bfDropdownMenu,
+    .bfOriginLengthDropdown.open .bfDropdownMenu { display: block; }
+    .bfDropdownOption {
+      width: 100%;
+      height: 24px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #111827;
+      font: 12px var(--bf-method-font);
+      text-align: left;
+      cursor: pointer;
+    }
+    .bfDropdownOption:hover,
+    .bfDropdownOption:focus { outline: none; background: #f1f5f9; }
+    .bfDropdownOption[aria-selected="true"] { background: #eaf2ff; color: #0d6efd; }
+    .bfOriginLengthDropdown .bfDropdownMenu { padding: 4px; }
+    .bfOriginLengthDropdown .bfDropdownOption {
+      height: 28px;
+      padding: 0 10px;
+      font: inherit;
+      font-size: 13px;
+    }
+    .bfNumberStepper {
+      position: relative;
+      display: inline-flex;
+      width: 70px;
+      height: 28px;
+    }
+    .bfStepperInput {
+      width: 100%;
+      height: 28px;
+      padding: 0 28px 0 12px;
+      border: 1px solid #cfcfcf;
+      border-radius: 6px;
+      background: #fff;
+      text-align: center;
+      appearance: textfield;
+    }
+    .bfStepperInput:focus { outline: none; border-color: #8aa8ff; box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2); }
+    .bfStepperInput::-webkit-outer-spin-button,
+    .bfStepperInput::-webkit-inner-spin-button { margin: 0; appearance: none; -webkit-appearance: none; }
+    .bfStepperButtons {
+      position: absolute;
+      top: 1px;
+      right: 1px;
+      bottom: 1px;
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      width: 28px;
+      overflow: hidden;
+      border-radius: 0 4px 4px 0;
+    }
+    .bfStepperBtn {
+      display: inline-flex;
+      width: 28px;
+      height: 13px;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+    }
+    .bfStepperBtn:hover,
+    .bfStepperBtn:focus { outline: none; background: #eaf2ff; color: #2f5fd3; }
+    .bfStepperCaret { opacity: 0.32; transform: translateX(2px); }
+    .bfStepperCaretUp { transform: translateX(2px) rotate(180deg); }
+    .bfNumberStepper:hover .bfStepperCaret,
+    .bfNumberStepper:focus-within .bfStepperCaret { opacity: 1; }
+    .bfTableWrap {
+      --bf-scrollbar-chrome: #f1f3f5;
+      --bf-scrollbar-button-hover: #e5e9ef;
+      --bf-scrollbar-button-active: #d9dee7;
+      --bf-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --bf-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+      border: 1px solid #d8dde3;
+      border-radius: 0;
+      background: #fff;
+      overflow: auto;
+      scrollbar-gutter: stable;
+      padding-right: 1px;
+      padding-bottom: 1px;
+      max-height: calc(100vh - 190px);
+      box-shadow: none;
+    }
+    table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+      min-width: 980px;
+      font-size: 12px;
+    }
+    th,
+    td {
+      border: 0;
+      border-right: 1px solid #ddd;
+      border-bottom: 1px solid #ddd;
+      padding: 5px 7px;
+      text-align: right;
+      white-space: nowrap;
+      height: 31px;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f6f6f6;
+      background-clip: padding-box;
+      color: #2f3948;
+      font-weight: 400;
+      border-top: 1px solid #ddd;
+    }
+    th:first-child,
+    td:first-child {
+      text-align: left;
+      min-width: 120px;
+    }
+    table.bfMethodTable {
+      width: max-content;
+      min-width: 0;
+      table-layout: fixed;
+      font-size: 14px;
+      font-family: var(--bf-method-font);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .bfMethodTable:focus,
+    .bfMethodTable:focus-visible {
+      outline: none;
+    }
+    .bfMethodTable col.bfMethodOriginCol {
+      width: var(--bf-method-origin-w);
+    }
+    .bfMethodTable col.bfMethodValueCol {
+      width: var(--bf-method-cell-w);
+    }
+    .bfMethodTable col.bfMethodWeightCol {
+      width: var(--bf-method-weight-w);
+    }
+    .bfMethodTable th.bfWeightHeader {
+      width: var(--bf-method-weight-w);
+      min-width: var(--bf-method-weight-w);
+      max-width: var(--bf-method-weight-w);
+      color: #64748b;
+      font-style: italic;
+    }
+    .bfMethodTable th,
+    .bfMethodTable td {
+      width: var(--bf-method-cell-w);
+      min-width: var(--bf-method-cell-w);
+      max-width: var(--bf-method-cell-w);
+      height: var(--bf-method-cell-h);
+      line-height: var(--bf-method-cell-h);
+      padding: 0 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      border-right-color: var(--bf-method-grid-border);
+      border-bottom-color: var(--bf-method-grid-border);
+      color: #132a63;
+    }
+    .bfMethodTable th:first-child,
+    .bfMethodTable td:first-child {
+      width: var(--bf-method-origin-w);
+      min-width: var(--bf-method-origin-w);
+      max-width: var(--bf-method-origin-w);
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      text-align: center;
+      background: var(--bf-method-label-cell);
+      color: #111827;
+      border-left: 1px solid var(--bf-method-grid-border);
+    }
+    .bfMethodTable thead th {
+      z-index: 4;
+      height: var(--bf-method-header-h);
+      line-height: var(--bf-method-header-line-h);
+      padding: 3px 5px;
+      white-space: normal;
+      vertical-align: middle;
+      text-align: center;
+      background: var(--bf-method-header-cell);
+      color: #111827;
+      font-weight: 400;
+      cursor: cell;
+    }
+    .bfMethodTable thead th:first-child {
+      z-index: 5;
+      background: var(--bf-method-header-cell);
+    }
+    .bfMethodHeaderText {
+      display: -webkit-box;
+      max-height: calc(var(--bf-method-header-line-h) * 3);
+      overflow: hidden;
+      line-height: var(--bf-method-header-line-h);
+      text-overflow: ellipsis;
+      -webkit-box-orient: vertical;
+      line-clamp: 3;
+      -webkit-line-clamp: 3;
+    }
+    .bfMethodTable td {
+      cursor: cell;
+    }
+    .bfMethodTable td.bfPercentCell {
+      background: var(--bf-method-percent-cell);
+    }
+    .bfMethodTable td.bfPriorCell {
+      background: #fff;
+    }
+    .bfMethodTable td.bfPriorCell.bfSelectedSourceCell {
+      background: var(--bf-method-prior-cell);
+    }
+    .bfMethodTable td.bfWeightCell {
+      width: var(--bf-method-weight-w);
+      min-width: var(--bf-method-weight-w);
+      max-width: var(--bf-method-weight-w);
+      background: var(--bf-method-percent-cell);
+      color: #8aa3a9;
+      font-style: italic;
+    }
+    .bfMethodTable td.bfUltimateCell {
+      background: var(--bf-method-ultimate-cell);
+    }
+    .bfMethodTable tr.bfTotalRow td {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+    .bfMethodTable tr.bfTotalRow td:first-child {
+      background: var(--bf-method-label-cell);
+    }
+    .bfMethodTable td.bfMethodCell.bfNullCell {
+      color: #8aa3a9;
+    }
+    .bfMethodTable th.bfHighlightedColumnLabel,
+    .bfMethodTable td.bfHighlightedRowLabel {
+      font-weight: 700;
+    }
+    .bfMethodTable td.bfMethodCell.bfHighlightedCell {
+      background: #30358b;
+      color: #fff;
+    }
+    .bfMethodTable td.bfPercentCell.bfHighlightedCell {
+      background: #a8eeee;
+      color: #0284c7;
+    }
+    .bfMethodTable td.bfPriorCell.bfSelectedSourceCell.bfHighlightedCell {
+      background: #9dcc00;
+      color: #111827;
+    }
+    .bfMethodTable td.bfWeightCell.bfHighlightedCell {
+      background: #a8eeee;
+      color: #0284c7;
+    }
+    .bfMethodTable td.bfWeightCell.bfWeightNonZero {
+      color: #003fff;
+      font-style: normal;
+    }
+    .bfMethodTable td.bfUltimateCell.bfHighlightedCell {
+      background: var(--bf-method-ultimate-highlight-cell);
+      color: #111827;
+    }
+    .bfMethodTable td.bfOriginCell.bfHighlightedCell {
+      background: #a6a6a6;
+      color: #111827;
+      font-weight: 700;
+    }
+    .bfMethodTable td.bfMethodCell.bfHighlightAnchorCell {
+      outline: 1px dashed #0f172a;
+      outline-offset: -2px;
+    }
+    .bfCellContextMenu {
+      position: fixed;
+      z-index: 10000;
+      width: 180px;
+      max-width: min(180px, calc(100vw - 16px));
+      display: none;
+      padding: 4px;
+      border: 1px solid #c9ced5;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    }
+    .bfCellContextMenu.open { display: block; }
+    .bfCellContextMenu button {
+      width: 100%;
+      height: 24px;
+      border: 0;
+      background: transparent;
+      color: #111827;
+      font: 12px var(--bf-method-font);
+      text-align: left;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .bfCellContextMenu button:hover,
+    .bfCellContextMenu button:focus-visible {
+      outline: none;
+      background: #eaf2ff;
+      color: #0d6efd;
+    }
+    .bfPriorContextMenu { width: 120px; }
+    .bfPriorContextMenu button:hover,
+    .bfPriorContextMenu button:focus-visible {
+      background: #fff1f2;
+      color: #be123c;
+    }
+    .bfTableWrap::-webkit-scrollbar {
+      width: 20px;
+      height: 20px;
+    }
+    .bfTableWrap::-webkit-scrollbar-track,
+    .bfTableWrap::-webkit-scrollbar-corner {
+      background: var(--bf-scrollbar-chrome);
+    }
+    .bfTableWrap::-webkit-scrollbar-thumb {
+      background-color: var(--bf-scrollbar-thumb);
+      border: 3px solid var(--bf-scrollbar-chrome);
+      border-radius: 5px;
+      background-clip: content-box;
+    }
+    .bfTableWrap::-webkit-scrollbar-button {
+      width: 16px;
+      height: 16px;
+      display: block;
+      background-color: var(--bf-scrollbar-chrome);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 12px 12px;
+    }
+    .bfTableWrap::-webkit-scrollbar-button:hover {
+      background-color: var(--bf-scrollbar-button-hover);
+    }
+    .bfTableWrap::-webkit-scrollbar-button:active {
+      background-color: var(--bf-scrollbar-button-active);
+    }
+    .bfTableWrap::-webkit-scrollbar-button:horizontal:start:increment,
+    .bfTableWrap::-webkit-scrollbar-button:horizontal:end:decrement,
+    .bfTableWrap::-webkit-scrollbar-button:vertical:start:increment,
+    .bfTableWrap::-webkit-scrollbar-button:vertical:end:decrement {
+      width: 0;
+      height: 0;
+      display: none;
+      background-image: none;
+    }
+    .bfTableWrap::-webkit-scrollbar-button:horizontal:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+    .bfTableWrap::-webkit-scrollbar-button:horizontal:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+    .bfTableWrap::-webkit-scrollbar-button:vertical:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+    .bfTableWrap::-webkit-scrollbar-button:vertical:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+    }
+    .bfTableWrap::-webkit-scrollbar-thumb:hover {
+      background-color: var(--bf-scrollbar-thumb-active);
+    }
+    .bfChartPanel {
+      display: flex;
+      height: calc(100vh - 120px);
+      min-height: 360px;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #d8dde3;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .bfChartHeader {
+      display: flex;
+      min-height: 54px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #fbfcfe;
+    }
+    .bfChartHeading { min-width: 0; }
+    .bfChartTitle {
+      margin: 0;
+      color: #1f2937;
+      font-size: 14px;
+      line-height: 1.25;
+    }
+    .bfChartSubtitle {
+      margin: 2px 0 0;
+      color: #697386;
+      font-size: 11px;
+    }
+    .bfChartLegend {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 14px;
+      color: #475569;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .bfChartLegendItem {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .bfChartLegendSwatch {
+      width: 18px;
+      height: 2px;
+      position: relative;
+      background: var(--bf-chart-series);
+    }
+    .bfChartLegendSwatch::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 5px;
+      height: 5px;
+      border: 1px solid var(--bf-chart-series);
+      border-radius: 50%;
+      background: #fff;
+      transform: translate(-50%, -50%);
+    }
+    .bfChartPlot {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 8px;
+    }
+    .bfChartCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 280px;
+    }
+    .bfChartCanvas.isEmpty { visibility: hidden; }
+    .bfChartEmpty {
+      position: absolute;
+      inset: 8px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed #b9c2cf;
+      background: #fbfcfe;
+      color: #697386;
+      font-weight: 600;
+    }
+    .bfChartEmpty[hidden] { display: none; }
+    .bfChartTooltip {
+      position: absolute;
+      z-index: 2;
+      display: grid;
+      min-width: 150px;
+      gap: 2px;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.97);
+      color: #334155;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+      font-size: 11px;
+      pointer-events: none;
+    }
+    .bfChartTooltip[hidden] { display: none; }
+    .bfNotesToolbar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .bfNotesInputWrap {
+      min-height: 320px;
+      border: 1px solid var(--bf-border);
+      background: #fff;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .bfTextarea {
+      display: block;
+      min-height: 320px;
+      resize: vertical;
+      border: 0;
+      border-radius: 0;
+      padding: 10px;
+      line-height: 1.5;
+    }
+    .bfSaveBar {
+      flex: 0 0 auto;
+      justify-content: space-between;
+      background: #f5f7fa;
+    }
+    .bfSaveBar.tabbedPageSaveBar {
+      justify-content: space-between;
+      padding: 6px 10px 4px;
+      background: #f5f7fa;
+    }
+    .bfSaveActions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-left: auto;
+    }
+    .bfCloseModalBackdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.28);
+      z-index: 50;
+    }
+    .bfCloseModalBackdrop.open { display: flex; }
+    .bfCloseModal {
+      width: 360px;
+      background: #fff;
+      border: 1px solid var(--bf-border-strong);
+      border-radius: 6px;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.24);
+      padding: 14px;
+    }
+    .bfCloseModal h2 {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+    .bfCloseModal p {
+      margin: 0 0 14px;
+      color: var(--bf-muted);
+    }
+    .bfCloseModalActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    @media (max-width: 900px) {
+      .bfShell { min-width: 0; }
+      .bfFieldGrid { grid-template-columns: 120px minmax(0, 1fr); }
+      .bfToolControls { flex-wrap: wrap; }
+      .bfChartHeader { align-items: flex-start; flex-direction: column; }
+      .bfChartLegend { flex-wrap: wrap; justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="bfShell">
+    <section class="bfTabbed" id="bfTabbedPage">
+      <div class="bfPageHost">
+        <section class="bfPage" id="bfDetailsPage" role="tabpanel">
+          <div class="bfDetailsStack">
+            <section class="bfPanel">
+              <div class="bfPanelBody">
+                <div class="bfFieldGrid">
+                  <label class="bfLabel" for="bfProjectInput">Project</label>
+                  <div class="bfFieldControl">
+                    <input class="bfInput" id="bfProjectInput" type="text" readonly>
+                  </div>
+                  <label class="bfLabel" for="bfClassInput">Reserving Class</label>
+                  <div class="bfFieldControl">
+                    <input class="bfInput" id="bfClassInput" type="text" readonly>
+                  </div>
+                  <label class="bfLabel" for="bfNameInput">Name</label>
+                  <div class="bfFieldControl">
+                    <input class="bfInput" id="bfNameInput" type="text">
+                  </div>
+                  <label class="bfLabel" for="bfOutputTypeInput">Output Type</label>
+                  <div class="bfFieldControl withPicker">
+                    <input class="bfInput" id="bfOutputTypeInput" type="text">
+                    <button class="bfIconButton" id="bfOutputTypeBtn" type="button" title="Select output vector" aria-label="Select output vector">...</button>
+                  </div>
+                  <label class="bfLabel" for="bfOriginLengthButton">Origin Length</label>
+                  <div class="bfFieldControl">
+                    <div class="bfOriginLengthDropdown" id="bfOriginLengthDropdown">
+                      <input id="bfOriginLengthInput" type="hidden" value="12">
+                      <button class="bfDropdownButton bfOriginLengthButton" id="bfOriginLengthButton" type="button" aria-haspopup="listbox" aria-controls="bfOriginLengthMenu" aria-expanded="false">
+                        <span id="bfOriginLengthLabel">12</span>
+                        <span class="bfDropdownCaret" aria-hidden="true"></span>
+                      </button>
+                      <div class="bfDropdownMenu" id="bfOriginLengthMenu" role="listbox" aria-label="Origin Length">
+                        <button class="bfDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
+                        <button class="bfDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
+                        <button class="bfDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
+                        <button class="bfDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section class="bfPanel">
+              <div class="bfPanelBody">
+                <div class="bfFieldGrid">
+                  <label class="bfLabel" for="bfLatestInput">Latest</label>
+                  <div class="bfFieldControl withPicker">
+                    <input class="bfInput" id="bfLatestInput" type="text" readonly>
+                    <button class="bfIconButton" id="bfLatestBtn" type="button" title="Select latest" aria-label="Select latest">...</button>
+                  </div>
+                  <label class="bfLabel" for="bfDfmInput">Development Pattern</label>
+                  <div class="bfFieldControl withPicker">
+                    <input class="bfInput" id="bfDfmInput" type="text" readonly>
+                    <button class="bfIconButton" id="bfDfmBtn" type="button" title="Select development pattern" aria-label="Select development pattern">...</button>
+                  </div>
+                  <label class="bfLabel" for="bfPriorAddBtn">Prior Vector</label>
+                  <div class="bfFieldControl bfPriorPicker">
+                    <div class="bfPriorList" id="bfPriorList" role="list" aria-label="Selected prior vectors"></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="bfPage" id="bfMethodPage" role="tabpanel">
+          <div class="bfMethodToolbar">
+            <div class="bfToolGroup">
+              <span class="bfToolTitle">Formatting</span>
+              <div class="bfToolControls">
+                <label class="bfToolCheck"><input id="bfShowWeightsInput" type="checkbox" checked> Show Weights</label>
+                <div id="bfWeightDisplayDropdown" class="bfWeightDisplayDropdown">
+                  <button id="bfWeightDisplayButton" class="bfDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
+                    <span id="bfWeightDisplayLabel">Index</span>
+                    <span class="bfDropdownCaret" aria-hidden="true"></span>
+                  </button>
+                  <div id="bfWeightDisplayMenu" class="bfDropdownMenu" role="listbox" aria-label="Weight display mode">
+                    <button class="bfDropdownOption" type="button" role="option" data-value="actual" aria-selected="true">Index</button>
+                    <button class="bfDropdownOption" type="button" role="option" data-value="effective" aria-selected="false">Effective %</button>
+                  </div>
+                </div>
+                <div class="bfToolDecimalControl">
+                  <label class="bfToolControlLabel" for="bfMethodDecimalsInput">Decimals</label>
+                  <span class="bfNumberStepper">
+                    <input id="bfMethodDecimalsInput" class="bfStepperInput" type="number" min="0" max="8" step="1" value="1">
+                    <span class="bfStepperButtons">
+                      <button id="bfMethodDecimalsUp" class="bfStepperBtn" type="button" aria-label="Increase decimal places"><span class="bfStepperCaret bfStepperCaretUp" aria-hidden="true"></span></button>
+                      <button id="bfMethodDecimalsDown" class="bfStepperBtn" type="button" aria-label="Decrease decimal places"><span class="bfStepperCaret" aria-hidden="true"></span></button>
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bfTableWrap">
+            <table class="bfMethodTable" aria-label="Bornhuetter Ferguson method table" tabindex="0">
+              <colgroup id="bfMethodCols"></colgroup>
+              <thead id="bfMethodHead"></thead>
+              <tbody id="bfMethodGrid"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="bfPage" id="bfChartPage" role="tabpanel">
+          <section class="bfChartPanel" aria-labelledby="bfChartTitle">
+            <header class="bfChartHeader">
+              <div class="bfChartHeading">
+                <h2 class="bfChartTitle" id="bfChartTitle">Projected Ultimates</h2>
+                <p class="bfChartSubtitle">Ultimate values by origin period</p>
+              </div>
+              <div class="bfChartLegend" id="bfChartLegend" aria-label="Chart legend"></div>
+            </header>
+            <div class="bfChartPlot">
+              <canvas class="bfChartCanvas" id="bfChartCanvas" role="img"></canvas>
+              <div class="bfChartEmpty" id="bfChartEmpty">Select source data to plot ultimate values.</div>
+              <div class="bfChartTooltip" id="bfChartTooltip" role="status" hidden></div>
+            </div>
+          </section>
+        </section>
+
+        <section class="bfPage" id="bfNotesPage" role="tabpanel">
+          <div class="bfNotesToolbar" id="bfNotesFormatToolbar"></div>
+          <div class="bfNotesInputWrap" id="bfNotesInputWrap">
+            <textarea class="bfTextarea" id="bfNotesInput" spellcheck="true"></textarea>
+            <div id="bfNotesDecor" hidden></div>
+          </div>
+        </section>
+
+        <section class="bfPage" id="bfAuditPage" role="tabpanel">
+          <div class="bfTableWrap">
+            <table aria-label="Bornhuetter Ferguson audit log">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>User</th>
+                  <th>Action</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="bfAuditGrid"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <footer class="bfSaveBar" id="bfSaveBar">
+      <div class="bfSaveActions">
+        <button class="bfButton primary" id="bfSaveBtn" type="button">Save</button>
+        <button class="bfButton" id="bfCancelBtn" type="button">Cancel</button>
+      </div>
+    </footer>
+  </main>
+
+  <div class="bfCloseModalBackdrop" id="bfCloseModalBackdrop" aria-hidden="true">
+    <div class="bfCloseModal" role="dialog" aria-modal="true" aria-labelledby="bfCloseTitle">
+      <h2 id="bfCloseTitle">Unsaved changes</h2>
+      <p>Save this Bornhuetter Ferguson object before closing?</p>
+      <div class="bfCloseModalActions">
+        <button class="bfButton primary" id="bfCloseSaveBtn" type="button">Save</button>
+        <button class="bfButton" id="bfCloseDiscardBtn" type="button">Discard</button>
+        <button class="bfButton" id="bfCloseCancelBtn" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bfCellContextMenu" id="bfCellContextMenu" role="menu" aria-hidden="true">
+    <button type="button" role="menuitem" data-bf-cell-action="copy">Copy values</button>
+    <button type="button" role="menuitem" data-bf-cell-action="paste">Paste values</button>
+    <button type="button" role="menuitem" data-bf-cell-action="remove-highlights">Remove Highlights</button>
+  </div>
+
+  <div class="bfCellContextMenu bfPriorContextMenu" id="bfPriorContextMenu" role="menu" aria-hidden="true">
+    <button type="button" role="menuitem" data-bf-prior-action="delete">Delete</button>
+  </div>
+
+  <script type="module" src="/ui/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260709m"></script>
+</body>
+</html>

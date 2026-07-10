@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Removed the redundant header and local footer status from the Bornhuetter-Ferguson workspace."
+}

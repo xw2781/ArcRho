@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson New Ultimate now falls back to Latest when Selected Prior is blank for a row."
+}

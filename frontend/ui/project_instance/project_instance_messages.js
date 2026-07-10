@@ -18,6 +18,7 @@ export function installProjectInstanceMessages(ctx) {
   const hideDatasetWindow = (...args) => api.hideDatasetWindow(...args);
   const isDatasetWindowMaximized = (...args) => api.isDatasetWindowMaximized(...args);
   const isDfmWindow = (...args) => api.isDfmWindow(...args);
+  const isBornhuetterFergusonWindow = (...args) => api.isBornhuetterFergusonWindow(...args);
   const isResultSelectionWindow = (...args) => api.isResultSelectionWindow(...args);
   const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
@@ -25,6 +26,7 @@ export function installProjectInstanceMessages(ctx) {
   const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
   const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
+  const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
   const refreshCachedDatasetTableFromDisk = (...args) => api.refreshCachedDatasetTableFromDisk(...args);
@@ -226,6 +228,7 @@ function getActiveWindowJsonKind(frame) {
   const methodType = toText(getWindowMethodType(frame)).toLowerCase();
   if (isDfmWindow(frame) || methodType === "dfm") return "dfm";
   if (isResultSelectionWindow(frame) || methodType === "result selection") return "result_selection";
+  if (isBornhuetterFergusonWindow(frame) || methodType === "bornhuetter ferguson") return "bornhuetter_ferguson";
   return "";
 }
 
@@ -265,7 +268,9 @@ async function openActiveDatasetRelatedFile(fileKind) {
     }
     const filename = jsonKind === "dfm"
       ? `DFM@${sanitizeFileNamePart(datasetName, "Name")}.json`
-      : `RS@${sanitizeFileNamePart(datasetName, "Name")}.json`;
+      : jsonKind === "bornhuetter_ferguson"
+        ? `BF@${sanitizeFileNamePart(datasetName, "Name")}.json`
+        : `RS@${sanitizeFileNamePart(datasetName, "Name")}.json`;
     targetPath = joinWindowsPath(folders.methods, filename);
   }
 
@@ -546,11 +551,17 @@ function handleAutomationOpenDataset(message, sourceWindow) {
         initialTab: "method",
         methodType: "Result Selection",
       })
-      : openDatasetWindow(datasetName, {
-        datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
-        readOnly: args.readOnly,
-        methodType: requestedMethodType,
-      });
+      : openMethod && methodType === "bornhuetter ferguson"
+        ? openBornhuetterFergusonWindow(datasetName, {
+          path: state.selectedPath,
+          initialTab: "method",
+          methodType: "Bornhuetter Ferguson",
+        })
+        : openDatasetWindow(datasetName, {
+          datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
+          readOnly: args.readOnly,
+          methodType: requestedMethodType,
+        });
   if (!frame) {
     reply({ ok: false, error: `Could not open dataset: ${datasetName}` });
     return true;
@@ -689,6 +700,12 @@ function handleOpenDependentDataset(message, sourceWindow) {
       initialTab: "method",
       methodType: "Result Selection",
     });
+  } else if (openMethod && methodType === "bornhuetter ferguson") {
+    frame = openBornhuetterFergusonWindow(datasetName, {
+      path: targetPath,
+      initialTab: "method",
+      methodType: "Bornhuetter Ferguson",
+    });
   } else {
     frame = openDatasetWindow(datasetName, {
       datasetTypeName,
@@ -697,8 +714,13 @@ function handleOpenDependentDataset(message, sourceWindow) {
     });
   }
   if (frame) {
+    const methodLabel = methodType === "dfm"
+      ? "DFM"
+      : methodType === "bornhuetter ferguson"
+        ? "Bornhuetter Ferguson"
+        : "Result Selection";
     setStatus(openMethod && methodType
-      ? `Opened ${methodType === "dfm" ? "DFM" : "Result Selection"} method ${datasetName}.`
+      ? `Opened ${methodLabel} method ${datasetName}.`
       : `Opened dependent dataset ${datasetName}.`);
   } else {
     setStatus(openMethod && methodType
@@ -1167,6 +1189,14 @@ window.addEventListener("message", (event) => {
     const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
     if (frame && isResultSelectionWindow(frame)) {
       frame.dataset.rsTab = toText(msg.tab || "");
+      notifyProjectInstanceStateChanged();
+    }
+    return;
+  }
+  if (msg.type === "arcrho:bf-tab-changed") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isBornhuetterFergusonWindow(frame)) {
+      frame.dataset.bfTab = toText(msg.tab || "");
       notifyProjectInstanceStateChanged();
     }
     return;

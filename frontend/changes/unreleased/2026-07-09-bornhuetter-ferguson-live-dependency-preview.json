@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson windows now preview unsaved changes from open dependency datasets and methods."
+}

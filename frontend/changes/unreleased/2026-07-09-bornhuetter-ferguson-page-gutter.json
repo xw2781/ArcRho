@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Aligned the Bornhuetter-Ferguson tab content gutter, white workspace surface, and border frame with the DFM workspace."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson imports now use the ResQ BF method origin labels for Method table rows."
+}

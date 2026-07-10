@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson no longer shows a Formula column or stores the display formula in method JSON."
+}

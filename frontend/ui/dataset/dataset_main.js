@@ -822,6 +822,7 @@ function normalizeDatasetMethodType(value) {
   const text = String(value || "").trim().toLowerCase();
   if (text === "dfm") return "DFM";
   if (text === "result selection") return "Result Selection";
+  if (text === "bornhuetter ferguson") return "Bornhuetter Ferguson";
   return "";
 }
 

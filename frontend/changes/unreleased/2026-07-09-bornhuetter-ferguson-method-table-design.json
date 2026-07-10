@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Updated the Bornhuetter-Ferguson Method table with the ResQ layout and Result Selection-style cell interactions.",
+  "details": [
+    "Empty data cells now show a muted gray null placeholder."
+  ]
+}

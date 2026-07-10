@@ -1,0 +1,9 @@
+{
+  "type": "feature",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Added multiple weighted prior datasets and Result Selection-style weight formatting controls to Bornhuetter Ferguson.",
+  "details": [
+    "Double-clicking an Index weight toggles it between 0 and 1, while Effective % weights remain read-only."
+  ]
+}

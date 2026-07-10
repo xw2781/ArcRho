@@ -24,6 +24,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const normalizePath = (...args) => api.normalizePath(...args);
   const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
+  const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const openNewDatasetDraftWindow = (...args) => api.openNewDatasetDraftWindow(...args);
   const postProjectInstanceStatus = (...args) => api.postProjectInstanceStatus(...args);
@@ -1020,6 +1021,10 @@ function isResultSelectionDatasetRecord(record) {
   return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "result selection";
 }
 
+function isBornhuetterFergusonDatasetRecord(record) {
+  return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "bornhuetter ferguson";
+}
+
 function isDfmVectorDatasetRecord(record) {
   return (
     isDfmDatasetRecord(record)
@@ -1030,6 +1035,13 @@ function isDfmVectorDatasetRecord(record) {
 function isResultSelectionVectorDatasetRecord(record) {
   return (
     isResultSelectionDatasetRecord(record)
+    && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
+  );
+}
+
+function isBornhuetterFergusonVectorDatasetRecord(record) {
+  return (
+    isBornhuetterFergusonDatasetRecord(record)
     && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
   );
 }
@@ -1048,6 +1060,18 @@ function openResultSelectionTabForDataset(record) {
   openResultSelectionWindow(datasetName, {
     initialTab: "method",
     methodType: getDatasetRecordValue(record, "methodType"),
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
+    originLength: Number(record?.meta?.originLength) || undefined,
+  });
+}
+
+function openBornhuetterFergusonTabForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName || !state.selectedPath) return;
+  openBornhuetterFergusonWindow(datasetName, {
+    initialTab: "method",
+    methodType: getDatasetRecordValue(record, "methodType") || "Bornhuetter Ferguson",
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
     originLength: Number(record?.meta?.originLength) || undefined,
@@ -1112,6 +1136,30 @@ function addResultSelectionForDataset(record) {
     originLength: Number(record?.meta?.originLength) || undefined,
   });
   setStatus(`Opened Result Selection for ${datasetName}.`);
+}
+
+function addBornhuetterFergusonForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName) {
+    setStatus("Select a vector dataset before adding a Bornhuetter Ferguson object.", true);
+    return;
+  }
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before adding a Bornhuetter Ferguson object.", true);
+    return;
+  }
+  if (!canAddResultSelectionForDataset(record)) {
+    setStatus("Bornhuetter Ferguson can be added only to vector datasets with Method Type None.", true);
+    return;
+  }
+  openBornhuetterFergusonWindow(datasetName, {
+    initialTab: "details",
+    methodType: "Bornhuetter Ferguson",
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
+    originLength: Number(record?.meta?.originLength) || undefined,
+  });
+  setStatus(`Opened Bornhuetter Ferguson for ${datasetName}.`);
 }
 
 function recordSelectedDfmObject(methodName) {
@@ -1953,7 +2001,11 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
   if (viewItem) viewItem.disabled = emptyContext || !viewRecord;
   const showAsVectorItem = menu.querySelector("[data-row-action='show-as-vector']");
   if (showAsVectorItem) {
-    const showAsVector = !!viewRecord && (isDfmVectorDatasetRecord(viewRecord) || isResultSelectionVectorDatasetRecord(viewRecord));
+    const showAsVector = !!viewRecord && (
+      isDfmVectorDatasetRecord(viewRecord)
+      || isResultSelectionVectorDatasetRecord(viewRecord)
+      || isBornhuetterFergusonVectorDatasetRecord(viewRecord)
+    );
     showAsVectorItem.hidden = !showAsVector;
     showAsVectorItem.disabled = !showAsVector;
   }
@@ -1963,6 +2015,13 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
     addResultSelectionItem.hidden = emptyContext;
     addResultSelectionItem.disabled = !canAdd;
     addResultSelectionItem.title = canAdd ? "" : "Result Selection can be added only to vector datasets with Method Type None.";
+  }
+  const addBornhuetterFergusonItem = menu.querySelector("[data-row-action='add-bornhuetter-ferguson']");
+  if (addBornhuetterFergusonItem) {
+    const canAdd = !emptyContext && canAddResultSelectionForDataset(viewRecord);
+    addBornhuetterFergusonItem.hidden = emptyContext;
+    addBornhuetterFergusonItem.disabled = !canAdd;
+    addBornhuetterFergusonItem.title = canAdd ? "" : "Bornhuetter Ferguson can be added only to vector datasets with Method Type None.";
   }
   const selectedCount = emptyContext ? 0 : getSelectedDatasetRecords().length;
   const deleteItem = menu.querySelector("[data-row-action='delete']");
@@ -2048,6 +2107,10 @@ function openDatasetRecord(record) {
   }
   if (isResultSelectionDatasetRecord(record)) {
     openResultSelectionTabForDataset(record);
+    return;
+  }
+  if (isBornhuetterFergusonDatasetRecord(record)) {
+    openBornhuetterFergusonTabForDataset(record);
     return;
   }
   openDatasetRecordAsVector(record);
@@ -2349,6 +2412,8 @@ function applyDatasetRowContextAction(action) {
     addDfmForDataset(viewRecord);
   } else if (normalized === "add-result-selection") {
     addResultSelectionForDataset(viewRecord);
+  } else if (normalized === "add-bornhuetter-ferguson") {
+    addBornhuetterFergusonForDataset(viewRecord);
   } else if (normalized === "add-bsm") {
     setStatus("Berquist Sherman Method is a placeholder.");
   } else if (normalized === "delete") {
@@ -2907,6 +2972,8 @@ async function loadDatasets() {
     handleDatasetTableKeyDown,
     initDatasetDeleteConfirmInteractions,
     initDatasetTableInteractions,
+    isBornhuetterFergusonDatasetRecord,
+    isBornhuetterFergusonVectorDatasetRecord,
     isDatasetColumnFilterActive,
     isDfmDatasetRecord,
     loadDatasetTablePreferences,
@@ -2916,6 +2983,7 @@ async function loadDatasets() {
     openDatasetRecord,
     addDatasetFromTypePicker,
     openDatasetTableFilterPopover,
+    openBornhuetterFergusonTabForDataset,
     openDfmTabForDataset,
     parseDatasetGroupId,
     positionDatasetTableFilterPopover,

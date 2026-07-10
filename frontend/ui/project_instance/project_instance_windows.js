@@ -28,6 +28,10 @@ function getDfmWindowKey(datasetName, path = state.selectedPath) {
   return `dfm\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
 }
 
+function getBornhuetterFergusonWindowKey(datasetName, path = state.selectedPath) {
+  return `bf\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
+}
+
 function getWindowPath(frame) {
   return normalizePath(frame?.dataset?.windowPath || "");
 }
@@ -51,6 +55,7 @@ function getWindowMethodType(frame) {
   if (explicit) return explicit;
   if (isDfmWindow(frame)) return "DFM";
   if (isResultSelectionWindow(frame)) return "Result Selection";
+  if (isBornhuetterFergusonWindow(frame)) return "Bornhuetter Ferguson";
   const key = normalizeLookupKey(frame?.dataset?.windowItemName || frame?.dataset?.windowDatasetName || "");
   return key ? state.cachedDatasetFilter.methodTypesByName.get(key) || "None" : "None";
 }
@@ -89,7 +94,13 @@ function getFrameRect(frame) {
 
 function getProjectInstanceWindowSnapshot(frame) {
   if (!frame?.isConnected) return null;
-  const kind = isDfmWindow(frame) ? "dfm" : isResultSelectionWindow(frame) ? "result_selection" : "dataset";
+  const kind = isDfmWindow(frame)
+    ? "dfm"
+    : isResultSelectionWindow(frame)
+      ? "result_selection"
+      : isBornhuetterFergusonWindow(frame)
+        ? "bornhuetter_ferguson"
+        : "dataset";
   const name = toText(frame.dataset.windowItemName || frame.dataset.windowDatasetName || "");
   if (!name) return null;
   const active = getActiveDatasetWindow() === frame;
@@ -105,6 +116,7 @@ function getProjectInstanceWindowSnapshot(frame) {
     methodType: getWindowMethodType(frame),
     dfmTab: kind === "dfm" ? toText(frame.dataset.dfmTab || "") : "",
     rsTab: kind === "result_selection" ? toText(frame.dataset.rsTab || "") : "",
+    bfTab: kind === "bornhuetter_ferguson" ? toText(frame.dataset.bfTab || "") : "",
     rect: hiddenItem?.restoreRect || getFrameRect(frame),
   };
 }
@@ -145,6 +157,7 @@ function getVisibleProjectInstanceWindowSummaries() {
       methodType: snapshot.methodType || getWindowMethodType(frame),
       dfmTab: snapshot.dfmTab || "",
       rsTab: snapshot.rsTab || "",
+      bfTab: snapshot.bfTab || "",
       zIndex: Number.parseInt(frame.style.zIndex || "0", 10) || 0,
     });
   }
@@ -419,6 +432,10 @@ function isResultSelectionWindow(frame) {
   return frame?.dataset?.windowKind === "result_selection";
 }
 
+function isBornhuetterFergusonWindow(frame) {
+  return frame?.dataset?.windowKind === "bornhuetter_ferguson";
+}
+
 function findWindowByInstance(inst) {
   const id = toText(inst);
   if (!id) return null;
@@ -673,6 +690,25 @@ function buildResultSelectionViewerUrl(datasetName, inst, options = {}) {
   return `/ui/result_selection/result_selection.html?${params.toString()}`;
 }
 
+function buildBornhuetterFergusonViewerUrl(datasetName, inst, options = {}) {
+  const params = new URLSearchParams();
+  const name = toText(datasetName);
+  const initialTab = toText(options?.initialTab || options?.bfTab || "details") || "details";
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  params.set("project", projectName);
+  params.set("class", targetPath);
+  if (name) params.set("name", name);
+  if (options?.outputType) params.set("output_type", toText(options.outputType));
+  if (options?.datasetTypeName) params.set("dataset_type", toText(options.datasetTypeName));
+  if (options?.category) params.set("category", toText(options.category));
+  if (options?.originLength) params.set("origin_length", toText(options.originLength));
+  params.set("tab", initialTab);
+  params.set("inst", inst);
+  params.set("project_instance", "1");
+  params.set("v", String(Date.now()));
+  return `/ui/bornhuetter_ferguson/bornhuetter_ferguson.html?${params.toString()}`;
+}
+
 function beginWindowDragCapture(mode) {
   const shield = document.createElement("div");
   shield.className = `pi-window-drag-shield ${mode || "moving"}`;
@@ -784,11 +820,20 @@ function createFloatingContentWindow(options = {}) {
   frame.dataset.windowTitle = title;
   frame.dataset.windowKind = toText(options.kind) || "dataset";
   frame.dataset.dirty = "0";
-  const methodType = toText(options.methodType || (frame.dataset.windowKind === "dfm" ? "DFM" : ""));
+  const methodType = toText(options.methodType || (
+    frame.dataset.windowKind === "dfm"
+      ? "DFM"
+      : frame.dataset.windowKind === "bornhuetter_ferguson"
+        ? "Bornhuetter Ferguson"
+        : ""
+  ));
   if (methodType) frame.dataset.windowMethodType = methodType;
   if (frame.dataset.windowKind === "dfm") frame.dataset.dfmTab = "ratios";
   if (frame.dataset.windowKind === "result_selection") {
     frame.dataset.rsTab = toText(options.rsTab || options.initialTab || "details") || "details";
+  }
+  if (frame.dataset.windowKind === "bornhuetter_ferguson") {
+    frame.dataset.bfTab = toText(options.bfTab || options.initialTab || "details") || "details";
   }
   frame.setAttribute("aria-label", title);
   frame.innerHTML = `
@@ -1017,6 +1062,33 @@ function openResultSelectionWindow(datasetName, options = {}) {
   });
 }
 
+function openBornhuetterFergusonWindow(datasetName, options = {}) {
+  const name = toText(datasetName);
+  if (!name) return;
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  if (!targetPath) {
+    setStatus("Select a reserving class path before opening a Bornhuetter Ferguson object.", true);
+    return;
+  }
+
+  const windowKey = getBornhuetterFergusonWindowKey(name, targetPath);
+  const title = `${targetPath}\\Bornhuetter Ferguson\\${name}`;
+  const initialTab = toText(options.initialTab || options.bfTab || "details") || "details";
+  const inst = `pi_bf_${Date.now()}_${state.windowSeq++}`;
+  return createFloatingContentWindow({
+    kind: "bornhuetter_ferguson",
+    name,
+    itemName: name,
+    title,
+    windowKey,
+    inst,
+    iframeSrc: buildBornhuetterFergusonViewerUrl(name, inst, { ...options, path: targetPath, initialTab }),
+    path: targetPath,
+    methodType: options.methodType || "Bornhuetter Ferguson",
+    initialTab,
+  });
+}
+
 function applyRestoredWindowState(frame, item = {}) {
   if (!frame?.isConnected) return;
   const rect = item?.rect && typeof item.rect === "object" ? item.rect : null;
@@ -1032,6 +1104,9 @@ function applyRestoredWindowState(frame, item = {}) {
   }
   if (toText(item?.rsTab) && isResultSelectionWindow(frame)) {
     frame.dataset.rsTab = toText(item.rsTab);
+  }
+  if (toText(item?.bfTab) && isBornhuetterFergusonWindow(frame)) {
+    frame.dataset.bfTab = toText(item.bfTab);
   }
   const id = frame.dataset.windowId || "";
   if (item?.hidden) {
@@ -1070,18 +1145,23 @@ async function applyProjectInstanceRestoreState(rawState) {
       && methodType.toLowerCase() === "result selection"
       && /(^|[\\/])result selection([\\/]|$)/i.test(title)
     );
+    const isBornhuetterFergusonMethod = methodType.toLowerCase() === "bornhuetter ferguson";
     const kind = rawKind === "dfm"
       ? "dfm"
       : rawKind === "result_selection" || isLegacyResultSelectionMethod
         ? "result_selection"
-        : "dataset";
+        : rawKind === "bornhuetter_ferguson" || isBornhuetterFergusonMethod
+          ? "bornhuetter_ferguson"
+          : "dataset";
     const name = toText(item?.name || item?.datasetName || item?.methodName);
     if (!name) continue;
     const frame = kind === "dfm"
       ? openDfmWindow(name, { initialTab: item?.dfmTab, methodType })
       : kind === "result_selection"
         ? openResultSelectionWindow(name, { initialTab: item?.rsTab || "method", rsTab: item?.rsTab || "method", methodType })
-        : openDatasetWindow(name, { methodType });
+        : kind === "bornhuetter_ferguson"
+          ? openBornhuetterFergusonWindow(name, { initialTab: item?.bfTab || "method", bfTab: item?.bfTab || "method", methodType })
+          : openDatasetWindow(name, { methodType });
     applyRestoredWindowState(frame, item);
     if (item?.active) activeTarget = frame;
   }
@@ -1099,6 +1179,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     applyRestoredWindowState,
     applyWindowRect,
     beginWindowDragCapture,
+    buildBornhuetterFergusonViewerUrl,
     buildDatasetViewerUrl,
     buildDfmViewerUrl,
     buildResultSelectionViewerUrl,
@@ -1128,6 +1209,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     getWindowShortTitle,
     getWindowTopLimit,
     hasDirtyDfmWindow,
+    isBornhuetterFergusonWindow,
     isDatasetWindowMaximized,
     isDfmWindow,
     isResultSelectionWindow,
@@ -1140,6 +1222,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     notifyProjectInstanceStateChanged,
     openDatasetWindow,
     openNewDatasetDraftWindow,
+    openBornhuetterFergusonWindow,
     openDfmWindow,
     openResultSelectionWindow,
     raiseWindow,

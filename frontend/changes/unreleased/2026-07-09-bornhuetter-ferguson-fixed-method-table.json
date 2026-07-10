@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Fixed the Bornhuetter Ferguson method table cells so they no longer resize with the window."
+}

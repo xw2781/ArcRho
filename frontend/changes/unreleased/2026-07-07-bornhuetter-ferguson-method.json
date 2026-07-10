@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Added a Bornhuetter Ferguson method page with Project Instance routing, method table calculation, output vector save, sidecar metadata, notes, and audit-log restore."
+}
