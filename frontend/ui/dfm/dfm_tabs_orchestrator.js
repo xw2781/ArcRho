@@ -10,6 +10,7 @@ import {
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
 } from "/ui/shared/tabbed_page.js";
+import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
 import { setStorageInstance, loadNaBorders } from "/ui/dfm/dfm_storage.js";
 import {
   state as dfmState,
@@ -83,6 +84,38 @@ const DFM_TAB_DEFS = Object.freeze([
 let dfmSaveInFlight = false;
 let dfmCancelConfirmResolve = null;
 let dependencyPreviewTimer = 0;
+
+function wireDfmScrollbarActivity(scrollHost) {
+  if (!scrollHost || scrollHost.dataset.scrollbarActivityWired === "1") return;
+  scrollHost.dataset.scrollbarActivityWired = "1";
+
+  let idleTimer = 0;
+  const syncScrollbarHover = (event) => {
+    const rect = scrollHost.getBoundingClientRect();
+    const verticalScrollbarWidth = Math.max(0, scrollHost.offsetWidth - scrollHost.clientWidth);
+    const horizontalScrollbarHeight = Math.max(0, scrollHost.offsetHeight - scrollHost.clientHeight);
+    const nearVerticalScrollbar = scrollHost.scrollHeight > scrollHost.clientHeight
+      && verticalScrollbarWidth > 0
+      && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+    const nearHorizontalScrollbar = scrollHost.scrollWidth > scrollHost.clientWidth
+      && horizontalScrollbarHeight > 0
+      && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+
+    scrollHost.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+  };
+
+  scrollHost.addEventListener("scroll", () => {
+    scrollHost.classList.add("isScrolling");
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      scrollHost.classList.remove("isScrolling");
+    }, 550);
+  }, { passive: true });
+  scrollHost.addEventListener("pointermove", syncScrollbarHover, { passive: true });
+  scrollHost.addEventListener("pointerleave", () => {
+    scrollHost.classList.remove("isScrollbarHover");
+  }, { passive: true });
+}
 
 function getDfmInputSnapshotSafe() {
   try {
@@ -457,6 +490,13 @@ function initDfmTabs() {
   const notesPage = document.getElementById("dfmNotesPage");
   if (!detailsPage || !dataPage || !ratiosPage || !resultsPage || !notesPage) return;
 
+  syncDetailsLabelWidth({
+    root: detailsPage,
+    labelSelector: ".dfmFormGrid > label, .dfmFormGrid > .dfmFormLabel, .dfmFormGrid3 > label, .dfmFormGrid3 > .dfmFormLabel",
+    propertyName: "--dfm-details-label-width",
+  });
+  wireDfmScrollbarActivity(detailsPage);
+  wireDfmScrollbarActivity(document.getElementById("ratioWrapHost"));
   setShowNaBorders(loadNaBorders());
 
   wireDfmSpinnerControls();

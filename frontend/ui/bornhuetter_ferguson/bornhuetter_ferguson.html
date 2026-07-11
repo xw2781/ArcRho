@@ -18,8 +18,8 @@
       --bf-table-head: #eef2f7;
       --bf-method-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
       --bf-method-grid-border: #f3f1f1;
-      --bf-method-header-cell: #a6a6a6;
-      --bf-method-label-cell: #d1d1d1;
+      --bf-method-header-cell: #d9dde2;
+      --bf-method-label-cell: #d9dde2;
       --bf-method-percent-cell: #dff8f8;
       --bf-method-prior-cell: #d9e98b;
       --bf-method-ultimate-cell: #fdf5a9;
@@ -139,20 +139,30 @@
     }
     .bfPage { display: none; }
     .bfPage.active { display: block; }
+    #bfDetailsPage {
+      --bf-details-label-width: max-content;
+      color: var(--details-form-control-color, #000);
+      font-family: var(--details-form-font-family, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
+      font-size: var(--details-form-control-font-size, 12px);
+    }
+    #bfDetailsPage input,
+    #bfDetailsPage select,
+    #bfDetailsPage textarea,
+    #bfDetailsPage button {
+      font-family: inherit;
+    }
     .bfDetailsStack {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      gap: 12px;
+      gap: 1px;
       align-items: start;
     }
     .bfPanel {
-      background: var(--bf-panel);
-      border: 1px solid #d7dde7;
-      border-radius: 5px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
       overflow: hidden;
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.95),
-        0 1px 2px rgba(15, 23, 42, 0.06);
+      box-shadow: none;
     }
     .bfDetailsStack > .bfPanel:first-child {
       position: relative;
@@ -162,13 +172,14 @@
     .bfPanelBody { padding: 12px 14px 14px; }
     .bfFieldGrid {
       display: grid;
-      grid-template-columns: 150px minmax(0, 1fr);
-      gap: 10px 14px;
+      grid-template-columns: var(--bf-details-label-width) minmax(0, 1fr);
+      column-gap: var(--details-form-label-gap, 5px);
+      row-gap: 10px;
       align-items: center;
     }
     .bfLabel {
-      color: #000;
-      font-size: 13px;
+      color: var(--details-form-label-color, #000);
+      font-size: var(--details-form-label-font-size, 12px);
       font-weight: 400;
       text-align: right;
     }
@@ -182,11 +193,11 @@
       width: 100%;
       min-width: 0;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #fff;
-      color: var(--bf-text);
+      color: var(--details-form-control-color, #000);
       font: inherit;
-      font-size: 13px;
+      font-size: var(--details-form-control-font-size, 12px);
     }
     .bfInput {
       height: 30px;
@@ -194,7 +205,7 @@
     }
     .bfInput[readonly] {
       background: #f5f7fa;
-      color: #586274;
+      color: var(--details-form-readonly-color, #000);
     }
     .bfInput:focus,
     .bfTextarea:focus {
@@ -207,17 +218,22 @@
     }
     .bfPriorPicker {
       position: relative;
-      min-height: 32px;
+      min-height: 70px;
+    }
+    .bfPriorLabel {
+      align-self: start;
+      padding-top: 8px;
     }
     .bfPriorList {
       display: flex;
-      min-height: 32px;
+      min-height: 70px;
       align-items: center;
+      align-content: flex-start;
       gap: 6px;
       flex-wrap: wrap;
       padding: 4px 6px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #fff;
     }
     .bfPriorList:focus-within {
@@ -237,15 +253,15 @@
       display: inline-flex;
       min-width: 0;
       max-width: min(420px, 100%);
-      height: 22px;
-      min-height: 22px;
+      height: 30px;
+      min-height: 30px;
       align-items: center;
       gap: 4px;
       padding: 2px 9px;
       border: 1px solid #d4d4d4;
       border-radius: 14px;
       background: #ffffff;
-      color: #323232;
+      color: var(--details-form-control-color, #000);
       font-size: 12px;
       line-height: 16px;
       white-space: nowrap;
@@ -282,17 +298,17 @@
     .bfPriorOpen:focus { outline: none; }
     .bfPriorAddSlot {
       display: inline-flex;
-      width: 22px;
-      height: 22px;
-      flex: 0 0 22px;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
     }
     .bfPriorAdd {
       appearance: none;
       display: inline-flex;
-      width: 22px;
-      min-width: 22px;
-      height: 22px;
-      min-height: 22px;
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      min-height: 30px;
       align-items: center;
       justify-content: center;
       padding: 0;
@@ -325,7 +341,7 @@
       appearance: none;
       height: 30px;
       border: 1px solid #c8c8c8;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #f1f1f1;
       color: #263241;
       font: inherit;
@@ -346,7 +362,7 @@
       justify-content: center;
       padding: 0;
       border-color: #d3d3d3;
-      border-radius: 5px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #f8fbff;
       color: #555;
       font-size: 14px;
@@ -443,7 +459,7 @@
       gap: 8px;
       padding: 0 8px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #fff;
       color: #111;
       font: 12px var(--bf-method-font);
@@ -457,7 +473,7 @@
       padding: 0 10px;
       color: var(--bf-text);
       font: inherit;
-      font-size: 13px;
+      font-size: var(--details-form-control-font-size, 12px);
     }
     .bfDropdownCaret,
     .bfStepperCaret {
@@ -490,7 +506,7 @@
       height: 24px;
       padding: 0 8px;
       border: 0;
-      border-radius: 4px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: transparent;
       color: #111827;
       font: 12px var(--bf-method-font);
@@ -518,7 +534,7 @@
       height: 28px;
       padding: 0 28px 0 12px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #fff;
       text-align: center;
       appearance: textfield;
@@ -992,6 +1008,30 @@
       align-items: center;
       margin-left: auto;
     }
+    .bfSaveActions .bfButton {
+      min-width: 72px;
+      height: 28px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    #bfSaveBtn {
+      border: 1px solid #2563eb;
+      background: #2563eb;
+      color: #fff;
+    }
+    #bfSaveBtn:hover:not(:disabled) {
+      background: #1d4ed8;
+    }
+    #bfCancelBtn,
+    #bfSaveBtn.is-clean {
+      border: 1px solid rgba(21, 34, 54, 0.18);
+      background: #fff;
+      color: #1f2937;
+    }
+    #bfCancelBtn:hover:not(:disabled),
+    #bfSaveBtn.is-clean:hover:not(:disabled) {
+      background: #f4f7fb;
+    }
     .bfCloseModalBackdrop {
       position: fixed;
       inset: 0;
@@ -1025,7 +1065,7 @@
     }
     @media (max-width: 900px) {
       .bfShell { min-width: 0; }
-      .bfFieldGrid { grid-template-columns: 120px minmax(0, 1fr); }
+      .bfFieldGrid { grid-template-columns: var(--bf-details-label-width) minmax(0, 1fr); }
       .bfToolControls { flex-wrap: wrap; }
       .bfChartHeader { align-items: flex-start; flex-direction: column; }
       .bfChartLegend { flex-wrap: wrap; justify-content: flex-start; }
@@ -1041,24 +1081,24 @@
             <section class="bfPanel">
               <div class="bfPanelBody">
                 <div class="bfFieldGrid">
-                  <label class="bfLabel" for="bfProjectInput">Project</label>
+                  <label class="bfLabel" for="bfProjectInput">Project : </label>
                   <div class="bfFieldControl">
                     <input class="bfInput" id="bfProjectInput" type="text" readonly>
                   </div>
-                  <label class="bfLabel" for="bfClassInput">Reserving Class</label>
+                  <label class="bfLabel" for="bfClassInput">Reserving Class : </label>
                   <div class="bfFieldControl">
                     <input class="bfInput" id="bfClassInput" type="text" readonly>
                   </div>
-                  <label class="bfLabel" for="bfNameInput">Name</label>
+                  <label class="bfLabel" for="bfNameInput">Name : </label>
                   <div class="bfFieldControl">
                     <input class="bfInput" id="bfNameInput" type="text">
                   </div>
-                  <label class="bfLabel" for="bfOutputTypeInput">Output Type</label>
+                  <label class="bfLabel" for="bfOutputTypeInput">Output Type : </label>
                   <div class="bfFieldControl withPicker">
                     <input class="bfInput" id="bfOutputTypeInput" type="text">
                     <button class="bfIconButton" id="bfOutputTypeBtn" type="button" title="Select output vector" aria-label="Select output vector">...</button>
                   </div>
-                  <label class="bfLabel" for="bfOriginLengthButton">Origin Length</label>
+                  <label class="bfLabel" for="bfOriginLengthButton">Origin Length : </label>
                   <div class="bfFieldControl">
                     <div class="bfOriginLengthDropdown" id="bfOriginLengthDropdown">
                       <input id="bfOriginLengthInput" type="hidden" value="12">
@@ -1080,17 +1120,17 @@
             <section class="bfPanel">
               <div class="bfPanelBody">
                 <div class="bfFieldGrid">
-                  <label class="bfLabel" for="bfLatestInput">Latest</label>
+                  <label class="bfLabel" for="bfLatestInput">Latest : </label>
                   <div class="bfFieldControl withPicker">
                     <input class="bfInput" id="bfLatestInput" type="text" readonly>
                     <button class="bfIconButton" id="bfLatestBtn" type="button" title="Select latest" aria-label="Select latest">...</button>
                   </div>
-                  <label class="bfLabel" for="bfDfmInput">Development Pattern</label>
+                  <label class="bfLabel" for="bfDfmInput">Development Pattern : </label>
                   <div class="bfFieldControl withPicker">
                     <input class="bfInput" id="bfDfmInput" type="text" readonly>
                     <button class="bfIconButton" id="bfDfmBtn" type="button" title="Select development pattern" aria-label="Select development pattern">...</button>
                   </div>
-                  <label class="bfLabel" for="bfPriorAddBtn">Prior Vector</label>
+                  <label class="bfLabel bfPriorLabel" for="bfPriorAddBtn">Prior Vector : </label>
                   <div class="bfFieldControl bfPriorPicker">
                     <div class="bfPriorList" id="bfPriorList" role="list" aria-label="Selected prior vectors"></div>
                   </div>

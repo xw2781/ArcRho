@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Simplified DFM Details with frameless field groups, no block headers, and balanced spacing."
+}

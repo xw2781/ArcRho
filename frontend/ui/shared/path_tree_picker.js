@@ -4,8 +4,124 @@ const TREE_INDENT_PX = 10;
 const TREE_CHILDREN_INDENT_PX = 6;
 const TREE_LEAF_EXTRA_INDENT_PX = 12;
 const WINDOW_FRAME_MARGIN_PX = 8;
+const PATH_TOOLTIP_ID = "arcrho-path-tree-tooltip";
+const PATH_TOOLTIP_DELAY_MS = 320;
+const PATH_TOOLTIP_STATE = new WeakMap();
 let activePicker = null;
 let activeFavoriteContextMenu = null;
+
+function setPathTooltipDescription(target, tooltipId, enabled) {
+  if (!target || typeof target.getAttribute !== "function") return;
+  const ids = String(target.getAttribute("aria-describedby") || "")
+    .split(/\s+/)
+    .filter((id) => id && id !== tooltipId);
+  if (enabled) ids.push(tooltipId);
+  if (ids.length) target.setAttribute("aria-describedby", ids.join(" "));
+  else target.removeAttribute("aria-describedby");
+}
+
+function ensurePathTreeTooltip(doc) {
+  if (!doc?.body) return null;
+  const cached = PATH_TOOLTIP_STATE.get(doc);
+  if (cached?.tooltip?.isConnected) return cached;
+
+  let tooltip = doc.getElementById(PATH_TOOLTIP_ID);
+  if (!tooltip) {
+    tooltip = doc.createElement("div");
+    tooltip.id = PATH_TOOLTIP_ID;
+    tooltip.className = "ptree-path-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.setAttribute("aria-hidden", "true");
+
+    const caption = doc.createElement("div");
+    caption.className = "ptree-path-tooltip-caption";
+    caption.textContent = "Path";
+
+    const value = doc.createElement("div");
+    value.className = "ptree-path-tooltip-value";
+    tooltip.append(caption, value);
+    doc.body.appendChild(tooltip);
+  }
+
+  const state = {
+    tooltip,
+    value: tooltip.querySelector(".ptree-path-tooltip-value"),
+    anchor: null,
+    showTimer: 0,
+  };
+  PATH_TOOLTIP_STATE.set(doc, state);
+  return state;
+}
+
+function hidePathTreeTooltip(doc, target = null) {
+  const state = PATH_TOOLTIP_STATE.get(doc);
+  if (!state || (target && state.anchor && state.anchor !== target)) return;
+  const view = doc?.defaultView || window;
+  if (state.showTimer) view.clearTimeout(state.showTimer);
+  state.showTimer = 0;
+  if (state.anchor) setPathTooltipDescription(state.anchor, PATH_TOOLTIP_ID, false);
+  state.anchor = null;
+  state.tooltip.classList.remove("open");
+  state.tooltip.setAttribute("aria-hidden", "true");
+}
+
+function showPathTreeTooltip(doc, target, rawText) {
+  const text = String(rawText || "").trim();
+  if (!text || !target?.isConnected) return;
+  const state = ensurePathTreeTooltip(doc);
+  if (!state?.value) return;
+
+  if (state.anchor && state.anchor !== target) {
+    setPathTooltipDescription(state.anchor, PATH_TOOLTIP_ID, false);
+  }
+  state.anchor = target;
+  state.showTimer = 0;
+  state.value.textContent = text;
+  state.tooltip.classList.remove("open");
+  state.tooltip.setAttribute("aria-hidden", "false");
+
+  const view = doc.defaultView || window;
+  const viewportWidth = Number(view?.innerWidth || doc.documentElement.clientWidth || 0);
+  const viewportHeight = Number(view?.innerHeight || doc.documentElement.clientHeight || 0);
+  const anchorRect = target.getBoundingClientRect();
+  const tooltipRect = state.tooltip.getBoundingClientRect();
+  const margin = 8;
+  const gap = 6;
+  let left = anchorRect.left + 18;
+  let top = anchorRect.bottom + gap;
+  left = Math.max(margin, Math.min(left, viewportWidth - tooltipRect.width - margin));
+  if (top + tooltipRect.height > viewportHeight - margin) {
+    top = anchorRect.top - tooltipRect.height - gap;
+  }
+  top = Math.max(margin, Math.min(top, viewportHeight - tooltipRect.height - margin));
+  state.tooltip.style.left = `${Math.round(left)}px`;
+  state.tooltip.style.top = `${Math.round(top)}px`;
+  setPathTooltipDescription(target, PATH_TOOLTIP_ID, true);
+  state.tooltip.classList.add("open");
+}
+
+function attachPathTreeTooltip(doc, target, rawText) {
+  const text = String(rawText || "").trim();
+  if (!target || !text) return;
+  target.removeAttribute("title");
+  const schedule = () => {
+    hidePathTreeTooltip(doc);
+    const state = ensurePathTreeTooltip(doc);
+    if (!state) return;
+    state.anchor = target;
+    const view = doc.defaultView || window;
+    state.showTimer = view.setTimeout(
+      () => showPathTreeTooltip(doc, target, text),
+      PATH_TOOLTIP_DELAY_MS,
+    );
+  };
+  target.addEventListener("mouseenter", schedule);
+  target.addEventListener("mouseleave", () => hidePathTreeTooltip(doc, target));
+  target.addEventListener("mousedown", () => hidePathTreeTooltip(doc, target));
+  target.addEventListener("contextmenu", () => hidePathTreeTooltip(doc, target));
+  target.addEventListener("focus", () => showPathTreeTooltip(doc, target, text));
+  target.addEventListener("blur", () => hidePathTreeTooltip(doc, target));
+}
 
 async function copyPathTreeText(rawText, doc = window.document) {
   const text = String(rawText || "").trim();
@@ -575,6 +691,51 @@ function ensureStyles(doc) {
       margin-left: auto;
       font-size: 11px;
       color: #999;
+    }
+    .ptree-window.ptree-hide-segment-labels .ptree-level {
+      display: none;
+    }
+    .ptree-window.ptree-hide-segment-labels .ptree-folder > .ptree-fav-btn {
+      margin-left: auto;
+    }
+    .ptree-path-tooltip {
+      position: fixed;
+      left: -9999px;
+      top: -9999px;
+      z-index: 5600;
+      max-width: min(420px, calc(100vw - 16px));
+      padding: 7px 9px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fbfcfe;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      color: #1f2937;
+      font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-2px);
+      transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+    }
+    .ptree-path-tooltip.open {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+      transition-delay: 0s;
+    }
+    .ptree-path-tooltip-caption {
+      margin-bottom: 2px;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+    .ptree-path-tooltip-value {
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      white-space: normal;
     }
     .ptree-leaf-tail {
       margin-left: auto;
@@ -1196,6 +1357,7 @@ function renderNode(doc, node, depth, options, onSelect, context) {
     const leafLabel = doc.createElement("span");
     leafLabel.className = "ptree-label";
     leafLabel.textContent = String(currentNode?.name || "");
+    attachPathTreeTooltip(doc, leafLabel, currentNode?.path);
     leaf.appendChild(leafLabel);
     if (currentNode?.displayDetail) {
       const detail = doc.createElement("span");
@@ -1218,7 +1380,6 @@ function renderNode(doc, node, depth, options, onSelect, context) {
     if (tail.childNodes.length) {
       leaf.appendChild(tail);
     }
-    leaf.title = String(currentNode?.path || "");
     if (selectOnDoubleClick) {
       leaf.addEventListener("dblclick", (e) => {
         e.preventDefault();
@@ -1256,6 +1417,7 @@ function renderNode(doc, node, depth, options, onSelect, context) {
   const label = doc.createElement("span");
   label.className = "ptree-label";
   label.textContent = String(currentNode?.name || "");
+  attachPathTreeTooltip(doc, label, currentNode?.path);
   const typeIcon = renderTypeIcon(doc, currentNode?.valueType);
 
   const level = doc.createElement("span");
@@ -1689,6 +1851,7 @@ function disposeFloatingPathTreePicker(picker, reason = "programmatic", options 
     } catch {}
   }
   if (doc && onEsc) doc.removeEventListener("keydown", onEsc);
+  hidePathTreeTooltip(doc);
   closeFavoriteContextMenu(doc);
   if (typeof onWheelGuard === "function") {
     try { onWheelGuard(); } catch {}
@@ -1803,6 +1966,7 @@ export function openFloatingPathTreePicker(options = {}) {
   const win = doc.createElement("div");
   win.className = "ptree-window";
   if (embedded) win.classList.add("ptree-window-embedded");
+  if (options?.hideSegmentLabels) win.classList.add("ptree-hide-segment-labels");
   if (smoothReplaceExisting) {
     win.classList.add("ptree-refresh-enter");
   }
@@ -1935,6 +2099,7 @@ export function openFloatingPathTreePicker(options = {}) {
 
   const body = doc.createElement("div");
   body.className = "ptree-body";
+  body.addEventListener("scroll", () => hidePathTreeTooltip(doc), { passive: true });
   const renderContext = {
     loadChildren: typeof options?.loadChildren === "function" ? options.loadChildren : null,
     nodeControls: new Map(),
@@ -2112,13 +2277,13 @@ export function openFloatingPathTreePicker(options = {}) {
       const row = doc.createElement("div");
       row.className = "ptree-favorite-row";
       row.tabIndex = 0;
-      row.title = item.path;
       row.draggable = true;
       const key = makePathKey(item.path);
       const typeIcon = renderTypeIcon(doc, item.valueType || item.value_type || "imported");
       const name = doc.createElement("div");
       name.className = "ptree-favorite-name";
       name.textContent = item.nickname || item.path;
+      attachPathTreeTooltip(doc, name, item.path);
       const level = doc.createElement("span");
       level.className = "ptree-level";
       level.textContent = String(item.levelLabel || "");

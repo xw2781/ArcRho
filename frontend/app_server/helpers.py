@@ -444,7 +444,7 @@ def _normalize_reserving_filter_spec(raw_spec: Any) -> Dict[str, List[str]]:
 def _normalize_reserving_filter_preferences(raw_prefs: Any) -> Dict[str, Any]:
     prefs = raw_prefs if isinstance(raw_prefs, dict) else {}
     raw_auto_expand = prefs.get("auto_expand_single_child", prefs.get("autoExpandSingleChild", None))
-    raw_auto_close = prefs.get("auto_close_on_select", prefs.get("autoCloseOnSelect", None))
+    raw_hide_segment_labels = prefs.get("hide_segment_labels", prefs.get("hideSegmentLabels", None))
     raw_select_double = prefs.get("select_on_double_click", prefs.get("selectOnDoubleClick", None))
     raw_tree_window_width = prefs.get(
         "tree_window_width",
@@ -509,7 +509,7 @@ def _normalize_reserving_filter_preferences(raw_prefs: Any) -> Dict[str, Any]:
 
     out: Dict[str, Any] = {
         "auto_expand_single_child": _to_bool(raw_auto_expand),
-        "auto_close_on_select": _to_bool(raw_auto_close),
+        "hide_segment_labels": _to_bool(raw_hide_segment_labels, False),
         "select_on_double_click": _to_bool(raw_select_double),
     }
     window_width = _to_optional_size(raw_tree_window_width, 320, 2400)
@@ -579,7 +579,7 @@ def _is_default_reserving_filter_preferences(raw_prefs: Any) -> bool:
     prefs = _normalize_reserving_filter_preferences(raw_prefs)
     return (
         bool(prefs.get("auto_expand_single_child", True))
-        and bool(prefs.get("auto_close_on_select", True))
+        and not bool(prefs.get("hide_segment_labels", False))
         and bool(prefs.get("select_on_double_click", True))
         and prefs.get("tree_window_width", None) is None
         and prefs.get("tree_window_height", None) is None

@@ -19,6 +19,8 @@ function toCssLength(value) {
 }
 
 const SAVE_BAR_STYLE_ID = "tabbed-page-save-bar-style";
+export const TABBED_PAGE_CONTROL_RADIUS = "4px";
+export const TABBED_PAGE_ACTION_FONT_FAMILY = '"Segoe UI", Arial, sans-serif';
 
 function ensureSaveBarStyles() {
   if (document.getElementById(SAVE_BAR_STYLE_ID)) return;
@@ -40,6 +42,11 @@ function ensureSaveBarStyles() {
     }
     .tabbedPageSaveBar[hidden] {
       display: none;
+    }
+    .tabbedPageSaveBar button,
+    .tabbedPageSaveButton,
+    .tabbedPageCancelButton {
+      font-family: var(--tabbed-page-action-font-family, "Segoe UI", Arial, sans-serif);
     }
   `;
   document.head.appendChild(style);
@@ -82,10 +89,12 @@ export function updateTabbedPageSaveControls({
   const isDirty = !!dirty;
   const isSaving = !!saving;
   if (saveButton) {
+    saveButton.classList.add("tabbedPageSaveButton");
     saveButton.disabled = isSaving || !!saveBlocked || !isDirty;
     saveButton.classList.toggle("is-clean", !isDirty);
   }
   if (cancelButton) {
+    cancelButton.classList.add("tabbedPageCancelButton");
     cancelButton.disabled = isSaving || !!cancelBlocked;
   }
 }
@@ -181,6 +190,8 @@ export function createTabbedPage(container, config) {
   }
 
   container.style.setProperty("--tabbed-page-gutter", toCssLength(frameGutter));
+  container.style.setProperty("--tabbed-page-control-radius", TABBED_PAGE_CONTROL_RADIUS);
+  container.style.setProperty("--tabbed-page-action-font-family", TABBED_PAGE_ACTION_FONT_FAMILY);
   if (tabBar) {
     tabBar.style.setProperty("--tabbed-tabbar-extra-y", toCssLength(tabBarExtraVerticalSpace));
   }

@@ -96,6 +96,17 @@ def _normalize_project_user_preferences(data: Dict[str, Any]) -> Dict[str, Any]:
         for key in ("reservingClass", "reserving_class", "path"):
             cleaned.pop(key, None)
         out[section_key] = cleaned
+
+    reserving_class_tree = out.get("reservingClassTree")
+    if isinstance(reserving_class_tree, dict):
+        cleaned_tree = dict(reserving_class_tree)
+        preferences = cleaned_tree.get("preferences")
+        if isinstance(preferences, dict):
+            cleaned_preferences = dict(preferences)
+            cleaned_preferences.pop("auto_close_on_select", None)
+            cleaned_preferences.pop("autoCloseOnSelect", None)
+            cleaned_tree["preferences"] = cleaned_preferences
+        out["reservingClassTree"] = cleaned_tree
     return out
 
 

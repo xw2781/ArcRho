@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Aligned Dataset Data table text and totals with the Result Selection table styling."
+}

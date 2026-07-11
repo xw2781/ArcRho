@@ -1,4 +1,4 @@
-import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/path_tree_picker.js?v=20260610a";
+import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/path_tree_picker.js?v=20260710c";
 import { buildWorkflowPathRootNode } from "/ui/shared/workflow_global_picker_options.js";
 
 const LOOKUP_MODEL_CACHE = new Map();
@@ -7,7 +7,7 @@ const FILTER_SPEC_CACHE = new Map();
 const FILTER_PREFS_CACHE = new Map();
 const TREE_FILTER_PREFERENCE_DEFAULTS = Object.freeze({
   autoExpandSingleChild: true,
-  autoCloseOnSelect: true,
+  hideSegmentLabels: false,
 });
 const WINDOW_FRAME_MARGIN_PX = 8;
 const HIDDEN_PATHS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -1233,12 +1233,12 @@ function normalizeReservingClassFilterPreferences(rawPrefs) {
         : (typeof prefs.autoExpandSingleChild === "boolean"
           ? prefs.autoExpandSingleChild
           : TREE_FILTER_PREFERENCE_DEFAULTS.autoExpandSingleChild),
-    autoCloseOnSelect:
-      typeof prefs.auto_close_on_select === "boolean"
-        ? prefs.auto_close_on_select
-        : (typeof prefs.autoCloseOnSelect === "boolean"
-          ? prefs.autoCloseOnSelect
-          : TREE_FILTER_PREFERENCE_DEFAULTS.autoCloseOnSelect),
+    hideSegmentLabels:
+      typeof prefs.hide_segment_labels === "boolean"
+        ? prefs.hide_segment_labels
+        : (typeof prefs.hideSegmentLabels === "boolean"
+          ? prefs.hideSegmentLabels
+          : TREE_FILTER_PREFERENCE_DEFAULTS.hideSegmentLabels),
     treeWindowWidth,
     treeWindowHeight,
     filterWindowWidth,
@@ -1253,7 +1253,7 @@ function isDefaultReservingClassFilterPreferences(rawPrefs) {
   const prefs = normalizeReservingClassFilterPreferences(rawPrefs);
   return (
     prefs.autoExpandSingleChild === TREE_FILTER_PREFERENCE_DEFAULTS.autoExpandSingleChild
-    && prefs.autoCloseOnSelect === TREE_FILTER_PREFERENCE_DEFAULTS.autoCloseOnSelect
+    && prefs.hideSegmentLabels === TREE_FILTER_PREFERENCE_DEFAULTS.hideSegmentLabels
     && !Number.isFinite(prefs.treeWindowWidth)
     && !Number.isFinite(prefs.treeWindowHeight)
     && !Number.isFinite(prefs.filterWindowWidth)
@@ -1290,7 +1290,7 @@ async function saveReservingClassFilterSpec(projectName, filterSpec, preferences
   const normalizedPreferences = normalizeReservingClassFilterPreferences(preferences || {});
   const outPrefs = {
     auto_expand_single_child: !!normalizedPreferences.autoExpandSingleChild,
-    auto_close_on_select: !!normalizedPreferences.autoCloseOnSelect,
+    hide_segment_labels: !!normalizedPreferences.hideSegmentLabels,
   };
   if (Number.isFinite(normalizedPreferences.treeWindowWidth)) {
     outPrefs.tree_window_width = normalizedPreferences.treeWindowWidth;
@@ -2081,36 +2081,36 @@ function openReservingClassPreferencesWindow(options = {}) {
   help.textContent = "When enabled, expanding a node with exactly one child will automatically expand the child.";
   body.appendChild(help);
 
-  const closeOnSelectLabel = doc.createElement("label");
-  closeOnSelectLabel.className = "rcprefs-toggle";
-  const closeOnSelectInput = doc.createElement("input");
-  closeOnSelectInput.type = "checkbox";
-  closeOnSelectInput.checked =
-    typeof options?.preferences?.autoCloseOnSelect === "boolean"
-      ? options.preferences.autoCloseOnSelect
-      : TREE_FILTER_PREFERENCE_DEFAULTS.autoCloseOnSelect;
-  const closeOnSelectText = doc.createElement("span");
-  closeOnSelectText.textContent = "Auto close after selecting a final path";
-  closeOnSelectLabel.append(closeOnSelectInput, closeOnSelectText);
-  body.appendChild(closeOnSelectLabel);
+  const hideSegmentLabelsLabel = doc.createElement("label");
+  hideSegmentLabelsLabel.className = "rcprefs-toggle";
+  const hideSegmentLabelsInput = doc.createElement("input");
+  hideSegmentLabelsInput.type = "checkbox";
+  hideSegmentLabelsInput.checked =
+    typeof options?.preferences?.hideSegmentLabels === "boolean"
+      ? options.preferences.hideSegmentLabels
+      : TREE_FILTER_PREFERENCE_DEFAULTS.hideSegmentLabels;
+  const hideSegmentLabelsText = doc.createElement("span");
+  hideSegmentLabelsText.textContent = "Hide Segment Labels";
+  hideSegmentLabelsLabel.append(hideSegmentLabelsInput, hideSegmentLabelsText);
+  body.appendChild(hideSegmentLabelsLabel);
 
-  const closeOnSelectHelp = doc.createElement("div");
-  closeOnSelectHelp.className = "rcprefs-help";
-  closeOnSelectHelp.textContent = "When disabled, the tree window stays open after a final path is selected.";
-  body.appendChild(closeOnSelectHelp);
+  const hideSegmentLabelsHelp = doc.createElement("div");
+  hideSegmentLabelsHelp.className = "rcprefs-help";
+  hideSegmentLabelsHelp.textContent = "Hide the segment labels shown at the right side of tree rows and shortcuts.";
+  body.appendChild(hideSegmentLabelsHelp);
 
   const emitChange = () => {
     if (typeof options?.onChange === "function") {
       try {
         options.onChange({
           autoExpandSingleChild: !!toggleInput.checked,
-          autoCloseOnSelect: !!closeOnSelectInput.checked,
+          hideSegmentLabels: !!hideSegmentLabelsInput.checked,
         });
       } catch {}
     }
   };
   toggleInput.addEventListener("change", emitChange);
-  closeOnSelectInput.addEventListener("change", emitChange);
+  hideSegmentLabelsInput.addEventListener("change", emitChange);
 
   win.appendChild(body);
 
@@ -3135,7 +3135,7 @@ export async function openLazyReservingClassPicker(options = {}) {
       defaultExpandedDepth: Number.isInteger(options?.defaultExpandedDepth)
         ? Number(options.defaultExpandedDepth)
         : 1,
-      autoCloseOnSelect: inlineTree ? false : true,
+      autoCloseOnSelect: false,
       allowBranchSelect: false,
       onSelect: (path, node) => {
         closeReservingClassTreeNodeMenu("selected");
@@ -3664,7 +3664,8 @@ export async function openLazyReservingClassPicker(options = {}) {
           ? Number(options.defaultExpandedDepth)
           : 0,
         autoExpandSingleChild: !!treeFilterPreferences.autoExpandSingleChild,
-        autoCloseOnSelect: inlineTree ? false : !!treeFilterPreferences.autoCloseOnSelect,
+        autoCloseOnSelect: false,
+        hideSegmentLabels: !!treeFilterPreferences.hideSegmentLabels,
         showFavoriteSection: true,
         favoriteSectionTitle: "Shortcut",
         sourceSectionTitle: "All Paths",

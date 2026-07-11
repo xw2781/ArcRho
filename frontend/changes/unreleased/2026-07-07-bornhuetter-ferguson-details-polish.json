@@ -6,7 +6,7 @@
   "details": [
     "The Origin Length control uses a narrow numeric dropdown whose menu opens above the adjacent source panel without clipping.",
     "Source fields now use the labels Latest, Development Pattern, and Prior Vector.",
-    "Prior Vector tokens match the Dataset Details formula-component frame design, open their datasets when clicked, and can be removed by dragging outside the box or using the right-click Delete menu.",
+    "The 70px-tall Prior Vector picker top-aligns its label and 30px pills; tokens open their datasets when clicked and can be removed by dragging outside the box or using the right-click Delete menu.",
     "A trailing neutral plus pill with a blue hover state replaces the three-dot Prior Vector picker button."
   ]
 }

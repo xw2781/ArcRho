@@ -14,6 +14,7 @@ import {
 } from "/ui/shared/tabbed_page.js";
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interactions.js";
+import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
 import { startResultSelectionRpcBridgeSync } from "/ui/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
@@ -92,6 +93,7 @@ const state = {
   methodHighlight: null,
   methodHighlights: [],
   methodHighlightDragging: false,
+  ratioBasisDragIndex: null,
   resultsHighlight: null,
   resultsHighlightDragging: false,
   weightEditSession: null,
@@ -115,20 +117,12 @@ const els = {
     document.getElementById("rsRatioBasisInput2"),
     document.getElementById("rsRatioBasisInput3"),
   ],
-  ratioBasisButtons: [
-    document.getElementById("rsRatioBasisBtn"),
-    document.getElementById("rsRatioBasisBtn2"),
-    document.getElementById("rsRatioBasisBtn3"),
-  ],
-  ratioBasisClearButtons: [
-    document.getElementById("rsRatioBasisClearBtn"),
-    document.getElementById("rsRatioBasisClearBtn2"),
-    document.getElementById("rsRatioBasisClearBtn3"),
-  ],
+  ratioBasisList: document.getElementById("rsRatioBasisList"),
+  ratioBasisAddButton: document.getElementById("rsRatioBasisAddBtn"),
+  ratioBasisPicker: document.querySelector(".rsRatioBasisPicker"),
+  ratioBasisContextMenu: document.getElementById("rsRatioBasisContextMenu"),
   showRatiosPctInput: document.getElementById("rsShowRatiosPctInput"),
   statisticDecimalsInput: document.getElementById("rsStatisticDecimalsInput"),
-  statisticDecimalsUp: document.getElementById("rsStatisticDecimalsUp"),
-  statisticDecimalsDown: document.getElementById("rsStatisticDecimalsDown"),
   methodStatisticDecimalsInput: document.getElementById("rsMethodStatisticDecimalsInput"),
   methodStatisticDecimalsUp: document.getElementById("rsMethodStatisticDecimalsUp"),
   methodStatisticDecimalsDown: document.getElementById("rsMethodStatisticDecimalsDown"),
@@ -244,6 +238,12 @@ installResultSelectionPart("ui", resultSelectionParts.installUi);
 installResultSelectionPart("data", resultSelectionParts.installData);
 installResultSelectionPart("grids", resultSelectionParts.installGrids);
 installResultSelectionPart("model", resultSelectionParts.installModel);
+
+syncDetailsLabelWidth({
+  root: "#rsDetailsPage",
+  labelSelector: ".rsDetailsGrid > label, .rsBasisPanel > .rsBasisLabel",
+  propertyName: "--rs-details-label-width",
+});
 
 ctx.init().catch((err) => {
   console.error("Result Selection initialization failed:", err);

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "UI",
+  "audience": "user",
+  "summary": "Standardized tabbed-page Save and Cancel buttons on the Segoe UI font family."
+}

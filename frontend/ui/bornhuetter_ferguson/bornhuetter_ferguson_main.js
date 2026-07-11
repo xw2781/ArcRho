@@ -12,6 +12,7 @@ import {
 } from "/ui/shared/tabbed_page.js";
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interactions.js";
+import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
 import { createBornhuetterFergusonChart } from "/ui/bornhuetter_ferguson/bornhuetter_ferguson_chart.js";
 
 const BF_METHOD_TYPE = "Bornhuetter Ferguson";
@@ -2045,6 +2046,11 @@ function wireMessages() {
 }
 
 async function init() {
+  syncDetailsLabelWidth({
+    root: "#bfDetailsPage",
+    labelSelector: ".bfLabel",
+    propertyName: "--bf-details-label-width",
+  });
   withProgrammatic(() => {
     els.projectInput.value = state.project;
     els.classInput.value = state.reservingClass;

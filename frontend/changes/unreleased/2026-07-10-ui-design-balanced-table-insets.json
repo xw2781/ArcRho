@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ui design",
+  "audience": "internal",
+  "summary": "Documented balanced table-frame spacing for future tab and page layouts."
+}

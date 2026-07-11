@@ -378,6 +378,14 @@
         return uniqueRatioBasisNames((els.ratioBasisInputs || []).map((input) => input?.value));
       }
 
+      function setRatioBasisNames(names) {
+        const normalized = uniqueRatioBasisNames(names);
+        (els.ratioBasisInputs || []).forEach((input, index) => {
+          if (input) input.value = normalized[index] || "";
+        });
+        return normalized;
+      }
+
       function matchRatioBasisName(value, names = getRatioBasisNames()) {
         const key = norm(value);
         if (!key) return "";
@@ -400,12 +408,125 @@
         };
       }
 
+      function renderRatioBasisPills(names = getRatioBasisNames()) {
+        const list = els.ratioBasisList;
+        if (!list) return;
+        list.replaceChildren();
+
+        if (!names.length) {
+          const empty = document.createElement("span");
+          empty.className = "rsRatioBasisEmpty";
+          empty.setAttribute("role", "listitem");
+          empty.textContent = "Select one or more ratio basis datasets.";
+          list.appendChild(empty);
+        }
+
+        names.forEach((name, index) => {
+          const token = document.createElement("span");
+          token.className = "rsRatioBasisToken";
+          token.setAttribute("role", "listitem");
+          token.setAttribute("draggable", "true");
+          token.dataset.ratioBasisIndex = String(index);
+          token.title = name;
+
+          const openButton = document.createElement("button");
+          openButton.className = "rsRatioBasisOpen";
+          openButton.type = "button";
+          openButton.dataset.ratioBasisOpenIndex = String(index);
+          openButton.setAttribute("aria-label", `Open dataset ${name}`);
+
+          const label = document.createElement("span");
+          label.className = "rsRatioBasisTokenLabel";
+          label.textContent = name;
+          openButton.appendChild(label);
+          token.appendChild(openButton);
+          list.appendChild(token);
+        });
+
+        if (els.ratioBasisAddButton) {
+          const atLimit = names.length >= MAX_RATIO_BASIS_COUNT;
+          els.ratioBasisAddButton.disabled = atLimit;
+          els.ratioBasisAddButton.title = atLimit
+            ? `A maximum of ${MAX_RATIO_BASIS_COUNT} ratio basis datasets is allowed.`
+            : "Add ratio basis";
+        }
+      }
+
+      function closeRatioBasisContextMenu() {
+        if (!els.ratioBasisContextMenu) return;
+        els.ratioBasisContextMenu.classList.remove("open");
+        els.ratioBasisContextMenu.setAttribute("aria-hidden", "true");
+        delete els.ratioBasisContextMenu.dataset.ratioBasisIndex;
+      }
+
+      function openRatioBasisContextMenu(event, index) {
+        const names = getRatioBasisNames();
+        if (!els.ratioBasisContextMenu || !names[index]) return;
+        event.preventDefault();
+        event.stopPropagation();
+        closeCellContextMenu();
+        closeSourceContextMenu();
+        els.ratioBasisContextMenu.dataset.ratioBasisIndex = String(index);
+        els.ratioBasisContextMenu.classList.add("open");
+        els.ratioBasisContextMenu.setAttribute("aria-hidden", "false");
+        positionContextMenu(els.ratioBasisContextMenu, event.clientX, event.clientY);
+      }
+
+      function resetRatioBasisDragState() {
+        state.ratioBasisDragIndex = null;
+        els.ratioBasisPicker?.classList.remove("rsRatioBasisDragActive", "rsRatioBasisDragOutside");
+        els.ratioBasisList?.querySelector(".rsRatioBasisDragging")?.classList.remove("rsRatioBasisDragging");
+      }
+
+      function openRatioBasisDataset(index) {
+        const name = getRatioBasisNames()[index];
+        if (!name) return;
+        const record = cachedRows.find((row) => norm(row?.name) === norm(name)) || null;
+        const requestId = `rs_open_ratio_basis_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const onMessage = (event) => {
+          const msg = event.data || {};
+          if (msg.type !== "arcrho:automation-command-result" || msg.requestId !== requestId) return;
+          window.removeEventListener("message", onMessage);
+          if (msg.ok === false) postStatus(`Open ratio basis dataset failed: ${msg.error || "Unknown error."}`, "error");
+        };
+        window.addEventListener("message", onMessage);
+        window.setTimeout(() => window.removeEventListener("message", onMessage), 10000);
+        try {
+          window.parent?.postMessage({
+            type: "arcrho:automation-open-dataset",
+            requestId,
+            args: {
+              datasetName: name,
+              datasetTypeName: text(record?.datasetTypeName || record?.datasetType || name),
+              methodType: text(record?.methodType),
+              readOnly: !!record?.readOnly,
+            },
+          }, "*");
+        } catch (err) {
+          window.removeEventListener("message", onMessage);
+          postStatus(`Open ratio basis dataset failed: ${err?.message || err}`, "error");
+        }
+      }
+
+      function removeRatioBasisAt(index) {
+        const names = getRatioBasisNames();
+        if (!Number.isInteger(index) || index < 0 || index >= names.length) return;
+        const previousActive = state.activeRatioBasisName;
+        names.splice(index, 1);
+        setRatioBasisNames(names);
+        syncRatioBasisSelector();
+        if (previousActive !== state.activeRatioBasisName) state.ratioBasisValues = [];
+        markDirty();
+        void refreshRatioBasisValues();
+      }
+
       function syncRatioBasisSelector() {
         const menu = els.activeRatioBasisMenu;
         const button = els.activeRatioBasisButton;
         const names = getRatioBasisNames();
         const active = matchRatioBasisName(state.activeRatioBasisName, names) || names[0] || "";
         state.activeRatioBasisName = active;
+        renderRatioBasisPills(names);
         if (!menu) return active;
         const previous = getDropdownValue(menu);
         menu.replaceChildren();
@@ -645,9 +766,8 @@
       }
 
       function wireEvents() {
-        [els.nameInput, els.outputTypeInput, els.originLengthInput, els.showRatiosPctInput, els.statisticDecimalsInput, els.showWeightsInput].forEach((el) => {
+        [els.nameInput, els.outputTypeInput, els.originLengthInput, els.showRatiosPctInput, els.showWeightsInput].forEach((el) => {
           el?.addEventListener("input", () => {
-            if (el === els.statisticDecimalsInput) syncStatisticDecimalInputs("details");
             markDirty();
             if (el === els.outputTypeInput) {
               syncOutputCategory();
@@ -661,7 +781,6 @@
             renderMethodGrid();
           });
           el?.addEventListener("change", () => {
-            if (el === els.statisticDecimalsInput) syncStatisticDecimalInputs("details");
             markDirty();
             if (el === els.outputTypeInput) {
               syncOutputCategory();
@@ -697,19 +816,17 @@
           markDirty();
           renderMethodGrid();
         });
-        function stepStatisticDecimals(source, delta) {
-          const target = source === "details" ? els.statisticDecimalsInput : els.methodStatisticDecimalsInput;
+        function stepStatisticDecimals(delta) {
+          const target = els.methodStatisticDecimalsInput;
           const current = statisticDecimalPlacesValue(target?.value, 1);
           const next = String(statisticDecimalPlacesValue(current + delta, current));
           if (target) target.value = next;
-          syncStatisticDecimalInputs(source);
+          syncStatisticDecimalInputs("method");
           markDirty();
           renderMethodGrid();
         }
-        els.statisticDecimalsUp?.addEventListener("click", () => stepStatisticDecimals("details", 1));
-        els.statisticDecimalsDown?.addEventListener("click", () => stepStatisticDecimals("details", -1));
-        els.methodStatisticDecimalsUp?.addEventListener("click", () => stepStatisticDecimals("method", 1));
-        els.methodStatisticDecimalsDown?.addEventListener("click", () => stepStatisticDecimals("method", -1));
+        els.methodStatisticDecimalsUp?.addEventListener("click", () => stepStatisticDecimals(1));
+        els.methodStatisticDecimalsDown?.addEventListener("click", () => stepStatisticDecimals(-1));
         wireDropdown(els.weightDisplayDropdown, els.weightDisplayButton, els.weightDisplayMenu, (value) => {
           const next = text(value) === "effective";
           if (state.showEffectiveWeights === next) return;
@@ -787,6 +904,7 @@
             }
             closeCellContextMenu();
             closeSourceContextMenu();
+            closeRatioBasisContextMenu();
             return;
           }
           if (handleMethodHighlightArrowKey(event)) return;
@@ -826,49 +944,78 @@
             }
           }
         });
-        (els.ratioBasisInputs || []).forEach((input, index) => {
-          input?.addEventListener("input", () => {
+        (els.ratioBasisInputs || []).forEach((input) => {
+          input?.addEventListener("change", () => {
             markDirty();
             const previousActive = state.activeRatioBasisName;
             syncRatioBasisSelector();
             if (previousActive !== state.activeRatioBasisName) state.ratioBasisValues = [];
-            renderMethodGrid();
-          });
-          input?.addEventListener("change", () => {
-            markDirty();
-            syncRatioBasisSelector();
             void refreshRatioBasisValues();
           });
-          input?.addEventListener("keydown", (event) => {
-            if (event.key !== "ArrowDown") return;
-            event.preventDefault();
-            void openRatioBasisDatasetPicker(index);
-          });
         });
-        (els.ratioBasisButtons || []).forEach((button, index) => {
-          button?.addEventListener("click", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void openRatioBasisDatasetPicker(index);
-          });
+        els.ratioBasisAddButton?.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void openRatioBasisDatasetPicker();
         });
-        (els.ratioBasisClearButtons || []).forEach((button, index) => {
-          button?.addEventListener("click", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const input = els.ratioBasisInputs?.[index];
-            if (!input || !text(input.value)) return;
-            input.value = "";
-            input.dispatchEvent(new Event("change", { bubbles: true }));
-          });
+        els.ratioBasisList?.addEventListener("click", (event) => {
+          const button = event.target.closest?.("button[data-ratio-basis-open-index]");
+          if (!button) return;
+          event.preventDefault();
+          event.stopPropagation();
+          openRatioBasisDataset(Number.parseInt(button.dataset.ratioBasisOpenIndex || "", 10));
+        });
+        els.ratioBasisList?.addEventListener("contextmenu", (event) => {
+          const token = event.target.closest?.("[data-ratio-basis-index]");
+          if (!token) return;
+          openRatioBasisContextMenu(event, Number.parseInt(token.dataset.ratioBasisIndex || "", 10));
+        });
+        els.ratioBasisList?.addEventListener("dragstart", (event) => {
+          const token = event.target.closest?.("[data-ratio-basis-index]");
+          const index = Number.parseInt(token?.dataset.ratioBasisIndex || "", 10);
+          const names = getRatioBasisNames();
+          if (!token || !Number.isInteger(index) || !names[index]) return;
+          closeRatioBasisContextMenu();
+          state.ratioBasisDragIndex = index;
+          token.classList.add("rsRatioBasisDragging");
+          els.ratioBasisPicker?.classList.add("rsRatioBasisDragActive");
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", names[index]);
+          }
+        });
+        document.addEventListener("dragover", (event) => {
+          if (!Number.isInteger(state.ratioBasisDragIndex)) return;
+          event.preventDefault();
+          const insidePicker = event.target.closest?.(".rsRatioBasisPicker");
+          els.ratioBasisPicker?.classList.toggle("rsRatioBasisDragOutside", !insidePicker);
+          if (event.dataTransfer) event.dataTransfer.dropEffect = insidePicker ? "none" : "move";
+        });
+        document.addEventListener("drop", (event) => {
+          if (!Number.isInteger(state.ratioBasisDragIndex)) return;
+          event.preventDefault();
+          const index = state.ratioBasisDragIndex;
+          const insidePicker = event.target.closest?.(".rsRatioBasisPicker");
+          resetRatioBasisDragState();
+          if (!insidePicker) removeRatioBasisAt(index);
+        });
+        document.addEventListener("dragend", resetRatioBasisDragState);
+        els.ratioBasisContextMenu?.addEventListener("click", (event) => {
+          if (!event.target.closest?.('[data-rs-ratio-basis-action="delete"]')) return;
+          const index = Number.parseInt(els.ratioBasisContextMenu.dataset.ratioBasisIndex || "", 10);
+          closeRatioBasisContextMenu();
+          removeRatioBasisAt(index);
         });
         wireDropdown(els.activeRatioBasisDropdown, els.activeRatioBasisButton, els.activeRatioBasisMenu, (value) => {
           state.activeRatioBasisName = text(value);
+          syncRatioBasisSelector();
           markDirty();
           void refreshRatioBasisValues();
         });
         document.addEventListener("mousedown", (event) => {
           const target = event.target;
+          if (els.ratioBasisContextMenu?.contains?.(target)) return;
+          closeRatioBasisContextMenu();
           if (target instanceof Node && (
             els.weightDisplayDropdown?.contains?.(target)
             || els.originLengthDropdown?.contains?.(target)
@@ -1006,6 +1153,7 @@
         initTabs();
         syncOriginLengthDropdownOptions();
         wireEvents();
+        syncRatioBasisSelector();
         wireRsMethodScrollbarActivity();
         wireNotes();
         await loadOutputSidecarSettings().catch((err) => console.warn("Result Selection sidecar settings load failed:", err));
@@ -1067,8 +1215,10 @@
         wireDropdown,
         uniqueRatioBasisNames,
         getRatioBasisNames,
+        setRatioBasisNames,
         matchRatioBasisName,
         normalizeRatioBasisDetails,
+        renderRatioBasisPills,
         syncRatioBasisSelector,
         getActiveRatioBasisName,
         getDetails,

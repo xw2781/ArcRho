@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "UI",
+  "audience": "user",
+  "summary": "Standardized ordinary tabbed-page buttons, inputs, and picker frames on a shared 4px corner radius.",
+  "details": [
+    "Dataset, DFM, Result Selection, and Bornhuetter-Ferguson now consume the shared radius token.",
+    "Pill chips, circular controls, split controls, and square table frames retain their intentional shapes."
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Removed panel fills and borders from Dataset Details for a cleaner flat layout."
+}

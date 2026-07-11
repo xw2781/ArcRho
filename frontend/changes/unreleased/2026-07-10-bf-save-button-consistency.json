@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "BF",
+  "audience": "user",
+  "summary": "Aligned Bornhuetter-Ferguson Save and Cancel button styling with Dataset pages."
+}

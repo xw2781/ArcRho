@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Aligned Dataset Details labels using the width of the longest label while minimizing their left margin."
+}

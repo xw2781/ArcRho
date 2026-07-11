@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "details forms",
+  "audience": "user",
+  "summary": "Standardized Arial 12px labels and controls, pure-black text, and label spacing across Dataset, BF, Result Selection, and DFM Details pages."
+}

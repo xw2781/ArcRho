@@ -64,7 +64,7 @@ Detected `arcrho:*` message types in key JS files:
 - Opened by shell as a `project_instance` iframe tab after Project Settings posts `arcrho:open-project-instance`.
 - Calls shared dataset-types and reserving-class picker helpers.
 - Embeds the same lazy reserving-class picker body used by Dataset/DFM/Workflow, so the project instance left panel loads the same hierarchy, filters, hidden-path preferences, Shortcut section, favorites, and user-defined favorite folders.
-- The embedded reserving-class path tree uses tight horizontal padding with a small left inset and does not reserve two-sided scrollbar gutters, so more path text fits in the left panel.
+- The embedded reserving-class path tree uses tight horizontal padding with a small left inset and does not reserve two-sided scrollbar gutters, so more path text fits in the left panel. Hovering a tree or Shortcut label shows its full path in a compact app-styled tooltip that wraps within the viewport instead of using the browser-native tooltip.
 - Project instance loading shows one centered page-level loading card with the same blue sweep spinner style used by Dataset loading while the reserving-class path tree and dataset table load.
 - Embeds the existing Dataset Viewer page in draggable in-tab windows.
 - Double-clicking a dataset that already has an open or hidden floating window activates or restores the existing window instead of creating a duplicate for the same selected path and dataset.

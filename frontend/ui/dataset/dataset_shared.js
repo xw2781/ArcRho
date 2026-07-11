@@ -1,3 +1,5 @@
+import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
+
 export function injectDatasetMarkup(container) {
   if (!container) return null;
   if (container.querySelector("#topFrame")) return container;
@@ -22,7 +24,7 @@ export function injectDatasetMarkup(container) {
     <div class="panel dsDetailsFrame" id="topFrame">
       <div class="topFrameGrid">
         <div class="topField">
-          <label class="small" for="projectSelect">Project Name</label>
+          <label class="small" for="projectSelect">Project Name : </label>
           <div class="projectSelectWrap">
             <input id="projectSelect" autocomplete="off" />
             <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">
@@ -33,7 +35,7 @@ export function injectDatasetMarkup(container) {
         </div>
 
         <div class="topField">
-          <label class="small" for="pathInput">Reserving Class</label>
+          <label class="small" for="pathInput">Reserving Class : </label>
           <div class="reservingClassWrap">
             <input id="pathInput" />
             <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse reserving classes" aria-label="Browse reserving classes">...</button>
@@ -46,7 +48,7 @@ export function injectDatasetMarkup(container) {
     <div class="dsDetailsPanel">
       <div class="dsDetailsGrid">
         <div class="dsDetailLabel">
-          <label class="small" for="dsDetailName">Name</label>
+          <label class="small" for="dsDetailName">Name : </label>
         </div>
         <div class="dsDetailInput">
           <div class="dsDetailNameWrap">
@@ -56,7 +58,7 @@ export function injectDatasetMarkup(container) {
         </div>
 
         <div class="dsDetailLabel">
-          <label class="small" for="triInput">Dataset Type</label>
+          <label class="small" for="triInput">Dataset Type : </label>
         </div>
         <div class="dsDetailInput">
           <div class="datasetSelectWrap">
@@ -67,15 +69,19 @@ export function injectDatasetMarkup(container) {
         </div>
 
         <div class="dsDetailLabel">
-          <label class="small" id="dsFormulaLabel" for="dsDetailFormulaBox">Formula</label>
+          <label class="small" id="dsFormulaLabel" for="dsDetailFormulaBox">Formula : </label>
         </div>
         <div class="dsDetailInput">
           <div id="dsDetailFormulaBox" class="dsDetailFormulaBox" role="group" aria-labelledby="dsFormulaLabel"></div>
           <textarea id="dsDetailFormula" autocomplete="off" readonly rows="1" tabindex="-1" aria-hidden="true"></textarea>
         </div>
+      </div>
+    </div>
 
+    <div class="dsRelationshipsPanel">
+      <div class="dsRelationshipsGrid">
         <div class="dsDetailLabel">
-          <label class="small" id="dsPrecedentsTitle">Precedents</label>
+          <label class="small" id="dsPrecedentsTitle">Precedents : </label>
         </div>
         <div class="dsDetailInput">
           <div class="dsDatasetChipBox">
@@ -84,7 +90,7 @@ export function injectDatasetMarkup(container) {
         </div>
 
         <div class="dsDetailLabel">
-          <label class="small" id="dsDependentsTitle">Dependents</label>
+          <label class="small" id="dsDependentsTitle">Dependents : </label>
         </div>
         <div class="dsDetailInput">
           <div class="dsDatasetChipBox">
@@ -361,8 +367,18 @@ export function injectDatasetMarkup(container) {
   while (wrapper.firstElementChild) {
     container.appendChild(wrapper.firstElementChild);
   }
+  syncDatasetDetailsLabelWidth(container);
   wireTableScrollbarActivity(container);
   return container;
+}
+
+function syncDatasetDetailsLabelWidth(container) {
+  const detailsPage = container?.querySelector?.("#dsDetailsPage");
+  syncDetailsLabelWidth({
+    root: detailsPage,
+    labelSelector: ".topField > label, .dsDetailLabel > label",
+    propertyName: "--ds-details-label-width",
+  });
 }
 
 function wireTableScrollbarActivity(container) {

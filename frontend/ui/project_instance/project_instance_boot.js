@@ -3,7 +3,7 @@ import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
 } from "/ui/shared/project_user_preferences.js";
-import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js?v=20260610d";
+import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js?v=20260710c";
 import "/ui/shared/zoom_bridge.js?v=20260521a";
 
 import { createProjectInstanceContext } from "./project_instance_context.js?v=20260705b";

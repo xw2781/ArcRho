@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "reserving class",
+  "audience": "user",
+  "summary": "Replaced the reserving-class tree auto-close preference with an option to hide segment labels.",
+  "details": [
+    "Reserving-class trees now stay open after a final path is selected.",
+    "The segment-label preference applies to tree rows and shortcuts.",
+    "Favorite stars remain right-aligned when segment labels are hidden.",
+    "Full paths now appear in compact app-styled tooltips instead of browser-native tooltips."
+  ]
+}

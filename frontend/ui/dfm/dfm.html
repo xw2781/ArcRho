@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Edit Dataset</title>
-  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260703a"/>
+  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260710m"/>
   <style>
     :root{
       --dfm-font: var(--app-font);
@@ -124,7 +124,7 @@
       margin: 0 var(--tabbed-page-gutter, 8px);
     }
     #dfmDataPage {
-      padding: 3px 0 0 3px;
+      padding: 3px;
       overflow: hidden;
     }
     #dfmDataPage .panel {
@@ -209,7 +209,7 @@
       margin: 0;
       padding: 10px;
       box-sizing: border-box;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       font: inherit;
       font-size: 13px;
       line-height: 1.45;
@@ -247,7 +247,7 @@
       border-left-color: #dbe2ee;
       border-right-color: #94a0b4;
       border-bottom-color: #94a0b4;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       padding: 10px;
       font: inherit;
       font-size: 13px;
@@ -284,7 +284,7 @@
     .dfmCancelBtn {
       min-width: 72px;
       height: 28px;
-      border-radius: 5px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
@@ -433,43 +433,37 @@
     }
     #dfmDetailsPage {
       display: none;
-      padding-top: 12px;
-      padding-left: 3px;
+      padding: 12px 10px 10px;
+      --dfm-details-label-width: max-content;
     }
     #dfmRatiosPage {
       display: none;
-      padding: 3px 0 0 3px;
+      padding: 3px;
       overflow: hidden;
     }
     #dfmResultsPage { display: none; }
     #dfmNotesPage { display: none; }
     #dfmDetailsPage .dfmDetailsBlock {
-      border: 1px solid #d7dde7;
-      border-radius: 5px;
+      border: none;
+      border-radius: 0;
       padding: 12px 14px;
-      background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.95),
-        0 1px 2px rgba(15, 23, 42, 0.06);
-    }
-    .dfmDetailsBlockHeader {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #edf1f6;
-    }
-    .dfmDetailsBlockTitle {
-      font-size: 12px;
-      font-weight: 400;
-      color: #4b5563;
+      background: transparent;
+      box-shadow: none;
     }
     #dfmDetailsPage {
       display: none;
+      color: var(--details-form-control-color, #000);
+      font-family: var(--details-form-font-family, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
+      font-size: var(--details-form-control-font-size, 12px);
+    }
+    #dfmDetailsPage input,
+    #dfmDetailsPage select,
+    #dfmDetailsPage textarea,
+    #dfmDetailsPage button {
+      font-family: inherit;
     }
     .dfmDetailsBlock + .dfmDetailsBlock {
-      margin-top: 14px;
+      margin-top: 1px;
     }
     .dfmSection {
       display: flex;
@@ -478,30 +472,30 @@
     }
     .dfmFormGrid {
       display: grid;
-      grid-template-columns: 170px minmax(0, 1fr);
-      column-gap: 14px;
+      grid-template-columns: var(--dfm-details-label-width) minmax(0, 1fr);
+      column-gap: var(--details-form-label-gap, 5px);
       row-gap: 10px;
       align-items: center;
     }
     .dfmFormGrid3 {
       display: grid;
-      grid-template-columns: 170px 560px minmax(0, 1fr);
-      column-gap: 14px;
+      grid-template-columns: var(--dfm-details-label-width) 560px minmax(0, 1fr);
+      column-gap: var(--details-form-label-gap, 5px);
       row-gap: 10px;
       align-items: center;
     }
     .dfmFormGrid label,
     .dfmFormGrid .dfmFormLabel {
-      font-size: 13px;
+      font-size: var(--details-form-label-font-size, 12px);
       font-weight: 400;
-      color: #000;
+      color: var(--details-form-label-color, #000);
       text-align: right;
     }
     .dfmFormGrid3 label,
     .dfmFormGrid3 .dfmFormLabel {
-      font-size: 13px;
+      font-size: var(--details-form-label-font-size, 12px);
       font-weight: 400;
-      color: #000;
+      color: var(--details-form-label-color, #000);
       text-align: right;
     }
     .dfmFormGrid label::after,
@@ -538,8 +532,20 @@
       height: 30px;
       padding: 0 10px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       box-sizing: border-box;
+      color: var(--details-form-control-color, #000);
+      font-size: var(--details-form-control-font-size, 12px);
+    }
+    #dfmDetailsPage input[readonly],
+    #dfmDetailsPage textarea[readonly],
+    #dfmDetailsPage select:disabled {
+      color: var(--details-form-readonly-color, #000);
+    }
+    .dfmFormField .projectTreeBtn,
+    .dfmFormField .pathTreeBtn,
+    .dfmFormField .datasetTreeBtn {
+      border-radius: var(--tabbed-page-control-radius, 4px);
     }
     .dfmFormField .projectSelectWrap,
     .dfmFormField .datasetSelectWrap,
@@ -598,8 +604,8 @@
     .dfmSpinner select,
     .dfmSpinner input {
       width: 100%;
-      padding-left: 28px;
-      padding-right: 28px;
+      padding-left: 20px;
+      padding-right: 20px;
       -webkit-appearance: none;
       -moz-appearance: none;
       appearance: none;
@@ -621,7 +627,7 @@
       right: 1px;
       top: 1px;
       bottom: 1px;
-      width: 28px;
+      width: 20px;
       display: flex;
       flex-direction: column;
       border-radius: 0 5px 5px 0;
@@ -632,8 +638,8 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 28px;
-      min-width: 28px;
+      width: 20px;
+      min-width: 20px;
       border: none;
       padding: 0;
       background: transparent;
@@ -656,12 +662,12 @@
       border-right: 4px solid transparent;
       border-top: 5px solid currentColor;
       opacity: 0.32;
-      transform: translateX(2px);
+      transform: translateX(1px);
       transform-origin: center;
       transition: opacity 120ms ease;
     }
     .dfmStepperCaretUp {
-      transform: translateX(2px) rotate(180deg);
+      transform: translateX(1px) rotate(180deg);
     }
     .dfmSpinner:hover .dfmStepperCaret,
     .dfmSpinner:focus-within .dfmStepperCaret,
@@ -711,7 +717,7 @@
       height: 30px;
       padding: 0 12px;
       border: 1px solid #c8c8c8;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #f1f1f1;
       cursor: pointer;
       white-space: nowrap;
@@ -737,16 +743,107 @@
       min-height: 0;
     }
     #ratioWrapHost {
+      --dfm-scrollbar-chrome: #f1f3f5;
+      --dfm-scrollbar-button-hover: #e5e9ef;
+      --dfm-scrollbar-button-active: #d9dee7;
+      --dfm-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --dfm-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
       position: relative;
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
       width: 100%;
-      border: 1px solid #ddd;
+      border: 1px solid #d8dde3;
+      border-radius: 0;
       background: #fff;
+      box-shadow: none;
+      outline: none;
       overflow: auto;
+      scrollbar-gutter: stable;
+      padding-right: 1px;
+      padding-bottom: 1px;
       box-sizing: border-box;
       align-self: stretch;
+    }
+    #dfmDetailsPage {
+      --dfm-scrollbar-chrome: #f1f3f5;
+      --dfm-scrollbar-button-hover: #e5e9ef;
+      --dfm-scrollbar-button-active: #d9dee7;
+      --dfm-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --dfm-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+    }
+    #dfmDetailsPage::-webkit-scrollbar,
+    #ratioWrapHost::-webkit-scrollbar {
+      width: 20px;
+      height: 20px;
+    }
+    #dfmDetailsPage::-webkit-scrollbar-track,
+    #dfmDetailsPage::-webkit-scrollbar-corner,
+    #ratioWrapHost::-webkit-scrollbar-track,
+    #ratioWrapHost::-webkit-scrollbar-corner {
+      background: var(--dfm-scrollbar-chrome);
+    }
+    #dfmDetailsPage::-webkit-scrollbar-thumb,
+    #ratioWrapHost::-webkit-scrollbar-thumb {
+      background-color: var(--dfm-scrollbar-thumb);
+      border: 3px solid var(--dfm-scrollbar-chrome);
+      border-radius: 5px;
+      background-clip: content-box;
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button,
+    #ratioWrapHost::-webkit-scrollbar-button {
+      width: 16px;
+      height: 16px;
+      display: block;
+      background-color: var(--dfm-scrollbar-chrome);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 12px 12px;
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:hover,
+    #ratioWrapHost::-webkit-scrollbar-button:hover {
+      background-color: var(--dfm-scrollbar-button-hover);
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:active,
+    #ratioWrapHost::-webkit-scrollbar-button:active {
+      background-color: var(--dfm-scrollbar-button-active);
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:horizontal:start:increment,
+    #dfmDetailsPage::-webkit-scrollbar-button:horizontal:end:decrement,
+    #dfmDetailsPage::-webkit-scrollbar-button:vertical:start:increment,
+    #dfmDetailsPage::-webkit-scrollbar-button:vertical:end:decrement,
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:start:increment,
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:end:decrement,
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:start:increment,
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:end:decrement {
+      width: 0;
+      height: 0;
+      display: none;
+      background-image: none;
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:horizontal:start:decrement,
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:horizontal:end:increment,
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:vertical:start:decrement,
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:vertical:end:increment,
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+    }
+    #dfmDetailsPage.isScrolling::-webkit-scrollbar-thumb,
+    #dfmDetailsPage.isScrollbarHover::-webkit-scrollbar-thumb,
+    #dfmDetailsPage::-webkit-scrollbar-thumb:hover,
+    #ratioWrapHost.isScrolling::-webkit-scrollbar-thumb,
+    #ratioWrapHost.isScrollbarHover::-webkit-scrollbar-thumb,
+    #ratioWrapHost::-webkit-scrollbar-thumb:hover {
+      background-color: var(--dfm-scrollbar-thumb-active);
     }
     #ratioWrap {
       width: max-content;
@@ -1015,6 +1112,12 @@
       border: none !important;
       background: transparent !important;
     }
+    #ratioWrap table.ratioMainTable tbody tr:last-child > td.na {
+      border-bottom: 1px solid #d8dde3 !important;
+    }
+    #ratioWrap table.ratioMainTable tr > td.na:last-child {
+      border-right: 1px solid #d8dde3 !important;
+    }
     #ratioWrap.showNaBorders td.na {
       border-right: 1px solid #ddd !important;
       border-bottom: 1px solid #ddd !important;
@@ -1138,7 +1241,7 @@
       height: 28px;
       padding: 0 8px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
     }
     .dfmModalField.disabled {
       opacity: 0.55;
@@ -1182,7 +1285,7 @@
       line-height: 20px;
       padding: 1px 6px;
       border: 1px solid #b9b9b9;
-      border-radius: 4px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #ffffff;
       color: #111827;
       box-shadow: none;
@@ -1281,7 +1384,7 @@
       height: 18px;
       padding: 0 5px;
       border: 1px solid #d1d5db;
-      border-radius: 3px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #f3f4f6;
       color: #217346;
       font: bold 10px sans-serif;
@@ -1301,7 +1404,7 @@
       width: 20px;
       height: 18px;
       border: 1px solid #d1d5db;
-      border-radius: 3px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #f3f4f6;
       color: #6b7280;
       font: 14px sans-serif;
@@ -1318,7 +1421,7 @@
       width: 20px;
       height: 18px;
       border: 1px solid #d1d5db;
-      border-radius: 3px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #f3f4f6;
       color: #6b7280;
       font-size: 12px;
@@ -1362,7 +1465,7 @@
       height: 28px;
       padding: 0 12px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #f4f4f4;
       cursor: pointer;
     }
@@ -1461,7 +1564,7 @@
       color: #1f2937;
       height: 28px;
       padding: 0 10px;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       cursor: pointer;
       font-size: 12px;
       font-weight: 600;
@@ -1479,7 +1582,7 @@
       color: #374151;
       width: 28px;
       height: 28px;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       cursor: pointer;
       font-size: 16px;
       line-height: 1;
@@ -1548,7 +1651,7 @@
       height: 30px;
       padding: 0 10px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #fff;
       color: #111827;
       box-sizing: border-box;
@@ -1578,7 +1681,7 @@
       width: 22px;
       height: 22px;
       transform: translateY(-50%);
-      border-radius: 5px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
     }
     .dfmResultsControls input:focus {
       outline: none;
@@ -1602,7 +1705,7 @@
       height: 30px;
       padding: 0 10px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #fff;
       color: #111827;
       box-sizing: border-box;
@@ -1701,11 +1804,8 @@
   </div>
   <div id="dfmDetailsPage">
     <div class="dfmDetailsBlock" id="dfmObjectPathPanel">
-      <div class="dfmDetailsBlockHeader">
-        <div class="dfmDetailsBlockTitle">Object Path</div>
-      </div>
       <div class="dfmFormGrid">
-        <label for="projectSelect">Project</label>
+        <label for="projectSelect">Project : </label>
         <div class="dfmFormField">
           <div class="projectSelectWrap">
             <input id="projectSelect" autocomplete="off" />
@@ -1713,14 +1813,14 @@
             <div id="projectDropdown" class="projectDropdown"></div>
           </div>
         </div>
-        <label for="pathInput">Reserving Class</label>
+        <label for="pathInput">Reserving Class : </label>
         <div class="dfmFormField">
           <div class="reservingClassWrap">
             <input id="pathInput" />
             <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse reserving classes" aria-label="Browse reserving classes">...</button>
           </div>
         </div>
-        <label for="dfmMethodName">Name</label>
+        <label for="dfmMethodName">Name : </label>
         <div class="dfmFormField">
           <div class="dfmMethodNameWrap">
             <input id="dfmMethodName" type="text" placeholder="Enter the method name" />
@@ -1735,12 +1835,9 @@
       </div>
     </div>
     <div class="dfmDetailsBlock" id="dfmMethodConfigPanel">
-      <div class="dfmDetailsBlockHeader">
-        <div class="dfmDetailsBlockTitle">Method Inputs &amp; Settings</div>
-      </div>
       <div class="dfmSection">
         <div class="dfmFormGrid">
-          <label for="dfmOutputVector">Output Vector</label>
+          <label for="dfmOutputVector">Output Vector : </label>
           <div class="dfmFormField">
             <div class="dfmOutputVectorWrap">
               <input id="dfmOutputVector" type="text" placeholder="Select output vector" />
@@ -1748,7 +1845,7 @@
               <div id="dfmOutputVectorDropdown" class="datasetDropdown"></div>
             </div>
           </div>
-          <label for="triInput">Input Triangle</label>
+          <label for="triInput">Input Triangle : </label>
           <div class="dfmFormField">
             <div class="datasetSelectWrap">
               <input id="triInput" autocomplete="off" />
@@ -1759,7 +1856,7 @@
           </div>
         </div>
         <div class="dfmFormGrid3">
-          <label for="originLenSelect">Origin Length</label>
+          <label for="originLenSelect">Origin Length : </label>
           <div class="dfmFormField">
             <div class="dfmSpinner" data-target="originLenSelect">
               <select id="originLenSelect"></select>
@@ -1770,7 +1867,7 @@
             </div>
           </div>
           <div class="dfmFormField"></div>
-          <label for="devLenSelect">Development Length</label>
+          <label for="devLenSelect">Development Length : </label>
           <div class="dfmFormField">
             <div class="dfmSpinner" data-target="devLenSelect">
               <select id="devLenSelect"></select>
@@ -1781,7 +1878,7 @@
             </div>
           </div>
           <div class="dfmFormField"></div>
-          <label for="decimalPlaces">Decimal Places</label>
+          <label for="decimalPlaces">Decimal Places : </label>
           <div class="dfmFormField">
             <div class="dfmSpinner" data-target="decimalPlaces">
               <input id="decimalPlaces" type="number" min="0" max="6" value="4" />

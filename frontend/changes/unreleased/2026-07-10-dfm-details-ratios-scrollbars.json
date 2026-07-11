@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Polished the Details and Ratios tab scrollbars for a quieter, more consistent table workspace."
+}

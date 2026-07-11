@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Result Selection</title>
-  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260703a"/>
+  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260710m"/>
   <style>
     :root {
       --rs-font: Arial, "Segoe UI", Tahoma, sans-serif;
@@ -138,10 +138,22 @@
       overflow: auto;
     }
     .rsPage.active { display: block; }
+    #rsDetailsPage {
+      --rs-details-label-width: max-content;
+      gap: 1px;
+      color: var(--details-form-control-color, #000);
+      font-family: var(--details-form-font-family, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
+      font-size: var(--details-form-control-font-size, 12px);
+    }
+    #rsDetailsPage input,
+    #rsDetailsPage select,
+    #rsDetailsPage textarea,
+    #rsDetailsPage button {
+      font-family: inherit;
+    }
     #rsDetailsPage.active {
       display: flex;
       flex-direction: column;
-      gap: 14px;
       padding: 12px 14px;
       background: #fff;
     }
@@ -181,37 +193,25 @@
       min-height: 0;
     }
     .rsDetailsBlock {
-      border: 1px solid #d7dde7;
-      border-radius: 5px;
+      border: none;
+      border-radius: 0;
       padding: 12px 14px;
-      background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 1px 2px rgba(15, 23, 42, 0.06);
-    }
-    .rsDetailsBlockHeader {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #edf1f6;
-    }
-    .rsDetailsBlockTitle {
-      color: #4b5563;
-      font-size: 12px;
-      font-weight: 400;
+      background: transparent;
+      box-shadow: none;
     }
     .rsDetailsGrid {
       display: grid;
-      grid-template-columns: 170px minmax(260px, 1fr);
-      column-gap: 14px;
+      grid-template-columns: var(--rs-details-label-width) minmax(260px, 1fr);
+      column-gap: var(--details-form-label-gap, 5px);
       row-gap: 10px;
       align-items: center;
       max-width: 100%;
     }
     .rsDetailsGrid label {
       text-align: right;
+      font-size: var(--details-form-label-font-size, 12px);
       font-weight: 400;
-      color: #111827;
+      color: var(--details-form-label-color, #000);
     }
     .rsDetailsGrid label::after { content: none; }
     .rsFieldRow {
@@ -225,11 +225,12 @@
     .rsNumber {
       height: 30px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #fff;
       box-sizing: border-box;
       padding: 0 10px;
-      font: 12px var(--rs-font);
+      color: var(--details-form-control-color, #000);
+      font: var(--details-form-control-font-size, 12px) var(--details-form-font-family, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
     }
     .rsInput { width: min(100%, 980px); }
     .rsNumber { width: 70px; }
@@ -263,7 +264,7 @@
       padding: 0;
       transform: translateY(-50%);
       border: 1px solid #d3d3d3;
-      border-radius: 5px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #f8fbff;
       color: #555;
       display: inline-flex;
@@ -287,7 +288,7 @@
       height: 30px;
       min-width: 32px;
       border: 1px solid #cbd5e1;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: #eef2f7;
       color: #111827;
       font: 12px var(--rs-font);
@@ -297,36 +298,150 @@
     .rsButton:disabled { opacity: 0.55; cursor: default; }
     .rsBasisPanel {
       display: grid;
-      grid-template-columns: 170px minmax(260px, 1fr);
-      column-gap: 14px;
+      grid-template-columns: var(--rs-details-label-width) minmax(260px, 1fr);
+      column-gap: var(--details-form-label-gap, 5px);
       row-gap: 10px;
       align-items: center;
       max-width: 100%;
     }
     .rsBasisPanel .rsBasisLabel {
+      align-self: start;
+      padding-top: 8px;
       text-align: right;
+      font-size: var(--details-form-label-font-size, 12px);
       font-weight: 400;
-      color: #111827;
+      color: var(--details-form-label-color, #000);
     }
     .rsBasisPanel .rsBasisLabel::after {
       content: none;
     }
-    .rsBasisSlot {
-      display: grid;
-      grid-template-columns: minmax(220px, 1fr) auto;
-      gap: 8px;
-      align-items: center;
-      min-width: 0;
-      width: min(100%, 980px);
-    }
-    .rsBasisSlot .rsInput {
-      min-width: 0;
-    }
-    .rsCheckboxRow {
-      grid-column: 2;
+    .rsRatioBasisPicker {
       display: flex;
+      min-height: 70px;
       align-items: center;
+      align-content: flex-start;
+      flex-wrap: wrap;
       gap: 6px;
+      width: 100%;
+      min-width: 0;
+      padding: 4px 6px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #fff;
+      box-sizing: border-box;
+    }
+    #rsDetailsPage .rsDropdownButton {
+      color: var(--details-form-control-color, #000);
+      font-size: var(--details-form-control-font-size, 12px);
+    }
+    #rsDetailsPage input[readonly],
+    #rsDetailsPage textarea[readonly],
+    #rsDetailsPage select:disabled,
+    #rsDetailsPage button:disabled {
+      color: var(--details-form-readonly-color, #000);
+    }
+    .rsRatioBasisPicker.rsRatioBasisDragActive { border-style: dashed; }
+    .rsRatioBasisPicker.rsRatioBasisDragOutside {
+      border-color: #e7a1ad;
+      background: #fff8f9;
+    }
+    .rsRatioBasisPicker:focus-within {
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+    }
+    .rsRatioBasisList {
+      display: contents;
+    }
+    .rsRatioBasisEmpty {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .rsRatioBasisToken {
+      display: inline-flex;
+      min-width: 0;
+      max-width: min(420px, 100%);
+      height: 30px;
+      min-height: 30px;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 9px;
+      border: 1px solid #d4d4d4;
+      border-radius: 14px;
+      background: #fff;
+      color: var(--details-form-control-color, #000);
+      font-size: 12px;
+      line-height: 16px;
+      white-space: nowrap;
+      cursor: grab;
+      box-sizing: border-box;
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    .rsRatioBasisToken.rsRatioBasisDragging {
+      opacity: 0.48;
+      border-style: dashed;
+    }
+    .rsRatioBasisToken:hover,
+    .rsRatioBasisToken:focus-within {
+      border-color: #9d9d9d;
+      background: #f6f9ff;
+    }
+    .rsRatioBasisTokenLabel {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rsRatioBasisOpen {
+      display: inline-flex;
+      min-width: 0;
+      height: 100%;
+      align-items: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      line-height: inherit;
+      cursor: grab;
+    }
+    .rsRatioBasisOpen:focus { outline: none; }
+    .rsRatioBasisAdd svg {
+      display: block;
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .rsRatioBasisAdd {
+      appearance: none;
+      display: inline-flex;
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      min-height: 30px;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 50%;
+      background: #fff;
+      color: #64748b;
+      cursor: pointer;
+      box-sizing: border-box;
+      transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+    .rsRatioBasisAdd:hover:not(:disabled),
+    .rsRatioBasisAdd:focus:not(:disabled) {
+      outline: none;
+      border-color: #8aa8ff;
+      background: #eaf2ff;
+      color: #2b6df6;
+    }
+    .rsRatioBasisAdd:disabled {
+      opacity: 0.4;
+      cursor: default;
     }
     .rsMethodToolbar {
       flex: 0 0 auto;
@@ -388,7 +503,8 @@
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      gap: 6px;
+      column-gap: 18px;
+      row-gap: 6px;
       min-height: 28px;
     }
     .rsToolCheck {
@@ -407,24 +523,20 @@
       color: #1f2937;
       white-space: nowrap;
     }
-    .rsWeightDisplayDropdown + .rsToolDecimalControl {
-      margin-left: 8px;
-    }
     .rsToolControlLabel {
-      color: #475569;
       font-size: 12px;
     }
     .rsNumberStepper {
       position: relative;
       display: inline-flex;
-      width: 70px;
+      width: 60px;
       height: 28px;
       flex: 0 0 auto;
     }
     .rsStepperInput {
       width: 100%;
       height: 28px;
-      padding-left: 28px;
+      padding-left: 20px;
       padding-right: 28px;
       text-align: center;
       appearance: textfield;
@@ -502,7 +614,7 @@
       width: 100%;
       height: 28px;
       border: 1px solid #cfcfcf;
-      border-radius: 6px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background-color: #fff;
       color: #111;
       font: 12px var(--rs-font);
@@ -594,6 +706,7 @@
     .rsWeightDisplayDropdown {
       width: 106px;
       min-width: 106px;
+      margin-inline-start: -10px;
     }
     .rsOriginLengthDropdown {
       width: 70px;
@@ -1011,6 +1124,13 @@
       background: #eaf2ff;
       color: #0d6efd;
     }
+    .rsRatioBasisContextMenu { width: 120px; }
+    .rsRatioBasisContextMenu button:hover,
+    .rsRatioBasisContextMenu button:focus-visible {
+      outline: none;
+      background: #fff1f2;
+      color: #be123c;
+    }
     .rsSaveBar {
       flex: 0 0 38px;
       display: flex;
@@ -1039,7 +1159,7 @@
     .rsCancelBtn {
       min-width: 74px;
       height: 28px;
-      border-radius: 4px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       font: 600 12px var(--rs-font);
       cursor: pointer;
     }
@@ -1079,7 +1199,7 @@
       padding: 10px;
       box-sizing: border-box;
       border: 1px solid #aeb8c8;
-      border-radius: 4px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       font: 13px var(--rs-font);
       line-height: 1.45;
       white-space: pre-wrap;
@@ -1163,7 +1283,7 @@
       width: 24px;
       height: 24px;
       border: none;
-      border-radius: 4px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       background: transparent;
       color: #64748b;
       font-size: 15px;
@@ -1195,7 +1315,7 @@
     .rsConfirmActions button {
       min-width: 72px;
       height: 28px;
-      border-radius: 5px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
@@ -1231,22 +1351,19 @@
   <div class="rsPageHost">
     <section id="rsDetailsPage" class="rsPage active">
       <div class="rsDetailsBlock">
-        <div class="rsDetailsBlockHeader">
-          <div class="rsDetailsBlockTitle">Method Details</div>
-        </div>
         <div class="rsDetailsGrid">
-          <label for="rsNameInput">Name</label>
+          <label for="rsNameInput">Name : </label>
           <div class="rsFieldRow">
             <input id="rsNameInput" class="rsInput" type="text" autocomplete="off"/>
           </div>
-          <label for="rsOutputTypeInput">Output Type</label>
+          <label for="rsOutputTypeInput">Output Type : </label>
           <div class="rsFieldRow">
             <div class="rsInputPicker">
               <input id="rsOutputTypeInput" class="rsInput" type="text" autocomplete="off"/>
               <button id="rsOutputTypeBtn" class="rsButton rsInputPickerBtn" type="button" title="Select output vector">...</button>
             </div>
           </div>
-          <label for="rsOriginLengthButton">Origin Length</label>
+          <label for="rsOriginLengthButton">Origin Length : </label>
           <div class="rsFieldRow">
             <select id="rsOriginLengthInput" class="rsSelect rsOriginLengthSelect rsNativeSelectHidden" tabindex="-1" aria-hidden="true">
               <option value="12">12</option>
@@ -1270,53 +1387,20 @@
         </div>
       </div>
       <div class="rsDetailsBlock">
-        <div class="rsDetailsBlockHeader">
-          <div class="rsDetailsBlockTitle">Ratio Basis</div>
-        </div>
         <div class="rsBasisPanel">
-          <div class="rsBasisLabel">Basis 1</div>
-          <div class="rsBasisSlot">
-            <div class="rsInputPicker">
-              <input id="rsRatioBasisInput" class="rsInput" type="text" autocomplete="off"/>
-              <button id="rsRatioBasisBtn" class="rsButton rsInputPickerBtn" type="button" title="Select ratio basis 1">...</button>
-            </div>
-            <button id="rsRatioBasisClearBtn" class="rsButton" type="button" title="Clear ratio basis 1">Clear</button>
-          </div>
-          <div class="rsBasisLabel">Basis 2</div>
-          <div class="rsBasisSlot">
-            <div class="rsInputPicker">
-              <input id="rsRatioBasisInput2" class="rsInput" type="text" autocomplete="off"/>
-              <button id="rsRatioBasisBtn2" class="rsButton rsInputPickerBtn" type="button" title="Select ratio basis 2">...</button>
-            </div>
-            <button id="rsRatioBasisClearBtn2" class="rsButton" type="button" title="Clear ratio basis 2">Clear</button>
-          </div>
-          <div class="rsBasisLabel">Basis 3</div>
-          <div class="rsBasisSlot">
-            <div class="rsInputPicker">
-              <input id="rsRatioBasisInput3" class="rsInput" type="text" autocomplete="off"/>
-              <button id="rsRatioBasisBtn3" class="rsButton rsInputPickerBtn" type="button" title="Select ratio basis 3">...</button>
-            </div>
-            <button id="rsRatioBasisClearBtn3" class="rsButton" type="button" title="Clear ratio basis 3">Clear</button>
-          </div>
-          <div class="rsBasisLabel">Statistic Decimal Places</div>
+          <label class="rsBasisLabel" for="rsRatioBasisAddBtn">Ratio Basis : </label>
           <div class="rsFieldRow">
-            <span class="rsNumberStepper">
-              <input id="rsStatisticDecimalsInput" class="rsNumber rsStepperInput" type="number" min="0" max="8" step="1" value="1"/>
-              <span class="rsStepperButtons">
-                <button id="rsStatisticDecimalsUp" class="rsStepperBtn" type="button" aria-label="Increase statistic decimal places">
-                  <span class="rsStepperCaret rsStepperCaretUp" aria-hidden="true"></span>
-                </button>
-                <button id="rsStatisticDecimalsDown" class="rsStepperBtn" type="button" aria-label="Decrease statistic decimal places">
-                  <span class="rsStepperCaret" aria-hidden="true"></span>
-                </button>
-              </span>
-            </span>
+            <div class="rsRatioBasisPicker">
+              <div id="rsRatioBasisList" class="rsRatioBasisList" role="list" aria-live="polite"></div>
+              <button id="rsRatioBasisAddBtn" class="rsRatioBasisAdd" type="button" title="Add ratio basis" aria-label="Add ratio basis">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              </button>
+              <input id="rsRatioBasisInput" type="hidden"/>
+              <input id="rsRatioBasisInput2" type="hidden"/>
+              <input id="rsRatioBasisInput3" type="hidden"/>
+              <input id="rsStatisticDecimalsInput" type="hidden" value="1"/>
+            </div>
           </div>
-          <div></div>
-          <label class="rsCheckboxRow">
-            <input id="rsShowRatiosPctInput" type="checkbox" checked/>
-            <span>Show Ratios as Percentages</span>
-          </label>
         </div>
       </div>
     </section>
@@ -1325,7 +1409,7 @@
         <div class="rsToolGroup rsToolGroupWide">
           <span class="rsToolTitle">Formatting</span>
           <div class="rsToolControls">
-            <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights As</label>
+            <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights as : </label>
             <div id="rsWeightDisplayDropdown" class="rsDropdown rsWeightDisplayDropdown">
               <button id="rsWeightDisplayButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
                 <span id="rsWeightDisplayLabel" class="rsDropdownLabel">Index</span>
@@ -1336,8 +1420,14 @@
                 <button class="rsDropdownOption" type="button" role="option" data-value="effective" aria-selected="false">Effective %</button>
               </div>
             </div>
+          </div>
+        </div>
+        <div class="rsToolGroup rsToolGroupWide">
+          <span class="rsToolTitle">Statistics</span>
+          <div class="rsToolControls">
+            <label class="rsToolCheck"><input id="rsShowRatiosPctInput" type="checkbox" checked/> Show Ratios as Percentages</label>
             <div class="rsToolDecimalControl">
-              <label class="rsToolControlLabel" for="rsMethodStatisticDecimalsInput">Decimals</label>
+              <label class="rsToolControlLabel" for="rsMethodStatisticDecimalsInput">Decimal : </label>
               <span class="rsNumberStepper">
                 <input id="rsMethodStatisticDecimalsInput" class="rsNumber rsStepperInput" type="number" min="0" max="8" step="1" value="1"/>
                 <span class="rsStepperButtons">
@@ -1418,6 +1508,9 @@
     <button type="button" data-rs-source-action="add">Add</button>
     <button type="button" data-rs-source-action="delete">Delete</button>
   </div>
+  <div id="rsRatioBasisContextMenu" class="rsCellContextMenu rsRatioBasisContextMenu" role="menu" aria-hidden="true">
+    <button type="button" role="menuitem" data-rs-ratio-basis-action="delete">Delete</button>
+  </div>
   <div id="rsCloseConfirmOverlay" class="rsConfirmOverlay" hidden>
     <div id="rsCloseConfirmBox" class="rsConfirmBox" role="dialog" aria-modal="true" aria-labelledby="rsCloseConfirmTitle">
       <button id="rsCloseConfirmClose" class="rsConfirmClose" type="button" aria-label="Close">x</button>
@@ -1431,10 +1524,10 @@
       </div>
     </div>
   </div>
-  <script src="/ui/result_selection/result_selection_ui.js?v=20260707b"></script>
-  <script src="/ui/result_selection/result_selection_data.js?v=20260704a"></script>
+  <script src="/ui/result_selection/result_selection_ui.js?v=20260710c"></script>
+  <script src="/ui/result_selection/result_selection_data.js?v=20260710a"></script>
   <script src="/ui/result_selection/result_selection_grids.js?v=20260704a"></script>
   <script src="/ui/result_selection/result_selection_model.js?v=20260704a"></script>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260707a"></script>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260710b"></script>
 </body>
 </html>
