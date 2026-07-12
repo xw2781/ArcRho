@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ui design",
+  "audience": "internal",
+  "summary": "Recorded the shared compact numeric-stepper pattern in the ArcRho UI design guidance."
+}

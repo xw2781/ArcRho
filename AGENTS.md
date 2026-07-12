@@ -43,3 +43,6 @@ The frontend includes a bundled portable Node runtime. When validating or runnin
 ## Validation Runtime Limit
 No validation command should run for more than 60 seconds by default. Use targeted fast checks first, and put tests, docs checks, syntax checks, and smoke checks behind a timeout of 60 seconds or less. If a broader validation is expected to exceed 60 seconds, ask before running it and explain why the longer run is needed. When a validation times out, stop it and report the timeout instead of retrying indefinitely.
 Validation commands must not write files to the C drive. If temporary files are needed, write them only inside the current repository folder.
+
+## Final Response Changed Files
+After each task, include a `Changed files` section in the final response with a clickable link to every file the agent changed during that task. Include implementation files, documentation, release fragments, generated files, tests, configuration, and repository instruction files; do not omit non-code changes. Use absolute workspace paths in Markdown links, with an optional line number when it helps identify the relevant change. If the task did not change any files, state `Changed files: none`.

@@ -12,7 +12,7 @@ Style primary actions with a blue-tinted background, blue text, and border rathe
 
 ### C03 - Input styling
 
-Keep inputs 30px high with white fill and a blue focus ring such as `rgba(96, 165, 250, 0.16)`.
+Keep standard inputs 30px high with white fill and a blue focus ring such as `rgba(96, 165, 250, 0.16)`; compact stacked numeric steppers may use the 28px toolbar pattern in C06.
 
 ### C04 - Tabbed-page corners
 
@@ -25,6 +25,8 @@ Refine every dropdown or select-like opened menu to match the app instead of rel
 ### C06 - Compact carets
 
 Use filled-triangle carets for dropdown and numeric-stepper arrows. Flip the same caret for stepper-up; keep it muted at rest and full-strength on hover, focus, or open. Reserve a clear right-side arrow lane, align caret x-positions across adjacent controls, and balance input padding so values remain centered.
+
+For compact numeric inputs with stacked up/down buttons, reuse the shared Dataset-style stepper across pages: a 69px by 28px white input with 4px corners, centered value with balanced 28px side padding, a 28px right arrow lane, and the standard muted-rest plus blue hover/focus states. Do not recreate page-local variants of this control.
 
 ### C07 - Compact switches
 

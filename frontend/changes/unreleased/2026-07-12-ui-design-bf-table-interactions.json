@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ui design",
+  "audience": "internal",
+  "summary": "Recorded the shared method-table highlight palette and spreadsheet interaction pattern, using BF as the reference implementation."
+}
