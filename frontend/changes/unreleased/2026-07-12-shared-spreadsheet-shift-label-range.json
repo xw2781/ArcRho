@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "dataset and bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Added Shift-click range selection between row labels or between column labels in shared spreadsheet tables."
+}

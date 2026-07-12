@@ -7,7 +7,7 @@ Workflow editor page and save/load orchestration.
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.workflow.entry_points -->
-- `ui/workflow/workflow.html`: external scripts `/ui/workflow/workflow_main.js?v=20260521a`; inline imports _none_.
+- `ui/workflow/workflow.html`: external scripts `/ui/workflow/workflow_main.js?v=20260712a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/projects`
@@ -51,6 +51,7 @@ Detected `arcrho:*` message types in key JS files:
 - Coordinates with shell and embedded dataset/DFM iframes via message bridge.
 - For DFM embeds, preserves optional `outputType` in step settings and forwards it as `output_type` URL param.
 - Workflow Dataset and DFM embeds receive the workflow instance id so they can bind to Global Control defaults without hardcoding the resolved project/path into new objects.
+- New Workflow Dataset steps do not inject a sample dataset ID; the embed receives `ds` only when the workflow step already has a selected dataset ID.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

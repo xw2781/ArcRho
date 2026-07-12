@@ -79,6 +79,17 @@ export function wireSelectableTable(options = {}) {
 
   const selectedClass = options.selectedClass || "sel";
   const activeClass = options.activeClass || "active";
+  const edgeClasses = options.edgeClasses && typeof options.edgeClasses === "object"
+    ? {
+        top: String(options.edgeClasses.top || ""),
+        right: String(options.edgeClasses.right || ""),
+        bottom: String(options.edgeClasses.bottom || ""),
+        left: String(options.edgeClasses.left || ""),
+      }
+    : null;
+  const edgeClassNames = edgeClasses
+    ? [...new Set(Object.values(edgeClasses).filter(Boolean))]
+    : [];
   const rowKey = options.rowKey || "r";
   const colKey = options.colKey || "c";
   const cellQuery = `td[data-${dataAttrName(rowKey)}][data-${dataAttrName(colKey)}]`;
@@ -88,14 +99,30 @@ export function wireSelectableTable(options = {}) {
     ? options.canStartPointerSelection
     : () => true;
   const onContextMenu = typeof options.onContextMenu === "function" ? options.onContextMenu : null;
+  const onSelectionChange = typeof options.onSelectionChange === "function"
+    ? options.onSelectionChange
+    : null;
+  const exclusiveAcrossTables = options.exclusiveAcrossTables === true;
   const state = {
     activeCell: null,
     ranges: [],
     drag: null,
     isActive: false,
+    exclusiveAcrossTables,
+    clearSelection: null,
   };
 
   const markActive = () => {
+    const previous = activeSelectableTable;
+    if (
+      exclusiveAcrossTables &&
+      previous &&
+      previous !== state &&
+      previous.exclusiveAcrossTables &&
+      typeof previous.clearSelection === "function"
+    ) {
+      previous.clearSelection();
+    }
     state.isActive = true;
     activeSelectableTable = state;
   };
@@ -110,6 +137,9 @@ export function wireSelectableTable(options = {}) {
   function clearClasses() {
     container.querySelectorAll(`td.${selectedClass}`).forEach((el) => el.classList.remove(selectedClass));
     container.querySelectorAll(`td.${activeClass}`).forEach((el) => el.classList.remove(activeClass));
+    edgeClassNames.forEach((className) => {
+      container.querySelectorAll(`td.${className}`).forEach((el) => el.classList.remove(className));
+    });
   }
 
   function applyClasses() {
@@ -117,14 +147,38 @@ export function wireSelectableTable(options = {}) {
     for (const range of state.ranges) {
       for (let r = range.r0; r <= range.r1; r++) {
         for (let c = range.c0; c <= range.c1; c++) {
-          container.querySelector(cellSelectorFor(r, c, rowKey, colKey))?.classList.add(selectedClass);
+          const cell = container.querySelector(cellSelectorFor(r, c, rowKey, colKey));
+          if (!cell || !isSelectableCell(cell)) continue;
+          cell.classList.add(selectedClass);
+          if (!edgeClasses) continue;
+          if (r === range.r0 && edgeClasses.top) cell.classList.add(edgeClasses.top);
+          if (c === range.c1 && edgeClasses.right) cell.classList.add(edgeClasses.right);
+          if (r === range.r1 && edgeClasses.bottom) cell.classList.add(edgeClasses.bottom);
+          if (c === range.c0 && edgeClasses.left) cell.classList.add(edgeClasses.left);
         }
       }
     }
     if (state.activeCell) {
       container.querySelector(cellSelectorFor(state.activeCell.r, state.activeCell.c, rowKey, colKey))?.classList.add(activeClass);
     }
+    if (onSelectionChange) {
+      onSelectionChange({
+        activeCell: state.activeCell ? { ...state.activeCell } : null,
+        ranges: state.ranges.map((range) => ({ ...range })),
+      });
+    }
   }
+
+  function clearSelection() {
+    state.activeCell = null;
+    state.ranges = [];
+    state.drag = null;
+    state.isActive = false;
+    if (activeSelectableTable === state) activeSelectableTable = null;
+    applyClasses();
+  }
+
+  state.clearSelection = clearSelection;
 
   function selectCell(cell, append = false) {
     const rc = rcFromCell(cell);
@@ -202,6 +256,11 @@ export function wireSelectableTable(options = {}) {
 
   document.addEventListener("keydown", (event) => {
     if (isTypingTarget(event.target)) return;
+    if (event.key === "Escape" && activeSelectableTable === state && state.isActive) {
+      clearSelection();
+      event.preventDefault();
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || String(event.key || "").toLowerCase() !== "c") return;
     if (activeSelectableTable !== state || !state.isActive || (!state.ranges.length && !state.activeCell)) return;
     event.preventDefault();
@@ -211,6 +270,7 @@ export function wireSelectableTable(options = {}) {
   return {
     copySelection,
     selectCell,
+    clearSelection,
     state,
     applyClasses,
   };

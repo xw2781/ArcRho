@@ -1,11 +1,14 @@
-import { getTopLeftRangeCell, writeTextToClipboard } from "/ui/shared/table_selection.js";
+import {
+  createSpreadsheetTableController,
+  getTopLeftRangeCell,
+  normalizeRange,
+} from "/ui/shared/spreadsheet_table.js?v=20260712c";
 import { getDisplayDatasetModel, setDatasetGridEditConfig } from "/ui/dataset/dataset_render.js";
 
 export function wireDatasetGridInteractions(deps) {
   const {
     state,
     renderTable,
-    renderActiveCellUI,
     isReadOnly = () => false,
     setStatus = () => {},
     notifyDatasetUpdated = () => {},
@@ -18,6 +21,42 @@ export function wireDatasetGridInteractions(deps) {
       // ignore stale parent frames
     }
   }
+
+  const spreadsheetTable = createSpreadsheetTableController({
+    getRoot: () => document.getElementById("tableWrap"),
+    getBounds: () => {
+      const model = getDisplayDatasetModel();
+      const valueColumnCount = (model?.values || []).reduce(
+        (count, row) => Math.max(count, Array.isArray(row) ? row.length : 0),
+        0,
+      );
+      return {
+        maxRow: (model?.origin_labels?.length || 0) - 1,
+        maxCol: Math.max(model?.dev_labels?.length || 0, valueColumnCount) - 1,
+      };
+    },
+    readSelection: () => ({
+      ranges: state.selRanges || [],
+      activeCell: state.activeCell,
+      anchorCell: state.selectionAnchor,
+    }),
+    writeSelection: ({ ranges, activeCell, anchorCell }) => {
+      state.selRanges = ranges;
+      state.activeCell = activeCell;
+      state.selectionAnchor = anchorCell;
+    },
+    cellSelector: "td[data-r][data-c]",
+    rowHeaderSelector: "th.rowhdr[data-r]",
+    columnHeaderSelector: "th.colhdr[data-c]",
+    selectedClasses: ["sel"],
+    activeClasses: ["active"],
+    anchorClasses: ["selectionAnchor", "arSpreadsheetSelectionAnchor"],
+    rowSelectedLabelClasses: ["activeRow", "arSpreadsheetSelectedLabel"],
+    columnSelectedLabelClasses: ["activeCol", "arSpreadsheetSelectedLabel"],
+    getCellValue: ({ r, c }) => getDisplayDatasetModel()?.values?.[r]?.[c] ?? "",
+    lineSeparator: "\n",
+    scrollCellIntoView: scrollDatasetCellIntoView,
+  });
 
   setDatasetGridEditConfig({
     isEditableCell: (displayR, displayC) => !!canEditDisplayCell(displayR, displayC, { silent: true }),
@@ -51,6 +90,10 @@ export function wireDatasetGridInteractions(deps) {
       event.stopPropagation();
       cancelCellEdit(displayR, displayC);
     },
+    onCellContextMenu: (displayR, displayC) => prepareContextSelection(displayR, displayC),
+    canPasteSelection: () => hasEditableSelectionTarget(),
+    onContextAction: (action) => handleGridContextAction(action),
+    onTableRendered: () => applySelectionFromState(),
   });
   wireArrowKeyNavigation();
   wireRectSelectionAndCopy();
@@ -60,107 +103,38 @@ export function wireDatasetGridInteractions(deps) {
     window.__arcRhoArrowNavWired = true;
 
     document.addEventListener("keydown", (e) => {
-      const isArrow = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key);
-      if (!isArrow) return;
-
-      // Don't steal keys while typing / selecting in controls
-      if (isTypingTarget(e.target)) return;
-
-      const model = getDisplayDatasetModel();
-      if (!model) return;
-
-      const maxR = (model.origin_labels?.length || 0) - 1;
-      const maxC = (model.dev_labels?.length || 0) - 1;
-      if (maxR < 0 || maxC < 0) return;
-
-      // If no active cell yet, pick (0,0)
-      if (!state.activeCell) {
-        state.activeCell = { r: 0, c: 0 };
+      const delta = {
+        ArrowUp: [-1, 0],
+        ArrowDown: [1, 0],
+        ArrowLeft: [0, -1],
+        ArrowRight: [0, 1],
+      }[e.key];
+      if (!delta || isTypingTarget(e.target) || !state.activeCell) return;
+      if (spreadsheetTable.move(delta[0], delta[1], {
+        extend: e.shiftKey,
+        jump: e.ctrlKey || e.metaKey,
+      })) {
+        e.preventDefault();
       }
-
-      const prev = { ...state.activeCell };
-      let { r, c } = state.activeCell;
-
-      if (e.key === "ArrowUp") r--;
-      if (e.key === "ArrowDown") r++;
-      if (e.key === "ArrowLeft") c--;
-      if (e.key === "ArrowRight") c++;
-
-      r = Math.max(0, Math.min(maxR, r));
-      c = Math.max(0, Math.min(maxC, c));
-
-      // Shift+Arrow: remember anchor (the cell where extending started)
-      if (e.shiftKey) {
-        if (!state._shiftAnchor) state._shiftAnchor = { ...prev };
-      }
-
-      // Ctrl+Arrow: jump to edge of row/column
-      if (e.ctrlKey) {
-        if (e.key === "ArrowUp") r = 0;
-        if (e.key === "ArrowDown") r = maxR;
-        if (e.key === "ArrowLeft") c = 0;
-        if (e.key === "ArrowRight") c = maxC;
-      }
-
-      state.activeCell = { r, c };
-
-      if (e.shiftKey) {
-        // Extend selection from anchor to current active cell
-        const a = state._shiftAnchor || { ...prev };
-        state.selRanges = [normalizeRange(a.r, a.c, r, c)];
-        applySelectionFromState();
-      } else {
-        // Plain/Ctrl arrows: collapse selection, clear anchor
-        state._shiftAnchor = null;
-        state.selRanges = [normalizeRange(r, c, r, c)];
-        applySelectionFromState();
-      }
-
-      renderActiveCellUI();
-
-      const td = document.querySelector(`#tableWrap td[data-r="${r}"][data-c="${c}"]`);
-      const wrap = document.getElementById("tableWrap");
-      if (td && wrap) {
-        const tdRect = td.getBoundingClientRect();
-        const wrapRect = wrap.getBoundingClientRect();
-
-        const stickyLeft = (() => {
-          const firstCol = wrap.querySelector("tbody th, tbody td:first-child");
-          if (!firstCol) return 0;
-          const fr = firstCol.getBoundingClientRect();
-          return Math.max(0, fr.width);
-        })();
-        const stickyTop = (() => {
-          const header = wrap.querySelector("thead th");
-          if (!header) return 0;
-          const hr = header.getBoundingClientRect();
-          return Math.max(0, hr.height);
-        })();
-
-        // How far the cell edges are from the visible (non-sticky) area
-        const leftDelta = tdRect.left - (wrapRect.left + stickyLeft);
-        const rightDelta = tdRect.right - wrapRect.right;
-        const topDelta = tdRect.top - (wrapRect.top + stickyTop);
-        const bottomDelta = tdRect.bottom - wrapRect.bottom;
-
-        if (leftDelta < 0) wrap.scrollLeft += leftDelta;
-        else if (rightDelta > 0) wrap.scrollLeft += rightDelta;
-
-        if (topDelta < 0) wrap.scrollTop += topDelta;
-        else if (bottomDelta > 0) wrap.scrollTop += bottomDelta;
-      }
-
-      e.preventDefault();
     });
   }
 
-  function normalizeRange(r0, c0, r1, c1) {
-    return {
-      r0: Math.min(r0, r1),
-      r1: Math.max(r0, r1),
-      c0: Math.min(c0, c1),
-      c1: Math.max(c0, c1),
-    };
+  function scrollDatasetCellIntoView({ r, c }) {
+    const td = document.querySelector(`#tableWrap td[data-r="${r}"][data-c="${c}"]`);
+    const wrap = document.getElementById("tableWrap");
+    if (!td || !wrap) return;
+    const tdRect = td.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const stickyLeft = wrap.querySelector("tbody th, tbody td:first-child")?.getBoundingClientRect().width || 0;
+    const stickyTop = wrap.querySelector("thead th")?.getBoundingClientRect().height || 0;
+    const leftDelta = tdRect.left - (wrapRect.left + stickyLeft);
+    const rightDelta = tdRect.right - wrapRect.right;
+    const topDelta = tdRect.top - (wrapRect.top + stickyTop);
+    const bottomDelta = tdRect.bottom - wrapRect.bottom;
+    if (leftDelta < 0) wrap.scrollLeft += leftDelta;
+    else if (rightDelta > 0) wrap.scrollLeft += rightDelta;
+    if (topDelta < 0) wrap.scrollTop += topDelta;
+    else if (bottomDelta > 0) wrap.scrollTop += bottomDelta;
   }
 
   function rcFromTd(td) {
@@ -323,6 +297,35 @@ export function wireDatasetGridInteractions(deps) {
     const rows = parseClipboardRows(text);
     if (!rows.length) return 0;
 
+    if (rows.length === 1 && rows[0].length === 1 && Array.isArray(state.selRanges) && state.selRanges.length) {
+      const parsed = parseEditableCellValue(rows[0][0]);
+      if (!parsed.ok) return 0;
+      const seen = new Set();
+      let applied = 0;
+      for (const range of state.selRanges) {
+        for (let r = range.r0; r <= range.r1; r += 1) {
+          for (let c = range.c0; c <= range.c1; c += 1) {
+            const actual = canEditDisplayCell(r, c, { silent: true });
+            if (!actual) continue;
+            const key = `${actual.r},${actual.c}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            state.model.values[actual.r][actual.c] = parsed.value;
+            state.dirty.set(key, parsed.value);
+            applied += 1;
+          }
+        }
+      }
+      if (!applied) return 0;
+      state.editingCell = null;
+      renderTable();
+      notifyDatasetUpdated();
+      requestProjectInstanceDatasetTableRefresh();
+      applySelectionFromState();
+      setStatus(`Pasted ${applied} cell${applied === 1 ? "" : "s"}.`);
+      return applied;
+    }
+
     let applied = 0;
     for (let rr = 0; rr < rows.length; rr += 1) {
       for (let cc = 0; cc < rows[rr].length; cc += 1) {
@@ -345,6 +348,7 @@ export function wireDatasetGridInteractions(deps) {
     }
     if (!applied) return 0;
     state.activeCell = { r: start.r, c: start.c };
+    state.selectionAnchor = { r: start.r, c: start.c };
     state.selRanges = [normalizeRange(
       start.r,
       start.c,
@@ -403,93 +407,58 @@ export function wireDatasetGridInteractions(deps) {
     return true;
   }
 
-  function clearSelectionClasses() {
-    document.querySelectorAll("#tableWrap td.sel").forEach(el => el.classList.remove("sel"));
-    document.querySelectorAll("#tableWrap th.activeRow").forEach(el => el.classList.remove("activeRow"));
-    document.querySelectorAll("#tableWrap th.activeCol").forEach(el => el.classList.remove("activeCol"));
-  }
-
-  function applyRangeClasses(range, add = true) {
-    for (let r = range.r0; r <= range.r1; r++) {
-      for (let c = range.c0; c <= range.c1; c++) {
-        const td = document.querySelector(`#tableWrap td[data-r="${r}"][data-c="${c}"]`);
-        if (!td) continue;
-        td.classList.toggle("sel", add);
-      }
-    }
-  }
-
   function applySelectionFromState() {
-    clearSelectionClasses();
-    const ranges = state.selRanges || [];
-    for (const rg of ranges) applyRangeClasses(rg, true);
+    spreadsheetTable.applyDom();
+  }
 
-    // re-apply after re-render
-    renderActiveCellUI();
+  function clearGridSelection() {
+    state.dragSel = null;
+    spreadsheetTable.clear();
+  }
 
-    // highlight row/col headers for all selected ranges
-    for (const rg of ranges) {
-      for (let r = rg.r0; r <= rg.r1; r++) {
-        const th = document.querySelector(`#tableWrap th.rowhdr[data-r="${r}"]`);
-        if (th) th.classList.add("activeRow");
-      }
-      for (let c = rg.c0; c <= rg.c1; c++) {
-        const th = document.querySelector(`#tableWrap th.colhdr[data-c="${c}"]`);
-        if (th) th.classList.add("activeCol");
+  function prepareContextSelection(r, c) {
+    spreadsheetTable.prepareContextCell({ r, c });
+    window.__arcRhoCopyActiveGridSelection = copyActiveRangeToClipboard;
+  }
+
+  function hasEditableSelectionTarget() {
+    const ranges = Array.isArray(state.selRanges) ? state.selRanges : [];
+    for (const range of ranges) {
+      for (let r = range.r0; r <= range.r1; r += 1) {
+        for (let c = range.c0; c <= range.c1; c += 1) {
+          if (canEditDisplayCell(r, c, { silent: true })) return true;
+        }
       }
     }
+    return false;
+  }
 
-    // mark active cell stronger
-    if (state.activeCell) {
-      const { r, c } = state.activeCell;
-      const td = document.querySelector(`#tableWrap td[data-r="${r}"][data-c="${c}"]`);
-      if (td) td.classList.add("active");
+  async function pasteSelectionFromClipboard() {
+    if (!navigator.clipboard?.readText) {
+      setStatus("Clipboard paste is not available in this browser.");
+      return 0;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      const start = getTopLeftRangeCell(state.selRanges || []) || state.activeCell;
+      return text && start ? applyPastedGridText(text, start) : 0;
+    } catch (error) {
+      setStatus(`Paste failed: ${String(error?.message || error)}`);
+      return 0;
     }
   }
 
-  function setActiveCell(r, c) {
-    // If focus is still on a form control (select/input), arrow keys will be ignored.
-    // Blur it when user starts interacting with the grid.
-    const ae = document.activeElement;
-    if (ae && isTypingTarget(ae)) {
-      try { ae.blur(); } catch {}
+  async function handleGridContextAction(action) {
+    if (action === "paste") return pasteSelectionFromClipboard();
+    if (action === "remove_highlights") {
+      clearGridSelection();
+      return true;
     }
-
-    state.activeCell = { r, c };
-    renderActiveCellUI();
-  }
-
-  function buildTsvFromRange(range) {
-    const model = getDisplayDatasetModel();
-    if (!model) return "";
-    const vals = model.values || [];
-    const out = [];
-    for (let r = range.r0; r <= range.r1; r++) {
-      const row = [];
-      for (let c = range.c0; c <= range.c1; c++) {
-        const v = vals?.[r]?.[c];
-        row.push(v == null ? "" : String(v));
-      }
-      out.push(row.join("\t"));
-    }
-    return out.join("\n");
+    return false;
   }
 
   async function copyActiveRangeToClipboard() {
-    const ranges = Array.isArray(state.selRanges) ? state.selRanges : [];
-    let text = "";
-    if (ranges.length === 1) {
-      text = buildTsvFromRange(ranges[0]);
-    } else if (ranges.length > 1) {
-      const cell = getTopLeftRangeCell(ranges);
-      const value = cell ? getDisplayDatasetModel()?.values?.[cell.r]?.[cell.c] : "";
-      text = value == null ? "" : String(value);
-    } else if (state.activeCell) {
-      const { r, c } = state.activeCell;
-      const value = getDisplayDatasetModel()?.values?.[r]?.[c];
-      text = value == null ? "" : String(value);
-    }
-    await writeTextToClipboard(text);
+    return spreadsheetTable.copy();
   }
 
   function wireRectSelectionAndCopy() {
@@ -498,7 +467,7 @@ export function wireDatasetGridInteractions(deps) {
 
     // state containers
     if (!Array.isArray(state.selRanges)) state.selRanges = [];
-    state.dragSel = null;    // {anchor:{r,c}, cur:{r,c}, append:boolean}
+    state.dragSel = null;
     window.__arcRhoDatasetCopyActiveGridSelection = copyActiveRangeToClipboard;
     window.__arcRhoCopyActiveGridSelection = copyActiveRangeToClipboard;
 
@@ -526,23 +495,16 @@ export function wireDatasetGridInteractions(deps) {
       if (!rc) return;
       window.__arcRhoCopyActiveGridSelection = copyActiveRangeToClipboard;
 
-      const append = !!e.ctrlKey;
-
-      // if not appending, replace selection
-      if (!append) state.selRanges = [];
+      const append = !!(e.ctrlKey || e.metaKey) && !e.shiftKey;
+      const baseRanges = append ? spreadsheetTable.selection().ranges : [];
+      spreadsheetTable.selectCell(rc, { append, extend: e.shiftKey });
+      const selected = spreadsheetTable.selection();
 
       state.dragSel = {
-        anchor: { r: rc.r, c: rc.c },
-        cur: { r: rc.r, c: rc.c },
+        anchor: selected.anchorCell || { r: rc.r, c: rc.c },
         append,
-        lastApplied: null,
+        baseRanges,
       };
-
-      const rg = normalizeRange(rc.r, rc.c, rc.r, rc.c);
-      state.selRanges.push(rg);
-
-      setActiveCell(rc.r, rc.c);
-      applySelectionFromState();
     });
 
     // drag over (use mouseover to avoid heavy mousemove)
@@ -555,16 +517,8 @@ export function wireDatasetGridInteractions(deps) {
       const rc = rcFromTd(td);
       if (!rc) return;
 
-      const { anchor } = state.dragSel;
-      state.dragSel.cur = { r: rc.r, c: rc.c };
-
-      // update last range only
-      const lastIdx = (state.selRanges?.length || 0) - 1;
-      if (lastIdx < 0) return;
-
-      state.selRanges[lastIdx] = normalizeRange(anchor.r, anchor.c, rc.r, rc.c);
-
-      applySelectionFromState();
+      const { anchor, append, baseRanges } = state.dragSel;
+      spreadsheetTable.setRange(anchor, rc, { append, baseRanges });
     });
 
     // end drag anywhere
@@ -578,35 +532,12 @@ export function wireDatasetGridInteractions(deps) {
       const th = e.target.closest("th.rowhdr[data-r]");
       if (!th) return;
       const r = Number(th.dataset.r);
-      const model = getDisplayDatasetModel();
-      if (!model) return;
       window.__arcRhoCopyActiveGridSelection = copyActiveRangeToClipboard;
-      const vals = Array.isArray(model.values) ? model.values : [];
-      let maxCols = 0;
-      for (const row of vals) {
-        if (Array.isArray(row)) maxCols = Math.max(maxCols, row.length);
-      }
-      const maxC = (maxCols || (model.dev_labels?.length || 0)) - 1;
-      if (maxC < 0) return;
-
-      const rowRange = normalizeRange(r, 0, r, maxC);
-      // Toggle: if this row is already fully selected, deselect it
-      const idx = (state.selRanges || []).findIndex(
-        rg => rg.r0 === rowRange.r0 && rg.r1 === rowRange.r1 && rg.c0 === rowRange.c0 && rg.c1 === rowRange.c1
-      );
-      if (idx >= 0) {
-        state.selRanges.splice(idx, 1);
-        if (state.activeCell?.r === r) {
-          state.activeCell = null;
-        }
-      } else {
-        if (!e.ctrlKey) state.selRanges = [];
-        state.selRanges.push(rowRange);
-        state.activeCell = { r, c: 0 };
-      }
-      state._shiftAnchor = null;
-      renderActiveCellUI();
-      applySelectionFromState();
+      spreadsheetTable.selectRow(r, {
+        append: (e.ctrlKey || e.metaKey) && !e.shiftKey,
+        extend: e.shiftKey,
+        toggle: !e.shiftKey,
+      });
     });
 
     // Click column header -> select / deselect entire column
@@ -614,37 +545,19 @@ export function wireDatasetGridInteractions(deps) {
       const th = e.target.closest("th.colhdr[data-c]");
       if (!th) return;
       const c = Number(th.dataset.c);
-      const model = getDisplayDatasetModel();
-      if (!model) return;
       window.__arcRhoCopyActiveGridSelection = copyActiveRangeToClipboard;
-      const maxR = (model.origin_labels?.length || 0) - 1;
-      if (maxR < 0) return;
-
-      const colRange = normalizeRange(0, c, maxR, c);
-      // Toggle: if this column is already fully selected, deselect it
-      const idx = (state.selRanges || []).findIndex(
-        rg => rg.r0 === colRange.r0 && rg.r1 === colRange.r1 && rg.c0 === colRange.c0 && rg.c1 === colRange.c1
-      );
-      if (idx >= 0) {
-        state.selRanges.splice(idx, 1);
-        if (state.activeCell?.c === c) {
-          state.activeCell = null;
-        }
-      } else {
-        if (!e.ctrlKey) state.selRanges = [];
-        state.selRanges.push(colRange);
-        state.activeCell = { r: 0, c };
-      }
-      state._shiftAnchor = null;
-      renderActiveCellUI();
-      applySelectionFromState();
+      spreadsheetTable.selectColumn(c, {
+        append: (e.ctrlKey || e.metaKey) && !e.shiftKey,
+        extend: e.shiftKey,
+        toggle: !e.shiftKey,
+      });
     });
 
     // Ctrl+C copy
     document.addEventListener("keydown", (e) => {
       if (isTypingTarget(e.target)) return;
 
-      const isCopy = (e.key === "c" || e.key === "C") && e.ctrlKey;
+      const isCopy = (e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey);
       if (!isCopy) return;
 
       if (!state.selRanges || !state.selRanges.length) return;
@@ -656,10 +569,15 @@ export function wireDatasetGridInteractions(deps) {
 
     document.addEventListener("keydown", (e) => {
       if (isTypingTarget(e.target)) return;
+      if (e.key === "Escape" && (state.activeCell || state.selRanges?.length)) {
+        e.preventDefault();
+        clearGridSelection();
+        return;
+      }
       if (!state.activeCell) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (e.key === "Delete") {
+      if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         zeroSelectedCells();
         return;
@@ -681,7 +599,7 @@ export function wireDatasetGridInteractions(deps) {
       }
       const text = String(e.clipboardData?.getData("text/plain") || "");
       if (!text) return;
-      const start = state.activeCell || getTopLeftRangeCell(state.selRanges || []);
+      const start = getTopLeftRangeCell(state.selRanges || []) || state.activeCell;
       if (!start) return;
       const applied = applyPastedGridText(text, start);
       if (!applied) return;

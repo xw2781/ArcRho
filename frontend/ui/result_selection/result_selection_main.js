@@ -16,6 +16,7 @@ import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interactions.js";
 import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
 import { startResultSelectionRpcBridgeSync } from "/ui/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
+import { createPageCloseConfirm } from "/ui/shared/page_close_confirm.js";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
 const RS_JSON_VALUE_DECIMAL_PLACES = 6;
@@ -73,7 +74,7 @@ let datasetTypeItems = [];
 let cachedRows = [];
 let notesProgrammatic = false;
 let lastSavedNotesText = "";
-let closeConfirmResolve = null;
+const closeConfirm = createPageCloseConfirm({ subject: "Result Selection" });
 let rsTabSystem = null;
 
 const state = {
@@ -144,13 +145,6 @@ const els = {
   notesInput: document.getElementById("rsNotesInput"),
   cellContextMenu: document.getElementById("rsCellContextMenu"),
   sourceContextMenu: document.getElementById("rsSourceContextMenu"),
-  closeConfirmOverlay: document.getElementById("rsCloseConfirmOverlay"),
-  closeConfirmBox: document.getElementById("rsCloseConfirmBox"),
-  closeConfirmTitle: document.getElementById("rsCloseConfirmTitle"),
-  closeConfirmMessage: document.getElementById("rsCloseConfirmMessage"),
-  closeConfirmOk: document.getElementById("rsCloseConfirmOk"),
-  closeConfirmCancel: document.getElementById("rsCloseConfirmCancel"),
-  closeConfirmClose: document.getElementById("rsCloseConfirmClose"),
 };
 
 const ctx = {
@@ -185,6 +179,7 @@ const ctx = {
   els,
   text,
   norm,
+  closeConfirm,
 };
 
 Object.defineProperties(ctx, {
@@ -215,10 +210,6 @@ Object.defineProperties(ctx, {
   lastSavedNotesText: {
     get: () => lastSavedNotesText,
     set: (value) => { lastSavedNotesText = value; },
-  },
-  closeConfirmResolve: {
-    get: () => closeConfirmResolve,
-    set: (value) => { closeConfirmResolve = value; },
   },
   rsTabSystem: {
     get: () => rsTabSystem,

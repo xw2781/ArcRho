@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ui design",
+  "audience": "internal",
+  "summary": "Centralized the BF-aligned spreadsheet table colors, cell sizing, label fills, selection states, and anchor styling for reuse across Dataset and method tables."
+}

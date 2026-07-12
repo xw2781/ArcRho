@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "spreadsheet tables",
+  "audience": "user",
+  "summary": "Changed shared spreadsheet Arrow-key navigation to move one active cell instead of translating an entire selected range."
+}

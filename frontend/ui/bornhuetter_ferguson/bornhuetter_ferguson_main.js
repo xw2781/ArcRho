@@ -14,6 +14,8 @@ import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interactions.js";
 import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
 import { createBornhuetterFergusonChart } from "/ui/bornhuetter_ferguson/bornhuetter_ferguson_chart.js";
+import { createPageCloseConfirm } from "/ui/shared/page_close_confirm.js";
+import { createSpreadsheetTableController } from "/ui/shared/spreadsheet_table.js?v=20260712c";
 
 const BF_METHOD_TYPE = "Bornhuetter Ferguson";
 const BF_SOURCE_KIND = "bornhuetter_ferguson";
@@ -61,6 +63,7 @@ let notesProgrammatic = false;
 let lastSavedNotesText = "";
 let tabbedPage = null;
 let bfChart = null;
+const bfCloseConfirm = createPageCloseConfirm({ subject: BF_METHOD_TYPE });
 const activeDependencyPreviews = new Map();
 
 const els = {
@@ -103,11 +106,75 @@ const els = {
   notesInput: document.getElementById("bfNotesInput"),
   saveBtn: document.getElementById("bfSaveBtn"),
   cancelBtn: document.getElementById("bfCancelBtn"),
-  closeModalBackdrop: document.getElementById("bfCloseModalBackdrop"),
-  closeSaveBtn: document.getElementById("bfCloseSaveBtn"),
-  closeDiscardBtn: document.getElementById("bfCloseDiscardBtn"),
-  closeCancelBtn: document.getElementById("bfCloseCancelBtn"),
 };
+
+const methodSpreadsheetTable = createSpreadsheetTableController({
+  getRoot: () => els.methodTable,
+  getBounds: () => ({
+    maxRow: rowCount(),
+    maxCol: methodColumnCount() - 1,
+  }),
+  readSelection: () => {
+    const highlight = state.methodHighlight;
+    if (!highlight) return { ranges: [], activeCell: null, anchorCell: null };
+    return {
+      ranges: [{
+        r0: highlight.startRow,
+        r1: highlight.endRow,
+        c0: highlight.startCol,
+        c1: highlight.endCol,
+      }],
+      activeCell: { r: highlight.endRow, c: highlight.endCol },
+      anchorCell: { r: highlight.startRow, c: highlight.startCol },
+    };
+  },
+  writeSelection: ({ ranges, activeCell, anchorCell }) => {
+    const range = ranges[0];
+    if (!range) {
+      state.methodHighlight = null;
+      return;
+    }
+    let anchor = anchorCell || { r: range.r0, c: range.c0 };
+    let active = activeCell || { r: range.r1, c: range.c1 };
+    const directionalRange = {
+      r0: Math.min(anchor.r, active.r),
+      r1: Math.max(anchor.r, active.r),
+      c0: Math.min(anchor.c, active.c),
+      c1: Math.max(anchor.c, active.c),
+    };
+    if (
+      directionalRange.r0 !== range.r0
+      || directionalRange.r1 !== range.r1
+      || directionalRange.c0 !== range.c0
+      || directionalRange.c1 !== range.c1
+    ) {
+      anchor = { r: range.r0, c: range.c0 };
+      active = { r: range.r1, c: range.c1 };
+    }
+    state.methodHighlight = {
+      startCol: anchor.c,
+      startRow: anchor.r,
+      endCol: active.c,
+      endRow: active.r,
+    };
+  },
+  cellSelector: "td.bfMethodCell[data-row-index][data-col-index]",
+  rowHeaderSelector: "td.bfOriginCell[data-row-index]",
+  columnHeaderSelector: "thead th[data-col-index]",
+  getCellPosition: (cell) => ({
+    r: Number(cell?.dataset?.rowIndex),
+    c: Number(cell?.dataset?.colIndex),
+  }),
+  getRowHeaderIndex: (header) => Number(header?.dataset?.rowIndex),
+  getColumnHeaderIndex: (header) => Number(header?.dataset?.colIndex),
+  selectedClasses: ["bfHighlightedCell"],
+  anchorClasses: ["bfHighlightAnchorCell", "arSpreadsheetSelectionAnchor"],
+  rowSelectedLabelClasses: ["bfHighlightedRowLabel", "arSpreadsheetSelectedLabel"],
+  columnSelectedLabelClasses: ["bfHighlightedColumnLabel", "arSpreadsheetSelectedLabel"],
+  getCellValue: (_position, cell) => cell?.dataset?.copyValue || "",
+  onAfterCopy: () => postStatus("Copied selected Bornhuetter Ferguson values."),
+  scrollCellIntoView: scrollMethodCellIntoView,
+});
 
 function text(value) {
   return String(value ?? "").trim();
@@ -867,32 +934,8 @@ function normalizedMethodHighlight() {
   };
 }
 
-function isMethodCellHighlighted(colIndex, rowIndex) {
-  const highlight = normalizedMethodHighlight();
-  return !!highlight
-    && colIndex >= highlight.startCol
-    && colIndex <= highlight.endCol
-    && rowIndex >= highlight.startRow
-    && rowIndex <= highlight.endRow;
-}
-
 function applyMethodHighlightDom() {
-  const highlight = normalizedMethodHighlight();
-  const anchorCol = Math.max(0, Math.min(methodColumnCount() - 1, Number(state.methodHighlight?.startCol) || 0));
-  const anchorRow = Math.max(0, Math.min(rowCount(), Number(state.methodHighlight?.startRow) || 0));
-  for (const th of els.methodTable?.querySelectorAll("thead th[data-col-index]") || []) {
-    const colIndex = Number(th.dataset.colIndex);
-    th.classList.toggle("bfHighlightedColumnLabel", !!highlight && colIndex >= highlight.startCol && colIndex <= highlight.endCol);
-  }
-  for (const td of els.methodGrid?.querySelectorAll(".bfMethodCell") || []) {
-    const colIndex = Number(td.dataset.colIndex);
-    const rowIndex = Number(td.dataset.rowIndex);
-    const selected = isMethodCellHighlighted(colIndex, rowIndex);
-    td.classList.toggle("bfHighlightedCell", selected);
-    td.classList.toggle("bfHighlightAnchorCell", selected && colIndex === anchorCol && rowIndex === anchorRow);
-    td.classList.toggle("bfHighlightedRowLabel", td.classList.contains("bfOriginCell") && !!highlight && rowIndex >= highlight.startRow && rowIndex <= highlight.endRow);
-    td.setAttribute("aria-selected", selected ? "true" : "false");
-  }
+  methodSpreadsheetTable.applyDom();
 }
 
 function focusMethodTable() {
@@ -903,89 +946,35 @@ function focusMethodTable() {
   }
 }
 
-function setMethodHighlight(startCol, startRow, endCol = startCol, endRow = startRow, { scroll = false } = {}) {
-  state.methodHighlight = { startCol, startRow, endCol, endRow };
-  applyMethodHighlightDom();
-  if (scroll) scrollMethodHighlightAnchorIntoView();
-}
-
 function clearMethodHighlight() {
-  state.methodHighlight = null;
   state.methodHighlightDragging = false;
-  applyMethodHighlightDom();
+  methodSpreadsheetTable.clear();
 }
 
 function methodCellAt(colIndex, rowIndex) {
   return els.methodGrid?.querySelector(`.bfMethodCell[data-col-index="${colIndex}"][data-row-index="${rowIndex}"]`) || null;
 }
 
-function scrollMethodHighlightAnchorIntoView() {
-  const highlight = normalizedMethodHighlight();
+function scrollMethodCellIntoView({ r, c }) {
   const table = els.methodTable;
   const host = table?.closest(".bfTableWrap");
-  if (!highlight || !host) return;
-  const cell = methodCellAt(highlight.startCol, highlight.startRow);
+  if (!host) return;
+  const cell = methodCellAt(c, r);
   if (!cell) return;
   const hostRect = host.getBoundingClientRect();
   const cellRect = cell.getBoundingClientRect();
   const headerHeight = table.tHead?.getBoundingClientRect().height || 0;
   const originWidth = table.querySelector("tbody td:first-child")?.getBoundingClientRect().width || 0;
   const visibleTop = hostRect.top + headerHeight;
-  const visibleLeft = hostRect.left + (highlight.startCol > 0 ? originWidth : 0);
+  const visibleLeft = hostRect.left + (c > 0 ? originWidth : 0);
   if (cellRect.top < visibleTop) host.scrollTop -= visibleTop - cellRect.top;
   else if (cellRect.bottom > hostRect.bottom) host.scrollTop += cellRect.bottom - hostRect.bottom;
   if (cellRect.left < visibleLeft) host.scrollLeft -= visibleLeft - cellRect.left;
   else if (cellRect.right > hostRect.right) host.scrollLeft += cellRect.right - hostRect.right;
 }
 
-function moveMethodHighlight(deltaCol, deltaRow) {
-  const highlight = normalizedMethodHighlight();
-  if (!highlight) return false;
-  const width = highlight.endCol - highlight.startCol;
-  const height = highlight.endRow - highlight.startRow;
-  const nextStartCol = Math.max(0, Math.min(methodColumnCount() - 1 - width, highlight.startCol + deltaCol));
-  const nextStartRow = Math.max(0, Math.min(rowCount() - height, highlight.startRow + deltaRow));
-  if (nextStartCol === highlight.startCol && nextStartRow === highlight.startRow) return false;
-  setMethodHighlight(nextStartCol, nextStartRow, nextStartCol + width, nextStartRow + height, { scroll: true });
-  return true;
-}
-
-function highlightedMethodValuesText() {
-  const highlight = normalizedMethodHighlight();
-  if (!highlight) return "";
-  const rows = [];
-  for (let rowIndex = highlight.startRow; rowIndex <= highlight.endRow; rowIndex += 1) {
-    const cells = [];
-    for (let colIndex = highlight.startCol; colIndex <= highlight.endCol; colIndex += 1) {
-      cells.push(methodCellAt(colIndex, rowIndex)?.dataset.copyValue || "");
-    }
-    rows.push(cells.join("\t"));
-  }
-  return rows.join("\r\n");
-}
-
-async function writeMethodClipboardText(value) {
-  const data = String(value || "");
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(data);
-    return;
-  }
-  const area = document.createElement("textarea");
-  area.value = data;
-  area.setAttribute("readonly", "true");
-  area.style.position = "fixed";
-  area.style.left = "-9999px";
-  document.body.appendChild(area);
-  area.select();
-  document.execCommand("copy");
-  area.remove();
-}
-
 async function copyHighlightedMethodValues() {
-  const values = highlightedMethodValuesText();
-  if (!values) return;
-  await writeMethodClipboardText(values);
-  postStatus("Copied selected Bornhuetter Ferguson values.");
+  return methodSpreadsheetTable.copy();
 }
 
 async function readMethodClipboardText() {
@@ -1082,7 +1071,7 @@ function openMethodCellContextMenu(event, colIndex, rowIndex) {
   const menu = els.cellContextMenu;
   if (!menu) return;
   event.preventDefault();
-  if (!isMethodCellHighlighted(colIndex, rowIndex)) setMethodHighlight(colIndex, rowIndex);
+  methodSpreadsheetTable.prepareContextCell({ r: rowIndex, c: colIndex });
   const pasteButton = menu.querySelector('[data-bf-cell-action="paste"]');
   if (pasteButton) pasteButton.hidden = !highlightedWeightTargets().length;
   menu.classList.add("open");
@@ -1102,7 +1091,7 @@ function wireMethodGridInteractions() {
     if (header) {
       event.preventDefault();
       const colIndex = Number(header.dataset.colIndex);
-      setMethodHighlight(colIndex, 0, colIndex, rowCount());
+      methodSpreadsheetTable.selectColumn(colIndex, { extend: event.shiftKey });
       focusMethodTable();
       return;
     }
@@ -1112,11 +1101,9 @@ function wireMethodGridInteractions() {
     const colIndex = Number(cell.dataset.colIndex);
     const rowIndex = Number(cell.dataset.rowIndex);
     if (colIndex === 0) {
-      setMethodHighlight(0, rowIndex, methodColumnCount() - 1, rowIndex);
-    } else if (event.shiftKey && state.methodHighlight) {
-      setMethodHighlight(state.methodHighlight.startCol, state.methodHighlight.startRow, colIndex, rowIndex);
+      methodSpreadsheetTable.selectRow(rowIndex, { extend: event.shiftKey });
     } else {
-      setMethodHighlight(colIndex, rowIndex);
+      methodSpreadsheetTable.selectCell({ r: rowIndex, c: colIndex }, { extend: event.shiftKey });
     }
     state.weightEditSession = null;
     state.methodHighlightDragging = colIndex !== 0;
@@ -1137,9 +1124,12 @@ function wireMethodGridInteractions() {
     if (!state.methodHighlightDragging || !(event.buttons & 1)) return;
     const cell = event.target.closest("td.bfMethodCell");
     if (!cell) return;
-    state.methodHighlight.endCol = Number(cell.dataset.colIndex);
-    state.methodHighlight.endRow = Number(cell.dataset.rowIndex);
-    applyMethodHighlightDom();
+    const anchor = methodSpreadsheetTable.selection().anchorCell;
+    if (!anchor) return;
+    methodSpreadsheetTable.setRange(anchor, {
+      r: Number(cell.dataset.rowIndex),
+      c: Number(cell.dataset.colIndex),
+    });
   });
   document.addEventListener("mouseup", () => {
     state.methodHighlightDragging = false;
@@ -1199,8 +1189,11 @@ function wireMethodGridInteractions() {
       ArrowDown: [0, 1],
     };
     const delta = deltas[event.key];
-    if (!delta || event.ctrlKey || event.metaKey || event.altKey || !state.methodHighlight) return;
-    if (moveMethodHighlight(delta[0], delta[1])) {
+    if (!delta || event.altKey || !state.methodHighlight) return;
+    if (methodSpreadsheetTable.move(delta[1], delta[0], {
+      extend: event.shiftKey,
+      jump: event.ctrlKey || event.metaKey,
+    })) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -1722,24 +1715,11 @@ async function openPicker(kind, anchor) {
   });
 }
 
-function showCloseModal() {
-  if (els.closeModalBackdrop) {
-    els.closeModalBackdrop.classList.add("open");
-    els.closeModalBackdrop.setAttribute("aria-hidden", "false");
-  }
-}
-
-function hideCloseModal() {
-  if (els.closeModalBackdrop) {
-    els.closeModalBackdrop.classList.remove("open");
-    els.closeModalBackdrop.setAttribute("aria-hidden", "true");
-  }
-}
-
 async function closeOrConfirm() {
   if (isDirty) {
-    showCloseModal();
-    return;
+    const discard = await bfCloseConfirm.confirm({ reason: "close" });
+    if (!discard) return;
+    postDirty(false, true);
   }
   requestTabbedPageWindowClose({ inst });
 }
@@ -1997,23 +1977,13 @@ function wireInputs() {
     }
   });
   els.cancelBtn?.addEventListener("click", closeOrConfirm);
-  els.closeSaveBtn?.addEventListener("click", async () => {
-    try {
-      const result = await saveBornhuetterFerguson();
-      if (result?.ok) {
-        hideCloseModal();
-        requestTabbedPageWindowClose({ inst });
-      }
-    } catch (err) {
-      postStatus(`Save failed: ${String(err?.message || err)}`, "error");
-    }
-  });
-  els.closeDiscardBtn?.addEventListener("click", () => {
-    hideCloseModal();
-    postDirty(false, true);
-    requestTabbedPageWindowClose({ inst });
-  });
-  els.closeCancelBtn?.addEventListener("click", hideCloseModal);
+  window.__arcrho_request_close = () => {
+    if (!isDirty) return false;
+    if (bfCloseConfirm.isOpen) return true;
+    void closeOrConfirm();
+    return true;
+  };
+  window.__arcrho_consume_close_shortcut = window.__arcrho_request_close;
 }
 
 function wireMessages() {

@@ -14,12 +14,11 @@ import {
 } from "/ui/shared/api.js";
 import {
   renderTable,
-  renderActiveCellUI,
   renderChart,
   redrawChartSafely,
   setDatasetRenderNumberFormatSettings,
   setDatasetRenderVectorColumnLabel,
-} from "/ui/dataset/dataset_render.js?v=20260710a";
+} from "/ui/dataset/dataset_render.js?v=20260712b";
 import {
   applyTabbedPageSaveBar,
   createTabbedPage,
@@ -29,7 +28,7 @@ import {
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { createDatasetDependencyGuard } from "/ui/dataset/dataset_dependency_guard.js";
 import { createDatasetHeadersService } from "/ui/dataset/dataset_headers_service.js";
-import { wireDatasetGridInteractions } from "/ui/dataset/dataset_grid_interactions.js";
+import { wireDatasetGridInteractions } from "/ui/dataset/dataset_grid_interactions.js?v=20260712c";
 import { wireDatasetNotesEditor } from "/ui/dataset/dataset_notes_editor.js";
 import { publishDfmInputHelpers as publishDatasetHostDfmHelpers, wireDatasetHostBridge } from "/ui/dataset/dataset_host_bridge.js";
 import { createDatasetRunController } from "/ui/dataset/dataset_run_controller.js";
@@ -43,6 +42,7 @@ import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_pi
 import { openProjectNameTreePicker } from "/ui/shared/project_name_tree_picker.js";
 import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
 import { decodeFileNameSegment } from "/ui/shared/filename_sanitizer.js";
+import { createPageCloseConfirm } from "/ui/shared/page_close_confirm.js";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -1158,7 +1158,7 @@ let currentDatasetSidecarSourceKind = "";
 let currentDatasetSidecarDataFormat = "";
 let currentDatasetPrecedents = [];
 let sidecarSyncNonce = 0;
-let datasetCancelConfirmResolve = null;
+const datasetCloseConfirm = window.ADA_DFM_CONTEXT ? null : createPageCloseConfirm({ subject: "dataset" });
 let activeDependencyPreviewKey = "";
 const lenDropdownActiveIndexBySelect = new Map();
 
@@ -2998,6 +2998,7 @@ function buildTriRequestPayload(rawInputs = {}) {
     DevelopmentLength: resolved.devLen,
     LocalOnly: !!window.ADA_DFM_CONTEXT,
     AllowDerived: true,
+    WriteSidecar: false,
     timeout_sec: 6.0,
   };
 }
@@ -3041,6 +3042,7 @@ function buildVecRequestPayload(rawInputs = {}) {
     Calendar: resolved.calendar,
     LocalOnly: !!window.ADA_DFM_CONTEXT,
     AllowDerived: true,
+    WriteSidecar: false,
     timeout_sec: 6.0,
   };
 }
@@ -3583,87 +3585,10 @@ async function discardDatasetChanges(options = {}) {
   updateDatasetSaveUi();
 }
 
-function resolveDatasetCancelConfirm(value) {
-  const overlay = document.getElementById("datasetCancelConfirmOverlay");
-  if (overlay) overlay.hidden = true;
-  const resolve = datasetCancelConfirmResolve;
-  datasetCancelConfirmResolve = null;
-  if (resolve) resolve(!!value);
-}
-
-function showHostDatasetCancelConfirm(reason = "close") {
-  const host = window.parent;
-  if (!host || host === window) return Promise.resolve(null);
-
-  return new Promise((resolve) => {
-    const requestId = `dataset_close_confirm_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    let acknowledged = false;
-    let done = false;
-    let fallbackTimer = 0;
-
-    const cleanup = () => {
-      window.removeEventListener("message", onMessage);
-      clearTimeout(fallbackTimer);
-    };
-    const finish = (value) => {
-      if (done) return;
-      done = true;
-      cleanup();
-      resolve(value);
-    };
-    const onMessage = (event) => {
-      if (event.source !== host) return;
-      const msg = event.data || {};
-      if (msg.requestId !== requestId) return;
-      if (msg.type === "arcrho:dataset-close-confirm-ack") {
-        acknowledged = true;
-        return;
-      }
-      if (msg.type === "arcrho:dataset-close-confirm-result") {
-        finish(!!msg.discard);
-      }
-    };
-
-    window.addEventListener("message", onMessage);
-    try {
-      host.postMessage({ type: "arcrho:dataset-close-confirm-request", requestId, reason }, "*");
-    } catch {
-      finish(null);
-      return;
-    }
-    fallbackTimer = window.setTimeout(() => {
-      if (!acknowledged) finish(null);
-    }, 300);
-  });
-}
-
-function showDatasetCancelConfirm(reason = "close") {
-  if (datasetCancelConfirmResolve) return Promise.resolve(false);
-  const overlay = document.getElementById("datasetCancelConfirmOverlay");
-  const title = document.getElementById("datasetCancelConfirmTitle");
-  const message = document.getElementById("datasetCancelConfirmMessage");
-  const yesBtn = document.getElementById("datasetCancelConfirmYes");
-  if (!overlay || !yesBtn) return Promise.resolve(false);
-
-  const isClose = reason === "close";
-  if (title) title.textContent = isClose ? "Cancel and close?" : "Cancel changes?";
-  if (message) {
-    message.textContent = isClose
-      ? "Unsaved dataset changes will be discarded and the window will close."
-      : "Unsaved dataset changes will be discarded.";
-  }
-
-  overlay.hidden = false;
-  requestAnimationFrame(() => yesBtn.focus());
-  return new Promise((resolve) => {
-    datasetCancelConfirmResolve = resolve;
-  });
-}
-
 async function confirmCancelDatasetChanges(reason = "close") {
   if (!hasUnsavedDatasetChanges()) return true;
-  const hostDiscard = await showHostDatasetCancelConfirm(reason);
-  const discard = hostDiscard == null ? await showDatasetCancelConfirm(reason) : hostDiscard;
+  if (!datasetCloseConfirm) return false;
+  const discard = await datasetCloseConfirm.confirm({ reason });
   if (!discard) return false;
   await discardDatasetChanges({ reload: reason !== "close" });
   return true;
@@ -3685,24 +3610,6 @@ function wireDatasetSaveControls() {
     const ok = await confirmCancelDatasetChanges("close");
     if (ok) requestConfirmedDatasetClose();
   });
-  document.getElementById("datasetCancelConfirmYes")?.addEventListener("click", () => {
-    resolveDatasetCancelConfirm(true);
-  });
-  document.getElementById("datasetCancelConfirmNo")?.addEventListener("click", () => {
-    resolveDatasetCancelConfirm(false);
-  });
-  document.getElementById("datasetCancelConfirmClose")?.addEventListener("click", () => {
-    resolveDatasetCancelConfirm(false);
-  });
-  document.getElementById("datasetCancelConfirmOverlay")?.addEventListener("click", (event) => {
-    if (event.target === event.currentTarget) resolveDatasetCancelConfirm(false);
-  });
-  document.getElementById("datasetCancelConfirmOverlay")?.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      resolveDatasetCancelConfirm(false);
-    }
-  });
   document.getElementById("datasetRecalcOk")?.addEventListener("click", hideCalculationUpdatesDialog);
   document.getElementById("datasetRecalcClose")?.addEventListener("click", hideCalculationUpdatesDialog);
   document.getElementById("datasetRecalcOverlay")?.addEventListener("click", (event) => {
@@ -3716,6 +3623,7 @@ function wireDatasetSaveControls() {
   });
   window.__arcrho_request_close = () => {
     if (!hasUnsavedDatasetChanges()) return false;
+    if (datasetCloseConfirm?.isOpen) return true;
     void (async () => {
       const ok = await confirmCancelDatasetChanges("close");
       if (ok) requestConfirmedDatasetClose();
@@ -4455,7 +4363,6 @@ function wireGridInteractions() {
   datasetGridInteractions = wireDatasetGridInteractions({
     state,
     renderTable,
-    renderActiveCellUI,
     isReadOnly: isDatasetReadOnly,
     setStatus,
     notifyDatasetUpdated,
@@ -4748,6 +4655,8 @@ async function boot() {
     } else {
       scheduleAutoRun(0);
     }
+  } else if (window.ADA_DFM_CONTEXT) {
+    setStatus("Waiting for DFM inputs...");
   } else {
     await loadDataset();
   }

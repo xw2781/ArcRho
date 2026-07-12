@@ -1,4 +1,5 @@
 @import url("/ui/shared/scrollbars.css?v=20260516a");
+@import url("/ui/shared/spreadsheet_table.css?v=20260712b");
 
 #titlebar {
       height: 36px;
@@ -20,10 +21,10 @@
       --muted: #666;
       --app-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
 
-      --cell-w: 90px;
-      --cell-max-w: 120px;
-      --cell-min-w: 90px;
-      --cell-h: 20px;
+      --cell-w: var(--ar-spreadsheet-cell-width);
+      --cell-max-w: var(--ar-spreadsheet-cell-width);
+      --cell-min-w: var(--ar-spreadsheet-cell-width);
+      --cell-h: var(--ar-spreadsheet-cell-height);
       --table-arrow-btn-size: 19px;
 
       --panel-w: 1000px;
@@ -501,9 +502,10 @@
     #datasetTopBar select,
     #datasetTopBar .lenSelectDisplay,
     #datasetTopBar input[type="text"],
-    #datasetTopBar input[type="number"]{
-      height: var(--topbar-control-height);
-      line-height: var(--topbar-control-height);
+    #datasetTopBar input[type="number"],
+    .decimalPlacesWrap > input[type="number"]{
+      height: var(--topbar-control-height, 28px);
+      line-height: var(--topbar-control-height, 28px);
       padding: 0 6px;
       box-sizing: border-box;
       border: 1px solid #cfcfcf;
@@ -517,7 +519,8 @@
     #datasetTopBar .lenSelectDisplay:focus,
     #datasetTopBar .lenSelectWrap.open .lenSelectDisplay,
     #datasetTopBar input[type="text"]:focus,
-    #datasetTopBar input[type="number"]:focus{
+    #datasetTopBar input[type="number"]:focus,
+    .decimalPlacesWrap > input[type="number"]:focus{
       outline: none;
       border-color: #8aa8ff;
       box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
@@ -631,10 +634,10 @@
       padding-left: 10px;
     }
 
-    #datasetTopBar .decimalPlacesWrap{
+    .decimalPlacesWrap{
       position: relative;
       width: 69px;
-      height: var(--topbar-control-height);
+      height: var(--topbar-control-height, 28px);
     }
 
     #decimalPlaces{
@@ -652,12 +655,12 @@
       margin: 0;
     }
 
-    #datasetTopBar .decimalPlacesStepper{
+    .decimalPlacesStepper{
       position: absolute;
       right: 1px;
       top: 1px;
       width: 28px;
-      height: calc(var(--topbar-control-height) - 2px);
+      height: calc(var(--topbar-control-height, 28px) - 2px);
       display: grid;
       grid-template-rows: 1fr 1fr;
       border-radius: 0 5px 5px 0;
@@ -666,10 +669,10 @@
       pointer-events: auto;
     }
 
-    #datasetTopBar .decimalPlacesStepBtn{
+    .decimalPlacesStepBtn{
       position: relative;
       width: 28px;
-      height: calc((var(--topbar-control-height) - 2px) / 2);
+      height: calc((var(--topbar-control-height, 28px) - 2px) / 2);
       padding: 0;
       border: 0;
       background: transparent;
@@ -677,12 +680,12 @@
       cursor: pointer;
     }
 
-    #datasetTopBar .decimalPlacesStepBtn:hover{
+    .decimalPlacesStepBtn:hover{
       color: #2f5fd3;
       background: #f5f8ff;
     }
 
-    #datasetTopBar .datasetStepperCaret{
+    .datasetStepperCaret{
       position: absolute;
       left: 50%;
       top: 50%;
@@ -697,14 +700,14 @@
       transition: opacity 120ms ease;
     }
 
-    #datasetTopBar .datasetStepperCaretUp{
+    .datasetStepperCaretUp{
       transform: translate(calc(-50% + 2px), -50%) rotate(180deg);
     }
 
-    #datasetTopBar .decimalPlacesWrap:hover .datasetStepperCaret,
-    #datasetTopBar .decimalPlacesWrap:focus-within .datasetStepperCaret,
-    #datasetTopBar .decimalPlacesStepBtn:hover .datasetStepperCaret,
-    #datasetTopBar .decimalPlacesStepBtn:focus .datasetStepperCaret{
+    .decimalPlacesWrap:hover .datasetStepperCaret,
+    .decimalPlacesWrap:focus-within .datasetStepperCaret,
+    .decimalPlacesStepBtn:hover .datasetStepperCaret,
+    .decimalPlacesStepBtn:focus .datasetStepperCaret{
       opacity: 1;
     }
 
@@ -1040,7 +1043,7 @@
       border-spacing: 0;
       width: max-content;
       table-layout: fixed;
-      font-size: 14px;
+      font-size: var(--ar-spreadsheet-font-size);
       color: #1f2937;
 
       /* Disable native text selection inside grid */
@@ -1051,8 +1054,8 @@
     #tableWrap th,
     #tableWrap td{
       border: 0;
-      border-right: 1px solid #ddd;
-      border-bottom: 1px solid #ddd;
+      border-right: 1px solid var(--ar-spreadsheet-grid-border);
+      border-bottom: 1px solid var(--ar-spreadsheet-grid-border);
 
       max-width: var(--cell-max-w);
       min-width: var(--cell-min-w);
@@ -1070,7 +1073,7 @@
     }
 
     #tableWrap tr > :last-child{
-      border-right: 1px solid #ddd;
+      border-right: 1px solid var(--ar-spreadsheet-grid-border);
     }
 
     /* -------- Alignment rules (your requirement) -------- */
@@ -1078,7 +1081,7 @@
     #tableWrap thead th{
       text-align: center;
       vertical-align: middle;
-      background: #f6f6f6;
+      background: var(--ar-spreadsheet-header-fill);
       color: #1f2937;
       font-weight: 400;
 
@@ -1103,8 +1106,8 @@
     #tableWrap th.colhdr{
       cursor: pointer;
     }
-    #tableWrap th.rowhdr:hover,
-    #tableWrap th.colhdr:hover{
+    #tableWrap th.rowhdr:not(.activeRow):not(.arSpreadsheetSelectedLabel):hover,
+    #tableWrap th.colhdr:not(.activeCol):not(.arSpreadsheetSelectedLabel):hover{
       background: #eaeaea;
     }
 
@@ -1123,21 +1126,21 @@
       left: 0;
       z-index: 2;
 
-      background: #f6f6f6;
+      background: var(--ar-spreadsheet-label-fill);
 
       /* separator after first col */
-      box-shadow: 1px 0 0 #ddd;
+      box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
 
       /* sizing */
-      width: auto;
-      min-width: max-content;
-      max-width: 180px;
+      width: var(--ar-spreadsheet-cell-width);
+      min-width: var(--ar-spreadsheet-cell-width);
+      max-width: var(--ar-spreadsheet-cell-width);
     }
 
     /* Top-left corner highest priority */
     #tableWrap thead th:first-child{
       z-index: 4;
-      background: #f6f6f6;
+      background: var(--ar-spreadsheet-header-fill);
       color: #111827;
     }
 
@@ -1172,6 +1175,7 @@
 
     #tableWrap .dsCellInput:focus{
       background: #fff;
+      color: #1f2937;
       box-shadow: inset 0 0 0 2px #2b6df6;
     }
 
@@ -1191,19 +1195,19 @@
     }
 
     #tableWrap tr > td.na:last-child{
-      border-right: 1px solid #ddd !important;
+      border-right: 1px solid var(--ar-spreadsheet-grid-border) !important;
     }
 
     #tableWrap tfoot th,
     #tableWrap tfoot td{
       color: #111;
       font-weight: 700;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid var(--ar-spreadsheet-grid-border);
     }
 
     #tableWrap tbody tr:last-child > *,
     #tableWrap tfoot tr:last-child > *{
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid var(--ar-spreadsheet-grid-border);
     }
 
     #tableWrap table.has-total-row tbody tr:last-child > *{
@@ -1224,16 +1228,28 @@
       Selection / Highlights
     ========================= */
     #tableWrap td.active{
-      background: rgb(144, 170, 228);
+      background: var(--ar-spreadsheet-selection-fill);
+      color: var(--ar-spreadsheet-selection-text);
       outline: none;
     }
 
     #tableWrap td.sel{
-      background: rgb(148, 188, 248);
+      background: var(--ar-spreadsheet-selection-fill);
+      color: var(--ar-spreadsheet-selection-text);
       outline: none;
     }
     #tableWrap td.sel.active{
       outline: none;
+    }
+
+    #tableWrap td.na.sel,
+    #tableWrap td.na.active{
+      background: var(--ar-spreadsheet-selection-fill) !important;
+    }
+
+    #tableWrap td.selectionAnchor{
+      outline: 1px dashed var(--ar-spreadsheet-anchor-color);
+      outline-offset: -2px;
     }
 
     /* Multi-cell hover selection */
@@ -1246,7 +1262,9 @@
     /* Selected label highlight (must be AFTER sticky bg rules) */
     #tableWrap th.activeRow,
     #tableWrap th.activeCol{
-      background: #b6b6b6;
+      background: var(--ar-spreadsheet-selected-label-fill);
+      color: var(--ar-spreadsheet-label-text);
+      font-weight: 400;
       outline: none;
     }
 
@@ -1769,30 +1787,7 @@
       cursor: default;
       opacity: 0.55;
     }
-    .datasetCancelConfirmOverlay {
-      position: fixed;
-      inset: 0;
-      z-index: 20000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(15, 23, 42, 0.18);
-    }
-    .datasetCancelConfirmOverlay[hidden] {
-      display: none;
-    }
-    .datasetCancelConfirmBox {
-      position: relative;
-      width: min(360px, calc(100vw - 40px));
-      border: 1px solid #c9d1dc;
-      border-radius: 8px;
-      background: #fff;
-      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
-      padding: 16px 18px 14px;
-      box-sizing: border-box;
-      color: #111827;
-    }
-    .datasetCancelConfirmClose {
+    .datasetRecalcClose {
       position: absolute;
       top: 7px;
       right: 8px;
@@ -1806,23 +1801,11 @@
       line-height: 24px;
       cursor: pointer;
     }
-    .datasetCancelConfirmClose:hover {
+    .datasetRecalcClose:hover {
       background: #f1f5f9;
       color: #0f172a;
     }
-    .datasetCancelConfirmTitle {
-      padding-right: 26px;
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.3;
-    }
-    .datasetCancelConfirmMessage {
-      margin-top: 8px;
-      color: #475569;
-      font-size: 13px;
-      line-height: 1.4;
-    }
-    .datasetCancelConfirmActions {
+    .datasetRecalcActions {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
@@ -2251,31 +2234,38 @@
     .ctx-menu{
       position: fixed;
       z-index: 9999;
-      min-width: 180px;
+      width: 180px;
+      max-width: min(180px, calc(100vw - 16px));
       background: #fff;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-      padding: 6px;
+      border: 1px solid #c9ced5;
+      border-radius: 6px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      padding: 4px;
     }
 
     .ctx-menu-inner{
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 0;
     }
 
     .ctx-item{
       width: 100%;
+      height: 24px;
       text-align: left;
       background: transparent;
       border: none;
-      padding: 8px 10px;
-      border-radius: 6px;
+      padding: 0 8px;
+      border-radius: 4px;
       cursor: pointer;
-      font: 13px Arial, sans-serif;
+      font: 12px Arial, sans-serif;
     }
-    .ctx-item:hover{ background: #f3f4f6; }
+    .ctx-item:hover,
+    .ctx-item:focus-visible{
+      outline: none;
+      background: #eaf2ff;
+      color: #0d6efd;
+    }
 
     .ctx-sep{
       height: 1px;

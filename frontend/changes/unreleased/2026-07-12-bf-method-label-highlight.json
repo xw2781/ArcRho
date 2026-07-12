@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Updated Method table label highlights to use regular-weight text on a darker gray fill."
+}

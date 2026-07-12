@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bornhuetter Ferguson</title>
+  <link rel="stylesheet" href="/ui/shared/spreadsheet_table.css?v=20260712b">
   <style>
     :root {
       --bf-border: #d6dbe3;
@@ -16,20 +17,20 @@
       --bf-accent-soft: #eaf1ff;
       --bf-danger: #b42318;
       --bf-table-head: #eef2f7;
-      --bf-method-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
-      --bf-method-grid-border: #f3f1f1;
-      --bf-method-header-cell: #d9dde2;
-      --bf-method-label-cell: #d9dde2;
+      --bf-method-font: var(--ar-spreadsheet-font);
+      --bf-method-grid-border: var(--ar-spreadsheet-grid-border);
+      --bf-method-header-cell: var(--ar-spreadsheet-header-fill);
+      --bf-method-label-cell: var(--ar-spreadsheet-label-fill);
       --bf-method-percent-cell: #dff8f8;
       --bf-method-prior-cell: #d9e98b;
       --bf-method-ultimate-cell: #fdf5a9;
       --bf-method-ultimate-highlight-cell: #fde047;
-      --bf-method-cell-h: 20px;
+      --bf-method-cell-h: var(--ar-spreadsheet-cell-height);
       --bf-method-header-h: 52px;
       --bf-method-header-line-h: 14px;
-      --bf-method-cell-w: 100px;
+      --bf-method-cell-w: var(--ar-spreadsheet-cell-width);
       --bf-method-weight-w: 68px;
-      --bf-method-origin-w: 100px;
+      --bf-method-origin-w: var(--ar-spreadsheet-cell-width);
       color-scheme: light;
     }
     * { box-sizing: border-box; }
@@ -395,7 +396,9 @@
     }
     .bfMethodToolbar {
       display: flex;
-      align-items: center;
+      align-items: stretch;
+      flex-wrap: wrap;
+      gap: 8px;
       margin-bottom: 8px;
     }
     .bfToolGroup {
@@ -404,9 +407,9 @@
       min-height: 42px;
       align-items: center;
       padding: 9px 10px 5px;
-      border: 1px solid #cfd8e6;
-      border-radius: 7px;
-      background: #fff;
+      border: 1px solid #cfd8e690;
+      border-radius: 2px;
+      background: #ffffff85;
     }
     .bfToolTitle {
       position: absolute;
@@ -420,9 +423,10 @@
     .bfToolControls {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 23px;
     }
     .bfToolCheck,
+    .bfToolFormatControl,
     .bfToolDecimalControl {
       display: inline-flex;
       min-height: 28px;
@@ -432,17 +436,15 @@
       white-space: nowrap;
     }
     .bfToolCheck input { accent-color: var(--bf-accent); }
-    .bfWeightDisplayDropdown + .bfToolDecimalControl {
-      margin-left: 8px;
-    }
     .bfToolControlLabel {
-      color: #475569;
+      color: #000000;
       font-size: 12px;
     }
     .bfWeightDisplayDropdown {
       position: relative;
       width: 106px;
       height: 28px;
+      flex: 0 0 auto;
     }
     .bfOriginLengthDropdown {
       position: relative;
@@ -740,11 +742,12 @@
     }
     .bfMethodTable th.bfHighlightedColumnLabel,
     .bfMethodTable td.bfHighlightedRowLabel {
-      font-weight: 700;
+      background: var(--ar-spreadsheet-selected-label-fill);
+      font-weight: 400;
     }
     .bfMethodTable td.bfMethodCell.bfHighlightedCell {
-      background: #30358b;
-      color: #fff;
+      background: var(--ar-spreadsheet-selection-fill);
+      color: var(--ar-spreadsheet-selection-text);
     }
     .bfMethodTable td.bfPercentCell.bfHighlightedCell {
       background: #a8eeee;
@@ -767,12 +770,12 @@
       color: #111827;
     }
     .bfMethodTable td.bfOriginCell.bfHighlightedCell {
-      background: #a6a6a6;
+      background: var(--ar-spreadsheet-selected-label-fill);
       color: #111827;
-      font-weight: 700;
+      font-weight: 400;
     }
     .bfMethodTable td.bfMethodCell.bfHighlightAnchorCell {
-      outline: 1px dashed #0f172a;
+      outline: 1px dashed var(--ar-spreadsheet-anchor-color);
       outline-offset: -2px;
     }
     .bfCellContextMenu {
@@ -1032,37 +1035,6 @@
     #bfSaveBtn.is-clean:hover:not(:disabled) {
       background: #f4f7fb;
     }
-    .bfCloseModalBackdrop {
-      position: fixed;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(15, 23, 42, 0.28);
-      z-index: 50;
-    }
-    .bfCloseModalBackdrop.open { display: flex; }
-    .bfCloseModal {
-      width: 360px;
-      background: #fff;
-      border: 1px solid var(--bf-border-strong);
-      border-radius: 6px;
-      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.24);
-      padding: 14px;
-    }
-    .bfCloseModal h2 {
-      margin: 0 0 8px;
-      font-size: 14px;
-    }
-    .bfCloseModal p {
-      margin: 0 0 14px;
-      color: var(--bf-muted);
-    }
-    .bfCloseModalActions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
     @media (max-width: 900px) {
       .bfShell { min-width: 0; }
       .bfFieldGrid { grid-template-columns: var(--bf-details-label-width) minmax(0, 1fr); }
@@ -1143,21 +1115,29 @@
         <section class="bfPage" id="bfMethodPage" role="tabpanel">
           <div class="bfMethodToolbar">
             <div class="bfToolGroup">
-              <span class="bfToolTitle">Formatting</span>
+              <span class="bfToolTitle">Weights</span>
               <div class="bfToolControls">
-                <label class="bfToolCheck"><input id="bfShowWeightsInput" type="checkbox" checked> Show Weights As</label>
-                <div id="bfWeightDisplayDropdown" class="bfWeightDisplayDropdown">
-                  <button id="bfWeightDisplayButton" class="bfDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
-                    <span id="bfWeightDisplayLabel">Index</span>
-                    <span class="bfDropdownCaret" aria-hidden="true"></span>
-                  </button>
-                  <div id="bfWeightDisplayMenu" class="bfDropdownMenu" role="listbox" aria-label="Weight display mode">
-                    <button class="bfDropdownOption" type="button" role="option" data-value="actual" aria-selected="true">Index</button>
-                    <button class="bfDropdownOption" type="button" role="option" data-value="effective" aria-selected="false">Effective %</button>
+                <label class="bfToolCheck"><input id="bfShowWeightsInput" type="checkbox" checked> Show Weights</label>
+                <div class="bfToolFormatControl">
+                  <label class="bfToolControlLabel" for="bfWeightDisplayButton">Format : </label>
+                  <div id="bfWeightDisplayDropdown" class="bfWeightDisplayDropdown">
+                    <button id="bfWeightDisplayButton" class="bfDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
+                      <span id="bfWeightDisplayLabel">Index</span>
+                      <span class="bfDropdownCaret" aria-hidden="true"></span>
+                    </button>
+                    <div id="bfWeightDisplayMenu" class="bfDropdownMenu" role="listbox" aria-label="Weight display mode">
+                      <button class="bfDropdownOption" type="button" role="option" data-value="actual" aria-selected="true">Index</button>
+                      <button class="bfDropdownOption" type="button" role="option" data-value="effective" aria-selected="false">Effective %</button>
+                    </div>
                   </div>
                 </div>
+              </div>
+            </div>
+            <div class="bfToolGroup">
+              <span class="bfToolTitle">Statistics</span>
+              <div class="bfToolControls">
                 <div class="bfToolDecimalControl">
-                  <label class="bfToolControlLabel" for="bfMethodDecimalsInput">Decimals</label>
+                  <label class="bfToolControlLabel" for="bfMethodDecimalsInput">Decimal : </label>
                   <span class="bfNumberStepper">
                     <input id="bfMethodDecimalsInput" class="bfStepperInput" type="number" min="0" max="8" step="1" value="1">
                     <span class="bfStepperButtons">
@@ -1170,7 +1150,7 @@
             </div>
           </div>
           <div class="bfTableWrap">
-            <table class="bfMethodTable" aria-label="Bornhuetter Ferguson method table" tabindex="0">
+            <table class="bfMethodTable arSpreadsheetTable" aria-label="Bornhuetter Ferguson method table" tabindex="0">
               <colgroup id="bfMethodCols"></colgroup>
               <thead id="bfMethodHead"></thead>
               <tbody id="bfMethodGrid"></tbody>
@@ -1229,18 +1209,6 @@
     </footer>
   </main>
 
-  <div class="bfCloseModalBackdrop" id="bfCloseModalBackdrop" aria-hidden="true">
-    <div class="bfCloseModal" role="dialog" aria-modal="true" aria-labelledby="bfCloseTitle">
-      <h2 id="bfCloseTitle">Unsaved changes</h2>
-      <p>Save this Bornhuetter Ferguson object before closing?</p>
-      <div class="bfCloseModalActions">
-        <button class="bfButton primary" id="bfCloseSaveBtn" type="button">Save</button>
-        <button class="bfButton" id="bfCloseDiscardBtn" type="button">Discard</button>
-        <button class="bfButton" id="bfCloseCancelBtn" type="button">Cancel</button>
-      </div>
-    </div>
-  </div>
-
   <div class="bfCellContextMenu" id="bfCellContextMenu" role="menu" aria-hidden="true">
     <button type="button" role="menuitem" data-bf-cell-action="copy">Copy values</button>
     <button type="button" role="menuitem" data-bf-cell-action="paste">Paste values</button>
@@ -1251,6 +1219,6 @@
     <button type="button" role="menuitem" data-bf-prior-action="delete">Delete</button>
   </div>
 
-  <script type="module" src="/ui/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260709m"></script>
+  <script type="module" src="/ui/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260712d"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Result Selection</title>
-  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260710m"/>
+  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260711a"/>
   <style>
     :root {
       --rs-font: Arial, "Segoe UI", Tahoma, sans-serif;
@@ -467,7 +467,7 @@
       min-width: 158px;
       padding: 10px 9px 6px;
       border: 1px solid #dbe3ee;
-      border-radius: 6px;
+      border-radius: 0px;
       background: #fff;
       box-sizing: border-box;
     }
@@ -503,7 +503,7 @@
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      column-gap: 18px;
+      column-gap: 23px;
       row-gap: 6px;
       min-height: 28px;
     }
@@ -515,6 +515,7 @@
       color: #1f2937;
       white-space: nowrap;
     }
+    .rsToolFormatControl,
     .rsToolDecimalControl {
       display: inline-flex;
       align-items: center;
@@ -706,7 +707,6 @@
     .rsWeightDisplayDropdown {
       width: 106px;
       min-width: 106px;
-      margin-inline-start: -10px;
     }
     .rsOriginLengthDropdown {
       width: 70px;
@@ -1247,95 +1247,6 @@
       border: 1px solid #d8dde3;
       background: #f8fafc;
     }
-    .rsConfirmOverlay {
-      position: fixed;
-      inset: 0;
-      z-index: 11000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(15, 23, 42, 0.18);
-    }
-    .rsConfirmOverlay[hidden] {
-      display: none;
-    }
-    .rsConfirmBox {
-      position: relative;
-      width: min(360px, calc(100vw - 40px));
-      border: 1px solid #c9d1dc;
-      border-radius: 8px;
-      background: #fff;
-      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
-      padding: 16px 18px 14px;
-      box-sizing: border-box;
-      color: #111827;
-      cursor: move;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    .rsConfirmBox.is-dragging {
-      box-shadow: 0 20px 46px rgba(15, 23, 42, 0.28);
-    }
-    .rsConfirmClose {
-      position: absolute;
-      top: 7px;
-      right: 8px;
-      width: 24px;
-      height: 24px;
-      border: none;
-      border-radius: var(--tabbed-page-control-radius, 4px);
-      background: transparent;
-      color: #64748b;
-      font-size: 15px;
-      line-height: 24px;
-      cursor: pointer;
-    }
-    .rsConfirmClose:hover {
-      background: #f1f5f9;
-      color: #0f172a;
-    }
-    .rsConfirmTitle {
-      padding-right: 26px;
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.3;
-    }
-    .rsConfirmMessage {
-      margin-top: 8px;
-      color: #475569;
-      font-size: 13px;
-      line-height: 1.4;
-    }
-    .rsConfirmActions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      margin-top: 16px;
-    }
-    .rsConfirmActions button {
-      min-width: 72px;
-      height: 28px;
-      border-radius: var(--tabbed-page-control-radius, 4px);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .rsConfirmPrimary {
-      border: 1px solid #2563eb;
-      background: #2563eb;
-      color: #fff;
-    }
-    .rsConfirmPrimary:hover:not(:disabled) {
-      background: #1d4ed8;
-    }
-    .rsConfirmSecondary {
-      border: 1px solid rgba(21, 34, 54, 0.18);
-      background: #fff;
-      color: #1f2937;
-    }
-    .rsConfirmSecondary:hover:not(:disabled) {
-      background: #f4f7fb;
-    }
   </style>
 </head>
 <body>
@@ -1407,17 +1318,20 @@
     <section id="rsMethodPage" class="rsPage">
       <div class="rsMethodToolbar">
         <div class="rsToolGroup rsToolGroupWide">
-          <span class="rsToolTitle">Formatting</span>
+          <span class="rsToolTitle">Weights</span>
           <div class="rsToolControls">
-            <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights as : </label>
-            <div id="rsWeightDisplayDropdown" class="rsDropdown rsWeightDisplayDropdown">
-              <button id="rsWeightDisplayButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
-                <span id="rsWeightDisplayLabel" class="rsDropdownLabel">Index</span>
-                <span class="rsDropdownCaret" aria-hidden="true"></span>
-              </button>
-              <div id="rsWeightDisplayMenu" class="rsDropdownMenu" role="listbox" aria-label="Weight display mode">
-                <button class="rsDropdownOption" type="button" role="option" data-value="actual" aria-selected="true">Index</button>
-                <button class="rsDropdownOption" type="button" role="option" data-value="effective" aria-selected="false">Effective %</button>
+            <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights</label>
+            <div class="rsToolFormatControl">
+              <label class="rsToolControlLabel" for="rsWeightDisplayButton">Format : </label>
+              <div id="rsWeightDisplayDropdown" class="rsDropdown rsWeightDisplayDropdown">
+                <button id="rsWeightDisplayButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
+                  <span id="rsWeightDisplayLabel" class="rsDropdownLabel">Index</span>
+                  <span class="rsDropdownCaret" aria-hidden="true"></span>
+                </button>
+                <div id="rsWeightDisplayMenu" class="rsDropdownMenu" role="listbox" aria-label="Weight display mode">
+                  <button class="rsDropdownOption" type="button" role="option" data-value="actual" aria-selected="true">Index</button>
+                  <button class="rsDropdownOption" type="button" role="option" data-value="effective" aria-selected="false">Effective %</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1473,7 +1387,7 @@
       <div class="rsNotesWrap">
         <div class="notesFormatToolbar" id="rsNotesFormatToolbar" data-notes-format-toolbar>
           <label class="notesFormatGroup" title="Font family">
-            <span class="notesFormatLabel">Font</span>
+            <span class="notesFormatLabel">Font : </span>
             <select class="notesFormatSelect notesFormatFontFamily" data-notes-style="font-family">
               <option value="">Default</option>
               <option value="'Segoe UI', Tahoma, sans-serif">Segoe UI</option>
@@ -1511,23 +1425,10 @@
   <div id="rsRatioBasisContextMenu" class="rsCellContextMenu rsRatioBasisContextMenu" role="menu" aria-hidden="true">
     <button type="button" role="menuitem" data-rs-ratio-basis-action="delete">Delete</button>
   </div>
-  <div id="rsCloseConfirmOverlay" class="rsConfirmOverlay" hidden>
-    <div id="rsCloseConfirmBox" class="rsConfirmBox" role="dialog" aria-modal="true" aria-labelledby="rsCloseConfirmTitle">
-      <button id="rsCloseConfirmClose" class="rsConfirmClose" type="button" aria-label="Close">x</button>
-      <div id="rsCloseConfirmTitle" class="rsConfirmTitle">Cancel and close?</div>
-      <div id="rsCloseConfirmMessage" class="rsConfirmMessage">
-        Result Selection has unsaved changes. Close it anyway?
-      </div>
-      <div class="rsConfirmActions">
-        <button id="rsCloseConfirmOk" class="rsConfirmPrimary" type="button">Yes</button>
-        <button id="rsCloseConfirmCancel" class="rsConfirmSecondary" type="button">Cancel</button>
-      </div>
-    </div>
-  </div>
-  <script src="/ui/result_selection/result_selection_ui.js?v=20260710c"></script>
+  <script src="/ui/result_selection/result_selection_ui.js?v=20260711a"></script>
   <script src="/ui/result_selection/result_selection_data.js?v=20260710a"></script>
   <script src="/ui/result_selection/result_selection_grids.js?v=20260704a"></script>
   <script src="/ui/result_selection/result_selection_model.js?v=20260704a"></script>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260710b"></script>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260711a"></script>
 </body>
 </html>

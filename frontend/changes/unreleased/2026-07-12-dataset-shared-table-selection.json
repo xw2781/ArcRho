@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Aligned the Dataset grid's selection colors, range controls, clipboard actions, and context menu with the shared spreadsheet-style table pattern."
+}

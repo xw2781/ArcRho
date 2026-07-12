@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection now opens normally after adopting the shared unsaved-changes dialog."
+}

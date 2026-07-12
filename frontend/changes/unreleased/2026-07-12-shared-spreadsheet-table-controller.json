@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ui design",
+  "audience": "internal",
+  "summary": "Centralized Dataset and BF spreadsheet selection state, highlighting, navigation, context selection, and clipboard behavior in a shared controller."
+}

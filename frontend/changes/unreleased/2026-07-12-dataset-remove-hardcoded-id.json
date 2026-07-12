@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset and Workflow pages no longer fall back to a hardcoded sample dataset when no dataset has been selected."
+}

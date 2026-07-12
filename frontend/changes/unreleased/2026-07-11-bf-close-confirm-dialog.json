@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset, DFM, Result Selection, and Bornhuetter Ferguson pages now share one page-local unsaved-changes dialog.",
+  "details": [
+    "The dialog stays inside its related page instead of opening as a shell-level floating window.",
+    "While the dialog is open, focus is trapped and the rest of that page cannot be interacted with."
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ui design",
+  "audience": "user",
+  "summary": "Updated shared spreadsheet selections to use a translucent blue fill with black text and no default outline."
+}

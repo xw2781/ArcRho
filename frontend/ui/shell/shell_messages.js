@@ -1,7 +1,6 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
 import { normalizeProjectInstanceState, normalizeShellActivityEntry } from "/ui/shell/shell_activity_history.js";
-import { showAutomationMessageBox } from "/ui/shell/ui_automation.js?v=20260702b";
 
 let shellMessagesWired = false;
 
@@ -20,31 +19,6 @@ function tryConsumeActiveFrameCloseShortcut() {
   } catch {
     return false;
   }
-}
-
-async function handleDatasetCloseConfirmRequest(source, msg) {
-  const requestId = String(msg?.requestId || "");
-  if (!source || !requestId) return;
-  try {
-    source.postMessage({ type: "arcrho:dataset-close-confirm-ack", requestId }, "*");
-  } catch {}
-  const isClose = String(msg?.reason || "close") === "close";
-  const result = await showAutomationMessageBox({
-    title: isClose ? "Cancel and close?" : "Cancel changes?",
-    message: isClose
-      ? "Unsaved dataset changes will be discarded and the window will close."
-      : "Unsaved dataset changes will be discarded.",
-    kind: "warning",
-    buttons: ["Yes", "Cancel"],
-    presentation: "floating",
-  });
-  try {
-    source.postMessage({
-      type: "arcrho:dataset-close-confirm-result",
-      requestId,
-      discard: result?.button === "Yes",
-    }, "*");
-  } catch {}
 }
 
 function getDfmContextTargetTab(contextTabId = "") {
@@ -141,10 +115,6 @@ export function initShellMessages() {
     }
     if (msg.type === "arcrho:task-designer-context-request") {
       handleTaskDesignerContextRequest(e.source, msg);
-      return;
-    }
-    if (msg.type === "arcrho:dataset-close-confirm-request") {
-      void handleDatasetCloseConfirmRequest(e.source, msg);
       return;
     }
     if (msg.type === "arcrho:dfm-edit-state") return shell.setDfmEditEnabled?.(!!msg.enabled);

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Kept selected Dataset row and column labels visibly highlighted while hovered."
+}

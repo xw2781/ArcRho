@@ -336,67 +336,6 @@ function forwardOpenPathRequestToShell(message, sourceWindow) {
   return true;
 }
 
-function forwardDatasetCloseConfirmRequestToShell(message, sourceWindow) {
-  const source = sourceWindow || null;
-  const sourceFrame = findWindowByMessageSource(source);
-  if (!sourceFrame) return false;
-
-  const requestId = toText(message?.requestId);
-  if (!requestId) return true;
-
-  let acknowledged = false;
-  let done = false;
-  let noAckTimer = null;
-  const cleanup = () => {
-    if (noAckTimer != null) window.clearTimeout(noAckTimer);
-    window.removeEventListener("message", onMessage);
-  };
-  const finish = (payload) => {
-    if (done) return;
-    done = true;
-    cleanup();
-    try {
-      source?.postMessage({
-        type: "arcrho:dataset-close-confirm-result",
-        requestId,
-        discard: !!payload?.discard,
-      }, "*");
-    } catch {}
-  };
-  const onMessage = (event) => {
-    if (event.source !== window.parent) return;
-    const msg = event.data || {};
-    if (toText(msg.requestId) !== requestId) return;
-    if (msg.type === "arcrho:dataset-close-confirm-ack") {
-      acknowledged = true;
-      if (noAckTimer != null) {
-        window.clearTimeout(noAckTimer);
-        noAckTimer = null;
-      }
-      try { source?.postMessage({ type: msg.type, requestId }, "*"); } catch {}
-      return;
-    }
-    if (msg.type === "arcrho:dataset-close-confirm-result") {
-      finish({ discard: !!msg.discard });
-    }
-  };
-
-  window.addEventListener("message", onMessage);
-  noAckTimer = window.setTimeout(() => {
-    if (!acknowledged) cleanup();
-  }, 250);
-  try {
-    window.parent?.postMessage({
-      type: "arcrho:dataset-close-confirm-request",
-      requestId,
-      reason: toText(message?.reason) || "close",
-    }, "*");
-  } catch {
-    cleanup();
-  }
-  return true;
-}
-
 async function revealSelectedReservingClassFolder() {
   const selectedPath = toText(state.selectedPath);
   if (!projectName || !selectedPath) {
@@ -1025,9 +964,6 @@ window.addEventListener("message", (event) => {
   }
   if (msg.type === "arcrho:open-path") {
     if (forwardOpenPathRequestToShell(msg, event.source)) return;
-  }
-  if (msg.type === "arcrho:dataset-close-confirm-request") {
-    if (forwardDatasetCloseConfirmRequestToShell(msg, event.source)) return;
   }
   if (msg.type === "arcrho:tab-activated") {
     notifyActiveDfmWindowState();

@@ -370,13 +370,21 @@ export function createDatasetRunController(deps) {
   async function loadDataset() {
     state.dirty.clear();
 
+    const datasetId = String(config.DS_ID || "").trim();
+    if (!datasetId) {
+      logLine("Dataset load skipped: no dataset selected");
+      $("tableWrap").innerHTML = '<div class="small">Select a project, reserving class, and dataset to load data.</div>';
+      setStatus("No dataset selected");
+      return;
+    }
+
     const { project } = getTriInputs();
     if (project) {
       await ensureHeadersForProject(project);
       await ensureDevHeadersForProject(project);
     }
 
-    const { ok, status, data } = await getDataset(config.DS_ID, config.START_YEAR);
+    const { ok, status, data } = await getDataset(datasetId, config.START_YEAR);
 
     if (!ok) {
       logLine(`ERROR loading dataset: ${status}`);

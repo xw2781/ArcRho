@@ -139,8 +139,15 @@ function ensureCtxMenuWired() {
     const action = btn.dataset.action || "";
     if (action === "copy_value" && typeof window.__arcRhoCopyActiveGridSelection === "function") {
       await window.__arcRhoCopyActiveGridSelection();
+    } else if (gridEditConfig?.onContextAction) {
+      try {
+        await gridEditConfig.onContextAction(action);
+      } catch (error) {
+        console.error("Dataset grid context action failed", error);
+      }
     }
     hideCtxMenu();
+    claimDatasetFocus();
   });
 
   // Click anywhere else -> hide
@@ -161,6 +168,8 @@ function ensureCtxMenuWired() {
 function showCtxMenu(anchorEl, clientX, clientY) {
   const menu = document.getElementById("ctxMenu");
   if (!menu) return;
+  const pasteButton = menu.querySelector('[data-action="paste"]');
+  if (pasteButton) pasteButton.hidden = !gridEditConfig?.canPasteSelection?.();
   openContextMenu(menu, {
     anchorEl,
     clientX,
@@ -363,6 +372,7 @@ export function renderTable() {
   }
 
   const tbl = document.createElement("table");
+  tbl.classList.add("arSpreadsheetTable");
   const transposed = isTransposedView();
   const showTotalRow = !shouldHideTotalRowByFormula();
   const showRightSideTotal = showTotalRow && transposed;
@@ -422,6 +432,7 @@ export function renderTable() {
       td.classList.add("cell");
       td.dataset.r = String(r);
       td.dataset.c = String(c);
+      td.setAttribute("aria-selected", "false");
 
       td.addEventListener("click", (event) => {
         if (event.target?.closest?.(".dsCellInput")) return;
@@ -430,14 +441,7 @@ export function renderTable() {
 
       td.addEventListener("contextmenu", (e) => {
         e.preventDefault();
-
-        // Optional: right click also selects the cell
-        state.activeCell = { r, c };
-        renderActiveCellUI();
-        if (typeof window.__arcRhoDatasetCopyActiveGridSelection === "function") {
-          window.__arcRhoCopyActiveGridSelection = window.__arcRhoDatasetCopyActiveGridSelection;
-        }
-
+        gridEditConfig?.onCellContextMenu?.(r, c);
         showCtxMenu(td, e.clientX, e.clientY);
       });
 
@@ -517,32 +521,8 @@ export function renderTable() {
 
   wrap.appendChild(tbl);
 
-  renderActiveCellUI();
+  if (gridEditConfig?.onTableRendered) gridEditConfig.onTableRendered();
   renderChart();
-}
-
-export function renderActiveCellUI() {
-  const model = getDisplayDatasetModel();
-  if (!model) return;
-
-  // clear old active class
-  document.querySelectorAll("td.active").forEach((el) => el.classList.remove("active"));
-  document.querySelectorAll("th.activeRow").forEach((el) => el.classList.remove("activeRow"));
-  document.querySelectorAll("th.activeCol").forEach((el) => el.classList.remove("activeCol"));
-
-  if (!state.activeCell) return;
-
-  const { r, c } = state.activeCell;
-
-  // highlight selected cell
-  const td = document.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
-  if (td) td.classList.add("active");
-
-  const rowTh = document.querySelector(`th.rowhdr[data-r="${r}"]`);
-  if (rowTh) rowTh.classList.add("activeRow");
-
-  const colTh = document.querySelector(`th.colhdr[data-c="${c}"]`);
-  if (colTh) colTh.classList.add("activeCol");
 }
 
 export function renderChart() {

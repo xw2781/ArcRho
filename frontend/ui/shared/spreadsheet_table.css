@@ -1,0 +1,75 @@
+/* Shared visual foundation for spreadsheet-style Dataset and method tables. */
+:root {
+  --ar-spreadsheet-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  --ar-spreadsheet-font-size: 14px;
+  --ar-spreadsheet-grid-border: #f3f1f1;
+  --ar-spreadsheet-header-fill: #d9dde2;
+  --ar-spreadsheet-label-fill: #d9dde2;
+  --ar-spreadsheet-label-text: #111827;
+  --ar-spreadsheet-cell-height: 20px;
+  --ar-spreadsheet-cell-width: 100px;
+  --ar-spreadsheet-cell-padding-x: 6px;
+  --ar-spreadsheet-selection-fill: #6197f166;
+  --ar-spreadsheet-selection-text: #000000;
+  --ar-spreadsheet-selected-label-fill: #a6a6a6;
+  --ar-spreadsheet-anchor-color: #0f172a;
+}
+
+.arSpreadsheetTable {
+  width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  color: #1f2937;
+  font-family: var(--ar-spreadsheet-font);
+  font-size: var(--ar-spreadsheet-font-size);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.arSpreadsheetTable th,
+.arSpreadsheetTable td {
+  width: var(--ar-spreadsheet-cell-width);
+  min-width: var(--ar-spreadsheet-cell-width);
+  max-width: var(--ar-spreadsheet-cell-width);
+  height: var(--ar-spreadsheet-cell-height);
+  line-height: var(--ar-spreadsheet-cell-height);
+  padding: 0 var(--ar-spreadsheet-cell-padding-x);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  border-right: 1px solid var(--ar-spreadsheet-grid-border);
+  border-bottom: 1px solid var(--ar-spreadsheet-grid-border);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.arSpreadsheetTable thead th {
+  background: var(--ar-spreadsheet-header-fill);
+  color: var(--ar-spreadsheet-label-text);
+  font-weight: 400;
+}
+
+.arSpreadsheetTable tbody th,
+.arSpreadsheetTable tbody td:first-child {
+  background: var(--ar-spreadsheet-label-fill);
+  color: var(--ar-spreadsheet-label-text);
+  font-weight: 400;
+}
+
+.arSpreadsheetTable td[aria-selected="true"] {
+  background: var(--ar-spreadsheet-selection-fill);
+  color: var(--ar-spreadsheet-selection-text);
+  outline: none;
+}
+
+.arSpreadsheetTable .arSpreadsheetSelectedLabel {
+  background: var(--ar-spreadsheet-selected-label-fill);
+  color: var(--ar-spreadsheet-label-text);
+  font-weight: 400;
+}
+
+.arSpreadsheetTable td.arSpreadsheetSelectionAnchor {
+  outline: 1px dashed var(--ar-spreadsheet-anchor-color);
+  outline-offset: -2px;
+}

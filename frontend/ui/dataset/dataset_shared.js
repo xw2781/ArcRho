@@ -328,27 +328,13 @@ export function injectDatasetMarkup(container) {
     <pre id="log"></pre>
   </div>
 
-  <div id="datasetCancelConfirmOverlay" class="datasetCancelConfirmOverlay" hidden>
-    <div class="datasetCancelConfirmBox" role="dialog" aria-modal="true" aria-labelledby="datasetCancelConfirmTitle">
-      <button id="datasetCancelConfirmClose" class="datasetCancelConfirmClose" type="button" aria-label="Close">x</button>
-      <div id="datasetCancelConfirmTitle" class="datasetCancelConfirmTitle">Cancel changes?</div>
-      <div id="datasetCancelConfirmMessage" class="datasetCancelConfirmMessage">
-        Unsaved dataset changes will be discarded.
-      </div>
-      <div class="datasetCancelConfirmActions">
-        <button id="datasetCancelConfirmYes" class="datasetPrimaryBtn" type="button">Yes</button>
-        <button id="datasetCancelConfirmNo" class="datasetSecondaryBtn" type="button">Cancel</button>
-      </div>
-    </div>
-  </div>
-
   <div id="datasetRecalcOverlay" class="datasetRecalcOverlay" hidden>
     <div class="datasetRecalcBox" role="dialog" aria-modal="true" aria-labelledby="datasetRecalcTitle">
-      <button id="datasetRecalcClose" class="datasetCancelConfirmClose" type="button" aria-label="Close">x</button>
+      <button id="datasetRecalcClose" class="datasetRecalcClose" type="button" aria-label="Close">x</button>
       <div id="datasetRecalcTitle" class="datasetRecalcTitle">Calculated Dataset Refresh</div>
       <div id="datasetRecalcSummary" class="datasetRecalcSummary"></div>
       <div id="datasetRecalcList" class="datasetRecalcList" aria-live="polite"></div>
-      <div class="datasetCancelConfirmActions">
+      <div class="datasetRecalcActions">
         <button id="datasetRecalcOk" class="datasetPrimaryBtn is-clean" type="button">OK</button>
       </div>
     </div>
@@ -356,7 +342,9 @@ export function injectDatasetMarkup(container) {
 
   <div id="ctxMenu" class="ctx-menu" style="display:none;">
     <div class="ctx-menu-inner">
-      <button class="ctx-item" data-action="copy_value">Copy value</button>
+      <button class="ctx-item" data-action="copy_value">Copy values</button>
+      <button class="ctx-item" data-action="paste">Paste</button>
+      <button class="ctx-item" data-action="remove_highlights">Remove Highlights</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" data-action="export_data">Export data</button>
     </div>

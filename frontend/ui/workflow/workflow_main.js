@@ -1201,7 +1201,6 @@ function renderPickerCards(step) {
       "Load a triangle or vector to this workspace.",
       () => {
         step.mode = "dataset";
-        step.datasetId = step.datasetId || "paid_demo";
         renderWorkspaceForStep(step);
         saveState();
       }
@@ -1276,7 +1275,7 @@ function renderEmbeddedDataset(step) {
     iframe = document.createElement("iframe");
     iframe.className = "embedFrame";
     const params = new URLSearchParams();
-    params.set("ds", step.datasetId || "paid_demo");
+    if (step.datasetId) params.set("ds", step.datasetId);
     params.set("inst", step.id || "step");
     params.set("wf", instanceId);
     iframe.src = `/ui/dataset/dataset_viewer.html?${params.toString()}`;

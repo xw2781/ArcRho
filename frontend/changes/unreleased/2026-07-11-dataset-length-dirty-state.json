@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset length previews no longer save settings or clear the unsaved-change state before Save is clicked."
+}

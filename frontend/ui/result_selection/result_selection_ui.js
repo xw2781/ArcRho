@@ -583,79 +583,10 @@
         return getDetails().name || "Result Selection";
       }
 
-      function resolveCloseConfirm(value) {
-        if (els.closeConfirmOverlay) els.closeConfirmOverlay.hidden = true;
-        const resolve = closeConfirmResolve;
-        closeConfirmResolve = null;
-        if (resolve) resolve(!!value);
-      }
-
-      function resetCloseConfirmPosition() {
-        const box = els.closeConfirmBox;
-        if (!box) return;
-        box.classList.remove("is-dragging");
-        box.style.position = "";
-        box.style.left = "";
-        box.style.top = "";
-        box.style.width = "";
-      }
-
-      function placeCloseConfirmBox(left, top) {
-        const box = els.closeConfirmBox;
-        if (!box) return;
-        const rect = box.getBoundingClientRect();
-        const pad = 8;
-        const maxLeft = Math.max(pad, window.innerWidth - rect.width - pad);
-        const maxTop = Math.max(pad, window.innerHeight - rect.height - pad);
-        box.style.left = `${Math.round(Math.max(pad, Math.min(left, maxLeft)))}px`;
-        box.style.top = `${Math.round(Math.max(pad, Math.min(top, maxTop)))}px`;
-      }
-
-      function startCloseConfirmDrag(event) {
-        if (event.button !== 0) return;
-        if (event.target?.closest?.("button,input,select,textarea,a,[contenteditable='true']")) return;
-        const box = els.closeConfirmBox;
-        if (!box) return;
-        event.preventDefault();
-        const rect = box.getBoundingClientRect();
-        const offsetX = event.clientX - rect.left;
-        const offsetY = event.clientY - rect.top;
-        box.style.position = "fixed";
-        box.style.width = `${Math.round(rect.width)}px`;
-        box.classList.add("is-dragging");
-        placeCloseConfirmBox(rect.left, rect.top);
-        const onMove = (moveEvent) => {
-          moveEvent.preventDefault();
-          placeCloseConfirmBox(moveEvent.clientX - offsetX, moveEvent.clientY - offsetY);
-        };
-        const onUp = () => {
-          box.classList.remove("is-dragging");
-          document.removeEventListener("mousemove", onMove, true);
-          document.removeEventListener("mouseup", onUp, true);
-        };
-        document.addEventListener("mousemove", onMove, true);
-        document.addEventListener("mouseup", onUp, true);
-      }
-
       function showCloseConfirm(reason = "close") {
-        if (closeConfirmResolve) return Promise.resolve(false);
-        if (!els.closeConfirmOverlay || !els.closeConfirmOk) return Promise.resolve(false);
-        const displayName = getResultSelectionDisplayName();
-        const isClose = reason === "close";
-        if (els.closeConfirmTitle) els.closeConfirmTitle.textContent = isClose ? "Cancel and close?" : "Cancel changes?";
-        if (els.closeConfirmMessage) {
-          els.closeConfirmMessage.textContent = isClose
-            ? `Unsaved changes to ${displayName} will be discarded and the window will close.`
-            : `Unsaved changes to ${displayName} will be discarded.`;
-        }
         closeCellContextMenu();
         closeSourceContextMenu();
-        resetCloseConfirmPosition();
-        els.closeConfirmOverlay.hidden = false;
-        requestAnimationFrame(() => els.closeConfirmOk?.focus());
-        return new Promise((resolve) => {
-          closeConfirmResolve = resolve;
-        });
+        return closeConfirm.confirm({ reason });
       }
 
       function requestConfirmedClose() {
@@ -1084,19 +1015,6 @@
             postStatus(`Result Selection restore failed: ${err?.message || err}`, "error");
           }
         });
-        els.closeConfirmOk?.addEventListener("click", () => resolveCloseConfirm(true));
-        els.closeConfirmCancel?.addEventListener("click", () => resolveCloseConfirm(false));
-        els.closeConfirmClose?.addEventListener("click", () => resolveCloseConfirm(false));
-        els.closeConfirmBox?.addEventListener("mousedown", startCloseConfirmDrag);
-        els.closeConfirmOverlay?.addEventListener("mousedown", (event) => {
-          if (event.target === event.currentTarget) resolveCloseConfirm(false);
-        });
-        els.closeConfirmOverlay?.addEventListener("keydown", (event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            resolveCloseConfirm(false);
-          }
-        });
         window.addEventListener("message", (event) => {
           const msg = event.data || {};
           if (msg.type === "arcrho:dataset-save" || msg.type === "arcrho:result-selection-save") {
@@ -1114,6 +1032,7 @@
         });
         window.__arcrho_request_close = () => {
           if (!isDirty) return false;
+          if (closeConfirm.isOpen) return true;
           void (async () => {
             const close = await showCloseConfirm("close");
             if (close) requestConfirmedClose();
@@ -1223,10 +1142,6 @@
         getActiveRatioBasisName,
         getDetails,
         getResultSelectionDisplayName,
-        resolveCloseConfirm,
-        resetCloseConfirmPosition,
-        placeCloseConfirmBox,
-        startCloseConfirmDrag,
         showCloseConfirm,
         requestConfirmedClose,
         normalizeRsTab,

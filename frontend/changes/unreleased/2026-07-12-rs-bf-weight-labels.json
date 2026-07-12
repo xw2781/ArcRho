@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection and bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Standardized RS and BF method controls, separated BF statistics, and prevented RS weight controls from overlapping."
+}
