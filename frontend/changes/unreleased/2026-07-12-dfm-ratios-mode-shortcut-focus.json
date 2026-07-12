@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Ratios tables now receive browser focus when clicked so the S and E mode shortcuts work reliably."
+}

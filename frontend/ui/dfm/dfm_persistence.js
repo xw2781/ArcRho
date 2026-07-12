@@ -18,7 +18,6 @@ import {
   getRatioSaveSuggestedName,
   getResultsCsvSuggestedName,
   buildSummaryRows,
-  markDfmDirty,
   markDfmClean,
   runDfmProgrammatic,
   isRatiosTabVisible,
@@ -50,6 +49,7 @@ import {
   applyAverageSelectionFromSaved,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
+  refreshAllExcelLinks,
 } from "/ui/dfm/dfm_ratios_tab.js";
 import {
   renderResultsTable,
@@ -88,6 +88,7 @@ let ratioFileWatchDirtyWarnToken = "";
 let lastCleanDfmMethodPayload = null;
 let normalDfmMethodSavePath = "";
 let normalDfmMethodSaveName = "";
+let excelLinksOpenRefreshCompleted = false;
 const DFM_INSTANCE_PRESENCE_EVENT = "arcrho:dfm-instance-presence";
 const DFM_LOCAL_LOOKUP_DEBUG_STATUS = true; // Temporary debug aid.
 const DFM_ANALYSIS_DECIMALS = 4;
@@ -1062,6 +1063,14 @@ export async function loadRatioSelectionIfExists(reason) {
     rememberDfmMethodFileRevision(path, result.revision);
     rememberNormalDfmMethodSavePath(path);
     postDfmStatus("Ready");
+    if (!excelLinksOpenRefreshCompleted) {
+      excelLinksOpenRefreshCompleted = true;
+      try {
+        await refreshAllExcelLinks({ source: "dfm-open", silentErrors: true });
+      } catch (_error) {
+        postDfmStatus("Excel linked-value refresh failed.", { tone: "warn" });
+      }
+    }
   } else if (reason) {
     postDfmStatus("Error: Ratio file found but could not be applied.");
   }

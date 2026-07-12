@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Excel-linked ranges keep numeric table values while every affected cell can edit the shared formula through the formula bar.",
+  "details": [
+    "With Show Data enabled, formula-array borders and active glow remain connected across the interleaved blank spacer cells."
+  ]
+}

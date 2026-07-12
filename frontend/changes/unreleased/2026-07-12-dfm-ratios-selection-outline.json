@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Ratios Select mode now shows one continuous Excel-green range highlight and clears it with Escape or when switching to Edit mode."
+}

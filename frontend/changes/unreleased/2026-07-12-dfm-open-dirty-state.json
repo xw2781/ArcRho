@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Opening a saved DFM method now leaves the tab clean when its refreshed Excel-linked values are unchanged.",
+  "details": [
+    "The embedded Dataset runtime now waits for DFM inputs instead of requesting a stale remembered dataset during startup."
+  ]
+}

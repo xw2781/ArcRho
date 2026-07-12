@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Ratios tables now show a Windows-style Handwriting pen cursor over every table cell."
+}

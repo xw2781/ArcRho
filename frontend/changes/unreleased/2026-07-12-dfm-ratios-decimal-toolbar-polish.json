@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Refined the Ratios Decimal Places spinner to match the compact DFM toolbar controls.",
+  "details": [
+    "The stepper now reuses the exact Dataset Data-tab decimal control classes and shared styling."
+  ]
+}

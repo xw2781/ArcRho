@@ -923,9 +923,9 @@ export function renderResultsTable() {
   table.appendChild(tbody);
   wrap.appendChild(table);
   wireResultsCopyMenu();
-  const selection = wireSelectableTable({
+  const tableHighlight = wireSelectableTable({
     container: wrap,
-    selectedClass: "dfmTableSel",
+    selectedClass: "dfmTableHighlight",
     activeClass: "dfmTableActive",
     onContextMenu: (event, cell, api) => {
       event.preventDefault();
@@ -941,5 +941,5 @@ export function renderResultsTable() {
       });
     },
   });
-  if (selection) window.__arcRhoCopyActiveGridSelection = selection.copySelection;
+  if (tableHighlight) window.__arcRhoCopyActiveGridSelection = tableHighlight.copySelection;
 }

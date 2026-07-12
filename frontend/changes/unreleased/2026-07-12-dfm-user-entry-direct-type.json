@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM User Entry cells now accept direct typed numeric entry from the active highlighted cell in both Select and Edit modes."
+}

@@ -11,6 +11,7 @@ import {
   updateTabbedPageSaveControls,
 } from "/ui/shared/tabbed_page.js";
 import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
+import { createPageCloseConfirm } from "/ui/shared/page_close_confirm.js";
 import { setStorageInstance, loadNaBorders } from "/ui/dfm/dfm_storage.js";
 import {
   state as dfmState,
@@ -60,7 +61,7 @@ import {
   resolveCurrentDfmMethodSavePath,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
-} from "/ui/dfm/dfm_persistence.js?v=20260702a";
+} from "/ui/dfm/dfm_persistence.js?v=20260712c";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
 import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260703a";
 import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260616a";
@@ -82,7 +83,7 @@ const DFM_TAB_DEFS = Object.freeze([
   { id: "notes", label: "Notes" },
 ]);
 let dfmSaveInFlight = false;
-let dfmCancelConfirmResolve = null;
+const dfmCloseConfirm = createPageCloseConfirm({ subject: "DFM" });
 let dependencyPreviewTimer = 0;
 
 function wireDfmScrollbarActivity(scrollHost) {
@@ -203,26 +204,6 @@ function updateDfmSaveUi() {
   });
 }
 
-function resolveDfmCancelConfirm(value) {
-  const overlay = document.getElementById("dfmCancelConfirmOverlay");
-  if (overlay) overlay.hidden = true;
-  const resolve = dfmCancelConfirmResolve;
-  dfmCancelConfirmResolve = null;
-  if (resolve) resolve(!!value);
-}
-
-function showDfmCancelConfirm() {
-  if (dfmCancelConfirmResolve) return Promise.resolve(false);
-  const overlay = document.getElementById("dfmCancelConfirmOverlay");
-  const yesBtn = document.getElementById("dfmCancelConfirmYes");
-  if (!overlay || !yesBtn) return Promise.resolve(false);
-  overlay.hidden = false;
-  requestAnimationFrame(() => yesBtn.focus());
-  return new Promise((resolve) => {
-    dfmCancelConfirmResolve = resolve;
-  });
-}
-
 function requestConfirmedDfmClose() {
   clearDfmDependencyPreview("close-discard");
   requestTabbedPageWindowClose({
@@ -295,8 +276,9 @@ function requestDfmCloseFromShell() {
     return true;
   }
   if (!getDfmIsDirty()) return false;
+  if (dfmCloseConfirm.isOpen) return true;
   void (async () => {
-    const discard = await showDfmCancelConfirm();
+    const discard = await dfmCloseConfirm.confirm({ reason: "close" });
     if (discard) requestConfirmedDfmClose();
   })();
   return true;
@@ -323,7 +305,7 @@ async function cancelCurrentDfmChangesFromBar() {
     requestConfirmedDfmClose();
     return;
   }
-  const discard = await showDfmCancelConfirm();
+  const discard = await dfmCloseConfirm.confirm({ reason: "close" });
   if (!discard) return;
   const result = await restoreCleanDfmMethodState();
   if (result?.ok) {
@@ -341,24 +323,6 @@ function wireDfmSaveControls() {
   });
   document.getElementById("dfmCancelBtn")?.addEventListener("click", () => {
     void cancelCurrentDfmChangesFromBar();
-  });
-  document.getElementById("dfmCancelConfirmYes")?.addEventListener("click", () => {
-    resolveDfmCancelConfirm(true);
-  });
-  document.getElementById("dfmCancelConfirmNo")?.addEventListener("click", () => {
-    resolveDfmCancelConfirm(false);
-  });
-  document.getElementById("dfmCancelConfirmClose")?.addEventListener("click", () => {
-    resolveDfmCancelConfirm(false);
-  });
-  document.getElementById("dfmCancelConfirmOverlay")?.addEventListener("click", (event) => {
-    if (event.target === event.currentTarget) resolveDfmCancelConfirm(false);
-  });
-  document.getElementById("dfmCancelConfirmOverlay")?.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      resolveDfmCancelConfirm(false);
-    }
   });
   window.addEventListener("arcrho:dfm-dirty-state", updateDfmSaveUi);
   window.addEventListener("arcrho:dfm-dirty-state", (event) => {
@@ -571,7 +535,7 @@ function wireDfmTabSwitchShortcuts(tabSystem) {
     if (event.defaultPrevented || !event.ctrlKey || event.altKey || event.metaKey) return;
     const key = String(event.key || "").toLowerCase();
     if (key !== "pageup" && key !== "pagedown") return;
-    if (event.target?.closest?.(".dfmCancelConfirmOverlay:not([hidden]), .dfmRpcOverlay, [aria-modal='true']")) return;
+    if (event.target?.closest?.(".dfmRpcOverlay, [aria-modal='true']")) return;
     const direction = key === "pagedown" ? 1 : -1;
     if (!switchDfmTab(direction)) return;
     event.preventDefault();

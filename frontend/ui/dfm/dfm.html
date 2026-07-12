@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Edit Dataset</title>
-  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260710m"/>
+  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260712b"/>
   <style>
     :root{
       --dfm-font: var(--app-font);
@@ -312,65 +312,6 @@
       cursor: default;
       opacity: 0.55;
     }
-    .dfmCancelConfirmOverlay {
-      position: fixed;
-      inset: 0;
-      z-index: 1200;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(15, 23, 42, 0.18);
-    }
-    .dfmCancelConfirmOverlay[hidden] {
-      display: none;
-    }
-    .dfmCancelConfirmBox {
-      position: relative;
-      width: min(360px, calc(100vw - 40px));
-      border: 1px solid #c9d1dc;
-      border-radius: 8px;
-      background: #fff;
-      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
-      padding: 16px 18px 14px;
-      box-sizing: border-box;
-      color: #111827;
-    }
-    .dfmCancelConfirmClose {
-      position: absolute;
-      top: 7px;
-      right: 8px;
-      width: 24px;
-      height: 24px;
-      border: none;
-      border-radius: 4px;
-      background: transparent;
-      color: #64748b;
-      font-size: 15px;
-      line-height: 24px;
-      cursor: pointer;
-    }
-    .dfmCancelConfirmClose:hover {
-      background: #f1f5f9;
-      color: #0f172a;
-    }
-    .dfmCancelConfirmTitle {
-      padding-right: 26px;
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.3;
-    }
-    .dfmCancelConfirmMessage {
-      margin-top: 8px;
-      color: #475569;
-      font-size: 13px;
-      line-height: 1.4;
-    }
-    .dfmCancelConfirmActions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      margin-top: 16px;
-    }
     #dfmNotesInput::placeholder { color: #8089a0; }
     #dfmNotesInput:focus {
       border-color: #8aa8ff;
@@ -590,11 +531,6 @@
       width: 100%;
       padding-right: 34px;
     }
-    #decimalPlaces {
-      width: 100%;
-      max-width: 100%;
-      text-align: left;
-    }
     .dfmSpinner {
       position: relative;
       display: inline-flex;
@@ -742,6 +678,89 @@
       flex-direction: column;
       min-height: 0;
     }
+    .dfmRatiosToolbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      min-height: 36px;
+      padding: 4px 8px 4px 0;
+      background: #f8fafc;
+      box-sizing: border-box;
+    }
+    .dfmRatiosModeGroup {
+      display: inline-flex;
+      align-items: center;
+      padding-left: 0;
+    }
+    .dfmRatiosDecimalControl {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #334155;
+      font: 12px Arial, sans-serif;
+      white-space: nowrap;
+    }
+    .dfmRatiosModeBtn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 28px;
+      min-width: 72px;
+      margin: 0;
+      padding: 0 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 0;
+      background: #fff;
+      color: #334155;
+      font: 12px Arial, sans-serif;
+      cursor: pointer;
+    }
+    .dfmRatiosModeBtn + .dfmRatiosModeBtn { margin-left: -1px; }
+    .dfmRatiosModeBtn:first-child {
+      border-radius: var(--tabbed-page-control-radius, 4px) 0 0 var(--tabbed-page-control-radius, 4px);
+    }
+    .dfmRatiosModeBtn:last-child {
+      border-radius: 0 var(--tabbed-page-control-radius, 4px) var(--tabbed-page-control-radius, 4px) 0;
+    }
+    .dfmRatiosModeBtn:hover { background: #f1f5f9; }
+    .dfmRatiosModeBtn.active {
+      z-index: 1;
+      border-color: #93b4f7;
+      background: #eaf2ff;
+      color: #1d4ed8;
+    }
+    .dfmRatiosModeBtn:focus-visible {
+      z-index: 2;
+      outline: 2px solid rgba(59, 130, 246, 0.35);
+      outline-offset: 1px;
+    }
+    .dfmRatiosModeIcon {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+    }
+    .dfmRatiosViewOption {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 28px;
+      padding: 0 4px;
+      color: #334155;
+      font: 12px Arial, sans-serif;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .dfmRatiosViewOption:hover { color: #1d4ed8; }
+    .dfmRatiosViewOption input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: #2b6df6;
+      cursor: pointer;
+    }
     #ratioWrapHost {
       --dfm-scrollbar-chrome: #f1f3f5;
       --dfm-scrollbar-button-hover: #e5e9ef;
@@ -876,6 +895,17 @@
       box-sizing: border-box;
       user-select: none;
       -webkit-user-select: none;
+      cursor: default;
+    }
+    #ratioWrap[data-interaction-mode="edit"] th,
+    #ratioWrap[data-interaction-mode="edit"] td {
+      cursor: url("/ui/dfm/dfm_handwriting_cursor.svg?v=20260712b") 2 2, default;
+    }
+    #ratioWrap[data-interaction-mode="select"] th {
+      cursor: default !important;
+    }
+    #ratioWrap[data-interaction-mode="select"] td {
+      cursor: pointer !important;
     }
     #ratioWrap thead th {
       text-align: left;
@@ -933,12 +963,35 @@
     #ratioWrap .dfmSummaryFormulaBar + table {
       border-top: 1px solid #ddd;
     }
-    #ratioWrap td.ratioCell { cursor: pointer; }
     #ratioWrap td.ratioCell.strike {
       color: #b000c2;
       text-decoration: line-through;
       text-decoration-color: #b000c2;
       text-decoration-thickness: 1px;
+    }
+    #ratioWrap th.ratioDataHeader,
+    #ratioWrap td.ratioDataCell,
+    #ratioWrap td.ratioDataSpacer {
+      width: 72px;
+      min-width: 72px;
+      max-width: 72px;
+    }
+    #ratioWrap th.ratioDataHeader {
+      color: #64748b;
+      text-align: center;
+    }
+    #ratioWrap td.ratioDataCell {
+      background: #fbfcfe;
+      color: #94a3b8;
+      font-style: italic;
+    }
+    #ratioWrap td.ratioDataSpacer { background: #fbfcfe; }
+    #ratioWrap[data-interaction-mode="select"] td.ratioDataCell.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] td.ratioDataCell.dfmTableActive,
+    #ratioWrap[data-interaction-mode="select"] td.ratioDataSpacer.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] td.ratioDataSpacer.dfmTableActive {
+      background: #fbfcfe;
+      outline: none;
     }
     #ratioWrap td.ratioColActive {
       background: rgba(245, 158, 11, 0.08);
@@ -948,8 +1001,8 @@
     #ratioWrap td.ratioSelectedCell {
       background: rgba(183, 227, 86, 0.374);
     }
-    #ratioWrap td.dfmTableSel,
-    #resultsWrap td.dfmTableSel {
+    #ratioWrap td.dfmTableHighlight,
+    #resultsWrap td.dfmTableHighlight {
       background: rgb(148, 188, 248);
       outline: none;
     }
@@ -958,39 +1011,87 @@
       background: rgb(144, 170, 228);
       outline: none;
     }
-    #ratioWrap td.ratioCell.dfmTableSel,
+    #ratioWrap td.ratioCell.dfmTableHighlight,
     #ratioWrap td.ratioCell.dfmTableActive {
       background: inherit;
       outline: none;
     }
-    #ratioWrap td.ratioCell.ratioColActive.dfmTableSel,
+    #ratioWrap td.ratioCell.ratioColActive.dfmTableHighlight,
     #ratioWrap td.ratioCell.ratioColActive.dfmTableActive {
       background: rgba(245, 158, 11, 0.08);
     }
-    #ratioWrap td.ratioCell.ratioSelectedCell.dfmTableSel,
+    #ratioWrap td.ratioCell.ratioSelectedCell.dfmTableHighlight,
     #ratioWrap td.ratioCell.ratioSelectedCell.dfmTableActive {
       background: rgba(183, 227, 86, 0.374);
     }
-    #ratioWrap td.summaryCell.dfmTableSel,
+    #ratioWrap td.summaryCell.dfmTableHighlight,
     #ratioWrap td.summaryCell.dfmTableActive {
       background: transparent;
       outline: 1px dashed #64748b;
       outline-offset: -2px;
     }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableActive {
+      outline: none;
+    }
+    #ratioWrap[data-interaction-mode="select"] table.ratioSelectedTable td.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] table.ratioSelectedTable td.dfmTableActive {
+      background: inherit;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.summaryCell.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] td.summaryCell.dfmTableActive {
+      outline: none;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlight {
+      --dfm-table-highlight-top: transparent;
+      --dfm-table-highlight-right: transparent;
+      --dfm-table-highlight-bottom: transparent;
+      --dfm-table-highlight-left: transparent;
+      position: relative;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlight::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      background:
+        linear-gradient(var(--dfm-table-highlight-top), var(--dfm-table-highlight-top)) top left / 100% 2px no-repeat,
+        linear-gradient(var(--dfm-table-highlight-right), var(--dfm-table-highlight-right)) top right / 2px 100% no-repeat,
+        linear-gradient(var(--dfm-table-highlight-bottom), var(--dfm-table-highlight-bottom)) bottom left / 100% 2px no-repeat,
+        linear-gradient(var(--dfm-table-highlight-left), var(--dfm-table-highlight-left)) top left / 2px 100% no-repeat;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeTop {
+      --dfm-table-highlight-top: #107c41;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeRight {
+      --dfm-table-highlight-right: #107c41;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeBottom {
+      --dfm-table-highlight-bottom: #107c41;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeLeft {
+      --dfm-table-highlight-left: #107c41;
+    }
+    #ratioWrap[data-interaction-mode="select"] th.dfmTableHighlightHeader {
+      color: #111827;
+      font-weight: 700;
+    }
     #ratioWrap td.summaryCell.ratioSelectedCell,
-    #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableSel,
+    #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableHighlight,
     #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableActive {
       background: rgba(183, 227, 86, 0.374);
     }
     #ratioWrap td.summaryCell.summaryFormulaReferencedCell,
     #ratioWrap td.summaryCell.summaryFormulaReferencedCell.ratioSelectedCell,
-    #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableSel,
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableHighlight,
     #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableActive {
       background: #dbeafe;
     }
     #ratioWrap td.summaryCell.summaryFormulaActiveRefCell,
     #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.ratioSelectedCell,
-    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableSel,
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableHighlight,
     #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableActive {
       position: relative;
       background: #dbeafe;
@@ -1001,7 +1102,7 @@
     }
     #ratioWrap td.summaryCell.summaryFormulaRefDragTarget,
     #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.ratioSelectedCell,
-    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.dfmTableSel,
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.dfmTableHighlight,
     #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.dfmTableActive {
       background: #dbeafe;
       outline: 2px solid #f59e0b;
@@ -1249,6 +1350,9 @@
     #ratioWrap td.summaryCell.userEntryEditable {
       cursor: default;
     }
+    #ratioWrap[data-interaction-mode="edit"] td.summaryCell.userEntryEditable {
+      cursor: url("/ui/dfm/dfm_handwriting_cursor.svg?v=20260712b") 2 2, default;
+    }
     #ratioWrap td.summaryCell.summaryActiveCell {
       position: relative;
       outline: 1px dashed #1f2937;
@@ -1395,6 +1499,13 @@
       background: #217346;
       color: white;
     }
+    .dfmSummaryFormulaBarXlBtn:disabled,
+    .dfmSummaryFormulaBarXlBtn:disabled:hover {
+      background: #f3f4f6;
+      color: #94a3b8;
+      cursor: default;
+      opacity: 0.55;
+    }
     .dfmSummaryFormulaBar.xlLinkMode .dfmSummaryFormulaBarXlBtn {
       background: #217346;
       color: white;
@@ -1454,6 +1565,50 @@
       background: #217346;
       border-radius: 50%;
       opacity: 0.7;
+    }
+    #ratioWrap td.excelRangeAffected {
+      --excel-range-top: transparent;
+      --excel-range-right: transparent;
+      --excel-range-bottom: transparent;
+      --excel-range-left: transparent;
+      --excel-range-top-glow: transparent;
+      --excel-range-right-glow: transparent;
+      --excel-range-bottom-glow: transparent;
+      --excel-range-left-glow: transparent;
+      box-shadow:
+        inset 0 1px 0 var(--excel-range-top),
+        inset -1px 0 0 var(--excel-range-right),
+        inset 0 -1px 0 var(--excel-range-bottom),
+        inset 1px 0 0 var(--excel-range-left),
+        inset 0 7px 8px -7px var(--excel-range-top-glow),
+        inset -7px 0 8px -7px var(--excel-range-right-glow),
+        inset 0 -7px 8px -7px var(--excel-range-bottom-glow),
+        inset 7px 0 8px -7px var(--excel-range-left-glow);
+      transition: box-shadow 150ms ease;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeEdgeTop {
+      --excel-range-top: #60a5fa;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeEdgeRight {
+      --excel-range-right: #60a5fa;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeEdgeBottom {
+      --excel-range-bottom: #60a5fa;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeEdgeLeft {
+      --excel-range-left: #60a5fa;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeActive.excelRangeEdgeTop {
+      --excel-range-top-glow: rgba(96, 165, 250, 0.62);
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeActive.excelRangeEdgeRight {
+      --excel-range-right-glow: rgba(96, 165, 250, 0.62);
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeActive.excelRangeEdgeBottom {
+      --excel-range-bottom-glow: rgba(96, 165, 250, 0.62);
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeActive.excelRangeEdgeLeft {
+      --excel-range-left-glow: rgba(96, 165, 250, 0.62);
     }
     .dfmModalActions {
       display: flex;
@@ -1878,17 +2033,6 @@
             </div>
           </div>
           <div class="dfmFormField"></div>
-          <label for="decimalPlaces">Decimal Places : </label>
-          <div class="dfmFormField">
-            <div class="dfmSpinner" data-target="decimalPlaces">
-              <input id="decimalPlaces" type="number" min="0" max="6" value="4" />
-              <div class="dfmSpinBtns">
-                <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
-                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
-              </div>
-            </div>
-          </div>
-          <div class="dfmFormField"></div>
         </div>
         <input id="cumulativeChk" type="checkbox" checked style="display:none;" />
         <input id="linkLenChk" type="checkbox" style="display:none;" />
@@ -1922,7 +2066,54 @@
     <div class="panel" id="ratioPanel">
       <div class="panelInner">
         <!-- <div class="small"><b>Ratios</b></div> -->
-        <div id="ratioWrapHost">
+        <div id="dfmRatiosToolbar" class="dfmRatiosToolbar" role="toolbar" aria-label="Ratios tools">
+          <div class="dfmRatiosModeGroup" role="group" aria-label="Ratios interaction mode">
+            <button
+              id="dfmRatiosSelectModeBtn"
+              class="dfmRatiosModeBtn active"
+              type="button"
+              data-ratios-mode="select"
+              aria-pressed="true"
+              aria-keyshortcuts="S"
+              title="Select and copy cells without changing ratio choices (S)"
+            >
+              <svg class="dfmRatiosModeIcon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M6 9.8v-7a1.2 1.2 0 0 1 2.4 0v4.8-1.7a1.15 1.15 0 0 1 2.3 0v2.2-1.4a1.15 1.15 0 0 1 2.3 0v2.2-1.3a1.15 1.15 0 0 1 2.3 0v3.6c0 2.5-1.7 4.3-4.1 4.3H8.7c-1.2 0-2.2-.5-2.9-1.4L2.9 10a1.2 1.2 0 0 1 1.8-1.6L6 9.8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Select</span>
+            </button>
+            <button
+              id="dfmRatiosEditModeBtn"
+              class="dfmRatiosModeBtn"
+              type="button"
+              data-ratios-mode="edit"
+              aria-pressed="false"
+              aria-keyshortcuts="E"
+              title="Edit ratio exclusions, columns, averages, and User Entry formulas (E)"
+            >
+              <svg class="dfmRatiosModeIcon" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m3 11.8.7-3L10.9 1.6a1.2 1.2 0 0 1 1.7 0l1.8 1.8a1.2 1.2 0 0 1 0 1.7l-7.2 7.2-3 .7z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+                <path d="m9.9 2.7 3.4 3.4M3.7 8.8l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+              </svg>
+              <span>Edit</span>
+            </button>
+          </div>
+          <label class="dfmRatiosViewOption" title="Show Data-tab values beside their ratio columns">
+            <input id="dfmRatiosShowData" type="checkbox" />
+            <span>Show Data</span>
+          </label>
+          <div class="dfmRatiosDecimalControl">
+            <label for="decimalPlaces">Decimal Places:</label>
+            <div class="decimalPlacesWrap" data-dfm-spinner="decimalPlaces">
+              <input id="decimalPlaces" type="number" min="0" max="6" value="4" aria-label="Decimal Places" />
+              <div class="decimalPlacesStepper">
+                <button class="decimalPlacesStepBtn" data-step-direction="up" type="button" aria-label="Increase Decimal Places"><span class="datasetStepperCaret datasetStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="decimalPlacesStepBtn" data-step-direction="down" type="button" aria-label="Decrease Decimal Places"><span class="datasetStepperCaret" aria-hidden="true"></span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="ratioWrapHost" tabindex="-1" aria-label="Ratios tables">
           <div id="ratioWrap"></div>
         </div>
       </div>
@@ -2011,20 +2202,6 @@
   <div id="dfmSaveBar" class="dfmSaveBar">
     <button id="dfmSaveBtn" class="dfmSaveBtn" type="button">Save</button>
     <button id="dfmCancelBtn" class="dfmCancelBtn" type="button">Cancel</button>
-  </div>
-
-  <div id="dfmCancelConfirmOverlay" class="dfmCancelConfirmOverlay" hidden>
-    <div class="dfmCancelConfirmBox" role="dialog" aria-modal="true" aria-labelledby="dfmCancelConfirmTitle">
-      <button id="dfmCancelConfirmClose" class="dfmCancelConfirmClose" type="button" aria-label="Close">x</button>
-      <div id="dfmCancelConfirmTitle" class="dfmCancelConfirmTitle">Cancel changes?</div>
-      <div id="dfmCancelConfirmMessage" class="dfmCancelConfirmMessage">
-        Unsaved DFM changes will be discarded.
-      </div>
-      <div class="dfmCancelConfirmActions">
-        <button id="dfmCancelConfirmYes" class="dfmSaveBtn" type="button">Yes</button>
-        <button id="dfmCancelConfirmNo" class="dfmCancelBtn" type="button">Cancel</button>
-      </div>
-    </div>
   </div>
 
   <div id="dfmAvgMenu" class="dfmCtxMenu">
@@ -2155,13 +2332,13 @@
   <script type="module">
     (async () => {
       window.ADA_DFM_CONTEXT = true;
-      await import("/ui/dataset/dataset_main.js?v=20260703a");
+      await import("/ui/dataset/dataset_main.js?v=20260712d");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/dfm/dfm_main.js?v=20260702a");
+      await import("/ui/dfm/dfm_main.js?v=20260712l");
     })();
   </script>
 </body>

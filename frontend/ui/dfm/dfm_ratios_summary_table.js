@@ -32,13 +32,44 @@ import {
   commitRatioHistoryAction,
 } from "/ui/dfm/dfm_ratio_history.js";
 
+function isRatioEditMode() {
+  return document.getElementById("ratioWrap")?.dataset?.interactionMode === "edit";
+}
+
+export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
+  top: "dfmTableHighlightEdgeTop",
+  right: "dfmTableHighlightEdgeRight",
+  bottom: "dfmTableHighlightEdgeBottom",
+  left: "dfmTableHighlightEdgeLeft",
+});
+
+export function refreshRatioHighlightHeaders() {
+  const wrap = document.getElementById("ratioWrap");
+  if (!wrap) return;
+  wrap.querySelectorAll("th.dfmTableHighlightHeader").forEach((header) => {
+    header.classList.remove("dfmTableHighlightHeader");
+  });
+  wrap.querySelectorAll("td.dfmTableHighlight").forEach((cell) => {
+    const rowHeader = cell.parentElement?.querySelector?.("th");
+    if (rowHeader) rowHeader.classList.add("dfmTableHighlightHeader");
+    const copyCol = Number(cell.dataset.copyC ?? cell.dataset.col ?? cell.dataset.c);
+    if (!Number.isInteger(copyCol) || copyCol < 0) return;
+    const columnHeader = wrap.querySelector(`table.ratioMainTable thead th[data-copy-col="${copyCol}"]`);
+    if (columnHeader) columnHeader.classList.add("dfmTableHighlightHeader");
+  });
+}
+
 // =============================================================================
 // Excel Cell Reference Utilities
 // =============================================================================
-// Matches standalone: ='dir\[filename.xlsx]Sheet'!A1  (with or without leading =, quotes)
-const EXCEL_REF_RE = /^\s*=?\s*'?([^[]*)\[([^\]]+)\]([^'!]+)'?!([A-Z]+[0-9]+)\s*$/i;
+// Matches standalone: ='dir\[filename.xlsx]Sheet'!A1 or ...!A1:C3.
+const EXCEL_REF_RE = /^\s*=?\s*'?([^[]*)\[([^\]]+)\]([^'!]+)'?!(\$?[A-Z]+\$?[0-9]+)(?::(\$?[A-Z]+\$?[0-9]+))?\s*$/i;
 // Non-anchored: finds Excel refs embedded within larger expressions
-const EXCEL_REF_INLINE_RE = /'([^[]*)\[([^\]]+)\]([^'!]+)'!([A-Z]+[0-9]+)/gi;
+const EXCEL_REF_INLINE_RE = /'([^[]*)\[([^\]]+)\]([^'!]+)'!(\$?[A-Z]+\$?[0-9]+)(?::(\$?[A-Z]+\$?[0-9]+))?/gi;
+
+function normalizeExcelCellAddress(value) {
+  return String(value || "").replace(/\$/g, "").toUpperCase();
+}
 
 function parseExcelRef(text) {
   const m = EXCEL_REF_RE.exec(String(text || ""));
@@ -46,9 +77,10 @@ function parseExcelRef(text) {
   const dir = m[1];            // e.g. "E:\ArcRho\Demo\"
   const filename = m[2];       // e.g. "Freq w. New Renewal.xlsx"
   const sheet = m[3];          // e.g. "Annual"
-  const cell = m[4].toUpperCase();
+  const cell = normalizeExcelCellAddress(m[4]);
+  const endCell = normalizeExcelCellAddress(m[5] || m[4]);
   const bookPath = dir + filename;
-  return { bookPath, dir, filename, sheet, cell };
+  return { bookPath, dir, filename, sheet, cell, endCell };
 }
 
 
@@ -62,7 +94,8 @@ function findExcelRefsInline(text) {
       match: m[0],                        // the full matched substring
       bookPath: m[1] + m[2],              // dir + filename
       sheet: m[3],
-      cell: m[4].toUpperCase(),
+      cell: normalizeExcelCellAddress(m[4]),
+      endCell: normalizeExcelCellAddress(m[5] || m[4]),
     });
   }
   return refs;
@@ -157,6 +190,68 @@ function trimTrailingMaskCells(row) {
     out.pop();
   }
   return out;
+}
+
+function excelColumnToIndex(column) {
+  const text = String(column || "").toUpperCase();
+  let value = 0;
+  for (const ch of text) {
+    const digit = ch.charCodeAt(0) - 64;
+    if (digit < 1 || digit > 26) return -1;
+    value = value * 26 + digit;
+  }
+  return value - 1;
+}
+
+function excelColumnFromIndex(index) {
+  let value = Number(index) + 1;
+  if (!Number.isInteger(value) || value <= 0) return "";
+  let out = "";
+  while (value > 0) {
+    const rem = (value - 1) % 26;
+    out = String.fromCharCode(65 + rem) + out;
+    value = Math.floor((value - 1) / 26);
+  }
+  return out;
+}
+
+function parseExcelCellAddress(value) {
+  const match = /^([A-Z]+)([1-9][0-9]*)$/i.exec(normalizeExcelCellAddress(value));
+  if (!match) return null;
+  const col = excelColumnToIndex(match[1]);
+  const row = Number(match[2]) - 1;
+  return Number.isInteger(col) && col >= 0 && Number.isInteger(row) && row >= 0 ? { row, col } : null;
+}
+
+function parseStandaloneExcelRange(raw) {
+  const ref = parseExcelRef(raw);
+  if (!ref || ref.cell === ref.endCell) return null;
+  const start = parseExcelCellAddress(ref.cell);
+  const end = parseExcelCellAddress(ref.endCell);
+  if (!start || !end) return null;
+  const row0 = Math.min(start.row, end.row);
+  const row1 = Math.max(start.row, end.row);
+  const col0 = Math.min(start.col, end.col);
+  const col1 = Math.max(start.col, end.col);
+  return {
+    ...ref,
+    rowCount: row1 - row0 + 1,
+    colCount: col1 - col0 + 1,
+    row0,
+    col0,
+  };
+}
+
+function buildExcelRangeSourceCells(range) {
+  const cells = [];
+  for (let rowOffset = 0; rowOffset < range.rowCount; rowOffset++) {
+    const cellRow = [];
+    for (let colOffset = 0; colOffset < range.colCount; colOffset++) {
+      cellRow.push(`${excelColumnFromIndex(range.col0 + colOffset)}${range.row0 + rowOffset + 1}`);
+    }
+    cells.push(cellRow);
+  }
+  return cells;
 }
 
 export function buildRatioSelectionPattern() {
@@ -487,6 +582,7 @@ export function wireSummaryRowDrag(summaryBody) {
   };
 
   summaryBody.addEventListener("mousedown", (e) => {
+    if (!isRatioEditMode()) return;
     const th = e.target?.closest?.("th.summaryDragHandle");
     if (!th) return;
     if (e.button !== 0) return;
@@ -508,7 +604,11 @@ export function wireSummaryRowDrag(summaryBody) {
 }
 
 let avgMenuWired = false;
-let summaryCopySelection = null;
+let summaryCopyHighlight = null;
+
+export function clearSummaryTableHighlight() {
+  summaryCopyHighlight?.clearSelection?.();
+}
 
 function getAvgMenuEl() {
   return document.getElementById("dfmAvgMenu");
@@ -917,8 +1017,8 @@ function tokenizeFormula(rawText) {
   const tokens = [];
 
   while (remaining.length > 0) {
-    // Excel ref: 'dir\[file.xlsx]Sheet'!A1
-    const xlMatch = /^'([^[]*)\[([^\]]+)\]([^'!]+)'![A-Z]+[0-9]+/i.exec(remaining);
+    // Excel ref: 'dir\[file.xlsx]Sheet'!A1 or a range such as ...!A1:C3
+    const xlMatch = /^'([^[]*)\[([^\]]+)\]([^'!]+)'!\$?[A-Z]+\$?[0-9]+(?::\$?[A-Z]+\$?[0-9]+)?/i.exec(remaining);
     if (xlMatch) {
       tokens.push({ type: "excel", text: xlMatch[0] });
       remaining = remaining.slice(xlMatch[0].length);
@@ -1264,7 +1364,10 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     });
     const refreshBtn = el.querySelector("#dfmSummaryFormulaBarRefresh");
     refreshBtn?.addEventListener("click", () => {
-      refreshAllExcelLinks();
+      refreshAllExcelLinks().catch((error) => {
+        setStatusBarText("Excel refresh failed.");
+        alert(error?.message || "Excel refresh failed.");
+      });
     });
     const openBtn = el.querySelector("#dfmSummaryFormulaBarOpenXl");
     openBtn?.addEventListener("click", async () => {
@@ -1277,7 +1380,10 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       }
       openBtn.disabled = true;
       try {
-        const result = await openExcelWorkbook(refs[0].bookPath, refs[0].sheet, refs[0].cell);
+        const address = refs[0].endCell && refs[0].endCell !== refs[0].cell
+          ? `${refs[0].cell}:${refs[0].endCell}`
+          : refs[0].cell;
+        const result = await openExcelWorkbook(refs[0].bookPath, refs[0].sheet, address);
         if (!result.ok) {
           alert(result.error || "Failed to open workbook.");
         }
@@ -1426,7 +1532,9 @@ async function commitExcelFormulaAsync(inputEl, rowId, col, raw) {
       return;
     }
     const nextValue = roundRatio(result.value, 6);
+    restoreSupersededExcelRange(summaryTable, rowId, col, raw);
     setUserEntryCellEntry(rowId, col, raw, nextValue);
+    persistUserEntryRowsFromState();
     const cell = summaryTable?.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
     if (cell) {
       setUserEntryCellDisplayValue(cell, nextValue);
@@ -1435,6 +1543,7 @@ async function commitExcelFormulaAsync(inputEl, rowId, col, raw) {
     }
     if (selectedTable && summaryTable) ensureSelectedRowValues(summaryTable, selectedTable);
     applyUserEntryReferenceHighlights(summaryTable);
+    applyExcelRangeHighlights(summaryTable);
     clearSummaryReferenceUi(summaryTable);
     summaryFormulaEditState = null;
     updateSummaryFormulaBarForCell(cell);
@@ -1446,11 +1555,13 @@ async function commitExcelFormulaAsync(inputEl, rowId, col, raw) {
   }
 }
 
-export async function refreshAllExcelLinks() {
-  // Collect all cells that contain Excel refs (standalone or within formulas)
+export async function refreshAllExcelLinks(options = {}) {
+  const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
+  const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
+  const rangeLinks = [];
   const batchItems = [];
-  const batchMeta = [];  // each entry: { rowId, col, inputRaw, refMatch, batchIdx }
-  const cellsToRefresh = []; // { rowId, col, inputRaw }
+  const batchMeta = [];
+  const cellsToRefresh = [];
 
   for (const cfg of summaryRowConfigs) {
     if (!isUserEntryConfig(cfg)) continue;
@@ -1458,7 +1569,11 @@ export async function refreshAllExcelLinks() {
     for (let col = 0; col < inputs.length; col++) {
       const inputRaw = String(inputs[col] || "").trim();
       if (!containsExcelRef(inputRaw)) continue;
-      // Find all Excel refs in this input (could be multiple in a formula)
+      const range = parseStandaloneExcelRange(inputRaw);
+      if (range) {
+        rangeLinks.push({ rowId: String(cfg.id), col, inputRaw, range });
+        continue;
+      }
       const inlineRefs = findExcelRefsInline(inputRaw.startsWith("=") ? inputRaw : "=" + inputRaw);
       for (const ref of inlineRefs) {
         batchItems.push({ book_path: ref.bookPath, sheet: ref.sheet, cell: ref.cell });
@@ -1467,32 +1582,61 @@ export async function refreshAllExcelLinks() {
       cellsToRefresh.push({ rowId: cfg.id, col, inputRaw });
     }
   }
-  if (!batchItems.length) return;
-
-  setStatusBarText("Refreshing linked Excel values...");
-  const result = await readExcelCellsBatch(batchItems);
-  if (!result.ok) {
-    setStatusBarText("Excel refresh failed.");
-    alert("Batch refresh failed.");
-    return;
+  if (!rangeLinks.length && !batchItems.length) {
+    return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
   }
 
-  // Build a map from refMatch string -> resolved numeric value
-  const resolvedMap = new Map();
-  for (let i = 0; i < result.results.length; i++) {
-    const r = result.results[i];
-    if (r.ok && Number.isFinite(r.value)) {
-      resolvedMap.set(batchMeta[i].refMatch, r.value);
-      _xlCellValueCache.set(batchMeta[i].refMatch, r.value);
+  setStatusBarText("Refreshing linked Excel values...");
+  let linkedCellCount = 0;
+  let changedCount = 0;
+  let failedCount = 0;
+
+  for (const link of rangeLinks) {
+    const rangeCellCount = link.range.rowCount * link.range.colCount;
+    linkedCellCount += rangeCellCount;
+    const destination = getExcelRangeDestination(summaryTable, link.rowId, link.col, link.range);
+    if (!destination.ok) {
+      failedCount += rangeCellCount;
+      continue;
+    }
+    const readResult = await readExcelRangeValues(link.range);
+    if (!readResult.ok) {
+      failedCount += destination.entries.length;
+      continue;
+    }
+    changedCount += applyResolvedExcelRange(
+      summaryTable,
+      selectedTable,
+      link.rowId,
+      link.col,
+      link.inputRaw,
+      link.range,
+      destination,
+      readResult.values,
+    );
+    const anchor = destination.entries[0]?.cell;
+    if (anchor) {
+      anchor.classList.add("excelLinked");
+      anchor.title = "";
     }
   }
 
-  let anyChanged = false;
-  const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
-  const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
+  const resolvedMap = new Map();
+  if (batchItems.length) {
+    linkedCellCount += cellsToRefresh.length;
+    const result = await readExcelCellsBatch(batchItems);
+    if (result.ok) {
+      for (let i = 0; i < result.results.length; i++) {
+        const itemResult = result.results[i];
+        if (itemResult.ok && Number.isFinite(itemResult.value)) {
+          resolvedMap.set(batchMeta[i].refMatch, itemResult.value);
+          _xlCellValueCache.set(batchMeta[i].refMatch, itemResult.value);
+        }
+      }
+    }
+  }
 
   for (const { rowId, col, inputRaw } of cellsToRefresh) {
-    // Substitute all resolved Excel refs in the expression
     let expr = inputRaw.startsWith("=") ? inputRaw : "=" + inputRaw;
     let allResolved = true;
     const refs = findExcelRefsInline(expr);
@@ -1503,20 +1647,25 @@ export async function refreshAllExcelLinks() {
         allResolved = false;
       }
     }
-    if (!allResolved) continue;
+    if (!allResolved) {
+      failedCount += 1;
+      continue;
+    }
 
-    // Evaluate the substituted expression
     const refValues = summaryTable ? buildSummaryReferenceValues(summaryTable, col) : new Map();
     const parsed = evaluateSimpleMathExpression(expr, refValues);
-    if (!Number.isFinite(parsed) || parsed <= 0) continue;
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      failedCount += 1;
+      continue;
+    }
 
     const nextValue = roundRatio(parsed, 6);
     const cfg = summaryRowMap.get(rowId);
     if (!cfg) continue;
     const currentValue = getUserEntryValueForCol(cfg, col);
     if (Math.abs(currentValue - nextValue) < 1e-10) continue;
-    setUserEntryCellEntry(rowId, col, inputRaw, nextValue);
-    anyChanged = true;
+    setUserEntryCellEntry(rowId, col, inputRaw, nextValue, { persist: false });
+    changedCount += 1;
     const cell = summaryTable?.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
     if (cell) {
       setUserEntryCellDisplayValue(cell, nextValue);
@@ -1525,15 +1674,25 @@ export async function refreshAllExcelLinks() {
     }
   }
 
-  if (anyChanged && summaryTable && selectedTable) {
+  if (changedCount > 0) persistUserEntryRowsFromState();
+  if (summaryTable && selectedTable) {
     ensureSelectedRowValues(summaryTable, selectedTable);
     applyUserEntryReferenceHighlights(summaryTable);
+    applyExcelRangeHighlights(summaryTable);
+  }
+  if (changedCount > 0) {
     _onRatioStateMutated();
   }
-  const count = cellsToRefresh.length;
-  setStatusBarText(anyChanged
-    ? `Excel refresh: ${count} linked cell${count > 1 ? "s" : ""} updated.`
-    : `Excel refresh: ${count} linked cell${count > 1 ? "s" : ""} unchanged.`);
+  if (failedCount > 0) {
+    setStatusBarText(`Excel refresh: ${failedCount} linked cell${failedCount === 1 ? "" : "s"} failed.`);
+    if (!options.silentErrors) alert("One or more Excel-linked values could not be refreshed.");
+  } else if (changedCount > 0) {
+    const suffix = options.source === "dfm-open" ? " changed from the saved DFM values." : " updated.";
+    setStatusBarText(`Excel refresh: ${changedCount} linked cell${changedCount === 1 ? "" : "s"}${suffix}`);
+  } else {
+    setStatusBarText(`Excel refresh: ${linkedCellCount} linked cell${linkedCellCount === 1 ? "" : "s"} unchanged.`);
+  }
+  return { linkedCellCount, changedCount, failedCount };
 }
 
 function hideSummaryFormulaBar() {
@@ -1552,6 +1711,307 @@ function setUserEntryCellDisplayValue(cell, value) {
   cell.classList.remove("excelLinked");
   cell.classList.add("userEntryEditable");
   cell.title = "";
+}
+
+function getExcelRangeDestination(summaryTable, rowId, startCol, range) {
+  if (!summaryTable || !rowId || !Number.isFinite(startCol) || !range) {
+    return { ok: false, error: "Excel range destination is unavailable." };
+  }
+  const rows = Array.from(summaryTable.querySelectorAll("tr[data-row-id]"));
+  const anchorRow = summaryTable.querySelector(`tr[data-row-id="${CSS.escape(String(rowId))}"]`);
+  const anchorRowIndex = rows.indexOf(anchorRow);
+  if (anchorRowIndex < 0) return { ok: false, error: "Excel range anchor row is unavailable." };
+
+  const entries = [];
+  for (let rowOffset = 0; rowOffset < range.rowCount; rowOffset++) {
+    const targetRow = rows[anchorRowIndex + rowOffset];
+    if (!targetRow) {
+      return { ok: false, error: "The Excel range extends beyond the available Average Formula rows." };
+    }
+    const targetRowId = String(targetRow.dataset.rowId || "");
+    if (!isUserEntryConfig(summaryRowMap.get(targetRowId))) {
+      return { ok: false, error: "Every row affected by an Excel range must be a User Entry row." };
+    }
+    for (let colOffset = 0; colOffset < range.colCount; colOffset++) {
+      const col = Number(startCol) + colOffset;
+      const cell = targetRow.querySelector(`td.summaryCell[data-col="${col}"]`);
+      if (!cell) {
+        return { ok: false, error: "The Excel range extends beyond the available development columns." };
+      }
+      entries.push({
+        cell,
+        rowId: targetRowId,
+        col,
+        rowOffset,
+        colOffset,
+        sourceCell: `${excelColumnFromIndex(range.col0 + colOffset)}${range.row0 + rowOffset + 1}`,
+      });
+    }
+  }
+  return { ok: true, entries };
+}
+
+function resetExcelRangeDestination(summaryTable, rowId, col, inputRaw, options = {}) {
+  const range = parseStandaloneExcelRange(inputRaw);
+  if (!range) return false;
+  const destination = getExcelRangeDestination(summaryTable, rowId, col, range);
+  if (!destination.ok) return false;
+  const keepKeys = options.keepKeys instanceof Set ? options.keepKeys : new Set();
+  let changed = false;
+  destination.entries.forEach((entry) => {
+    const key = `${entry.rowId},${entry.col}`;
+    if (keepKeys.has(key)) return;
+    setUserEntryCellEntry(entry.rowId, entry.col, "1", 1, { persist: false });
+    setUserEntryCellDisplayValue(entry.cell, 1);
+    changed = true;
+  });
+  return changed;
+}
+
+function restoreSupersededExcelRange(summaryTable, rowId, col, nextRaw, options = {}) {
+  const cfg = summaryRowMap.get(String(rowId));
+  if (!cfg || !isUserEntryConfig(cfg)) return false;
+  const previousRaw = String(getUserEntryInputForCol(cfg, col) || "").trim();
+  const previousRange = parseStandaloneExcelRange(previousRaw);
+  if (!previousRange || previousRaw === String(nextRaw || "").trim()) return false;
+  return resetExcelRangeDestination(summaryTable, rowId, col, previousRaw, options);
+}
+
+function applyExcelRangeHighlights(summaryTable) {
+  if (!summaryTable) return;
+  const activeCell = summaryTable.querySelector("td.summaryCell.summaryActiveCell");
+  summaryTable.querySelectorAll("td.excelRangeAffected").forEach((cell) => {
+    cell.classList.remove(
+      "excelRangeAffected",
+      "excelRangeActive",
+      "excelRangeSpillCell",
+      "excelRangeBridgeCell",
+      "excelRangeEdgeTop",
+      "excelRangeEdgeRight",
+      "excelRangeEdgeBottom",
+      "excelRangeEdgeLeft",
+    );
+    delete cell.dataset.excelRangeFormula;
+    delete cell.dataset.excelRangeAnchorRowId;
+    delete cell.dataset.excelRangeAnchorCol;
+    if (!cell.classList.contains("excelLinked")) cell.title = "";
+  });
+
+  summaryRowConfigs.forEach((cfg) => {
+    if (!isUserEntryConfig(cfg)) return;
+    const rowId = String(cfg?.id || "");
+    const inputs = Array.isArray(cfg?.inputs) ? cfg.inputs : [];
+    inputs.forEach((inputRaw, col) => {
+      const raw = String(inputRaw || "").trim();
+      const range = parseStandaloneExcelRange(raw);
+      if (!range) return;
+      const destination = getExcelRangeDestination(summaryTable, rowId, col, range);
+      if (!destination.ok) return;
+      const rangeIsActive = destination.entries.some((entry) => entry.cell === activeCell);
+      destination.entries.forEach((entry) => {
+        const isAnchor = entry.rowOffset === 0 && entry.colOffset === 0;
+        entry.cell.classList.add("excelRangeAffected");
+        if (!isAnchor) entry.cell.classList.add("excelRangeSpillCell");
+        if (rangeIsActive) entry.cell.classList.add("excelRangeActive");
+        if (entry.rowOffset === 0) entry.cell.classList.add("excelRangeEdgeTop");
+        if (entry.colOffset === range.colCount - 1) entry.cell.classList.add("excelRangeEdgeRight");
+        if (entry.rowOffset === range.rowCount - 1) entry.cell.classList.add("excelRangeEdgeBottom");
+        if (entry.colOffset === 0) entry.cell.classList.add("excelRangeEdgeLeft");
+        entry.cell.dataset.excelRangeFormula = raw;
+        entry.cell.dataset.excelRangeAnchorRowId = rowId;
+        entry.cell.dataset.excelRangeAnchorCol = String(col);
+        entry.cell.title = "";
+
+        if (entry.colOffset > 0) {
+          const bridgeCell = entry.cell.previousElementSibling;
+          if (bridgeCell?.classList?.contains("ratioDataSpacer")) {
+            bridgeCell.classList.add("excelRangeAffected", "excelRangeBridgeCell");
+            if (rangeIsActive) bridgeCell.classList.add("excelRangeActive");
+            if (entry.rowOffset === 0) bridgeCell.classList.add("excelRangeEdgeTop");
+            if (entry.rowOffset === range.rowCount - 1) bridgeCell.classList.add("excelRangeEdgeBottom");
+          }
+        }
+      });
+    });
+  });
+}
+
+async function readExcelRangeValues(range) {
+  const items = buildExcelRangeSourceCells(range).flat().map((cell) => ({
+    book_path: range.bookPath,
+    sheet: range.sheet,
+    cell,
+  }));
+  const result = await readExcelCellsBatch(items);
+  if (!result?.ok || !Array.isArray(result.results)) {
+    return { ok: false, error: result?.error || "Excel range refresh failed." };
+  }
+  const values = [];
+  for (let index = 0; index < items.length; index++) {
+    const itemResult = result.results[index];
+    const value = Number(itemResult?.value);
+    if (!itemResult?.ok || !Number.isFinite(value) || value <= 0) {
+      return {
+        ok: false,
+        error: itemResult?.error || `Excel cell ${items[index].cell} must contain a number greater than 0.`,
+      };
+    }
+    values.push(roundRatio(value, 6));
+  }
+  return { ok: true, values };
+}
+
+function applyResolvedExcelRange(summaryTable, selectedTable, rowId, col, raw, range, destination, values) {
+  const nextKeys = new Set(destination.entries.map((entry) => `${entry.rowId},${entry.col}`));
+  destination.entries.forEach((entry) => {
+    if (entry.rowId === String(rowId) && entry.col === Number(col)) return;
+    restoreSupersededExcelRange(summaryTable, entry.rowId, entry.col, "1");
+  });
+  restoreSupersededExcelRange(summaryTable, rowId, col, raw, { keepKeys: nextKeys });
+  let changedCount = 0;
+  destination.entries.forEach((entry, index) => {
+    const cfg = summaryRowMap.get(entry.rowId);
+    const currentValue = getUserEntryValueForCol(cfg, entry.col);
+    const value = values[index];
+    if (Math.abs(currentValue - value) > 1e-10) changedCount += 1;
+    const input = entry.rowId === String(rowId) && entry.col === Number(col) ? raw : String(value);
+    setUserEntryCellEntry(entry.rowId, entry.col, input, value, { persist: false });
+    setUserEntryCellDisplayValue(entry.cell, value);
+  });
+  persistUserEntryRowsFromState();
+  if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
+  applyUserEntryReferenceHighlights(summaryTable);
+  applyExcelRangeHighlights(summaryTable);
+  return changedCount;
+}
+
+async function commitExcelRangeFormulaAsync(inputEl, rowId, col, raw, range) {
+  const previousDisabled = inputEl.disabled;
+  inputEl.disabled = true;
+  try {
+    const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
+    const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
+    const destination = getExcelRangeDestination(summaryTable, rowId, col, range);
+    if (!destination.ok) throw new Error(destination.error);
+    const readResult = await readExcelRangeValues(range);
+    if (!readResult.ok) throw new Error(readResult.error);
+    applyResolvedExcelRange(summaryTable, selectedTable, rowId, col, raw, range, destination, readResult.values);
+    const anchor = destination.entries[0]?.cell || null;
+    if (anchor) {
+      anchor.classList.add("excelLinked");
+      anchor.title = "";
+    }
+    clearSummaryReferenceUi(summaryTable);
+    summaryFormulaEditState = null;
+    updateSummaryFormulaBarForCell(anchor);
+    _onRatioStateMutated();
+    setStatusBarText(`Excel range linked: ${destination.entries.length} cells refreshed.`);
+  } catch (error) {
+    alert(error?.message || "Could not read the Excel range.");
+    inputEl.disabled = previousDisabled;
+    inputEl.focus();
+  }
+}
+
+function parseUserEntryClipboardGrid(rawText) {
+  const normalized = String(rawText ?? "").replace(/\r\n?/g, "\n").replace(/\n+$/, "");
+  if (!normalized) return { ok: false, error: "The clipboard does not contain a value." };
+  const rows = normalized.split("\n").map((row) => row.split("\t"));
+  const width = rows[0]?.length || 0;
+  if (!width || rows.some((row) => row.length !== width)) {
+    return { ok: false, error: "Paste a rectangular range of Excel cells." };
+  }
+  return { ok: true, rows, width };
+}
+
+function parseUserEntryClipboardValue(raw, referenceValues) {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+
+  const evaluated = evaluateSimpleMathExpression(text, referenceValues);
+  if (Number.isFinite(evaluated) && evaluated > 0) {
+    return { input: text, value: roundRatio(evaluated, 6) };
+  }
+
+  const compact = text.replace(/\u00a0/g, "").replace(/,/g, "");
+  const formattedNumber = /^([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)(%)?$/.exec(compact);
+  if (!formattedNumber) return null;
+  const numeric = Number(formattedNumber[1]);
+  const value = formattedNumber[2] ? numeric / 100 : numeric;
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const rounded = roundRatio(value, 6);
+  return { input: String(rounded), value: rounded };
+}
+
+function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, rawText) {
+  if (!summaryTable || !startCell) return false;
+  if (startCell.classList.contains("excelRangeSpillCell")) {
+    alert("Edit the first cell of the Excel-linked range instead.");
+    return true;
+  }
+  const startRow = startCell.closest("tr[data-row-id]");
+  const startRowId = String(startRow?.dataset?.rowId || "");
+  const startCol = Number(startCell.dataset.col);
+  if (!startRow || !startRowId || !Number.isFinite(startCol) || startCol < 0) return false;
+  if (!isUserEntryConfig(summaryRowMap.get(startRowId))) return false;
+
+  const parsedGrid = parseUserEntryClipboardGrid(rawText);
+  if (!parsedGrid.ok) {
+    alert(parsedGrid.error);
+    return true;
+  }
+
+  const tableRows = Array.from(summaryTable.querySelectorAll("tr[data-row-id]"));
+  const startRowIndex = tableRows.indexOf(startRow);
+  const entries = [];
+  for (let rowOffset = 0; rowOffset < parsedGrid.rows.length; rowOffset++) {
+    const targetRow = tableRows[startRowIndex + rowOffset];
+    if (!targetRow) {
+      alert("The pasted range extends beyond the available Average Formula rows.");
+      return true;
+    }
+    const rowId = String(targetRow.dataset.rowId || "");
+    if (!isUserEntryConfig(summaryRowMap.get(rowId))) {
+      alert("Every destination row in the pasted range must be a User Entry row.");
+      return true;
+    }
+    for (let colOffset = 0; colOffset < parsedGrid.width; colOffset++) {
+      const col = startCol + colOffset;
+      const cell = targetRow.querySelector(`td.summaryCell[data-col="${col}"]`);
+      if (!cell) {
+        alert("The pasted range extends beyond the available development columns.");
+        return true;
+      }
+      const parsedValue = parseUserEntryClipboardValue(
+        parsedGrid.rows[rowOffset][colOffset],
+        buildSummaryReferenceValues(summaryTable, col)
+      );
+      if (!parsedValue) {
+        alert(`Clipboard value at row ${rowOffset + 1}, column ${colOffset + 1} must be a number greater than 0.`);
+        return true;
+      }
+      entries.push({ cell, rowId, col, ...parsedValue });
+    }
+  }
+
+  clearSummaryReferenceUi(summaryTable);
+  summaryFormulaEditState = null;
+  entries.forEach((entry) => {
+    restoreSupersededExcelRange(summaryTable, entry.rowId, entry.col, entry.input);
+    setUserEntryCellEntry(entry.rowId, entry.col, entry.input, entry.value, { persist: false });
+    setUserEntryCellDisplayValue(entry.cell, entry.value);
+  });
+  persistUserEntryRowsFromState();
+  ensureSelectedRowValues(summaryTable, selectedTable);
+  applyUserEntryReferenceHighlights(summaryTable);
+  applyExcelRangeHighlights(summaryTable);
+  summaryCopyHighlight?.selectCell?.(startCell, false);
+  summaryActiveCellState = { rowId: startRowId, col: startCol };
+  updateSummaryFormulaBarForCell(startCell);
+  _onRatioStateMutated();
+  const count = entries.length;
+  setStatusBarText(`Pasted ${count} value${count === 1 ? "" : "s"} into User Entry.`);
+  return true;
 }
 
 function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCol, raw) {
@@ -1598,6 +2058,7 @@ function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCo
     });
   }
 
+  restoreSupersededExcelRange(summaryTable, rowId, startCol, raw);
   nextEntries.forEach((entry) => {
     setUserEntryCellEntry(rowId, entry.col, entry.input, entry.value, { persist: false });
     setUserEntryCellDisplayValue(entry.cell, entry.value);
@@ -1613,11 +2074,12 @@ function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCo
     .forEach((el) => el.classList.remove("summaryActiveCell"));
   if (firstCell) {
     firstCell.classList.add("summaryActiveCell");
-    summaryCopySelection?.selectCell?.(firstCell, false);
+    summaryCopyHighlight?.selectCell?.(firstCell, false);
     summaryActiveCellState = { rowId: String(rowId), col: nextEntries[0].col };
   }
   if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
   applyUserEntryReferenceHighlights(summaryTable);
+  applyExcelRangeHighlights(summaryTable);
   clearSummaryReferenceUi(summaryTable);
   summaryFormulaEditState = null;
   updateSummaryFormulaBarForCell(firstCell);
@@ -1635,6 +2097,11 @@ function commitSummaryFormulaInput(inputEl) {
   const cfg = summaryRowMap.get(rowId);
   if (!cfg || !isUserEntryConfig(cfg)) return true;
   const raw = String(inputEl.value || "").trim();
+  const excelRange = parseStandaloneExcelRange(raw);
+  if (excelRange) {
+    commitExcelRangeFormulaAsync(inputEl, rowId, col, raw, excelRange);
+    return true;
+  }
   const arrayCommit = commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, col, raw);
   if (arrayCommit.handled) {
     if (!arrayCommit.ok) alert(arrayCommit.error || "Could not apply array formula.");
@@ -1646,17 +2113,20 @@ function commitSummaryFormulaInput(inputEl) {
     return true;
   }
   const refValues = buildSummaryReferenceValues(summaryTable, col);
-  const parsed = raw ? evaluateSimpleMathExpression(raw, refValues) : 1;
+  const parsed = stripFormulaEquals(raw) ? evaluateSimpleMathExpression(raw, refValues) : 1;
   if (!Number.isFinite(parsed) || parsed <= 0) {
     alert("Enter a number > 0, or a formula like =\"Simple - 5\"*2.");
     return false;
   }
   const nextValue = roundRatio(parsed, 6);
-  setUserEntryCellEntry(rowId, col, raw || String(nextValue), nextValue);
+  restoreSupersededExcelRange(summaryTable, rowId, col, raw);
+  setUserEntryCellEntry(rowId, col, stripFormulaEquals(raw) ? raw : "1", nextValue);
+  persistUserEntryRowsFromState();
   const cell = summaryTable.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
   if (cell) setUserEntryCellDisplayValue(cell, nextValue);
   if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
   applyUserEntryReferenceHighlights(summaryTable);
+  applyExcelRangeHighlights(summaryTable);
   clearSummaryReferenceUi(summaryTable);
   summaryFormulaEditState = null;
   updateSummaryFormulaBarForCell(cell);
@@ -1678,6 +2148,8 @@ function updateSummaryFormulaBarForCell(cell) {
   }
 
   const el = ensureSummaryFormulaBarEl(summaryTable);
+  el.inert = !isRatioEditMode();
+  el.setAttribute("aria-disabled", isRatioEditMode() ? "false" : "true");
   const inputEl = el.querySelector("#dfmSummaryFormulaBarInput");
   let inputRaw = "";
   let targetCell = cell;
@@ -1691,9 +2163,19 @@ function updateSummaryFormulaBarForCell(cell) {
     const rowId = String(targetCell.dataset.r || "");
     const col = Number(targetCell.dataset.col);
     if (rowId && Number.isFinite(col) && col >= 0) {
-      const cfg = summaryRowMap.get(rowId);
+      const isExcelRangeCell = !!targetCell.dataset.excelRangeFormula;
+      const anchorCol = Number(targetCell.dataset.excelRangeAnchorCol);
+      const editRowId = isExcelRangeCell
+        ? String(targetCell.dataset.excelRangeAnchorRowId || rowId)
+        : rowId;
+      const editCol = isExcelRangeCell && Number.isFinite(anchorCol) && anchorCol >= 0
+        ? anchorCol
+        : col;
+      const cfg = summaryRowMap.get(editRowId);
       if (cfg && isUserEntryConfig(cfg)) {
-        inputRaw = String(getUserEntryInputForCol(cfg, col) || "").trim();
+        inputRaw = isExcelRangeCell
+          ? String(targetCell.dataset.excelRangeFormula || "").trim()
+          : String(getUserEntryInputForCol(cfg, editCol) || "").trim();
         const labelEl = el.querySelector("#dfmSummaryFormulaBarLabelText");
         if (labelEl) {
           const rowLabel = String(cfg.label || cfg.id || "f(x)");
@@ -1702,17 +2184,19 @@ function updateSummaryFormulaBarForCell(cell) {
         if (inputEl) {
           const inputHasFocus = document.activeElement === inputEl;
           const sameTarget =
-            String(inputEl.dataset.rowId || "") === rowId &&
-            Number(inputEl.dataset.col) === col;
+            String(inputEl.dataset.rowId || "") === editRowId &&
+            Number(inputEl.dataset.col) === editCol;
           if (!inputHasFocus || !sameTarget) {
             const body = (inputRaw || "").replace(/^=\s*/, "");
             inputEl.value = "= " + body;
             scrollSummaryFormulaInputToEnd(inputEl);
           }
-          inputEl.dataset.rowId = rowId;
-          inputEl.dataset.col = String(col);
+          inputEl.dataset.rowId = editRowId;
+          inputEl.dataset.col = String(editCol);
           inputEl.disabled = false;
           inputEl.placeholder = "Enter value or formula";
+          const xlBtn = el.querySelector("#dfmSummaryFormulaBarXlLink");
+          if (xlBtn) xlBtn.disabled = false;
         }
       } else {
         hideSummaryFormulaBar();
@@ -2265,14 +2749,19 @@ export function wireSummaryContextMenu(summaryTable) {
   if (!summaryTable || summaryTable.dataset.menuWired === "1") return;
   summaryTable.dataset.menuWired = "1";
   wireAvgModal();
-  summaryCopySelection = wireSelectableTable({
+  summaryCopyHighlight = wireSelectableTable({
     container: summaryTable,
     rowKey: "copyR",
     colKey: "copyC",
-    selectedClass: "dfmTableSel",
+    selectedClass: "dfmTableHighlight",
     activeClass: "dfmTableActive",
-    canStartPointerSelection: (event) => !!(event.shiftKey || event.ctrlKey || event.metaKey),
-  }) || summaryCopySelection;
+    edgeClasses: DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
+    onSelectionChange: refreshRatioHighlightHeaders,
+    exclusiveAcrossTables: true,
+    canStartPointerSelection: (event) => (
+      !isRatioEditMode() || !!(event.shiftKey || event.ctrlKey || event.metaKey)
+    ),
+  }) || summaryCopyHighlight;
 
   summaryTable.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -2317,7 +2806,7 @@ export function wireSummaryContextMenu(summaryTable) {
       const action = btn.dataset.action;
       hideAvgMenu();
       if (action === "copy-summary-value") {
-        await summaryCopySelection?.copySelection?.();
+        await summaryCopyHighlight?.copySelection?.();
         return;
       }
       if (action === "add-summary-cell-note") {
@@ -2522,6 +3011,7 @@ export function selectSummaryCell(summaryTable, rowId, col) {
     .forEach((el) => el.classList.remove("summaryActiveCell"));
   cell.classList.add("summaryActiveCell");
   summaryActiveCellState = { rowId: rowKey, col: colIndex };
+  applyExcelRangeHighlights(summaryTable);
   ensureSelectedRowValues(summaryTable, selectedTable);
   updateSummaryFormulaBarForCell(cell);
   _onRatioStateMutated();
@@ -2543,8 +3033,9 @@ export function initDefaultSummarySelection(summaryTable) {
   }
 }
 
-function beginUserEntryCellEdit(cell, summaryTable, selectedTable) {
+function beginUserEntryCellEdit(cell, summaryTable, selectedTable, options = {}) {
   if (!cell || cell.querySelector("input.summaryCellEditInput")) return;
+  if (cell.classList.contains("excelRangeSpillCell")) return;
   const rowId = String(cell.dataset.r || "");
   const col = Number(cell.dataset.col);
   if (!rowId || !Number.isFinite(col) || col < 0) return;
@@ -2555,12 +3046,17 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable) {
   const input = document.createElement("input");
   input.type = "text";
   input.className = "summaryCellEditInput";
-  input.value = formatRatio(roundRatio(currentValue, 6), getDfmDecimalPlaces());
+  const initialText = typeof options.initialText === "string" ? options.initialText : null;
+  input.value = initialText ?? formatRatio(roundRatio(currentValue, 6), getDfmDecimalPlaces());
   const original = cell.textContent;
   cell.textContent = "";
   cell.appendChild(input);
   input.focus();
-  input.select();
+  if (initialText === null) {
+    input.select();
+  } else {
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
   beginSummaryFormulaEditSession(summaryTable, cell, input, col);
 
   let finished = false;
@@ -2594,7 +3090,7 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable) {
       return;
     }
     const refValues = buildSummaryReferenceValues(summaryTable, col);
-    const parsed = raw ? evaluateSimpleMathExpression(raw, refValues) : 1;
+    const parsed = stripFormulaEquals(raw) ? evaluateSimpleMathExpression(raw, refValues) : 1;
     if (!Number.isFinite(parsed) || parsed <= 0) {
       alert("Enter a number > 0, or a formula like =\"Simple - 5\"*2.");
       finished = false;
@@ -2604,10 +3100,13 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable) {
       return;
     }
     const nextValue = roundRatio(parsed, 6);
-    setUserEntryCellEntry(rowId, col, raw || String(nextValue), nextValue);
+    restoreSupersededExcelRange(summaryTable, rowId, col, raw);
+    setUserEntryCellEntry(rowId, col, stripFormulaEquals(raw) ? raw : "1", nextValue);
+    persistUserEntryRowsFromState();
     restore(nextValue);
     ensureSelectedRowValues(summaryTable, selectedTable);
     applyUserEntryReferenceHighlights(summaryTable);
+    applyExcelRangeHighlights(summaryTable);
     updateSummaryFormulaBarForCell(cell);
     _onRatioStateMutated();
   };
@@ -2624,6 +3123,13 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable) {
   input.addEventListener("input", () => {
     updateSummaryFormulaBarForCell(cell);
   });
+  input.addEventListener("paste", (e) => {
+    const text = e.clipboardData?.getData("text/plain");
+    if (!/[\t\r\n]/.test(String(text ?? ""))) return;
+    e.preventDefault();
+    finish(false);
+    pasteUserEntryClipboardGrid(summaryTable, selectedTable, cell, text);
+  });
   input.addEventListener("blur", () => finish(true));
 }
 
@@ -2632,6 +3138,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   summaryTable.dataset.selectionWired = "1";
   let dragActive = false;
   let lastKey = null;
+  let pasteArmed = false;
 
   const finishSummaryCellDrag = () => {
     if (dragActive) {
@@ -2814,9 +3321,11 @@ export function wireSummarySelection(summaryTable, selectedTable) {
 
   const setActiveCell = (cell, syncSelection) => {
     if (!cell) {
+      pasteArmed = false;
       summaryActiveCellState = { rowId: "", col: -1 };
       summaryTable.querySelectorAll("td.summaryCell.summaryActiveCell")
         .forEach((el) => el.classList.remove("summaryActiveCell"));
+      applyExcelRangeHighlights(summaryTable);
       updateSummaryFormulaBarForCell(null);
       return;
     }
@@ -2830,9 +3339,11 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     summaryTable.querySelectorAll("td.summaryCell.summaryActiveCell")
       .forEach((el) => el.classList.remove("summaryActiveCell"));
     cell.classList.add("summaryActiveCell");
-    summaryCopySelection?.selectCell?.(cell, false);
+    summaryCopyHighlight?.selectCell?.(cell, false);
     summaryActiveCellState = { rowId, col };
+    pasteArmed = true;
     if (syncSelection) selectCell(cell);
+    applyExcelRangeHighlights(summaryTable);
     updateSummaryFormulaBarForCell(cell);
   };
 
@@ -2902,6 +3413,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   };
 
   summaryTable.addEventListener("mousedown", (e) => {
+    if (!isRatioEditMode()) return;
     if (tryStartReferenceDrag(e)) return;
     if (tryInsertReferenceFromEvent(e)) return;
     if (e.button !== 0) return;
@@ -2917,6 +3429,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   });
 
   summaryTable.addEventListener("mousemove", (e) => {
+    if (!isRatioEditMode()) return;
     if (summaryReferenceDragState) return;
     const hoverCell = e.target?.closest?.("td.summaryCell");
     updateReferenceHoverUi(hoverCell || null);
@@ -2936,6 +3449,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   });
 
   summaryTable.addEventListener("click", (e) => {
+    if (!isRatioEditMode()) return;
     if (e.defaultPrevented) return;
     if (dragActive) return;
     if (e.target?.closest?.("input.summaryCellEditInput")) return;
@@ -2951,9 +3465,16 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   });
 
   summaryTable.addEventListener("dblclick", (e) => {
+    if (!isRatioEditMode()) return;
     const cell = e.target?.closest?.("td.summaryCell");
     if (!cell) return;
     setActiveCell(cell, true);
+    if (cell.classList.contains("excelRangeSpillCell")) {
+      const barInput = document.querySelector("#dfmSummaryFormulaBarInput");
+      if (barInput && !barInput.disabled) barInput.focus();
+      updateReferenceHoverUi(null);
+      return;
+    }
     beginUserEntryCellEdit(cell, summaryTable, selectedTable);
     updateReferenceHoverUi(null);
   });
@@ -2964,9 +3485,28 @@ export function wireSummarySelection(summaryTable, selectedTable) {
 
   document.addEventListener("keydown", (e) => {
     if (!document.body.contains(summaryTable)) return;
-    if (!summaryTable.querySelector("td.summaryCell.summaryActiveCell")) return;
     const target = e.target;
     if (target?.closest?.("input, textarea, [contenteditable='true']")) return;
+    const highlightedCell = summaryTable.querySelector("td.summaryCell.dfmTableActive");
+    const isDirectValueKey = (
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey &&
+      /^[0-9.]$/.test(String(e.key || ""))
+    );
+    if (isDirectValueKey && highlightedCell) {
+      const cfg = summaryRowMap.get(String(highlightedCell.dataset.r || ""));
+      if (isUserEntryConfig(cfg) && !highlightedCell.classList.contains("excelRangeSpillCell")) {
+        e.preventDefault();
+        setActiveCell(highlightedCell, false);
+        beginUserEntryCellEdit(highlightedCell, summaryTable, selectedTable, {
+          initialText: String(e.key || ""),
+        });
+        return;
+      }
+    }
+    if (!isRatioEditMode()) return;
+    if (!summaryTable.querySelector("td.summaryCell.summaryActiveCell")) return;
     if (e.key === "ArrowUp") {
       e.preventDefault();
       moveActiveCell(-1, 0);
@@ -2992,12 +3532,32 @@ export function wireSummarySelection(summaryTable, selectedTable) {
         barInput.value = "= ";
         updateFormulaBarDisplayMode(barEl, true);
         barInput.focus();
-        const col = Number(cell.dataset.col);
-        if (Number.isFinite(col) && col >= 0) {
-          beginSummaryFormulaEditSession(summaryTable, cell, barInput, col);
+        const editRowId = String(barInput.dataset.rowId || rowId);
+        const editCol = Number(barInput.dataset.col);
+        const editCell = summaryTable.querySelector(
+          `td.summaryCell[data-r="${editRowId}"][data-col="${editCol}"]`
+        );
+        if (editCell && Number.isFinite(editCol) && editCol >= 0) {
+          beginSummaryFormulaEditSession(summaryTable, editCell, barInput, editCol);
         }
       }
     }
+  });
+
+  document.addEventListener("mousedown", (e) => {
+    if (!summaryTable.contains(e.target)) pasteArmed = false;
+  });
+
+  document.addEventListener("paste", (e) => {
+    if (!isRatioEditMode()) return;
+    if (!pasteArmed || !document.body.contains(summaryTable)) return;
+    if (e.target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+    const cell = getCurrentActiveCell();
+    if (!cell || !isUserEntryConfig(summaryRowMap.get(String(cell.dataset.r || "")))) return;
+    const text = e.clipboardData?.getData("text/plain");
+    if (typeof text !== "string") return;
+    e.preventDefault();
+    pasteUserEntryClipboardGrid(summaryTable, selectedTable, cell, text);
   });
 
   const initCell = summaryTable.querySelector(
@@ -3090,6 +3650,7 @@ export function updateRatioSummary() {
   if (summaryTable && selectedTable) {
     ensureSelectedRowValues(summaryTable, selectedTable);
     applyUserEntryReferenceHighlights(summaryTable);
+    applyExcelRangeHighlights(summaryTable);
   }
 }
 

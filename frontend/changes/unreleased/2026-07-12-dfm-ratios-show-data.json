@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added a Show Data option that interleaves Data-tab values with DFM ratio columns."
+}
