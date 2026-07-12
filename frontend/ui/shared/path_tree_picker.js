@@ -2153,9 +2153,34 @@ export function openFloatingPathTreePicker(options = {}) {
       closeFloatingPathTreePicker("select");
     }
   };
-  const revealPathInTree = async (rawPath) => {
+  let revealRequestSeq = 0;
+  const collapsePreviousPathBranch = async (rawPreviousPath, rawNextPath) => {
+    const previousParts = splitPath(normalizePath(rawPreviousPath || "", delimiter), delimiter);
+    const nextParts = splitPath(normalizePath(rawNextPath || "", delimiter), delimiter);
+    let sharedDepth = 0;
+    while (
+      sharedDepth < previousParts.length
+      && sharedDepth < nextParts.length
+      && previousParts[sharedDepth].toLowerCase() === nextParts[sharedDepth].toLowerCase()
+    ) {
+      sharedDepth += 1;
+    }
+
+    for (let depth = sharedDepth; depth < previousParts.length; depth += 1) {
+      const key = makePathKey(previousParts.slice(0, depth + 1).join(delimiter));
+      const control = renderContext.nodeControls.get(key);
+      if (!control?.isExpanded?.() || typeof control.collapse !== "function") continue;
+      await control.collapse();
+      break;
+    }
+  };
+  const revealPathInTree = async (rawPath, revealOptions = {}) => {
     const normalizedPath = normalizePath(rawPath || "", delimiter);
     if (!normalizedPath) return false;
+    const requestSeq = ++revealRequestSeq;
+    if (revealOptions?.collapsePath) {
+      await collapsePreviousPathBranch(revealOptions.collapsePath, normalizedPath);
+    }
     const parts = splitPath(normalizedPath, delimiter);
     let lastControl = null;
     const segments = [];
@@ -2169,7 +2194,7 @@ export function openFloatingPathTreePicker(options = {}) {
         await control.expand();
       }
     }
-    if (!lastControl) return false;
+    if (!lastControl || requestSeq !== revealRequestSeq) return false;
     setActivePath(normalizedPath, lastControl.node || null, false);
     if (lastControl.element && typeof lastControl.element.scrollIntoView === "function") {
       lastControl.element.scrollIntoView({ block: "nearest" });
@@ -2661,6 +2686,8 @@ export function openFloatingPathTreePicker(options = {}) {
     close: () => closeFloatingPathTreePicker("api"),
     element: win,
     removePath,
+    revealPath: revealPathInTree,
     refreshFavoriteSection,
+    setActivePath: (path) => setActivePath(path, null, false),
   };
 }

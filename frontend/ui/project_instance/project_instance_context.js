@@ -125,6 +125,7 @@ export function createProjectInstanceContext(deps = {}) {
   };
   const state = {
     selectedPath: "",
+    pathPickerController: null,
     datasetRows: [],
     nextWindowZ: 1,
     windowSeq: 1,

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson method JSON files no longer appear as extra BF-prefixed rows in Project Instance dataset tables."
+}

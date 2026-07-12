@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Triangle rows in Project Instance now offer View as triangle to open their output in the standard Dataset viewer."
+}

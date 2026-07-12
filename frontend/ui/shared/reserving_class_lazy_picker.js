@@ -1,4 +1,4 @@
-import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/path_tree_picker.js?v=20260710c";
+import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/path_tree_picker.js?v=20260712b";
 import { buildWorkflowPathRootNode } from "/ui/shared/workflow_global_picker_options.js";
 
 const LOOKUP_MODEL_CACHE = new Map();
@@ -3898,7 +3898,22 @@ export async function openLazyReservingClassPicker(options = {}) {
     const opened = openTreeWindow();
     if (!opened) return { ok: false, reason: "empty" };
 
-    return { ok: true, picker: treeWindowPicker, model };
+    return {
+      ok: true,
+      picker: treeWindowPicker,
+      model,
+      revealPath: (path, revealOptions = {}) => {
+        activePath = toText(path);
+        if (typeof treeWindowPicker?.revealPath !== "function") return Promise.resolve(false);
+        return treeWindowPicker.revealPath(path, revealOptions);
+      },
+      setActivePath: (path) => {
+        activePath = toText(path);
+        if (typeof treeWindowPicker?.setActivePath !== "function") return false;
+        treeWindowPicker.setActivePath(path);
+        return true;
+      },
+    };
   } catch (err) {
     const statusCode = Number(err?.status || 0);
     closeReservingClassTreeNodeMenu("error");

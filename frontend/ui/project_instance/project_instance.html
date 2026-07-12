@@ -532,7 +532,7 @@
       padding-right: 2px;
     }
     .pi-path-tree .ptree-favorite-row {
-      margin-right: -2px;
+      margin-right: 0;
       padding-right: 4px;
     }
     .ptree-empty {
@@ -543,7 +543,12 @@
     .ptree-node {
       user-select: none;
     }
-    .ptree-folder,
+    .pi-path-tree .ptree-folder {
+      min-width: 100%;
+      width: max-content;
+      padding-right: 4px;
+      box-sizing: border-box;
+    }
     .ptree-leaf {
       display: flex;
       align-items: center;
@@ -744,7 +749,7 @@
       box-sizing: border-box;
       padding: 2px 6px;
       border: 1px dashed #c8d2df;
-      border-radius: 6px;
+      border-radius: 0px;
       background: #f8fafc;
       color: #667085;
       font-size: 12px;
@@ -843,7 +848,7 @@
       padding: 0 7px;
       border: 1px solid #aebdd0;
       border-radius: 4px;
-      background: #ffffff;
+      background: #f5f5f5;
       color: #344054;
       box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.04);
       font-size: 11px;
@@ -886,7 +891,7 @@
       width: max-content;
       min-width: 0;
       max-width: min(430px, 42vw);
-      min-height: 24px;
+      min-height: 27px;
       flex: 0 1 auto;
       display: inline-flex;
       align-items: center;
@@ -894,7 +899,7 @@
       gap: 6px;
       padding: 2px 6px;
       border: 1px dashed #c8d2df;
-      border-radius: 6px;
+      border-radius: 0px;
       background: #f8fafc;
       color: #667085;
       font-size: 12px;
@@ -953,14 +958,14 @@
     }
     .dataset-filter-chip.is-all {
       border-color: #cbd5e1;
-      background: #ffffff;
-      color: #475467;
+      background: #f5f5f5;
+      color: #344054;
       box-shadow: none;
       font-weight: 600;
     }
     .dataset-filter-chip.is-all:hover {
       border-color: #aeb8c7;
-      background: #f8fafc;
+      background: #f5f5f5;
       color: #334155;
     }
     .dataset-filter-chip.dragging {
@@ -1765,6 +1770,9 @@
       font-size: 12px;
       cursor: pointer;
     }
+    .pi-context-menu-item[hidden] {
+      display: none;
+    }
     .pi-context-menu-icon {
       width: 14px;
       height: 14px;
@@ -2497,6 +2505,7 @@
     <div class="pi-table-row-context-menu" id="datasetRowContextMenu" role="menu" aria-hidden="true">
       <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="view">View</button>
       <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="show-as-vector" hidden>Show as vector</button>
+      <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="view-as-triangle" hidden>View as triangle</button>
       <div class="pi-context-submenu">
         <button class="pi-context-menu-item pi-context-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu">
           <span>Add</span>
@@ -2585,6 +2594,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260710a"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260712b"></script>
 </body>
 </html>

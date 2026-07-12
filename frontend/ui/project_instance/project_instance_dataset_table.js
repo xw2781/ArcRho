@@ -1078,10 +1078,11 @@ function openBornhuetterFergusonTabForDataset(record) {
   });
 }
 
-function openDatasetRecordAsVector(record) {
+function openDatasetRecordAsDataset(record) {
   if (!record) return;
   openDatasetWindow(record.datasetName, {
     datasetTypeName: getDatasetRecordValue(record, "datasetTypeName"),
+    dataFormat: getDatasetRecordValue(record, "dataFormat"),
     methodType: getDatasetRecordValue(record, "methodType"),
     readOnly: !!record.readOnly,
   });
@@ -2009,6 +2010,13 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
     showAsVectorItem.hidden = !showAsVector;
     showAsVectorItem.disabled = !showAsVector;
   }
+  const viewAsTriangleItem = menu.querySelector("[data-row-action='view-as-triangle']");
+  if (viewAsTriangleItem) {
+    const viewAsTriangle = !!viewRecord
+      && normalizeLookupKey(getDatasetRecordValue(viewRecord, "dataFormat")) === "triangle";
+    viewAsTriangleItem.hidden = !viewAsTriangle;
+    viewAsTriangleItem.disabled = !viewAsTriangle;
+  }
   const addResultSelectionItem = menu.querySelector("[data-row-action='add-result-selection']");
   if (addResultSelectionItem) {
     const canAdd = !emptyContext && canAddResultSelectionForDataset(viewRecord);
@@ -2113,7 +2121,7 @@ function openDatasetRecord(record) {
     openBornhuetterFergusonTabForDataset(record);
     return;
   }
-  openDatasetRecordAsVector(record);
+  openDatasetRecordAsDataset(record);
 }
 
 function getDatasetRowActionRecords() {
@@ -2405,7 +2413,9 @@ function applyDatasetRowContextAction(action) {
   if (normalized === "view") {
     openDatasetRecord(viewRecord);
   } else if (normalized === "show-as-vector") {
-    openDatasetRecordAsVector(viewRecord);
+    openDatasetRecordAsDataset(viewRecord);
+  } else if (normalized === "view-as-triangle") {
+    openDatasetRecordAsDataset(viewRecord);
   } else if (normalized === "add-dataset") {
     void addDatasetFromTypePicker();
   } else if (normalized === "add-dfm") {

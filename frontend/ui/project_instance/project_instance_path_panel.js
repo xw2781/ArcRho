@@ -183,8 +183,9 @@ function showPathSegmentMenu(levelIndex, anchor) {
       const nextPath = resolveSegmentChoicePath(numericLevel, option);
       closePathSegmentMenu();
       if (!nextPath || normalizePath(nextPath).toLowerCase() === normalizePath(state.selectedPath).toLowerCase()) return;
+      const previousPath = state.selectedPath;
       setSelectedPath(nextPath);
-      markPathTreeActive(nextPath);
+      void revealPathTreeSelection(nextPath, previousPath);
       setStatus(`Selected reserving class path ${nextPath}.`);
     });
     list.appendChild(button);
@@ -275,10 +276,29 @@ function waitForPathTreeRender() {
 function markPathTreeActive(path) {
   const normalized = normalizePath(path);
   if (!els.pathTree || !normalized) return;
-  const candidates = els.pathTree.querySelectorAll(".ptree-favorite-row, .ptree-leaf, .ptree-folder");
-  for (const el of candidates) {
-    const elPath = normalizePath(el.getAttribute("title") || el.dataset?.path || "");
-    el.classList.toggle("active-path", !!elPath && elPath.toLowerCase() === normalized.toLowerCase());
+  state.pathPickerController?.setActivePath?.(normalized);
+}
+
+async function revealPathTreeSelection(path, previousPath = "") {
+  const normalized = normalizePath(path);
+  if (!normalized) return false;
+  const revealPath = state.pathPickerController?.revealPath;
+  if (typeof revealPath !== "function") {
+    markPathTreeActive(normalized);
+    return false;
+  }
+  try {
+    const revealed = await revealPath(normalized, { collapsePath: normalizePath(previousPath) });
+    if (normalizePath(state.selectedPath).toLowerCase() === normalized.toLowerCase()) {
+      markPathTreeActive(normalized);
+    }
+    return !!revealed;
+  } catch (err) {
+    console.warn("Failed to reveal selected reserving-class path:", err);
+    if (normalizePath(state.selectedPath).toLowerCase() === normalized.toLowerCase()) {
+      markPathTreeActive(normalized);
+    }
+    return false;
   }
 }
 
@@ -433,6 +453,7 @@ function initLeftPanelResizer() {
 
 async function loadPathTree() {
   if (!els.pathTree) return;
+  state.pathPickerController = null;
   if (els.pathTree.dataset.focusWired !== "1") {
     els.pathTree.dataset.focusWired = "1";
     els.pathTree.addEventListener("mousedown", () => focusProjectInstancePage(), true);
@@ -467,6 +488,7 @@ async function loadPathTree() {
       },
       onSelect: (path) => setSelectedPath(path),
     });
+    state.pathPickerController = result?.ok ? result : null;
     state.pathPickerModel = result?.model || null;
     wirePathTreeScrollbarActivity();
     renderSelectedPathDisplay();
@@ -494,6 +516,7 @@ async function loadPathTree() {
     loadPathTree,
     markPathTreeActive,
     renderSelectedPathDisplay,
+    revealPathTreeSelection,
     resizeLeftPanel,
     saveLastSelectedPath,
     selectStartupFallbackPath,

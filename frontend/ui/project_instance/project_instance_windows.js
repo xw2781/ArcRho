@@ -961,6 +961,7 @@ function openDatasetWindow(datasetName, options = {}) {
     iframeSrc: buildDatasetViewerUrl(name, inst, {
       datasetTypeName,
       path: targetPath,
+      dataFormat: options?.dataFormat,
       readOnly: options?.readOnly,
       methodType: options?.methodType,
     }),

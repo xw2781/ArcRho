@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Aligned reserving-class favorite stars at the right edge without changing tree indentation."
+}

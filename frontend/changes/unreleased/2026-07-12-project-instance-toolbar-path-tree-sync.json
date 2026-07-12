@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance now reveals and visibly highlights toolbar path changes in the reserving-class tree."
+}
