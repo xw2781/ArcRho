@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Enabled viewing and editing User Entry formulas from the DFM Ratios formula bar while in Select mode."
+}

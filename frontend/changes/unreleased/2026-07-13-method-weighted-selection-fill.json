@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "methods",
+  "audience": "user",
+  "summary": "Unified the translucent selected-weight fill across DFM, Bornhuetter Ferguson, and Result Selection tables."
+}

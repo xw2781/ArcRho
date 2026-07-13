@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Aligned DFM Ratios table styling and final-ratio selection colors while improving sizing and long-label readability.",
+  "details": [
+    "Reduced the Ratios context-menu width for a denser fit around its commands."
+  ]
+}

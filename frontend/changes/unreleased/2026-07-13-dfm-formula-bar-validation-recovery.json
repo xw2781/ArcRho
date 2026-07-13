@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Kept DFM User Entry formulas editable when validation fails or an Excel reference cannot be checked.",
+  "details": [
+    "Validation errors now use an overlaid formula-bar tooltip—normally above, with a below-bar fallback—without shifting the Ratios tables, while other Ratios command errors use the in-page notice instead of native alerts that can break Windows input focus.",
+    "Formula drafts and caret selections remain available for correction, and stalled Excel checks release the formula bar after 30 seconds.",
+    "Excel range addresses continue to normalize their column letters to uppercase before persistence."
+  ]
+}

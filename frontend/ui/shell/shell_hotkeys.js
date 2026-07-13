@@ -36,6 +36,7 @@ const hotkeys = {
   "Ctrl+H": "dfm_exclude_high",
   "Ctrl+L": "dfm_exclude_low",
   "Ctrl+I": "dfm_include_all",
+  "Ctrl+E": "dfm_toggle_ratios_mode",
   "Ctrl+Z": "dfm_undo",
   "Ctrl+Y": "dfm_redo",
   "Ctrl+PageUp": "dfm_tab_prev",
@@ -73,6 +74,7 @@ export function runHotkeyAction(action) {
   if (action === "dfm_exclude_high") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-exclude-high"); return; }
   if (action === "dfm_exclude_low") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-exclude-low"); return; }
   if (action === "dfm_include_all") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-include-all"); return; }
+  if (action === "dfm_toggle_ratios_mode") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-toggle-ratios-mode"); return; }
   if (action === "dfm_undo") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-undo"); return; }
   if (action === "dfm_redo") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-redo"); return; }
   if (action === "dfm_tab_prev") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-tab-prev"); return; }
@@ -144,6 +146,12 @@ export function initHotkeys() {
       return;
     }
     const action = hotkeys[combo];
+    if (action === "dfm_toggle_ratios_mode") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) runHotkeyAction(action);
+      return;
+    }
     if (action === "settings_clear_cache_reload") {
       e.preventDefault();
       e.stopPropagation();

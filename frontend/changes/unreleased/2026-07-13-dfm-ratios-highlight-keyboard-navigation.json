@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added Excel-style Select-mode navigation where Arrow activates one cell and Shift or Ctrl/Cmd extends or jumps highlighted DFM Ratios ranges."
+}

@@ -11,6 +11,7 @@
   --ar-spreadsheet-cell-padding-x: 6px;
   --ar-spreadsheet-selection-fill: #6197f166;
   --ar-spreadsheet-selection-text: #000000;
+  --ar-spreadsheet-weighted-selection-fill: #d9e98be5;
   --ar-spreadsheet-selected-label-fill: #a6a6a6;
   --ar-spreadsheet-anchor-color: #0f172a;
 }

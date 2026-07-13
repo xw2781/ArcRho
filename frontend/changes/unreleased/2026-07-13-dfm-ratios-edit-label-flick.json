@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Stopped Ratios table labels from briefly highlighting when selecting average-formula cells in Edit mode."
+}

@@ -3,6 +3,119 @@
 
   parts.installGrids = function installGrids(ctx) {
     with (ctx) {
+      const methodSpreadsheetTable = createSpreadsheetTableController({
+        getRoot: () => els.methodGrid,
+        getBounds: () => ({
+          maxRow: getRowCount(),
+          maxCol: buildMethodColumns(getDetails()).length - 1,
+        }),
+        readSelection: () => {
+          const active = state.methodHighlight;
+          return {
+            ranges: normalizedMethodHighlightRanges().map((range) => ({
+              r0: range.startRow,
+              r1: range.endRow,
+              c0: range.startCol,
+              c1: range.endCol,
+            })),
+            activeCell: active ? { r: active.endRow, c: active.endCol } : null,
+            anchorCell: active ? { r: active.startRow, c: active.startCol } : null,
+          };
+        },
+        writeSelection: ({ ranges, activeCell, anchorCell }) => {
+          const nextRanges = ranges.map((range) => ({
+            startCol: range.c0,
+            startRow: range.r0,
+            endCol: range.c1,
+            endRow: range.r1,
+          }));
+          state.methodHighlights = nextRanges;
+          if (!nextRanges.length) {
+            state.methodHighlight = null;
+            return;
+          }
+          const range = nextRanges[nextRanges.length - 1];
+          const anchor = anchorCell || { r: range.startRow, c: range.startCol };
+          const active = activeCell || { r: range.endRow, c: range.endCol };
+          state.methodHighlight = {
+            startCol: anchor.c,
+            startRow: anchor.r,
+            endCol: active.c,
+            endRow: active.r,
+          };
+        },
+        cellSelector: "td.rsMethodCell[data-row-index][data-col-index]",
+        rowHeaderSelector: "td.rsOriginCell[data-row-index]",
+        columnHeaderSelector: "thead th[data-col-index]",
+        getCellPosition: (cell) => ({
+          r: Number(cell?.dataset?.rowIndex),
+          c: Number(cell?.dataset?.colIndex),
+        }),
+        getRowHeaderIndex: (header) => Number(header?.dataset?.rowIndex),
+        getColumnHeaderIndex: (header) => Number(header?.dataset?.colIndex),
+        selectedClasses: ["rsHighlightedCell"],
+        anchorClasses: ["rsHighlightAnchorCell", "arSpreadsheetSelectionAnchor"],
+        rowSelectedLabelClasses: ["rsHighlightedRowLabel", "arSpreadsheetSelectedLabel"],
+        columnSelectedLabelClasses: ["rsHighlightedColumnLabel", "arSpreadsheetSelectedLabel"],
+        getCellValue: (_position, cell) => cell?.dataset?.copyValue ?? "",
+        onAfterWrite: resetWeightEditSession,
+        onAfterCopy: () => postStatus("Copied selected Result Selection values."),
+        scrollCellIntoView: scrollMethodCellIntoView,
+      });
+
+      const resultsSpreadsheetTable = createSpreadsheetTableController({
+        getRoot: () => els.resultsGrid,
+        getBounds: () => ({
+          maxRow: getRowCount(),
+          maxCol: buildResultsColumns(getDetails()).length - 1,
+        }),
+        readSelection: () => {
+          const highlight = state.resultsHighlight;
+          if (!highlight) return { ranges: [], activeCell: null, anchorCell: null };
+          return {
+            ranges: [{
+              r0: highlight.startRow,
+              r1: highlight.endRow,
+              c0: highlight.startCol,
+              c1: highlight.endCol,
+            }],
+            activeCell: { r: highlight.endRow, c: highlight.endCol },
+            anchorCell: { r: highlight.startRow, c: highlight.startCol },
+          };
+        },
+        writeSelection: ({ ranges, activeCell, anchorCell }) => {
+          const range = ranges[0];
+          if (!range) {
+            state.resultsHighlight = null;
+            return;
+          }
+          const anchor = anchorCell || { r: range.r0, c: range.c0 };
+          const active = activeCell || { r: range.r1, c: range.c1 };
+          state.resultsHighlight = {
+            startCol: anchor.c,
+            startRow: anchor.r,
+            endCol: active.c,
+            endRow: active.r,
+          };
+        },
+        cellSelector: "td.rsResultsCell[data-row-index][data-col-index]",
+        rowHeaderSelector: "td.rsOriginCell[data-row-index]",
+        columnHeaderSelector: "thead th[data-col-index]",
+        getCellPosition: (cell) => ({
+          r: Number(cell?.dataset?.rowIndex),
+          c: Number(cell?.dataset?.colIndex),
+        }),
+        getRowHeaderIndex: (header) => Number(header?.dataset?.rowIndex),
+        getColumnHeaderIndex: (header) => Number(header?.dataset?.colIndex),
+        selectedClasses: ["rsHighlightedCell"],
+        anchorClasses: ["rsHighlightAnchorCell", "arSpreadsheetSelectionAnchor"],
+        rowSelectedLabelClasses: ["rsHighlightedRowLabel", "arSpreadsheetSelectedLabel"],
+        columnSelectedLabelClasses: ["rsHighlightedColumnLabel", "arSpreadsheetSelectedLabel"],
+        getCellValue: (_position, cell) => cell?.dataset?.copyValue ?? "",
+        onAfterCopy: () => postStatus("Copied selected Result Selection values."),
+        scrollCellIntoView: scrollResultsCellIntoView,
+      });
+
       function isSourceCellSelectable(sourceIndex, rowIndex) {
         return numberOrNull(state.sources[sourceIndex]?.values?.[rowIndex]) !== null;
       }
@@ -324,30 +437,6 @@
             : null;
       }
 
-      function addMethodHighlightRange(range) {
-        const nextRange = normalizeMethodHighlightRange(range);
-        if (!nextRange) return;
-        resetWeightEditSession();
-        const ranges = normalizedMethodHighlightRanges().filter((item) => !rangesEqual(item, nextRange));
-        ranges.push(nextRange);
-        setMethodHighlightRanges(ranges, nextRange);
-        applyMethodHighlightDom();
-      }
-
-      function toggleMethodHighlightRange(range) {
-        const nextRange = normalizeMethodHighlightRange(range);
-        if (!nextRange) return;
-        resetWeightEditSession();
-        const ranges = normalizedMethodHighlightRanges();
-        const filtered = ranges.filter((item) => !rangesEqual(item, nextRange));
-        if (filtered.length === ranges.length) {
-          setMethodHighlightRanges(ranges.concat(nextRange), nextRange);
-        } else {
-          setMethodHighlightRanges(filtered);
-        }
-        applyMethodHighlightDom();
-      }
-
       function isTextEntryTarget(target) {
         return !!target?.closest?.("input,textarea,select,[contenteditable='true']");
       }
@@ -410,26 +499,27 @@
       }
 
       function setMethodHighlight(startCol, startRow, endCol = startCol, endRow = startRow) {
-        resetWeightEditSession();
-        setMethodHighlightRanges([{ startCol, startRow, endCol, endRow }]);
-        applyMethodHighlightDom();
+        methodSpreadsheetTable.setRange(
+          { r: startRow, c: startCol },
+          { r: endRow, c: endCol },
+        );
       }
 
       function setResultsHighlight(startCol, startRow, endCol = startCol, endRow = startRow) {
-        state.resultsHighlight = { startCol, startRow, endCol, endRow };
-        applyResultsHighlightDom();
+        resultsSpreadsheetTable.setRange(
+          { r: startRow, c: startCol },
+          { r: endRow, c: endCol },
+        );
       }
 
       function removeMethodHighlights() {
-        resetWeightEditSession();
-        state.methodHighlight = null;
-        state.methodHighlights = [];
-        applyMethodHighlightDom();
+        state.methodHighlightDragging = false;
+        methodSpreadsheetTable.clear();
       }
 
       function removeResultsHighlights() {
-        state.resultsHighlight = null;
-        applyResultsHighlightDom();
+        state.resultsHighlightDragging = false;
+        resultsSpreadsheetTable.clear();
       }
 
       function normalizeMethodHighlight(columns = buildMethodColumns(getDetails()), rowCount = getRowCount()) {
@@ -478,59 +568,19 @@
       }
 
       function setMethodRowHighlight(rowIndex, columnCount) {
-        setMethodHighlight(0, rowIndex, Math.max(0, columnCount - 1), rowIndex);
+        methodSpreadsheetTable.selectRow(rowIndex);
       }
 
       function setMethodColumnHighlight(colIndex, rowCount) {
-        setMethodHighlight(colIndex, 0, colIndex, Math.max(0, rowCount - 1));
-      }
-
-      function methodRangeForCell(colIndex, rowIndex) {
-        return { startCol: colIndex, startRow: rowIndex, endCol: colIndex, endRow: rowIndex };
-      }
-
-      function methodRangeForRow(rowIndex, columnCount) {
-        return { startCol: 0, startRow: rowIndex, endCol: Math.max(0, columnCount - 1), endRow: rowIndex };
-      }
-
-      function methodRangeForColumn(colIndex, rowCount) {
-        return { startCol: colIndex, startRow: 0, endCol: colIndex, endRow: Math.max(0, rowCount - 1) };
-      }
-
-      function extendMethodHighlightToRange(targetRange, additive = false) {
-        const target = normalizeMethodHighlightRange(targetRange);
-        if (!target) return;
-        const anchor = normalizeMethodHighlightRange(state.methodHighlight) || target;
-        const nextRange = {
-          startCol: anchor.startCol,
-          startRow: anchor.startRow,
-          endCol: target.endCol,
-          endRow: target.endRow,
-        };
-        if (additive) {
-          addMethodHighlightRange(nextRange);
-        } else {
-          setMethodHighlight(nextRange.startCol, nextRange.startRow, nextRange.endCol, nextRange.endRow);
-        }
-      }
-
-      function applyMethodClickHighlight(event, range) {
-        if (event.shiftKey) {
-          extendMethodHighlightToRange(range, event.ctrlKey || event.metaKey);
-        } else if (event.ctrlKey || event.metaKey) {
-          toggleMethodHighlightRange(range);
-        } else {
-          const h = normalizeMethodHighlightRange(range);
-          if (h) setMethodHighlight(h.startCol, h.startRow, h.endCol, h.endRow);
-        }
+        methodSpreadsheetTable.selectColumn(colIndex);
       }
 
       function setResultsRowHighlight(rowIndex, columnCount) {
-        setResultsHighlight(0, rowIndex, Math.max(0, columnCount - 1), rowIndex);
+        resultsSpreadsheetTable.selectRow(rowIndex);
       }
 
       function setResultsColumnHighlight(colIndex, rowCount) {
-        setResultsHighlight(colIndex, 0, colIndex, Math.max(0, rowCount - 1));
+        resultsSpreadsheetTable.selectColumn(colIndex);
       }
 
       function isNavigableMethodColumn(column) {
@@ -553,11 +603,9 @@
         }
       }
 
-      function scrollMethodHighlightAnchorIntoView() {
-        const h = state.methodHighlight;
-        if (!h) return;
+      function scrollMethodCellIntoView({ r, c }) {
         const cell = Array.from(els.methodGrid?.querySelectorAll?.(".rsMethodCell") || [])
-          .find((td) => Number(td.dataset.colIndex) === h.startCol && Number(td.dataset.rowIndex) === h.startRow);
+          .find((td) => Number(td.dataset.colIndex) === c && Number(td.dataset.rowIndex) === r);
         if (!cell) return;
         const host = els.methodGrid?.closest?.(".rsGridHost");
         const header = els.methodGrid?.querySelector?.("thead");
@@ -584,11 +632,14 @@
         }
       }
 
-      function scrollResultsHighlightAnchorIntoView() {
-        const h = state.resultsHighlight;
-        if (!h) return;
+      function scrollMethodHighlightAnchorIntoView() {
+        const active = methodSpreadsheetTable.selection().activeCell;
+        if (active) scrollMethodCellIntoView(active);
+      }
+
+      function scrollResultsCellIntoView({ r, c }) {
         const cell = Array.from(els.resultsGrid?.querySelectorAll?.(".rsResultsCell") || [])
-          .find((td) => Number(td.dataset.colIndex) === h.startCol && Number(td.dataset.rowIndex) === h.startRow);
+          .find((td) => Number(td.dataset.colIndex) === c && Number(td.dataset.rowIndex) === r);
         if (!cell) return;
         const host = els.resultsGrid?.closest?.(".rsGridHost");
         const header = els.resultsGrid?.querySelector?.("thead");
@@ -613,6 +664,11 @@
         } else if (cellRect.right > visibleRight) {
           host.scrollLeft += cellRect.right - visibleRight;
         }
+      }
+
+      function scrollResultsHighlightAnchorIntoView() {
+        const active = resultsSpreadsheetTable.selection().activeCell;
+        if (active) scrollResultsCellIntoView(active);
       }
 
       function moveMethodHighlight(deltaCol, deltaRow) {
@@ -702,9 +758,18 @@
           ArrowDown: [0, 1],
         };
         const delta = deltas[event.key];
-        if (!delta || event.ctrlKey || event.metaKey || event.altKey || isTextEntryTarget(event.target)) return false;
+        if (state.activeTab !== "method" || !delta || event.altKey || isTextEntryTarget(event.target)) return false;
         if (!normalizedMethodHighlight()) return false;
-        if (!moveMethodHighlight(delta[0], delta[1])) return false;
+        const settings = {
+          extend: event.shiftKey,
+          jump: event.ctrlKey || event.metaKey,
+        };
+        if (!methodSpreadsheetTable.move(delta[1], delta[0], settings)) return false;
+        while (!settings.extend) {
+          const active = methodSpreadsheetTable.selection().activeCell;
+          if (!active || buildMethodColumns(getDetails())[active.c]?.type !== "spacer") break;
+          if (!methodSpreadsheetTable.move(delta[1], delta[0], settings)) break;
+        }
         event.preventDefault();
         event.stopPropagation();
         return true;
@@ -718,42 +783,39 @@
           ArrowDown: [0, 1],
         };
         const delta = deltas[event.key];
-        if (!delta || event.ctrlKey || event.metaKey || event.altKey || isTextEntryTarget(event.target)) return false;
+        if (state.activeTab !== "results" || !delta || event.altKey || isTextEntryTarget(event.target)) return false;
         if (!normalizedResultsHighlight()) return false;
-        if (!moveResultsHighlight(delta[0], delta[1])) return false;
+        const settings = {
+          extend: event.shiftKey,
+          jump: event.ctrlKey || event.metaKey,
+        };
+        if (!resultsSpreadsheetTable.move(delta[1], delta[0], settings)) return false;
+        while (!settings.extend) {
+          const active = resultsSpreadsheetTable.selection().activeCell;
+          if (!active || buildResultsColumns(getDetails())[active.c]?.type !== "spacer") break;
+          if (!resultsSpreadsheetTable.move(delta[1], delta[0], settings)) break;
+        }
         event.preventDefault();
         event.stopPropagation();
         return true;
       }
 
       function applyMethodHighlightDom() {
-        for (const th of els.methodGrid?.querySelectorAll?.("thead th[data-col-index]") || []) {
-          const colIndex = Number.parseInt(th.dataset.colIndex || "", 10);
-          th.classList.toggle("rsHighlightedColumnLabel", isMethodColumnHighlighted(colIndex));
-        }
+        methodSpreadsheetTable.applyDom();
         for (const td of els.methodGrid?.querySelectorAll?.(".rsMethodCell") || []) {
           const colIndex = Number.parseInt(td.dataset.colIndex || "", 10);
           const rowIndex = Number.parseInt(td.dataset.rowIndex || "", 10);
           const highlighted = isMethodCellHighlighted(colIndex, rowIndex);
-          td.classList.toggle("rsHighlightedCell", highlighted);
-          td.classList.toggle("rsHighlightAnchorCell", highlighted && isMethodHighlightAnchor(colIndex, rowIndex));
-          td.classList.toggle("rsHighlightedRowLabel", td.classList.contains("rsOriginCell") && isMethodRowHighlightedByRange(rowIndex));
           td.classList.toggle("rsHighlightedUltimateCell", highlighted && td.dataset.cellType === "ultimate");
         }
       }
 
       function applyResultsHighlightDom() {
-        for (const th of els.resultsGrid?.querySelectorAll?.("thead th[data-col-index]") || []) {
-          const colIndex = Number.parseInt(th.dataset.colIndex || "", 10);
-          th.classList.toggle("rsHighlightedColumnLabel", isResultsColumnHighlighted(colIndex));
-        }
+        resultsSpreadsheetTable.applyDom();
         for (const td of els.resultsGrid?.querySelectorAll?.(".rsResultsCell") || []) {
           const colIndex = Number.parseInt(td.dataset.colIndex || "", 10);
           const rowIndex = Number.parseInt(td.dataset.rowIndex || "", 10);
           const highlighted = isResultsCellHighlighted(colIndex, rowIndex);
-          td.classList.toggle("rsHighlightedCell", highlighted);
-          td.classList.toggle("rsHighlightAnchorCell", highlighted && isResultsHighlightAnchor(colIndex, rowIndex));
-          td.classList.toggle("rsHighlightedRowLabel", td.classList.contains("rsOriginCell") && isResultsRowHighlightedByRange(rowIndex));
           td.classList.toggle("rsHighlightedUltimateCell", highlighted && td.dataset.cellType === "ultimate");
         }
       }
@@ -762,13 +824,13 @@
         if (event.button !== 0) return;
         if (!options.preserveDefault) event.preventDefault();
         closeCellContextMenu();
-        if (event.ctrlKey || event.metaKey || event.shiftKey) {
-          applyMethodClickHighlight(event, methodRangeForCell(colIndex, rowIndex));
+        if (event.shiftKey) {
+          methodSpreadsheetTable.selectCell({ r: rowIndex, c: colIndex }, { extend: true });
           focusMethodGrid();
           return;
         }
         state.methodHighlightDragging = true;
-        setMethodHighlight(colIndex, rowIndex);
+        methodSpreadsheetTable.selectCell({ r: rowIndex, c: colIndex });
         focusMethodGrid();
         const onUp = () => {
           state.methodHighlightDragging = false;
@@ -783,7 +845,7 @@
         closeCellContextMenu();
         closeSourceContextMenu();
         state.resultsHighlightDragging = true;
-        setResultsHighlight(colIndex, rowIndex);
+        resultsSpreadsheetTable.selectCell({ r: rowIndex, c: colIndex }, { extend: event.shiftKey });
         focusResultsGrid();
         const onUp = () => {
           state.resultsHighlightDragging = false;
@@ -794,17 +856,14 @@
 
       function extendMethodCellHighlight(colIndex, rowIndex) {
         if (!state.methodHighlightDragging || !state.methodHighlight) return;
-        resetWeightEditSession();
-        state.methodHighlight.endCol = colIndex;
-        state.methodHighlight.endRow = rowIndex;
-        applyMethodHighlightDom();
+        const anchor = methodSpreadsheetTable.selection().anchorCell;
+        if (anchor) methodSpreadsheetTable.setRange(anchor, { r: rowIndex, c: colIndex });
       }
 
       function extendResultsCellHighlight(colIndex, rowIndex) {
         if (!state.resultsHighlightDragging || !state.resultsHighlight) return;
-        state.resultsHighlight.endCol = colIndex;
-        state.resultsHighlight.endRow = rowIndex;
-        applyResultsHighlightDom();
+        const anchor = resultsSpreadsheetTable.selection().anchorCell;
+        if (anchor) resultsSpreadsheetTable.setRange(anchor, { r: rowIndex, c: colIndex });
       }
 
       function selectedUltimateAt(rowIndex) {
@@ -1117,6 +1176,7 @@
         td.dataset.rowIndex = String(rowIndex);
         td.dataset.cellType = column.type;
         td.dataset.copyValue = String(copyValue ?? "");
+        td.setAttribute("aria-selected", "false");
         td.classList.toggle("rsHighlightedCell", isMethodCellHighlighted(colIndex, rowIndex));
         td.classList.toggle("rsHighlightAnchorCell", isMethodHighlightAnchor(colIndex, rowIndex));
         td.classList.toggle("rsHighlightedRowLabel", column.type === "origin" && isMethodRowHighlightedByRange(rowIndex));
@@ -1126,7 +1186,7 @@
             event.preventDefault();
             event.stopPropagation();
             closeCellContextMenu();
-            applyMethodClickHighlight(event, methodRangeForRow(rowIndex, options.rowToggleColumnCount));
+            methodSpreadsheetTable.selectRow(rowIndex, { extend: event.shiftKey });
             focusMethodGrid();
           });
         } else {
@@ -1149,6 +1209,7 @@
         td.dataset.rowIndex = String(rowIndex);
         td.dataset.cellType = column.type;
         td.dataset.copyValue = String(copyValue ?? "");
+        td.setAttribute("aria-selected", "false");
         td.classList.toggle("rsHighlightedCell", isResultsCellHighlighted(colIndex, rowIndex));
         td.classList.toggle("rsHighlightAnchorCell", isResultsHighlightAnchor(colIndex, rowIndex));
         td.classList.toggle("rsHighlightedRowLabel", column.type === "origin" && isResultsRowHighlightedByRange(rowIndex));
@@ -1159,7 +1220,7 @@
             event.stopPropagation();
             closeCellContextMenu();
             closeSourceContextMenu();
-            setResultsRowHighlight(rowIndex, options.rowToggleColumnCount);
+            resultsSpreadsheetTable.selectRow(rowIndex, { extend: event.shiftKey });
             focusResultsGrid();
           });
         } else {
@@ -1169,13 +1230,14 @@
           });
           td.addEventListener("mouseenter", () => extendResultsCellHighlight(colIndex, rowIndex));
         }
+        td.addEventListener("contextmenu", (event) => openResultsCellContextMenu(event, colIndex, rowIndex));
         return td;
       }
 
       function renderMethodGrid() {
         const grid = els.methodGrid;
         if (!grid) return;
-        grid.tabIndex = -1;
+        grid.tabIndex = 0;
         syncOriginLengthOptions();
         syncRatioBasisSelector();
         const details = getDetails();
@@ -1201,7 +1263,7 @@
               event.stopPropagation();
               closeCellContextMenu();
               closeSourceContextMenu();
-              applyMethodClickHighlight(event, methodRangeForColumn(colIndex, count + 1));
+              methodSpreadsheetTable.selectColumn(colIndex, { extend: event.shiftKey });
               focusMethodGrid();
             });
           }
@@ -1361,13 +1423,14 @@
         });
         tbody.appendChild(totalRow);
         grid.replaceChildren(colgroup, thead, tbody);
+        applyMethodHighlightDom();
         renderResultsGrid();
       }
 
       function renderResultsGrid() {
         const grid = els.resultsGrid;
         if (!grid) return;
-        grid.tabIndex = -1;
+        grid.tabIndex = 0;
         const details = getDetails();
         const count = getRowCount();
         const columns = buildResultsColumns(details);
@@ -1391,7 +1454,7 @@
               event.stopPropagation();
               closeCellContextMenu();
               closeSourceContextMenu();
-              setResultsColumnHighlight(colIndex, count + 1);
+              resultsSpreadsheetTable.selectColumn(colIndex, { extend: event.shiftKey });
               focusResultsGrid();
             });
           }
@@ -1498,6 +1561,7 @@
         });
         tbody.appendChild(totalRow);
         grid.replaceChildren(colgroup, thead, tbody);
+        applyResultsHighlightDom();
       }
 
       function headerCell(label, column = null) {
@@ -1528,6 +1592,7 @@
         if (!els.cellContextMenu) return;
         els.cellContextMenu.classList.remove("open");
         els.cellContextMenu.setAttribute("aria-hidden", "true");
+        delete els.cellContextMenu.dataset.table;
       }
 
       function closeSourceContextMenu() {
@@ -1554,12 +1619,31 @@
         event.preventDefault();
         event.stopPropagation();
         closeSourceContextMenu();
-        if (!isMethodCellHighlighted(colIndex, rowIndex)) {
-          setMethodHighlight(colIndex, rowIndex);
-        }
+        methodSpreadsheetTable.prepareContextCell({ r: rowIndex, c: colIndex });
         const menu = els.cellContextMenu;
         if (!menu) return;
+        menu.dataset.table = "method";
+        const pasteButton = menu.querySelector('[data-rs-cell-action="paste-values"]');
+        if (pasteButton) pasteButton.hidden = !(highlightedHasWeightTargets() || highlightedHasUltimateCells());
         setUltimateContextMenuVisibility();
+        menu.classList.add("open");
+        menu.setAttribute("aria-hidden", "false");
+        positionContextMenu(menu, event.clientX, event.clientY);
+      }
+
+      function openResultsCellContextMenu(event, colIndex, rowIndex) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSourceContextMenu();
+        resultsSpreadsheetTable.prepareContextCell({ r: rowIndex, c: colIndex });
+        const menu = els.cellContextMenu;
+        if (!menu) return;
+        menu.dataset.table = "results";
+        const pasteButton = menu.querySelector('[data-rs-cell-action="paste-values"]');
+        if (pasteButton) pasteButton.hidden = true;
+        menu.querySelectorAll("[data-rs-ultimate-action]").forEach((button) => {
+          button.hidden = true;
+        });
         menu.classList.add("open");
         menu.setAttribute("aria-hidden", "false");
         positionContextMenu(menu, event.clientX, event.clientY);
@@ -1676,11 +1760,13 @@
       }
 
       async function copyHighlightedMethodValues() {
-        const data = highlightedMethodValuesText();
-        if (!data) return;
-        await writeClipboardText(data);
+        if (!await methodSpreadsheetTable.copy()) return;
         closeCellContextMenu();
-        postStatus("Copied selected Result Selection values.");
+        focusMethodGrid();
+      }
+
+      async function copyHighlightedResultsValues() {
+        await resultsSpreadsheetTable.copy();
       }
 
       async function pasteHighlightedMethodValues() {
@@ -1690,6 +1776,7 @@
         markDirty();
         closeCellContextMenu();
         renderMethodGrid();
+        focusMethodGrid();
         postStatus("Pasted Result Selection values.");
       }
 
@@ -1855,6 +1942,7 @@
         writeClipboardText,
         readClipboardText,
         copyHighlightedMethodValues,
+        copyHighlightedResultsValues,
         pasteHighlightedMethodValues,
         normalizeUltimateOverrides,
         serializedUltimateOverrides,

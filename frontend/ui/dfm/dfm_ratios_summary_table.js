@@ -20,10 +20,17 @@ import {
 import {
   getExcelActiveSelection, readExcelCell, readExcelCellsBatch, openExcelWorkbook, excelWaitForEnter,
 } from "/ui/shared/api.js";
+import {
+  DFM_FORMULA_VALIDATION_TIMEOUT_MS,
+  beginFormulaValidationLease,
+  clearFormulaValidationError,
+  computeFormulaValidationTooltipLayout,
+  revealAndFocusFormulaInput,
+  showFormulaValidationError,
+} from "/ui/dfm/dfm_formula_validation.js?v=20260713b";
 import { wireSelectableTable } from "/ui/shared/table_selection.js";
 import { openDfmSummaryPlotWindow } from "/ui/dfm/dfm_summary_plot_window.js?v=20260514g";
 import {
-  clearDfmCellNote,
   hasDfmCellNote,
   showDfmCellNoteEditor,
 } from "/ui/dfm/dfm_cell_notes.js";
@@ -46,16 +53,17 @@ export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
 export function refreshRatioHighlightHeaders() {
   const wrap = document.getElementById("ratioWrap");
   if (!wrap) return;
-  wrap.querySelectorAll("th.dfmTableHighlightHeader").forEach((header) => {
-    header.classList.remove("dfmTableHighlightHeader");
+  wrap.querySelectorAll("th.arSpreadsheetSelectedLabel").forEach((header) => {
+    header.classList.remove("arSpreadsheetSelectedLabel");
   });
+  if (wrap.dataset.interactionMode !== "select") return;
   wrap.querySelectorAll("td.dfmTableHighlight").forEach((cell) => {
     const rowHeader = cell.parentElement?.querySelector?.("th");
-    if (rowHeader) rowHeader.classList.add("dfmTableHighlightHeader");
+    if (rowHeader) rowHeader.classList.add("arSpreadsheetSelectedLabel");
     const copyCol = Number(cell.dataset.copyC ?? cell.dataset.col ?? cell.dataset.c);
     if (!Number.isInteger(copyCol) || copyCol < 0) return;
     const columnHeader = wrap.querySelector(`table.ratioMainTable thead th[data-copy-col="${copyCol}"]`);
-    if (columnHeader) columnHeader.classList.add("dfmTableHighlightHeader");
+    if (columnHeader) columnHeader.classList.add("arSpreadsheetSelectedLabel");
   });
 }
 
@@ -66,6 +74,18 @@ export function refreshRatioHighlightHeaders() {
 const EXCEL_REF_RE = /^\s*=?\s*'?([^[]*)\[([^\]]+)\]([^'!]+)'?!(\$?[A-Z]+\$?[0-9]+)(?::(\$?[A-Z]+\$?[0-9]+))?\s*$/i;
 // Non-anchored: finds Excel refs embedded within larger expressions
 const EXCEL_REF_INLINE_RE = /'([^[]*)\[([^\]]+)\]([^'!]+)'!(\$?[A-Z]+\$?[0-9]+)(?::(\$?[A-Z]+\$?[0-9]+))?/gi;
+const EXCEL_ADDRESS_AFTER_BANG_RE = /(!\s*\$?)([A-Z]+)(\$?[0-9]+)(?::(\$?)([A-Z]+)(\$?[0-9]+))?/gi;
+
+function normalizeExcelReferenceAddressCase(value) {
+  return String(value || "").replace(
+    EXCEL_ADDRESS_AFTER_BANG_RE,
+    (_match, startPrefix, startCol, startRow, endDollar, endCol, endRow) => {
+      const start = `${startPrefix}${String(startCol).toUpperCase()}${startRow}`;
+      const end = endCol ? `:${endDollar || ""}${String(endCol).toUpperCase()}${endRow}` : "";
+      return start + end;
+    },
+  );
+}
 
 function normalizeExcelCellAddress(value) {
   return String(value || "").replace(/\$/g, "").toUpperCase();
@@ -114,7 +134,7 @@ function containsExcelRef(text) {
  * the resulting math expression with row references.
  * Returns { ok, value, error? }.
  */
-async function resolveExcelRefsInExpression(raw, referenceValues) {
+async function resolveExcelRefsInExpression(raw, referenceValues, options = {}) {
   let expr = String(raw || "").trim();
   if (expr.startsWith("=")) expr = expr.slice(1).trim();
 
@@ -126,7 +146,7 @@ async function resolveExcelRefsInExpression(raw, referenceValues) {
   const resolvedMap = new Map();
   for (const ref of refs) {
     if (resolvedMap.has(ref.match)) continue;
-    const result = await readExcelCell(ref.bookPath, ref.sheet, ref.cell);
+    const result = await readExcelCell(ref.bookPath, ref.sheet, ref.cell, { signal: options.signal });
     if (!result.ok) return { ok: false, error: `Excel read error for ${ref.match}: ${result.error}` };
     if (!Number.isFinite(result.value)) return { ok: false, error: `Non-numeric value from ${ref.match}: ${result.value}` };
     resolvedMap.set(ref.match, String(result.value));
@@ -152,7 +172,7 @@ function formatExcelRef(bookPath, sheet, cell) {
   const lastSep = Math.max(bookPath.lastIndexOf("\\"), bookPath.lastIndexOf("/"));
   const dir = lastSep >= 0 ? bookPath.slice(0, lastSep + 1) : "";
   const filename = lastSep >= 0 ? bookPath.slice(lastSep + 1) : bookPath;
-  return `='${dir}[${filename}]${sheet}'!${cell}`;
+  return normalizeExcelReferenceAddressCase(`='${dir}[${filename}]${sheet}'!${cell}`);
 }
 
 // Cache of last-resolved Excel cell values, keyed by ref match string (e.g. "'dir\[file]Sheet'!A1")
@@ -162,23 +182,45 @@ let _xlLinkMode = false;
 let _xlLinkFocusHandler = null;
 let _xlLinkEscHandler = null;
 let _xlLinkAbortController = null;
+let _xlLinkSession = null;
 
 let _renderRatioTable = () => {};
 let _onRatioStateMutated = () => {};
+let _toggleRatioInteractionMode = () => {};
 let summaryContextCellForNote = null;
 let formulaBarResizeObserver = null;
 let formulaBarScrollHost = null;
 let formulaBarResizeWired = false;
 let formulaBarResizeRaf = 0;
+let formulaBarTooltipRaf = 0;
 const SUMMARY_FORMULA_BAR_FRAME_INSET_PX = 14;
+const SUMMARY_FORMULA_BAR_TOOLTIP_Z_INDEX = 1700;
+const SUMMARY_FORMULA_BAR_TOOLTIP_MAX_Z_INDEX = 9998;
 
-export function setSummaryTableCallbacks({ renderRatioTable, onRatioStateMutated } = {}) {
+export function setSummaryTableCallbacks({
+  renderRatioTable,
+  onRatioStateMutated,
+  toggleRatioInteractionMode,
+} = {}) {
   if (typeof renderRatioTable === "function") _renderRatioTable = renderRatioTable;
   if (typeof onRatioStateMutated === "function") _onRatioStateMutated = onRatioStateMutated;
+  if (typeof toggleRatioInteractionMode === "function") {
+    _toggleRatioInteractionMode = toggleRatioInteractionMode;
+  }
 }
 
 export function resetSummaryFormulaEditState() {
+  cancelActiveSummaryFormulaCommit();
+  exitXlLinkMode(document.getElementById("dfmSummaryFormulaBar"));
+  cancelFormulaBarDisplayRefresh();
+  clearFormulaBarFocusRestoreHandler();
+  clearSummaryFormulaBarValidationError();
   summaryFormulaEditState = null;
+  summaryFormulaBarState = {
+    mode: "display",
+    input: null,
+    generation: summaryFormulaBarState.generation + 1,
+  };
 }
 
 // =============================================================================
@@ -659,8 +701,20 @@ function showAvgMenu(x, y) {
 
 let summaryActiveCellState = { rowId: "", col: -1 };
 let summaryFormulaEditState = null;
-let summaryFormulaBarSkipBlurCommit = false;
+let summaryFormulaBarState = { mode: "display", input: null, generation: 0 };
+let summaryFormulaBarDisplayRaf = 0;
+let summaryFormulaBarFocusRestoreHandler = null;
+let summaryFormulaCommitGeneration = 0;
+let summaryFormulaCommitLease = null;
+let formulaValidationErrorInput = null;
 let summaryReferenceDragState = null;
+
+function isSummaryFormulaEditSessionActive(summaryTable = null) {
+  if (!summaryFormulaEditState) return false;
+  if (summaryTable && summaryFormulaEditState.summaryTable !== summaryTable) return false;
+  const input = summaryFormulaEditState.input;
+  return !!input && document.body.contains(input);
+}
 
 function normalizeAverageType(value) {
   const txt = String(value || "").trim().toLowerCase();
@@ -1161,6 +1215,65 @@ function syncSummaryFormulaBarWidth(barEl, summaryTable) {
     "--dfm-summary-formula-bar-content-x",
     `${contentOffset}px`
   );
+  scheduleSummaryFormulaBarValidationTooltipPosition();
+}
+
+function positionSummaryFormulaBarValidationTooltip() {
+  const { bar, input, display, error } = getSummaryFormulaBarParts();
+  if (!bar || !error || error.hidden) return;
+
+  error.style.visibility = "hidden";
+  const host = bar.closest?.("#ratioWrapHost") || document.getElementById("ratioWrapHost");
+  const ratiosPage = document.getElementById("dfmRatiosPage");
+  if (
+    !host
+    || !bar.isConnected
+    || !bar.classList.contains("fxVisible")
+    || ratiosPage?.getClientRects?.().length === 0
+  ) return;
+
+  const popout = bar.closest?.(".tabPopoutWindow");
+  const computedPopoutZ = popout ? window.getComputedStyle?.(popout)?.zIndex : "";
+  const popoutZ = Number.parseInt(
+    popout?.style?.zIndex || computedPopoutZ || "",
+    10,
+  );
+  const tooltipZ = Number.isFinite(popoutZ)
+    ? Math.min(SUMMARY_FORMULA_BAR_TOOLTIP_MAX_Z_INDEX, popoutZ + 1)
+    : SUMMARY_FORMULA_BAR_TOOLTIP_Z_INDEX;
+  error.style.zIndex = String(tooltipZ);
+
+  const barRect = bar.getBoundingClientRect();
+  const anchorEl = input?.getClientRects?.().length ? input : display;
+  const anchorRect = anchorEl?.getBoundingClientRect?.() || barRect;
+  const hostRect = host.getBoundingClientRect();
+  const viewportWidth = Math.max(0, Number(window.innerWidth || document.documentElement?.clientWidth || 0));
+  const viewportHeight = Math.max(0, Number(window.innerHeight || document.documentElement?.clientHeight || 0));
+  const layoutInput = { barRect, anchorRect, hostRect, viewportWidth, viewportHeight };
+  const widthLayout = computeFormulaValidationTooltipLayout({
+    ...layoutInput,
+    tooltipRect: { width: 0, height: 0 },
+  });
+  error.style.maxWidth = `${widthLayout.maxWidth}px`;
+
+  const layout = computeFormulaValidationTooltipLayout({
+    ...layoutInput,
+    tooltipRect: error.getBoundingClientRect(),
+  });
+  error.style.left = `${Math.round(layout.left)}px`;
+  error.style.top = `${Math.round(layout.top)}px`;
+  error.style.setProperty("--dfm-summary-formula-tooltip-arrow-x", `${Math.round(layout.arrowX)}px`);
+  error.dataset.placement = layout.placement;
+  error.style.visibility = layout.visible ? "visible" : "hidden";
+}
+
+function scheduleSummaryFormulaBarValidationTooltipPosition() {
+  const error = document.getElementById("dfmSummaryFormulaBarError");
+  if (!error || error.hidden || formulaBarTooltipRaf) return;
+  formulaBarTooltipRaf = window.requestAnimationFrame(() => {
+    formulaBarTooltipRaf = 0;
+    positionSummaryFormulaBarValidationTooltip();
+  });
 }
 
 function scheduleSummaryFormulaBarResizeRefresh() {
@@ -1168,6 +1281,7 @@ function scheduleSummaryFormulaBarResizeRefresh() {
   formulaBarResizeRaf = window.requestAnimationFrame(() => {
     formulaBarResizeRaf = 0;
     refreshSummaryFormulaBar();
+    scheduleSummaryFormulaBarValidationTooltipPosition();
   });
 }
 
@@ -1192,10 +1306,197 @@ function wireSummaryFormulaBarResizeWatcher(summaryTable) {
   if (!formulaBarResizeWired) {
     formulaBarResizeWired = true;
     window.addEventListener("resize", scheduleSummaryFormulaBarResizeRefresh);
+    window.addEventListener(
+      "pointerdown",
+      scheduleSummaryFormulaBarValidationTooltipPosition,
+      { capture: true, passive: true },
+    );
   }
 }
 
+function getSummaryFormulaBarParts(barEl = null) {
+  const bar = barEl || document.getElementById("dfmSummaryFormulaBar");
+  return {
+    bar,
+    input: bar?.querySelector?.("#dfmSummaryFormulaBarInput") || null,
+    display: bar?.querySelector?.("#dfmSummaryFormulaBarDisplay") || null,
+    error: bar?.querySelector?.("#dfmSummaryFormulaBarError")
+      || document.getElementById("dfmSummaryFormulaBarError")
+      || null,
+    state: bar?.querySelector?.("#dfmSummaryFormulaBarState") || null,
+  };
+}
+
+function clearSummaryFormulaBarValidationError() {
+  const { bar, input, error } = getSummaryFormulaBarParts();
+  if (formulaValidationErrorInput && formulaValidationErrorInput !== input) {
+    clearFormulaValidationError({ inputEl: formulaValidationErrorInput, errorEl: error });
+  }
+  clearFormulaValidationError({
+    barEl: bar,
+    inputEl: formulaValidationErrorInput || input,
+    errorEl: error,
+  });
+  formulaValidationErrorInput = null;
+}
+
+function showSummaryFormulaBarValidationError(message, inputEl = null) {
+  const { bar, input, error } = getSummaryFormulaBarParts();
+  const targetInput = inputEl || input;
+  if (formulaValidationErrorInput && formulaValidationErrorInput !== targetInput) {
+    clearFormulaValidationError({ inputEl: formulaValidationErrorInput, errorEl: error });
+  }
+  const text = showFormulaValidationError({
+    barEl: bar,
+    inputEl: targetInput,
+    errorEl: error,
+    message,
+  });
+  formulaValidationErrorInput = targetInput;
+  positionSummaryFormulaBarValidationTooltip();
+  scheduleSummaryFormulaBarValidationTooltipPosition();
+  return text;
+}
+
+function cancelFormulaBarDisplayRefresh() {
+  if (!summaryFormulaBarDisplayRaf) return;
+  window.cancelAnimationFrame(summaryFormulaBarDisplayRaf);
+  summaryFormulaBarDisplayRaf = 0;
+}
+
+function clearFormulaBarFocusRestoreHandler() {
+  if (!summaryFormulaBarFocusRestoreHandler) return;
+  window.removeEventListener("focus", summaryFormulaBarFocusRestoreHandler);
+  summaryFormulaBarFocusRestoreHandler = null;
+}
+
+function isSummaryFormulaBarInputEditing(inputEl) {
+  return !!(
+    inputEl &&
+    inputEl.isConnected &&
+    summaryFormulaBarState.input === inputEl &&
+    summaryFormulaBarState.mode !== "display"
+  );
+}
+
+function setSummaryFormulaBarMode(mode, inputEl = null) {
+  const nextMode = mode === "validating" ? "validating" : (mode === "editing" ? "editing" : "display");
+  const currentInput = inputEl || getSummaryFormulaBarParts().input;
+  summaryFormulaBarState = {
+    mode: nextMode,
+    input: nextMode === "display" ? null : currentInput,
+    generation: summaryFormulaBarState.generation + 1,
+  };
+  const { bar, state } = getSummaryFormulaBarParts(currentInput?.closest?.(".dfmSummaryFormulaBar"));
+  bar?.classList?.toggle("isValidating", nextMode === "validating");
+  if (state) {
+    state.hidden = nextMode !== "validating";
+    state.textContent = nextMode === "validating" ? "Validating…" : "";
+  }
+}
+
+function setFormulaBarCommitControlsDisabled(inputEl, disabled, leaseId = null) {
+  const bar = inputEl?.closest?.(".dfmSummaryFormulaBar");
+  if (!bar) return;
+  [
+    "#dfmSummaryFormulaBarXlLink",
+    "#dfmSummaryFormulaBarRefresh",
+    "#dfmSummaryFormulaBarOpenXl",
+  ].forEach((selector) => {
+    const button = bar.querySelector(selector);
+    if (!button) return;
+    if (disabled) {
+      if (!button.disabled) button.dataset.disabledByFormulaValidation = "1";
+      button.dataset.formulaValidationLease = String(leaseId ?? "");
+      button.disabled = true;
+    } else if (
+      leaseId === null ||
+      button.dataset.formulaValidationLease === String(leaseId)
+    ) {
+      delete button.dataset.formulaValidationLease;
+      if (button.dataset.disabledByFormulaValidation !== "1") return;
+      delete button.dataset.disabledByFormulaValidation;
+      button.disabled = false;
+    }
+  });
+}
+
+function scheduleFormulaBarDisplayMode(barEl, inputEl) {
+  cancelFormulaBarDisplayRefresh();
+  const generation = summaryFormulaBarState.generation;
+  summaryFormulaBarDisplayRaf = window.requestAnimationFrame(() => {
+    summaryFormulaBarDisplayRaf = 0;
+    if (generation !== summaryFormulaBarState.generation) return;
+    const { bar, input } = getSummaryFormulaBarParts(barEl);
+    if (!bar || !input || input !== inputEl || !input.isConnected) return;
+    updateFormulaBarDisplayMode(bar, isSummaryFormulaBarInputEditing(input));
+  });
+}
+
+function captureFormulaInputSelection(inputEl) {
+  const valueLength = String(inputEl?.value || "").length;
+  const start = Number.isInteger(inputEl?.selectionStart) ? inputEl.selectionStart : valueLength;
+  const end = Number.isInteger(inputEl?.selectionEnd) ? inputEl.selectionEnd : start;
+  return {
+    selectionStart: Math.max(2, start),
+    selectionEnd: Math.max(2, end),
+  };
+}
+
+function restoreFormulaBarEditingAfterValidation(barEl, inputEl, selection = {}) {
+  cancelFormulaBarDisplayRefresh();
+  clearFormulaBarFocusRestoreHandler();
+  const { bar, input, display } = getSummaryFormulaBarParts(barEl);
+  if (!bar || !input || input !== inputEl || !input.isConnected) return;
+  setSummaryFormulaBarMode("editing", input);
+  updateFormulaBarDisplayMode(bar, true);
+
+  const restore = () => {
+    summaryFormulaBarFocusRestoreHandler = null;
+    if (!isSummaryFormulaBarInputEditing(input) || !input.isConnected) return;
+    revealAndFocusFormulaInput({
+      inputEl: input,
+      displayEl: display,
+      selectionStart: selection.selectionStart,
+      selectionEnd: selection.selectionEnd,
+    });
+  };
+
+  if (document.hasFocus()) {
+    window.requestAnimationFrame(restore);
+  } else {
+    summaryFormulaBarFocusRestoreHandler = restore;
+    window.addEventListener("focus", restore, { once: true });
+  }
+}
+
+function cancelActiveSummaryFormulaCommit() {
+  summaryFormulaCommitGeneration += 1;
+  const lease = summaryFormulaCommitLease;
+  lease?.cancel?.();
+  if (lease?.inputEl) setFormulaBarCommitControlsDisabled(lease.inputEl, false, lease.id);
+  summaryFormulaCommitLease = null;
+}
+
+function ensureSummaryFormulaBarValidationTooltip() {
+  let error = document.getElementById("dfmSummaryFormulaBarError");
+  if (!error) {
+    error = document.createElement("div");
+    error.id = "dfmSummaryFormulaBarError";
+    error.className = "dfmSummaryFormulaBarError";
+    error.setAttribute("role", "alert");
+    error.setAttribute("aria-live", "assertive");
+    error.setAttribute("aria-atomic", "true");
+    error.hidden = true;
+  }
+  if (document.body && error.parentElement !== document.body) {
+    document.body.appendChild(error);
+  }
+  return error;
+}
+
 function ensureSummaryFormulaBarEl(summaryTable) {
+  ensureSummaryFormulaBarValidationTooltip();
   let el = document.getElementById("dfmSummaryFormulaBar");
   if (!el) {
     el = document.createElement("div");
@@ -1236,12 +1537,18 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     const display = document.createElement("div");
     display.id = "dfmSummaryFormulaBarDisplay";
     display.className = "dfmSummaryFormulaBarDisplay";
+    const validationState = document.createElement("span");
+    validationState.id = "dfmSummaryFormulaBarState";
+    validationState.className = "dfmSummaryFormulaBarState";
+    validationState.setAttribute("aria-live", "polite");
+    validationState.hidden = true;
     const content = document.createElement("div");
     content.className = "dfmSummaryFormulaBarContent";
     content.appendChild(fxIcon);
     content.appendChild(label);
     content.appendChild(input);
     content.appendChild(display);
+    content.appendChild(validationState);
     content.appendChild(xlBtn);
     content.appendChild(refreshBtn);
     content.appendChild(openBtn);
@@ -1252,6 +1559,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     const FORMULA_PREFIX = "= ";
     const PREFIX_LEN = FORMULA_PREFIX.length; // 2
     input?.addEventListener("focus", () => {
+      setSummaryFormulaBarMode("editing", input);
       updateFormulaBarDisplayMode(el, true);
       // Ensure leading "= " prefix is present
       if (!input.value.startsWith(FORMULA_PREFIX)) {
@@ -1273,11 +1581,23 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       if (input.selectionStart < PREFIX_LEN) input.setSelectionRange(PREFIX_LEN, PREFIX_LEN);
     });
     input?.addEventListener("input", () => {
+      delete input.dataset.skipFormulaBlurCommit;
+      setSummaryFormulaBarMode("editing", input);
+      clearSummaryFormulaBarValidationError();
       // Keep the leading "= " undeletable
       if (!input.value.startsWith(FORMULA_PREFIX)) {
         const cleaned = input.value.replace(/^=\s*/, "");
         input.value = FORMULA_PREFIX + cleaned;
         input.setSelectionRange(PREFIX_LEN, PREFIX_LEN);
+      }
+      const normalizedReference = normalizeExcelReferenceAddressCase(input.value);
+      if (normalizedReference !== input.value) {
+        const selectionStart = input.selectionStart;
+        const selectionEnd = input.selectionEnd;
+        input.value = normalizedReference;
+        if (Number.isInteger(selectionStart) && Number.isInteger(selectionEnd)) {
+          input.setSelectionRange(selectionStart, selectionEnd);
+        }
       }
       const summaryTableEl = document.querySelector("#ratioWrap table.ratioSummaryTable");
       const rowId = String(input.dataset.rowId || "");
@@ -1291,7 +1611,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
         }
       }
     });
-    input?.addEventListener("keydown", (e) => {
+    input?.addEventListener("keydown", async (e) => {
       // Prevent deleting the leading "= " prefix
       if (e.key === "Backspace" && input.selectionStart <= PREFIX_LEN && input.selectionEnd <= PREFIX_LEN) {
         e.preventDefault();
@@ -1318,45 +1638,79 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        const ok = commitSummaryFormulaInput(input);
+        if (isSummaryFormulaCommitPending(input)) return;
+        const selection = captureFormulaInputSelection(input);
+        setSummaryFormulaBarMode("validating", input);
+        const validationStateGeneration = summaryFormulaBarState.generation;
+        const ok = await commitSummaryFormulaInput(input);
+        if (
+          summaryFormulaBarState.generation !== validationStateGeneration ||
+          summaryFormulaBarState.input !== input ||
+          summaryFormulaBarState.mode !== "validating"
+        ) return;
         if (ok) {
-          summaryFormulaBarSkipBlurCommit = true;
-          input.blur();
+          setSummaryFormulaBarMode("display", input);
+          if (document.activeElement === input) {
+            input.dataset.skipFormulaBlurCommit = "1";
+            input.blur();
+          } else {
+            scheduleFormulaBarDisplayMode(el, input);
+          }
+        } else {
+          restoreFormulaBarEditingAfterValidation(el, input, selection);
         }
       } else if (e.key === "Escape") {
         e.preventDefault();
+        cancelActiveSummaryFormulaCommit();
         cancelSummaryFormulaEditSession();
-        summaryFormulaBarSkipBlurCommit = true;
+        clearSummaryFormulaBarValidationError();
+        setSummaryFormulaBarMode("display", input);
+        input.dataset.skipFormulaBlurCommit = "1";
         input.blur();
       }
     });
-    input?.addEventListener("blur", () => {
-      if (summaryFormulaBarSkipBlurCommit) {
-        summaryFormulaBarSkipBlurCommit = false;
-        updateFormulaBarDisplayMode(el, false);
+    input?.addEventListener("blur", async () => {
+      if (input.dataset.skipFormulaBlurCommit === "1") {
+        delete input.dataset.skipFormulaBlurCommit;
+        scheduleFormulaBarDisplayMode(el, input);
         return;
       }
-      const ok = commitSummaryFormulaInput(input);
+      if (isSummaryFormulaCommitPending(input)) {
+        scheduleFormulaBarDisplayMode(el, input);
+        return;
+      }
+      const selection = captureFormulaInputSelection(input);
+      setSummaryFormulaBarMode("validating", input);
+      const validationStateGeneration = summaryFormulaBarState.generation;
+      const ok = await commitSummaryFormulaInput(input);
+      if (
+        summaryFormulaBarState.generation !== validationStateGeneration ||
+        summaryFormulaBarState.input !== input ||
+        summaryFormulaBarState.mode !== "validating"
+      ) return;
       if (!ok) {
-        input.focus();
-        input.select();
+        restoreFormulaBarEditingAfterValidation(el, input, selection);
         return;
       }
-      updateFormulaBarDisplayMode(el, false);
+      setSummaryFormulaBarMode("display", input);
+      scheduleFormulaBarDisplayMode(el, input);
     });
     const displayDiv = el.querySelector("#dfmSummaryFormulaBarDisplay");
     displayDiv?.addEventListener("click", () => {
-      if (input && !input.disabled) {
+      if (input && !input.disabled && !input.readOnly && !isSummaryFormulaCommitPending(input)) {
+        setSummaryFormulaBarMode("editing", input);
         updateFormulaBarDisplayMode(el, true);
-        input.focus();
+        input.focus({ preventScroll: true });
       }
     });
     const xlBtn = el.querySelector("#dfmSummaryFormulaBarXlLink");
     xlBtn?.addEventListener("mousedown", () => {
+      if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
       // Prevent blur from committing the formula when clicking XL button
-      summaryFormulaBarSkipBlurCommit = true;
+      input.dataset.skipFormulaBlurCommit = "1";
     });
     xlBtn?.addEventListener("click", () => {
+      if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
       const rowId = String(input?.dataset.rowId || "");
       const col = Number(input?.dataset.col);
       if (!rowId || !Number.isFinite(col) || col < 0) return;
@@ -1364,20 +1718,24 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     });
     const refreshBtn = el.querySelector("#dfmSummaryFormulaBarRefresh");
     refreshBtn?.addEventListener("click", () => {
+      if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
+      clearSummaryFormulaBarValidationError();
       refreshAllExcelLinks().catch((error) => {
         setStatusBarText("Excel refresh failed.");
-        alert(error?.message || "Excel refresh failed.");
+        showSummaryFormulaBarValidationError(error?.message || "Excel refresh failed.", input);
       });
     });
     const openBtn = el.querySelector("#dfmSummaryFormulaBarOpenXl");
     openBtn?.addEventListener("click", async () => {
+      if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
       // Find Excel ref in the current formula
       const raw = String(input?.value || "").trim();
       const refs = findExcelRefsInline(raw.startsWith("=") ? raw : "=" + raw);
       if (!refs.length) {
-        alert("No Excel reference found in current formula.");
+        showSummaryFormulaBarValidationError("No Excel reference found in current formula.", input);
         return;
       }
+      clearSummaryFormulaBarValidationError();
       openBtn.disabled = true;
       try {
         const address = refs[0].endCell && refs[0].endCell !== refs[0].cell
@@ -1385,10 +1743,10 @@ function ensureSummaryFormulaBarEl(summaryTable) {
           : refs[0].cell;
         const result = await openExcelWorkbook(refs[0].bookPath, refs[0].sheet, address);
         if (!result.ok) {
-          alert(result.error || "Failed to open workbook.");
+          showSummaryFormulaBarValidationError(result.error || "Failed to open workbook.", input);
         }
       } catch (err) {
-        alert(`Failed to open workbook: ${err.message || err}`);
+        showSummaryFormulaBarValidationError(`Failed to open workbook: ${err.message || err}`, input);
       }
       openBtn.disabled = false;
     });
@@ -1415,7 +1773,9 @@ function setStatusBarText(text) {
 // Excel Link Mode + Refresh
 // =============================================================================
 
-function exitXlLinkMode(barEl) {
+function exitXlLinkMode(barEl, options = {}) {
+  const session = _xlLinkSession;
+  const restoreValue = options.restoreValue !== false;
   _xlLinkMode = false;
   if (_xlLinkFocusHandler) {
     window.removeEventListener("focus", _xlLinkFocusHandler);
@@ -1430,20 +1790,39 @@ function exitXlLinkMode(barEl) {
     _xlLinkAbortController = null;
   }
   if (barEl) barEl.classList.remove("xlLinkMode");
-  const input = barEl?.querySelector?.("#dfmSummaryFormulaBarInput");
-  if (input && input.placeholder === "Select a cell in Excel, press Enter to confirm...") {
+  const input = session?.inputEl || barEl?.querySelector?.("#dfmSummaryFormulaBarInput");
+  if (input) {
+    input.disabled = false;
     input.placeholder = "Enter value or formula";
+    if (restoreValue && session) input.value = session.savedValue;
+    if (input.isConnected) {
+      setSummaryFormulaBarMode("editing", input);
+      updateFormulaBarDisplayMode(barEl || input.closest?.(".dfmSummaryFormulaBar"), true);
+    }
   }
+  _xlLinkSession = null;
 }
 
 function enterXlLinkMode(barEl, inputEl, rowId, col) {
+  if (!inputEl || inputEl.readOnly || isSummaryFormulaCommitPending(inputEl)) return;
   if (_xlLinkMode) {
+    const savedValue = String(_xlLinkSession?.savedValue ?? inputEl.value ?? "");
     exitXlLinkMode(barEl);
+    restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
+      selectionStart: savedValue.length,
+      selectionEnd: savedValue.length,
+    });
     return;
   }
   _xlLinkMode = true;
+  clearSummaryFormulaBarValidationError();
+  setSummaryFormulaBarMode("validating", inputEl);
+  const validationState = barEl.querySelector("#dfmSummaryFormulaBarState");
+  if (validationState) validationState.textContent = "Waiting for Excel…";
   barEl.classList.add("xlLinkMode");
   const savedValue = inputEl.value;
+  const session = { barEl, inputEl, savedValue, rowId, col };
+  _xlLinkSession = session;
   inputEl.value = "";
   inputEl.placeholder = "Select a cell in Excel, press Enter to confirm...";
   inputEl.disabled = true;
@@ -1452,9 +1831,10 @@ function enterXlLinkMode(barEl, inputEl, rowId, col) {
     if (e.key === "Escape") {
       e.preventDefault();
       exitXlLinkMode(barEl);
-      inputEl.disabled = false;
-      inputEl.placeholder = "Enter value or formula";
-      inputEl.value = savedValue;
+      restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
+        selectionStart: savedValue.length,
+        selectionEnd: savedValue.length,
+      });
     }
   };
   document.addEventListener("keydown", _xlLinkEscHandler);
@@ -1471,19 +1851,25 @@ function enterXlLinkMode(barEl, inputEl, rowId, col) {
   const abortSignal = _xlLinkAbortController.signal;
   (async () => {
     try {
-      const result = await excelWaitForEnter();
-      if (abortSignal.aborted) return;
-      exitXlLinkMode(barEl);
-      inputEl.disabled = false;
-      inputEl.placeholder = "Enter value or formula";
+      const result = await excelWaitForEnter({ signal: abortSignal });
+      if (abortSignal.aborted || _xlLinkSession !== session) return;
+      exitXlLinkMode(barEl, { restoreValue: false });
       if (!result.ok) {
         inputEl.value = savedValue;
-        alert(result.error || "Could not read from Excel.");
+        showSummaryFormulaBarValidationError(result.error || "Could not read from Excel.", inputEl);
+        restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
+          selectionStart: savedValue.length,
+          selectionEnd: savedValue.length,
+        });
         return;
       }
       if (!result.confirmed) {
         // Timeout — no Enter pressed within 30s, restore previous value
         inputEl.value = savedValue;
+        restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
+          selectionStart: savedValue.length,
+          selectionEnd: savedValue.length,
+        });
         return;
       }
       // Populate formula bar with Excel ref and enter edit mode
@@ -1492,7 +1878,17 @@ function enterXlLinkMode(barEl, inputEl, rowId, col) {
       inputEl.dataset.rowId = rowId;
       inputEl.dataset.col = String(col);
       // Bring our Electron window to front and focus formula bar in edit mode
+      const linkReturnGeneration = summaryFormulaBarState.generation;
       if (window.ADAHost?.focusWindow) await window.ADAHost.focusWindow();
+      if (
+        !barEl.isConnected ||
+        !inputEl.isConnected ||
+        document.getElementById("dfmSummaryFormulaBar") !== barEl ||
+        summaryFormulaBarState.generation !== linkReturnGeneration ||
+        summaryFormulaBarState.input !== inputEl ||
+        summaryFormulaBarState.mode !== "editing"
+      ) return;
+      setSummaryFormulaBarMode("editing", inputEl);
       updateFormulaBarDisplayMode(barEl, true);
       inputEl.focus();
       scrollSummaryFormulaInputToEnd(inputEl);
@@ -1505,31 +1901,30 @@ function enterXlLinkMode(barEl, inputEl, rowId, col) {
     } catch (err) {
       if (abortSignal.aborted) return;
       exitXlLinkMode(barEl);
-      inputEl.disabled = false;
-      inputEl.placeholder = "Enter value or formula";
-      inputEl.value = savedValue;
+      showSummaryFormulaBarValidationError(`Could not read from Excel: ${err?.message || err}`, inputEl);
+      restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
+        selectionStart: savedValue.length,
+        selectionEnd: savedValue.length,
+      });
     }
   })();
 }
 
-async function commitExcelFormulaAsync(inputEl, rowId, col, raw) {
-  const prevDisabled = inputEl.disabled;
-  inputEl.disabled = true;
+async function commitExcelFormulaAsync(rowId, col, raw, options = {}) {
   try {
     const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
     const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
     const refValues = summaryTable ? buildSummaryReferenceValues(summaryTable, col) : new Map();
 
-    const result = await resolveExcelRefsInExpression(raw, refValues);
+    const result = await resolveExcelRefsInExpression(raw, refValues, { signal: options.signal });
+    if (options.isCurrent && !options.isCurrent()) return false;
     if (!result.ok) {
       if (result.error) {
-        alert(result.error);
+        showSummaryFormulaBarValidationError(result.error);
       } else {
-        alert("Enter a number > 0, or a formula like =\"Simple - 5\"*2.");
+        showSummaryFormulaBarValidationError("Enter a number > 0, or a formula like =\"Simple - 5\"*2.");
       }
-      inputEl.disabled = prevDisabled;
-      inputEl.focus();
-      return;
+      return false;
     }
     const nextValue = roundRatio(result.value, 6);
     restoreSupersededExcelRange(summaryTable, rowId, col, raw);
@@ -1548,10 +1943,11 @@ async function commitExcelFormulaAsync(inputEl, rowId, col, raw) {
     summaryFormulaEditState = null;
     updateSummaryFormulaBarForCell(cell);
     _onRatioStateMutated();
+    return true;
   } catch (err) {
-    alert(`Failed to evaluate Excel formula: ${err.message || err}`);
-    inputEl.disabled = prevDisabled;
-    inputEl.focus();
+    if (err?.name === "AbortError") throw err;
+    showSummaryFormulaBarValidationError(`Failed to evaluate Excel formula: ${err.message || err}`);
+    return false;
   }
 }
 
@@ -1685,7 +2081,9 @@ export async function refreshAllExcelLinks(options = {}) {
   }
   if (failedCount > 0) {
     setStatusBarText(`Excel refresh: ${failedCount} linked cell${failedCount === 1 ? "" : "s"} failed.`);
-    if (!options.silentErrors) alert("One or more Excel-linked values could not be refreshed.");
+    if (!options.silentErrors) {
+      showSummaryFormulaBarValidationError("One or more Excel-linked values could not be refreshed.");
+    }
   } else if (changedCount > 0) {
     const suffix = options.source === "dfm-open" ? " changed from the saved DFM values." : " updated.";
     setStatusBarText(`Excel refresh: ${changedCount} linked cell${changedCount === 1 ? "" : "s"}${suffix}`);
@@ -1698,6 +2096,8 @@ export async function refreshAllExcelLinks(options = {}) {
 function hideSummaryFormulaBar() {
   const el = document.getElementById("dfmSummaryFormulaBar");
   if (el) {
+    clearSummaryFormulaBarValidationError();
+    setSummaryFormulaBarMode("display", el.querySelector("#dfmSummaryFormulaBarInput"));
     el.classList.remove("fxVisible");
   }
 }
@@ -1836,13 +2236,13 @@ function applyExcelRangeHighlights(summaryTable) {
   });
 }
 
-async function readExcelRangeValues(range) {
+async function readExcelRangeValues(range, options = {}) {
   const items = buildExcelRangeSourceCells(range).flat().map((cell) => ({
     book_path: range.bookPath,
     sheet: range.sheet,
     cell,
   }));
-  const result = await readExcelCellsBatch(items);
+  const result = await readExcelCellsBatch(items, { signal: options.signal });
   if (!result?.ok || !Array.isArray(result.results)) {
     return { ok: false, error: result?.error || "Excel range refresh failed." };
   }
@@ -1885,15 +2285,14 @@ function applyResolvedExcelRange(summaryTable, selectedTable, rowId, col, raw, r
   return changedCount;
 }
 
-async function commitExcelRangeFormulaAsync(inputEl, rowId, col, raw, range) {
-  const previousDisabled = inputEl.disabled;
-  inputEl.disabled = true;
+async function commitExcelRangeFormulaAsync(rowId, col, raw, range, options = {}) {
   try {
     const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
     const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
     const destination = getExcelRangeDestination(summaryTable, rowId, col, range);
     if (!destination.ok) throw new Error(destination.error);
-    const readResult = await readExcelRangeValues(range);
+    const readResult = await readExcelRangeValues(range, { signal: options.signal });
+    if (options.isCurrent && !options.isCurrent()) return false;
     if (!readResult.ok) throw new Error(readResult.error);
     applyResolvedExcelRange(summaryTable, selectedTable, rowId, col, raw, range, destination, readResult.values);
     const anchor = destination.entries[0]?.cell || null;
@@ -1906,10 +2305,11 @@ async function commitExcelRangeFormulaAsync(inputEl, rowId, col, raw, range) {
     updateSummaryFormulaBarForCell(anchor);
     _onRatioStateMutated();
     setStatusBarText(`Excel range linked: ${destination.entries.length} cells refreshed.`);
+    return true;
   } catch (error) {
-    alert(error?.message || "Could not read the Excel range.");
-    inputEl.disabled = previousDisabled;
-    inputEl.focus();
+    if (error?.name === "AbortError") throw error;
+    showSummaryFormulaBarValidationError(error?.message || "Could not read the Excel range.");
+    return false;
   }
 }
 
@@ -1946,7 +2346,7 @@ function parseUserEntryClipboardValue(raw, referenceValues) {
 function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, rawText) {
   if (!summaryTable || !startCell) return false;
   if (startCell.classList.contains("excelRangeSpillCell")) {
-    alert("Edit the first cell of the Excel-linked range instead.");
+    showSummaryFormulaBarValidationError("Edit the first cell of the Excel-linked range instead.");
     return true;
   }
   const startRow = startCell.closest("tr[data-row-id]");
@@ -1957,7 +2357,7 @@ function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, raw
 
   const parsedGrid = parseUserEntryClipboardGrid(rawText);
   if (!parsedGrid.ok) {
-    alert(parsedGrid.error);
+    showSummaryFormulaBarValidationError(parsedGrid.error);
     return true;
   }
 
@@ -1967,19 +2367,19 @@ function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, raw
   for (let rowOffset = 0; rowOffset < parsedGrid.rows.length; rowOffset++) {
     const targetRow = tableRows[startRowIndex + rowOffset];
     if (!targetRow) {
-      alert("The pasted range extends beyond the available Average Formula rows.");
+      showSummaryFormulaBarValidationError("The pasted range extends beyond the available Average Formula rows.");
       return true;
     }
     const rowId = String(targetRow.dataset.rowId || "");
     if (!isUserEntryConfig(summaryRowMap.get(rowId))) {
-      alert("Every destination row in the pasted range must be a User Entry row.");
+      showSummaryFormulaBarValidationError("Every destination row in the pasted range must be a User Entry row.");
       return true;
     }
     for (let colOffset = 0; colOffset < parsedGrid.width; colOffset++) {
       const col = startCol + colOffset;
       const cell = targetRow.querySelector(`td.summaryCell[data-col="${col}"]`);
       if (!cell) {
-        alert("The pasted range extends beyond the available development columns.");
+        showSummaryFormulaBarValidationError("The pasted range extends beyond the available development columns.");
         return true;
       }
       const parsedValue = parseUserEntryClipboardValue(
@@ -1987,7 +2387,9 @@ function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, raw
         buildSummaryReferenceValues(summaryTable, col)
       );
       if (!parsedValue) {
-        alert(`Clipboard value at row ${rowOffset + 1}, column ${colOffset + 1} must be a number greater than 0.`);
+        showSummaryFormulaBarValidationError(
+          `Clipboard value at row ${rowOffset + 1}, column ${colOffset + 1} must be a number greater than 0.`
+        );
         return true;
       }
       entries.push({ cell, rowId, col, ...parsedValue });
@@ -1995,6 +2397,7 @@ function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, raw
   }
 
   clearSummaryReferenceUi(summaryTable);
+  clearSummaryFormulaBarValidationError();
   summaryFormulaEditState = null;
   entries.forEach((entry) => {
     restoreSupersededExcelRange(summaryTable, entry.rowId, entry.col, entry.input);
@@ -2087,7 +2490,11 @@ function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCo
   return { handled: true, ok: true };
 }
 
-function commitSummaryFormulaInput(inputEl) {
+function isSummaryFormulaCommitPending(inputEl) {
+  return inputEl?.dataset?.formulaCommitPending === "1";
+}
+
+async function commitSummaryFormulaInput(inputEl) {
   const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
   const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
   if (!inputEl || !summaryTable) return true;
@@ -2096,42 +2503,86 @@ function commitSummaryFormulaInput(inputEl) {
   if (!rowId || !Number.isFinite(col) || col < 0) return true;
   const cfg = summaryRowMap.get(rowId);
   if (!cfg || !isUserEntryConfig(cfg)) return true;
-  const raw = String(inputEl.value || "").trim();
-  const excelRange = parseStandaloneExcelRange(raw);
-  if (excelRange) {
-    commitExcelRangeFormulaAsync(inputEl, rowId, col, raw, excelRange);
+  if (isSummaryFormulaCommitPending(inputEl)) return false;
+
+  const generation = ++summaryFormulaCommitGeneration;
+  const validationLease = beginFormulaValidationLease(inputEl, {
+    timeoutMs: DFM_FORMULA_VALIDATION_TIMEOUT_MS,
+  });
+  summaryFormulaCommitLease = validationLease;
+  setFormulaBarCommitControlsDisabled(inputEl, true, validationLease.id);
+  const isCurrent = () => (
+    generation === summaryFormulaCommitGeneration &&
+    summaryFormulaCommitLease === validationLease &&
+    inputEl.isConnected
+  );
+  clearSummaryFormulaBarValidationError();
+  try {
+    const raw = normalizeExcelReferenceAddressCase(String(inputEl.value || "").trim());
+    inputEl.value = raw;
+    const excelRange = parseStandaloneExcelRange(raw);
+    if (excelRange) {
+      return await commitExcelRangeFormulaAsync(rowId, col, raw, excelRange, {
+        signal: validationLease.signal,
+        isCurrent,
+      });
+    }
+    const arrayCommit = commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, col, raw);
+    if (arrayCommit.handled) {
+      if (!arrayCommit.ok) {
+        showSummaryFormulaBarValidationError(arrayCommit.error || "Could not apply array formula.", inputEl);
+      }
+      return !!arrayCommit.ok;
+    }
+    // Check if expression contains any Excel references (standalone or inline)
+    if (containsExcelRef(raw)) {
+      return await commitExcelFormulaAsync(rowId, col, raw, {
+        signal: validationLease.signal,
+        isCurrent,
+      });
+    }
+    const refValues = buildSummaryReferenceValues(summaryTable, col);
+    const parsed = stripFormulaEquals(raw) ? evaluateSimpleMathExpression(raw, refValues) : 1;
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      showSummaryFormulaBarValidationError(
+        "Enter a number > 0, or a formula like =\"Simple - 5\"*2.",
+        inputEl
+      );
+      return false;
+    }
+    const nextValue = roundRatio(parsed, 6);
+    restoreSupersededExcelRange(summaryTable, rowId, col, raw);
+    setUserEntryCellEntry(rowId, col, stripFormulaEquals(raw) ? raw : "1", nextValue);
+    persistUserEntryRowsFromState();
+    const cell = summaryTable.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
+    if (cell) setUserEntryCellDisplayValue(cell, nextValue);
+    if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
+    applyUserEntryReferenceHighlights(summaryTable);
+    applyExcelRangeHighlights(summaryTable);
+    clearSummaryReferenceUi(summaryTable);
+    summaryFormulaEditState = null;
+    clearSummaryFormulaBarValidationError();
+    updateSummaryFormulaBarForCell(cell);
+    _onRatioStateMutated();
     return true;
-  }
-  const arrayCommit = commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, col, raw);
-  if (arrayCommit.handled) {
-    if (!arrayCommit.ok) alert(arrayCommit.error || "Could not apply array formula.");
-    return !!arrayCommit.ok;
-  }
-  // Check if expression contains any Excel references (standalone or inline)
-  if (containsExcelRef(raw)) {
-    commitExcelFormulaAsync(inputEl, rowId, col, raw);
-    return true;
-  }
-  const refValues = buildSummaryReferenceValues(summaryTable, col);
-  const parsed = stripFormulaEquals(raw) ? evaluateSimpleMathExpression(raw, refValues) : 1;
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    alert("Enter a number > 0, or a formula like =\"Simple - 5\"*2.");
+  } catch (error) {
+    if (!isCurrent()) return false;
+    if (error?.name === "AbortError") {
+      if (validationLease.timedOut) {
+        showSummaryFormulaBarValidationError(
+          "Excel validation timed out after 30 seconds. Check the workbook and try again.",
+          inputEl
+        );
+      }
+      return false;
+    }
+    showSummaryFormulaBarValidationError(error?.message || "Formula validation failed.", inputEl);
     return false;
+  } finally {
+    validationLease.finish();
+    setFormulaBarCommitControlsDisabled(inputEl, false, validationLease.id);
+    if (summaryFormulaCommitLease === validationLease) summaryFormulaCommitLease = null;
   }
-  const nextValue = roundRatio(parsed, 6);
-  restoreSupersededExcelRange(summaryTable, rowId, col, raw);
-  setUserEntryCellEntry(rowId, col, stripFormulaEquals(raw) ? raw : "1", nextValue);
-  persistUserEntryRowsFromState();
-  const cell = summaryTable.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
-  if (cell) setUserEntryCellDisplayValue(cell, nextValue);
-  if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
-  applyUserEntryReferenceHighlights(summaryTable);
-  applyExcelRangeHighlights(summaryTable);
-  clearSummaryReferenceUi(summaryTable);
-  summaryFormulaEditState = null;
-  updateSummaryFormulaBarForCell(cell);
-  _onRatioStateMutated();
-  return true;
 }
 
 function updateSummaryFormulaBarForCell(cell) {
@@ -2148,8 +2599,6 @@ function updateSummaryFormulaBarForCell(cell) {
   }
 
   const el = ensureSummaryFormulaBarEl(summaryTable);
-  el.inert = !isRatioEditMode();
-  el.setAttribute("aria-disabled", isRatioEditMode() ? "false" : "true");
   const inputEl = el.querySelector("#dfmSummaryFormulaBarInput");
   let inputRaw = "";
   let targetCell = cell;
@@ -2186,15 +2635,19 @@ function updateSummaryFormulaBarForCell(cell) {
           const sameTarget =
             String(inputEl.dataset.rowId || "") === editRowId &&
             Number(inputEl.dataset.col) === editCol;
-          if (!inputHasFocus || !sameTarget) {
+          const editingSameTarget = sameTarget && isSummaryFormulaBarInputEditing(inputEl);
+          if ((!inputHasFocus && !editingSameTarget) || !sameTarget) {
             const body = (inputRaw || "").replace(/^=\s*/, "");
             inputEl.value = "= " + body;
             scrollSummaryFormulaInputToEnd(inputEl);
           }
+          if (!sameTarget) clearSummaryFormulaBarValidationError();
           inputEl.dataset.rowId = editRowId;
           inputEl.dataset.col = String(editCol);
-          inputEl.disabled = false;
-          inputEl.placeholder = "Enter value or formula";
+          if (!_xlLinkMode || _xlLinkSession?.inputEl !== inputEl) {
+            inputEl.disabled = false;
+            inputEl.placeholder = "Enter value or formula";
+          }
           const xlBtn = el.querySelector("#dfmSummaryFormulaBarXlLink");
           if (xlBtn) xlBtn.disabled = false;
         }
@@ -2209,7 +2662,7 @@ function updateSummaryFormulaBarForCell(cell) {
   }
 
   el.classList.add("fxVisible");
-  const isEditing = inputEl && document.activeElement === inputEl;
+  const isEditing = isSummaryFormulaBarInputEditing(inputEl);
   updateFormulaBarDisplayMode(el, isEditing);
   syncSummaryFormulaBarWidth(el, summaryTable);
   window.requestAnimationFrame(() => syncSummaryFormulaBarWidth(el, summaryTable));
@@ -2220,6 +2673,30 @@ function updateSummaryFormulaBarForCell(cell) {
 
 function refreshSummaryFormulaBar() {
   updateSummaryFormulaBarForCell(null);
+}
+
+function handleSummaryTableSelectionChange(summaryTable, selection) {
+  refreshRatioHighlightHeaders();
+  if (isRatioEditMode() || isSummaryFormulaEditSessionActive(summaryTable)) return;
+  const active = selection?.activeCell;
+  const cell = active
+    ? summaryTable.querySelector(
+      `td.summaryCell[data-copy-r="${active.r}"][data-copy-c="${active.c}"]`,
+    )
+    : null;
+  if (!cell) {
+    summaryActiveCellState = { rowId: "", col: -1 };
+    hideSummaryFormulaBar();
+    return;
+  }
+  const rowId = String(cell.dataset.r || "");
+  const col = Number(cell.dataset.col);
+  if (!rowId || !Number.isFinite(col) || col < 0) {
+    hideSummaryFormulaBar();
+    return;
+  }
+  summaryActiveCellState = { rowId, col };
+  updateSummaryFormulaBarForCell(cell);
 }
 
 function clearSummaryReferenceUi(summaryTable) {
@@ -2507,6 +2984,19 @@ export function recalculateUserEntryDependencies() {
 
 let _renameModalCallback = null;
 
+function setModalValidationError(modal, inputSelector, errorSelector, message) {
+  const input = modal?.querySelector?.(inputSelector);
+  const error = modal?.querySelector?.(errorSelector);
+  showFormulaValidationError({ inputEl: input, errorEl: error, message });
+  input?.focus?.({ preventScroll: true });
+}
+
+function clearModalValidationError(modal, inputSelector, errorSelector) {
+  const input = modal?.querySelector?.(inputSelector);
+  const error = modal?.querySelector?.(errorSelector);
+  clearFormulaValidationError({ inputEl: input, errorEl: error });
+}
+
 function showRenameModal(currentName, onCommit) {
   const modal = document.getElementById("dfmRenameModal");
   if (!modal) return;
@@ -2514,6 +3004,7 @@ function showRenameModal(currentName, onCommit) {
   if (nameInput) {
     nameInput.value = currentName || "";
   }
+  clearModalValidationError(modal, "#dfmRenameName", "#dfmRenameError");
   _renameModalCallback = onCommit;
   modal.classList.add("open");
   if (!modal.dataset.wired) {
@@ -2534,6 +3025,7 @@ function showRenameModal(currentName, onCommit) {
     };
     const cancelRename = () => {
       _renameModalCallback = null;
+      clearModalValidationError(modal, "#dfmRenameName", "#dfmRenameError");
       modal.classList.remove("open");
     };
     okBtn?.addEventListener("click", commitRename);
@@ -2543,6 +3035,9 @@ function showRenameModal(currentName, onCommit) {
       if (e.key === "Enter") { e.preventDefault(); commitRename(); }
       else if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
     });
+    nameInput?.addEventListener("input", () => {
+      clearModalValidationError(modal, "#dfmRenameName", "#dfmRenameError");
+    });
   }
   window.requestAnimationFrame(() => {
     if (nameInput) { nameInput.focus(); nameInput.select(); }
@@ -2551,7 +3046,10 @@ function showRenameModal(currentName, onCommit) {
 
 function hideAvgModal() {
   const modal = getAvgModalEl();
-  if (modal) modal.classList.remove("open");
+  if (modal) {
+    clearModalValidationError(modal, "#dfmAvgName", "#dfmAvgError");
+    modal.classList.remove("open");
+  }
 }
 
 function showAvgModal() {
@@ -2562,6 +3060,7 @@ function showAvgModal() {
   const baseSelect = modal.querySelector("#dfmAvgBase");
   const periodInput = modal.querySelector("#dfmAvgPeriods");
   const excludeInput = modal.querySelector("#dfmAvgExclude");
+  clearModalValidationError(modal, "#dfmAvgName", "#dfmAvgError");
   if (nameInput) nameInput.value = "User Entry";
   if (typeSelect) typeSelect.value = "custom";
   if (baseSelect) baseSelect.value = "simple";
@@ -2671,6 +3170,9 @@ function wireAvgModal() {
     if (digits !== raw) excludeInput.value = digits;
   };
 
+  nameInput?.addEventListener("input", () => {
+    clearModalValidationError(modal, "#dfmAvgName", "#dfmAvgError");
+  });
   typeSelect?.addEventListener("change", applyTypeState);
   baseSelect?.addEventListener("change", syncName);
   periodInput?.addEventListener("input", () => {
@@ -2722,7 +3224,12 @@ function wireAvgModal() {
       String(row.label || "").trim().toLowerCase() === normalizedLabel.toLowerCase()
     );
     if (nameExists) {
-      alert("Average formula name already exists.");
+      setModalValidationError(
+        modal,
+        "#dfmAvgName",
+        "#dfmAvgError",
+        "Average formula name already exists."
+      );
       return;
     }
     const nextRow = {
@@ -2756,10 +3263,15 @@ export function wireSummaryContextMenu(summaryTable) {
     selectedClass: "dfmTableHighlight",
     activeClass: "dfmTableActive",
     edgeClasses: DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
-    onSelectionChange: refreshRatioHighlightHeaders,
+    onSelectionChange: (selection) => handleSummaryTableSelectionChange(summaryTable, selection),
     exclusiveAcrossTables: true,
+    canHandleKeyboardNavigation: () => document.getElementById("ratioWrap")?.dataset.interactionMode === "select",
+    canStartLabelSelection: () => document.getElementById("ratioWrap")?.dataset.interactionMode === "select",
+    scrollHost: () => document.getElementById("ratioWrapHost"),
+    rowHeaderSelector: "th.summaryDragHandle",
     canStartPointerSelection: (event) => (
-      !isRatioEditMode() || !!(event.shiftKey || event.ctrlKey || event.metaKey)
+      (!isRatioEditMode() && !isSummaryFormulaEditSessionActive(summaryTable)) ||
+      !!(event.shiftKey || event.ctrlKey || event.metaKey)
     ),
   }) || summaryCopyHighlight;
 
@@ -2779,8 +3291,8 @@ export function wireSummaryContextMenu(summaryTable) {
       const renameBtn = menu.querySelector('[data-action="rename-average"]');
       const deleteBtn = menu.querySelector('[data-action="delete-average"]');
       const customBtn = menu.querySelector('[data-action="custom-average"]');
+      const modeBtn = menu.querySelector('[data-action="toggle-summary-ratio-mode"]');
       const noteBtn = menu.querySelector('[data-action="add-summary-cell-note"]');
-      const clearNoteBtn = menu.querySelector('[data-action="clear-summary-cell-note"]');
       const hasNote = !!(noteCell && hasDfmCellNote(noteCell));
       menu.querySelectorAll("[data-label-only], .dfmCtxSep[data-label-only]").forEach((item) => {
         item.style.display = onLabelCell ? "" : "none";
@@ -2788,11 +3300,16 @@ export function wireSummaryContextMenu(summaryTable) {
       if (renameBtn) renameBtn.disabled = disableRename;
       if (deleteBtn) deleteBtn.disabled = disableDelete;
       if (customBtn) customBtn.disabled = !onLabelCell;
+      if (modeBtn) {
+        const targetMode = isRatioEditMode() ? "select" : "edit";
+        modeBtn.dataset.targetMode = targetMode;
+        const label = modeBtn.querySelector(".dfmCtxItemLabel");
+        if (label) label.textContent = targetMode === "select" ? "Switch to Select Mode" : "Switch to Edit Mode";
+      }
       if (noteBtn) {
         noteBtn.disabled = !noteCell;
         noteBtn.textContent = hasNote ? "Edit Cell Notes" : "Add Cell Notes";
       }
-      if (clearNoteBtn) clearNoteBtn.disabled = !hasNote;
     }
     showAvgMenu(e.clientX, e.clientY);
   });
@@ -2805,16 +3322,16 @@ export function wireSummaryContextMenu(summaryTable) {
       if (!btn) return;
       const action = btn.dataset.action;
       hideAvgMenu();
+      if (action === "toggle-summary-ratio-mode") {
+        _toggleRatioInteractionMode();
+        return;
+      }
       if (action === "copy-summary-value") {
         await summaryCopyHighlight?.copySelection?.();
         return;
       }
       if (action === "add-summary-cell-note") {
         showDfmCellNoteEditor(summaryContextCellForNote, { focus: true });
-        return;
-      }
-      if (action === "clear-summary-cell-note") {
-        clearDfmCellNote(summaryContextCellForNote);
         return;
       }
       if (action === "custom-average") {
@@ -2838,7 +3355,12 @@ export function wireSummaryContextMenu(summaryTable) {
             (row) => String(row.label || "").trim().toLowerCase() === trimmed.toLowerCase()
           );
           if (nameExists && String(cfg.label || "").trim().toLowerCase() !== trimmed.toLowerCase()) {
-            alert("Average formula name already exists.");
+            setModalValidationError(
+              document.getElementById("dfmRenameModal"),
+              "#dfmRenameName",
+              "#dfmRenameError",
+              "Average formula name already exists."
+            );
             return false;
           }
           const cfgKey = getSummaryConfigKey();
@@ -3048,6 +3570,7 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable, options = {})
   input.className = "summaryCellEditInput";
   const initialText = typeof options.initialText === "string" ? options.initialText : null;
   input.value = initialText ?? formatRatio(roundRatio(currentValue, 6), getDfmDecimalPlaces());
+  clearSummaryFormulaBarValidationError();
   const original = cell.textContent;
   cell.textContent = "";
   cell.appendChild(input);
@@ -3067,38 +3590,57 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable, options = {})
     cell.classList.remove("strike");
     cell.classList.add("userEntryEditable");
   };
-  const finish = (commit) => {
+  const finish = (commit, finishOptions = {}) => {
     if (finished) return;
     finished = true;
-    clearSummaryReferenceUi(summaryTable);
-    summaryFormulaEditState = null;
     if (!commit) {
+      clearSummaryReferenceUi(summaryTable);
+      summaryFormulaEditState = null;
+      clearSummaryFormulaBarValidationError();
       cell.textContent = original;
       updateSummaryFormulaBarForCell(cell);
       return;
     }
     const raw = String(input.value || "").trim();
+    const selectionStart = Number.isInteger(input.selectionStart) ? input.selectionStart : raw.length;
+    const selectionEnd = Number.isInteger(input.selectionEnd) ? input.selectionEnd : selectionStart;
+    const rejectEdit = (message) => {
+      finished = false;
+      if (finishOptions.keepEditorOnError) {
+        beginSummaryFormulaEditSession(summaryTable, cell, input, col);
+        if (summaryFormulaEditState?.input === input) {
+          summaryFormulaEditState.kind = "inline";
+          summaryFormulaEditState.phase = "invalid";
+          summaryFormulaEditState.cancel = () => finish(false);
+        }
+        showSummaryFormulaBarValidationError(message, input);
+        input.setSelectionRange?.(selectionStart, selectionEnd);
+        return;
+      }
+      clearSummaryReferenceUi(summaryTable);
+      summaryFormulaEditState = null;
+      cell.textContent = original;
+      updateSummaryFormulaBarForCell(cell);
+      showSummaryFormulaBarValidationError(message);
+    };
     const arrayCommit = commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, col, raw);
     if (arrayCommit.handled) {
       if (!arrayCommit.ok) {
-        alert(arrayCommit.error || "Could not apply array formula.");
-        finished = false;
-        beginSummaryFormulaEditSession(summaryTable, cell, input, col);
-        input.focus();
-        input.select();
+        rejectEdit(arrayCommit.error || "Could not apply array formula.");
+      } else {
+        clearSummaryFormulaBarValidationError();
       }
       return;
     }
     const refValues = buildSummaryReferenceValues(summaryTable, col);
     const parsed = stripFormulaEquals(raw) ? evaluateSimpleMathExpression(raw, refValues) : 1;
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      alert("Enter a number > 0, or a formula like =\"Simple - 5\"*2.");
-      finished = false;
-      beginSummaryFormulaEditSession(summaryTable, cell, input, col);
-      input.focus();
-      input.select();
+      rejectEdit("Enter a number > 0, or a formula like =\"Simple - 5\"*2.");
       return;
     }
+    clearSummaryReferenceUi(summaryTable);
+    summaryFormulaEditState = null;
+    clearSummaryFormulaBarValidationError();
     const nextValue = roundRatio(parsed, 6);
     restoreSupersededExcelRange(summaryTable, rowId, col, raw);
     setUserEntryCellEntry(rowId, col, stripFormulaEquals(raw) ? raw : "1", nextValue);
@@ -3111,16 +3653,24 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable, options = {})
     _onRatioStateMutated();
   };
 
+  if (summaryFormulaEditState?.input === input) {
+    summaryFormulaEditState.kind = "inline";
+    summaryFormulaEditState.phase = "editing";
+    summaryFormulaEditState.cancel = () => finish(false);
+  }
+
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      finish(true);
+      finish(true, { keepEditorOnError: true });
     } else if (e.key === "Escape") {
       e.preventDefault();
       finish(false);
     }
   });
   input.addEventListener("input", () => {
+    if (summaryFormulaEditState?.input === input) summaryFormulaEditState.phase = "editing";
+    clearSummaryFormulaBarValidationError();
     updateSummaryFormulaBarForCell(cell);
   });
   input.addEventListener("paste", (e) => {
@@ -3130,7 +3680,7 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable, options = {})
     finish(false);
     pasteUserEntryClipboardGrid(summaryTable, selectedTable, cell, text);
   });
-  input.addEventListener("blur", () => finish(true));
+  input.addEventListener("blur", () => finish(true, { keepEditorOnError: false }));
 }
 
 export function wireSummarySelection(summaryTable, selectedTable) {
@@ -3148,17 +3698,12 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     lastKey = null;
   };
 
-  const isSummaryEditSessionActive = () => {
-    if (!summaryFormulaEditState) return false;
-    if (summaryFormulaEditState.summaryTable !== summaryTable) return false;
-    const input = summaryFormulaEditState.input;
-    return !!input && document.body.contains(input);
-  };
-
   const isFormulaReferenceMode = () => {
-    if (!isSummaryEditSessionActive()) return false;
+    if (!isSummaryFormulaEditSessionActive(summaryTable)) return false;
     const input = summaryFormulaEditState?.input;
     if (!input) return false;
+    if (input.disabled || input.readOnly || isSummaryFormulaCommitPending(input)) return false;
+    if (summaryFormulaBarState.input === input && summaryFormulaBarState.mode === "validating") return false;
     return String(input.value || "").includes("=");
   };
 
@@ -3307,7 +3852,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
 
   const selectCell = (cell) => {
     if (!cell) return;
-    if (isSummaryEditSessionActive()) return;
+    if (isSummaryFormulaEditSessionActive(summaryTable)) return;
     const col = Number(cell.dataset.col);
     const rowId = String(cell.dataset.r || "");
     if (!Number.isFinite(col) || !rowId) return;
@@ -3329,7 +3874,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       updateSummaryFormulaBarForCell(null);
       return;
     }
-    if (isSummaryEditSessionActive() && summaryFormulaEditState?.cell !== cell) {
+    if (isSummaryFormulaEditSessionActive(summaryTable) && summaryFormulaEditState?.cell !== cell) {
       updateSummaryFormulaBarForCell(summaryFormulaEditState.cell);
       return;
     }
@@ -3348,7 +3893,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   };
 
   const selectFormulaRow = (row) => {
-    if (!row || isSummaryEditSessionActive()) return;
+    if (!row || isSummaryFormulaEditSessionActive(summaryTable)) return;
     const rowId = String(row.dataset.rowId || "");
     if (!rowId) return;
     const cells = Array.from(row.querySelectorAll("td.summaryCell[data-col]"));
@@ -3413,9 +3958,21 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   };
 
   summaryTable.addEventListener("mousedown", (e) => {
-    if (!isRatioEditMode()) return;
+    let formulaEditing = isSummaryFormulaEditSessionActive(summaryTable);
+    if (!isRatioEditMode() && !formulaEditing) return;
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (tryStartReferenceDrag(e)) return;
     if (tryInsertReferenceFromEvent(e)) return;
+    const activeEdit = summaryFormulaEditState;
+    if (
+      activeEdit?.kind === "inline" &&
+      activeEdit.phase === "invalid" &&
+      !activeEdit.cell?.contains?.(e.target)
+    ) {
+      activeEdit.cancel?.();
+      formulaEditing = isSummaryFormulaEditSessionActive(summaryTable);
+    }
+    if (!isRatioEditMode()) return;
     if (e.button !== 0) return;
     if (e.target?.closest?.("input.summaryCellEditInput")) return;
     const cell = e.target?.closest?.("td.summaryCell");
@@ -3429,10 +3986,12 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   });
 
   summaryTable.addEventListener("mousemove", (e) => {
-    if (!isRatioEditMode()) return;
+    const formulaEditing = isSummaryFormulaEditSessionActive(summaryTable);
+    if (!isRatioEditMode() && !formulaEditing) return;
     if (summaryReferenceDragState) return;
     const hoverCell = e.target?.closest?.("td.summaryCell");
     updateReferenceHoverUi(hoverCell || null);
+    if (!isRatioEditMode()) return;
     if (!dragActive) return;
     const cell = e.target?.closest?.("td.summaryCell");
     if (!cell) return;
@@ -3450,6 +4009,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
 
   summaryTable.addEventListener("click", (e) => {
     if (!isRatioEditMode()) return;
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (e.defaultPrevented) return;
     if (dragActive) return;
     if (e.target?.closest?.("input.summaryCellEditInput")) return;
@@ -3471,7 +4031,12 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     setActiveCell(cell, true);
     if (cell.classList.contains("excelRangeSpillCell")) {
       const barInput = document.querySelector("#dfmSummaryFormulaBarInput");
-      if (barInput && !barInput.disabled) barInput.focus();
+      if (
+        barInput &&
+        !barInput.disabled &&
+        !barInput.readOnly &&
+        !isSummaryFormulaCommitPending(barInput)
+      ) barInput.focus();
       updateReferenceHoverUi(null);
       return;
     }
@@ -3528,7 +4093,13 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       e.preventDefault();
       const barEl = document.getElementById("dfmSummaryFormulaBar");
       const barInput = barEl?.querySelector("#dfmSummaryFormulaBarInput");
-      if (barInput && !barInput.disabled) {
+      if (
+        barInput &&
+        !barInput.disabled &&
+        !barInput.readOnly &&
+        !isSummaryFormulaCommitPending(barInput) &&
+        summaryFormulaBarState.mode !== "validating"
+      ) {
         barInput.value = "= ";
         updateFormulaBarDisplayMode(barEl, true);
         barInput.focus();

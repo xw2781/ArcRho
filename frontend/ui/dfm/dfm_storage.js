@@ -4,6 +4,7 @@
  */
 
 const NA_BORDER_KEY = "arcrho_dfm_ratio_na_borders";
+const RATIO_INTERACTION_MODE_KEY = "arcrho_dfm_ratio_interaction_mode";
 let _storageInstanceId = "";
 
 function getResolvedProjectNameForStorage() {
@@ -81,6 +82,15 @@ export function loadNaBorders() {
   }
 }
 
+export function loadRatioInteractionMode() {
+  try {
+    const raw = localStorage.getItem(RATIO_INTERACTION_MODE_KEY);
+    return raw === "select" || raw === "edit" ? raw : "edit";
+  } catch {
+    return "edit";
+  }
+}
+
 // --- Save functions ---
 
 export function saveCustomSummaryRows(key, rows) {
@@ -93,6 +103,13 @@ export function saveCustomSummaryRows(key, rows) {
 export function saveNaBorders(value) {
   try {
     localStorage.setItem(NA_BORDER_KEY, value ? "1" : "0");
+  } catch {}
+}
+
+export function saveRatioInteractionMode(mode) {
+  const normalized = mode === "select" ? "select" : "edit";
+  try {
+    localStorage.setItem(RATIO_INTERACTION_MODE_KEY, normalized);
   } catch {}
 }
 

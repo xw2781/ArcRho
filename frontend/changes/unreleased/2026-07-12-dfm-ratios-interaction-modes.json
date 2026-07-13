@@ -2,9 +2,8 @@
   "type": "feature",
   "scope": "dfm",
   "audience": "user",
-  "summary": "Added Select and Edit modes with S and E shortcuts above DFM Ratios tables so users can copy cells without accidentally changing ratio choices.",
+  "summary": "Added Select and Edit modes with S and E shortcuts so users can copy DFM Ratios cells without accidentally changing ratio choices.",
   "details": [
-    "Select uses a compact Windows-style pointer icon with three taller folded fingers and the native hand-pointer cursor over table cells, while Edit uses a matching pen icon.",
-    "Active mode labels stay regular weight while color and framing indicate the active mode."
+    "The Ratios context menu starts with a command that switches to the other interaction mode."
   ]
 }

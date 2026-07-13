@@ -753,71 +753,69 @@
       overflow: auto;
       background: #fff;
       box-sizing: border-box;
-    }
-    #rsMethodPage .rsGridHost {
-      --rs-method-scrollbar-chrome: #f1f3f5;
-      --rs-method-scrollbar-button-hover: #e5e9ef;
-      --rs-method-scrollbar-button-active: #d9dee7;
-      --rs-method-scrollbar-thumb: rgba(182, 182, 182, 0.2);
-      --rs-method-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+      --rs-scrollbar-chrome: #f1f3f5;
+      --rs-scrollbar-button-hover: #e5e9ef;
+      --rs-scrollbar-button-active: #d9dee7;
+      --rs-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --rs-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
       scrollbar-gutter: stable;
       padding-right: 1px;
       padding-bottom: 1px;
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar {
+    .rsGridHost::-webkit-scrollbar {
       width: 20px;
       height: 20px;
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-track,
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-corner {
-      background: var(--rs-method-scrollbar-chrome);
+    .rsGridHost::-webkit-scrollbar-track,
+    .rsGridHost::-webkit-scrollbar-corner {
+      background: var(--rs-scrollbar-chrome);
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-thumb {
-      background-color: var(--rs-method-scrollbar-thumb);
-      border: 3px solid var(--rs-method-scrollbar-chrome);
+    .rsGridHost::-webkit-scrollbar-thumb {
+      background-color: var(--rs-scrollbar-thumb);
+      border: 3px solid var(--rs-scrollbar-chrome);
       border-radius: 5px;
       background-clip: content-box;
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button {
+    .rsGridHost::-webkit-scrollbar-button {
       width: 16px;
       height: 16px;
       display: block;
-      background-color: var(--rs-method-scrollbar-chrome);
+      background-color: var(--rs-scrollbar-chrome);
       background-position: center;
       background-repeat: no-repeat;
       background-size: 12px 12px;
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:hover {
-      background-color: var(--rs-method-scrollbar-button-hover);
+    .rsGridHost::-webkit-scrollbar-button:hover {
+      background-color: var(--rs-scrollbar-button-hover);
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:active {
-      background-color: var(--rs-method-scrollbar-button-active);
+    .rsGridHost::-webkit-scrollbar-button:active {
+      background-color: var(--rs-scrollbar-button-active);
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:horizontal:start:increment,
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:horizontal:end:decrement,
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:vertical:start:increment,
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:vertical:end:decrement {
+    .rsGridHost::-webkit-scrollbar-button:horizontal:start:increment,
+    .rsGridHost::-webkit-scrollbar-button:horizontal:end:decrement,
+    .rsGridHost::-webkit-scrollbar-button:vertical:start:increment,
+    .rsGridHost::-webkit-scrollbar-button:vertical:end:decrement {
       width: 0;
       height: 0;
       display: none;
       background-image: none;
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:horizontal:start:decrement {
+    .rsGridHost::-webkit-scrollbar-button:horizontal:start:decrement {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:horizontal:end:increment {
+    .rsGridHost::-webkit-scrollbar-button:horizontal:end:increment {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:vertical:start:decrement {
+    .rsGridHost::-webkit-scrollbar-button:vertical:start:decrement {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
     }
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-button:vertical:end:increment {
+    .rsGridHost::-webkit-scrollbar-button:vertical:end:increment {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
     }
-    #rsMethodPage .rsGridHost.isScrolling::-webkit-scrollbar-thumb,
-    #rsMethodPage .rsGridHost.isScrollbarHover::-webkit-scrollbar-thumb,
-    #rsMethodPage .rsGridHost::-webkit-scrollbar-thumb:hover {
-      background-color: var(--rs-method-scrollbar-thumb-active);
+    .rsGridHost.isScrolling::-webkit-scrollbar-thumb,
+    .rsGridHost.isScrollbarHover::-webkit-scrollbar-thumb,
+    .rsGridHost::-webkit-scrollbar-thumb:hover {
+      background-color: var(--rs-scrollbar-thumb-active);
     }
     .rsGrid {
       border-collapse: separate;
@@ -933,8 +931,6 @@
       border-left: 1px solid var(--rs-grid-border);
     }
     .rsGrid td.rsOriginCell { font-weight: 400; }
-    .rsGrid th.rsHighlightedColumnLabel,
-    .rsGrid td.rsHighlightedRowLabel { font-weight: 700; }
     .rsGrid th:first-child { z-index: 5; }
     .rsWeightCell,
     .rsGrid th.rsWeightHeader {
@@ -974,11 +970,17 @@
     }
     .rsGrid td.rsMethodCell.rsHighlightedCell,
     .rsGrid td.rsResultsCell.rsHighlightedCell {
-      background: #30358b;
-      color: #fff;
+      background: var(--ar-spreadsheet-selection-fill);
+      color: var(--ar-spreadsheet-selection-text);
     }
     .rsGrid td.rsMethodCell.rsHighlightedCell input {
-      color: #fff;
+      color: var(--ar-spreadsheet-selection-text);
+    }
+    .rsGrid td.rsMethodCell.rsOriginCell.rsHighlightedCell,
+    .rsGrid td.rsResultsCell.rsOriginCell.rsHighlightedCell {
+      background: var(--ar-spreadsheet-selected-label-fill);
+      color: var(--ar-spreadsheet-label-text);
+      font-weight: 400;
     }
     .rsGrid td.rsWeightCell.rsHighlightedCell {
       background: #a8eeee;
@@ -1004,7 +1006,7 @@
       color: #111827;
     }
     .rsGrid td.rsSourceCell.rsSelectedSourceCell {
-      background: #d9e98b;
+      background: var(--ar-spreadsheet-weighted-selection-fill);
       color: #111827;
     }
     .rsGrid td.rsSourceCell.rsSourceEmptyZero {
@@ -1089,6 +1091,14 @@
     }
     #rsMethodGrid .rsTotalRow td {
       font-weight: 700;
+    }
+    .rsGrid th.rsHighlightedColumnLabel,
+    #rsMethodGrid td.rsOriginCell.rsHighlightedRowLabel,
+    #rsResultsGrid td.rsOriginCell.rsHighlightedRowLabel {
+      background: var(--ar-spreadsheet-selected-label-fill);
+      color: var(--ar-spreadsheet-label-text);
+      font-style: normal;
+      font-weight: 400;
     }
     .rsGrid th.rsSourceHeader {
       cursor: pointer;
@@ -1372,12 +1382,12 @@
         </div>
       </div>
       <div class="rsGridHost">
-        <table class="rsGrid" id="rsMethodGrid"></table>
+        <table class="rsGrid arSpreadsheetTable" id="rsMethodGrid" aria-label="Result Selection method table"></table>
       </div>
     </section>
     <section id="rsResultsPage" class="rsPage">
       <div class="rsGridHost rsResultsGridHost">
-        <table class="rsGrid" id="rsResultsGrid"></table>
+        <table class="rsGrid arSpreadsheetTable" id="rsResultsGrid" aria-label="Result Selection results table"></table>
       </div>
     </section>
     <section id="rsValidationPage" class="rsPage">
@@ -1425,10 +1435,10 @@
   <div id="rsRatioBasisContextMenu" class="rsCellContextMenu rsRatioBasisContextMenu" role="menu" aria-hidden="true">
     <button type="button" role="menuitem" data-rs-ratio-basis-action="delete">Delete</button>
   </div>
-  <script src="/ui/result_selection/result_selection_ui.js?v=20260711a"></script>
+  <script src="/ui/result_selection/result_selection_ui.js?v=20260712a"></script>
   <script src="/ui/result_selection/result_selection_data.js?v=20260710a"></script>
-  <script src="/ui/result_selection/result_selection_grids.js?v=20260704a"></script>
+  <script src="/ui/result_selection/result_selection_grids.js?v=20260712b"></script>
   <script src="/ui/result_selection/result_selection_model.js?v=20260704a"></script>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260711a"></script>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260712a"></script>
 </body>
 </html>

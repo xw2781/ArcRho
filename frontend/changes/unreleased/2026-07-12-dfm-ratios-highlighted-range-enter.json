@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added Select-mode Enter-key actions for highlighted DFM Ratios ranges to toggle ratio exclusions or select average formulas."
+}

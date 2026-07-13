@@ -9,6 +9,11 @@ export function normalizeRange(r0, c0, r1, c1) {
 
 let activeSelectableTable = null;
 
+export function moveActiveSelectableTableSelection(deltaRow, deltaCol, settings = {}) {
+  if (!activeSelectableTable?.isActive || typeof activeSelectableTable.moveSelection !== "function") return false;
+  return activeSelectableTable.moveSelection(deltaRow, deltaCol, settings);
+}
+
 export function getTopLeftRangeCell(ranges = []) {
   let best = null;
   for (const range of ranges) {
@@ -93,11 +98,25 @@ export function wireSelectableTable(options = {}) {
   const rowKey = options.rowKey || "r";
   const colKey = options.colKey || "c";
   const cellQuery = `td[data-${dataAttrName(rowKey)}][data-${dataAttrName(colKey)}]`;
+  const rowHeaderSelector = String(options.rowHeaderSelector || "");
+  const columnHeaderSelector = String(options.columnHeaderSelector || "");
   const getCellText = typeof options.getCellText === "function" ? options.getCellText : cellText;
   const isSelectableCell = typeof options.isSelectableCell === "function" ? options.isSelectableCell : () => true;
   const canStartPointerSelection = typeof options.canStartPointerSelection === "function"
     ? options.canStartPointerSelection
     : () => true;
+  const canHandleKeyboardNavigation = typeof options.canHandleKeyboardNavigation === "function"
+    ? options.canHandleKeyboardNavigation
+    : () => options.canHandleKeyboardNavigation === true;
+  const canStartLabelSelection = typeof options.canStartLabelSelection === "function"
+    ? options.canStartLabelSelection
+    : () => options.canStartLabelSelection === true;
+  const getColumnHeaderIndex = typeof options.getColumnHeaderIndex === "function"
+    ? options.getColumnHeaderIndex
+    : (header) => Number(header?.dataset?.[colKey]);
+  const getScrollHost = typeof options.scrollHost === "function"
+    ? options.scrollHost
+    : () => options.scrollHost || null;
   const onContextMenu = typeof options.onContextMenu === "function" ? options.onContextMenu : null;
   const onSelectionChange = typeof options.onSelectionChange === "function"
     ? options.onSelectionChange
@@ -108,8 +127,10 @@ export function wireSelectableTable(options = {}) {
     ranges: [],
     drag: null,
     isActive: false,
+    anchorCell: null,
     exclusiveAcrossTables,
     clearSelection: null,
+    moveSelection: null,
   };
 
   const markActive = () => {
@@ -171,6 +192,7 @@ export function wireSelectableTable(options = {}) {
 
   function clearSelection() {
     state.activeCell = null;
+    state.anchorCell = null;
     state.ranges = [];
     state.drag = null;
     state.isActive = false;
@@ -184,6 +206,7 @@ export function wireSelectableTable(options = {}) {
     const rc = rcFromCell(cell);
     if (!rc) return false;
     state.activeCell = rc;
+    state.anchorCell = rc;
     markActive();
     if (!append) state.ranges = [];
     state.ranges.push(normalizeRange(rc.r, rc.c, rc.r, rc.c));
@@ -199,6 +222,45 @@ export function wireSelectableTable(options = {}) {
     ));
   }
 
+  function selectablePositions() {
+    return Array.from(container.querySelectorAll(cellQuery))
+      .filter((cell) => isSelectableCell(cell))
+      .map((cell) => rcFromCell(cell))
+      .filter(Boolean);
+  }
+
+  function selectRow(row) {
+    const rowIndex = Number(row);
+    if (!Number.isInteger(rowIndex)) return false;
+    const positions = selectablePositions().filter((position) => position.r === rowIndex);
+    if (!positions.length) return false;
+    const minCol = Math.min(...positions.map((position) => position.c));
+    const maxCol = Math.max(...positions.map((position) => position.c));
+    const anchor = { r: rowIndex, c: minCol };
+    state.activeCell = { ...anchor };
+    state.anchorCell = { ...anchor };
+    state.ranges = [normalizeRange(rowIndex, minCol, rowIndex, maxCol)];
+    markActive();
+    applyClasses();
+    return true;
+  }
+
+  function selectColumn(col) {
+    const colIndex = Number(col);
+    if (!Number.isInteger(colIndex)) return false;
+    const positions = selectablePositions().filter((position) => position.c === colIndex);
+    if (!positions.length) return false;
+    const minRow = Math.min(...positions.map((position) => position.r));
+    const maxRow = Math.max(...positions.map((position) => position.r));
+    const anchor = { r: minRow, c: colIndex };
+    state.activeCell = { ...anchor };
+    state.anchorCell = { ...anchor };
+    state.ranges = [normalizeRange(minRow, colIndex, maxRow, colIndex)];
+    markActive();
+    applyClasses();
+    return true;
+  }
+
   async function copySelection() {
     const ranges = state.ranges.length
       ? state.ranges
@@ -212,6 +274,90 @@ export function wireSelectableTable(options = {}) {
     return true;
   }
 
+  function selectableBounds() {
+    const positions = selectablePositions();
+    if (!positions.length) return null;
+    return {
+      minRow: Math.min(...positions.map((position) => position.r)),
+      maxRow: Math.max(...positions.map((position) => position.r)),
+      minCol: Math.min(...positions.map((position) => position.c)),
+      maxCol: Math.max(...positions.map((position) => position.c)),
+    };
+  }
+
+  function scrollActiveCellIntoView() {
+    if (!state.activeCell) return;
+    const cell = container.querySelector(cellSelectorFor(state.activeCell.r, state.activeCell.c, rowKey, colKey));
+    if (!cell) return;
+    const scrollHost = getScrollHost();
+    if (!scrollHost) {
+      cell.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      return;
+    }
+    const hostRect = scrollHost.getBoundingClientRect();
+    const cellRect = cell.getBoundingClientRect();
+    const table = cell.closest("table");
+    const thead = table?.querySelector("thead");
+    const stickyHeader = thead && Array.from(thead.querySelectorAll("th"))
+      .some((header) => getComputedStyle(header).position === "sticky");
+    const topInset = stickyHeader ? thead.getBoundingClientRect().height : 0;
+    const rowHeader = cell.parentElement?.querySelector("th");
+    const rowHeaderStyle = rowHeader ? getComputedStyle(rowHeader) : null;
+    const stickyRowHeader = rowHeaderStyle?.position === "sticky" && rowHeaderStyle?.left !== "auto";
+    const leftInset = stickyRowHeader ? rowHeader.getBoundingClientRect().width : 0;
+    const visibleTop = hostRect.top + topInset;
+    const visibleLeft = hostRect.left + leftInset;
+    if (cellRect.top < visibleTop) scrollHost.scrollTop += cellRect.top - visibleTop;
+    else if (cellRect.bottom > hostRect.bottom) scrollHost.scrollTop += cellRect.bottom - hostRect.bottom;
+    if (cellRect.left < visibleLeft) scrollHost.scrollLeft += cellRect.left - visibleLeft;
+    else if (cellRect.right > hostRect.right) scrollHost.scrollLeft += cellRect.right - hostRect.right;
+  }
+
+  function moveSelection(deltaRow, deltaCol, settings = {}) {
+    if (activeSelectableTable !== state || !state.isActive || !state.activeCell) return false;
+    const rowDirection = Math.sign(Number(deltaRow) || 0);
+    const colDirection = Math.sign(Number(deltaCol) || 0);
+    if (!rowDirection && !colDirection) return false;
+    const limit = selectableBounds();
+    if (!limit) return false;
+    const jump = settings.jump === true;
+
+    if (settings.extend === true) {
+      const anchor = state.anchorCell || state.activeCell;
+      const active = { ...state.activeCell };
+      if (rowDirection < 0) active.r = jump ? limit.minRow : Math.max(limit.minRow, active.r - 1);
+      if (rowDirection > 0) active.r = jump ? limit.maxRow : Math.min(limit.maxRow, active.r + 1);
+      if (colDirection < 0) active.c = jump ? limit.minCol : Math.max(limit.minCol, active.c - 1);
+      if (colDirection > 0) active.c = jump ? limit.maxCol : Math.min(limit.maxCol, active.c + 1);
+      if (active.r === state.activeCell.r && active.c === state.activeCell.c) return false;
+      state.activeCell = active;
+      state.anchorCell = { ...anchor };
+      state.ranges = [normalizeRange(anchor.r, anchor.c, active.r, active.c)];
+      applyClasses();
+      scrollActiveCellIntoView();
+      return true;
+    }
+
+    const origin = state.anchorCell || state.activeCell;
+    const active = { ...origin };
+    if (rowDirection < 0) active.r = jump ? limit.minRow : Math.max(limit.minRow, active.r - 1);
+    if (rowDirection > 0) active.r = jump ? limit.maxRow : Math.min(limit.maxRow, active.r + 1);
+    if (colDirection < 0) active.c = jump ? limit.minCol : Math.max(limit.minCol, active.c - 1);
+    if (colDirection > 0) active.c = jump ? limit.maxCol : Math.min(limit.maxCol, active.c + 1);
+    const hasRange = state.ranges.length !== 1
+      || state.ranges[0].r0 !== state.ranges[0].r1
+      || state.ranges[0].c0 !== state.ranges[0].c1;
+    if (!hasRange && active.r === origin.r && active.c === origin.c) return false;
+    state.activeCell = active;
+    state.anchorCell = { ...active };
+    state.ranges = [normalizeRange(active.r, active.c, active.r, active.c)];
+    applyClasses();
+    scrollActiveCellIntoView();
+    return true;
+  }
+
+  state.moveSelection = moveSelection;
+
   container.addEventListener("mousedown", (event) => {
     if (event.button !== 0 || isTypingTarget(event.target)) return;
     if (!canStartPointerSelection(event)) return;
@@ -223,6 +369,7 @@ export function wireSelectableTable(options = {}) {
     const append = !!(event.ctrlKey || event.metaKey);
     if (!append) state.ranges = [];
     state.activeCell = rc;
+    state.anchorCell = rc;
     markActive();
     state.drag = { anchor: rc };
     state.ranges.push(normalizeRange(rc.r, rc.c, rc.r, rc.c));
@@ -250,6 +397,25 @@ export function wireSelectableTable(options = {}) {
     if (onContextMenu) onContextMenu(event, cell, { copySelection, state });
   });
 
+  container.addEventListener("click", (event) => {
+    if (isTypingTarget(event.target) || !canStartLabelSelection(event)) return;
+    const rowHeader = rowHeaderSelector ? event.target?.closest?.(rowHeaderSelector) : null;
+    if (rowHeader && container.contains(rowHeader)) {
+      const row = rowHeader.closest("tr");
+      const rowCell = row
+        ? Array.from(row.querySelectorAll(cellQuery)).find((cell) => isSelectableCell(cell))
+        : null;
+      const position = rcFromCell(rowCell);
+      if (!position || !selectRow(position.r)) return;
+      event.preventDefault();
+      return;
+    }
+    const columnHeader = columnHeaderSelector ? event.target?.closest?.(columnHeaderSelector) : null;
+    if (!columnHeader || !container.contains(columnHeader)) return;
+    if (!selectColumn(getColumnHeaderIndex(columnHeader))) return;
+    event.preventDefault();
+  });
+
   document.addEventListener("mouseup", () => {
     state.drag = null;
   });
@@ -259,6 +425,27 @@ export function wireSelectableTable(options = {}) {
     if (event.key === "Escape" && activeSelectableTable === state && state.isActive) {
       clearSelection();
       event.preventDefault();
+      return;
+    }
+    const movement = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+    }[event.key];
+    if (
+      movement
+      && !event.altKey
+      && activeSelectableTable === state
+      && state.isActive
+      && canHandleKeyboardNavigation(event)
+    ) {
+      moveSelection(movement[0], movement[1], {
+        extend: event.shiftKey,
+        jump: event.ctrlKey || event.metaKey,
+      });
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
     if (!(event.ctrlKey || event.metaKey) || String(event.key || "").toLowerCase() !== "c") return;
@@ -271,6 +458,9 @@ export function wireSelectableTable(options = {}) {
     copySelection,
     selectCell,
     clearSelection,
+    moveSelection,
+    selectColumn,
+    selectRow,
     state,
     applyClasses,
   };

@@ -17,6 +17,7 @@ import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interaction
 import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
 import { startResultSelectionRpcBridgeSync } from "/ui/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
 import { createPageCloseConfirm } from "/ui/shared/page_close_confirm.js";
+import { createSpreadsheetTableController } from "/ui/shared/spreadsheet_table.js?v=20260712c";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
 const RS_JSON_VALUE_DECIMAL_PLACES = 6;
@@ -161,6 +162,7 @@ const ctx = {
   updateTabbedPageSaveControls,
   wireTabPopoutWindows,
   wireNotesEditorInteractions,
+  createSpreadsheetTableController,
   startResultSelectionRpcBridgeSync,
   RS_JSON_FORMAT,
   RS_JSON_VALUE_DECIMAL_PLACES,

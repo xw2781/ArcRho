@@ -663,37 +663,38 @@
         });
       }
 
-      function wireRsMethodScrollbarActivity() {
-        const host = els.methodGrid?.closest?.(".rsGridHost");
-        if (!host || host.__arcRhoScrollbarActivityWired) return;
-        host.__arcRhoScrollbarActivityWired = true;
+      function wireRsGridScrollbarActivity() {
+        document.querySelectorAll(".rsGridHost").forEach((host) => {
+          if (host.__arcRhoScrollbarActivityWired) return;
+          host.__arcRhoScrollbarActivityWired = true;
 
-        let idleTimer = null;
-        const syncScrollbarHover = (event) => {
-          const rect = host.getBoundingClientRect();
-          const verticalScrollbarWidth = Math.max(0, host.offsetWidth - host.clientWidth);
-          const horizontalScrollbarHeight = Math.max(0, host.offsetHeight - host.clientHeight);
-          const hasVerticalScrollbar = host.scrollHeight > host.clientHeight && verticalScrollbarWidth > 0;
-          const hasHorizontalScrollbar = host.scrollWidth > host.clientWidth && horizontalScrollbarHeight > 0;
-          const nearVerticalScrollbar = hasVerticalScrollbar
-            && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
-          const nearHorizontalScrollbar = hasHorizontalScrollbar
-            && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+          let idleTimer = null;
+          const syncScrollbarHover = (event) => {
+            const rect = host.getBoundingClientRect();
+            const verticalScrollbarWidth = Math.max(0, host.offsetWidth - host.clientWidth);
+            const horizontalScrollbarHeight = Math.max(0, host.offsetHeight - host.clientHeight);
+            const hasVerticalScrollbar = host.scrollHeight > host.clientHeight && verticalScrollbarWidth > 0;
+            const hasHorizontalScrollbar = host.scrollWidth > host.clientWidth && horizontalScrollbarHeight > 0;
+            const nearVerticalScrollbar = hasVerticalScrollbar
+              && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+            const nearHorizontalScrollbar = hasHorizontalScrollbar
+              && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
 
-          host.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
-        };
+            host.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+          };
 
-        host.addEventListener("scroll", () => {
-          host.classList.add("isScrolling");
-          if (idleTimer) clearTimeout(idleTimer);
-          idleTimer = setTimeout(() => {
-            host.classList.remove("isScrolling");
-          }, 550);
-        }, { passive: true });
-        host.addEventListener("pointermove", syncScrollbarHover, { passive: true });
-        host.addEventListener("pointerleave", () => {
-          host.classList.remove("isScrollbarHover");
-        }, { passive: true });
+          host.addEventListener("scroll", () => {
+            host.classList.add("isScrolling");
+            if (idleTimer) clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+              host.classList.remove("isScrolling");
+            }, 550);
+          }, { passive: true });
+          host.addEventListener("pointermove", syncScrollbarHover, { passive: true });
+          host.addEventListener("pointerleave", () => {
+            host.classList.remove("isScrollbarHover");
+          }, { passive: true });
+        });
       }
 
       function wireEvents() {
@@ -774,6 +775,19 @@
         });
         els.cellContextMenu?.addEventListener("click", (event) => {
           const action = event.target?.closest?.("[data-rs-cell-action]")?.dataset?.rsCellAction || "";
+          const table = els.cellContextMenu.dataset.table || "method";
+          if (table === "results") {
+            if (action === "copy-values") {
+              void copyHighlightedResultsValues().catch((err) => postStatus(`Copy failed: ${err?.message || err}`, "error"));
+            } else if (action === "remove-highlights") {
+              removeResultsHighlights();
+            }
+            if (action) {
+              closeCellContextMenu();
+              focusResultsGrid();
+            }
+            return;
+          }
           if (action === "copy-values") {
             void copyHighlightedMethodValues().catch((err) => postStatus(`Copy failed: ${err?.message || err}`, "error"));
             closeCellContextMenu();
@@ -795,6 +809,7 @@
             }
             closeCellContextMenu();
           }
+          if (action) focusMethodGrid();
         });
         els.sourceContextMenu?.addEventListener("click", (event) => {
           const action = event.target?.closest?.("[data-rs-source-action]")?.dataset?.rsSourceAction || "";
@@ -843,16 +858,23 @@
           if (
             (event.ctrlKey || event.metaKey)
             && event.key?.toLowerCase?.() === "c"
-            && normalizedMethodHighlight()
             && !isTextEntryTarget(event.target)
           ) {
-            event.preventDefault();
-            void copyHighlightedMethodValues().catch((err) => postStatus(`Copy failed: ${err?.message || err}`, "error"));
-            return;
+            if (state.activeTab === "method" && normalizedMethodHighlight()) {
+              event.preventDefault();
+              void copyHighlightedMethodValues().catch((err) => postStatus(`Copy failed: ${err?.message || err}`, "error"));
+              return;
+            }
+            if (state.activeTab === "results" && normalizedResultsHighlight()) {
+              event.preventDefault();
+              void copyHighlightedResultsValues().catch((err) => postStatus(`Copy failed: ${err?.message || err}`, "error"));
+              return;
+            }
           }
           if (
             (event.ctrlKey || event.metaKey)
             && event.key?.toLowerCase?.() === "v"
+            && state.activeTab === "method"
             && normalizedMethodHighlight()
             && !isTextEntryTarget(event.target)
           ) {
@@ -861,7 +883,24 @@
             return;
           }
           if (
-            normalizedMethodHighlight()
+            state.activeTab === "method"
+            && (event.key === "Delete" || event.key === "Backspace")
+            && normalizedMethodHighlight()
+            && !isTextEntryTarget(event.target)
+          ) {
+            let changed = false;
+            if (highlightedHasWeightTargets()) changed = applyHighlightedWeightValue(0);
+            else if (highlightedHasUltimateCells()) changed = revertHighlightedUltimateValues();
+            if (changed) {
+              event.preventDefault();
+              markDirty();
+              renderMethodGrid();
+            }
+            return;
+          }
+          if (
+            state.activeTab === "method"
+            && normalizedMethodHighlight()
             && !event.ctrlKey
             && !event.metaKey
             && !event.altKey
@@ -1073,7 +1112,7 @@
         syncOriginLengthDropdownOptions();
         wireEvents();
         syncRatioBasisSelector();
-        wireRsMethodScrollbarActivity();
+        wireRsGridScrollbarActivity();
         wireNotes();
         await loadOutputSidecarSettings().catch((err) => console.warn("Result Selection sidecar settings load failed:", err));
         if (!state.originLabels.length) await refreshOriginLabels({ render: false });
@@ -1150,7 +1189,7 @@
         onRsTabChanged,
         setTab,
         refreshRsFloatingTabLayout,
-        wireRsMethodScrollbarActivity,
+        wireRsGridScrollbarActivity,
         wireEvents,
         initTabs,
         init

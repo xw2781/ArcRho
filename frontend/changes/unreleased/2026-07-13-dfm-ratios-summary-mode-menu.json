@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added the Select/Edit switch to the DFM average-formula context menu and simplified cell-note actions.",
+  "details": [
+    "The Select/Edit context-menu switch now shows a hand or pencil icon for its target mode.",
+    "Clear Cell Notes was removed from the Ratios context menus; notes can still be cleared from the note editor."
+  ]
+}

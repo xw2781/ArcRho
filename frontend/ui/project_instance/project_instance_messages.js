@@ -386,6 +386,8 @@ function routeDfmWindowCommand(type) {
       "arcrho:dfm-exclude-high": "Excluding highest ratio...",
       "arcrho:dfm-exclude-low": "Excluding lowest ratio...",
       "arcrho:dfm-include-all": "Including ratios...",
+      "arcrho:dfm-toggle-ratios-mode": "Toggled DFM Ratios mode.",
+      "arcrho:dfm-apply-highlighted-ratio-range": "Applied highlighted DFM Ratios cells.",
     };
     setStatus(statusByCommand[command] || "Sent DFM command.");
     return true;
@@ -871,11 +873,95 @@ function isCloseActiveWindowShortcut(event) {
     && String(event.key || "").toLowerCase() === "w";
 }
 
+function activeDfmCanApplyHighlightedRatioRange() {
+  const frame = getActiveDfmWindow();
+  if (!frame || toText(frame.dataset.dfmTab).toLowerCase() !== "ratios") return false;
+  try {
+    const doc = getWindowIframe(frame)?.contentDocument;
+    const wrap = doc?.getElementById("ratioWrap");
+    return wrap?.dataset?.interactionMode === "select"
+      && !!wrap.querySelector(
+        "table.ratioMainTable td.ratioCell.dfmTableHighlight, table.ratioSummaryTable td.summaryCell.dfmTableHighlight"
+      );
+  } catch {
+    return false;
+  }
+}
+
+function activeDfmCanNavigateHighlightedRatioRange() {
+  const frame = getActiveDfmWindow();
+  if (!frame || toText(frame.dataset.dfmTab).toLowerCase() !== "ratios") return false;
+  try {
+    const doc = getWindowIframe(frame)?.contentDocument;
+    const wrap = doc?.getElementById("ratioWrap");
+    return wrap?.dataset?.interactionMode === "select" && !!wrap.querySelector("td.dfmTableHighlight");
+  } catch {
+    return false;
+  }
+}
+
+function routeDfmHighlightNavigation(event) {
+  const frame = getActiveDfmWindow();
+  const iframe = getWindowIframe(frame);
+  if (!iframe?.contentWindow) return false;
+  try {
+    iframe.contentWindow.postMessage({
+      type: "arcrho:dfm-navigate-highlighted-ratio-range",
+      key: String(event.key || ""),
+      shiftKey: !!event.shiftKey,
+      ctrlKey: !!event.ctrlKey,
+      metaKey: !!event.metaKey,
+    }, "*");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function routeDfmRatioHotkey(event) {
-  if (!event?.ctrlKey || event.altKey || event.metaKey) return false;
-  const tag = event.target?.tagName?.toLowerCase();
-  if (tag === "input" || tag === "textarea" || tag === "select" || event.target?.isContentEditable) return false;
   const key = String(event.key || "").toLowerCase();
+  const tag = event.target?.tagName?.toLowerCase();
+  const isTypingTarget = tag === "input"
+    || tag === "textarea"
+    || tag === "select"
+    || tag === "button"
+    || event.target?.isContentEditable;
+  const isArrowKey = key === "arrowup"
+    || key === "arrowdown"
+    || key === "arrowleft"
+    || key === "arrowright";
+  if (
+    isArrowKey
+    && !event.altKey
+    && !isTypingTarget
+    && activeDfmCanNavigateHighlightedRatioRange()
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    return routeDfmHighlightNavigation(event);
+  }
+  if (
+    key === "enter"
+    && !event.ctrlKey
+    && !event.altKey
+    && !event.metaKey
+    && !event.shiftKey
+    && !event.repeat
+    && !isTypingTarget
+    && activeDfmCanApplyHighlightedRatioRange()
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    return routeDfmWindowCommand("arcrho:dfm-apply-highlighted-ratio-range");
+  }
+  if (!event?.ctrlKey || event.altKey || event.metaKey) return false;
+  if (key === "e" && !event.shiftKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.repeat) return true;
+    return routeDfmWindowCommand("arcrho:dfm-toggle-ratios-mode");
+  }
+  if (isTypingTarget) return false;
   const commandByKey = {
     h: "arcrho:dfm-exclude-high",
     l: "arcrho:dfm-exclude-low",
@@ -986,6 +1072,8 @@ window.addEventListener("message", (event) => {
     || msg.type === "arcrho:dfm-exclude-high"
     || msg.type === "arcrho:dfm-exclude-low"
     || msg.type === "arcrho:dfm-include-all"
+    || msg.type === "arcrho:dfm-toggle-ratios-mode"
+    || msg.type === "arcrho:dfm-apply-highlighted-ratio-range"
     || msg.type === "arcrho:dfm-undo"
     || msg.type === "arcrho:dfm-redo"
     || msg.type === "arcrho:dfm-tab-prev"

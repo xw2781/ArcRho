@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Aligned Result Selection tables with the shared Dataset and Bornhuetter Ferguson spreadsheet interactions."
+}

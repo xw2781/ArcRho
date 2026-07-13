@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Ratios now remembers each local user's last Select or Edit mode.",
+  "details": [
+    "Edit mode is used when no saved local preference exists."
+  ]
+}

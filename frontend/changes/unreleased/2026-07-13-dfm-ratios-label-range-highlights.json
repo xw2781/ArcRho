@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added Select-mode row and column label clicks for highlighting complete DFM Ratios table ranges."
+}

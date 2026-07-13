@@ -7,7 +7,7 @@ drag reorder, column activation, strike toggling
 import {
   state,
   calcRatio, roundRatio, formatRatio,
-  ratioStrikeSet, activeRatioCols, summaryRowConfigs,
+  ratioStrikeSet, activeRatioCols, selectedSummaryByCol, summaryRowConfigs,
   getRatioColAllActive, setRatioColAllActive,
   getShowNaBorders, setShowNaBorders,
   getEffectiveDevLabelsForModel, getRatioHeaderLabels,
@@ -15,12 +15,17 @@ import {
   markDfmDirty, notifyDfmEditState,
 } from "/ui/dfm/dfm_state.js";
 import {
+  loadRatioInteractionMode,
   saveNaBorders,
+  saveRatioInteractionMode,
 } from "/ui/dfm/dfm_storage.js";
 import { renderResultsTable } from "/ui/dfm/dfm_results_tab.js";
 import { formatCellValue } from "/ui/dataset/dataset_render.js?v=20260710a";
 import { openContextMenu } from "/ui/shared/menu_utils.js";
-import { wireSelectableTable } from "/ui/shared/table_selection.js";
+import {
+  moveActiveSelectableTableSelection,
+  wireSelectableTable,
+} from "/ui/shared/table_selection.js";
 import { wirePercentDevelopedCurveMenu } from "/ui/dfm/dfm_percent_developed_curve_window.js?v=20260514e";
 import {
   buildRatioSelectionPattern,
@@ -42,7 +47,7 @@ import {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
-} from "/ui/dfm/dfm_ratios_summary_table.js?v=20260712l";
+} from "/ui/dfm/dfm_ratios_summary_table.js?v=20260713f";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -53,7 +58,6 @@ import {
 } from "/ui/dfm/dfm_ratios_chart.js?v=20260712h";
 import {
   applyDfmCellNoteMarkers,
-  clearDfmCellNote,
   hasDfmCellNote,
   showDfmCellNoteEditor,
   wireDfmCellNotes,
@@ -73,7 +77,7 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/dfm/dfm_ratios_summary_table.js?v=20260712l";
+} from "/ui/dfm/dfm_ratios_summary_table.js?v=20260713f";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -100,7 +104,7 @@ function isRatioEditMode() {
 }
 
 function isRatioDataVisible() {
-  return !!document.getElementById("dfmRatiosShowData")?.checked;
+  return document.getElementById("ratioWrap")?.dataset?.showData === "true";
 }
 
 function clearRatioTableHighlights() {
@@ -109,75 +113,189 @@ function clearRatioTableHighlights() {
   clearSummaryTableHighlight();
 }
 
-function applyRatioInteractionMode(mode) {
+function applyRatioInteractionMode(mode, options = {}) {
   const wrap = document.getElementById("ratioWrap");
-  const toolbar = document.getElementById("dfmRatiosToolbar");
-  if (!wrap || !toolbar) return;
-  const nextMode = mode === "edit" ? "edit" : "select";
+  if (!wrap) return;
+  const nextMode = mode === "select" ? "select" : "edit";
   if (nextMode === "edit") clearRatioTableHighlights();
   if (nextMode === "select" && wrap.contains(document.activeElement)) {
     document.activeElement?.blur?.();
   }
   wrap.dataset.interactionMode = nextMode;
-  toolbar.dataset.interactionMode = nextMode;
-  toolbar.querySelectorAll("[data-ratios-mode]").forEach((button) => {
-    const active = button.dataset.ratiosMode === nextMode;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", active ? "true" : "false");
-  });
-  const formulaBar = document.getElementById("dfmSummaryFormulaBar");
-  if (formulaBar) {
-    formulaBar.inert = nextMode !== "edit";
-    formulaBar.setAttribute("aria-disabled", nextMode === "edit" ? "false" : "true");
-  }
+  if (options.persist !== false) saveRatioInteractionMode(nextMode);
+  updateRatioMenuLabel();
 }
 
-function wireRatioInteractionModeToolbar() {
-  const toolbar = document.getElementById("dfmRatiosToolbar");
+function toggleRatioInteractionMode() {
+  const wrap = document.getElementById("ratioWrap");
+  if (!wrap) return false;
+  applyRatioInteractionMode(wrap.dataset.interactionMode === "edit" ? "select" : "edit");
+  return true;
+}
+
+function applyHighlightedRatioRangeAction() {
+  const wrap = document.getElementById("ratioWrap");
+  if (!wrap || wrap.dataset.interactionMode !== "select") return false;
+
+  const summaryTable = wrap.querySelector("table.ratioSummaryTable");
+  const highlightedSummaryCells = summaryTable
+    ? Array.from(summaryTable.querySelectorAll("td.summaryCell.dfmTableHighlight"))
+    : [];
+  if (highlightedSummaryCells.length) {
+    const selectedCellByCol = new Map();
+    highlightedSummaryCells.forEach((cell) => {
+      const col = Number(cell.dataset.col);
+      const rowId = String(cell.dataset.r || "");
+      if (!Number.isFinite(col) || col < 0 || !rowId) return;
+      if (!selectedCellByCol.has(col)) selectedCellByCol.set(col, cell);
+    });
+    if (!selectedCellByCol.size) return false;
+    const changed = Array.from(selectedCellByCol.entries()).some(([col, cell]) => (
+      selectedSummaryByCol.get(col) !== String(cell.dataset.r || "")
+    ));
+    if (changed) {
+      beginRatioHistoryAction("summary-highlight-enter");
+      selectedCellByCol.forEach((cell, col) => {
+        selectedSummaryByCol.set(col, String(cell.dataset.r || ""));
+      });
+      const selectedTable = wrap.querySelector("table.ratioSelectedTable");
+      applySummarySelection(summaryTable, selectedTable);
+      onRatioStateMutated();
+      commitRatioHistoryAction("summary-highlight-enter");
+    }
+    return true;
+  }
+
+  const highlightedRatioCells = Array.from(
+    wrap.querySelectorAll("table.ratioMainTable td.ratioCell.dfmTableHighlight")
+  ).filter((cell) => (
+    /^\d+$/.test(String(cell.dataset.r || ""))
+    && Number.isFinite(Number(cell.dataset.c))
+    && !cell.classList.contains("na")
+    && !cell.classList.contains("ratioPlaceholder")
+  ));
+  if (!highlightedRatioCells.length) return false;
+  beginRatioHistoryAction("ratio-highlight-enter");
+  highlightedRatioCells.forEach((cell) => {
+    const key = `${cell.dataset.r},${cell.dataset.c}`;
+    const excluded = ratioStrikeSet.has(key);
+    if (excluded) ratioStrikeSet.delete(key);
+    else ratioStrikeSet.add(key);
+    cell.classList.toggle("strike", !excluded);
+  });
+  scheduleRatioSummaryUpdate();
+  onRatioStateMutated();
+  commitRatioHistoryAction("ratio-highlight-enter");
+  return true;
+}
+
+function moveHighlightedRatioRange(key, settings = {}) {
+  const wrap = document.getElementById("ratioWrap");
+  if (!wrap || wrap.dataset.interactionMode !== "select") return false;
+  const movement = {
+    ArrowUp: [-1, 0],
+    ArrowDown: [1, 0],
+    ArrowLeft: [0, -1],
+    ArrowRight: [0, 1],
+  }[key];
+  if (!movement) return false;
+  return moveActiveSelectableTableSelection(movement[0], movement[1], {
+    extend: settings.shiftKey === true,
+    jump: settings.ctrlKey === true || settings.metaKey === true,
+  });
+}
+
+function setRatioDataVisible(visible) {
   const wrap = document.getElementById("ratioWrap");
   const wrapHost = document.getElementById("ratioWrapHost");
-  if (!toolbar || toolbar.dataset.wired === "1") return;
-  toolbar.dataset.wired = "1";
-  toolbar.addEventListener("click", (event) => {
-    const button = event.target?.closest?.("[data-ratios-mode]");
-    if (!button || !toolbar.contains(button)) return;
-    applyRatioInteractionMode(button.dataset.ratiosMode);
+  if (!wrap) return;
+  const nextVisible = visible === true;
+  if (isRatioDataVisible() === nextVisible) return;
+  const scrollLeft = wrapHost?.scrollLeft || 0;
+  const scrollTop = wrapHost?.scrollTop || 0;
+  wrap.dataset.showData = nextVisible ? "true" : "false";
+  clearRatioTableHighlights();
+  renderRatioTable();
+  updateRatioMenuLabel();
+  requestAnimationFrame(() => {
+    if (!wrapHost) return;
+    wrapHost.scrollLeft = scrollLeft;
+    wrapHost.scrollTop = scrollTop;
   });
-  const showDataInput = document.getElementById("dfmRatiosShowData");
-  showDataInput?.addEventListener("change", () => {
-    const scrollLeft = wrapHost?.scrollLeft || 0;
-    const scrollTop = wrapHost?.scrollTop || 0;
-    clearRatioTableHighlights();
-    renderRatioTable();
-    requestAnimationFrame(() => {
-      if (!wrapHost) return;
-      wrapHost.scrollLeft = scrollLeft;
-      wrapHost.scrollTop = scrollTop;
-    });
-  });
+}
+
+function wireRatioInteractions() {
+  const wrap = document.getElementById("ratioWrap");
+  const wrapHost = document.getElementById("ratioWrapHost");
+  if (!wrap || wrap.dataset.interactionsWired === "1") return;
+  wrap.dataset.interactionsWired = "1";
+  if (!wrap.dataset.showData) wrap.dataset.showData = "false";
   wrap?.addEventListener("mousedown", (event) => {
     if (event.button !== 0 || !event.target?.closest?.("th, td")) return;
     wrapHost?.focus?.({ preventScroll: true });
   });
+  window.addEventListener("message", (event) => {
+    const ratiosPage = document.getElementById("dfmRatiosPage");
+    if (!ratiosPage || ratiosPage.style.display === "none") return;
+    if (event?.data?.type === "arcrho:dfm-toggle-ratios-mode") {
+      toggleRatioInteractionMode();
+    } else if (event?.data?.type === "arcrho:dfm-apply-highlighted-ratio-range") {
+      applyHighlightedRatioRangeAction();
+    } else if (event?.data?.type === "arcrho:dfm-navigate-highlighted-ratio-range") {
+      moveHighlightedRatioRange(String(event.data.key || ""), event.data);
+    }
+  });
+  window.addEventListener("keydown", (event) => {
+    const key = String(event.key || "").toLowerCase();
+    const toggleShortcut = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && key === "e";
+    const ratiosPage = document.getElementById("dfmRatiosPage");
+    if (!ratiosPage || ratiosPage.style.display === "none") return;
+    if (toggleShortcut) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) toggleRatioInteractionMode();
+      return;
+    }
+    const enterAction = key === "enter"
+      && !event.ctrlKey
+      && !event.altKey
+      && !event.metaKey
+      && !event.shiftKey
+      && !event.repeat
+      && !event.target?.closest?.("input, textarea, select, button, [contenteditable='true']");
+    if (!enterAction || !applyHighlightedRatioRangeAction()) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, { capture: true });
   document.addEventListener("keydown", (event) => {
     if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey) return;
-    if (event.target?.closest?.("input, textarea, select, button, [contenteditable='true']")) return;
     const ratiosPage = document.getElementById("dfmRatiosPage");
     if (!ratiosPage || !wrap || !wrapHost || ratiosPage.style.display === "none") return;
+    const key = String(event.key || "").toLowerCase();
+    const textEntryFocused = !!event.target?.closest?.("input, textarea, select, [contenteditable='true']");
+    if (textEntryFocused || event.target?.closest?.("button")) return;
     const tableFocused = document.activeElement === wrapHost || wrap.contains(document.activeElement);
     if (!tableFocused) return;
-    const key = String(event.key || "").toLowerCase();
     if (key !== "e" && key !== "s") return;
     event.preventDefault();
     applyRatioInteractionMode(key === "e" ? "edit" : "select");
   });
-  applyRatioInteractionMode("select");
+  applyRatioInteractionMode(loadRatioInteractionMode(), { persist: false });
 }
 
 function updateRatioMenuLabel() {
   const menu = getRatioMenuEl();
-  const btn = menu?.querySelector('[data-action="toggle-na-borders"]');
-  if (btn) btn.textContent = getShowNaBorders() ? "Hide N/A Borders" : "Show N/A Borders";
+  const modeBtn = menu?.querySelector('[data-action="toggle-ratio-mode"]');
+  if (modeBtn) {
+    const targetMode = isRatioEditMode() ? "select" : "edit";
+    modeBtn.dataset.targetMode = targetMode;
+    const label = modeBtn.querySelector(".dfmCtxItemLabel");
+    if (label) label.textContent = targetMode === "select" ? "Switch to Select Mode" : "Switch to Edit Mode";
+  }
+  const showDataBtn = menu?.querySelector('[data-action="toggle-ratio-data"]');
+  if (showDataBtn) showDataBtn.textContent = isRatioDataVisible() ? "Hide Data" : "Show Data";
+  const borderBtn = menu?.querySelector('[data-action="toggle-na-borders"]');
+  if (borderBtn) borderBtn.textContent = getShowNaBorders() ? "Hide N/A Borders" : "Show N/A Borders";
 }
 
 function applyNaBorderVisibility() {
@@ -200,6 +318,12 @@ export function wireRatioContextMenu() {
     edgeClasses: DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
     onSelectionChange: refreshRatioHighlightHeaders,
     exclusiveAcrossTables: true,
+    canHandleKeyboardNavigation: () => document.getElementById("ratioWrap")?.dataset.interactionMode === "select",
+    canStartLabelSelection: () => document.getElementById("ratioWrap")?.dataset.interactionMode === "select",
+    scrollHost: () => document.getElementById("ratioWrapHost"),
+    rowHeaderSelector: "table.ratioMainTable tbody th.ratioRowHeader",
+    columnHeaderSelector: "table.ratioMainTable thead th[data-copy-col]",
+    getColumnHeaderIndex: (header) => Number(header.dataset.copyCol),
     canStartPointerSelection: (event) => (
       !isRatioEditMode() || !!(event.shiftKey || event.ctrlKey || event.metaKey)
     ),
@@ -217,8 +341,6 @@ export function wireRatioContextMenu() {
         noteBtn.disabled = isDataDisplayCell;
         noteBtn.textContent = hasNote ? "Edit Cell Notes" : "Add Cell Notes";
       }
-      const clearNoteBtn = menu.querySelector('[data-action="clear-ratio-cell-note"]');
-      if (clearNoteBtn) clearNoteBtn.disabled = isDataDisplayCell || !hasNote;
       const applyPatternsBtn = menu.querySelector('[data-action="apply-ratio-patterns"]');
       if (applyPatternsBtn) applyPatternsBtn.disabled = !isRatioEditMode();
       updateRatioMenuLabel();
@@ -236,12 +358,14 @@ export function wireRatioContextMenu() {
   menu?.addEventListener("click", async (e) => {
     const btn = e.target?.closest?.("[data-action]");
     if (!btn) return;
-    if (btn.dataset.action === "copy-ratio-value") {
+    if (btn.dataset.action === "toggle-ratio-mode") {
+      toggleRatioInteractionMode();
+    } else if (btn.dataset.action === "toggle-ratio-data") {
+      setRatioDataVisible(!isRatioDataVisible());
+    } else if (btn.dataset.action === "copy-ratio-value") {
       await ratioTableHighlight?.copySelection?.();
     } else if (btn.dataset.action === "add-ratio-cell-note") {
       showDfmCellNoteEditor(ratioContextCell, { focus: true });
-    } else if (btn.dataset.action === "clear-ratio-cell-note") {
-      clearDfmCellNote(ratioContextCell);
     } else if (btn.dataset.action === "toggle-na-borders") {
       setShowNaBorders(!getShowNaBorders());
       saveNaBorders(getShowNaBorders());
@@ -256,10 +380,25 @@ export function wireRatioContextMenu() {
   });
 }
 
+function showRatioActionError(message) {
+  const notice = document.getElementById("dfmRatiosNotice");
+  if (!notice) return;
+  notice.textContent = String(message || "Ratios action failed.");
+  notice.hidden = false;
+}
+
+function clearRatioActionError() {
+  const notice = document.getElementById("dfmRatiosNotice");
+  if (!notice) return;
+  notice.textContent = "";
+  notice.hidden = true;
+}
+
 function copyRatioPatterns() {
+  clearRatioActionError();
   const pattern = buildRatioSelectionPattern();
   if (!pattern || !pattern.length) {
-    alert("No ratio patterns to copy.");
+    showRatioActionError("No ratio patterns to copy.");
     return;
   }
   localStorage.setItem("dfmRatioPatterns", JSON.stringify(pattern));
@@ -279,25 +418,26 @@ function getCompactRatioPatternShape(pattern) {
 
 function applyRatioPatternsFromClipboard() {
   if (!isRatioEditMode()) return;
+  clearRatioActionError();
   const stored = localStorage.getItem("dfmRatioPatterns");
   if (!stored) {
-    alert("You haven't copied any ratio patterns.");
+    showRatioActionError("You haven't copied any ratio patterns.");
     return;
   }
   let pattern;
   try {
     pattern = JSON.parse(stored);
   } catch {
-    alert("Invalid stored ratio patterns.");
+    showRatioActionError("Invalid stored ratio patterns.");
     return;
   }
   if (!Array.isArray(pattern) || !pattern.length) {
-    alert("You haven't copied any ratio patterns.");
+    showRatioActionError("You haven't copied any ratio patterns.");
     return;
   }
   const model = state.model;
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) {
-    alert("No ratio triangle data available.");
+    showRatioActionError("No ratio triangle data available.");
     return;
   }
   const origins = model.origin_labels || [];
@@ -306,7 +446,7 @@ function applyRatioPatternsFromClipboard() {
   const expectedShape = getCompactRatioPatternShape(buildRatioSelectionPattern());
   const storedShape = getCompactRatioPatternShape(pattern);
   if (!storedShape || !expectedShape) {
-    alert("Invalid stored ratio patterns.");
+    showRatioActionError("Invalid stored ratio patterns.");
     return;
   }
   const sameCompactShape =
@@ -315,7 +455,9 @@ function applyRatioPatternsFromClipboard() {
     storedShape.cols === expectedShape.cols &&
     storedShape.rowLengths.every((len, idx) => len === expectedShape.rowLengths[idx]);
   if (!sameCompactShape) {
-    alert(`Invalid triangle size. Stored pattern is ${storedShape.rows}x${storedShape.cols}, but current compact triangle is ${expectedShape.rows}x${expectedShape.cols}.`);
+    showRatioActionError(
+      `Invalid triangle size. Stored pattern is ${storedShape.rows}x${storedShape.cols}, but current compact triangle is ${expectedShape.rows}x${expectedShape.cols}.`
+    );
     return;
   }
   beginRatioHistoryAction("apply-ratio-patterns");
@@ -461,7 +603,11 @@ export function onRatioStateMutated() {
 let _notifyRatioStateChanged = () => {};
 export function setNotifyRatioStateChanged(fn) { _notifyRatioStateChanged = fn; }
 function notifyRatioStateChanged() { _notifyRatioStateChanged(); }
-setSummaryTableCallbacks({ renderRatioTable, onRatioStateMutated });
+setSummaryTableCallbacks({
+  renderRatioTable,
+  onRatioStateMutated,
+  toggleRatioInteractionMode,
+});
 setRatioChartCallbacks({ onRatioStateMutated });
 
 
@@ -539,10 +685,11 @@ export function queueDfmExternalChangeHighlights(changes = {}) {
 export function renderRatioTable() {
   const wrap = document.getElementById("ratioWrap");
   if (!wrap) return;
+  clearRatioActionError();
+  resetSummaryFormulaEditState();
   wrap.innerHTML = "";
   const formulaBar = document.getElementById("dfmSummaryFormulaBar");
   if (formulaBar) formulaBar.remove();
-  resetSummaryFormulaEditState();
 
   const model = state.model;
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) {
@@ -565,7 +712,7 @@ export function renderRatioTable() {
   }
 
   const table = document.createElement("table");
-  table.classList.add("ratioMainTable");
+  table.classList.add("arSpreadsheetTable", "ratioMainTable");
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
   const corner = document.createElement("th");
@@ -596,7 +743,7 @@ export function renderRatioTable() {
   table.appendChild(thead);
 
   const summaryTable = document.createElement("table");
-  summaryTable.classList.add("ratioSummaryTable");
+  summaryTable.classList.add("arSpreadsheetTable", "ratioSummaryTable");
   const summaryBody = document.createElement("tbody");
   const summaryRows = buildSummaryRows();
 
@@ -604,8 +751,12 @@ export function renderRatioTable() {
     const tr = document.createElement("tr");
     tr.dataset.rowId = rowCfg.id;
     const th = document.createElement("th");
-    th.textContent = rowCfg.label || "Custom";
-    if ((th.textContent || "").length > 12) th.classList.add("wrapCell");
+    const summaryLabel = rowCfg.label || "Custom";
+    const labelText = document.createElement("span");
+    labelText.className = "dfmSummaryLabelText";
+    labelText.textContent = summaryLabel;
+    th.appendChild(labelText);
+    th.title = summaryLabel;
     th.classList.add("summaryDragHandle");
     th.draggable = false;
     tr.appendChild(th);
@@ -697,7 +848,7 @@ export function renderRatioTable() {
   summaryTable.appendChild(summaryBody);
 
   const selectedTable = document.createElement("table");
-  selectedTable.classList.add("ratioSelectedTable");
+  selectedTable.classList.add("arSpreadsheetTable", "ratioSelectedTable");
   const selectedBody = document.createElement("tbody");
   const selectedRow = document.createElement("tr");
   selectedRow.dataset.rowId = "selected";
@@ -742,6 +893,25 @@ export function renderRatioTable() {
   wrap.appendChild(table);
   wrap.appendChild(summaryTable);
   wrap.appendChild(selectedTable);
+  const cornerStyle = getComputedStyle(corner);
+  const labelMeasure = document.createElement("canvas").getContext("2d");
+  if (labelMeasure) {
+    labelMeasure.font = `${cornerStyle.fontWeight} ${cornerStyle.fontSize} ${cornerStyle.fontFamily}`;
+    const horizontalChrome = [
+      cornerStyle.paddingLeft,
+      cornerStyle.paddingRight,
+      cornerStyle.borderLeftWidth,
+      cornerStyle.borderRightWidth,
+    ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
+    const sharedWidth = Number.parseFloat(
+      cornerStyle.getPropertyValue("--ar-spreadsheet-cell-width"),
+    ) || 100;
+    const labelWidth = Math.max(
+      sharedWidth,
+      Math.ceil(labelMeasure.measureText(corner.textContent || "").width + horizontalChrome + 1),
+    );
+    wrap.style.setProperty("--dfm-ratio-label-column-width", `${labelWidth}px`);
+  }
   applyNaBorderVisibility();
 
   wireSummaryRowDrag(summaryBody);
@@ -762,6 +932,10 @@ export function renderRatioTable() {
     edgeClasses: DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
     onSelectionChange: refreshRatioHighlightHeaders,
     exclusiveAcrossTables: true,
+    canHandleKeyboardNavigation: () => document.getElementById("ratioWrap")?.dataset.interactionMode === "select",
+    canStartLabelSelection: () => document.getElementById("ratioWrap")?.dataset.interactionMode === "select",
+    scrollHost: () => document.getElementById("ratioWrapHost"),
+    rowHeaderSelector: "tbody th",
     onContextMenu: (_event, _cell, api) => {
       selectedRowsTableHighlight = api;
       window.__arcRhoCopyActiveGridSelection = api.copySelection;
@@ -801,7 +975,7 @@ export function renderRatioTable() {
 // =============================================================================
 export function wireRatioStrikeToggle() {
   const wrap = document.getElementById("ratioWrap");
-  wireRatioInteractionModeToolbar();
+  wireRatioInteractions();
   if (!wrap || wrap.dataset.strikeWired === "1") return;
   wrap.dataset.strikeWired = "1";
   let dragActive = false;

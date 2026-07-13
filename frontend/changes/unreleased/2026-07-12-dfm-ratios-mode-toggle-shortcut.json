@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Made Ctrl+E toggle DFM Ratios Select/Edit mode from anywhere in the active DFM or its host page."
+}
