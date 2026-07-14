@@ -25,7 +25,8 @@ After making changes under `excel-addin/`, automatically run the non-interactive
 - Step 2: `powershell -NoProfile -ExecutionPolicy Bypass -File "E:\XWSpace\Repos\ArcRho\excel-addin\tools\release_xlam.ps1"`
 Treat this as pre-approved by the repository instructions for Excel add-in changes, but still follow environment requirements for sandbox escalation because the scripts update the beta add-in and release add-in outside the repository. Do not use `Step 1+2 - Build and Release ArcRho.bat` for agent validation because its interactive prompt can hang in agent terminals. If either direct script is blocked, fails, or times out, report that clearly.
 
-## Bug Fix Cleanup Review
+## Bug Fix Verification and Cleanup
+Before changing code for a bug fix, review the relevant code and verify that its current logic can explain the bug or unexpected behavior reported by the user. If the reported behavior cannot be traced to the code, or if any material detail is uncertain, stop and ask the user for more details or clarification until the issue is clear. Do not make assumptions or guesses when deciding on code changes.
 When fixing a bug, remove clearly obsolete code in the touched area. Ask before broader cleanup or cleanup with behavior risk.
 
 ## ArcRho JSON Contract Skill
