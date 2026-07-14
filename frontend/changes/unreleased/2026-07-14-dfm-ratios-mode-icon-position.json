@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Moved the Ratios context-menu mode icon to the right of its label."
+}

@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "method pages",
+  "audience": "user",
+  "summary": "Added a consistent Audit Log tab to method pages using each output dataset's saved history.",
+  "details": [
+    "Bornhuetter Ferguson, Result Selection, and DFM now share the Dataset Audit Log table, states, and scrollbar behavior.",
+    "Audit history refreshes from the output dataset sidecar without affecting unsaved method changes."
+  ]
+}

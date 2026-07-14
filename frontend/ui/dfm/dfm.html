@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Edit Dataset</title>
-  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260712b"/>
+  <link rel="stylesheet" href="/ui/dataset/dataset_shared.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/spreadsheet_table.css?v=20260713a"/>
   <style>
     :root{
@@ -105,7 +105,8 @@
     #dfmDataPage,
     #dfmRatiosPage,
     #dfmResultsPage,
-    #dfmNotesPage {
+    #dfmNotesPage,
+    #dfmAuditPage {
       border: 1px solid #d8dde3;
       border-top: 0;
       border-radius: 0;
@@ -118,7 +119,8 @@
     }
     #dfmRatiosPage,
     #dfmResultsPage,
-    #dfmNotesPage {
+    #dfmNotesPage,
+    #dfmAuditPage {
       border: 1px solid #d8dde3;
       border-top: 0;
       border-radius: 0;
@@ -178,6 +180,17 @@
     }
     #dfmNotesPage {
       padding: 3px 0 0 3px;
+    }
+    #dfmAuditPage {
+      padding: 3px;
+      overflow: hidden;
+    }
+    #dfmAuditLogMount {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      box-sizing: border-box;
     }
     #dfmNotesPage .panelInner {
       height: 100%;
@@ -385,6 +398,7 @@
     }
     #dfmResultsPage { display: none; }
     #dfmNotesPage { display: none; }
+    #dfmAuditPage { display: none; }
     #dfmDetailsPage .dfmDetailsBlock {
       border: none;
       border-radius: 0;
@@ -1949,6 +1963,7 @@
     <button class="dfmTab" data-page="ratios" type="button">Ratios</button>
     <button class="dfmTab" data-page="results" type="button">Results</button>
     <button class="dfmTab" data-page="notes" type="button">Notes</button>
+    <button class="dfmTab" data-page="audit" type="button">Audit Log</button>
   </div>
   <div id="dfmDetailsPage">
     <div class="dfmDetailsBlock" id="dfmObjectPathPanel">
@@ -2157,6 +2172,10 @@
     </div>
   </div>
 
+  <div id="dfmAuditPage">
+    <div id="dfmAuditLogMount"></div>
+  </div>
+
   <div id="dfmSaveBar" class="dfmSaveBar">
     <button id="dfmSaveBtn" class="dfmSaveBtn" type="button">Save</button>
     <button id="dfmCancelBtn" class="dfmCancelBtn" type="button">Cancel</button>
@@ -2186,6 +2205,7 @@
   </div>
   <div id="dfmRatioMenu" class="dfmCtxMenu">
     <button class="dfmCtxItem dfmCtxModeItem" data-action="toggle-ratio-mode" data-target-mode="edit">
+      <span class="dfmCtxItemLabel">Switch to Edit Mode</span>
       <svg class="dfmCtxModeIcon dfmCtxModeIconEdit" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="m3 11.8.7-3L10.9 1.6a1.2 1.2 0 0 1 1.7 0l1.8 1.8a1.2 1.2 0 0 1 0 1.7l-7.2 7.2-3 .7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
         <path d="m9.9 2.7 3.4 3.4M3.7 8.8l3.5 3.5" stroke="currentColor" stroke-width="1.3"/>
@@ -2193,7 +2213,6 @@
       <svg class="dfmCtxModeIcon dfmCtxModeIconSelect" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M6 9.8v-7a1.2 1.2 0 0 1 2.4 0v4.8-1.7a1.15 1.15 0 0 1 2.3 0v2.2-1.4a1.15 1.15 0 0 1 2.3 0v2.2-1.3a1.15 1.15 0 0 1 2.3 0v3.6c0 2.5-1.7 4.3-4.1 4.3H8.7c-1.2 0-2.2-.5-2.9-1.4L2.9 10a1.2 1.2 0 0 1 1.8-1.6L6 9.8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <span class="dfmCtxItemLabel">Switch to Edit Mode</span>
     </button>
     <button class="dfmCtxItem" data-action="toggle-ratio-data">Show Data</button>
     <div class="dfmCtxSep"></div>
@@ -2313,13 +2332,13 @@
   <script type="module">
     (async () => {
       window.ADA_DFM_CONTEXT = true;
-      await import("/ui/dataset/dataset_main.js?v=20260712d");
+      await import("/ui/dataset/dataset_main.js?v=20260714b");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/dfm/dfm_main.js?v=20260713h");
+      await import("/ui/dfm/dfm_main.js?v=20260714b");
     })();
   </script>
 </body>

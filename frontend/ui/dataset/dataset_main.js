@@ -28,6 +28,7 @@ import {
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { createDatasetDependencyGuard } from "/ui/dataset/dataset_dependency_guard.js";
 import { createDatasetHeadersService } from "/ui/dataset/dataset_headers_service.js";
+import { validateDatasetOriginLabels } from "/ui/dataset/dataset_origin_labels.js";
 import { wireDatasetGridInteractions } from "/ui/dataset/dataset_grid_interactions.js?v=20260712c";
 import { wireDatasetNotesEditor } from "/ui/dataset/dataset_notes_editor.js";
 import { publishDfmInputHelpers as publishDatasetHostDfmHelpers, wireDatasetHostBridge } from "/ui/dataset/dataset_host_bridge.js";
@@ -43,6 +44,7 @@ import { openProjectNameTreePicker } from "/ui/shared/project_name_tree_picker.j
 import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
 import { decodeFileNameSegment } from "/ui/shared/filename_sanitizer.js";
 import { createPageCloseConfirm } from "/ui/shared/page_close_confirm.js";
+import { createDatasetAuditLog } from "/ui/shared/dataset_audit_log.js?v=20260714b";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -73,6 +75,7 @@ const CALCULATED_DATASETS_UPDATED_MESSAGE = "arcrho:calculated-datasets-updated"
 let calculatedDatasetRefreshInFlight = false;
 let calculatedDependencyPreviewTimer = null;
 let calculatedDependencyPreviewSeq = 0;
+let projectInstanceDraftRefreshSeq = 0;
 const activeCalculatedDependencyPreviewTargets = new Map();
 
 function buildFontStack(font) {
@@ -110,10 +113,10 @@ function isForceRebuildEnabled() {
 window.ArcRhoZoomBridge?.wirePageZoomBridge();
 applyAppFont(loadAppFontFromStorage());
 
-function notifyDatasetUpdated() {
+function notifyDatasetUpdated(options = {}) {
   window.dispatchEvent(new CustomEvent("arcrho:dataset-updated"));
   updateDatasetSaveUi();
-  publishDatasetDependencyPreview();
+  if (options?.publishPreview !== false) publishDatasetDependencyPreview();
 }
 
 function requestProjectInstanceDatasetTableRefresh() {
@@ -382,7 +385,22 @@ function applyDependencySourcePreview(message = {}) {
   const values = previewMatrixFromDependencyMessage(message);
   if (!values.length) return false;
   const currentModel = state.model || {};
-  const originLabels = labelsFromDependencyMessage(message, "originLabels", currentModel.origin_labels);
+  const originLabelCandidates = Array.isArray(message.originLabels) && message.originLabels.length
+    ? message.originLabels
+    : currentModel.origin_labels;
+  const originResult = validateDatasetOriginLabels(originLabelCandidates, {
+    originLen: getTriInputs().originLen,
+    expectedCount: values.length,
+    requireMatchingPeriod: true,
+  });
+  if (!originResult.ok) {
+    setStatus(
+      `Cannot apply live source preview: ${originResult.error}. `
+      + "Reload the dataset after correcting Origin Start Date in Project Settings.",
+    );
+    return false;
+  }
+  const originLabels = originResult.labels;
   const developmentLabels = labelsFromDependencyMessage(
     message,
     "developmentLabels",
@@ -392,7 +410,7 @@ function applyDependencySourcePreview(message = {}) {
   );
   state.model = {
     ...currentModel,
-    origin_labels: originLabels.length ? originLabels : values.map((_, index) => String(index + 1)),
+    origin_labels: originLabels,
     dev_labels: developmentLabels.length ? developmentLabels : ["1"],
     values,
     mask: buildDependencyPreviewMask(values, message.mask),
@@ -479,7 +497,8 @@ async function handleCalculatedDatasetsUpdatedMessage(report) {
   calculatedDatasetRefreshInFlight = true;
   try {
     setStatus("Upstream formula change refreshed this dataset. Reloading...");
-    await loadDataset();
+    const result = await loadDataset();
+    if (!result?.ok) return;
     setStatus("Dataset refreshed after upstream recalculation.");
   } catch (err) {
     const message = String(err?.message || err || "Dataset refresh failed.");
@@ -626,51 +645,13 @@ const DATASET_TABS = [
   { id: "auditLog", label: "Audit Log" },
 ];
 
-function normalizeDatasetAuditLog(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((raw) => {
-      if (!raw || typeof raw !== "object") return null;
-      const eventDate = String(raw.event_date ?? raw["Event Date"] ?? "").trim();
-      const action = String(raw.action ?? raw.Action ?? "").trim();
-      const changeInfo = String(raw.change_info ?? raw["Change Info"] ?? "").trim();
-      const user = String(raw.user ?? raw.User ?? "").trim();
-      if (!eventDate && !action && !changeInfo && !user) return null;
-      return { eventDate, action, changeInfo, user };
-    })
-    .filter(Boolean)
-    .slice(-50);
-}
-
-function formatDatasetAuditEventDate(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) return text;
-  const hours = date.getHours();
-  const hour12 = hours % 12 || 12;
-  const ampm = hours >= 12 ? "PM" : "AM";
-  const pad2 = (n) => String(n).padStart(2, "0");
-  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} ${hour12}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())} ${ampm}`;
-}
+const datasetAuditLogMount = document.getElementById("datasetAuditLogMount");
+const datasetAuditLog = datasetAuditLogMount
+  ? createDatasetAuditLog({ container: datasetAuditLogMount })
+  : null;
 
 function renderDatasetAuditLog(entries = []) {
-  const body = document.getElementById("datasetAuditLogBody");
-  const empty = document.getElementById("datasetAuditLogEmpty");
-  if (!body) return;
-  const rows = normalizeDatasetAuditLog(entries).slice().reverse();
-  body.replaceChildren();
-  for (const entry of rows) {
-    const tr = document.createElement("tr");
-    for (const value of [formatDatasetAuditEventDate(entry.eventDate), entry.action, entry.changeInfo, entry.user]) {
-      const td = document.createElement("td");
-      td.textContent = value;
-      td.title = value;
-      tr.appendChild(td);
-    }
-    body.appendChild(tr);
-  }
-  if (empty) empty.hidden = rows.length > 0;
+  datasetAuditLog?.render(entries);
 }
 
 function normalizeDatasetDependencyEntries(entries = []) {
@@ -1226,14 +1207,14 @@ function getProjectInstanceDraftDataFormat() {
   return normalizeDraftDataFormat(queryInputs?.dataFormat);
 }
 
-function numericFallbackLabels(count) {
+function numericDevelopmentLabels(count) {
   const safeCount = Number.isFinite(count) && count > 0 ? Math.trunc(count) : 12;
   return Array.from({ length: safeCount }, (_, index) => String(index + 1));
 }
 
-function labelsFromProjectSettings(labels, fallbackCount) {
+function resolveDevelopmentLabels(labels, fallbackCount) {
   if (Array.isArray(labels) && labels.length) return labels.map(String);
-  return numericFallbackLabels(fallbackCount);
+  return numericDevelopmentLabels(fallbackCount);
 }
 
 function buildProjectInstanceDraftMask(originCount, devCount, dataFormat) {
@@ -1247,8 +1228,18 @@ function buildProjectInstanceDraftModel() {
   const { originLen, devLen } = getTriInputs();
   const dataFormat = getProjectInstanceDraftDataFormat();
   const isVector = dataFormat === "Vector";
-  const originLabels = labelsFromProjectSettings(state.headerLabels, originLen);
-  const projectDevLabels = labelsFromProjectSettings(state.devHeaderLabels, devLen);
+  const originResult = validateDatasetOriginLabels(state.headerLabels, {
+    originLen,
+    requireMatchingPeriod: true,
+  });
+  if (!originResult.ok) {
+    throw new Error(
+      `Cannot create dataset draft: ${originResult.error}. `
+      + "Set a valid Origin Start Date in Project Settings, then try again.",
+    );
+  }
+  const originLabels = originResult.labels;
+  const projectDevLabels = resolveDevelopmentLabels(state.devHeaderLabels, devLen);
   const devLabels = isVector ? [projectDevLabels[0] || "1"] : projectDevLabels;
   const originCount = Math.max(1, originLabels.length);
   const devCount = Math.max(1, devLabels.length);
@@ -1276,16 +1267,50 @@ function initializeProjectInstanceDraftModel() {
 }
 
 async function refreshProjectInstanceDraftModel() {
+  const refreshSeq = ++projectInstanceDraftRefreshSeq;
   const project = getResolvedProjectValue();
-  if (project) {
-    await ensureHeadersForProject(project, { forceRefresh: true });
-    await ensureDevHeadersForProject(project, { forceRefresh: true });
+  const { originLen, devLen } = getTriInputs();
+  const isCurrent = () => {
+    if (refreshSeq !== projectInstanceDraftRefreshSeq) return false;
+    const current = getTriInputs();
+    return getResolvedProjectValue() === project
+      && String(current.originLen ?? "") === String(originLen ?? "")
+      && String(current.devLen ?? "") === String(devLen ?? "");
+  };
+  try {
+    if (!project) throw new Error("Cannot create dataset draft: project name is missing.");
+    await ensureHeadersForProject(project, {
+      forceRefresh: true,
+      throwOnError: true,
+      isCurrent,
+    });
+    if (!isCurrent()) return false;
+    await ensureDevHeadersForProject(project, { forceRefresh: true, isCurrent });
+    if (!isCurrent()) return false;
+    initializeProjectInstanceDraftModel();
+    renderTable();
+    notifyDatasetUpdated();
+    renderChart();
+    setStatus("Ready to edit new dataset draft.");
+    return true;
+  } catch (err) {
+    if (!isCurrent()) return false;
+    const message = String(err?.message || err || "Origin labels are unavailable.");
+    state.model = null;
+    state.fileMtime = null;
+    state.headerLabels = [];
+    const error = document.createElement("div");
+    error.className = "small";
+    error.style.color = "#b00";
+    error.textContent = message;
+    document.getElementById("tableWrap")?.replaceChildren(error);
+    const meta = document.getElementById("dsMeta");
+    if (meta) meta.textContent = "";
+    renderChart();
+    notifyDatasetUpdated({ publishPreview: false });
+    setStatus(message);
+    return false;
   }
-  initializeProjectInstanceDraftModel();
-  renderTable();
-  notifyDatasetUpdated();
-  renderChart();
-  setStatus("Ready to edit new dataset draft.");
 }
 
 function normalizeProjectText(s) {
@@ -3402,7 +3427,14 @@ function applyDatasetSettingsToControls(settings = {}) {
   refreshLenDropdowns();
 }
 
+function invalidateDatasetContextLoads() {
+  notesSyncNonce += 1;
+  sidecarSyncNonce += 1;
+}
+
 async function syncSidecarForCurrentDataset(options = {}) {
+  const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
+  if (!isCurrent()) return false;
   const context = buildDatasetSidecarContextPayload();
   const key = buildDatasetSidecarContextKey(context);
   sidecarContextPayload = hasDatasetSidecarContext(context) ? context : null;
@@ -3424,8 +3456,18 @@ async function syncSidecarForCurrentDataset(options = {}) {
   }
 
   const nonce = ++sidecarSyncNonce;
-  const resp = await loadDatasetSidecar(context);
-  if (nonce !== sidecarSyncNonce) return false;
+  datasetAuditLog?.setLoading();
+  let resp;
+  try {
+    resp = await loadDatasetSidecar(context);
+  } catch (error) {
+    if (!isCurrent()) return false;
+    if (nonce === sidecarSyncNonce) {
+      datasetAuditLog?.setError(error?.message || "Unable to load the audit log.");
+    }
+    throw error;
+  }
+  if (nonce !== sidecarSyncNonce || !isCurrent()) return false;
   if (!resp.ok) {
     if (window.ADA_DFM_CONTEXT) setDatasetRenderNumberFormatSettings(null);
     setStatus(`Dataset settings load failed: ${resp?.data?.detail || "Unknown error."}`);
@@ -3434,7 +3476,7 @@ async function syncSidecarForCurrentDataset(options = {}) {
     currentDatasetPrecedents = [];
     lastSavedDatasetSettings = normalizeDatasetSettings(getCurrentDatasetSettings());
     datasetSettingsDirty = false;
-    renderDatasetAuditLog([]);
+    datasetAuditLog?.setError(resp?.data?.detail || "Unable to load the audit log.");
     renderDetailFormula(getDatasetTypeFormulaByName(document.getElementById("triInput")?.value || ""), currentDatasetPrecedents);
     renderDatasetPrecedents([]);
     renderDatasetDependents([]);
@@ -3483,6 +3525,18 @@ async function syncSidecarForCurrentDataset(options = {}) {
 }
 
 async function saveDatasetSidecarForCurrentContext() {
+  if (isProjectInstanceDraft) {
+    const originResult = validateDatasetOriginLabels(state.model?.origin_labels, {
+      originLen: getTriInputs().originLen,
+      requireMatchingPeriod: true,
+    });
+    if (!originResult.ok) {
+      return {
+        ok: false,
+        error: `Dataset draft cannot be saved: ${originResult.error}. Set a valid Origin Start Date in Project Settings, then try again.`,
+      };
+    }
+  }
   if (await refreshDatasetInstanceNameConflict()) {
     return { ok: false, error: datasetInstanceNameConflictMessage || "Dataset instance name already exists." };
   }
@@ -3499,6 +3553,7 @@ async function saveDatasetSidecarForCurrentContext() {
   if (!resp.ok) {
     return { ok: false, error: resp?.data?.detail || "Failed to save dataset settings." };
   }
+  sidecarSyncNonce += 1;
   sidecarContextPayload = context;
   sidecarContextKey = buildDatasetSidecarContextKey(context);
   lastSavedDatasetSettings = normalizeDatasetSettings(settings);
@@ -3755,6 +3810,8 @@ function applyNotesInputValue(text) {
 
 async function saveNotesForPayload(payload, options = {}) {
   const silentStatus = !!options?.silentStatus;
+  const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
+  if (!isCurrent()) return { ok: false, stale: true };
   if (!hasNotesContext(payload)) {
     updateNotesSaveUi();
     return { ok: false, error: "Project, Reserving Class, and Dataset Type are required." };
@@ -3769,6 +3826,7 @@ async function saveNotesForPayload(payload, options = {}) {
     notes: notesText,
   };
   const resp = await saveDatasetNotes(req);
+  if (!isCurrent()) return { ok: false, stale: true };
   if (!resp.ok) {
     return { ok: false, error: getNotesErrorMessage(resp, "Failed to save notes.") };
   }
@@ -3780,20 +3838,28 @@ async function saveNotesForPayload(payload, options = {}) {
   };
   notesContextKey = buildNotesContextKey(notesContextPayload);
   lastSavedNotesText = notesText;
-  notesDirty = false;
+  notesDirty = String(input?.value ?? "") !== notesText;
   updateNotesSaveUi();
-  if (!silentStatus) setStatus("Notes saved.");
-  return { ok: true, data: resp.data };
+  if (!silentStatus && !notesDirty) setStatus("Notes saved.");
+  return { ok: true, data: resp.data, dirty: notesDirty };
 }
 
 async function saveNotesForCurrentContext(options = {}) {
   return saveNotesForPayload(notesContextPayload, options);
 }
 
-async function syncNotesForCurrentDataset() {
+async function syncNotesForCurrentDataset(options = {}) {
+  const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
+  const forceReload = options?.forceReload === true;
+  if (!isCurrent()) return false;
   const nextPayload = buildNotesContextPayload();
   const nextKey = buildNotesContextKey(nextPayload);
-  if (nextKey === notesContextKey) {
+  if (nextKey === notesContextKey && notesDirty) {
+    notesContextPayload = hasNotesContext(nextPayload) ? nextPayload : null;
+    updateNotesSaveUi();
+    return true;
+  }
+  if (nextKey === notesContextKey && !forceReload) {
     notesContextPayload = hasNotesContext(nextPayload) ? nextPayload : null;
     updateNotesSaveUi();
     return true;
@@ -3804,9 +3870,16 @@ async function syncNotesForCurrentDataset() {
       "You have unsaved Notes. Click OK to save before switching notes, or Cancel to discard unsaved changes.",
     );
     if (shouldSave) {
-      const saveResult = await saveNotesForCurrentContext({ silentStatus: true });
+      const saveResult = await saveNotesForCurrentContext({ silentStatus: true, isCurrent });
+      if (!isCurrent()) return false;
+      if (saveResult.stale) return false;
       if (!saveResult.ok) {
         setStatus(`Notes save failed: ${saveResult.error || "Unknown error."}`);
+        updateNotesSaveUi();
+        return false;
+      }
+      if (saveResult.dirty) {
+        setStatus("Notes changed while saving. Save the latest notes before switching datasets.");
         updateNotesSaveUi();
         return false;
       }
@@ -3825,7 +3898,7 @@ async function syncNotesForCurrentDataset() {
 
   const nonce = ++notesSyncNonce;
   const resp = await loadDatasetNotes(nextPayload);
-  if (nonce !== notesSyncNonce) return true;
+  if (nonce !== notesSyncNonce || !isCurrent()) return false;
   if (!resp.ok) {
     const err = getNotesErrorMessage(resp, "Failed to load notes.");
     setStatus(`Notes load failed: ${err}`);
@@ -4035,8 +4108,9 @@ datasetRunController = createDatasetRunController({
     datasetHeadersService.ensureDevHeadersForProject(project, options),
   saveLastDsId,
   recordDatasetBrowsingHistory,
-  syncNotesForCurrentDataset,
+    syncNotesForCurrentDataset,
   syncSidecarForCurrentDataset,
+  invalidateDatasetContextLoads,
   updateCurrentTabTitle,
   setStatus,
   onCalculatedUpdates: (report, source) => handleCalculationUpdates(report, source),
@@ -4644,15 +4718,11 @@ async function boot() {
   // Otherwise, fall back to loading the last dataset.
   const { project, path, tri } = getTriInputs();
   if (project && path && tri) {
-    await ensureHeadersForProject(project, { forceRefresh: true });
-    await ensureDevHeadersForProject(project, { forceRefresh: true });
     if (isProjectInstanceDraft) {
-      initializeProjectInstanceDraftModel();
-      setStatus("Ready to edit new dataset draft.");
-      renderTable();
-      notifyDatasetUpdated();
-      renderChart();
+      await refreshProjectInstanceDraftModel();
     } else {
+      await ensureHeadersForProject(project, { forceRefresh: true });
+      await ensureDevHeadersForProject(project, { forceRefresh: true });
       scheduleAutoRun(0);
     }
   } else if (window.ADA_DFM_CONTEXT) {

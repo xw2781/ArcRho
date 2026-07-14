@@ -17,6 +17,7 @@ import {
   getRatioDataDir,
   getRatioSaveSuggestedName,
   getResultsCsvSuggestedName,
+  getCurrentDfmTab,
   buildSummaryRows,
   markDfmClean,
   runDfmProgrammatic,
@@ -77,6 +78,7 @@ import {
   recordCurrentDfmObjectSnapshot,
   refreshDfmMethodIndex,
 } from "/ui/dfm/dfm_startup_state.js";
+import { refreshDfmAuditLog, renderDfmAuditLog } from "/ui/dfm/dfm_audit_log.js?v=20260714b";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -1012,6 +1014,9 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     markMethodSaved();
     markDfmClean({ force: true });
   }
+  if (applied && getCurrentDfmTab() === "audit") {
+    void refreshDfmAuditLog();
+  }
   return { ok: applied, datasetInputsChanged };
 }
 
@@ -1356,9 +1361,12 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
           const sidecarOut = await saveDatasetSidecar(hostApi, csvPath, getResultsCsvSuggestedName().replace(/\.csv$/i, ""));
           if (!sidecarOut.ok) {
             csvErrors.push(`${csvPath.replace(/\.csv$/i, ".json")}: ${sidecarOut.error}`);
-          } else if (Array.isArray(sidecarOut.data?.calculated_updates?.updated)) {
-            calculatedUpdatesReport = sidecarOut.data.calculated_updates;
-            calculatedUpdateCount = calculatedUpdatesReport.updated.length;
+          } else {
+            renderDfmAuditLog(sidecarOut.data?.audit_log);
+            if (Array.isArray(sidecarOut.data?.calculated_updates?.updated)) {
+              calculatedUpdatesReport = sidecarOut.data.calculated_updates;
+              calculatedUpdateCount = calculatedUpdatesReport.updated.length;
+            }
           }
           const variants = buildAggregatedResultVariants(resultVector);
           for (const variant of variants) {

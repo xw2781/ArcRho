@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Fixed dirty Bornhuetter Ferguson windows remaining open after confirming that unsaved changes should be discarded."
+}

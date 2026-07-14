@@ -1,10 +1,11 @@
 """Dataset / triangle data operations."""
 from __future__ import annotations
 
-import json
-import os
 import getpass
 import hashlib
+import json
+import os
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
@@ -22,10 +23,162 @@ from app_server.helpers import (
 from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service
 
 
-def make_annual_labels(start_year: int, n_origin: int, n_dev: int) -> Tuple[List[str], List[str]]:
-    origin_labels = [str(start_year + i) for i in range(n_origin)]
-    dev_labels = [str(12 * (j + 1)) for j in range(n_dev)]
-    return origin_labels, dev_labels
+_ORIGIN_YEAR_RE = re.compile(r"^(\d{4})$")
+_ORIGIN_HALF_RE = re.compile(r"^(\d{4})\s*H([12])$", re.IGNORECASE)
+_ORIGIN_QUARTER_RE = re.compile(r"^(\d{4})\s*Q([1-4])$", re.IGNORECASE)
+_ORIGIN_MONTH_RE = re.compile(r"^(\d{4})(0[1-9]|1[0-2])$")
+_ORIGIN_MONTH_NAME_RE = re.compile(
+    r"^(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})$",
+    re.IGNORECASE,
+)
+_ORIGIN_MONTH_NUMBERS = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+_ORIGIN_KIND_BY_LENGTH = {12: "year", 6: "half", 3: "quarter", 1: "month"}
+
+
+def _parse_origin_label(value: Any) -> Tuple[str, int] | None:
+    label = str(value if value is not None else "").strip()
+    match = _ORIGIN_YEAR_RE.fullmatch(label)
+    if match:
+        year = int(match.group(1))
+        return ("year", year) if year > 0 else None
+    match = _ORIGIN_HALF_RE.fullmatch(label)
+    if match:
+        year = int(match.group(1))
+        return ("half", year * 2 + int(match.group(2)) - 1) if year > 0 else None
+    match = _ORIGIN_QUARTER_RE.fullmatch(label)
+    if match:
+        year = int(match.group(1))
+        return ("quarter", year * 4 + int(match.group(2)) - 1) if year > 0 else None
+    match = _ORIGIN_MONTH_RE.fullmatch(label)
+    if match:
+        year = int(match.group(1))
+        return ("month", year * 12 + int(match.group(2)) - 1) if year > 0 else None
+    match = _ORIGIN_MONTH_NAME_RE.fullmatch(label)
+    if match:
+        year = int(match.group(2))
+        month = _ORIGIN_MONTH_NUMBERS.get(match.group(1).lower())
+        return ("month", year * 12 + month - 1) if year > 0 and month else None
+    return None
+
+
+def _validate_origin_labels(
+    value: Any,
+    expected_count: int,
+    origin_length: int | None = None,
+) -> Tuple[List[str], str]:
+    if not isinstance(value, list) or not value:
+        return [], "no origin labels were returned"
+    labels = [str(item if item is not None else "").strip() for item in value]
+    if len(labels) != expected_count:
+        return [], f"origin label count {len(labels)} does not match dataset row count {expected_count}"
+    parsed = [_parse_origin_label(label) for label in labels]
+    if any(item is None for item in parsed):
+        return [], "one or more origin labels are blank or use an unsupported date format"
+    kinds = {item[0] for item in parsed if item is not None}
+    if len(kinds) != 1:
+        return [], "origin labels mix incompatible date formats"
+    expected_kind = _ORIGIN_KIND_BY_LENGTH.get(origin_length)
+    if expected_kind and expected_kind not in kinds:
+        return [], f"origin labels do not match the requested {origin_length}-month period length"
+    sequence = [item[1] for item in parsed if item is not None]
+    if any(current != previous + 1 for previous, current in zip(sequence, sequence[1:])):
+        return [], "origin labels are not consecutive"
+    return labels, ""
+
+
+def _origin_labels_error(ds_id: str, project_name: str, reason: str) -> HTTPException:
+    project = str(project_name or "").strip() or "(unknown)"
+    detail = (
+        f"Cannot load dataset '{ds_id}': valid origin labels could not be resolved for project '{project}'"
+        f" ({reason}). Set a valid Origin Start Date in Project Settings, then refresh the dataset."
+    )
+    return HTTPException(422, detail)
+
+
+def _resolve_origin_labels(
+    ds_id: str,
+    path: str,
+    project_name: str,
+    origin_length: int,
+    expected_count: int,
+) -> List[str]:
+    project = str(project_name or "").strip()
+    if not project:
+        raise _origin_labels_error(ds_id, project, "project name is missing")
+    try:
+        length = int(origin_length)
+    except (TypeError, ValueError):
+        raise _origin_labels_error(ds_id, project, "origin period length is invalid")
+    if length not in _ORIGIN_KIND_BY_LENGTH:
+        raise _origin_labels_error(ds_id, project, f"origin period length '{origin_length}' is unsupported")
+
+    try:
+        project_data_dir = os.path.normcase(os.path.realpath(config.get_project_data_dir(project)))
+    except ValueError as err:
+        raise HTTPException(404, str(err))
+    dataset_path = os.path.normcase(os.path.realpath(path))
+    try:
+        belongs_to_project = os.path.commonpath((project_data_dir, dataset_path)) == project_data_dir
+    except ValueError:
+        belongs_to_project = False
+    if not belongs_to_project:
+        raise HTTPException(
+            422,
+            f"Cannot load dataset '{ds_id}' for project '{project}': the registered dataset belongs to a different project.",
+        )
+
+    try:
+        from app_server.services import arcrho_runtime_service
+
+        header_result = arcrho_runtime_service.get_project_headers(project, length, timeout_sec=6.0)
+    except HTTPException as err:
+        detail = str(err.detail or "ArcRho project headers could not be loaded")
+        raise HTTPException(err.status_code, f"Cannot load dataset '{ds_id}': {detail}")
+    except OSError as err:
+        raise HTTPException(500, f"Cannot load dataset '{ds_id}': failed to read ArcRho project headers: {str(err)}")
+
+    if not header_result.get("ok"):
+        status = str(header_result.get("status") or "unavailable").strip()
+        message = str(header_result.get("message") or "").strip()
+        if status.casefold() == "timeout":
+            raise HTTPException(
+                504,
+                f"Cannot load dataset '{ds_id}' for project '{project}': "
+                f"{message or 'timed out while loading ArcRho project headers. Try again.'}",
+            )
+        raise HTTPException(
+            503,
+            f"Cannot load dataset '{ds_id}' for project '{project}': ArcRho project headers are {status}.",
+        )
+    labels, header_reason = _validate_origin_labels(header_result.get("labels"), expected_count, length)
+    if labels:
+        return labels
+    raise _origin_labels_error(ds_id, project, header_reason)
 
 
 def infer_shape(path: str) -> Tuple[int, int]:
@@ -267,15 +420,6 @@ def _ym_to_month_index(value: Any) -> int | None:
     return year * 12 + (month - 1)
 
 
-def _period_count(start_value: Any, end_value: Any, period_length: int, fallback: int = 12) -> int:
-    start = _ym_to_month_index(start_value)
-    end = _ym_to_month_index(end_value)
-    period = max(1, int(period_length or 1))
-    if start is None or end is None or end < start:
-        return fallback
-    return max(1, ((end - start) // period) + 1)
-
-
 def _empty_dataset_geometry_from_general_settings(
     project_name: str,
     origin_period_length: int,
@@ -283,35 +427,83 @@ def _empty_dataset_geometry_from_general_settings(
 ) -> tuple[int, int, np.ndarray | None]:
     try:
         path = config.get_general_settings_path(project_name)
-    except ValueError:
-        return 12, 12, None
+    except ValueError as err:
+        raise HTTPException(404, str(err))
     if not os.path.exists(path):
-        return 12, 12, None
+        raise HTTPException(
+            422,
+            f"Cannot create dataset for project '{project_name}': General Settings are missing. "
+            "Set valid Origin Start Date, Origin End Date, and Development End Date values, then try again.",
+        )
     try:
         with open(path, "r", encoding="utf-8") as fh:
             payload = json.load(fh)
-    except Exception:
-        return 12, 12, None
-    origin_start = payload.get("origin_start_date", "")
-    origin_end = payload.get("origin_end_date", "")
-    development_end = payload.get("development_end_date", "")
-    origin_count = _period_count(origin_start, origin_end, origin_period_length)
-    development_count = _period_count(origin_start, development_end, development_period_length, fallback=origin_count)
-    origin_start_month = _ym_to_month_index(origin_start)
-    development_end_month = _ym_to_month_index(development_end)
-    if origin_start_month is None or development_end_month is None:
-        return origin_count, development_count, None
-    origin_offsets = np.arange(origin_count)[:, None] * max(1, int(origin_period_length or 1))
-    development_offsets = np.arange(development_count)[None, :] * max(1, int(development_period_length or 1))
+    except PermissionError:
+        raise HTTPException(423, "General Settings are locked or inaccessible.")
+    except json.JSONDecodeError as err:
+        raise HTTPException(422, f"Cannot create dataset: General Settings JSON is invalid: {str(err)}")
+    except OSError as err:
+        raise HTTPException(500, f"Cannot read General Settings: {str(err)}")
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "Cannot create dataset: General Settings must contain a JSON object.")
+
+    def require_boundary_month(field: str, label: str) -> int:
+        raw = str(payload.get(field) or "").strip()
+        if not re.fullmatch(r"\d{6}", raw):
+            raise HTTPException(
+                422,
+                f"Cannot create dataset for project '{project_name}': {label} is missing or invalid in Project Settings.",
+            )
+        month_index = _ym_to_month_index(raw)
+        if month_index is None:
+            raise HTTPException(
+                422,
+                f"Cannot create dataset for project '{project_name}': {label} is missing or invalid in Project Settings.",
+            )
+        return month_index
+
+    origin_start_month = require_boundary_month("origin_start_date", "Origin Start Date")
+    origin_end_month = require_boundary_month("origin_end_date", "Origin End Date")
+    development_end_month = require_boundary_month("development_end_date", "Development End Date")
+    if origin_end_month < origin_start_month:
+        raise HTTPException(422, "Cannot create dataset: Origin End Date must not be before Origin Start Date.")
+    if development_end_month < origin_start_month:
+        raise HTTPException(422, "Cannot create dataset: Development End Date must not be before Origin Start Date.")
+
+    origin_period = max(1, int(origin_period_length or 1))
+    development_period = max(1, int(development_period_length or 1))
+    origin_count = ((origin_end_month - origin_start_month) // origin_period) + 1
+    development_count = ((development_end_month - origin_start_month) // development_period) + 1
+    origin_offsets = np.arange(origin_count)[:, None] * origin_period
+    development_offsets = np.arange(development_count)[None, :] * development_period
     mask = origin_start_month + origin_offsets + development_offsets <= development_end_month
     return origin_count, development_count, mask
+
+
+def _containing_project_name_for_dataset(path: str) -> str:
+    projects_root = str(config.PROJECT_SETTINGS_DIR or "").strip()
+    if not projects_root:
+        return ""
+    root_path = os.path.realpath(projects_root)
+    dataset_path = os.path.realpath(path)
+    try:
+        if os.path.commonpath((os.path.normcase(root_path), os.path.normcase(dataset_path))) != os.path.normcase(root_path):
+            return ""
+        relative = os.path.relpath(dataset_path, root_path)
+    except ValueError:
+        return ""
+    parts = os.path.normpath(relative).split(os.sep)
+    if len(parts) < 3 or parts[1].casefold() != str(config.PROJECT_DATA_DIR).casefold():
+        return ""
+    return str(parts[0]).strip()
 
 
 def _dataset_patch_mask(path: str, n_origin: int, n_dev: int) -> np.ndarray:
     try:
         sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
         payload = _read_dataset_sidecar(sidecar_path)
-        project_name = str(payload.get("project_name") or "").strip()
+        sidecar_project_name = str(payload.get("project_name") or "").strip()
+        project_name = _containing_project_name_for_dataset(path) or sidecar_project_name
         origin_period_len = max(1, int(payload.get("origin_length") or 1))
         dev_period_len = max(1, int(payload.get("development_length") or 1))
         if project_name:
@@ -322,6 +514,8 @@ def _dataset_patch_mask(path: str, n_origin: int, n_dev: int) -> np.ndarray:
             )
             if isinstance(mask, np.ndarray) and mask.shape == (n_origin, n_dev):
                 return mask
+    except HTTPException:
+        raise
     except Exception:
         pass
     return triangle_mask(n_origin, n_dev)
@@ -477,7 +671,7 @@ def create_empty_cached_dataset(
     }
 
 
-def get_dataset(ds_id: str, start_year: int = 2016) -> Dict[str, Any]:
+def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any]:
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return None
@@ -485,7 +679,7 @@ def get_dataset(ds_id: str, start_year: int = 2016) -> Dict[str, Any]:
     df = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True)
     n_origin, n_dev = df.shape
 
-    origin_labels = [str(start_year + i) for i in range(n_origin)]
+    origin_labels = _resolve_origin_labels(ds_id, path, project_name, origin_length, n_origin)
     dev_labels = [str(12 * (j + 1)) for j in range(n_dev)]
 
     values = df.to_numpy()
@@ -502,14 +696,15 @@ def get_dataset(ds_id: str, start_year: int = 2016) -> Dict[str, Any]:
     }
 
 
-def get_diagonal(ds_id: str, k: int = 0, start_year: int = 2016) -> Dict[str, Any]:
+def get_diagonal(ds_id: str, project_name: str, origin_length: int, k: int = 0) -> Dict[str, Any]:
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return None
 
     df = load_triangle_values(path)
     n_origin, n_dev = df.shape
-    origin_labels, dev_labels = make_annual_labels(start_year, n_origin, n_dev)
+    origin_labels = _resolve_origin_labels(ds_id, path, project_name, origin_length, n_origin)
+    dev_labels = [str(12 * (j + 1)) for j in range(n_dev)]
 
     idx = diagonal_indices(n_origin, n_dev, k=k)
     items = []

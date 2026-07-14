@@ -85,7 +85,7 @@
         } else if (state.sidecarOriginLabels.length && !shouldRejectOriginLabels(getDetails().originLength, state.sidecarOriginLabels)) {
           setOriginLabels(state.sidecarOriginLabels, getDetails().originLength);
         } else {
-          await refreshOriginLabels({ render: false });
+          setOriginLabels([], getDetails().originLength);
         }
         state.ultimateOverrides = normalizeUltimateOverrides(method.ultimate_overrides, getRowCount());
         renderMethodGrid();
@@ -339,6 +339,8 @@
         });
         const payload = await resp.json().catch(() => ({}));
         if (!resp.ok || payload?.ok === false) throw new Error(payload?.detail || payload?.error || `Sidecar save failed (${resp.status}).`);
+        invalidateOutputSidecarLoad();
+        auditLogView.render(payload?.audit_log);
         return payload;
       }
 

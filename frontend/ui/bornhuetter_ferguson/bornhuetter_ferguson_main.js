@@ -1,6 +1,7 @@
 import {
   ensureDatasetOriginLabels,
   formatDatasetOriginLabel,
+  validateDatasetOriginLabels,
 } from "/ui/dataset/dataset_origin_labels.js";
 import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
 import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/filename_sanitizer.js";
@@ -13,6 +14,7 @@ import {
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
 import { wireNotesEditorInteractions } from "/ui/shared/notes_editor_interactions.js";
 import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260710f";
+import { createDatasetAuditLog } from "/ui/shared/dataset_audit_log.js?v=20260714b";
 import { createBornhuetterFergusonChart } from "/ui/bornhuetter_ferguson/bornhuetter_ferguson_chart.js";
 import { createPageCloseConfirm } from "/ui/shared/page_close_confirm.js";
 import { createSpreadsheetTableController } from "/ui/shared/spreadsheet_table.js?v=20260712c";
@@ -40,7 +42,6 @@ const state = {
   cachedRows: [],
   originLabels: [],
   sidecarOriginLabels: [],
-  auditEntries: [],
   latestValues: [],
   dfmUltimateValues: [],
   priorSources: [],
@@ -63,6 +64,7 @@ let notesProgrammatic = false;
 let lastSavedNotesText = "";
 let tabbedPage = null;
 let bfChart = null;
+let sidecarLoadSequence = 0;
 const bfCloseConfirm = createPageCloseConfirm({ subject: BF_METHOD_TYPE });
 const activeDependencyPreviews = new Map();
 
@@ -102,11 +104,17 @@ const els = {
   chartEmpty: document.getElementById("bfChartEmpty"),
   chartTooltip: document.getElementById("bfChartTooltip"),
   cellContextMenu: document.getElementById("bfCellContextMenu"),
-  auditGrid: document.getElementById("bfAuditGrid"),
+  auditLogMount: document.getElementById("bfAuditLogMount"),
   notesInput: document.getElementById("bfNotesInput"),
   saveBtn: document.getElementById("bfSaveBtn"),
   cancelBtn: document.getElementById("bfCancelBtn"),
 };
+
+const auditLogView = createDatasetAuditLog({
+  container: els.auditLogMount,
+  ariaLabel: "Bornhuetter Ferguson audit log",
+  emptyDescription: "Method saves will appear here after the first save.",
+});
 
 const methodSpreadsheetTable = createSpreadsheetTableController({
   getRoot: () => els.methodTable,
@@ -483,13 +491,19 @@ function vectorValues(values) {
   });
 }
 
-function rowCount() {
+function sourceRowCount() {
   const priorValueCount = state.priorSources.reduce((max, source) => Math.max(max, source.values?.length || 0), 0);
   return Math.max(
-    state.originLabels.length,
     state.latestValues.length,
     state.dfmUltimateValues.length,
     priorValueCount,
+  );
+}
+
+function rowCount() {
+  return Math.max(
+    state.originLabels.length,
+    sourceRowCount(),
     1,
   );
 }
@@ -724,46 +738,42 @@ async function removePriorSource(sourceIndex) {
   markDirty();
 }
 
-function fallbackOriginLabel(index, originLength = getDetails().originLength) {
-  const year = 2017 + Math.floor(index / Math.max(1, 12 / Math.max(1, originLength)));
-  if (originLength === 12) return String(2017 + index);
-  if (originLength === 6) return `${year} H${(index % 2) + 1}`;
-  if (originLength === 3) return `${year} Q${(index % 4) + 1}`;
-  if (originLength === 1) {
-    const month = (index % 12) + 1;
-    return formatDatasetOriginLabel(`${year}${String(month).padStart(2, "0")}`, 1) || String(index + 1);
-  }
-  return String(index + 1);
-}
-
 function originLabel(index) {
-  return text(state.originLabels[index]) || fallbackOriginLabel(index);
+  const label = text(state.originLabels[index]);
+  return label ? formatDatasetOriginLabel(label, getDetails().originLength) : "";
 }
 
 async function refreshOriginLabels({ render = true } = {}) {
   const details = getDetails();
-  const count = rowCount();
-  if (state.originLabels.length === count && state.originLabels.some((label) => text(label))) {
-    state.originLabels = state.originLabels.map(String);
-  } else if (state.sidecarOriginLabels.length === count) {
-    state.originLabels = state.sidecarOriginLabels.map(String);
-  } else {
-    try {
-      const labels = await ensureDatasetOriginLabels(state.project, details.originLength, count);
-      state.originLabels = Array.isArray(labels) && labels.length ? labels.map(String).slice(0, count) : [];
-    } catch {
-      state.originLabels = [];
-    }
-    while (state.originLabels.length < count) state.originLabels.push(fallbackOriginLabel(state.originLabels.length, details.originLength));
+  const expectedCount = sourceRowCount();
+  const validationOptions = {
+    originLen: details.originLength,
+    requireMatchingPeriod: true,
+    ...(expectedCount > 0 ? { expectedCount } : {}),
+  };
+  const current = validateDatasetOriginLabels(state.originLabels, validationOptions);
+  const sidecar = validateDatasetOriginLabels(state.sidecarOriginLabels, validationOptions);
+  if (current.ok) state.originLabels = current.labels;
+  else if (sidecar.ok) state.originLabels = sidecar.labels;
+  else {
+    state.originLabels = [];
+    state.originLabels = await ensureDatasetOriginLabels(state.project, details.originLength, {
+      requireMatchingPeriod: true,
+      ...(expectedCount > 0 ? { expectedCount } : {}),
+    });
   }
   if (render) renderMethodGrid();
 }
 
-function calculateOutputs() {
-  const count = rowCount();
+function clearCalculatedOutputs() {
   state.percentDevelopedValues = [];
   state.selectedPriorValues = [];
   state.newUltimateValues = [];
+}
+
+function calculateOutputs() {
+  const count = rowCount();
+  clearCalculatedOutputs();
   for (let i = 0; i < count; i += 1) {
     const latest = numberOrNull(state.latestValues[i]);
     const dfmUltimate = numberOrNull(state.dfmUltimateValues[i]);
@@ -804,10 +814,22 @@ function renderBfChart() {
   });
 }
 
+async function refreshOriginLabelsForCalculations() {
+  try {
+    await refreshOriginLabels({ render: false });
+  } catch (err) {
+    clearCalculatedOutputs();
+    renderMethodGrid();
+    renderBfChart();
+    throw err;
+  }
+}
+
 async function refreshCalculations({ mark = false } = {}) {
   const details = getDetails();
   if (!details.latestDataset || !details.dfmDataset) {
     reapplyActiveDependencyPreviews();
+    await refreshOriginLabelsForCalculations();
     calculateOutputs();
     renderMethodGrid();
     if (mark) markDirty();
@@ -835,8 +857,8 @@ async function refreshCalculations({ mark = false } = {}) {
   reapplyActiveDependencyPreviews();
   const labels = Array.isArray(latestPayload?.origin_labels) ? latestPayload.origin_labels : [];
   if (!state.originLabels.length && labels.length) state.originLabels = labels.map(String);
+  await refreshOriginLabelsForCalculations();
   calculateOutputs();
-  await refreshOriginLabels({ render: false });
   renderMethodGrid();
   if (mark) markDirty();
 }
@@ -1230,21 +1252,6 @@ function renderMethodGrid() {
   applyMethodHighlightDom();
 }
 
-function renderAuditGrid() {
-  if (!els.auditGrid) return;
-  const entries = Array.isArray(state.auditEntries) ? state.auditEntries : [];
-  if (!entries.length) {
-    els.auditGrid.innerHTML = '<tr><td colspan="4">No audit log entries.</td></tr>';
-    return;
-  }
-  els.auditGrid.innerHTML = entries.map((entry) => `<tr>
-    <td>${escapeHtml(text(entry?.timestamp || entry?.time || entry?.created_at))}</td>
-    <td>${escapeHtml(text(entry?.user || entry?.username || entry?.actor))}</td>
-    <td>${escapeHtml(text(entry?.action || entry?.event || entry?.type))}</td>
-    <td>${escapeHtml(text(entry?.details || entry?.message || entry?.summary))}</td>
-  </tr>`).join("");
-}
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1296,9 +1303,7 @@ function buildPayload() {
     notes_tab: {
       notes: els.notesInput?.value || "",
     },
-    audit_log_tab: {
-      entries: state.auditEntries,
-    },
+    audit_log_tab: {},
     method_metadata: {
       method_type: BF_METHOD_TYPE,
       source_kind: BF_SOURCE_KIND,
@@ -1367,28 +1372,38 @@ async function tryLoadExistingMethod() {
 }
 
 async function loadSidecar() {
+  const requestSequence = ++sidecarLoadSequence;
   const details = getDetails();
-  if (!state.project || !state.reservingClass || !details.name) return null;
-  const resp = await fetch("/dataset/sidecar/load", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project_name: state.project,
-      reserving_class: state.reservingClass,
-      dataset_name: details.name,
-    }),
-  });
-  const payload = await resp.json().catch(() => ({}));
-  if (!resp.ok || payload?.ok === false) return null;
-  const sidecar = payload?.sidecar || payload?.data || payload;
-  state.sidecarOriginLabels = Array.isArray(sidecar?.origin_labels) ? sidecar.origin_labels.map(String) : [];
-  state.auditEntries = Array.isArray(sidecar?.audit_log)
-    ? sidecar.audit_log
-    : Array.isArray(sidecar?.auditLog)
-      ? sidecar.auditLog
-      : [];
-  renderAuditGrid();
-  return sidecar;
+  if (!state.project || !state.reservingClass || !details.name) {
+    auditLogView.clear();
+    return null;
+  }
+  auditLogView.setLoading();
+  try {
+    const resp = await fetch("/dataset/sidecar/load", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_name: state.project,
+        reserving_class: state.reservingClass,
+        dataset_name: details.name,
+      }),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (requestSequence !== sidecarLoadSequence) return null;
+    if (!resp.ok || payload?.ok === false) {
+      throw new Error(text(payload?.detail || payload?.error) || `Dataset sidecar load failed (${resp.status}).`);
+    }
+    const sidecar = payload?.sidecar || payload?.data || payload;
+    state.sidecarOriginLabels = Array.isArray(sidecar?.origin_labels) ? sidecar.origin_labels.map(String) : [];
+    auditLogView.render(sidecar?.audit_log);
+    return sidecar;
+  } catch (err) {
+    if (requestSequence !== sidecarLoadSequence) return null;
+    const message = text(err?.message || err) || "Unknown error.";
+    auditLogView.setError(`Could not load the audit log. ${message}`);
+    return null;
+  }
 }
 
 function getSourcePrecedentNames() {
@@ -1432,6 +1447,8 @@ async function saveSidecar(csvPath, originLabels = []) {
   });
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok || payload?.ok === false) throw new Error(payload?.detail || payload?.error || `Sidecar save failed (${resp.status}).`);
+  sidecarLoadSequence += 1;
+  auditLogView.render(payload?.audit_log);
   return payload;
 }
 
@@ -1715,13 +1732,19 @@ async function openPicker(kind, anchor) {
   });
 }
 
+function requestConfirmedClose() {
+  requestTabbedPageWindowClose({
+    messageType: "arcrho:dataset-close-confirmed",
+    inst,
+  });
+}
+
 async function closeOrConfirm() {
   if (isDirty) {
     const discard = await bfCloseConfirm.confirm({ reason: "close" });
     if (!discard) return;
-    postDirty(false, true);
   }
-  requestTabbedPageWindowClose({ inst });
+  requestConfirmedClose();
 }
 
 async function initTabbedPage() {
@@ -1732,6 +1755,7 @@ async function initTabbedPage() {
     initialTab: ALLOWED_BF_TABS.has(text(params.get("tab") || params.get("initial_tab"))) ? text(params.get("tab") || params.get("initial_tab")) : "details",
     onTabChange: (tabId) => {
       if (tabId === "chart") requestAnimationFrame(() => bfChart?.refresh());
+      if (tabId === "audit" && tabbedPage) void loadSidecar();
       try {
         window.parent?.postMessage({ type: "arcrho:bf-tab-changed", inst, tab: tabId }, "*");
       } catch {}
@@ -1743,6 +1767,9 @@ async function initTabbedPage() {
     tabs: BF_TABS,
     tabSystem: () => tabbedPage,
     getTitle: () => `${getDetails().name || BF_METHOD_TYPE} - ${BF_METHOD_TYPE}`,
+    onPopoutTab: (tabId) => {
+      if (tabId === "audit") void loadSidecar();
+    },
   });
   bfChart = createBornhuetterFergusonChart({
     canvas: els.chartCanvas,
@@ -2053,11 +2080,17 @@ async function init() {
       postStatus(`Source refresh failed: ${String(err?.message || err)}`, "error");
     }
   } else if (!loaded) {
-    await refreshOriginLabels({ render: false });
-    calculateOutputs();
-    renderMethodGrid();
+    try {
+      await refreshOriginLabels({ render: false });
+      calculateOutputs();
+      renderMethodGrid();
+    } catch (err) {
+      state.originLabels = [];
+      calculateOutputs();
+      renderMethodGrid();
+      postStatus(`Origin labels unavailable: ${String(err?.message || err)}`, "error");
+    }
   }
-  renderAuditGrid();
   markClean();
 }
 

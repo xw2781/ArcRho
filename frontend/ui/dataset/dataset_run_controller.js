@@ -24,6 +24,7 @@ export function createDatasetRunController(deps) {
     recordDatasetBrowsingHistory,
     syncNotesForCurrentDataset,
     syncSidecarForCurrentDataset,
+    invalidateDatasetContextLoads = () => {},
     updateCurrentTabTitle,
     setStatus,
     onCalculatedUpdates = null,
@@ -36,9 +37,20 @@ export function createDatasetRunController(deps) {
   let autoRunTimer = null;
   let lastAutoKey = "";
   let runInFlight = false;
+  let datasetLoadSequence = 0;
   let datasetLoadingPopupEl = null;
   let datasetLoadingPopupTimer = null;
   let datasetLoadingPopupStart = 0;
+  const datasetContextFields = [
+    "project",
+    "path",
+    "tri",
+    "instanceName",
+    "cumulative",
+    "calendar",
+    "originLen",
+    "devLen",
+  ];
 
   function ensureDatasetLoadingPopupStyles(doc = document) {
     if (doc.getElementById("arcrho-load-popup-style")) return;
@@ -191,6 +203,19 @@ export function createDatasetRunController(deps) {
     });
   }
 
+  function datasetInputContextIsCurrent(expected) {
+    const current = getTriInputs();
+    return datasetContextFields.every((field) => (
+      String(current?.[field] ?? "").trim() === String(expected?.[field] ?? "").trim()
+    ));
+  }
+
+  function datasetLoadContextIsCurrent(sequence, datasetId, expectedInputs) {
+    if (sequence !== datasetLoadSequence) return false;
+    if (String(config.DS_ID || "").trim() !== datasetId) return false;
+    return datasetInputContextIsCurrent(expectedInputs);
+  }
+
   function showDfmLocalCacheAlert(message) {
     if (!window.ADA_DFM_CONTEXT) return;
     const text = String(message || "").trim();
@@ -250,6 +275,7 @@ export function createDatasetRunController(deps) {
     const { cumulative, calendar, originLen, devLen, instanceName } = getTriInputs();
     const { project, path, tri } = validated;
     const triRequestInputs = { project, path, tri, instanceName, cumulative, calendar, originLen, devLen };
+    const runIsCurrent = () => datasetInputContextIsCurrent(triRequestInputs);
     const dataFormat = String(getDatasetRunDataFormat(tri) || "").trim().toLowerCase();
     const isVector = dataFormat === "vector";
     const requestPayload = isVector && typeof buildVecRequestPayload === "function"
@@ -302,6 +328,12 @@ export function createDatasetRunController(deps) {
 
       const data = await resp.json();
 
+      if (!runIsCurrent()) {
+        logLine(`${runLabel} response ignored because dataset inputs changed while the request was running.`);
+        lastAutoKey = "";
+        return { ok: false, stale: true };
+      }
+
       if (!resp.ok) {
         logLine(`${clearCache ? `${runLabel} refresh` : runLabel} failed: ${resp.status}`);
         if (status) status.textContent = `Error: ${resp.status}`;
@@ -327,9 +359,6 @@ export function createDatasetRunController(deps) {
       logLine(`${clearCache ? `${runLabel} refresh` : runLabel} OK. ds_id=${data.ds_id}`);
       if (status) status.textContent = `OK: ${data.ds_id}`;
 
-      // switch dataset and load (and persist)
-      config.DS_ID = data.ds_id;
-      saveLastDsId(config.DS_ID);
       const needRequest = !clearCache && (
         data?.need_request === true
         || !!String(data?.request_file || "").trim()
@@ -348,17 +377,29 @@ export function createDatasetRunController(deps) {
           console.warn("Failed to clear ArcRhoHeaders cache:", err);
         }
         try {
-          await ensureHeadersForProject(project, { forceRefresh: true });
-          await ensureDevHeadersForProject(project, { forceRefresh: true });
+          await ensureHeadersForProject(project, { forceRefresh: true, isCurrent: runIsCurrent });
+          if (runIsCurrent()) {
+            await ensureDevHeadersForProject(project, { forceRefresh: true, isCurrent: runIsCurrent });
+          }
         } catch (err) {
           console.warn("Failed to refresh header labels after cache clear:", err);
         }
       }
-      await loadDataset();
+      if (!runIsCurrent()) {
+        lastAutoKey = "";
+        return { ok: false, stale: true };
+      }
+      // Switch to the completed cache only after every awaited run step still
+      // matches the inputs that produced it.
+      config.DS_ID = data.ds_id;
+      saveLastDsId(config.DS_ID);
+      const loadResult = await loadDataset();
+      if (!loadResult?.ok) return loadResult;
       if (typeof onCalculatedUpdates === "function") {
         onCalculatedUpdates(data?.calculated_updates, clearCache ? "Dataset refresh" : "Dataset run");
       }
       recordDatasetBrowsingHistory({ project, path, tri });
+      return loadResult;
     } finally {
       hideLoadingPopup();
       runInFlight = false;
@@ -368,41 +409,75 @@ export function createDatasetRunController(deps) {
   }
 
   async function loadDataset() {
-    state.dirty.clear();
-
+    const loadSequence = ++datasetLoadSequence;
+    invalidateDatasetContextLoads();
     const datasetId = String(config.DS_ID || "").trim();
     if (!datasetId) {
       logLine("Dataset load skipped: no dataset selected");
       $("tableWrap").innerHTML = '<div class="small">Select a project, reserving class, and dataset to load data.</div>';
       setStatus("No dataset selected");
-      return;
+      return { ok: false, skipped: true, message: "No dataset selected" };
     }
 
-    const { project } = getTriInputs();
-    if (project) {
-      await ensureHeadersForProject(project);
-      await ensureDevHeadersForProject(project);
+    const loadInputs = getTriInputs();
+    const { project, originLen } = loadInputs;
+    $("dsMeta").textContent = "";
+    const loadIsCurrent = () => datasetLoadContextIsCurrent(
+      loadSequence,
+      datasetId,
+      loadInputs,
+    );
+    let response;
+    try {
+      if (project) {
+        await ensureHeadersForProject(project, { isCurrent: loadIsCurrent });
+        if (!loadIsCurrent()) return { ok: false, stale: true };
+        await ensureDevHeadersForProject(project, { isCurrent: loadIsCurrent });
+      }
+      if (!loadIsCurrent()) {
+        return { ok: false, stale: true };
+      }
+      response = await getDataset(datasetId, { projectName: project, originLength: originLen });
+    } catch (err) {
+      response = {
+        ok: false,
+        status: 0,
+        data: { detail: String(err?.message || err || "Network error") },
+      };
     }
-
-    const { ok, status, data } = await getDataset(datasetId, config.START_YEAR);
+    if (!loadIsCurrent()) {
+      return { ok: false, stale: true };
+    }
+    const { ok, status, data } = response;
 
     if (!ok) {
-      logLine(`ERROR loading dataset: ${status}`);
-      $("tableWrap").innerHTML = `<div style="color:#b00;"><b>Load failed:</b> ${status}</div>`;
-      setStatus("Ready");
-      return;
+      const message = String(data?.detail || data?.error || data?.message || `Dataset request failed (${status || "network error"}).`).trim();
+      logLine(`ERROR loading dataset: ${message}`);
+      const error = document.createElement("div");
+      error.style.color = "#b00";
+      const label = document.createElement("b");
+      label.textContent = "Load failed: ";
+      error.append(label, document.createTextNode(message));
+      $("tableWrap").replaceChildren(error);
+      state.model = null;
+      state.fileMtime = null;
+      state.headerLabels = [];
+      $("dsMeta").textContent = "";
+      renderChart();
+      notifyDatasetUpdated({ publishPreview: false });
+      setStatus(message);
+      return { ok: false, status, data, message };
     }
 
     // persist the last successfully loaded dataset
     saveLastDsId(config.DS_ID);
 
+    state.dirty.clear();
     state.model = data;
     state.fileMtime = data.mtime;
 
-    // Apply cached header labels, if available
-    if (Array.isArray(state.headerLabels) && state.headerLabels.length) {
-      state.model.origin_labels = state.headerLabels.map(String);
-    }
+    // The backend validates origin labels against the dataset row count.
+    state.headerLabels = Array.isArray(data.origin_labels) ? data.origin_labels.map(String) : [];
     if (Array.isArray(state.devHeaderLabels) && state.devHeaderLabels.length) {
       // Do not truncate dev labels by the UI selector.
       // The triangle CSV may contain more columns than the current selector value.
@@ -410,18 +485,36 @@ export function createDatasetRunController(deps) {
     }
 
     if (window.ADA_DFM_CONTEXT && typeof syncSidecarForCurrentDataset === "function") {
-      await syncSidecarForCurrentDataset({ applyLengths: false, forceReload: true });
+      const sidecarSynced = await syncSidecarForCurrentDataset({
+        applyLengths: false,
+        forceReload: true,
+        isCurrent: loadIsCurrent,
+      });
+      if (!loadIsCurrent()) return { ok: false, stale: true };
+      if (sidecarSynced === false) return { ok: false, contextSyncFailed: true };
+    }
+    if (!loadIsCurrent()) {
+      return { ok: false, stale: true };
     }
 
     renderTable();
     notifyDatasetUpdated();
     applyGridSelectionFromState();
     if (typeof syncNotesForCurrentDataset === "function") {
-      await syncNotesForCurrentDataset();
+      const notesSynced = await syncNotesForCurrentDataset({ isCurrent: loadIsCurrent, forceReload: true });
+      if (!loadIsCurrent()) return { ok: false, stale: true };
+      if (notesSynced === false) return { ok: false, contextSyncFailed: true };
     }
     if (!window.ADA_DFM_CONTEXT && typeof syncSidecarForCurrentDataset === "function") {
-      await syncSidecarForCurrentDataset({ applyLengths: false, forceReload: true });
+      const sidecarSynced = await syncSidecarForCurrentDataset({
+        applyLengths: false,
+        forceReload: true,
+        isCurrent: loadIsCurrent,
+      });
+      if (!loadIsCurrent()) return { ok: false, stale: true };
+      if (sidecarSynced === false) return { ok: false, contextSyncFailed: true };
     }
+    if (!loadIsCurrent()) return { ok: false, stale: true };
 
     $("dsMeta").textContent =
       `id=${data.id} | origins=${data.origin_labels.length} | dev=${data.dev_labels.length} | mtime=${data.mtime}`;
@@ -447,6 +540,7 @@ export function createDatasetRunController(deps) {
         "*"
       );
     }
+    return { ok: true, status, data };
   }
 
   async function savePatch() {
@@ -457,6 +551,11 @@ export function createDatasetRunController(deps) {
     }
     if (state.dirty.size === 0) {
       logLine("No changes to save.");
+      return;
+    }
+    if (!state.model) {
+      logLine("Cannot save grid changes because the current dataset failed to load.");
+      setStatus("Reload the dataset successfully before saving grid changes.");
       return;
     }
 
@@ -474,7 +573,8 @@ export function createDatasetRunController(deps) {
     }
 
     logLine(`Saved patch: applied=${data.applied}, rejected=${(data.rejected || []).length}, new_mtime=${data.mtime}`);
-    await loadDataset();
+    const loadResult = await loadDataset();
+    if (!loadResult?.ok) return;
     if (typeof onCalculatedUpdates === "function") {
       onCalculatedUpdates(data?.calculated_updates, "Dataset grid save");
     }

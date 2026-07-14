@@ -9,6 +9,7 @@ import {
   normalizeShellActivityEntry,
   pushShellActivityHistoryEntry,
 } from "/ui/shell/shell_activity_history.js";
+import { ALLOWED_DFM_TABS } from "/ui/dfm/dfm_tab_config.js";
 
 const RESTORABLE_ACTIVITY_TYPES = new Set([
   "dataset",
@@ -180,8 +181,6 @@ function cleanupDfmRatioHistory(tab) {
   }
 }
 
-const ALLOWED_DFM_TAB_IDS = new Set(["details", "data", "ratios", "results", "notes"]);
-
 function normalizeDfmInitialInputs(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const project = String(source.project || source.projectName || source.project_name || "").trim();
@@ -207,7 +206,7 @@ function normalizeDfmInitialInputs(raw) {
 export function openDFMTab(options = {}) {
   const dfmInputs = normalizeDfmInitialInputs(options?.dfmInputs || options?.inputs || null);
   const requestedDfmTab = String(options?.dfmTab || "").trim().toLowerCase();
-  const dfmTab = ALLOWED_DFM_TAB_IDS.has(requestedDfmTab) ? requestedDfmTab : "details";
+  const dfmTab = ALLOWED_DFM_TABS.has(requestedDfmTab) ? requestedDfmTab : "details";
   const id = `dfm_${shell.state.nextId++}`;
   shell.state.tabs.push({
     id,

@@ -33,6 +33,7 @@ ArcRho calculations/precheck domain.
 - Result Selection can request engine-generated source triangles or vectors at a selected origin length without updating the source sidecar by passing `WriteSidecar: false`.
 - ArcRho runtime requests are published as flat JSON `request-*.json` files under the configured requests directory. Temporary `.tmp` files are atomically renamed to `.json`, and data-engine workers process JSON requests only.
 - Includes a cache-maintenance endpoint used by Project Settings reload to clear project-scoped `ArcRhoHeaders*.csv` files; Dataset `Clear Cache & Reload` can pass current Origin Length and Development Length so matching origin, development-column, and calendar-column header caches are cleared.
+- Header requests validate that the project's `general_settings.json` contains a valid `origin_start_date` before reading or generating a cache. A header cache older than General Settings is deleted and regenerated, and a generation timeout returns an explicit retry/data-engine message instead of an empty label list.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

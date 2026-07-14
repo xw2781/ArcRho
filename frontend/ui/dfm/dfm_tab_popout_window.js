@@ -1,17 +1,10 @@
 import { wireTabPopoutWindows } from "/ui/shared/tab_popout_window.js";
-
-const DFM_TABS = [
-  { id: "details", label: "Details" },
-  { id: "data", label: "Data" },
-  { id: "ratios", label: "Ratios" },
-  { id: "results", label: "Results" },
-  { id: "notes", label: "Notes" },
-];
+import { DFM_TAB_DEFS } from "/ui/dfm/dfm_tab_config.js";
 
 export function wireDfmTabPopoutWindows(options = {}) {
   return wireTabPopoutWindows({
     cssPrefix: "dfm",
-    tabs: DFM_TABS,
+    tabs: DFM_TAB_DEFS,
     tabSystem: () => window.dfmTabSystem,
     ...options,
   });

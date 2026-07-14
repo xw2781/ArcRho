@@ -12,7 +12,7 @@ Detailed menu, floating-window, lifecycle, and bridge behavior belongs in focuse
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.shell.entry_points -->
-- `ui/index.html`: external scripts `/ui/shell/ui_shell.js?v=20260625c`; inline imports _none_.
+- `ui/index.html`: external scripts `/ui/shell/ui_shell.js?v=20260714a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/`
@@ -114,7 +114,7 @@ Detected `arcrho:*` message types in key JS files:
 - Consumes dataset-page browsing updates (`arcrho:dataset-settings-changed`, `arcrho:browsing-history-updated`) and forwards updates to any open Browsing History tab. It also broadcasts `arcrho:calculated-datasets-updated` reports from one Dataset tab to open Dataset tabs and Project Instance tabs so recalculated dependent outputs can refresh in place, including nested Dataset windows.
 - Receives `arcrho:open-dataset-from-history` from Browsing History tab to open dataset tabs with selected inputs.
 - Records the latest active restore-capable pages in the Browsing History tab's Restore Pages section and receives `arcrho:open-shell-activity-history-entry` from that tab to reopen Dataset, DFM, Workflow, Project Explorer, Project Instance, Scripting, and Agent Guide pages. Project Instance restore entries include the selected reserving-class path plus nested floating Dataset/DFM window state when available.
-- Handles `arcrho:open-dfm` messages by opening a DFM tab with optional initial project, reserving-class path, method name, output type, input triangle values, and starting DFM subtab.
+- Handles `arcrho:open-dfm` messages by opening a DFM tab with optional initial project, reserving-class path, method name, output type, input triangle values, and starting DFM subtab. Audit Log is a valid starting/restored DFM subtab alongside the editable method tabs.
 - Receives `arcrho:open-project-instance` from Project Settings to open or focus a top-level `project_instance` tab for the selected project.
 - Handles `arcrho:open-path` requests from feature iframes through the Electron host bridge, including optional read-only Excel workbook opening via `openPath({ readOnly: true })` and Arcode file opening via `openPath({ preferredApp: "arcode" })`.
 - Shell zoom is owned by `shell_preferences.js`; feature iframe pages use the shared `ui/shared/zoom_bridge.js` relay so Ctrl+wheel, Ctrl+plus/minus, and zoom slider changes apply consistently across Dataset, DFM, Workflow, Project Settings, Project Instance, Browsing History, Agent Guide, and restored scripting iframes, including nested Dataset iframes where the parent page rebroadcasts zoom messages.

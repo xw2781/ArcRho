@@ -294,26 +294,7 @@ export function injectDatasetMarkup(container) {
 
   <!-- Audit Log tab page -->
   <div id="dsAuditLogPage" style="display:none;">
-    <div class="datasetAuditLogWrap">
-      <table class="datasetAuditLogTable" aria-label="Dataset audit log">
-        <colgroup>
-          <col>
-          <col>
-          <col>
-          <col>
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Event Date</th>
-            <th>Action</th>
-            <th>Change Info</th>
-            <th>User</th>
-          </tr>
-        </thead>
-        <tbody id="datasetAuditLogBody"></tbody>
-      </table>
-      <div id="datasetAuditLogEmpty" class="dsPlaceholderText">No audit entries yet.</div>
-    </div>
+    <div id="datasetAuditLogMount"></div>
   </div>
 
   <div id="datasetSaveBar" class="datasetSaveBar" hidden>
@@ -370,34 +351,36 @@ function syncDatasetDetailsLabelWidth(container) {
 }
 
 function wireTableScrollbarActivity(container) {
-  const wrap = container?.querySelector?.("#tableWrap");
-  if (!wrap || wrap.__arcRhoScrollbarActivityWired) return;
-  wrap.__arcRhoScrollbarActivityWired = true;
+  const wraps = Array.from(container?.querySelectorAll?.("#tableWrap") || []);
+  wraps.forEach((wrap) => {
+    if (wrap.__arcRhoScrollbarActivityWired) return;
+    wrap.__arcRhoScrollbarActivityWired = true;
 
-  let idleTimer = null;
-  const syncScrollbarHover = (event) => {
-    const rect = wrap.getBoundingClientRect();
-    const verticalScrollbarWidth = Math.max(0, wrap.offsetWidth - wrap.clientWidth);
-    const horizontalScrollbarHeight = Math.max(0, wrap.offsetHeight - wrap.clientHeight);
-    const hasVerticalScrollbar = wrap.scrollHeight > wrap.clientHeight && verticalScrollbarWidth > 0;
-    const hasHorizontalScrollbar = wrap.scrollWidth > wrap.clientWidth && horizontalScrollbarHeight > 0;
-    const nearVerticalScrollbar = hasVerticalScrollbar
-      && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
-    const nearHorizontalScrollbar = hasHorizontalScrollbar
-      && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+    let idleTimer = null;
+    const syncScrollbarHover = (event) => {
+      const rect = wrap.getBoundingClientRect();
+      const verticalScrollbarWidth = Math.max(0, wrap.offsetWidth - wrap.clientWidth);
+      const horizontalScrollbarHeight = Math.max(0, wrap.offsetHeight - wrap.clientHeight);
+      const hasVerticalScrollbar = wrap.scrollHeight > wrap.clientHeight && verticalScrollbarWidth > 0;
+      const hasHorizontalScrollbar = wrap.scrollWidth > wrap.clientWidth && horizontalScrollbarHeight > 0;
+      const nearVerticalScrollbar = hasVerticalScrollbar
+        && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+      const nearHorizontalScrollbar = hasHorizontalScrollbar
+        && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
 
-    wrap.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
-  };
+      wrap.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+    };
 
-  wrap.addEventListener("scroll", () => {
-    wrap.classList.add("isScrolling");
-    if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      wrap.classList.remove("isScrolling");
-    }, 550);
-  }, { passive: true });
-  wrap.addEventListener("pointermove", syncScrollbarHover, { passive: true });
-  wrap.addEventListener("pointerleave", () => {
-    wrap.classList.remove("isScrollbarHover");
-  }, { passive: true });
+    wrap.addEventListener("scroll", () => {
+      wrap.classList.add("isScrolling");
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        wrap.classList.remove("isScrolling");
+      }, 550);
+    }, { passive: true });
+    wrap.addEventListener("pointermove", syncScrollbarHover, { passive: true });
+    wrap.addEventListener("pointerleave", () => {
+      wrap.classList.remove("isScrollbarHover");
+    }, { passive: true });
+  });
 }

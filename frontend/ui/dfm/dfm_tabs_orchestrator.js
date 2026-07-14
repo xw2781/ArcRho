@@ -16,7 +16,6 @@ import { setStorageInstance, loadNaBorders } from "/ui/dfm/dfm_storage.js";
 import {
   state as dfmState,
   getDfmInst,
-  ALLOWED_DFM_TABS,
   setShowNaBorders,
   setCachedRootPath,
   setCurrentDfmTab,
@@ -25,6 +24,8 @@ import {
   markDfmDirty,
   notifyDfmEditState,
 } from "/ui/dfm/dfm_state.js";
+import { ALLOWED_DFM_TABS, DFM_TAB_DEFS } from "/ui/dfm/dfm_tab_config.js";
+import { initDfmAuditLog, refreshDfmAuditLog } from "/ui/dfm/dfm_audit_log.js?v=20260714b";
 import {
   renderRatioTable,
   wireRatioStrikeToggle,
@@ -49,7 +50,7 @@ import {
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/dfm/dfm_details.js?v=20260618a";
+} from "/ui/dfm/dfm_details.js?v=20260714b";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -61,11 +62,11 @@ import {
   resolveCurrentDfmMethodSavePath,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
-} from "/ui/dfm/dfm_persistence.js?v=20260712c";
+} from "/ui/dfm/dfm_persistence.js?v=20260714b";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/dfm/dfm_sync.js";
-import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260703a";
-import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260616a";
-import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js";
+import { wireDfmRpcBridgeTabBar } from "/ui/dfm/dfm_rpc_bridge_tabbar.js?v=20260714b";
+import { reviewArcBotDfmEditApproval } from "/ui/dfm/dfm_rpc_bridge_client.js?v=20260714b";
+import { wireDfmTabPopoutWindows } from "/ui/dfm/dfm_tab_popout_window.js?v=20260714a";
 import {
   clearRatioHistoryTempSession,
   getRatioHistoryState,
@@ -75,13 +76,6 @@ import {
 } from "/ui/dfm/dfm_ratio_history.js";
 
 const DEFAULT_TOKEN = "__DEFAULT__";
-const DFM_TAB_DEFS = Object.freeze([
-  { id: "details", label: "Details" },
-  { id: "data", label: "Data" },
-  { id: "ratios", label: "Ratios" },
-  { id: "results", label: "Results" },
-  { id: "notes", label: "Notes" },
-]);
 let dfmSaveInFlight = false;
 const dfmCloseConfirm = createPageCloseConfirm({ subject: "DFM" });
 let dependencyPreviewTimer = 0;
@@ -146,6 +140,9 @@ function refreshDfmTabContent(reason = "") {
   syncOutputTypeFromProject();
   if (!getDfmIsDirty()) {
     scheduleRatioSelectionLoad(reason || "dfm-refresh");
+  }
+  if (getCurrentDfmTab() === "audit") {
+    void refreshDfmAuditLog();
   }
   if (isRatioChartOpen()) scheduleRatioChartRender();
 }
@@ -452,7 +449,8 @@ function initDfmTabs() {
   const ratiosPage = document.getElementById("dfmRatiosPage");
   const resultsPage = document.getElementById("dfmResultsPage");
   const notesPage = document.getElementById("dfmNotesPage");
-  if (!detailsPage || !dataPage || !ratiosPage || !resultsPage || !notesPage) return;
+  const auditPage = document.getElementById("dfmAuditPage");
+  if (!detailsPage || !dataPage || !ratiosPage || !resultsPage || !notesPage || !auditPage) return;
 
   syncDetailsLabelWidth({
     root: detailsPage,
@@ -473,6 +471,7 @@ function initDfmTabs() {
   wireRatioChartModal();
   wireRatioContextMenu();
   wireResultsRatioBasisControls();
+  initDfmAuditLog();
 
   const params = new URLSearchParams(window.location.search);
   const urlTab = params.get("tab");
@@ -487,6 +486,7 @@ function initDfmTabs() {
       setCurrentDfmTab(tabId);
       if (tabId === "ratios") renderRatioTable();
       if (tabId === "results") renderResultsTable();
+      if (tabId === "audit") refreshDfmAuditLog();
       notifyDfmEditState();
       if (tabId === "details") {
         syncMethodNameFromInputs();
@@ -504,6 +504,7 @@ function initDfmTabs() {
     onPopoutTab: (tabId) => {
       if (tabId === "ratios") renderRatioTable();
       if (tabId === "results") renderResultsTable();
+      if (tabId === "audit") refreshDfmAuditLog();
       notifyDfmEditState();
     },
   });

@@ -3,6 +3,7 @@ import {
   ensureDatasetOriginLabels,
   formatDatasetOriginLabel,
   getDatasetOriginLabelText,
+  validateDatasetOriginLabels,
 } from "/ui/dataset/dataset_origin_labels.js";
 import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
 import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/filename_sanitizer.js";
@@ -18,6 +19,7 @@ import { syncDetailsLabelWidth } from "/ui/shared/details_form_layout.js?v=20260
 import { startResultSelectionRpcBridgeSync } from "/ui/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
 import { createPageCloseConfirm } from "/ui/shared/page_close_confirm.js";
 import { createSpreadsheetTableController } from "/ui/shared/spreadsheet_table.js?v=20260712c";
+import { createDatasetAuditLog } from "/ui/shared/dataset_audit_log.js?v=20260714b";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
 const RS_JSON_VALUE_DECIMAL_PLACES = 6;
@@ -30,6 +32,7 @@ const RS_TAB_DEFS = [
   { id: "results", label: "Results" },
   { id: "validation", label: "Validation" },
   { id: "notes", label: "Notes" },
+  { id: "audit", label: "Audit Log" },
 ];
 const ALLOWED_RS_TABS = new Set(RS_TAB_DEFS.map((tab) => tab.id));
 const FALLBACK_ORIGIN_LABEL_COUNTS = {
@@ -140,6 +143,7 @@ const els = {
   activeRatioBasisMenu: document.getElementById("rsActiveRatioBasisMenu"),
   methodGrid: document.getElementById("rsMethodGrid"),
   resultsGrid: document.getElementById("rsResultsGrid"),
+  auditLogMount: document.getElementById("rsAuditLogMount"),
   saveBar: document.querySelector(".rsSaveBar"),
   saveBtn: document.getElementById("rsSaveBtn"),
   cancelBtn: document.getElementById("rsCancelBtn"),
@@ -148,11 +152,18 @@ const els = {
   sourceContextMenu: document.getElementById("rsSourceContextMenu"),
 };
 
+const auditLogView = createDatasetAuditLog({
+  container: els.auditLogMount,
+  ariaLabel: "Result Selection audit log",
+  emptyDescription: "Result Selection saves will appear here after the first save.",
+});
+
 const ctx = {
   fetchProjectDatasetTypeItems,
   ensureDatasetOriginLabels,
   formatDatasetOriginLabel,
   getDatasetOriginLabelText,
+  validateDatasetOriginLabels,
   openDatasetNamePicker,
   sanitizeDataFolderPart,
   sanitizeFileNamePart,
@@ -179,6 +190,7 @@ const ctx = {
   inst,
   state,
   els,
+  auditLogView,
   text,
   norm,
   closeConfirm,

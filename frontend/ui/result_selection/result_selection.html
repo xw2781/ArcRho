@@ -11,7 +11,7 @@
       --rs-table-font-size: 14px;
       --rs-cell-h: 20px;
       --rs-header-h: 48px;
-      --rs-header-line-h: 14px;
+      --rs-header-line-h: 15px;
       --rs-cell-min-w: 80px;
       --rs-cell-max-w: 100px;
       --rs-weight-cell-w: 68px;
@@ -117,6 +117,29 @@
       background: #ffffff;
       pointer-events: none;
     }
+    @media (max-width: 520px) {
+      .rsTabBar {
+        padding-right: 4px;
+        padding-left: 4px;
+      }
+      .rsTabBar::after {
+        right: 4px;
+        left: 4px;
+      }
+      .rsTab {
+        padding-right: 6px;
+        padding-left: 6px;
+      }
+      .rsTabBarSpacer {
+        min-width: 4px;
+      }
+      .rsTabBar .rsTabSyncBtn {
+        min-width: 48px;
+        margin-left: 4px;
+        padding-right: 6px;
+        padding-left: 6px;
+      }
+    }
     .rsPageHost {
       flex: 1 1 auto;
       min-height: 0;
@@ -168,6 +191,19 @@
       flex-direction: column;
       padding: 4px;
       overflow: hidden;
+    }
+    #rsAuditPage.active,
+    #rsAuditPage.rsTabFloatingPage {
+      display: flex !important;
+      align-items: flex-start;
+      overflow: hidden;
+    }
+    #rsAuditLogMount {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      box-sizing: border-box;
     }
     #rsDetailsPage.rsTabFloatingPage,
     #rsMethodPage.rsTabFloatingPage,
@@ -1266,6 +1302,7 @@
     <button class="rsTab" data-page="results" type="button">Results</button>
     <button class="rsTab" data-page="validation" type="button">Validation</button>
     <button class="rsTab" data-page="notes" type="button">Notes</button>
+    <button class="rsTab" data-page="audit" type="button">Audit Log</button>
     <span class="rsTabBarSpacer" aria-hidden="true"></span>
     <button id="rsSyncBtn" class="rsButton rsTabSyncBtn" type="button" title="Compare and sync local Result Selection JSON with ResQ">Sync</button>
   </div>
@@ -1415,6 +1452,9 @@
         </div>
       </div>
     </section>
+    <section id="rsAuditPage" class="rsPage" role="tabpanel">
+      <div id="rsAuditLogMount"></div>
+    </section>
   </div>
   <div class="rsSaveBar">
     <button id="rsSaveBtn" class="rsSaveBtn is-clean" type="button" disabled>Save</button>
@@ -1435,10 +1475,10 @@
   <div id="rsRatioBasisContextMenu" class="rsCellContextMenu rsRatioBasisContextMenu" role="menu" aria-hidden="true">
     <button type="button" role="menuitem" data-rs-ratio-basis-action="delete">Delete</button>
   </div>
-  <script src="/ui/result_selection/result_selection_ui.js?v=20260712a"></script>
-  <script src="/ui/result_selection/result_selection_data.js?v=20260710a"></script>
+  <script src="/ui/result_selection/result_selection_ui.js?v=20260714a"></script>
+  <script src="/ui/result_selection/result_selection_data.js?v=20260714a"></script>
   <script src="/ui/result_selection/result_selection_grids.js?v=20260712b"></script>
-  <script src="/ui/result_selection/result_selection_model.js?v=20260704a"></script>
-  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260712a"></script>
+  <script src="/ui/result_selection/result_selection_model.js?v=20260714a"></script>
+  <script type="module" src="/ui/result_selection/result_selection_main.js?v=20260714b"></script>
 </body>
 </html>

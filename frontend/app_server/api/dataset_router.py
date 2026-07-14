@@ -56,16 +56,21 @@ def create_empty_cached_dataset(req: EmptyDatasetCacheCreateRequest) -> Dict[str
 
 
 @router.get("/dataset/{ds_id}")
-def get_dataset(ds_id: str, start_year: int = 2016) -> Dict[str, Any]:
-    result = dataset_service.get_dataset(ds_id, start_year=start_year)
+def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any]:
+    result = dataset_service.get_dataset(ds_id, project_name=project_name, origin_length=origin_length)
     if result is None:
         raise HTTPException(404, f"Unknown dataset: {ds_id}")
     return result
 
 
 @router.get("/dataset/{ds_id}/diagonal")
-def get_diagonal(ds_id: str, k: int = 0, start_year: int = 2016) -> Dict[str, Any]:
-    result = dataset_service.get_diagonal(ds_id, k=k, start_year=start_year)
+def get_diagonal(ds_id: str, project_name: str, origin_length: int, k: int = 0) -> Dict[str, Any]:
+    result = dataset_service.get_diagonal(
+        ds_id,
+        project_name=project_name,
+        origin_length=origin_length,
+        k=k,
+    )
     if result is None:
         raise HTTPException(404, f"Unknown dataset: {ds_id}")
     return result

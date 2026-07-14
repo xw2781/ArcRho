@@ -3,5 +3,4 @@
 export const config = {
   API_BASE: "",         // same-origin when served by FastAPI
   DS_ID: "",
-  START_YEAR: 2016,
 };

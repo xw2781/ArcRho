@@ -396,15 +396,21 @@ async function loadRatioBasisColumnForContext(ctx) {
   });
   const arcrhoData = await arcrhoResp.json().catch(() => ({}));
   if (!arcrhoResp.ok) {
-    throw new Error(`Ratio basis request failed (${arcrhoResp.status})`);
+    throw new Error(toText(arcrhoData?.detail || arcrhoData?.error || arcrhoData?.message)
+      || `Ratio basis request failed (${arcrhoResp.status}).`);
   }
   if (!arcrhoData?.ok || !toText(arcrhoData?.ds_id)) {
-    throw new Error("Ratio basis dataset timed out or CSV was not available.");
+    throw new Error(toText(arcrhoData?.detail || arcrhoData?.error || arcrhoData?.message || arcrhoData?.status)
+      || "Ratio basis dataset timed out or CSV was not available.");
   }
 
-  const dsResp = await getDataset(arcrhoData.ds_id);
+  const dsResp = await getDataset(arcrhoData.ds_id, {
+    projectName: ctx.projectName,
+    originLength: ctx.originLen,
+  });
   if (!dsResp.ok) {
-    throw new Error(`Failed to load ratio basis dataset (${dsResp.status})`);
+    throw new Error(toText(dsResp.data?.detail || dsResp.data?.error || dsResp.data?.message)
+      || `Failed to load ratio basis dataset (${dsResp.status}).`);
   }
 
   const extracted = extractRatioBasisColumnFromModel(dsResp.data, ctx);

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Removed the empty Audit Log scrollbar lane when the table does not need vertical scrolling."
+}

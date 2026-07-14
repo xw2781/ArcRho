@@ -2,8 +2,12 @@
 
 import { config } from "/ui/shared/config.js";
 
-export async function getDataset(dsId = config.DS_ID, startYear = config.START_YEAR) {
-  const resp = await fetch(`${config.API_BASE}/dataset/${dsId}?start_year=${encodeURIComponent(startYear)}`);
+export async function getDataset(dsId = config.DS_ID, options = {}) {
+  const params = new URLSearchParams({
+    project_name: String(options?.projectName ?? options?.project_name ?? "").trim(),
+    origin_length: String(options?.originLength ?? options?.origin_length ?? "").trim(),
+  });
+  const resp = await fetch(`${config.API_BASE}/dataset/${encodeURIComponent(dsId)}?${params.toString()}`);
   const data = await resp.json().catch(() => ({}));
   return { ok: resp.ok, status: resp.status, data };
 }

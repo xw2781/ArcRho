@@ -628,13 +628,20 @@
         });
       }
 
-      function onRsTabChanged(tab) {
+      function refreshAuditLogFromSidecar() {
+        void loadOutputSidecarSettings({ auditOnly: true }).catch((err) => {
+          console.warn("Result Selection audit log refresh failed:", err);
+        });
+      }
+
+      function onRsTabChanged(tab, previousTab) {
         const next = normalizeRsTab(tab);
         state.activeTab = next;
         syncRsPageState(next);
         try {
           window.parent?.postMessage({ type: "arcrho:result-selection-tab-changed", inst, tab: next }, "*");
         } catch {}
+        if (next === "audit" && previousTab !== null) refreshAuditLogFromSidecar();
       }
 
       function setTab(tab) {
@@ -660,6 +667,7 @@
         window.requestAnimationFrame(() => {
           if (tabId === "method") renderMethodGrid();
           if (tabId === "results") renderResultsGrid();
+          if (tabId === "audit") refreshAuditLogFromSidecar();
         });
       }
 
@@ -1115,20 +1123,32 @@
         wireRsGridScrollbarActivity();
         wireNotes();
         await loadOutputSidecarSettings().catch((err) => console.warn("Result Selection sidecar settings load failed:", err));
-        if (!state.originLabels.length) await refreshOriginLabels({ render: false });
         await loadDatasetTypes();
         await loadCachedRows(false).catch((err) => postStatus(`Cached dataset lookup failed: ${err?.message || err}`, "error"));
         const loaded = await tryLoadExistingMethod().catch((err) => {
           postStatus(`Result Selection load failed: ${err?.message || err}`, "error");
           return false;
         });
+        let originLabelError = "";
+        if (!state.originLabels.length) {
+          try {
+            await refreshOriginLabels({ render: false });
+          } catch (err) {
+            originLabelError = String(err?.message || err || "Origin labels are unavailable.");
+            renderMethodGrid();
+          }
+        }
         if (!loaded) {
           await initializeDefaultSources().catch((err) => postStatus(`Default source load failed: ${err?.message || err}`, "error"));
           renderMethodGrid();
         }
         setTab(state.activeTab);
         markClean();
-        postStatus("Result Selection ready.");
+        if (originLabelError && !state.originLabels.length) {
+          postStatus(`Origin labels unavailable: ${originLabelError}`, "error");
+        } else {
+          postStatus("Result Selection ready.");
+        }
       }
 
       return {
@@ -1186,6 +1206,7 @@
         normalizeRsTab,
         getRsPageId,
         syncRsPageState,
+        refreshAuditLogFromSidecar,
         onRsTabChanged,
         setTab,
         refreshRsFloatingTabLayout,

@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset and method pages now report missing or invalid origin labels instead of substituting a hard-coded start year.",
+  "details": [
+    "Dataset loads validate current project headers against Project Settings and the CSV row count, without reusing stale sidecar labels.",
+    "Dataset Viewer, DFM, Result Selection, and Bornhuetter Ferguson show an actionable Origin Start Date error when labels cannot be resolved.",
+    "Manual dataset creation rejects missing or invalid Project Settings date boundaries instead of creating a default-sized dataset."
+  ]
+}

@@ -1,3 +1,5 @@
+import { validateDatasetOriginLabels } from "/ui/dataset/dataset_origin_labels.js";
+
 export function createDatasetHeadersService(deps) {
   const { state, setStatus } = deps;
 
@@ -9,6 +11,8 @@ export function createDatasetHeadersService(deps) {
 
   let lastHeaderKey = "";
   let lastDevHeaderKey = "";
+  let headerRequestSequence = 0;
+  let devHeaderRequestSequence = 0;
 
   function headerKey(project, originLen) {
     return `${HEADER_PREFIX_V2}${String(project || "").trim()}::${String(originLen || "")}`;
@@ -93,19 +97,38 @@ export function createDatasetHeadersService(deps) {
         Calendar: !!calendar,
       }),
     });
-    if (!resp.ok) {
-      throw new Error(`headers failed: ${resp.status}`);
-    }
     const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data?.ok === false) {
+      throw new Error(String(data?.detail || data?.error || data?.message || data?.status || `headers failed: ${resp.status}`));
+    }
     const labels = Array.isArray(data?.labels)
       ? data.labels
       : (Array.isArray(data?.headers)
         ? data.headers
         : (Array.isArray(data?.origin_labels) ? data.origin_labels : null));
-    return Array.isArray(labels) ? labels.map(String) : null;
+    if (periodType === 0) {
+      const result = validateDatasetOriginLabels(labels, {
+        originLen: periodLength,
+        requireMatchingPeriod: true,
+      });
+      if (!result.ok) {
+        throw new Error(
+          `Cannot load origin labels for project '${projectName}': ${result.error}. `
+          + "Set a valid Origin Start Date in Project Settings, then try again.",
+        );
+      }
+      return result.labels;
+    }
+    const normalized = Array.isArray(labels) ? labels.map((label) => String(label ?? "").trim()) : [];
+    if (!normalized.length || normalized.some((label) => !label)) {
+      throw new Error(`Cannot load development labels for project '${projectName}'.`);
+    }
+    return normalized;
   }
 
   function clearHeaderStateMemory() {
+    headerRequestSequence += 1;
+    devHeaderRequestSequence += 1;
     state.headerLabels = [];
     state.devHeaderLabels = [];
     lastHeaderKey = "";
@@ -160,7 +183,12 @@ export function createDatasetHeadersService(deps) {
     const hasTargetLengths = Number.isFinite(originLen) && originLen > 0 && Number.isFinite(devLen) && devLen > 0;
 
     clearLocalHeadersCache(p, hasTargetLengths ? { originLen, devLen } : {});
-    if (!keepInMemory) clearHeaderStateMemory();
+    if (!keepInMemory) {
+      clearHeaderStateMemory();
+    } else {
+      headerRequestSequence += 1;
+      devHeaderRequestSequence += 1;
+    }
 
     if (!remote || !p) return;
 
@@ -181,61 +209,105 @@ export function createDatasetHeadersService(deps) {
   }
 
   async function ensureHeadersForProject(project, options = {}) {
+    const requestSequence = ++headerRequestSequence;
+    const requestIsCurrent = () => requestSequence === headerRequestSequence
+      && (typeof options?.isCurrent !== "function" || options.isCurrent());
     const p = String(project || "").trim();
-    if (!p) return;
+    if (!p) {
+      if (requestIsCurrent()) {
+        state.headerLabels = [];
+        lastHeaderKey = "";
+      }
+      return [];
+    }
     const forceRefresh = !!options?.forceRefresh;
     const originLen = getCurrentOriginLength();
     const key = `${p}||${originLen}`;
-    if (!forceRefresh && key === lastHeaderKey && Array.isArray(state.headerLabels) && state.headerLabels.length) {
-      return;
+    if (!requestIsCurrent()) return [];
+    if (forceRefresh || key !== lastHeaderKey) {
+      state.headerLabels = [];
+      lastHeaderKey = "";
+    }
+    const current = validateDatasetOriginLabels(state.headerLabels, {
+      originLen,
+      requireMatchingPeriod: true,
+    });
+    if (!forceRefresh && key === lastHeaderKey && current.ok) {
+      return state.headerLabels;
     }
 
     if (!forceRefresh) {
       // Try cache first
       const cached = loadHeadersCache(p, originLen);
-      if (Array.isArray(cached) && cached.length) {
-        state.headerLabels = cached;
+      const cachedResult = validateDatasetOriginLabels(cached, {
+        originLen,
+        requireMatchingPeriod: true,
+      });
+      if (!requestIsCurrent()) return [];
+      if (cachedResult.ok) {
+        state.headerLabels = cachedResult.labels;
         lastHeaderKey = key;
-        return;
+        return state.headerLabels;
       }
     }
 
     // Send request + wait (like VBA GetDataset)
     setStatus(forceRefresh ? "Refreshing year labels (cache cleared)..." : "Refreshing year labels...");
+    let lastError = null;
     for (let i = 0; i < 2; i++) {
       try {
         const labels = await fetchHeadersViaGetDataset(p, originLen, 6.0, 0, false);
-        if (Array.isArray(labels)) {
-          state.headerLabels = labels;
-          saveHeadersCache(p, originLen, labels);
-          lastHeaderKey = key;
-          return;
-        }
-      } catch {
-        // ignore
+        if (!requestIsCurrent()) return [];
+        state.headerLabels = labels;
+        saveHeadersCache(p, originLen, labels);
+        lastHeaderKey = key;
+        return state.headerLabels;
+      } catch (err) {
+        if (!requestIsCurrent()) return [];
+        lastError = err;
       }
     }
+    if (!requestIsCurrent()) return [];
+    state.headerLabels = [];
+    lastHeaderKey = "";
+    if (options?.throwOnError) throw (lastError || new Error(`Cannot load origin labels for project '${p}'.`));
+    return [];
   }
 
   async function ensureDevHeadersForProject(project, options = {}) {
+    const requestSequence = ++devHeaderRequestSequence;
+    const requestIsCurrent = () => requestSequence === devHeaderRequestSequence
+      && (typeof options?.isCurrent !== "function" || options.isCurrent());
     const p = String(project || "").trim();
-    if (!p) return;
+    if (!p) {
+      if (requestIsCurrent()) {
+        state.devHeaderLabels = [];
+        lastDevHeaderKey = "";
+      }
+      return [];
+    }
     const forceRefresh = !!options?.forceRefresh;
     const originLen = getCurrentOriginLength();
     const devLen = getCurrentDevLength();
     const calendar = getCurrentCalendarMode();
     const key = `${p}||${originLen}||${devLen}||${calendar}`;
+    if (!requestIsCurrent()) return [];
+    if (forceRefresh || key !== lastDevHeaderKey) {
+      state.devHeaderLabels = [];
+      lastDevHeaderKey = "";
+    }
     if (!forceRefresh && key === lastDevHeaderKey && Array.isArray(state.devHeaderLabels) && state.devHeaderLabels.length) {
-      return;
+      return state.devHeaderLabels;
     }
 
     if (!forceRefresh) {
       // Try cache first
       const cached = loadDevHeadersCache(p, originLen, devLen, calendar);
+      if (!requestIsCurrent()) return [];
       if (Array.isArray(cached) && cached.length) {
         state.devHeaderLabels = cached;
         lastDevHeaderKey = key;
-        return;
+        return state.devHeaderLabels;
       }
     }
 
@@ -246,16 +318,22 @@ export function createDatasetHeadersService(deps) {
         // periodType=1, Transposed=true (csv is still one line)
         // For dev headers, PeriodLength follows the UI "Development Length" selector.
         const labels = await fetchHeadersViaGetDataset(p, devLen, 6.0, 1, true, calendar);
+        if (!requestIsCurrent()) return [];
         if (Array.isArray(labels)) {
           state.devHeaderLabels = labels;
           saveDevHeadersCache(p, originLen, devLen, calendar, labels);
           lastDevHeaderKey = key;
-          return;
+          return state.devHeaderLabels;
         }
       } catch {
+        if (!requestIsCurrent()) return [];
         // ignore
       }
     }
+    if (!requestIsCurrent()) return [];
+    state.devHeaderLabels = [];
+    lastDevHeaderKey = "";
+    return [];
   }
 
   return {

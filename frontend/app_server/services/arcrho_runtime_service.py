@@ -1,10 +1,11 @@
 """ArcRho runtime request operations."""
 from __future__ import annotations
 
-import os
-import hashlib
 import getpass
+import hashlib
 import json
+import os
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Dict
@@ -478,9 +479,35 @@ def arcrho_tri_cache_matches(data_path: str, pairs: list) -> bool:
     return True
 
 
+def _require_valid_header_project_settings(pairs: list) -> Dict[str, Any]:
+    project_name = _pair_value(pairs, "ProjectName")
+    settings = project_settings_service.get_general_settings(project_name)
+    data = settings.get("data") if isinstance(settings.get("data"), dict) else {}
+    origin_start = str(data.get("origin_start_date") or "").strip()
+    match = re.fullmatch(r"(\d{4})(0[1-9]|1[0-2])", origin_start)
+    if not settings.get("exists") or not match or int(match.group(1)) <= 0:
+        raise HTTPException(
+            422,
+            f"Cannot load ArcRho project headers for '{project_name}': Origin Start Date is missing or invalid. "
+            "Set a valid Origin Start Date in Project Settings, then try again.",
+        )
+    return settings
+
+
 def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
+    settings = _require_valid_header_project_settings(pairs)
     data_path = set_data_path_like_vba(pairs)
     request_file = None
+
+    settings_path = str(settings.get("path") or "").strip()
+    if os.path.exists(data_path) and settings_path and os.path.exists(settings_path):
+        try:
+            if os.path.getmtime(data_path) < os.path.getmtime(settings_path):
+                os.remove(data_path)
+        except PermissionError:
+            raise HTTPException(423, "ArcRho project headers cache is locked or inaccessible.")
+        except OSError as err:
+            raise HTTPException(500, f"Failed to refresh ArcRho project headers cache: {str(err)}")
 
     if not os.path.exists(data_path):
         try:
@@ -495,6 +522,7 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
             return {
                 "ok": False,
                 "status": "timeout",
+                "message": "Timed out while loading ArcRho project headers. Verify the data engine is running, then try again.",
                 "request_file": request_file,
                 "data_path": data_path,
             }
@@ -522,6 +550,29 @@ def _header_cache_pairs(project_name: str, period_type: int, transposed: bool, p
         ("ProjectName", project_name),
         ("StoredPeriodLength", str(-1)),
     ]
+
+
+def get_project_headers(
+    project_name: str,
+    period_length: int,
+    timeout_sec: float,
+    *,
+    period_type: int = 0,
+    transposed: bool = False,
+    calendar: bool = False,
+) -> Dict[str, Any]:
+    """Load ArcRho headers for a project without exposing request-pair details."""
+    project = str(project_name or "").strip()
+    if not project:
+        raise HTTPException(400, "ProjectName is required")
+    try:
+        length = int(period_length)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "PeriodLength must be a positive integer")
+    if length <= 0:
+        raise HTTPException(400, "PeriodLength must be a positive integer")
+    pairs = _header_cache_pairs(project, int(period_type), bool(transposed), length, bool(calendar))
+    return arcrho_headers(pairs, timeout_sec=max(0.1, float(timeout_sec)))
 
 
 def _target_header_cache_paths(project_name: str, origin_length: Any, development_length: Any) -> list[str]:

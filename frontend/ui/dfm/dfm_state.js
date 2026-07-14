@@ -39,8 +39,6 @@ export const ratioSyncInst = ratioSyncParams.get("inst") || "default";
 export const ratioSyncChannelName = `arcrho-dfm-ratio-sync::${ratioSyncInst}`;
 export const ratioSyncSourceId = `dfm_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 export const RATIO_SAVE_PATH_KEY = `arcrho_dfm_ratio_save_path_v1::${ratioSyncInst}`;
-export const ALLOWED_DFM_TABS = new Set(["details", "data", "ratios", "results", "notes"]);
-
 export const BASE_SUMMARY_ROWS = [
   { id: "volume_all", label: "Volume - all", base: "volume", periods: "all" },
 ];

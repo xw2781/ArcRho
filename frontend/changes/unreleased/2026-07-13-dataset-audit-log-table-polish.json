@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Refined the Dataset Audit Log with a clearer sticky-header table and empty state.",
+  "details": [
+    "Added a dedicated table wrapper with a continuous frame and compact ArcRho scrollbar styling.",
+    "Action values use plain text, and the vertical scrollbar tray appears only when needed."
+  ]
+}

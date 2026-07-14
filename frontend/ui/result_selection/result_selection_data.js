@@ -317,26 +317,11 @@
         state.originLabelsKey = originLabelsKey(originLength);
       }
 
-      function labelsLookAnnual(labels) {
-        const values = Array.isArray(labels) ? labels.map(text).filter(Boolean) : [];
-        return values.length > 0 && values.slice(0, Math.min(values.length, 8)).every((label) => /^\d{4}$/.test(label));
-      }
-
-      function labelsLookSubannual(labels) {
-        const values = Array.isArray(labels) ? labels.map(text).filter(Boolean) : [];
-        return values.length > 0 && values.slice(0, Math.min(values.length, 8)).some((label) => (
-          /\bQ[1-4]\b/i.test(label)
-          || /\bH[1-2]\b/i.test(label)
-          || /^\d{6}$/.test(label)
-          || /^[A-Za-z]{3}\s+\d{4}$/.test(label)
-        ));
-      }
-
       function shouldRejectOriginLabels(originLength, labels = []) {
-        const length = validOriginLength(originLength);
-        if (!Array.isArray(labels) || !labels.length) return false;
-        if (length === 12) return labelsLookSubannual(labels);
-        return labelsLookAnnual(labels);
+        return !validateDatasetOriginLabels(labels, {
+          originLen: validOriginLength(originLength),
+          requireMatchingPeriod: true,
+        }).ok;
       }
 
       function applyOriginLength(value) {
@@ -398,23 +383,11 @@
         return true;
       }
 
-      function generatedOriginLabel(rowIndex, originLength) {
-        const startYear = 2017;
-        if (originLength === 6) return `${startYear + Math.floor(rowIndex / 2)}H${(rowIndex % 2) + 1}`;
-        if (originLength === 3) return `${startYear + Math.floor(rowIndex / 4)}Q${(rowIndex % 4) + 1}`;
-        if (originLength === 1) {
-          const year = startYear + Math.floor(rowIndex / 12);
-          const month = String((rowIndex % 12) + 1).padStart(2, "0");
-          return formatDatasetOriginLabel(`${year}${month}`, originLength);
-        }
-        return String(startYear + rowIndex);
-      }
-
       function originLabel(rowIndex) {
         const originLength = getDetails().originLength;
         const label = Array.isArray(state.originLabels) ? state.originLabels[rowIndex] : "";
         if (text(label)) return formatDatasetOriginLabel(label, originLength);
-        return generatedOriginLabel(rowIndex, originLength);
+        return "";
       }
 
       async function refreshOriginLabels(options = {}) {
@@ -434,34 +407,63 @@
           setOriginLabels(labels, originLength);
         } catch (err) {
           if (state.originLabelsKey !== key) return;
-          console.warn("Result Selection origin label load failed:", err);
           setOriginLabels([], originLength);
+          if (options.render !== false) renderMethodGrid();
+          throw err;
         }
         if (options.render !== false) renderMethodGrid();
       }
 
-      async function loadOutputSidecarSettings() {
+      let outputSidecarLoadSequence = 0;
+
+      function invalidateOutputSidecarLoad() {
+        outputSidecarLoadSequence += 1;
+      }
+
+      async function loadOutputSidecarSettings(options = {}) {
+        const requestSequence = ++outputSidecarLoadSequence;
         const datasetName = text(els.nameInput.value);
-        if (!state.project || !state.reservingClass || !datasetName) return false;
-        const resp = await fetch("/dataset/sidecar/load", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_name: state.project,
-            reserving_class: state.reservingClass,
-            dataset_name: datasetName,
-          }),
-        });
-        const payload = await resp.json().catch(() => ({}));
-        if (!resp.ok || payload?.ok === false || payload?.exists === false) return false;
-        const originLength = validOriginLength(payload?.origin_length, 0);
-        const labels = Array.isArray(payload?.origin_labels) ? payload.origin_labels.map(String) : [];
-        const resolvedLabels = shouldRejectOriginLabels(originLength, labels) ? [] : labels;
-        state.sidecarOriginLength = originLength || null;
-        state.sidecarOriginLabels = resolvedLabels;
-        if (originLength) applyOriginLength(originLength);
-        if (resolvedLabels.length) setOriginLabels(resolvedLabels, originLength || getDetails().originLength);
-        return true;
+        if (!state.project || !state.reservingClass || !datasetName) {
+          auditLogView.clear();
+          return false;
+        }
+        auditLogView.setLoading();
+        try {
+          const resp = await fetch("/dataset/sidecar/load", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              project_name: state.project,
+              reserving_class: state.reservingClass,
+              dataset_name: datasetName,
+            }),
+          });
+          const payload = await resp.json().catch(() => ({}));
+          if (requestSequence !== outputSidecarLoadSequence) return false;
+          if (!resp.ok || payload?.ok === false) {
+            auditLogView.setError(payload?.detail || payload?.error || `Audit log load failed (${resp.status}).`);
+            return false;
+          }
+          if (payload?.exists === false) {
+            auditLogView.clear();
+            return false;
+          }
+          auditLogView.render(payload?.audit_log);
+          if (options.auditOnly === true) return true;
+
+          const originLength = validOriginLength(payload?.origin_length, 0);
+          const labels = Array.isArray(payload?.origin_labels) ? payload.origin_labels.map(String) : [];
+          const resolvedLabels = shouldRejectOriginLabels(originLength, labels) ? [] : labels;
+          state.sidecarOriginLength = originLength || null;
+          state.sidecarOriginLabels = resolvedLabels;
+          if (originLength) applyOriginLength(originLength);
+          if (resolvedLabels.length) setOriginLabels(resolvedLabels, originLength || getDetails().originLength);
+          return true;
+        } catch (err) {
+          if (requestSequence !== outputSidecarLoadSequence) return false;
+          auditLogView.setError(err?.message || "Audit log load failed.");
+          throw err;
+        }
       }
       function sourceNameAlreadyLoaded(name) {
         const key = norm(name);
@@ -696,16 +698,14 @@
         getRowCount,
         originLabelsKey,
         setOriginLabels,
-        labelsLookAnnual,
-        labelsLookSubannual,
         shouldRejectOriginLabels,
         applyOriginLength,
         syncOriginLengthDropdownOptions,
         allowedOriginLengthsForSources,
         syncOriginLengthOptions,
-        generatedOriginLabel,
         originLabel,
         refreshOriginLabels,
+        invalidateOutputSidecarLoad,
         loadOutputSidecarSettings,
         sourceNameAlreadyLoaded,
         isSourcePickerDataFormat,
