@@ -7,7 +7,7 @@ import {
   getDatasetGridSelectionLayout,
   getDisplayDatasetModel,
   setDatasetGridEditConfig,
-} from "/ui/shared/tabs/data/dataset_grid_view.js";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715b";
 
 export function wireDatasetGridInteractions(deps) {
   const {

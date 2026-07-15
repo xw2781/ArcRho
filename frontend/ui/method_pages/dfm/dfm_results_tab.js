@@ -4,7 +4,7 @@ DFM Results Tab - results table rendering and CSV export
 ===============================================================================
 */
 import { getDataset } from "/ui/shared/dataset/dataset_api.js";
-import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715a";
+import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715b";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { wireSelectableTable } from "/ui/shared/components/spreadsheet/table_selection.js";

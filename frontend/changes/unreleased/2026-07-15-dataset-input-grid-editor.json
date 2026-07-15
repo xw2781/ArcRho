@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Restored direct numeric entry for manual input dataset triangle cells after the shared-grid refactor.",
+  "details": [
+    "The grid renderer and its interaction handler now share the same cache-busted module instance, so editable input cells can open their inline editor again."
+  ]
+}

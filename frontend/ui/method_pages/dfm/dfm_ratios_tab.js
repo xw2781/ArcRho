@@ -20,7 +20,7 @@ import {
   saveRatioInteractionMode,
 } from "/ui/method_pages/dfm/dfm_storage.js";
 import { renderResultsTable } from "/ui/method_pages/dfm/dfm_results_tab.js";
-import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715a";
+import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715b";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import {
   moveActiveSelectableTableSelection,
