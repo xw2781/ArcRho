@@ -696,6 +696,47 @@
       stroke-linejoin: round;
       pointer-events: none;
     }
+    .dataset-temp-view-control {
+      position: relative;
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+    }
+    .dataset-temp-view-tooltip {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 7px);
+      z-index: 10090;
+      width: min(278px, calc(100vw - 16px));
+      display: grid;
+      gap: 3px;
+      padding: 7px 9px;
+      border: 1px solid #b8c9ef;
+      border-radius: 6px;
+      background: #ffffff;
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16);
+      color: #475467;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 15px;
+      text-align: left;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    .dataset-temp-view-tooltip-title {
+      color: #344054;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 13px;
+      text-transform: uppercase;
+    }
+    .dataset-temp-view-control:hover .dataset-temp-view-tooltip,
+    .dataset-temp-view-control:focus-within .dataset-temp-view-tooltip {
+      opacity: 1;
+      transform: translateY(0);
+    }
     .dataset-index-update-btn {
       height: 24px;
       border: 1px solid #bfdbfe;
@@ -1375,6 +1416,12 @@
     }
     .pi-status-cell.warning {
       color: #eab308;
+    }
+    .pi-status-cell.temp-indexed {
+      color: #15803d;
+    }
+    .pi-status-cell.temp-unindexed {
+      color: #98a2b3;
     }
     .pi-status-icon {
       width: 15px;
@@ -2449,6 +2496,21 @@
             </svg>
             <span>Index updated</span>
           </button>
+          <div class="dataset-temp-view-control">
+            <button class="dataset-toolbar-btn" id="datasetTempViewBtn" type="button" aria-label="Show temporary dataset view" aria-describedby="datasetTempViewTooltip" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3.5" y="4" width="17" height="16" rx="1.5"></rect>
+                <path d="M3.5 9h17"></path>
+                <path d="M8 12.5h3"></path>
+                <path d="M8 16h3"></path>
+                <path d="m15 14.5 1.7 1.7 3-3.5"></path>
+              </svg>
+            </button>
+            <div class="dataset-temp-view-tooltip" id="datasetTempViewTooltip" role="tooltip">
+              <span class="dataset-temp-view-tooltip-title" id="datasetTempViewTooltipTitle">Temporary view is disabled</span>
+              <span id="datasetTempViewTooltipDescription">Normal view shows saved datasets from the selected-path index. Click to enable Temporary view.</span>
+            </div>
+          </div>
           <button class="dataset-toolbar-btn" id="datasetRefreshBtn" type="button" title="Refresh dataset table" aria-label="Refresh dataset table">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M20 6v5h-5"></path>
@@ -2594,6 +2656,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260712b"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260715e"></script>
 </body>
 </html>

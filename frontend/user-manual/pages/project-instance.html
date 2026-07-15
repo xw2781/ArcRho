@@ -7,9 +7,9 @@
   <link rel="stylesheet" href="../manual.css">
 </head>
 <body data-page="project-instance">
-  <main class="manual-page" data-page-title="Project Instance" data-page-intro="Project Instance is the daily reserving workspace for one project. Pick a reserving-class path, review cached datasets, and open nested Dataset, DFM, and Result Selection windows.">
+  <main class="manual-page" data-page-title="Project Instance" data-page-intro="Project Instance is the daily reserving workspace for one project. Pick a reserving-class path, review cached or temporary datasets, and open nested Dataset, DFM, and Result Selection windows.">
     <section class="manual-section" id="workspace">
-      <div class="section-head"><p class="eyebrow">Workspace</p><h2>Reserving-class path plus cached dataset table</h2></div>
+      <div class="section-head"><p class="eyebrow">Workspace</p><h2>Reserving-class path plus dataset table</h2></div>
       <div class="pi-demo">
         <div class="pi-toolbar">
           <button class="path-seg hotspot" data-tip="Click a path segment to switch one level without losing valid lower-level choices.">PA</button>
@@ -28,7 +28,8 @@
           </aside>
           <section class="pi-right">
             <div class="table-toolbar">
-              <button class="eye active hotspot" data-tip="Cached dataset view is active by default.">Cached</button>
+              <button class="eye active hotspot" data-tip="Normal view is active by default. Use the Temporary view icon to list every data-engine dataset type without creating permanent datasets or sidecars.">Normal</button>
+              <button class="icon-btn hotspot" data-tip="Temporary view shows every generated dataset type. Green status means it is listed in the selected-path index; gray means it is not.">Temporary</button>
               <span class="group-zone hotspot" data-tip="Drag a column header here to group rows.">Grouped by Category</span>
               <span class="filter-chip">Method Type: DFM</span>
               <button>Add</button>
@@ -58,6 +59,7 @@
         <article class="task-card"><h3>Selection</h3><ul><li>Click selects one row.</li><li>Ctrl-click toggles rows.</li><li>Shift-click selects a visible range.</li><li>Enter opens the focused row.</li></ul></article>
         <article class="task-card"><h3>Filters and grouping</h3><ul><li>All columns except Status can filter.</li><li>No checked values means no filter.</li><li>Drag headers to the grouping zone.</li><li>Group chips can be reordered or removed.</li></ul></article>
         <article class="task-card"><h3>Open behavior</h3><ul><li>Normal dataset opens Dataset Viewer.</li><li>DFM vector opens a DFM window on Ratios.</li><li>Result Selection vector opens the Method tab.</li><li>Show as vector opens the saved output as a normal dataset.</li></ul></article>
+        <article class="task-card"><h3>Temporary view</h3><ul><li>Hover the Temporary view icon to see whether Temporary view is enabled and a concise description of the active mode.</li><li>Lists every Dataset Type marked Generated.</li><li>Opened datasets are read-only.</li><li>Existing valid canonical caches may be reused.</li><li>Generated or derived CSVs are retained in <code>datasets/.temporary-view</code> after Temporary view closes, without creating a sidecar or index entry or triggering an index rebuild.</li></ul></article>
         <article class="task-card"><h3>Add behavior</h3><ul><li>Add Dataset opens the shared dataset picker.</li><li>Generated types run ArcRhoTri refresh.</li><li>Manual types open an editable draft.</li><li>Add DFM and Add Result Selection open method windows.</li></ul></article>
       </div>
     </section>
@@ -78,10 +80,10 @@
     <section class="manual-section" id="status-and-restore">
       <div class="section-head"><p class="eyebrow">State</p><h2>Status, refresh, and restore details</h2></div>
       <div class="task-grid">
-        <article class="task-card"><h3>Status column</h3><ul><li>Green means sidecar status is current.</li><li>Yellow means a method-backed output has stale precedents.</li><li>Method Type comes from the selected path index.</li></ul></article>
+        <article class="task-card"><h3>Status column</h3><ul><li>In Normal view, green means sidecar status is current.</li><li>Yellow means a method-backed output has stale precedents.</li><li>In Temporary view, green check means the dataset is listed in the selected-path <code>index.json</code>; gray check means it is not.</li></ul></article>
         <article class="task-card"><h3>Manual refresh</h3><ul><li>Refresh rebuilds the selected path <code>index.json</code>.</li><li>Table scroll, grouping, filters, and selection are preserved.</li><li>Nested saves do not auto-refresh the table.</li></ul></article>
         <article class="task-card"><h3>Dependency links</h3><ul><li>Dataset formula chips open dependent datasets.</li><li>DFM and Result Selection chips open method windows.</li><li>The source window path is used even if the left path changed.</li></ul></article>
-        <article class="task-card"><h3>Restore snapshot</h3><ul><li>Selected path is saved.</li><li>Nested window kind, title, active tab, dirty flag, hidden flag, and rectangle are saved.</li><li>Clear Cache and Reload can restore this workspace.</li></ul></article>
+        <article class="task-card"><h3>Restore snapshot</h3><ul><li>Selected path is saved.</li><li>Nested normal-window kind, title, active tab, dirty flag, hidden flag, and rectangle are saved.</li><li>Temporary view and its windows are not restored.</li></ul></article>
       </div>
     </section>
   </main>

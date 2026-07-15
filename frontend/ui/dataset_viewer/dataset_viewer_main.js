@@ -82,7 +82,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const { bootDatasetDataTab } = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260715b"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260715c"
 );
 
 window.ADA_DATASET_READY = bootDatasetDataTab();

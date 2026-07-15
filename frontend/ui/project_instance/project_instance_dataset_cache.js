@@ -12,6 +12,50 @@ export function installProjectInstanceDatasetCache(ctx) {
   const setStatus = (...args) => api.setStatus(...args);
   const toText = (...args) => api.toText(...args);
 
+function isTemporaryDatasetView() {
+  return state.datasetViewMode === "temporary";
+}
+
+function createTemporaryDatasetSessionId() {
+  try {
+    if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+  } catch {}
+  const randomHex = (length) => {
+    let out = "";
+    while (out.length < length) out += Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, "0");
+    return out.slice(0, length);
+  };
+  return `${randomHex(8)}-${randomHex(4)}-4${randomHex(3)}-8${randomHex(3)}-${randomHex(12)}`;
+}
+
+function captureNormalDatasetTableFilters() {
+  const filters = new Map();
+  const source = state.datasetTableView?.filters;
+  if (source instanceof Map) {
+    for (const [key, values] of source.entries()) {
+      filters.set(key, values instanceof Set ? new Set(values) : new Set());
+    }
+  }
+  return {
+    filters,
+    explicitAllFilterKeys: new Set(state.datasetTableExplicitAllFilterKeys || []),
+  };
+}
+
+function restoreNormalDatasetTableFilters() {
+  const saved = state.temporaryDatasetTableFilterState;
+  state.temporaryDatasetTableFilterState = null;
+  if (!saved || !(state.datasetTableView?.filters instanceof Map)) return;
+  state.datasetTableView.filters.clear();
+  for (const [key, values] of saved.filters || []) {
+    state.datasetTableView.filters.set(key, values instanceof Set ? new Set(values) : new Set());
+  }
+  state.datasetTableExplicitAllFilterKeys?.clear?.();
+  for (const key of saved.explicitAllFilterKeys || []) {
+    state.datasetTableExplicitAllFilterKeys?.add?.(key);
+  }
+}
+
 function syncDatasetIndexUpdatePrompt() {
   const btn = els.datasetIndexUpdateBtn;
   if (!btn) return;
@@ -21,6 +65,24 @@ function syncDatasetIndexUpdatePrompt() {
 }
 
 function syncCachedDatasetToolbar() {
+  const temporaryView = isTemporaryDatasetView();
+  if (els.datasetTempViewBtn) {
+    els.datasetTempViewBtn.disabled = cachedDatasetFilter.loading || !state.selectedPath;
+    els.datasetTempViewBtn.classList.toggle("active", temporaryView);
+    els.datasetTempViewBtn.setAttribute("aria-pressed", temporaryView ? "true" : "false");
+    const label = temporaryView ? "Return to normal dataset view" : "Show temporary dataset view";
+    els.datasetTempViewBtn.setAttribute("aria-label", label);
+  }
+  if (els.datasetTempViewTooltipTitle) {
+    els.datasetTempViewTooltipTitle.textContent = temporaryView
+      ? "Temporary view is enabled"
+      : "Temporary view is disabled";
+  }
+  if (els.datasetTempViewTooltipDescription) {
+    els.datasetTempViewTooltipDescription.textContent = temporaryView
+      ? "Temporary view shows all generated datasets. They open read-only and do not create sidecars or index entries. Click to return to Normal view."
+      : "Normal view shows saved datasets from the selected-path index. Click to enable Temporary view.";
+  }
   if (els.datasetRefreshBtn) {
     els.datasetRefreshBtn.disabled = cachedDatasetFilter.loading || !state.selectedPath;
   }
@@ -31,16 +93,24 @@ function syncCachedDatasetToolbar() {
     return;
   }
   if (cachedDatasetFilter.loading) {
-    els.cachedDatasetStatus.textContent = "Checking cached datasets...";
+    els.cachedDatasetStatus.textContent = temporaryView
+      ? "Checking dataset index..."
+      : "Checking cached datasets...";
     return;
   }
   if (cachedDatasetFilter.error) {
-    els.cachedDatasetStatus.textContent = "Cached dataset check failed";
+    els.cachedDatasetStatus.textContent = temporaryView
+      ? "Dataset index check failed"
+      : "Cached dataset check failed";
     return;
   }
   const count = Number.isFinite(cachedDatasetFilter.visibleCount)
     ? cachedDatasetFilter.visibleCount
     : cachedDatasetFilter.names.size;
+  if (temporaryView) {
+    els.cachedDatasetStatus.textContent = `Temporary view | ${count} ${count === 1 ? "dataset" : "datasets"}`;
+    return;
+  }
   els.cachedDatasetStatus.textContent = `(${count} ${count === 1 ? "record" : "records"})`;
 }
 
@@ -426,17 +496,68 @@ async function refreshCachedDatasetTableFromDisk() {
   const selectionState = captureDatasetTableSelection();
   closeDatasetTableFilterPopover();
   datasetIndexWatch.suppressUntil = Date.now() + 1500;
-  setStatus("Refreshing dataset table...");
+  setStatus(isTemporaryDatasetView()
+    ? "Refreshing dataset index status..."
+    : "Refreshing dataset table...");
   await loadCachedDatasetFilterForSelectedPath({ refresh: true });
   restoreDatasetTableSelection(selectionState);
   restoreDatasetTableScroll(scrollState);
   if (!cachedDatasetFilter.error) {
     datasetIndexWatch.pending = false;
     syncDatasetIndexUpdatePrompt();
-    setStatus("Dataset table refreshed.");
+    setStatus(isTemporaryDatasetView()
+      ? "Dataset index status refreshed."
+      : "Dataset table refreshed.");
     return true;
   }
   return false;
+}
+
+async function enterTemporaryDatasetView() {
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before opening temporary view.", true);
+    return false;
+  }
+  state.temporaryDatasetTableFilterState = captureNormalDatasetTableFilters();
+  state.datasetTableView?.filters?.clear?.();
+  state.datasetTableExplicitAllFilterKeys?.clear?.();
+  state.datasetViewMode = "temporary";
+  state.temporaryDatasetSessionId = createTemporaryDatasetSessionId();
+  state.datasetTableSelection?.selectedKeys?.clear?.();
+  if (state.datasetTableSelection) state.datasetTableSelection.anchorKey = "";
+  syncCachedDatasetToolbar();
+  renderDatasetTable();
+  if (!shouldUseCachedDatasetFilter()) await loadCachedDatasetFilterForSelectedPath();
+  setStatus("Temporary view is active. Opened datasets are read-only; generated CSV caches are retained without sidecars or index entries.");
+  return true;
+}
+
+async function leaveTemporaryDatasetView() {
+  if (!isTemporaryDatasetView()) return true;
+  const sessionId = toText(state.temporaryDatasetSessionId);
+  const closeTemporaryDatasetWindows = api.closeTemporaryDatasetWindows;
+  if (typeof closeTemporaryDatasetWindows === "function") {
+    const closed = closeTemporaryDatasetWindows(sessionId);
+    if (closed === false) {
+      setStatus("Close the temporary dataset window before leaving temporary view.", true);
+      return false;
+    }
+  }
+  state.datasetViewMode = "normal";
+  state.temporaryDatasetSessionId = "";
+  restoreNormalDatasetTableFilters();
+  state.datasetTableSelection?.selectedKeys?.clear?.();
+  if (state.datasetTableSelection) state.datasetTableSelection.anchorKey = "";
+  syncCachedDatasetToolbar();
+  renderDatasetTable();
+  setStatus("Returned to normal dataset view.");
+  return true;
+}
+
+async function toggleDatasetViewMode() {
+  return isTemporaryDatasetView()
+    ? leaveTemporaryDatasetView()
+    : enterTemporaryDatasetView();
 }
 
 function restoreDatasetTableScroll(scrollState) {
@@ -457,6 +578,12 @@ function initCachedDatasetToolbar() {
     els.datasetRefreshBtn.dataset.wired = "1";
     els.datasetRefreshBtn.addEventListener("click", () => {
       void refreshCachedDatasetTableFromDisk();
+    });
+  }
+  if (els.datasetTempViewBtn && els.datasetTempViewBtn.dataset.wired !== "1") {
+    els.datasetTempViewBtn.dataset.wired = "1";
+    els.datasetTempViewBtn.addEventListener("click", () => {
+      void toggleDatasetViewMode();
     });
   }
   if (els.datasetIndexUpdateBtn && els.datasetIndexUpdateBtn.dataset.wired !== "1") {
@@ -495,6 +622,8 @@ function initCachedDatasetToolbar() {
     shouldUseCachedDatasetFilter,
     stopDatasetIndexWatch,
     stripDatasetCacheVariantSuffix,
-    syncCachedDatasetToolbar
+    syncCachedDatasetToolbar,
+    toggleDatasetViewMode,
+    isTemporaryDatasetView,
   });
 }

@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added a temporary Project Instance dataset view for safely previewing data-engine datasets.",
+  "details": [
+    "Temporary view shows whether each data-engine dataset is already listed in the selected-path index.json.",
+    "Generated and derived temporary-view CSVs are retained in datasets/.temporary-view after the view closes, without creating sidecars, index entries, or index rebuilds.",
+    "The Temporary view control now states whether Temporary view is enabled or disabled and describes only the active mode."
+  ]
+}

@@ -196,10 +196,10 @@ Public Function ArcRhoVec( _
     Optional SuppressWarnings _
   ) As Variant
   
-    Dim outArr() As Variant
+    Dim result As Variant
     On Error Resume Next
     
-    outArr = GetDataset( _
+    result = GetDataset( _
         "Function = ArcRhoVec" & "#" & _
         "Path = " & Path & "#" & _
         "DatasetName = " & VectorName & "#" & _
@@ -208,11 +208,11 @@ Public Function ArcRhoVec( _
         "ProjectName = " & SetDefaultProject(ProjectName) & "#" & _
         "OriginLength = " & PeriodLength & "#" & _
         "DevelopmentLength = " & PeriodLength)
-        
-    If Transposed Then
-        ArcRhoVec = TransposeArray(outArr)
+
+    If IsArray(result) And Transposed Then
+        ArcRhoVec = TransposeArray(result)
     Else
-        ArcRhoVec = outArr
+        ArcRhoVec = result
     End If
     
 End Function
@@ -405,4 +405,3 @@ End Function
 Sub ADASMetadata()
     ArcRhoMetadata
 End Sub
-

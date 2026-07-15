@@ -19,8 +19,10 @@ export function installProjectInstanceWindows(ctx) {
   const updateHiddenTabsArea = (...args) => api.updateHiddenTabsArea(...args);
   const waitForPathTreeRender = (...args) => api.waitForPathTreeRender(...args);
 
-function getDatasetWindowKey(datasetName, path = state.selectedPath) {
-  return `${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
+function getDatasetWindowKey(datasetName, path = state.selectedPath, temporaryViewSessionId = "") {
+  const baseKey = `${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
+  const sessionId = toText(temporaryViewSessionId);
+  return sessionId ? `${baseKey}\u0001temporary\u0001${sessionId}` : baseKey;
 }
 
 
@@ -94,6 +96,7 @@ function getFrameRect(frame) {
 
 function getProjectInstanceWindowSnapshot(frame) {
   if (!frame?.isConnected) return null;
+  if (toText(frame.dataset?.temporaryViewSessionId)) return null;
   const kind = isDfmWindow(frame)
     ? "dfm"
     : isResultSelectionWindow(frame)
@@ -643,6 +646,10 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   }
   if (options?.dsId) params.set("ds", toText(options.dsId));
   if (options?.readOnly) params.set("readonly", "1");
+  if (options?.temporaryViewSessionId) {
+    params.set("temporary_view", "1");
+    params.set("temporary_session_id", toText(options.temporaryViewSessionId));
+  }
   if (options?.draft) params.set("draft_instance", "1");
   if (options?.initialTab) params.set("tab", toText(options.initialTab));
   const methodType = toText(options?.methodType).toLowerCase();
@@ -823,6 +830,8 @@ function createFloatingContentWindow(options = {}) {
   frame.dataset.windowPath = normalizePath(options.path || state.selectedPath);
   frame.dataset.windowTitle = title;
   frame.dataset.windowKind = toText(options.kind) || "dataset";
+  const temporaryViewSessionId = toText(options.temporaryViewSessionId);
+  if (temporaryViewSessionId) frame.dataset.temporaryViewSessionId = temporaryViewSessionId;
   frame.dataset.dirty = "0";
   const methodType = toText(options.methodType || (
     frame.dataset.windowKind === "dfm"
@@ -948,8 +957,11 @@ function openDatasetWindow(datasetName, options = {}) {
     return;
   }
 
-  const windowKey = getDatasetWindowKey(name, targetPath);
-  const title = `${targetPath}\\${name}`;
+  const temporaryViewSessionId = toText(options?.temporaryViewSessionId);
+  const windowKey = getDatasetWindowKey(name, targetPath, temporaryViewSessionId);
+  const title = temporaryViewSessionId
+    ? `Temporary view: ${targetPath}\\${name}`
+    : `${targetPath}\\${name}`;
   const inst = `pi_ds_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "dataset",
@@ -964,14 +976,27 @@ function openDatasetWindow(datasetName, options = {}) {
       dataFormat: options?.dataFormat,
       readOnly: options?.readOnly,
       methodType: options?.methodType,
+      temporaryViewSessionId,
     }),
     path: targetPath,
     methodType: options?.methodType,
+    temporaryViewSessionId,
     onIframeLoad: (iframe) => {
       lockDatasetViewerInputs(iframe, datasetTypeName, targetPath);
       window.setTimeout(() => lockDatasetViewerInputs(iframe, datasetTypeName, targetPath), 250);
     },
   });
+}
+
+function closeTemporaryDatasetWindows(temporaryViewSessionId) {
+  const sessionId = toText(temporaryViewSessionId);
+  if (!sessionId) return true;
+  const frames = Array.from(datasetWindows.values())
+    .filter((frame) => frame?.isConnected && toText(frame.dataset?.temporaryViewSessionId) === sessionId);
+  for (const frame of frames) {
+    if (!closeDatasetWindow(frame, { status: false })) return false;
+  }
+  return true;
 }
 
 function openNewDatasetDraftWindow(datasetName, options = {}) {
@@ -1192,6 +1217,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     buildProjectInstanceStateSnapshot,
     clampWindowRect,
     closeDatasetWindow,
+    closeTemporaryDatasetWindows,
     createFloatingContentWindow,
     findWindowByInstance,
     findWindowByMessageSource,

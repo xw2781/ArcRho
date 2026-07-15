@@ -1,4 +1,5 @@
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -16,6 +17,7 @@ class ArcRhoTriRequest(BaseModel):
     LocalOnly: bool = False
     AllowDerived: bool = True
     WriteSidecar: bool = True
+    TemporarySessionId: Optional[UUID] = None
     timeout_sec: float = 6.0
 
 
@@ -32,6 +34,7 @@ class ArcRhoVecRequest(BaseModel):
     LocalOnly: bool = False
     AllowDerived: bool = True
     WriteSidecar: bool = True
+    TemporarySessionId: Optional[UUID] = None
     timeout_sec: float = 6.0
 
 

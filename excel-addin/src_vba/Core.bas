@@ -567,6 +567,11 @@ End Function
 Private Function MissingLocalDatasetMessage(ByRef spec As DatasetRequestSpec) As String
     Dim requestedInstanceName As String
 
+    If StrComp(spec.FunctionName, "ArcRhoVec", vbTextCompare) = 0 Then
+        MissingLocalDatasetMessage = "(vector not found)"
+        Exit Function
+    End If
+
     requestedInstanceName = FirstNonBlank(spec.InstanceName, spec.DatasetName)
     If Len(spec.DatasetIndexPath) > 0 And FileExists(spec.DatasetIndexPath) Then
         If DatasetInstanceExistsInIndex(spec.DatasetIndexPath, requestedInstanceName) Then
@@ -1181,7 +1186,6 @@ Public Function GetDataArray(dataPath As String)
 
     GetDataArray = outputArray
 End Function
-
 
 
 

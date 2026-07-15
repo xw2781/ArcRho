@@ -254,6 +254,7 @@ PROJECT_DATA_DIR = "data"
 DATASET_CACHE_DIR = "datasets"
 METHOD_DATA_DIR = "methods"
 DATASET_SIDECAR_DIR = "sidecars"
+TEMPORARY_VIEW_DATASET_CACHE_DIR = ".temporary-view"
 
 # ---------------------------------------------------------------------------
 # Thread locks
@@ -474,6 +475,14 @@ def get_project_dataset_cache_dir(project_name: str, reserving_class: str) -> st
     return os.path.join(
         get_project_reserving_class_data_dir(project_name, reserving_class),
         DATASET_CACHE_DIR,
+    )
+
+
+def get_project_temporary_view_dataset_cache_dir(project_name: str, reserving_class: str) -> str:
+    """Return the persistent, non-indexed cache folder used by Temporary view."""
+    return os.path.join(
+        get_project_dataset_cache_dir(project_name, reserving_class),
+        TEMPORARY_VIEW_DATASET_CACHE_DIR,
     )
 
 

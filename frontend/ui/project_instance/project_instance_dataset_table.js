@@ -19,6 +19,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
   const hasCachedDatasetMetadataForSelectedPath = (...args) => api.hasCachedDatasetMetadataForSelectedPath(...args);
   const isDatasetRecordCached = (...args) => api.isDatasetRecordCached(...args);
+  const isTemporaryDatasetView = (...args) => api.isTemporaryDatasetView(...args);
   const loadCachedDatasetFilterForSelectedPath = (...args) => api.loadCachedDatasetFilterForSelectedPath(...args);
   const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
   const normalizePath = (...args) => api.normalizePath(...args);
@@ -33,6 +34,10 @@ export function installProjectInstanceDatasetTable(ctx) {
   const syncCachedDatasetToolbar = (...args) => api.syncCachedDatasetToolbar(...args);
   const toText = (...args) => api.toText(...args);
   const addDatasetSelectionInFlightKeys = new Set();
+
+function isTemporaryViewActive() {
+  return isTemporaryDatasetView();
+}
 
 function isDatasetColumnFilterable(key) {
   const normalized = toText(key);
@@ -606,6 +611,7 @@ function getDatasetTablePreferencePayload() {
 }
 
 function saveDatasetTablePreferences() {
+  if (isTemporaryViewActive()) return;
   if (!state.datasetTablePreferencesLoaded || !projectName) return;
   scheduleProjectUserPreferencesSave(projectName, {
     projectInstance: {
@@ -895,6 +901,9 @@ function setDatasetGroupByKey(key) {
 
 function getDatasetCellValue(row, key) {
   const datasetName = getDatasetName(row);
+  if (isTemporaryViewActive() && ["methodType", "lastModified", "created", "user"].includes(key)) {
+    return "";
+  }
   switch (key) {
     case "name":
     case "datasetTypeName":
@@ -924,6 +933,9 @@ function getDatasetRecordCellValue(row, key, instance = null) {
   const instanceName = instance ? getInstanceDatasetName(instance) : getDatasetName(row);
   const datasetTypeName = instance ? getInstanceDatasetTypeName(instance, instanceName) : getDatasetName(row);
   const meta = instance ? getCachedDatasetMetadataByName(instanceName) : getCachedDatasetMetadata(row);
+  if (isTemporaryViewActive() && ["methodType", "lastModified", "created", "user"].includes(key)) {
+    return "";
+  }
   switch (key) {
     case "name":
       return instanceName;
@@ -995,6 +1007,7 @@ function buildDatasetRecord(row, rowIndex, instance = null) {
   const readOnly = instance ? isReadOnlyDatasetSourceKind(sourceKind) : false;
   const generated = instance ? normalizeDatasetSourceKind(sourceKind) === "engine" : getDatasetGenerated(typeRow);
   const meta = getCachedDatasetMetadataByName(datasetName);
+  const temporary = isTemporaryViewActive();
   return {
     row: typeRow,
     rowIndex,
@@ -1006,6 +1019,8 @@ function buildDatasetRecord(row, rowIndex, instance = null) {
     generated,
     values,
     meta,
+    temporary,
+    isIndexed: temporary && isDatasetRecordCached({ datasetName }),
   };
 }
 
@@ -1080,11 +1095,13 @@ function openBornhuetterFergusonTabForDataset(record) {
 
 function openDatasetRecordAsDataset(record) {
   if (!record) return;
+  const temporaryView = isTemporaryViewActive();
   openDatasetWindow(record.datasetName, {
     datasetTypeName: getDatasetRecordValue(record, "datasetTypeName"),
     dataFormat: getDatasetRecordValue(record, "dataFormat"),
     methodType: getDatasetRecordValue(record, "methodType"),
-    readOnly: !!record.readOnly,
+    readOnly: temporaryView || !!record.readOnly,
+    temporaryViewSessionId: temporaryView ? toText(state.temporaryDatasetSessionId) : "",
   });
 }
 
@@ -1218,7 +1235,11 @@ function autoFitInitialDatasetTableWidths(rows = state.datasetRows) {
 }
 
 function buildDatasetTableRenderContext() {
-  const sourceRecords = shouldUseCachedDatasetFilter()
+  const sourceRecords = isTemporaryViewActive()
+    ? state.datasetRows
+      .filter((row) => getDatasetGenerated(row))
+      .map((row, rowIndex) => buildDatasetRecord(row, rowIndex))
+    : shouldUseCachedDatasetFilter()
     ? (Array.isArray(cachedDatasetFilter.instanceRows) ? cachedDatasetFilter.instanceRows : [])
       .map((item, rowIndex) => {
         const instanceName = getInstanceDatasetName(item);
@@ -1565,7 +1586,30 @@ function getDatasetStatusIconSvg(status) {
   `;
 }
 
+function getTemporaryDatasetStatusIconSvg(isIndexed) {
+  return `
+    <svg class="pi-status-icon ${isIndexed ? "temp-indexed" : "temp-unindexed"}" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+      <circle class="pi-status-stroke" cx="9" cy="9" r="7"></circle>
+      <path class="pi-status-stroke" d="m5.5 9 2.2 2.2 4.8-4.8"></path>
+    </svg>
+  `;
+}
+
 function appendDatasetStatusCell(td, item) {
+  if (isTemporaryViewActive()) {
+    const isIndexed = !!item?.isIndexed;
+    const wrap = document.createElement("span");
+    wrap.className = `pi-status-cell ${isIndexed ? "temp-indexed" : "temp-unindexed"}`;
+    wrap.title = isIndexed
+      ? "Dataset is already listed in index.json."
+      : "Dataset is not listed in index.json.";
+    wrap.setAttribute("aria-label", isIndexed
+      ? "Dataset is listed in index.json"
+      : "Dataset is not listed in index.json");
+    wrap.innerHTML = getTemporaryDatasetStatusIconSvg(isIndexed);
+    td.appendChild(wrap);
+    return;
+  }
   const status = getDatasetStatus(item);
   const label = getDatasetStatusLabel(status);
   const wrap = document.createElement("span");
@@ -1747,7 +1791,9 @@ function createDatasetTable(records, context = null) {
     const td = document.createElement("td");
     td.className = "pi-table-empty";
     td.colSpan = columns.length;
-    td.textContent = "No cached datasets match the selected table filters.";
+    td.textContent = isTemporaryViewActive()
+      ? "No data-engine datasets match the selected table filters."
+      : "No cached datasets match the selected table filters.";
     tr.appendChild(td);
     tbody.appendChild(tr);
   } else {
@@ -1849,7 +1895,9 @@ function renderDatasetTable() {
     syncCachedDatasetToolbar();
     els.datasetTableSurface.innerHTML = "";
     pruneDatasetTableSelection();
-    setEmptyTable("Select a reserving class path to show cached datasets.");
+    setEmptyTable(isTemporaryViewActive()
+      ? "Select a reserving class path to show data-engine datasets."
+      : "Select a reserving class path to show cached datasets.");
     return;
   }
   if (state.selectedPath) {
@@ -1878,7 +1926,7 @@ function renderDatasetTable() {
       setEmptyTable("Loading cached dataset list...");
       return;
     }
-    if (cachedDatasetFilter.names.size === 0) {
+    if (!isTemporaryViewActive() && cachedDatasetFilter.names.size === 0) {
       cachedDatasetFilter.visibleCount = 0;
       syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
@@ -1890,7 +1938,9 @@ function renderDatasetTable() {
 
   const context = buildDatasetTableRenderContext();
   const records = getDatasetTableRecords(context);
-  cachedDatasetFilter.visibleCount = records.filter(isDatasetRecordCached).length;
+  cachedDatasetFilter.visibleCount = isTemporaryViewActive()
+    ? records.length
+    : records.filter(isDatasetRecordCached).length;
   syncCachedDatasetToolbar();
   if (!records.length) {
     const fragment = document.createDocumentFragment();
@@ -1992,6 +2042,7 @@ function showDatasetGroupContextMenu(groupId, x, y) {
 function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
   const menu = els.datasetRowContextMenu;
   const emptyContext = !!options.emptyContext;
+  const temporaryView = isTemporaryViewActive();
   if (!menu || (!recordKey && !emptyContext)) return;
   state.datasetRowContextKey = recordKey || "";
   closeDatasetTableContextMenu();
@@ -2002,7 +2053,7 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
   if (viewItem) viewItem.disabled = emptyContext || !viewRecord;
   const showAsVectorItem = menu.querySelector("[data-row-action='show-as-vector']");
   if (showAsVectorItem) {
-    const showAsVector = !!viewRecord && (
+    const showAsVector = !temporaryView && !!viewRecord && (
       isDfmVectorDatasetRecord(viewRecord)
       || isResultSelectionVectorDatasetRecord(viewRecord)
       || isBornhuetterFergusonVectorDatasetRecord(viewRecord)
@@ -2012,28 +2063,33 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
   }
   const viewAsTriangleItem = menu.querySelector("[data-row-action='view-as-triangle']");
   if (viewAsTriangleItem) {
-    const viewAsTriangle = !!viewRecord
+    const viewAsTriangle = !temporaryView && !!viewRecord
       && normalizeLookupKey(getDatasetRecordValue(viewRecord, "dataFormat")) === "triangle";
     viewAsTriangleItem.hidden = !viewAsTriangle;
     viewAsTriangleItem.disabled = !viewAsTriangle;
   }
   const addResultSelectionItem = menu.querySelector("[data-row-action='add-result-selection']");
   if (addResultSelectionItem) {
-    const canAdd = !emptyContext && canAddResultSelectionForDataset(viewRecord);
-    addResultSelectionItem.hidden = emptyContext;
+    const canAdd = !temporaryView && !emptyContext && canAddResultSelectionForDataset(viewRecord);
+    addResultSelectionItem.hidden = temporaryView || emptyContext;
     addResultSelectionItem.disabled = !canAdd;
     addResultSelectionItem.title = canAdd ? "" : "Result Selection can be added only to vector datasets with Method Type None.";
   }
   const addBornhuetterFergusonItem = menu.querySelector("[data-row-action='add-bornhuetter-ferguson']");
   if (addBornhuetterFergusonItem) {
-    const canAdd = !emptyContext && canAddResultSelectionForDataset(viewRecord);
-    addBornhuetterFergusonItem.hidden = emptyContext;
+    const canAdd = !temporaryView && !emptyContext && canAddResultSelectionForDataset(viewRecord);
+    addBornhuetterFergusonItem.hidden = temporaryView || emptyContext;
     addBornhuetterFergusonItem.disabled = !canAdd;
     addBornhuetterFergusonItem.title = canAdd ? "" : "Bornhuetter Ferguson can be added only to vector datasets with Method Type None.";
   }
   const selectedCount = emptyContext ? 0 : getSelectedDatasetRecords().length;
   const deleteItem = menu.querySelector("[data-row-action='delete']");
-  if (deleteItem) deleteItem.disabled = selectedCount === 0;
+  if (deleteItem) {
+    deleteItem.hidden = temporaryView;
+    deleteItem.disabled = temporaryView || selectedCount === 0;
+  }
+  const addSubmenu = menu.querySelector(".pi-context-submenu");
+  if (addSubmenu) addSubmenu.hidden = temporaryView;
   menu.classList.add("open");
   menu.setAttribute("aria-hidden", "false");
   positionFixedMenu(menu, x, y);
@@ -2109,6 +2165,10 @@ function applyDatasetGroupContextAction(action) {
 
 function openDatasetRecord(record) {
   if (!record) return;
+  if (isTemporaryViewActive()) {
+    openDatasetRecordAsDataset(record);
+    return;
+  }
   if (isDfmDatasetRecord(record)) {
     openDfmTabForDataset(record);
     return;
@@ -2410,6 +2470,10 @@ function applyDatasetRowContextAction(action) {
   const records = getDatasetRowActionRecords();
   const viewRecord = getDatasetRowViewRecord();
   closeDatasetRowContextMenu();
+  if (isTemporaryViewActive() && normalized !== "view") {
+    setStatus("Temporary view supports opening datasets only.");
+    return;
+  }
   if (normalized === "view") {
     openDatasetRecord(viewRecord);
   } else if (normalized === "show-as-vector") {

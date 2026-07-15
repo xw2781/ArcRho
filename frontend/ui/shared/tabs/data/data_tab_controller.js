@@ -630,6 +630,8 @@ const isProjectInstanceHost = qs.get("project_instance") === "1";
 setDatasetRenderVectorColumnLabel(isProjectInstanceHost ? qs.get("vector_column_label") : "");
 const isProjectInstanceDraft = qs.get("draft_instance") === "1" || qs.get("draft") === "1";
 const isReadOnlyDatasetViewer = qs.get("readonly") === "1";
+const temporaryDatasetSessionId = String(qs.get("temporary_session_id") || "").trim();
+const isTemporaryDatasetView = qs.get("temporary_view") === "1" && !!temporaryDatasetSessionId;
 let isSidecarReadOnlyDataset = false;
 const stepId = instanceId.startsWith("step_") ? instanceId : null;
 const scopedKey = (k) => `${k}::${instanceId}`;
@@ -2599,7 +2601,7 @@ function saveTriInputsToStorage() {
 }
 
 function isDatasetReadOnly() {
-  return isReadOnlyDatasetViewer || isSidecarReadOnlyDataset;
+  return isTemporaryDatasetView || isReadOnlyDatasetViewer || isSidecarReadOnlyDataset;
 }
 
 async function restoreTriInputsFromStorage() {
@@ -3017,6 +3019,7 @@ function buildTriRequestPayload(rawInputs = {}) {
     LocalOnly: isDfmDataTabHost(),
     AllowDerived: true,
     WriteSidecar: false,
+    ...(isTemporaryDatasetView ? { TemporarySessionId: temporaryDatasetSessionId } : {}),
     timeout_sec: 6.0,
   };
 }
@@ -3061,6 +3064,7 @@ function buildVecRequestPayload(rawInputs = {}) {
     LocalOnly: isDfmDataTabHost(),
     AllowDerived: true,
     WriteSidecar: false,
+    ...(isTemporaryDatasetView ? { TemporarySessionId: temporaryDatasetSessionId } : {}),
     timeout_sec: 6.0,
   };
 }
@@ -3242,6 +3246,7 @@ function hasManualInputGridChanges() {
 }
 
 function hasUnsavedDatasetChanges() {
+  if (isTemporaryDatasetView) return false;
   // DFM imports the Dataset runtime for its Data tab, but DFM persistence owns
   // the method's dirty state and close confirmation for the combined page.
   if (isDfmDataTabHost()) return false;
@@ -3366,14 +3371,14 @@ function updateDatasetSaveUi() {
   const clearBtn = document.getElementById("clearCacheReloadBtn");
   const hasContext = hasDatasetSidecarContext(sidecarContextPayload) || hasNotesContext(notesContextPayload);
   const dirty = hasUnsavedDatasetChanges();
-  if (bar) bar.hidden = !hasContext;
+  if (bar) bar.hidden = !hasContext || isTemporaryDatasetView;
   updateTabbedPageSaveControls({
     saveButton: saveBtn,
     cancelButton: cancelBtn,
     dirty,
     saving: datasetSaveInFlight,
-    saveBlocked: datasetInstanceNameConflict || !hasContext,
-    cancelBlocked: !hasContext,
+    saveBlocked: isTemporaryDatasetView || datasetInstanceNameConflict || !hasContext,
+    cancelBlocked: isTemporaryDatasetView || !hasContext,
   });
   for (const button of [runBtn, clearBtn]) {
     if (!button) continue;
@@ -3395,6 +3400,11 @@ function updateDatasetSaveUi() {
 }
 
 function refreshDatasetSettingsDirty() {
+  if (isTemporaryDatasetView) {
+    datasetSettingsDirty = false;
+    updateDatasetSaveUi();
+    return;
+  }
   if (isDfmDataTabHost()) {
     datasetSettingsDirty = false;
     updateDatasetSaveUi();
@@ -3518,6 +3528,9 @@ async function syncSidecarForCurrentDataset(options = {}) {
 }
 
 async function saveDatasetSidecarForCurrentContext() {
+  if (isTemporaryDatasetView) {
+    return { ok: false, error: "Temporary view does not save permanent dataset sidecars." };
+  }
   if (isProjectInstanceDraft) {
     const originResult = validateDatasetOriginLabels(state.model?.origin_labels, {
       originLen: getTriInputs().originLen,
@@ -3586,6 +3599,9 @@ async function saveDatasetSidecarForCurrentContext() {
 }
 
 async function saveDatasetChanges(options = {}) {
+  if (isTemporaryDatasetView) {
+    return { ok: false, error: "Temporary view is read-only and cannot save permanent dataset changes." };
+  }
   if (datasetSaveInFlight) return { ok: false, error: "Save already in progress." };
   datasetSaveInFlight = true;
   updateDatasetSaveUi();
@@ -3771,6 +3787,12 @@ function updateNotesSaveUi() {
 
   if (!saveState) return;
   saveState.classList.remove("is-dirty", "is-clean", "is-hidden");
+  if (isTemporaryDatasetView) {
+    saveState.textContent = "Read-only in temporary view";
+    saveState.classList.add("is-clean");
+    updateDatasetSaveUi();
+    return;
+  }
   if (!hasContext) {
     saveState.textContent = "No dataset context";
     updateDatasetSaveUi();
@@ -3797,6 +3819,9 @@ function applyNotesInputValue(text) {
 }
 
 async function saveNotesForPayload(payload, options = {}) {
+  if (isTemporaryDatasetView) {
+    return { ok: false, error: "Temporary view is read-only and cannot save notes." };
+  }
   const silentStatus = !!options?.silentStatus;
   const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
   if (!isCurrent()) return { ok: false, stale: true };
@@ -4449,6 +4474,17 @@ function wireNotesEditor() {
     updateNotesSaveUi,
     setStatus,
   });
+  if (isTemporaryDatasetView) {
+    const { input, styleControls } = datasetNotesController?.elements || {};
+    if (input) {
+      input.readOnly = true;
+      input.setAttribute("aria-readonly", "true");
+      input.title = "Notes are read-only in temporary view.";
+    }
+    for (const control of Object.values(styleControls || {})) {
+      if (control) control.disabled = true;
+    }
+  }
   return datasetNotesController;
 }
 

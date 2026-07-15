@@ -34,6 +34,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `get_project_method_data_dir`
   - `get_project_reserving_class_data_dir`
   - `get_project_settings_workbook_path`
+  - `get_project_temporary_view_dataset_cache_dir`
   - `get_reserving_class_combinations_path`
   - `get_reserving_class_path_tree_path`
   - `get_reserving_class_types_path`
@@ -76,6 +77,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 - User-local fixed paths are also refreshed in `app_server/config.py`, including workflow export path (`~/Documents/ArcRho/workflows`), scripting notebook path (`~/Documents/ArcRho/scripts`), and Macro window path (`~/Documents/ArcRho/macros`).
 - Project, reserving-class, dataset, DFM method, workflow, and project-user folder/file components encode Windows-invalid filename characters with the reversible `_%XX_` rule, for example `/` becomes `_%2F_`, `:` becomes `_%3A_`, and ASCII control characters use their two-digit hex code. Backend paths use `app_server.config.encode_filename_segment`; direct renderer-side file paths use the shared `/ui/shared/filename_sanitizer.js` helper so DFM, Dataset, and future pages follow the same convention.
 - ArcRhoTri generated dataset CSV caches use `projects/<project>/data/<ReservingClassFolder>/datasets/<DatasetName>@<OriginLength>@<DevelopmentLength>@<cum|inc>@<dev|cal>.csv` with one base `sidecars/<DatasetName>.json` sidecar, so period length, cumulative/incremental, and development/calendar shape changes rebuild separate CSV caches without creating extra metadata files. Runtime cache creation writes the sidecar only if it is missing; the Dataset page Save button updates saved period lengths, cumulative/calendar/transposed settings, and user fields. Dataset sidecars record the current Windows login user in `user` and `modified_by` for Project Instance's `User` column.
+- Project Instance Temporary view uses a separate durable CSV cache at `projects/<project>/data/<ReservingClassFolder>/datasets/.temporary-view/`. It reuses a valid canonical cache when available; otherwise generated or derived output is retained in that folder after the UI closes. Temporary-view output never creates a sidecar or an `index.json` entry and never triggers an index rebuild.
 - DFM local method files use `projects/<project>/data/<ReservingClassFolder>/methods/DFM@<Name>.json`; within one project/reserving-class pair, the DFM `Name` is the sole local instance identity. DFM RPC Bridge remote responses use `data/<ReservingClassFolder>/methods/tmp_rpc/DFM@<Name>.json`, while remote-update status files start with `SyncDFM@`.
 <!-- MANUAL:END -->
 

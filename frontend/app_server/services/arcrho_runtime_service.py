@@ -228,10 +228,14 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
     }
 
 
-def _register_arcrho_dataset(data_path: str, pairs: list | None = None) -> str:
+def _arcrho_dataset_id(data_path: str, pairs: list | None = None) -> str:
     function_name = _pair_value(pairs or [], "Function").strip().lower()
     prefix = "arcrhovec_" if function_name == "arcrhovec" else "arcrhotri_"
-    ds_id = prefix + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
+    return prefix + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
+
+
+def _register_arcrho_dataset(data_path: str, pairs: list | None = None) -> str:
+    ds_id = _arcrho_dataset_id(data_path, pairs)
     config.DATASETS[ds_id] = data_path
     return ds_id
 
@@ -242,7 +246,10 @@ def resolve_local_triangle_cache(
     allow_derived: bool = True,
     materialize: bool = True,
     local_only: bool = False,
+    materialize_path: str | None = None,
+    refresh_index_on_materialize: bool = True,
 ) -> Dict[str, Any]:
+    target_path = materialize_path or data_path
     if arcrho_tri_cache_matches(data_path, pairs):
         payload = _triangle_sidecar_payload(data_path, pairs, local_only=True)
         return {
@@ -293,7 +300,7 @@ def resolve_local_triangle_cache(
     rejected: list[str] = []
     candidates.sort(key=lambda item: (int(item.get("origin_length") or 999999), int(item.get("development_length") or 999999)))
     for candidate in candidates:
-        can_derive, reason = _can_derive_cache(candidate, pairs, data_path)
+        can_derive, reason = _can_derive_cache(candidate, pairs, target_path)
         if not can_derive:
             if reason:
                 rejected.append(reason)
@@ -302,7 +309,7 @@ def resolve_local_triangle_cache(
             return {
                 "ok": True,
                 "status": "cache_derivable",
-                "data_path": data_path,
+                "data_path": target_path,
                 "manual_source_found": manual_source_found,
                 "generated_source_found": generated_source_found,
                 "local_source_found": True,
@@ -313,18 +320,19 @@ def resolve_local_triangle_cache(
                 },
             }
         try:
-            derived = _derive_triangle_cache(candidate, pairs, data_path)
+            derived = _derive_triangle_cache(candidate, pairs, target_path)
         except Exception as err:
             rejected.append(str(err))
             continue
-        try:
-            dataset_instance_index_service.rebuild_index(_pair_value(pairs, "ProjectName"), _pair_value(pairs, "Path"))
-        except Exception:
-            pass
+        if refresh_index_on_materialize:
+            try:
+                dataset_instance_index_service.rebuild_index(_pair_value(pairs, "ProjectName"), _pair_value(pairs, "Path"))
+            except Exception:
+                pass
         return {
             "ok": True,
             "status": "cache_derived",
-            "data_path": data_path,
+            "data_path": target_path,
             "manual_source_found": manual_source_found,
             "generated_source_found": generated_source_found,
             "local_source_found": True,
@@ -696,6 +704,245 @@ def _local_cache_response(local_result: Dict[str, Any], data_path: str, pairs: l
     }
 
 
+def _normalize_temporary_session_id(value: Any) -> str:
+    try:
+        return str(uuid.UUID(str(value or "").strip()))
+    except (AttributeError, TypeError, ValueError) as err:
+        raise HTTPException(422, "TemporarySessionId must be a valid UUID.") from err
+
+
+def _path_is_within_folder(path: str, folder: str) -> bool:
+    child = os.path.normcase(os.path.abspath(path))
+    parent = os.path.normcase(os.path.abspath(folder))
+    try:
+        return os.path.commonpath([child, parent]) == parent
+    except ValueError:
+        return False
+
+
+def _temporary_dataset_path(data_path: str, pairs: list) -> str:
+    project_name = _pair_value(pairs, "ProjectName")
+    reserving_class = _pair_value(pairs, "Path")
+    if not project_name:
+        raise HTTPException(400, "ProjectName is required for a temporary dataset request.")
+    if not reserving_class:
+        raise HTTPException(400, "Path is required for a temporary dataset request.")
+
+    temporary_cache_dir = config.get_project_temporary_view_dataset_cache_dir(
+        project_name,
+        reserving_class,
+    )
+
+    dataset_filename = os.path.basename(data_path)
+    if not dataset_filename:
+        raise HTTPException(400, "Temporary dataset cache file name is invalid.")
+    temporary_data_path = os.path.join(temporary_cache_dir, dataset_filename)
+    if not _path_is_within_folder(temporary_data_path, temporary_cache_dir):
+        raise HTTPException(400, "Temporary dataset path is outside its cache folder.")
+    return temporary_data_path
+
+
+def _temporary_dataset_response(
+    data_path: str,
+    pairs: list,
+    temporary_session_id: str,
+    *,
+    need_request: bool,
+    request_file: str | None,
+    local_result: Dict[str, Any] | None = None,
+    force_refresh: bool = False,
+    cache_cleared: bool = False,
+) -> Dict[str, Any]:
+    ds_id = _register_arcrho_dataset(data_path, pairs)
+    out: Dict[str, Any] = {
+        "ok": True,
+        "need_request": need_request,
+        "ds_id": ds_id,
+        "request_file": request_file,
+        "data_path": data_path,
+        "local_cache_status": (local_result or {}).get("status") or "temporary_cache",
+        "derived": (local_result or {}).get("derived"),
+        "calculated_updates": None,
+        "sidecar_written": False,
+        "temporary_cache": True,
+        "temporary_session_id": temporary_session_id,
+    }
+    if force_refresh:
+        out["cache_cleared"] = cache_cleared
+    return out
+
+
+def arcrho_precheck(
+    data_path: str,
+    pairs: list,
+    *,
+    local_only: bool = False,
+    allow_derived: bool = True,
+    temporary_session_id: str | None = None,
+) -> Dict[str, Any]:
+    session_id = _normalize_temporary_session_id(temporary_session_id) if temporary_session_id else None
+    temporary_data_path = _temporary_dataset_path(data_path, pairs) if session_id else None
+    local_result = resolve_local_triangle_cache(
+        data_path,
+        pairs,
+        allow_derived=allow_derived,
+        materialize=False,
+        local_only=local_only,
+    )
+    local_available = bool(local_result.get("ok"))
+    canonical_cache_exact = local_result.get("status") == "cache_exact"
+    temporary_cache_exists = bool(temporary_data_path and os.path.isfile(temporary_data_path))
+    use_temporary_cache = temporary_cache_exists and not canonical_cache_exact
+    cache_exists = local_available or temporary_cache_exists
+    manual_source_found = bool(local_result.get("manual_source_found"))
+    generated_source_found = bool(local_result.get("generated_source_found"))
+    need_request = not cache_exists and not manual_source_found and (not local_only or generated_source_found)
+    resolved_data_path = (
+        temporary_data_path
+        if temporary_data_path and not canonical_cache_exact
+        else data_path
+    )
+    result = {
+        "ok": True,
+        "need_request": need_request,
+        "cache_exists": cache_exists,
+        "data_path": resolved_data_path,
+        "ds_id": _arcrho_dataset_id(resolved_data_path, pairs),
+        "local_cache_status": "temporary_cache" if use_temporary_cache else local_result.get("status"),
+        "local_cache_message": None if use_temporary_cache else local_result.get("message"),
+        "manual_source_found": manual_source_found,
+        "generated_source_found": generated_source_found,
+    }
+    if session_id:
+        result["temporary_session_id"] = session_id
+        result["temporary_cache"] = use_temporary_cache
+    return result
+
+
+def _run_temporary_arcrho_tri(
+    pairs: list,
+    data_path: str,
+    timeout_sec: float,
+    *,
+    temporary_session_id: str,
+    force_refresh: bool,
+    local_only: bool,
+    allow_derived: bool,
+) -> Dict[str, Any]:
+    session_id = _normalize_temporary_session_id(temporary_session_id)
+    temporary_data_path = _temporary_dataset_path(data_path, pairs)
+
+    local_result = resolve_local_triangle_cache(
+        data_path,
+        pairs,
+        allow_derived=allow_derived,
+        materialize=False,
+        local_only=local_only,
+    )
+    if local_result.get("ok") and local_result.get("status") == "cache_exact" and not force_refresh:
+        out = _local_cache_response(local_result, data_path, pairs)
+        out["temporary_cache"] = False
+        out["temporary_session_id"] = session_id
+        return out
+
+    temporary_cache_exists = os.path.isfile(temporary_data_path)
+    if temporary_cache_exists and not force_refresh:
+        return _temporary_dataset_response(
+            temporary_data_path,
+            pairs,
+            session_id,
+            need_request=False,
+            request_file=None,
+        )
+
+    if local_result.get("ok") and local_result.get("status") == "cache_derivable" and not force_refresh:
+        derived_result = resolve_local_triangle_cache(
+            data_path,
+            pairs,
+            allow_derived=allow_derived,
+            materialize=True,
+            local_only=local_only,
+            materialize_path=temporary_data_path,
+            refresh_index_on_materialize=False,
+        )
+        if derived_result.get("ok"):
+            derived_data_path = str(derived_result.get("data_path") or temporary_data_path)
+            if os.path.normcase(os.path.abspath(derived_data_path)) == os.path.normcase(os.path.abspath(data_path)):
+                out = _local_cache_response(derived_result, data_path, pairs)
+                out["temporary_cache"] = False
+                out["temporary_session_id"] = session_id
+                return out
+            return _temporary_dataset_response(
+                derived_data_path,
+                pairs,
+                session_id,
+                need_request=False,
+                request_file=None,
+                local_result=derived_result,
+            )
+        local_result = derived_result
+
+    manual_source_found = bool(local_result.get("manual_source_found"))
+    generated_source_found = bool(local_result.get("generated_source_found"))
+    if (local_only and not generated_source_found) or manual_source_found:
+        message = str(local_result.get("message") or "Input triangle cache is not available.")
+        if force_refresh and manual_source_found:
+            message = "Manual input triangle caches cannot be refreshed from the DFM/Dataset loader."
+        return {
+            "ok": False,
+            "status": local_result.get("status") or "local_cache_unavailable",
+            "need_request": False,
+            "data_path": temporary_data_path,
+            "message": message,
+            "local_only": bool(local_only),
+            "manual_source_found": manual_source_found,
+            "temporary_session_id": session_id,
+        }
+
+    cache_cleared = False
+    if (force_refresh or not temporary_cache_exists) and os.path.exists(temporary_data_path):
+        try:
+            os.remove(temporary_data_path)
+            cache_cleared = True
+        except OSError as err:
+            raise HTTPException(423, f"Cannot clear temporary ArcRho tri file: {str(err)}") from err
+
+    need_request = force_refresh or not temporary_cache_exists
+    request_file = None
+    if need_request:
+        try:
+            os.makedirs(os.path.dirname(temporary_data_path), exist_ok=True)
+        except OSError as err:
+            raise HTTPException(500, f"Failed to create temporary ArcRho tri data folder: {str(err)}") from err
+        request_info = "#".join([f"{k} = {v}" for k, v in pairs] + [f"DataPath = {temporary_data_path}"])
+        request_file = send_request_like_vba(request_info)
+
+        ok = wait_for_file(temporary_data_path, timeout_sec=max(0.1, float(timeout_sec)))
+        if not ok:
+            timeout_out: Dict[str, Any] = {
+                "ok": False,
+                "status": "timeout",
+                "need_request": True,
+                "request_file": request_file,
+                "data_path": temporary_data_path,
+                "temporary_cache": True,
+                "temporary_session_id": session_id,
+            }
+            if force_refresh:
+                timeout_out["cache_cleared"] = cache_cleared
+            return timeout_out
+
+    return _temporary_dataset_response(
+        temporary_data_path,
+        pairs,
+        session_id,
+        need_request=need_request,
+        request_file=request_file,
+        force_refresh=force_refresh,
+        cache_cleared=cache_cleared,
+    )
+
+
 def run_arcrho_tri(
     pairs: list,
     data_path: str,
@@ -704,7 +951,19 @@ def run_arcrho_tri(
     local_only: bool = False,
     allow_derived: bool = True,
     write_sidecar: bool = True,
+    temporary_session_id: str | None = None,
 ) -> Dict[str, Any]:
+    if temporary_session_id:
+        return _run_temporary_arcrho_tri(
+            pairs,
+            data_path,
+            timeout_sec,
+            temporary_session_id=temporary_session_id,
+            force_refresh=force_refresh,
+            local_only=local_only,
+            allow_derived=allow_derived,
+        )
+
     request_file = None
     cache_cleared = False
 

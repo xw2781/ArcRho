@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from typing import Any, Dict
 
 from fastapi import APIRouter
@@ -59,32 +58,15 @@ def _arcrho_vec_pairs(req: ArcRhoVecRequest) -> list:
     return pairs
 
 
-def _arcrho_precheck_response(req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: list, ds_id_prefix: str) -> Dict[str, Any]:
+def _arcrho_precheck_response(req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: list) -> Dict[str, Any]:
     data_path = set_data_path_like_vba(pairs)
-    local_result = arcrho_runtime_service.resolve_local_triangle_cache(
+    return arcrho_runtime_service.arcrho_precheck(
         data_path,
         pairs,
-        allow_derived=bool(req.AllowDerived),
-        materialize=False,
         local_only=bool(req.LocalOnly),
+        allow_derived=bool(req.AllowDerived),
+        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
     )
-    local_available = bool(local_result.get("ok"))
-    manual_source_found = bool(local_result.get("manual_source_found"))
-    generated_source_found = bool(local_result.get("generated_source_found"))
-    need_request = not local_available and not manual_source_found and (not req.LocalOnly or generated_source_found)
-    ds_id = ds_id_prefix + hashlib.sha1(data_path.encode("utf-8")).hexdigest()[:16]
-    result = {
-        "ok": True,
-        "need_request": need_request,
-        "cache_exists": local_available,
-        "data_path": data_path,
-        "ds_id": ds_id,
-        "local_cache_status": local_result.get("status"),
-        "local_cache_message": local_result.get("message"),
-        "manual_source_found": manual_source_found,
-        "generated_source_found": generated_source_found,
-    }
-    return result
 
 
 @router.post("/arcrho/headers")
@@ -118,7 +100,7 @@ def arcrho_projects() -> Dict[str, Any]:
 @router.post("/arcrho/tri/precheck")
 def arcrho_tri_precheck(req: ArcRhoTriRequest) -> Dict[str, Any]:
     pairs = _arcrho_tri_pairs(req)
-    return _arcrho_precheck_response(req, pairs, "arcrhotri_")
+    return _arcrho_precheck_response(req, pairs)
 
 
 @router.post("/arcrho/tri")
@@ -133,6 +115,7 @@ def arcrho_tri(req: ArcRhoTriRequest) -> Dict[str, Any]:
         local_only=bool(req.LocalOnly),
         allow_derived=bool(req.AllowDerived),
         write_sidecar=bool(req.WriteSidecar),
+        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
     )
 
 
@@ -148,13 +131,14 @@ def arcrho_tri_refresh(req: ArcRhoTriRequest) -> Dict[str, Any]:
         local_only=bool(req.LocalOnly),
         allow_derived=bool(req.AllowDerived),
         write_sidecar=bool(req.WriteSidecar),
+        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
     )
 
 
 @router.post("/arcrho/vec/precheck")
 def arcrho_vec_precheck(req: ArcRhoVecRequest) -> Dict[str, Any]:
     pairs = _arcrho_vec_pairs(req)
-    return _arcrho_precheck_response(req, pairs, "arcrhovec_")
+    return _arcrho_precheck_response(req, pairs)
 
 
 @router.post("/arcrho/vec")
@@ -169,6 +153,7 @@ def arcrho_vec(req: ArcRhoVecRequest) -> Dict[str, Any]:
         local_only=bool(req.LocalOnly),
         allow_derived=bool(req.AllowDerived),
         write_sidecar=bool(req.WriteSidecar),
+        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
     )
 
 
@@ -184,4 +169,5 @@ def arcrho_vec_refresh(req: ArcRhoVecRequest) -> Dict[str, Any]:
         local_only=bool(req.LocalOnly),
         allow_derived=bool(req.AllowDerived),
         write_sidecar=bool(req.WriteSidecar),
+        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
     )
