@@ -10,11 +10,11 @@ Excluded directories: `__pycache__`, `dist`, `local_workspace_log`, `node-portab
 | `(root)` | 12 |
 | `app_server` | 69 |
 | `build` | 63 |
-| `changes` | 658 |
+| `changes` | 661 |
 | `docs` | 70 |
 | `electron` | 4 |
 | `icons` | 19 |
-| `tests` | 5 |
+| `tests` | 9 |
 | `tools` | 2 |
-| `ui` | 327 |
+| `ui` | 350 |
 | `user-manual` | 18 |

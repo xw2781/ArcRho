@@ -1,4 +1,4 @@
-import { fetchProjectDatasetTypes, normalizeDatasetTypesPayload as normalizeDatasetTypesPayloadShared } from "/ui/dataset/dataset_types_source.js";
+import { fetchProjectDatasetTypes, normalizeDatasetTypesPayload as normalizeDatasetTypesPayloadShared } from "/ui/shared/dataset/dataset_types_source.js";
 import {
   buildDatasetTypeColumnFilterOptionsFromRows,
   getDatasetTypeCategoryKey,
@@ -7,8 +7,8 @@ import {
   isDatasetTypeSelectionFilterActive,
   matchesDatasetTypeNameSearch,
   tokenizeDatasetTypeNameSearch,
-} from "/ui/dataset/dataset_types_view_model.js";
-import { decodeFileNameSegment } from "/ui/shared/filename_sanitizer.js";
+} from "/ui/shared/dataset/dataset_types_view_model.js";
+import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 
 function calculationStepReservingPath(step) {
   const explicit = String(step?.reserving_class || "").trim();

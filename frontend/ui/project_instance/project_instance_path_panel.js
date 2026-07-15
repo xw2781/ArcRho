@@ -2,7 +2,7 @@ export function installProjectInstancePathPanel(ctx) {
   const { api, els, projectName, state } = ctx;
   const {
     loadProjectUserPreferences,
-    openLazyReservingClassPicker,
+    openReservingClassPicker,
     scheduleProjectUserPreferencesSave,
   } = ctx;
   const { LEFT_PANEL_DEFAULT_WIDTH, LEFT_PANEL_MIN_WIDTH, LEFT_PANEL_MAX_WIDTH, LEFT_PANEL_COLLAPSE_THRESHOLD, LEFT_PANEL_RIGHT_MIN_WIDTH, LEFT_PANEL_KEYBOARD_STEP } = ctx.constants;
@@ -470,7 +470,7 @@ async function loadPathTree() {
     if (initialPath) {
       setSelectedPath(initialPath, { persist: false });
     }
-    const result = await openLazyReservingClassPicker({
+    const result = await openReservingClassPicker({
       projectName,
       inlineContainer: els.pathTree,
       initialPath,

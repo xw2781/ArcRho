@@ -6,7 +6,7 @@ import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=
 import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260315";
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=2026040308";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=2026050832";
-import "/ui/shared/zoom_bridge.js?v=20260521a";
+import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 // ============ Zoom & Hotkey Handling ============
 const EXPANDED_FOLDERS_SESSION_KEY = "arcrho_project_settings_expanded_folders_v1";

@@ -9,10 +9,10 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 - `tools/`: repository-level automation, including commit/push helpers for agents.
 
 ## Project Terms and Abbreviations
-- **DSV (Dataset Viewer):** the frontend workspace for viewing and editing datasets under `frontend/ui/dataset`.
-- **DFM (Development Factor Method):** the frontend workspace for creating and reviewing development factor methods under `frontend/ui/dfm`.
-- **BF (Bornhuetter Ferguson):** the frontend workspace for Bornhuetter Ferguson methods under `frontend/ui/bornhuetter_ferguson`.
-- **RS (Result Selection):** the frontend workspace for result selection methods under `frontend/ui/result_selection`.
+- **DSV (Dataset Viewer):** the frontend workspace for viewing and editing datasets under `frontend/ui/dataset_viewer`.
+- **DFM (Development Factor Method):** the frontend workspace for creating and reviewing development factor methods under `frontend/ui/method_pages/dfm`.
+- **BF (Bornhuetter Ferguson):** the frontend workspace for Bornhuetter Ferguson methods under `frontend/ui/method_pages/bornhuetter_ferguson`.
+- **RS (Result Selection):** the frontend workspace for result selection methods under `frontend/ui/method_pages/result_selection`.
 - **PI (Project Instance):** the frontend workspace for browsing and working within a project instance under `frontend/ui/project_instance`.
 - **PS (Project Settings):** the frontend workspace for configuring project settings under `frontend/ui/project_settings`.
 

@@ -1,0 +1,241 @@
+.arAuditLogMount {
+  width: 100%;
+  max-width: 960px;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+}
+
+.arAuditLog {
+  width: 100%;
+  max-width: 960px;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  color: #1f2937;
+  font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.arAuditLogScroll {
+  --ar-audit-scrollbar-chrome: #f1f3f5;
+  --ar-audit-scrollbar-button-hover: #e5e9ef;
+  --ar-audit-scrollbar-button-active: #d9dee7;
+  --ar-audit-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+  --ar-audit-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+  width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  scrollbar-gutter: auto;
+  padding-right: 1px;
+  padding-bottom: 1px;
+  border: 1px solid #d8dde3;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.arAuditLogScroll:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
+.arAuditLogScroll::-webkit-scrollbar {
+  width: 20px;
+  height: 20px;
+}
+
+.arAuditLogScroll::-webkit-scrollbar-track,
+.arAuditLogScroll::-webkit-scrollbar-corner {
+  background: var(--ar-audit-scrollbar-chrome);
+}
+
+.arAuditLogScroll::-webkit-scrollbar-thumb {
+  border: 3px solid var(--ar-audit-scrollbar-chrome);
+  border-radius: 5px;
+  background-color: var(--ar-audit-scrollbar-thumb);
+  background-clip: content-box;
+}
+
+.arAuditLogScroll::-webkit-scrollbar-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-color: var(--ar-audit-scrollbar-chrome);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+}
+
+.arAuditLogScroll::-webkit-scrollbar-button:hover {
+  background-color: var(--ar-audit-scrollbar-button-hover);
+}
+
+.arAuditLogScroll::-webkit-scrollbar-button:active {
+  background-color: var(--ar-audit-scrollbar-button-active);
+}
+
+.arAuditLogScroll::-webkit-scrollbar-button:horizontal:start:increment,
+.arAuditLogScroll::-webkit-scrollbar-button:horizontal:end:decrement,
+.arAuditLogScroll::-webkit-scrollbar-button:vertical:start:increment,
+.arAuditLogScroll::-webkit-scrollbar-button:vertical:end:decrement {
+  display: none;
+  width: 0;
+  height: 0;
+  background-image: none;
+}
+
+.arAuditLogScroll::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+}
+
+.arAuditLogScroll::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+}
+
+.arAuditLogScroll::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+}
+
+.arAuditLogScroll::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+}
+
+.arAuditLogScroll.isScrolling::-webkit-scrollbar-thumb,
+.arAuditLogScroll.isScrollbarHover::-webkit-scrollbar-thumb,
+.arAuditLogScroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ar-audit-scrollbar-thumb-active);
+}
+
+.arAuditLogTable {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  background: #fff;
+  color: #1f2937;
+  font-size: 12px;
+}
+
+.arAuditLogTable th,
+.arAuditLogTable td {
+  height: 31px;
+  padding: 5px 10px;
+  border-right: 1px solid #e1e5eb;
+  border-bottom: 1px solid #e1e5eb;
+  box-sizing: border-box;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arAuditLogTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  overflow: visible;
+  background: #f4f7fa;
+  color: #334155;
+  font-weight: 600;
+}
+
+.arAuditLogTable th::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  left: 0;
+  height: 1px;
+  background: #f4f7fa;
+  pointer-events: none;
+}
+
+.arAuditLogTable tbody tr {
+  transition: background-color 140ms ease;
+}
+
+.arAuditLogTable tbody tr:hover {
+  background: #f8fafc;
+}
+
+.arAuditLogTable th:last-child,
+.arAuditLogTable td:last-child {
+  border-right: 0;
+}
+
+.arAuditLogTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.arAuditLogDateCell {
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+}
+
+.arAuditLogTable col:nth-child(1) {
+  width: 210px;
+}
+
+.arAuditLogTable col:nth-child(2) {
+  width: 110px;
+}
+
+.arAuditLogTable col:nth-child(3) {
+  width: 160px;
+}
+
+.arAuditLogTable col:nth-child(4) {
+  width: auto;
+}
+
+.arAuditLogState {
+  display: grid;
+  width: 100%;
+  min-width: 640px;
+  justify-items: center;
+  gap: 4px;
+  padding: 28px 16px 30px;
+  box-sizing: border-box;
+  background: #fbfcfe;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.arAuditLogState[hidden],
+.arAuditLogStateDescription[hidden] {
+  display: none;
+}
+
+.arAuditLogStateTitle {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.arAuditLogState.isLoading {
+  background: #f8fafc;
+}
+
+.arAuditLogState.isError {
+  background: #fff7f8;
+  color: #9f1239;
+}
+
+.arAuditLogState.isError .arAuditLogStateTitle {
+  color: #be123c;
+}

@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const helperUrl = new URL("../ui/dfm/dfm_formula_validation.js", import.meta.url);
+const helperUrl = new URL("../ui/method_pages/dfm/dfm_formula_validation.js", import.meta.url);
 const helperSource = await readFile(helperUrl, "utf8");
 const summarySource = await readFile(
-  new URL("../ui/dfm/dfm_ratios_summary_table.js", import.meta.url),
+  new URL("../ui/method_pages/dfm/dfm_ratios_summary_table.js", import.meta.url),
   "utf8",
 );
 const ratiosTabSource = await readFile(
-  new URL("../ui/dfm/dfm_ratios_tab.js", import.meta.url),
+  new URL("../ui/method_pages/dfm/dfm_ratios_tab.js", import.meta.url),
   "utf8",
 );
 const validation = await import(`data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`);

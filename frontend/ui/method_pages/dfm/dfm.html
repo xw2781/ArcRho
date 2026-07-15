@@ -1,0 +1,2053 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Development Factor Method</title>
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a"/>
+  <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260715a"/>
+  <style>
+    :root{
+      --dfm-font: var(--app-font);
+      --dfm-table-font-size: 14px;
+      --dfm-cell-h: 20px;
+      --dfm-cell-w: 90px;
+      --dfm-cell-min-w: 80px;
+      --dfm-cell-max-w: 100px;
+      --dfm-spin-w: 70px;
+      --cell-h: var(--dfm-cell-h);
+      --cell-w: var(--dfm-cell-w);
+      --cell-min-w: var(--dfm-cell-min-w);
+      --cell-max-w: var(--dfm-cell-max-w);
+    }
+    html, body {
+      height: 100%;
+    }
+    body {
+      font-family: var(--dfm-font);
+      display: flex;
+      flex-direction: column;
+      margin: 0;
+      background: #f5f7fa;
+      overflow: hidden;
+    }
+    /* Shared tab-strip chrome is defined in ui/shared/tabbed_page/tabbed_page.css. */
+    #dfmDetailsPage,
+    #dfmDataPage,
+    #dfmRatiosPage,
+    #dfmResultsPage,
+    #dfmNotesPage,
+    #dfmAuditPage {
+      border: 1px solid #d8dde3;
+      border-top: 0;
+      border-radius: 0;
+      margin: 0 var(--tabbed-page-gutter, 8px);
+      padding: 10px;
+      background: #fff;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+    #dfmRatiosPage,
+    #dfmResultsPage,
+    #dfmNotesPage,
+    #dfmAuditPage {
+      border: 1px solid #d8dde3;
+      border-top: 0;
+      border-radius: 0;
+      margin: 0 var(--tabbed-page-gutter, 8px);
+    }
+    #dfmDataPage {
+      padding: 3px;
+      overflow: hidden;
+    }
+    #dfmDataPage .panel {
+      padding: 0;
+    }
+    #dfmDataPage #triPanel {
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+      height: 100%;
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      border-radius: 0;
+      overflow: hidden;
+    }
+    #dfmDataPage #triPanel > .panelInner {
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      height: 100%;
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+    }
+    #dfmDataPage #tableWrapHost {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+      height: 100%;
+      max-height: 100%;
+      overflow: hidden;
+      align-self: stretch;
+      box-sizing: border-box;
+    }
+    #dfmRatiosPage .panel,
+    #dfmResultsPage .panel,
+    #dfmNotesPage .panel {
+      border: none;
+      border-radius: 0;
+      padding: 0;
+    }
+    #dfmResultsPage {
+      padding: 3px 0 0 3px;
+    }
+    #dfmNotesPage {
+      padding: 3px 0 0 3px;
+    }
+    #dfmAuditPage {
+      padding: 3px;
+      overflow: hidden;
+    }
+    #dfmAuditLogMount {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      box-sizing: border-box;
+    }
+    #dfmNotesPage .panelInner {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+    }
+    .dfmSaveBar {
+      flex: 0 0 38px;
+      width: 100%;
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 6px 10px 4px;
+      box-sizing: border-box;
+    }
+    .dfmSaveBtn,
+    .dfmCancelBtn {
+      min-width: 72px;
+      height: 28px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .dfmSaveBtn {
+      border: 1px solid #2563eb;
+      background: #2563eb;
+      color: #fff;
+    }
+    .dfmSaveBtn:hover:not(:disabled) {
+      background: #1d4ed8;
+    }
+    .dfmCancelBtn,
+    .dfmSaveBtn.is-clean {
+      border: 1px solid rgba(21, 34, 54, 0.18);
+      background: #fff;
+      color: #1f2937;
+    }
+    .dfmCancelBtn:hover:not(:disabled),
+    .dfmSaveBtn.is-clean:hover:not(:disabled) {
+      background: #f4f7fb;
+    }
+    .dfmSaveBtn:disabled,
+    .dfmCancelBtn:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+    #dfmDetailsPage {
+      display: none;
+      padding: 12px 10px 10px;
+    }
+    #dfmRatiosPage {
+      display: none;
+      padding: 3px;
+      overflow: hidden;
+    }
+    #dfmResultsPage { display: none; }
+    #dfmNotesPage { display: none; }
+    #dfmAuditPage { display: none; }
+    .dfmSection {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dfmFormGrid3 {
+      display: grid;
+      grid-template-columns: var(--ar-details-label-width) 560px minmax(0, 1fr);
+      column-gap: var(--ar-details-label-control-gap, 1px);
+      row-gap: 10px;
+      align-items: center;
+    }
+    .dfmFormField {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      min-width: 0;
+    }
+    .dfmInstanceMissingNotice {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      min-height: 30px;
+      color: #b45309;
+      font-size: 12px;
+      line-height: 1.3;
+      white-space: normal;
+    }
+    .dfmInstanceMissingNotice.show {
+      display: inline-flex;
+    }
+    #dfmInstanceConfirmBtn {
+      height: 28px;
+      padding: 0 10px;
+      flex: 0 0 auto;
+    }
+    .dfmFormField input,
+    .dfmFormField select {
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      box-sizing: border-box;
+      color: var(--ar-details-control-color, #000);
+      font-size: var(--ar-details-control-font-size, 12px);
+    }
+    #dfmDetailsPage input[readonly],
+    #dfmDetailsPage textarea[readonly],
+    #dfmDetailsPage select:disabled {
+      color: var(--ar-details-readonly-color, #000);
+    }
+    .dfmFormField .projectTreeBtn,
+    .dfmFormField .pathTreeBtn,
+    .dfmFormField .datasetTreeBtn {
+      border-radius: var(--tabbed-page-control-radius, 4px);
+    }
+    .dfmFormField .projectSelectWrap,
+    .dfmFormField .datasetSelectWrap,
+    .dfmFormField .reservingClassWrap,
+    .dfmFormField .dfmMethodNameWrap,
+    .dfmFormField .dfmOutputVectorWrap {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+    }
+    #projectSelect,
+    #dfmMethodName,
+    #pathInput,
+    #triInput,
+    #dfmOutputVector {
+      width: 100%;
+      max-width: 100%;
+    }
+    #projectSelect,
+    #triInput,
+    #dfmOutputVector {
+      width: 100%;
+    }
+    .dfmFormField .reservingClassWrap,
+    .dfmFormField .dfmMethodNameWrap,
+    .dfmFormField .dfmOutputVectorWrap {
+      position: relative;
+    }
+    .dfmFormField .projectSelectWrap #projectSelect {
+      width: 100%;
+      padding-right: 34px;
+    }
+    .dfmFormField .reservingClassWrap #pathInput {
+      width: 100%;
+      padding-right: 34px;
+    }
+    .dfmFormField .dfmMethodNameWrap #dfmMethodName {
+      width: 100%;
+      padding-right: 34px;
+    }
+    .dfmFormField .dfmOutputVectorWrap #dfmOutputVector {
+      width: 100%;
+      padding-right: 34px;
+    }
+    .dfmSpinner {
+      position: relative;
+      display: inline-flex;
+      width: var(--dfm-spin-w);
+      max-width: 100%;
+    }
+    .dfmSpinner select,
+    .dfmSpinner input {
+      width: 100%;
+      padding-left: 20px;
+      padding-right: 20px;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      background: #fff;
+      text-align: center;
+    }
+    .dfmSpinner input[type="number"],
+    .dfmSpinner select {
+      text-align: center;
+    }
+    .dfmSpinner input[type="number"]::-webkit-inner-spin-button,
+    .dfmSpinner input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    #dfmDetailsPage .decimalPlacesWrap {
+      --topbar-control-height: 28px;
+      flex: 0 0 69px;
+    }
+    #dfmDetailsPage .decimalPlacesWrap > input[type="number"] {
+      height: var(--topbar-control-height);
+      font-size: var(--ar-details-control-font-size, 12px);
+    }
+    .dfmSpinBtns {
+      position: absolute;
+      right: 1px;
+      top: 1px;
+      bottom: 1px;
+      width: 20px;
+      display: flex;
+      flex-direction: column;
+      border-radius: 0 5px 5px 0;
+      overflow: hidden;
+    }
+    .dfmSpinBtn {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      min-width: 20px;
+      border: none;
+      padding: 0;
+      background: transparent;
+      color: #555;
+      cursor: pointer;
+    }
+    .dfmSpinBtn + .dfmSpinBtn {
+      border-top: 0;
+    }
+    .dfmSpinBtn:hover,
+    .dfmSpinBtn:focus {
+      background-color: #f5f8ff;
+      color: #2f5fd3;
+      outline: none;
+    }
+    .dfmStepperCaret {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid currentColor;
+      opacity: 0.32;
+      transform: translateX(1px);
+      transform-origin: center;
+      transition: opacity 120ms ease;
+    }
+    .dfmStepperCaretUp {
+      transform: translateX(1px) rotate(180deg);
+    }
+    .dfmSpinner:hover .dfmStepperCaret,
+    .dfmSpinner:focus-within .dfmStepperCaret,
+    .dfmSpinner.dfmSelectOpen .dfmStepperCaret,
+    .dfmSpinBtn:hover .dfmStepperCaret,
+    .dfmSpinBtn:focus .dfmStepperCaret {
+      opacity: 1;
+    }
+    .dfmSpinner.dfmSelectOpen {
+      z-index: 40;
+    }
+    .dfmSelectMenu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 45;
+      padding: 3px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #ffffff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    }
+    .dfmSelectMenuOption {
+      display: block;
+      width: 100%;
+      height: 25px;
+      border: none;
+      border-radius: 5px;
+      padding: 0 10px;
+      background: transparent;
+      color: #1f2937;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .dfmSelectMenuOption:hover,
+    .dfmSelectMenuOption:focus {
+      outline: none;
+      background: #eef4ff;
+    }
+    .dfmSelectMenuOption.active {
+      background: #2b6df6;
+      color: #ffffff;
+    }
+    .dfmActionBtn {
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid #c8c8c8;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #f1f1f1;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .dfmActionBtn:hover { background: #e9e9e9; }
+    .dfmActions {
+      display: flex;
+      justify-content: flex-start;
+      gap: 8px;
+    }
+
+    #ratioPanel {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #ratioPanel .panelInner {
+      height: 100%;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #ratioWrapHost {
+      --dfm-scrollbar-chrome: #f1f3f5;
+      --dfm-scrollbar-button-hover: #e5e9ef;
+      --dfm-scrollbar-button-active: #d9dee7;
+      --dfm-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --dfm-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      width: 100%;
+      border: 1px solid #d8dde3;
+      border-radius: 0;
+      background: #fff;
+      box-shadow: none;
+      outline: none;
+      overflow: auto;
+      scrollbar-gutter: stable;
+      padding-right: 1px;
+      padding-bottom: 1px;
+      box-sizing: border-box;
+      align-self: stretch;
+    }
+    #dfmDetailsPage {
+      --dfm-scrollbar-chrome: #f1f3f5;
+      --dfm-scrollbar-button-hover: #e5e9ef;
+      --dfm-scrollbar-button-active: #d9dee7;
+      --dfm-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --dfm-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+    }
+    #dfmDetailsPage::-webkit-scrollbar,
+    #ratioWrapHost::-webkit-scrollbar {
+      width: 20px;
+      height: 20px;
+    }
+    #dfmDetailsPage::-webkit-scrollbar-track,
+    #dfmDetailsPage::-webkit-scrollbar-corner,
+    #ratioWrapHost::-webkit-scrollbar-track,
+    #ratioWrapHost::-webkit-scrollbar-corner {
+      background: var(--dfm-scrollbar-chrome);
+    }
+    #dfmDetailsPage::-webkit-scrollbar-thumb,
+    #ratioWrapHost::-webkit-scrollbar-thumb {
+      background-color: var(--dfm-scrollbar-thumb);
+      border: 3px solid var(--dfm-scrollbar-chrome);
+      border-radius: 5px;
+      background-clip: content-box;
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button,
+    #ratioWrapHost::-webkit-scrollbar-button {
+      width: 16px;
+      height: 16px;
+      display: block;
+      background-color: var(--dfm-scrollbar-chrome);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 12px 12px;
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:hover,
+    #ratioWrapHost::-webkit-scrollbar-button:hover {
+      background-color: var(--dfm-scrollbar-button-hover);
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:active,
+    #ratioWrapHost::-webkit-scrollbar-button:active {
+      background-color: var(--dfm-scrollbar-button-active);
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:horizontal:start:increment,
+    #dfmDetailsPage::-webkit-scrollbar-button:horizontal:end:decrement,
+    #dfmDetailsPage::-webkit-scrollbar-button:vertical:start:increment,
+    #dfmDetailsPage::-webkit-scrollbar-button:vertical:end:decrement,
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:start:increment,
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:end:decrement,
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:start:increment,
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:end:decrement {
+      width: 0;
+      height: 0;
+      display: none;
+      background-image: none;
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:horizontal:start:decrement,
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:horizontal:end:increment,
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:vertical:start:decrement,
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+    #dfmDetailsPage::-webkit-scrollbar-button:vertical:end:increment,
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+    }
+    #dfmDetailsPage.isScrolling::-webkit-scrollbar-thumb,
+    #dfmDetailsPage.isScrollbarHover::-webkit-scrollbar-thumb,
+    #dfmDetailsPage::-webkit-scrollbar-thumb:hover,
+    #ratioWrapHost.isScrolling::-webkit-scrollbar-thumb,
+    #ratioWrapHost.isScrollbarHover::-webkit-scrollbar-thumb,
+    #ratioWrapHost::-webkit-scrollbar-thumb:hover {
+      background-color: var(--dfm-scrollbar-thumb-active);
+    }
+    #ratioWrap {
+      width: max-content;
+      min-width: 100%;
+      position: relative;
+    }
+    .dfmRatiosNotice {
+      box-sizing: border-box;
+      margin: 4px 0;
+      padding: 4px 8px;
+      border: 1px solid rgba(190, 18, 60, 0.35);
+      background: #fff1f2;
+      color: #9f1239;
+      font: 11px/16px Arial, "Segoe UI", sans-serif;
+      overflow-wrap: anywhere;
+    }
+    .dfmRatiosNotice[hidden] { display: none; }
+    #ratioWrap table {
+      margin-bottom: 3px;
+    }
+    #ratioWrap th,
+    #ratioWrap td {
+      white-space: nowrap;
+      cursor: default;
+    }
+    #ratioWrap[data-interaction-mode="edit"] th,
+    #ratioWrap[data-interaction-mode="edit"] td {
+      cursor: url("/ui/method_pages/dfm/dfm_handwriting_cursor.svg?v=20260712b") 2 2, default;
+    }
+    #ratioWrap[data-interaction-mode="select"] th {
+      cursor: default !important;
+    }
+    #ratioWrap[data-interaction-mode="select"] table.ratioMainTable thead th[data-copy-col],
+    #ratioWrap[data-interaction-mode="select"] table.ratioMainTable tbody th.ratioRowHeader,
+    #ratioWrap[data-interaction-mode="select"] table.ratioSummaryTable tbody th.summaryDragHandle,
+    #ratioWrap[data-interaction-mode="select"] table.ratioSelectedTable tbody th {
+      cursor: pointer !important;
+    }
+    #ratioWrap[data-interaction-mode="select"] td {
+      cursor: pointer !important;
+    }
+    #ratioWrap thead th {
+      text-align: center;
+      vertical-align: middle;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      border-top: 1px solid var(--ar-spreadsheet-grid-border);
+      box-shadow: none;
+      background-clip: padding-box;
+    }
+    #ratioWrap tbody th {
+      text-align: center;
+    }
+    #ratioWrap tbody td:not(:first-child) { text-align: right; }
+
+    #ratioWrap th:first-child,
+    #ratioWrap td:first-child {
+      width: var(--dfm-ratio-label-column-width, var(--ar-spreadsheet-cell-width));
+      min-width: var(--dfm-ratio-label-column-width, var(--ar-spreadsheet-cell-width));
+      max-width: var(--dfm-ratio-label-column-width, var(--ar-spreadsheet-cell-width));
+      border-left: 1px solid var(--ar-spreadsheet-grid-border);
+      border-right: 0;
+      position: sticky;
+      left: 0;
+      z-index: 4;
+      box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
+      white-space: nowrap;
+      background-clip: padding-box;
+    }
+    #ratioWrap thead th:first-child { z-index: 6; }
+
+    #ratioWrap table + table {
+      margin-top: 14px;
+      border-top: 1px solid var(--ar-spreadsheet-grid-border);
+    }
+    #ratioWrap .dfmSummaryFormulaBar + table {
+      border-top: 1px solid var(--ar-spreadsheet-grid-border);
+    }
+    #ratioWrap td.ratioCell.strike {
+      color: #b000c2;
+      text-decoration: line-through;
+      text-decoration-color: #b000c2;
+      text-decoration-thickness: 1px;
+    }
+    #ratioWrap th.ratioDataHeader {
+      color: #64748b;
+    }
+    #ratioWrap td.ratioDataCell {
+      background: #fbfcfe;
+      color: #94a3b8;
+      font-style: italic;
+    }
+    #ratioWrap td.ratioDataSpacer { background: #fbfcfe; }
+    #ratioWrap[data-interaction-mode="select"] td.ratioDataCell.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] td.ratioDataCell.dfmTableActive,
+    #ratioWrap[data-interaction-mode="select"] td.ratioDataSpacer.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] td.ratioDataSpacer.dfmTableActive {
+      background: #fbfcfe;
+      outline: none;
+    }
+    #ratioWrap td.ratioColActive {
+      background: rgba(245, 158, 11, 0.08);
+      position: relative;
+      z-index: 1;
+    }
+    #ratioWrap td.ratioSelectedCell {
+      /* background: rgba(183, 227, 86, 0.374); */
+      background: #9dcc00;
+    }
+    #ratioWrap td.dfmTableHighlight,
+    #resultsWrap td.dfmTableHighlight {
+      background: rgb(148, 188, 248);
+      outline: none;
+    }
+    #ratioWrap td.dfmTableActive,
+    #resultsWrap td.dfmTableActive {
+      background: rgb(144, 170, 228);
+      outline: none;
+    }
+    #ratioWrap td.ratioCell.dfmTableHighlight,
+    #ratioWrap td.ratioCell.dfmTableActive {
+      background: inherit;
+      outline: none;
+    }
+    #ratioWrap td.ratioCell.ratioColActive.dfmTableHighlight,
+    #ratioWrap td.ratioCell.ratioColActive.dfmTableActive {
+      background: rgba(245, 158, 11, 0.08);
+    }
+    #ratioWrap td.ratioCell.ratioSelectedCell.dfmTableHighlight,
+    #ratioWrap td.ratioCell.ratioSelectedCell.dfmTableActive {
+      background: rgba(183, 227, 86, 0.374);
+    }
+    #ratioWrap td.summaryCell.dfmTableHighlight,
+    #ratioWrap td.summaryCell.dfmTableActive {
+      background: transparent;
+      outline: 1px dashed #64748b;
+      outline-offset: -2px;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableActive {
+      outline: none;
+    }
+    #ratioWrap[data-interaction-mode="select"] table.ratioSelectedTable td.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] table.ratioSelectedTable td.dfmTableActive {
+      background: inherit;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.summaryCell.dfmTableHighlight,
+    #ratioWrap[data-interaction-mode="select"] td.summaryCell.dfmTableActive {
+      outline: none;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlight {
+      --dfm-table-highlight-top: transparent;
+      --dfm-table-highlight-right: transparent;
+      --dfm-table-highlight-bottom: transparent;
+      --dfm-table-highlight-left: transparent;
+      position: relative;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlight::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      background:
+        linear-gradient(var(--dfm-table-highlight-top), var(--dfm-table-highlight-top)) top left / 100% 2px no-repeat,
+        linear-gradient(var(--dfm-table-highlight-right), var(--dfm-table-highlight-right)) top right / 2px 100% no-repeat,
+        linear-gradient(var(--dfm-table-highlight-bottom), var(--dfm-table-highlight-bottom)) bottom left / 100% 2px no-repeat,
+        linear-gradient(var(--dfm-table-highlight-left), var(--dfm-table-highlight-left)) top left / 2px 100% no-repeat;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeTop {
+      --dfm-table-highlight-top: #107c41;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeRight {
+      --dfm-table-highlight-right: #107c41;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeBottom {
+      --dfm-table-highlight-bottom: #107c41;
+    }
+    #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeLeft {
+      --dfm-table-highlight-left: #107c41;
+    }
+    #ratioWrap td.summaryCell.ratioSelectedCell,
+    #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableHighlight,
+    #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableActive {
+      background: var(--ar-spreadsheet-weighted-selection-fill);
+      color: #111827;
+    }
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell,
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell.ratioSelectedCell,
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableHighlight,
+    #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableActive {
+      background: #dbeafe;
+    }
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell,
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.ratioSelectedCell,
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableHighlight,
+    #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableActive {
+      position: relative;
+      background: #dbeafe;
+      outline: 2px solid #2563eb;
+      outline-offset: -2px;
+      cursor: grab;
+      z-index: 5;
+    }
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget,
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.ratioSelectedCell,
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.dfmTableHighlight,
+    #ratioWrap td.summaryCell.summaryFormulaRefDragTarget.dfmTableActive {
+      background: #dbeafe;
+      outline: 2px solid #f59e0b;
+      outline-offset: -2px;
+      cursor: grabbing;
+      z-index: 6;
+    }
+    #ratioWrap td.dfmCellNote {
+      position: relative;
+    }
+    #ratioWrap td.dfmCellNote::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 0;
+      height: 0;
+      border-top: 8px solid #f59e0b;
+      border-left: 8px solid transparent;
+      pointer-events: none;
+    }
+    .dfmCellNoteBox {
+      position: fixed;
+      z-index: 1800;
+      width: 260px;
+      min-height: 132px;
+      padding: 8px;
+      border: 1px solid #c9a227;
+      border-radius: 8px;
+      background: #fff7c2;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    }
+    .dfmCellNoteHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .dfmCellNoteTitle {
+      color: #5f4b00;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .dfmCellNoteClearBtn {
+      border: 1px solid #d6b84a;
+      background: #fffbe0;
+      color: #5f4b00;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1.2;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .dfmCellNoteClearBtn:hover:not(:disabled) {
+      background: #ffef99;
+    }
+    .dfmCellNoteClearBtn:disabled {
+      color: #9a8750;
+      cursor: default;
+      opacity: 0.65;
+    }
+    .dfmCellNoteText {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 92px;
+      resize: vertical;
+      border: 1px solid #d6b84a;
+      background: #fffbe0;
+      color: #111827;
+      font: 13px/1.35 Arial, sans-serif;
+      padding: 6px;
+      border-radius: 6px;
+      outline: none;
+    }
+    .dfmCellNoteText:focus {
+      border-color: #8a6d00;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.22);
+    }
+    #ratioWrap td.dfmExternalJsonChanged {
+      animation: dfmExternalJsonChangedFlash 2.4s ease-out 1;
+      box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.55);
+    }
+    @keyframes dfmExternalJsonChangedFlash {
+      0% {
+        background-color: #dbeafe;
+        box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.75);
+      }
+      55% {
+        background-color: #eff6ff;
+        box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.42);
+      }
+      100% {
+        background-color: inherit;
+        box-shadow: inset 0 0 0 0 rgba(37, 99, 235, 0);
+      }
+    }
+    #ratioWrap td.ratioPlaceholder {
+      color: #b7b7b7;
+    }
+    #ratioWrap td.na {
+      border: none !important;
+      background: transparent !important;
+    }
+    #ratioWrap table.ratioMainTable tbody tr:last-child > td.na {
+      border-bottom: 1px solid var(--ar-spreadsheet-grid-border) !important;
+    }
+    #ratioWrap table.ratioMainTable tr > td.na:last-child {
+      border-right: 1px solid var(--ar-spreadsheet-grid-border) !important;
+    }
+    #ratioWrap.showNaBorders td.na {
+      border-right: 1px solid var(--ar-spreadsheet-grid-border) !important;
+      border-bottom: 1px solid var(--ar-spreadsheet-grid-border) !important;
+      background: transparent !important;
+    }
+    #ratioWrap th.summaryDragHandle {
+      cursor: grab;
+      user-select: none;
+      height: auto;
+      line-height: normal;
+      white-space: normal;
+      vertical-align: middle;
+    }
+    #ratioWrap .dfmSummaryLabelText {
+      display: -webkit-box;
+      max-height: calc(2 * var(--ar-spreadsheet-cell-height));
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      line-height: var(--ar-spreadsheet-cell-height);
+      white-space: normal;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+    }
+    #ratioWrap table.ratioSummaryTable tbody th,
+    #ratioWrap table.ratioSummaryTable tbody td {
+      border-bottom: 0;
+    }
+    #ratioWrap table.ratioSummaryTable tbody th.summaryDragHandle {
+      position: sticky;
+      left: 0;
+    }
+    #ratioWrap table.ratioSummaryTable tbody tr + tr th,
+    #ratioWrap table.ratioSummaryTable tbody tr + tr td {
+      border-top: 1px solid var(--ar-spreadsheet-grid-border);
+    }
+    #ratioWrap table.ratioSummaryTable tbody tr:last-child th,
+    #ratioWrap table.ratioSummaryTable tbody tr:last-child td {
+      border-bottom: 1px solid var(--ar-spreadsheet-grid-border);
+    }
+    #ratioWrap tr.dragging {
+      opacity: 0;
+    }
+    .summaryDragGhostTable {
+      position: fixed;
+      z-index: 9999;
+      pointer-events: none;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: #fff;
+      user-select: none;
+    }
+    .summaryDragGhostTable th,
+    .summaryDragGhostTable td {
+      border: 1px solid #ddd;
+      height: var(--cell-h);
+      line-height: var(--cell-h);
+      padding: 0 6px;
+      white-space: nowrap;
+      background: #fff;
+      color: #111;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    #ratioWrap tr.summaryDropTarget {
+      outline: 2px solid #f59e0b;
+      outline-offset: -1px;
+    }
+    .dfmCtxMenu {
+      position: fixed;
+      z-index: 10000;
+      width: 220px;
+      min-width: 180px;
+      max-width: calc(100vw - 16px);
+      box-sizing: border-box;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+      padding: 6px;
+      display: none;
+    }
+    .dfmCtxItem {
+      width: 100%;
+      box-sizing: border-box;
+      text-align: left;
+      background: transparent;
+      border: none;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font: 13px Arial, sans-serif;
+    }
+    .dfmCtxModeItem {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dfmCtxModeIcon {
+      display: none;
+      width: 15px;
+      height: 15px;
+      flex: 0 0 15px;
+      color: #475569;
+    }
+    .dfmCtxModeItem[data-target-mode="edit"] .dfmCtxModeIconEdit,
+    .dfmCtxModeItem[data-target-mode="select"] .dfmCtxModeIconSelect {
+      display: block;
+    }
+    .dfmCtxItem:hover { background: #f3f4f6; }
+    .dfmCtxSep {
+      height: 1px;
+      background: #eee;
+      margin: 4px 0;
+    }
+
+    .dfmModal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10001;
+    }
+    .dfmModal.open { display: flex; }
+    .dfmModalBackdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .dfmModalCard {
+      position: relative;
+      background: #fff;
+      border: 1px solid #d5d5d5;
+      border-radius: 10px;
+      padding: 14px 16px;
+      min-width: 320px;
+      z-index: 1;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+      font-size: 13px;
+    }
+    .dfmModalTitle {
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .dfmModalField {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+    .dfmModalField label { color: #555; }
+    .dfmModalField input,
+    .dfmModalField select {
+      height: 28px;
+      padding: 0 8px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+    }
+    .dfmModalField.disabled {
+      opacity: 0.55;
+    }
+    #ratioWrap td.summaryCell.userEntryEditable {
+      cursor: default;
+    }
+    #ratioWrap[data-interaction-mode="edit"] td.summaryCell.userEntryEditable {
+      cursor: url("/ui/method_pages/dfm/dfm_handwriting_cursor.svg?v=20260712b") 2 2, default;
+    }
+    #ratioWrap td.summaryCell.summaryActiveCell {
+      position: relative;
+      outline: 1px dashed #1f2937;
+      outline-offset: -2px;
+      z-index: 2;
+    }
+    #ratioWrap td.summaryCell.summaryRefHover {
+      outline: 1px solid #f59e0b;
+      outline-offset: -2px;
+      z-index: 3;
+    }
+    #ratioWrap td.summaryCell.summaryRefCandidate {
+      cursor: pointer;
+    }
+    #ratioWrap td.summaryCell input.summaryCellEditInput {
+      width: 100%;
+      height: var(--cell-h);
+      border: 0;
+      border-radius: 0;
+      box-sizing: border-box;
+      padding: 0 4px;
+      font: inherit;
+      text-align: right;
+      background: transparent;
+      outline: none !important;
+      box-shadow: none;
+    }
+    .dfmSummaryFormulaBar {
+      --dfm-summary-formula-bar-content-width: 100%;
+      --dfm-summary-formula-bar-content-x: 0px;
+      position: relative;
+      z-index: 9;
+      min-height: 22px;
+      line-height: 20px;
+      padding: 1px 6px;
+      border: 1px solid #b9b9b9;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #ffffff;
+      color: #111827;
+      box-shadow: none;
+      font: 12px Consolas, "Courier New", monospace;
+      white-space: nowrap;
+      pointer-events: auto;
+      box-sizing: border-box;
+      margin: 4px 0 4px;
+      max-width: 100%;
+      display: block;
+      opacity: 0;
+      transform: translateX(-20px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .dfmSummaryFormulaBar.fxVisible {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .dfmSummaryFormulaBarContent {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: var(--dfm-summary-formula-bar-content-width);
+      max-width: 100%;
+      min-width: 0;
+      transform: translateX(var(--dfm-summary-formula-bar-content-x));
+      will-change: transform;
+    }
+    .dfmSummaryFormulaBarFxIcon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      color: #374151;
+      font-size: 10px;
+      font-weight: 700;
+      font-style: italic;
+      flex: 0 0 auto;
+      user-select: none;
+      margin-right: 4px;
+    }
+    .dfmSummaryFormulaBarLabel {
+      color: #6b7280;
+      user-select: none;
+      flex: 0 0 auto;
+    }
+    .dfmSummaryFormulaBarLabel::before { content: '"'; }
+    .dfmSummaryFormulaBarLabel::after  { content: '"'; }
+    .dfmSummaryFormulaBarInput {
+      flex: 1 1 auto;
+      min-width: 40px;
+      border: 0;
+      background: transparent;
+      outline: none;
+      font: inherit;
+      color: inherit;
+      padding: 0;
+      height: 20px;
+      line-height: 20px;
+    }
+    .dfmSummaryFormulaBarDisplay {
+      flex: 1 1 auto;
+      min-width: 40px;
+      height: 20px;
+      font: inherit;
+      line-height: 20px;
+      color: inherit;
+      padding: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: pre;
+      cursor: text;
+    }
+    .dfmSummaryFormulaBarDisplay .fmtExcelRef {
+      color: #217346;
+      font-weight: 600;
+    }
+    .dfmSummaryFormulaBarDisplay .fmtRowRef {
+      color: #2563eb;
+    }
+    .dfmSummaryFormulaBarInput:focus {
+      outline: none;
+    }
+    .dfmSummaryFormulaBar:focus-within {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 1px #3b82f6;
+    }
+    .dfmSummaryFormulaBarInput:disabled {
+      color: #9ca3af;
+    }
+    .dfmSummaryFormulaBarState {
+      flex: 0 0 auto;
+      color: #64748b;
+      font: 10px/16px Arial, "Segoe UI", sans-serif;
+      white-space: nowrap;
+    }
+    .dfmSummaryFormulaBarState[hidden],
+    .dfmSummaryFormulaBarError[hidden] {
+      display: none;
+    }
+    .dfmSummaryFormulaBarError {
+      --dfm-summary-formula-tooltip-arrow-x: 20px;
+      position: fixed;
+      z-index: 1700;
+      left: 0;
+      top: 0;
+      box-sizing: border-box;
+      width: max-content;
+      max-width: calc(100vw - 16px);
+      padding: 5px 8px;
+      border: 1px solid rgba(190, 18, 60, 0.35);
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #fff7f8;
+      color: #be123c;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+      font: 11px/16px Arial, "Segoe UI", sans-serif;
+      overflow-wrap: anywhere;
+      pointer-events: none;
+      white-space: normal;
+    }
+    .dfmSummaryFormulaBarError::after {
+      content: "";
+      position: absolute;
+      left: calc(var(--dfm-summary-formula-tooltip-arrow-x) - 4px);
+      bottom: -5px;
+      width: 8px;
+      height: 8px;
+      border-right: 1px solid rgba(190, 18, 60, 0.35);
+      border-bottom: 1px solid rgba(190, 18, 60, 0.35);
+      background: #fff7f8;
+      transform: rotate(45deg);
+    }
+    .dfmSummaryFormulaBarError[data-placement="below"]::after {
+      top: -5px;
+      bottom: auto;
+      border: 0;
+      border-top: 1px solid rgba(190, 18, 60, 0.35);
+      border-left: 1px solid rgba(190, 18, 60, 0.35);
+    }
+    .dfmSummaryFormulaBar.hasValidationError {
+      border-color: #be123c;
+    }
+    .dfmSummaryFormulaBar.hasValidationError:focus-within {
+      border-color: #be123c;
+      box-shadow: 0 0 0 1px rgba(190, 18, 60, 0.3);
+    }
+    .dfmSummaryFormulaBar.isValidating .dfmSummaryFormulaBarInput {
+      cursor: progress;
+    }
+    #ratioWrap td.summaryCell input.summaryCellEditInput[aria-invalid="true"] {
+      background: #fff1f2;
+      box-shadow: inset 0 0 0 1px #be123c;
+    }
+    .dfmSummaryFormulaBarXlBtn {
+      flex: 0 0 auto;
+      height: 18px;
+      padding: 0 5px;
+      border: 1px solid #d1d5db;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #f3f4f6;
+      color: #217346;
+      font: bold 10px sans-serif;
+      cursor: pointer;
+      line-height: 16px;
+    }
+    .dfmSummaryFormulaBarXlBtn:hover {
+      background: #217346;
+      color: white;
+    }
+    .dfmSummaryFormulaBarXlBtn:disabled,
+    .dfmSummaryFormulaBarXlBtn:disabled:hover {
+      background: #f3f4f6;
+      color: #94a3b8;
+      cursor: default;
+      opacity: 0.55;
+    }
+    .dfmSummaryFormulaBar.xlLinkMode .dfmSummaryFormulaBarXlBtn {
+      background: #217346;
+      color: white;
+    }
+    .dfmSummaryFormulaBarRefreshBtn {
+      flex: 0 0 auto;
+      width: 20px;
+      height: 18px;
+      border: 1px solid #d1d5db;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #f3f4f6;
+      color: #6b7280;
+      font: 14px sans-serif;
+      cursor: pointer;
+      line-height: 16px;
+      padding: 0;
+      text-align: center;
+    }
+    .dfmSummaryFormulaBarRefreshBtn:hover {
+      background: #e5e7eb;
+    }
+    .dfmSummaryFormulaBarOpenBtn {
+      flex: 0 0 auto;
+      width: 20px;
+      height: 18px;
+      border: 1px solid #d1d5db;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #f3f4f6;
+      color: #6b7280;
+      font-size: 12px;
+      cursor: pointer;
+      line-height: 16px;
+      padding: 0;
+      text-align: center;
+    }
+    .dfmSummaryFormulaBarOpenBtn:hover {
+      background: #e5e7eb;
+    }
+    .dfmSummaryFormulaBarOpenBtn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .dfmSummaryFormulaBar.xlLinkMode .dfmSummaryFormulaBarInput {
+      color: #6b7280;
+      font-style: italic;
+    }
+    #ratioWrap td.summaryCell.excelLinked {
+      position: relative;
+    }
+    #ratioWrap td.summaryCell.excelLinked::after {
+      content: "";
+      position: absolute;
+      top: 1px;
+      right: 1px;
+      width: 5px;
+      height: 5px;
+      background: #217346;
+      border-radius: 50%;
+      opacity: 0.7;
+    }
+    #ratioWrap td.excelRangeAffected {
+      --excel-range-top: transparent;
+      --excel-range-right: transparent;
+      --excel-range-bottom: transparent;
+      --excel-range-left: transparent;
+      --excel-range-top-glow: transparent;
+      --excel-range-right-glow: transparent;
+      --excel-range-bottom-glow: transparent;
+      --excel-range-left-glow: transparent;
+      box-shadow:
+        inset 0 1px 0 var(--excel-range-top),
+        inset -1px 0 0 var(--excel-range-right),
+        inset 0 -1px 0 var(--excel-range-bottom),
+        inset 1px 0 0 var(--excel-range-left),
+        inset 0 7px 8px -7px var(--excel-range-top-glow),
+        inset -7px 0 8px -7px var(--excel-range-right-glow),
+        inset 0 -7px 8px -7px var(--excel-range-bottom-glow),
+        inset 7px 0 8px -7px var(--excel-range-left-glow);
+      transition: box-shadow 150ms ease;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeEdgeTop {
+      --excel-range-top: #60a5fa;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeEdgeRight {
+      --excel-range-right: #60a5fa;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeEdgeBottom {
+      --excel-range-bottom: #60a5fa;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeEdgeLeft {
+      --excel-range-left: #60a5fa;
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeActive.excelRangeEdgeTop {
+      --excel-range-top-glow: rgba(96, 165, 250, 0.62);
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeActive.excelRangeEdgeRight {
+      --excel-range-right-glow: rgba(96, 165, 250, 0.62);
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeActive.excelRangeEdgeBottom {
+      --excel-range-bottom-glow: rgba(96, 165, 250, 0.62);
+    }
+    #ratioWrap td.excelRangeAffected.excelRangeActive.excelRangeEdgeLeft {
+      --excel-range-left-glow: rgba(96, 165, 250, 0.62);
+    }
+    .dfmModalActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .dfmModalError {
+      margin-top: 6px;
+      color: #be123c;
+      font: 11px/16px Arial, "Segoe UI", sans-serif;
+      overflow-wrap: anywhere;
+    }
+    .dfmModalError[hidden] { display: none; }
+    .dfmModalActions button {
+      height: 28px;
+      padding: 0 12px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #f4f4f4;
+      cursor: pointer;
+    }
+    .dfmModalActions .primary {
+      background: #f1f1f1;
+      border-color: #bfbfbf;
+      font-weight: 600;
+    }
+    .dfmRatioChartModal { pointer-events: none; }
+    .dfmRatioChartModal .dfmModalBackdrop { background: transparent; }
+    .dfmRatioChartModal .dfmModalCard {
+      pointer-events: auto;
+      width: min(900px, 92vw);
+      min-width: 520px;
+      padding: 14px 18px 18px;
+    }
+    .dfmRatioChartHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 6px;
+      cursor: grab;
+    }
+    .dfmRatioChartHeader:active { cursor: grabbing; }
+    .dfmRatioChartHeaderTitleBlock {
+      flex: 1 1 220px;
+      min-width: 180px;
+    }
+    .dfmRatioChartTitle {
+      font-weight: 700;
+      font-size: 14px;
+      color: #1f2937;
+    }
+    .dfmRatioChartMeta {
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .dfmRatioChartLegend {
+      display: flex;
+      align-items: center;
+      flex: 1 1 260px;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 11px;
+      color: #374151;
+    }
+    .dfmChartLegendItem {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+    .dfmLegendIcon {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      text-align: center;
+      line-height: 12px;
+    }
+    .dfmLegendSelected {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      border: 2px solid #16a34a;
+      background: #2563eb;
+      box-sizing: border-box;
+    }
+    .dfmLegendNotUsed {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      border: 1.5px solid #94a3b8;
+      background: #fff;
+      box-sizing: border-box;
+      margin: 2px;
+    }
+    .dfmLegendExcluded {
+      color: #dc2626;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .dfmLegendDashedLine {
+      display: inline-block;
+      width: 18px;
+      height: 0;
+      border-top: 2px dashed #16a34a;
+      vertical-align: middle;
+    }
+    .dfmLegendSelectedValue {
+      color: #16a34a;
+      font-weight: 600;
+    }
+    .dfmRatioChartIncludeAll {
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #1f2937;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .dfmRatioChartIncludeAll:hover {
+      background: #eef2f7;
+      border-color: #94a3b8;
+    }
+    .dfmRatioChartClose {
+      border: 1px solid #d1d5db;
+      background: #f8fafc;
+      color: #374151;
+      width: 28px;
+      height: 28px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+    }
+    .dfmRatioChartClose:hover {
+      background: #eef2f7;
+    }
+      .dfmRatioChartCanvasWrap {
+        height: 420px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 8px;
+        background: #ffffff;
+        position: relative;
+      }
+      #dfmRatioChartCanvas {
+        width: 100%;
+        height: 100%;
+      }
+      .dfmRatioChartTooltip {
+        position: absolute;
+        z-index: 4;
+        display: none;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: #111827;
+        color: #f9fafb;
+        font-size: 12px;
+        line-height: 1.3;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+        pointer-events: none;
+        max-width: 240px;
+        word-break: break-word;
+      }
+      .dfmRatioChartTooltip .dfmTooltipLabel {
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+      .dfmRatioChartTooltip .dfmTooltipMeta {
+        font-size: 11px;
+        color: #d1d5db;
+      }
+    #ratioWrap .ratioSummaryTable tr {
+      transition: transform 160ms ease;
+      will-change: transform;
+    }
+
+    #resultsWrap {
+      margin-top: 0;
+    }
+    .dfmResultsControls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0 6px;
+      flex-wrap: wrap;
+    }
+    .dfmResultsControls label {
+      font-size: 12px;
+      color: #374151;
+      min-width: 64px;
+    }
+    .dfmResultsControls input {
+      min-width: 240px;
+      max-width: min(420px, 100%);
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #fff;
+      color: #111827;
+      box-sizing: border-box;
+    }
+    .dfmResultsPickerWrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      min-width: 240px;
+      max-width: min(420px, 100%);
+      width: 260px;
+    }
+    .dfmResultsControls .dfmResultsPickerWrap input {
+      width: 100%;
+      min-width: 0;
+      max-width: none;
+      padding-right: 34px;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      background-image: none;
+    }
+    .dfmResultsPickerWrap > .pathTreeBtn {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      width: 22px;
+      height: 22px;
+      transform: translateY(-50%);
+      border-radius: var(--tabbed-page-control-radius, 4px);
+    }
+    .dfmResultsControls input:focus {
+      outline: none;
+      border-color: #cfcfcf;
+      box-shadow: none;
+    }
+    .dfmResultsControls input.dfmResultsSmallInput {
+      min-width: 64px;
+      max-width: 84px;
+      text-align: center;
+    }
+    .dfmResultsControls .dfmSpinner {
+      width: var(--dfm-spin-w);
+      min-width: 64px;
+      max-width: 84px;
+    }
+    .dfmResultsControls .dfmSpinner input.dfmResultsSmallInput {
+      width: 100%;
+      min-width: 0;
+      max-width: none;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #fff;
+      color: #111827;
+      box-sizing: border-box;
+      text-align: left;
+    }
+    .dfmResultsBasisStatus {
+      font-size: 12px;
+      color: #6b7280;
+      min-height: 16px;
+    }
+    .dfmResultsBasisStatus.is-error {
+      color: #b91c1c;
+    }
+    .dfmResultsBasisStatus.is-loading {
+      color: #1d4ed8;
+    }
+    #resultsWrap table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: max-content;
+      table-layout: fixed;
+      font-size: var(--dfm-table-font-size);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #resultsWrap th,
+    #resultsWrap td {
+      border: 0;
+      border-right: 1px solid #ddd;
+      border-bottom: 1px solid #ddd;
+      max-width: var(--cell-max-w);
+      min-width: var(--cell-min-w);
+      height: var(--cell-h);
+      line-height: var(--cell-h);
+      padding: 0 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #resultsWrap thead th {
+      text-align: center;
+      vertical-align: middle;
+      background: #f6f6f6;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      border-top: 1px solid #ddd;
+      background-clip: padding-box;
+      font-weight: 400;
+      height: auto;
+      min-height: var(--cell-h);
+      line-height: 1.2;
+      padding-top: 4px;
+      padding-bottom: 4px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      text-overflow: clip;
+    }
+    #resultsWrap thead { background: #f6f6f6; }
+    #resultsWrap th:first-child,
+    #resultsWrap td:first-child {
+      text-align: center;
+      font-weight: 400;
+      position: sticky;
+      left: 0;
+      z-index: 4;
+      background: #f6f6f6;
+      border-left: 1px solid #ddd;
+      border-right: 0;
+      box-shadow: 1px 0 0 #ddd;
+      width: auto;
+      min-width: max-content;
+      max-width: 180px;
+      background-clip: padding-box;
+    }
+    #resultsWrap thead th:first-child {
+      z-index: 6;
+    }
+    #resultsWrap tbody td:not(:first-child) {
+      text-align: right;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="dfmTabBar tabbedPageTabBar">
+    <button class="dfmTab tabbedPageTab active" data-page="details" type="button">Details</button>
+    <button class="dfmTab tabbedPageTab" data-page="data" type="button">Data</button>
+    <button class="dfmTab tabbedPageTab" data-page="ratios" type="button">Ratios</button>
+    <button class="dfmTab tabbedPageTab" data-page="results" type="button">Results</button>
+    <button class="dfmTab tabbedPageTab" data-page="notes" type="button">Notes</button>
+    <button class="dfmTab tabbedPageTab" data-page="audit" type="button">Audit Log</button>
+  </div>
+  <div id="dfmDetailsPage" class="arDetailsRoot">
+    <div class="dfmDetailsBlock arDetailsGroup" id="dfmObjectPathPanel">
+      <div class="dfmFormGrid arDetailsGrid">
+        <label class="arDetailsLabel" for="projectSelect">Project : </label>
+        <div class="dfmFormField arDetailsField">
+          <div class="projectSelectWrap">
+            <input id="projectSelect" autocomplete="off" />
+            <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">...</button>
+            <div id="projectDropdown" class="projectDropdown"></div>
+          </div>
+        </div>
+        <label class="arDetailsLabel" for="pathInput">Reserving Class : </label>
+        <div class="dfmFormField arDetailsField">
+          <div class="reservingClassWrap">
+            <input id="pathInput" />
+            <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse reserving classes" aria-label="Browse reserving classes">...</button>
+          </div>
+        </div>
+        <label class="arDetailsLabel" for="dfmMethodName">Name : </label>
+        <div class="dfmFormField arDetailsField">
+          <div class="dfmMethodNameWrap">
+            <input id="dfmMethodName" type="text" placeholder="Enter the method name" />
+            <button id="dfmMethodNameBtn" type="button" class="pathTreeBtn" title="Select DFM method name" aria-label="Select DFM method name">...</button>
+            <div id="dfmMethodNameDropdown" class="datasetDropdown"></div>
+          </div>
+          <div id="dfmInstanceMissingNotice" class="dfmInstanceMissingNotice" aria-live="polite">
+            <span id="dfmInstanceMissingText">This DFM instance has not been created, click confirm to generate it.</span>
+            <button id="dfmInstanceConfirmBtn" type="button" class="dfmActionBtn">Confirm</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dfmDetailsBlock arDetailsGroup" id="dfmMethodConfigPanel">
+      <div class="dfmSection">
+        <div class="dfmFormGrid arDetailsGrid">
+          <label class="arDetailsLabel" for="dfmOutputVector">Output Vector : </label>
+          <div class="dfmFormField arDetailsField">
+            <div class="dfmOutputVectorWrap">
+              <input id="dfmOutputVector" type="text" placeholder="Select output vector" />
+              <button id="dfmOutputVectorBtn" type="button" class="pathTreeBtn" title="Select output vector" aria-label="Select output vector">...</button>
+              <div id="dfmOutputVectorDropdown" class="datasetDropdown"></div>
+            </div>
+          </div>
+          <label class="arDetailsLabel" for="triInput">Input Triangle : </label>
+          <div class="dfmFormField arDetailsField">
+            <div class="datasetSelectWrap">
+              <input id="triInput" autocomplete="off" />
+              <button id="dfmTriTypeBtn" type="button" class="datasetTreeBtn" title="Select input triangle" aria-label="Select input triangle">...</button>
+              <div id="datasetDropdown" class="datasetDropdown"></div>
+              <div id="dfmTriTypeDropdown" class="datasetDropdown"></div>
+            </div>
+          </div>
+        </div>
+        <div class="dfmFormGrid3">
+          <label class="arDetailsLabel" for="originLenSelect">Origin Length : </label>
+          <div class="dfmFormField arDetailsField">
+            <div class="dfmSpinner" data-target="originLenSelect">
+              <select id="originLenSelect"></select>
+              <div class="dfmSpinBtns">
+                <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+              </div>
+            </div>
+          </div>
+          <div class="dfmFormField arDetailsField"></div>
+          <label class="arDetailsLabel" for="devLenSelect">Development Length : </label>
+          <div class="dfmFormField arDetailsField">
+            <div class="dfmSpinner" data-target="devLenSelect">
+              <select id="devLenSelect"></select>
+              <div class="dfmSpinBtns">
+                <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+              </div>
+            </div>
+          </div>
+          <div class="dfmFormField arDetailsField"></div>
+          <label class="arDetailsLabel" for="decimalPlaces">Decimal Places : </label>
+          <div class="dfmFormField arDetailsField">
+            <div class="decimalPlacesWrap" data-dfm-spinner="decimalPlaces">
+              <input id="decimalPlaces" type="number" min="0" max="6" value="4" aria-label="Decimal Places" />
+              <div class="decimalPlacesStepper">
+                <button class="decimalPlacesStepBtn" data-step-direction="up" type="button" aria-label="Increase Decimal Places"><span class="datasetStepperCaret datasetStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="decimalPlacesStepBtn" data-step-direction="down" type="button" aria-label="Decrease Decimal Places"><span class="datasetStepperCaret" aria-hidden="true"></span></button>
+              </div>
+            </div>
+          </div>
+          <div class="dfmFormField arDetailsField"></div>
+        </div>
+        <input id="cumulativeChk" type="checkbox" checked style="display:none;" />
+        <input id="linkLenChk" type="checkbox" style="display:none;" />
+        <input type="radio" name="timeMode" value="development" checked style="display:none;" />
+      </div>
+    </div>
+    <div class="dfmHiddenControls" style="display:none;">
+      <button id="reloadBtn" type="button">Reload</button>
+    </div>
+
+    <div id="dfmHiddenFx" style="display:none;">
+      <div class="fxbar-top small">
+        <b id="cellRef">Formula</b>
+        <span id="cellMeta"></span>
+      </div>
+      <input id="formulaBar" placeholder="" />
+    </div>
+  </div>
+  <div id="dfmDataPage">
+    <div class="panel" id="triPanel">
+      <div class="panelInner">
+        <div class="small" id="tableMeta" style="display:none;"></div>
+        <div id="tableWrapHost">
+          <div id="tableWrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dfmRatiosPage">
+    <div class="panel" id="ratioPanel">
+      <div class="panelInner">
+        <!-- <div class="small"><b>Ratios</b></div> -->
+        <div id="dfmRatiosNotice" class="dfmRatiosNotice" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
+        <div id="ratioWrapHost" tabindex="-1" aria-label="Ratios tables">
+          <div id="ratioWrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dfmResultsPage">
+    <div class="panel" id="resultsPanel">
+      <div class="panelInner">
+        <!-- <div class="small"><b>Results</b></div> -->
+        <div class="dfmResultsControls">
+          <label for="dfmRatioBasisInput">Ratio Basis</label>
+          <div class="dfmResultsPickerWrap">
+            <input id="dfmRatioBasisInput" placeholder="None" autocomplete="off" />
+            <button id="dfmRatioBasisBtn" type="button" class="pathTreeBtn" title="Browse dataset names" aria-label="Browse dataset names">...</button>
+          </div>
+          <label for="dfmUltimateRatioDecimalPlacesInput">Ultimate Ratio Decimals</label>
+          <div class="dfmSpinner" data-target="dfmUltimateRatioDecimalPlacesInput">
+            <input
+              id="dfmUltimateRatioDecimalPlacesInput"
+              class="dfmResultsSmallInput"
+              type="number"
+              min="0"
+              max="6"
+              value="2"
+              autocomplete="off"
+            />
+            <div class="dfmSpinBtns">
+              <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+              <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <span id="dfmRatioBasisStatus" class="dfmResultsBasisStatus" aria-live="polite"></span>
+        </div>
+        <div id="resultsWrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dfmNotesPage">
+    <div class="panel" id="notesPanel">
+      <div class="panelInner">
+        <div id="dfmNotesMount"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dfmAuditPage">
+    <div id="dfmAuditLogMount"></div>
+  </div>
+
+  <div id="dfmSaveBar" class="dfmSaveBar">
+    <button id="dfmSaveBtn" class="dfmSaveBtn" type="button">Save</button>
+    <button id="dfmCancelBtn" class="dfmCancelBtn" type="button">Cancel</button>
+  </div>
+
+  <div id="dfmAvgMenu" class="dfmCtxMenu">
+    <button class="dfmCtxItem dfmCtxModeItem" data-action="toggle-summary-ratio-mode" data-target-mode="edit">
+      <svg class="dfmCtxModeIcon dfmCtxModeIconEdit" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="m3 11.8.7-3L10.9 1.6a1.2 1.2 0 0 1 1.7 0l1.8 1.8a1.2 1.2 0 0 1 0 1.7l-7.2 7.2-3 .7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+        <path d="m9.9 2.7 3.4 3.4M3.7 8.8l3.5 3.5" stroke="currentColor" stroke-width="1.3"/>
+      </svg>
+      <svg class="dfmCtxModeIcon dfmCtxModeIconSelect" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M6 9.8v-7a1.2 1.2 0 0 1 2.4 0v4.8-1.7a1.15 1.15 0 0 1 2.3 0v2.2-1.4a1.15 1.15 0 0 1 2.3 0v2.2-1.3a1.15 1.15 0 0 1 2.3 0v3.6c0 2.5-1.7 4.3-4.1 4.3H8.7c-1.2 0-2.2-.5-2.9-1.4L2.9 10a1.2 1.2 0 0 1 1.8-1.6L6 9.8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="dfmCtxItemLabel">Switch to Edit Mode</span>
+    </button>
+    <div class="dfmCtxSep"></div>
+    <button class="dfmCtxItem" data-action="copy-summary-value">Copy value</button>
+    <button class="dfmCtxItem" data-action="add-summary-cell-note">Add Cell Notes</button>
+    <div class="dfmCtxSep"></div>
+    <button class="dfmCtxItem" data-action="rename-average" data-label-only="1">Rename</button>
+    <button class="dfmCtxItem" data-action="delete-average" data-label-only="1">Delete</button>
+    <div class="dfmCtxSep" data-label-only="1"></div>
+    <button class="dfmCtxItem" data-action="plot-summary-table">Plot Table Data</button>
+    <div class="dfmCtxSep" data-label-only="1"></div>
+    <button class="dfmCtxItem" data-action="custom-average" data-label-only="1">Custom Average</button>
+  </div>
+  <div id="dfmRatioMenu" class="dfmCtxMenu">
+    <button class="dfmCtxItem dfmCtxModeItem" data-action="toggle-ratio-mode" data-target-mode="edit">
+      <span class="dfmCtxItemLabel">Switch to Edit Mode</span>
+      <svg class="dfmCtxModeIcon dfmCtxModeIconEdit" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="m3 11.8.7-3L10.9 1.6a1.2 1.2 0 0 1 1.7 0l1.8 1.8a1.2 1.2 0 0 1 0 1.7l-7.2 7.2-3 .7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+        <path d="m9.9 2.7 3.4 3.4M3.7 8.8l3.5 3.5" stroke="currentColor" stroke-width="1.3"/>
+      </svg>
+      <svg class="dfmCtxModeIcon dfmCtxModeIconSelect" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M6 9.8v-7a1.2 1.2 0 0 1 2.4 0v4.8-1.7a1.15 1.15 0 0 1 2.3 0v2.2-1.4a1.15 1.15 0 0 1 2.3 0v2.2-1.3a1.15 1.15 0 0 1 2.3 0v3.6c0 2.5-1.7 4.3-4.1 4.3H8.7c-1.2 0-2.2-.5-2.9-1.4L2.9 10a1.2 1.2 0 0 1 1.8-1.6L6 9.8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button class="dfmCtxItem" data-action="toggle-ratio-data">Show Data</button>
+    <div class="dfmCtxSep"></div>
+    <button class="dfmCtxItem" data-action="copy-ratio-value">Copy value</button>
+    <button class="dfmCtxItem" data-action="add-ratio-cell-note">Add Cell Notes</button>
+    <div class="dfmCtxSep"></div>
+    <button class="dfmCtxItem" data-action="toggle-na-borders">Hide N/A Borders</button>
+    <div class="dfmCtxSep"></div>
+    <button class="dfmCtxItem" data-action="copy-ratio-patterns">Copy Ratio Patterns</button>
+    <button class="dfmCtxItem" data-action="apply-ratio-patterns">Apply Ratio Patterns</button>
+  </div>
+  <div id="dfmAvgModal" class="dfmModal">
+    <div class="dfmModalBackdrop"></div>
+    <div class="dfmModalCard">
+      <div class="dfmModalTitle">Custom Average</div>
+      <div class="dfmModalField">
+        <label for="dfmAvgName">Average Formula Name</label>
+        <input id="dfmAvgName" type="text" value="User Entry" />
+      </div>
+      <div class="dfmModalField">
+        <label for="dfmAvgType">Average Type</label>
+        <select id="dfmAvgType">
+          <option value="custom">Custom</option>
+          <option value="user_entry">User Entry</option>
+        </select>
+      </div>
+      <div class="dfmModalField">
+        <label for="dfmAvgBase">Base Weights</label>
+        <select id="dfmAvgBase">
+          <option value="simple">Simple</option>
+          <option value="volume">Volume</option>
+        </select>
+      </div>
+      <div class="dfmModalField">
+        <label for="dfmAvgPeriods">Periods Included</label>
+        <input id="dfmAvgPeriods" type="text" inputmode="numeric" list="dfmAvgPeriodsList" placeholder="All" />
+        <datalist id="dfmAvgPeriodsList">
+          <option value="All"></option>
+          <option value="3"></option>
+          <option value="5"></option>
+          <option value="8"></option>
+        </datalist>
+      </div>
+      <div class="dfmModalField">
+        <label for="dfmAvgExclude">Exclude High/Low Values</label>
+        <input id="dfmAvgExclude" type="text" list="dfmAvgExcludeList" placeholder="None" />
+        <datalist id="dfmAvgExcludeList">
+          <option value="None"></option>
+          <option value="1"></option>
+          <option value="2"></option>
+          <option value="3"></option>
+        </datalist>
+      </div>
+      <div id="dfmAvgError" class="dfmModalError" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
+      <div class="dfmModalActions">
+        <button id="dfmAvgCancel">Cancel</button>
+        <button id="dfmAvgAdd" class="primary">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dfmRenameModal" class="dfmModal">
+    <div class="dfmModalBackdrop"></div>
+    <div class="dfmModalCard">
+      <div class="dfmModalTitle">Rename</div>
+      <div class="dfmModalField">
+        <label for="dfmRenameName">Name</label>
+        <input id="dfmRenameName" type="text" />
+      </div>
+      <div id="dfmRenameError" class="dfmModalError" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
+      <div class="dfmModalActions">
+        <button id="dfmRenameCancel">Cancel</button>
+        <button id="dfmRenameOk" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dfmRatioChartModal" class="dfmModal dfmRatioChartModal">
+    <div class="dfmModalBackdrop"></div>
+    <div class="dfmModalCard">
+      <div class="dfmRatioChartHeader">
+        <div class="dfmRatioChartHeaderTitleBlock">
+          <div class="dfmRatioChartTitle" id="dfmRatioChartTitle">Ratio Column</div>
+          <div class="dfmRatioChartMeta" id="dfmRatioChartMeta"></div>
+        </div>
+        <div class="dfmRatioChartLegend" id="dfmRatioChartLegend">
+          <span class="dfmChartLegendItem"><span class="dfmLegendIcon dfmLegendSelected"></span>Selected</span>
+          <span class="dfmChartLegendItem"><span class="dfmLegendIcon dfmLegendNotUsed"></span>Not Used</span>
+          <span class="dfmChartLegendItem"><span class="dfmLegendIcon dfmLegendExcluded">×</span>Excluded</span>
+          <span class="dfmChartLegendItem dfmLegendSelectedValue" id="dfmRatioChartSelectedValue"><span class="dfmLegendDashedLine"></span></span>
+        </div>
+        <button class="dfmRatioChartIncludeAll" id="dfmRatioChartIncludeAll" type="button">Included All Ratios</button>
+        <button class="dfmRatioChartClose" id="dfmRatioChartClose" aria-label="Close">×</button>
+      </div>
+      <div class="dfmRatioChartCanvasWrap">
+        <canvas id="dfmRatioChartCanvas"></canvas>
+        <div class="dfmRatioChartTooltip" id="dfmRatioChartTooltip"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="hiddenControls" style="display:none;">
+    <div class="small" id="dsMeta"></div>
+    <button id="saveBtn">Save</button>
+    <button id="toggleBlankBtn">Show blanks</button>
+    <pre id="log"></pre>
+  </div>
+
+  <div id="ctxMenu" class="ctx-menu" style="display:none;">
+    <div class="ctx-menu-inner">
+      <button class="ctx-item" data-action="copy_value">Copy value</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-action="export_data">Export data</button>
+    </div>
+  </div>
+
+  <script type="module">
+    (async () => {
+      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260715a");
+      try {
+        await window.ADA_DATASET_READY;
+      } catch (err) {
+        console.error("Dataset boot failed before DFM initialization:", err);
+      }
+      await import("/ui/method_pages/dfm/dfm_main.js?v=20260714b");
+    })();
+  </script>
+</body>
+</html>

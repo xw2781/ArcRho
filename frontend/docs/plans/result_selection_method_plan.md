@@ -7,7 +7,7 @@ Last updated: 2026-06-17
 
 ## 1. Goal
 
-Add a new method object type named **Result Selection** under `frontend/ui/result_selection/`.
+Add a new method object type named **Result Selection** under `frontend/ui/method_pages/result_selection/`.
 
 Result Selection is a method page attached to a vector output dataset. It lets the user combine any number of vector datasets, plus triangle datasets using latest diagonal values only, into one selected ultimate vector by row-level weighted average. Each source dataset has a row-level `Weight` column vector; the selected ultimate calculation uses those row-specific weights.
 
@@ -24,7 +24,7 @@ The implementation should behave like a sibling to the existing DFM method objec
 
 Relevant current behavior:
 
-1. `frontend/ui/dfm/` is the closest pattern for a method page. It is loaded as an iframe, owns tab state, posts `arcrho:*` dirty/status messages, and persists a grouped method JSON.
+1. `frontend/ui/method_pages/dfm/` is the closest pattern for a method page. It is loaded as an iframe, owns tab state, posts `arcrho:*` dirty/status messages, and persists a grouped method JSON.
 2. Project Instance dataset rows already expose `Name`, `Dataset Type Name`, `Data Format`, `Category`, and `Method Type`.
 3. Project Instance already supports `Right click dataset -> Add -> DFM` through `project_instance_dataset_table.js` and opens DFM floating windows through `project_instance_windows.js`.
 4. Cached dataset discovery comes from `/datasets/cached` and includes method metadata such as `method_type`.
@@ -75,7 +75,7 @@ If the user chooses `Show as vector` for a Result Selection output vector, open 
 The page should live under:
 
 ```text
-frontend/ui/result_selection/
+frontend/ui/method_pages/result_selection/
 ```
 
 Expected first files:
@@ -367,7 +367,7 @@ Default Method tab source datasets:
 
 ### Phase 1: Page Skeleton
 
-1. Add `frontend/ui/result_selection/` feature files.
+1. Add `frontend/ui/method_pages/result_selection/` feature files.
 2. Build real Details, Method, and Notes tab contents.
 3. Add placeholder Results and Validation tabs.
 4. Add local state and dirty-state messages.

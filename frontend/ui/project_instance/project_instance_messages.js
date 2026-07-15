@@ -1,4 +1,4 @@
-import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/filename_sanitizer.js";
+import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/utils/filename.js";
 
 export function installProjectInstanceMessages(ctx) {
   const { api, els, projectName, state } = ctx;

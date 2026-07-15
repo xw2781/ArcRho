@@ -1,0 +1,1298 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Result Selection</title>
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a"/>
+  <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260715a"/>
+  <style>
+    :root {
+      --rs-font: Arial, "Segoe UI", Tahoma, sans-serif;
+      --rs-table-font-size: 14px;
+      --rs-cell-h: 20px;
+      --rs-header-h: 48px;
+      --rs-header-line-h: 15px;
+      --rs-cell-min-w: 80px;
+      --rs-cell-max-w: 100px;
+      --rs-weight-cell-w: 68px;
+      --rs-spacer-col-w: 14px;
+      --rs-border: #cfd6df;
+      --rs-grid-border: #f3f1f1;
+      --rs-label-cell: #d9dde2;
+      --rs-ultimate-cell: #fdf5a9;
+      --rs-ultimate-highlight-cell: #fde047;
+      --rs-header: #eef2f6;
+      --tabbed-page-gutter: 8px;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: 12px var(--rs-font);
+      color: #1f2937;
+      background: #f5f7fa;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Shared tab-strip chrome is defined in ui/shared/tabbed_page/tabbed_page.css. */
+    .rsTabBarSpacer {
+      flex: 1 1 auto;
+      min-width: 8px;
+    }
+    .rsTabBar .rsTabSyncBtn {
+      align-self: center;
+      height: 24px;
+      min-width: 56px;
+      padding: 0 10px;
+      margin-left: 8px;
+      position: relative;
+      z-index: 1;
+    }
+    @media (max-width: 520px) {
+      .rsTabBar {
+        padding-right: 4px;
+        padding-left: 4px;
+      }
+      .rsTabBar::after {
+        right: 4px;
+        left: 4px;
+      }
+      .rsTab {
+        padding-right: 6px;
+        padding-left: 6px;
+      }
+      .rsTabBarSpacer {
+        min-width: 4px;
+      }
+      .rsTabBar .rsTabSyncBtn {
+        min-width: 48px;
+        margin-left: 4px;
+        padding-right: 6px;
+        padding-left: 6px;
+      }
+    }
+    .rsPageHost {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      margin: 0 var(--tabbed-page-gutter, 8px);
+      background: #fff;
+      border-left: 1px solid #d8dde3;
+      border-right: 1px solid #d8dde3;
+      border-bottom: 1px solid #d8dde3;
+      overflow: hidden;
+    }
+    .rsPage {
+      display: none;
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      padding: 12px;
+      box-sizing: border-box;
+      overflow: auto;
+    }
+    .rsPage.active { display: block; }
+    #rsDetailsPage {
+      gap: 0;
+    }
+    #rsDetailsPage.active {
+      display: flex;
+      flex-direction: column;
+      padding: 12px 14px;
+      background: #fff;
+    }
+    #rsMethodPage.active {
+      display: flex;
+      flex-direction: column;
+      padding: 4px;
+      overflow: hidden;
+    }
+    #rsResultsPage.active {
+      display: flex;
+      flex-direction: column;
+      padding: 4px;
+      overflow: hidden;
+    }
+    #rsAuditPage.active,
+    #rsAuditPage.rsTabFloatingPage {
+      display: flex !important;
+      align-items: flex-start;
+      overflow: hidden;
+    }
+    #rsAuditLogMount {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      box-sizing: border-box;
+    }
+    #rsDetailsPage.rsTabFloatingPage,
+    #rsMethodPage.rsTabFloatingPage,
+    #rsResultsPage.rsTabFloatingPage {
+      display: flex !important;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+    #rsMethodPage.rsTabFloatingPage,
+    #rsResultsPage.rsTabFloatingPage {
+      padding: 4px;
+      overflow: hidden;
+    }
+    #rsValidationPage.rsTabFloatingPage,
+    #rsNotesPage.rsTabFloatingPage {
+      display: block !important;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+    .rsDetailsGrid {
+      grid-template-columns: var(--ar-details-label-width) minmax(260px, 1fr);
+      max-width: 100%;
+    }
+    .rsFieldRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .rsInput,
+    .rsSelect,
+    .rsNumber {
+      height: 30px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #fff;
+      box-sizing: border-box;
+      padding: 0 10px;
+      color: var(--ar-details-control-color, #000);
+      font: var(--ar-details-control-font-size, 12px) var(--ar-details-font-family, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
+    }
+    .rsInput { width: min(100%, 980px); }
+    .rsNumber { width: 70px; }
+    .rsOriginLengthSelect { width: 70px; }
+    .rsNativeSelectHidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .rsInputPicker {
+      position: relative;
+      width: min(100%, 980px);
+      min-width: 0;
+    }
+    .rsInputPicker .rsInput {
+      width: 100%;
+      padding-right: 38px;
+    }
+    .rsInputPicker .rsInputPickerBtn {
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      width: 22px;
+      min-width: 22px;
+      height: 22px;
+      padding: 0;
+      transform: translateY(-50%);
+      border: 1px solid #d3d3d3;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #f8fbff;
+      color: #555;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0.4px;
+    }
+    .rsInputPicker .rsInputPickerBtn:hover:not(:disabled) {
+      border-color: #9fb9ff;
+      background: #e8f0fe;
+    }
+    .rsInputPicker .rsInputPickerBtn:focus {
+      outline: none;
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+    }
+    .rsButton {
+      height: 30px;
+      min-width: 32px;
+      border: 1px solid #cbd5e1;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #eef2f7;
+      color: #111827;
+      font: 12px var(--rs-font);
+      cursor: pointer;
+    }
+    .rsButton:hover:not(:disabled) { background: #e2e8f0; }
+    .rsButton:disabled { opacity: 0.55; cursor: default; }
+    .rsBasisPanel {
+      grid-template-columns: var(--ar-details-label-width) minmax(260px, 1fr);
+      max-width: 100%;
+    }
+    .rsBasisPanel .rsBasisLabel {
+      align-self: start;
+      padding-top: 8px;
+    }
+    .rsRatioBasisPicker {
+      display: flex;
+      min-height: 70px;
+      align-items: center;
+      align-content: flex-start;
+      flex-wrap: wrap;
+      gap: 6px;
+      width: 100%;
+      min-width: 0;
+      padding: 4px 6px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background: #fff;
+      box-sizing: border-box;
+    }
+    #rsDetailsPage .rsDropdownButton {
+      color: var(--ar-details-control-color, #000);
+      font-size: var(--ar-details-control-font-size, 12px);
+    }
+    #rsDetailsPage input[readonly],
+    #rsDetailsPage textarea[readonly],
+    #rsDetailsPage select:disabled,
+    #rsDetailsPage button:disabled {
+      color: var(--ar-details-readonly-color, #000);
+    }
+    .rsRatioBasisPicker.rsRatioBasisDragActive { border-style: dashed; }
+    .rsRatioBasisPicker.rsRatioBasisDragOutside {
+      border-color: #e7a1ad;
+      background: #fff8f9;
+    }
+    .rsRatioBasisPicker:focus-within {
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+    }
+    .rsRatioBasisList {
+      display: contents;
+    }
+    .rsRatioBasisEmpty {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .rsRatioBasisToken {
+      display: inline-flex;
+      min-width: 0;
+      max-width: min(420px, 100%);
+      height: 30px;
+      min-height: 30px;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 9px;
+      border: 1px solid #d4d4d4;
+      border-radius: 14px;
+      background: #fff;
+      color: var(--ar-details-control-color, #000);
+      font-size: 12px;
+      line-height: 16px;
+      white-space: nowrap;
+      cursor: grab;
+      box-sizing: border-box;
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    .rsRatioBasisToken.rsRatioBasisDragging {
+      opacity: 0.48;
+      border-style: dashed;
+    }
+    .rsRatioBasisToken:hover,
+    .rsRatioBasisToken:focus-within {
+      border-color: #9d9d9d;
+      background: #f6f9ff;
+    }
+    .rsRatioBasisTokenLabel {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rsRatioBasisOpen {
+      display: inline-flex;
+      min-width: 0;
+      height: 100%;
+      align-items: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      line-height: inherit;
+      cursor: grab;
+    }
+    .rsRatioBasisOpen:focus { outline: none; }
+    .rsRatioBasisAdd svg {
+      display: block;
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .rsRatioBasisAdd {
+      appearance: none;
+      display: inline-flex;
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      min-height: 30px;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 50%;
+      background: #fff;
+      color: #64748b;
+      cursor: pointer;
+      box-sizing: border-box;
+      transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+    .rsRatioBasisAdd:hover:not(:disabled),
+    .rsRatioBasisAdd:focus:not(:disabled) {
+      outline: none;
+      border-color: #8aa8ff;
+      background: #eaf2ff;
+      color: #2b6df6;
+    }
+    .rsRatioBasisAdd:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .rsMethodToolbar {
+      flex: 0 0 auto;
+      position: relative;
+      display: flex;
+      align-items: stretch;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 48px;
+      padding: 7px;
+      border: 1px solid #d8dde3;
+      border-radius: 6px;
+      background: #f8fafc;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      box-sizing: border-box;
+    }
+    .rsToolGroup {
+      position: relative;
+      display: grid;
+      grid-template-columns: auto;
+      align-content: center;
+      gap: 5px;
+      min-width: 158px;
+      padding: 10px 9px 6px;
+      border: 1px solid #dbe3ee;
+      border-radius: 0px;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .rsToolGroup.rsToolGroupWide {
+      width: max-content;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .rsToolGroup.rsToolGroupWide .rsToolControls {
+      flex-wrap: nowrap;
+    }
+    .rsToolGroup.rsToolGroupBasis {
+      min-width: 280px;
+      max-width: 400px;
+    }
+    .rsToolTitle {
+      position: absolute;
+      top: -5px;
+      left: 8px;
+      z-index: 1;
+      max-width: calc(100% - 16px);
+      padding: 0 4px 1px;
+      background: #fff;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rsToolControls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      column-gap: 23px;
+      row-gap: 6px;
+      min-height: 28px;
+    }
+    .rsToolCheck {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 28px;
+      color: #1f2937;
+      white-space: nowrap;
+    }
+    .rsToolFormatControl,
+    .rsToolDecimalControl {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 28px;
+      color: #1f2937;
+      white-space: nowrap;
+    }
+    .rsToolControlLabel {
+      font-size: 12px;
+    }
+    .rsNumberStepper {
+      position: relative;
+      display: inline-flex;
+      width: 60px;
+      height: 28px;
+      flex: 0 0 auto;
+    }
+    .rsStepperInput {
+      width: 100%;
+      height: 28px;
+      padding-left: 20px;
+      padding-right: 28px;
+      text-align: center;
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+    .rsStepperInput::-webkit-outer-spin-button,
+    .rsStepperInput::-webkit-inner-spin-button {
+      margin: 0;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .rsStepperButtons {
+      position: absolute;
+      top: 1px;
+      right: 1px;
+      bottom: 1px;
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      width: 28px;
+      overflow: hidden;
+      border-radius: 0 4px 4px 0;
+    }
+    .rsStepperBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      min-width: 28px;
+      height: 13px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+    }
+    .rsStepperBtn + .rsStepperBtn {
+      border-top: 0;
+    }
+    .rsStepperBtn:hover,
+    .rsStepperBtn:focus {
+      background: #eaf2ff;
+      color: #2f5fd3;
+      outline: none;
+    }
+    .rsStepperCaret {
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid currentColor;
+      opacity: 0.32;
+      transform: translateX(2px);
+      transform-origin: center;
+      transition: opacity 120ms ease;
+    }
+    .rsStepperCaretUp {
+      transform: translateX(2px) rotate(180deg);
+    }
+    .rsNumberStepper:hover .rsStepperCaret,
+    .rsNumberStepper:focus-within .rsStepperCaret,
+    .rsStepperBtn:hover .rsStepperCaret,
+    .rsStepperBtn:focus .rsStepperCaret {
+      opacity: 1;
+    }
+    .rsDropdown {
+      position: relative;
+      height: 28px;
+      flex: 0 0 auto;
+    }
+    .rsDropdownButton {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      height: 28px;
+      border: 1px solid #cfcfcf;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      background-color: #fff;
+      color: #111;
+      font: 12px var(--rs-font);
+      line-height: 28px;
+      padding: 0 8px;
+      box-sizing: border-box;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+    }
+    .rsDropdownButton:hover:not(:disabled) {
+      border-color: #b8c3d3;
+      background-color: #f8fafc;
+    }
+    .rsDropdownButton:focus {
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+    }
+    .rsDropdownButton:disabled {
+      color: #94a3b8;
+      cursor: default;
+      opacity: 0.72;
+    }
+    .rsDropdownLabel {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rsDropdownCaret {
+      width: 0;
+      height: 0;
+      flex: 0 0 auto;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid #64748b;
+      transform: translateX(5px);
+      transition: transform 120ms ease, border-top-color 120ms ease;
+    }
+    .rsDropdown.open .rsDropdownCaret {
+      transform: translateX(5px) rotate(180deg);
+      border-top-color: #2f5fd3;
+    }
+    .rsDropdownMenu {
+      position: absolute;
+      top: calc(100% + 3px);
+      left: 0;
+      width: 100%;
+      max-height: 190px;
+      overflow: auto;
+      display: none;
+      padding: 3px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+      box-sizing: border-box;
+      z-index: 80;
+    }
+    .rsDropdown.open .rsDropdownMenu {
+      display: block;
+    }
+    .rsDropdownOption {
+      display: block;
+      width: 100%;
+      height: 24px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #111827;
+      font: 12px var(--rs-font);
+      line-height: 24px;
+      padding: 0 8px;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .rsDropdownOption:hover,
+    .rsDropdownOption:focus {
+      background: #f1f5f9;
+      outline: none;
+    }
+    .rsDropdownOption[aria-selected="true"] {
+      background: #eaf2ff;
+      color: #0d6efd;
+    }
+    .rsWeightDisplayDropdown {
+      width: 106px;
+      min-width: 106px;
+    }
+    .rsOriginLengthDropdown {
+      width: 70px;
+      min-width: 60px;
+    }
+    .rsOriginLengthDropdown .rsDropdownMenu {
+      width: 70px;
+    }
+    .rsRatioBasisDropdown {
+      width: min(340px, 32vw);
+      min-width: 240px;
+      max-width: 340px;
+      flex: 1 1 auto;
+    }
+    .rsRatioBasisDropdown .rsDropdownButton {
+      position: relative;
+      padding-right: 30px;
+    }
+    .rsRatioBasisDropdown .rsDropdownCaret {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      color: #555;
+      opacity: 0.72;
+      border-top-color: currentColor;
+      transform: translateY(-50%);
+    }
+    .rsRatioBasisDropdown.open .rsDropdownCaret {
+      color: #2f5fd3;
+      opacity: 1;
+      transform: translateY(-50%) rotate(180deg);
+    }
+    .rsRatioBasisDropdown .rsDropdownButton:hover .rsDropdownCaret,
+    .rsRatioBasisDropdown .rsDropdownButton:focus .rsDropdownCaret {
+      opacity: 1;
+    }
+    .rsGridHost {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      margin-top: 4px;
+      border: 1px solid var(--rs-grid-border);
+      overflow: auto;
+      background: #fff;
+      box-sizing: border-box;
+      --rs-scrollbar-chrome: #f1f3f5;
+      --rs-scrollbar-button-hover: #e5e9ef;
+      --rs-scrollbar-button-active: #d9dee7;
+      --rs-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --rs-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+      scrollbar-gutter: stable;
+      padding-right: 1px;
+      padding-bottom: 1px;
+    }
+    .rsGridHost::-webkit-scrollbar {
+      width: 20px;
+      height: 20px;
+    }
+    .rsGridHost::-webkit-scrollbar-track,
+    .rsGridHost::-webkit-scrollbar-corner {
+      background: var(--rs-scrollbar-chrome);
+    }
+    .rsGridHost::-webkit-scrollbar-thumb {
+      background-color: var(--rs-scrollbar-thumb);
+      border: 3px solid var(--rs-scrollbar-chrome);
+      border-radius: 5px;
+      background-clip: content-box;
+    }
+    .rsGridHost::-webkit-scrollbar-button {
+      width: 16px;
+      height: 16px;
+      display: block;
+      background-color: var(--rs-scrollbar-chrome);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 12px 12px;
+    }
+    .rsGridHost::-webkit-scrollbar-button:hover {
+      background-color: var(--rs-scrollbar-button-hover);
+    }
+    .rsGridHost::-webkit-scrollbar-button:active {
+      background-color: var(--rs-scrollbar-button-active);
+    }
+    .rsGridHost::-webkit-scrollbar-button:horizontal:start:increment,
+    .rsGridHost::-webkit-scrollbar-button:horizontal:end:decrement,
+    .rsGridHost::-webkit-scrollbar-button:vertical:start:increment,
+    .rsGridHost::-webkit-scrollbar-button:vertical:end:decrement {
+      width: 0;
+      height: 0;
+      display: none;
+      background-image: none;
+    }
+    .rsGridHost::-webkit-scrollbar-button:horizontal:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+    .rsGridHost::-webkit-scrollbar-button:horizontal:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+    .rsGridHost::-webkit-scrollbar-button:vertical:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+    .rsGridHost::-webkit-scrollbar-button:vertical:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+    }
+    .rsGridHost.isScrolling::-webkit-scrollbar-thumb,
+    .rsGridHost.isScrollbarHover::-webkit-scrollbar-thumb,
+    .rsGridHost::-webkit-scrollbar-thumb:hover {
+      background-color: var(--rs-scrollbar-thumb-active);
+    }
+    .rsGrid {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: max-content;
+      min-width: max-content;
+      table-layout: fixed;
+      font-size: var(--rs-table-font-size);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .rsGrid:focus,
+    .rsGrid:focus-visible {
+      outline: none;
+    }
+    .rsGrid col.rsWeightCol {
+      width: var(--rs-weight-cell-w);
+    }
+    .rsGrid col.rsSpacerCol {
+      width: var(--rs-spacer-col-w);
+    }
+    .rsGrid tr {
+      height: var(--rs-cell-h);
+    }
+    .rsGrid th,
+    .rsGrid td {
+      border: 0;
+      border-right: 1px solid var(--rs-grid-border);
+      border-bottom: 1px solid var(--rs-grid-border);
+      max-width: none;
+      min-width: 0;
+      height: var(--rs-cell-h);
+      line-height: var(--rs-cell-h);
+      padding: 0 3px;
+      box-sizing: border-box;
+      text-align: right;
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .rsGrid th {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      min-height: 0;
+      height: var(--rs-header-h);
+      line-height: var(--rs-header-line-h);
+      padding-top: 2px;
+      padding-bottom: 2px;
+      white-space: nowrap;
+      text-align: center;
+      background: var(--rs-label-cell);
+      color: #1f2937;
+      font-weight: 400;
+      font-size: var(--rs-table-font-size);
+    }
+    .rsGrid thead tr.rsColumnHeaderRow {
+      height: var(--rs-header-h);
+    }
+    .rsHeaderText {
+      display: -webkit-box;
+      min-width: 0;
+      max-height: calc(var(--rs-header-line-h) * 3);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: var(--rs-header-line-h);
+      white-space: normal;
+      -webkit-box-orient: vertical;
+      line-clamp: 3;
+      -webkit-line-clamp: 3;
+      pointer-events: none;
+    }
+    .rsColumnResizeHandle {
+      position: absolute;
+      top: 0;
+      right: -6px;
+      z-index: 30;
+      width: 13px;
+      height: 100%;
+      cursor: col-resize;
+      touch-action: none;
+    }
+    .rsColumnResizeHandle::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      left: 6px;
+      width: 1px;
+      background: transparent;
+    }
+    .rsColumnResizeHandle:hover::after {
+      background: #64748b;
+    }
+    .rsResizingColumns,
+    .rsResizingColumns * {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+    .rsGrid th:first-child,
+    .rsGrid td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      min-width: 0;
+      max-width: none;
+      background: var(--rs-label-cell);
+      color: #111827;
+      text-align: center;
+      border-left: 1px solid var(--rs-grid-border);
+    }
+    .rsGrid td.rsOriginCell { font-weight: 400; }
+    .rsGrid th:first-child { z-index: 5; }
+    .rsWeightCell,
+    .rsGrid th.rsWeightHeader {
+      width: var(--rs-weight-cell-w);
+      min-width: 0;
+      max-width: none;
+      color: #64748b;
+      font-style: italic;
+    }
+    .rsWeightCell {
+      background: #dff8f8;
+    }
+    .rsGrid td.rsWeightCell {
+      padding: 0;
+    }
+    .rsGrid th.rsWeightHeader {
+      background: var(--rs-label-cell);
+    }
+    .rsGrid th.rsSectionSpacerHeader,
+    .rsGrid td.rsSectionSpacerCell {
+      width: var(--rs-spacer-col-w);
+      min-width: 0;
+      max-width: none;
+      padding: 0;
+      background: #fff;
+      border-left: 1px solid #d7dde5;
+      border-right: 1px solid #d7dde5;
+    }
+    .rsGrid thead tr.rsColumnHeaderRow th.rsSectionSpacerHeader {
+      background: var(--rs-label-cell);
+      color: transparent;
+      box-shadow: inset -1px 0 #bfc7d2;
+    }
+    .rsMethodCell,
+    .rsResultsCell {
+      cursor: cell;
+    }
+    .rsGrid td.rsMethodCell.rsHighlightedCell,
+    .rsGrid td.rsResultsCell.rsHighlightedCell {
+      background: var(--ar-spreadsheet-selection-fill);
+      color: var(--ar-spreadsheet-selection-text);
+    }
+    .rsGrid td.rsMethodCell.rsHighlightedCell input {
+      color: var(--ar-spreadsheet-selection-text);
+    }
+    .rsGrid td.rsMethodCell.rsOriginCell.rsHighlightedCell,
+    .rsGrid td.rsResultsCell.rsOriginCell.rsHighlightedCell {
+      background: var(--ar-spreadsheet-selected-label-fill);
+      color: var(--ar-spreadsheet-label-text);
+      font-weight: 400;
+    }
+    .rsGrid td.rsWeightCell.rsHighlightedCell {
+      background: #a8eeee;
+      color: #0284c7;
+    }
+    .rsGrid td.rsWeightCell.rsHighlightedCell .rsWeightValue,
+    .rsGrid td.rsWeightCell.rsHighlightedCell .rsWeightPercent {
+      color: #0284c7;
+    }
+    .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightValue,
+    .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightPercent {
+      color: #003fff;
+      font-style: normal;
+    }
+    .rsGrid td.rsWeightCell.rsWeightZero .rsWeightValue,
+    .rsGrid td.rsWeightCell.rsWeightZero .rsWeightPercent {
+      color: #8aa3a9;
+      font-style: italic;
+    }
+    .rsGrid td.rsMethodCell.rsHighlightedUltimateCell,
+    .rsGrid td.rsResultsCell.rsHighlightedUltimateCell {
+      background: var(--rs-ultimate-highlight-cell);
+      color: #111827;
+    }
+    .rsGrid td.rsSourceCell.rsSelectedSourceCell {
+      background: var(--ar-spreadsheet-weighted-selection-fill);
+      color: #111827;
+    }
+    .rsGrid td.rsSourceCell.rsSourceEmptyZero {
+      color: #8aa3a9;
+    }
+    .rsGrid td.rsSourceCell.rsSelectedSourceCell.rsHighlightedCell {
+      background: #9dcc00;
+      color: #111827;
+    }
+    .rsGrid td.rsMethodCell.rsHighlightAnchorCell,
+    .rsGrid td.rsResultsCell.rsHighlightAnchorCell {
+      outline: 1px dashed #0f172a;
+      outline-offset: -2px;
+    }
+    .rsWeightValue {
+      display: block;
+      width: 100%;
+      height: var(--rs-cell-h);
+      line-height: var(--rs-cell-h);
+      margin: 0;
+      padding: 0 10px 0 2px;
+      color: #0284c7;
+      text-align: right;
+      font-family: var(--rs-font);
+      font-size: var(--rs-table-font-size);
+      font-style: italic;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .rsWeightPercent {
+      display: block;
+      width: 100%;
+      height: var(--rs-cell-h);
+      line-height: var(--rs-cell-h);
+      padding: 0 10px 0 2px;
+      overflow: hidden;
+      color: #0284c7;
+      font-family: var(--rs-font);
+      font-size: var(--rs-table-font-size);
+      font-style: italic;
+      text-align: right;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
+    }
+    .rsUltimateCell {
+      background: var(--rs-ultimate-cell);
+      font-weight: 400;
+    }
+    .rsGrid td.rsUltimateCell.rsUltimateCustomValue,
+    .rsGrid td.rsUltimateCell.rsUltimateCustomValue.rsHighlightedUltimateCell {
+      color: #dc2626;
+      font-weight: 700;
+    }
+    .rsGrid th.rsUltimateHeader,
+    .rsGrid th.rsReserveHeader,
+    .rsGrid th.rsRatioHeader {
+      background: var(--rs-label-cell);
+    }
+    .rsReserveCell {
+      color: #0f172a;
+    }
+    .rsGrid th.rsReserveHeader {
+      color: #0f172a;
+    }
+    .rsRatioCell {
+      color: #0f172a;
+    }
+    .rsGrid th.rsRatioHeader {
+      color: #0f172a;
+    }
+    .rsTotalRow td {
+      font-weight: 700;
+      background: #f8fafc;
+    }
+    .rsTotalRow td.rsSectionSpacerCell {
+      background: #fff;
+      font-weight: 400;
+    }
+    .rsTotalRow td.rsUltimateCell {
+      font-weight: 400;
+    }
+    #rsMethodGrid .rsTotalRow td {
+      font-weight: 700;
+    }
+    .rsGrid th.rsHighlightedColumnLabel,
+    #rsMethodGrid td.rsOriginCell.rsHighlightedRowLabel,
+    #rsResultsGrid td.rsOriginCell.rsHighlightedRowLabel {
+      background: var(--ar-spreadsheet-selected-label-fill);
+      color: var(--ar-spreadsheet-label-text);
+      font-style: normal;
+      font-weight: 400;
+    }
+    .rsGrid th.rsSourceHeader {
+      cursor: pointer;
+    }
+    .rsCellContextMenu {
+      position: fixed;
+      z-index: 10000;
+      width: 190px;
+      max-width: min(190px, calc(100vw - 16px));
+      display: none;
+      padding: 4px;
+      border: 1px solid #c9ced5;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      box-sizing: border-box;
+    }
+    .rsCellContextMenu.open {
+      display: block;
+    }
+    .rsCellContextMenu button {
+      width: 100%;
+      height: 24px;
+      border: 0;
+      background: transparent;
+      color: #111827;
+      font: 12px var(--rs-font);
+      text-align: left;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .rsCellContextMenu button:hover {
+      background: #eaf2ff;
+      color: #0d6efd;
+    }
+    .rsRatioBasisContextMenu { width: 120px; }
+    .rsRatioBasisContextMenu button:hover,
+    .rsRatioBasisContextMenu button:focus-visible {
+      outline: none;
+      background: #fff1f2;
+      color: #be123c;
+    }
+    .rsSaveBar {
+      flex: 0 0 38px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 5px 10px;
+      box-sizing: border-box;
+    }
+    @media (max-width: 760px) {
+      .rsMethodToolbar {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+      .rsToolGroup,
+      .rsToolGroup.rsToolGroupWide,
+      .rsToolGroup.rsToolGroupBasis {
+        min-width: 0;
+        max-width: none;
+      }
+      .rsToolGroup.rsToolGroupWide .rsToolControls {
+        flex-wrap: wrap;
+      }
+    }
+    .rsSaveBtn,
+    .rsCancelBtn {
+      min-width: 74px;
+      height: 28px;
+      border-radius: var(--tabbed-page-control-radius, 4px);
+      font: 600 12px var(--rs-font);
+      cursor: pointer;
+    }
+    .rsSaveBtn {
+      border: 1px solid #2563eb;
+      background: #2563eb;
+      color: #fff;
+    }
+    .rsCancelBtn,
+    .rsSaveBtn.is-clean {
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #1f2937;
+    }
+    .rsSaveBtn:disabled,
+    .rsCancelBtn:disabled { opacity: 0.55; cursor: default; }
+    .rsPlaceholder {
+      color: #64748b;
+      padding: 14px;
+      border: 1px solid #d8dde3;
+      background: #f8fafc;
+    }
+  </style>
+</head>
+<body>
+  <div class="rsTabBar tabbedPageTabBar" id="rsTabBar">
+    <button class="rsTab tabbedPageTab active" data-page="details" type="button">Details</button>
+    <button class="rsTab tabbedPageTab" data-page="method" type="button">Method</button>
+    <button class="rsTab tabbedPageTab" data-page="results" type="button">Results</button>
+    <button class="rsTab tabbedPageTab" data-page="validation" type="button">Validation</button>
+    <button class="rsTab tabbedPageTab" data-page="notes" type="button">Notes</button>
+    <button class="rsTab tabbedPageTab" data-page="audit" type="button">Audit Log</button>
+    <span class="rsTabBarSpacer" aria-hidden="true"></span>
+    <button id="rsSyncBtn" class="rsButton rsTabSyncBtn" type="button" title="Compare and sync local Result Selection JSON with ResQ">Sync</button>
+  </div>
+  <div class="rsPageHost">
+    <section id="rsDetailsPage" class="rsPage arDetailsRoot active">
+      <div class="rsDetailsBlock arDetailsGroup">
+        <div class="rsDetailsGrid arDetailsGrid">
+          <label class="arDetailsLabel" for="rsNameInput">Name : </label>
+          <div class="rsFieldRow arDetailsField">
+            <input id="rsNameInput" class="rsInput arDetailsControl" type="text" autocomplete="off"/>
+          </div>
+          <label class="arDetailsLabel" for="rsOutputTypeInput">Output Type : </label>
+          <div class="rsFieldRow arDetailsField">
+            <div class="rsInputPicker">
+              <input id="rsOutputTypeInput" class="rsInput arDetailsControl" type="text" autocomplete="off"/>
+              <button id="rsOutputTypeBtn" class="rsButton rsInputPickerBtn" type="button" title="Select output vector">...</button>
+            </div>
+          </div>
+          <label class="arDetailsLabel" for="rsOriginLengthButton">Origin Length : </label>
+          <div class="rsFieldRow arDetailsField">
+            <select id="rsOriginLengthInput" class="rsSelect rsOriginLengthSelect rsNativeSelectHidden" tabindex="-1" aria-hidden="true">
+              <option value="12">12</option>
+              <option value="6">6</option>
+              <option value="3">3</option>
+              <option value="1">1</option>
+            </select>
+            <div id="rsOriginLengthDropdown" class="rsDropdown rsOriginLengthDropdown">
+              <button id="rsOriginLengthButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Origin length">
+                <span id="rsOriginLengthLabel" class="rsDropdownLabel">12</span>
+                <span class="rsDropdownCaret" aria-hidden="true"></span>
+              </button>
+              <div id="rsOriginLengthMenu" class="rsDropdownMenu" role="listbox" aria-label="Origin length">
+                <button class="rsDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
+                <button class="rsDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
+                <button class="rsDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
+                <button class="rsDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="rsDetailsBlock arDetailsGroup">
+        <div class="rsBasisPanel arDetailsGrid">
+          <label class="rsBasisLabel arDetailsLabel" for="rsRatioBasisAddBtn">Ratio Basis : </label>
+          <div class="rsFieldRow arDetailsField">
+            <div class="rsRatioBasisPicker">
+              <div id="rsRatioBasisList" class="rsRatioBasisList" role="list" aria-live="polite"></div>
+              <button id="rsRatioBasisAddBtn" class="rsRatioBasisAdd" type="button" title="Add ratio basis" aria-label="Add ratio basis">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              </button>
+              <input id="rsRatioBasisInput" type="hidden"/>
+              <input id="rsRatioBasisInput2" type="hidden"/>
+              <input id="rsRatioBasisInput3" type="hidden"/>
+              <input id="rsStatisticDecimalsInput" type="hidden" value="1"/>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="rsMethodPage" class="rsPage">
+      <div class="rsMethodToolbar">
+        <div class="rsToolGroup rsToolGroupWide">
+          <span class="rsToolTitle">Weights</span>
+          <div class="rsToolControls">
+            <label class="rsToolCheck"><input id="rsShowWeightsInput" type="checkbox" checked/> Show Weights</label>
+            <div class="rsToolFormatControl">
+              <label class="rsToolControlLabel" for="rsWeightDisplayButton">Format : </label>
+              <div id="rsWeightDisplayDropdown" class="rsDropdown rsWeightDisplayDropdown">
+                <button id="rsWeightDisplayButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Weight display mode">
+                  <span id="rsWeightDisplayLabel" class="rsDropdownLabel">Index</span>
+                  <span class="rsDropdownCaret" aria-hidden="true"></span>
+                </button>
+                <div id="rsWeightDisplayMenu" class="rsDropdownMenu" role="listbox" aria-label="Weight display mode">
+                  <button class="rsDropdownOption" type="button" role="option" data-value="actual" aria-selected="true">Index</button>
+                  <button class="rsDropdownOption" type="button" role="option" data-value="effective" aria-selected="false">Effective %</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="rsToolGroup rsToolGroupWide">
+          <span class="rsToolTitle">Statistics</span>
+          <div class="rsToolControls">
+            <label class="rsToolCheck"><input id="rsShowRatiosPctInput" type="checkbox" checked/> Show Ratios as Percentages</label>
+            <div class="rsToolDecimalControl">
+              <label class="rsToolControlLabel" for="rsMethodStatisticDecimalsInput">Decimal : </label>
+              <span class="rsNumberStepper">
+                <input id="rsMethodStatisticDecimalsInput" class="rsNumber rsStepperInput" type="number" min="0" max="8" step="1" value="1"/>
+                <span class="rsStepperButtons">
+                  <button id="rsMethodStatisticDecimalsUp" class="rsStepperBtn" type="button" aria-label="Increase statistic decimal places">
+                    <span class="rsStepperCaret rsStepperCaretUp" aria-hidden="true"></span>
+                  </button>
+                  <button id="rsMethodStatisticDecimalsDown" class="rsStepperBtn" type="button" aria-label="Decrease statistic decimal places">
+                    <span class="rsStepperCaret" aria-hidden="true"></span>
+                  </button>
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="rsToolGroup rsToolGroupBasis">
+          <span class="rsToolTitle">Ratio Basis</span>
+          <div class="rsToolControls">
+            <div id="rsActiveRatioBasisDropdown" class="rsDropdown rsRatioBasisDropdown">
+              <button id="rsActiveRatioBasisButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Active ratio basis">
+                <span id="rsActiveRatioBasisLabel" class="rsDropdownLabel">No basis</span>
+                <span class="rsDropdownCaret" aria-hidden="true"></span>
+              </button>
+              <div id="rsActiveRatioBasisMenu" class="rsDropdownMenu" role="listbox" aria-label="Active ratio basis">
+                <button class="rsDropdownOption" type="button" role="option" data-value="" aria-selected="true">No basis</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="rsGridHost">
+        <table class="rsGrid arSpreadsheetTable" id="rsMethodGrid" aria-label="Result Selection method table"></table>
+      </div>
+    </section>
+    <section id="rsResultsPage" class="rsPage">
+      <div class="rsGridHost rsResultsGridHost">
+        <table class="rsGrid arSpreadsheetTable" id="rsResultsGrid" aria-label="Result Selection results table"></table>
+      </div>
+    </section>
+    <section id="rsValidationPage" class="rsPage">
+      <div class="rsPlaceholder">Validation tab placeholder for Result Selection v1.</div>
+    </section>
+    <section id="rsNotesPage" class="rsPage">
+      <div id="rsNotesMount"></div>
+    </section>
+    <section id="rsAuditPage" class="rsPage" role="tabpanel">
+      <div id="rsAuditLogMount"></div>
+    </section>
+  </div>
+  <div class="rsSaveBar">
+    <button id="rsSaveBtn" class="rsSaveBtn is-clean" type="button" disabled>Save</button>
+    <button id="rsCancelBtn" class="rsCancelBtn" type="button" disabled>Cancel</button>
+  </div>
+  <div id="rsCellContextMenu" class="rsCellContextMenu" aria-hidden="true">
+    <button type="button" data-rs-cell-action="copy-values">Copy</button>
+    <button type="button" data-rs-cell-action="paste-values">Paste</button>
+    <button type="button" data-rs-cell-action="remove-highlights">Remove Highlights</button>
+    <button type="button" data-rs-cell-action="revert-ultimate" data-rs-ultimate-action hidden>Revert Ultimate Value</button>
+    <button type="button" data-rs-cell-action="revert-all-ultimate" data-rs-ultimate-action hidden>Revert All Ultimate Values</button>
+  </div>
+  <div id="rsSourceContextMenu" class="rsCellContextMenu" aria-hidden="true">
+    <button type="button" data-rs-source-action="view-edit">View/Edit</button>
+    <button type="button" data-rs-source-action="add">Add</button>
+    <button type="button" data-rs-source-action="delete">Delete</button>
+  </div>
+  <div id="rsRatioBasisContextMenu" class="rsCellContextMenu rsRatioBasisContextMenu" role="menu" aria-hidden="true">
+    <button type="button" role="menuitem" data-rs-ratio-basis-action="delete">Delete</button>
+  </div>
+  <script src="/ui/method_pages/result_selection/result_selection_ui.js?v=20260714a"></script>
+  <script src="/ui/method_pages/result_selection/result_selection_data.js?v=20260714a"></script>
+  <script src="/ui/method_pages/result_selection/result_selection_grids.js?v=20260712b"></script>
+  <script src="/ui/method_pages/result_selection/result_selection_model.js?v=20260714a"></script>
+  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260714b"></script>
+</body>
+</html>

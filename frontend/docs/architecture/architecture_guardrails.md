@@ -27,9 +27,17 @@ MUST NOT:
 ## AR-3 Frontend Host Architecture
 MUST:
 - Keep `ui/shell/ui_shell.js` as tab/iframe orchestration layer.
-- Keep feature pages (`dataset`, `workflow`, `DFM`, `project_settings`) isolated in iframe contexts.
+- Keep feature pages (`dataset_viewer`, `workflow`, `method_pages/*`, `project_settings`) isolated in iframe contexts.
 - Keep cross-context communication via explicit `arcrho:*` messages.
 - Keep `ui/arcode/main.js` as the standalone Arcode app shell; it may host `ui/arcode/notebook-editor/`, `ui/arcode/code-editor/`, and related Arcode iframe surfaces, but it must not depend on the ArcRho main shell runtime being open.
+- Keep Dataset Viewer entry, page composition, and Dataset Viewer-only Chart/Notes adapters under `ui/dataset_viewer/`.
+- Keep DFM, Bornhuetter Ferguson, and Result Selection feature modules grouped under `ui/method_pages/`; a method page must not own the reusable Data tab solely because it consumes that tab.
+- Keep reusable Dataset Viewer and method-page tab chrome in `ui/shared/tabbed_page/`, and keep reusable Data, Details, Notes, and Audit Log presentation/runtime in the matching modules under `ui/shared/tabs/`.
+- Keep the host-neutral Data-tab controller, controls, DOM bindings, grid view, and grid interactions under `ui/shared/tabs/data/`; Dataset Viewer and DFM may supply feature-local adapters without coupling the shared tab to either feature.
+- Keep reusable UI controls under `ui/shared/components/`, dataset-domain state/API/configuration/services under `ui/shared/dataset/`, external-host bridges under `ui/shared/integrations/`, cross-feature application services under `ui/shared/services/`, shared visual foundations under `ui/shared/styles/`, and domain-neutral helpers under `ui/shared/utils/`.
+- Feature pages may layer local behavior and styling on shared modules, but must not import assets from another feature directory.
+- Keep feature modules responsible for domain state, persistence, dirty-state reporting, save/close coordination, and page-specific behavior when they consume shared tab presentation.
+- Preserve established tab IDs and `arcrho:*` behavior contracts when reorganizing shared presentation code.
 
 MUST NOT:
 - Collapse all feature logic into shell context.

@@ -652,7 +652,7 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   params.set("inst", inst);
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
-  return `/ui/dataset/dataset_viewer.html?${params.toString()}`;
+  return `/ui/dataset_viewer/dataset_viewer.html?${params.toString()}`;
 }
 
 function buildDfmViewerUrl(datasetName, inst, options = {}) {
@@ -672,7 +672,7 @@ function buildDfmViewerUrl(datasetName, inst, options = {}) {
   params.set("inst", inst);
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
-  return `/ui/dfm/dfm.html?${params.toString()}`;
+  return `/ui/method_pages/dfm/dfm.html?${params.toString()}`;
 }
 
 function buildResultSelectionViewerUrl(datasetName, inst, options = {}) {
@@ -691,7 +691,7 @@ function buildResultSelectionViewerUrl(datasetName, inst, options = {}) {
   params.set("inst", inst);
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
-  return `/ui/result_selection/result_selection.html?${params.toString()}`;
+  return `/ui/method_pages/result_selection/result_selection.html?${params.toString()}`;
 }
 
 function buildBornhuetterFergusonViewerUrl(datasetName, inst, options = {}) {
@@ -710,7 +710,7 @@ function buildBornhuetterFergusonViewerUrl(datasetName, inst, options = {}) {
   params.set("inst", inst);
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
-  return `/ui/bornhuetter_ferguson/bornhuetter_ferguson.html?${params.toString()}`;
+  return `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html?${params.toString()}`;
 }
 
 function beginWindowDragCapture(mode) {

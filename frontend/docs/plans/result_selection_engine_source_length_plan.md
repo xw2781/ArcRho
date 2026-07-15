@@ -35,7 +35,7 @@ sources are loaded.
 
 ## 2. Root Cause (verified)
 
-File: `frontend/ui/result_selection/result_selection_main.js`
+File: `frontend/ui/method_pages/result_selection/result_selection_main.js`
 
 - On load, `applyPayload` correctly sets the RS length from the method JSON / output
   sidecar (`origin_length = 3`), then calls `syncOriginLengthOptions()`
@@ -100,7 +100,7 @@ Existing triangle bridge to mirror:
 - Service: `arcrho_runtime_service.run_arcrho_tri(...)`,
   `resolve_local_triangle_cache(...)` (`frontend/app_server/services/arcrho_runtime_service.py`).
 - Schema: `ArcRhoTriRequest` (`frontend/app_server/schemas/arcrho.py:6-19`).
-- Client usage pattern: `frontend/ui/dataset/dataset_run_controller.js:247-345`
+- Client usage pattern: `frontend/ui/shared/dataset/dataset_run_controller.js:247-345`
   (`precheckArcRhoTriCsv` → `/arcrho/tri` → load length-scoped cache).
 
 ---
@@ -191,7 +191,7 @@ docs index builder (section 8).
 
 ---
 
-## 6. Frontend Changes — `frontend/ui/result_selection/result_selection_main.js`
+## 6. Frontend Changes — `frontend/ui/method_pages/result_selection/result_selection_main.js`
 
 ### 6.1 Identify engine sources
 
@@ -366,7 +366,7 @@ Frontend / integration (manual against `NJ_Annual_Prod_2026 Q2-May`, RC
 - `frontend/app_server/services/arcrho_runtime_service.py` — optional thin
   `run_arcrho_vec` wrapper (only if a named wrapper is preferred; otherwise reuse
   `run_arcrho_tri` with vec pairs).
-- `frontend/ui/result_selection/result_selection_main.js` — `isEngineSource`,
+- `frontend/ui/method_pages/result_selection/result_selection_main.js` — `isEngineSource`,
   relax `allowedOriginLengthsForSources`, on-demand engine-source loading, preserve
   `sourceKind` in `buildSourceFromRecord`.
 - Dataset client module that exports `precheckArcRhoTriCsv` / `buildTriRequestPayload`

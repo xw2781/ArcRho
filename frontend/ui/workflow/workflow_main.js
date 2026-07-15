@@ -1,8 +1,8 @@
-import { openContextMenu } from "/ui/shared/menu_utils.js";
-import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js";
-import { openProjectNameTreePicker } from "/ui/shared/project_name_tree_picker.js";
-import { loadProjectUserPreferences } from "/ui/shared/project_user_preferences.js";
-import "/ui/shared/zoom_bridge.js?v=20260521a";
+import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
+import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js";
+import { openProjectNameTreePicker } from "/ui/shared/components/pickers/project_name_tree_picker.js";
+import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js";
+import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const stepsEl = document.getElementById("steps");
 const inspectorEl = document.getElementById("inspector");
@@ -1278,7 +1278,7 @@ function renderEmbeddedDataset(step) {
     if (step.datasetId) params.set("ds", step.datasetId);
     params.set("inst", step.id || "step");
     params.set("wf", instanceId);
-    iframe.src = `/ui/dataset/dataset_viewer.html?${params.toString()}`;
+    iframe.src = `/ui/dataset_viewer/dataset_viewer.html?${params.toString()}`;
     iframe.addEventListener("load", () => {
       try {
         iframe.contentWindow?.postMessage(
@@ -1341,7 +1341,7 @@ function renderEmbeddedDfm(step) {
     if (proj && !isWorkflowDefaultReference(proj)) params.set("project", proj);
     if (rc && !isWorkflowDefaultReference(rc)) params.set("class", rc);
     if (outputType) params.set("output_type", outputType);
-    iframe.src = `/ui/dfm/dfm.html?${params.toString()}`;
+    iframe.src = `/ui/method_pages/dfm/dfm.html?${params.toString()}`;
     iframe.addEventListener("load", () => {
       try {
         iframe.contentWindow?.postMessage(
@@ -1416,7 +1416,7 @@ function renderPlaceholder(step, title) {
    ============================================================ */
 
 async function openReservingClassTree(projectName, targetInput, anchorElement = null) {
-  await openLazyReservingClassPicker({
+  await openReservingClassPicker({
     projectName,
     workflowId: instanceId,
     initialPath: targetInput?.value || "",

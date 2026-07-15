@@ -3,36 +3,40 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const helperSource = await readFile(
-  new URL("../ui/dataset/dataset_origin_labels.js", import.meta.url),
+  new URL("../ui/shared/dataset/dataset_origin_labels.js", import.meta.url),
   "utf8",
 );
 const originLabelsModuleUrl = `data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`;
 const originLabels = await import(originLabelsModuleUrl);
 const headersServiceSource = await readFile(
-  new URL("../ui/dataset/dataset_headers_service.js", import.meta.url),
+  new URL("../ui/shared/dataset/dataset_headers_service.js", import.meta.url),
   "utf8",
 );
 const testableHeadersServiceSource = headersServiceSource.replace(
-  /import \{ validateDatasetOriginLabels \} from "\/ui\/dataset\/dataset_origin_labels\.js";/,
+  /import \{ validateDatasetOriginLabels \} from "\/ui\/shared\/dataset\/dataset_origin_labels\.js";/,
   `import { validateDatasetOriginLabels } from "${originLabelsModuleUrl}";`,
 );
 const headersServiceModule = await import(
   `data:text/javascript;base64,${Buffer.from(testableHeadersServiceSource).toString("base64")}`
 );
-const apiSource = await readFile(new URL("../ui/shared/api.js", import.meta.url), "utf8");
+const apiSource = await readFile(new URL("../ui/shared/dataset/dataset_api.js", import.meta.url), "utf8");
 const testableApiSource = apiSource.replace(
-  /import \{ config \} from "\/ui\/shared\/config\.js";/,
+  /import \{ config \} from "\/ui\/shared\/dataset\/dataset_config\.js";/,
   "const config = { API_BASE: '', DS_ID: '' };",
 );
 const datasetApi = await import(
   `data:text/javascript;base64,${Buffer.from(testableApiSource).toString("base64")}`
 );
 const runControllerSource = await readFile(
-  new URL("../ui/dataset/dataset_run_controller.js", import.meta.url),
+  new URL("../ui/shared/dataset/dataset_run_controller.js", import.meta.url),
   "utf8",
 );
+const testableRunControllerSource = runControllerSource.replace(
+  /import \{ isDfmDataTabHost \} from "\/ui\/shared\/tabs\/data\/data_tab_context\.js";/,
+  "const isDfmDataTabHost = () => false;",
+);
 const runControllerModule = await import(
-  `data:text/javascript;base64,${Buffer.from(runControllerSource).toString("base64")}`
+  `data:text/javascript;base64,${Buffer.from(testableRunControllerSource).toString("base64")}`
 );
 
 test("accepts consecutive origin labels for every supported period length", () => {
@@ -320,7 +324,6 @@ test("an older dataset response cannot restore data after a newer load fails", a
 
 test("a stale notes sync cannot hide a newer origin-label failure", async () => {
   const originalDocument = globalThis.document;
-  const originalWindow = globalThis.window;
   const tableWrap = { children: [], replaceChildren(...children) { this.children = children; } };
   const dsMeta = { textContent: "old metadata" };
   globalThis.document = {
@@ -333,7 +336,6 @@ test("a stale notes sync cannot hide a newer origin-label failure", async () => 
     createTextNode: (text) => ({ textContent: String(text) }),
     getElementById: () => ({ value: "" }),
   };
-  globalThis.window = { ADA_DFM_CONTEXT: false };
   const state = {
     dirty: new Map(),
     model: null,
@@ -419,20 +421,17 @@ test("a stale notes sync cannot hide a newer origin-label failure", async () => 
     assert.equal(statusText, "Origin Start Date is invalid.");
   } finally {
     globalThis.document = originalDocument;
-    globalThis.window = originalWindow;
   }
 });
 
 test("a blocked notes sync keeps its actionable status instead of reporting Ready", async () => {
   const originalDocument = globalThis.document;
-  const originalWindow = globalThis.window;
   const tableWrap = { replaceChildren() {} };
   const dsMeta = { textContent: "old metadata" };
   globalThis.document = {
     createElement: () => ({ style: {}, append() {} }),
     createTextNode: (text) => ({ textContent: String(text) }),
   };
-  globalThis.window = { ADA_DFM_CONTEXT: false };
   const state = {
     dirty: new Map(),
     model: null,
@@ -493,23 +492,22 @@ test("a blocked notes sync keeps its actionable status instead of reporting Read
     assert.match(statusText, /Notes changed while saving/);
   } finally {
     globalThis.document = originalDocument;
-    globalThis.window = originalWindow;
   }
 });
 
 test("dataset sources contain no hard-coded start-year fallback", async () => {
   const sourceUrls = [
-    "../ui/shared/config.js",
-    "../ui/shared/api.js",
+    "../ui/shared/dataset/dataset_config.js",
+    "../ui/shared/dataset/dataset_api.js",
     "../app_server/api/dataset_router.py",
     "../app_server/services/dataset_service.py",
     "../app_server/services/arcrho_runtime_service.py",
-    "../ui/dataset/dataset_main.js",
-    "../ui/dataset/dataset_headers_service.js",
-    "../ui/dataset/dataset_run_controller.js",
-    "../ui/dfm/dfm_results_tab.js",
-    "../ui/result_selection/result_selection_data.js",
-    "../ui/bornhuetter_ferguson/bornhuetter_ferguson_main.js",
+    "../ui/shared/tabs/data/data_tab_controller.js",
+    "../ui/shared/dataset/dataset_headers_service.js",
+    "../ui/shared/dataset/dataset_run_controller.js",
+    "../ui/method_pages/dfm/dfm_results_tab.js",
+    "../ui/method_pages/result_selection/result_selection_data.js",
+    "../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js",
   ];
   const sources = await Promise.all(sourceUrls.map((url) => readFile(new URL(url, import.meta.url), "utf8")));
   const combined = sources.join("\n");

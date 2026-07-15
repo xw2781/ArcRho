@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const bfSource = await readFile(
-  new URL("../ui/bornhuetter_ferguson/bornhuetter_ferguson_main.js", import.meta.url),
+  new URL("../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js", import.meta.url),
   "utf8",
 );
 const projectInstanceMessagesSource = await readFile(

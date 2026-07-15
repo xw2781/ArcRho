@@ -1,0 +1,308 @@
+.arNotesTabMount {
+  min-width: 0;
+}
+
+.arNotesTab {
+  --ar-notes-text-color: #1c2433;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  box-sizing: border-box;
+  color: #1c2433;
+  font: 13px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+}
+
+.arNotesTabToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px 8px;
+  width: min(100%, 960px);
+  max-width: 100%;
+  min-height: 34px;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  border: 1px solid #d8dde3;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #f8fafc;
+}
+
+.arNotesTabFormatGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: #59606b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.arNotesTabFormatLabel {
+  color: #59606b;
+  font-weight: 600;
+}
+
+.arNotesTabFormatSelect,
+.arNotesTabFormatInput {
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  outline: none;
+  background: #fff;
+  color: #2c3138;
+  font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  padding: 0 8px;
+}
+
+.arNotesTabFormatSelect {
+  min-width: 138px;
+}
+
+.arNotesTabFormatInput {
+  width: 58px;
+  padding-right: 4px;
+  text-align: left;
+}
+
+.arNotesTabFormatSelect:hover,
+.arNotesTabFormatInput:hover,
+.arNotesTabFormatColor:hover,
+.arNotesTabFormatToggle:hover {
+  border-color: #aeb8c8;
+}
+
+.arNotesTabFormatSelect:focus,
+.arNotesTabFormatInput:focus,
+.arNotesTabFormatColor:focus,
+.arNotesTabFormatToggle:focus-visible {
+  border-color: #60a5fa;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+}
+
+.arNotesTabFormatColorGroup {
+  gap: 6px;
+}
+
+.arNotesTabFormatColor {
+  width: 30px;
+  height: 28px;
+  padding: 1px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  outline: none;
+  background: #fff;
+  cursor: pointer;
+}
+
+.arNotesTabFormatDivider {
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: #d8dde3;
+}
+
+.arNotesTabFormatToggle {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #fff;
+  color: #2c3138;
+  font: 700 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  cursor: pointer;
+  user-select: none;
+}
+
+.arNotesTabFormatToggle:hover {
+  background: #f1f5f9;
+}
+
+.arNotesTabFormatToggle.is-active {
+  border-color: #93a4ba;
+  background: #e8eef7;
+  color: #1f2937;
+}
+
+.arNotesTabFormatToggle[data-notes-toggle="italic"] {
+  font-style: italic;
+}
+
+.arNotesTabInputWrap {
+  position: relative;
+  align-self: flex-start;
+  width: min(100%, 960px);
+  max-width: 100%;
+  min-width: min(260px, 100%);
+  min-height: 260px;
+  height: 360px;
+  resize: both;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.arNotesTabDecor,
+.arNotesTabInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 10px;
+  box-sizing: border-box;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  tab-size: 4;
+  text-decoration-color: var(--ar-notes-text-color);
+}
+
+.arNotesTabDecor {
+  z-index: 1;
+  overflow: hidden;
+  border: 1px solid transparent;
+  background: #fff;
+  color: var(--ar-notes-text-color);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.arNotesTabInput {
+  z-index: 2;
+  resize: none;
+  overflow: auto;
+  border: 1px solid #aeb8c8;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: #111827;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.arNotesTab.is-editing .arNotesTabDecor {
+  display: none;
+}
+
+.arNotesTab.is-editing .arNotesTabInput {
+  background: #fff;
+  color: var(--ar-notes-text-color);
+}
+
+.arNotesTabInput::placeholder {
+  color: #8089a0;
+}
+
+.arNotesTabInput:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+}
+
+.arNotesTabPathToken {
+  border-radius: 2px;
+  color: #0b3d91;
+  font-weight: 400;
+  text-decoration: underline;
+  text-decoration-color: #0b3d91;
+  text-underline-offset: 1px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  transition: background-color 120ms ease-out;
+}
+
+.arNotesTabPathToken.is-hovered {
+  background: rgba(66, 117, 196, 0.2);
+  color: #072f73;
+  text-decoration-color: #072f73;
+}
+
+.arNotesTabPathTooltip {
+  position: fixed;
+  z-index: 2200;
+  display: none;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 1px solid #2f4e85;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: rgba(11, 37, 82, 0.95);
+  color: #f8fafc;
+  font: 12px/1.3 Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(8, 17, 36, 0.24);
+}
+
+.arNotesTabPathTooltip.is-open {
+  display: block;
+}
+
+.arNotesTabPathMenu {
+  position: fixed;
+  z-index: 2300;
+  display: none;
+  min-width: 160px;
+  padding: 4px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.arNotesTabPathMenu.is-open {
+  display: block;
+}
+
+.arNotesTabPathMenuItem {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 5px 8px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  outline: none;
+  background: transparent;
+  color: #1f2937;
+  font: 12px/1.25 Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.arNotesTabPathMenuItem:hover,
+.arNotesTabPathMenuItem:focus-visible {
+  background: #edf3ff;
+  color: #0b3d91;
+}
+
+.arNotesTabPathMenuItem[hidden] {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  .arNotesTabToolbar {
+    gap: 4px 6px;
+  }
+
+  .arNotesTabFormatSelect {
+    min-width: 116px;
+  }
+
+  .arNotesTabInputWrap {
+    min-height: 220px;
+    height: 300px;
+  }
+}

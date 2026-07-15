@@ -1,10 +1,10 @@
-import { fetchProjectDatasetTypes } from "/ui/dataset/dataset_types_source.js";
+import { fetchProjectDatasetTypes } from "/ui/shared/dataset/dataset_types_source.js";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
-} from "/ui/shared/project_user_preferences.js";
-import { openLazyReservingClassPicker } from "/ui/shared/reserving_class_lazy_picker.js?v=20260712b";
-import "/ui/shared/zoom_bridge.js?v=20260521a";
+} from "/ui/shared/services/project_user_preferences.js";
+import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260715a";
+import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 import { createProjectInstanceContext } from "./project_instance_context.js?v=20260712a";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
@@ -22,7 +22,7 @@ export async function bootProjectInstance() {
     fetchProjectDatasetTypes,
     loadProjectUserPreferences,
     scheduleProjectUserPreferencesSave,
-    openLazyReservingClassPicker,
+    openReservingClassPicker,
   });
 
   installProjectInstanceUtils(ctx);

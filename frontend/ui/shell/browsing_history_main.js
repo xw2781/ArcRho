@@ -7,7 +7,7 @@ import {
   loadShellActivityHistory,
   normalizeShellActivityEntry,
 } from "/ui/shell/shell_activity_history.js";
-import "/ui/shared/zoom_bridge.js?v=20260521a";
+import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const MAX_ENTRIES = 15;
 
@@ -65,7 +65,7 @@ function openEntry(entry) {
   params.set("project", normalized.project);
   params.set("path", normalized.path);
   params.set("tri", normalized.tri);
-  window.location.href = `/ui/dataset/dataset_viewer.html?${params.toString()}`;
+  window.location.href = `/ui/dataset_viewer/dataset_viewer.html?${params.toString()}`;
 }
 
 function buildRow(entry, index) {

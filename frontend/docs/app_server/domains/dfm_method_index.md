@@ -21,8 +21,8 @@ Routes:
 - `app_server/api/dfm_method_index_router.py` - Thin API routes.
 - `app_server/schemas/dfm_method_index.py` - Refresh request schema.
 - `app_server/services/dataset_instance_index_service.py` - Project/reserving-class path resolution, cached file and sidecar scan, DFM method-file output extraction, metadata collection, folder signature generation, and cache write.
-- `ui/dfm/dfm_details.js` - Details `Name` selector UI that consumes the index.
-- `ui/dfm/dfm_startup_state.js` - Last-opened DFM object project-user preference state and index refresh helper.
+- `ui/method_pages/dfm/dfm_details.js` - Details `Name` selector UI that consumes the index.
+- `ui/method_pages/dfm/dfm_startup_state.js` - Last-opened DFM object project-user preference state and index refresh helper.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

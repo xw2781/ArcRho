@@ -9,7 +9,7 @@ import {
   normalizeShellActivityEntry,
   pushShellActivityHistoryEntry,
 } from "/ui/shell/shell_activity_history.js";
-import { ALLOWED_DFM_TABS } from "/ui/dfm/dfm_tab_config.js";
+import { ALLOWED_DFM_TABS } from "/ui/method_pages/dfm/dfm_tab_config.js";
 
 const RESTORABLE_ACTIVITY_TYPES = new Set([
   "dataset",

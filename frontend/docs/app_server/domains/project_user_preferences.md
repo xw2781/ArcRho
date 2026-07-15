@@ -20,7 +20,7 @@ Routes:
 - `app_server/api/project_user_preferences_router.py` - Thin API routes.
 - `app_server/schemas/project_user_preferences.py` - Update request schema.
 - `app_server/services/project_user_preferences_service.py` - Windows login name resolution, project folder resolution, and atomic preference writes.
-- `ui/shared/project_user_preferences.js` - Frontend loader/saver with debounced saves.
+- `ui/shared/services/project_user_preferences.js` - Frontend loader/saver with debounced saves.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

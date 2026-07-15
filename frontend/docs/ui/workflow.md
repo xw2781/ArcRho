@@ -41,8 +41,8 @@ Detected `arcrho:*` message types in key JS files:
 <!-- AUTO-GEN:BEGIN frontend.workflow.key_files -->
 - [`ui/workflow/workflow.html`](../../ui/workflow/workflow.html) - Workflow page layout and containers.
 - [`ui/workflow/workflow_main.js`](../../ui/workflow/workflow_main.js) - Workflow editing logic, save/load events.
-- [`ui/shared/menu_utils.js`](../../ui/shared/menu_utils.js) - Context menu helper utilities.
-- [`ui/shared/reserving_class_lazy_picker.js`](../../ui/shared/reserving_class_lazy_picker.js) - Shared reserving-class tree selector.
+- [`ui/shared/components/context_menu/context_menu.js`](../../ui/shared/components/context_menu/context_menu.js) - Context menu helper utilities.
+- [`ui/shared/components/pickers/reserving_class_picker.js`](../../ui/shared/components/pickers/reserving_class_picker.js) - Shared reserving-class tree selector.
 <!-- AUTO-GEN:END -->
 
 ## External Interfaces
@@ -65,7 +65,7 @@ Detected `arcrho:*` message types in key JS files:
 - Global Control stores built-in `<Default Project>` and `Default Path` variables, auto-saves table edits, and uses the table context menu for row add/delete actions.
 - Fresh workflows initialize Global Control's `<Default Project>` from the user's local last-project preference and `Default Path` from that project's user-specific `lastReservingClassPath`.
 - Project and path pickers opened from a workflow context expose `Current Workflow` shortcuts populated from Global Control rows with type `Project` / `Reserving Class`; workflow project rows show the control variable name with the resolved project in muted detail text.
-- Shared project/path picker windows load the app-wide `ui/shared/scrollbars.css` styling so their scrollable tree areas match the rest of ArcRho.
+- Shared project/path picker windows load the app-wide `ui/shared/styles/scrollbars.css` styling so their scrollable tree areas match the rest of ArcRho.
 - Reserving-class tree view toggle preferences (auto-expand/auto-close) are shared globally across projects, and final path rows are always selected with a single click.
 <!-- MANUAL:END -->
 

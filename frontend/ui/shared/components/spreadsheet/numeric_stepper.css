@@ -1,0 +1,95 @@
+/* Shared compact numeric stepper. */
+.decimalPlacesWrap {
+  position: relative;
+  width: 69px;
+  height: var(--topbar-control-height, 28px);
+}
+
+.decimalPlacesWrap > input[type="number"] {
+  height: var(--topbar-control-height, 28px);
+  line-height: var(--topbar-control-height, 28px);
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #fff;
+  font-family: var(--app-font);
+  font-size: 13px;
+}
+
+.decimalPlacesWrap > input[type="number"]:focus {
+  outline: none;
+  border-color: #8aa8ff;
+  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+}
+
+#decimalPlaces {
+  width: 100%;
+  padding-right: 28px !important;
+  padding-left: 28px !important;
+  appearance: textfield;
+  -moz-appearance: textfield;
+  text-align: center;
+}
+
+#decimalPlaces::-webkit-outer-spin-button,
+#decimalPlaces::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.decimalPlacesStepper {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  width: 28px;
+  height: calc(var(--topbar-control-height, 28px) - 2px);
+  overflow: hidden;
+  border-radius: 0 5px 5px 0;
+  color: #555;
+  pointer-events: auto;
+}
+
+.decimalPlacesStepBtn {
+  position: relative;
+  width: 28px;
+  height: calc((var(--topbar-control-height, 28px) - 2px) / 2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.decimalPlacesStepBtn:hover {
+  background: #f5f8ff;
+  color: #2f5fd3;
+}
+
+.datasetStepperCaret {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-top: 5px solid currentColor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  opacity: 0.32;
+  transform: translate(calc(-50% + 2px), -50%);
+  transform-origin: center;
+  transition: opacity 120ms ease;
+}
+
+.datasetStepperCaretUp {
+  transform: translate(calc(-50% + 2px), -50%) rotate(180deg);
+}
+
+.decimalPlacesWrap:hover .datasetStepperCaret,
+.decimalPlacesWrap:focus-within .datasetStepperCaret,
+.decimalPlacesStepBtn:hover .datasetStepperCaret,
+.decimalPlacesStepBtn:focus .datasetStepperCaret {
+  opacity: 1;
+}

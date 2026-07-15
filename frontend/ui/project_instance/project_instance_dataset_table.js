@@ -1,4 +1,4 @@
-import { openDatasetNamePicker } from "/ui/dataset/dataset_name_picker.js";
+import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 
 export function installProjectInstanceDatasetTable(ctx) {
   const { api, els, projectName, state } = ctx;

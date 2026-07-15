@@ -1,4 +1,4 @@
-import "/ui/shared/zoom_bridge.js?v=20260521a";
+import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const host = window.ADAHost || null;
 const navEl = document.getElementById("agNav");

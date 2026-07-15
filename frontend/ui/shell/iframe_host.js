@@ -132,7 +132,7 @@ export function createIframeHost(deps) {
       const inst = tab.dsInst || tab.id || `ds_${Date.now()}`;
       params.set("inst", inst);
       params.set("v", uiVersionParam);
-      iframe.src = `/ui/dataset/dataset_viewer.html?${params.toString()}`;
+      iframe.src = `/ui/dataset_viewer/dataset_viewer.html?${params.toString()}`;
     } else if (tab.type === "dfm") {
       const params = new URLSearchParams();
       if (tab.datasetId) params.set("ds", tab.datasetId);
@@ -146,7 +146,7 @@ export function createIframeHost(deps) {
       if (inputs.methodName) params.set("method_name", String(inputs.methodName));
       if (inputs.outputType) params.set("output_type", String(inputs.outputType));
       if (inputs.inputTriangle) params.set("input_triangle", String(inputs.inputTriangle));
-      iframe.src = `/ui/dfm/dfm.html?${params.toString()}`;
+      iframe.src = `/ui/method_pages/dfm/dfm.html?${params.toString()}`;
     } else if (tab.type === "workflow") {
       const inst = tab.wfInst || tab.id || `wf_${Date.now()}`;
       iframe.src = `/ui/workflow/workflow.html?inst=${encodeURIComponent(inst)}${tab.wfFresh ? '&fresh=1' : ''}`;

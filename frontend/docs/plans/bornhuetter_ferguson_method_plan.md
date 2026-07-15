@@ -53,7 +53,7 @@ Required behavior:
 Folder:
 
 ```text
-frontend/ui/bornhuetter_ferguson/
+frontend/ui/method_pages/bornhuetter_ferguson/
 ```
 
 Core files:
@@ -71,7 +71,7 @@ Shared framework:
 - `updateTabbedPageSaveControls`
 - `requestTabbedPageWindowClose`
 - `wireTabPopoutWindows`
-- `wireNotesEditorInteractions`
+- `mountNotesTab`
 - Dataset picker/name picker helpers
 
 The UI should use the ResQ BF layout as a functional reference, while following ArcRho's compact operational page style.

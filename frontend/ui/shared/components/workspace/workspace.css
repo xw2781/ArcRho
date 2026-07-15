@@ -1,0 +1,56 @@
+/* Shared visual foundation for dense ArcRho workspaces. */
+:root {
+  --gap: 16px;
+  --border: #ccc;
+  --bg: #f5f7fa;
+  --muted: #666;
+  --app-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+}
+
+body {
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+option,
+[contenteditable="true"] {
+  user-select: text;
+}
+
+h2 {
+  margin: 0 0 12px;
+}
+
+.small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.panelInner {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+input,
+button,
+select {
+  padding: 3px 8px;
+}
+
+button {
+  cursor: pointer;
+}
+
+pre {
+  margin: 0;
+}

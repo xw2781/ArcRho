@@ -377,13 +377,13 @@ Path rules:
 
 Add new files instead of placing new feature logic into existing DFM files:
 
-1. `frontend/ui/dfm/dfm_rpc_bridge_client.js`
+1. `frontend/ui/method_pages/dfm/dfm_rpc_bridge_client.js`
    - Build Details page snapshot.
    - Call backend sync/compare/apply routes.
    - Reuse current DFM path/name/length helper exports where possible.
    - If the DFM tab is dirty, ask the user whether to save and proceed before sending the request.
 
-2. `frontend/ui/dfm/dfm_rpc_bridge_dialog.js`
+2. `frontend/ui/method_pages/dfm/dfm_rpc_bridge_dialog.js`
    - Floating compare window.
    - Shows local and remote JSON `last modified` timestamps, with Local on the left and Remote Server on the right.
    - Shows a `NEW` seal on the latest version card.
@@ -394,23 +394,23 @@ Add new files instead of placing new feature logic into existing DFM files:
      - `Keep Using Local` when local JSON is newer.
      - `Use Remote Version` when remote JSON is newer.
 
-3. `frontend/ui/dfm/dfm_rpc_bridge_tabbar.js`
+3. `frontend/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js`
    - Creates and wires the Sync button in `dfmTabBar`.
    - Keeps tab bar UI changes isolated.
 
-4. Optional: `frontend/ui/dfm/dfm_rpc_bridge.css`
+4. Optional: `frontend/ui/method_pages/dfm/dfm_rpc_bridge.css`
    - Only if the dialog styling grows enough to justify a separate stylesheet.
 
 Minimal changes to existing files:
 
-1. `frontend/ui/dfm/dfm.html`
+1. `frontend/ui/method_pages/dfm/dfm.html`
    - Include a stable mount point or import the new pathbar module.
    - If possible, do not add large inline CSS.
 
-2. `frontend/ui/dfm/dfm_main.js` or `frontend/ui/dfm/dfm_tabs_orchestrator.js`
+2. `frontend/ui/method_pages/dfm/dfm_main.js` or `frontend/ui/method_pages/dfm/dfm_tabs_orchestrator.js`
    - Import and initialize the new pathbar module.
 
-3. `frontend/ui/dfm/dfm_persistence.js`
+3. `frontend/ui/method_pages/dfm/dfm_persistence.js`
    - Export a small reusable `applyDfmMethodPayload(payload, options)` helper if current load logic cannot be reused cleanly from the new file.
    - Keep the new RPC UI code out of persistence.
    - Update local DFM save/load filename generation from `@<development_length>@<origin_length>` to `@<origin_length>@<development_length>`.

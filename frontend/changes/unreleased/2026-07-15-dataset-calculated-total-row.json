@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Restored Dataset Viewer totals for calculated datasets with formulas.",
+  "details": [
+    "Calculated triangles now retain the footer Total row, and transposed calculated datasets retain the right-side Total column."
+  ]
+}

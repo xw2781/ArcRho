@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Made Data-tab totals selectable with the same range and copy controls as dataset cells.",
+  "details": [
+    "The footer Total row and transposed Total column now support cell, label, drag, Shift, and keyboard selection.",
+    "Total values can be copied while remaining read-only for editing, paste, Delete, and Backspace."
+  ]
+}

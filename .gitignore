@@ -51,6 +51,8 @@ __pycache__/
 
 # Runtime, generated data, and local temp files
 data/
+!frontend/ui/shared/tabs/data/
+!frontend/ui/shared/tabs/data/**
 requests/
 logs/
 output/

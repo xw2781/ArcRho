@@ -1,0 +1,115 @@
+.tabbedPageTabBar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  flex-wrap: nowrap;
+  position: relative;
+  height: calc(35px + var(--tabbed-tabbar-extra-y, 0px));
+  margin: 0;
+  padding: 4px var(--tabbed-page-gutter, 8px) 0;
+  border-bottom: 0;
+  background: #f5f7fa;
+  box-sizing: border-box;
+  user-select: none;
+  overflow: visible;
+  z-index: 40;
+}
+
+.tabbedPageTabBar::after {
+  content: "";
+  position: absolute;
+  right: var(--tabbed-page-gutter, 8px);
+  bottom: 0;
+  left: var(--tabbed-page-gutter, 8px);
+  height: 1px;
+  background: #d0d0d0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tabbedPageTab {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+  height: 26px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+  border-radius: 0;
+  background: #edf1f6;
+  color: #1f2937;
+  box-shadow: none;
+  font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tabbedPageTab:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.tabbedPageTab:focus-visible {
+  outline: 2px solid rgba(43, 109, 246, 0.36);
+  outline-offset: -2px;
+}
+
+.tabbedPageTab.active,
+.tabbedPageTab[aria-selected="true"] {
+  z-index: 2;
+  height: 29px;
+  margin-bottom: 0;
+  border-color: #cbd5e1;
+  border-bottom: 0;
+  background: #fff;
+  color: #1f2937;
+  box-shadow: none;
+  font-weight: 700;
+  transform: translateY(1px);
+}
+
+.tabbedPageTab.active::after,
+.tabbedPageTab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  left: -1px;
+  height: 1px;
+  background: #fff;
+  pointer-events: none;
+}
+
+.tabbedPageTab:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.tabbedPageSaveBar {
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px 4px;
+  box-sizing: border-box;
+  border: 0;
+  background: #f5f7fa;
+}
+
+.tabbedPageSaveBar[hidden] {
+  display: none;
+}
+
+.tabbedPageSaveBar button,
+.tabbedPageSaveButton,
+.tabbedPageCancelButton {
+  font-family: var(--tabbed-page-action-font-family, "Segoe UI", Arial, sans-serif);
+}

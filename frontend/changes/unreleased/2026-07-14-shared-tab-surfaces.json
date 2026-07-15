@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "method pages",
+  "audience": "user",
+  "summary": "Standardized the shared Details, Notes, Audit Log, and tab-strip presentation across Dataset and method pages.",
+  "details": [
+    "Dataset, DFM, Bornhuetter Ferguson, and Result Selection now use the same reusable tab surfaces while preserving their existing save and dirty-state behavior.",
+    "Details labels now use consistent punctuation and compact label-to-control spacing.",
+    "Dataset Viewer now lives under ui/dataset_viewer, DFM/BF/RS under ui/method_pages, and reusable tab, component, dataset-domain, integration, service, style, and utility modules under matching ui/shared sections."
+  ]
+}

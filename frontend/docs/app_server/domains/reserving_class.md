@@ -27,7 +27,7 @@ Reserving class values/tree/preferences/types domain.
 - [`app_server/api/reserving_class_router.py`](../../../app_server/api/reserving_class_router.py) - Reserving-class routes for values/tree/preferences/types.
 - [`app_server/services/reserving_class_service.py`](../../../app_server/services/reserving_class_service.py) - Cache generation, refresh, and preference persistence.
 - [`app_server/schemas/reserving_class.py`](../../../app_server/schemas/reserving_class.py) - Reserving class request models.
-- [`ui/shared/reserving_class_lazy_picker.js`](../../../ui/shared/reserving_class_lazy_picker.js) - Frontend caller for reserving-class endpoints.
+- [`ui/shared/components/pickers/reserving_class_picker.js`](../../../ui/shared/components/pickers/reserving_class_picker.js) - Frontend caller for reserving-class endpoints.
 <!-- AUTO-GEN:END -->
 
 ## External Interfaces

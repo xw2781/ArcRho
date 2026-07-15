@@ -24,9 +24,9 @@ Routes:
 - `app_server/api/result_selection_rpc_bridge_router.py` - Thin API routes.
 - `app_server/schemas/result_selection_rpc_bridge.py` - Request schemas.
 - `app_server/services/result_selection_rpc_bridge_service.py` - Path resolution, request-file writes, wait/compare/apply/update-remote behavior.
-- `ui/result_selection/result_selection_rpc_bridge_client.js` - Frontend route calls and sync flow.
-- `ui/result_selection/result_selection_rpc_bridge_dialog.js` - Floating comparison/status UI.
-- `ui/result_selection/result_selection_main.js` - Method toolbar Sync button wiring.
+- `ui/method_pages/result_selection/result_selection_rpc_bridge_client.js` - Frontend route calls and sync flow.
+- `ui/method_pages/result_selection/result_selection_rpc_bridge_dialog.js` - Floating comparison/status UI.
+- `ui/method_pages/result_selection/result_selection_main.js` - Method toolbar Sync button wiring.
 <!-- MANUAL:END -->
 
 ## External Interfaces

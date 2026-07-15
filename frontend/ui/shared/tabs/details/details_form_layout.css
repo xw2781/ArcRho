@@ -1,0 +1,118 @@
+.arDetailsRoot {
+  --ar-details-label-width: max-content;
+  --ar-details-label-control-gap: 1px;
+  --ar-details-group-separation: 1px;
+  --ar-details-row-gap: 10px;
+  --ar-details-control-height: 30px;
+  --ar-details-font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  --ar-details-label-font-size: 12px;
+  --ar-details-control-font-size: 12px;
+  --ar-details-label-color: #000000;
+  --ar-details-control-color: #000000;
+  --ar-details-readonly-color: #000000;
+  --ar-details-control-border: #cfcfcf;
+  --ar-details-control-background: #ffffff;
+  --ar-details-readonly-background: #f5f7fa;
+  --ar-details-focus-border: #8aa8ff;
+  --ar-details-focus-ring: rgba(138, 168, 255, 0.2);
+  color: var(--ar-details-control-color);
+  font-family: var(--ar-details-font-family);
+  font-size: var(--ar-details-control-font-size);
+}
+
+.arDetailsRoot input,
+.arDetailsRoot select,
+.arDetailsRoot textarea,
+.arDetailsRoot button {
+  font-family: inherit;
+}
+
+.arDetailsGroup {
+  width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 0;
+  box-sizing: border-box;
+  background: transparent;
+  box-shadow: none;
+}
+
+.arDetailsGroup + .arDetailsGroup {
+  margin-top: var(--ar-details-group-separation);
+}
+
+.arDetailsGrid {
+  display: grid;
+  grid-template-columns: var(--ar-details-label-width) minmax(0, 1fr);
+  column-gap: var(--ar-details-label-control-gap);
+  row-gap: var(--ar-details-row-gap);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.arDetailsLabel {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--ar-details-label-color);
+  font-family: var(--ar-details-font-family);
+  font-size: var(--ar-details-label-font-size);
+  font-weight: 400;
+  line-height: 1.25;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Labels own their literal punctuation; the primitive never generates a colon. */
+.arDetailsLabel::before,
+.arDetailsLabel::after {
+  content: none;
+}
+
+.arDetailsField {
+  width: 100%;
+  min-width: 0;
+  color: var(--ar-details-control-color);
+}
+
+.arDetailsControl {
+  width: 100%;
+  min-width: 0;
+  height: var(--ar-details-control-height);
+  padding: 0 10px;
+  border: 1px solid var(--ar-details-control-border);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  box-sizing: border-box;
+  background: var(--ar-details-control-background);
+  color: var(--ar-details-control-color);
+  font-family: var(--ar-details-font-family);
+  font-size: var(--ar-details-control-font-size);
+  line-height: var(--ar-details-control-height);
+}
+
+textarea.arDetailsControl {
+  height: auto;
+  min-height: var(--ar-details-control-height);
+  padding-top: 6px;
+  padding-bottom: 6px;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.arDetailsControl:focus,
+.arDetailsControl:focus-visible {
+  outline: none;
+  border-color: var(--ar-details-focus-border);
+  box-shadow: 0 0 0 2px var(--ar-details-focus-ring);
+}
+
+.arDetailsControl[readonly],
+.arDetailsControl:disabled,
+.arDetailsControl[aria-readonly="true"] {
+  background: var(--ar-details-readonly-background);
+  color: var(--ar-details-readonly-color);
+  cursor: default;
+  opacity: 1;
+}

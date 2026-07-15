@@ -1,7 +1,7 @@
 import {
   normalizeReservingClassPath,
   normalizeReservingClassPathKey,
-} from "/ui/shared/valid_value_list_provider.js";
+} from "/ui/shared/services/valid_value_lists.js";
 
 const LAST_VIEWED_KEY = "arcrho_dataset_last_viewed_v1";
 const HISTORY_KEY = "arcrho_browsing_history_v1";

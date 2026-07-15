@@ -10,8 +10,10 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 | HTML Entrypoint | External Scripts | Inline Imports |
 | --- | --- | --- |
 | `ui/index.html` | 1 external script | - |
-| `ui/dataset/dataset_viewer.html` | - | 2 inline imports |
-| `ui/dfm/dfm.html` | - | 2 inline imports |
+| `ui/dataset_viewer/dataset_viewer.html` | - | 1 inline import |
+| `ui/method_pages/dfm/dfm.html` | - | 2 inline imports |
+| `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html` | 1 external script | - |
+| `ui/method_pages/result_selection/result_selection.html` | 5 external scripts | - |
 | `ui/workflow/workflow.html` | 1 external script | - |
 | `ui/project_settings/project_settings.html` | 1 external script | - |
 | `ui/project_instance/project_instance.html` | 1 external script | - |
@@ -25,6 +27,8 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 - [`docs/ui/shell.md`](shell.md) - Shell tab host index.
 - [`docs/ui/dataset.md`](dataset.md) - Dataset feature index.
 - [`docs/ui/dfm.md`](dfm.md) - DFM feature index.
+- [`docs/ui/bornhuetter_ferguson.md`](bornhuetter_ferguson.md) - Bornhuetter Ferguson method-page index.
+- [`docs/ui/result_selection.md`](result_selection.md) - Result Selection method-page index.
 - [`docs/ui/workflow.md`](workflow.md) - Workflow feature index.
 - [`docs/ui/project_settings.md`](project_settings.md) - Project settings feature index.
 - [`docs/ui/arcode.md`](arcode.md) - Arcode scripting workspace feature index.
@@ -41,8 +45,9 @@ Mandatory before frontend behavior changes:
 High-risk files that must follow contracts:
 - `ui/shell/ui_shell.js`
 - `ui/workflow/workflow_main.js`
-- `ui/dataset/dataset_main.js`
-- `ui/dfm/dfm.html` and `ui/dfm/dfm_*.js`
+- `ui/dataset_viewer/dataset_viewer.html`, `ui/dataset_viewer/*`, and `ui/shared/tabs/data/*`
+- `ui/method_pages/dfm/dfm.html` and `ui/method_pages/dfm/dfm_*.js`
+- `ui/method_pages/bornhuetter_ferguson/*` and `ui/method_pages/result_selection/*`
 - `ui/project_settings/project_settings.js`
 - `ui/arcode/main.js`, `ui/arcode/main.html`, `ui/arcode/notebook-editor/*`, `ui/arcode/code-editor/*`, and `ui/arcode/shared/editor_shared.js`
 - `ui/ai-assistant/*`

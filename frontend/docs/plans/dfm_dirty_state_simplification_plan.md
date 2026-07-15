@@ -20,21 +20,21 @@ titlebar (~1s) even though the user made no edits**. Confirmed on:
 Dirty state is currently decided by **comparing serialized snapshots of the
 method payload**:
 
-- [`isCurrentDfmDirtyComparedToCleanSnapshot()`](../../ui/dfm/dfm_persistence.js) compares
+- [`isCurrentDfmDirtyComparedToCleanSnapshot()`](../../ui/method_pages/dfm/dfm_persistence.js) compares
   `serializeDfmDirtySnapshot(buildDfmMethodPayload())` against the stored
   `lastCleanDfmDirtySnapshot`.
-- [`buildDfmDirtySnapshot()`](../../ui/dfm/dfm_persistence.js) captures the
+- [`buildDfmDirtySnapshot()`](../../ui/method_pages/dfm/dfm_persistence.js) captures the
   `average formulas` object **including its computed `values`** and the
   `excluded` matrix.
 
 Both of those are **derived from `state.model`**, not from user input:
 
 - `average formulas.values` is recomputed every call by
-  [`buildAverageFormulaValues()`](../../ui/dfm/dfm_persistence.js) from the live
+  [`buildAverageFormulaValues()`](../../ui/method_pages/dfm/dfm_persistence.js) from the live
   triangle.
 - `excluded` is shape-trimmed against the model-derived ratio triangle
-  ([`trimMatrixToReferenceRowShape()`](../../ui/dfm/dfm_persistence.js) +
-  [`buildCalculatedRatioTriangleValues()`](../../ui/dfm/dfm_persistence.js)).
+  ([`trimMatrixToReferenceRowShape()`](../../ui/method_pages/dfm/dfm_persistence.js) +
+  [`buildCalculatedRatioTriangleValues()`](../../ui/method_pages/dfm/dfm_persistence.js)).
 
 When the model finishes loading / recomputing **after** the "clean" baseline was
 captured, these derived fields no longer match the baseline, so `markDfmDirty()`
@@ -147,7 +147,7 @@ resulting state **only** through its existing `markClean` option:
   Macro / assistant apply then call `markDfmDirty()` *after* the
   await, **outside** the scope, so the new unsaved content registers. (The macro
   path already does this at
-  [`dfm_tabs_orchestrator.js:652`](../../ui/dfm/dfm_tabs_orchestrator.js).)
+  [`dfm_tabs_orchestrator.js:652`](../../ui/method_pages/dfm/dfm_tabs_orchestrator.js).)
 
 This removes the §2-vs-§4 ambiguity: the end-of-`applyDfmMethodPayload` clean
 step is **gated by `markClean`, not unconditional**, and `markClean` is the one
@@ -199,7 +199,7 @@ same tangle.
 
 The per-call-site `programmatic`/`silent` flags often guard **more than dirty**.
 Confirmed example: `input.dataset.programmatic` in
-[`dfm_details.js:661-677`](../../ui/dfm/dfm_details.js) suppresses
+[`dfm_details.js:661-677`](../../ui/method_pages/dfm/dfm_details.js) suppresses
 `markDfmDirty()` *and* the local-method lookup (`scheduleRatioSelectionLoad`) and
 the tab-title/lastLookup bookkeeping. The scope guard makes only their *dirty*
 role redundant; their other roles must stay.

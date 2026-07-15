@@ -1,0 +1,1147 @@
+/* Dataset Viewer page shell. */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--app-font);
+  margin: 0;
+  background: var(--bg);
+  user-select: none;
+}
+
+#datasetRoot {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  position: relative;
+}
+
+/* =========================
+  Details Project Inputs
+========================= */
+#dsDetailsPage {
+  max-width: 100%;
+  overflow: auto;
+}
+
+#topFrame {
+  width: 100%;
+  margin: 0;
+  border: none;
+  background: transparent;
+  padding: 12px 14px;
+  box-sizing: border-box;
+}
+
+.topFrameGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  row-gap: 10px;
+  align-items: center;
+}
+
+.topField {
+  row-gap: 0;
+}
+
+.topField input,
+.topField select {
+  width: 100%;
+  height: 30px;
+  line-height: 30px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #fff;
+  color: var(--ar-details-control-color, #000);
+  font-size: var(--ar-details-control-font-size, 12px);
+}
+
+.topField input:focus,
+.topField select:focus {
+  outline: none;
+  border-color: #8aa8ff;
+  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+}
+
+.dsDetailNameWrap {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+}
+
+.dsDetailNameWrap #dsDetailName {
+  width: 100%;
+}
+
+.dsDetailNameWrap #dsDetailName.invalid {
+  border-color: #d92d20;
+  box-shadow: 0 0 0 2px rgba(217, 45, 32, 0.12);
+}
+
+.dsDetailNameWarning {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  z-index: 20;
+  min-width: 220px;
+  max-width: min(300px, calc(100vw - 40px));
+  padding: 7px 9px;
+  border: 1px solid #f04438;
+  border-radius: 6px;
+  background: #fff7f5;
+  color: #b42318;
+  box-shadow: 0 8px 20px rgba(180, 35, 24, 0.16);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: normal;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.dsDetailNameWarning::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-left: 1px solid #f04438;
+  border-bottom: 1px solid #f04438;
+  background: #fff7f5;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+/* Right side is a container holding panels */
+.right {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+
+  align-items: flex-start;
+}
+
+/* =========================
+  Top Row: Formula + Params
+========================= */
+.topRow {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+
+#dsDataPage.datasetTopBarCollapsed .topRow {
+  display: none !important;
+}
+
+/* =========================
+  Dataset Top Bar
+========================= */
+#datasetTopBar {
+  --topbar-mid-offset: 0px;
+  --topbar-left-col: max-content;
+  --topbar-gap-1-2: 36px;
+  --topbar-gap-3-4: 36px;
+  --topbar-input-offset: 0px;
+  --topbar-control-height: 28px;
+  min-width: 550px;
+  padding: 8px 10px;
+  flex: 0 0 auto;
+  overflow: visible;
+  border: none;
+  background: transparent;
+}
+
+.topbar-grid {
+  display: grid;
+  grid-template-columns: var(--topbar-left-col) max-content 72px max-content max-content;
+  grid-template-rows: auto auto;
+  column-gap: 0px;
+  row-gap: 10px;
+  align-items: center;
+}
+
+.topbar-label-stack {
+  margin-left: var(--topbar-gap-1-2);
+}
+
+.topbar-left {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  gap: 6px 12px;
+  align-items: center;
+  justify-content: start;
+}
+
+.topbar-label {
+  display: flex;
+  justify-content: flex-end;
+  margin-left: var(--topbar-mid-offset);
+}
+
+.topbar-label-stack,
+.topbar-input-stack,
+.topbar-format-label-stack,
+.topbar-format-input-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topbar-format-label-stack {
+  margin-left: var(--topbar-gap-3-4);
+}
+
+.topbar-input-stack {
+  margin-left: var(--topbar-input-offset);
+}
+
+.topbar-format-input-stack {
+  margin-left: 13px;
+}
+
+.topbar-input {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.chk, .rad {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: var(--topbar-control-height);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+#datasetTopBar .timeModeFrame {
+  grid-column: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  height: var(--topbar-control-height);
+  padding: 0 10px 0 7px;
+  border: 1px solid #d6dbe2;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
+  box-sizing: border-box;
+}
+
+#datasetTopBar .timeModeFrame .rad {
+  line-height: 1;
+}
+
+.topbar-label .lbl {
+  font-size: 13px;
+  line-height: var(--topbar-control-height);
+  color: var(--muted);
+  text-align: right;
+}
+
+/* unify select & number input */
+#datasetTopBar select,
+#datasetTopBar .lenSelectDisplay,
+#datasetTopBar input[type="text"],
+#datasetTopBar input[type="number"] {
+  height: var(--topbar-control-height, 28px);
+  line-height: var(--topbar-control-height, 28px);
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #fff;
+  font-size: 13px;
+  font-family: var(--app-font);
+}
+
+#datasetTopBar select:focus,
+#datasetTopBar .lenSelectDisplay:focus,
+#datasetTopBar .lenSelectWrap.open .lenSelectDisplay,
+#datasetTopBar input[type="text"]:focus,
+#datasetTopBar input[type="number"]:focus {
+  outline: none;
+  border-color: #8aa8ff;
+  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+}
+
+#datasetTopBar .lenSelectWrap {
+  position: relative;
+  width: 55px;
+  height: var(--topbar-control-height);
+}
+
+#datasetTopBar .lenSelectDisplay {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  color: #111;
+  background: #fff;
+  position: relative;
+  padding-right: 18px;
+}
+
+#datasetTopBar .lenSelectValue {
+  min-width: 0;
+  width: 100%;
+  text-align: center;
+  flex: 1 1 auto;
+  pointer-events: none;
+}
+
+#datasetTopBar .lenSelectCaret {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  color: #555;
+  opacity: 0.32;
+  pointer-events: none;
+  transform-origin: center;
+  transition: opacity 120ms ease, transform 120ms ease, color 120ms ease;
+}
+
+#datasetTopBar .lenSelectWrap.open .lenSelectCaret {
+  transform: translateY(-50%) rotate(180deg);
+  color: #2f5fd3;
+  opacity: 1;
+}
+
+#datasetTopBar .lenSelectDisplay:hover .lenSelectCaret,
+#datasetTopBar .lenSelectDisplay:focus .lenSelectCaret,
+#datasetTopBar .numberFormatDropdownBtn:hover .lenSelectCaret,
+#datasetTopBar .numberFormatDropdownBtn:focus .lenSelectCaret {
+  opacity: 1;
+}
+
+#datasetTopBar .numberFormatWrap {
+  position: relative;
+  width: 69px;
+  height: var(--topbar-control-height);
+}
+
+#numberFormatSelect {
+  width: 100%;
+  padding-right: 24px !important;
+}
+
+#datasetTopBar .numberFormatDropdownBtn {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  width: 24px;
+  height: calc(var(--topbar-control-height) - 2px);
+  padding: 0;
+  border: 0;
+  border-left: 1px solid transparent;
+  border-radius: 0 5px 5px 0;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+}
+
+#datasetTopBar .numberFormatDropdownBtn .lenSelectCaret {
+  right: 8px;
+  pointer-events: none;
+}
+
+#datasetTopBar .numberFormatWrap.open .numberFormatDropdownBtn .lenSelectCaret {
+  transform: translateY(-50%) rotate(180deg);
+  color: #2f5fd3;
+  opacity: 1;
+}
+
+#datasetTopBar .numberFormatDropdown {
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 160px;
+  z-index: 70;
+}
+
+#datasetTopBar .numberFormatOption {
+  text-align: left;
+  padding-left: 10px;
+}
+
+#datasetTopBar .lenSelectNative {
+  position: absolute;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+}
+
+#datasetTopBar .lenDropdown {
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  z-index: 70;
+}
+
+#datasetTopBar .lenDropdown .lenOption {
+  text-align: center;
+}
+
+/* =========================
+  Triangle + Chart Panels
+========================= */
+#clearCacheReloadBtn {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #c8c8c8;
+  box-shadow: none;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #f7f7f7;
+  background-clip: padding-box;
+  color: #444;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 10;
+  box-sizing: border-box;
+}
+
+#clearCacheReloadBtn:hover {
+  background: #ececec;
+  border-color: #b8b8b8;
+}
+
+#clearCacheReloadBtn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+  border-color: #8aa8ff;
+}
+
+#clearCacheReloadBtn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+#chartPanel {
+  width: 1030px;
+  height: 560px;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+}
+
+#chartPanel .panelInner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chartToggle {
+  display: inline-flex;
+  border: 1px solid #cfcfcf;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.chartToggleBtn {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: none;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.chartToggleBtn + .chartToggleBtn {
+  border-left: 1px solid #cfcfcf;
+}
+.chartToggleBtn.active {
+  background: #e8edf5;
+  color: #333;
+  font-weight: 600;
+}
+.chartToggleBtn:hover:not(.active) {
+  background: #f5f5f5;
+}
+
+/* Chart tooltip */
+.chartTooltip {
+  position: fixed;
+  display: none;
+  padding: 5px 8px;
+  background: rgba(17, 17, 17, 0.88);
+  color: #fff;
+  font-size: 12px;
+  font-family: var(--app-font);
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 100;
+}
+
+/* Legend checkbox */
+.legendChk {
+  margin-left: auto;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.legendSelectAll {
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+.chartRow {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.chartCanvasWrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#devChart {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chartLegend {
+  width: 170px;
+  flex: 0 0 170px;
+  max-height: 100%;
+  overflow-y: auto;
+  border-left: 1px solid #eee;
+  padding-left: 8px;
+  box-sizing: border-box;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.legendLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.legendItem.is-hover .legendLabel {
+  font-weight: 600;
+}
+
+
+/* =========================
+  Dataset Tab Bar
+========================= */
+/* Shared tab-strip chrome is defined in ui/shared/tabbed_page/tabbed_page.css. */
+.dsDataTabTooltip {
+  position: fixed;
+  max-width: 240px;
+  padding: 6px 8px;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #1f2937;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  z-index: 10000;
+}
+.dsDataTabTooltip.open {
+  opacity: 1;
+  transform: translateY(0);
+}
+#dsDetailsPage,
+#dsDataPage,
+#dsChartPage,
+#dsNotesPage,
+#dsAuditLogPage {
+  border: 1px solid #d8dde3;
+  border-top: 0;
+  border-radius: 0;
+  margin: 0 var(--tabbed-page-gutter, 8px);
+  padding: 10px;
+  background: #fff;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+#dsDataPage {
+  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  gap: 6px;
+  align-items: stretch;
+  overflow: hidden;
+}
+#dsDataPage[style*="display: block"] {
+  display: flex !important;
+}
+#dsChartPage[style*="display: block"] {
+  display: flex !important;
+  flex-direction: column;
+}
+#dsDataPage #triPanel {
+  padding: 0;
+  border-radius: 0;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  height: auto;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+#dsDataPage #tableWrapHost {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+#dsChartPage .panel {
+  border: none;
+  border-radius: 0;
+}
+#dsChartPage[style*="display: block"] .right {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  align-items: stretch;
+}
+#dsChartPage[style*="display: block"] #chartPanel {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+#dsDataPage.dsTabFloatingPage {
+  padding-bottom: 3px;
+}
+#dsDataPage.dsTabFloatingPage #tableWrapHost {
+  flex: 1 1 0;
+  height: auto;
+  max-height: none;
+}
+#dsChartPage.dsTabFloatingPage .right,
+#dsChartPage.dsTabFloatingPage #chartPanel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+#dsChartPage.dsTabFloatingPage #chartPanel {
+  display: flex;
+  flex-direction: column;
+}
+#dsNotesPage {
+  overflow: auto;
+}
+#dsAuditLogPage[style*="display: block"] {
+  display: flex !important;
+  align-items: flex-start;
+  overflow: hidden;
+}
+#datasetAuditLogMount {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+}
+.dsNotesEditorWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(100%, 960px);
+}
+.dsNotesToolbar {
+  display: flex;
+  align-self: flex-start;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  box-sizing: border-box;
+}
+.dsNotesActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dsNotesSaveState {
+  min-width: 118px;
+  text-align: right;
+  color: #5f6c83;
+}
+.dsNotesSaveState.is-dirty {
+  color: #8f5c00;
+  font-weight: 600;
+}
+.dsNotesSaveState.is-clean {
+  color: #1f6e43;
+}
+.dsNotesSaveState.is-hidden {
+  display: none;
+}
+.datasetSaveBar {
+  flex: 0 0 38px;
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 10px 4px;
+  box-sizing: border-box;
+}
+.datasetSaveBar[hidden] {
+  display: none;
+}
+.datasetPrimaryBtn,
+.datasetSecondaryBtn {
+  min-width: 72px;
+  height: 28px;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.datasetPrimaryBtn {
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+.datasetPrimaryBtn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+.datasetSecondaryBtn {
+  border: 1px solid rgba(21, 34, 54, 0.18);
+  background: #fff;
+  color: #1f2937;
+}
+.datasetPrimaryBtn.is-clean {
+  border: 1px solid rgba(21, 34, 54, 0.18);
+  background: #fff;
+  color: #1f2937;
+}
+.datasetSecondaryBtn:hover:not(:disabled) {
+  background: #f4f7fb;
+}
+.datasetPrimaryBtn:disabled,
+.datasetSecondaryBtn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.datasetRecalcClose {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 24px;
+  cursor: pointer;
+}
+.datasetRecalcClose:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.datasetRecalcActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.datasetRecalcOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.18);
+}
+.datasetRecalcOverlay[hidden] {
+  display: none;
+}
+.datasetRecalcBox {
+  position: relative;
+  width: min(560px, calc(100vw - 40px));
+  max-height: min(70vh, 560px);
+  border: 1px solid #c9d1dc;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
+  padding: 16px 18px 14px;
+  box-sizing: border-box;
+  color: #111827;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.datasetRecalcTitle {
+  padding-right: 26px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.datasetRecalcSummary {
+  margin-top: 8px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.datasetRecalcList {
+  margin-top: 12px;
+  padding: 8px;
+  border: 1px solid #d8dde3;
+  border-radius: 6px;
+  background: #f8fafc;
+  overflow: auto;
+  min-height: 0;
+  font-size: 12px;
+}
+.datasetRecalcItem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 6px;
+  border-bottom: 1px solid #e5eaf1;
+}
+.datasetRecalcItem:last-child {
+  border-bottom: none;
+}
+.datasetRecalcBadge {
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: #15803d;
+}
+.datasetRecalcItem.is-skipped .datasetRecalcBadge {
+  background: #b45309;
+}
+.datasetRecalcName {
+  color: #111827;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.datasetRecalcMeta {
+  margin-top: 2px;
+  color: #64748b;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* =========================
+  Details Tab Fields
+========================= */
+.dsDetailInput {
+  text-align: left;
+}
+.dsDetailInput input,
+.dsDetailInput select,
+.dsDetailInput textarea {
+  width: 100%;
+  height: 30px;
+  line-height: 30px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #fff;
+  color: var(--ar-details-control-color, #000);
+  font-size: var(--ar-details-control-font-size, 12px);
+  font-family: var(--app-font);
+}
+#dsDetailsPage input[readonly],
+#dsDetailsPage textarea[readonly],
+#dsDetailsPage select:disabled {
+  color: var(--ar-details-readonly-color, #000);
+}
+.dsDetailInput input:focus,
+.dsDetailInput select:focus,
+.dsDetailInput textarea:focus {
+  outline: none;
+  border-color: #8aa8ff;
+  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+}
+#dsDetailFormula {
+  display: none;
+}
+.dsDetailFormulaBox {
+  width: 100%;
+  min-height: 58px;
+  max-height: 140px;
+  padding: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #ffffff;
+  color: #1f2b40;
+  font-size: 12px;
+  line-height: 16px;
+  font-family: var(--app-font);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+  align-content: flex-start;
+  overflow-y: auto;
+  white-space: normal;
+  box-sizing: border-box;
+}
+.dsDetailFormulaBox.empty {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 10px;
+  background: #f4f7fc;
+  overflow: hidden;
+}
+.dsDetailFormulaBox:focus {
+  outline: none;
+  border-color: #8aa8ff;
+  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
+}
+.dsFormulaRawText {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  color: var(--ar-details-control-color, #000);
+  overflow-wrap: anywhere;
+}
+.dsFormulaComponentChip {
+  --ds-formula-token-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--ds-formula-token-height);
+  min-height: var(--ds-formula-token-height);
+  max-width: 100%;
+  padding: 2px 9px;
+  border: 1px solid #d4d4d4;
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--ar-details-control-color, #000);
+  font-size: 12px;
+  font-family: var(--app-font);
+  line-height: 16px;
+  vertical-align: baseline;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+.dsFormulaComponentChip:hover,
+.dsFormulaComponentChip:focus {
+  border-color: #9d9d9d;
+  background: #f6f9ff;
+  outline: none;
+}
+.dsFormulaTokenText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dsFormulaCalculatedIcon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  flex: 0 0 auto;
+}
+.dsFormulaCalculatedIcon svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dsFormulaOperatorToken {
+  --ds-formula-token-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ds-formula-token-height);
+  min-width: var(--ds-formula-token-height);
+  height: var(--ds-formula-token-height);
+  min-height: var(--ds-formula-token-height);
+  padding: 0;
+  border: 1px solid #c5ccd8;
+  border-radius: 50%;
+  background: #f4f6f9;
+  color: #273142;
+  font-weight: 700;
+  line-height: 16px;
+  vertical-align: baseline;
+  box-sizing: border-box;
+  flex: 0 0 var(--ds-formula-token-height);
+}
+.dsFormulaOperatorToken.plus {
+  border-color: #b7dfc0;
+  background: #f1fbf3;
+  color: #237a3b;
+}
+.dsFormulaOperatorToken.minus {
+  border-color: #e9d98b;
+  background: #fff9da;
+  color: #7b650e;
+}
+.dsFormulaOperatorToken.equals {
+  border-color: #b9c7e6;
+  background: #f3f7ff;
+  color: #315a9f;
+}
+.dsFormulaOperatorToken svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 2.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.dsDatasetChipBox {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px;
+  border: 1px solid #d7deea;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+.dsDatasetChipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 20px;
+  align-items: center;
+}
+.dsDependentLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 360px;
+  min-height: 22px;
+  padding: 2px 9px;
+  border: 1px solid #d4d4d4;
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--ar-details-control-color, #000);
+  font-size: 12px;
+  font-family: var(--app-font);
+  line-height: 16px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsDependentLink:hover,
+.dsDependentLink:focus {
+  border-color: #9d9d9d;
+  background: #f6f9ff;
+  outline: none;
+}
+.dsDependentFormulaTooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: min(624px, calc(100vw - 24px));
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  color: #1e293b;
+  pointer-events: none;
+}
+.dsDependentFormulaTooltipBody {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+}
