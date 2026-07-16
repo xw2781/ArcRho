@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Changed the Temporary View tooltip title to use normal sentence case."
+}

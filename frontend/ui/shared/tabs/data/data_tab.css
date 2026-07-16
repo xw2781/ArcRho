@@ -48,7 +48,13 @@
   outline: none;
   background: transparent;
   box-shadow: none;
-  scrollbar-gutter: stable;
+  /*
+   * Do not reserve a vertical scrollbar gutter while the grid has no vertical
+   * overflow.  A stable gutter shortens the horizontal scrollbar track without
+   * supplying a vertical scrollbar, which makes the horizontal thumb look as
+   * though it has not reached the right edge at its maximum scroll position.
+   */
+  scrollbar-gutter: auto;
 }
 
 #tableWrap::-webkit-scrollbar {

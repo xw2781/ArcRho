@@ -1,3 +1,5 @@
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+
 export function installProjectInstanceDatasetCache(ctx) {
   const { api, els, projectName, state } = ctx;
   const { cachedDatasetFilter, cachedDatasetSnapshotRequests, datasetIndexWatch } = state;
@@ -80,8 +82,8 @@ function syncCachedDatasetToolbar() {
   }
   if (els.datasetTempViewTooltipDescription) {
     els.datasetTempViewTooltipDescription.textContent = temporaryView
-      ? "Temporary view shows all generated datasets. They open read-only and do not create sidecars or index entries. Click to return to Normal view."
-      : "Normal view shows saved datasets from the selected-path index. Click to enable Temporary view.";
+      ? "Temporary view shows all datasets that can be generated. Click to return to Normal view."
+      : "Normal view shows saved datasets only. Click to enable Temporary view.";
   }
   if (els.datasetRefreshBtn) {
     els.datasetRefreshBtn.disabled = cachedDatasetFilter.loading || !state.selectedPath;
@@ -576,6 +578,7 @@ function restoreDatasetTableScroll(scrollState) {
 function initCachedDatasetToolbar() {
   if (els.datasetRefreshBtn && els.datasetRefreshBtn.dataset.wired !== "1") {
     els.datasetRefreshBtn.dataset.wired = "1";
+    attachArcrhoTooltip(els.datasetRefreshBtn, "Refresh Dataset Table");
     els.datasetRefreshBtn.addEventListener("click", () => {
       void refreshCachedDatasetTableFromDisk();
     });

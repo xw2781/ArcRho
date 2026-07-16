@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dataset and dfm",
+  "audience": "user",
+  "summary": "Added reusable Excel Links workflows for Dataset Viewer and DFM.",
+  "details": [
+    "Editable Dataset cells can load a cell or rectangular range from a full external Excel reference, clip oversized ranges to editable Triangle or Vector cells, and edit a link from a hover formula bar.",
+    "Linked Dataset cells use bold dark-green text, while unsaved Dataset entries no longer refresh the Project Instance disk-backed dataset inventory.",
+    "Links tables show current values, support Ctrl/Shift row selection, and provide Refresh all or Break all actions that operate on all rows or the selected rows while preserving current values when links are broken."
+  ]
+}

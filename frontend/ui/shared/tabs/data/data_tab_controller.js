@@ -16,7 +16,7 @@ import {
   renderTable,
   setDatasetRenderNumberFormatSettings,
   setDatasetRenderVectorColumnLabel,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715b";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715c";
 import {
   redrawDataTabChartSafely as redrawChartSafely,
   renderDataTabChart as renderChart,
@@ -28,7 +28,7 @@ import {
 import { createDatasetDependencyGuard } from "/ui/shared/dataset/dataset_dependency_service.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { validateDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
-import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260715b";
+import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260715d";
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
@@ -47,6 +47,8 @@ import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_nam
 import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 import { getDataTabAuditController } from "/ui/shared/tabs/data/data_tab_audit_port.js";
 import { getDataTabCloseConfirm } from "/ui/shared/tabs/data/data_tab_close_port.js";
+import { getDataTabLinksController } from "/ui/shared/tabs/data/data_tab_links_port.js";
+import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260716a";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -492,7 +494,7 @@ function calculationReportTargetsCurrentDataset(report) {
 
 async function handleCalculatedDatasetsUpdatedMessage(report) {
   if (calculatedDatasetRefreshInFlight || !calculationReportTargetsCurrentDataset(report)) return;
-  if (state.dirty.size || datasetSettingsDirty || notesDirty) {
+  if (hasUnsavedDatasetChanges()) {
     setStatus("This dataset was recalculated on disk. Save or discard local edits before reloading.");
     return;
   }
@@ -641,7 +643,7 @@ const DEFAULT_PROJECT_DISPLAY = "Default Project";
 const DEFAULT_PATH_DISPLAY = "Default Path";
 const DEFAULT_TOKEN = "__DEFAULT__";
 const BROWSING_HISTORY_MAX_ENTRIES = 15;
-const DATASET_VIEWER_TAB_IDS = new Set(["details", "data", "chart", "notes", "auditLog"]);
+const DATASET_VIEWER_TAB_IDS = new Set(["details", "data", "chart", "notes", "links", "auditLog"]);
 
 const datasetAuditLog = getDataTabAuditController();
 
@@ -1134,9 +1136,49 @@ let currentDatasetSidecarSourceKind = "";
 let currentDatasetSidecarDataFormat = "";
 let currentDatasetPrecedents = [];
 let sidecarSyncNonce = 0;
+let datasetExternalLinksLoaded = false;
 const datasetCloseConfirm = getDataTabCloseConfirm();
 let activeDependencyPreviewKey = "";
 const lenDropdownActiveIndexBySelect = new Map();
+
+const datasetExternalLinks = createDatasetExternalLinksController({
+  state,
+  isReadOnly: () => (
+    isDatasetReadOnly()
+    || isDfmDataTabHost()
+    || !currentDatasetIsManualTriangleOrVector()
+  ),
+  isTransposed: () => document.getElementById("transposedChk")?.checked === true,
+  onInventoryChanged: () => {
+    getDataTabLinksController()?.refresh?.();
+    updateDatasetSaveUi();
+  },
+});
+
+export function getDatasetExternalLinkRecords() {
+  return datasetExternalLinks.listRecords();
+}
+
+export function getDatasetExternalLinkCellInfo(displayRow, displayColumn) {
+  return datasetExternalLinks.getCellLinkInfo(displayRow, displayColumn);
+}
+
+export async function breakDatasetExternalLinks(ids) {
+  const result = datasetExternalLinks.breakLinks(ids);
+  if (!result.ok) return result;
+  renderTable();
+  notifyDatasetUpdated({ publishPreview: false });
+  setStatus(result.message || "Links broken. Current dataset values are now hard-coded.");
+  return result;
+}
+
+export async function breakDatasetExternalLink(id) {
+  return breakDatasetExternalLinks([id]);
+}
+
+export async function refreshDatasetExternalLinkRecords(ids) {
+  return refreshDatasetExternalLinks({ ids });
+}
 
 function setLastProjectSelection(value) {
   lastProjectSelection = String(value || "");
@@ -2601,7 +2643,10 @@ function saveTriInputsToStorage() {
 }
 
 function isDatasetReadOnly() {
-  return isTemporaryDatasetView || isReadOnlyDatasetViewer || isSidecarReadOnlyDataset;
+  return isTemporaryDatasetView
+    || isReadOnlyDatasetViewer
+    || isSidecarReadOnlyDataset
+    || datasetSaveInFlight;
 }
 
 async function restoreTriInputsFromStorage() {
@@ -3203,6 +3248,15 @@ function getManualInputDatasetValuePayload() {
   };
 }
 
+function getDatasetExternalLinksPayload() {
+  if (
+    isDfmDataTabHost()
+    || !datasetExternalLinksLoaded
+    || !currentDatasetIsManualTriangleOrVector()
+  ) return {};
+  return { external_links: datasetExternalLinks.serialize() };
+}
+
 function normalizeDatasetSettings(source = {}) {
   const origin = Number(source.origin_length ?? source.originLen);
   const development = Number(source.development_length ?? source.devLen);
@@ -3250,7 +3304,10 @@ function hasUnsavedDatasetChanges() {
   // DFM imports the Dataset runtime for its Data tab, but DFM persistence owns
   // the method's dirty state and close confirmation for the combined page.
   if (isDfmDataTabHost()) return false;
-  return datasetSettingsDirty || notesDirty || hasManualInputGridChanges();
+  return datasetSettingsDirty
+    || notesDirty
+    || hasManualInputGridChanges()
+    || datasetExternalLinks.isDirty();
 }
 
 function normalizeDatasetModeText(value) {
@@ -3433,6 +3490,42 @@ function applyDatasetSettingsToControls(settings = {}) {
 function invalidateDatasetContextLoads() {
   notesSyncNonce += 1;
   sidecarSyncNonce += 1;
+  datasetExternalLinks.abort();
+}
+
+async function refreshDatasetExternalLinks(options = {}) {
+  const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
+  if (
+    isDfmDataTabHost()
+    || !datasetExternalLinksLoaded
+    || !state.model
+    || !currentDatasetIsManualTriangleOrVector()
+    || !isCurrent()
+  ) {
+    return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
+  }
+  const result = await datasetExternalLinks.refreshAll(options?.ids ?? null);
+  if (!isCurrent() || result?.stale || result?.aborted) return result;
+  if (result.changedCount > 0) {
+    renderTable();
+    notifyDatasetUpdated();
+    applyGridSelectionFromState();
+  }
+  getDataTabLinksController()?.refresh?.();
+  if (result.failedCount > 0) {
+    window.setTimeout(() => {
+      if (isCurrent()) {
+        setStatus(`Excel refresh: ${result.failedCount} linked dataset cell${result.failedCount === 1 ? "" : "s"} failed; saved values were retained.`);
+      }
+    }, 0);
+  } else if (result.changedCount > 0) {
+    window.setTimeout(() => {
+      if (isCurrent()) {
+        setStatus(`Excel refresh updated ${result.changedCount} linked dataset cell${result.changedCount === 1 ? "" : "s"}.`);
+      }
+    }, 0);
+  }
+  return result;
 }
 
 async function syncSidecarForCurrentDataset(options = {}) {
@@ -3448,6 +3541,8 @@ async function syncSidecarForCurrentDataset(options = {}) {
     currentDatasetSidecarSourceKind = "";
     currentDatasetSidecarDataFormat = "";
     currentDatasetPrecedents = [];
+    datasetExternalLinksLoaded = false;
+    datasetExternalLinks.clear();
     lastSavedDatasetSettings = null;
     datasetSettingsDirty = false;
     renderDatasetAuditLog([]);
@@ -3467,6 +3562,8 @@ async function syncSidecarForCurrentDataset(options = {}) {
     if (!isCurrent()) return false;
     if (nonce === sidecarSyncNonce) {
       datasetAuditLog?.setError(error?.message || "Unable to load the audit log.");
+      datasetExternalLinksLoaded = false;
+      datasetExternalLinks.clear();
     }
     throw error;
   }
@@ -3477,6 +3574,8 @@ async function syncSidecarForCurrentDataset(options = {}) {
     currentDatasetSidecarSourceKind = isProjectInstanceDraft ? "input" : "";
     currentDatasetSidecarDataFormat = isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : "";
     currentDatasetPrecedents = [];
+    datasetExternalLinksLoaded = false;
+    datasetExternalLinks.clear();
     lastSavedDatasetSettings = normalizeDatasetSettings(getCurrentDatasetSettings());
     datasetSettingsDirty = false;
     datasetAuditLog?.setError(resp?.data?.detail || "Unable to load the audit log.");
@@ -3491,6 +3590,10 @@ async function syncSidecarForCurrentDataset(options = {}) {
   currentDatasetSidecarSourceKind = data.exists ? String(data.source_kind || "") : (isProjectInstanceDraft ? "input" : "");
   currentDatasetSidecarDataFormat = data.exists ? String(data.data_format || "") : (isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : "");
   currentDatasetPrecedents = data.exists ? normalizeDatasetDependencyEntries(data.Precedents) : [];
+  datasetExternalLinksLoaded = !isDfmDataTabHost() && currentDatasetIsManualTriangleOrVector();
+  datasetExternalLinks.load(
+    datasetExternalLinksLoaded && data.exists ? data.external_links : [],
+  );
   if (isProjectInstanceDraft && data.exists && !String(data.csv_file || "").trim()) {
     savedProjectInstanceDraftName = String(data.dataset_name || context.dataset_name || "").trim();
   }
@@ -3516,6 +3619,10 @@ async function syncSidecarForCurrentDataset(options = {}) {
     setDatasetRenderNumberFormatSettings(data.exists ? settings : null);
   }
   lastSavedDatasetSettings = settings;
+  if (options?.forceReload === true) {
+    await refreshDatasetExternalLinks({ isCurrent });
+    if (!isCurrent()) return false;
+  }
   if (options?.applyLengths !== false && data.exists) {
     applyDatasetSettingsToControls(settings);
     saveTriInputsToStorage();
@@ -3555,6 +3662,7 @@ async function saveDatasetSidecarForCurrentContext() {
     ...context,
     ...settings,
     ...getManualInputDatasetValuePayload(),
+    ...getDatasetExternalLinksPayload(),
   });
   if (!resp.ok) {
     return { ok: false, error: resp?.data?.detail || "Failed to save dataset settings." };
@@ -3566,6 +3674,9 @@ async function saveDatasetSidecarForCurrentContext() {
   currentDatasetSidecarSourceKind = String(resp.data?.source_kind || (isProjectInstanceDraft ? "input" : currentDatasetSidecarSourceKind) || "");
   currentDatasetSidecarDataFormat = String(resp.data?.data_format || settings.data_format || currentDatasetSidecarDataFormat || "");
   currentDatasetPrecedents = normalizeDatasetDependencyEntries(resp.data?.Precedents);
+  if (datasetExternalLinksLoaded) {
+    datasetExternalLinks.markClean(resp.data?.external_links ?? datasetExternalLinks.serialize());
+  }
   if (isProjectInstanceDraft) {
     savedProjectInstanceDraftName = context.dataset_name;
   }
@@ -3603,10 +3714,12 @@ async function saveDatasetChanges(options = {}) {
     return { ok: false, error: "Temporary view is read-only and cannot save permanent dataset changes." };
   }
   if (datasetSaveInFlight) return { ok: false, error: "Save already in progress." };
+  datasetExternalLinks.abort();
   datasetSaveInFlight = true;
   updateDatasetSaveUi();
+  void getDataTabLinksController()?.refresh?.();
   try {
-    if (datasetSettingsDirty || hasManualInputGridChanges()) {
+    if (datasetSettingsDirty || hasManualInputGridChanges() || datasetExternalLinks.isDirty()) {
       const sidecarResult = await saveDatasetSidecarForCurrentContext();
       if (!sidecarResult.ok) return sidecarResult;
     }
@@ -3621,11 +3734,13 @@ async function saveDatasetChanges(options = {}) {
   } finally {
     datasetSaveInFlight = false;
     updateDatasetSaveUi();
+    void getDataTabLinksController()?.refresh?.();
   }
 }
 
 async function discardDatasetChanges(options = {}) {
   const reload = options?.reload !== false;
+  datasetExternalLinks.restoreSaved();
   if (lastSavedDatasetSettings) {
     applyDatasetSettingsToControls(lastSavedDatasetSettings);
     saveTriInputsToStorage();
@@ -4455,6 +4570,28 @@ function wireGridInteractions() {
     isReadOnly: isDatasetReadOnly,
     setStatus,
     notifyDatasetUpdated,
+    commitExternalReference: (request) => (
+      isDfmDataTabHost()
+        ? Promise.resolve({
+          handled: true,
+          ok: false,
+          error: "Enter external Excel links in DFM Ratios User Entry cells.",
+        })
+        : datasetExternalLinks.commitReference(request)
+    ),
+    cancelExternalReference: () => datasetExternalLinks.abort(),
+    hardCodeExternalLinkCells: (cells) => datasetExternalLinks.hardCodeTargetCells(
+      (Array.isArray(cells) ? cells : []).map((cell) => ({
+        row: Number(cell?.row ?? cell?.r),
+        column: Number(cell?.column ?? cell?.c),
+      })),
+    ),
+    decorateExternalLinkCell: (cell, displayRow, displayColumn) => {
+      datasetExternalLinks.decorateCell(cell, displayRow, displayColumn);
+    },
+    getExternalLinkCellInfo: (displayRow, displayColumn) => (
+      datasetExternalLinks.getCellLinkInfo(displayRow, displayColumn)
+    ),
   });
 }
 

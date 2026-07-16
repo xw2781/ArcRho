@@ -1,0 +1,28 @@
+/* Shared ArcRho tooltip surface. Use with the shared tooltip helper. */
+.arcrho-tooltip {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  z-index: 5600;
+  max-width: min(360px, calc(100vw - 16px));
+  padding: 6px 8px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fbfcfe;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  color: #1f2937;
+  font: 12px/1.35 Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+}
+
+.arcrho-tooltip.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-delay: 0s;
+}

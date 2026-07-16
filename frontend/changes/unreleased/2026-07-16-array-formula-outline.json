@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset and dfm",
+  "audience": "user",
+  "summary": "Added a blue outer border and light glow around multi-cell array formulas.",
+  "details": [
+    "Dataset outlines follow clipped Triangle, Vector, and Transposed range shapes without adding interior borders.",
+    "DFM uses the same outline for external Excel ranges and array-constant spills while preserving cell fills."
+  ]
+}

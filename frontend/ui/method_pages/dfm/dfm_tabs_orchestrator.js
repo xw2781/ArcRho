@@ -24,7 +24,7 @@ import {
   markDfmDirty,
   notifyDfmEditState,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { ALLOWED_DFM_TABS, DFM_TAB_DEFS } from "/ui/method_pages/dfm/dfm_tab_config.js";
+import { ALLOWED_DFM_TABS, DFM_TAB_DEFS } from "/ui/method_pages/dfm/dfm_tab_config.js?v=20260715a";
 import { initDfmAuditLog, refreshDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260714b";
 import {
   renderRatioTable,
@@ -37,20 +37,21 @@ import {
   isRatioChartOpen,
   scheduleRatioChartRender,
   restoreRatioHistoryUi,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260716a";
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,
   buildResultsVector,
-} from "/ui/method_pages/dfm/dfm_results_tab.js";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260715a";
 import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
+import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260716a";
 import {
   syncMethodNameFromInputs,
   syncOutputTypeFromProject,
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/method_pages/dfm/dfm_details.js?v=20260714b";
+} from "/ui/method_pages/dfm/dfm_details.js?v=20260716a";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -62,11 +63,11 @@ import {
   resolveCurrentDfmMethodSavePath,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260714b";
-import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js";
-import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260714b";
-import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260714b";
-import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260714a";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260716a";
+import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260716a";
+import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260716a";
+import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260716a";
+import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260715a";
 import {
   clearRatioHistoryTempSession,
   getRatioHistoryState,
@@ -449,8 +450,9 @@ function initDfmTabs() {
   const ratiosPage = document.getElementById("dfmRatiosPage");
   const resultsPage = document.getElementById("dfmResultsPage");
   const notesPage = document.getElementById("dfmNotesPage");
+  const linksPage = document.getElementById("dfmLinksPage");
   const auditPage = document.getElementById("dfmAuditPage");
-  if (!detailsPage || !dataPage || !ratiosPage || !resultsPage || !notesPage || !auditPage) return;
+  if (!detailsPage || !dataPage || !ratiosPage || !resultsPage || !notesPage || !linksPage || !auditPage) return;
 
   syncDetailsLabelWidth({
     root: detailsPage,
@@ -464,6 +466,7 @@ function initDfmTabs() {
   wireMethodName();
   wireDfmInstanceCreationNotice();
   wireNotesInput();
+  initDfmLinks();
   wireDfmSaveControls();
   wireDetailsThresholdReset();
   wireRatioStrikeToggle();
@@ -485,6 +488,7 @@ function initDfmTabs() {
       setCurrentDfmTab(tabId);
       if (tabId === "ratios") renderRatioTable();
       if (tabId === "results") renderResultsTable();
+      if (tabId === "links") refreshDfmLinks();
       if (tabId === "audit") refreshDfmAuditLog();
       notifyDfmEditState();
       if (tabId === "details") {
@@ -503,6 +507,7 @@ function initDfmTabs() {
     onPopoutTab: (tabId) => {
       if (tabId === "ratios") renderRatioTable();
       if (tabId === "results") renderResultsTable();
+      if (tabId === "links") refreshDfmLinks();
       if (tabId === "audit") refreshDfmAuditLog();
       notifyDfmEditState();
     },

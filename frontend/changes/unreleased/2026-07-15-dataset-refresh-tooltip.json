@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Updated the dataset refresh button with the shared ArcRho tooltip design."
+}

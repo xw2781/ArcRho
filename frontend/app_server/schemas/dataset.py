@@ -1,6 +1,7 @@
+import re
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PatchItem(BaseModel):
@@ -55,6 +56,35 @@ class DatasetCalculatedPreviewRequest(BaseModel):
     development_labels: Optional[List[str]] = None
 
 
+class DatasetExternalLinkTargetCell(BaseModel):
+    row: int = Field(..., ge=0, strict=True)
+    column: int = Field(..., ge=0, strict=True)
+    source_cell: Optional[str] = None
+
+    @field_validator("source_cell")
+    @classmethod
+    def normalize_source_cell(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().replace("$", "").upper()
+        if not re.fullmatch(r"[A-Z]+[1-9][0-9]*", normalized):
+            raise ValueError("source_cell must be a valid Excel cell address")
+        return normalized
+
+
+class DatasetExternalLink(BaseModel):
+    reference: str = Field(..., min_length=1, strict=True)
+    target_cells: List[DatasetExternalLinkTargetCell] = Field(..., min_length=1)
+
+    @field_validator("reference")
+    @classmethod
+    def normalize_reference(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("reference must not be blank")
+        return normalized
+
+
 class DatasetSidecarSaveRequest(BaseModel):
     project_name: str
     reserving_class: str
@@ -75,6 +105,7 @@ class DatasetSidecarSaveRequest(BaseModel):
     method_type: str = ""
     status: Optional[int] = None
     precedents: Optional[List[str]] = None
+    external_links: Optional[List[DatasetExternalLink]] = None
     values: Optional[List[List[Optional[float]]]] = None
     mask: Optional[List[List[bool]]] = None
 

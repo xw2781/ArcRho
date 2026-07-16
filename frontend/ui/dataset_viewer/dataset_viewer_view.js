@@ -16,6 +16,7 @@ export function mountDatasetViewer(container) {
     <button class="dsTab tabbedPageTab active" data-page="data" type="button">Data</button>
     <button class="dsTab tabbedPageTab" data-page="chart" type="button">Chart</button>
     <button class="dsTab tabbedPageTab" data-page="notes" type="button">Notes</button>
+    <button class="dsTab tabbedPageTab" data-page="links" type="button">Links</button>
     <button class="dsTab tabbedPageTab" data-page="auditLog" type="button">Audit Log</button>
   </div>
 
@@ -244,6 +245,11 @@ export function mountDatasetViewer(container) {
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Links tab page -->
+  <div id="dsLinksPage" style="display:none;">
+    <div id="datasetLinksMount"></div>
   </div>
 
   <!-- Audit Log tab page -->

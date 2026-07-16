@@ -19,8 +19,8 @@ import {
   saveNaBorders,
   saveRatioInteractionMode,
 } from "/ui/method_pages/dfm/dfm_storage.js";
-import { renderResultsTable } from "/ui/method_pages/dfm/dfm_results_tab.js";
-import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715b";
+import { renderResultsTable } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260715a";
+import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715c";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import {
   moveActiveSelectableTableSelection,
@@ -47,7 +47,7 @@ import {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260713f";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260716a";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -55,7 +55,7 @@ import {
   showRatioColumnChart,
   resetRatioChartThresholds,
   setRatioChartCallbacks,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260712h";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260716a";
 import {
   applyDfmCellNoteMarkers,
   hasDfmCellNote,
@@ -77,14 +77,14 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260713f";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260716a";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
   scheduleRatioChartRender,
   showRatioColumnChart,
   resetRatioChartThresholds,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260712h";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260716a";
 
 
 
@@ -597,6 +597,7 @@ export function onRatioStateMutated() {
   if (isRatioChartOpen()) scheduleRatioChartRender();
   notifyRatioStateChanged();
   markDfmDirty();
+  window.dispatchEvent(new CustomEvent("arcrho:dfm-links-changed"));
 }
 
 // Forward declaration - will be set by sync module
@@ -690,6 +691,8 @@ export function renderRatioTable() {
   wrap.innerHTML = "";
   const formulaBar = document.getElementById("dfmSummaryFormulaBar");
   if (formulaBar) formulaBar.remove();
+  const summaryRows = buildSummaryRows();
+  window.dispatchEvent(new CustomEvent("arcrho:dfm-links-changed"));
 
   const model = state.model;
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) {
@@ -745,8 +748,6 @@ export function renderRatioTable() {
   const summaryTable = document.createElement("table");
   summaryTable.classList.add("arSpreadsheetTable", "ratioSummaryTable");
   const summaryBody = document.createElement("tbody");
-  const summaryRows = buildSummaryRows();
-
   summaryRows.forEach((rowCfg, rowIndex) => {
     const tr = document.createElement("tr");
     tr.dataset.rowId = rowCfg.id;

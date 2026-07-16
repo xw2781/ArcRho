@@ -549,7 +549,7 @@
       padding-right: 4px;
       box-sizing: border-box;
     }
-    .ptree-leaf {
+    .pi-path-tree .ptree-leaf {
       display: flex;
       align-items: center;
       gap: 6px;
@@ -730,7 +730,6 @@
       font-size: 10px;
       font-weight: 700;
       line-height: 13px;
-      text-transform: uppercase;
     }
     .dataset-temp-view-control:hover .dataset-temp-view-tooltip,
     .dataset-temp-view-control:focus-within .dataset-temp-view-tooltip {
@@ -2508,10 +2507,10 @@
             </button>
             <div class="dataset-temp-view-tooltip" id="datasetTempViewTooltip" role="tooltip">
               <span class="dataset-temp-view-tooltip-title" id="datasetTempViewTooltipTitle">Temporary view is disabled</span>
-              <span id="datasetTempViewTooltipDescription">Normal view shows saved datasets from the selected-path index. Click to enable Temporary view.</span>
+              <span id="datasetTempViewTooltipDescription">Normal view shows saved datasets only. Click to enable Temporary view.</span>
             </div>
           </div>
-          <button class="dataset-toolbar-btn" id="datasetRefreshBtn" type="button" title="Refresh dataset table" aria-label="Refresh dataset table">
+          <button class="dataset-toolbar-btn" id="datasetRefreshBtn" type="button" aria-label="Refresh dataset table from disk">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M20 6v5h-5"></path>
               <path d="M4 18v-5h5"></path>

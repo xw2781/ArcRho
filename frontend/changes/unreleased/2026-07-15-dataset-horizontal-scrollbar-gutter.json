@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed the Data tab horizontal scrollbar appearing short of the right edge when no vertical scrollbar is needed."
+}

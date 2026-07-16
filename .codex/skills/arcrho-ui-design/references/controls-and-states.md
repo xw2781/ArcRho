@@ -44,20 +44,24 @@ Use centered inline SVG stroke icons for close and dismiss actions instead of te
 
 Use a dashed neutral border for drag/drop at rest, a blue-tinted surface on hover or drag-over, and clear drop-result text.
 
+### C11 - Shared tooltips
+
+Use the shared ArcRho tooltip surface for application tooltips instead of browser-native title bubbles or page-local tooltip styling. Tooltips should be compact, pale, bordered, and shadowed, open after a short hover delay or immediately on keyboard focus, and remain within the viewport.
+
 ## Interaction Expectations
 
-### C11 - Working demos
+### C12 - Working demos
 
 Include working controls in every design demo, such as style switchers, dialog open and close, toast feedback, toggles, drag sorting, drop targets, and an animation trigger.
 
-### C12 - Stable components
+### C13 - Stable components
 
 Keep components stable while content changes. Avoid layout shifts from hover states, active labels, or dynamic status text.
 
-### C13 - Text must fit
+### C14 - Text must fit
 
 Ensure text fits inside controls and panels at desktop and narrow widths.
 
-### C14 - Visible state
+### C15 - Visible state
 
 Prefer explicit visible state over hidden behavior.

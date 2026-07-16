@@ -36,12 +36,15 @@ test("shared tab surfaces live in feature-neutral logical groups", async () => {
     "ui/shared/tabs/details/details_form_layout.css",
     "ui/shared/tabs/notes/notes_tab.js",
     "ui/shared/tabs/notes/notes_tab.css",
+    "ui/shared/tabs/links/links_tab.js",
+    "ui/shared/tabs/links/links_tab.css",
     "ui/shared/tabs/audit_log/audit_log_view.js",
     "ui/shared/tabs/audit_log/audit_log.css",
     "ui/shared/tabs/data/data_tab_controller.js",
     "ui/shared/tabs/data/data_tab_controls.js",
     "ui/shared/tabs/data/data_tab_dom.js",
     "ui/shared/tabs/data/data_tab_context.js",
+    "ui/shared/tabs/data/data_tab_links_port.js",
     "ui/shared/tabs/data/dataset_grid_view.js",
     "ui/shared/tabs/data/dataset_grid_interactions.js",
     "ui/shared/tabs/data/data_tab.css",
@@ -51,6 +54,7 @@ test("shared tab surfaces live in feature-neutral logical groups", async () => {
     "ui/shared/components/spreadsheet/spreadsheet_table.js",
     "ui/shared/components/spreadsheet/spreadsheet_table.css",
     "ui/shared/dataset/dataset_api.js",
+    "ui/shared/dataset/dataset_external_links.js",
     "ui/shared/dataset/dataset_state.js",
     "ui/shared/dataset/dataset_origin_labels.js",
     "ui/shared/dataset/dataset_types_source.js",
@@ -60,6 +64,8 @@ test("shared tab surfaces live in feature-neutral logical groups", async () => {
     "ui/dataset_viewer/dataset_viewer.css",
     "ui/method_pages/dfm/dfm.html",
     "ui/method_pages/dfm/dfm_data_tab_adapter.js",
+    "ui/method_pages/dfm/dfm_external_links_model.js",
+    "ui/method_pages/dfm/dfm_links_tab.js",
     "ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html",
     "ui/method_pages/result_selection/result_selection.html",
   ];
@@ -80,12 +86,45 @@ test("Dataset Viewer and method pages consume feature-neutral shared styling", a
   }
   for (const html of [datasetHtml, dfmHtml]) {
     assert.match(html, /\/ui\/shared\/components\/workspace\/workspace\.css/u);
+    assert.match(html, /\/ui\/shared\/components\/spreadsheet\/spreadsheet_table\.css/u);
     assert.match(html, /\/ui\/shared\/tabs\/data\/data_tab\.css/u);
+    assert.match(html, /\/ui\/shared\/tabs\/links\/links_tab\.css/u);
   }
   assert.match(datasetHtml, /\/ui\/dataset_viewer\/dataset_viewer\.css/u);
   assert.match(resultSelectionHtml, /\/ui\/shared\/styles\/scrollbars\.css/u);
   assert.match(resultSelectionHtml, /\/ui\/shared\/components\/spreadsheet\/spreadsheet_table\.css/u);
   assert.doesNotMatch(resultSelectionHtml, /\/ui\/shared\/tabs\/data\/data_tab\.css/u);
+});
+
+test("DSV and DFM place reusable Links tabs immediately after Notes", async () => {
+  const [
+    datasetView,
+    datasetMain,
+    dfmHtml,
+    dfmConfig,
+    dfmLinks,
+    dfmSummary,
+    dataController,
+  ] = await Promise.all([
+    source("ui/dataset_viewer/dataset_viewer_view.js"),
+    source("ui/dataset_viewer/dataset_viewer_main.js"),
+    source("ui/method_pages/dfm/dfm.html"),
+    source("ui/method_pages/dfm/dfm_tab_config.js"),
+    source("ui/method_pages/dfm/dfm_links_tab.js"),
+    source("ui/method_pages/dfm/dfm_ratios_summary_table.js"),
+    source("ui/shared/tabs/data/data_tab_controller.js"),
+  ]);
+
+  for (const sourceText of [datasetView, datasetMain, dfmHtml, dfmConfig]) {
+    assert.match(sourceText, /notes[\s\S]*links[\s\S]*(?:auditLog|audit)/u);
+  }
+  assert.match(datasetMain, /shared\/tabs\/links\/links_tab\.js/u);
+  assert.match(dfmLinks, /shared\/tabs\/links\/links_tab\.js/u);
+  assert.match(dfmSummary, /shared\/integrations\/excel_reference\.js/u);
+  assert.match(dfmSummary, /export function getDfmExternalLinkRecords/u);
+  assert.match(dfmSummary, /export function breakDfmExternalLink/u);
+  assert.match(dataController, /shared\/dataset\/dataset_external_links\.js/u);
+  assert.match(dataController, /external_links:\s*datasetExternalLinks\.serialize\(\)/u);
 });
 
 test("method pages and shared runtime do not depend on Dataset feature assets", async () => {

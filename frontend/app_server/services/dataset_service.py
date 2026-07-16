@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
@@ -327,6 +328,221 @@ def _append_dataset_audit_entry(payload: Dict[str, Any], action: str, *, event_d
     payload["audit_log"] = entries[-DATASET_AUDIT_LOG_MAX_ENTRIES:]
 
 
+def _normalize_dataset_external_links(
+    value: Any,
+    *,
+    strict: bool = False,
+) -> List[Dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        if strict:
+            raise HTTPException(400, "external_links must be a list.")
+        return []
+
+    normalized: List[Dict[str, Any]] = []
+    seen_links: set[Tuple[str, Tuple[Tuple[int, int, str], ...]]] = set()
+    owned_targets: set[Tuple[int, int]] = set()
+
+    def invalid(detail: str) -> bool:
+        if strict:
+            raise HTTPException(400, detail)
+        return False
+
+    def column_index(column: str) -> int:
+        result = 0
+        for character in column.upper():
+            result = result * 26 + (ord(character) - 64)
+        return result - 1
+
+    def column_name(index: int) -> str:
+        result = ""
+        value = index + 1
+        while value > 0:
+            value, remainder = divmod(value - 1, 26)
+            result = chr(65 + remainder) + result
+        return result
+
+    def reference_bounds(reference: str) -> Tuple[int, int, int, int] | None:
+        match = re.fullmatch(
+            r"\s*=?\s*(?:'((?:[^']|'')*)'|([^!]+))!\s*"
+            r"\$?([A-Z]+)\$?([1-9][0-9]*)"
+            r"(?:\s*:\s*\$?([A-Z]+)\$?([1-9][0-9]*))?\s*",
+            reference,
+            re.IGNORECASE,
+        )
+        if not match:
+            return None
+        source = str(match.group(1) if match.group(1) is not None else match.group(2) or "")
+        source = source.replace("''", "'").strip()
+        open_bracket = source.find("[")
+        close_bracket = source.find("]", open_bracket + 1)
+        if (
+            open_bracket < 0
+            or close_bracket <= open_bracket + 1
+            or close_bracket >= len(source) - 1
+        ):
+            return None
+        start_column = column_index(match.group(3))
+        start_row = int(match.group(4)) - 1
+        end_column = column_index(match.group(5) or match.group(3))
+        end_row = int(match.group(6) or match.group(4)) - 1
+        return (
+            min(start_row, end_row),
+            max(start_row, end_row),
+            min(start_column, end_column),
+            max(start_column, end_column),
+        )
+
+    def normalize_source_cell(source_cell: Any) -> Tuple[str, int, int] | None:
+        if not isinstance(source_cell, str):
+            return None
+        normalized = source_cell.strip().replace("$", "").upper()
+        match = re.fullmatch(r"([A-Z]+)([1-9][0-9]*)", normalized)
+        if not match:
+            return None
+        return normalized, int(match.group(2)) - 1, column_index(match.group(1))
+
+    for raw_link in value:
+        if hasattr(raw_link, "model_dump"):
+            raw_link = raw_link.model_dump()
+        if not isinstance(raw_link, dict):
+            invalid("Each external link must be an object.")
+            continue
+
+        raw_reference = raw_link.get("reference")
+        if not isinstance(raw_reference, str):
+            invalid("Each external link reference must be a string.")
+            continue
+        reference = raw_reference.strip()
+        if not reference:
+            invalid("Each external link reference must not be blank.")
+            continue
+
+        raw_targets = raw_link.get("target_cells")
+        if not isinstance(raw_targets, list) or not raw_targets:
+            invalid("Each external link must include at least one target cell.")
+            continue
+
+        targets: List[Dict[str, Any]] = []
+        seen_targets: Dict[Tuple[int, int], str | None] = {}
+        link_is_invalid = False
+        for raw_target in raw_targets:
+            if hasattr(raw_target, "model_dump"):
+                raw_target = raw_target.model_dump()
+            if not isinstance(raw_target, dict):
+                invalid("Each external link target cell must be an object.")
+                link_is_invalid = True
+                break
+            row = raw_target.get("row")
+            column = raw_target.get("column")
+            valid_row = isinstance(row, int) and not isinstance(row, bool) and row >= 0
+            valid_column = isinstance(column, int) and not isinstance(column, bool) and column >= 0
+            if not valid_row or not valid_column:
+                invalid(
+                    "External link target row and column must be nonnegative integers.",
+                )
+                link_is_invalid = True
+                break
+
+            raw_source_cell = raw_target.get("source_cell")
+            parsed_source_cell = (
+                normalize_source_cell(raw_source_cell)
+                if raw_source_cell is not None
+                else None
+            )
+            if raw_source_cell is not None and parsed_source_cell is None:
+                invalid("External link source_cell must be a valid Excel cell address.")
+                link_is_invalid = True
+                break
+            source_cell = parsed_source_cell[0] if parsed_source_cell else None
+            target_key = (row, column)
+            if target_key in seen_targets:
+                if seen_targets[target_key] != source_cell:
+                    invalid(
+                        "An external link target cell cannot map to more than one source cell.",
+                    )
+                    link_is_invalid = True
+                    break
+                continue
+            seen_targets[target_key] = source_cell
+            targets.append({"row": row, "column": column, "source_cell": source_cell})
+
+        if link_is_invalid:
+            continue
+
+        if not targets:
+            invalid("Each external link must include at least one valid target cell.")
+            continue
+
+        bounds = reference_bounds(reference)
+        if bounds is None:
+            invalid("Each external link reference must be a standalone Excel workbook reference.")
+            continue
+        row0, row1, column0, column1 = bounds
+        has_explicit_sources = [target["source_cell"] is not None for target in targets]
+        if any(has_explicit_sources) and not all(has_explicit_sources):
+            invalid("External link target cells must either all include source_cell or all omit it.")
+            continue
+
+        if all(has_explicit_sources):
+            seen_source_cells: set[str] = set()
+            explicit_sources_valid = True
+            for target in targets:
+                parsed_source_cell = normalize_source_cell(target["source_cell"])
+                if parsed_source_cell is None:
+                    explicit_sources_valid = False
+                    break
+                source_cell, source_row, source_column = parsed_source_cell
+                if not (
+                    row0 <= source_row <= row1
+                    and column0 <= source_column <= column1
+                    and source_cell not in seen_source_cells
+                ):
+                    explicit_sources_valid = False
+                    break
+                seen_source_cells.add(source_cell)
+                target["source_cell"] = source_cell
+            if not explicit_sources_valid:
+                invalid(
+                    "External link source_cell values must be unique cells within the reference range.",
+                )
+                continue
+        else:
+            source_cell_count = (row1 - row0 + 1) * (column1 - column0 + 1)
+            if source_cell_count != len(targets):
+                invalid(
+                    "Legacy external links without source_cell must map the full source range.",
+                )
+                continue
+            source_cells = (
+                f"{column_name(source_column)}{source_row + 1}"
+                for source_row in range(row0, row1 + 1)
+                for source_column in range(column0, column1 + 1)
+            )
+            for target, source_cell in zip(targets, source_cells):
+                target["source_cell"] = source_cell
+
+        link_key = (
+            reference,
+            tuple(
+                (target["row"], target["column"], target["source_cell"])
+                for target in targets
+            ),
+        )
+        if link_key in seen_links:
+            continue
+        target_keys = {(target["row"], target["column"]) for target in targets}
+        if target_keys & owned_targets:
+            invalid("An external link target cell cannot belong to more than one link.")
+            continue
+        seen_links.add(link_key)
+        owned_targets.update(target_keys)
+        normalized.append({"reference": reference, "target_cells": targets})
+
+    return normalized
+
+
 def _write_dataset_sidecar_payload(path: str, payload: Dict[str, Any]) -> None:
     tmp_path = f"{path}.{uuid.uuid4()}.tmp"
     try:
@@ -349,6 +565,52 @@ def _write_dataset_sidecar_payload(path: str, payload: Dict[str, Any]) -> None:
         except OSError:
             pass
         raise HTTPException(500, f"Failed to write dataset sidecar: {str(err)}")
+
+
+def _write_dataset_csv_and_sidecar(
+    dataframe: pd.DataFrame,
+    csv_path: str,
+    sidecar_path: str,
+    payload: Dict[str, Any],
+) -> None:
+    csv_existed = os.path.exists(csv_path)
+    rollback_path = f"{csv_path}.{uuid.uuid4()}.rollback" if csv_existed else ""
+    csv_replaced = False
+    preserve_rollback = False
+    try:
+        if rollback_path:
+            shutil.copy2(csv_path, rollback_path)
+        atomic_write_csv(dataframe, csv_path)
+        csv_replaced = True
+        _write_dataset_sidecar_payload(sidecar_path, payload)
+    except Exception:
+        if csv_replaced:
+            try:
+                if rollback_path and os.path.exists(rollback_path):
+                    os.replace(rollback_path, csv_path)
+                    rollback_path = ""
+                elif not csv_existed and os.path.exists(csv_path):
+                    os.remove(csv_path)
+            except OSError as rollback_error:
+                preserve_rollback = bool(rollback_path and os.path.exists(rollback_path))
+                recovery_detail = (
+                    f" Recovery copy retained at {rollback_path}."
+                    if preserve_rollback
+                    else ""
+                )
+                raise HTTPException(
+                    500,
+                    "Dataset sidecar save failed and the dataset CSV could not be restored: "
+                    f"{str(rollback_error)}.{recovery_detail}",
+                )
+        raise
+    finally:
+        if rollback_path and not preserve_rollback:
+            try:
+                if os.path.exists(rollback_path):
+                    os.remove(rollback_path)
+            except OSError:
+                pass
 
 
 def _empty_dataset_values(
@@ -881,6 +1143,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
             "project_name": p,
             "reserving_class": rc,
             "dataset_name": ds,
+            "external_links": [],
             "path": path,
         }
     dataset_type = str(payload.get("dataset_type") or ds)
@@ -917,6 +1180,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "status": dataset_sidecar_status_service.normalize_status(payload.get("status")),
         "calculated": True if app_calculated else payload.get("calculated"),
         "formula": formula or str(payload.get("formula") or ""),
+        "external_links": _normalize_dataset_external_links(payload.get("external_links")),
         "Precedents": _sidecar_graph_entries(p, rc, payload.get("Precedents"), include_method_type=True),
         "Dependents": _sidecar_graph_entries(p, rc, payload.get("Dependents"), include_formula=True),
         "user": str(payload.get("user") or ""),
@@ -1092,12 +1356,18 @@ def save_dataset_sidecar(
     method_type: str = "",
     status: int | None = None,
     precedents: List[str] | None = None,
+    external_links: List[Any] | None = None,
     values: List[List[Any]] | None = None,
     mask: List[List[bool]] | None = None,
 ) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     if origin_length <= 0 or development_length <= 0:
         raise HTTPException(400, "origin_length and development_length must be positive.")
+    normalized_external_links = (
+        _normalize_dataset_external_links(external_links, strict=True)
+        if external_links is not None
+        else None
+    )
 
     path = _get_dataset_sidecar_path(p, rc, ds, csv_file=csv_file)
     existing = _read_dataset_sidecar(path)
@@ -1171,6 +1441,8 @@ def save_dataset_sidecar(
         payload.pop("period_length", None)
     if origin_labels is not None:
         payload["origin_labels"] = _normalize_origin_labels(origin_labels)
+    if normalized_external_links is not None:
+        payload["external_links"] = normalized_external_links
     _append_dataset_audit_entry(payload, action_value, event_date=updated_at, user_name=user_name)
     payload.pop("instance_name", None)
     payload.pop("dataset_type_name", None)
@@ -1206,12 +1478,13 @@ def save_dataset_sidecar(
     if values is not None:
         df = _dataset_values_to_frame(values, mask)
         try:
-            atomic_write_csv(df, csv_path)
+            _write_dataset_csv_and_sidecar(df, csv_path, path, payload)
         except PermissionError:
             raise HTTPException(423, "Dataset cache CSV is locked or inaccessible.")
         except OSError as err:
             raise HTTPException(500, f"Failed to write dataset cache CSV: {str(err)}")
-    _write_dataset_sidecar_payload(path, payload)
+    else:
+        _write_dataset_sidecar_payload(path, payload)
     ds_id = ""
     file_mtime = None
     if csv_path:
@@ -1261,6 +1534,7 @@ def save_dataset_sidecar(
         "source_kind": payload["source_kind"],
         "method_type": payload["method_type"],
         "status": payload["status"],
+        "external_links": _normalize_dataset_external_links(payload.get("external_links")),
         "Precedents": _sidecar_graph_entries(p, rc, payload.get("Precedents"), include_method_type=True),
         "Dependents": _sidecar_graph_entries(p, rc, payload.get("Dependents"), include_formula=True),
         "updated_at": payload["updated_at"],

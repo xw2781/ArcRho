@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Aligned favorite stars on bottom-level project path rows with the rest of the path tree."
+}

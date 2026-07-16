@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "frontend",
+  "audience": "user",
+  "summary": "Standardized application tooltips with a shared accessible ArcRho tooltip surface."
+}

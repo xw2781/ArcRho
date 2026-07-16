@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added an All Paths control to collapse the deepest expanded folder level in one click."
+}

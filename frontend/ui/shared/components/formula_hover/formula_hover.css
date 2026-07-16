@@ -1,0 +1,81 @@
+.arFormulaHover {
+  position: fixed;
+  z-index: 10040;
+  display: none;
+  box-sizing: border-box;
+  width: min(520px, calc(100vw - 16px));
+  padding: 3px;
+  color: #24313a;
+  background: #fff;
+  border: 1px solid #aebbc5;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  box-shadow: 0 4px 12px rgb(22 38 49 / 18%);
+  font: 12px/1.35 Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+}
+
+.arFormulaHover.is-open {
+  display: block;
+}
+
+.arFormulaHover.has-error {
+  border-color: #b42318;
+}
+
+.arFormulaHoverRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.arFormulaHoverMark {
+  flex: 0 0 25px;
+  color: #52636f;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 600;
+  text-align: center;
+  user-select: none;
+}
+
+.arFormulaHoverInput {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 3px 6px;
+  color: #24313a;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  outline: none;
+  font: 12px/1.3 Consolas, "Courier New", monospace;
+}
+
+.arFormulaHoverInput:hover {
+  border-color: #c8d1d8;
+}
+
+.arFormulaHoverInput:focus {
+  border-color: #4f7e9d;
+  box-shadow: 0 0 0 1px rgb(79 126 157 / 18%);
+}
+
+.arFormulaHoverInput[readonly] {
+  color: #52636f;
+  background: #f4f6f7;
+}
+
+.arFormulaHover.is-busy .arFormulaHoverInput {
+  cursor: progress;
+}
+
+.arFormulaHoverError {
+  padding: 2px 6px 1px 31px;
+  color: #a3261c;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.arFormulaHoverError[hidden] {
+  display: none;
+}

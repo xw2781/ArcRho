@@ -1,4 +1,4 @@
-import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260715a";
+import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260715b";
 import { configureDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 import { configureDataTabChart } from "/ui/shared/tabs/data/data_tab_chart_port.js";
 import { configureDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
@@ -19,14 +19,17 @@ import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.j
 import {
   redrawDatasetChartSafely,
   renderDatasetChart,
-} from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260715a";
+} from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260715b";
 import { wireDatasetNotesEditor } from "/ui/dataset_viewer/tabs/dataset_notes_tab.js?v=20260715a";
+import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260715b";
+import { configureDataTabLinks } from "/ui/shared/tabs/data/data_tab_links_port.js";
 
 const DATASET_VIEWER_TABS = [
   { id: "details", label: "Details" },
   { id: "data", label: "Data" },
   { id: "chart", label: "Chart" },
   { id: "notes", label: "Notes" },
+  { id: "links", label: "Links" },
   { id: "auditLog", label: "Audit Log" },
 ];
 
@@ -81,8 +84,30 @@ configureDataTabChart({
 configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
-const { bootDatasetDataTab } = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260715c"
+const datasetDataTab = await import(
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260716a"
 );
 
-window.ADA_DATASET_READY = bootDatasetDataTab();
+const datasetLinksTab = createExternalLinksTab({
+  container: document.getElementById("datasetLinksMount"),
+  ariaLabel: "Dataset external links",
+  emptyDescription: "Excel links used by editable cells in the Data tab will appear here.",
+  getLinks: () => datasetDataTab.getDatasetExternalLinkRecords(),
+  onRefreshLinks: (records) => datasetDataTab.refreshDatasetExternalLinkRecords(
+    records.map((record) => record?.id).filter(Boolean),
+  ),
+  onBreakLinks: (records) => datasetDataTab.breakDatasetExternalLinks(
+    records.map((record) => record?.id).filter(Boolean),
+  ),
+  onStatus: (message, tone = "") => {
+    if (!message) return;
+    window.parent?.postMessage?.({
+      type: "arcrho:status",
+      text: message,
+      ...(tone ? { tone } : {}),
+    }, "*");
+  },
+});
+configureDataTabLinks(datasetLinksTab);
+
+window.ADA_DATASET_READY = datasetDataTab.bootDatasetDataTab();

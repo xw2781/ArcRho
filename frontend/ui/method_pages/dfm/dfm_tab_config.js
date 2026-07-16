@@ -4,6 +4,7 @@ export const DFM_TAB_DEFS = Object.freeze([
   { id: "ratios", label: "Ratios" },
   { id: "results", label: "Results" },
   { id: "notes", label: "Notes" },
+  { id: "links", label: "Links" },
   { id: "audit", label: "Audit Log" },
 ]);
 

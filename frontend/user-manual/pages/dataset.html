@@ -11,7 +11,7 @@
     <section class="manual-section" id="data-tab">
       <div class="section-head"><p class="eyebrow">Data tab</p><h2>Controls and grid interactions</h2></div>
       <div class="ds-demo">
-        <div class="ds-tabs"><button>Details</button><button class="active">Data</button><button>Chart</button><button>Notes</button><button>Audit Log</button></div>
+        <div class="ds-tabs"><button>Details</button><button class="active">Data</button><button>Chart</button><button>Notes</button><button>Links</button><button>Audit Log</button></div>
         <div class="ds-topbar">
           <label>Cumulative <input type="checkbox" checked></label>
           <label>Transposed <input type="checkbox"></label>
@@ -42,9 +42,10 @@
       <div class="section-head"><p class="eyebrow">Tabs</p><h2>What each tab is for</h2></div>
       <div class="task-grid">
         <article class="task-card"><h3>Details</h3><ul><li>Choose Project, Reserving Class, Name, and Dataset Type.</li><li>Formula shows clickable source chips.</li><li>Dependents show downstream calculated datasets.</li></ul></article>
-        <article class="task-card"><h3>Data</h3><ul><li>Run or load cached dataset values.</li><li>Copy, paste, type, and delete editable manual cells.</li><li>Set cumulative, transposed, time mode, lengths, and number format.</li></ul></article>
+        <article class="task-card"><h3>Data</h3><ul><li>Run or load cached dataset values.</li><li>Copy, paste, type, and delete editable manual cells.</li><li>Enter a full Excel workbook, worksheet, and cell or range reference directly in an editable cell.</li><li>Hover a linked cell to view or edit its reference in the compact formula bar above the cell.</li><li>Set cumulative, transposed, time mode, lengths, and number format.</li></ul></article>
         <article class="task-card"><h3>Chart</h3><ul><li>Review curves by row or column.</li><li>Legend controls visibility.</li><li>Chart redraws after pop-out, dock, and resize.</li></ul></article>
         <article class="task-card"><h3>Notes</h3><ul><li>Add review notes.</li><li>Use formatting toolbar.</li><li>File paths become clickable links after editing.</li></ul></article>
+        <article class="task-card"><h3>Links</h3><ul><li>Appears immediately after Notes.</li><li>Lists workbook, worksheet, cell address, current Values, and destination in separate columns; ranges show the first value followed by <code>...</code>.</li><li>Use Refresh all or Break all with no selection, or click rows first to act only on selected links.</li><li>Ctrl-click selects separate rows and Shift-click selects a contiguous range.</li><li>Breaking keeps the related current cells as hard-coded values.</li></ul></article>
         <article class="task-card"><h3>Audit Log</h3><ul><li>Shows newest events first.</li><li>Records insert, metadata update, values update, and calculated refresh.</li><li>Sidecar log is capped.</li></ul></article>
         <article class="task-card"><h3>Pop-out tabs</h3><ul><li>Right-click a Dataset tab to float it inside the Dataset page.</li><li>The live DOM moves, so state is preserved.</li><li>Close or right-click titlebar docks it again.</li></ul></article>
       </div>
@@ -64,12 +65,25 @@ generated: true | false
 editable: true | false
 number_format: 0,000
 decimal_places: 1</code></pre>
+      <pre class="code-sample"><code>External-link sidecar mapping:
+"external_links": [
+  {
+    "reference": "='C:\\Folder\\[Book.xlsx]Sheet 1'!$A$1:$B$1",
+    "target_cells": [
+      { "row": 0, "column": 0, "source_cell": "A1" },
+      { "row": 0, "column": 1, "source_cell": "B1" }
+    ]
+  }
+]
+
+The CSV stores the current value snapshot, not the Excel reference.</code></pre>
     </section>
     <section class="manual-section" id="edge-cases">
       <div class="section-head"><p class="eyebrow">Rules</p><h2>Important dataset rules</h2></div>
       <div class="task-grid">
         <article class="task-card"><h3>Generated datasets</h3><ul><li>ArcRhoTri can create missing generated caches when source inputs resolve.</li><li>Generated and calculated outputs are read-only in the grid.</li><li>Refresh can trigger dependent calculated datasets.</li></ul></article>
         <article class="task-card"><h3>Manual input datasets</h3><ul><li>Drafts open on Details with zero-filled placeholder data.</li><li>Triangle drafts use a triangular mask.</li><li>Vector drafts use one value column.</li><li>Duplicate names are blocked in the selected path.</li></ul></article>
+        <article class="task-card"><h3>Excel ranges</h3><ul><li>A rectangular reference spills from the edited anchor into editable cells.</li><li>If a pasted range is larger than the Triangle or Vector UI, values outside the grid or in masked triangle cells are ignored.</li><li>Every affected in-area source cell is validated and loaded atomically, so an error does not partially replace values.</li><li>Transposed display maps the spill back to the same logical Dataset cells.</li><li>Linked cells use bold dark-green text; multi-cell ranges also have a thin blue outer contour with a light glow and no interior borders.</li><li>Unsaved entry does not refresh the Project Instance disk inventory; Save persists the values and link mapping.</li></ul></article>
         <article class="task-card"><h3>Period lengths</h3><ul><li>Development Length cannot exceed Origin Length.</li><li>Origin Length must be a valid multiple of Development Length.</li><li>Saved sidecar lengths load before the triangle renders.</li></ul></article>
         <article class="task-card"><h3>Notes links</h3><ul><li>Path text is plain while editing.</li><li>After edit, known file paths become underlined links.</li><li>Right-click links to open, copy, or open Excel read-only.</li></ul></article>
       </div>

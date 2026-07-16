@@ -51,7 +51,7 @@ import {
   renderRatioTable,
   queueDfmExternalChangeHighlights,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260716a";
 import {
   renderResultsTable,
   buildResultsVector,
@@ -60,7 +60,7 @@ import {
   getResultsUltimateRatioDecimalPlacesSelection,
   setResultsRatioBasisSelection,
   setResultsUltimateRatioDecimalPlacesSelection,
-} from "/ui/method_pages/dfm/dfm_results_tab.js";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260715a";
 import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
 import {
   buildDfmAverageFormulaObject,

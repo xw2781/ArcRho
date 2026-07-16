@@ -23,6 +23,8 @@ The formatter writes any 2D array with one child row per JSON line.
 
 `ratios tab`.`average formulas` is a columnar object. `label` is the persistent formula identity and row order. `selected` is the former `average index` matrix. `values` is the former `average formula values` analysis matrix. `inputs` stores User Entry formula/input text aligned with `label` and `values`; blank input rows may be omitted or empty arrays. Formula metadata arrays live under `custom average formula settings`; arrays such as `averageType`, `base`, `periods`, and `exclude` align by index with `label`.
 
+The DFM Links tab is derived from external Excel references in `ratios tab`.`average formulas`.`inputs`; it does not add a `links tab` or other top-level JSON section. Breaking a link replaces every related User Entry input, including cells controlled by a spilled external range, with its current numeric value. The existing `values` field remains the numeric analysis snapshot.
+
 `summary rows` and `summary order` are not part of the JSON contract. Runtime-only formula row `id` values are generated after load for DOM rows, selection maps, drag handling, and other in-session UI mechanics; `id` is not saved in DFM method JSON.
 
 `ratios tab`.`cell notes` stores user-entered comments for Ratios-tab cells. Each table stores notes as a nested object keyed by the visible row label and visible development-column label, for example `ratio main table`.`2026`.`(1) 12-24` or `ratio summary table`.`Volume - all`.`(1) 12-24`. Empty notes are omitted. Older flat index keys such as `"0,0"` and `"rowId,0"` are still accepted on load and are migrated to label keys on the next save.

@@ -51,10 +51,10 @@ test("temporary view toolbar uses concise dataset copy and a styled mode tooltip
   assert.match(contextSource, /datasetTempViewTooltipTitle: document\.getElementById\("datasetTempViewTooltipTitle"\)/);
   assert.match(contextSource, /datasetTempViewTooltipDescription: document\.getElementById\("datasetTempViewTooltipDescription"\)/);
   assert.match(projectInstanceHtml, /id="datasetTempViewTooltipTitle">Temporary view is disabled/);
-  assert.match(projectInstanceHtml, /id="datasetTempViewTooltipDescription">Normal view shows saved datasets from the selected-path index\. Click to enable Temporary view\./);
+  assert.match(projectInstanceHtml, /id="datasetTempViewTooltipDescription">Normal view shows saved datasets only\. Click to enable Temporary view\./);
   assert.match(cacheSource, /Temporary view is enabled/);
   assert.match(cacheSource, /Temporary view is disabled/);
-  assert.match(cacheSource, /Temporary view shows all generated datasets\. They open read-only and do not create sidecars or index entries\./);
+  assert.match(cacheSource, /Temporary view shows all datasets that can be generated\. Click to return to Normal view\./);
   assert.match(projectInstanceHtml, /\.dataset-temp-view-control:hover \.dataset-temp-view-tooltip/);
 });
 

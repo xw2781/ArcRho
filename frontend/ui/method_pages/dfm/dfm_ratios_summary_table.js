@@ -21,6 +21,19 @@ import {
   getExcelActiveSelection, readExcelCell, readExcelCellsBatch, openExcelWorkbook, excelWaitForEnter,
 } from "/ui/shared/integrations/excel_api.js";
 import {
+  buildExcelRangeSourceCells,
+  containsExcelReference as containsExcelRef,
+  excelColumnFromIndex,
+  findExcelReferences as findExcelRefsInline,
+  formatExcelReference as formatExcelRef,
+  normalizeExcelReferenceAddressCase,
+  parseStandaloneExcelRange,
+} from "/ui/shared/integrations/excel_reference.js?v=20260715a";
+import {
+  collectDfmExternalLinkGroups as collectDfmExternalLinkGroupsModel,
+  getDfmExternalLinkHardCodeTargets,
+} from "/ui/method_pages/dfm/dfm_external_links_model.js?v=20260715a";
+import {
   DFM_FORMULA_VALIDATION_TIMEOUT_MS,
   beginFormulaValidationLease,
   clearFormulaValidationError,
@@ -67,68 +80,6 @@ export function refreshRatioHighlightHeaders() {
   });
 }
 
-// =============================================================================
-// Excel Cell Reference Utilities
-// =============================================================================
-// Matches standalone: ='dir\[filename.xlsx]Sheet'!A1 or ...!A1:C3.
-const EXCEL_REF_RE = /^\s*=?\s*'?([^[]*)\[([^\]]+)\]([^'!]+)'?!(\$?[A-Z]+\$?[0-9]+)(?::(\$?[A-Z]+\$?[0-9]+))?\s*$/i;
-// Non-anchored: finds Excel refs embedded within larger expressions
-const EXCEL_REF_INLINE_RE = /'([^[]*)\[([^\]]+)\]([^'!]+)'!(\$?[A-Z]+\$?[0-9]+)(?::(\$?[A-Z]+\$?[0-9]+))?/gi;
-const EXCEL_ADDRESS_AFTER_BANG_RE = /(!\s*\$?)([A-Z]+)(\$?[0-9]+)(?::(\$?)([A-Z]+)(\$?[0-9]+))?/gi;
-
-function normalizeExcelReferenceAddressCase(value) {
-  return String(value || "").replace(
-    EXCEL_ADDRESS_AFTER_BANG_RE,
-    (_match, startPrefix, startCol, startRow, endDollar, endCol, endRow) => {
-      const start = `${startPrefix}${String(startCol).toUpperCase()}${startRow}`;
-      const end = endCol ? `:${endDollar || ""}${String(endCol).toUpperCase()}${endRow}` : "";
-      return start + end;
-    },
-  );
-}
-
-function normalizeExcelCellAddress(value) {
-  return String(value || "").replace(/\$/g, "").toUpperCase();
-}
-
-function parseExcelRef(text) {
-  const m = EXCEL_REF_RE.exec(String(text || ""));
-  if (!m) return null;
-  const dir = m[1];            // e.g. "E:\ArcRho\Demo\"
-  const filename = m[2];       // e.g. "Freq w. New Renewal.xlsx"
-  const sheet = m[3];          // e.g. "Annual"
-  const cell = normalizeExcelCellAddress(m[4]);
-  const endCell = normalizeExcelCellAddress(m[5] || m[4]);
-  const bookPath = dir + filename;
-  return { bookPath, dir, filename, sheet, cell, endCell };
-}
-
-
-/** Find all Excel ref occurrences within an expression string. */
-function findExcelRefsInline(text) {
-  const refs = [];
-  EXCEL_REF_INLINE_RE.lastIndex = 0;
-  let m;
-  while ((m = EXCEL_REF_INLINE_RE.exec(text)) !== null) {
-    refs.push({
-      match: m[0],                        // the full matched substring
-      bookPath: m[1] + m[2],              // dir + filename
-      sheet: m[3],
-      cell: normalizeExcelCellAddress(m[4]),
-      endCell: normalizeExcelCellAddress(m[5] || m[4]),
-    });
-  }
-  return refs;
-}
-
-/** Returns true if the text contains any Excel ref (standalone or inline). */
-function containsExcelRef(text) {
-  const s = String(text || "");
-  if (EXCEL_REF_RE.test(s)) return true;
-  EXCEL_REF_INLINE_RE.lastIndex = 0;
-  return EXCEL_REF_INLINE_RE.test(s);
-}
-
 /**
  * Resolve all Excel refs in an expression to numeric values, then evaluate
  * the resulting math expression with row references.
@@ -167,16 +118,24 @@ async function resolveExcelRefsInExpression(raw, referenceValues, options = {}) 
   return { ok: true, value: parsed };
 }
 
-function formatExcelRef(bookPath, sheet, cell) {
-  // Split full path into dir + filename to match Excel convention
-  const lastSep = Math.max(bookPath.lastIndexOf("\\"), bookPath.lastIndexOf("/"));
-  const dir = lastSep >= 0 ? bookPath.slice(0, lastSep + 1) : "";
-  const filename = lastSep >= 0 ? bookPath.slice(lastSep + 1) : bookPath;
-  return normalizeExcelReferenceAddressCase(`='${dir}[${filename}]${sheet}'!${cell}`);
-}
-
 // Cache of last-resolved Excel cell values, keyed by ref match string (e.g. "'dir\[file]Sheet'!A1")
 const _xlCellValueCache = new Map();
+let _dfmExcelRefreshGeneration = 0;
+let _dfmExcelRefreshAbortController = null;
+let _applyingDfmExcelRefresh = false;
+
+function invalidateDfmExcelRefresh() {
+  _dfmExcelRefreshGeneration += 1;
+  _dfmExcelRefreshAbortController?.abort?.();
+  _dfmExcelRefreshAbortController = null;
+}
+
+function dfmExternalInputStillMatches(rowId, col, expectedInput) {
+  const cfg = summaryRowMap.get(String(rowId || ""));
+  if (!cfg || !isUserEntryConfig(cfg)) return false;
+  return String(getUserEntryInputForCol(cfg, Number(col)) || "").trim()
+    === String(expectedInput || "").trim();
+}
 
 let _xlLinkMode = false;
 let _xlLinkFocusHandler = null;
@@ -210,6 +169,7 @@ export function setSummaryTableCallbacks({
 }
 
 export function resetSummaryFormulaEditState() {
+  invalidateDfmExcelRefresh();
   cancelActiveSummaryFormulaCommit();
   exitXlLinkMode(document.getElementById("dfmSummaryFormulaBar"));
   cancelFormulaBarDisplayRefresh();
@@ -232,68 +192,6 @@ function trimTrailingMaskCells(row) {
     out.pop();
   }
   return out;
-}
-
-function excelColumnToIndex(column) {
-  const text = String(column || "").toUpperCase();
-  let value = 0;
-  for (const ch of text) {
-    const digit = ch.charCodeAt(0) - 64;
-    if (digit < 1 || digit > 26) return -1;
-    value = value * 26 + digit;
-  }
-  return value - 1;
-}
-
-function excelColumnFromIndex(index) {
-  let value = Number(index) + 1;
-  if (!Number.isInteger(value) || value <= 0) return "";
-  let out = "";
-  while (value > 0) {
-    const rem = (value - 1) % 26;
-    out = String.fromCharCode(65 + rem) + out;
-    value = Math.floor((value - 1) / 26);
-  }
-  return out;
-}
-
-function parseExcelCellAddress(value) {
-  const match = /^([A-Z]+)([1-9][0-9]*)$/i.exec(normalizeExcelCellAddress(value));
-  if (!match) return null;
-  const col = excelColumnToIndex(match[1]);
-  const row = Number(match[2]) - 1;
-  return Number.isInteger(col) && col >= 0 && Number.isInteger(row) && row >= 0 ? { row, col } : null;
-}
-
-function parseStandaloneExcelRange(raw) {
-  const ref = parseExcelRef(raw);
-  if (!ref || ref.cell === ref.endCell) return null;
-  const start = parseExcelCellAddress(ref.cell);
-  const end = parseExcelCellAddress(ref.endCell);
-  if (!start || !end) return null;
-  const row0 = Math.min(start.row, end.row);
-  const row1 = Math.max(start.row, end.row);
-  const col0 = Math.min(start.col, end.col);
-  const col1 = Math.max(start.col, end.col);
-  return {
-    ...ref,
-    rowCount: row1 - row0 + 1,
-    colCount: col1 - col0 + 1,
-    row0,
-    col0,
-  };
-}
-
-function buildExcelRangeSourceCells(range) {
-  const cells = [];
-  for (let rowOffset = 0; rowOffset < range.rowCount; rowOffset++) {
-    const cellRow = [];
-    for (let colOffset = 0; colOffset < range.colCount; colOffset++) {
-      cellRow.push(`${excelColumnFromIndex(range.col0 + colOffset)}${range.row0 + rowOffset + 1}`);
-    }
-    cells.push(cellRow);
-  }
-  return cells;
 }
 
 export function buildRatioSelectionPattern() {
@@ -1958,11 +1856,25 @@ export async function refreshAllExcelLinks(options = {}) {
   const batchItems = [];
   const batchMeta = [];
   const cellsToRefresh = [];
+  const requestedSourceIds = Array.isArray(options?.sourceIds)
+    ? new Set(options.sourceIds.map((id) => String(id || "")).filter(Boolean))
+    : null;
+  const selectedConsumerKeys = new Set();
+  if (requestedSourceIds) {
+    const groups = collectDfmExternalLinkGroups();
+    requestedSourceIds.forEach((id) => {
+      groups.get(id)?.consumers?.forEach?.((_consumer, key) => selectedConsumerKeys.add(key));
+    });
+  }
 
   for (const cfg of summaryRowConfigs) {
     if (!isUserEntryConfig(cfg)) continue;
     const inputs = cfg.inputs || [];
     for (let col = 0; col < inputs.length; col++) {
+      if (
+        requestedSourceIds
+        && !selectedConsumerKeys.has(`${String(cfg.id)}\u001f${col}`)
+      ) continue;
       const inputRaw = String(inputs[col] || "").trim();
       if (!containsExcelRef(inputRaw)) continue;
       const range = parseStandaloneExcelRange(inputRaw);
@@ -1982,11 +1894,21 @@ export async function refreshAllExcelLinks(options = {}) {
     return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
   }
 
+  invalidateDfmExcelRefresh();
+  const refreshGeneration = _dfmExcelRefreshGeneration;
+  const refreshController = new AbortController();
+  _dfmExcelRefreshAbortController = refreshController;
+  const refreshIsCurrent = () => (
+    refreshGeneration === _dfmExcelRefreshGeneration
+    && !refreshController.signal.aborted
+  );
+
   setStatusBarText("Refreshing linked Excel values...");
   let linkedCellCount = 0;
   let changedCount = 0;
   let failedCount = 0;
 
+  try {
   for (const link of rangeLinks) {
     const rangeCellCount = link.range.rowCount * link.range.colCount;
     linkedCellCount += rangeCellCount;
@@ -1995,21 +1917,34 @@ export async function refreshAllExcelLinks(options = {}) {
       failedCount += rangeCellCount;
       continue;
     }
-    const readResult = await readExcelRangeValues(link.range);
+    const readResult = await readExcelRangeValues(link.range, {
+      signal: refreshController.signal,
+    });
+    if (!refreshIsCurrent()) {
+      return { linkedCellCount, changedCount, failedCount, aborted: true };
+    }
+    if (!dfmExternalInputStillMatches(link.rowId, link.col, link.inputRaw)) {
+      continue;
+    }
     if (!readResult.ok) {
       failedCount += destination.entries.length;
       continue;
     }
-    changedCount += applyResolvedExcelRange(
-      summaryTable,
-      selectedTable,
-      link.rowId,
-      link.col,
-      link.inputRaw,
-      link.range,
-      destination,
-      readResult.values,
-    );
+    _applyingDfmExcelRefresh = true;
+    try {
+      changedCount += applyResolvedExcelRange(
+        summaryTable,
+        selectedTable,
+        link.rowId,
+        link.col,
+        link.inputRaw,
+        link.range,
+        destination,
+        readResult.values,
+      );
+    } finally {
+      _applyingDfmExcelRefresh = false;
+    }
     const anchor = destination.entries[0]?.cell;
     if (anchor) {
       anchor.classList.add("excelLinked");
@@ -2020,7 +1955,12 @@ export async function refreshAllExcelLinks(options = {}) {
   const resolvedMap = new Map();
   if (batchItems.length) {
     linkedCellCount += cellsToRefresh.length;
-    const result = await readExcelCellsBatch(batchItems);
+    const result = await readExcelCellsBatch(batchItems, {
+      signal: refreshController.signal,
+    });
+    if (!refreshIsCurrent()) {
+      return { linkedCellCount, changedCount, failedCount, aborted: true };
+    }
     if (result.ok) {
       for (let i = 0; i < result.results.length; i++) {
         const itemResult = result.results[i];
@@ -2033,6 +1973,10 @@ export async function refreshAllExcelLinks(options = {}) {
   }
 
   for (const { rowId, col, inputRaw } of cellsToRefresh) {
+    if (!refreshIsCurrent()) {
+      return { linkedCellCount, changedCount, failedCount, aborted: true };
+    }
+    if (!dfmExternalInputStillMatches(rowId, col, inputRaw)) continue;
     let expr = inputRaw.startsWith("=") ? inputRaw : "=" + inputRaw;
     let allResolved = true;
     const refs = findExcelRefsInline(expr);
@@ -2060,7 +2004,12 @@ export async function refreshAllExcelLinks(options = {}) {
     if (!cfg) continue;
     const currentValue = getUserEntryValueForCol(cfg, col);
     if (Math.abs(currentValue - nextValue) < 1e-10) continue;
-    setUserEntryCellEntry(rowId, col, inputRaw, nextValue, { persist: false });
+    _applyingDfmExcelRefresh = true;
+    try {
+      setUserEntryCellEntry(rowId, col, inputRaw, nextValue, { persist: false });
+    } finally {
+      _applyingDfmExcelRefresh = false;
+    }
     changedCount += 1;
     const cell = summaryTable?.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
     if (cell) {
@@ -2091,6 +2040,121 @@ export async function refreshAllExcelLinks(options = {}) {
     setStatusBarText(`Excel refresh: ${linkedCellCount} linked cell${linkedCellCount === 1 ? "" : "s"} unchanged.`);
   }
   return { linkedCellCount, changedCount, failedCount };
+  } catch (error) {
+    if (error?.name === "AbortError" || !refreshIsCurrent()) {
+      return { linkedCellCount, changedCount, failedCount, aborted: true };
+    }
+    throw error;
+  } finally {
+    _applyingDfmExcelRefresh = false;
+    if (
+      refreshGeneration === _dfmExcelRefreshGeneration
+      && _dfmExcelRefreshAbortController === refreshController
+    ) {
+      _dfmExcelRefreshAbortController = null;
+    }
+  }
+}
+
+function collectDfmExternalLinkGroups() {
+  return collectDfmExternalLinkGroupsModel({
+    rows: summaryRowConfigs,
+    columnCount: getCurrentRatioColumnCount(),
+    isUserEntry: isUserEntryConfig,
+  });
+}
+
+function dfmExternalTargetLabel(target, ratioLabels) {
+  const rowLabel = String(target?.cfg?.label || target?.cfg?.id || "User Entry");
+  const columnLabel = String(ratioLabels?.[target?.col] || `Column ${Number(target?.col) + 1}`);
+  return `${rowLabel} / ${columnLabel}`;
+}
+
+export function getDfmExternalLinkRecords() {
+  const ratioLabels = getRatioHeaderLabels(getEffectiveDevLabelsForModel(state?.model || {}));
+  return Array.from(collectDfmExternalLinkGroups().values()).map((group) => {
+    const targets = Array.from(group.targets.values());
+    const labels = targets.map((target) => dfmExternalTargetLabel(target, ratioLabels));
+    const destination = labels.length <= 1
+      ? (labels[0] || "Ratios")
+      : `${labels[0]} + ${labels.length - 1} more`;
+    const start = String(group.reference.cell || "");
+    const end = String(group.reference.endCell || start);
+    const firstTarget = targets[0];
+    const firstValue = firstTarget
+      ? formatRatio(
+        roundRatio(getUserEntryValueForCol(firstTarget.cfg, firstTarget.col), 6),
+        getDfmDecimalPlaces(),
+      )
+      : "";
+    return {
+      id: group.id,
+      workbookPath: group.reference.bookPath,
+      worksheet: group.reference.sheet,
+      address: start === end ? start : `${start}:${end}`,
+      value: start !== end ? `${firstValue}...` : firstValue,
+      destination,
+      affectedCellCount: targets.length,
+    };
+  });
+}
+
+function hardCodeDfmUserEntryTarget(target) {
+  const cfg = target?.cfg;
+  const col = Number(target?.col);
+  if (!cfg || !Number.isInteger(col) || col < 0 || !isUserEntryConfig(cfg)) return false;
+  const value = roundRatio(getUserEntryValueForCol(cfg, col), 6);
+  const inputs = normalizeUserEntryInputs(
+    cfg.inputs ?? cfg.formulas,
+    cfg.values,
+    Math.max(getCurrentRatioColumnCount(), col + 1),
+  );
+  inputs[col] = String(value);
+  cfg.inputs = inputs;
+  if (Object.prototype.hasOwnProperty.call(cfg, "formulas")) delete cfg.formulas;
+  return true;
+}
+
+export function breakDfmExternalLinks(ids) {
+  const requestedIds = new Set(
+    (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean),
+  );
+  const groups = collectDfmExternalLinkGroups();
+  const selectedGroups = Array.from(requestedIds)
+    .map((id) => groups.get(id))
+    .filter(Boolean);
+  if (!selectedGroups.length) {
+    return { ok: false, error: "The external link is no longer available." };
+  }
+  invalidateDfmExcelRefresh();
+  const hardCodeTargets = new Map();
+  selectedGroups.forEach((group) => {
+    getDfmExternalLinkHardCodeTargets({
+      group,
+      rows: summaryRowConfigs,
+      columnCount: getCurrentRatioColumnCount(),
+      isUserEntry: isUserEntryConfig,
+    }).forEach((target, key) => hardCodeTargets.set(key, target));
+  });
+  let affectedCellCount = 0;
+  hardCodeTargets.forEach((target) => {
+    if (hardCodeDfmUserEntryTarget(target)) affectedCellCount += 1;
+  });
+  if (!affectedCellCount) {
+    return { ok: false, error: "No editable DFM cells are available for this link." };
+  }
+  persistUserEntryRowsFromState();
+  _renderRatioTable();
+  _onRatioStateMutated();
+  return {
+    ok: true,
+    affectedCellCount,
+    message: `${selectedGroups.length === 1 ? "Link" : `${selectedGroups.length} links`} broken. ${affectedCellCount} Ratios cell${affectedCellCount === 1 ? " is" : "s are"} now hard-coded.`,
+  };
+}
+
+export function breakDfmExternalLink(id) {
+  return breakDfmExternalLinks([id]);
 }
 
 function hideSummaryFormulaBar() {
@@ -2177,10 +2241,30 @@ function restoreSupersededExcelRange(summaryTable, rowId, col, nextRaw, options 
   return resetExcelRangeDestination(summaryTable, rowId, col, previousRaw, options);
 }
 
+function addArrayFormulaOutlineClasses(cell, options = {}) {
+  if (!cell) return;
+  cell.classList.add("arArrayFormulaCell");
+  if (options.active) cell.classList.add("arArrayFormulaActive");
+  if (options.top) cell.classList.add("arArrayFormulaEdgeTop");
+  if (options.right) cell.classList.add("arArrayFormulaEdgeRight");
+  if (options.bottom) cell.classList.add("arArrayFormulaEdgeBottom");
+  if (options.left) cell.classList.add("arArrayFormulaEdgeLeft");
+}
+
+function getSummaryArrayFormulaDestination(summaryTable, rowId, startCol, itemCount) {
+  const row = summaryTable?.querySelector(`tr[data-row-id="${CSS.escape(String(rowId))}"]`);
+  const availableCells = Array.from(row?.querySelectorAll("td.summaryCell[data-col]") || [])
+    .map((cell) => ({ cell, col: Number(cell.dataset.col) }))
+    .filter((item) => Number.isFinite(item.col) && item.col >= startCol)
+    .sort((a, b) => a.col - b.col);
+  const count = Math.min(Math.max(0, Number(itemCount) || 0), availableCells.length);
+  return { entries: availableCells.slice(0, count) };
+}
+
 function applyExcelRangeHighlights(summaryTable) {
   if (!summaryTable) return;
   const activeCell = summaryTable.querySelector("td.summaryCell.summaryActiveCell");
-  summaryTable.querySelectorAll("td.excelRangeAffected").forEach((cell) => {
+  summaryTable.querySelectorAll("td.excelRangeAffected, td.arArrayFormulaCell").forEach((cell) => {
     cell.classList.remove(
       "excelRangeAffected",
       "excelRangeActive",
@@ -2190,6 +2274,12 @@ function applyExcelRangeHighlights(summaryTable) {
       "excelRangeEdgeRight",
       "excelRangeEdgeBottom",
       "excelRangeEdgeLeft",
+      "arArrayFormulaCell",
+      "arArrayFormulaActive",
+      "arArrayFormulaEdgeTop",
+      "arArrayFormulaEdgeRight",
+      "arArrayFormulaEdgeBottom",
+      "arArrayFormulaEdgeLeft",
     );
     delete cell.dataset.excelRangeFormula;
     delete cell.dataset.excelRangeAnchorRowId;
@@ -2203,6 +2293,38 @@ function applyExcelRangeHighlights(summaryTable) {
     const inputs = Array.isArray(cfg?.inputs) ? cfg.inputs : [];
     inputs.forEach((inputRaw, col) => {
       const raw = String(inputRaw || "").trim();
+      const parsedArray = parseSummaryArrayFormula(raw);
+      if (parsedArray) {
+        if (!parsedArray.ok) return;
+        const arrayDestination = getSummaryArrayFormulaDestination(
+          summaryTable,
+          rowId,
+          col,
+          parsedArray.expressions.length,
+        );
+        const lastIndex = arrayDestination.entries.length - 1;
+        if (lastIndex < 0) return;
+        const arrayIsActive = arrayDestination.entries.some((entry) => entry.cell === activeCell);
+        arrayDestination.entries.forEach((entry, index) => {
+          addArrayFormulaOutlineClasses(entry.cell, {
+            active: arrayIsActive,
+            top: true,
+            right: index === lastIndex,
+            bottom: true,
+            left: index === 0,
+          });
+          if (index <= 0) return;
+          const bridgeCell = entry.cell.previousElementSibling;
+          if (bridgeCell?.classList?.contains("ratioDataSpacer")) {
+            addArrayFormulaOutlineClasses(bridgeCell, {
+              active: arrayIsActive,
+              top: true,
+              bottom: true,
+            });
+          }
+        });
+        return;
+      }
       const range = parseStandaloneExcelRange(raw);
       if (!range) return;
       const destination = getExcelRangeDestination(summaryTable, rowId, col, range);
@@ -2211,6 +2333,13 @@ function applyExcelRangeHighlights(summaryTable) {
       destination.entries.forEach((entry) => {
         const isAnchor = entry.rowOffset === 0 && entry.colOffset === 0;
         entry.cell.classList.add("excelRangeAffected");
+        addArrayFormulaOutlineClasses(entry.cell, {
+          active: rangeIsActive,
+          top: entry.rowOffset === 0,
+          right: entry.colOffset === range.colCount - 1,
+          bottom: entry.rowOffset === range.rowCount - 1,
+          left: entry.colOffset === 0,
+        });
         if (!isAnchor) entry.cell.classList.add("excelRangeSpillCell");
         if (rangeIsActive) entry.cell.classList.add("excelRangeActive");
         if (entry.rowOffset === 0) entry.cell.classList.add("excelRangeEdgeTop");
@@ -2226,6 +2355,11 @@ function applyExcelRangeHighlights(summaryTable) {
           const bridgeCell = entry.cell.previousElementSibling;
           if (bridgeCell?.classList?.contains("ratioDataSpacer")) {
             bridgeCell.classList.add("excelRangeAffected", "excelRangeBridgeCell");
+            addArrayFormulaOutlineClasses(bridgeCell, {
+              active: rangeIsActive,
+              top: entry.rowOffset === 0,
+              bottom: entry.rowOffset === range.rowCount - 1,
+            });
             if (rangeIsActive) bridgeCell.classList.add("excelRangeActive");
             if (entry.rowOffset === 0) bridgeCell.classList.add("excelRangeEdgeTop");
             if (entry.rowOffset === range.rowCount - 1) bridgeCell.classList.add("excelRangeEdgeBottom");
@@ -2429,12 +2563,13 @@ function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCo
     };
   }
 
-  const row = summaryTable?.querySelector(`tr[data-row-id="${CSS.escape(String(rowId))}"]`);
-  const availableCells = Array.from(row?.querySelectorAll("td.summaryCell[data-col]") || [])
-    .map((cell) => ({ cell, col: Number(cell.dataset.col) }))
-    .filter((item) => Number.isFinite(item.col) && item.col >= startCol)
-    .sort((a, b) => a.col - b.col);
-  const applyCount = Math.min(parsedArray.expressions.length, availableCells.length);
+  const availableCells = getSummaryArrayFormulaDestination(
+    summaryTable,
+    rowId,
+    startCol,
+    parsedArray.expressions.length,
+  ).entries;
+  const applyCount = availableCells.length;
   if (applyCount <= 0) {
     return { handled: true, ok: false, error: "Array formula has no cells available to fill." };
   }
@@ -2791,6 +2926,7 @@ function setUserEntryCellEntry(rowId, col, inputRaw, value, options = {}) {
   if (!rowId || !Number.isFinite(col) || col < 0) return false;
   const cfg = summaryRowMap.get(String(rowId));
   if (!cfg || !isUserEntryConfig(cfg)) return false;
+  if (!_applyingDfmExcelRefresh) invalidateDfmExcelRefresh();
 
   const nextInput = String(inputRaw ?? "").trim() || "1";
   const nextValue = sanitizeUserEntryValue(value);

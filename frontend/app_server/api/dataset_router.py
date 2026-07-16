@@ -164,6 +164,7 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
         method_type=req.method_type,
         status=req.status,
         precedents=req.precedents,
+        external_links=req.external_links,
         values=req.values,
         mask=req.mask,
     )

@@ -1,4 +1,6 @@
 const STYLE_ID = "arcrho-path-tree-picker-style";
+import { attachArcrhoTooltip, ensureArcrhoTooltipStyles } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+
 const SHARED_SCROLLBAR_STYLE_ID = "arcrho-shared-scrollbar-style";
 const TREE_INDENT_PX = 10;
 const TREE_CHILDREN_INDENT_PX = 6;
@@ -29,7 +31,7 @@ function ensurePathTreeTooltip(doc) {
   if (!tooltip) {
     tooltip = doc.createElement("div");
     tooltip.id = PATH_TOOLTIP_ID;
-    tooltip.className = "ptree-path-tooltip";
+    tooltip.className = "arcrho-tooltip ptree-path-tooltip";
     tooltip.setAttribute("role", "tooltip");
     tooltip.setAttribute("aria-hidden", "true");
 
@@ -167,6 +169,7 @@ function ensureSharedScrollbarStyles(doc) {
 
 function ensureStyles(doc) {
   ensureSharedScrollbarStyles(doc);
+  ensureArcrhoTooltipStyles(doc);
   if (!doc || doc.getElementById(STYLE_ID)) return;
   const style = doc.createElement("style");
   style.id = STYLE_ID;
@@ -710,12 +713,6 @@ function ensureStyles(doc) {
       background: #fbfcfe;
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
       color: #1f2937;
-      font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
-      pointer-events: none;
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(-2px);
-      transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
     }
     .ptree-path-tooltip.open {
       opacity: 1;
@@ -2233,6 +2230,7 @@ export function openFloatingPathTreePicker(options = {}) {
       actionBtn.title = String(action.title || action.label || "");
       actionBtn.setAttribute("aria-label", String(action.title || action.label || ""));
       actionBtn.innerHTML = action.icon || '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+      attachArcrhoTooltip(actionBtn, action.title || action.label, { document: doc });
       actionBtn.addEventListener("click", (evt) => {
         evt.preventDefault();
         evt.stopPropagation();
@@ -2684,6 +2682,7 @@ export function openFloatingPathTreePicker(options = {}) {
 
   return {
     close: () => closeFloatingPathTreePicker("api"),
+    collapseDeepest: () => collapseDeepestExpandedNodes(renderContext.nodeControls, delimiter),
     element: win,
     removePath,
     revealPath: revealPathInTree,

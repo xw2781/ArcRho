@@ -486,6 +486,8 @@ export function renderTable() {
         }
       }
 
+      gridEditConfig?.decorateCell?.(td, r, c);
+
       tr.appendChild(td);
     }
 
