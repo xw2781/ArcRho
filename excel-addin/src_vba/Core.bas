@@ -68,8 +68,15 @@ Private Function FileExists(ByVal filePath As String) As Boolean
     FileExists = (Len(Dir$(filePath, vbNormal Or vbReadOnly Or vbHidden Or vbSystem)) > 0)
 End Function
 
+Public Function NormalizeDatasetName(ByVal value As String) As String
+    NormalizeDatasetName = Trim$(value)
+    Do While InStr(1, NormalizeDatasetName, "  ", vbBinaryCompare) > 0
+        NormalizeDatasetName = Replace$(NormalizeDatasetName, "  ", " ")
+    Loop
+End Function
+
 Private Function NormalizeDatasetKey(ByVal value As String) As String
-    NormalizeDatasetKey = LCase$(Trim$(value))
+    NormalizeDatasetKey = LCase$(NormalizeDatasetName(value))
 End Function
 
 Private Function FirstNonBlank(ByVal firstValue As String, ByVal secondValue As String) As String
@@ -483,13 +490,13 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
                         If Len(fullName) > 0 Then fullName = fullName & "@"
                         fullName = fullName & val
                     Case "datasetname", "trianglename"
-                        datasetName = val
+                        datasetName = NormalizeDatasetName(val)
                         If Len(fullName) > 0 Then fullName = fullName & "@"
-                        fullName = fullName & val
+                        fullName = fullName & datasetName
                     Case "instancename"
-                        instanceName = val
+                        instanceName = NormalizeDatasetName(val)
                         If Len(fullName) > 0 Then fullName = fullName & "@"
-                        fullName = fullName & val
+                        fullName = fullName & instanceName
                     Case "originlength"
                         originLength = val
                         If Len(fullName) > 0 Then fullName = fullName & "@"
@@ -942,7 +949,7 @@ Private Function SanitizeReservingClassFolderName(ByVal value As String) As Stri
 End Function
 
 Private Function SanitizeDataFileName(ByVal value As String) As String
-    SanitizeDataFileName = EncodeFileNameSegment(Trim$(value))
+    SanitizeDataFileName = EncodeFileNameSegment(NormalizeDatasetName(value))
     If Len(SanitizeDataFileName) = 0 Then SanitizeDataFileName = "Dataset"
 End Function
 
@@ -1186,7 +1193,6 @@ Public Function GetDataArray(dataPath As String)
 
     GetDataArray = outputArray
 End Function
-
 
 
 

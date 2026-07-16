@@ -12,13 +12,15 @@ Public Function ArcRhoTri( _
 ) As Variant
 
     Dim v As Variant   ' <-- can hold array OR string OR error, etc.
+    Dim normalizedTriangleName As String
 
     On Error GoTo ErrorHandler
+    normalizedTriangleName = NormalizeDatasetName(TriangleName)
 
     v = GetDataset( _
         "Function = ArcRhoTri" & "#" & _
         "Path = " & Path & "#" & _
-        "DatasetName = " & TriangleName & "#" & _
+        "DatasetName = " & normalizedTriangleName & "#" & _
         "Cumulative = " & Cumulative & "#" & _
         "Transposed = " & Transposed & "#" & _
         "Calendar = " & Calendar & "#" & _
@@ -197,12 +199,14 @@ Public Function ArcRhoVec( _
   ) As Variant
   
     Dim result As Variant
+    Dim normalizedVectorName As String
     On Error Resume Next
+    normalizedVectorName = NormalizeDatasetName(VectorName)
     
     result = GetDataset( _
         "Function = ArcRhoVec" & "#" & _
         "Path = " & Path & "#" & _
-        "DatasetName = " & VectorName & "#" & _
+        "DatasetName = " & normalizedVectorName & "#" & _
         "Cumulative = True" & "#" & _
         "Transposed = " & Transposed & "#" & _
         "ProjectName = " & SetDefaultProject(ProjectName) & "#" & _
