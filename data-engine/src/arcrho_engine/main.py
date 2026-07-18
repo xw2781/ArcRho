@@ -43,6 +43,10 @@ from arcrho_engine.data_processing import (
     remove_old_instances,
     robot_id,
 )
+from arcrho_engine.data_processing_rules import (
+    DataProcessingConfigurationError,
+    DataProcessingRulesError,
+)
 from arcrho_engine.general_utils import (
     get_current_time,
     read_json,
@@ -100,14 +104,28 @@ class RequestHandler(FileSystemEventHandler):
 
         print(f"\n> {get_current_time()} \n> new request # {robot_id} # user [{arg['UserName']}]")
 
-        # Check VPS Updates (guarded)
-        with PROJECT_CONFIG_LOCK:
-            if project_name + " - Version" in PROJECT_CONFIG:
-                vps_last_modified_time = _get_vps_last_modified_time(project_name)
-                if PROJECT_CONFIG[project_name + " - Version"] < vps_last_modified_time:
-                    load_to_PROJECT_CONFIG(project_name)
-                    print(f">>> Virtual Project Settings Updated -> [{project_name} JSON]\n")
-            # If missing, _get_df() will load it later; or you can proactively load it here.
+        # Check project configuration updates (guarded).
+        try:
+            with PROJECT_CONFIG_LOCK:
+                if project_name + " - Version" in PROJECT_CONFIG:
+                    project_config_signature = _get_vps_last_modified_time(project_name)
+                    if (
+                        PROJECT_CONFIG[project_name + " - Version"]
+                        != project_config_signature
+                    ):
+                        load_to_PROJECT_CONFIG(project_name)
+                        print(
+                            f">>> Virtual Project Settings Updated -> "
+                            f"[{project_name} JSON]\n"
+                        )
+                # If missing, _get_df() will load it later.
+        except DataProcessingConfigurationError as e:
+            print(str(e))
+            write_lists_to_csv(
+                arg['DataPath'],
+                [[f"(data processing configuration error: {e})"]],
+            )
+            return
 
         # Go to Functions
         try:
@@ -120,6 +138,22 @@ class RequestHandler(FileSystemEventHandler):
                 UDF_ADASHeaders(arg)
             else:
                 write_lists_to_csv(arg['DataPath'], [['(invalid function name)']])
+
+        except DataProcessingRulesError as e:
+            print(str(e))
+            write_lists_to_csv(
+                arg['DataPath'],
+                [[f"(data processing rules error: {e})"]],
+            )
+            return
+
+        except DataProcessingConfigurationError as e:
+            print(str(e))
+            write_lists_to_csv(
+                arg['DataPath'],
+                [[f"(data processing configuration error: {e})"]],
+            )
+            return
 
         except ProjectSettingsError as e:
             print(str(e))

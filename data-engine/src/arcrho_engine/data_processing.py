@@ -41,11 +41,19 @@ from arcrho_engine.general_utils import (
     _parse_date_to_yyyymm,
     get_current_time,
     split_formula,
-    split_formula_opts,
     write_lists_to_csv,
 )
+from arcrho_engine.data_processing_rules import (
+    DataProcessingConfigurationError,
+    DataProcessingRulesError,
+    build_configuration_file_signature,
+    build_reserving_class_catalog,
+    build_weighted_source_frame,
+    compile_data_processing_rules,
+    resolve_request_path,
+)
 
-debug_mode = 0
+debug_mode = 1
 device_name = os.environ.get("COMPUTERNAME")
 ts = datetime.now().strftime("%y%m%d-%H%M%S-%f")[:-3]
 robot_id =  f'{device_name}@' + os.getlogin() + "@" + ts
@@ -186,6 +194,7 @@ def _project_json_paths(project_name):
         "source_table": project_dir / "field_mapping.json",
         "dataset_types": project_dir / "dataset_types.json",
         "reserving_class_types": project_dir / "reserving_class_types.json",
+        "data_processing_rules": project_dir / "data_processing_rules.json",
     }
 
 
@@ -223,6 +232,25 @@ def _data_table_cache_key(csv_path):
     return os.path.normcase(os.path.abspath(str(csv_path)))
 
 
+def _source_columns_for_project_config(source_table_json, project_name):
+    table_path = str(
+        source_table_json.get("table_path", "")
+        if isinstance(source_table_json, dict)
+        else ""
+    ).strip()
+    if not table_path:
+        raise DataProcessingConfigurationError(
+            f"Missing table_path in field_mapping.json for project [{project_name}]."
+        )
+
+    try:
+        return list(pd.read_csv(table_path, nrows=0).columns)
+    except Exception as exc:
+        raise DataProcessingConfigurationError(
+            f"Cannot read source-table columns for project [{project_name}]: {exc}"
+        ) from exc
+
+
 def _json_table_to_df(json_obj):
     if isinstance(json_obj, dict) and "columns" in json_obj and "rows" in json_obj:
         return pd.DataFrame(json_obj.get("rows", []), columns=json_obj.get("columns", [])).fillna('')
@@ -243,27 +271,81 @@ def _source_table_df_from_json(json_obj):
     return pd.DataFrame(normalized_rows, columns=["Column Name", "Significances", "Level"]).fillna('')
 
 
-def _get_vps_last_modified_time(project_name):
+def _get_project_config_signature(project_name):
     json_paths = _project_json_paths(project_name)
-    missing = [str(path) for path in json_paths.values() if not path.exists()]
-    if missing:
-        raise FileNotFoundError(f"Missing project JSON file(s): {', '.join(missing)}")
-    return max(datetime.fromtimestamp(path.stat().st_mtime) for path in json_paths.values())
+    return build_configuration_file_signature(
+        json_paths,
+        required_keys={"source_table", "dataset_types", "reserving_class_types"},
+    )
+
+
+def _get_vps_last_modified_time(project_name):
+    """Compatibility name for the composite project-configuration signature."""
+    return _get_project_config_signature(project_name)
+
+
+def _build_project_config(project_name, json_paths):
+    try:
+        source_table_json = _read_json(json_paths["source_table"])
+        dataset_types_json = _read_json(json_paths["dataset_types"])
+        reserving_class_types_json = _read_json(json_paths["reserving_class_types"])
+    except (json.JSONDecodeError, OSError) as exc:
+        raise DataProcessingConfigurationError(
+            f"Cannot read valid project configuration JSON for "
+            f"project [{project_name}]: {exc}"
+        ) from exc
+    rules_json = None
+    rules_path = json_paths["data_processing_rules"]
+    if rules_path.exists():
+        try:
+            rules_json = _read_json(rules_path)
+        except (json.JSONDecodeError, OSError) as exc:
+            raise DataProcessingRulesError(
+                f"Cannot read valid data_processing_rules.json for "
+                f"project [{project_name}]: {exc}"
+            ) from exc
+
+    reserving_class_catalog = build_reserving_class_catalog(
+        source_table_json,
+        reserving_class_types_json,
+    )
+    compiled_rules = compile_data_processing_rules(
+        rules_json,
+        catalog=reserving_class_catalog,
+        field_mapping_payload=source_table_json,
+        dataset_types_payload=dataset_types_json,
+        source_columns=_source_columns_for_project_config(
+            source_table_json,
+            project_name,
+        ),
+    )
+    project_config = {
+        "Source Table": _source_table_df_from_json(source_table_json),
+        "Dataset Types": _json_table_to_df(dataset_types_json),
+        "Reserving Class Types": _json_table_to_df(reserving_class_types_json),
+        "Reserving Class Catalog": reserving_class_catalog,
+        "Data Processing Rules": compiled_rules,
+    }
+    return project_config
 
 
 def load_to_PROJECT_CONFIG(project_name, settings_file=None):
     json_paths = _project_json_paths(project_name)
     print(f"Loading JSON settings for [{project_name}] @ {get_current_time()}")
 
-    source_table_json = _read_json(json_paths["source_table"])
-    dataset_types_json = _read_json(json_paths["dataset_types"])
-    reserving_class_types_json = _read_json(json_paths["reserving_class_types"])
+    for _attempt in range(3):
+        signature_before = _get_project_config_signature(project_name)
+        project_config = _build_project_config(project_name, json_paths)
+        signature_after = _get_project_config_signature(project_name)
+        if signature_before == signature_after:
+            PROJECT_CONFIG[project_name] = project_config
+            PROJECT_CONFIG[project_name + " - Version"] = signature_after
+            return
 
-    PROJECT_CONFIG[project_name] = {}
-    PROJECT_CONFIG[project_name]["Source Table"] = _source_table_df_from_json(source_table_json)
-    PROJECT_CONFIG[project_name]["Dataset Types"] = _json_table_to_df(dataset_types_json)
-    PROJECT_CONFIG[project_name]["Reserving Class Types"] = _json_table_to_df(reserving_class_types_json)
-    PROJECT_CONFIG[project_name + " - Version"] = _get_vps_last_modified_time(project_name)
+    raise DataProcessingConfigurationError(
+        f"Project configuration for [{project_name}] changed repeatedly while "
+        "the data engine was loading it. Retry the request."
+    )
 
 
 def load_to_DATA_DICT(csv_path):
@@ -520,15 +602,16 @@ def _get_dataset_info(arg):
     if dataset_name in df_info['Name'].values:
         source = df_info.loc[df_info['Name'] == dataset_name, 'Source'].iloc[0]
     else:
-        write_lists_to_csv(arg['DataPath'], [[f'(dataset name not defined: {dataset_name})']])
-        return
+        raise DataProcessingConfigurationError(
+            f"Dataset type [{dataset_name}] is not defined for project [{project_name}]."
+        )
     
     output_data_format = df_info.loc[df_info['Name'] == dataset_name, 'Data Format'].iloc[0]
 
     # find all required table and column names
     df_info = PROJECT_CONFIG[project_name]['Source Table']
     required_datasets = split_formula(source)
-    rsv_cls_col_names = df_info.loc[df_info['Significances'].isin(['Reserving Class']), 'Column Name'].unique().tolist()
+    catalog = PROJECT_CONFIG[project_name]['Reserving Class Catalog']
 
     date_cols = []
     date_cols.append(DLOOKUP(df_info, 'Origin Date', 'Significances', 'Column Name'))
@@ -538,82 +621,20 @@ def _get_dataset_info(arg):
     project_settings = _load_project_settings(project_name, df, date_cols)
     max_sys_yrmo = project_settings['dev_end']
 
-    required_datasets = [c for c in required_datasets if c in df.columns]  # remove invalid dataset names
-    required_datasets = list(set(required_datasets))                       # remove duplicates
+    required_datasets = list(
+        dict.fromkeys(c for c in required_datasets if c in df.columns)
+    )
+    if not required_datasets:
+        raise DataProcessingConfigurationError(
+            f"Dataset type [{dataset_name}] does not resolve to any numeric source "
+            "columns in the project source table."
+        )
 
-    # determine the categorical values need to be included/adjusted in the calculation
-    df_info = PROJECT_CONFIG[project_name]['Reserving Class Types']
-    name_lookup = {str(v).lower(): v for v in df_info['Name'].dropna()}
-    splited_path = path.split('\\')
-    included_rsv_cls_types = []  # use original value
-    excluded_rsv_cls_types = []  # use negative value
-    adjusted_rsv_cls_types = []  # change values to zero for EEX calculations
+    request_context, selected_coefficients = resolve_request_path(catalog, path)
+    compiled_rules = PROJECT_CONFIG[project_name]['Data Processing Rules']
 
-    level = 1
-    for rsv_cls_type in splited_path:  # loop through N levels of reserving class
-        if level > len(rsv_cls_col_names):
-            break
-        rsv_cls_type = name_lookup[rsv_cls_type.lower()]
-        # print(f"Processing RSV CLS Type [{rsv_cls_type}] at Level {level} for dataset [{dataset_name}]")
-        included_rsv_cls_types.append([])
-        excluded_rsv_cls_types.append([])
-        adjusted_rsv_cls_types.append([])
-
-        if rsv_cls_type in df_info['Name'].values:
-            included_rsv_cls_types[level-1].append(rsv_cls_type) # always include the input value itself
-            # Also include Source-derived values for data matching (handles name aliases like "New" -> "N")
-            type_source = df_info.loc[df_info['Name'] == rsv_cls_type, 'Source'].iloc[0]
-            if type_source != '':
-                src_names = split_formula(type_source)
-                # print(f"  Source for [{rsv_cls_type}]: {src_names}")
-                src_opts = split_formula_opts(type_source)
-                for si in range(len(src_names)):
-                    if src_opts[si] == '-' and src_names[si] not in excluded_rsv_cls_types[level-1]:
-                        excluded_rsv_cls_types[level-1].append(src_names[si])
-                    if src_names[si] not in included_rsv_cls_types[level-1]:
-                        included_rsv_cls_types[level-1].append(src_names[si])
-
-            formula     = df_info.loc[df_info['Name'] == rsv_cls_type, 'Formula'].iloc[0]
-            # Safely access EEX Formula column — handle missing column or empty result
-            eex_formula = ''
-            if 'EEX Formula' in df_info.columns:
-                result = df_info.loc[df_info['Name'] == rsv_cls_type, 'EEX Formula']
-                if not result.empty:
-                    eex_formula = result.iloc[0]
-
-            if formula == '':
-                pass
-            else:
-                if eex_formula != '':
-                    # Adjusted = all members at this level NOT in eex_formula (not dependent on formula)
-                    all_members = df_info[df_info['Level'] == str(level)]['Name'].tolist()
-                    adjusted_rsv_cls_types_level_x = list(set(all_members) - set(split_formula(eex_formula)))
-                    adjusted_rsv_cls_types[level-1] = adjusted_rsv_cls_types_level_x
-
-                name_list = split_formula(formula)
-                opts_list = split_formula_opts(formula)
-
-                for i in range(len(name_list)):
-                    name = name_list[i]
-                    opt = opts_list[i]
-                    if opt == '-':
-                        excluded_rsv_cls_types[level-1].append(name)
-                    included_rsv_cls_types[level-1].append(name)
-        elif rsv_cls_type == '':
-            pass
-        else: 
-            write_lists_to_csv(arg['DataPath'], [[f'(reserving class type not defined: {rsv_cls_type})']])
-            # print(f"(reserving class type not defined: {rsv_cls_type})")
-            return
-
-        level += 1
-
-    included_rsv_cls_types = [list(set(sublist)) for sublist in included_rsv_cls_types]
-    excluded_rsv_cls_types = [list(set(sublist)) for sublist in excluded_rsv_cls_types]
-    adjusted_rsv_cls_types = [list(set(sublist)) for sublist in adjusted_rsv_cls_types]
-
-    return df, date_cols, required_datasets, rsv_cls_col_names, \
-           included_rsv_cls_types, excluded_rsv_cls_types, adjusted_rsv_cls_types, \
+    return df, date_cols, required_datasets, \
+           selected_coefficients, request_context, compiled_rules.rules, \
            source, output_data_format, max_sys_yrmo
 
 
@@ -693,42 +714,6 @@ def UDF_ADASHeaders(arg):
         return write_lists_to_csv(arg['DataPath'], [['(invalid input: periodType)']])
 
 
-def _filter_main_table(df, date_cols, rsv_cls_col_names, included_rsv_cls_types, required_datasets):
-    """
-    df: original DataFrame
-    rsv_cls_col_names: list of df column names, length N
-    included_rsv_cls_types: list of lists (may include empty lists)
-    required_datasets: list of other columns to keep
-
-    If included_rsv_cls_types[i] is empty, no filtering is applied for that column.
-    """
-
-    # if len(rsv_cls_col_names) != len(included_rsv_cls_types):
-    #     raise ValueError("Lengths of rsv_cls_col_names and included_rsv_cls_types must match.")
-
-    fixed_levels = len(rsv_cls_col_names)
-    input_levels = len(included_rsv_cls_types)
-
-    if fixed_levels < input_levels:
-        included_rsv_cls_types = included_rsv_cls_types[:len(rsv_cls_col_names)]
-    elif fixed_levels > input_levels:
-        included_rsv_cls_types = included_rsv_cls_types + [''] * (fixed_levels-input_levels)
-
-    # Start with full mask
-    mask = True
-
-    # Add filters dynamically
-    for col, allowed_values in zip(rsv_cls_col_names, included_rsv_cls_types):
-        # If empty list → skip filter for this level
-        if allowed_values:
-            mask &= df[col].isin(allowed_values)
-
-    # Build final column list (filter out empty date_cols when Development Date is not defined)
-    cols = [c for c in date_cols if c != ''] + rsv_cls_col_names + required_datasets
-
-    return df.loc[mask, cols]
-
-
 def UDF_ADASTri(arg):
     org_len = arg['OriginLength']
     dev_len = arg['DevelopmentLength']
@@ -740,8 +725,8 @@ def UDF_ADASTri(arg):
     if org_len == 'Default': org_len = 12
 
     # Get a subset dataframe based on a user's request
-    df, date_cols, required_datasets, rsv_cls_col_names, \
-    included_rsv_cls_types, excluded_rsv_cls_types, adjusted_rsv_cls_types, \
+    df, date_cols, required_datasets, selected_coefficients, \
+    request_context, processing_rules, \
     source, output_data_format, max_sys_yrmo = _get_dataset_info(arg)
 
     # Load project-specific date settings (with fallback to data-derived values)
@@ -750,7 +735,14 @@ def UDF_ADASTri(arg):
 
     max_sys_month = max_sys_yrmo % 100
 
-    df1 = _filter_main_table(df, date_cols, rsv_cls_col_names, included_rsv_cls_types, required_datasets)
+    df1 = build_weighted_source_frame(
+        df,
+        passthrough_columns=[column for column in date_cols if column],
+        source_measures=required_datasets,
+        selected_coefficients=selected_coefficients,
+        request_context=request_context,
+        rules=processing_rules,
+    )
 
     # Check if Development Date column is missing (optional when not in field_mapping)
     has_dev_date = date_cols[1] != '' and date_cols[1] in df1.columns
@@ -758,23 +750,6 @@ def UDF_ADASTri(arg):
         # Single-column triangle: set dev_len = 1 (unless explicitly set)
         if dev_len == 'Default' or dev_len == org_len:
             dev_len = 1
-
-    # Row Adjustments (Excluded Values) -- multiply value by -1
-    num_cols = df1.select_dtypes(include=[np.number]).columns
-    dataset_cols = [col for col in num_cols if col not in date_cols]  # all numerical field need to be adjusted
-
-    for i in range(len(excluded_rsv_cls_types)):
-        excluded_rsv_cls_types_level_x = excluded_rsv_cls_types[i]
-        if excluded_rsv_cls_types_level_x == []: 
-            continue
-        for value in excluded_rsv_cls_types_level_x:
-            df1.loc[df1[rsv_cls_col_names[i]].isin([value]), dataset_cols] *= -1
-
-    # Row Adjustments (EEX aggregation) -- set value to 0
-    if 'Earned_Exposure' in required_datasets:
-        adjusted_rsv_cls_types_level_x = adjusted_rsv_cls_types[4]  # level 5: IBNRCAT
-        for value in adjusted_rsv_cls_types_level_x:
-            df1.loc[df1[rsv_cls_col_names[4]].isin([value]), ['Earned_Exposure']] *= 0
 
     # Prepare for grouping by origin period and development age
     if (dev_len == 'Default') or (org_len % dev_len != 0):
