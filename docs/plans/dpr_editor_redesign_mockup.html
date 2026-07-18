@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data processing rules — redesign mockup</title>
+<style>
+  :root {
+    --blue: #1a73e8;
+    --blue-soft: #e8f0fe;
+    --blue-border: #a8c7fa;
+    --ink: #1f2328;
+    --ink-soft: #57606a;
+    --ink-faint: #8b949e;
+    --line: #d0d7de;
+    --line-soft: #e7ebef;
+    --bg: #f6f8fa;
+    --card: #ffffff;
+    --danger: #b42318;
+    --danger-soft: #fdecea;
+    --keep: #0a6e3a;
+    --keep-soft: #e6f4ec;
+    --note: #7c3aed;
+    --warn: #915907;
+    --warn-soft: #fff4e0;
+    --radius: 8px;
+    --shadow: 0 12px 32px rgba(31, 35, 40, .18), 0 2px 6px rgba(31, 35, 40, .10);
+    font-size: 13px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--bg);
+    padding: 28px 16px 64px;
+  }
+  .page-head {
+    max-width: 920px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .page-head h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .page-head .sub { color: var(--ink-soft); }
+  .notes-toggle {
+    margin-left: auto;
+    border: 1px solid var(--line);
+    background: var(--card);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font: inherit;
+    cursor: pointer;
+    color: var(--ink-soft);
+  }
+  body.show-notes .notes-toggle { border-color: var(--note); color: var(--note); }
+  .mock-section-title {
+    max-width: 920px;
+    margin: 34px auto 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+  }
+
+  /* numbered annotation markers */
+  .note-dot {
+    display: none;
+    width: 17px; height: 17px;
+    border-radius: 50%;
+    background: var(--note);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 17px;
+    text-align: center;
+    vertical-align: middle;
+    margin-left: 6px;
+    flex: none;
+    user-select: none;
+  }
+  body.show-notes .note-dot { display: inline-block; }
+  .notes-legend { display: none; max-width: 920px; margin: 26px auto 0; }
+  body.show-notes .notes-legend { display: block; }
+  .notes-legend .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+  }
+  .notes-legend h2 { font-size: 13px; margin: 0 0 8px; color: var(--note); }
+  .notes-legend ol { margin: 0; padding-left: 0; list-style: none; }
+  .notes-legend li { display: flex; gap: 9px; padding: 5px 0; line-height: 1.45; }
+  .notes-legend li .note-dot { display: inline-block; margin: 1px 0 0; }
+
+  /* ---------- dialog ---------- */
+  .editor {
+    max-width: 920px;
+    margin: 0 auto;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .editor-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line-soft);
+    background: linear-gradient(#fbfcfd, #f6f8fa);
+    cursor: move;
+  }
+  .editor-header .title { font-weight: 600; white-space: nowrap; }
+  .name-wrap { flex: 1; position: relative; min-width: 160px; }
+  .name-input {
+    width: 100%;
+    font: inherit;
+    font-weight: 600;
+    padding: 6px 52px 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink);
+  }
+  .name-input::placeholder { color: var(--ink-soft); font-weight: 500; opacity: 1; }
+  .name-input:hover { border-color: var(--line); background: #fff; }
+  .name-input:focus { border-color: var(--blue); background: #fff; outline: none; box-shadow: 0 0 0 2px var(--blue-soft); }
+  .auto-pill {
+    position: absolute;
+    right: 8px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border-radius: 8px;
+    padding: 1px 7px;
+    pointer-events: none;
+  }
+  .auto-pill.hidden { display: none; }
+
+  .switch { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; color: var(--ink-soft); white-space: nowrap; }
+  .switch input { display: none; }
+  .switch .track {
+    width: 32px; height: 18px; border-radius: 10px;
+    background: #c9d1d9; position: relative; transition: background .15s;
+  }
+  .switch .track::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s;
+  }
+  .switch input:checked + .track { background: var(--blue); }
+  .switch input:checked + .track::after { left: 16px; }
+  .switch .state-label { min-width: 48px; }
+
+  .close-btn {
+    border: none; background: transparent; cursor: pointer;
+    width: 26px; height: 26px; border-radius: 6px;
+    display: grid; place-items: center; color: var(--ink-soft);
+  }
+  .close-btn:hover { background: #eceff2; color: var(--ink); }
+  .close-btn svg { width: 11px; height: 11px; stroke: currentColor; stroke-width: 1.6; }
+
+  .editor-body { padding: 16px 18px 6px; }
+
+  /* ---------- sections ---------- */
+  .step {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 0 14px;
+    padding: 14px 0 16px;
+  }
+  .step + .step { border-top: 1px solid var(--line-soft); }
+  .step-label {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  }
+  .step-label .kw {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+  .step.then .kw { background: var(--keep-soft); color: var(--keep); }
+  .step-label .hint-mini { font-size: 11px; color: var(--ink-faint); }
+  .step-content { min-width: 0; }
+  .lead-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--ink-soft); margin-bottom: 10px; }
+  .lead-line strong { color: var(--ink); font-weight: 600; }
+  .inline-tokens { flex: 1; min-width: 240px; }
+
+  select, .text-input {
+    font: inherit;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    padding: 5px 8px;
+  }
+  select:focus, .text-input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue-soft); }
+
+  /* ---------- condition rows ---------- */
+  .cond-list { display: flex; flex-direction: column; gap: 8px; }
+  .cond-row {
+    display: grid;
+    grid-template-columns: 200px 96px minmax(220px, 1fr) 28px;
+    gap: 8px;
+    align-items: start;
+  }
+  .cond-row .field-wrap { position: relative; }
+  .cond-row .field-wrap select { width: 100%; padding-right: 64px; }
+  .field-badge {
+    position: absolute;
+    right: 26px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 9px;
+    background: var(--line-soft);
+    color: var(--ink-soft);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .field-badge.raw { background: var(--warn-soft); color: var(--warn); }
+  .cond-row select.op { width: 100%; }
+  .remove-btn {
+    width: 26px; height: 28px;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    display: grid; place-items: center;
+    color: var(--ink-faint);
+  }
+  .remove-btn:hover { color: var(--danger); background: var(--danger-soft); }
+  .remove-btn svg { width: 9px; height: 9px; stroke: currentColor; stroke-width: 1.6; }
+
+  .and-joint {
+    font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    color: var(--ink-faint);
+    padding-left: 2px;
+    margin: -2px 0;
+  }
+
+  /* ---------- token (chip) input ---------- */
+  .token-box {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    min-height: 30px;
+    padding: 3px 6px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    cursor: text;
+  }
+  .token-box.focus { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue-soft); }
+  .token-box.disabled { background: var(--bg); cursor: default; }
+  .token {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--blue-soft);
+    border: 1px solid var(--blue-border);
+    color: #174ea6;
+    border-radius: 5px;
+    padding: 1px 4px 1px 8px;
+    font-weight: 500;
+    line-height: 18px;
+    white-space: nowrap;
+  }
+  .token button {
+    border: none; background: transparent; cursor: pointer;
+    color: inherit; opacity: .55; padding: 0 3px; font-size: 12px; line-height: 1;
+  }
+  .token button:hover { opacity: 1; }
+  .token.warn { background: var(--warn-soft); border-color: #e3c07f; color: var(--warn); }
+  .token.bad { background: var(--danger-soft); border-color: #f0b5ad; color: var(--danger); text-decoration: line-through; }
+  .vocab-warn {
+    margin-top: 9px;
+    color: var(--warn);
+    background: var(--warn-soft);
+    border-radius: 6px;
+    padding: 6px 10px;
+    line-height: 1.5;
+  }
+  .vocab-warn.bad { color: var(--danger); background: var(--danger-soft); }
+  .vocab-warn:empty { display: none; }
+  .token-box input {
+    flex: 1;
+    min-width: 60px;
+    border: none;
+    font: inherit;
+    padding: 3px 2px;
+    background: transparent;
+  }
+  .token-box input:focus { outline: none; }
+  .suggest-menu {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 220px;
+    max-width: 100%;
+    max-height: 190px;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(31,35,40,.14);
+    padding: 4px;
+    display: none;
+  }
+  .suggest-menu.open { display: block; }
+  .suggest-item {
+    padding: 5px 9px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .suggest-item:hover, .suggest-item.active { background: var(--blue-soft); }
+  .suggest-item .tick { color: var(--blue); font-weight: 700; }
+  .suggest-empty { padding: 6px 9px; color: var(--ink-faint); }
+
+  .add-link {
+    margin-top: 9px;
+    border: none;
+    background: none;
+    color: var(--blue);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 3px 4px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .add-link:hover { background: var(--blue-soft); }
+  .empty-note { color: var(--ink-faint); font-style: italic; padding: 4px 0; }
+
+  /* action verb segmented control */
+  .verb-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .verb-seg button {
+    font: inherit; border: none; background: #fff; padding: 5px 14px; cursor: pointer; color: var(--ink-soft);
+  }
+  .verb-seg button + button { border-left: 1px solid var(--line); }
+  .verb-seg button.on-exclude { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+  .verb-seg button.on-keep { background: var(--keep-soft); color: var(--keep); font-weight: 600; }
+
+  /* ---------- summary + footer ---------- */
+  .summary-bar {
+    margin: 4px -18px 0;
+    padding: 12px 18px 13px;
+    background: #fbfcfd;
+    border-top: 1px solid var(--line-soft);
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .summary-bar .icon { color: var(--blue); flex: none; margin-top: 1px; }
+  .summary-text { line-height: 1.55; color: var(--ink-soft); }
+  .summary-text b { color: var(--ink); font-weight: 600; }
+  .summary-text .verb-x { color: var(--danger); font-weight: 700; }
+  .summary-text .verb-k { color: var(--keep); font-weight: 700; }
+  .editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 11px 18px;
+    border-top: 1px solid var(--line-soft);
+    background: #fff;
+  }
+  .editor-actions button {
+    font: inherit;
+    padding: 6px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+  .editor-actions button:hover { background: var(--bg); }
+  .editor-actions button.primary {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #fff;
+    font-weight: 600;
+  }
+  .editor-actions button.primary:hover { background: #1663c7; }
+
+  /* ---------- rules list mock ---------- */
+  .list-card {
+    max-width: 920px;
+    margin: 0 auto;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(31,35,40,.06);
+    overflow: hidden;
+  }
+  .trace-panel {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 11px 16px;
+    background: #fbfcfd;
+    border-bottom: 1px solid var(--line-soft);
+    color: var(--ink-soft);
+  }
+  .trace-panel .lbl { font-weight: 600; color: var(--ink); }
+  .trace-result {
+    padding: 10px 16px 12px;
+    border-bottom: 1px solid var(--line-soft);
+    background: #fff;
+  }
+  .trace-result .fired {
+    display: flex; align-items: baseline; gap: 8px; padding: 3px 0; flex-wrap: wrap;
+  }
+  .trace-result .none { color: var(--ink-faint); font-style: italic; }
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px 8px;
+    background: var(--bg);
+    border-top: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line-soft);
+    font-weight: 600;
+  }
+  .group-head .count { color: var(--ink-faint); font-weight: 400; }
+  .rule-row {
+    display: grid;
+    grid-template-columns: 40px 240px 1fr;
+    gap: 10px;
+    align-items: start;
+    padding: 9px 16px;
+  }
+  .rule-row + .rule-row { border-top: 1px solid var(--line-soft); }
+  .rule-row:hover { background: #fafbfc; }
+  .rule-row .mini-switch { margin-top: 2px; }
+  .mini-switch { position: relative; display: inline-block; width: 28px; height: 16px; }
+  .mini-switch .trk { display: block; width: 28px; height: 16px; border-radius: 9px; background: var(--blue); position: relative; }
+  .mini-switch .trk.off { background: #c9d1d9; }
+  .mini-switch .trk::after {
+    content: ""; position: absolute; top: 2px; left: 14px;
+    width: 12px; height: 12px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,.25);
+  }
+  .mini-switch .trk.off::after { left: 2px; }
+  .rule-name { font-weight: 600; line-height: 1.4; }
+  .rule-name .lint-chip {
+    display: inline-block;
+    margin-top: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--warn);
+    background: var(--warn-soft);
+    border-radius: 9px;
+    padding: 1px 8px;
+  }
+  .rule-sentence { color: var(--ink-soft); line-height: 1.5; }
+  .rule-sentence b { color: var(--ink); font-weight: 600; }
+  .verb-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 9px;
+    padding: 1px 8px;
+    margin-right: 6px;
+    vertical-align: 1px;
+  }
+  .verb-badge.keep { color: var(--keep); background: var(--keep-soft); }
+  .verb-badge.exclude { color: var(--danger); background: var(--danger-soft); }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>Data processing rules — proposed redesign</h1>
+    <span class="sub">interactive mockup · sample data from the NJ Annual production project (15 live rules)</span>
+    <button class="notes-toggle" id="notesToggle" type="button">Show design notes</button>
+  </div>
+
+  <!-- ============ EDITOR ============ -->
+  <div class="editor" role="dialog" aria-labelledby="dlgTitle">
+    <div class="editor-header">
+      <div class="title" id="dlgTitle">Edit rule</div>
+      <div class="name-wrap">
+        <input class="name-input" id="ruleName" value="EP - Total ex NJ BI" spellcheck="false" aria-label="Rule name" placeholder="">
+        <span class="auto-pill hidden" id="autoPill">AUTO</span>
+      </div>
+      <span class="note-dot">1</span>
+      <label class="switch">
+        <input type="checkbox" id="ruleEnabled" checked>
+        <span class="track"></span>
+        <span class="state-label" id="enabledLabel">Enabled</span>
+      </label>
+      <button class="close-btn" type="button" aria-label="Close">
+        <svg viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>
+      </button>
+    </div>
+
+    <div class="editor-body">
+
+      <!-- WHEN -->
+      <div class="step when">
+        <div class="step-label">
+          <span class="kw">When</span>
+          <span class="hint-mini">scope</span>
+          <span class="note-dot" style="margin-left:0">2</span>
+        </div>
+        <div class="step-content">
+          <div class="lead-line">
+            building
+            <span class="inline-tokens" id="datasetTokens"></span>
+            for a requested coverage that matches
+            <strong>all</strong> of:
+          </div>
+          <div class="cond-list" id="scopeConds"></div>
+          <button class="add-link" type="button" id="addScope">
+            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="5" y1="0.5" x2="5" y2="9.5" stroke="currentColor" stroke-width="1.6"/><line x1="0.5" y1="5" x2="9.5" y2="5" stroke="currentColor" stroke-width="1.6"/></svg>
+            Add scope condition
+          </button>
+        </div>
+      </div>
+
+      <!-- THEN -->
+      <div class="step then">
+        <div class="step-label">
+          <span class="kw">Then</span>
+          <span class="hint-mini">action</span>
+          <span class="note-dot" style="margin-left:0">3</span>
+        </div>
+        <div class="step-content">
+          <div class="lead-line">
+            <span class="verb-seg" id="verbSeg" role="radiogroup" aria-label="Action">
+              <button type="button" data-verb="exclude" class="on-exclude">Exclude</button>
+              <button type="button" data-verb="keep">Keep only</button>
+            </span>
+            source rows where <strong>all</strong> of the following hold:
+            <span class="note-dot">4</span>
+            <span class="note-dot">8</span>
+          </div>
+          <div class="cond-list" id="rowConds"></div>
+          <div class="empty-note" id="keepSemanticsHint" hidden>
+            Rows that do not match the raw-field filter(s) are left untouched — only the filtered rows are reduced to the listed members.
+          </div>
+          <div class="vocab-warn" id="vocabWarn"></div>
+          <button class="add-link" type="button" id="addRow">
+            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="5" y1="0.5" x2="5" y2="9.5" stroke="currentColor" stroke-width="1.6"/><line x1="0.5" y1="5" x2="9.5" y2="5" stroke="currentColor" stroke-width="1.6"/></svg>
+            Add condition
+          </button>
+        </div>
+      </div>
+
+      <!-- SUMMARY -->
+      <div class="summary-bar">
+        <span class="icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.4"/><line x1="8" y1="7" x2="8" y2="11.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="4.8" r="0.95" fill="currentColor"/></svg>
+        </span>
+        <div class="summary-text" id="summaryText"></div>
+        <span class="note-dot">5</span>
+      </div>
+    </div>
+
+    <div class="editor-actions">
+      <button type="button">Cancel</button>
+      <button type="button" class="primary">Apply and save</button>
+    </div>
+  </div>
+
+  <!-- ============ RULES LIST ============ -->
+  <div class="mock-section-title">Rules list — grouped view with request tracing<span class="note-dot">6</span></div>
+  <div class="list-card">
+    <div class="trace-panel">
+      <span class="lbl">Which rules fire?</span>
+      building
+      <select id="traceDs"></select>
+      for coverage
+      <select id="traceCov"></select>
+      in state
+      <select id="traceState">
+        <option selected>All States</option>
+        <option>NJ</option>
+        <option>NY</option>
+        <option>CT</option>
+      </select>
+      <span class="note-dot">7</span>
+    </div>
+    <div class="trace-result" id="traceResult"></div>
+    <div id="ruleGroups"></div>
+  </div>
+
+  <div class="notes-legend">
+    <div class="card">
+      <h2>What changed and why (informed by the 15 production rules)</h2>
+      <ol>
+        <li><span class="note-dot">1</span><span><b>Auto-generated names.</b> Production names have typos (“Exculde”) and drift from content (a rule named “keep BIx51+UMBIx51” whose trigger is BI+PIP). If the name is left blank, the app derives one from the rule itself (shown as the AUTO placeholder — clear the field to see it live); typing anything overrides it.</span></li>
+        <li><span class="note-dot">2</span><span><b>Dataset type is multi-select.</b> Production has near-duplicate rules that differ only by dataset type (e.g. “keep HOP” exists separately for Earned exposure and Earned premium). Letting one rule target several dataset types removes that duplication. This is the one proposal that needs a small schema change (<code>target.source_measures</code> as a list, with single-value kept readable for back-compat).</span></li>
+        <li><span class="note-dot">3</span><span><b>Then = one row-level clause.</b> “Row filter” and “Action” merge: the member list and raw-row filters are ANDed row constraints, so they read as one sentence. The saved JSON stays the same — the condition on the action field maps to <code>action.members</code>, the rest map to <code>row_conditions</code>.</span></li>
+        <li><span class="note-dot">4</span><span><b>One operator, token values.</b> Production mixes <code>equals</code> with single strings and <code>in</code> with lists for the same intent — evidence the two operators should collapse into one tokenized “is (any of)” input. One token = equals, several = any-of; save can normalize to a single canonical operator.</span></li>
+        <li><span class="note-dot">5</span><span><b>Always-visible plain-English summary</b> pinned above the buttons, restating the whole rule live as you edit.</span></li>
+        <li><span class="note-dot">6</span><span><b>List grouped by dataset type with sentence summaries.</b> With 15 rules the flat 6-column table is hard to scan; 13 of 15 rules follow the same “substitute coverage” shape (<i>request X → keep only Y</i>), which a compact “when → then” sentence shows at a glance. Colored KEEP/EXCLUDE badges make the two NJ exclusion rules stand out. Amber chips flag lint findings: near-duplicates across dataset types and name/content drift.</span></li>
+        <li><span class="note-dot">8</span><span><b>Dataset-aware value vocabularies.</b> The merged source CSV is an outer join of separate tables, so a column like IBNRCAT mixes aggregation levels: atomic coverages (BI, PD, PIP…) only exist on Earned premium/exposure and loss rows, while pre-aggregated values (BI Total, PD+UMPD, BIx51+UMBIx51, CMPxCAT…) only exist on Remaining budget rows. Value suggestions therefore filter by the selected dataset type(s), and chips are validated against that vocabulary: amber = only valid for some selected dataset types, red = never present (the condition can never match). Try adding “Remaining budget premium” to the dataset chips to see the BIR51/UMBIR51 tokens flag themselves. Validation should warn, not block — values may legitimately appear in a future data refresh.</span></li>
+        <li><span class="note-dot">7</span><span><b>“Which rules fire?” tracer.</b> With this many keep-only remaps on overlapping coverage lists (e.g. TOTAL PA appears in several rules), the key question when debugging is “what happens to this request?”. Pick a dataset type + coverage + state and the panel lists the rules that would fire. Try <i>Earned exposure / TOTAL PA</i>, then <i>Earned premium / TOTAL PA</i>.</span></li>
+      </ol>
+    </div>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ================= editor sample data ================= */
+
+  const DATASET_TYPES = [
+    "Earned premium", "Earned exposure",
+    "Remaining budget premium", "Remaining budget exposure",
+    "Paid loss", "Incurred loss",
+  ];
+
+  /* Distinct source values per dataset type, as measured from the production
+     merged CSV (ResQ_Channel_202605.csv) — the merged table is an outer join,
+     so each dataset type only "sees" the key values its source table contributed. */
+  const IBNRCAT_ATOMIC = ["ALN_UMBR","BI","BIR51","CMP","COL","FNDTN","HOL","HOP","MP","PD","PIP","UMBI","UMBIR51","UMBR","UMPD"];
+  const IBNRCAT_LOSS = [...IBNRCAT_ATOMIC, "CMP_CAT","HOP_CAT","MP_HCP","OIL","PIP_HCP"];
+  const IBNRCAT_BUDGET = ["BI Total","BIR51+UMBIR51","BIx51+UMBIx51","CMP","CMPxCAT","COL","FNDTN","HOL","HOPxCAT","MP+PIP","OIL","PD+UMPD","UMBR"];
+  const STATES_FULL = ["CT","DE","IN","MA","MD","MI","NH","NJ","NY","OH","Penn","VA","WV"];
+  const STATES_BUDGET = ["CT","MA","NH","NJ","NY","Penn"];
+  const CHANNELS_FULL = ["Core Direct","Direct","Independent","Legacy","Partners","Prudential Agent","Twin Lights"];
+  const CHANNELS_BUDGET = CHANNELS_FULL.filter((c) => c !== "Twin Lights");
+
+  const SOURCE_VOCAB = {
+    "Earned premium":            { ibnrcat: IBNRCAT_ATOMIC, state: STATES_FULL,   channel: CHANNELS_FULL },
+    "Earned exposure":           { ibnrcat: IBNRCAT_ATOMIC, state: STATES_FULL,   channel: CHANNELS_FULL },
+    "Remaining budget premium":  { ibnrcat: IBNRCAT_BUDGET, state: STATES_BUDGET, channel: CHANNELS_BUDGET },
+    "Remaining budget exposure": { ibnrcat: IBNRCAT_BUDGET, state: STATES_BUDGET, channel: CHANNELS_BUDGET },
+    "Paid loss":                 { ibnrcat: IBNRCAT_LOSS,   state: STATES_FULL,   channel: CHANNELS_FULL },
+    "Incurred loss":             { ibnrcat: IBNRCAT_LOSS,   state: STATES_FULL,   channel: CHANNELS_FULL },
+  };
+
+  const SCOPE_FIELDS = [
+    { id: "state_cd", label: "State cd", badge: "Level 3", suggestions: ["All States","NJ","NY","CT","PA Group"] },
+    { id: "ibnrcat",  label: "IBNRCAT",  badge: "Level 5", suggestions: ["TOTAL PA","BI Total","BIx51+UMBIx51","BI+BIR51","BI+PIP","BIR51+UMBIR51","CMPxCAT","PhysD","PhysDxCat","HOPxCAT","TotalxCAT","HOPxCAT+HOL","MP+PIP","MP+PIPxHCP","PD+UMPD","Auto Liab Total","UMBI+UMBIR51"] },
+    { id: "group_cd", label: "Group cd", badge: "Level 4", suggestions: ["Direct Group","Assumed Group"] },
+  ];
+
+  const ROW_FIELDS = [
+    { id: "state_cd_raw", label: "State cd",  badge: "Raw field", raw: true,  vocabKey: "state",   suggestions: [] },
+    { id: "ibnrcat",      label: "IBNRCAT",   badge: "Level 5",  raw: false, vocabKey: "ibnrcat", suggestions: [] },
+    { id: "loss_year",    label: "Loss year", badge: "Raw field", raw: true,  suggestions: [] },
+    { id: "channel",      label: "Channel",   badge: "Raw field", raw: true,  vocabKey: "channel", suggestions: [] },
+  ];
+
+  const SCOPE_OPERATORS = [
+    { id: "is",     label: "is" },
+    { id: "is_not", label: "is not" },
+  ];
+  const ROW_OPERATORS = [
+    ...SCOPE_OPERATORS,
+    { id: "is_blank",     label: "is blank",     noValue: true },
+    { id: "is_not_blank", label: "is not blank", noValue: true },
+    { id: "gte",          label: "at least",     single: true },
+    { id: "lte",          label: "at most",      single: true },
+  ];
+  const DATASET_FIELDS = [{ id: "ds", label: "Dataset type", badge: "", suggestions: DATASET_TYPES }];
+
+  const state = {
+    verb: "exclude",
+    datasets: { field: "ds", op: "is", values: ["Earned premium"] },
+    scope: [
+      { field: "state_cd", op: "is", values: ["All States"] },
+      { field: "ibnrcat",  op: "is", values: ["TOTAL PA"] },
+    ],
+    rows: [
+      { field: "ibnrcat",      op: "is", values: ["BIR51","UMBIR51"] },
+      { field: "state_cd_raw", op: "is", values: ["NJ"] },
+    ],
+  };
+
+  const $ = (sel) => document.querySelector(sel);
+  let openMenu = null;
+
+  function closeMenus() {
+    if (openMenu) { openMenu.classList.remove("open"); openMenu = null; }
+  }
+  document.addEventListener("mousedown", (e) => {
+    if (!e.target.closest(".token-box")) closeMenus();
+  });
+
+  function fieldDef(list, id) { return list.find((f) => f.id === id) || list[0]; }
+  function opDef(list, id) { return list.find((o) => o.id === id) || list[0]; }
+
+  function selectedDatasets() {
+    const picked = state.datasets.values.filter((d) => SOURCE_VOCAB[d]);
+    return picked.length ? picked : Object.keys(SOURCE_VOCAB);
+  }
+  function vocabFor(key) {
+    const out = new Set();
+    for (const d of selectedDatasets()) for (const v of (SOURCE_VOCAB[d][key] || [])) out.add(v);
+    return [...out].sort((a, b) => a.localeCompare(b));
+  }
+  function datasetsHaving(key, value) {
+    return selectedDatasets().filter((d) => (SOURCE_VOCAB[d][key] || []).includes(value));
+  }
+
+  function makeSelect(options, value, onChange, cls) {
+    const sel = document.createElement("select");
+    if (cls) sel.className = cls;
+    for (const opt of options) {
+      const o = document.createElement("option");
+      o.value = opt.id;
+      o.textContent = opt.label;
+      sel.appendChild(o);
+    }
+    sel.value = value;
+    sel.addEventListener("change", () => onChange(sel.value));
+    return sel;
+  }
+
+  function makeTokenBox(cond, fields, operators) {
+    const box = document.createElement("div");
+    box.className = "token-box";
+    const op = opDef(operators, cond.op);
+
+    if (op.noValue) {
+      box.classList.add("disabled");
+      const note = document.createElement("span");
+      note.className = "empty-note";
+      note.textContent = "no value needed";
+      box.appendChild(note);
+      return box;
+    }
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.spellcheck = false;
+    const single = !!op.single;
+    input.placeholder = cond.values.length
+      ? ""
+      : (single ? "Enter a value" : "Type a value or pick from the list");
+
+    const menu = document.createElement("div");
+    menu.className = "suggest-menu";
+    const def = fieldDef(fields, cond.field);
+
+    function commit(text) {
+      const v = String(text).trim();
+      if (!v) return;
+      if (single) cond.values = [v];
+      else if (!cond.values.includes(v)) cond.values.push(v);
+      input.value = "";
+      render();
+    }
+
+    function refreshMenu() {
+      const q = input.value.trim().toLowerCase();
+      const items = def.suggestions.filter((s) => !q || s.toLowerCase().includes(q));
+      menu.innerHTML = "";
+      if (!def.suggestions.length) { closeMenus(); return; }
+      if (!items.length) {
+        const d = document.createElement("div");
+        d.className = "suggest-empty";
+        d.textContent = "No matches — press Enter to add as typed";
+        menu.appendChild(d);
+      }
+      for (const s of items) {
+        const it = document.createElement("div");
+        it.className = "suggest-item";
+        const lbl = document.createElement("span");
+        lbl.textContent = s;
+        it.appendChild(lbl);
+        if (cond.values.includes(s)) {
+          const t = document.createElement("span");
+          t.className = "tick";
+          t.textContent = "✓";
+          it.appendChild(t);
+        }
+        it.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          if (cond.values.includes(s)) {
+            cond.values = cond.values.filter((v) => v !== s);
+            render();
+          } else {
+            commit(s);
+          }
+        });
+        menu.appendChild(it);
+      }
+      closeMenus();
+      menu.classList.add("open");
+      openMenu = menu;
+    }
+
+    for (const v of cond.values) {
+      const chip = document.createElement("span");
+      chip.className = "token";
+      chip.textContent = v;
+      if (def.vocabKey) {
+        const have = datasetsHaving(def.vocabKey, v);
+        const all = selectedDatasets();
+        if (!have.length) {
+          chip.classList.add("bad");
+          chip.title = `"${v}" never appears in the source rows of the selected dataset type(s)`;
+        } else if (have.length < all.length) {
+          chip.classList.add("warn");
+          chip.title = `Only present in source rows for: ${have.join(", ")}`;
+        }
+      }
+      const x = document.createElement("button");
+      x.type = "button";
+      x.textContent = "×";
+      x.setAttribute("aria-label", `Remove ${v}`);
+      x.addEventListener("click", () => {
+        cond.values = cond.values.filter((item) => item !== v);
+        render();
+      });
+      chip.appendChild(x);
+      box.appendChild(chip);
+    }
+
+    input.addEventListener("focus", () => { box.classList.add("focus"); refreshMenu(); });
+    input.addEventListener("blur", () => { box.classList.remove("focus"); });
+    input.addEventListener("input", refreshMenu);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(input.value); }
+      else if (e.key === "Backspace" && !input.value && cond.values.length) {
+        cond.values.pop();
+        render();
+      } else if (e.key === "Escape") { closeMenus(); }
+    });
+    box.addEventListener("mousedown", (e) => {
+      if (e.target === box) { e.preventDefault(); input.focus(); }
+    });
+
+    box.appendChild(input);
+    box.appendChild(menu);
+    return box;
+  }
+
+  function makeCondRow(cond, list, fields, operators) {
+    const row = document.createElement("div");
+    row.className = "cond-row";
+
+    const fieldWrap = document.createElement("div");
+    fieldWrap.className = "field-wrap";
+    const fieldSel = makeSelect(fields.map((f) => ({ id: f.id, label: f.label })), cond.field, (v) => {
+      cond.field = v;
+      cond.values = [];
+      render();
+    });
+    fieldSel.setAttribute("aria-label", "Field");
+    const def = fieldDef(fields, cond.field);
+    const badge = document.createElement("span");
+    badge.className = "field-badge" + (def.raw ? " raw" : "");
+    badge.textContent = def.badge;
+    fieldWrap.appendChild(fieldSel);
+    fieldWrap.appendChild(badge);
+
+    const dynamicOps = operators.map((o) => {
+      if (o.id === "is")     return { ...o, label: cond.values.length > 1 ? "is any of" : "is" };
+      if (o.id === "is_not") return { ...o, label: cond.values.length > 1 ? "is none of" : "is not" };
+      return o;
+    });
+    const opSel = makeSelect(dynamicOps, cond.op, (v) => {
+      cond.op = v;
+      const d = opDef(operators, v);
+      if (d.noValue) cond.values = [];
+      if (d.single && cond.values.length > 1) cond.values = cond.values.slice(0, 1);
+      render();
+    }, "op");
+    opSel.setAttribute("aria-label", "Operator");
+
+    const valueBox = makeTokenBox(cond, fields, operators);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "remove-btn";
+    remove.setAttribute("aria-label", "Remove condition");
+    remove.innerHTML = '<svg viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>';
+    remove.addEventListener("click", () => {
+      const idx = list.indexOf(cond);
+      if (idx >= 0) list.splice(idx, 1);
+      render();
+    });
+
+    row.appendChild(fieldWrap);
+    row.appendChild(opSel);
+    row.appendChild(valueBox);
+    row.appendChild(remove);
+    return row;
+  }
+
+  function renderList(host, list, fields, operators, emptyText) {
+    host.innerHTML = "";
+    if (!list.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-note";
+      empty.textContent = emptyText;
+      host.appendChild(empty);
+      return;
+    }
+    list.forEach((cond, i) => {
+      if (i > 0) {
+        const joint = document.createElement("div");
+        joint.className = "and-joint";
+        joint.textContent = "AND";
+        host.appendChild(joint);
+      }
+      host.appendChild(makeCondRow(cond, list, fields, operators));
+    });
+  }
+
+  function condPhrase(cond, fields, operators) {
+    const f = fieldDef(fields, cond.field);
+    const op = opDef(operators, cond.op);
+    const name = `<b>${f.label}</b>${f.raw ? " (raw)" : ""}`;
+    if (op.noValue) return `${name} ${op.label}`;
+    const vals = cond.values.length ? cond.values.map((v) => `<b>${v}</b>`) : ["<b>…</b>"];
+    let verb = op.label;
+    if (op.id === "is") verb = vals.length > 1 ? "is any of" : "is";
+    if (op.id === "is_not") verb = vals.length > 1 ? "is none of" : "is not";
+    return `${name} ${verb} ${vals.join(", ")}`;
+  }
+
+  function autoName() {
+    const dsShort = state.datasets.values
+      .map((d) => d.split(/\s+/).map((w) => w[0].toUpperCase()).join(""))
+      .join("+") || "Rule";
+    const verb = state.verb === "exclude" ? "exclude" : "keep";
+    const memberCond = state.rows.find((c) => c.values.length);
+    const members = memberCond ? memberCond.values.join(", ") : "…";
+    const scopeCond = state.scope.find((c) => c.field === "ibnrcat" && c.values.length);
+    const scope = scopeCond ? ` for ${scopeCond.values.join(", ")}` : "";
+    return `${dsShort} - ${verb} ${members}${scope}`;
+  }
+
+  function renderSummary() {
+    const datasets = state.datasets.values.length
+      ? state.datasets.values.map((d) => `<b>${d}</b>`).join(" and ")
+      : "<b>…</b>";
+    const scopeText = state.scope.length
+      ? state.scope.map((c) => condPhrase(c, SCOPE_FIELDS, SCOPE_OPERATORS)).join(" and ")
+      : "<b>any requested coverage</b>";
+    const memberConds = state.rows.filter((c) => !fieldDef(ROW_FIELDS, c.field).raw);
+    const filterConds = state.rows.filter((c) => fieldDef(ROW_FIELDS, c.field).raw);
+    const phrase = (conds) => conds.map((c) => condPhrase(c, ROW_FIELDS, ROW_OPERATORS)).join(" and ");
+    let actionText;
+    if (state.verb === "exclude") {
+      const rowText = state.rows.length ? phrase(state.rows) : "<b>…</b>";
+      actionText = `<span class="verb-x">exclude</span> the source rows where ${rowText}`;
+    } else if (filterConds.length) {
+      /* engine semantics: rows outside the filter are untouched */
+      actionText = `<span class="verb-k">keep only</span> the rows where ${phrase(memberConds) || "<b>…</b>"}`
+        + ` among the source rows where ${phrase(filterConds)} (other rows are untouched)`;
+    } else {
+      actionText = `<span class="verb-k">keep only</span> the source rows where ${phrase(memberConds) || "<b>…</b>"}`;
+    }
+    $("#summaryText").innerHTML =
+      `When building ${datasets} for ${scopeText}, ${actionText}.`;
+    const hint = $("#keepSemanticsHint");
+    if (hint) hint.hidden = !(state.verb === "keep" && filterConds.length);
+  }
+
+  function renderVocabWarnings() {
+    const host = $("#vocabWarn");
+    const all = selectedDatasets();
+    const msgs = [];
+    let fatal = false;
+    for (const cond of state.rows) {
+      const def = fieldDef(ROW_FIELDS, cond.field);
+      if (!def.vocabKey) continue;
+      for (const v of cond.values) {
+        const have = datasetsHaving(def.vocabKey, v);
+        if (!have.length) {
+          fatal = true;
+          msgs.push(`"${v}" never appears in ${def.label} source rows for the selected dataset type(s) — this condition can never match.`);
+        } else if (have.length < all.length) {
+          const missing = all.filter((d) => !have.includes(d));
+          msgs.push(`"${v}" has no ${def.label} rows in ${missing.join(", ")} — it only takes effect for ${have.join(", ")}.`);
+        }
+      }
+    }
+    host.classList.toggle("bad", fatal);
+    host.innerHTML = msgs.map((m) => `⚠ ${m}`).join("<br>");
+  }
+
+  function render() {
+    closeMenus();
+    for (const f of ROW_FIELDS) {
+      if (f.vocabKey) f.suggestions = vocabFor(f.vocabKey);
+    }
+    const dsHost = $("#datasetTokens");
+    dsHost.innerHTML = "";
+    dsHost.appendChild(makeTokenBox(state.datasets, DATASET_FIELDS, SCOPE_OPERATORS));
+    renderList($("#scopeConds"), state.scope, SCOPE_FIELDS, SCOPE_OPERATORS,
+      "No conditions — the rule applies to every requested coverage.");
+    renderList($("#rowConds"), state.rows, ROW_FIELDS, ROW_OPERATORS,
+      "No conditions yet — add at least one to define what gets " + (state.verb === "exclude" ? "excluded." : "kept."));
+    for (const btn of document.querySelectorAll("#verbSeg button")) {
+      btn.classList.toggle("on-exclude", state.verb === "exclude" && btn.dataset.verb === "exclude");
+      btn.classList.toggle("on-keep", state.verb === "keep" && btn.dataset.verb === "keep");
+    }
+    const nameInput = $("#ruleName");
+    nameInput.placeholder = autoName();
+    $("#autoPill").classList.toggle("hidden", !!nameInput.value.trim());
+    renderVocabWarnings();
+    renderSummary();
+  }
+
+  $("#addScope").addEventListener("click", () => {
+    state.scope.push({ field: SCOPE_FIELDS[0].id, op: "is", values: [] });
+    render();
+  });
+  $("#addRow").addEventListener("click", () => {
+    state.rows.push({ field: ROW_FIELDS[0].id, op: "is", values: [] });
+    render();
+  });
+  $("#verbSeg").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-verb]");
+    if (!btn) return;
+    state.verb = btn.dataset.verb;
+    render();
+  });
+  $("#ruleEnabled").addEventListener("change", (e) => {
+    $("#enabledLabel").textContent = e.target.checked ? "Enabled" : "Disabled";
+  });
+  $("#ruleName").addEventListener("input", () => {
+    $("#autoPill").classList.toggle("hidden", !!$("#ruleName").value.trim());
+  });
+  $("#notesToggle").addEventListener("click", () => {
+    const on = document.body.classList.toggle("show-notes");
+    $("#notesToggle").textContent = on ? "Hide design notes" : "Show design notes";
+  });
+
+  render();
+
+  /* ================= rules list mock (actual production rules) ================= */
+
+  const PROD = [
+    { ds: "Earned exposure", name: "Earned_Exposure - BI",
+      when: [{ f: "IBNRCAT", vals: ["BI Total","BIx51+UMBIx51","BI+BIR51","BI+PIP"] }],
+      verb: "keep", members: ["BI"], rows: [] },
+    { ds: "Earned exposure", name: "Earned_Exposure - keep BIR51",
+      when: [{ f: "IBNRCAT", vals: ["BIR51+UMBIR51"] }],
+      verb: "keep", members: ["BIR51"], rows: [] },
+    { ds: "Earned exposure", name: "Earned_Exposure - keep CMP",
+      when: [{ f: "IBNRCAT", vals: ["CMPxCAT","PhysD","PhysDxCat"] }],
+      verb: "keep", members: ["CMP"], rows: [] },
+    { ds: "Earned exposure", name: "Earned_Exposure - keep HOP",
+      when: [{ f: "IBNRCAT", vals: ["HOPxCAT","TotalxCAT","HOPxCAT+HOL"] }],
+      verb: "keep", members: ["HOP"], rows: [] },
+    { ds: "Earned exposure", name: "Earned_Exposure - keep PIP",
+      when: [{ f: "IBNRCAT", vals: ["MP+PIP","MP+PIPxHCP"] }],
+      verb: "keep", members: ["PIP"], rows: [] },
+    { ds: "Earned exposure", name: "Earned_Exposure - keep PD",
+      when: [{ f: "IBNRCAT", vals: ["PD+UMPD","Auto Liab Total","TOTAL PA"] }],
+      verb: "keep", members: ["PD"], rows: [] },
+    { ds: "Earned exposure", name: "Earned_Exposure - keep UMBI",
+      when: [{ f: "IBNRCAT", vals: ["UMBI+UMBIR51"] }],
+      verb: "keep", members: ["UMBI"], rows: [] },
+
+    { ds: "Earned premium", name: "Earned_Premium - keep HOP",
+      when: [{ f: "IBNRCAT", vals: ["TotalxCAT","HOPxCAT+HOL"] }],
+      verb: "keep", members: ["HOP"], rows: [],
+      lint: "≈ near-duplicate of Earned exposure › keep HOP — one multi-dataset rule could cover both" },
+    { ds: "Earned premium", name: "EP - Total ex NJ BI",
+      when: [{ f: "STATE_CD", vals: ["All States"] }, { f: "IBNRCAT", vals: ["TOTAL PA"] }],
+      verb: "exclude", members: ["BIR51","UMBIR51"], rows: [{ f: "State cd (raw)", vals: ["NJ"] }] },
+
+    { ds: "Remaining budget exposure", name: "Remaining_Budget_Exposure - keep PD+UMPD",
+      when: [{ f: "IBNRCAT", vals: ["TOTAL PA","Auto Liab Total"] }],
+      verb: "keep", members: ["PD+UMPD"], rows: [] },
+    { ds: "Remaining budget exposure", name: "Remaining_Budget_Exposure - keep CMPxCAT",
+      when: [{ f: "IBNRCAT", vals: ["CMPxCAT","PhysDxCat","PhysD"] }],
+      verb: "keep", members: ["CMPxCAT"], rows: [] },
+    { ds: "Remaining budget exposure", name: "Remaining_Budget_Exposure - keep HOPxCAT",
+      when: [{ f: "IBNRCAT", vals: ["HOPxCAT+HOL","TotalxCAT"] }],
+      verb: "keep", members: ["HOPxCAT"], rows: [] },
+    { ds: "Remaining budget exposure", name: "Remaining_Budget_Exposure - keep BIx51+UMBIx51",
+      when: [{ f: "IBNRCAT", vals: ["BI+PIP"] }],
+      verb: "keep", members: ["BIx51+UMBIx51"], rows: [],
+      lint: "name says “keep BIx51+UMBIx51” but the trigger is BI+PIP — auto-naming would keep these in sync" },
+
+    { ds: "Remaining budget premium", name: "Remaining_Budget_Premium - keep HOPxCAT",
+      when: [{ f: "IBNRCAT", vals: ["TotalxCAT","HOPxCAT+HOL"] }],
+      verb: "keep", members: ["HOPxCAT"], rows: [] },
+    { ds: "Remaining budget premium", name: "RBEP - Exculde NJ BIx51",
+      when: [{ f: "STATE_CD", vals: ["All States"] }, { f: "IBNRCAT", vals: ["TOTAL PA"] }],
+      verb: "exclude", members: ["BIx51+UMBIx51"], rows: [{ f: "State cd (raw)", vals: ["NJ"] }],
+      lint: "typo in manual name (“Exculde”) — auto-naming avoids this" },
+  ];
+
+  function prodSentence(rule) {
+    const when = rule.when
+      .map((c) => `<b>${c.f}</b> ${c.vals.length > 1 ? "is any of" : "is"} ${c.vals.map((v) => `<b>${v}</b>`).join(", ")}`)
+      .join(" and ");
+    const badge = rule.verb === "keep"
+      ? '<span class="verb-badge keep">KEEP ONLY</span>'
+      : '<span class="verb-badge exclude">EXCLUDE</span>';
+    const members = rule.members.map((v) => `<b>${v}</b>`).join(", ");
+    const rows = rule.rows.length
+      ? " where " + rule.rows
+          .map((c) => `<b>${c.f}</b> is ${c.vals.map((v) => `<b>${v}</b>`).join(", ")}`)
+          .join(" and ")
+      : "";
+    return `when ${when} → ${badge}${members}${rows}`;
+  }
+
+  function renderProdList() {
+    const host = $("#ruleGroups");
+    host.innerHTML = "";
+    const groups = new Map();
+    for (const r of PROD) {
+      if (!groups.has(r.ds)) groups.set(r.ds, []);
+      groups.get(r.ds).push(r);
+    }
+    for (const [ds, rules] of groups) {
+      const head = document.createElement("div");
+      head.className = "group-head";
+      head.innerHTML = `${ds} <span class="count">· ${rules.length} rule${rules.length > 1 ? "s" : ""}, all enabled</span>`;
+      host.appendChild(head);
+      for (const r of rules) {
+        const row = document.createElement("div");
+        row.className = "rule-row";
+        const lint = r.lint ? `<br><span class="lint-chip" title="${r.lint}">⚠ ${r.lint}</span>` : "";
+        row.innerHTML = `
+          <span class="mini-switch" role="switch" aria-checked="true" aria-label="Enabled"><span class="trk"></span></span>
+          <span class="rule-name">${r.name}${lint}</span>
+          <span class="rule-sentence">${prodSentence(r)}</span>`;
+        host.appendChild(row);
+      }
+    }
+  }
+
+  function renderTraceControls() {
+    const dsSel = $("#traceDs");
+    const covSel = $("#traceCov");
+    const dsList = [...new Set(PROD.map((r) => r.ds))];
+    const covList = [...new Set(PROD.flatMap((r) => r.when.filter((c) => c.f === "IBNRCAT").flatMap((c) => c.vals)))].sort();
+    for (const ds of dsList) {
+      const o = document.createElement("option");
+      o.textContent = ds;
+      dsSel.appendChild(o);
+    }
+    for (const cov of covList) {
+      const o = document.createElement("option");
+      o.textContent = cov;
+      covSel.appendChild(o);
+    }
+    dsSel.value = "Earned exposure";
+    covSel.value = "TOTAL PA";
+  }
+
+  function renderTrace() {
+    const ds = $("#traceDs").value;
+    const cov = $("#traceCov").value;
+    const st = $("#traceState").value;
+    const fired = PROD.filter((r) => {
+      if (r.ds !== ds) return false;
+      return r.when.every((c) => {
+        if (c.f === "IBNRCAT") return c.vals.includes(cov);
+        if (c.f === "STATE_CD") return c.vals.includes(st);
+        return true;
+      });
+    });
+    const host = $("#traceResult");
+    if (!fired.length) {
+      host.innerHTML = '<span class="none">No rules fire — the standard reserving-class formula applies unchanged.</span>';
+      return;
+    }
+    host.innerHTML = fired
+      .map((r) => `<div class="fired"><b>${r.name}</b> <span class="rule-sentence">${prodSentence(r)}</span></div>`)
+      .join("");
+  }
+
+  renderProdList();
+  renderTraceControls();
+  renderTrace();
+  for (const id of ["traceDs","traceCov","traceState"]) {
+    document.getElementById(id).addEventListener("change", renderTrace);
+  }
+})();
+</script>
+</body>
+</html>
