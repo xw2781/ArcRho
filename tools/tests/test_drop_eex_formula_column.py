@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+import importlib.util
+import io
+import json
+import sys
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+MODULE_PATH = REPO_ROOT / "tools" / "drop_eex_formula_column.py"
+SPEC = importlib.util.spec_from_file_location("drop_eex_formula_column", MODULE_PATH)
+assert SPEC is not None and SPEC.loader is not None
+dropper = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = dropper
+SPEC.loader.exec_module(dropper)
+
+
+def _legacy_payload() -> dict:
+    return {
+        "columns": ["Name", "Level", "Formula", "EEX Formula", "Source"],
+        "rows": [
+            ["BI", "5", "", "", '"BI"'],
+            ["TOTAL PA", "5", "BI + PD", "PD", '"BI" + "PD"'],
+        ],
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+class DropEexFormulaColumnTests(unittest.TestCase):
+    def test_transform_removes_column_and_matching_cells(self) -> None:
+        output, changed, row_count = dropper.drop_eex_formula_column(_legacy_payload())
+
+        self.assertTrue(changed)
+        self.assertEqual(2, row_count)
+        self.assertEqual(
+            ["Name", "Level", "Formula", "Source"],
+            output["columns"],
+        )
+        self.assertEqual(
+            ["TOTAL PA", "5", "BI + PD", '"BI" + "PD"'],
+            output["rows"][1],
+        )
+        self.assertEqual("2026-01-01T00:00:00Z", output["updated_at"])
+
+    def test_transform_is_a_no_op_when_column_is_absent(self) -> None:
+        payload = {
+            "columns": ["Name", "Level", "Formula", "Source"],
+            "rows": [["BI", "5", "", '"BI"']],
+        }
+
+        output, changed, row_count = dropper.drop_eex_formula_column(payload)
+
+        self.assertFalse(changed)
+        self.assertEqual(1, row_count)
+        self.assertEqual(payload, output)
+
+    def test_transform_rejects_duplicate_eex_columns(self) -> None:
+        payload = _legacy_payload()
+        payload["columns"].append("EEX Formula")
+        payload["rows"] = [row + [""] for row in payload["rows"]]
+
+        with self.assertRaisesRegex(dropper.DropEexColumnError, "duplicate"):
+            dropper.drop_eex_formula_column(payload)
+
+    def test_transform_rejects_misaligned_rows(self) -> None:
+        payload = _legacy_payload()
+        payload["rows"][1].pop()
+
+        with self.assertRaisesRegex(dropper.DropEexColumnError, "expected 5"):
+            dropper.drop_eex_formula_column(payload)
+
+    def test_dry_run_reports_without_writing(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+            path = Path(temp_dir) / "reserving_class_types.json"
+            _write_json(path, _legacy_payload())
+            original = path.read_bytes()
+            output = io.StringIO()
+
+            with redirect_stdout(output):
+                exit_code = dropper.main(["--file", str(path), "--dry-run"])
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(original, path.read_bytes())
+            report = json.loads(output.getvalue())
+            self.assertTrue(report["changed"])
+            self.assertEqual(
+                ["Name", "Level", "Formula", "Source"],
+                report["columns_after"],
+            )
+
+    def test_apply_creates_backup_and_updates_json(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+            path = Path(temp_dir) / "reserving_class_types.json"
+            payload = _legacy_payload()
+            _write_json(path, payload)
+
+            report = dropper.apply_drop(path)
+
+            backup_path = Path(report["backup_path"])
+            self.assertTrue(backup_path.exists())
+            self.assertEqual(payload, json.loads(backup_path.read_text(encoding="utf-8")))
+            migrated = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                ["Name", "Level", "Formula", "Source"],
+                migrated["columns"],
+            )
+            self.assertNotIn("PD", migrated["rows"][1][3:])
+
+    def test_apply_refuses_existing_backup(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+            path = Path(temp_dir) / "reserving_class_types.json"
+            _write_json(path, _legacy_payload())
+            backup_path = path.with_name(path.name + dropper.BACKUP_SUFFIX)
+            backup_path.write_text("existing", encoding="utf-8")
+
+            with self.assertRaisesRegex(dropper.DropEexColumnError, "Backup already exists"):
+                dropper.apply_drop(path)
+
+            self.assertEqual(_legacy_payload(), json.loads(path.read_text(encoding="utf-8")))
+
+
+if __name__ == "__main__":
+    unittest.main()

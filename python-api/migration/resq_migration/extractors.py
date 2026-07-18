@@ -435,6 +435,88 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     _write_json(meta_path, meta)
     return csv_path
 
+
+def _engine_cache_created_at(csv_path: Path, fallback: str) -> str:
+    """Match the app's engine sidecar `created` timestamp (CSV file ctime, UTC)."""
+    try:
+        ctime = csv_path.stat().st_ctime
+    except OSError:
+        return fallback
+    return datetime.utcfromtimestamp(ctime).isoformat(timespec="seconds") + "Z"
+
+
+def write_engine_generated_export(
+    payload: dict,
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    is_vector: bool,
+    provenance: dict,
+    csv_name: str,
+    csv_path: Path,
+) -> Path:
+    """Write the canonical sidecar for a data-engine-generated dataset.
+
+    The CSV at ``csv_path`` must already have been produced by the data-engine
+    (see ``resq_migration.engine.generate_engine_csv``); this function only writes
+    the JSON sidecar. Unlike the ResQ-copied writers, the sidecar is marked as a
+    live engine cache (``source_kind='engine'`` with no ``resq_*`` source marker)
+    and carries the authoritative processing provenance so the app treats the
+    migrated cache as fresh rather than stale.
+    """
+    name = _normalize_import_name(payload["name"])
+    dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
+    user = payload.get("user", "")
+    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    created = _engine_cache_created_at(csv_path, payload.get("created", ""))
+
+    meta = {
+        "dataset_name": name,
+        "dataset_type": dataset_type,
+        "dataset_category": _normalize_import_name(payload.get("category")),
+        "reserving_class": rc_path,
+        "project_name": PROJECT_NAME,
+        "source_kind": "engine",
+        "calculated": False,
+        "formula": "",
+        "data_format": "Vector" if is_vector else "Triangle",
+        "data_format_code": payload.get("data_format", 1 if is_vector else 0),
+        "method_type": "None",
+        "method_type_code": METHOD_TYPE_NONE_CODE,
+        "status": 0,
+        "number_format": dataset_instance_number_format(rc_path, name),
+        "decimal_places": dataset_instance_decimal_places(rc_path, name),
+        "csv_file": csv_name,
+        "user": user,
+        "created": created,
+        "modified_by": user,
+        "updated_at": updated_at,
+    }
+    # Shape fields mirror the runtime's engine sidecar: period_length for vectors,
+    # origin/development length + cumulative/calendar for triangles. Origin/development
+    # labels and counts are intentionally omitted; the engine determines the shape and
+    # the app derives labels from headers, so copying ResQ labels could disagree.
+    if is_vector:
+        meta["period_length"] = _vector_payload_period_length(payload)
+    else:
+        meta["origin_length"] = int(payload["origin_length"])
+        meta["development_length"] = int(payload["development_length"])
+        meta["cumulative"] = DEFAULT_CUMULATIVE
+        meta["calendar"] = DEFAULT_CALENDAR
+
+    if isinstance(provenance, dict) and provenance:
+        meta["processing"] = dict(provenance)
+        meta["processing_by_csv"] = {csv_name: dict(provenance)}
+
+    _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
+    meta["audit_log"] = [
+        {"event_date": updated_at, "action": "Insert", "change_info": "", "user": user}
+    ]
+
+    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    _write_json(meta_path, meta)
+    return csv_path
+
 def _result_selection_dataset_count(result_selection) -> int:
     value = _safe_int_attr(result_selection, "DatasetCount", 0)
     if value > 0:

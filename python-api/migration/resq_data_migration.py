@@ -31,7 +31,9 @@ if str(_MIGRATION_DIR) not in sys.path:
     sys.path.insert(0, str(_MIGRATION_DIR))
 
 from resq_migration.catalog import (  # noqa: E402
+    _dataset_type_rows,
     _dataset_type_keys,
+    _is_generated_dataset_type,
     _is_known_dataset_type,
     _unknown_dataset_type_skip_detail,
     configure_catalog,
@@ -43,6 +45,7 @@ from resq_migration.core import (  # noqa: E402
     DATASET_SIDECAR_DIR,
     METHOD_TYPE_BF_CODE,
     METHOD_TYPE_DFM_CODE,
+    METHOD_TYPE_NONE_CODE,
     METHOD_TYPE_RESULT_SELECTION_CODE,
     _cached_dataset_names_from_file,
     _clean_name,
@@ -73,9 +76,15 @@ from resq_migration.extractors import (  # noqa: E402
     export_triangle,
     export_vector,
     write_bornhuetter_ferguson_export,
+    write_engine_generated_export,
     write_result_selection_export,
     write_triangle_export,
     write_vector_export,
+)
+from resq_migration.engine import (  # noqa: E402
+    EngineGenerationError,
+    generate_engine_csv,
+    get_engine_processing_provenance,
 )
 
 
@@ -113,6 +122,14 @@ RC_PATH = [
     r"PRNJ - PA\PA\NJ\Direct Group\BIx51+UMBIx51",
     r"HPPREF\HO+DF\NJ\Legacy\HOL",
     r"HPPREF\HO+DF\NJ\Legacy\HOPxCAT",
+    r"Rider\MC\All States\Direct Group\BI+PIP", 
+    r"Rider\MC\All States\Direct Group\PD+UMPD", 
+    r"Rider\MC\All States\Direct Group\PhysDxCat",
+]
+
+RC_PATH = [
+    r"PRNJ - PA\PA\MA\Direct Group\BI Total",
+    r"PRNJ - PA\PA\MA\Direct Group\MP+PIP",
 ]
 
 
@@ -132,6 +149,7 @@ DEBUG_LOG_PATH = Path(__file__).resolve().parent / "logs" / "resq_data_migration
 
 # Stop probing average formula rows after this many consecutive misses
 MAX_AVERAGE_FORMULA_PROBE = 30
+ENGINE_DATASET_TIMEOUT_SEC = 60.0
 
 # Dataset export controls. CLI --export can override these.
 EXPORT_DFMS = True
@@ -428,6 +446,70 @@ def resq_export_dataset_counts(
     }
 
 
+def _is_engine_generated_instance(payload: dict) -> bool:
+    """True for a generated single-instance dataset that the data-engine should build.
+
+    The accepted rule is: the dataset type is flagged ``Generated=true`` and the
+    instance name equals its dataset type (matching the app's single-instance
+    generated behavior). Method outputs (DFM/RS/BF), manual, and non-generated
+    calculated datasets are excluded and continue to import from ResQ.
+    """
+    name = _normalize_import_name(payload.get("name"))
+    dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
+    if not name or _clean_name(name) != _clean_name(dataset_type):
+        return False
+    return _is_generated_dataset_type(dataset_type)
+
+
+def _write_engine_generated_dataset(
+    payload: dict,
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    is_vector: bool,
+) -> Path:
+    """Generate a dataset CSV via the data-engine and write its canonical sidecar.
+
+    Preserves the ResQ period configuration (triangle OriginLength/DevelopmentLength,
+    vector PeriodLength). On any engine/provenance failure this raises, so the caller
+    records an error for the dataset rather than falling back to ResQ values.
+    """
+    name = _normalize_import_name(payload["name"])
+    dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
+    if is_vector:
+        period_length = int(payload.get("period_length") or payload.get("origin_length") or 0)
+        origin_length = development_length = period_length
+        csv_name = _vector_cache_csv_file_name(name, period_length)
+    else:
+        origin_length = int(payload["origin_length"])
+        development_length = int(payload["development_length"])
+        csv_name = _dataset_cache_csv_file_name(name, origin_length, development_length)
+    csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
+
+    # Resolve the authoritative provenance first: if the config hash cannot be
+    # computed we fail before writing a CSV, avoiding an orphaned cache file.
+    provenance = get_engine_processing_provenance(PROJECT_NAME)
+    generate_engine_csv(
+        project_name=PROJECT_NAME,
+        rc_path=rc_path,
+        dataset_type=dataset_type,
+        data_path=csv_path,
+        origin_length=origin_length,
+        development_length=development_length,
+        is_vector=is_vector,
+        server_root=SERVER_ROOT,
+    )
+    return write_engine_generated_export(
+        payload,
+        rc_path,
+        rc_dir,
+        is_vector=is_vector,
+        provenance=provenance,
+        csv_name=csv_name,
+        csv_path=csv_path,
+    )
+
+
 def export_triangles_for_rc(
     reserving_class,
     rc_path: str,
@@ -493,8 +575,12 @@ def export_triangles_for_rc(
                     message=detail.strip(),
                 )
                 continue
-            write_triangle_export(payload, rc_path, rc_dir)
-            source_kind = _triangle_source_kind(payload["name"], payload.get("dataset_type", ""))
+            if _is_engine_generated_instance(payload):
+                _write_engine_generated_dataset(payload, rc_path, rc_dir, is_vector=False)
+                source_kind = "engine (data-engine)"
+            else:
+                write_triangle_export(payload, rc_path, rc_dir)
+                source_kind = _triangle_source_kind(payload["name"], payload.get("dataset_type", ""))
             detail = (
                 f"    OK  {source_kind} "
                 f"{_dataset_cache_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
@@ -674,11 +760,22 @@ def export_vectors_for_rc(
                 _apply_result_selection_vector_metadata(payload, result_selection_payload)
             if bf_payload:
                 _apply_bornhuetter_ferguson_vector_metadata(payload, bf_payload)
-            write_vector_export(payload, rc_path, rc_dir)
-            detail = (
-                f"    OK  {_method_type_name(method_type)} vector "
-                f"{_vector_cache_csv_file_name(payload['name'], payload['origin_length'])}"
-            )
+            if (
+                not result_selection_payload
+                and not bf_payload
+                and _is_engine_generated_instance(payload)
+            ):
+                _write_engine_generated_dataset(payload, rc_path, rc_dir, is_vector=True)
+                detail = (
+                    f"    OK  engine (data-engine) vector "
+                    f"{_vector_cache_csv_file_name(payload['name'], payload['origin_length'])}"
+                )
+            else:
+                write_vector_export(payload, rc_path, rc_dir)
+                detail = (
+                    f"    OK  {_method_type_name(method_type)} vector "
+                    f"{_vector_cache_csv_file_name(payload['name'], payload['origin_length'])}"
+                )
             _log(verbose, detail)
             if result_selection_payload:
                 method_path = write_result_selection_export(result_selection_payload, rc_path, rc_dir)
