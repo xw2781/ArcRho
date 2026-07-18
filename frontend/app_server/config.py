@@ -47,6 +47,8 @@ DEFAULT_WORKSPACE_PATHS = {
 PROJECT_USER_PREFERENCES_FILE = "preferences.json"
 PROJECT_INSTANCE_DEFAULT_PREFS_ENV = "ARCRHO_PROJECT_INSTANCE_DEFAULT_PREFS_PATH"
 DEFAULT_PROJECT_INSTANCE_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_preferences" / "project_instance_preferences.json"
+PROJECT_SETTINGS_DEFAULT_PREFS_ENV = "ARCRHO_PROJECT_SETTINGS_DEFAULT_PREFS_PATH"
+DEFAULT_PROJECT_SETTINGS_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_preferences" / "project_settings_preferences.json"
 
 
 def _is_arcode_mode() -> bool:
@@ -240,11 +242,16 @@ RESERVING_CLASS_PATH_TREE_MAX_GENERATED = 250000
 SCRIPTING_PREFS_FILE = "scripting_prefs.json"
 LOCAL_PROJECT_PREFS_FILE = "local_project_prefs.json"
 DATASET_TYPES_FILE = "dataset_types.json"
+DATA_PROCESSING_RULES_FILE = "data_processing_rules.json"
+DATA_PROCESSING_RULES_FORMAT = "arcrho-data-processing-rules-v1"
+DATA_PROCESSING_VALUES_FILE = "data_processing_values.json"
+DATA_PROCESSING_VALUES_FORMAT = "arcrho-source-vocab-v1"
+DATA_PROCESSING_ALGORITHM_VERSION = "arcrho-data-processing-v1"
 USERNAME_INDEX_FILE = "username_index.json"
 PROJECT_SETTINGS_XLSX_FILE = "settings.xlsx"
 RESERVING_CLASS_TYPES_SHEET_NAME = "Reserving Class Types"
-RESERVING_CLASS_TYPES_COLUMNS = ["Name", "Level", "Formula", "EEX Formula"]
-RESERVING_CLASS_TYPES_FILE_COLUMNS = ["Name", "Level", "Formula", "EEX Formula", "Source"]
+RESERVING_CLASS_TYPES_COLUMNS = ["Name", "Level", "Formula"]
+RESERVING_CLASS_TYPES_FILE_COLUMNS = ["Name", "Level", "Formula", "Source"]
 DATASET_TYPES_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula"]
 DATASET_TYPES_FILE_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula", "Source", "Generated"]
 AUDIT_LOG_FILE = "audit_log.json"
@@ -379,6 +386,20 @@ def get_dataset_types_path(project_name: str) -> str:
     return os.path.join(project_dir, DATASET_TYPES_FILE)
 
 
+def get_data_processing_rules_path(project_name: str) -> str:
+    project_dir = _find_existing_project_dir(project_name)
+    if not project_dir:
+        raise ValueError(f"Project folder not found under projects: {project_name}")
+    return os.path.join(project_dir, DATA_PROCESSING_RULES_FILE)
+
+
+def get_data_processing_values_path(project_name: str) -> str:
+    project_dir = _find_existing_project_dir(project_name)
+    if not project_dir:
+        raise ValueError(f"Project folder not found under projects: {project_name}")
+    return os.path.join(project_dir, DATA_PROCESSING_VALUES_FILE)
+
+
 def get_reserving_class_values_path(project_name: str) -> str:
     project_dir = _find_existing_project_dir(project_name)
     if not project_dir:
@@ -424,6 +445,13 @@ def get_project_instance_default_preferences_path() -> str:
     if configured:
         return configured
     return str(DEFAULT_PROJECT_INSTANCE_PREFS_PATH)
+
+
+def get_project_settings_default_preferences_path() -> str:
+    configured = str(os.environ.get(PROJECT_SETTINGS_DEFAULT_PREFS_ENV) or "").strip()
+    if configured:
+        return configured
+    return str(DEFAULT_PROJECT_SETTINGS_PREFS_PATH)
 
 def get_username_index_path() -> str:
     return os.path.join(get_root_path(), "config", USERNAME_INDEX_FILE)

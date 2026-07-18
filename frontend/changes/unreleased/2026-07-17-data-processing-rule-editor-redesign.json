@@ -1,0 +1,20 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Redesigned data processing rules as a plain-language When/Then editor with dataset-aware values and a standard resizable rules table.",
+  "details": [
+    "Row filter and Action merge into one Then condition list; the saved rule JSON format is unchanged.",
+    "'is' / 'is any of' collapse into a single tokenized condition value input with suggestions narrowed to combinations observed for the selected dataset type.",
+    "Source-value chips warn without blocking when values are absent or cannot occur with the other current conditions.",
+    "Rules are listed in the standard Project Settings table with enabled switches and resizable Name, Dataset type, Applies when, and Effect columns.",
+    "Keep-only rules with extra row filters now state that unfiltered rows pass through untouched.",
+    "The rule name is a labeled body field instead of a title-bar control, and the editor reflows narrow layouts while keeping its header and actions clear of scrolling content.",
+    "Field selectors and rule summaries preserve exact Field Mapping names such as CO_CD, and editor dropdowns now use compact styled listboxes with keyboard navigation.",
+    "Dataset labels preserve the exact case and punctuation configured in the Project Settings Dataset Types table.",
+    "The When and Then chips no longer repeat secondary scope and action captions.",
+    "Condition-value suggestion menus stay within the viewport and remain visible over the editor summary and action bar.",
+    "The View JSON, Validate all, and Add rule toolbar actions use the compact Project Settings button type scale.",
+    "Leaving the rule name blank saves an auto-generated name built from the rule content."
+  ]
+}

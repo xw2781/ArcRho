@@ -355,6 +355,12 @@ def normalize_reserving_class_types_data(data: Any) -> Dict[str, Any]:
                 name = str(c if c is not None else "").strip()
                 if name:
                     col_idx[name] = i
+        if "EEX Formula" in col_idx:
+            raise ValueError(
+                "Legacy EEX Formula columns are no longer supported. Convert EEX adjustments "
+                "to Data Processing Rules (data_processing_rules.json) before loading or saving "
+                "Reserving Class Types."
+            )
 
         if isinstance(raw_rows, list):
             for raw in raw_rows:
@@ -363,13 +369,11 @@ def normalize_reserving_class_types_data(data: Any) -> Dict[str, Any]:
                 i_name = col_idx.get("Name", 0 if len(raw) > 0 else -1)
                 i_level = col_idx.get("Level", 1 if len(raw) > 1 else -1)
                 i_formula = col_idx.get("Formula", 2 if len(raw) > 2 else -1)
-                i_eex = col_idx.get("EEX Formula", 3 if len(raw) > 3 else -1)
-                i_source = col_idx.get("Source", 4 if len(raw) > 4 else -1)
+                i_source = col_idx.get("Source", 3 if len(raw) > 3 else -1)
                 row = [
                     str(raw[i_name] if i_name >= 0 and i_name < len(raw) and raw[i_name] is not None else "").strip(),
                     str(raw[i_level] if i_level >= 0 and i_level < len(raw) and raw[i_level] is not None else "").strip(),
                     str(raw[i_formula] if i_formula >= 0 and i_formula < len(raw) and raw[i_formula] is not None else "").strip(),
-                    str(raw[i_eex] if i_eex >= 0 and i_eex < len(raw) and raw[i_eex] is not None else "").strip(),
                     str(raw[i_source] if i_source >= 0 and i_source < len(raw) and raw[i_source] is not None else "").strip(),
                 ]
                 if any(cell != "" for cell in row):
@@ -393,7 +397,10 @@ def parse_local_reserving_class_types_file(file_path: str) -> Dict[str, Any]:
             raise HTTPException(400, f"Invalid JSON file: {str(e)}")
         except Exception as e:
             raise HTTPException(500, f"Failed to read JSON file: {str(e)}")
-        normalized = normalize_reserving_class_types_data(raw)
+        try:
+            normalized = normalize_reserving_class_types_data(raw)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         return {
             "format": "json",
             "columns": list(normalized.get("columns") or []),
@@ -419,29 +426,33 @@ def parse_local_reserving_class_types_file(file_path: str) -> Dict[str, Any]:
         while header_raw and header_raw[-1] == "":
             header_raw.pop()
 
-        expected_columns_4 = list(RESERVING_CLASS_TYPES_COLUMNS)
-        expected_columns_5 = list(RESERVING_CLASS_TYPES_FILE_COLUMNS)
-        if header_raw == expected_columns_4:
+        expected_columns_3 = list(RESERVING_CLASS_TYPES_COLUMNS)
+        expected_columns_4 = list(RESERVING_CLASS_TYPES_FILE_COLUMNS)
+        if "EEX Formula" in header_raw:
+            raise HTTPException(
+                400,
+                "Legacy EEX Formula columns are no longer supported. Convert EEX adjustments "
+                "to Data Processing Rules (data_processing_rules.json) before importing this file.",
+            )
+        if header_raw == expected_columns_3:
+            expected_columns = expected_columns_3
+        elif header_raw == expected_columns_4:
             expected_columns = expected_columns_4
-        elif header_raw == expected_columns_5:
-            expected_columns = expected_columns_5
         else:
             raise HTTPException(
                 400,
                 "Invalid XLSX header. Expected either "
-                f"[{', '.join(expected_columns_4)}] or [{', '.join(expected_columns_5)}].",
+                f"[{', '.join(expected_columns_3)}] or [{', '.join(expected_columns_4)}].",
             )
 
         expected_count = len(expected_columns)
         idx_formula = expected_columns.index("Formula")
-        idx_eex_formula = expected_columns.index("EEX Formula")
         parsed_rows: List[List[str]] = []
         for row_values in rows_iter:
             row = list(row_values) if row_values is not None else []
             values = [row[i] if i < len(row) else "" for i in range(expected_count)]
             norm = [str(v if v is not None else "").strip() for v in values]
             norm[idx_formula] = _normalize_formula_operator_spacing(norm[idx_formula])
-            norm[idx_eex_formula] = _normalize_formula_operator_spacing(norm[idx_eex_formula])
             if any(cell != "" for cell in norm):
                 parsed_rows.append(norm)
 
@@ -465,7 +476,6 @@ def _to_reserving_class_types_ui_data(data: Dict[str, Any]) -> Dict[str, Any]:
                 str(raw[0] if len(raw) > 0 and raw[0] is not None else "").strip(),
                 str(raw[1] if len(raw) > 1 and raw[1] is not None else "").strip(),
                 str(raw[2] if len(raw) > 2 and raw[2] is not None else "").strip(),
-                str(raw[3] if len(raw) > 3 and raw[3] is not None else "").strip(),
             ]
             if any(cell != "" for cell in row):
                 rows_out.append(row)
@@ -477,6 +487,8 @@ def _load_reserving_class_types_raw_data(project_name: str) -> Dict[str, Any]:
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 return normalize_reserving_class_types_data(json.load(f))
+        except ValueError:
+            raise
         except Exception:
             pass
 
@@ -486,6 +498,8 @@ def _load_reserving_class_types_raw_data(project_name: str) -> Dict[str, Any]:
         try:
             xlsx_data = _read_reserving_class_types_sheet(xlsx_path)
             return normalize_reserving_class_types_data(xlsx_data)
+        except ValueError:
+            raise
         except Exception:
             pass
 
@@ -555,7 +569,7 @@ def _build_reserving_class_source_rows(
     source_names: set[str] = set()
     for _lvl_sort, _name_sort, name, level_text in sortable:
         source_names.add(_canon_reserving_class_type_name(name))
-        rows.append([name, level_text, "", ""])
+        rows.append([name, level_text, ""])
     return (rows, source_names, source_name_level_pairs)
 
 def _merge_reserving_class_types_rows(
@@ -586,11 +600,10 @@ def _merge_reserving_class_types_rows(
             continue
         level = str(raw[1] if len(raw) > 1 and raw[1] is not None else "").strip()
         formula = str(raw[2] if len(raw) > 2 and raw[2] is not None else "").strip()
-        eex_formula = str(raw[3] if len(raw) > 3 and raw[3] is not None else "").strip()
         key = _row_key(name, level)
         if key not in row_by_key:
             key_order.append(key)
-        row_by_key[key] = [name, level, formula, eex_formula]
+        row_by_key[key] = [name, level, formula]
 
     # User-defined rows (formula non-empty) always win on conflicts.
     for raw in existing_rows:
@@ -599,7 +612,6 @@ def _merge_reserving_class_types_rows(
         name = str(raw[0] if len(raw) > 0 and raw[0] is not None else "").strip()
         level = str(raw[1] if len(raw) > 1 and raw[1] is not None else "").strip()
         formula = str(raw[2] if len(raw) > 2 and raw[2] is not None else "").strip()
-        eex_formula = str(raw[3] if len(raw) > 3 and raw[3] is not None else "").strip()
         if not name:
             continue
         # User-defined rows must have Formula populated.
@@ -608,7 +620,7 @@ def _merge_reserving_class_types_rows(
         key = _row_key(name, level)
         if key not in row_by_key:
             key_order.append(key)
-        row_by_key[key] = [name, level, formula, eex_formula]
+        row_by_key[key] = [name, level, formula]
 
     merged: List[List[str]] = []
     for key in key_order:
@@ -641,7 +653,6 @@ def _get_changed_reserving_class_formula_rows(
                 name,
                 level,
                 str(raw[2] if len(raw) > 2 and raw[2] is not None else "").strip(),
-                str(raw[3] if len(raw) > 3 and raw[3] is not None else "").strip(),
             ]
 
     changed_rows: List[List[str]] = []
@@ -651,13 +662,12 @@ def _get_changed_reserving_class_formula_rows(
         name = str(raw[0] if len(raw) > 0 and raw[0] is not None else "").strip()
         level = str(raw[1] if len(raw) > 1 and raw[1] is not None else "").strip()
         formula = str(raw[2] if len(raw) > 2 and raw[2] is not None else "").strip()
-        eex_formula = str(raw[3] if len(raw) > 3 and raw[3] is not None else "").strip()
         key = _reserving_class_row_key(name, level, source_name_level_pairs)
         if not key:
             continue
         previous = previous_by_key.get(key)
-        if previous is None or previous != [name, level, formula, eex_formula]:
-            changed_rows.append([name, level, formula, eex_formula])
+        if previous is None or previous != [name, level, formula]:
+            changed_rows.append([name, level, formula])
 
     return changed_rows
 
@@ -767,7 +777,6 @@ def _validate_reserving_class_formula_components(
         row_name = str(raw[0] if len(raw) > 0 and raw[0] is not None else "").strip() or "(blank name)"
         formula_fields = [
             ("Formula", str(raw[2] if len(raw) > 2 and raw[2] is not None else "").strip()),
-            ("EEX Formula", str(raw[3] if len(raw) > 3 and raw[3] is not None else "").strip()),
         ]
         for field_label, formula in formula_fields:
             if not formula:
@@ -926,8 +935,7 @@ def refresh_reserving_class_types_json(
             name = str(raw[0] if len(raw) > 0 and raw[0] is not None else "").strip()
             level = str(raw[1] if len(raw) > 1 and raw[1] is not None else "").strip()
             formula = _normalize_formula_operator_spacing(raw[2] if len(raw) > 2 else "")
-            eex_formula = _normalize_formula_operator_spacing(raw[3] if len(raw) > 3 else "")
-            rows_override_norm.append([name, level, formula, eex_formula])
+            rows_override_norm.append([name, level, formula])
         changed_rows = _get_changed_reserving_class_formula_rows(
             previous_rows=previous_data.get("rows", []),
             next_rows=rows_override_norm,
@@ -981,7 +989,6 @@ def refresh_reserving_class_types_json(
         name = str(row[0] if len(row) > 0 and row[0] is not None else "").strip()
         level = str(row[1] if len(row) > 1 and row[1] is not None else "").strip()
         formula = str(row[2] if len(row) > 2 and row[2] is not None else "").strip()
-        eex_formula = str(row[3] if len(row) > 3 and row[3] is not None else "").strip()
         key = _canon_reserving_class_type_name(name)
         source_pair = (key, level)
         if source_pair in source_name_level_pairs and formula == "" and source_pair not in seen_effective_source_keys:
@@ -995,7 +1002,7 @@ def refresh_reserving_class_types_json(
         if formula_atomic_components:
             atomic_components.extend(formula_atomic_components)
         source = _quote_reserving_source_components(source, atomic_components=atomic_components)
-        file_rows.append([name, level, formula, eex_formula, source])
+        file_rows.append([name, level, formula, source])
 
     payload = {
         "columns": list(RESERVING_CLASS_TYPES_FILE_COLUMNS),

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The active Project Settings ribbon item now cleanly interrupts the ribbon divider beneath it."
+}

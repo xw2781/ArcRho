@@ -312,6 +312,12 @@ def save_reserving_class_types(req: ReservingClassTypesSaveRequest) -> Dict[str,
     project_name = (req.project_name or "").strip()
     if not project_name:
         raise HTTPException(400, "project_name is required")
+    if any(str(column or "").strip() == "EEX Formula" for column in req.columns):
+        raise HTTPException(
+            400,
+            "Legacy EEX Formula columns are no longer supported. Convert EEX adjustments "
+            "to Data Processing Rules before saving Reserving Class Types.",
+        )
 
     try:
         filepath = config.get_reserving_class_types_path(project_name)

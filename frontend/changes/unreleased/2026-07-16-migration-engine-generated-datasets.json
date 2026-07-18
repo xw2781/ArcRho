@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "migration",
+  "audience": "internal",
+  "summary": "ResQ migration now builds Generated dataset types with the data-engine instead of copying ResQ values.",
+  "details": [
+    "For a dataset type flagged Generated=true whose instance name equals its type, the migration calls the data-engine in-process to produce the dataset CSV, preserving the ResQ origin/development (triangle) and period (vector) lengths.",
+    "Generated datasets are written as live engine caches (source_kind=engine with authoritative processing provenance) so the app treats them as fresh rather than stale imported snapshots.",
+    "DFM, Result Selection, Bornhuetter Ferguson, manual, and non-generated calculated datasets continue to import from ResQ.",
+    "If the data-engine cannot generate a dataset, the migration records an error for that dataset instead of falling back to ResQ values."
+  ]
+}

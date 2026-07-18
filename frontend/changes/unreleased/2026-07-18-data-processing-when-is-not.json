@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Data-processing rule When conditions now provide an is/is not dropdown for requested coverages."
+}

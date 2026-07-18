@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Prevented Project Settings column resizing from activating sortable table headers."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Unified all Project Settings table frames, sticky headers, row density, and scrollbars, with a narrower Data Processing Row Filter column."
+}

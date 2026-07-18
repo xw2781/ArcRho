@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Refined the Data Processing Rule editor into a compact draggable window with quieter scrollbars and close-button styling."
+}

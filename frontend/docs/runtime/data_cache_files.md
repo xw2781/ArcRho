@@ -30,6 +30,8 @@ Index cache/data files and refresh points used by app-server services.
 Cache/lock constants detected:
 - `AUDIT_LOG_FILE`
 - `DATASET_TYPES_FILE`
+- `DATA_PROCESSING_RULES_FILE`
+- `DATA_PROCESSING_VALUES_FILE`
 - `FIELD_MAPPING_FILE`
 - `GENERAL_SETTINGS_FILE`
 - `LOCAL_PROJECT_PREFS_FILE`
@@ -55,6 +57,7 @@ Cache/lock constants detected:
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - File names and limits are defined in `app_server/config.py` constants.
+- `projects/<project>/data_processing_values.json` is the lazy `arcrho-source-vocab-v1` cache used by the Data Processing Rules editor. It contains de-duplicated mapped reserving-class key combinations for each source measure and is invalidated by the source CSV path/mtime/size fingerprint or a Field Mapping signature change.
 - Project data is organized by reserving class as `data/<ReservingClassFolder>/datasets` for CSV caches, `data/<ReservingClassFolder>/methods` for method JSON and method RPC temp files, `data/<ReservingClassFolder>/sidecars` for dataset metadata and notes, and `data/<ReservingClassFolder>/index.json` for the Project Instance cache index.
 - Dataset Viewer and DFM store the local last selected Project Name in `%APPDATA%\ArcRho\local_project_prefs.json` so it can be checked and edited manually without opening the server project folder. The same file also stores `recentProjectNames`, capped to the last three project names selected from the project tree picker, which appear in the picker's blue virtual `Recent Projects` folder above real project folders, and `projectExplorer.expandedFolders`, which restores the Project Settings folder expansion state.
 - Reserving-class tree filter specs are stored in each project-user preference file under `projects/<project>/users/<windows-login>/preferences.json`; `%APPDATA%\ArcRho\cache\reserving_class_filter_spec.json` is obsolete and is no longer read or written.
@@ -71,4 +74,5 @@ Cache/lock constants detected:
 <!-- MANUAL:BEGIN -->
 - Cache invalidation bugs can surface as stale or mismatched UI data.
 - File locking can fail writes under concurrent access.
+- Source-vocabulary generation must not publish a cache if the source CSV changes during its scan.
 <!-- MANUAL:END -->

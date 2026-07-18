@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Changed Data processing rules headings and field labels to sentence case while preserving raw saved identifiers."
+}

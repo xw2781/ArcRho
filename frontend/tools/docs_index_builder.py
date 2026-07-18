@@ -531,6 +531,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/project_settings/project_settings_field_mapping.js", "Field mapping feature module."),
             ("ui/project_settings/project_settings_dataset_types.js", "Dataset types feature module."),
             ("ui/project_settings/project_settings_reserving_class_types.js", "Reserving class types feature module."),
+            ("ui/project_settings/project_settings_data_processing_rules.js", "Data-processing rule editor, validation, and persistence UI module."),
             ("ui/project_settings/project_settings_audit.js", "Audit log UI helper."),
         ],
     },
@@ -698,6 +699,15 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/api/dataset_types_router.py", "Dataset type catalog read/save routes."),
             ("app_server/services/dataset_types_service.py", "Dataset type storage and normalization."),
             ("app_server/schemas/dataset_types.py", "Dataset type save schema."),
+        ],
+    },
+    "data_processing_rules": {
+        "doc": "docs/app_server/domains/data_processing_rules.md",
+        "files": [
+            ("app_server/api/data_processing_rules_router.py", "Rule read, validate, and revision-safe save routes."),
+            ("app_server/services/data_processing_rules_service.py", "Rule validation, persistence, audit, options, and processing hashes."),
+            ("app_server/schemas/data_processing_rules.py", "Typed data-processing rule request models."),
+            ("app_server/config.py", "Rule filename, format, algorithm version, and project path helper."),
         ],
     },
     "reserving_class": {
@@ -919,9 +929,9 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "risks": "- Save/load compatibility regressions across older workflow files.\n- Dirty-state propagation to shell can become inconsistent.",
         },
         "project_settings": {
-            "purpose": "Project settings workspace (folders, mappings, dataset types, reserving class types).",
-            "external": "- Calls `/project_settings/*`, `/table_summary*`, and related endpoints.\n- Posts title/status events to shell.",
-            "data": "- Reads/writes settings payloads and folder structures.\n- Coordinates feature modules for mapping/type editors.",
+            "purpose": "Project settings workspace (folders, mappings, dataset types, reserving class types, and data-processing rules).",
+            "external": "- Calls `/project_settings/*`, `/table_summary*`, `/data_processing_rules*`, and related endpoints.\n- Posts title/status events to shell.",
+            "data": "- Reads/writes settings payloads and folder structures.\n- Coordinates feature modules for mapping/type/rule editors.",
             "tasks": "1. Add settings source behavior: update source key logic + endpoint calls.\n2. Update one feature pane: modify corresponding `project_settings_*` module.",
             "risks": "- Folder rename/duplicate/delete flows have rollback branches.\n- Large settings payload edits can impact response timing.",
         },
@@ -1057,6 +1067,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Persists dataset type definitions under project folders.",
             "1. Add type metadata field: align schema, service normalization, and frontend editor.",
             "- Type schema drift can break downstream interpretation logic.",
+        ),
+        "data_processing_rules": (
+            "Project-scoped custom row-filter rule validation and persistence domain.",
+            "- Used by Project Settings to load, validate, and save data-processing rules.\n- Generated-cache provenance consumes the same processing configuration hash.",
+            "- Persists versioned `data_processing_rules.json` files with optimistic revisions, atomic writes, per-path locks, and audit entries.",
+            "1. Add an operator: align schema, service, data engine, Project Settings, and docs.\n2. Change processing-hash inputs only as a coordinated cache-contract update.",
+            "- Invalid or stale references must remain visible to Project Settings, and generated caches must not bypass processing-hash checks.",
         ),
         "reserving_class": (
             "Reserving class values/tree/preferences/types domain.",

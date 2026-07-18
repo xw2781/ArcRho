@@ -34,11 +34,12 @@ Reserving class values/tree/preferences/types domain.
 <!-- MANUAL:BEGIN -->
 - Consumed by dataset, DFM, and project settings features.
 - Exposes refresh and cache children endpoints.
-- `POST /reserving_class_types` now writes both `reserving_class_types.json` and a same-folder mirror workbook `reserving_class_types.xlsx` (same file columns, including `Source`).
-- `POST /reserving_class_types/import_local_file` parses local reserving-class-type `.json`/`.xlsx` files for Project Settings local load; parser accepts either UI columns (`Name`, `Level`, `Formula`, `EEX Formula`) or persisted file columns with trailing `Source`.
+- `POST /reserving_class_types` writes both `reserving_class_types.json` and a same-folder mirror workbook `reserving_class_types.xlsx` with `Name`, `Level`, `Formula`, and resolved `Source`.
+- `POST /reserving_class_types/import_local_file` parses local reserving-class-type `.json`/`.xlsx` files for Project Settings local load; parser accepts either UI columns (`Name`, `Level`, `Formula`) or persisted file columns with trailing `Source`.
 - Source-derived reserving class type rows are generated independently per `(Name, Level)` pair (not deduped by `Name` only), so the same name can appear in multiple level groups when present in distinct source levels.
-- Reserving class `Source` expressions always wrap each resolved component in double quotes (including single-component formulas), and quoted tokens in `Formula` / `EEX Formula` are treated as atomic components so operator-normalization does not insert spaces inside quoted names or collapse user-entered spacing within quoted text (for example `/` in `"Affinity/Referral Partners"` or the double space in `"eSales -  Teachers"`).
+- Reserving class `Source` expressions always wrap each resolved component in double quotes (including single-component formulas), and quoted tokens in `Formula` are treated as atomic components so operator-normalization does not insert spaces inside quoted names or collapse user-entered spacing within quoted text (for example `/` in `"Affinity/Referral Partners"` or the double space in `"eSales -  Teachers"`).
 - `POST /reserving_class_types` rejects changed user-defined formulas when they reference a reserving class type name that does not exist in the submitted/current table, or when they reference a name containing `+`, `-`, `*`, or `/` without wrapping that full name in double quotes; invalid saves return `400` with the offending row/field details. Unchanged legacy rows are not revalidated on save, formulas may reference user-defined rows as well as source-derived rows, and quoted components are validated by exact name match, including repeated spaces inside the quotes.
+- `EEX Formula` is no longer part of Reserving Class Types persistence or validation. Legacy JSON/XLSX imports containing that column return an explicit conversion-required error; measure-specific row filters belong in `data_processing_rules.json`.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

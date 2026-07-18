@@ -40,6 +40,10 @@ from .result_selection_rpc_bridge import (
 )
 from .dfm_method_index import DfmMethodIndexRefreshRequest
 from .project_user_preferences import ProjectUserPreferencesUpdateRequest
+from .data_processing_rules import (
+    DataProcessingRulesSaveRequest,
+    DataProcessingRulesValidateRequest,
+)
 
 __all__ = [
     "WorkflowSaveRequest", "WorkflowSaveAsRequest", "WorkflowLoadRequest",
@@ -70,4 +74,6 @@ __all__ = [
     "ResultSelectionRpcBridgeRequest",
     "ResultSelectionRpcBridgeApplyRequest",
     "ResultSelectionRpcBridgeUpdateRemoteRequest",
+    "DataProcessingRulesSaveRequest",
+    "DataProcessingRulesValidateRequest",
 ]

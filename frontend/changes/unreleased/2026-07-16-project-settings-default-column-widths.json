@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Added an editable default-preferences JSON for Project Settings table column widths."
+}

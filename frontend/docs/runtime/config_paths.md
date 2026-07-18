@@ -22,6 +22,8 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `clear_runtime_path_caches`
   - `get_audit_log_path`
   - `get_cache_path`
+  - `get_data_processing_rules_path`
+  - `get_data_processing_values_path`
   - `get_dataset_types_path`
   - `get_field_mapping_path`
   - `get_general_settings_path`
@@ -33,6 +35,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `get_project_instance_default_preferences_path`
   - `get_project_method_data_dir`
   - `get_project_reserving_class_data_dir`
+  - `get_project_settings_default_preferences_path`
   - `get_project_settings_workbook_path`
   - `get_project_temporary_view_dataset_cache_dir`
   - `get_reserving_class_combinations_path`

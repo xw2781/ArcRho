@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The data-processing rule Then action now uses a compact Keep only/Exclude dropdown."
+}

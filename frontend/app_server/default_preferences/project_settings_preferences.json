@@ -1,0 +1,52 @@
+{
+  "projectSettings": {
+    "tables": {
+      "summaryColumnsTable": {
+        "widths": {
+          "Column Name": 260,
+          "Data Type": 120,
+          "Values": 520
+        }
+      },
+      "fieldMappingTable": {
+        "widths": {
+          "Field Name": 260,
+          "Significances": 220,
+          "Dataset Type": 360,
+          "Level": 120
+        }
+      },
+      "reservingClassTypesTable": {
+        "widths": {
+          "Name": 300,
+          "Formula": 420
+        }
+      },
+      "datasetTypesTable": {
+        "widths": {
+          "Name": 300,
+          "Data Format": 220,
+          "Category": 300,
+          "Calculated": 120,
+          "Formula": 520
+        }
+      },
+      "dataProcessingRulesTable": {
+        "widths": {
+          "Enabled": 72,
+          "Name": 220,
+          "Dataset type": 190,
+          "Applies when": 300,
+          "Effect": 420
+        }
+      },
+      "auditLogTable": {
+        "widths": {
+          "Timestamp": 220,
+          "User": 200,
+          "Action": 820
+        }
+      }
+    }
+  }
+}

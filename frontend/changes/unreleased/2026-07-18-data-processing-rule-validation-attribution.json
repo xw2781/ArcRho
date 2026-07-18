@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Data-processing rule validation now distinguishes errors in the open rule from errors in other saved rules or project configuration."
+}

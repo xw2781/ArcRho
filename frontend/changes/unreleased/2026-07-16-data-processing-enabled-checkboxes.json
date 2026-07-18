@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Data Processing Rules now show enabled state with compact centered checkboxes in an Enabled column."
+}

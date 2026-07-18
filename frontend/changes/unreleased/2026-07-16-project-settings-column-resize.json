@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Project Settings tables now resize one column at a time using the stable Project Instance table behavior."
+}

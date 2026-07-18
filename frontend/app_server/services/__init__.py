@@ -17,6 +17,7 @@ from . import result_selection_rpc_bridge_service
 from . import project_user_preferences_service
 from . import ui_automation_service
 from . import snowflake_service
+from . import data_processing_rules_service
 
 __all__ = [
     "workflow_service",
@@ -38,4 +39,5 @@ __all__ = [
     "project_user_preferences_service",
     "ui_automation_service",
     "snowflake_service",
+    "data_processing_rules_service",
 ]

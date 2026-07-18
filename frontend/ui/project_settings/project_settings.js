@@ -5,7 +5,9 @@
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260223";
 import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260315";
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=2026040308";
-import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=2026050832";
+import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260716resize2";
+import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260717dpr8";
+import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260716psprefs1";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 // ============ Zoom & Hotkey Handling ============
@@ -15,6 +17,35 @@ const LOCAL_PROJECT_PREFS_ENDPOINT = "/local-project/preferences";
 const PROJECT_EXPLORER_PREF_SAVE_DEBOUNCE_MS = 400;
 
 window.ArcRhoZoomBridge?.wirePageZoomBridge();
+
+function wireProjectSettingsTableScrollbarActivity(scrollHost) {
+  if (!scrollHost || scrollHost.dataset.scrollbarActivityWired === "1") return;
+  scrollHost.dataset.scrollbarActivityWired = "1";
+  let idleTimer = 0;
+
+  scrollHost.addEventListener("scroll", () => {
+    scrollHost.classList.add("isScrolling");
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => scrollHost.classList.remove("isScrolling"), 550);
+  }, { passive: true });
+
+  scrollHost.addEventListener("pointermove", (event) => {
+    const rect = scrollHost.getBoundingClientRect();
+    const verticalScrollbarWidth = Math.max(0, scrollHost.offsetWidth - scrollHost.clientWidth);
+    const horizontalScrollbarHeight = Math.max(0, scrollHost.offsetHeight - scrollHost.clientHeight);
+    const overVerticalLane = scrollHost.scrollHeight > scrollHost.clientHeight
+      && verticalScrollbarWidth > 0
+      && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+    const overHorizontalLane = scrollHost.scrollWidth > scrollHost.clientWidth
+      && horizontalScrollbarHeight > 0
+      && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+    scrollHost.classList.toggle("isScrollbarHover", overVerticalLane || overHorizontalLane);
+  }, { passive: true });
+
+  scrollHost.addEventListener("pointerleave", () => {
+    scrollHost.classList.remove("isScrollbarHover");
+  }, { passive: true });
+}
 
 window.addEventListener("message", (e) => {
   const msgType = String(e?.data?.type || "");
@@ -121,6 +152,34 @@ const datasetTypesErrorClose = document.getElementById("datasetTypesErrorClose")
 const reservingClassTypesBody = document.getElementById("reservingClassTypesBody");
 const reservingClassTypesStatus = document.getElementById("reservingClassTypesStatus");
 const reservingClassTypesRowContextMenu = document.getElementById("reservingClassTypesRowContextMenu");
+const dataProcessingRulesBody = document.getElementById("dataProcessingRulesBody");
+const dataProcessingRulesStatus = document.getElementById("dataProcessingRulesStatus");
+const dataProcessingRulesRowContextMenu = document.getElementById("dataProcessingRulesRowContextMenu");
+const addDataProcessingRuleBtn = document.getElementById("addDataProcessingRuleBtn");
+const validateDataProcessingRulesBtn = document.getElementById("validateDataProcessingRulesBtn");
+const dataProcessingRulesJsonBtn = document.getElementById("dataProcessingRulesJsonBtn");
+const dataProcessingRuleEditor = document.getElementById("dataProcessingRuleEditor");
+const dataProcessingRuleEditorTitle = document.getElementById("dataProcessingRuleEditorTitle");
+const dataProcessingRuleEditorClose = document.getElementById("dataProcessingRuleEditorClose");
+const dprEditName = document.getElementById("dprEditName");
+const dprEditEnabled = document.getElementById("dprEditEnabled");
+const dprAutoNamePill = document.getElementById("dprAutoNamePill");
+const dprEditEnabledLabel = document.getElementById("dprEditEnabledLabel");
+const dprEditSourceMeasure = document.getElementById("dprEditSourceMeasure");
+const dprRequestConditions = document.getElementById("dprRequestConditions");
+const dprAddRequestConditionBtn = document.getElementById("dprAddRequestConditionBtn");
+const dprThenConditions = document.getElementById("dprThenConditions");
+const dprAddThenConditionBtn = document.getElementById("dprAddThenConditionBtn");
+const dprActionVerbGroup = document.getElementById("dprActionVerbGroup");
+const dprKeepHint = document.getElementById("dprKeepHint");
+const dprVocabWarning = document.getElementById("dprVocabWarning");
+const dprEditSummary = document.getElementById("dprEditSummary");
+const dprEditError = document.getElementById("dprEditError");
+const dprEditorCancelBtn = document.getElementById("dprEditorCancelBtn");
+const dprEditorSaveBtn = document.getElementById("dprEditorSaveBtn");
+const dataProcessingRulesJsonOverlay = document.getElementById("dataProcessingRulesJsonOverlay");
+const dataProcessingRulesJsonBody = document.getElementById("dataProcessingRulesJsonBody");
+const dataProcessingRulesJsonClose = document.getElementById("dataProcessingRulesJsonClose");
 const auditLogBody = document.getElementById("auditLogBody");
 const auditLogStatus = document.getElementById("auditLogStatus");
 const reservingClassTypeEditor = document.getElementById("reservingClassTypeEditor");
@@ -131,8 +190,6 @@ const rctEditName = document.getElementById("rctEditName");
 const rctEditLevel = document.getElementById("rctEditLevel");
 const rctEditFormula = document.getElementById("rctEditFormula");
 const rctFormulaReview = document.getElementById("rctFormulaReview");
-const rctEditEexFormula = document.getElementById("rctEditEexFormula");
-const rctEexFormulaReview = document.getElementById("rctEexFormulaReview");
 const rctEditorCancelBtn = document.getElementById("rctEditorCancelBtn");
 const rctEditorSaveBtn = document.getElementById("rctEditorSaveBtn");
 const datasetTypeEditor = document.getElementById("datasetTypeEditor");
@@ -170,15 +227,51 @@ const datasetTypesAutoSavePending = new Set();
 const reservingClassTypesAutoSaveTimers = new Map();
 const reservingClassTypesAutoSaveInFlight = new Map();
 const reservingClassTypesAutoSavePending = new Set();
-let colResizePreviewEl = null;
+const tableColumnWidthsById = new Map();
+const tableDefaultColumnWidthsById = new Map();
+const configuredTableColumnWidthsById = new Map();
 
-function getColResizePreviewEl() {
-  if (colResizePreviewEl) return colResizePreviewEl;
-  const el = document.createElement("div");
-  el.className = "col-resize-preview";
-  document.body.appendChild(el);
-  colResizePreviewEl = el;
-  return el;
+function normalizeTableColumnPreferenceKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function applyProjectSettingsTablePreferences(preferences) {
+  configuredTableColumnWidthsById.clear();
+  tableColumnWidthsById.clear();
+  tableDefaultColumnWidthsById.clear();
+
+  const tables = preferences?.projectSettings?.tables;
+  if (!tables || typeof tables !== "object" || Array.isArray(tables)) return;
+  Object.entries(tables).forEach(([tableId, tablePreferences]) => {
+    const widths = tablePreferences?.widths;
+    if (!widths || typeof widths !== "object" || Array.isArray(widths)) return;
+    const normalizedWidths = new Map();
+    Object.entries(widths).forEach(([columnName, rawWidth]) => {
+      const key = normalizeTableColumnPreferenceKey(columnName);
+      const width = Math.round(Number(rawWidth));
+      if (key && Number.isFinite(width) && width > 0) normalizedWidths.set(key, width);
+    });
+    if (normalizedWidths.size) configuredTableColumnWidthsById.set(tableId, normalizedWidths);
+  });
+}
+
+function getConfiguredTableColumnWidths(tableId, cols, ths, minWidths) {
+  const configured = configuredTableColumnWidthsById.get(tableId);
+  if (!(configured instanceof Map) || !configured.size) return null;
+  let matched = false;
+  const widths = Array.from(cols).map((col, index) => {
+    const th = ths[index];
+    const label = th?.querySelector?.(".dt-col-label-text, .table-col-label");
+    const key = normalizeTableColumnPreferenceKey(label?.textContent || th?.textContent || "");
+    const configuredWidth = Number(configured.get(key));
+    const minimumWidth = Number(minWidths?.[index]) || 40;
+    if (Number.isFinite(configuredWidth) && configuredWidth > 0) {
+      matched = true;
+      return Math.max(minimumWidth, Math.round(configuredWidth));
+    }
+    return getTableColumnWidth(col, minimumWidth);
+  });
+  return matched ? widths : null;
 }
 
 function resizeCellTextarea(textarea) {
@@ -225,37 +318,73 @@ function measureHeaderLabelWidth(labelEl, fallbackText, fallbackFont) {
   return measureTextWidth(fallbackText, fallbackFont);
 }
 
-function autoFitColumns(table, cols, ths, minWidths, maxColWidth) {
+function getTableColumnWidth(col, minimumWidth = 40) {
+  const inlineWidth = Number.parseFloat(col?.style?.width);
+  const renderedWidth = Number(col?.offsetWidth);
+  const width = Number.isFinite(inlineWidth) && inlineWidth > 0
+    ? inlineWidth
+    : renderedWidth;
+  return Math.max(minimumWidth, Math.round(Number.isFinite(width) && width > 0 ? width : minimumWidth));
+}
+
+function syncTableTotalWidth(table, cols, minWidths = []) {
+  const totalWidth = Array.from(cols).reduce((sum, col, index) => (
+    sum + getTableColumnWidth(col, Number(minWidths[index]) || 40)
+  ), 0);
+  const width = Math.max(1, Math.round(totalWidth));
+  table.style.width = `${width}px`;
+  table.style.minWidth = `${width}px`;
+  return width;
+}
+
+function captureTableColumnWidths(cols, minWidths = []) {
+  return Array.from(cols).map((col, index) => (
+    getTableColumnWidth(col, Number(minWidths[index]) || 40)
+  ));
+}
+
+function applyTableColumnWidths(table, cols, widths, minWidths = []) {
+  Array.from(cols).forEach((col, index) => {
+    const minimumWidth = Number(minWidths[index]) || 40;
+    const width = Math.max(minimumWidth, Math.round(Number(widths[index]) || minimumWidth));
+    col.style.width = `${width}px`;
+  });
+  syncTableTotalWidth(table, cols, minWidths);
+}
+
+function autoFitColumn(table, cols, ths, minWidths, index, maxColWidth) {
+  if (index < 0 || index >= cols.length || index >= ths.length) return;
   const rows = table.querySelectorAll("tbody tr");
   const font = getComputedStyle(table).font;
   const headerFont = ths[0] ? getComputedStyle(ths[0]).font : font;
-  ths.forEach((th, idx) => {
-    if (idx >= cols.length) return;
-    const minW = (minWidths && minWidths[idx]) || 40;
-    const thStyles = getComputedStyle(th);
-    const headerPadX = (parseFloat(thStyles.paddingLeft) || 0) + (parseFloat(thStyles.paddingRight) || 0);
-    // Measure header content including sort/filter controls.
-    const labelEl = th.querySelector(".table-col-label");
-    const headerText = String(labelEl ? labelEl.textContent : th.textContent || "");
-    const headerContentW = measureHeaderLabelWidth(labelEl, headerText, headerFont);
-    let maxW = Math.max(minW, headerContentW + headerPadX + 8);
-    // Measure body cell text content
-    rows.forEach(tr => {
-      const td = tr.children[idx];
-      if (!td) return;
-      const textarea = td.querySelector("textarea");
-      const select = td.querySelector("select");
-      const input = td.querySelector("input");
-      let text = "";
-      if (textarea) text = textarea.value;
-      else if (select) text = select.options[select.selectedIndex]?.text || "";
-      else if (input && input.type === "checkbox") return;
-      else if (input) text = input.value;
-      else text = td.textContent;
-      if (text) maxW = Math.max(maxW, measureTextWidth(text, font) + 28);
-    });
-    cols[idx].style.width = Math.min(maxW, maxColWidth) + "px";
+  const th = ths[index];
+  const minW = (minWidths && minWidths[index]) || 40;
+  const thStyles = getComputedStyle(th);
+  const headerPadX = (parseFloat(thStyles.paddingLeft) || 0) + (parseFloat(thStyles.paddingRight) || 0);
+  const labelEl = th.querySelector(".table-col-label");
+  const headerText = String(labelEl ? labelEl.textContent : th.textContent || "");
+  const headerContentW = measureHeaderLabelWidth(labelEl, headerText, headerFont);
+  let maxW = Math.max(minW, headerContentW + headerPadX + 8);
+  rows.forEach(tr => {
+    const td = tr.children[index];
+    if (!td) return;
+    const textarea = td.querySelector("textarea");
+    const select = td.querySelector("select");
+    const input = td.querySelector("input");
+    let text = "";
+    if (textarea) text = textarea.value;
+    else if (select) text = select.options[select.selectedIndex]?.text || "";
+    else if (input && input.type === "checkbox") return;
+    else if (input) text = input.value;
+    else text = td.textContent;
+    if (text) maxW = Math.max(maxW, measureTextWidth(text, font) + 28);
   });
+  cols[index].style.width = `${Math.min(maxW, maxColWidth)}px`;
+}
+
+function autoFitColumns(table, cols, ths, minWidths, maxColWidth) {
+  ths.forEach((_th, index) => autoFitColumn(table, cols, ths, minWidths, index, maxColWidth));
+  syncTableTotalWidth(table, cols, minWidths);
   table.querySelectorAll("tbody textarea").forEach(resizeCellTextarea);
 }
 
@@ -265,6 +394,14 @@ function initTableColumnResizing(tableId, minWidths) {
   const cols = table.querySelectorAll("colgroup col");
   const ths = table.querySelectorAll("thead th");
   if (!cols.length || !ths.length) return;
+  const configuredWidths = getConfiguredTableColumnWidths(tableId, cols, ths, minWidths);
+  const defaultWidths = configuredWidths || captureTableColumnWidths(cols, minWidths);
+  if (configuredWidths) {
+    tableDefaultColumnWidthsById.set(tableId, defaultWidths);
+  } else if (!tableDefaultColumnWidthsById.has(tableId)
+      || tableDefaultColumnWidthsById.get(tableId).length !== cols.length) {
+    tableDefaultColumnWidthsById.set(tableId, defaultWidths);
+  }
 
   ths.forEach((th, idx) => {
     if (idx >= cols.length) return;
@@ -292,44 +429,54 @@ function initTableColumnResizing(tableId, minWidths) {
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX;
-      const startW = cols[idx].offsetWidth || parseInt(cols[idx].style.width, 10) || 100;
-      const preview = getColResizePreviewEl();
-      const grid = table.closest(".field-mapping-grid, .dataset-types-grid, .summary-columns");
-      const bounds = grid ? grid.getBoundingClientRect() : table.getBoundingClientRect();
-      preview.style.top = bounds.top + "px";
-      preview.style.bottom = (window.innerHeight - bounds.bottom) + "px";
-      preview.style.display = "block";
-      preview.style.left = e.clientX + "px";
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
+      const startW = getTableColumnWidth(cols[idx], minW);
+      document.body.classList.add("ps-resizing-table-column");
 
       function onMove(ev) {
         const newW = Math.max(minW, startW + (ev.clientX - startX));
-        preview.style.left = ev.clientX + "px";
-        cols[idx].style.width = newW + "px";
+        cols[idx].style.width = `${Math.round(newW)}px`;
+        syncTableTotalWidth(table, cols, minWidths);
       }
       function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        preview.style.display = "none";
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        document.removeEventListener("mousemove", onMove, true);
+        document.removeEventListener("mouseup", onUp, true);
+        document.body.classList.remove("ps-resizing-table-column");
+        tableColumnWidthsById.set(tableId, captureTableColumnWidths(cols, minWidths));
         table.querySelectorAll("tbody textarea").forEach(resizeCellTextarea);
       }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+      document.addEventListener("mousemove", onMove, true);
+      document.addEventListener("mouseup", onUp, true);
     });
 
-    // Double-click to auto-fit single column (no cap)
+    // A click is emitted after mouseup even when the pointer was dragged. Keep
+    // that synthetic click on the handle from reaching sortable table headers.
+    resizer.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
     resizer.addEventListener("dblclick", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      autoFitColumns(table, cols, ths, minWidths, 800);
+      const defaults = tableDefaultColumnWidthsById.get(tableId) || defaultWidths;
+      const width = Math.max(minW, Math.round(Number(defaults[idx]) || minW));
+      cols[idx].style.width = `${width}px`;
+      syncTableTotalWidth(table, cols, minWidths);
+      tableColumnWidthsById.set(tableId, captureTableColumnWidths(cols, minWidths));
+      table.querySelectorAll("tbody textarea").forEach(resizeCellTextarea);
     });
   });
 
-  // Auto-fit all columns on each data load
-  autoFitColumns(table, cols, ths, minWidths, 380);
+  const savedWidths = tableColumnWidthsById.get(tableId);
+  if (Array.isArray(savedWidths) && savedWidths.length === cols.length) {
+    applyTableColumnWidths(table, cols, savedWidths, minWidths);
+  } else if (configuredWidths) {
+    applyTableColumnWidths(table, cols, configuredWidths, minWidths);
+    tableColumnWidthsById.set(tableId, captureTableColumnWidths(cols, minWidths));
+  } else {
+    autoFitColumns(table, cols, ths, minWidths, 380);
+    tableColumnWidthsById.set(tableId, captureTableColumnWidths(cols, minWidths));
+  }
 }
 
 function setStatus(msg) {
@@ -525,6 +672,7 @@ async function triggerReservingClassTypesAutoSave(projectName) {
 let fieldMappingFeature = null;
 let datasetTypesFeature = null;
 let reservingClassTypesFeature = null;
+let dataProcessingRulesFeature = null;
 
 datasetTypesFeature = createDatasetTypesFeature({
   datasetTypesBody,
@@ -585,8 +733,6 @@ reservingClassTypesFeature = createReservingClassTypesFeature({
   rctEditLevel,
   rctEditFormula,
   rctFormulaReview,
-  rctEexFormulaReview,
-  rctEditEexFormula,
   initTableColumnResizing,
   normalizeProjectKey,
   fetchImpl: fetch.bind(window),
@@ -598,6 +744,48 @@ reservingClassTypesFeature = createReservingClassTypesFeature({
   hideDatasetTypesRowContextMenu: (...args) => datasetTypesFeature?.hideDatasetTypesRowContextMenu(...args),
   scheduleReservingClassTypesAutoSave,
   positionContextMenu,
+});
+
+dataProcessingRulesFeature = createDataProcessingRulesFeature({
+  rulesBody: dataProcessingRulesBody,
+  rulesStatus: dataProcessingRulesStatus,
+  rowContextMenu: dataProcessingRulesRowContextMenu,
+  addButton: addDataProcessingRuleBtn,
+  validateButton: validateDataProcessingRulesBtn,
+  jsonButton: dataProcessingRulesJsonBtn,
+  editor: dataProcessingRuleEditor,
+  editorTitle: dataProcessingRuleEditorTitle,
+  editorClose: dataProcessingRuleEditorClose,
+  editName: dprEditName,
+  editEnabled: dprEditEnabled,
+  autoNamePill: dprAutoNamePill,
+  editEnabledLabel: dprEditEnabledLabel,
+  editSourceMeasure: dprEditSourceMeasure,
+  requestConditions: dprRequestConditions,
+  addRequestConditionButton: dprAddRequestConditionBtn,
+  thenConditions: dprThenConditions,
+  addThenConditionButton: dprAddThenConditionBtn,
+  actionVerbGroup: dprActionVerbGroup,
+  keepHint: dprKeepHint,
+  dprVocabWarning,
+  editSummary: dprEditSummary,
+  editError: dprEditError,
+  editorCancelButton: dprEditorCancelBtn,
+  editorSaveButton: dprEditorSaveBtn,
+  jsonOverlay: dataProcessingRulesJsonOverlay,
+  jsonBody: dataProcessingRulesJsonBody,
+  jsonClose: dataProcessingRulesJsonClose,
+  fetchImpl: fetch.bind(window),
+  setStatus,
+  loadAuditLog,
+  showConfirm,
+  initTableColumnResizing,
+  positionContextMenu,
+  hideContextMenu,
+  hideFolderContextMenu,
+  hideTreeContextMenu,
+  hideDatasetTypesRowContextMenu: (...args) => datasetTypesFeature?.hideDatasetTypesRowContextMenu(...args),
+  hideReservingClassTypesRowContextMenu: (...args) => reservingClassTypesFeature?.hideReservingClassTypesRowContextMenu(...args),
 });
 
 function toWinPath(pathValue) {
@@ -1379,11 +1567,21 @@ function createProjectNode(project, depth) {
 }
 
 // ============ Project Selection ============
-function selectProject(project) {
+async function selectProject(project) {
   reservingClassTypesFeature?.closeReservingClassTypeEditor();
+  dataProcessingRulesFeature?.closeEditor();
   selectedProject = project;
   saveSelectedProjectToSession(project);
   renderTree(); // Update active state
+  const selectionKey = normalizeProjectKey(project?.name);
+  let preferences = {};
+  try {
+    preferences = await loadProjectUserPreferences(project?.name, { forceReload: true });
+  } catch (err) {
+    console.warn("Failed to load Project Settings table defaults:", err);
+  }
+  if (!selectedProject || normalizeProjectKey(selectedProject.name) !== selectionKey) return;
+  applyProjectSettingsTablePreferences(preferences);
   showProjectDetails(project);
   // Update tree header to show the last part of the folder name
   if (treeHeader && project.folder) {
@@ -1572,6 +1770,7 @@ function showProjectDetails(project) {
   loadTableSummary(project.tablePath, project.name);
   datasetTypesFeature?.loadDatasetTypes(project.name);
   reservingClassTypesFeature?.loadReservingClassTypes(project.name);
+  dataProcessingRulesFeature?.loadRules(project.name);
   loadAuditLog(project.name);
 }
 
@@ -2228,7 +2427,12 @@ async function loadTableSummary(tablePath, projectName = "", options = {}) {
 
     // Render columns table
     let colHtml = `
-      <table class="columns-table">
+      <table class="columns-table" id="summaryColumnsTable">
+        <colgroup>
+          <col style="width: 260px;">
+          <col style="width: 120px;">
+          <col style="width: 520px;">
+        </colgroup>
         <thead>
           <tr>
             <th>Column Name</th>
@@ -2251,6 +2455,7 @@ async function loadTableSummary(tablePath, projectName = "", options = {}) {
 
     colHtml += "</tbody></table>";
     columnsEl.innerHTML = colHtml;
+    initTableColumnResizing("summaryColumnsTable", [120, 80, 160]);
 
     currentFieldNames = Array.isArray(data.columns)
       ? data.columns.map(col => String(col?.name || "").trim()).filter(Boolean)
@@ -3591,6 +3796,7 @@ async function saveProjectData(sourceKey = DEFAULT_SOURCE) {
     "field-mapping": document.getElementById("ribbonFieldMapping"),
     "reserving-class-types": document.getElementById("ribbonReservingClassTypes"),
     "dataset-types": document.getElementById("ribbonDatasetTypes"),
+    "data-processing": document.getElementById("ribbonDataProcessing"),
     "audit-log": document.getElementById("ribbonAuditLog"),
     "project-settings": document.getElementById("ribbonProjectSettings"),
   };
@@ -3626,6 +3832,9 @@ async function saveProjectData(sourceKey = DEFAULT_SOURCE) {
 
 // ============ Initialize ============
 (async function init() {
+  document
+    .querySelectorAll(".summary-columns, .field-mapping-grid, .dataset-types-grid")
+    .forEach(wireProjectSettingsTableScrollbarActivity);
   const restoredFromLocalPreferences = await loadExpandedFoldersFromLocalPreferences();
   projectExplorerPreferencesLoaded = true;
   const restoredFromSession = restoredFromLocalPreferences ? true : loadExpandedFoldersFromSession();

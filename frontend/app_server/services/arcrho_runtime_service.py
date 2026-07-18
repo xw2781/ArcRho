@@ -16,6 +16,11 @@ from fastapi import HTTPException
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name, set_data_path_like_vba, send_request_like_vba, wait_for_file
 from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service, project_settings_service
+from app_server.services.data_processing_rules_service import (
+    get_processing_config_hash,
+    get_processing_provenance,
+    is_imported_snapshot_payload,
+)
 
 def _pair_value(pairs: list, key: str) -> str:
     key_l = key.strip().lower()
@@ -86,7 +91,45 @@ def _request_dataset_name(pairs: list) -> str:
     return _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
 
 
-def _triangle_sidecar_payload(data_path: str, pairs: list, *, local_only: bool = False) -> Dict[str, Any]:
+def _processing_config_matches(
+    payload: Dict[str, Any],
+    pairs: list,
+    data_path: str = "",
+) -> bool:
+    source_kind = _clean_cache_text(payload.get("source_kind")).lower()
+    if source_kind != "engine" or is_imported_snapshot_payload(payload):
+        return True
+    processing: Any = None
+    filename = os.path.basename(str(data_path or "").strip())
+    processing_by_csv = payload.get("processing_by_csv")
+    if filename and isinstance(processing_by_csv, dict):
+        processing = processing_by_csv.get(filename)
+    elif filename:
+        csv_file = _clean_cache_text(payload.get("csv_file"))
+        if not csv_file or os.path.basename(csv_file) != filename:
+            return False
+        processing = payload.get("processing")
+    else:
+        processing = payload.get("processing")
+    if not isinstance(processing, dict):
+        return False
+    stored_hash = _clean_cache_text(processing.get("config_hash"))
+    project_name = _pair_value(pairs, "ProjectName")
+    if not stored_hash or not project_name:
+        return False
+    try:
+        return stored_hash == get_processing_config_hash(project_name)
+    except Exception:
+        return False
+
+
+def _triangle_sidecar_payload(
+    data_path: str,
+    pairs: list,
+    *,
+    local_only: bool = False,
+    validate_processing_for_path: bool = True,
+) -> Dict[str, Any]:
     sidecar_path = _dataset_sidecar_path(data_path, pairs)
     payload = _safe_read_json(sidecar_path)
     if not payload:
@@ -100,6 +143,8 @@ def _triangle_sidecar_payload(data_path: str, pairs: list, *, local_only: bool =
         return {}
     source_kind = _clean_cache_text(payload.get("source_kind")).lower()
     if not local_only and source_kind != "input":
+        return {}
+    if validate_processing_for_path and not _processing_config_matches(payload, pairs, data_path):
         return {}
     data_format = _clean_cache_text(payload.get("data_format") or "Triangle").lower()
     if data_format and data_format != "triangle":
@@ -141,7 +186,12 @@ def _parse_cache_variant(filename: str) -> Dict[str, Any]:
 
 
 def _local_cache_candidates(data_path: str, pairs: list, *, local_only: bool = False) -> list[Dict[str, Any]]:
-    payload = _triangle_sidecar_payload(data_path, pairs, local_only=local_only)
+    payload = _triangle_sidecar_payload(
+        data_path,
+        pairs,
+        local_only=local_only,
+        validate_processing_for_path=False,
+    )
     if not payload:
         return []
     dataset_dir = os.path.dirname(data_path)
@@ -155,6 +205,8 @@ def _local_cache_candidates(data_path: str, pairs: list, *, local_only: bool = F
             continue
         path = os.path.join(dataset_dir, filename)
         if not os.path.isfile(path):
+            continue
+        if not _processing_config_matches(payload, pairs, path):
             continue
         out.append({
             **parsed,
@@ -261,7 +313,12 @@ def resolve_local_triangle_cache(
             "local_source_found": True,
         }
 
-    payload = _triangle_sidecar_payload(data_path, pairs, local_only=local_only)
+    payload = _triangle_sidecar_payload(
+        data_path,
+        pairs,
+        local_only=local_only,
+        validate_processing_for_path=False,
+    )
     if not payload:
         return {
             "ok": False,
@@ -367,6 +424,20 @@ def _apply_dataset_sidecar_shape_fields(payload: Dict[str, Any], pairs: list, *,
     payload.pop("period_length", None)
 
 
+def _set_processing_provenance(
+    payload: Dict[str, Any],
+    project_name: str,
+    data_path: str,
+) -> None:
+    provenance = get_processing_provenance(project_name)
+    payload["processing"] = provenance
+    processing_by_csv = payload.get("processing_by_csv")
+    if not isinstance(processing_by_csv, dict):
+        processing_by_csv = {}
+    processing_by_csv[os.path.basename(data_path)] = provenance
+    payload["processing_by_csv"] = processing_by_csv
+
+
 def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
     dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
     instance_name = _pair_value(pairs, "InstanceName") or dataset_type
@@ -390,6 +461,8 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         payload["user"] = user_name
         payload["data_format"] = data_format
         payload["data_format_code"] = 1 if is_vector else 0
+        if _clean_cache_text(payload.get("source_kind")).lower() == "engine":
+            _set_processing_provenance(payload, project_name, data_path)
         _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)
         payload["csv_file"] = os.path.basename(data_path)
         from app_server.services.dataset_service import _append_dataset_audit_entry
@@ -423,6 +496,7 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
+    _set_processing_provenance(payload, project_name, data_path)
     _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)
     from app_server.services import calculated_dataset_service
     from app_server.services.dataset_service import _append_dataset_audit_entry
@@ -479,6 +553,8 @@ def arcrho_tri_cache_matches(data_path: str, pairs: list) -> bool:
     if not _cache_text_matches(payload.get("reserving_class"), _pair_value(pairs, "Path")):
         return False
     if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
+        return False
+    if not _processing_config_matches(payload, pairs, data_path):
         return False
     if not _pair_value(pairs, "InstanceName") and dataset_type:
         payload_type = payload.get("dataset_type")

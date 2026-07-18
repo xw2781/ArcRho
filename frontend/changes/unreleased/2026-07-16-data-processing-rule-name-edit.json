@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Existing Data Processing Rules can now be renamed without losing the mapped action-field level during validation."
+}

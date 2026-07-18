@@ -204,6 +204,13 @@
     #datasetTypesRowContextMenu .context-menu-divider {
       margin: 2px 0;
     }
+    #dataProcessingRulesRowContextMenu .context-menu-item {
+      padding: 6px 16px;
+      line-height: 1.2;
+    }
+    #dataProcessingRulesRowContextMenu .context-menu-divider {
+      margin: 2px 0;
+    }
 
     /* Custom Dialog */
     .dialog-overlay {
@@ -691,19 +698,6 @@
       border-radius: 6px;
       background: #fafafa;
     }
-    .summary-columns::before,
-    .field-mapping-grid::before,
-    .dataset-types-grid::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 0;
-      height: 1px;
-      background: #f5f5f5;
-      pointer-events: none;
-      z-index: 3;
-    }
     .columns-table {
       width: 100%;
       max-width: 900px;
@@ -795,7 +789,10 @@
     .ribbon-bar {
       display: flex;
       gap: 0;
-      border-bottom: 2px solid var(--border);
+      overflow-x: auto;
+      overflow-y: hidden;
+      border-bottom: 2px solid transparent;
+      box-shadow: inset 0 -1px 0 var(--border);
       margin-top: 1px;
       padding: 0 0 0 0;
       flex-shrink: 0;
@@ -815,6 +812,7 @@
       position: relative;
       bottom: -2px;
       min-width: 72px;
+      flex: 0 0 auto;
     }
     .ribbon-item:hover {
       background: #e9ecef;
@@ -1220,50 +1218,139 @@
     .dataset-types-error-line:last-child {
       border-bottom: 0;
     }
+    .summary-columns,
+    .field-mapping-grid,
     .dataset-types-grid {
+      --dataset-grid-scrollbar-chrome: #f1f3f5;
+      --dataset-grid-scrollbar-button-hover: #e5e9ef;
+      --dataset-grid-scrollbar-button-active: #d9dee7;
+      --dataset-grid-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --dataset-grid-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+      box-sizing: border-box;
       width: 100%;
-      max-width: 1400px;
+      max-width: none;
       flex: 1 1 0;
       min-height: 300px;
       overflow: auto;
       position: relative;
-      border: var(--table-border-width) solid var(--border);
-      border-radius: 6px;
-      background: #fafafa;
+      border: 1px solid #cbd5e1;
+      border-radius: 0;
+      background: #fff;
+      scrollbar-gutter: stable;
+      padding-right: 1px;
+      padding-bottom: 1px;
     }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar {
+      width: 16px;
+      height: 16px;
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-track,
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-corner {
+      background: var(--dataset-grid-scrollbar-chrome);
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-thumb {
+      border: 3px solid var(--dataset-grid-scrollbar-chrome);
+      border-radius: 5px;
+      background-color: var(--dataset-grid-scrollbar-thumb);
+      background-clip: content-box;
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid).isScrolling::-webkit-scrollbar-thumb,
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid).isScrollbarHover::-webkit-scrollbar-thumb,
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-thumb:hover {
+      background-color: var(--dataset-grid-scrollbar-thumb-active);
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button {
+      display: block;
+      width: 16px;
+      height: 16px;
+      background-color: var(--dataset-grid-scrollbar-chrome);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 11px 11px;
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:hover {
+      background-color: var(--dataset-grid-scrollbar-button-hover);
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:active {
+      background-color: var(--dataset-grid-scrollbar-button-active);
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:horizontal:start:increment,
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:horizontal:end:decrement,
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:vertical:start:increment,
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:vertical:end:decrement {
+      display: none;
+      width: 0;
+      height: 0;
+      background-image: none;
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:horizontal:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:horizontal:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:vertical:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+    :is(.summary-columns, .field-mapping-grid, .dataset-types-grid)::-webkit-scrollbar-button:vertical:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+    }
+    .columns-table,
+    .field-mapping-table,
     .dataset-types-table {
       width: 100%;
       min-width: 100%;
-      max-width: 1400px;
-      border-collapse: collapse;
+      max-width: none;
+      border-collapse: separate;
+      border-spacing: 0;
       font-size: 12px;
       background: #fff;
       table-layout: fixed;
     }
-    .dataset-types-table th,
-    .dataset-types-table td {
+    :is(.columns-table, .field-mapping-table, .dataset-types-table) th,
+    :is(.columns-table, .field-mapping-table, .dataset-types-table) td {
       padding: 6px 10px;
-      border: var(--table-border-width) solid var(--border);
+      border: 0;
+      border-right: 1px solid #d8dde3;
+      border-bottom: 1px solid #d8dde3;
       text-align: left;
       vertical-align: middle;
     }
-    .dataset-types-table td {
+    :is(.columns-table, .field-mapping-table, .dataset-types-table) td {
       white-space: normal;
       overflow-wrap: anywhere;
       word-break: break-word;
     }
-    .dataset-types-table th {
-      background: #f5f5f5;
+    :is(.columns-table, .field-mapping-table, .dataset-types-table) th {
+      height: 31px;
+      box-sizing: border-box;
+      background: #f4f7fa;
       font-weight: 600;
-      color: #555;
+      color: #334155;
       position: sticky;
-      top: calc(-1 * var(--table-border-width));
+      top: 0;
       z-index: 2;
       background-clip: padding-box;
     }
-    .dataset-types-table th {
+    :is(.columns-table, .field-mapping-table, .dataset-types-table) th::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #f4f7fa;
+      pointer-events: none;
+    }
+    :is(.columns-table, .field-mapping-table, .dataset-types-table) th {
       white-space: normal;
       word-break: break-word;
+    }
+    :is(.columns-table, .field-mapping-table, .dataset-types-table) tbody tr {
+      height: 31px;
+    }
+    :is(.columns-table, .field-mapping-table, .dataset-types-table) tbody tr:not(.dt-group-row):not(.rct-group-row):hover td {
+      background: #f8fafc;
     }
     .dataset-types-table td textarea {
       width: 100%;
@@ -1677,8 +1764,7 @@
       flex-direction: column;
       gap: 8px;
     }
-    .rct-row-editor-body label[for="rctEditFormula"],
-    .rct-row-editor-body label[for="rctEditEexFormula"] {
+    .rct-row-editor-body label[for="rctEditFormula"] {
       align-self: start;
       padding-top: 8px;
     }
@@ -1999,17 +2085,27 @@
     }
     .table-col-resizer {
       position: absolute;
-      right: 0;
       top: 0;
-      width: 4px;
+      right: -4px;
+      width: 8px;
       height: 100%;
       cursor: col-resize;
       user-select: none;
       touch-action: none;
       z-index: 5;
     }
-    .table-col-resizer:hover {
-      background: #d0d0d0;
+    .table-col-resizer:hover::after {
+      content: "";
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      left: 3px;
+      border-left: 1px solid #2f6fec;
+    }
+    body.ps-resizing-table-column,
+    body.ps-resizing-table-column * {
+      cursor: col-resize !important;
+      user-select: none !important;
     }
     .table-col-label {
       display: inline-block;
@@ -2018,21 +2114,1314 @@
       word-break: break-word;
       overflow-wrap: anywhere;
     }
-    .col-resize-preview {
-      position: fixed;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background: #0d6efd;
-      opacity: 0.75;
-      pointer-events: none;
-      z-index: 4000;
-      display: none;
-    }
     .dataset-types-empty {
       color: #999;
       font-style: italic;
       text-align: center;
+    }
+    .dpr-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 34px;
+    }
+    .dpr-toolbar .dataset-types-help {
+      flex: 1;
+    }
+    .dpr-toolbar button,
+    .dpr-editor button {
+      min-height: 26px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: #f8fafc;
+      color: #1f2937;
+      font: inherit;
+      cursor: pointer;
+    }
+    .dpr-toolbar button {
+      padding: 4px 10px;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .dpr-toolbar button:hover,
+    .dpr-editor button:hover {
+      border-color: #9db5da;
+      background: #eef5ff;
+      color: #1d4ed8;
+    }
+    .dpr-toolbar button.primary,
+    .dpr-editor button.primary {
+      border-color: #93b4ef;
+      background: #edf4ff;
+      color: #1d5fc7;
+    }
+    .dpr-rules-table {
+      table-layout: fixed;
+      min-width: 1202px;
+    }
+    .dpr-rules-table tbody tr {
+      height: 31px;
+    }
+    .dpr-rules-table td {
+      vertical-align: middle;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .dpr-enabled-cell {
+      text-align: center;
+    }
+    .dpr-enabled-checkbox {
+      display: block;
+      width: 14px;
+      height: 14px;
+      margin: 0 auto;
+      accent-color: #2b6df6;
+      cursor: pointer;
+    }
+    .dpr-enabled-checkbox:focus-visible {
+      outline: 2px solid rgba(96, 165, 250, 0.45);
+      outline-offset: 2px;
+    }
+    .dpr-table-switch {
+      position: relative;
+      display: inline-flex;
+      width: 42px;
+      height: 20px;
+      cursor: pointer;
+    }
+    .dpr-table-switch .dpr-enabled-checkbox {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      opacity: 0;
+    }
+    .dpr-table-switch-track {
+      display: block;
+      width: 42px;
+      height: 20px;
+      border-radius: 10px;
+      background: #cbd5e1;
+      transition: background 150ms;
+    }
+    .dpr-table-switch-track::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
+      transition: left 150ms;
+    }
+    .dpr-table-switch .dpr-enabled-checkbox:checked + .dpr-table-switch-track {
+      background: #15803d;
+    }
+    .dpr-table-switch .dpr-enabled-checkbox:checked + .dpr-table-switch-track::after {
+      left: 24px;
+    }
+    .dpr-table-switch .dpr-enabled-checkbox:focus-visible + .dpr-table-switch-track {
+      outline: 2px solid rgba(96, 165, 250, 0.45);
+      outline-offset: 2px;
+    }
+    .dpr-editor {
+      display: none;
+      position: fixed;
+      z-index: 4050;
+      top: 72px;
+      left: 50%;
+      width: min(860px, calc(100vw - 32px));
+      max-height: calc(100vh - 88px);
+      transform: translateX(-50%);
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+      color: #111827;
+      font-size: 12px;
+    }
+    .dpr-editor.show {
+      display: flex;
+      flex-direction: column;
+    }
+    .dpr-editor-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 36px;
+      padding: 0 8px 0 12px;
+      border-bottom: 1px solid #d8dde3;
+      background: #f4f7fa;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .dpr-editor > .dpr-editor-header {
+      cursor: move;
+      touch-action: none;
+    }
+    .dpr-editor.dragging > .dpr-editor-header {
+      cursor: grabbing;
+    }
+    .dpr-editor-close {
+      width: 28px;
+      height: 28px;
+      min-height: 28px !important;
+      padding: 7px;
+      border: 1px solid transparent !important;
+      border-radius: 4px;
+      background: transparent !important;
+      color: #64748b;
+      cursor: pointer;
+    }
+    .dpr-editor-close:hover {
+      border-color: #bfdbfe !important;
+      background: #eef5ff !important;
+      color: #1d5fc7;
+    }
+    .dpr-editor-close:focus-visible {
+      outline: none;
+      border-color: #6aa0ef !important;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+    }
+    .dpr-editor-close svg,
+    .dpr-condition-remove svg {
+      width: 100%;
+      height: 100%;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+    }
+    .dpr-editor-body {
+      overflow: auto;
+      padding: 0 14px;
+      scrollbar-gutter: stable;
+    }
+    .dpr-editor-body {
+      --dpr-scrollbar-chrome: #f1f3f5;
+      --dpr-scrollbar-button-hover: #e5e9ef;
+      --dpr-scrollbar-button-active: #d9dee7;
+      --dpr-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --dpr-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+    }
+    .dpr-editor-body::-webkit-scrollbar {
+      width: 14px;
+      height: 14px;
+    }
+    .dpr-editor-body::-webkit-scrollbar-track,
+    .dpr-editor-body::-webkit-scrollbar-corner {
+      background: var(--dpr-scrollbar-chrome);
+    }
+    .dpr-editor-body::-webkit-scrollbar-thumb {
+      border: 3px solid var(--dpr-scrollbar-chrome);
+      border-radius: 5px;
+      background-color: var(--dpr-scrollbar-thumb);
+      background-clip: content-box;
+    }
+    .dpr-editor-body.isScrolling::-webkit-scrollbar-thumb,
+    .dpr-editor-body.isScrollbarHover::-webkit-scrollbar-thumb,
+    .dpr-editor-body::-webkit-scrollbar-thumb:hover {
+      background-color: var(--dpr-scrollbar-thumb-active);
+    }
+    .dpr-editor-body::-webkit-scrollbar-button {
+      display: block;
+      width: 14px;
+      height: 14px;
+      background-color: var(--dpr-scrollbar-chrome);
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 10px 10px;
+    }
+    .dpr-editor-body::-webkit-scrollbar-button:hover {
+      background-color: var(--dpr-scrollbar-button-hover);
+    }
+    .dpr-editor-body::-webkit-scrollbar-button:active {
+      background-color: var(--dpr-scrollbar-button-active);
+    }
+    .dpr-editor-body::-webkit-scrollbar-button:horizontal:start:increment,
+    .dpr-editor-body::-webkit-scrollbar-button:horizontal:end:decrement,
+    .dpr-editor-body::-webkit-scrollbar-button:vertical:start:increment,
+    .dpr-editor-body::-webkit-scrollbar-button:vertical:end:decrement {
+      display: none;
+      width: 0;
+      height: 0;
+      background-image: none;
+    }
+    .dpr-editor-body::-webkit-scrollbar-button:horizontal:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+    }
+    .dpr-editor-body::-webkit-scrollbar-button:horizontal:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+    }
+    .dpr-editor-body::-webkit-scrollbar-button:vertical:start:decrement {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+    }
+    .dpr-editor-body::-webkit-scrollbar-button:vertical:end:increment {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+    }
+    .dpr-section {
+      padding: 12px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .dpr-section:last-child {
+      border-bottom: 0;
+    }
+    .dpr-section-title {
+      margin-bottom: 8px;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: none;
+    }
+    .dpr-section-title .dpr-optional {
+      color: #94a3b8;
+      font-weight: 500;
+      text-transform: none;
+    }
+    .dpr-section-hint {
+      margin: -4px 0 8px;
+      color: #94a3b8;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .dpr-enabled-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-right: 2px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 400;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+    .dpr-enabled-switch input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .dpr-enabled-track {
+      position: relative;
+      width: 42px;
+      height: 20px;
+      border-radius: 10px;
+      background: #cbd5e1;
+      transition: background 150ms;
+    }
+    .dpr-enabled-track::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
+      transition: left 150ms;
+    }
+    .dpr-enabled-switch input:checked + .dpr-enabled-track {
+      background: #15803d;
+    }
+    .dpr-enabled-switch input:checked + .dpr-enabled-track::after {
+      left: 24px;
+    }
+    .dpr-enabled-switch input:focus-visible + .dpr-enabled-track {
+      outline: 2px solid rgba(96, 165, 250, 0.45);
+      outline-offset: 2px;
+    }
+    .dpr-lead {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+      color: #475569;
+      font-weight: 400;
+    }
+    .dpr-lead strong {
+      color: #111827;
+    }
+    .dpr-step-chip {
+      padding: 2px 9px;
+      border-radius: 10px;
+      background: #eaf2ff;
+      color: #1d5fc7;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .dpr-step-chip.then {
+      background: #e7f4ec;
+      color: #15803d;
+    }
+    .dpr-lead select,
+    .dpr-condition-row input,
+    .dpr-condition-row select {
+      height: 30px;
+      min-width: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: #fff;
+      color: #111827;
+      font: inherit;
+      padding: 3px 8px;
+    }
+    .dpr-lead select:focus,
+    .dpr-condition-row input:focus,
+    .dpr-condition-row select:focus {
+      outline: none;
+      border-color: #6aa0ef;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+    }
+    .dpr-condition-list {
+      display: grid;
+      gap: 5px;
+    }
+    .dpr-condition-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 0.9fr) 58px 104px minmax(200px, 1.5fr) 28px;
+      align-items: start;
+      gap: 6px;
+    }
+    .dpr-condition-level {
+      justify-self: center;
+      align-self: center;
+      padding: 1px 7px;
+      border-radius: 9px;
+      background: #eef2f6;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .dpr-condition-level.raw {
+      background: #fdf1df;
+      color: #b45309;
+    }
+    .dpr-condition-novalue {
+      align-self: center;
+      color: #94a3b8;
+      font-style: italic;
+    }
+    .dpr-condition-and {
+      margin: -1px 0;
+      padding-left: 2px;
+      color: #94a3b8;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+    .dpr-condition-remove {
+      width: 28px;
+      padding: 7px;
+      align-self: center;
+    }
+    .dpr-condition-empty {
+      color: #64748b;
+      font-size: 12px;
+      font-style: italic;
+    }
+    .dpr-keep-hint {
+      margin-top: 6px;
+      padding: 5px 9px;
+      border: 1px solid #f0dcb8;
+      border-radius: 4px;
+      background: #fdf6e7;
+      color: #915907;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .dpr-section-tools {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 7px;
+    }
+    .dpr-section-tools button {
+      padding: 3px 9px;
+    }
+    .dpr-token-box {
+      position: relative;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      min-height: 30px;
+      padding: 2px 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: #fff;
+      cursor: text;
+    }
+    .dpr-token-box.focus {
+      border-color: #6aa0ef;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+    }
+    .dpr-token {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      max-width: 100%;
+      padding: 1px 3px 1px 7px;
+      border: 1px solid #b8cef5;
+      border-radius: 3px;
+      background: #eaf2ff;
+      color: #1d4ed8;
+      line-height: 18px;
+      white-space: nowrap;
+    }
+    .dpr-token > span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dpr-editor .dpr-token-remove {
+      min-height: 0;
+      padding: 0 3px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 12px;
+      line-height: 1;
+      opacity: 0.55;
+    }
+    .dpr-editor .dpr-token-remove:hover {
+      background: transparent;
+      color: #be123c;
+      opacity: 1;
+    }
+    .dpr-condition-row .dpr-token-input {
+      flex: 1;
+      min-width: 56px;
+      height: 22px;
+      padding: 0 2px;
+      border: 0;
+      background: transparent;
+    }
+    .dpr-condition-row .dpr-token-input:focus {
+      border: 0;
+      box-shadow: none;
+    }
+    .dpr-token-menu {
+      display: none;
+      position: fixed;
+      z-index: 4210;
+      box-sizing: border-box;
+      min-width: 0;
+      max-width: none;
+      overflow: auto;
+      padding: 3px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    }
+    .dpr-token-menu.open {
+      display: block;
+    }
+    .dpr-token-menu-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .dpr-token-menu-item:hover {
+      background: #eaf2ff;
+      color: #1d4ed8;
+    }
+    .dpr-token-menu-tick {
+      color: #1d5fc7;
+      font-weight: 700;
+    }
+    .dpr-token-menu-empty {
+      padding: 4px 8px;
+      color: #94a3b8;
+      font-style: italic;
+    }
+    .dpr-summary {
+      min-height: 34px;
+      padding: 8px 10px;
+      border: 1px solid #d8dde3;
+      background: #f8fafc;
+      color: #334155;
+      line-height: 1.4;
+    }
+    .dpr-editor-error {
+      margin-top: 8px;
+      color: #be123c;
+      font-size: 12px;
+    }
+    .dpr-editor-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 10px 14px;
+      border-top: 1px solid #d8dde3;
+      background: #fafbfd;
+    }
+    .dpr-editor-actions button {
+      padding: 4px 12px;
+    }
+
+    /* Data-processing rules redesign. These selectors intentionally mirror the
+       approved mockup while staying scoped to the Project Settings surface. */
+    .dpr-editor {
+      --dpr-blue: #1a73e8;
+      --dpr-blue-soft: #e8f0fe;
+      --dpr-blue-border: #a8c7fa;
+      --dpr-ink: #1f2328;
+      --dpr-ink-soft: #57606a;
+      --dpr-ink-faint: #8b949e;
+      --dpr-line: #d0d7de;
+      --dpr-line-soft: #e7ebef;
+      --dpr-bg: #f6f8fa;
+      --dpr-danger: #b42318;
+      --dpr-danger-soft: #fdecea;
+      --dpr-keep: #0a6e3a;
+      --dpr-keep-soft: #e6f4ec;
+      --dpr-warn: #915907;
+      --dpr-warn-soft: #fff4e0;
+    }
+    .dpr-editor {
+      top: 52px;
+      width: min(920px, calc(100vw - 32px));
+      max-height: calc(100vh - 68px);
+      border-color: var(--dpr-line);
+      border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(31, 35, 40, 0.18), 0 2px 6px rgba(31, 35, 40, 0.1);
+      color: var(--dpr-ink);
+      font-size: 13px;
+    }
+    .dpr-editor,
+    .dpr-editor *,
+    .dpr-editor *::before,
+    .dpr-editor *::after {
+      box-sizing: border-box;
+    }
+    .dpr-editor > .dpr-editor-header {
+      flex: none;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 0;
+      padding: 10px 14px;
+      border-bottom-color: var(--dpr-line-soft);
+      background: linear-gradient(#fbfcfd, #f6f8fa);
+      color: var(--dpr-ink);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .dpr-editor > .dpr-editor-header > [id$="EditorTitle"] {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dpr-json-dialog > .dpr-editor-header {
+      justify-content: space-between;
+    }
+    .dpr-editor-header-actions {
+      display: flex;
+      flex: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .dpr-rule-settings {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr);
+      align-items: center;
+      gap: 5px 12px;
+      padding: 0 10px 15px;
+      border-bottom: 1px solid var(--dpr-line-soft);
+    }
+    .dpr-rule-name-label {
+      color: var(--dpr-ink);
+      font-weight: 600;
+    }
+    .dpr-editor-name {
+      position: relative;
+      min-width: 0;
+      margin: 0;
+    }
+    .dpr-editor-name input {
+      box-sizing: border-box;
+      width: 100%;
+      height: 30px;
+      padding: 6px 52px 6px 10px;
+      border: 1px solid var(--dpr-line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--dpr-ink);
+      font: inherit;
+      font-weight: 600;
+    }
+    .dpr-editor-name input::placeholder {
+      color: var(--dpr-ink-soft);
+      font-weight: 500;
+      opacity: 1;
+    }
+    .dpr-editor-name input:hover {
+      border-color: #aeb7c2;
+    }
+    .dpr-editor-name input:focus {
+      outline: none;
+      border-color: var(--dpr-blue);
+      box-shadow: 0 0 0 2px var(--dpr-blue-soft);
+    }
+    .dpr-rule-name-hint {
+      grid-column: 2;
+      color: var(--dpr-ink-faint);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .dpr-auto-pill {
+      position: absolute;
+      top: 50%;
+      right: 8px;
+      transform: translateY(-50%);
+      padding: 1px 7px;
+      border-radius: 8px;
+      background: var(--dpr-blue-soft);
+      color: var(--dpr-blue);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      pointer-events: none;
+    }
+    .dpr-auto-pill.hidden {
+      display: none;
+    }
+    .dpr-enabled-switch {
+      gap: 7px;
+      margin: 0;
+      color: var(--dpr-ink-soft);
+      font-size: 13px;
+    }
+    .dpr-enabled-track {
+      width: 32px;
+      height: 18px;
+      border-radius: 10px;
+      background: #c9d1d9;
+    }
+    .dpr-enabled-track::after {
+      width: 14px;
+      height: 14px;
+    }
+    .dpr-enabled-switch input:checked + .dpr-enabled-track {
+      background: var(--dpr-blue);
+    }
+    .dpr-enabled-switch input:checked + .dpr-enabled-track::after {
+      left: 16px;
+    }
+    .dpr-enabled-text {
+      min-width: 48px;
+    }
+    .dpr-editor-close {
+      width: 26px;
+      height: 26px;
+      min-height: 26px !important;
+      padding: 7px;
+      border-radius: 6px;
+      color: var(--dpr-ink-soft);
+    }
+    .dpr-editor-close:hover {
+      border-color: transparent !important;
+      background: #eceff2 !important;
+      color: var(--dpr-ink);
+    }
+    .dpr-editor-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding: 16px 18px 0;
+    }
+    .dpr-section.dpr-step {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr);
+      gap: 0 14px;
+      padding: 14px 0 16px;
+      border-bottom: 0;
+    }
+    .dpr-section.dpr-step + .dpr-section.dpr-step {
+      border-top: 1px solid var(--dpr-line-soft);
+    }
+    .dpr-step-label {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .dpr-step-chip {
+      padding: 3px 9px;
+      border-radius: 20px;
+      background: var(--dpr-blue-soft);
+      color: var(--dpr-blue);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+    }
+    .dpr-step-chip.then {
+      background: var(--dpr-keep-soft);
+      color: var(--dpr-keep);
+    }
+    .dpr-step-content {
+      min-width: 0;
+    }
+    .dpr-lead {
+      gap: 8px;
+      margin-bottom: 10px;
+      color: var(--dpr-ink-soft);
+    }
+    .dpr-lead strong {
+      color: var(--dpr-ink);
+      font-weight: 600;
+    }
+    .dpr-lead select,
+    .dpr-condition-row input,
+    .dpr-condition-row select {
+      height: 30px;
+      padding: 5px 8px;
+      border-color: var(--dpr-line);
+      border-radius: 6px;
+      color: var(--dpr-ink);
+    }
+    .dpr-lead select:focus,
+    .dpr-condition-row input:focus,
+    .dpr-condition-row select:focus {
+      border-color: var(--dpr-blue);
+      box-shadow: 0 0 0 2px var(--dpr-blue-soft);
+    }
+    .dpr-native-select {
+      display: none !important;
+    }
+    .dpr-select-control {
+      position: relative;
+      min-width: 0;
+      width: 100%;
+    }
+    .dpr-lead > .dpr-select-control {
+      flex: 0 1 328px;
+      min-width: 220px;
+    }
+    .dpr-lead > .dpr-select-control.dpr-verb-group {
+      flex: 0 0 124px;
+      min-width: 124px;
+    }
+    .dpr-editor .dpr-select-trigger {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+      height: 30px;
+      min-height: 30px;
+      padding: 5px 32px 5px 10px;
+      border: 1px solid var(--dpr-line);
+      border-radius: 4px;
+      background: #fff;
+      color: var(--dpr-ink);
+      font: inherit;
+      text-align: left;
+      transition: border-color 140ms, box-shadow 140ms, background 140ms;
+    }
+    .dpr-editor .dpr-select-trigger:hover {
+      border-color: #aeb7c2;
+      background: #fbfcfe;
+      color: var(--dpr-ink);
+    }
+    .dpr-editor .dpr-select-trigger:focus-visible,
+    .dpr-editor .dpr-select-trigger[aria-expanded="true"] {
+      outline: none;
+      border-color: var(--dpr-blue);
+      background: #fff;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+      color: var(--dpr-ink);
+    }
+    .dpr-select-trigger.placeholder .dpr-select-value {
+      color: var(--dpr-ink-faint);
+    }
+    .dpr-select-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dpr-select-caret {
+      position: absolute;
+      top: 50%;
+      right: 11px;
+      width: 0;
+      height: 0;
+      transform: translateY(-25%);
+      border-right: 4px solid transparent;
+      border-left: 4px solid transparent;
+      border-top: 5px solid #7b8794;
+      pointer-events: none;
+    }
+    .dpr-select-trigger:hover .dpr-select-caret,
+    .dpr-select-trigger:focus-visible .dpr-select-caret,
+    .dpr-select-trigger[aria-expanded="true"] .dpr-select-caret {
+      border-top-color: var(--dpr-blue);
+    }
+    .dpr-select-trigger[aria-expanded="true"] .dpr-select-caret {
+      transform: translateY(-75%) rotate(180deg);
+    }
+    .dpr-condition-field-wrap .dpr-select-trigger {
+      padding-right: 88px;
+    }
+    .dpr-select-popup {
+      display: none;
+      position: fixed;
+      z-index: 4200;
+      box-sizing: border-box;
+      overflow: hidden;
+      padding: 4px;
+      border: 1px solid #cfd6df;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+    }
+    .dpr-select-popup.open {
+      display: block;
+    }
+    .dpr-select-list {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+    .dpr-select-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      min-height: 28px;
+      margin: 0;
+      padding: 5px 8px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #263442;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .dpr-select-option:hover,
+    .dpr-select-option:focus-visible {
+      outline: none;
+      background: #eef5ff;
+      color: #163f75;
+    }
+    .dpr-select-option.selected {
+      background: #e3edfc;
+      color: #174a8b;
+      font-weight: 600;
+    }
+    .dpr-select-option-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dpr-select-option-check {
+      display: none;
+      flex: none;
+      width: 12px;
+      height: 12px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .dpr-select-option.selected .dpr-select-option-check {
+      display: block;
+    }
+    .dpr-select-option:disabled {
+      color: #9aa5b1;
+      cursor: default;
+    }
+    .dpr-select-option:disabled:hover {
+      background: transparent;
+    }
+    .dpr-select-list::-webkit-scrollbar {
+      width: 12px;
+    }
+    .dpr-select-list::-webkit-scrollbar-track {
+      background: #f1f3f5;
+    }
+    .dpr-select-list::-webkit-scrollbar-thumb {
+      border: 3px solid #f1f3f5;
+      border-radius: 5px;
+      background: rgba(120, 120, 120, 0.28);
+      background-clip: content-box;
+    }
+    .dpr-section-hint {
+      margin: -4px 0 8px;
+      color: var(--dpr-ink-faint);
+      font-size: 11px;
+    }
+    .dpr-condition-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .dpr-condition-row {
+      display: grid;
+      grid-template-columns: minmax(160px, 0.9fr) minmax(92px, 0.45fr) minmax(180px, 1.6fr) 28px;
+      gap: 8px;
+      align-items: start;
+    }
+    .dpr-condition-row > * {
+      min-width: 0;
+    }
+    .dpr-condition-field-wrap {
+      position: relative;
+      min-width: 0;
+    }
+    .dpr-condition-field-wrap select {
+      width: 100%;
+      padding-right: 64px;
+    }
+    .dpr-condition-level {
+      position: absolute;
+      top: 50%;
+      right: 31px;
+      transform: translateY(-50%);
+      padding: 1px 6px;
+      border-radius: 9px;
+      background: var(--dpr-line-soft);
+      color: var(--dpr-ink-soft);
+      font-size: 10px;
+      font-weight: 600;
+      pointer-events: none;
+    }
+    .dpr-condition-level.raw {
+      background: var(--dpr-warn-soft);
+      color: var(--dpr-warn);
+    }
+    .dpr-condition-novalue {
+      align-self: center;
+      color: var(--dpr-ink-soft);
+      font-size: 13px;
+      text-align: left;
+    }
+    .dpr-condition-novalue {
+      color: var(--dpr-ink-faint);
+      font-style: italic;
+    }
+    .dpr-condition-and {
+      margin: -2px 0;
+      padding-left: 2px;
+      color: var(--dpr-ink-faint);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+    }
+    .dpr-condition-remove {
+      width: 26px;
+      height: 28px;
+      min-height: 28px !important;
+      padding: 8px;
+      border-color: transparent !important;
+      border-radius: 6px !important;
+      background: transparent !important;
+      color: var(--dpr-ink-faint);
+    }
+    .dpr-condition-remove:hover {
+      background: var(--dpr-danger-soft) !important;
+      color: var(--dpr-danger) !important;
+    }
+    .dpr-token-box {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 30px;
+      padding: 3px 6px;
+      border-color: var(--dpr-line);
+      border-radius: 6px;
+    }
+    .dpr-token-box.focus {
+      border-color: var(--dpr-blue);
+      box-shadow: 0 0 0 2px var(--dpr-blue-soft);
+    }
+    .dpr-token {
+      gap: 4px;
+      padding: 1px 4px 1px 8px;
+      border-color: var(--dpr-blue-border);
+      border-radius: 5px;
+      background: var(--dpr-blue-soft);
+      color: #174ea6;
+      font-weight: 500;
+    }
+    .dpr-token.warn {
+      border-color: #e3c07f;
+      background: var(--dpr-warn-soft);
+      color: var(--dpr-warn);
+    }
+    .dpr-token.bad {
+      border-color: #f0b5ad;
+      background: var(--dpr-danger-soft);
+      color: var(--dpr-danger);
+      text-decoration: line-through;
+    }
+    .dpr-token-menu {
+      padding: 4px;
+      border-color: #cfd7e3;
+      border-radius: 4px;
+      box-shadow: 0 8px 20px rgba(31, 35, 40, 0.14);
+    }
+    .dpr-token-menu-item {
+      padding: 5px 9px;
+      border-radius: 5px;
+    }
+    .dpr-token-menu-item:hover {
+      background: #eaf2ff;
+      color: #1f2328;
+    }
+    .dpr-section-tools {
+      justify-content: flex-start;
+      margin-top: 9px;
+    }
+    .dpr-editor .dpr-add-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 0;
+      padding: 3px 4px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--dpr-blue);
+      font-weight: 500;
+    }
+    .dpr-editor .dpr-add-link:hover {
+      border-color: transparent;
+      background: var(--dpr-blue-soft);
+      color: var(--dpr-blue);
+    }
+    .dpr-add-link svg {
+      width: 10px;
+      height: 10px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+    }
+    .dpr-keep-hint {
+      margin-top: 8px;
+      padding: 4px 0;
+      border: 0;
+      background: transparent;
+      color: var(--dpr-ink-faint);
+      font-size: 12px;
+      font-style: italic;
+    }
+    .dpr-vocab-warn {
+      margin-top: 9px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: var(--dpr-warn-soft);
+      color: var(--dpr-warn);
+      line-height: 1.5;
+    }
+    .dpr-vocab-warn.bad {
+      background: var(--dpr-danger-soft);
+      color: var(--dpr-danger);
+    }
+    .dpr-vocab-warn[hidden] {
+      display: none;
+    }
+    .dpr-summary-bar {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      flex: none;
+      margin: 0;
+      padding: 12px 18px 13px;
+      border-top: 1px solid var(--dpr-line-soft);
+      background: #fbfcfd;
+      overflow-wrap: anywhere;
+    }
+    .dpr-summary-icon {
+      flex: none;
+      width: 15px;
+      height: 15px;
+      margin-top: 1px;
+      color: var(--dpr-blue);
+    }
+    .dpr-summary-icon svg {
+      width: 100%;
+      height: 100%;
+      stroke: currentColor;
+      stroke-width: 1.4;
+      stroke-linecap: round;
+    }
+    .dpr-summary {
+      min-width: 0;
+      min-height: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--dpr-ink-soft);
+      line-height: 1.55;
+    }
+    .dpr-summary b {
+      color: var(--dpr-ink);
+      font-weight: 600;
+    }
+    .dpr-summary .dpr-summary-verb.exclude {
+      color: var(--dpr-danger);
+      font-weight: 700;
+    }
+    .dpr-summary .dpr-summary-verb.keep {
+      color: var(--dpr-keep);
+      font-weight: 700;
+    }
+    .dpr-editor-error {
+      margin: 8px 0 10px;
+      padding: 8px 10px;
+      border: 1px solid #fecdd3;
+      border-radius: 4px;
+      background: #fff1f2;
+      color: var(--dpr-danger);
+      line-height: 1.45;
+      white-space: pre-line;
+    }
+    .dpr-editor-actions {
+      flex: none;
+      flex-wrap: wrap;
+      padding: 11px 18px;
+      border-top-color: var(--dpr-line-soft);
+      background: #fff;
+    }
+    .dpr-editor-actions button {
+      min-height: 30px;
+      padding: 6px 16px;
+      border-color: var(--dpr-line);
+      border-radius: 6px;
+      background: #fff;
+    }
+    .dpr-editor-actions button:hover {
+      border-color: var(--dpr-line);
+      background: var(--dpr-bg);
+      color: var(--dpr-ink);
+    }
+    .dpr-editor-actions button.primary {
+      border-color: var(--dpr-blue);
+      background: var(--dpr-blue);
+      color: #fff;
+      font-weight: 600;
+    }
+    .dpr-editor-actions button.primary:hover {
+      border-color: #1663c7;
+      background: #1663c7;
+      color: #fff;
+    }
+
+    @media (max-width: 760px) {
+      .dpr-editor {
+        width: calc(100vw - 16px);
+        max-height: calc(100vh - 16px);
+      }
+      .dpr-rule-settings,
+      .dpr-section.dpr-step {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+      }
+      .dpr-rule-name-hint {
+        grid-column: 1;
+      }
+      .dpr-step-label {
+        flex-direction: row;
+        align-items: center;
+      }
+      .dpr-condition-row {
+        grid-template-columns: minmax(150px, 1fr) minmax(92px, 0.65fr) 28px;
+      }
+      .dpr-condition-row > :nth-child(3) {
+        grid-column: 1 / 3;
+      }
+      .dpr-condition-row > :nth-child(4) {
+        grid-column: 3;
+        grid-row: 1;
+      }
+    }
+    @media (max-width: 560px) {
+      .dpr-editor > .dpr-editor-header,
+      .dpr-editor-body,
+      .dpr-summary-bar,
+      .dpr-editor-actions {
+        padding-left: 12px;
+        padding-right: 12px;
+      }
+      .dpr-condition-row {
+        grid-template-columns: minmax(0, 1fr) 28px;
+      }
+      .dpr-condition-row > :nth-child(1) {
+        grid-column: 1;
+        grid-row: 1;
+      }
+      .dpr-condition-row > :nth-child(2) {
+        grid-column: 1;
+        grid-row: 2;
+      }
+      .dpr-condition-row > :nth-child(3) {
+        grid-column: 1 / 3;
+        grid-row: 3;
+      }
+      .dpr-condition-row > :nth-child(4) {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .dpr-condition-row select,
+      .dpr-condition-row input {
+        width: 100%;
+      }
+      .dpr-lead > .dpr-select-control {
+        flex-basis: 100%;
+        min-width: 0;
+      }
+    }
+    @media (max-height: 560px) {
+      .dpr-editor {
+        max-height: calc(100vh - 16px);
+      }
+    }
+    .dpr-json-overlay {
+      display: none;
+      position: fixed;
+      z-index: 4100;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.24);
+    }
+    .dpr-json-overlay.show {
+      display: flex;
+    }
+    .dpr-json-dialog {
+      width: min(840px, calc(100vw - 56px));
+      max-height: calc(100vh - 72px);
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    }
+    .dpr-json-body {
+      max-height: calc(100vh - 142px);
+      overflow: auto;
+      margin: 0;
+      padding: 12px;
+      background: #f8fafc;
+      color: #172033;
+      font: 12px/1.45 Consolas, "Courier New", monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
   </style>
 </head>
@@ -2113,6 +3502,19 @@
                 </svg>
               </div>
               <div class="ribbon-label">Dataset<br>Types</div>
+            </div>
+            <div class="ribbon-item" data-ribbon="data-processing">
+              <div class="ribbon-icon">
+                <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 7h24"></path>
+                  <path d="M7 16h18"></path>
+                  <path d="M11 25h10"></path>
+                  <circle cx="10" cy="7" r="2.5"></circle>
+                  <circle cx="21" cy="16" r="2.5"></circle>
+                  <circle cx="15" cy="25" r="2.5"></circle>
+                </svg>
+              </div>
+              <div class="ribbon-label">Data<br>Processing</div>
             </div>
             <div class="ribbon-item" data-ribbon="audit-log">
               <div class="ribbon-icon">
@@ -2259,18 +3661,16 @@
                     <colgroup>
                       <col style="width: 300px;">
                       <col style="width: 420px;">
-                      <col style="width: 420px;">
                     </colgroup>
                     <thead>
                       <tr>
                         <th>Name</th>
                         <th>Formula</th>
-                        <th>EEX Formula</th>
                       </tr>
                     </thead>
                     <tbody id="reservingClassTypesBody">
                       <tr>
-                        <td colspan="3" class="dataset-types-empty">Select a project to load reserving class types.</td>
+                        <td colspan="2" class="dataset-types-empty">Select a project to load reserving class types.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -2305,6 +3705,43 @@
                     <tbody id="datasetTypesBody">
                       <tr>
                         <td colspan="5" class="dataset-types-empty">Select a project to load dataset types.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div class="ribbon-panel" id="ribbonDataProcessing">
+              <div class="dataset-types-panel">
+                <div class="summary-header">Data processing rules</div>
+                <div class="dataset-types-toolbar dpr-toolbar">
+                  <div class="dataset-types-help">Filter source rows for a dataset type before totals are calculated. Right-click a rule to edit, duplicate, enable/disable, or delete.</div>
+                  <button id="dataProcessingRulesJsonBtn" type="button">View JSON</button>
+                  <button id="validateDataProcessingRulesBtn" type="button">Validate all</button>
+                  <button id="addDataProcessingRuleBtn" class="primary" type="button">Add rule</button>
+                </div>
+                <div class="dataset-types-status" id="dataProcessingRulesStatus"></div>
+                <div class="dataset-types-grid">
+                  <table class="dataset-types-table dpr-rules-table" id="dataProcessingRulesTable">
+                    <colgroup>
+                      <col style="width: 72px;">
+                      <col style="width: 220px;">
+                      <col style="width: 190px;">
+                      <col style="width: 300px;">
+                      <col style="width: 420px;">
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>Enabled</th>
+                        <th>Name</th>
+                        <th>Dataset type</th>
+                        <th>Applies when</th>
+                        <th>Effect</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dataProcessingRulesBody">
+                      <tr>
+                        <td colspan="5" class="dataset-types-empty">Select a project to load data processing rules.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -2470,21 +3907,101 @@
         </div>
         <div class="rct-formula-components-box" id="rctFormulaComponentsBox" role="listbox" tabindex="0" aria-label="Formula components for selected level"></div>
       </div>
-      <label for="rctEditEexFormula">EEX Formula</label>
-      <div class="rct-formula-frame rct-eex-formula-frame" id="rctEexFormulaFrame">
-        <div class="rct-formula-control" id="rctEexFormulaControl">
-          <textarea id="rctEditEexFormula" spellcheck="false"></textarea>
-          <div class="rct-formula-review" id="rctEexFormulaReview" role="textbox" tabindex="0" aria-label="EEX Formula"></div>
-        </div>
-        <div class="rct-formula-components-label-row" id="rctEexFormulaComponentsLabel">
-          <button class="rct-formula-components-toggle collapsed" id="rctEexFormulaComponentsToggle" type="button" aria-label="Show all components" aria-expanded="false">Show all components</button>
-        </div>
-        <div class="rct-formula-components-box collapsed" id="rctEexFormulaComponentsBox" role="listbox" tabindex="0" aria-label="EEX formula components for selected level"></div>
-      </div>
     </div>
     <div class="rct-row-editor-actions">
       <button class="dialog-btn" id="rctEditorCancelBtn" type="button">Cancel</button>
       <button class="dialog-btn primary" id="rctEditorSaveBtn" type="button">Apply</button>
+    </div>
+  </div>
+
+  <!-- Data Processing Rules Row Context Menu -->
+  <div class="context-menu" id="dataProcessingRulesRowContextMenu">
+    <div class="context-menu-item" data-action="edit">Edit</div>
+    <div class="context-menu-item" data-action="duplicate">Duplicate</div>
+    <div class="context-menu-item" data-action="toggle">Disable</div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item danger" data-action="delete">Delete</div>
+  </div>
+
+  <div class="dpr-editor" id="dataProcessingRuleEditor" role="dialog" aria-modal="false" aria-labelledby="dataProcessingRuleEditorTitle" aria-hidden="true">
+    <div class="dpr-editor-header">
+      <div id="dataProcessingRuleEditorTitle">Add rule</div>
+      <div class="dpr-editor-header-actions">
+        <label class="dpr-enabled-switch" for="dprEditEnabled">
+          <input id="dprEditEnabled" type="checkbox">
+          <span class="dpr-enabled-track" aria-hidden="true"></span>
+          <span class="dpr-enabled-text" id="dprEditEnabledLabel">Enabled</span>
+        </label>
+        <button class="dpr-editor-close" id="dataProcessingRuleEditorClose" type="button" aria-label="Close">
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <line x1="2" y1="2" x2="8" y2="8"></line>
+            <line x1="8" y1="2" x2="2" y2="8"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="dpr-editor-body">
+      <section class="dpr-rule-settings" aria-label="Rule settings">
+        <label class="dpr-rule-name-label" for="dprEditName">Name</label>
+        <div class="dpr-editor-name">
+          <input id="dprEditName" type="text" spellcheck="false" aria-describedby="dprRuleNameHint" placeholder="Leave blank to generate a name">
+          <span class="dpr-auto-pill hidden" id="dprAutoNamePill">AUTO</span>
+        </div>
+        <div class="dpr-rule-name-hint" id="dprRuleNameHint">Leave blank to use the generated rule description.</div>
+      </section>
+      <section class="dpr-section dpr-step when">
+        <div class="dpr-step-label">
+          <span class="dpr-step-chip">When</span>
+        </div>
+        <div class="dpr-step-content">
+          <div class="dpr-lead">
+            Calculating
+            <select id="dprEditSourceMeasure" aria-label="Dataset type"></select>
+            for a requested segment that matches <strong>all</strong> of:
+          </div>
+          <div class="dpr-condition-list" id="dprRequestConditions"></div>
+          <div class="dpr-section-tools">
+            <button class="dpr-add-link" id="dprAddRequestConditionBtn" type="button">
+              <svg viewBox="0 0 10 10" aria-hidden="true"><line x1="5" y1="0.5" x2="5" y2="9.5"></line><line x1="0.5" y1="5" x2="9.5" y2="5"></line></svg>
+              Add scope condition
+            </button>
+          </div>
+        </div>
+      </section>
+      <section class="dpr-section dpr-step then">
+        <div class="dpr-step-label">
+          <span class="dpr-step-chip then">Then</span>
+        </div>
+        <div class="dpr-step-content">
+          <div class="dpr-lead">
+            <select id="dprActionVerbGroup" aria-label="Action">
+              <option value="exclude_members">Exclude</option>
+              <option value="keep_members" selected>Keep only</option>
+            </select>
+            source rows where <strong>all</strong> of the following hold:
+          </div>
+          <div class="dpr-condition-list" id="dprThenConditions"></div>
+          <div class="dpr-keep-hint" id="dprKeepHint" hidden>Rows that do not match the raw-field filter(s) are left untouched — only the filtered rows are reduced to the listed members.</div>
+          <div class="dpr-vocab-warn" id="dprVocabWarning" hidden></div>
+          <div class="dpr-section-tools">
+            <button class="dpr-add-link" id="dprAddThenConditionBtn" type="button">
+              <svg viewBox="0 0 10 10" aria-hidden="true"><line x1="5" y1="0.5" x2="5" y2="9.5"></line><line x1="0.5" y1="5" x2="9.5" y2="5"></line></svg>
+              Add condition
+            </button>
+          </div>
+        </div>
+      </section>
+      <div class="dpr-editor-error" id="dprEditError" role="alert" aria-live="polite" hidden></div>
+    </div>
+    <div class="dpr-summary-bar">
+        <span class="dpr-summary-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.6"></circle><line x1="8" y1="7" x2="8" y2="11.4"></line><circle cx="8" cy="4.8" r="0.95" fill="currentColor" stroke="none"></circle></svg>
+        </span>
+        <div class="dpr-summary" id="dprEditSummary"></div>
+    </div>
+    <div class="dpr-editor-actions">
+      <button id="dprEditorCancelBtn" type="button">Cancel</button>
+      <button id="dprEditorSaveBtn" class="primary" type="button">Apply and save</button>
     </div>
   </div>
 
@@ -2522,6 +4039,21 @@
     </div>
   </div>
 
-<script type="module" src="/ui/project_settings/project_settings.js?v=20260521a"></script>
+  <div class="dpr-json-overlay" id="dataProcessingRulesJsonOverlay" aria-hidden="true">
+    <div class="dpr-json-dialog" role="dialog" aria-modal="true" aria-labelledby="dataProcessingRulesJsonTitle">
+      <div class="dpr-editor-header">
+        <div id="dataProcessingRulesJsonTitle">Data processing rules JSON</div>
+        <button class="dpr-editor-close" id="dataProcessingRulesJsonClose" type="button" aria-label="Close">
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <line x1="2" y1="2" x2="8" y2="8"></line>
+            <line x1="8" y1="2" x2="2" y2="8"></line>
+          </svg>
+        </button>
+      </div>
+      <pre class="dpr-json-body" id="dataProcessingRulesJsonBody"></pre>
+    </div>
+  </div>
+
+<script type="module" src="/ui/project_settings/project_settings.js?v=20260717dprphase2"></script>
 </body>
 </html>

@@ -116,6 +116,12 @@ def _read_project_instance_defaults() -> Dict[str, Any]:
     return deepcopy(project_instance) if isinstance(project_instance, dict) else {}
 
 
+def _read_project_settings_defaults() -> Dict[str, Any]:
+    defaults = _read_json(config.get_project_settings_default_preferences_path())
+    project_settings = defaults.get("projectSettings")
+    return deepcopy(project_settings) if isinstance(project_settings, dict) else {}
+
+
 def _with_project_instance_defaults(data: Dict[str, Any]) -> Dict[str, Any]:
     project_instance = data.get("projectInstance")
     if isinstance(project_instance, dict) and project_instance:
@@ -130,9 +136,25 @@ def _with_project_instance_defaults(data: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _with_project_settings_defaults(data: Dict[str, Any]) -> Dict[str, Any]:
+    project_settings = data.get("projectSettings")
+    if isinstance(project_settings, dict) and project_settings:
+        return data
+
+    defaults = _read_project_settings_defaults()
+    if not defaults:
+        return data
+
+    out = dict(data)
+    out["projectSettings"] = defaults
+    return out
+
+
 def get_preferences(project_name: str) -> Dict[str, Any]:
     path = _prefs_path(project_name)
-    data = _with_project_instance_defaults(_normalize_project_user_preferences(_read_json(path)))
+    data = _normalize_project_user_preferences(_read_json(path))
+    data = _with_project_instance_defaults(data)
+    data = _with_project_settings_defaults(data)
     return {
         "ok": True,
         "project_name": _clean_text(project_name),
