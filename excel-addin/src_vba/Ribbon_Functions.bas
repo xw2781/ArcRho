@@ -1,3 +1,79 @@
+Private mAlertCloseTime As Date
+
+Public Sub CopyActiveRangeAddress()
+    Dim selectedRange As Range
+    Dim selectedWorkbook As Workbook
+    Dim clipboard As MSForms.DataObject
+    Dim externalAddress As String
+
+    On Error GoTo ErrorHandler
+
+    If TypeName(Application.Selection) <> "Range" Then
+        ufAlert.ShowMessage "Select a worksheet range before copying its address.", "ArcRho"
+        Exit Sub
+    End If
+
+    Set selectedRange = Application.Selection
+    Set selectedWorkbook = selectedRange.Worksheet.Parent
+
+    If Len(selectedWorkbook.Path) = 0 Then
+        ufAlert.ShowMessage "Save the workbook before copying a full range address.", "ArcRho"
+        Exit Sub
+    End If
+
+    externalAddress = "='" & Replace$( _
+        selectedWorkbook.Path & Application.PathSeparator & _
+        "[" & selectedWorkbook.Name & "]" & selectedRange.Worksheet.Name, _
+        "'", "''") & "'!" & selectedRange.Address( _
+            RowAbsolute:=True, _
+            ColumnAbsolute:=True, _
+            ReferenceStyle:=xlA1)
+
+    Set clipboard = New MSForms.DataObject
+    clipboard.SetText externalAddress
+    clipboard.PutInClipboard
+
+    ufAlert.ShowTimedMessage _
+        "Active range address copied to the clipboard.", _
+        "ArcRho", _
+        2
+    Exit Sub
+
+ErrorHandler:
+    ufAlert.ShowMessage "The active range address could not be copied: " & Err.Description, "ArcRho"
+End Sub
+
+Public Sub ScheduleTimedAlertClose(ByVal delaySeconds As Long)
+    CancelTimedAlertClose
+
+    mAlertCloseTime = Now + TimeSerial(0, 0, delaySeconds)
+    Application.OnTime _
+        EarliestTime:=mAlertCloseTime, _
+        Procedure:=TimedAlertCloseProcedureName
+End Sub
+
+Public Sub CancelTimedAlertClose()
+    If mAlertCloseTime = 0 Then Exit Sub
+
+    On Error Resume Next
+    Application.OnTime _
+        EarliestTime:=mAlertCloseTime, _
+        Procedure:=TimedAlertCloseProcedureName, _
+        Schedule:=False
+    On Error GoTo 0
+
+    mAlertCloseTime = 0
+End Sub
+
+Public Sub CloseTimedAlert()
+    mAlertCloseTime = 0
+    Unload ufAlert
+End Sub
+
+Private Function TimedAlertCloseProcedureName() As String
+    TimedAlertCloseProcedureName = "'" & Replace$(ThisWorkbook.Name, "'", "''") & "'!CloseTimedAlert"
+End Function
+
 Sub CalculateWorkbook()
     If disableProgressBar Then
         CalculateWorkbookNoUI

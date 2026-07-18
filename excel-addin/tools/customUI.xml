@@ -13,6 +13,7 @@
           				<button id="G22" label="Clear Formulas"  imageMso="InkEraseMode"   size="large" onAction="uiClearResQFormulae2"/>
 						<button id="G23" label="Load Reserving Classes"  imageMso="OrganizationChartLayoutRightHanging" size="large"   onAction="uiLoadReservingClasses2"/>
 						<button id="G24" label="Select Datasets"  imageMso="ViewsDesignView"  size="large" onAction="uiSelectDatasets"/>
+						<button id="G25" label="Copy Range Address" imageMso="LinkedNotesTargetUrlCopy" size="large" onAction="uiCopyActiveRangeAddress"/>
 					</group>
 
 					<group id="Group3" label="Add-in Settings">

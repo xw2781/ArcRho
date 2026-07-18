@@ -43,6 +43,11 @@ Sub uiSelectDatasets(control As IRibbonControl)
     ufSelectDataset.Show vbModeless
 End Sub
 
+' Copy Active Range Address
+Sub uiCopyActiveRangeAddress(control As IRibbonControl)
+    CopyActiveRangeAddress
+End Sub
+
 '+----------+
 '|  Group 3 |
 '+----------+
