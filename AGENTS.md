@@ -17,7 +17,15 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 - **PS (Project Settings):** the frontend workspace for configuring project settings under `frontend/ui/project_settings`.
 
 ## Mandatory Read Before Editing
-Before changing files under `frontend/`, read `frontend/AGENTS.md`.
+Before changing files under `frontend/`, read `frontend/FRONTEND_AGENT_GUIDELINES.md`.
+
+## Single Source of Truth (MUST)
+For every code, configuration, schema, data-contract, automation, documentation, and test change, identify the authoritative owner of each default, constant, enum, validation rule, field definition, path rule, mapping, template, and business rule before editing.
+- Define each value or rule in one canonical location. Consumers must import, read, derive, generate from, or delegate to that source instead of copying the implementation or literal value.
+- Do not create synchronized-by-convention copies across files, components, languages, runtime layers, configuration, tests, or documentation. Explicit runtime overrides and values genuinely computed from runtime state are allowed, but they must be clearly modeled as overrides or derived values rather than competing defaults.
+- When direct reuse across languages or build boundaries is impractical, keep one canonical machine-readable source and generate the required adapters or artifacts. Document and validate the generation path so drift is detected automatically.
+- Tests may assert canonical behavior and fixed contract expectations, but test fixtures and expected values must not become a second runtime source of truth. Generated documentation and inventories must be rebuilt from their canonical sources rather than edited independently.
+- When touching an area that already duplicates a source of truth, consolidate the duplication within the safe scope of the task and remove obsolete copies. Ask before cleanup that would broaden behavior or compatibility risk.
 
 ## Excel Add-in Build and Release
 After making changes under `excel-addin/`, automatically run the non-interactive build and release scripts unless the user explicitly asks not to build or release:

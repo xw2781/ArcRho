@@ -107,7 +107,7 @@ Existing triangle bridge to mirror:
 
 ## 4. Mandatory Reading Before Implementation
 
-Per `frontend/AGENTS.md`, before editing the RS feature files or app_server routes/services,
+Per `frontend/FRONTEND_AGENT_GUIDELINES.md`, before editing the RS feature files or app_server routes/services,
 read and comply with:
 
 1. `frontend/docs/contracts/frontend_behavior_contract.md`
@@ -307,7 +307,7 @@ them (length is `3`, not `12`). No change required beyond 6.2, but verify labels
 
 ---
 
-## 8. Documentation & Release Obligations (frontend/AGENTS.md)
+## 8. Documentation & Release Obligations (frontend/FRONTEND_AGENT_GUIDELINES.md)
 
 1. Update the RS module doc under `frontend/docs/ui/result_selection.md` (behavior: engine
    sources accepted at any length; on-demand materialization; sidecars untouched).

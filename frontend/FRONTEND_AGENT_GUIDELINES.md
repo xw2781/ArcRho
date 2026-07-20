@@ -1,4 +1,4 @@
-# AGENTS.md
+# Frontend Agent Guidelines
 
 This file defines mandatory guardrails for any code agent working in this repository.
   
@@ -63,12 +63,13 @@ Frontend-specific additions:
 ## Decision Priority
 When code and docs conflict:
 1. Explicit user request in current task.
-2. This `AGENTS.md`.
+2. This `FRONTEND_AGENT_GUIDELINES.md`.
 3. Contract documents under `docs/contracts/` and `docs/architecture/`.
 4. Generated inventories under `docs/generated/`.
 
 ## CSS Editing Safety
 For CSS edits, patch with selector-level context and inspect the diff before reporting success.
+Apply the root `AGENTS.md` single-source-of-truth rule to styling: CSS rules and CSS custom properties own static visual defaults. Do not duplicate those defaults in JavaScript or write them as inline styles during initialization. JavaScript may set a visual CSS property only when the value is dynamically computed from runtime state or when a caller explicitly supplies an override; omitted override options must leave the stylesheet value untouched.
 For sticky table headers inside scroll wrappers, keep header seam/bleed-through fixes out of layout flow. Do not add spacer or mask pseudo-elements on the scroll wrapper that create height, margin, or padding. Prefer `border-collapse: separate; border-spacing: 0;` for sticky-header tables and put any paint-only cover on the sticky `th` cells themselves, such as an absolutely positioned `th::before`, so body content cannot show through without creating a visible gap above the header.
 
 ## Change Safety
