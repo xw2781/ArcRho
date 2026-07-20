@@ -1,0 +1,118 @@
+/* Field Mapping */
+
+.field-mapping-table td input[type="number"],
+.field-mapping-table td input[type="text"][data-role="dataset-type"],
+.field-mapping-table td input[type="text"][data-role="significance"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  padding: 2px 4px;
+  font-size: 12px;
+  background: transparent;
+  outline: none;
+}
+.field-mapping-table td .fm-inline-dropdown-wrap {
+  position: relative;
+  width: 100%;
+}
+.field-mapping-table td input[type="text"][data-role="dataset-type"],
+.field-mapping-table td input[type="text"][data-role="significance"] {
+  padding-right: 22px;
+}
+.field-mapping-table td input[type="number"]:disabled,
+.field-mapping-table td input[type="text"][data-role="dataset-type"]:disabled {
+  background: #f3f3f3;
+  color: #999;
+}
+.field-mapping-table td .fm-inline-dropdown-arrow {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #6f7f92;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.field-mapping-table td .fm-inline-dropdown-arrow:hover {
+  background: #eef3fa;
+  color: #3f566f;
+}
+.field-mapping-table td .fm-inline-dropdown-arrow:disabled {
+  color: #b7c2cf;
+  cursor: default;
+  background: transparent;
+}
+.field-mapping-table td .fm-inline-dropdown-arrow svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+.fm-dataset-type-dropdown {
+  position: fixed;
+  z-index: 3300;
+  min-width: 220px;
+  max-width: 460px;
+  max-height: 280px;
+  border: 1px solid #cfd8e3;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
+  padding: 4px;
+  display: none;
+}
+.fm-dataset-type-dropdown.open {
+  display: block;
+}
+.fm-dataset-type-dropdown-list {
+  max-height: 270px;
+  overflow: auto;
+  display: block;
+  line-height: normal;
+}
+.fm-dataset-type-option {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #233548;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  padding: 6px 8px;
+  margin: 0 0 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fm-dataset-type-option:last-child {
+  margin-bottom: 0;
+}
+.fm-dataset-type-option:hover {
+  background: #eaf2ff;
+  color: #133255;
+}
+.fm-dataset-type-option.active {
+  background: #dbeafe;
+  color: #0f3b82;
+  font-weight: 600;
+}
+.fm-dataset-type-empty {
+  color: #7a8696;
+  font-size: 12px;
+  padding: 8px;
+}

@@ -11,6 +11,27 @@ const projectSettingsHtml = await readFile(
   new URL("../ui/project_settings/project_settings.html", import.meta.url),
   "utf8",
 );
+const projectSettingsStylesheetNames = [
+  "project_settings.css",
+  "project_settings_summary.css",
+  "project_settings_field_mapping.css",
+  "project_settings_dataset_types.css",
+  "project_settings_reserving_class_types.css",
+  "project_settings_data_processing_rules.css",
+];
+const projectSettingsStylesheets = new Map(await Promise.all(
+  projectSettingsStylesheetNames.map(async (name) => [
+    name,
+    await readFile(new URL(`../ui/project_settings/${name}`, import.meta.url), "utf8"),
+  ]),
+));
+const projectSettingsCoreCss = projectSettingsStylesheets.get("project_settings.css");
+const dataProcessingRulesCss = projectSettingsStylesheets.get(
+  "project_settings_data_processing_rules.css",
+);
+const projectSettingsCss = projectSettingsStylesheetNames
+  .map((name) => projectSettingsStylesheets.get(name))
+  .join("\n");
 const projectSettingsJs = await readFile(
   new URL("../ui/project_settings/project_settings.js", import.meta.url),
   "utf8",
@@ -24,6 +45,40 @@ const projectSettingsDefaultPreferences = JSON.parse(await readFile(
   "utf8",
 ));
 const rulesUi = await import(`${moduleUrl.href}?test=${Date.now()}`);
+
+test("Project Settings loads its external stylesheets in cascade order", () => {
+  const projectStylesheetLinks = [...projectSettingsHtml.matchAll(
+    /<link rel="stylesheet" href="(\/ui\/project_settings\/[^"?]+\.css)\?v=([^"]+)"\/>/g,
+  )];
+  assert.deepEqual(
+    projectStylesheetLinks.map((match) => match[1]),
+    projectSettingsStylesheetNames.map((name) => `/ui/project_settings/${name}`),
+  );
+  assert.equal(new Set(projectStylesheetLinks.map((match) => match[2])).size, 1);
+  assert.ok(
+    projectSettingsHtml.indexOf("/ui/shared/styles/scrollbars.css")
+      < projectSettingsHtml.indexOf(projectStylesheetLinks[0][0]),
+  );
+  assert.doesNotMatch(projectSettingsHtml, /<style(?:\s|>)/);
+});
+
+test("Project Settings stylesheet split keeps feature rules with their owners", () => {
+  const ownershipMarkers = new Map([
+    ["project_settings.css", /\/\* Shared data-grid frames and tables \*\//],
+    ["project_settings_summary.css", /\.summary-table-path\s*\{/],
+    ["project_settings_field_mapping.css", /\.fm-dataset-type-dropdown\s*\{/],
+    ["project_settings_dataset_types.css", /#datasetTypesTable \.dt-name-search-btn\s*\{/],
+    ["project_settings_reserving_class_types.css", /\.rct-formula-frame\s*\{/],
+    ["project_settings_data_processing_rules.css", /\.dpr-editor\s*\{/],
+  ]);
+  for (const [name, marker] of ownershipMarkers) {
+    assert.match(projectSettingsStylesheets.get(name), marker, name);
+  }
+  assert.doesNotMatch(
+    projectSettingsCss,
+    /--muted|--folder-bg|--table-border-width|detail-actions|detail-label|detail-value|dpr-section-title|dpr-section-hint/,
+  );
+});
 
 test("normalizes list operators without losing raw-row scope", () => {
   const document = rulesUi.normalizeDataProcessingRulesDocument({
@@ -608,8 +663,8 @@ test("rules render in the standard resizable Project Settings table", () => {
 
 test("rules toolbar actions use the compact ArcRho button type scale", () => {
   assert.match(
-    projectSettingsHtml,
-    /\.dpr-toolbar button\s*\{[^}]*font-size:\s*13px;[^}]*line-height:\s*1\.2;/s,
+    dataProcessingRulesCss,
+    /\.dpr-toolbar button\s*\{[^}]*font-size:\s*12px;[^}]*line-height:\s*1\.2;/s,
   );
 });
 
@@ -657,13 +712,12 @@ test("data processing editor is a non-modal floating page window", () => {
   assert.match(editorSource, /class="dpr-enabled-switch"/);
   assert.doesNotMatch(headerSource, /id="dprEditName"/);
   assert.match(bodySource, /class="dpr-rule-settings"/);
-  assert.match(bodySource, /for="dprEditName">Rule name<\/label>/);
+  assert.match(bodySource, /for="dprEditName">Name<\/label>/);
   assert.match(bodySource, /id="dprEditName"[^>]*aria-describedby="dprRuleNameHint"/);
-  assert.match(projectSettingsHtml, /\.dpr-editor \*,\s*\.dpr-editor \*::before,\s*\.dpr-editor \*::after\s*\{\s*box-sizing:\s*border-box;/s);
-  assert.match(projectSettingsHtml, /\.dpr-editor-body\s*\{[^}]*min-height:\s*0;[^}]*overflow-x:\s*hidden;/s);
-  assert.match(projectSettingsHtml, /@media \(max-width: 760px\)[\s\S]*\.dpr-section\.dpr-step\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(dataProcessingRulesCss, /\.dpr-editor \*,\s*\.dpr-editor \*::before,\s*\.dpr-editor \*::after\s*\{\s*box-sizing:\s*border-box;/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-editor-body\s*\{[^}]*min-height:\s*0;[^}]*overflow-x:\s*hidden;/s);
+  assert.match(dataProcessingRulesCss, /@media \(max-width: 760px\)[\s\S]*\.dpr-section\.dpr-step\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   assert.match(moduleSource, /window\.addEventListener\("resize", \(\) => \{/);
-  assert.match(projectSettingsHtml, /\.dpr-section-title\s*\{[^}]*text-transform:\s*none;/s);
 });
 
 test("editor selects use the styled ArcRho listbox instead of native opened menus", () => {
@@ -679,9 +733,9 @@ test("editor selects use the styled ArcRho listbox instead of native opened menu
   assert.doesNotMatch(projectSettingsHtml, /button[^>]+data-verb=/);
   assert.match(moduleSource, /const operatorOptions = request \? REQUEST_UI_OPERATORS : UI_OPERATORS/);
   assert.doesNotMatch(moduleSource, /condition\.operator = "is";/);
-  assert.match(projectSettingsHtml, /\.dpr-select-popup\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*4200;/s);
-  assert.match(projectSettingsHtml, /\.dpr-select-option\.selected\s*\{[^}]*background:\s*#e3edfc;/s);
-  assert.match(projectSettingsHtml, /\.dpr-select-caret\s*\{[^}]*border-top:\s*5px solid #7b8794;/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-select-popup\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*4200;/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-select-option\.selected\s*\{[^}]*background:\s*#e3edfc;/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-select-caret\s*\{[^}]*border-top:\s*5px solid #7b8794;/s);
 });
 
 test("token suggestion menus escape the editor scroll frame and stay viewport-safe", () => {
@@ -689,11 +743,12 @@ test("token suggestion menus escape the editor scroll frame and stay viewport-sa
   assert.match(moduleSource, /document\.body\.appendChild\(menu\)/);
   assert.match(moduleSource, /menu\.remove\(\)/);
   assert.doesNotMatch(moduleSource, /box\.appendChild\(menu\)/);
-  assert.match(projectSettingsHtml, /\.dpr-token-menu\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*4210;/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-token-menu\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*4210;/s);
 });
 
 test("rule tracing panel and result are removed", () => {
   assert.doesNotMatch(projectSettingsHtml, /dpr-trace-panel|dpr-trace-result|dprTrace/);
+  assert.doesNotMatch(projectSettingsCss, /dpr-trace-panel|dpr-trace-result|dprTrace/);
   assert.doesNotMatch(moduleSource, /renderTrace|traceDataProcessingRules|buildTraceRequestFieldOptions|dprTrace/);
   assert.doesNotMatch(projectSettingsJs, /dprTrace/);
   assert.match(projectSettingsJs, /dprVocabWarning,/);
@@ -730,9 +785,9 @@ test("failed editor validation still refreshes live vocabulary", () => {
 });
 
 test("all Project Settings table wrappers use the refined frame and scroll activity", () => {
-  assert.match(projectSettingsHtml, /\.summary-columns,\s*\.field-mapping-grid,\s*\.dataset-types-grid\s*\{[^}]*border:\s*1px solid #cbd5e1;[^}]*scrollbar-gutter:\s*stable;/s);
-  assert.match(projectSettingsHtml, /\.columns-table,\s*\.field-mapping-table,\s*\.dataset-types-table\s*\{[^}]*border-collapse:\s*separate;[^}]*border-spacing:\s*0;/s);
-  assert.match(projectSettingsHtml, /:is\(\.columns-table, \.field-mapping-table, \.dataset-types-table\) tbody tr\s*\{[^}]*height:\s*31px;/s);
+  assert.match(projectSettingsCoreCss, /\.summary-columns,\s*\.field-mapping-grid,\s*\.dataset-types-grid\s*\{[^}]*border:\s*1px solid #cbd5e1;[^}]*scrollbar-gutter:\s*stable;/s);
+  assert.match(projectSettingsCoreCss, /\.columns-table,\s*\.field-mapping-table,\s*\.dataset-types-table\s*\{[^}]*border-collapse:\s*separate;[^}]*border-spacing:\s*0;/s);
+  assert.match(projectSettingsCoreCss, /:is\(\.columns-table, \.field-mapping-table, \.dataset-types-table\) tbody tr\s*\{[^}]*height:\s*31px;/s);
   assert.match(projectSettingsJs, /querySelectorAll\("\.summary-columns, \.field-mapping-grid, \.dataset-types-grid"\)[\s\S]*forEach\(wireProjectSettingsTableScrollbarActivity\)/);
 });
 

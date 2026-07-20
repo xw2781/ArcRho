@@ -41,6 +41,12 @@ Detected `arcrho:*` message types in key JS files:
 ## Key Files
 <!-- AUTO-GEN:BEGIN frontend.project_settings.key_files -->
 - [`ui/project_settings/project_settings.html`](../../ui/project_settings/project_settings.html) - Project settings workspace and panels.
+- [`ui/project_settings/project_settings.css`](../../ui/project_settings/project_settings.css) - Project settings shared shell and reusable feature styling.
+- [`ui/project_settings/project_settings_summary.css`](../../ui/project_settings/project_settings_summary.css) - Source Data summary styling.
+- [`ui/project_settings/project_settings_field_mapping.css`](../../ui/project_settings/project_settings_field_mapping.css) - Field Mapping styling.
+- [`ui/project_settings/project_settings_dataset_types.css`](../../ui/project_settings/project_settings_dataset_types.css) - Dataset Types styling.
+- [`ui/project_settings/project_settings_reserving_class_types.css`](../../ui/project_settings/project_settings_reserving_class_types.css) - Reserving Class Types styling.
+- [`ui/project_settings/project_settings_data_processing_rules.css`](../../ui/project_settings/project_settings_data_processing_rules.css) - Data Processing Rules styling.
 - [`ui/project_settings/project_settings.js`](../../ui/project_settings/project_settings.js) - Project settings coordinator and API calls.
 - [`ui/project_settings/project_settings_field_mapping.js`](../../ui/project_settings/project_settings_field_mapping.js) - Field mapping feature module.
 - [`ui/project_settings/project_settings_dataset_types.js`](../../ui/project_settings/project_settings_dataset_types.js) - Dataset types feature module.

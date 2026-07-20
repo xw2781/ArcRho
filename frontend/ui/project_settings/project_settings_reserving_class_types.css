@@ -1,0 +1,398 @@
+/* Reserving Class Types */
+
+.rct-group-row td {
+  background: #f0f3f7;
+  font-weight: 600;
+  color: #2f3a4a;
+  padding: 4px 8px;
+  user-select: none;
+}
+.rct-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  margin-right: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.rct-group-toggle:hover {
+  background: #dde3eb;
+  color: #333;
+}
+.rct-group-toggle:focus-visible {
+  outline: 2px solid #8fb4ff;
+  outline-offset: 1px;
+}
+.rct-group-toggle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.15s ease;
+}
+.rct-group-toggle.expanded svg {
+  transform: rotate(90deg);
+}
+.rct-group-label {
+  vertical-align: middle;
+}
+
+#reservingClassTypeEditor {
+  width: 624px;
+  min-width: 520px;
+  min-height: 320px;
+  max-height: calc(100vh - 32px);
+  resize: both;
+  overflow: auto;
+}
+
+.rct-row-editor-body textarea.rct-formula-drop-target,
+.rct-formula-review.rct-formula-drop-target {
+  border-color: #2a66f5;
+  box-shadow: 0 0 0 2px rgba(42, 102, 245, 0.12);
+}
+.rct-formula-components-box.rct-formula-return-drop-target {
+  border-color: #2a66f5;
+  box-shadow: 0 0 0 2px rgba(42, 102, 245, 0.12);
+  background: #f5f8ff;
+}
+.rct-formula-control {
+  width: 100%;
+  min-width: 0;
+}
+.rct-formula-frame {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid #e0e6ef;
+  border-radius: 6px;
+  padding: 8px;
+  background: #fbfcfe;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rct-row-editor-body label[for="rctEditFormula"] {
+  align-self: start;
+  padding-top: 8px;
+}
+.rct-formula-control textarea {
+  display: none;
+}
+.rct-formula-control.editing textarea {
+  display: block;
+}
+.rct-formula-control.editing .rct-formula-review {
+  display: none;
+}
+.rct-formula-review {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 58px;
+  border: 1px solid #ccd2da;
+  border-radius: 6px;
+  padding: 6px;
+  background: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+  align-content: flex-start;
+  cursor: text;
+  overflow: auto;
+  max-height: 180px;
+}
+.rct-formula-review.disabled {
+  background: #f1f4f8;
+  color: #67758a;
+  cursor: default;
+}
+.rct-formula-token {
+  --rct-formula-token-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  padding: 2px 9px;
+  box-sizing: border-box;
+  min-height: var(--rct-formula-token-height);
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rct-formula-token.component {
+  gap: 4px;
+  height: var(--rct-formula-token-height);
+  border-color: #d4d4d4;
+  background: #fff;
+  color: #323232;
+}
+.rct-formula-token.component.unknown {
+  border-color: #efb0b0;
+  background: #fff0f0;
+  color: #9a3047;
+}
+.rct-formula-token-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rct-formula-token.component[draggable="true"] {
+  cursor: grab;
+}
+.rct-formula-token.component[draggable="true"]:active {
+  cursor: grabbing;
+}
+.rct-formula-token-removal-ghost,
+.rct-formula-token-selection-ghost {
+  position: fixed;
+  z-index: 4300;
+  pointer-events: none;
+  box-shadow: 0 8px 18px rgba(31, 49, 73, 0.18);
+  will-change: transform, opacity;
+}
+.rct-formula-token.operator {
+  width: var(--rct-formula-token-height);
+  min-width: var(--rct-formula-token-height);
+  height: var(--rct-formula-token-height);
+  min-height: var(--rct-formula-token-height);
+  justify-content: center;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border-color: #c5ccd8;
+  background: #f4f6f9;
+  color: #273142;
+  font-weight: 700;
+  flex: 0 0 var(--rct-formula-token-height);
+}
+.rct-formula-token.operator.plus {
+  border-color: #b7dfc0;
+  background: #f1fbf3;
+  color: #237a3b;
+}
+.rct-formula-token.operator.minus {
+  border-color: #e9d98b;
+  background: #fff9da;
+  color: #7b650e;
+}
+.rct-formula-token.operator svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 2.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.rct-formula-components-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.rct-formula-components-toggle {
+  min-height: 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #30445f;
+  cursor: pointer;
+  padding: 3px 0;
+  font-size: 12px;
+  font-weight: 600;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rct-formula-components-toggle:hover {
+  color: #0d6efd;
+  text-decoration: underline;
+}
+.rct-formula-components-toggle svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+}
+.rct-formula-components-toggle.collapsed svg {
+  transform: rotate(0deg);
+}
+.rct-formula-components-box {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  max-height: 177px;
+  overflow: auto;
+  border: 1px solid #efefef;
+  border-radius: 6px;
+  padding: 6px;
+  background: #fafafa;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+  overscroll-behavior: contain;
+}
+.rct-formula-components-box.collapsed {
+  display: none;
+}
+.rct-formula-components-box.disabled {
+  background: #f1f4f8;
+  color: #67758a;
+}
+.rct-formula-component-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #d4d4d4;
+  border-radius: 14px;
+  padding: 2px 9px;
+  box-sizing: border-box;
+  min-height: 22px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #323232;
+  background: #fff;
+  cursor: grab;
+  user-select: none;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rct-formula-component-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rct-formula-calculated-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  flex: 0 0 auto;
+}
+.rct-formula-calculated-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rct-formula-component-chip:hover {
+  border-color: #9d9d9d;
+  background: #f6f9ff;
+}
+.rct-formula-component-chip.selected {
+  border-color: #2a66f5;
+  background: #edf3ff;
+  color: #1445ba;
+}
+.rct-formula-component-chip.operator {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  border-color: #c5ccd8;
+  background: #f4f6f9;
+  color: #273142;
+  font-weight: 700;
+  flex: 0 0 22px;
+  cursor: pointer;
+}
+.rct-formula-component-chip.operator.active {
+  box-shadow: 0 0 0 2px rgba(42, 102, 245, 0.22);
+}
+.rct-formula-component-chip.operator svg {
+  width: 10px;
+  height: 10px;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.rct-formula-component-chip:active {
+  cursor: grabbing;
+}
+.rct-formula-component-chip.operator:active {
+  cursor: pointer;
+}
+.rct-formula-components-empty {
+  color: #777;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 24px;
+}
+.rct-formula-components-menu {
+  z-index: 4200;
+}
+.rct-formula-components-menu .context-menu-item.disabled {
+  color: #999;
+  cursor: not-allowed;
+}
+.rct-formula-components-menu .context-menu-item.disabled:hover {
+  background: transparent;
+}
+.rct-row-editor-body input:focus,
+.rct-row-editor-body textarea:focus {
+  outline: none;
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 2px rgba(13,110,253,0.12);
+}
+.rct-row-editor-body input:disabled,
+.rct-row-editor-body textarea:disabled {
+  background: #f1f4f8;
+  color: #67758a;
+}
+.rct-row-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid #e4e8ee;
+  background: #fafbfd;
+}
+.rct-validation-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 4100;
+  background: #fff7db;
+  color: #6f4f00;
+  border: 1px solid #e7c768;
+  border-radius: 6px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+  pointer-events: none;
+}
+.rct-validation-tooltip.show {
+  display: block;
+}
