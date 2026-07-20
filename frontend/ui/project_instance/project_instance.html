@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Project Instance</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
+  <link rel="stylesheet" href="/ui/project_instance/project_instance_number_formats.css?v=20260720a"/>
   <style>
     :root {
       --border: #d9dee8;
@@ -2518,6 +2519,12 @@
               <path d="M5.4 15A7 7 0 0 0 17.7 17.6L20 15.2"></path>
             </svg>
           </button>
+          <button class="dataset-toolbar-btn" id="datasetNumberFormatsBtn" type="button" aria-label="Edit default number formats" aria-controls="datasetNumberFormatsOverlay">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h4v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v4h-.1a1.7 1.7 0 0 0-1.5 1Z"></path>
+            </svg>
+          </button>
         </div>
         <div class="pi-table-wrap" id="datasetTableWrap">
           <div class="pi-table-surface" id="datasetTableSurface"></div>
@@ -2654,7 +2661,47 @@
         </div>
       </div>
     </div>
+    <div class="pi-number-formats-overlay" id="datasetNumberFormatsOverlay" hidden>
+      <section class="pi-number-formats-window" id="datasetNumberFormatsWindow" role="dialog" aria-modal="true" aria-labelledby="datasetNumberFormatsTitle">
+        <header class="pi-number-formats-header" id="datasetNumberFormatsHeader">
+          <div>
+            <div class="pi-number-formats-title" id="datasetNumberFormatsTitle">Default Number Formats</div>
+            <div class="pi-number-formats-path" id="datasetNumberFormatsPath"></div>
+          </div>
+          <button class="pi-number-formats-close" id="datasetNumberFormatsClose" type="button" aria-label="Close default number formats">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8M12 4l-8 8"></path></svg>
+          </button>
+        </header>
+        <div class="pi-number-formats-body">
+          <div class="pi-number-formats-default-row">
+            <label for="datasetNumberFormatsDefault">Fallback number format</label>
+            <input id="datasetNumberFormatsDefault" type="text" maxlength="64" autocomplete="off" spellcheck="false">
+            <span>Used when no reserving-class and Dataset Type override matches.</span>
+          </div>
+          <div class="pi-number-formats-tools">
+            <input id="datasetNumberFormatsFilter" type="search" autocomplete="off" placeholder="Filter reserving class, Dataset Type Name, or format">
+            <button id="datasetNumberFormatsAdd" type="button">
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10"></path></svg>
+              <span>Add override</span>
+            </button>
+          </div>
+          <div class="pi-number-formats-table-wrap">
+            <table class="pi-number-formats-table">
+              <colgroup><col class="rc"><col class="dataset"><col class="format"><col class="action"></colgroup>
+              <thead><tr><th>Reserving Class Path</th><th>Dataset Type Name</th><th>Number Format</th><th aria-label="Actions"></th></tr></thead>
+              <tbody id="datasetNumberFormatsBody"></tbody>
+            </table>
+            <div class="pi-number-formats-empty" id="datasetNumberFormatsEmpty" hidden>No matching overrides.</div>
+          </div>
+          <div class="pi-number-formats-status" id="datasetNumberFormatsStatus" aria-live="polite"></div>
+        </div>
+        <footer class="pi-number-formats-actions">
+          <button id="datasetNumberFormatsCancel" type="button">Cancel</button>
+          <button class="primary" id="datasetNumberFormatsSave" type="button">Save</button>
+        </footer>
+      </section>
+    </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260715e"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260720b"></script>
 </body>
 </html>

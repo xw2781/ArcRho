@@ -20,7 +20,12 @@ from app_server.helpers import (
     build_dataset_cache_file_name,
     sanitize_dataset_file_name,
 )
-from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service, dataset_types_service
+from app_server.services import (
+    dataset_instance_index_service,
+    dataset_number_format_service,
+    dataset_sidecar_status_service,
+    dataset_types_service,
+)
 
 
 def _clean_text(value: Any) -> str:
@@ -934,6 +939,16 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
     created = existing_sidecar.get("created") or settings.get("created") or now
     user_name = _current_user_name()
     action_value = "Update" if existing_sidecar else "Insert"
+    default_format_settings = dataset_number_format_service.dataset_type_number_format_settings(
+        reserving_class,
+        row["name"],
+    )
+    number_format = dataset_number_format_service.normalize_number_format(
+        existing_sidecar.get("number_format") or default_format_settings["number_format"]
+    )
+    decimal_places = existing_sidecar.get("decimal_places")
+    if decimal_places is None:
+        decimal_places = dataset_number_format_service.number_format_decimal_places(number_format)
     payload = {
         **({"audit_log": existing_sidecar.get("audit_log")} if existing_sidecar else {}),
         "dataset_name": row["name"],
@@ -956,6 +971,11 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
         "formula": row.get("formula") or "",
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
+        "number_format": number_format,
+        "decimal_places": dataset_number_format_service.normalize_decimal_places(
+            decimal_places,
+            default_format_settings["decimal_places"],
+        ),
     }
     apply_sidecar_graph_fields(payload, project_name, row["name"], precedents)
     from app_server.services.dataset_service import _append_dataset_audit_entry

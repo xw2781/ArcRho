@@ -3,6 +3,7 @@ from . import audit_service
 from . import book_service
 from . import dataset_sidecar_status_service
 from . import dataset_instance_index_service
+from . import dataset_number_format_service
 from . import dataset_service
 from . import excel_service
 from . import arcrho_runtime_service
@@ -24,6 +25,7 @@ __all__ = [
     "audit_service",
     "book_service",
     "dataset_instance_index_service",
+    "dataset_number_format_service",
     "dataset_sidecar_status_service",
     "dataset_service",
     "excel_service",

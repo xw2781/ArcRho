@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added workspace-wide default number formats for newly generated datasets.",
+  "details": [
+    "Project Instance now provides a gear-button editor for fallback and reserving-class Dataset Type Name overrides.",
+    "ResQ migration and frontend-generated datasets now use the same global configuration."
+  ]
+}

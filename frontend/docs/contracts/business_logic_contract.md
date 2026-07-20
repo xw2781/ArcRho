@@ -15,6 +15,7 @@ This contract applies when changing app-server routes, schemas, services, runtim
 4. Preserve data integrity for filesystem-backed operations. Project settings, workflow files, caches, and audit logs should fail clearly rather than silently diverging or corrupting state.
 5. Keep API validation and status behavior explicit. Input problems should not become generic `500` responses, and lock/contention cases should remain distinguishable.
 6. Keep refresh/cache side effects visible in route behavior and docs when they matter to users or downstream features.
+7. Keep dataset number-format defaults in the workspace-global `config/dataset_number_formats.json`; ResQ migration and frontend-generated dataset producers must resolve the same fallback and reserving-class/Dataset Type Name overrides.
 
 ## Before Finishing
 1. State which business-logic area changed, or state "no business-logic impact."

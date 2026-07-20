@@ -34,7 +34,7 @@ from .core import (
     _write_csv_matrix,
     _write_json,
 )
-from .number_formats import dataset_instance_decimal_places, dataset_instance_number_format
+from .number_formats import dataset_type_decimal_places, dataset_type_number_format
 
 
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
@@ -270,8 +270,8 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "development_labels": payload.get("development_labels", []),
         "cumulative": DEFAULT_CUMULATIVE,
         "calendar": DEFAULT_CALENDAR,
-        "number_format": dataset_instance_number_format(rc_path, name),
-        "decimal_places": dataset_instance_decimal_places(rc_path, name),
+        "number_format": dataset_type_number_format(rc_path, dataset_type),
+        "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
         "csv_file": csv_name,
         "user": payload.get("user", ""),
         "created": payload.get("created", ""),
@@ -402,8 +402,8 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "origin_count": payload.get("origin_count", 0),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
-        "number_format": dataset_instance_number_format(rc_path, name),
-        "decimal_places": dataset_instance_decimal_places(rc_path, name),
+        "number_format": dataset_type_number_format(rc_path, dataset_type),
+        "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
         "csv_file": csv_name,
         "user": payload.get("user", ""),
         "created": payload.get("created", ""),
@@ -484,8 +484,8 @@ def write_engine_generated_export(
         "method_type": "None",
         "method_type_code": METHOD_TYPE_NONE_CODE,
         "status": 0,
-        "number_format": dataset_instance_number_format(rc_path, name),
-        "decimal_places": dataset_instance_decimal_places(rc_path, name),
+        "number_format": dataset_type_number_format(rc_path, dataset_type),
+        "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
         "csv_file": csv_name,
         "user": user,
         "created": created,
@@ -1208,8 +1208,8 @@ def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) 
         "origin_count": payload.get("origin_count", 0),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
-        "number_format": dataset_instance_number_format(rc_path, name),
-        "decimal_places": dataset_instance_decimal_places(rc_path, name),
+        "number_format": dataset_type_number_format(rc_path, dataset_type),
+        "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
         "csv_file": csv_name,
         "user": payload.get("user", ""),
         "created": payload.get("created", ""),

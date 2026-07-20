@@ -29,6 +29,7 @@ Index cache/data files and refresh points used by app-server services.
 
 Cache/lock constants detected:
 - `AUDIT_LOG_FILE`
+- `DATASET_NUMBER_FORMATS_FILE`
 - `DATASET_TYPES_FILE`
 - `DATA_PROCESSING_RULES_FILE`
 - `DATA_PROCESSING_VALUES_FILE`

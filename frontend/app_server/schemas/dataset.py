@@ -34,6 +34,34 @@ class DatasetSidecarLoadRequest(BaseModel):
     dataset_name: str
 
 
+class DatasetNumberFormatOverride(BaseModel):
+    reserving_class: str = Field(..., min_length=1, max_length=512)
+    dataset_type_name: str = Field(..., min_length=1, max_length=256)
+    number_format: str = Field(..., min_length=1, max_length=64)
+
+    @field_validator("reserving_class", "dataset_type_name", "number_format")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        normalized = re.sub(r"\s+", " ", value.replace("\r", " ").replace("\n", " ").replace("\t", " ")).strip()
+        if not normalized:
+            raise ValueError("value must not be blank")
+        return normalized
+
+
+class DatasetNumberFormatsSaveRequest(BaseModel):
+    expected_revision: int = Field(..., ge=0)
+    default_number_format: str = Field(..., min_length=1, max_length=64)
+    overrides: List[DatasetNumberFormatOverride] = Field(default_factory=list, max_length=5000)
+
+    @field_validator("default_number_format")
+    @classmethod
+    def normalize_default_number_format(cls, value: str) -> str:
+        normalized = value.replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
+        if not normalized:
+            raise ValueError("default_number_format must not be blank")
+        return normalized
+
+
 class DatasetCacheLoadRequest(BaseModel):
     project_name: str
     reserving_class: str

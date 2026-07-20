@@ -15,7 +15,12 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name, set_data_path_like_vba, send_request_like_vba, wait_for_file
-from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service, project_settings_service
+from app_server.services import (
+    dataset_instance_index_service,
+    dataset_number_format_service,
+    dataset_sidecar_status_service,
+    project_settings_service,
+)
 from app_server.services.data_processing_rules_service import (
     get_processing_config_hash,
     get_processing_provenance,
@@ -495,6 +500,7 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "updated_at": updated_at,
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
+        **dataset_number_format_service.dataset_type_number_format_settings(reserving_class, dataset_type),
     }
     _set_processing_provenance(payload, project_name, data_path)
     _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)

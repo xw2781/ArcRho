@@ -6,10 +6,11 @@ import {
 import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260715c";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
-import { createProjectInstanceContext } from "./project_instance_context.js?v=20260715e";
+import { createProjectInstanceContext } from "./project_instance_context.js?v=20260720a";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260704d";
 import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260715f";
+import { installProjectInstanceNumberFormats } from "./project_instance_number_formats.js?v=20260720b";
 import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260715c";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260712b";
@@ -28,6 +29,7 @@ export async function bootProjectInstance() {
   installProjectInstanceUtils(ctx);
   installProjectInstanceLoading(ctx);
   installProjectInstanceDatasetCache(ctx);
+  installProjectInstanceNumberFormats(ctx);
   installProjectInstanceDatasetTable(ctx);
   installProjectInstanceDatasetAddPicker(ctx);
   installProjectInstancePathPanel(ctx);
@@ -39,6 +41,7 @@ export async function bootProjectInstance() {
   await api.applyHostFrameCornerStyle();
   api.initHiddenTabsArea();
   api.initCachedDatasetToolbar();
+  api.initDatasetNumberFormatsEditor();
   api.initLeftPanelResizer();
   api.initDatasetTableInteractions();
   api.initDatasetAddPickerInteractions();

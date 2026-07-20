@@ -49,6 +49,8 @@ PROJECT_INSTANCE_DEFAULT_PREFS_ENV = "ARCRHO_PROJECT_INSTANCE_DEFAULT_PREFS_PATH
 DEFAULT_PROJECT_INSTANCE_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_preferences" / "project_instance_preferences.json"
 PROJECT_SETTINGS_DEFAULT_PREFS_ENV = "ARCRHO_PROJECT_SETTINGS_DEFAULT_PREFS_PATH"
 DEFAULT_PROJECT_SETTINGS_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_preferences" / "project_settings_preferences.json"
+DATASET_NUMBER_FORMATS_FILE = "dataset_number_formats.json"
+DATASET_NUMBER_FORMATS_PATH_ENV = "ARCRHO_DATASET_NUMBER_FORMATS_PATH"
 
 
 def _is_arcode_mode() -> bool:
@@ -452,6 +454,13 @@ def get_project_settings_default_preferences_path() -> str:
     if configured:
         return configured
     return str(DEFAULT_PROJECT_SETTINGS_PREFS_PATH)
+
+
+def get_dataset_number_formats_path() -> str:
+    configured = str(os.environ.get(DATASET_NUMBER_FORMATS_PATH_ENV) or "").strip()
+    if configured:
+        return configured
+    return os.path.join(get_root_path(), "config", DATASET_NUMBER_FORMATS_FILE)
 
 def get_username_index_path() -> str:
     return os.path.join(get_root_path(), "config", USERNAME_INDEX_FILE)
