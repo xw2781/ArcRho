@@ -1,4 +1,4 @@
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260714a";
+import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 
 export function mountDatasetViewer(container) {
   if (!container) return null;

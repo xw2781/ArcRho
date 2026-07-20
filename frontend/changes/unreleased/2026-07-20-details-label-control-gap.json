@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "details forms",
+  "audience": "user",
+  "summary": "Added clearer spacing between Details labels and their input controls across dataset and method pages.",
+  "details": [
+    "Shared Details visual defaults now come exclusively from CSS so JavaScript cannot silently override future styling changes."
+  ]
+}

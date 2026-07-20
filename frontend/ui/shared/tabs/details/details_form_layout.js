@@ -1,14 +1,3 @@
-export const DETAILS_FORM_LABEL_GAP = "1px";
-export const DETAILS_FORM_GROUP_SEPARATION = "1px";
-export const DETAILS_FORM_ROW_GAP = "10px";
-export const DETAILS_FORM_CONTROL_HEIGHT = "30px";
-export const DETAILS_FORM_FONT_FAMILY = 'Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif';
-export const DETAILS_FORM_LABEL_FONT_SIZE = "12px";
-export const DETAILS_FORM_CONTROL_FONT_SIZE = "12px";
-export const DETAILS_FORM_LABEL_COLOR = "#000000";
-export const DETAILS_FORM_CONTROL_COLOR = "#000000";
-export const DETAILS_FORM_READONLY_COLOR = "#000000";
-
 export const DETAILS_FORM_PROPERTIES = Object.freeze({
   labelWidth: "--ar-details-label-width",
   labelGap: "--ar-details-label-control-gap",
@@ -45,22 +34,21 @@ function setProperty(style, propertyName, value) {
 }
 
 /**
- * Applies the shared Details tokens to a root element without imposing a
- * page-level layout. Consumers opt into the corresponding namespaced CSS
- * classes for groups, grids, labels, fields, and ordinary controls.
+ * Applies only explicitly supplied Details token overrides to a root element.
+ * Shared visual defaults live exclusively in details_form_layout.css.
  */
 export function applyDetailsFormTokens(root, {
-  labelWidth = "max-content",
-  labelGap = DETAILS_FORM_LABEL_GAP,
-  groupSeparation = DETAILS_FORM_GROUP_SEPARATION,
-  rowGap = DETAILS_FORM_ROW_GAP,
-  controlHeight = DETAILS_FORM_CONTROL_HEIGHT,
-  fontFamily = DETAILS_FORM_FONT_FAMILY,
-  labelFontSize = DETAILS_FORM_LABEL_FONT_SIZE,
-  controlFontSize = DETAILS_FORM_CONTROL_FONT_SIZE,
-  labelColor = DETAILS_FORM_LABEL_COLOR,
-  controlColor = DETAILS_FORM_CONTROL_COLOR,
-  readonlyColor = DETAILS_FORM_READONLY_COLOR,
+  labelWidth,
+  labelGap,
+  groupSeparation,
+  rowGap,
+  controlHeight,
+  fontFamily,
+  labelFontSize,
+  controlFontSize,
+  labelColor,
+  controlColor,
+  readonlyColor,
   documentRef = globalThis.document,
 } = {}) {
   const container = resolveDetailsRoot(root, documentRef);
@@ -99,19 +87,17 @@ function numericCssValue(value) {
 function resolveFont(style = {}) {
   const shorthand = String(style.font || "").trim();
   if (shorthand) return shorthand;
-  const weight = String(style.fontWeight || "400").trim() || "400";
-  const size = String(style.fontSize || DETAILS_FORM_LABEL_FONT_SIZE).trim()
-    || DETAILS_FORM_LABEL_FONT_SIZE;
-  const family = String(style.fontFamily || DETAILS_FORM_FONT_FAMILY).trim()
-    || DETAILS_FORM_FONT_FAMILY;
-  return `${weight} ${size} ${family}`;
+  return [style.fontWeight, style.fontSize, style.fontFamily]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 function createCanvasMeasureText(documentRef) {
   const context = documentRef?.createElement?.("canvas")?.getContext?.("2d");
   if (!context) return null;
   return ({ text, font }) => {
-    context.font = font;
+    if (font) context.font = font;
     return context.measureText(text).width;
   };
 }
@@ -156,8 +142,8 @@ export function measureDetailsLabelWidth(labels, {
 }
 
 /**
- * Applies the shared tokens, measures every matching literal label across all
- * Details groups, and writes one common label-column width to the root.
+ * Applies any explicit token overrides, measures every matching literal label
+ * across all Details groups, and writes one common label-column width.
  */
 export function syncDetailsLabelWidth({
   root,

@@ -1,6 +1,6 @@
 .arDetailsRoot {
   --ar-details-label-width: max-content;
-  --ar-details-label-control-gap: 1px;
+  --ar-details-label-control-gap: 5px;
   --ar-details-group-separation: 1px;
   --ar-details-row-gap: 10px;
   --ar-details-control-height: 30px;

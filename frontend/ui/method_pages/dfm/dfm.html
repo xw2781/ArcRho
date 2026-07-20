@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Development Factor Method</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260720b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/tabs/links/links_tab.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
@@ -215,7 +215,7 @@
     .dfmFormGrid3 {
       display: grid;
       grid-template-columns: var(--ar-details-label-width) 560px minmax(0, 1fr);
-      column-gap: var(--ar-details-label-control-gap, 1px);
+      column-gap: var(--ar-details-label-control-gap);
       row-gap: 10px;
       align-items: center;
     }
@@ -2012,7 +2012,7 @@
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/method_pages/dfm/dfm_main.js?v=20260716a");
+      await import("/ui/method_pages/dfm/dfm_main.js?v=20260720c");
     })();
   </script>
 </body>
