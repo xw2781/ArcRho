@@ -8,13 +8,13 @@ Excluded directories: `__pycache__`, `dist`, `local_workspace_log`, `node-portab
 | Top-Level Segment | File Count |
 | --- | --- |
 | `(root)` | 12 |
-| `app_server` | 74 |
+| `app_server` | 75 |
 | `build` | 63 |
-| `changes` | 686 |
+| `changes` | 688 |
 | `docs` | 71 |
 | `electron` | 4 |
 | `icons` | 19 |
-| `tests` | 23 |
+| `tests` | 25 |
 | `tools` | 2 |
-| `ui` | 362 |
+| `ui` | 370 |
 | `user-manual` | 18 |

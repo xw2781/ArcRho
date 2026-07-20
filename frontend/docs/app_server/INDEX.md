@@ -14,7 +14,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `audit_log` | [`app_server/api/audit_log_router.py`](../../app_server/api/audit_log_router.py) | 2 | [`audit_log.md`](domains/audit_log.md) |
 | `book` | [`app_server/api/book_router.py`](../../app_server/api/book_router.py) | 3 | [`book.md`](domains/book.md) |
 | `data_processing_rules` | [`app_server/api/data_processing_rules_router.py`](../../app_server/api/data_processing_rules_router.py) | 3 | [`data_processing_rules.md`](domains/data_processing_rules.md) |
-| `dataset` | [`app_server/api/dataset_router.py`](../../app_server/api/dataset_router.py) | 13 | [`dataset.md`](domains/dataset.md) |
+| `dataset` | [`app_server/api/dataset_router.py`](../../app_server/api/dataset_router.py) | 15 | [`dataset.md`](domains/dataset.md) |
 | `dataset_types` | [`app_server/api/dataset_types_router.py`](../../app_server/api/dataset_types_router.py) | 3 | [`dataset_types.md`](domains/dataset_types.md) |
 | `excel` | [`app_server/api/excel_router.py`](../../app_server/api/excel_router.py) | 5 | [`excel.md`](domains/excel.md) |
 | `field_mapping` | [`app_server/api/field_mapping_router.py`](../../app_server/api/field_mapping_router.py) | 2 | [`field_mapping.md`](domains/field_mapping.md) |
