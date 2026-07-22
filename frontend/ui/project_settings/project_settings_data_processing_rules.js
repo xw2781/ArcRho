@@ -22,6 +22,20 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+export function reorderRules(rules, fromIndex, toIndex) {
+  const next = Array.isArray(rules) ? rules.slice() : [];
+  const from = Number(fromIndex);
+  const to = Number(toIndex);
+  if (!Number.isInteger(from) || !Number.isInteger(to)
+      || from < 0 || from >= next.length || to < 0 || to >= next.length
+      || from === to) {
+    return next;
+  }
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 function validationErrorRuleNumber(message) {
   const match = cleanText(message).match(/^Rule\s+(\d+)(?:\s|\()/i);
   if (!match) return null;
@@ -984,6 +998,10 @@ export function createDataProcessingRulesFeature(deps = {}) {
   let activeEditorSelect = null;
   let editorSelectPopup = null;
   let editorSelectList = null;
+  let draggedRuleIndex = -1;
+  let dragTargetRuleIndex = -1;
+  let dragTargetAfter = false;
+  let ruleOrderSaving = false;
 
   function setRulesStatus(message, isError = false) {
     if (!rulesStatus) return;
@@ -1146,10 +1164,25 @@ export function createDataProcessingRulesFeature(deps = {}) {
   function renderRulesTable(state, rules) {
     rules.forEach((rule, index) => {
       const row = document.createElement("tr");
+      row.className = "dpr-rule-row";
       row.dataset.index = String(index);
 
       const enabledCell = document.createElement("td");
       enabledCell.className = "dpr-enabled-cell";
+      const dragHandle = document.createElement("button");
+      dragHandle.type = "button";
+      dragHandle.className = "dpr-row-drag-handle";
+      dragHandle.draggable = true;
+      dragHandle.setAttribute("aria-label", `Reorder ${rule.name || rule.id || "data processing rule"}`);
+      dragHandle.setAttribute("aria-grabbed", "false");
+      dragHandle.innerHTML = `
+        <svg viewBox="0 0 10 14" aria-hidden="true">
+          <circle cx="3" cy="3" r="1"></circle><circle cx="7" cy="3" r="1"></circle>
+          <circle cx="3" cy="7" r="1"></circle><circle cx="7" cy="7" r="1"></circle>
+          <circle cx="3" cy="11" r="1"></circle><circle cx="7" cy="11" r="1"></circle>
+        </svg>`;
+      attachArcrhoTooltip(dragHandle, "Drag to reorder rule");
+      enabledCell.appendChild(dragHandle);
       const enabledCheckbox = document.createElement("input");
       enabledCheckbox.type = "checkbox";
       enabledCheckbox.className = "dpr-enabled-checkbox";
@@ -1208,6 +1241,91 @@ export function createDataProcessingRulesFeature(deps = {}) {
 
     rulesBody.innerHTML = "";
     renderRulesTable(state, rules);
+  }
+
+  function clearRuleDropMarkers() {
+    rulesBody?.querySelectorAll?.(".dpr-drop-before, .dpr-drop-after").forEach((row) => {
+      row.classList.remove("dpr-drop-before", "dpr-drop-after");
+    });
+  }
+
+  function clearRuleDragState() {
+    clearRuleDropMarkers();
+    rulesBody?.querySelectorAll?.(".dpr-row-dragging").forEach((row) => {
+      row.classList.remove("dpr-row-dragging");
+    });
+    rulesBody?.querySelectorAll?.(".dpr-row-drag-handle[aria-grabbed='true']").forEach((handle) => {
+      handle.setAttribute("aria-grabbed", "false");
+    });
+    draggedRuleIndex = -1;
+    dragTargetRuleIndex = -1;
+    dragTargetAfter = false;
+  }
+
+  function handleRuleDragStart(event) {
+    const handle = event.target?.closest?.(".dpr-row-drag-handle");
+    const row = event.target?.closest?.("tr[data-index]");
+    if (ruleOrderSaving || !handle || !row || !rulesBody?.contains(row)) {
+      event.preventDefault();
+      return;
+    }
+    const index = Number(row.dataset.index);
+    const state = stateForProject(selectedProjectName);
+    if (!Number.isInteger(index) || index < 0 || index >= state.document.rules.length) {
+      event.preventDefault();
+      return;
+    }
+    hideRowContextMenu();
+    draggedRuleIndex = index;
+    row.classList.add("dpr-row-dragging");
+    handle.setAttribute("aria-grabbed", "true");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(index));
+    }
+  }
+
+  function handleRuleDragOver(event) {
+    if (draggedRuleIndex < 0 || ruleOrderSaving) return;
+    const row = event.target?.closest?.("tr[data-index]");
+    if (!row || !rulesBody?.contains(row)) return;
+    const index = Number(row.dataset.index);
+    if (!Number.isInteger(index)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    const bounds = row.getBoundingClientRect();
+    dragTargetRuleIndex = index;
+    dragTargetAfter = event.clientY >= bounds.top + (bounds.height / 2);
+    clearRuleDropMarkers();
+    if (index !== draggedRuleIndex) {
+      row.classList.add(dragTargetAfter ? "dpr-drop-after" : "dpr-drop-before");
+    }
+  }
+
+  async function handleRuleDrop(event) {
+    if (draggedRuleIndex < 0 || dragTargetRuleIndex < 0 || ruleOrderSaving) {
+      clearRuleDragState();
+      return;
+    }
+    event.preventDefault();
+    const fromIndex = draggedRuleIndex;
+    let toIndex = dragTargetRuleIndex + (dragTargetAfter ? 1 : 0);
+    if (fromIndex < toIndex) toIndex -= 1;
+    const state = stateForProject(selectedProjectName);
+    toIndex = Math.max(0, Math.min(state.document.rules.length - 1, toIndex));
+    clearRuleDragState();
+    if (fromIndex === toIndex) return;
+
+    const reordered = reorderRules(state.document.rules, fromIndex, toIndex)
+      .map((rule) => cloneJson(rule));
+    ruleOrderSaving = true;
+    try {
+      await saveRules(selectedProjectName, reordered, {
+        statusMessage: "Saving rule order...",
+      });
+    } finally {
+      ruleOrderSaving = false;
+    }
   }
 
   function setSelectOptions(select, values, selectedValue = "", placeholder = "") {
@@ -2490,6 +2608,10 @@ export function createDataProcessingRulesFeature(deps = {}) {
     }, { passive: true });
     rulesBody?.addEventListener("click", handleTableAction);
     rulesBody?.addEventListener("contextmenu", showRowContextMenu);
+    rulesBody?.addEventListener("dragstart", handleRuleDragStart);
+    rulesBody?.addEventListener("dragover", handleRuleDragOver);
+    rulesBody?.addEventListener("drop", handleRuleDrop);
+    rulesBody?.addEventListener("dragend", clearRuleDragState);
     rowContextMenu?.addEventListener("click", handleContextMenuAction);
     addButton?.addEventListener("click", () => {
       if (!selectedProjectName) {

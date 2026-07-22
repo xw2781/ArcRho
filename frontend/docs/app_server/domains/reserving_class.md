@@ -17,7 +17,7 @@ Reserving class values/tree/preferences/types domain.
 | `GET` | `/reserving_class_path_tree` | `get_reserving_class_path_tree` | `str` | - | - |
 | `GET` | `/reserving_class_path_tree/children` | `get_reserving_class_path_tree_children` | `str` | - | `reserving_class_service.get_reserving_class_path_tree_children` |
 | `GET` | `/reserving_class_types` | `get_reserving_class_types` | `str` | - | `reserving_class_service.refresh_reserving_class_types_json` |
-| `POST` | `/reserving_class_types` | `save_reserving_class_types` | `ReservingClassTypesSaveRequest` | [`app_server/schemas/reserving_class.py`](../../../app_server/schemas/reserving_class.py) | `audit_service.safe_append_project_audit_log`, `reserving_class_service.refresh_reserving_class_types_json` |
+| `POST` | `/reserving_class_types` | `save_reserving_class_types` | `ReservingClassTypesSaveRequest` | [`app_server/schemas/reserving_class.py`](../../../app_server/schemas/reserving_class.py) | `audit_service.safe_append_project_audit_log`, `reserving_class_service.normalize_reserving_class_types_data`, `reserving_class_service.refresh_reserving_class_types_json` |
 | `POST` | `/reserving_class_types/import_local_file` | `import_local_reserving_class_types_file` | `ReservingClassTypesImportLocalFileRequest` | [`app_server/schemas/reserving_class.py`](../../../app_server/schemas/reserving_class.py) | `reserving_class_service.parse_local_reserving_class_types_file` |
 | `POST` | `/reserving_class_values/refresh` | `refresh_reserving_class_values` | `RefreshReservingClassValuesRequest` | [`app_server/schemas/reserving_class.py`](../../../app_server/schemas/reserving_class.py) | `reserving_class_service.refresh_reserving_class_values` |
 <!-- AUTO-GEN:END -->
@@ -35,11 +35,11 @@ Reserving class values/tree/preferences/types domain.
 - Consumed by dataset, DFM, and project settings features.
 - Exposes refresh and cache children endpoints.
 - `POST /reserving_class_types` writes both `reserving_class_types.json` and a same-folder mirror workbook `reserving_class_types.xlsx` with `Name`, `Level`, `Formula`, and resolved `Source`.
-- `POST /reserving_class_types/import_local_file` parses local reserving-class-type `.json`/`.xlsx` files for Project Settings local load; parser accepts either UI columns (`Name`, `Level`, `Formula`) or persisted file columns with trailing `Source`.
+- `POST /reserving_class_types/import_local_file` parses local reserving-class-type `.json`/`.xlsx` files for Project Settings local load; the JSON parser accepts either UI columns (`Name`, `Level`, `Formula`) or persisted file columns with trailing `Source` and silently discards a retired `EEX Formula` column.
 - Source-derived reserving class type rows are generated independently per `(Name, Level)` pair (not deduped by `Name` only), so the same name can appear in multiple level groups when present in distinct source levels.
 - Reserving class `Source` expressions always wrap each resolved component in double quotes (including single-component formulas), and quoted tokens in `Formula` are treated as atomic components so operator-normalization does not insert spaces inside quoted names or collapse user-entered spacing within quoted text (for example `/` in `"Affinity/Referral Partners"` or the double space in `"eSales -  Teachers"`).
 - `POST /reserving_class_types` rejects changed user-defined formulas when they reference a reserving class type name that does not exist in the submitted/current table, or when they reference a name containing `+`, `-`, `*`, or `/` without wrapping that full name in double quotes; invalid saves return `400` with the offending row/field details. Unchanged legacy rows are not revalidated on save, formulas may reference user-defined rows as well as source-derived rows, and quoted components are validated by exact name match, including repeated spaces inside the quotes.
-- `EEX Formula` is no longer part of Reserving Class Types persistence or validation. Legacy JSON/XLSX imports containing that column return an explicit conversion-required error; measure-specific row filters belong in `data_processing_rules.json`.
+- `EEX Formula` is no longer part of Reserving Class Types persistence or validation. Legacy JSON payloads may still contain that column, but readers discard it so Project Settings and dependent features remain available. XLSX imports continue to return an explicit conversion-required error; measure-specific row filters belong in `data_processing_rules.json`.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

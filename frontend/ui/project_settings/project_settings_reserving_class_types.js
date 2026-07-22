@@ -1593,11 +1593,6 @@ export function createReservingClassTypesFeature(deps = {}) {
     if (!raw || typeof raw !== "object") return fallback;
 
     const rawColumns = Array.isArray(raw.columns) ? raw.columns : [];
-    if (rawColumns.some((value) => String(value || "").trim().toLowerCase() === "eex formula")) {
-      throw new Error(
-        "This file uses the retired EEX Formula column. Run the data-processing-rules migration before importing it.",
-      );
-    }
     const columnIndexByName = new Map();
     for (let i = 0; i < rawColumns.length; i += 1) {
       const key = String(rawColumns[i] ?? "").trim().toLowerCase();
@@ -1823,11 +1818,6 @@ export function createReservingClassTypesFeature(deps = {}) {
     if (!payload || typeof payload !== "object") return fallback;
 
     const rawColumns = Array.isArray(payload.columns) ? payload.columns : RESERVING_CLASS_TYPES_COLUMNS;
-    if (rawColumns.some((value) => String(value || "").trim().toLowerCase() === "eex formula")) {
-      throw new Error(
-        "This project still uses the retired EEX Formula column. Run the data-processing-rules migration first.",
-      );
-    }
     const columnIndexByName = new Map();
     rawColumns.forEach((value, index) => {
       const key = String(value || "").trim().toLowerCase();

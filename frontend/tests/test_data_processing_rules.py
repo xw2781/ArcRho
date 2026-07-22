@@ -284,6 +284,44 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
                 data=self._candidate(),
             )
 
+    def test_rule_reorder_persists_without_invalidating_processing_caches(self) -> None:
+        candidate = self._candidate()
+        second_rule = json.loads(json.dumps(candidate["rules"][0]))
+        second_rule["id"] = "earned-premium-nj-total-pa-second"
+        second_rule["name"] = "NJ Earned Premium Second"
+        candidate["rules"].append(second_rule)
+
+        first = data_processing_rules_service.save_data_processing_rules(
+            self.project_name,
+            expected_revision=0,
+            data=candidate,
+        )
+        processing_hash = data_processing_rules_service.get_processing_config_hash(
+            self.project_name
+        )
+        reordered_rules = list(reversed(candidate["rules"]))
+
+        reordered = data_processing_rules_service.save_data_processing_rules(
+            self.project_name,
+            expected_revision=first["data"]["revision"],
+            data={"rules": reordered_rules},
+        )
+
+        persisted = json.loads(
+            (self.project_dir / config.DATA_PROCESSING_RULES_FILE).read_text(encoding="utf-8")
+        )
+        self.assertTrue(reordered["changed"])
+        self.assertEqual(reordered["data"]["revision"], 2)
+        self.assertEqual(
+            [rule["id"] for rule in persisted["rules"]],
+            [rule["id"] for rule in reordered_rules],
+        )
+        self.assertEqual(reordered["impact"]["invalidated_count"], 0)
+        self.assertEqual(
+            data_processing_rules_service.get_processing_config_hash(self.project_name),
+            processing_hash,
+        )
+
     def test_invalid_atomic_member_is_rejected(self) -> None:
         result = data_processing_rules_service.validate_data_processing_rules(
             self.project_name,
@@ -624,15 +662,32 @@ class GeneratedCacheProcessingHashTests(DataProcessingRulesServiceTests):
 
 
 class ReservingClassEexRemovalTests(unittest.TestCase):
-    def test_legacy_eex_json_requires_conversion(self) -> None:
-        with self.assertRaises(ValueError) as raised:
-            reserving_class_service.normalize_reserving_class_types_data(
-                {
-                    "columns": ["Name", "Level", "Formula", "EEX Formula", "Source"],
-                    "rows": [["TOTAL PA", "5", "BI + PD", "PD", '"BI" + "PD"']],
-                }
-            )
-        self.assertIn("data_processing_rules.json", str(raised.exception))
+    def test_legacy_eex_json_column_is_ignored(self) -> None:
+        normalized = reserving_class_service.normalize_reserving_class_types_data(
+            {
+                "columns": ["Name", "Level", "Formula", "EEX Formula", "Source"],
+                "rows": [["TOTAL PA", "5", "BI + PD", "PD", '"BI" + "PD"']],
+            }
+        )
+
+        self.assertEqual(
+            normalized,
+            {
+                "columns": ["Name", "Level", "Formula", "Source"],
+                "rows": [["TOTAL PA", "5", "BI + PD", '"BI" + "PD"']],
+            },
+        )
+
+        normalized_without_source = reserving_class_service.normalize_reserving_class_types_data(
+            {
+                "columns": ["Name", "Level", "Formula", "EEX Formula"],
+                "rows": [["TOTAL PA", "5", "BI + PD", "PD"]],
+            }
+        )
+        self.assertEqual(
+            normalized_without_source["rows"],
+            [["TOTAL PA", "5", "BI + PD", ""]],
+        )
 
     def test_legacy_eex_xlsx_import_error_is_explicit(self) -> None:
         with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:

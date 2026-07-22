@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Added hover-only drag handles inside Enabled cells for reordering Data Processing Rules and persisted the displayed order in project JSON."
+}

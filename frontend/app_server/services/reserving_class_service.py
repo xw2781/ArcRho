@@ -355,21 +355,15 @@ def normalize_reserving_class_types_data(data: Any) -> Dict[str, Any]:
                 name = str(c if c is not None else "").strip()
                 if name:
                     col_idx[name] = i
-        if "EEX Formula" in col_idx:
-            raise ValueError(
-                "Legacy EEX Formula columns are no longer supported. Convert EEX adjustments "
-                "to Data Processing Rules (data_processing_rules.json) before loading or saving "
-                "Reserving Class Types."
-            )
-
         if isinstance(raw_rows, list):
             for raw in raw_rows:
                 if not isinstance(raw, list):
                     continue
-                i_name = col_idx.get("Name", 0 if len(raw) > 0 else -1)
-                i_level = col_idx.get("Level", 1 if len(raw) > 1 else -1)
-                i_formula = col_idx.get("Formula", 2 if len(raw) > 2 else -1)
-                i_source = col_idx.get("Source", 3 if len(raw) > 3 else -1)
+                has_named_columns = bool(col_idx)
+                i_name = col_idx.get("Name", -1 if has_named_columns else (0 if len(raw) > 0 else -1))
+                i_level = col_idx.get("Level", -1 if has_named_columns else (1 if len(raw) > 1 else -1))
+                i_formula = col_idx.get("Formula", -1 if has_named_columns else (2 if len(raw) > 2 else -1))
+                i_source = col_idx.get("Source", -1 if has_named_columns else (3 if len(raw) > 3 else -1))
                 row = [
                     str(raw[i_name] if i_name >= 0 and i_name < len(raw) and raw[i_name] is not None else "").strip(),
                     str(raw[i_level] if i_level >= 0 and i_level < len(raw) and raw[i_level] is not None else "").strip(),

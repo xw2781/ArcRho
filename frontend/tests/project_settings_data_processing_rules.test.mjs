@@ -647,13 +647,22 @@ test("rules render in the standard resizable Project Settings table", () => {
 
   assert.match(listSource, /class="dataset-types-table dpr-rules-table"/);
   assert.match(listSource, /<tbody id="dataProcessingRulesBody">/);
+  assert.doesNotMatch(listSource, /dpr-order-header|>Order<\/span>/);
   assert.match(listSource, /<th>Enabled<\/th>/);
   assert.match(listSource, /<th>Applies when<\/th>/);
   assert.match(listSource, /<th>Effect<\/th>/);
   assert.match(moduleSource, /function renderRulesTable\(state, rules\)/);
+  assert.match(moduleSource, /className = "dpr-row-drag-handle"/);
+  assert.match(moduleSource, /dragHandle\.draggable = true/);
+  assert.match(moduleSource, /const handle = event\.target\?\.closest\?\.\("\.dpr-row-drag-handle"\)/);
+  assert.match(moduleSource, /if \(ruleOrderSaving \|\| !handle \|\| !row \|\| !rulesBody\?\.contains\(row\)\)/);
+  assert.doesNotMatch(moduleSource, /row\.draggable = true/);
+  assert.match(moduleSource, /addEventListener\("dragstart", handleRuleDragStart\)/);
+  assert.match(moduleSource, /addEventListener\("drop", handleRuleDrop\)/);
   assert.match(moduleSource, /className = "dpr-table-switch"/);
   assert.match(moduleSource, /enabledCheckbox\.type = "checkbox"/);
   assert.match(moduleSource, /enabledCheckbox\.checked = rule\.enabled/);
+  assert.match(moduleSource, /enabledCell\.appendChild\(dragHandle\)/);
   assert.match(moduleSource, /initTableColumnResizing\("dataProcessingRulesTable", \[72, 220, 190, 300, 420\]\)/);
   assert.match(menuSource, /data-action="edit"/);
   assert.match(menuSource, /data-action="duplicate"/);
@@ -661,11 +670,46 @@ test("rules render in the standard resizable Project Settings table", () => {
   assert.match(menuSource, /data-action="delete"/);
 });
 
+test("rule reordering moves one row without mutating the source array", () => {
+  const rules = [{ id: "one" }, { id: "two" }, { id: "three" }];
+  const reordered = rulesUi.reorderRules(rules, 0, 2);
+  assert.deepEqual(reordered.map((rule) => rule.id), ["two", "three", "one"]);
+  assert.deepEqual(rules.map((rule) => rule.id), ["one", "two", "three"]);
+});
+
 test("rules toolbar actions use the compact ArcRho button type scale", () => {
   assert.match(
     dataProcessingRulesCss,
     /\.dpr-toolbar button\s*\{[^}]*font-size:\s*12px;[^}]*line-height:\s*1\.2;/s,
   );
+});
+
+test("table and editor enabled switches share the compact DPR track style", () => {
+  assert.match(dataProcessingRulesCss, /:root\s*\{[^}]*--dpr-blue:\s*#1a73e8;/s);
+  assert.match(
+    dataProcessingRulesCss,
+    /\.dpr-rules-table td\.dpr-enabled-cell\s*\{[^}]*text-align:\s*center;/s,
+  );
+  assert.match(
+    dataProcessingRulesCss,
+    /\.dpr-table-switch-track,\s*\.dpr-enabled-track\s*\{[^}]*width:\s*32px;[^}]*height:\s*18px;[^}]*background:\s*#c9d1d9;/s,
+  );
+  assert.match(
+    dataProcessingRulesCss,
+    /\.dpr-table-switch-track::after,\s*\.dpr-enabled-track::after\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;/s,
+  );
+  assert.match(
+    dataProcessingRulesCss,
+    /\.dpr-table-switch \.dpr-enabled-checkbox:checked \+ \.dpr-table-switch-track,\s*\.dpr-enabled-switch input:checked \+ \.dpr-enabled-track\s*\{[^}]*background:\s*var\(--dpr-blue\);/s,
+  );
+});
+
+test("dragged rule rows show clear insertion feedback", () => {
+  assert.match(dataProcessingRulesCss, /\.dpr-row-drag-handle\s*\{[^}]*position:\s*absolute;[^}]*left:\s*2px;[^}]*width:\s*14px;[^}]*cursor:\s*grab;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-rule-row:hover \.dpr-row-drag-handle,[\s\S]*\.dpr-row-dragging \.dpr-row-drag-handle\s*\{[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-rule-row\.dpr-row-dragging\s*\{[^}]*opacity:\s*0\.55;/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-rule-row\.dpr-drop-before td\s*\{[^}]*box-shadow:\s*inset 0 2px 0 var\(--dpr-blue\);/s);
+  assert.match(dataProcessingRulesCss, /\.dpr-rule-row\.dpr-drop-after td\s*\{[^}]*box-shadow:\s*inset 0 -2px 0 var\(--dpr-blue\);/s);
 });
 
 test("floating editor positions stay inside the Project Settings viewport", () => {

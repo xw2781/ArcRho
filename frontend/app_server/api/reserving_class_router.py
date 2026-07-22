@@ -312,12 +312,10 @@ def save_reserving_class_types(req: ReservingClassTypesSaveRequest) -> Dict[str,
     project_name = (req.project_name or "").strip()
     if not project_name:
         raise HTTPException(400, "project_name is required")
-    if any(str(column or "").strip() == "EEX Formula" for column in req.columns):
-        raise HTTPException(
-            400,
-            "Legacy EEX Formula columns are no longer supported. Convert EEX adjustments "
-            "to Data Processing Rules before saving Reserving Class Types.",
-        )
+    normalized_request = reserving_class_service.normalize_reserving_class_types_data({
+        "columns": req.columns,
+        "rows": req.rows,
+    })
 
     try:
         filepath = config.get_reserving_class_types_path(project_name)
@@ -328,7 +326,7 @@ def save_reserving_class_types(req: ReservingClassTypesSaveRequest) -> Dict[str,
         out = reserving_class_service.refresh_reserving_class_types_json(
             project_name,
             source_fields_override=None,
-            rows_override=req.rows,
+            rows_override=normalized_request.get("rows", []),
         )
         safe_append_project_audit_log(
             project_name=project_name,

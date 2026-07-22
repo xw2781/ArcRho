@@ -317,6 +317,14 @@ def semantic_rules_hash(document: Dict[str, Any]) -> str:
     return _hash_json(_canonical_rules_for_hash(document))
 
 
+def _rule_id_order(document: Dict[str, Any]) -> List[str]:
+    return [
+        str(rule.get("id") or "")
+        for rule in document.get("rules", [])
+        if isinstance(rule, dict)
+    ]
+
+
 def _safe_read_json(path: str) -> Dict[str, Any]:
     if not path or not os.path.exists(path):
         return {}
@@ -1367,7 +1375,9 @@ def save_data_processing_rules(
         if errors:
             raise RulesValidationError(errors)
 
-        if semantic_rules_hash(candidate) == semantic_rules_hash(current):
+        semantic_unchanged = semantic_rules_hash(candidate) == semantic_rules_hash(current)
+        order_changed = _rule_id_order(candidate) != _rule_id_order(current)
+        if semantic_unchanged and not order_changed:
             return _response_for_document(
                 project_name,
                 path,
@@ -1382,6 +1392,35 @@ def save_data_processing_rules(
                     "temporary_view_caches_cleared": 0,
                     "invalidated_count": 0,
                 },
+            )
+
+        if semantic_unchanged:
+            candidate["revision"] = int(current.get("revision", 0)) + 1
+            candidate["updated_at"] = _utc_now()
+            candidate["updated_by"] = _current_user()
+            _atomic_write_document(path, candidate)
+            impact = {
+                "affected_source_measures": [],
+                "affected_dataset_types": [],
+                "generated_caches_rejected": 0,
+                "temporary_view_caches_cleared": 0,
+                "invalidated_count": 0,
+            }
+            safe_append_project_audit_log(
+                project_name=project_name,
+                action=(
+                    f"Reordered Data Processing Rules (revision {candidate['revision']})"
+                ),
+                user_name=candidate["updated_by"],
+            )
+            return _response_for_document(
+                project_name,
+                path,
+                candidate,
+                exists=True,
+                context=context,
+                changed=True,
+                impact=impact,
             )
 
         change_description, affected_measures = _describe_rule_changes(current, candidate)

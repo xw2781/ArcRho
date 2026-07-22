@@ -6,7 +6,7 @@ import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=
 import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260315";
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=2026040308";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260716resize2";
-import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260717dpr8";
+import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260721dpr12";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260716psprefs1";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 

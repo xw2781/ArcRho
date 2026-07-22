@@ -9,6 +9,6 @@
     "Generated caches require current processing provenance, and retained temporary-view caches are cleared when rules change.",
     "keep_members rules may target aggregate reserving-class labels (for example an IBNRCAT stored as a combined coverage) whenever a measure is stored at that composite granularity; validation matches the data-engine's full membership tree instead of atomic leaves only.",
     "The rules table and editor read in plain language (Applies When / Row Filter / Action, 'is'/'is any of'/'is not' operators), and one condition can list several values with 'is any of' so equivalent rules collapse into a single row.",
-    "The legacy EEX Formula column must be converted with the migration tool before affected projects or templates are loaded."
+    "Legacy JSON can still contain the retired EEX Formula column without blocking Project Settings or dependent features; the app ignores that field while XLSX templates still require migration."
   ]
 }

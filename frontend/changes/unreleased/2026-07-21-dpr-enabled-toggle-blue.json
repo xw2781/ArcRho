@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Matched Data Processing Rules table toggles to the compact blue editor style and centered them in the Enabled column."
+}
