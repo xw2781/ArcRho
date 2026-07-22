@@ -14,6 +14,18 @@ const gridInteractionsSource = await readFile(
   new URL("../ui/shared/tabs/data/dataset_grid_interactions.js", import.meta.url),
   "utf8",
 );
+const dataTabCss = await readFile(
+  new URL("../ui/shared/tabs/data/data_tab.css", import.meta.url),
+  "utf8",
+);
+const workspaceCss = await readFile(
+  new URL("../ui/shared/components/workspace/workspace.css", import.meta.url),
+  "utf8",
+);
+const dfmHtml = await readFile(
+  new URL("../ui/method_pages/dfm/dfm.html", import.meta.url),
+  "utf8",
+);
 const helperModuleUrl = `data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`;
 const {
   getDatasetGridTotalLayout,
@@ -35,6 +47,35 @@ test("Dataset Viewer keeps totals for calculated dataset formulas", () => {
 test("the grid applies the total policy using its configured host", () => {
   assert.match(gridViewSource, /isDfmHost:\s*isDfmDataTabHost\(\)/u);
   assert.match(gridViewSource, /formula:\s*getCurrentDatasetTypeFormula\(\)/u);
+});
+
+test("the grid auto-fits the row-label column to its corner header", () => {
+  assert.match(gridViewSource, /fitRowLabelColumn\(tbl,\s*th0\)/u);
+  assert.match(
+    gridViewSource,
+    /measureText\(cornerCell\.textContent\s*\|\|\s*""\)[\s\S]*?--data-tab-row-label-column-width/u,
+  );
+  assert.match(
+    dataTabCss,
+    /#tableWrap th:first-child,[\s\S]*?width:\s*var\(--data-tab-row-label-column-width/u,
+  );
+});
+
+test("the Data grid draws its own top and left perimeter inside the scroll wrapper", () => {
+  assert.match(
+    dataTabCss,
+    /#tableWrap thead th\s*\{[\s\S]*?border-top:\s*1px solid var\(--ar-spreadsheet-grid-border\)/u,
+  );
+  assert.match(
+    dataTabCss,
+    /#tableWrap th:first-child,[\s\S]*?border-left:\s*1px solid var\(--ar-spreadsheet-grid-border\)/u,
+  );
+});
+
+test("Data and Ratios scroll frames share the same neutral border token", () => {
+  assert.match(workspaceCss, /--ar-workspace-frame-border:\s*#d8dde3/u);
+  assert.match(dataTabCss, /#tableWrap\s*\{[\s\S]*?border:\s*1px solid var\(--ar-workspace-frame-border\)/u);
+  assert.match(dfmHtml, /#ratioWrapHost\s*\{[\s\S]*?border:\s*1px solid var\(--ar-workspace-frame-border\)/u);
 });
 
 test("DFM retains its multiplication and division total-row policy", () => {

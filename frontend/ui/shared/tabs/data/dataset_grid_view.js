@@ -358,6 +358,40 @@ function applyColumnWidthLock(table, widths, expectedCount) {
   table.style.width = `${totalWidth}px`;
 }
 
+function fitRowLabelColumn(table, cornerCell) {
+  if (!table || !cornerCell) return;
+
+  const cornerStyle = getComputedStyle(cornerCell);
+  const labelMeasure = document.createElement("canvas").getContext("2d");
+  if (!labelMeasure) return;
+
+  labelMeasure.font = `${cornerStyle.fontWeight} ${cornerStyle.fontSize} ${cornerStyle.fontFamily}`;
+  const horizontalChrome = [
+    cornerStyle.paddingLeft,
+    cornerStyle.paddingRight,
+    cornerStyle.borderLeftWidth,
+    cornerStyle.borderRightWidth,
+  ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
+  const sharedWidth = Number.parseFloat(
+    cornerStyle.getPropertyValue("--ar-spreadsheet-cell-width"),
+  ) || Math.ceil(cornerCell.getBoundingClientRect().width);
+  const labelWidth = Math.max(
+    sharedWidth,
+    Math.ceil(labelMeasure.measureText(cornerCell.textContent || "").width + horizontalChrome + 1),
+  );
+
+  table.style.setProperty("--data-tab-row-label-column-width", `${labelWidth}px`);
+
+  const lockedFirstColumn = table.querySelector("colgroup col:first-child");
+  if (!lockedFirstColumn) return;
+  const previousWidth = Number.parseFloat(lockedFirstColumn.style.width) || sharedWidth;
+  lockedFirstColumn.style.width = `${labelWidth}px`;
+  const lockedTableWidth = Number.parseFloat(table.style.width);
+  if (Number.isFinite(lockedTableWidth)) {
+    table.style.width = `${lockedTableWidth + labelWidth - previousWidth}px`;
+  }
+}
+
 export function renderTable() {
 
   const wrap = $("tableWrap");
@@ -537,6 +571,7 @@ export function renderTable() {
   }
 
   wrap.appendChild(tbl);
+  fitRowLabelColumn(tbl, th0);
 
   if (gridEditConfig?.onTableRendered) gridEditConfig.onTableRendered();
   renderDataTabChart();

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Ratios context menus now place the pen and hand mode icon after the command text."
+}

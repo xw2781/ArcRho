@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Data-tab tables now draw their own complete border inside the scrolling frame."
+}

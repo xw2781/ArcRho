@@ -2,6 +2,7 @@
 :root {
   --gap: 16px;
   --border: #ccc;
+  --ar-workspace-frame-border: #d8dde3;
   --bg: #f5f7fa;
   --muted: #666;
   --app-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;

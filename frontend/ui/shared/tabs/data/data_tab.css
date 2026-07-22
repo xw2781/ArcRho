@@ -43,7 +43,7 @@
   padding-bottom: 1px;
   overflow: auto;
   box-sizing: border-box;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ar-workspace-frame-border);
   border-radius: 0;
   outline: none;
   background: transparent;
@@ -162,7 +162,7 @@
   position: sticky;
   top: 0;
   z-index: 3;
-  border-top: 0;
+  border-top: 1px solid var(--ar-spreadsheet-grid-border);
   background: var(--ar-spreadsheet-header-fill);
   box-shadow: none;
   color: #1f2937;
@@ -197,10 +197,10 @@
   position: sticky;
   left: 0;
   z-index: 2;
-  width: var(--ar-spreadsheet-cell-width);
-  min-width: var(--ar-spreadsheet-cell-width);
-  max-width: var(--ar-spreadsheet-cell-width);
-  border-left: 0;
+  width: var(--data-tab-row-label-column-width, var(--ar-spreadsheet-cell-width));
+  min-width: var(--data-tab-row-label-column-width, var(--ar-spreadsheet-cell-width));
+  max-width: var(--data-tab-row-label-column-width, var(--ar-spreadsheet-cell-width));
+  border-left: 1px solid var(--ar-spreadsheet-grid-border);
   border-right: 0;
   background: var(--ar-spreadsheet-label-fill);
   box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);

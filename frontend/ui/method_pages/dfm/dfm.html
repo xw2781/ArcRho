@@ -10,11 +10,11 @@
   <link rel="stylesheet" href="/ui/shared/tabs/links/links_tab.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260716a"/>
-  <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260715a"/>
-  <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260715b"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260721a"/>
   <style>
     :root{
       --dfm-font: var(--app-font);
@@ -24,6 +24,11 @@
       --dfm-cell-min-w: 80px;
       --dfm-cell-max-w: 100px;
       --dfm-spin-w: 70px;
+      --dfm-scrollbar-chrome: #f1f3f5;
+      --dfm-scrollbar-button-hover: #e5e9ef;
+      --dfm-scrollbar-button-active: #d9dee7;
+      --dfm-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+      --dfm-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
       --cell-h: var(--dfm-cell-h);
       --cell-w: var(--dfm-cell-w);
       --cell-min-w: var(--dfm-cell-min-w);
@@ -118,7 +123,8 @@
       padding: 0;
     }
     #dfmResultsPage {
-      padding: 3px 0 0 3px;
+      padding: 3px;
+      overflow: hidden;
     }
     #dfmNotesPage {
       padding: 3px 0 0 3px;
@@ -462,17 +468,12 @@
       min-height: 0;
     }
     #ratioWrapHost {
-      --dfm-scrollbar-chrome: #f1f3f5;
-      --dfm-scrollbar-button-hover: #e5e9ef;
-      --dfm-scrollbar-button-active: #d9dee7;
-      --dfm-scrollbar-thumb: rgba(182, 182, 182, 0.2);
-      --dfm-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
       position: relative;
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
       width: 100%;
-      border: 1px solid #d8dde3;
+      border: 1px solid var(--ar-workspace-frame-border);
       border-radius: 0;
       background: #fff;
       box-shadow: none;
@@ -484,33 +485,31 @@
       box-sizing: border-box;
       align-self: stretch;
     }
-    #dfmDetailsPage {
-      --dfm-scrollbar-chrome: #f1f3f5;
-      --dfm-scrollbar-button-hover: #e5e9ef;
-      --dfm-scrollbar-button-active: #d9dee7;
-      --dfm-scrollbar-thumb: rgba(182, 182, 182, 0.2);
-      --dfm-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
-    }
     #dfmDetailsPage::-webkit-scrollbar,
-    #ratioWrapHost::-webkit-scrollbar {
+    #ratioWrapHost::-webkit-scrollbar,
+    #resultsWrap::-webkit-scrollbar {
       width: 20px;
       height: 20px;
     }
     #dfmDetailsPage::-webkit-scrollbar-track,
     #dfmDetailsPage::-webkit-scrollbar-corner,
     #ratioWrapHost::-webkit-scrollbar-track,
-    #ratioWrapHost::-webkit-scrollbar-corner {
+    #ratioWrapHost::-webkit-scrollbar-corner,
+    #resultsWrap::-webkit-scrollbar-track,
+    #resultsWrap::-webkit-scrollbar-corner {
       background: var(--dfm-scrollbar-chrome);
     }
     #dfmDetailsPage::-webkit-scrollbar-thumb,
-    #ratioWrapHost::-webkit-scrollbar-thumb {
+    #ratioWrapHost::-webkit-scrollbar-thumb,
+    #resultsWrap::-webkit-scrollbar-thumb {
       background-color: var(--dfm-scrollbar-thumb);
       border: 3px solid var(--dfm-scrollbar-chrome);
       border-radius: 5px;
       background-clip: content-box;
     }
     #dfmDetailsPage::-webkit-scrollbar-button,
-    #ratioWrapHost::-webkit-scrollbar-button {
+    #ratioWrapHost::-webkit-scrollbar-button,
+    #resultsWrap::-webkit-scrollbar-button {
       width: 16px;
       height: 16px;
       display: block;
@@ -520,11 +519,13 @@
       background-size: 12px 12px;
     }
     #dfmDetailsPage::-webkit-scrollbar-button:hover,
-    #ratioWrapHost::-webkit-scrollbar-button:hover {
+    #ratioWrapHost::-webkit-scrollbar-button:hover,
+    #resultsWrap::-webkit-scrollbar-button:hover {
       background-color: var(--dfm-scrollbar-button-hover);
     }
     #dfmDetailsPage::-webkit-scrollbar-button:active,
-    #ratioWrapHost::-webkit-scrollbar-button:active {
+    #ratioWrapHost::-webkit-scrollbar-button:active,
+    #resultsWrap::-webkit-scrollbar-button:active {
       background-color: var(--dfm-scrollbar-button-active);
     }
     #dfmDetailsPage::-webkit-scrollbar-button:horizontal:start:increment,
@@ -534,26 +535,34 @@
     #ratioWrapHost::-webkit-scrollbar-button:horizontal:start:increment,
     #ratioWrapHost::-webkit-scrollbar-button:horizontal:end:decrement,
     #ratioWrapHost::-webkit-scrollbar-button:vertical:start:increment,
-    #ratioWrapHost::-webkit-scrollbar-button:vertical:end:decrement {
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:end:decrement,
+    #resultsWrap::-webkit-scrollbar-button:horizontal:start:increment,
+    #resultsWrap::-webkit-scrollbar-button:horizontal:end:decrement,
+    #resultsWrap::-webkit-scrollbar-button:vertical:start:increment,
+    #resultsWrap::-webkit-scrollbar-button:vertical:end:decrement {
       width: 0;
       height: 0;
       display: none;
       background-image: none;
     }
     #dfmDetailsPage::-webkit-scrollbar-button:horizontal:start:decrement,
-    #ratioWrapHost::-webkit-scrollbar-button:horizontal:start:decrement {
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:start:decrement,
+    #resultsWrap::-webkit-scrollbar-button:horizontal:start:decrement {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
     }
     #dfmDetailsPage::-webkit-scrollbar-button:horizontal:end:increment,
-    #ratioWrapHost::-webkit-scrollbar-button:horizontal:end:increment {
+    #ratioWrapHost::-webkit-scrollbar-button:horizontal:end:increment,
+    #resultsWrap::-webkit-scrollbar-button:horizontal:end:increment {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
     }
     #dfmDetailsPage::-webkit-scrollbar-button:vertical:start:decrement,
-    #ratioWrapHost::-webkit-scrollbar-button:vertical:start:decrement {
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:start:decrement,
+    #resultsWrap::-webkit-scrollbar-button:vertical:start:decrement {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
     }
     #dfmDetailsPage::-webkit-scrollbar-button:vertical:end:increment,
-    #ratioWrapHost::-webkit-scrollbar-button:vertical:end:increment {
+    #ratioWrapHost::-webkit-scrollbar-button:vertical:end:increment,
+    #resultsWrap::-webkit-scrollbar-button:vertical:end:increment {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
     }
     #dfmDetailsPage.isScrolling::-webkit-scrollbar-thumb,
@@ -561,7 +570,10 @@
     #dfmDetailsPage::-webkit-scrollbar-thumb:hover,
     #ratioWrapHost.isScrolling::-webkit-scrollbar-thumb,
     #ratioWrapHost.isScrollbarHover::-webkit-scrollbar-thumb,
-    #ratioWrapHost::-webkit-scrollbar-thumb:hover {
+    #ratioWrapHost::-webkit-scrollbar-thumb:hover,
+    #resultsWrap.isScrolling::-webkit-scrollbar-thumb,
+    #resultsWrap.isScrollbarHover::-webkit-scrollbar-thumb,
+    #resultsWrap::-webkit-scrollbar-thumb:hover {
       background-color: var(--dfm-scrollbar-thumb-active);
     }
     #ratioWrap {
@@ -673,15 +685,23 @@
       /* background: rgba(183, 227, 86, 0.374); */
       background: #9dcc00;
     }
-    #ratioWrap td.dfmTableHighlight,
-    #resultsWrap td.dfmTableHighlight {
+    #ratioWrap td.dfmTableHighlight {
       background: rgb(148, 188, 248);
       outline: none;
     }
-    #ratioWrap td.dfmTableActive,
-    #resultsWrap td.dfmTableActive {
+    #ratioWrap td.dfmTableActive {
       background: rgb(144, 170, 228);
       outline: none;
+    }
+    #resultsWrap td.dfmTableHighlight,
+    #resultsWrap td.dfmTableActive {
+      background: var(--ar-spreadsheet-selection-fill);
+      color: var(--ar-spreadsheet-selection-text);
+      outline: none;
+    }
+    #resultsWrap td.dfmTableActive {
+      outline: 1px dashed var(--ar-spreadsheet-anchor-color);
+      outline-offset: -2px;
     }
     #ratioWrap td.ratioCell.dfmTableHighlight,
     #ratioWrap td.ratioCell.dfmTableActive {
@@ -1500,14 +1520,55 @@
       will-change: transform;
     }
 
+    #resultsPanel,
+    #resultsPanel > .panelInner {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+    #resultsPanel > .panelInner {
+      padding: 0;
+    }
     #resultsWrap {
-      margin-top: 0;
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
+      background: #fff;
+      outline: none;
+      scrollbar-gutter: stable;
+      padding-right: 1px;
+      padding-bottom: 1px;
+      box-sizing: border-box;
+    }
+    #resultsWrap:focus-visible {
+      border-color: #93b4f5;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+    }
+    #resultsWrap > .small {
+      display: flex;
+      min-height: 120px;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: 12px;
     }
     .dfmResultsControls {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 4px 0 6px;
+      flex: 0 0 auto;
+      min-height: 46px;
+      padding: 8px 10px;
+      border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
+      border-bottom: 0;
+      background: #f8fafc;
+      box-sizing: border-box;
       flex-wrap: wrap;
     }
     .dfmResultsControls label {
@@ -1555,8 +1616,8 @@
     }
     .dfmResultsControls input:focus {
       outline: none;
-      border-color: #cfcfcf;
-      box-shadow: none;
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
     }
     .dfmResultsControls input.dfmResultsSmallInput {
       min-width: 64px;
@@ -1592,53 +1653,24 @@
     .dfmResultsBasisStatus.is-loading {
       color: #1d4ed8;
     }
-    #resultsWrap table {
-      border-collapse: separate;
-      border-spacing: 0;
-      width: max-content;
-      table-layout: fixed;
-      font-size: var(--dfm-table-font-size);
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    #resultsWrap th,
-    #resultsWrap td {
-      border: 0;
-      border-right: 1px solid #ddd;
-      border-bottom: 1px solid #ddd;
-      max-width: var(--cell-max-w);
-      min-width: var(--cell-min-w);
-      height: var(--cell-h);
-      line-height: var(--cell-h);
-      padding: 0 6px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      box-sizing: border-box;
-      user-select: none;
-      -webkit-user-select: none;
-    }
     #resultsWrap thead th {
       text-align: center;
       vertical-align: middle;
-      background: #f6f6f6;
       position: sticky;
       top: 0;
       z-index: 5;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid var(--ar-spreadsheet-grid-border);
       background-clip: padding-box;
-      font-weight: 400;
-      height: auto;
-      min-height: var(--cell-h);
-      line-height: 1.2;
-      padding-top: 4px;
-      padding-bottom: 4px;
-      white-space: normal;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      text-overflow: clip;
     }
-    #resultsWrap thead { background: #f6f6f6; }
+    #resultsWrap thead th::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 1px;
+      background: var(--ar-spreadsheet-grid-border);
+      pointer-events: none;
+    }
+    #resultsWrap thead { background: var(--ar-spreadsheet-header-fill); }
     #resultsWrap th:first-child,
     #resultsWrap td:first-child {
       text-align: center;
@@ -1646,20 +1678,37 @@
       position: sticky;
       left: 0;
       z-index: 4;
-      background: #f6f6f6;
-      border-left: 1px solid #ddd;
+      background: var(--ar-spreadsheet-label-fill);
+      color: var(--ar-spreadsheet-label-text);
+      border-left: 1px solid var(--ar-spreadsheet-grid-border);
       border-right: 0;
-      box-shadow: 1px 0 0 #ddd;
-      width: auto;
-      min-width: max-content;
-      max-width: 180px;
+      box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
       background-clip: padding-box;
     }
     #resultsWrap thead th:first-child {
       z-index: 6;
     }
+    #resultsWrap th.arSpreadsheetSelectedLabel {
+      background: var(--ar-spreadsheet-selected-label-fill);
+      color: var(--ar-spreadsheet-label-text);
+      font-weight: 400;
+    }
+    #resultsWrap thead th[data-c],
+    #resultsWrap tbody th[data-r] {
+      cursor: pointer;
+    }
     #resultsWrap tbody td:not(:first-child) {
       text-align: right;
+    }
+    #resultsWrap tbody tr:not(.dfmResultsTotalRow):hover td:not(.dfmTableHighlight):not(.dfmTableActive) {
+      background: #f8fafc;
+    }
+    #resultsWrap .dfmResultsTotalRow th:not(.arSpreadsheetSelectedLabel),
+    #resultsWrap .dfmResultsTotalRow td:not(.dfmTableHighlight):not(.dfmTableActive) {
+      background: #fff;
+      color: #1f2937;
+      font-weight: 700;
+      border-bottom-color: #cbd5e1;
     }
   </style>
 </head>
@@ -1830,7 +1879,7 @@
           </div>
           <span id="dfmRatioBasisStatus" class="dfmResultsBasisStatus" aria-live="polite"></span>
         </div>
-        <div id="resultsWrap"></div>
+        <div id="resultsWrap" tabindex="0" aria-label="DFM results table"></div>
       </div>
     </div>
   </div>
@@ -1858,6 +1907,7 @@
 
   <div id="dfmAvgMenu" class="dfmCtxMenu">
     <button class="dfmCtxItem dfmCtxModeItem" data-action="toggle-summary-ratio-mode" data-target-mode="edit">
+      <span class="dfmCtxItemLabel">Switch to Edit Mode</span>
       <svg class="dfmCtxModeIcon dfmCtxModeIconEdit" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="m3 11.8.7-3L10.9 1.6a1.2 1.2 0 0 1 1.7 0l1.8 1.8a1.2 1.2 0 0 1 0 1.7l-7.2 7.2-3 .7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
         <path d="m9.9 2.7 3.4 3.4M3.7 8.8l3.5 3.5" stroke="currentColor" stroke-width="1.3"/>
@@ -1865,7 +1915,6 @@
       <svg class="dfmCtxModeIcon dfmCtxModeIconSelect" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M6 9.8v-7a1.2 1.2 0 0 1 2.4 0v4.8-1.7a1.15 1.15 0 0 1 2.3 0v2.2-1.4a1.15 1.15 0 0 1 2.3 0v2.2-1.3a1.15 1.15 0 0 1 2.3 0v3.6c0 2.5-1.7 4.3-4.1 4.3H8.7c-1.2 0-2.2-.5-2.9-1.4L2.9 10a1.2 1.2 0 0 1 1.8-1.6L6 9.8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <span class="dfmCtxItemLabel">Switch to Edit Mode</span>
     </button>
     <div class="dfmCtxSep"></div>
     <button class="dfmCtxItem" data-action="copy-summary-value">Copy value</button>

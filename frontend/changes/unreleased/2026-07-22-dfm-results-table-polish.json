@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Polished the DFM Results table with Ratios-aligned styling, unfilled totals, and row and column label selection."
+}

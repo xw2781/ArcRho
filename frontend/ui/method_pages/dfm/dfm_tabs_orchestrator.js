@@ -460,6 +460,7 @@ function initDfmTabs() {
   });
   wireDfmScrollbarActivity(detailsPage);
   wireDfmScrollbarActivity(document.getElementById("ratioWrapHost"));
+  wireDfmScrollbarActivity(document.getElementById("resultsWrap"));
   setShowNaBorders(loadNaBorders());
 
   wireDfmSpinnerControls();

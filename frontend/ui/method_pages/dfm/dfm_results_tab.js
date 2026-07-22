@@ -4,7 +4,7 @@ DFM Results Tab - results table rendering and CSV export
 ===============================================================================
 */
 import { getDataset } from "/ui/shared/dataset/dataset_api.js";
-import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260715c";
+import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260721a";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { wireSelectableTable } from "/ui/shared/components/spreadsheet/table_selection.js";
@@ -189,6 +189,36 @@ function extractRatioBasisDatasetOptions(data) {
 
 function markRatioBasisOptionsRendered(projectKey) {
   ratioBasisOptionsRenderedProjectKey = String(projectKey || "");
+}
+
+function syncResultsSelectionState(table, ranges = []) {
+  if (!table) return;
+  const selectedRows = new Set();
+  const selectedCols = new Set();
+  const normalizedRanges = Array.isArray(ranges) ? ranges : [];
+  table.querySelectorAll("td[data-r][data-c]").forEach((cell) => {
+    const row = Number(cell.dataset.r);
+    const col = Number(cell.dataset.c);
+    const selected = normalizedRanges.some((range) => (
+      row >= range.r0 && row <= range.r1 && col >= range.c0 && col <= range.c1
+    ));
+    if (selected) {
+      cell.setAttribute("aria-selected", "true");
+      selectedRows.add(row);
+      selectedCols.add(col);
+    } else {
+      cell.removeAttribute("aria-selected");
+    }
+  });
+  table.querySelectorAll("th.arSpreadsheetSelectedLabel").forEach((header) => {
+    header.classList.remove("arSpreadsheetSelectedLabel");
+  });
+  selectedRows.forEach((row) => {
+    table.querySelector(`tbody th[data-r="${row}"]`)?.classList.add("arSpreadsheetSelectedLabel");
+  });
+  selectedCols.forEach((col) => {
+    table.querySelector(`thead th[data-c="${col}"]`)?.classList.add("arSpreadsheetSelectedLabel");
+  });
 }
 
 async function ensureRatioBasisOptionsForCurrentProject(options = {}) {
@@ -772,6 +802,7 @@ export function renderResultsTable() {
   const latestHeaderText = inputTriangleName ? `Latest ${inputTriangleName}` : "Latest";
 
   const table = document.createElement("table");
+  table.classList.add("arSpreadsheetTable", "dfmResultsTable");
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
   const corner = document.createElement("th");
@@ -780,24 +811,29 @@ export function renderResultsTable() {
 
   const latestHead = document.createElement("th");
   latestHead.textContent = latestHeaderText;
+  latestHead.dataset.c = "0";
   headRow.appendChild(latestHead);
 
   const reserveHead = document.createElement("th");
   reserveHead.textContent = "Reserve";
+  reserveHead.dataset.c = "1";
   headRow.appendChild(reserveHead);
 
   const ultHead = document.createElement("th");
   ultHead.textContent = "Ultimate";
+  ultHead.dataset.c = "2";
   headRow.appendChild(ultHead);
 
   if (ratioBasisActive) {
     const basisHead = document.createElement("th");
     basisHead.textContent = ratioBasisHeaderText;
     basisHead.title = ratioBasisHeaderText;
+    basisHead.dataset.c = "3";
     headRow.appendChild(basisHead);
 
     const ultRatioHead = document.createElement("th");
     ultRatioHead.textContent = "Ultimate Ratio";
+    ultRatioHead.dataset.c = "4";
     headRow.appendChild(ultRatioHead);
   }
   thead.appendChild(headRow);
@@ -824,6 +860,7 @@ export function renderResultsTable() {
     const tr = document.createElement("tr");
     const rowHead = document.createElement("th");
     rowHead.textContent = String(origins[r] ?? "");
+    rowHead.dataset.r = String(r);
     tr.appendChild(rowHead);
 
     const latestTd = document.createElement("td");
@@ -892,6 +929,7 @@ export function renderResultsTable() {
   totalTr.className = "dfmResultsTotalRow";
   const totalHead = document.createElement("th");
   totalHead.textContent = "Total";
+  totalHead.dataset.r = String(origins.length);
   totalTr.appendChild(totalHead);
 
   const latestTotalTd = document.createElement("td");
@@ -933,6 +971,14 @@ export function renderResultsTable() {
     container: wrap,
     selectedClass: "dfmTableHighlight",
     activeClass: "dfmTableActive",
+    rowHeaderSelector: "tbody th[data-r]",
+    columnHeaderSelector: "thead th[data-c]",
+    canStartLabelSelection: true,
+    canHandleKeyboardNavigation: true,
+    scrollHost: wrap,
+    onSelectionChange: ({ ranges }) => {
+      syncResultsSelectionState(wrap.querySelector("table.dfmResultsTable"), ranges);
+    },
     onContextMenu: (event, cell, api) => {
       event.preventDefault();
       window.__arcRhoCopyActiveGridSelection = api.copySelection;

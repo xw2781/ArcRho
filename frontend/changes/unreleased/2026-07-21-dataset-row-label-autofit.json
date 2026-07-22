@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Data grid now widens its row-label column so the top-left header label is always fully visible."
+}

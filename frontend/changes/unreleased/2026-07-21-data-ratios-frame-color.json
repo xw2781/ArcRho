@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The Data and Ratios table wrappers now use the same neutral border color."
+}
