@@ -352,12 +352,51 @@ export function createDatasetDependencyGuard(deps) {
       }
     }
 
-    const msg = `Dataset Type "${datasetName}" cannot be generated because dependencies are missing: ${evalResult.missing.join(", ")}.`;
+    let cachedDependencyChecks = [];
+    let unresolved = [...evalResult.missing];
+    if (checkExistingCsvFallback) {
+      const triInputsRaw = options?.precheckInputs && typeof options.precheckInputs === "object"
+        ? options.precheckInputs
+        : getTriInputs();
+      cachedDependencyChecks = await Promise.all(evalResult.missing.map(async (dependencyName) => {
+        const dependencyKey = normalizeProjectText(dependencyName);
+        const dependencyRow = model.byKey instanceof Map ? model.byKey.get(dependencyKey) : null;
+        const dependencyFormat = String(dependencyRow?.dataFormat || "").trim().toLowerCase();
+        const precheckDependencyCsv = dependencyFormat === "vector" && typeof precheckArcRhoVecCsv === "function"
+          ? precheckArcRhoVecCsv
+          : precheckArcRhoTriCsv;
+        const result = await precheckDependencyCsv({
+          ...(triInputsRaw || {}),
+          project: triInputsRaw?.project || project,
+          tri: dependencyRow?.name || dependencyName,
+          instanceName: dependencyRow?.name || dependencyName,
+        });
+        return {
+          name: dependencyName,
+          available: !!result?.hasExistingCsv,
+          dataPath: String(result?.data?.data_path || ""),
+        };
+      }));
+      unresolved = cachedDependencyChecks
+        .filter((item) => !item.available)
+        .map((item) => item.name);
+    }
+    if (!unresolved.length) {
+      if (input) clearInputInvalid(input);
+      lastDatasetDependencyAlertSig = "";
+      return {
+        ok: true,
+        bypassedByExistingDependencies: true,
+        dependencyDataPaths: cachedDependencyChecks.map((item) => item.dataPath).filter(Boolean),
+      };
+    }
+
+    const msg = `Dataset Type "${datasetName}" cannot be generated because dependencies are missing: ${unresolved.join(", ")}.`;
     if (input) setInputInvalid(input, msg);
     setStatus(`Dataset Type "${datasetName}" cannot be generated due to missing dependencies.`);
 
     if (showMessage) {
-      const sig = `${normalizeProjectText(project)}::${normalizeProjectText(datasetName)}::${evalResult.missing.map((m) => normalizeProjectText(m)).join("|")}`;
+      const sig = `${normalizeProjectText(project)}::${normalizeProjectText(datasetName)}::${unresolved.map((m) => normalizeProjectText(m)).join("|")}`;
       if (sig !== lastDatasetDependencyAlertSig) {
         lastDatasetDependencyAlertSig = sig;
         try { alert(msg); } catch {}
@@ -365,7 +404,7 @@ export function createDatasetDependencyGuard(deps) {
       try { input?.reportValidity(); } catch {}
     }
 
-    return { ok: false, missing: evalResult.missing };
+    return { ok: false, missing: unresolved };
   }
 
   function clearProjectCache(projectName) {

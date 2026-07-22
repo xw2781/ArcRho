@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed calculated datasets failing to reopen or refresh when valid dependency caches already exist.",
+  "details": [
+    "Cached ad-hoc inputs now satisfy Dataset dependency validation.",
+    "Missing generated formula inputs are materialized before the target calculation is retried.",
+    "New engine caches refresh existing app-calculated dependents even when source sidecar settings are unchanged."
+  ]
+}

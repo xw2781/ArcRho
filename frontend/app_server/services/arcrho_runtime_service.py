@@ -8,13 +8,19 @@ import os
 import re
 import uuid
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import pandas as pd
 from fastapi import HTTPException
 
 from app_server import config
-from app_server.helpers import sanitize_dataset_file_name, set_data_path_like_vba, send_request_like_vba, wait_for_file
+from app_server.helpers import (
+    _canon_dataset_name,
+    sanitize_dataset_file_name,
+    send_request_like_vba,
+    set_data_path_like_vba,
+    wait_for_file,
+)
 from app_server.services import (
     dataset_instance_index_service,
     dataset_number_format_service,
@@ -786,6 +792,199 @@ def _local_cache_response(local_result: Dict[str, Any], data_path: str, pairs: l
     }
 
 
+def _recalculate_dependents_after_cache_write(pairs: list) -> Dict[str, Any] | None:
+    project_name = _pair_value(pairs, "ProjectName")
+    reserving_class = _pair_value(pairs, "Path")
+    dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
+    dataset_name = _pair_value(pairs, "InstanceName") or dataset_type
+    if not project_name or not reserving_class or not dataset_name:
+        return None
+
+    try:
+        from app_server.services import calculated_dataset_service
+
+        return calculated_dataset_service.recalculate_dependents(
+            project_name,
+            reserving_class,
+            dataset_name,
+            dataset_type,
+        )
+    except Exception as err:
+        return {"ok": False, "skipped": True, "reason": str(err)}
+
+
+def _dependency_request_pairs(pairs: list, dataset_name: str, data_format: str) -> list:
+    excluded = {"function", "datasetname", "trianglename", "vectorname", "instancename"}
+    dependency_pairs = [
+        (key, value)
+        for key, value in pairs
+        if str(key or "").strip().lower() not in excluded
+    ]
+    function_name = "ArcRhoVec" if str(data_format or "").strip().lower() == "vector" else "ArcRhoTri"
+    return [
+        ("Function", function_name),
+        ("DatasetName", dataset_name),
+        ("InstanceName", dataset_name),
+        *dependency_pairs,
+    ]
+
+
+def _materialize_calculated_dependencies(
+    pairs: list,
+    dependency_names: list[str],
+    timeout_sec: float,
+    *,
+    local_only: bool,
+    allow_derived: bool,
+    calculation_stack: set[str],
+) -> List[Dict[str, Any]]:
+    project_name = _pair_value(pairs, "ProjectName")
+    if not project_name:
+        return []
+
+    from app_server.services import calculated_dataset_service
+
+    rows_by_key = {
+        _canon_dataset_name(row.get("name")): row
+        for row in calculated_dataset_service._dataset_type_rows(project_name)
+        if _canon_dataset_name(row.get("name"))
+    }
+    results: List[Dict[str, Any]] = []
+    for dependency_name in dependency_names:
+        row = rows_by_key.get(_canon_dataset_name(dependency_name))
+        if not row:
+            continue
+        can_materialize = bool(
+            row.get("generated")
+            or (row.get("calculated") and str(row.get("formula") or "").strip())
+        )
+        if not can_materialize:
+            continue
+        dependency_pairs = _dependency_request_pairs(
+            pairs,
+            str(row.get("name") or dependency_name),
+            str(row.get("data_format") or "Triangle"),
+        )
+        dependency_path = set_data_path_like_vba(dependency_pairs)
+        result = run_arcrho_tri(
+            dependency_pairs,
+            dependency_path,
+            timeout_sec=timeout_sec,
+            force_refresh=False,
+            local_only=local_only,
+            allow_derived=allow_derived,
+            write_sidecar=False,
+            recalculate_dependents_on_cache_write=False,
+            calculation_stack=calculation_stack,
+        )
+        results.append({"dataset_type_name": dependency_name, **result})
+    return results
+
+
+def _recalculate_requested_app_dataset(
+    pairs: list,
+    requested_data_path: str,
+    timeout_sec: float,
+    *,
+    local_only: bool,
+    allow_derived: bool,
+    calculation_stack: set[str] | None = None,
+) -> Dict[str, Any] | None:
+    project_name = _pair_value(pairs, "ProjectName")
+    reserving_class = _pair_value(pairs, "Path")
+    dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
+    if not project_name or not reserving_class or not dataset_type:
+        return None
+
+    dataset_key = "::".join([
+        _canon_dataset_name(project_name),
+        _canon_dataset_name(reserving_class),
+        _canon_dataset_name(dataset_type),
+    ])
+    active_stack = set(calculation_stack or set())
+    if dataset_key in active_stack:
+        return {
+            "ok": False,
+            "status": "calculation_failed",
+            "need_request": False,
+            "data_path": requested_data_path,
+            "message": f"Calculated dataset dependency cycle detected: {dataset_type}",
+        }
+    active_stack.add(dataset_key)
+
+    try:
+        from app_server.services import calculated_dataset_service
+
+        result = calculated_dataset_service.recalculate_dataset(
+            project_name,
+            reserving_class,
+            dataset_type,
+        )
+    except Exception as err:
+        return {
+            "ok": False,
+            "status": "calculation_error",
+            "need_request": False,
+            "data_path": requested_data_path,
+            "message": str(err),
+        }
+
+    if result.get("reason") == "not_calculated":
+        return None
+    dependency_results: List[Dict[str, Any]] = []
+    missing_dependencies = [
+        str(item).strip()
+        for item in result.get("missing_dependencies") or []
+        if str(item).strip()
+    ]
+    if not result.get("ok") and missing_dependencies:
+        dependency_results = _materialize_calculated_dependencies(
+            pairs,
+            missing_dependencies,
+            timeout_sec,
+            local_only=local_only,
+            allow_derived=allow_derived,
+            calculation_stack=active_stack,
+        )
+        if dependency_results and all(item.get("ok") for item in dependency_results):
+            result = calculated_dataset_service.recalculate_dataset(
+                project_name,
+                reserving_class,
+                dataset_type,
+            )
+    if not result.get("ok"):
+        errors = [str(item).strip() for item in result.get("errors") or [] if str(item).strip()]
+        message = "; ".join(errors) or str(result.get("reason") or "Failed to calculate dataset.")
+        return {
+            "ok": False,
+            "status": "calculation_failed",
+            "need_request": False,
+            "data_path": requested_data_path,
+            "message": message,
+            "calculation": result,
+            "dependency_results": dependency_results,
+        }
+
+    data_path = str(result.get("path") or requested_data_path)
+    ds_id = _register_arcrho_dataset(data_path, pairs)
+    calculated_updates = _recalculate_dependents_after_cache_write(pairs)
+    try:
+        dataset_instance_index_service.rebuild_index(project_name, reserving_class)
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "need_request": False,
+        "ds_id": ds_id,
+        "request_file": None,
+        "data_path": data_path,
+        "local_cache_status": "calculated",
+        "calculated": True,
+        "calculated_updates": calculated_updates,
+        "sidecar_written": True,
+    }
+
+
 def _normalize_temporary_session_id(value: Any) -> str:
     try:
         return str(uuid.UUID(str(value or "").strip()))
@@ -1034,6 +1233,8 @@ def run_arcrho_tri(
     allow_derived: bool = True,
     write_sidecar: bool = True,
     temporary_session_id: str | None = None,
+    recalculate_dependents_on_cache_write: bool = True,
+    calculation_stack: set[str] | None = None,
 ) -> Dict[str, Any]:
     if temporary_session_id:
         return _run_temporary_arcrho_tri(
@@ -1051,7 +1252,21 @@ def run_arcrho_tri(
 
     local_result = resolve_local_triangle_cache(data_path, pairs, allow_derived=allow_derived, local_only=local_only)
     if local_result.get("ok") and not force_refresh:
-        return _local_cache_response(local_result, data_path, pairs)
+        out = _local_cache_response(local_result, data_path, pairs)
+        if recalculate_dependents_on_cache_write and local_result.get("status") != "cache_exact":
+            out["calculated_updates"] = _recalculate_dependents_after_cache_write(pairs)
+        return out
+
+    calculated_result = _recalculate_requested_app_dataset(
+        pairs,
+        data_path,
+        timeout_sec,
+        local_only=local_only,
+        allow_derived=allow_derived,
+        calculation_stack=calculation_stack,
+    )
+    if calculated_result is not None:
+        return calculated_result
     manual_source_found = bool(local_result.get("manual_source_found"))
     generated_source_found = bool(local_result.get("generated_source_found"))
     if (local_only and not generated_source_found) or manual_source_found:
@@ -1104,13 +1319,18 @@ def run_arcrho_tri(
         except Exception:
             pass
         ds_id = _register_arcrho_dataset(data_path, pairs)
+        calculated_updates = (
+            _recalculate_dependents_after_cache_write(pairs)
+            if need_request and recalculate_dependents_on_cache_write
+            else None
+        )
         out: Dict[str, Any] = {
             "ok": True,
             "need_request": need_request,
             "ds_id": ds_id,
             "request_file": request_file,
             "data_path": data_path,
-            "calculated_updates": None,
+            "calculated_updates": calculated_updates,
             "sidecar_written": False,
         }
         if force_refresh:
@@ -1121,17 +1341,7 @@ def run_arcrho_tri(
     try:
         _write_dataset_sidecar(data_path, pairs)
         _refresh_dataset_instance_index_after_cache_write(pairs)
-        try:
-            from app_server.services import calculated_dataset_service
-
-            calculated_updates = calculated_dataset_service.recalculate_dependents(
-                _pair_value(pairs, "ProjectName"),
-                _pair_value(pairs, "Path"),
-                _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
-                _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
-            )
-        except Exception as err:
-            calculated_updates = {"ok": False, "skipped": True, "reason": str(err)}
+        calculated_updates = _recalculate_dependents_after_cache_write(pairs)
     except OSError as err:
         raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")
 

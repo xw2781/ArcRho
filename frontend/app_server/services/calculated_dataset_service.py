@@ -889,12 +889,18 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
     settings = _existing_target_settings(project_name, reserving_class, row["name"])
     values, precedents, errors = _load_components(project_name, reserving_class, ordered_components, settings)
     if errors:
+        missing_prefix = "Missing dependency: "
         return {
             "ok": False,
             "dataset_type_name": row["name"],
             "skipped": True,
             "reason": "dependency_error",
             "errors": errors,
+            "missing_dependencies": [
+                error[len(missing_prefix):]
+                for error in errors
+                if error.startswith(missing_prefix)
+            ],
         }
 
     eval_values: Dict[str, np.ndarray] = {}
