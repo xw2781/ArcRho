@@ -11,7 +11,7 @@
     <section class="manual-section" id="method-tab">
       <div class="section-head"><p class="eyebrow">Method tab</p><h2>Weighted source selection</h2></div>
       <div class="rs-demo">
-        <div class="rs-tabs"><button>Details</button><button class="active">Method</button><button>Results</button><button>Validation</button><button>Notes</button></div>
+        <div class="rs-tabs"><button>Details</button><button class="active">Method</button><button>Chart</button><button>Results</button><button>Validation</button><button>Notes</button></div>
         <div class="rs-toolbar">
           <div><span>Formatting</span><button>Show Weights</button><button>Toggle Weights Display</button></div>
           <div><span>Sources</span><button>Add Source</button><button>Delete Source</button></div>
@@ -28,6 +28,15 @@
         <div class="manual-cursor"></div>
       </div>
       <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+    </section>
+
+    <section class="manual-section" id="chart-tab">
+      <div class="section-head"><p class="eyebrow">Chart tab</p><h2>Compare dataset vectors</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Plotted columns</h3><ul><li>Every loaded source dataset vector is plotted.</li><li>The selected output vector is plotted as the emphasized series.</li><li>Origin, Weight, Reserve, and ratio columns are not dataset vectors and are excluded.</li></ul></article>
+        <article class="task-card"><h3>Column visibility</h3><ul><li>Use the Columns panel on the right to hide or show any vector; the final visible line cannot be hidden by clicking it.</li><li>Right-click anywhere on an item to isolate it; right-click that sole visible item again to restore all lines.</li><li>The selected output is explicitly labeled Selected Ultimate, and display choices do not mark the Result Selection dirty or change saved JSON.</li></ul></article>
+        <article class="task-card"><h3>Point details</h3><ul><li>Hover a point to see its dataset name.</li><li>The tooltip also shows the origin period and formatted value.</li><li>Live Method edits and source previews refresh the chart automatically.</li></ul></article>
+      </div>
     </section>
 
     <section class="manual-section" id="how-it-calculates">

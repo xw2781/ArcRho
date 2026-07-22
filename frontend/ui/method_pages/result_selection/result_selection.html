@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a"/>
-  <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260715a"/>
   <style>
     :root {
@@ -110,7 +110,13 @@
     #rsMethodPage.active {
       display: flex;
       flex-direction: column;
-      padding: 4px;
+      padding: 10px;
+      overflow: hidden;
+    }
+    #rsChartPage.active {
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
       overflow: hidden;
     }
     #rsResultsPage.active {
@@ -134,6 +140,7 @@
     }
     #rsDetailsPage.rsTabFloatingPage,
     #rsMethodPage.rsTabFloatingPage,
+    #rsChartPage.rsTabFloatingPage,
     #rsResultsPage.rsTabFloatingPage {
       display: flex !important;
       flex-direction: column;
@@ -142,7 +149,14 @@
       min-width: 0;
       min-height: 0;
     }
-    #rsMethodPage.rsTabFloatingPage,
+    #rsMethodPage.rsTabFloatingPage {
+      padding: 10px;
+      overflow: hidden;
+    }
+    #rsChartPage.rsTabFloatingPage {
+      padding: 10px;
+      overflow: hidden;
+    }
     #rsResultsPage.rsTabFloatingPage {
       padding: 4px;
       overflow: hidden;
@@ -378,31 +392,21 @@
       cursor: default;
     }
     .rsMethodToolbar {
-      flex: 0 0 auto;
-      position: relative;
       display: flex;
       align-items: stretch;
       flex-wrap: wrap;
       gap: 8px;
-      min-height: 48px;
-      padding: 7px;
-      border: 1px solid #d8dde3;
-      border-radius: 6px;
-      background: #f8fafc;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-      box-sizing: border-box;
+      margin-bottom: 8px;
     }
     .rsToolGroup {
       position: relative;
-      display: grid;
-      grid-template-columns: auto;
-      align-content: center;
-      gap: 5px;
-      min-width: 158px;
-      padding: 10px 9px 6px;
-      border: 1px solid #dbe3ee;
-      border-radius: 0px;
-      background: #fff;
+      display: flex;
+      min-height: 42px;
+      align-items: center;
+      padding: 9px 10px 5px;
+      border: 1px solid #cfd8e690;
+      border-radius: 2px;
+      background: #ffffff85;
       box-sizing: border-box;
     }
     .rsToolGroup.rsToolGroupWide {
@@ -419,11 +423,11 @@
     }
     .rsToolTitle {
       position: absolute;
-      top: -5px;
-      left: 8px;
+      top: -8px;
+      left: 9px;
       z-index: 1;
       max-width: calc(100% - 16px);
-      padding: 0 4px 1px;
+      padding: 0 4px;
       background: #fff;
       color: #64748b;
       font-size: 11px;
@@ -682,7 +686,7 @@
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
-      margin-top: 4px;
+      margin-top: 0px;
       border: 1px solid var(--rs-grid-border);
       overflow: auto;
       background: #fff;
@@ -1084,17 +1088,7 @@
       padding: 5px 10px;
       box-sizing: border-box;
     }
-    @media (max-width: 760px) {
-      .rsMethodToolbar {
-        display: grid;
-        grid-template-columns: 1fr;
-      }
-      .rsToolGroup,
-      .rsToolGroup.rsToolGroupWide,
-      .rsToolGroup.rsToolGroupBasis {
-        min-width: 0;
-        max-width: none;
-      }
+    @media (max-width: 900px) {
       .rsToolGroup.rsToolGroupWide .rsToolControls {
         flex-wrap: wrap;
       }
@@ -1126,12 +1120,202 @@
       border: 1px solid #d8dde3;
       background: #f8fafc;
     }
+    .rsChartPanel {
+      display: flex;
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+      flex: 1 1 auto;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #d8dde3;
+      border-radius: 4px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .rsChartHeader {
+      flex: 0 0 auto;
+      min-height: 54px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #fbfcfe;
+      box-sizing: border-box;
+    }
+    .rsChartTitle {
+      margin: 0;
+      color: #1f2937;
+      font-size: 14px;
+      line-height: 1.25;
+    }
+    .rsChartSubtitle {
+      margin: 2px 0 0;
+      color: #697386;
+      font-size: 11px;
+    }
+    .rsChartBody {
+      display: grid;
+      min-width: 0;
+      min-height: 0;
+      flex: 1 1 auto;
+      grid-template-columns: minmax(0, 1fr) 230px;
+    }
+    .rsChartPlot {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .rsChartCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 260px;
+    }
+    .rsChartCanvas.isEmpty { visibility: hidden; }
+    .rsChartEmpty {
+      position: absolute;
+      inset: 8px;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      border: 1px dashed #b9c2cf;
+      background: #fbfcfe;
+      color: #697386;
+      font-weight: 600;
+      text-align: center;
+    }
+    .rsChartEmpty[hidden] { display: none; }
+    .rsChartTooltip {
+      position: absolute;
+      z-index: 2;
+      display: grid;
+      min-width: 150px;
+      max-width: 220px;
+      gap: 2px;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.97);
+      color: #334155;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+      font-size: 11px;
+      pointer-events: none;
+    }
+    .rsChartTooltip strong,
+    .rsChartTooltip span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rsChartTooltip[hidden] { display: none; }
+    .rsChartLegendPanel {
+      min-width: 0;
+      min-height: 0;
+      padding: 10px;
+      border-left: 1px solid #e2e8f0;
+      background: #fbfcfe;
+      overflow: auto;
+      box-sizing: border-box;
+    }
+    .rsChartLegendHeader {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 7px;
+    }
+    .rsChartLegendTitle {
+      margin: 0;
+      color: #334155;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .rsChartLegendCount {
+      color: #64748b;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .rsChartLegendHint {
+      margin: -2px 0 7px;
+      color: #64748b;
+      font-size: 11px;
+      line-height: 1.3;
+    }
+    .rsChartLegendList {
+      display: grid;
+      gap: 2px;
+    }
+    .rsChartLegendItem {
+      display: grid;
+      min-width: 0;
+      min-height: 30px;
+      align-items: center;
+      grid-template-columns: 16px 18px minmax(0, 1fr);
+      gap: 6px;
+      padding: 3px 5px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: #334155;
+      cursor: pointer;
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    .rsChartLegendItem:hover {
+      border-color: #d8e1ec;
+      background: #f4f7fa;
+    }
+    .rsChartLegendItem:focus-within {
+      border-color: #8aa8ff;
+      box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.18);
+    }
+    .rsChartLegendItem input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: #2b6df6;
+    }
+    .rsChartLegendSwatch {
+      position: relative;
+      width: 18px;
+      height: 2px;
+      background: var(--rs-chart-series);
+    }
+    .rsChartLegendSwatch::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 5px;
+      height: 5px;
+      border: 1px solid var(--rs-chart-series);
+      border-radius: 50%;
+      background: #fff;
+      transform: translate(-50%, -50%);
+    }
+    .rsChartLegendLabel {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    @media (max-width: 720px) {
+      .rsChartBody {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(260px, 1fr) minmax(96px, auto);
+      }
+      .rsChartLegendPanel {
+        max-height: 150px;
+        border-top: 1px solid #e2e8f0;
+        border-left: 0;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="rsTabBar tabbedPageTabBar" id="rsTabBar">
     <button class="rsTab tabbedPageTab active" data-page="details" type="button">Details</button>
     <button class="rsTab tabbedPageTab" data-page="method" type="button">Method</button>
+    <button class="rsTab tabbedPageTab" data-page="chart" type="button">Chart</button>
     <button class="rsTab tabbedPageTab" data-page="results" type="button">Results</button>
     <button class="rsTab tabbedPageTab" data-page="validation" type="button">Validation</button>
     <button class="rsTab tabbedPageTab" data-page="notes" type="button">Notes</button>
@@ -1255,6 +1439,29 @@
         <table class="rsGrid arSpreadsheetTable" id="rsMethodGrid" aria-label="Result Selection method table"></table>
       </div>
     </section>
+    <section id="rsChartPage" class="rsPage" role="tabpanel">
+      <section class="rsChartPanel" aria-labelledby="rsChartTitle">
+        <header class="rsChartHeader">
+          <h2 class="rsChartTitle" id="rsChartTitle">Dataset Vectors</h2>
+          <p class="rsChartSubtitle">Source and selected output values by origin period</p>
+        </header>
+        <div class="rsChartBody">
+          <div class="rsChartPlot">
+            <canvas class="rsChartCanvas" id="rsChartCanvas" role="img"></canvas>
+            <div class="rsChartEmpty" id="rsChartEmpty">Add a source dataset to plot vectors.</div>
+            <div class="rsChartTooltip" id="rsChartTooltip" role="status" hidden></div>
+          </div>
+          <aside class="rsChartLegendPanel" aria-labelledby="rsChartLegendTitle">
+            <div class="rsChartLegendHeader">
+              <h3 class="rsChartLegendTitle" id="rsChartLegendTitle">Columns</h3>
+              <span class="rsChartLegendCount" id="rsChartLegendCount"></span>
+            </div>
+            <p class="rsChartLegendHint">Click to show or hide; one line stays visible. Right-click to isolate or restore all.</p>
+            <div class="rsChartLegendList" id="rsChartLegendList" role="group" aria-label="Chart column visibility"></div>
+          </aside>
+        </div>
+      </section>
+    </section>
     <section id="rsResultsPage" class="rsPage">
       <div class="rsGridHost rsResultsGridHost">
         <table class="rsGrid arSpreadsheetTable" id="rsResultsGrid" aria-label="Result Selection results table"></table>
@@ -1289,10 +1496,10 @@
   <div id="rsRatioBasisContextMenu" class="rsCellContextMenu rsRatioBasisContextMenu" role="menu" aria-hidden="true">
     <button type="button" role="menuitem" data-rs-ratio-basis-action="delete">Delete</button>
   </div>
-  <script src="/ui/method_pages/result_selection/result_selection_ui.js?v=20260714a"></script>
+  <script src="/ui/method_pages/result_selection/result_selection_ui.js?v=20260722a"></script>
   <script src="/ui/method_pages/result_selection/result_selection_data.js?v=20260714a"></script>
-  <script src="/ui/method_pages/result_selection/result_selection_grids.js?v=20260712b"></script>
+  <script src="/ui/method_pages/result_selection/result_selection_grids.js?v=20260722a"></script>
   <script src="/ui/method_pages/result_selection/result_selection_model.js?v=20260714a"></script>
-  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260720c"></script>
+  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260722a"></script>
 </body>
 </html>

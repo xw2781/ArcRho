@@ -1425,6 +1425,7 @@
         grid.replaceChildren(colgroup, thead, tbody);
         applyMethodHighlightDom();
         renderResultsGrid();
+        ctx.renderResultSelectionChart?.();
       }
 
       function renderResultsGrid() {

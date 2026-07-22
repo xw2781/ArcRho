@@ -24,6 +24,10 @@ import {
   formatSidecarAuditEventDate,
   normalizeSidecarAuditEntries,
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
+import {
+  buildResultSelectionChartSeries,
+  createResultSelectionChart,
+} from "/ui/method_pages/result_selection/result_selection_chart.js?v=20260722a";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
 const RS_JSON_VALUE_DECIMAL_PLACES = 6;
@@ -33,6 +37,7 @@ const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
 const RS_TAB_DEFS = [
   { id: "details", label: "Details" },
   { id: "method", label: "Method" },
+  { id: "chart", label: "Chart" },
   { id: "results", label: "Results" },
   { id: "validation", label: "Validation" },
   { id: "notes", label: "Notes" },
@@ -151,6 +156,11 @@ const els = {
   activeRatioBasisLabel: document.getElementById("rsActiveRatioBasisLabel"),
   activeRatioBasisMenu: document.getElementById("rsActiveRatioBasisMenu"),
   methodGrid: document.getElementById("rsMethodGrid"),
+  chartCanvas: document.getElementById("rsChartCanvas"),
+  chartLegendList: document.getElementById("rsChartLegendList"),
+  chartLegendCount: document.getElementById("rsChartLegendCount"),
+  chartEmpty: document.getElementById("rsChartEmpty"),
+  chartTooltip: document.getElementById("rsChartTooltip"),
   resultsGrid: document.getElementById("rsResultsGrid"),
   auditLogMount: document.getElementById("rsAuditLogMount"),
   saveBar: document.querySelector(".rsSaveBar"),
@@ -246,6 +256,32 @@ installResultSelectionPart("ui", resultSelectionParts.installUi);
 installResultSelectionPart("data", resultSelectionParts.installData);
 installResultSelectionPart("grids", resultSelectionParts.installGrids);
 installResultSelectionPart("model", resultSelectionParts.installModel);
+
+const rsChart = createResultSelectionChart({
+  canvas: els.chartCanvas,
+  legendList: els.chartLegendList,
+  legendCount: els.chartLegendCount,
+  emptyState: els.chartEmpty,
+  tooltip: els.chartTooltip,
+});
+
+ctx.renderResultSelectionChart = function renderResultSelectionChart() {
+  if (!rsChart) return;
+  const rowCount = ctx.getRowCount();
+  const sourceIndexes = ctx.orderedSourceEntries().map((entry) => entry.index);
+  rsChart.render({
+    originLabels: Array.from({ length: rowCount }, (_, index) => ctx.originLabel(index)),
+    series: buildResultSelectionChartSeries({
+      sources: state.sources,
+      sourceIndexes,
+      selectedUltimateValues: ctx.selectedUltimateVector(),
+      selectedUltimateLabel: "Selected Ultimate",
+      rowCount,
+    }),
+    decimalPlaces: ctx.getDetails().statisticDecimalPlaces,
+  });
+};
+ctx.refreshResultSelectionChart = () => rsChart?.refresh();
 
 syncDetailsLabelWidth({
   root: "#rsDetailsPage",

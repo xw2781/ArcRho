@@ -608,6 +608,10 @@
         return `rs${next[0].toUpperCase()}${next.slice(1)}Page`;
       }
 
+      function isRsFlexPage(page) {
+        return ["rsDetailsPage", "rsMethodPage", "rsChartPage", "rsResultsPage"].includes(page?.id);
+      }
+
       function syncRsPageState(tab) {
         const activePageId = getRsPageId(tab);
         document.querySelectorAll(".rsPage").forEach((page) => {
@@ -615,12 +619,10 @@
           const floating = page.classList.contains("rsTabFloatingPage");
           page.classList.toggle("active", active);
           if (floating) {
-            page.style.display = page.id === "rsDetailsPage" || page.id === "rsMethodPage" || page.id === "rsResultsPage"
-              ? "flex"
-              : "block";
+            page.style.display = isRsFlexPage(page) ? "flex" : "block";
           } else if (!active) {
             page.style.display = "none";
-          } else if (page.id === "rsDetailsPage" || page.id === "rsMethodPage" || page.id === "rsResultsPage") {
+          } else if (isRsFlexPage(page)) {
             page.style.display = "flex";
           } else {
             page.style.display = "block";
@@ -642,6 +644,7 @@
           window.parent?.postMessage({ type: "arcrho:result-selection-tab-changed", inst, tab: next }, "*");
         } catch {}
         if (next === "audit" && previousTab !== null) refreshAuditLogFromSidecar();
+        if (next === "chart") window.requestAnimationFrame(() => ctx.refreshResultSelectionChart?.());
       }
 
       function setTab(tab) {
@@ -656,7 +659,7 @@
         document.querySelectorAll(".rsPage").forEach((page) => {
           const active = page.id === getRsPageId(next);
           page.classList.toggle("active", active);
-          page.style.display = active ? (page.id === "rsDetailsPage" ? "flex" : "block") : "none";
+          page.style.display = active ? (isRsFlexPage(page) ? "flex" : "block") : "none";
         });
         try {
           window.parent?.postMessage({ type: "arcrho:result-selection-tab-changed", inst, tab: next }, "*");
@@ -666,6 +669,7 @@
       function refreshRsFloatingTabLayout(tabId) {
         window.requestAnimationFrame(() => {
           if (tabId === "method") renderMethodGrid();
+          if (tabId === "chart") ctx.refreshResultSelectionChart?.();
           if (tabId === "results") renderResultsGrid();
           if (tabId === "audit") refreshAuditLogFromSidecar();
         });

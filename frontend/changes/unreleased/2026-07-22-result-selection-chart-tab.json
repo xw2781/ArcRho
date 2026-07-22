@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added a Result Selection Chart tab for comparing every source and selected output dataset vector.",
+  "details": [
+    "A right-side Columns panel can hide or show each plotted vector without changing method data.",
+    "Selected Ultimate is explicitly labeled, the final visible line stays selected on click, and right-click toggles between isolating one line and restoring all lines."
+  ]
+}
