@@ -27,7 +27,8 @@ Local UI automation command bridge for Python macros and scripts that need to as
 - `POST /ui_automation/commands` submits a typed command from local Python code and waits for the frontend shell result.
 - `POST /ui_automation/commands/poll` is consumed by the active shell to receive pending commands.
 - `POST /ui_automation/commands/{command_id}/complete` lets the shell return `{ ok, result, error }` for the waiting Python caller.
-- Supported commands include `ui.messageBox`, `ui.progressOpen`, `ui.progressUpdate`, `ui.progressClose`, `taskDesigner.*`, `projectInstance.context`, `projectInstance.openDataset`, `projectInstance.refreshDatasets`, and Project Instance window actions. `projectInstance.openDataset` can open DFM and Result Selection method windows when the caller supplies `openMethod` plus the method type.
+- Supported commands include `ui.messageBox`, `ui.progressOpen`, `ui.progressUpdate`, `ui.progressClose`, `macro.captureActiveDfmContext`, `macro.reviewAndApplyResult`, `taskDesigner.*`, `projectInstance.context`, `projectInstance.openDataset`, `projectInstance.refreshDatasets`, and Project Instance window actions. `projectInstance.openDataset` can open DFM and Result Selection method windows when the caller supplies `openMethod` plus the method type.
+- An ArcRho macro run started from Arcode uses two short macro commands: capture returns the live unsaved DFM JSON plus a one-use target token, then review/apply verifies the exact shell tab/Project Instance window and its context fingerprint before applying the source result. Python executes between the commands so macros remain free to issue nested message-box, progress, Task Designer, and other UI automation calls without blocking the shell poll loop.
 - `ui.messageBox` accepts optional `autoCloseMs`/`auto_close_ms` arguments for informational dialogs that should close themselves after a short delay.
 - `ui.progressOpen`/`ui.progressUpdate`/`ui.progressClose` drive a shell-owned floating progress dialog with a close icon, resize handle, visible progress bar, and one-decimal percent text for long-running Python macros.
 - `projectInstance.context` returns the active Project Instance `projectName` and selected reserving-class `selectedPath`, and fails clearly when no path is selected.
@@ -38,6 +39,7 @@ Local UI automation command bridge for Python macros and scripts that need to as
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Commands live only in app-server memory while they are pending.
+- Captured external-macro targets live only in shell memory, expire after five minutes, and are consumed once by review/apply; no active-context file is written. Each review also carries a shorter backend deadline, and the shell closes/rejects an expired preview before any payload can be applied.
 - Command submitters wait up to the requested timeout, capped by the service.
 - No project files or workspace caches are written by this domain.
 <!-- MANUAL:END -->
@@ -53,4 +55,5 @@ Local UI automation command bridge for Python macros and scripts that need to as
 <!-- MANUAL:BEGIN -->
 - Commands act on active UI state, so automation should return clear errors when the expected active page is not available.
 - Long-running or modal commands block the Python caller until the shell completes or the timeout expires.
+- Do not wrap arbitrary macro execution inside one shell automation command: nested UI calls would wait on the same sequential poll loop. Keep capture and review/apply short, with Python execution between them.
 <!-- MANUAL:END -->

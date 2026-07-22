@@ -1,5 +1,9 @@
 import { getHostApi, registerShellApi } from "/ui/arcode/shared/host_context.js?v=20260614a";
-import { initAiAssistant } from "/ui/ai-assistant/arcode.js?v=20260622a";
+import {
+  initAiAssistant,
+  isAiAssistantLauncherVisible,
+  toggleAiAssistantLauncherVisible,
+} from "/ui/ai-assistant/arcode.js?v=20260721a";
 import { createFileIconResolver } from "/ui/arcode/shared/file-icons/fileIconResolver.js?v=20260614a";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
@@ -1801,6 +1805,10 @@ function renderRecentFilesMenu() {
 function updateMenuState() {
   const hasTab = !!activeTab();
   const hasPath = !!activeTab()?.path;
+  const aiBotIconLabel = document.querySelector('.menuItem[data-action="toggle-ai-bot-icon"] > span');
+  if (aiBotIconLabel) {
+    aiBotIconLabel.textContent = isAiAssistantLauncherVisible() ? "Hide AI Bot Icon" : "Show AI Bot Icon";
+  }
   ["save", "save-as", "close-tab", "close-others", "close-all", "render-markdown", "toggle-line-numbers", "toggle-exec-time", "refresh-tab", "hard-refresh", "rename"].forEach((action) => {
     setMenuItemDisabled(action, !hasTab);
   });
@@ -1965,6 +1973,11 @@ async function runShellAction(action, detail = {}) {
     return;
   }
   if (action === "render-markdown") return sendScriptingCommand("arcode:scripting-render-all-markdown");
+  if (action === "toggle-ai-bot-icon") {
+    const visible = toggleAiAssistantLauncherVisible();
+    updateStatus(`AI bot icon ${visible ? "shown" : "hidden"}.`);
+    return;
+  }
   if (action === "toggle-line-numbers") return sendScriptingCommand("arcode:scripting-toggle-line-numbers");
   if (action === "toggle-exec-time") return sendScriptingCommand("arcode:scripting-toggle-exec-time");
   if (action === "zoom-in") return setZoomPercent(state.zoomPercent + ZOOM_STEP);
@@ -2273,6 +2286,7 @@ function initShellApi() {
     state,
     getHostApi,
     updateStatusBar: updateStatus,
+    updateViewMenuState: updateMenuState,
     render,
     saveState: () => {},
     ensureIframe: () => {},

@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import arcrho_api.config as api_config
 from arcrho_api.agent import main as agent_main
 from arcrho_api import (
+    ArcRhoApiError,
     ArcRhoClient,
     ArcRhoUI,
     DfmDataError,
@@ -429,6 +430,40 @@ class ArcRhoApiTests(unittest.TestCase):
 
         self.assertEqual(result, {"refreshed": True})
         mocked.assert_called_once_with(timeout_sec=7)
+
+    def test_macro_source_object_api_checks_arcrho_and_posts_current_buffer(self) -> None:
+        ui = ArcRhoUI(app_url="http://127.0.0.1:28765")
+        with (
+            patch("arcrho_api.ui.get_app_health", return_value={"ok": True, "app": "arcrho"}),
+            patch(
+                "arcrho_api.ui._post_json",
+                return_value={"success": True, "applied": True},
+            ) as post,
+        ):
+            result = ui.macros.run_source(
+                "def main(): pass",
+                filename="draft.py",
+                source_path=r"E:\drafts\draft.py",
+                timeout_sec=15,
+            )
+
+        self.assertTrue(result["applied"])
+        post.assert_called_once_with(
+            "/scripting/run-in-arcrho",
+            {
+                "source": "def main(): pass",
+                "filename": "draft.py",
+                "source_path": r"E:\drafts\draft.py",
+            },
+            15,
+            app_url="http://127.0.0.1:28765",
+        )
+
+    def test_macro_source_object_api_rejects_arcode_server(self) -> None:
+        ui = ArcRhoUI(app_url="http://127.0.0.1:28766")
+        with patch("arcrho_api.ui.get_app_health", return_value={"ok": True, "app": "arcode"}):
+            with self.assertRaises(ArcRhoApiError):
+                ui.macros.run_source("def main(): pass")
 
     def test_missing_ratio_data_raises(self) -> None:
         rc = ArcRhoClient(self.root).project("Demo").reserving_class(r"Auto\PP")

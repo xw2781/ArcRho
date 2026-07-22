@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Added a View menu option in Arcode to show or hide the AI bot icon."
+}

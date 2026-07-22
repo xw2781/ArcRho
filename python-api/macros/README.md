@@ -1,0 +1,38 @@
+# ArcRho Macro Source
+
+`python-api/macros` is the source of truth for ArcRho macros maintained by agents.
+
+## Macro metadata and versions
+
+Every active macro Python file directly in this folder must include these fields in
+its `<arcrho-macro>` metadata block:
+
+```text
+# Version: 1.0.0
+# Release Note: Briefly explain what changed from the previous version.
+```
+
+- Use semantic versions in `major.minor.patch` form.
+- `Release Note` must be a short, non-empty, single-line string describing the
+  current version's change from the immediately preceding version. For a new
+  macro, describe it as the initial release.
+- Increment the version whenever the macro code or metadata changes.
+- Before replacing an existing version, copy it without modification to
+  `backup/<macro-file-stem>/<version>/<macro-file-name>`.
+- Archived versions are immutable historical records. They are not active macros
+  and must not be deployed to the user macro directory.
+
+The `backup/` directory is only for prior macro versions. Its structure and rules
+are documented in `backup/README.md`.
+
+## Deployment
+
+After adding or editing a macro here, deploy every macro in this folder to:
+
+```text
+C:\Users\xwei.PRCINS\Documents\ArcRho\macros
+```
+
+Keep the deployed copies byte-for-byte aligned with these source files.
+Only deploy the active `*.py` files directly in this folder; do not deploy anything
+under `backup/`.

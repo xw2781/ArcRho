@@ -41,8 +41,9 @@ When fixing a bug, remove clearly obsolete code in the touched area. Ask before 
 Use `$arcrho-json-contract` when refining dataset JSON sidecars/sidercars, reserving-class `index.json`, data storage formats, JSON field names or structures, ResQ migration behavior, or `python-api/migration/resq_data_migration.py` output.
 
 ## ArcRho Macro Source
-Treat `python-api/migration/macro-source` as the source of truth for ArcRho macro files maintained in this repository.
-When adding or editing a macro, update the file in `python-api/migration/macro-source` first, then copy all macro files from that folder to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros`.
+Treat `python-api/macros` as the source of truth for ArcRho macro files maintained in this repository.
+Follow the macro metadata, versioning, release-note, and backup rules in `python-api/macros/README.md` whenever adding or changing a macro.
+When adding or editing a macro, update the file in `python-api/macros` first, then copy all active macro files from that folder to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros`.
 
 ## Agent Project Data Access
 Agents may view on-disk metadata JSON files under `E:\ArcRho Server\projects` only for project `NJ_Annual_Prod_202605_Fake` by default.

@@ -751,9 +751,10 @@ function routeActiveWindowSaveCommand(saveAs = false) {
 
 function forwardRequestToActiveDfm(message, resultType, fallbackContext, timeoutMs = 3000) {
   const requestId = toText(message?.requestId) || `pi_dfm_request_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const frame = getActiveDfmWindow();
+  const targetWindowId = toText(message?.targetWindowId);
+  const frame = targetWindowId ? findWindowByInstance(targetWindowId) : getActiveDfmWindow();
   const iframe = getWindowIframe(frame);
-  if (!frame || !iframe?.contentWindow) {
+  if (!frame || !isDfmWindow(frame) || !iframe?.contentWindow) {
     try {
       window.parent?.postMessage({ type: resultType, requestId, ...fallbackContext }, "*");
     } catch {}
@@ -806,12 +807,17 @@ function createProjectInstanceAssistantContext(extra = {}) {
 
 function requestActiveNestedWindowAssistantContext(message, timeoutMs = 1000) {
   const requestId = toText(message?.requestId) || `pi_assistant_context_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const frame = getActiveDatasetWindow();
+  const targetWindowId = toText(message?.targetWindowId);
+  const frame = targetWindowId ? findWindowByInstance(targetWindowId) : getActiveDatasetWindow();
   const iframe = getWindowIframe(frame);
   const fallbackContext = createProjectInstanceAssistantContext(
-    frame ? {} : { error: "No visible nested window is available in the Project Instance page." }
+    frame
+      ? {}
+      : { error: targetWindowId
+        ? "The requested Project Instance DFM window is no longer available."
+        : "No visible nested window is available in the Project Instance page." }
   );
-  if (!frame || !iframe?.contentWindow) {
+  if (!frame || (targetWindowId && !isDfmWindow(frame)) || !iframe?.contentWindow) {
     try {
       window.parent?.postMessage({ type: "arcrho:assistant-context-result", requestId, context: fallbackContext }, "*");
     } catch {}

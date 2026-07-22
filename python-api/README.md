@@ -72,6 +72,22 @@ UI automation targets active app state. For example, `open_dataset_in_active_pro
 The object-style API mirrors familiar COM automation patterns: `ArcRhoUI().project_instance.open_dataset(...)` returns an `ArcRhoWindow` with methods such as `activate()`, `maximize()`, `restore()`, `minimize()`, and `close()`, plus current-state properties such as `title`, `is_active`, `is_hidden`, `is_maximized`, and `is_dirty`. Use `ArcRhoUI().project_instance.reload_dataset_table()` after scripts write dataset files that the active Project Instance page should show immediately.
 Set `ARCRHO_APP_URL`, or instantiate `ArcRhoUI(app_url="http://127.0.0.1:28765")`, when the app is running on a non-default URL.
 
+### Run a saved or unsaved macro source in the active ArcRho DFM
+
+Arcode bundles `arcrho_api` and its own Python runtime, so users do not need a system Python installation. In a Python editor, use **Run** (or Ctrl+Enter). Arcode automatically executes source with an `<arcrho-macro>` metadata block or top-level `run_macro(...)` entry point against the live unsaved DFM in the open ArcRho window; other Python runs in Arcode's local session. The file can live anywhere and does not need to appear in ArcRho's Macro panel.
+
+The same bridge is available programmatically:
+
+```python
+from arcrho_api import ArcRhoUI
+
+ui = ArcRhoUI()
+result = ui.macros.run_file(r"E:\My ArcRho Work\apply_growth_adjustments.py")
+print(result["message"])
+```
+
+For an unsaved editor buffer, call `ui.macros.run_source(source, filename="draft.py", source_path=...)`. ArcRho captures the exact active DFM, runs the conventional `run_macro(active_dfm, active_context)` entry point (also accepting `main(...)`), then applies the returned/mutated payload only if the captured DFM is still open and unchanged. UI-only scripts can run with no active DFM and receive `active_dfm=None`; a returned DFM payload is rejected in that case. Source execution is limited to 120 seconds, and unchanged DFM state is not reapplied or marked dirty. A script's saved parent folder is available for sibling imports. Third-party dependencies still need to be part of the packaged app runtime.
+
 ArcBot uses the same package through a compact command helper. For DFM inspection, prefer the bundled `inspect` command so summary, components, and optional ratio rows are returned in one call:
 
 ```powershell
@@ -80,17 +96,19 @@ python -m arcrho_api.agent --file active-method.json inspect --include summary,a
 
 ## Installing From ArcRho
 
+This installation is only needed for external IDEs or Python environments. Arcode already includes the API and a compatible Python runtime.
+
 ArcRho release builds ship a pip-installable wheel in the app resources folder:
 
 ```powershell
-python -m pip install "<ArcRho install folder>\resources\python_packages\arcrho_api-0.1.0-py3-none-any.whl"
+python -m pip install "<ArcRho install folder>\resources\python_packages\arcrho_api-0.2.0-py3-none-any.whl"
 ```
 
 Development builds can create the same wheel without network access:
 
 ```powershell
 python python-api\tools\build_wheel.py --out-dir python-api\dist
-python -m pip install python-api\dist\arcrho_api-0.1.0-py3-none-any.whl
+python -m pip install python-api\dist\arcrho_api-0.2.0-py3-none-any.whl
 ```
 
 API-only releases can publish the wheel to the shared ArcRho Server packages folder without rebuilding the desktop app:

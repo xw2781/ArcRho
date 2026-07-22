@@ -19,8 +19,8 @@ When changing dataset sidecar JSON or reserving-class `index.json` formats, stru
 - If the user asks to revise JSON emitted by `python-api/migration/resq_data_migration.py`, proactively update the corresponding frontend JSON writers/readers in the same task unless the user explicitly limits the scope to migration-only exploration.
 - In the current phase, do not add legacy-format compatibility unless explicitly requested. Prefer a clean, coordinated refactor across all producers and consumers of the JSON contract.
 - Use the ResQ API examples in `python-api/migration/references` when migration tasks need ResQ API behavior guidance.
-- Keep the macro source files in `python-api/migration/macro-source` in sync with `python-api/migration/resq_data_migration.py` when changing ResQ migration behavior.
-- After adding or editing a macro in `python-api/migration/macro-source`, copy all macros from that folder to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros`. If deploying the user macro copies is blocked by filesystem permissions, clearly report the required matching change.
+- Keep the macro source files in `python-api/macros` in sync with `python-api/migration/resq_data_migration.py` when changing ResQ migration behavior.
+- After adding or editing a macro in `python-api/macros`, copy all active macros from that folder to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros`. If deploying the user macro copies is blocked by filesystem permissions, clearly report the required matching change.
 
 ## Workflow
 

@@ -8,9 +8,9 @@ ArcRho embeds the Arcode launch path, and the same source can be packaged as the
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.arcode.entry_points -->
-- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260622a`; inline imports _none_.
+- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260721b`; inline imports _none_.
 - `ui/arcode/notebook-editor/index.html`: external scripts `/ui/arcode/notebook-editor/cells.js?v=20260620a`, `/ui/arcode/notebook-editor/core.js?v=20260620a`, `/ui/arcode/notebook-editor/execution.js?v=20260620a`, `/ui/arcode/notebook-editor/index.js?v=20260620a`, `/ui/arcode/notebook-editor/notebook-io.js?v=20260620a`, `/ui/arcode/notebook-editor/panels.js?v=20260620a`, `/ui/arcode/notebook-editor/shortcuts.js?v=20260620a`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`; inline imports _none_.
-- `ui/arcode/code-editor/index.html`: external scripts `/ui/arcode/code-editor/index.js?v=20260621b`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`; inline imports _none_.
+- `ui/arcode/code-editor/index.html`: external scripts `/ui/arcode/code-editor/index.js?v=20260721b`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `${window.location.origin}${path}`
@@ -46,8 +46,11 @@ Detected `fetch(...)` targets in key JS files:
 - Shows home create cards grouped under Scripting, Data & Query, and Other; file-template cards create timestamped local files in the selected workspace folder, Snowflake files open in the Snowflake SQL editor, and the Terminal card opens a desktop terminal in the selected workspace folder through the Electron host bridge.
 - Shows a resizable file explorer in the Arcode workspace sidebar on Home and generic code editor tabs, stores the preferred sidebar width, exposes a manual refresh button, and watches visible workspace folders through the Electron host so folder listings refresh automatically when files are created, renamed, deleted, or otherwise changed on disk.
 - Shows file-location, file-path copy, and close actions in the tab context menu.
+- The View menu includes a Show/Hide AI Bot Icon action that controls the Arcode ArcBot launcher without clearing assistant history.
 - Sends save/open/view commands to the active editor iframe using existing `arcode:scripting-*` messages and receives `arcode:update-active-tab-title`, `arcode:scripting-dirty`, and `arcode:status` responses.
-- Uses the scripting HTTP API for execution, notebooks, preferences, variables in notebook panels, and object inspection. ArcRho extends the same service with macro endpoints for the main app only.
+- Uses the scripting HTTP API for execution, notebooks, preferences, variables in notebook panels, and object inspection. The plain Python editor has one full-file `Run` action (Ctrl+Enter): source with an `<arcrho-macro>` metadata block or top-level `run_macro(...)` entry point is sent to `/scripting/run-in-arcrho`, while other Python source runs in Arcode's local session. `Run Selection` and Ctrl+Shift+Enter remain local.
+- Automatically routed ArcRho macros do not need to be registered in the Macro panel, but the ArcRho desktop app must be open. DFM macros use the active DFM's live context; UI-only/API scripts may run without a DFM and receive `active_dfm=None`. In the embedded Arcode window the full ArcRho server handles the request directly; standalone Arcode exposes the same same-origin route and proxies it to the verified ArcRho app at `http://127.0.0.1:28765` (overridable with `ARCRHO_DESKTOP_APP_URL`).
+- The standalone Arcode server bundle includes the first-party `arcrho_api` package and common scripting dependencies, so editor code can `import arcrho_api` and use the bridge without a separately installed Python interpreter or wheel.
 - Uses the shared `ui/ai-assistant/` widget through the Arcode adapter, which keeps `arcode:*` context, replacement, and `arcode_ai_assistant_*` UI storage separate from ArcRho. Plain SQL editor tabs and Snowflake SQL tabs answer ArcBot context requests and can apply accepted SQL Format Validation replacements to either the full document or the selected SQL range through `arcode:assistant-replace-text`.
 - ArcRho shell scripting launch actions open the desktop Arcode window through `openArcodeWindow`; browser fallback opens `/ui/arcode/main.html` directly.
 - Clear Cache & Reload stores a one-shot Arcode restore payload in the Electron host, clears Electron cache/storage, reloads the requesting Arcode window with a fresh timestamped UI URL, and restores the previously open Arcode tabs and active tab after boot.
@@ -63,6 +66,8 @@ Detected `fetch(...)` targets in key JS files:
 - Shares Arcode editor host bridge, path, tab message, revision comparison, and scripting session helpers through `ui/arcode/shared/editor_shared.js`.
 - Uses Electron host dialogs for opening and saving files, parented to the requesting Arcode window.
 - Standalone Arcode mode stores scripts under `Documents\Arcode\scripts` by default and uses `%APPDATA%\Arcode` for Arcode settings.
+- Stores ArcBot launcher visibility per app through the shared assistant UI settings, with Arcode local storage as the browser fallback.
+- ArcRho macro runs use live in-memory DFM state captured from the ArcRho window; Arcode does not persist a duplicate active-project or active-dataset context file.
 - Clear Cache & Reload preserves open tab paths and clean untitled tabs through the host one-shot restore payload because browser storage is intentionally cleared; dirty tabs still use the normal close confirmation before reload.
 <!-- MANUAL:END -->
 
@@ -79,6 +84,8 @@ Detected `fetch(...)` targets in key JS files:
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Arcode is the source of truth for scripting UI; avoid adding new scripting UI behavior under `ui/scripting_console`.
-- ArcRho macros depend on ArcRho-only scripting macro endpoints; keep those outside the standalone Arcode route surface.
-- Standalone Arcode uses its own default backend port and slim server bundle so it can run beside ArcRho.
+- Standalone Arcode uses its own default backend port and slim server bundle so it can run beside ArcRho; its `/scripting/run-in-arcrho` route must remain a local-only proxy and must verify that port 28765 reports `app: arcrho` before forwarding source.
+- Arbitrary third-party packages imported by scripts must be included in the frozen Arcode/ArcRho server bundles. The bridge makes the script's saved parent folder temporarily importable for sibling modules, but it does not install dependencies at runtime.
+- A macro result is rejected when the captured DFM closes or its substantive live content changes during execution, so users must rerun against the new live state instead of applying a stale payload. Validation uses a stable canonical fingerprint: generated `last modified` metadata, object-key order, and dirty-status-only changes do not create false conflicts.
+- Source execution is limited to 120 seconds. No-op/inspection scripts return output without reapplying or dirtying an unchanged DFM, and an expired result review cannot apply later.
 <!-- MANUAL:END -->

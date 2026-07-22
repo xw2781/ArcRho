@@ -2,6 +2,8 @@ import { $, getHostApi, shell } from "../arcode/shared/host_context.js?v=2026061
 import {
   configureAiAssistant,
   initAiAssistant as initSharedAiAssistant,
+  isAiAssistantLauncherVisible,
+  toggleAiAssistantLauncherVisible,
 } from "./index.js?v=20260622a";
 
 configureAiAssistant({
@@ -20,3 +22,8 @@ configureAiAssistant({
 export function initAiAssistant() {
   return initSharedAiAssistant();
 }
+
+export {
+  isAiAssistantLauncherVisible,
+  toggleAiAssistantLauncherVisible,
+};

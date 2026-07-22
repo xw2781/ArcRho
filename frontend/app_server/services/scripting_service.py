@@ -32,6 +32,20 @@ import pandas as pd
 from app_server import config
 
 
+def _ensure_arcrho_api_import_path() -> None:
+    """Expose the monorepo API source in development; packaged apps bundle it."""
+    repo_root = Path(__file__).resolve().parents[3]
+    api_src = repo_root / "python-api" / "src"
+    if api_src.exists():
+        text = str(api_src)
+        if text not in sys.path:
+            sys.path.insert(0, text)
+
+
+# Arcode code cells should be able to import arcrho_api without a separate pip install.
+_ensure_arcrho_api_import_path()
+
+
 # ---------------------------------------------------------------------------
 # Execution lock & cancellation
 # ---------------------------------------------------------------------------
@@ -88,6 +102,7 @@ def _run_with_timeout(func, timeout_sec: int, cancel_event: threading.Event):
     if thread.is_alive():
         # Signal cancellation so the thread can check and exit
         cancel_event.set()
+        thread.join(timeout=1.0)
         raise _ScriptTimeout(f"Script exceeded {timeout_sec}s timeout")
 
     if exc_info[0]:
@@ -1185,6 +1200,11 @@ def list_notebooks() -> List[Dict[str, str]]:
 
 _MACRO_META_BEGIN = "# <arcrho-macro>"
 _MACRO_META_END = "# </arcrho-macro>"
+_MAX_MACRO_SOURCE_CHARS = 2_000_000
+_MACRO_TIMEOUT_SEC = 120
+_MACRO_REVIEW_TIMEOUT_SEC = 120.0
+_MACRO_REVIEW_EXPIRY_BUFFER_SEC = 5.0
+_MACRO_EXECUTION_LOCK = threading.Lock()
 _MACRO_SCOPE_LABELS = {
     "dfm": "DFM",
     "result selection": "Result Selection",
@@ -1556,15 +1576,6 @@ def save_task_wrapper_macro(
     }
 
 
-def _ensure_arcrho_api_import_path() -> None:
-    repo_root = Path(__file__).resolve().parents[3]
-    api_src = repo_root / "python-api" / "src"
-    if api_src.exists():
-        text = str(api_src)
-        if text not in sys.path:
-            sys.path.insert(0, text)
-
-
 def _runtime_active_dfm_path() -> str:
     runtime_dir = os.path.join(tempfile.gettempdir(), "ArcRho", "macro_runtime")
     os.makedirs(runtime_dir, exist_ok=True)
@@ -1873,6 +1884,211 @@ def _run_task_child_macro(
         }
 
 
+def _normalize_macro_source(source: str, filename: str, source_path: str = "") -> Tuple[str, str, str]:
+    text = str(source or "")
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    if not text.strip():
+        raise ValueError("The editor does not contain Python source to run.")
+    if len(text) > _MAX_MACRO_SOURCE_CHARS:
+        raise ValueError(f"Macro source exceeds the {_MAX_MACRO_SOURCE_CHARS:,}-character limit.")
+    if "\x00" in text:
+        raise ValueError("Macro source contains an invalid null character.")
+
+    requested_path = str(source_path or "").strip()
+    requested_name = str(filename or "").strip() or "untitled_macro.py"
+    if "\x00" in requested_path or "\x00" in requested_name:
+        raise ValueError("Macro filename contains an invalid null character.")
+    compile_path = requested_path or requested_name
+    display_name = os.path.basename(requested_path or requested_name) or "untitled_macro.py"
+    return text, compile_path, display_name
+
+
+def _invoke_macro_runner(runner: Any, active_dfm: Any, active_context: Dict[str, Any]) -> Any:
+    """Call the conventional macro entry point while supporting simple main() scripts."""
+    try:
+        signature = inspect.signature(runner)
+    except (TypeError, ValueError):
+        return runner(active_dfm, active_context)
+
+    positional = [
+        parameter
+        for parameter in signature.parameters.values()
+        if parameter.kind in {parameter.POSITIONAL_ONLY, parameter.POSITIONAL_OR_KEYWORD}
+    ]
+    has_varargs = any(
+        parameter.kind == parameter.VAR_POSITIONAL
+        for parameter in signature.parameters.values()
+    )
+    if has_varargs or len(positional) >= 2:
+        return runner(active_dfm, active_context)
+    if len(positional) == 1:
+        return runner(active_dfm)
+    return runner()
+
+
+def _execute_macro_source_body(
+    source: str,
+    compile_path: str,
+    source_path: str,
+    active_context: Dict[str, Any],
+    task_window_id: str,
+    task_session_id: str,
+    task_mode: str,
+    output: io.StringIO,
+    cancel_event: threading.Event,
+) -> Dict[str, Any]:
+    with _MACRO_EXECUTION_LOCK:
+        previous_trace = sys.gettrace()
+        sys.settrace(_make_cancel_trace(cancel_event))
+        source_directory = ""
+        inserted_source_directory = False
+        try:
+            active_dfm = _build_active_dfm(active_context) if isinstance(active_context.get("activeJson"), dict) else None
+            before_payload = copy.deepcopy(active_dfm.to_dict()) if active_dfm is not None else None
+            task_designer = _MacroTaskDesignerProxy(task_window_id, task_session_id)
+
+            def run_task_macro(
+                child_macro_id: str,
+                task_id: str = "",
+                name: str = "",
+                description: str = "",
+            ) -> Dict[str, Any]:
+                return _run_task_child_macro(
+                    child_macro_id,
+                    active_context,
+                    task_designer,
+                    task_id=task_id,
+                    name=name,
+                    description=description,
+                )
+
+            macro_import, _time_proxy = _make_session_import_hook(
+                builtins.__import__,
+                cancel_event,
+                threading.get_ident(),
+            )
+            macro_builtins = dict(vars(builtins))
+            macro_builtins["__import__"] = macro_import
+            namespace: Dict[str, Any] = {
+                "__name__": "__arcrho_macro__",
+                "__file__": compile_path,
+                "__builtins__": macro_builtins,
+                "active_dfm": active_dfm,
+                "dfm": active_dfm,
+                "active_context": active_context,
+                "task_window_id": str(task_window_id or ""),
+                "task_session_id": str(task_session_id or ""),
+                "task_mode": str(task_mode or ""),
+                "task_designer": task_designer,
+                "run_task_macro": run_task_macro,
+                "log": print,
+            }
+            if source_path:
+                try:
+                    source_directory = str(Path(source_path).expanduser().resolve().parent)
+                except (OSError, RuntimeError, ValueError):
+                    source_directory = ""
+            inserted_source_directory = bool(
+                source_directory
+                and os.path.isdir(source_directory)
+                and source_directory not in sys.path
+            )
+            if inserted_source_directory:
+                sys.path.insert(0, source_directory)
+
+            with redirect_stdout(output):
+                exec(compile(source, compile_path, "exec"), namespace)
+                runner = namespace.get("run_macro") or namespace.get("main")
+                runner_result = _invoke_macro_runner(runner, active_dfm, active_context) if callable(runner) else None
+            after_payload = copy.deepcopy(active_dfm.to_dict()) if active_dfm is not None else None
+            return {
+                "runner_result": runner_result,
+                "before_payload": before_payload,
+                "after_payload": after_payload,
+            }
+        finally:
+            if inserted_source_directory:
+                try:
+                    sys.path.remove(source_directory)
+                except ValueError:
+                    pass
+            sys.settrace(previous_trace)
+
+
+def run_macro_source(
+    source: str,
+    filename: str,
+    active_context: Dict[str, Any],
+    *,
+    source_path: str = "",
+    task_window_id: str = "",
+    task_session_id: str = "",
+    task_mode: str = "",
+) -> Dict[str, Any]:
+    output = io.StringIO()
+    compile_path = str(source_path or filename or "untitled_macro.py")
+    try:
+        source, compile_path, display_name = _normalize_macro_source(source, filename, source_path)
+        active_context = active_context if isinstance(active_context, dict) else {}
+        cancel_event = threading.Event()
+        execution = _run_with_timeout(
+            lambda: _execute_macro_source_body(
+                source,
+                compile_path,
+                source_path,
+                active_context,
+                task_window_id,
+                task_session_id,
+                task_mode,
+                output,
+                cancel_event,
+            ),
+            _MACRO_TIMEOUT_SEC,
+            cancel_event,
+        )
+        runner_result = execution.get("runner_result")
+        runner_success = not (
+            isinstance(runner_result, dict)
+            and runner_result.get("success") is False
+        )
+        explicit_payload = (
+            runner_result.get("payload")
+            if isinstance(runner_result, dict) and isinstance(runner_result.get("payload"), dict)
+            else None
+        )
+        changed_payload = execution.get("after_payload")
+        if changed_payload == execution.get("before_payload"):
+            changed_payload = None
+        payload = explicit_payload if explicit_payload is not None else changed_payload
+        preview = (
+            runner_result.get("preview")
+            if isinstance(runner_result, dict) and isinstance(runner_result.get("preview"), dict)
+            else None
+        )
+        response = {
+            "success": runner_success,
+            "message": f"Ran {display_name}",
+            "stdout": output.getvalue(),
+            "path": compile_path,
+        }
+        if runner_success and payload is not None:
+            response["payload"] = payload
+        if runner_success and preview is not None:
+            response["preview"] = preview
+        if isinstance(runner_result, dict) and runner_result.get("message"):
+            response["message"] = str(runner_result.get("message"))
+        return response
+    except BaseException as exc:
+        return {
+            "success": False,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+            "stdout": output.getvalue(),
+            "path": compile_path,
+        }
+
+
 def run_macro(
     macro_id: str,
     active_context: Dict[str, Any],
@@ -1886,70 +2102,143 @@ def run_macro(
         return {"success": False, "message": f"Macro not found: {macro_id}"}
     try:
         source = Path(path).read_text(encoding="utf-8-sig")
-        active_context = active_context if isinstance(active_context, dict) else {}
-        active_dfm = _build_active_dfm(active_context) if isinstance(active_context.get("activeJson"), dict) else None
-        task_designer = _MacroTaskDesignerProxy(task_window_id, task_session_id)
-        def run_task_macro(
-            child_macro_id: str,
-            task_id: str = "",
-            name: str = "",
-            description: str = "",
-        ) -> Dict[str, Any]:
-            return _run_task_child_macro(
-                child_macro_id,
-                active_context,
-                task_designer,
-                task_id=task_id,
-                name=name,
-                description=description,
-            )
-
-        output = io.StringIO()
-        namespace: Dict[str, Any] = {
-            "__name__": "__arcrho_macro__",
-            "__file__": path,
-            "active_dfm": active_dfm,
-            "dfm": active_dfm,
-            "active_context": active_context,
-            "task_window_id": str(task_window_id or ""),
-            "task_session_id": str(task_session_id or ""),
-            "task_mode": str(task_mode or ""),
-            "task_designer": task_designer,
-            "run_task_macro": run_task_macro,
-            "log": print,
-        }
-        with redirect_stdout(output):
-            exec(compile(source, path, "exec"), namespace)
-            runner = namespace.get("run_macro") or namespace.get("main")
-            runner_result = None
-            if callable(runner):
-                runner_result = runner(active_dfm, active_context)
-        payload = active_dfm.to_dict() if active_dfm is not None else None
-        preview = None
-        if isinstance(runner_result, dict):
-            if isinstance(runner_result.get("payload"), dict):
-                payload = runner_result["payload"]
-            if isinstance(runner_result.get("preview"), dict):
-                preview = runner_result["preview"]
-        response = {
-            "success": True,
-            "message": f"Ran {os.path.basename(path)}",
-            "stdout": output.getvalue(),
-            "path": path,
-        }
-        if payload is not None:
-            response["payload"] = payload
-        if preview is not None:
-            response["preview"] = preview
-        if isinstance(runner_result, dict) and runner_result.get("message"):
-            response["message"] = str(runner_result.get("message"))
-        return response
     except Exception as exc:
         return {
             "success": False,
             "message": str(exc),
             "traceback": traceback.format_exc(),
             "path": path,
+        }
+    return run_macro_source(
+        source,
+        os.path.basename(path),
+        active_context,
+        source_path=path,
+        task_window_id=task_window_id,
+        task_session_id=task_session_id,
+        task_mode=task_mode,
+    )
+
+
+def _consume_captured_macro_target(target: Dict[str, Any]) -> None:
+    """Best-effort cleanup when source execution fails before review/apply."""
+    from app_server.services import ui_automation_service
+
+    try:
+        ui_automation_service.submit_command(
+            "macro.reviewAndApplyResult",
+            {"scope": "capturedDfm"},
+            {"target": target, "discard": True},
+            5.0,
+        )
+    except Exception:
+        pass
+
+
+def run_macro_source_in_arcrho(source: str, filename: str, source_path: str = "") -> Dict[str, Any]:
+    """Capture the live DFM, execute editor source, then safely apply the result."""
+    from app_server.services import ui_automation_service
+
+    try:
+        source, _compile_path, _display_name = _normalize_macro_source(source, filename, source_path)
+    except Exception as exc:
+        return {
+            "success": False,
+            "message": str(exc),
+            "path": str(source_path or filename or "untitled_macro.py"),
+        }
+
+    capture = ui_automation_service.submit_command(
+        "macro.captureActiveDfmContext",
+        {"scope": "activeShell"},
+        {},
+        10.0,
+    )
+    if not capture.get("ok"):
+        return {
+            "success": False,
+            "message": capture.get("error") or "ArcRho could not read the active DFM context.",
+        }
+    captured = capture.get("result") if isinstance(capture.get("result"), dict) else {}
+    active_context = captured.get("activeContext") if isinstance(captured.get("activeContext"), dict) else {}
+    target = captured.get("target") if isinstance(captured.get("target"), dict) else {}
+    if not target.get("token"):
+        return {
+            "success": False,
+            "message": "ArcRho did not return a usable macro execution context.",
+        }
+
+    execution = run_macro_source(
+        source,
+        filename,
+        active_context,
+        source_path=source_path,
+    )
+    if not execution.get("success"):
+        _consume_captured_macro_target(target)
+        return execution
+
+    review_expires_at = int(
+        (
+            py_time.time()
+            + _MACRO_REVIEW_TIMEOUT_SEC
+            - _MACRO_REVIEW_EXPIRY_BUFFER_SEC
+        )
+        * 1000
+    )
+    review = ui_automation_service.submit_command(
+        "macro.reviewAndApplyResult",
+        {"scope": "capturedDfm"},
+        {
+            "target": target,
+            "payload": execution.get("payload"),
+            "preview": execution.get("preview"),
+            "message": execution.get("message") or "",
+            "expiresAt": review_expires_at,
+        },
+        _MACRO_REVIEW_TIMEOUT_SEC,
+    )
+    response = {
+        key: value
+        for key, value in execution.items()
+        if key not in {"payload", "preview"}
+    }
+    if not review.get("ok"):
+        response["success"] = False
+        response["message"] = review.get("error") or "The macro ran, but ArcRho could not review or apply its result."
+        return response
+
+    review_result = review.get("result") if isinstance(review.get("result"), dict) else {}
+    response["applied"] = bool(review_result.get("applied"))
+    response["cancelled"] = bool(review_result.get("cancelled"))
+    if review_result.get("message"):
+        response["message"] = str(review_result.get("message"))
+    return response
+
+
+def run_arcrho_macro_source(source: str, filename: str, source_path: str = "") -> Dict[str, Any]:
+    """Proxy standalone Arcode source to the user's running ArcRho desktop app."""
+    _ensure_arcrho_api_import_path()
+    try:
+        source, _compile_path, _display_name = _normalize_macro_source(source, filename, source_path)
+        from arcrho_api import ArcRhoUI
+
+        app_url = str(
+            os.environ.get("ARCRHO_DESKTOP_APP_URL")
+            or "http://127.0.0.1:28765"
+        ).strip()
+        return ArcRhoUI(app_url=app_url).macros.run_source(
+            source,
+            filename=filename,
+            source_path=source_path,
+            timeout_sec=300.0,
+        )
+    except Exception as exc:
+        return {
+            "success": False,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+            "path": str(source_path or filename or "untitled_macro.py"),
         }
 
 

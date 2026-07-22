@@ -1,5 +1,7 @@
 ﻿# <arcrho-macro>
 # Title: Import Active Dataset from ResQ
+# Version: 1.0.0
+# Release Note: Establish the initial versioned release with existing import behavior unchanged.
 # Description: Import only the active Project Instance dataset, DFM method output, or Result Selection method output from ResQ.
 # Scope: Dataset, DFM, Result Selection
 # </arcrho-macro>

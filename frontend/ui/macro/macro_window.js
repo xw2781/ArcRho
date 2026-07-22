@@ -1,4 +1,5 @@
 import { shell } from "../shell/shell_context.js?v=20260510a";
+import { macroContextFingerprint } from "./macro_context_fingerprint.js?v=20260722a";
 
 const API_BASE = window.location.origin;
 const MACRO_WINDOW_FRAGMENT_URL = "/ui/macro/macro_window.html?v=20260625a";
@@ -10,6 +11,7 @@ const MACRO_PINNED_KEY = "arcrho_macro_window_pinned";
 const MACRO_SCOPE_FILTER_KEY = "arcrho_macro_scope_filter";
 const MACRO_MIN_LIST_HEIGHT = 100;
 const MACRO_MIN_DESCRIPTION_HEIGHT = 76;
+const EXTERNAL_MACRO_CAPTURE_TTL_MS = 5 * 60 * 1000;
 const MACRO_SCOPE_LABELS = {
   dfm: "DFM",
   "result selection": "Result Selection",
@@ -40,6 +42,7 @@ let macroSplitCustomized = false;
 let macroSplitContextMenu = null;
 let macroItemContextMenu = null;
 let macroScopeFilterEnabled = readMacroScopeFilter();
+const capturedExternalMacroTargets = new Map();
 
 function refreshMacroElements() {
   macroWindow = document.getElementById("macroWindow");
@@ -429,8 +432,9 @@ function getActiveDfmTab(preferredTabId = "") {
   return null;
 }
 
-function requestActiveDfmContext(tabOverride = null) {
-  const tab = isDfmTab(tabOverride) ? tabOverride : getActiveDfmTab();
+function requestActiveDfmContext(tabOverride = null, targetWindowId = "") {
+  const isTargetedProjectInstance = !!targetWindowId && tabOverride?.type === "project_instance";
+  const tab = isDfmTab(tabOverride) || isTargetedProjectInstance ? tabOverride : getActiveDfmTab();
   if (!tab) return Promise.resolve({ available: false, error: "Open or activate a DFM tab/window before running a macro." });
   shell.ensureIframe?.(tab);
   const iframe = tab.iframe;
@@ -454,13 +458,72 @@ function requestActiveDfmContext(tabOverride = null) {
     };
     window.addEventListener("message", onMessage);
     try {
-      iframe.contentWindow.postMessage({ type: "arcrho:assistant-context-request", requestId }, "*");
+      iframe.contentWindow.postMessage({
+        type: "arcrho:assistant-context-request",
+        requestId,
+        targetWindowId: String(targetWindowId || ""),
+      }, "*");
     } catch {
       finish({ available: false, error: "Could not request DFM context." });
       return;
     }
     setTimeout(() => finish({ available: false, error: "Timed out reading active DFM context." }), 1500);
   });
+}
+
+function cleanupCapturedExternalMacroTargets() {
+  const cutoff = Date.now() - EXTERNAL_MACRO_CAPTURE_TTL_MS;
+  capturedExternalMacroTargets.forEach((capture, token) => {
+    if (Number(capture?.createdAt || 0) < cutoff) capturedExternalMacroTargets.delete(token);
+  });
+}
+
+export async function captureActiveDfmContextForMacro() {
+  cleanupCapturedExternalMacroTargets();
+  const tab = getActiveDfmTab();
+  const token = globalThis.crypto?.randomUUID?.()
+    || `macro_capture_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  if (!tab) {
+    const activeTab = (shell.state?.tabs || []).find((item) => item.id === shell.state?.activeId) || null;
+    const activeContext = {
+      available: false,
+      pageType: String(activeTab?.type || ""),
+      tabType: String(activeTab?.type || ""),
+      title: String(activeTab?.title || activeTab?.name || ""),
+      error: "No active DFM is available; active_dfm will be None.",
+    };
+    const target = { token, kind: "ui", tabId: "", tabType: "", nestedWindowId: "", methodPath: "" };
+    capturedExternalMacroTargets.set(token, {
+      ...target,
+      createdAt: Date.now(),
+      fingerprint: "",
+      hasDfm: false,
+    });
+    return { ok: true, activeContext, target };
+  }
+  const activeContext = await requestActiveDfmContext(tab);
+  if (!activeContext?.available || !activeContext?.activeJson) {
+    return { ok: false, error: activeContext?.error || "Active DFM JSON is not available." };
+  }
+  const nestedWindowId = String(activeContext?.activeNestedWindow?.windowId || "");
+  if (tab.type === "project_instance" && !nestedWindowId) {
+    return { ok: false, error: "ArcRho could not identify the active Project Instance DFM window." };
+  }
+  const target = {
+    token,
+    kind: "dfm",
+    tabId: String(tab.id || ""),
+    tabType: String(tab.type || ""),
+    nestedWindowId,
+    methodPath: String(activeContext.methodPath || activeContext.targetPath || ""),
+  };
+  capturedExternalMacroTargets.set(token, {
+    ...target,
+    createdAt: Date.now(),
+    fingerprint: macroContextFingerprint(activeContext),
+    hasDfm: true,
+  });
+  return { ok: true, activeContext, target };
 }
 
 function macroTaskRows(macro) {
@@ -517,9 +580,19 @@ async function seedTaskDesignerRows(tab, rows, sessionId = "") {
   } catch {}
 }
 
-function applyPayloadToActiveDfm(payload) {
-  const tab = getActiveDfmTab();
-  if (!tab) return Promise.resolve({ ok: false, error: "Open or activate a DFM tab/window before running a macro." });
+function applyPayloadToDfmTarget(payload, target = null) {
+  const targetTabId = String(target?.tabId || "");
+  const tab = targetTabId
+    ? (shell.state?.tabs || []).find((item) => item.id === targetTabId)
+    : getActiveDfmTab();
+  const validTarget = tab?.type === "dfm"
+    || (
+      tab?.type === "project_instance"
+      && (target ? !!String(target?.nestedWindowId || "") : !!tab.piDfmActive)
+    );
+  if (!tab || !validTarget) {
+    return Promise.resolve({ ok: false, error: "The DFM captured for this macro is no longer open." });
+  }
   shell.ensureIframe?.(tab);
   const iframe = tab.iframe;
   if (!iframe?.contentWindow) {
@@ -542,7 +615,12 @@ function applyPayloadToActiveDfm(payload) {
     };
     window.addEventListener("message", onMessage);
     try {
-      iframe.contentWindow.postMessage({ type: "arcrho:dfm-apply-method-payload", requestId, payload }, "*");
+      iframe.contentWindow.postMessage({
+        type: "arcrho:dfm-apply-method-payload",
+        requestId,
+        payload,
+        targetWindowId: String(target?.nestedWindowId || ""),
+      }, "*");
     } catch {
       finish({ ok: false, error: "Could not apply macro result to the DFM tab." });
       return;
@@ -834,7 +912,7 @@ function enableMacroPreviewDrag(dialogWindow, header) {
   });
 }
 
-function showMacroNotesPreview(preview) {
+function showMacroNotesPreview(preview, options = {}) {
   ensureMacroPreviewStyles();
   const oldText = String(preview?.original_notes || "");
   const newText = String(preview?.suggested_notes || "");
@@ -873,9 +951,14 @@ function showMacroNotesPreview(preview) {
   placeMacroPreviewWindow(dialogWindow);
   enableMacroPreviewDrag(dialogWindow, header);
   return new Promise((resolve) => {
-    const finish = (accepted) => {
+    let done = false;
+    let expiryTimer = 0;
+    const finish = (accepted, expired = false) => {
+      if (done) return;
+      done = true;
+      if (expiryTimer) window.clearTimeout(expiryTimer);
       overlay.remove();
-      resolve(!!accepted);
+      resolve({ accepted: !!accepted, expired: !!expired });
     };
     overlay.querySelector(".macroNotesPreviewClose")?.addEventListener("click", () => finish(false));
     overlay.querySelector("[data-action='cancel']")?.addEventListener("click", () => finish(false));
@@ -885,7 +968,122 @@ function showMacroNotesPreview(preview) {
     });
     overlay.tabIndex = -1;
     overlay.focus();
+    const expiresAt = Number(options.expiresAt || 0);
+    if (expiresAt > 0) {
+      expiryTimer = window.setTimeout(
+        () => finish(false, true),
+        Math.max(0, expiresAt - Date.now()),
+      );
+    }
   });
+}
+
+async function reviewAndApplyMacroResult(result = {}, target = null, options = {}) {
+  const expiresAt = Number(options.expiresAt || 0);
+  const isExpired = () => expiresAt > 0 && Date.now() >= expiresAt;
+  if (isExpired()) {
+    return { ok: false, error: "Macro review expired before the result could be applied." };
+  }
+  const preview = result.preview || null;
+  if (preview?.type === "notes_diff") {
+    if (!preview.has_changes) {
+      return {
+        ok: true,
+        applied: false,
+        message: String(preview.summary || "Validate Notes found no required changes."),
+      };
+    }
+    const decision = await showMacroNotesPreview(preview, { expiresAt });
+    if (decision.expired || isExpired()) {
+      return { ok: false, error: "Macro review expired before the result could be applied." };
+    }
+    if (!decision.accepted) {
+      return {
+        ok: true,
+        applied: false,
+        cancelled: true,
+        message: "Macro suggestion was not applied.",
+      };
+    }
+  }
+  if (result.payload && typeof result.payload === "object") {
+    if (isExpired()) {
+      return { ok: false, error: "Macro review expired before the result could be applied." };
+    }
+    if (typeof options.beforeApply === "function") {
+      const validation = await options.beforeApply();
+      if (!validation?.ok) {
+        return { ok: false, error: validation?.error || "The captured DFM changed before apply." };
+      }
+    }
+    if (isExpired()) {
+      return { ok: false, error: "Macro review expired before the result could be applied." };
+    }
+    const applied = await applyPayloadToDfmTarget(result.payload, target);
+    if (!applied?.ok) {
+      return { ok: false, error: applied?.error || "Macro ran, but the DFM did not accept the result." };
+    }
+    return { ok: true, applied: true, message: "Macro applied to the captured DFM." };
+  }
+  return {
+    ok: true,
+    applied: false,
+    message: String(result.message || "Macro completed."),
+  };
+}
+
+export async function reviewAndApplyCapturedMacroResult(args = {}) {
+  cleanupCapturedExternalMacroTargets();
+  const token = String(args?.target?.token || "");
+  const capture = capturedExternalMacroTargets.get(token);
+  if (token) capturedExternalMacroTargets.delete(token);
+  if (!capture) {
+    return { ok: false, error: "The captured DFM context expired. Run the script again." };
+  }
+  if (args.discard) {
+    return { ok: true, applied: false, message: "Discarded captured DFM context." };
+  }
+
+  const expiresAt = Number(args.expiresAt || 0);
+  if (expiresAt > 0 && Date.now() >= expiresAt) {
+    return { ok: false, error: "Macro review expired before the result could be applied." };
+  }
+  if (!capture.hasDfm) {
+    if (args.payload && typeof args.payload === "object") {
+      return { ok: false, error: "The script returned a DFM payload, but no DFM was active when it started." };
+    }
+    return reviewAndApplyMacroResult({
+      preview: args.preview,
+      message: args.message,
+    }, null, { expiresAt });
+  }
+
+  const tab = (shell.state?.tabs || []).find((item) => item.id === capture.tabId);
+  const validTarget = tab?.type === "dfm"
+    || (tab?.type === "project_instance" && !!capture.nestedWindowId);
+  if (!tab || !validTarget) {
+    return { ok: false, error: "The DFM captured for this macro is no longer open." };
+  }
+  const validateCapturedContext = async () => {
+    const currentContext = await requestActiveDfmContext(tab, capture.nestedWindowId);
+    if (!currentContext?.available || !currentContext?.activeJson) {
+      return { ok: false, error: currentContext?.error || "The captured DFM is no longer available." };
+    }
+    if (macroContextFingerprint(currentContext) !== capture.fingerprint) {
+      return {
+        ok: false,
+        error: "The captured DFM changed while the macro was running. Its result was not applied; run it again.",
+      };
+    }
+    return { ok: true };
+  };
+  const initialValidation = await validateCapturedContext();
+  if (!initialValidation.ok) return initialValidation;
+  return reviewAndApplyMacroResult({
+    payload: args.payload,
+    preview: args.preview,
+    message: args.message,
+  }, capture, { beforeApply: validateCapturedContext, expiresAt });
 }
 
 async function runSelectedMacro() {
@@ -944,27 +1142,16 @@ async function runSelectedMacro() {
       }
       throw new Error(result?.message || "Macro failed.");
     }
-    const preview = result.preview || null;
-    if (preview?.type === "notes_diff") {
-      if (!preview.has_changes) {
-        const message = String(preview.summary || "Validate Notes found no required changes.");
-        setMacroStatus(message, "", { statusBar: true });
-        return;
-      }
-      const accepted = await showMacroNotesPreview(preview);
-      if (!accepted) {
-        setMacroStatus("Validate Notes suggestion was not applied.", "", { statusBar: true });
-        return;
-      }
-    }
-    if (result.payload && typeof result.payload === "object") {
-      const applied = await applyPayloadToActiveDfm(result.payload);
-      if (!applied?.ok) throw new Error(applied?.error || "Macro ran, but the DFM tab did not accept the result.");
+    const reviewed = await reviewAndApplyMacroResult(result);
+    if (!reviewed?.ok) throw new Error(reviewed?.error || "Macro ran, but its result could not be applied.");
+    if (reviewed?.cancelled || (result.preview?.type === "notes_diff" && !result.preview?.has_changes)) {
+      setMacroStatus(reviewed.message || "Macro result was not applied.", "", { statusBar: true });
+      return;
     }
     const output = String(result.stdout || "").trim();
     const message = output
       ? `Macro completed. ${output}`
-      : (result.payload ? "Macro applied to the active DFM." : "Macro completed.");
+      : (reviewed.message || (result.payload ? "Macro applied to the active DFM." : "Macro completed."));
     setMacroStatus(message, "", { statusBar: true });
   } catch (err) {
     const message = String(err?.message || err || "Macro failed.");

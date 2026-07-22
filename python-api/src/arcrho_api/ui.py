@@ -5,6 +5,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -188,6 +189,36 @@ def wait_for_app(
             last_error = str(err)
         time.sleep(max(0.05, float(interval_sec)))
     raise ArcRhoApiError(last_error or f"ArcRho app is not reachable at {_base_url(app_url)}.")
+
+
+def run_macro_source(
+    source: str,
+    *,
+    filename: str = "untitled_macro.py",
+    source_path: str = "",
+    timeout_sec: float = 300.0,
+    app_url: str | None = None,
+) -> dict[str, Any]:
+    """Run an editor buffer as a macro against the active DFM in ArcRho."""
+
+    health = get_app_health(timeout_sec=min(2.0, max(0.1, float(timeout_sec))), app_url=app_url)
+    app_name = str(health.get("app") or "").strip().lower()
+    if app_name != "arcrho":
+        connected_name = app_name or "an unsupported app"
+        raise ArcRhoApiError(
+            f"Run in ArcRho requires the ArcRho desktop app on {_base_url(app_url)}; "
+            f"connected to {connected_name!r}."
+        )
+    return _post_json(
+        "/scripting/run-in-arcrho",
+        {
+            "source": str(source or ""),
+            "filename": str(filename or "untitled_macro.py"),
+            "source_path": str(source_path or ""),
+        },
+        timeout_sec,
+        app_url=app_url,
+    )
 
 
 def send_command(
@@ -827,6 +858,39 @@ class TaskDesignerAutomation:
         )
 
 
+class MacroAutomation:
+    """Run saved or unsaved Python source against ArcRho's live DFM context."""
+
+    def __init__(self, ui: "ArcRhoUI") -> None:
+        self._ui = ui
+
+    def run_source(
+        self,
+        source: str,
+        *,
+        filename: str = "untitled_macro.py",
+        source_path: str = "",
+        timeout_sec: float = 300.0,
+    ) -> dict[str, Any]:
+        return run_macro_source(
+            source,
+            filename=filename,
+            source_path=source_path,
+            timeout_sec=timeout_sec,
+            app_url=self._ui.app_url,
+        )
+
+    def run_file(self, path: str | os.PathLike[str], *, timeout_sec: float = 300.0) -> dict[str, Any]:
+        source_path = Path(path).expanduser().resolve()
+        source = source_path.read_text(encoding="utf-8-sig")
+        return self.run_source(
+            source,
+            filename=source_path.name,
+            source_path=str(source_path),
+            timeout_sec=timeout_sec,
+        )
+
+
 class ArcRhoUI:
     """Convenience object for ArcRho UI automation commands."""
 
@@ -844,6 +908,10 @@ class ArcRhoUI:
     @property
     def task_designer(self) -> TaskDesignerAutomation:
         return TaskDesignerAutomation(self)
+
+    @property
+    def macros(self) -> MacroAutomation:
+        return MacroAutomation(self)
 
     def get_app_health(self, **kwargs: Any) -> dict[str, Any]:
         kwargs.setdefault("app_url", self.app_url)

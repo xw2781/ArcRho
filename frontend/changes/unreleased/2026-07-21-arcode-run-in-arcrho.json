@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Arcode Run now automatically uses live ArcRho context for macro source without showing a separate run button.",
+  "details": [
+    "ArcRho macro metadata and run_macro entry points are detected from saved or unsaved editor source; other Python and selections continue to run locally.",
+    "Toolbar command labels keep their full button frames at narrower editor widths.",
+    "Standalone Arcode now bundles the ArcRho Python API and proxies source runs to the open ArcRho desktop app.",
+    "Macro results stay pinned to the captured DFM and are rejected if its live state changes before apply."
+  ]
+}

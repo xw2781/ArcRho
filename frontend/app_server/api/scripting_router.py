@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
+from app_server.api.local_client import require_local_client
 from app_server.schemas.scripting import (
     ScriptRunRequest,
     ScriptDeleteVarRequest,
@@ -12,6 +13,7 @@ from app_server.schemas.scripting import (
     ScriptNotebookLoadRequest,
     ScriptInspectRequest,
     ScriptMacroRunRequest,
+    ScriptMacroSourceRunRequest,
     ScriptMacroDeleteRequest,
     ScriptMacroRenameRequest,
     ScriptTaskWrapperSaveRequest,
@@ -89,6 +91,16 @@ def scripting_run_macro(req: ScriptMacroRunRequest) -> Dict[str, Any]:
         task_window_id=req.task_window_id,
         task_session_id=req.task_session_id,
         task_mode=req.task_mode,
+    )
+
+
+@router.post("/scripting/run-in-arcrho")
+def scripting_run_in_arcrho(req: ScriptMacroSourceRunRequest, request: Request) -> Dict[str, Any]:
+    require_local_client(request, "Run in ArcRho")
+    return scripting_service.run_macro_source_in_arcrho(
+        req.source,
+        req.filename,
+        req.source_path,
     )
 
 

@@ -57,6 +57,12 @@ class ScriptMacroRunRequest(BaseModel):
     task_mode: str = ""
 
 
+class ScriptMacroSourceRunRequest(BaseModel):
+    source: str
+    filename: str = "untitled_macro.py"
+    source_path: str = ""
+
+
 class ScriptMacroDeleteRequest(BaseModel):
     macro_id: str
 

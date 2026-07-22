@@ -8,14 +8,14 @@ import { clearTestData, getLastWorkflowDir, getLastWorkflowPath, getWorkflowTabS
 import { closeTab, closeTabsExcept, dockTab, floatTab, openAgentGuideTab, openBrowsingHistoryTab, openDatasetTab, openDFMTab, openProjectInstanceTab, openProjectSettingsTab, openScriptingTab, openShellActivityHistoryEntry, openTaskDesigner, openWorkflowTab, recordActiveTabHistory, setActive, setDockedActive } from "./tab_actions.js?v=20260714a";
 import { applyDockedIframeLayout, clampFloatingTabsToContent, clampFloatRect, defaultFloatRectFromPointer, ensureContentContainers, ensureIframe, notifyBrowsingHistoryTabs, notifyCalculatedDatasetTabs, notifyServerConnectionUpdated, notifyTabActivated, printActiveTab, removeFloatPreview, renderContent, renderFloatingWindows, updateFloatPreview } from "./shell_content.js?v=20260621b";
 import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, renderTabs, togglePlusMenu } from "./tab_strip.js?v=20260620a";
-import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260625c";
+import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260722a";
 import { initHotkeys, runHotkeyAction } from "./shell_hotkeys.js?v=20260621a";
 import { initShellMessages } from "./shell_messages.js?v=20260621c";
-import { initUiAutomation } from "./ui_automation.js?v=20260702b";
+import { initUiAutomation } from "./ui_automation.js?v=20260722a";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260622a";
-import { closeMacroWindow, initMacroWindow, openMacroWindow, refreshMacroScopeContext } from "../macro/macro_window.js?v=20260625c";
+import { closeMacroWindow, initMacroWindow, openMacroWindow, refreshMacroScopeContext } from "../macro/macro_window.js?v=20260722a";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
 const CLEAR_CACHE_RESTORE_KIND = "arcrho-clear-cache-reload-restore-v1";

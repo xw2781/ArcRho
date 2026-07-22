@@ -5,11 +5,13 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
+from app_server.api.local_client import require_local_client
 from app_server.schemas.scripting import (
     ScriptDeleteVarRequest,
     ScriptInspectRequest,
     ScriptNotebookLoadRequest,
     ScriptNotebookSaveRequest,
+    ScriptMacroSourceRunRequest,
     ScriptRunRequest,
 )
 from app_server.services import scripting_service
@@ -70,6 +72,12 @@ def scripting_load_notebook(req: ScriptNotebookLoadRequest) -> Dict[str, Any]:
 @router.get("/scripting/notebooks")
 def scripting_list_notebooks() -> List[Dict[str, str]]:
     return scripting_service.list_notebooks()
+
+
+@router.post("/scripting/run-in-arcrho")
+def scripting_run_in_arcrho(req: ScriptMacroSourceRunRequest, request: Request) -> Dict[str, Any]:
+    require_local_client(request, "Run in ArcRho")
+    return scripting_service.run_arcrho_macro_source(req.source, req.filename, req.source_path)
 
 
 @router.post("/scripting/inspect")

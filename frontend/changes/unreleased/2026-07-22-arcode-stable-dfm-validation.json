@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Fixed Arcode macro runs being rejected when only the generated DFM modification timestamp changed.",
+  "details": [
+    "Substantive live DFM edits are still detected before a macro result is applied.",
+    "Dirty status and unsaved in-memory DFM content continue to be supplied to the macro."
+  ]
+}

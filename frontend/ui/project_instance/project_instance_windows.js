@@ -109,9 +109,11 @@ function getProjectInstanceWindowSnapshot(frame) {
   const active = getActiveDatasetWindow() === frame;
   const hiddenItem = hiddenWindows.get(frame.dataset.windowId || "");
   return {
+    windowId: toText(frame.dataset.windowId || ""),
     kind,
     name,
     title: toText(frame.dataset.windowTitle || frame.getAttribute("aria-label") || name),
+    path: getWindowPath(frame),
     hidden: frame.dataset.hidden === "1" || frame.style.display === "none",
     active,
     maximized: frame.dataset.maximized === "1",
@@ -150,10 +152,11 @@ function getVisibleProjectInstanceWindowSummaries() {
     const snapshot = getProjectInstanceWindowSnapshot(frame);
     if (!snapshot || snapshot.hidden) continue;
     windows.push({
+      windowId: snapshot.windowId,
       kind: snapshot.kind,
       name: snapshot.name,
       title: snapshot.title,
-      path: getWindowPath(frame),
+      path: snapshot.path,
       active: !!snapshot.active,
       dirty: !!snapshot.dirty,
       maximized: !!snapshot.maximized,

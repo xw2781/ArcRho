@@ -62,13 +62,16 @@ body.ce-resizing-output .ce-output-resize-handle {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-bottom: 1px solid var(--ce-border);
   background: #fbfcfe;
 }
 
 .ce-btn {
+  flex: 0 0 auto;
   height: 27px;
-  min-width: 0;
+  min-width: max-content;
   padding: 0 10px;
   border: 1px solid var(--ce-border-strong);
   border-radius: 6px;
@@ -102,6 +105,7 @@ body.ce-resizing-output .ce-output-resize-handle {
 }
 
 .ce-sep {
+  flex: 0 0 1px;
   width: 1px;
   height: 20px;
   margin: 0 2px;
@@ -292,10 +296,4 @@ body.ce-resizing-output .ce-output-resize-handle::before {
 
 .ce-output-text.error {
   color: var(--ce-red);
-}
-
-@media (max-width: 860px) {
-  .ce-toolbar {
-    overflow-x: auto;
-  }
 }

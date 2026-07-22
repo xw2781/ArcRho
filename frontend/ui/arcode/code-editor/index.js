@@ -13,6 +13,7 @@ let autoSaveEnabled = true;
 let autoSaveTimer = 0;
 let revisionPollTimer = 0;
 let isRunning = false;
+let runningMode = "";
 let lineNumbersVisible = true;
 let outputPanelHeight = 180;
 const OUTPUT_PANEL_HIDE_THRESHOLD = 28;
@@ -155,11 +156,12 @@ function updateCommandState() {
   $("runSelectionBtn").disabled = !canRun || isRunning;
   $("restartBtn").disabled = !canRun || isRunning;
   $("formatBtn").disabled = !editor;
-  $("stopBtn").hidden = !isRunning;
+  $("stopBtn").hidden = !isRunning || runningMode !== "local";
 }
 
-function setRunning(nextRunning) {
+function setRunning(nextRunning, mode = "local") {
   isRunning = !!nextRunning;
+  runningMode = isRunning ? String(mode || "local") : "";
   updateCommandState();
 }
 
@@ -357,7 +359,7 @@ async function runPython(code) {
   const source = String(code || "").trim();
   if (!source || !isPythonFile() || isRunning) return;
   const started = performance.now();
-  setRunning(true);
+  setRunning(true, "local");
   setOutput("");
   $("runInfo").textContent = "Running";
   setStatus("Running...");
@@ -422,6 +424,58 @@ async function runPython(code) {
     setStatus(donePayload?.success === false ? "Error" : "Done");
     setRunning(false);
   }
+}
+
+async function runInArcRho(code) {
+  const source = String(code || "");
+  if (!source.trim() || !isPythonFile() || isRunning) return;
+  const started = performance.now();
+  setRunning(true, "arcrho");
+  setOutput("");
+  $("runInfo").textContent = "Running in ArcRho";
+  setStatus("Running in ArcRho...");
+  let result = null;
+
+  try {
+    const response = await shared.scriptingFetch("/scripting/run-in-arcrho", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source,
+        filename: filename(),
+        source_path: currentPath || "",
+      }),
+    }, scriptingSessionId);
+    result = await response.json().catch(() => ({}));
+    const stdout = String(result?.stdout || "").trimEnd();
+    const message = String(result?.message || result?.detail || "").trim();
+    const traceback = String(result?.traceback || "").trim();
+    const output = [stdout, message, result?.success ? "" : traceback].filter(Boolean).join("\n");
+    if (!response.ok || !result?.success) {
+      throw new Error(output || `Run in ArcRho failed (HTTP ${response.status}).`);
+    }
+    setOutput(output || "Macro completed in ArcRho.");
+    setStatus(result.cancelled ? "Not applied" : (result.applied ? "Applied in ArcRho" : "Done in ArcRho"));
+  } catch (err) {
+    const message = String(err?.message || err || "Run in ArcRho failed.");
+    result = { success: false, message };
+    setOutput(message, { error: true });
+    setStatus("Run in ArcRho failed");
+  } finally {
+    const elapsed = Math.max(1, Math.round(performance.now() - started));
+    $("runInfo").textContent = `${elapsed} ms`;
+    setRunning(false);
+  }
+}
+
+function isArcRhoMacroSource(code) {
+  const source = String(code || "");
+  return /^\s*#\s*<arcrho-macro>\s*$/im.test(source)
+    || /^def[\t ]+run_macro[\t ]*\(/m.test(source);
+}
+
+function runCurrentPython(code) {
+  return isArcRhoMacroSource(code) ? runInArcRho(code) : runPython(code);
 }
 
 async function restartSession() {
@@ -495,7 +549,7 @@ function initEditor() {
 function initEvents() {
   $("saveBtn")?.addEventListener("click", () => void saveCurrentFile());
   $("saveAsBtn")?.addEventListener("click", () => void saveCurrentFile({ saveAs: true }));
-  $("runBtn")?.addEventListener("click", () => void runPython(editor?.getValue() || ""));
+  $("runBtn")?.addEventListener("click", () => void runCurrentPython(editor?.getValue() || ""));
   $("runSelectionBtn")?.addEventListener("click", () => void runPython(selectedTextOrAll()));
   $("stopBtn")?.addEventListener("click", () => void interruptExecution());
   $("restartBtn")?.addEventListener("click", () => void restartSession());
@@ -624,7 +678,11 @@ function initEvents() {
     }
     if ((event.ctrlKey || event.metaKey) && !event.altKey && key === "enter") {
       event.preventDefault();
-      void runPython(event.shiftKey ? selectedTextOrAll() : editor?.getValue() || "");
+      if (event.shiftKey) {
+        void runPython(selectedTextOrAll());
+      } else {
+        void runCurrentPython(editor?.getValue() || "");
+      }
     }
   }, true);
 }

@@ -1,4 +1,8 @@
 import { shell } from "./shell_context.js?v=20260510a";
+import {
+  captureActiveDfmContextForMacro,
+  reviewAndApplyCapturedMacroResult,
+} from "../macro/macro_window.js?v=20260722a";
 
 const API_BASE = window.location.origin;
 const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -748,6 +752,18 @@ async function executeAutomationCommand(command) {
   }
   if (name === "ui.progressClose") {
     return { ok: true, result: closeAutomationProgress(command.args || {}) };
+  }
+  if (name === "macro.captureActiveDfmContext") {
+    const result = await captureActiveDfmContextForMacro();
+    return result?.ok
+      ? { ok: true, result }
+      : { ok: false, error: toText(result?.error) || "Could not capture the active DFM." };
+  }
+  if (name === "macro.reviewAndApplyResult") {
+    const result = await reviewAndApplyCapturedMacroResult(command.args || {});
+    return result?.ok
+      ? { ok: true, result }
+      : { ok: false, error: toText(result?.error) || "Could not apply the macro result." };
   }
   if (name.startsWith("taskDesigner.")) {
     return sendCommandToTaskDesigner(command);

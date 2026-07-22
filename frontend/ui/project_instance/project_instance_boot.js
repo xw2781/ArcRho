@@ -14,9 +14,9 @@ import { installProjectInstanceNumberFormats } from "./project_instance_number_f
 import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260715c";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260712b";
-import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260715c";
+import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260721a";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260607d";
-import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260702a";
+import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260721a";
 
 export async function bootProjectInstance() {
   const ctx = createProjectInstanceContext({

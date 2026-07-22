@@ -1,5 +1,7 @@
 ﻿# <arcrho-macro>
 # Title: Import ResQ Reserving Class
+# Version: 1.0.0
+# Release Note: Establish the initial versioned release with existing import behavior unchanged.
 # Description: Import all configured ResQ datasets and methods into the reserving-class path selected in the active Project Instance page.
 # Scope: Reserving Class
 # </arcrho-macro>

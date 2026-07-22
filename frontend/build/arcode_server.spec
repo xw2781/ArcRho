@@ -1,11 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import sys
 import warnings
 from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 build_dir = Path(SPECPATH)
 repo_root = build_dir.parent
+monorepo_root = repo_root.parent
+python_api_src = monorepo_root / "python-api" / "src"
+if str(python_api_src) not in sys.path:
+    sys.path.insert(0, str(python_api_src))
 
 
 def include_snowflake_submodule(name):
@@ -37,7 +42,7 @@ for asset_dir in asset_roots:
 
 a = Analysis(
     [str(build_dir / "arcode_server_entry.py")],
-    pathex=[str(repo_root)],
+    pathex=[str(repo_root), str(python_api_src)],
     binaries=[],
     datas=static_files,
     hiddenimports=[
@@ -66,7 +71,7 @@ a = Analysis(
         "app_server",
         "app_server.arcode_main",
         "app_server.api.arcode_scripting_router",
-    ] + snowflake_hiddenimports,
+    ] + snowflake_hiddenimports + collect_submodules("arcrho_api"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
