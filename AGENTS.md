@@ -20,18 +20,19 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 Before changing files under `frontend/`, read `frontend/FRONTEND_AGENT_GUIDELINES.md`.
 
 ## Single Source of Truth (MUST)
-For every code, configuration, schema, data-contract, automation, documentation, and test change, identify the authoritative owner of each default, constant, enum, validation rule, field definition, path rule, mapping, template, and business rule before editing.
-- Define each value or rule in one canonical location. Consumers must import, read, derive, generate from, or delegate to that source instead of copying the implementation or literal value.
-- Do not create synchronized-by-convention copies across files, components, languages, runtime layers, configuration, tests, or documentation. Explicit runtime overrides and values genuinely computed from runtime state are allowed, but they must be clearly modeled as overrides or derived values rather than competing defaults.
-- When direct reuse across languages or build boundaries is impractical, keep one canonical machine-readable source and generate the required adapters or artifacts. Document and validate the generation path so drift is detected automatically.
-- Tests may assert canonical behavior and fixed contract expectations, but test fixtures and expected values must not become a second runtime source of truth. Generated documentation and inventories must be rebuilt from their canonical sources rather than edited independently.
-- When touching an area that already duplicates a source of truth, consolidate the duplication within the safe scope of the task and remove obsolete copies. Ask before cleanup that would broaden behavior or compatibility risk.
+Before changing code, configuration, schemas, data contracts, automation, documentation, or tests, identify the canonical owner of every value and rule.
+- Define each value or rule once. Consumers must import, read, derive, generate from, or delegate to that source; clearly model legitimate runtime overrides and derived values.
+- When direct reuse across languages or build boundaries is impractical, use one canonical machine-readable source and generate validated adapters or artifacts so drift is detected.
+- Tests may assert canonical behavior, but fixtures, expected values, generated documentation, and inventories must not become competing sources of truth.
+- When the touched area already contains duplication, consolidate it within the task's safe scope and remove obsolete copies. Ask before cleanup that broadens behavior or compatibility risk.
 
-## Excel Add-in Build and Release
-After making changes under `excel-addin/`, automatically run the non-interactive build and release scripts unless the user explicitly asks not to build or release:
-- Step 1: `powershell -NoProfile -ExecutionPolicy Bypass -File "E:\XWSpace\Repos\ArcRho\excel-addin\tools\build_xlam.ps1"`
-- Step 2: `powershell -NoProfile -ExecutionPolicy Bypass -File "E:\XWSpace\Repos\ArcRho\excel-addin\tools\release_xlam.ps1"`
-Treat this as pre-approved by the repository instructions for Excel add-in changes, but still follow environment requirements for sandbox escalation because the scripts update the beta add-in and release add-in outside the repository. Do not use `Step 1+2 - Build and Release ArcRho.bat` for agent validation because its interactive prompt can hang in agent terminals. If either direct script is blocked, fails, or times out, report that clearly.
+## Conditional Instruction Entry Points
+
+| Read only this file when triggered | Trigger words |
+| --- | --- |
+| [User Preference Storage Scopes](agent-instructions/user-preference-storage-scopes.md) | `preference`, `preferences`, `user setting`, `settings storage`, `AppData`, `localStorage`, `project-user`, `shared preference`, `workspace_paths.json` |
+| [Excel Add-in Build and Release](agent-instructions/excel-addin-build-and-release.md) | `excel-addin/`, `Excel add-in`, `.xlam`, `VBA add-in`, `build_xlam`, `release_xlam` |
+| [Agent Project Data Access](agent-instructions/agent-project-data-access.md) | `ArcRho Server project data`, `project metadata JSON`, `sidecar`, `method JSON`, `dataset JSON`, `reserving-class data path`, `resq_data_migration.py`, `E:\ArcRho Server\projects` |
 
 ## Bug Fix Verification and Cleanup
 Before changing code for a bug fix, review the relevant code and verify that its current logic can explain the bug or unexpected behavior reported by the user. If the reported behavior cannot be traced to the code, or if any material detail is uncertain, stop and ask the user for more details or clarification until the issue is clear. Do not make assumptions or guesses when deciding on code changes.
@@ -45,13 +46,6 @@ Treat `python-api/macros` as the source of truth for ArcRho macro files maintain
 Follow the macro metadata, versioning, release-note, and backup rules in `python-api/macros/README.md` whenever adding or changing a macro.
 When adding or editing a macro, update the file in `python-api/macros` first, then copy all active macro files from that folder to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros`.
 
-## Agent Project Data Access
-Agents may view on-disk metadata JSON files under `E:\ArcRho Server\projects` only for project `NJ_Annual_Prod_202605_Fake` by default.
-Do not read metadata JSON files on disk for any other ArcRho Server project unless the user gives explicit permission for that project in the current session.
-If a user references another ArcRho Server project without giving session-specific permission to read its on-disk metadata JSON files, ask for that permission or ask the user to provide the needed excerpts directly in the chat.
-When inspecting sidecars, method JSON, dataset JSON, or related migration/refactor issues and the request does not explicitly specify a reserving-class data path, use `E:\ArcRho Server\projects\NJ_Annual_Prod_202605_Fake\data\PRNJ - PA_%5C_PA_%5C_All States_%5C_Direct Group_%5C_COL` as the default ArcRho Server data folder.
-This restriction applies to agent tool use and analysis only; it does not change runnable scripts that a human may execute, such as `python-api/resq_data_migration.py`.
-
 ## Python Runtime Preference
 Always prefer Python 3.10 for this repository. When validating Python code, running scripts, installing dependencies, or creating virtual environments, use a Python 3.10 interpreter unless the user explicitly asks for another version or a toolchain requires a different runtime.
 
@@ -64,3 +58,4 @@ Validation commands must not write files to the C drive. If temporary files are 
 
 ## Final Response Changed Files
 After each task, include a `Changed files` section in the final response with a clickable link to every file the agent changed during that task. Include implementation files, documentation, release fragments, generated files, tests, configuration, and repository instruction files; do not omit non-code changes. Use absolute workspace paths in Markdown links, with an optional line number when it helps identify the relevant change. If the task did not change any files, state `Changed files: none`.
+Before writing the final response, check the line count of every changed code file, excluding generated and vendored artifacts, against nearby files and the component's normal organization. If any changed code file is unusually large, explicitly tell the user which file and its line count, explain that its size may increase maintenance risk, and recommend a focused refactor; do not perform that broader refactor unless it is already within the requested scope.
