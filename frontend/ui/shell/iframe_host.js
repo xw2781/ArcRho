@@ -7,6 +7,7 @@ export function createIframeHost(deps) {
     getState,
     normalizeBrowsingHistoryEntry,
     refreshActiveTab,
+    resolveHotkeyAction,
     runHotkeyAction,
     setActive,
     handleShellFileDragOver,
@@ -68,13 +69,12 @@ export function createIframeHost(deps) {
         frameWin.addEventListener("keydown", (e) => {
           if (e.key === "Escape") closeMenus();
           const key = String(e.key || "");
-          const lowerKey = key.toLowerCase();
-          const isAltQ = e.altKey && !e.ctrlKey && !e.shiftKey && (lowerKey === "q" || e.code === "KeyQ");
-          if (isAltQ) {
+          const shellHotkeyAction = resolveHotkeyAction?.(e);
+          if (shellHotkeyAction === "settings_clear_cache_reload" || shellHotkeyAction === "settings_toggle_color_theme") {
             e.preventDefault();
             e.stopPropagation();
             if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
-            runHotkeyAction?.("settings_clear_cache_reload");
+            if (!e.repeat) runHotkeyAction?.(shellHotkeyAction);
             return;
           }
           const isRefreshKey = (key === "F5" && e.ctrlKey) || ((key === "r" || key === "R") && e.ctrlKey && !e.shiftKey);

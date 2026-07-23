@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Kept the Home tab fixed at the start of the tab strip while other tabs are dragged, docked, or restored."
+}

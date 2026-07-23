@@ -340,7 +340,10 @@ function updateReorderDrag(clientX, pointerId) {
   const host = $("tabs");
   enterReorderDragMode(host, pointerId);
   if (!host || !placeholderEl) return;
-  const tabs = [...host.querySelectorAll('.tab[data-tab-id]')].filter(n => n.getAttribute("data-tab-id") !== draggedTabId);
+  const tabs = [...host.querySelectorAll('.tab[data-tab-id]')].filter((node) => {
+    const id = node.getAttribute("data-tab-id");
+    return id && id !== "home" && id !== draggedTabId;
+  });
   let targetNode = null;
   for (const node of tabs) {
     const rect = node.getBoundingClientRect();
@@ -349,11 +352,15 @@ function updateReorderDrag(clientX, pointerId) {
   const beforeRects = new Map();
   host.querySelectorAll('.tab[data-tab-id]').forEach(el => {
     const id = el.getAttribute("data-tab-id");
-    if (!id || id === draggedTabId || el.classList.contains("placeholder")) return;
+    if (!id || id === "home" || id === draggedTabId || el.classList.contains("placeholder")) return;
     beforeRects.set(id, el.getBoundingClientRect());
   });
   if (targetNode) { if (placeholderEl.nextSibling !== targetNode) host.insertBefore(placeholderEl, targetNode); }
-  else if (placeholderEl.parentNode !== host || placeholderEl !== host.lastChild) host.appendChild(placeholderEl);
+  else {
+    const plus = host.querySelector("#plusTabBtn");
+    if (plus && placeholderEl.nextSibling !== plus) host.insertBefore(placeholderEl, plus);
+    else if (!plus && (placeholderEl.parentNode !== host || placeholderEl !== host.lastChild)) host.appendChild(placeholderEl);
+  }
   const newIndex = Array.from(host.children).indexOf(placeholderEl);
   if (newIndex !== lastPlaceholderIndex) { lastPlaceholderIndex = newIndex; flipAnimateTabs(host, beforeRects); }
 }
@@ -401,12 +408,12 @@ function flipAnimateTabs(host, beforeRects) {
   const after = new Map();
   host.querySelectorAll('.tab[data-tab-id]').forEach(el => {
     const id = el.getAttribute("data-tab-id");
-    if (!id || id === draggedTabId || el.classList.contains("placeholder")) return;
+    if (!id || id === "home" || id === draggedTabId || el.classList.contains("placeholder")) return;
     after.set(id, el.getBoundingClientRect());
   });
   host.querySelectorAll('.tab[data-tab-id]').forEach(el => {
     const id = el.getAttribute("data-tab-id");
-    if (!id || id === draggedTabId || el.classList.contains("placeholder")) return;
+    if (!id || id === "home" || id === draggedTabId || el.classList.contains("placeholder")) return;
     const b = beforeRects.get(id);
     const a = after.get(id);
     if (!b || !a) return;

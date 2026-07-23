@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added Alt+D as a global shortcut for toggling between Light and Dark color themes."
+}

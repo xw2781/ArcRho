@@ -11,6 +11,7 @@ function normalizeKeyCombo(e) {
   if (e.shiftKey) parts.push("Shift");
   let k = e.key;
   if ((!k || k === "Unidentified") && e.code === "KeyQ") k = "Q";
+  if ((!k || k === "Unidentified") && e.code === "KeyD") k = "D";
   if (k === "r" || k === "R") k = "R";
   if (k === "q" || k === "Q") k = "Q";
   if (k === "F5") k = "F5";
@@ -50,9 +51,14 @@ const hotkeys = {
   "Ctrl+Shift+E": "view_toggle_exec_time",
   "Ctrl+Shift+I": "help_view_dev_panel",
   "Ctrl+Q": "app_shutdown",
+  "Alt+D": "settings_toggle_color_theme",
   "Alt+Q": "settings_clear_cache_reload",
   "Ctrl+Alt+R": "file_restart",
 };
+
+export function resolveHotkeyAction(event) {
+  return hotkeys[normalizeKeyCombo(event)] || "";
+}
 
 function tryConsumeActiveFrameCloseShortcut() {
   const active = shell.state.tabs.find((tab) => tab.id === shell.state.activeId);
@@ -109,6 +115,12 @@ export function runHotkeyAction(action) {
   if (action === "view_toggle_line_numbers") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-line-numbers"); return; }
   if (action === "view_toggle_exec_time") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-exec-time"); return; }
   if (action === "help_view_dev_panel") return shell.openDevPanel?.();
+  if (action === "settings_toggle_color_theme") {
+    const nextTheme = shell.getColorTheme?.() === "dark" ? "light" : "dark";
+    shell.setColorTheme?.(nextTheme);
+    shell.updateStatusBar?.(`Color theme changed to ${nextTheme === "dark" ? "Dark" : "Light"}.`);
+    return;
+  }
   if (action === "settings_clear_cache_reload") {
     return Promise.resolve(shell.clearCacheAndReload?.()).catch((err) => {
       console.error("Clear Cache & Reload failed:", err);
@@ -145,17 +157,17 @@ export function initHotkeys() {
       runHotkeyAction("help_view_dev_panel");
       return;
     }
-    const action = hotkeys[combo];
+    const action = resolveHotkeyAction(e);
     if (action === "dfm_toggle_ratios_mode") {
       e.preventDefault();
       e.stopPropagation();
       if (!e.repeat) runHotkeyAction(action);
       return;
     }
-    if (action === "settings_clear_cache_reload") {
+    if (action === "settings_clear_cache_reload" || action === "settings_toggle_color_theme") {
       e.preventDefault();
       e.stopPropagation();
-      runHotkeyAction(action);
+      if (!e.repeat) runHotkeyAction(action);
       return;
     }
     if (shouldIgnoreHotkey(e)) return;

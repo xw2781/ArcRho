@@ -13,6 +13,18 @@ export const state = {
   nextFloatZ: 1,
 };
 
+export function ensureHomeTabFirst(tabs = state.tabs) {
+  if (!Array.isArray(tabs)) return;
+  const homeIndex = tabs.findIndex(t => t?.id === "home");
+  if (homeIndex < 0) {
+    tabs.unshift({ id: "home", title: "Home", type: "home" });
+    return;
+  }
+  if (homeIndex === 0) return;
+  const [home] = tabs.splice(homeIndex, 1);
+  tabs.unshift(home);
+}
+
 function getSavedShellStateRaw() {
   try {
     const current = localStorage.getItem(STORAGE_KEY);
@@ -49,6 +61,7 @@ export function getFirstDockedTabId() {
 }
 
 export function ensureActiveTabInvariant() {
+  ensureHomeTabFirst();
   if (!state.tabs.some(t => t.id === state.activeId)) {
     state.activeId = "home";
   }
@@ -65,9 +78,7 @@ export function loadState() {
     const s = JSON.parse(raw);
     if (!s || !Array.isArray(s.tabs) || !s.activeId) return;
 
-    if (!s.tabs.some(t => t.id === "home")) {
-      s.tabs.unshift({ id: "home", title: "Home", type: "home" });
-    }
+    ensureHomeTabFirst(s.tabs);
 
     state.tabs = s.tabs.map(t => ({
       id: t.id,
@@ -146,6 +157,7 @@ export function loadState() {
 }
 
 export function buildShellStateSnapshot() {
+  ensureHomeTabFirst();
   return {
     tabs: state.tabs.map(t => ({
       id: t.id,
