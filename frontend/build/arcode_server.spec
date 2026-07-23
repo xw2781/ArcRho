@@ -32,6 +32,7 @@ asset_roots = [
     repo_root / "ui" / "arcode",
     repo_root / "ui" / "ai-assistant",
     repo_root / "ui" / "libs",
+    repo_root / "ui" / "shared",
     repo_root / "icons",
 ]
 for asset_dir in asset_roots:

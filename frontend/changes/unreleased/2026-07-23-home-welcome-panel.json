@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "The Home page now presents the current user identity and a welcome message above the Launch Center without a left navigation panel."
+}

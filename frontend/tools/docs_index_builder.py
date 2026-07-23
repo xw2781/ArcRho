@@ -55,6 +55,7 @@ MD_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 FRONTEND_ENTRY_HTMLS = [
     "ui/index.html",
+    "ui/file_explorer/file_explorer.html",
     "ui/dataset_viewer/dataset_viewer.html",
     "ui/method_pages/dfm/dfm.html",
     "ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html",
@@ -470,6 +471,19 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("electron/main.js", "Window lifecycle and shell-to-host wiring."),
         ],
     },
+    "file_explorer": {
+        "doc": "docs/ui/file_explorer.md",
+        "html": ["ui/file_explorer/file_explorer.html"],
+        "files": [
+            ("ui/file_explorer/file_explorer.html", "File Explorer iframe entrypoint and two-pane layout."),
+            ("ui/file_explorer/file_explorer.js", "Favorite-folder, navigation, file-list, and open-action controller."),
+            ("ui/file_explorer/file_explorer_model.js", "Favorite-folder schema plus file normalization, filtering, sorting, and formatting helpers."),
+            ("ui/file_explorer/file_explorer.css", "File Explorer sidebar, details table, state, menu, and dialog styling."),
+            ("ui/shared/file-icons/fileIconResolver.js", "Canonical shared common-file-type icon resolver."),
+            ("electron/preload.js", "Renderer-safe folder preferences, listing, watch, and open APIs."),
+            ("electron/main.js", "Desktop favorite persistence, metadata listing, folder watching, and read-only Excel opening."),
+        ],
+    },
     "dataset": {
         "doc": "docs/ui/dataset.md",
         "html": ["ui/dataset_viewer/dataset_viewer.html"],
@@ -836,12 +850,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "Common Change Tasks": dedent(
                 """
                 1. Shell tab lifecycle change -> [`shell.md`](shell.md).
-                2. Dataset behavior change -> [`dataset.md`](dataset.md).
-                3. DFM behavior change -> [`dfm.md`](dfm.md).
-                4. Workflow editor change -> [`workflow.md`](workflow.md).
-                5. Project settings flow change -> [`project_settings.md`](project_settings.md).
-                6. Arcode scripting app or notebook/editor change -> [`arcode.md`](arcode.md).
-                7. Shared ArcBot widget change -> [`ai_assistant.md`](ai_assistant.md).
+                2. File Explorer behavior change -> [`file_explorer.md`](file_explorer.md).
+                3. Dataset behavior change -> [`dataset.md`](dataset.md).
+                4. DFM behavior change -> [`dfm.md`](dfm.md).
+                5. Workflow editor change -> [`workflow.md`](workflow.md).
+                6. Project settings flow change -> [`project_settings.md`](project_settings.md).
+                7. Arcode scripting app or notebook/editor change -> [`arcode.md`](arcode.md).
+                8. Shared ArcBot widget change -> [`ai_assistant.md`](ai_assistant.md).
                 """
             ),
             "Known Risks": dedent(
@@ -905,6 +920,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "data": "- Persists tab state, zoom, and toggles in `localStorage`.\n- Tracks popped-out tabs via `BroadcastChannel`.",
             "tasks": "1. Add a new tab type: update tab creation + iframe source logic in `ui_shell.js`.\n2. Add shell menu action: wire menu item + action handler + hotkey map.",
             "risks": "- DOM replacement in shell can invalidate iframe references.\n- Unsaved-state handling must stay consistent for close/close-all flows.",
+        },
+        "file_explorer": {
+            "purpose": "Standard ArcRho tab for browsing local files with a customizable Favorite folders sidebar and a persistent details list.",
+            "external": "- Opened from the Home File Explorer card as one restorable `file_explorer` shell tab.\n- Uses the Electron preload bridge for folder selection, directory listings, file opening, reveal/copy actions, and folder watches.\n- Receives explicit shell visibility messages so background or minimized tabs do not keep a live folder watcher.",
+            "data": "- Persists ordered favorite-folder paths and user nicknames in `%APPDATA%\\ArcRho\\prefs\\home_folders.json`; browser local storage is a non-Electron fallback.\n- Requests file size and modified-time metadata only for File Explorer listings so existing Arcode listing payloads remain compatible.\n- Uses `ui/shared/file-icons/` as the canonical resolver, mapping, and asset package shared with Arcode.",
+            "tasks": "1. Change File Explorer behavior or layout: update `ui/file_explorer/` and focused tests together.\n2. Change shell tab lifecycle: update Home launch, tab actions, iframe host, visibility messaging, and shell docs together.\n3. Change folder/file host operations: preserve existing preload IPC names and update Electron main/preload plus integration tests.",
+            "risks": "- Folder paths can become inaccessible or disappear while pinned; these must remain visible as favorites and surface recoverable list errors.\n- File opening is delegated to desktop associations; Excel read-only opening requires the explicit `/r` host path.\n- Watchers must stop while the tab is hidden and be replaced when navigation changes folders.",
         },
         "dataset": {
             "purpose": "Dataset editing/analysis page used inside shell tabs.",
@@ -1372,6 +1394,7 @@ def render_app_server_index_key_files(doc_path: str) -> str:
 def render_frontend_index_key_files(doc_path: str) -> str:
     files = [
         ("docs/ui/shell.md", "Shell tab host index."),
+        ("docs/ui/file_explorer.md", "File Explorer feature index."),
         ("docs/ui/dataset.md", "Dataset feature index."),
         ("docs/ui/dfm.md", "DFM feature index."),
         ("docs/ui/bornhuetter_ferguson.md", "Bornhuetter Ferguson method-page index."),

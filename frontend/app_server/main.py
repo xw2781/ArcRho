@@ -36,6 +36,7 @@ from app_server.api import (
     ui_automation_router,
     snowflake_router,
     data_processing_rules_router,
+    user_identity_router,
 )
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,7 @@ app.include_router(project_user_preferences_router)
 app.include_router(ui_automation_router)
 app.include_router(snowflake_router)
 app.include_router(data_processing_rules_router)
+app.include_router(user_identity_router)
 
 # --- Frontend assets (served from ./ui and ./icons, no /static) ---
 # Mount AFTER API routes to avoid conflicts

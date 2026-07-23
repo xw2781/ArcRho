@@ -22,6 +22,10 @@ const SERIES_COLORS = ["#1f5ca8", "#b45309", "#047857", "#7c3aed", "#be123c", "#
 const curveTypesBySegmentLabel = new Map();
 const curveTypesBySegmentIndex = new Map();
 
+function getChartColor(propertyName, fallback) {
+  return window.ArcRhoColorTheme?.getCssColor?.(propertyName, fallback) || fallback;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -510,16 +514,22 @@ function renderChart(seriesList, segmentTypes) {
   const xTicks = [];
   for (let x = Math.ceil(xMin); x <= Math.floor(xMax); x += xTickStep) xTicks.push(x);
   if (!xTicks.includes(xMax)) xTicks.push(xMax);
+  const chartBackground = escapeHtml(getChartColor("--ar-chart-background", "#ffffff"));
+  const chartGrid = escapeHtml(getChartColor("--ar-chart-svg-grid", "#e6ebf2"));
+  const chartAxis = escapeHtml(getChartColor("--ar-chart-svg-axis", "#aeb8c8"));
+  const chartText = escapeHtml(getChartColor("--ar-chart-svg-text", "#475569"));
+  const chartTextMuted = escapeHtml(getChartColor("--ar-chart-svg-text-muted", "#667085"));
+  const chartPointFill = escapeHtml(getChartColor("--ar-chart-point-fill", "#ffffff"));
   const grid = yTicks.map((tick) => {
     const y = yFor(tick);
     return `
-      <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="#e6ebf2" />
-      <text x="${pad.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#667085">${escapeHtml(niceNumber(tick))}</text>
+      <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="${chartGrid}" />
+      <text x="${pad.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="${chartTextMuted}">${escapeHtml(niceNumber(tick))}</text>
     `;
   }).join("");
   const xLabels = xTicks.map((tick) => {
     const x = xFor(tick);
-    return `<text x="${x}" y="${height - 26}" text-anchor="middle" font-size="11" fill="#667085">${escapeHtml(tick)}m</text>`;
+    return `<text x="${x}" y="${height - 26}" text-anchor="middle" font-size="11" fill="${chartTextMuted}">${escapeHtml(tick)}m</text>`;
   }).join("");
   const seriesLines = renderedSeries.map((series) => {
     const curvePoints = series.curve.map((point) => `${xFor(point.x)},${yFor(point.y)}`).join(" ");
@@ -527,7 +537,7 @@ function renderChart(seriesList, segmentTypes) {
     return `<polyline points="${curvePoints}" fill="none" stroke="${escapeHtml(series.color)}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />`;
   }).join("");
   const actualPoints = renderedSeries.map((series) => series.points.map((point) => `
-    <circle cx="${xFor(point.x)}" cy="${yFor(point.y)}" r="4" fill="#fff" stroke="${escapeHtml(series.color)}" stroke-width="2">
+    <circle cx="${xFor(point.x)}" cy="${yFor(point.y)}" r="4" fill="${chartPointFill}" stroke="${escapeHtml(series.color)}" stroke-width="2">
       <title>${escapeHtml(series.name)} - ${escapeHtml(point.label)}: ${escapeHtml(niceNumber(point.y))}</title>
     </circle>
   `).join("")).join("");
@@ -536,19 +546,19 @@ function renderChart(seriesList, segmentTypes) {
     const y = 16 + index * 16;
     return `
       <line x1="${x}" y1="${y}" x2="${x + 22}" y2="${y}" stroke="${escapeHtml(series.color)}" stroke-width="3" stroke-linecap="round" />
-      <text x="${x + 28}" y="${y + 4}" font-size="11" fill="#334155">${escapeHtml(series.name)}</text>
+      <text x="${x + 28}" y="${y + 4}" font-size="11" fill="${chartText}">${escapeHtml(series.name)}</text>
     `;
   }).join("");
   return `
     <svg class="dfmDevelopedCurveSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Percentage developed curve">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="#fff" />
+      <rect x="0" y="0" width="${width}" height="${height}" fill="${chartBackground}" />
       ${legend}
       ${grid}
-      <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" stroke="#aeb8c8" />
-      <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="#aeb8c8" />
+      <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" stroke="${chartAxis}" />
+      <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="${chartAxis}" />
       ${xLabels}
-      <text x="${pad.left + plotW / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#475569">${escapeHtml(X_AXIS_LABEL)}</text>
-      <text x="18" y="${pad.top + plotH / 2}" text-anchor="middle" font-size="12" fill="#475569" transform="rotate(-90 18 ${pad.top + plotH / 2})">% Developed</text>
+      <text x="${pad.left + plotW / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="${chartText}">${escapeHtml(X_AXIS_LABEL)}</text>
+      <text x="18" y="${pad.top + plotH / 2}" text-anchor="middle" font-size="12" fill="${chartText}" transform="rotate(-90 18 ${pad.top + plotH / 2})">% Developed</text>
       ${seriesLines}
       ${actualPoints}
     </svg>
@@ -668,7 +678,10 @@ function setProjectStatus(win, text, isError = false) {
 export function openPercentDevelopedCurveWindow(selectedTable) {
   ensureStyles();
   const existing = document.querySelector(".dfmDevelopedCurveWindow");
-  if (existing) existing.remove();
+  if (existing) {
+    if (typeof existing.__dfmDevelopedCurveClose === "function") existing.__dfmDevelopedCurveClose();
+    else existing.remove();
+  }
   const points = readDevelopedCurvePoints(selectedTable);
   const segmentTypes = points.map((point, index) => getSavedCurveTypeForPoint(point, index));
   const context = getCurrentDfmContext();
@@ -707,6 +720,12 @@ export function openPercentDevelopedCurveWindow(selectedTable) {
   const render = () => {
     if (chartWrap) chartWrap.innerHTML = renderChart(seriesList, segmentTypes);
   };
+  const close = () => {
+    window.removeEventListener("arcrho:color-theme-changed", render);
+    win.remove();
+  };
+  win.__dfmDevelopedCurveClose = close;
+  window.addEventListener("arcrho:color-theme-changed", render);
   const addProjectCurve = async () => {
     const input = win.querySelector("#dfmDevelopedCurvePriorProject");
     const button = win.querySelector(".dfmDevelopedCurveAddProject");
@@ -785,7 +804,7 @@ export function openPercentDevelopedCurveWindow(selectedTable) {
     event.preventDefault();
     addProjectCurve();
   });
-  win.querySelector(".dfmDevelopedCurveClose")?.addEventListener("click", () => win.remove());
+  win.querySelector(".dfmDevelopedCurveClose")?.addEventListener("click", close);
   render();
 }
 

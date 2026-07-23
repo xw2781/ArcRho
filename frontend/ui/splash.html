@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+    (() => {
+      const requestedTheme = new URLSearchParams(window.location.search).get("theme");
+      document.documentElement.setAttribute("data-arcrho-theme", requestedTheme === "dark" ? "dark" : "light");
+    })();
+  </script>
   <title>ArcRho</title>
   <style>
     * {
@@ -233,8 +239,10 @@
       100% { top: 100%; opacity: 0; }
     }
   </style>
+  <link rel="stylesheet" href="./shared/styles/themes/light.css?v=20260722a">
+  <link rel="stylesheet" href="./shared/styles/themes/dark.css?v=20260723a">
 </head>
-<body>
+<body class="startupSplash">
   <!-- Subtle background -->
   <div class="grid-bg"></div>
   <div class="orb orb-1"></div>

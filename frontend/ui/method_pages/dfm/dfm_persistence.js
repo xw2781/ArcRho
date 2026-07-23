@@ -51,7 +51,7 @@ import {
   renderRatioTable,
   queueDfmExternalChangeHighlights,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260716a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260722a";
 import {
   renderResultsTable,
   buildResultsVector,

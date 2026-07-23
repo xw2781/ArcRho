@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [projectInstanceHtml, contextSource, cacheSource, tableSource, windowsSource, dataTabSource] = await Promise.all([
+const [projectInstanceHtml, projectInstanceCss, contextSource, cacheSource, tableSource, windowsSource, dataTabSource] = await Promise.all([
   readFile(new URL("../ui/project_instance/project_instance.html", import.meta.url), "utf8"),
+  readFile(new URL("../ui/project_instance/project_instance.css", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_context.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_dataset_cache.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_dataset_table.js", import.meta.url), "utf8"),
@@ -34,8 +35,8 @@ test("temporary view uses index membership for its status without cleanup", () =
   assert.match(tableSource, /temp-indexed/);
   assert.match(tableSource, /temp-unindexed/);
   assert.match(tableSource, /already listed in index\.json/);
-  assert.match(projectInstanceHtml, /\.pi-status-cell\.temp-indexed\s*\{\s*color:\s*#15803d;/);
-  assert.match(projectInstanceHtml, /\.pi-status-cell\.temp-unindexed\s*\{\s*color:\s*#98a2b3;/);
+  assert.match(projectInstanceCss, /\.pi-status-cell\.temp-indexed\s*\{\s*color:\s*#15803d;/);
+  assert.match(projectInstanceCss, /\.pi-status-cell\.temp-unindexed\s*\{\s*color:\s*#98a2b3;/);
   assert.match(tableSource, /\["methodType", "lastModified", "created", "user"\]/);
   assert.match(tableSource, /isTemporaryViewActive\(\) && normalized !== "view"/);
   assert.match(tableSource, /function saveDatasetTablePreferences\(\) \{\s*if \(isTemporaryViewActive\(\)\) return;/);
@@ -55,7 +56,7 @@ test("temporary view toolbar uses concise dataset copy and a styled mode tooltip
   assert.match(cacheSource, /Temporary view is enabled/);
   assert.match(cacheSource, /Temporary view is disabled/);
   assert.match(cacheSource, /Temporary view shows all datasets that can be generated\. Click to return to Normal view\./);
-  assert.match(projectInstanceHtml, /\.dataset-temp-view-control:hover \.dataset-temp-view-tooltip/);
+  assert.match(projectInstanceCss, /\.dataset-temp-view-control:hover \.dataset-temp-view-tooltip/);
 });
 
 test("temporary dataset windows pass the session to the viewer and are not restored", () => {

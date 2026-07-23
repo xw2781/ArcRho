@@ -93,12 +93,12 @@ export function createTabPopoutManager(config = {}) {
         min-height: ${minH}px;
         display: flex;
         flex-direction: column;
-        background: #fff;
-        border: 1px solid #aebbd0;
+        background: var(--ar-popout-surface, #fff);
+        border: 1px solid var(--ar-popout-border, #aebbd0);
         border-radius: 6px;
-        box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
+        box-shadow: var(--ar-shadow-dialog, 0 18px 42px rgba(15, 23, 42, 0.24));
         overflow: visible;
-        color: #1f2937;
+        color: var(--ar-color-text, #1f2937);
         font-family: var(--${cssPrefix}-font, var(--app-font, "Segoe UI", Tahoma, Arial, sans-serif));
         transform-origin: 32px 18px;
         will-change: transform, opacity;
@@ -114,7 +114,7 @@ export function createTabPopoutManager(config = {}) {
         content: "";
         position: absolute;
         inset: -1px;
-        border: 1px solid #aebbd0;
+        border: 1px solid var(--ar-popout-border, #aebbd0);
         border-radius: 7px;
         pointer-events: none;
         z-index: 5;
@@ -133,8 +133,8 @@ export function createTabPopoutManager(config = {}) {
         justify-content: space-between;
         gap: 10px;
         padding: 0 7px 0 10px;
-        border-bottom: 1px solid #c9d1dc;
-        background: #edf1f5;
+        border-bottom: 1px solid var(--ar-popout-header-border, #c9d1dc);
+        background: var(--ar-popout-header, #edf1f5);
         cursor: move;
         user-select: none;
         box-sizing: border-box;
@@ -145,7 +145,7 @@ export function createTabPopoutManager(config = {}) {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: #202327;
+        color: var(--ar-popout-title, #202327);
         font-size: 13px;
         font-weight: 700;
       }
@@ -162,10 +162,10 @@ export function createTabPopoutManager(config = {}) {
         height: 20px;
         min-width: 0;
         padding: 0;
-        border: 1px solid #c6ced8;
+        border: 1px solid var(--ar-popout-control-border, #c6ced8);
         border-radius: 4px;
-        background: #fff;
-        color: #333;
+        background: var(--ar-popout-control-background, #fff);
+        color: var(--ar-popout-control-foreground, #333);
         cursor: pointer;
         user-select: none;
         display: inline-flex;
@@ -175,17 +175,17 @@ export function createTabPopoutManager(config = {}) {
         -webkit-appearance: none;
       }
       .${windowClass} .tabPopoutButton.titlebarBtn:hover {
-        background: #dbeafe;
-        border-color: #93c5fd;
+        background: var(--ar-popout-control-hover-background, #dbeafe);
+        border-color: var(--ar-popout-control-hover-border, #93c5fd);
       }
       .${windowClass} .tabPopoutButton.titlebarBtn[data-action="close"]:hover {
-        background: #fee2e2;
-        border-color: #fca5a5;
+        background: var(--ar-popout-control-close-hover-background, #fee2e2);
+        border-color: var(--ar-popout-control-close-hover-border, #fca5a5);
       }
       .${windowClass} .tabPopoutButton .titlebarIcon {
         width: 10px;
         height: 10px;
-        stroke: #333;
+        stroke: var(--ar-popout-control-foreground, #333);
         stroke-width: 1.2;
         fill: none;
         stroke-linecap: round;
@@ -197,7 +197,7 @@ export function createTabPopoutManager(config = {}) {
         min-width: 0;
         display: flex;
         overflow: hidden;
-        background: #fff;
+        background: var(--ar-popout-surface, #fff);
         border-bottom-left-radius: 6px;
         border-bottom-right-radius: 6px;
       }
@@ -219,7 +219,7 @@ export function createTabPopoutManager(config = {}) {
         transition: background-color ${POPOUT_ANIMATION_MS}ms ease, color ${POPOUT_ANIMATION_MS}ms ease, box-shadow ${POPOUT_ANIMATION_MS}ms ease;
       }
       .${tabClass}.${poppedTabClass} {
-        background: #e5e7eb;
+        background: var(--ar-popout-tab-muted-background, #e5e7eb);
         font-style: normal;
       }
       @keyframes tabPopoutOpen {

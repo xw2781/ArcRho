@@ -42,7 +42,7 @@ import {
   showFormulaValidationError,
 } from "/ui/method_pages/dfm/dfm_formula_validation.js?v=20260713b";
 import { wireSelectableTable } from "/ui/shared/components/spreadsheet/table_selection.js";
-import { openDfmSummaryPlotWindow } from "/ui/method_pages/dfm/dfm_summary_plot_window.js?v=20260514g";
+import { openDfmSummaryPlotWindow } from "/ui/method_pages/dfm/dfm_summary_plot_window.js?v=20260722a";
 import {
   hasDfmCellNote,
   showDfmCellNoteEditor,

@@ -1,0 +1,121 @@
+:root {
+  --border: #d8d8d8;
+  --bg: #ffffff;
+  --text: #222;
+  --muted: #666;
+  --hover: #f4f4f4;
+}
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+}
+.page {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 14px;
+  overflow: auto;
+}
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+.subtitle {
+  margin: 6px 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.empty {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--muted);
+  background: #fcfcfc;
+}
+.section {
+  margin-top: 14px;
+}
+.section:first-of-type {
+  margin-top: 0;
+}
+.sectionTitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2f3a4a;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.historyRow {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fafafa;
+  text-align: left;
+  cursor: pointer;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: inherit;
+}
+.historyRow:hover {
+  background: var(--hover);
+  border-color: #bdbdbd;
+}
+.lineTop {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.project {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+.dataset {
+  font-size: 12px;
+  color: #2c2c2c;
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.path {
+  font-size: 12px;
+  color: #4d4d4d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.time {
+  font-size: 11px;
+  color: #757575;
+}
+.badgeLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.badge {
+  border: 1px solid #d8dde7;
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: #fff;
+  color: #4d5b70;
+  font-size: 11px;
+  line-height: 17px;
+}

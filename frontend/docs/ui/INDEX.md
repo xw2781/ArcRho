@@ -9,22 +9,24 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 <!-- AUTO-GEN:BEGIN frontend.index.entry_points -->
 | HTML Entrypoint | External Scripts | Inline Imports |
 | --- | --- | --- |
-| `ui/index.html` | 1 external script | - |
-| `ui/dataset_viewer/dataset_viewer.html` | - | 1 inline import |
-| `ui/method_pages/dfm/dfm.html` | - | 2 inline imports |
-| `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html` | 1 external script | - |
-| `ui/method_pages/result_selection/result_selection.html` | 5 external scripts | - |
-| `ui/workflow/workflow.html` | 1 external script | - |
-| `ui/project_settings/project_settings.html` | 1 external script | - |
-| `ui/project_instance/project_instance.html` | 1 external script | - |
-| `ui/arcode/main.html` | 1 external script | - |
-| `ui/arcode/notebook-editor/index.html` | 10 external scripts | - |
-| `ui/arcode/code-editor/index.html` | 4 external scripts | - |
+| `ui/index.html` | 2 external scripts | - |
+| `ui/file_explorer/file_explorer.html` | 2 external scripts | - |
+| `ui/dataset_viewer/dataset_viewer.html` | 1 external script | 1 inline import |
+| `ui/method_pages/dfm/dfm.html` | 1 external script | 2 inline imports |
+| `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html` | 2 external scripts | - |
+| `ui/method_pages/result_selection/result_selection.html` | 6 external scripts | - |
+| `ui/workflow/workflow.html` | 2 external scripts | - |
+| `ui/project_settings/project_settings.html` | 2 external scripts | - |
+| `ui/project_instance/project_instance.html` | 2 external scripts | - |
+| `ui/arcode/main.html` | 2 external scripts | - |
+| `ui/arcode/notebook-editor/index.html` | 11 external scripts | - |
+| `ui/arcode/code-editor/index.html` | 5 external scripts | - |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
 <!-- AUTO-GEN:BEGIN frontend.index.key_files -->
 - [`docs/ui/shell.md`](shell.md) - Shell tab host index.
+- [`docs/ui/file_explorer.md`](file_explorer.md) - File Explorer feature index.
 - [`docs/ui/dataset.md`](dataset.md) - Dataset feature index.
 - [`docs/ui/dfm.md`](dfm.md) - DFM feature index.
 - [`docs/ui/bornhuetter_ferguson.md`](bornhuetter_ferguson.md) - Bornhuetter Ferguson method-page index.

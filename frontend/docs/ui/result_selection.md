@@ -16,7 +16,7 @@ Result Selection is a Project Instance method window for vector output datasets.
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Opens from Project Instance floating windows only in v1. The shell does not expose a standalone Result Selection tab.
+- Opens either from its Home `Datasets & Methods` launch card as a standalone shell tab or from a Project Instance floating window.
 - Project Instance creates a new Result Selection from `Add > Result Selection` on a vector dataset row whose Method Type is `None`; existing vector rows with Method Type `Result Selection` open this page for editing directly on the Method tab.
 - The page posts generic nested-window dirty state through `arcrho:dataset-dirty`, consumes `arcrho:dataset-save`, and exposes `window.__arcrho_request_close` so Project Instance can ask before closing dirty windows; dirty close requests use the shared page-local confirm dialog and are then confirmed with `arcrho:dataset-close-confirmed`.
 - Save writes `methods/RS@<Name>.json` using underscore JSON keys, writes the selected ultimate vector CSV under the reserving-class `datasets/` folder as `<Name>@<OriginLength>.csv`, emits coarser aggregate vector CSVs such as `@6` and `@12` when the active origin length can roll up cleanly, saves a base dataset sidecar with `source_kind: "result_selection"`, `method_type: "Result Selection"`, `status: 0`, `data_format: "Vector"`, and asks the Project Instance host to refresh the cached dataset table.

@@ -525,7 +525,7 @@ function initEditor() {
       editor = window.monaco.editor.create($("editorHost"), {
         value: "",
         language: language(),
-        theme: "vs",
+        theme: window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs",
         fontSize: 13,
         fontFamily: '"Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',
         minimap: { enabled: false },

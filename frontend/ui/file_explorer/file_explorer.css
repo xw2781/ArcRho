@@ -1,0 +1,715 @@
+:root {
+  color-scheme: light;
+  font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  font-size: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--ar-color-canvas, #f4f7fa);
+  color: var(--ar-color-text, #1f2937);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.fileExplorerLayout {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.fileExplorerSidebar {
+  min-width: 0;
+  padding: 14px 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-right: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-canvas-subtle, #eef2f6);
+}
+
+.homeFoldersPage {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ar-color-canvas, #f4f7fa);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.homeNavGroup {
+  min-width: 0;
+}
+
+.homeNavGroupHeading {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 4px 8px;
+}
+
+.homeNavLabel {
+  min-width: 0;
+  color: var(--ar-color-text-muted, #64748b);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.homeNavAddButton,
+.homeFolderShortcutMenuButton {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ar-color-text-muted, #64748b);
+  cursor: pointer;
+}
+
+.homeNavAddButton:hover,
+.homeFolderShortcutMenuButton:hover,
+.homeFolderShortcutRow:focus-within .homeFolderShortcutMenuButton {
+  border-color: var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface, #ffffff);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.homeNavAddButton:focus-visible,
+.homeFolderShortcutMenuButton:focus-visible,
+.homeFolderEmptyButton:focus-visible,
+.homeNavItem:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+
+.homeNavAddButton svg,
+.homeFolderShortcutMenuButton svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.homeFolderShortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.homeFolderShortcutRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  gap: 2px;
+  align-items: center;
+}
+
+.homeNavItem {
+  width: 100%;
+  min-width: 0;
+  min-height: 31px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ar-color-text-muted, #47515c);
+  text-align: left;
+  cursor: pointer;
+}
+
+.homeNavItem:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.homeNavItem.active {
+  border-color: var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface, #ffffff);
+  color: var(--ar-color-text-strong, #111827);
+  box-shadow: var(--ar-shadow-subtle, 0 1px 2px rgba(15, 23, 42, 0.04));
+}
+
+.homeFolderShortcutIcon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  object-fit: contain;
+}
+
+.homeFolderShortcutName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homeFolderShortcutMenuButton {
+  opacity: 0;
+  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+
+.homeFolderShortcutRow:hover .homeFolderShortcutMenuButton,
+.homeFolderShortcutRow.active .homeFolderShortcutMenuButton,
+.homeFolderShortcutMenuButton:focus-visible {
+  opacity: 1;
+}
+
+.homeFolderEmptyButton {
+  width: 100%;
+  min-height: 31px;
+  padding: 0 8px;
+  border: 1px dashed var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ar-color-text-muted, #64748b);
+  text-align: left;
+  cursor: pointer;
+}
+
+.homeFolderEmptyButton:hover {
+  border-color: var(--ar-color-accent, #2b6df6);
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  color: var(--ar-color-accent-strong, #1d4ed8);
+}
+
+.homeExplorerHeader {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-canvas-subtle, #f8fafc);
+}
+
+.homeExplorerHeadingText {
+  min-width: 0;
+}
+
+.homeTitle {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ar-color-text-strong, #202327);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homeSubtitle {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--ar-color-text-muted, #626b75);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homeExplorerCommandStrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface-muted, #eef2f6);
+}
+
+.homeExplorerNavButtons {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.homeExplorerIconButton {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  background: var(--ar-color-surface, #ffffff);
+  color: var(--ar-color-text-muted, #64748b);
+  cursor: pointer;
+}
+
+.homeExplorerIconButton:hover:not(:disabled) {
+  border-color: var(--ar-color-border-strong, #cbd5e1);
+  background: var(--ar-color-surface-hover, #e8eef6);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.homeExplorerIconButton:disabled {
+  color: var(--ar-color-text-disabled, #9ca3af);
+  cursor: default;
+  opacity: 0.7;
+}
+
+.homeExplorerIconButton svg,
+.homeExplorerFieldIcon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.homeExplorerIconButton:focus-visible,
+.homeExplorerAddressField:focus-within,
+.homeExplorerSearchField:focus-within,
+.homeExplorerTable:focus-visible,
+.homeExplorerStateButton:focus-visible,
+.homeFolderDialog :is(button, input):focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+
+.homeExplorerAddressField,
+.homeExplorerSearchField {
+  height: 30px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: var(--ar-color-input, #ffffff);
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.homeExplorerAddressField {
+  flex: 1 1 auto;
+}
+
+.homeExplorerSearchField {
+  flex: 0 1 250px;
+}
+
+.homeExplorerAddressField:focus-within,
+.homeExplorerSearchField:focus-within {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 3px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}
+
+.homeExplorerFieldIcon {
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  flex: 0 0 16px;
+}
+
+.homeExplorerAddressField input,
+.homeExplorerSearchField input {
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  padding: 0 8px 0 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ar-color-text, #1f2937);
+}
+
+.homeExplorerTableFrame {
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface, #ffffff);
+  scrollbar-gutter: stable;
+}
+
+.homeExplorerTable {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  color: var(--ar-color-text, #1f2937);
+  font-size: 12px;
+}
+
+.homeExplorerNameColumn {
+  width: 46%;
+}
+
+.homeExplorerDateColumn {
+  width: 190px;
+}
+
+.homeExplorerTypeColumn {
+  width: 220px;
+}
+
+.homeExplorerSizeColumn {
+  width: 100px;
+}
+
+.homeExplorerTable th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 30px;
+  padding: 0;
+  border-right: 1px solid var(--ar-color-border, #d8dde3);
+  border-bottom: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-table-header, #f1f3f5);
+  color: var(--ar-color-text-muted, #64748b);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.homeExplorerTable th::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--ar-color-table-header, #f1f3f5);
+}
+
+.homeExplorerTable th:last-child,
+.homeExplorerTable td:last-child {
+  border-right: 0;
+}
+
+.homeExplorerTable th button {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.homeExplorerTable th button:hover,
+.homeExplorerTable th button:focus-visible {
+  outline: none;
+  background: var(--ar-color-surface-hover, #e8eef6);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.homeExplorerSortMark {
+  width: 0;
+  height: 0;
+  margin-left: auto;
+  border-right: 4px solid transparent;
+  border-bottom: 5px solid currentColor;
+  border-left: 4px solid transparent;
+  opacity: 0;
+}
+
+.homeExplorerTable th.activeSort .homeExplorerSortMark {
+  opacity: 0.78;
+}
+
+.homeExplorerTable th.activeSort.descending .homeExplorerSortMark {
+  transform: rotate(180deg);
+}
+
+.homeExplorerTable tbody tr:not(.homeExplorerStateRow) {
+  height: 31px;
+  background: var(--ar-color-surface, #ffffff);
+  cursor: default;
+}
+
+.homeExplorerTable tbody tr:not(.homeExplorerStateRow):hover {
+  background: var(--ar-color-table-row-hover, #f8fafc);
+}
+
+.homeExplorerTable tbody tr[aria-selected="true"] {
+  background: var(--ar-color-surface-selected, #dbeafe);
+}
+
+.homeExplorerTable td {
+  height: 31px;
+  padding: 0 9px;
+  overflow: hidden;
+  border-right: 1px solid var(--ar-color-border, #d8dde3);
+  border-bottom: 1px solid var(--ar-color-border, #d8dde3);
+  color: var(--ar-color-text-muted, #64748b);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homeExplorerNameCell {
+  color: var(--ar-color-text, #1f2937);
+}
+
+.homeExplorerNameContent {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.homeExplorerFileIcon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  object-fit: contain;
+}
+
+.homeExplorerFileName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homeExplorerSizeCell {
+  text-align: right;
+}
+
+.homeExplorerStateRow td {
+  height: auto;
+  border-right: 0;
+}
+
+.homeExplorerState {
+  min-height: 124px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px;
+  color: var(--ar-color-text-muted, #64748b);
+  text-align: center;
+  white-space: normal;
+}
+
+.homeExplorerState.error {
+  color: var(--ar-color-danger, #be123c);
+}
+
+.homeExplorerStateButton {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: var(--ar-color-surface, #ffffff);
+  color: var(--ar-color-text, #1f2937);
+  cursor: pointer;
+}
+
+.homeExplorerStateButton:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.homeExplorerFooter {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 13px;
+  color: var(--ar-color-text-muted, #64748b);
+  font-size: 11px;
+}
+
+.homeContextMenu .ctx-item.danger {
+  color: var(--ar-color-danger, #be123c);
+}
+
+.homeContextMenu .ctx-item.danger:hover,
+.homeContextMenu .ctx-item.danger:focus-visible {
+  background: var(--ar-color-danger-soft, #fff1f2);
+}
+
+.homeFolderDialogOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--ar-color-overlay, rgba(15, 23, 42, 0.18));
+}
+
+.homeFolderDialogOverlay[hidden] {
+  display: none;
+}
+
+.homeFolderDialog {
+  width: min(440px, calc(100vw - 40px));
+  overflow: hidden;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 6px;
+  background: var(--ar-color-surface-raised, #fbfcfe);
+  color: var(--ar-color-text, #1f2937);
+  box-shadow: var(--ar-shadow-dialog, 0 18px 42px rgba(15, 23, 42, 0.24));
+}
+
+.homeFolderDialogHeader {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface-muted, #eef2f6);
+}
+
+.homeFolderDialogHeader h2 {
+  margin: 0;
+  color: var(--ar-color-text-strong, #111827);
+  font-size: 13px;
+}
+
+.homeFolderDialogClose {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ar-color-text-muted, #64748b);
+  cursor: pointer;
+}
+
+.homeFolderDialogClose:hover {
+  border-color: var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.homeFolderDialogClose svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.homeFolderDialogBody {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 9px 8px;
+  align-items: center;
+  padding: 14px;
+}
+
+.homeFolderDialogBody label {
+  color: var(--ar-color-text-muted, #64748b);
+  font-weight: 700;
+}
+
+.homeFolderDialogBody input {
+  height: 30px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: var(--ar-color-input, #ffffff);
+  color: var(--ar-color-text, #1f2937);
+}
+
+.homeFolderDialogBody input[readonly] {
+  background: var(--ar-color-surface-muted, #eef2f6);
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.homeFolderDialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--ar-color-border, #d8dde3);
+}
+
+.homeFolderDialogActions button {
+  height: 30px;
+  min-width: 72px;
+  padding: 0 10px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: var(--ar-color-surface, #ffffff);
+  color: var(--ar-color-text, #1f2937);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.homeFolderDialogActions button:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.homeFolderDialogActions button.primary {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  color: var(--ar-color-accent-strong, #1d4ed8);
+}
+
+@media (max-width: 760px) {
+  .fileExplorerLayout {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+
+  .homeExplorerCommandStrip {
+    flex-wrap: wrap;
+  }
+
+  .homeExplorerAddressField {
+    flex-basis: calc(100% - 132px);
+  }
+
+  .homeExplorerSearchField {
+    flex: 1 1 100%;
+  }
+}

@@ -207,7 +207,9 @@ export function initShellMessages() {
     }
     if (msg.type === "arcrho:dataset-dirty") {
       const inst = String(msg.inst || "");
-      const tab = shell.state.tabs.find(t => (t.type === "dataset" || t.type === "result_selection") && (
+      const tab = shell.state.tabs.find(t => (
+        t.type === "dataset" || t.type === "result_selection" || t.type === "bornhuetter_ferguson"
+      ) && (
         (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
       ));
       if (!tab) return;
@@ -264,6 +266,30 @@ export function initShellMessages() {
       if (dirty) shell.clearSavedStatusOnDirty?.();
       refreshDirtyIndicators();
       shell.saveState?.();
+      return;
+    }
+    if (msg.type === "arcrho:bf-tab-changed") {
+      const inst = String(msg.inst || "");
+      const bfTab = String(msg.tab || "");
+      const tab = shell.state.tabs.find(t => t.type === "bornhuetter_ferguson" && (
+        (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
+      ));
+      if (tab && bfTab && tab.bfTab !== bfTab) {
+        tab.bfTab = bfTab;
+        shell.saveState?.();
+      }
+      return;
+    }
+    if (msg.type === "arcrho:result-selection-tab-changed") {
+      const inst = String(msg.inst || "");
+      const rsTab = String(msg.tab || "");
+      const tab = shell.state.tabs.find(t => t.type === "result_selection" && (
+        (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
+      ));
+      if (tab && rsTab && tab.rsTab !== rsTab) {
+        tab.rsTab = rsTab;
+        shell.saveState?.();
+      }
       return;
     }
     if (msg.type === "arcrho:scripting-dirty" || msg.type === "arcode:scripting-dirty") {
@@ -378,7 +404,9 @@ export function initShellMessages() {
     if (msg.type === "arcrho:workflow-import") return shell.importWorkflow?.();
     if (msg.type === "arcrho:dataset-close-confirmed") {
       const inst = String(msg.inst || "");
-      const tab = shell.state.tabs.find(t => (t.type === "dataset" || t.type === "result_selection") && (
+      const tab = shell.state.tabs.find(t => (
+        t.type === "dataset" || t.type === "result_selection" || t.type === "bornhuetter_ferguson"
+      ) && (
         (inst && t.dsInst === inst) || t.iframe?.contentWindow === e.source
       ));
       if (tab) return shell.closeTab?.(tab.id, true);

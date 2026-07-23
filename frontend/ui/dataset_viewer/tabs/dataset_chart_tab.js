@@ -7,7 +7,7 @@ import {
 import {
   renderChart as renderChartCanvas,
   setupChartHover,
-} from "/ui/dataset_viewer/tabs/dataset_chart_renderer.js";
+} from "/ui/dataset_viewer/tabs/dataset_chart_renderer.js?v=20260722a";
 
 export function renderDatasetChart() {
   const canvas = document.getElementById("devChart");

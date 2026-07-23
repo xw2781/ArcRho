@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Refined the Dark startup splash into a quieter, more compact loading surface.",
+  "details": [
+    "The logo, title, progress, and status now share one consistent bordered panel.",
+    "Dark mode removes decorative ambient motion while retaining loading feedback."
+  ]
+}

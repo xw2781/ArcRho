@@ -15,9 +15,9 @@ Theme SVG assets.
 ## Browser/Electron Usage
 
 ```js
-import { createFileIconResolver } from "/ui/arcode/shared/file-icons/fileIconResolver.js";
+import { createFileIconResolver } from "/ui/shared/file-icons/fileIconResolver.js";
 
-const iconMap = await fetch("/ui/arcode/shared/file-icons/file-icon-map.json").then((response) =>
+const iconMap = await fetch("/ui/shared/file-icons/file-icon-map.json").then((response) =>
   response.json()
 );
 const getFileIconPath = createFileIconResolver(iconMap);

@@ -113,6 +113,7 @@ function formatActivityType(tabType) {
     project_instance: "Project Instance",
     scripting: "Scripting",
     agent_guide: "Agent Guide",
+    file_explorer: "File Explorer",
   };
   return labels[type] || type || "Page";
 }

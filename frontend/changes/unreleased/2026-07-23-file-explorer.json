@@ -1,0 +1,14 @@
+{
+  "type": "feature",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added a tabbed File Explorer for pinning, browsing, and opening local folders and files.",
+  "details": [
+    "A File Explorer card on Home opens or focuses the page as a standard ArcRho tab.",
+    "The page keeps customizable favorite folders on the left and the selected folder's file list on the right.",
+    "Saved folders can use custom nicknames and remain available after cache clearing or restart.",
+    "The details view supports navigation history, path entry, search, sorting, file metadata, keyboard controls, and automatic refresh.",
+    "Excel workbooks now offer an Open Read-Only action from the file context menu.",
+    "Home and Arcode now share the existing folder and common file-type icon assets."
+  ]
+}

@@ -4,6 +4,10 @@ const SERIES = [
   { key: "bfUltimate", label: "BF Ultimate", color: "#b45309" },
 ];
 
+function getChartColor(propertyName, fallback) {
+  return window.ArcRhoColorTheme?.getCssColor?.(propertyName, fallback) || fallback;
+}
+
 function finiteNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
@@ -136,6 +140,8 @@ export function createBornhuetterFergusonChart({ canvas, legend, emptyState, too
     animationFrame = null;
     const { context, width, height } = setCanvasSize(canvas);
     context.clearRect(0, 0, width, height);
+    context.fillStyle = getChartColor("--ar-chart-background", "#ffffff");
+    context.fillRect(0, 0, width, height);
     points = [];
 
     const rows = buildChartRows(data);
@@ -182,16 +188,16 @@ export function createBornhuetterFergusonChart({ canvas, legend, emptyState, too
     context.textAlign = "right";
     for (const tick of range.ticks) {
       const y = yFor(tick);
-      context.strokeStyle = "#e5eaf0";
+      context.strokeStyle = getChartColor("--ar-chart-grid", "#e5eaf0");
       context.beginPath();
       context.moveTo(x0, y);
       context.lineTo(x1, y);
       context.stroke();
-      context.fillStyle = "#5f6b7a";
+      context.fillStyle = getChartColor("--ar-chart-text-muted", "#5f6b7a");
       context.fillText(format.format(tick), x0 - 8, y);
     }
 
-    context.strokeStyle = "#aeb8c5";
+    context.strokeStyle = getChartColor("--ar-chart-axis", "#aeb8c5");
     context.beginPath();
     context.moveTo(x0, y0);
     context.lineTo(x0, y1);
@@ -200,7 +206,7 @@ export function createBornhuetterFergusonChart({ canvas, legend, emptyState, too
 
     const maxLabels = Math.max(2, Math.floor((x1 - x0) / (rotateLabels ? 44 : 70)));
     const labelEvery = Math.max(1, Math.ceil(rows.length / maxLabels));
-    context.fillStyle = "#4b5563";
+    context.fillStyle = getChartColor("--ar-chart-text", "#4b5563");
     context.textBaseline = "top";
     for (let index = 0; index < rows.length; index += 1) {
       if (index % labelEvery !== 0 && index !== rows.length - 1) continue;
@@ -244,7 +250,7 @@ export function createBornhuetterFergusonChart({ canvas, legend, emptyState, too
         if (value === null) continue;
         const x = xFor(index);
         const y = yFor(value);
-        context.fillStyle = "#ffffff";
+        context.fillStyle = getChartColor("--ar-chart-point-fill", "#ffffff");
         context.strokeStyle = series.color;
         context.lineWidth = 1.8;
         context.beginPath();
@@ -292,6 +298,7 @@ export function createBornhuetterFergusonChart({ canvas, legend, emptyState, too
 
   canvas.addEventListener("pointermove", showTooltip);
   canvas.addEventListener("pointerleave", hideTooltip);
+  window.addEventListener("arcrho:color-theme-changed", scheduleRender);
 
   return {
     render(nextData = {}) {
@@ -304,6 +311,7 @@ export function createBornhuetterFergusonChart({ canvas, legend, emptyState, too
       resizeObserver?.disconnect();
       canvas.removeEventListener("pointermove", showTooltip);
       canvas.removeEventListener("pointerleave", hideTooltip);
+      window.removeEventListener("arcrho:color-theme-changed", scheduleRender);
       if (animationFrame !== null) cancelAnimationFrame(animationFrame);
     },
   };

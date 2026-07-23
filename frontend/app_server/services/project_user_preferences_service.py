@@ -1,7 +1,6 @@
 """Per-project, per-Windows-user preferences stored on the server root."""
 from __future__ import annotations
 
-import getpass
 import json
 import os
 from copy import deepcopy
@@ -11,6 +10,7 @@ from typing import Any, Dict
 from fastapi import HTTPException
 
 from app_server import config
+from app_server.services import user_identity_service
 
 USER_PREFS_FILE = config.PROJECT_USER_PREFERENCES_FILE
 
@@ -26,7 +26,7 @@ def _safe_folder_name(value: str, fallback: str = "unknown") -> str:
 
 
 def _current_user_name() -> str:
-    return _safe_folder_name(getpass.getuser() or "unknown")
+    return _safe_folder_name(user_identity_service.get_windows_login_name() or "unknown")
 
 
 def _require_project_dir(project_name: str) -> str:

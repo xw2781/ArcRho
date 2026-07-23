@@ -309,7 +309,7 @@ function initEditor() {
       editor = window.monaco.editor.create($("editorHost"), {
         value: "",
         language: "sql",
-        theme: "vs",
+        theme: window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs",
         automaticLayout: true,
         minimap: { enabled: false },
         fontSize: 13,

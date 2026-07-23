@@ -19,7 +19,7 @@ Routes:
 <!-- MANUAL:BEGIN -->
 - `app_server/api/project_user_preferences_router.py` - Thin API routes.
 - `app_server/schemas/project_user_preferences.py` - Update request schema.
-- `app_server/services/project_user_preferences_service.py` - Windows login name resolution, project folder resolution, and atomic preference writes.
+- `app_server/services/project_user_preferences_service.py` - Project folder resolution and atomic preference writes using the shared user-identity service.
 - `app_server/default_preferences/project_settings_preferences.json` - Repo-owned Project Settings table-width defaults intended for manual adjustment.
 - `ui/shared/services/project_user_preferences.js` - Frontend loader/saver with debounced saves.
 <!-- MANUAL:END -->
@@ -40,6 +40,6 @@ Routes:
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
-- The folder name uses the backend process Windows login from `getpass.getuser()`. If the app-server process runs under a service account, preferences will follow that account.
+- The folder name uses the backend process Windows login from the shared user-identity service. If the app-server process runs under a service account, preferences will follow that account.
 - Project folders must be writable to create `users/<windows-login>/preferences.json`; otherwise UI preference saves fail silently and the app continues with current in-memory/default values.
 <!-- MANUAL:END -->

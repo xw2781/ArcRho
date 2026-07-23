@@ -122,7 +122,7 @@ export function normalizeShellActivityEntry(raw) {
   } else if (tabType === "scripting") {
     const path = toText(raw.path || raw.scPath || raw.notebookPath);
     if (path) entry.path = path;
-  } else if (!["workflow", "agent_guide"].includes(tabType)) {
+  } else if (!["workflow", "agent_guide", "file_explorer"].includes(tabType)) {
     return null;
   }
 

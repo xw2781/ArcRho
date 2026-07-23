@@ -15,11 +15,11 @@ import {
   applyTabbedPageSaveBar,
   createTabbedPage,
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
-import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260714a";
+import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import {
   redrawDatasetChartSafely,
   renderDatasetChart,
-} from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260715b";
+} from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260722a";
 import { wireDatasetNotesEditor } from "/ui/dataset_viewer/tabs/dataset_notes_tab.js?v=20260715a";
 import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260715b";
 import { configureDataTabLinks } from "/ui/shared/tabs/data/data_tab_links_port.js";

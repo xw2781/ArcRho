@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Home now shows the configured full name for the current Windows login.",
+  "details": [
+    "The name comes from the workspace-global config/username_index.json.",
+    "Unmapped Windows logins remain visible as the login name."
+  ]
+}

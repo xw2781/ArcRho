@@ -14,8 +14,10 @@ let zoomUiWired = false;
 let zoomRangeDragging = false;
 let autoSaveEnabled = true;
 let forceRebuildEnabled = false;
+let colorTheme = "light";
 let fontModalWired = false;
 let forceRebuildModalWired = false;
+let colorThemeEventsWired = false;
 
 export const hostZoomAvailable = () => typeof window.ADAHost?.setZoomFactor === "function";
 
@@ -44,6 +46,10 @@ export function loadAppFont() {
     if (raw && typeof raw === "string") return raw;
   } catch {}
   return "";
+}
+
+export function loadColorTheme() {
+  return window.ArcRhoColorTheme?.readStoredTheme?.() || "light";
 }
 
 function loadForceRebuildEnabled() {
@@ -81,6 +87,64 @@ export function getZoomPercent() {
 
 export function getForceRebuildEnabled() {
   return forceRebuildEnabled;
+}
+
+export function getColorTheme() {
+  return colorTheme;
+}
+
+export function updateColorThemeMenuState() {
+  for (const theme of ["light", "dark"]) {
+    const item = document.querySelector(`[data-action="color-theme-${theme}"]`);
+    if (!item) continue;
+    const selected = theme === colorTheme;
+    item.setAttribute("aria-checked", selected ? "true" : "false");
+    item.classList.toggle("selected", selected);
+  }
+}
+
+export function broadcastColorTheme(theme = colorTheme) {
+  const normalized = window.ArcRhoColorTheme?.normalizeTheme?.(theme) || "light";
+  const messageType = window.ArcRhoColorTheme?.MESSAGE_TYPE || "arcrho:set-color-theme";
+  for (const tab of shell.state?.tabs || []) {
+    if (!tab.iframe?.contentWindow) continue;
+    try {
+      tab.iframe.contentWindow.postMessage({ type: messageType, theme: normalized }, "*");
+    } catch {
+      // Ignore frames that are unavailable while loading or closing.
+    }
+  }
+}
+
+export function setColorTheme(theme, { persist = true, notify = true } = {}) {
+  const api = window.ArcRhoColorTheme;
+  colorTheme = api?.normalizeTheme?.(theme) || "light";
+  if (persist) {
+    api?.setTheme?.(colorTheme, { notifyChildren: false, source: "shell" });
+  } else {
+    api?.applyTheme?.(colorTheme, { notifyChildren: false, persist: false, source: "shell" });
+  }
+  updateColorThemeMenuState();
+  if (notify) broadcastColorTheme(colorTheme);
+  return colorTheme;
+}
+
+export function initColorThemePreference() {
+  colorTheme = loadColorTheme();
+  window.ArcRhoColorTheme?.applyTheme?.(colorTheme, {
+    notifyChildren: false,
+    persist: false,
+    source: "shell-bootstrap",
+  });
+  updateColorThemeMenuState();
+  if (colorThemeEventsWired) return;
+  colorThemeEventsWired = true;
+  window.addEventListener("arcrho:color-theme-changed", (event) => {
+    const nextTheme = window.ArcRhoColorTheme?.normalizeTheme?.(event?.detail?.theme) || "light";
+    if (nextTheme === colorTheme) return;
+    colorTheme = nextTheme;
+    updateColorThemeMenuState();
+  });
 }
 
 function broadcastForceRebuildToggle() {
@@ -383,6 +447,7 @@ export function hideGlobalTooltip() {
 }
 
 export function initShellPreferences() {
+  initColorThemePreference();
   applyAppFont(loadAppFont());
   forceRebuildEnabled = loadForceRebuildEnabled();
   zoomPercent = loadZoomPercent();

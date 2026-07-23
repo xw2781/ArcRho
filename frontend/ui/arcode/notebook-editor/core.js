@@ -155,7 +155,7 @@ log("Hello from Arcode!")`;
 
 const EDITOR_OPTIONS = {
   language: "python",
-  theme: "vs",
+  theme: window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs",
   fontSize: 13,
   fontFamily: '"Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',
   minimap: { enabled: false },

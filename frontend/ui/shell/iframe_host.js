@@ -2,6 +2,7 @@ export function createIframeHost(deps) {
   const {
     closeAllShellMenus,
     getAutoSaveEnabled,
+    getColorTheme,
     getIframeHost,
     getState,
     normalizeBrowsingHistoryEntry,
@@ -119,6 +120,15 @@ export function createIframeHost(deps) {
     iframe.style.border = "0";
     iframe.style.display = "none";
     wireIframeMenuAutoClose(iframe);
+    iframe.addEventListener("load", () => {
+      const theme = getColorTheme?.() || "light";
+      const messageType = window.ArcRhoColorTheme?.MESSAGE_TYPE || "arcrho:set-color-theme";
+      try {
+        iframe.contentWindow?.postMessage({ type: messageType, theme }, "*");
+      } catch {
+        // The shared theme bootstrap still applies the persisted value if messaging is unavailable.
+      }
+    });
 
     if (tab.type === "dataset") {
       const params = new URLSearchParams();
@@ -147,9 +157,25 @@ export function createIframeHost(deps) {
       if (inputs.outputType) params.set("output_type", String(inputs.outputType));
       if (inputs.inputTriangle) params.set("input_triangle", String(inputs.inputTriangle));
       iframe.src = `/ui/method_pages/dfm/dfm.html?${params.toString()}`;
+    } else if (tab.type === "bornhuetter_ferguson") {
+      const params = new URLSearchParams();
+      params.set("inst", tab.dsInst || tab.id || `bf_${Date.now()}`);
+      params.set("v", uiVersionParam);
+      if (tab.bfTab) params.set("tab", tab.bfTab);
+      iframe.src = `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html?${params.toString()}`;
+    } else if (tab.type === "result_selection") {
+      const params = new URLSearchParams();
+      params.set("inst", tab.dsInst || tab.id || `rs_${Date.now()}`);
+      params.set("v", uiVersionParam);
+      if (tab.rsTab) params.set("tab", tab.rsTab);
+      iframe.src = `/ui/method_pages/result_selection/result_selection.html?${params.toString()}`;
     } else if (tab.type === "workflow") {
       const inst = tab.wfInst || tab.id || `wf_${Date.now()}`;
-      iframe.src = `/ui/workflow/workflow.html?inst=${encodeURIComponent(inst)}${tab.wfFresh ? '&fresh=1' : ''}`;
+      const params = new URLSearchParams();
+      params.set("inst", inst);
+      params.set("v", uiVersionParam);
+      if (tab.wfFresh) params.set("fresh", "1");
+      iframe.src = `/ui/workflow/workflow.html?${params.toString()}`;
       tab.wfFresh = false;
       iframe.addEventListener("load", () => {
         try {
@@ -180,6 +206,18 @@ export function createIframeHost(deps) {
       iframe.src = `/ui/project_instance/project_instance.html?${params.toString()}`;
     } else if (tab.type === "browsing_history") {
       iframe.src = `/ui/shell/browsing_history.html?v=${encodeURIComponent(uiVersionParam)}`;
+    } else if (tab.type === "file_explorer") {
+      iframe.addEventListener("load", () => {
+        try {
+          iframe.contentWindow?.postMessage({
+            type: "arcrho:file-explorer-visibility",
+            visible: iframe.style.display !== "none",
+          }, "*");
+        } catch {
+          // ignore
+        }
+      });
+      iframe.src = `/ui/file_explorer/file_explorer.html?v=${encodeURIComponent(uiVersionParam)}`;
     } else if (tab.type === "agent_guide") {
       iframe.src = `/ui/agent_guide/agent_guide.html?v=${encodeURIComponent(uiVersionParam)}`;
     } else if (tab.type === "task_designer") {
@@ -197,6 +235,7 @@ export function createIframeHost(deps) {
       const openPath = String(tab.scOpenPath || "").trim();
       const params = new URLSearchParams();
       params.set("inst", inst);
+      params.set("v", uiVersionParam);
       if (tab.scFresh) params.set("fresh", "1");
       if (openPath) {
         params.set("skipLast", "1");

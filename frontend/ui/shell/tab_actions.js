@@ -19,6 +19,7 @@ const RESTORABLE_ACTIVITY_TYPES = new Set([
   "project_instance",
   "scripting",
   "agent_guide",
+  "file_explorer",
 ]);
 const TASK_DESIGNER_TYPE = "task_designer";
 let activeHistorySaveTimer = 0;
@@ -224,6 +225,40 @@ export function openDFMTab(options = {}) {
   shell.saveState?.();
 }
 
+export function openBornhuetterFergusonTab() {
+  const id = `bf_${shell.state.nextId++}`;
+  shell.state.tabs.push({
+    id,
+    title: "Bornhuetter Ferguson",
+    type: "bornhuetter_ferguson",
+    iframe: null,
+    layout: "docked",
+    dsInst: `bf_${id}_${Date.now()}`,
+    bfTab: "details",
+    isDirty: false,
+  });
+  setDockedActive(id);
+  shell.render?.();
+  shell.saveState?.();
+}
+
+export function openResultSelectionTab() {
+  const id = `rs_${shell.state.nextId++}`;
+  shell.state.tabs.push({
+    id,
+    title: "Result Selection",
+    type: "result_selection",
+    iframe: null,
+    layout: "docked",
+    dsInst: `rs_${id}_${Date.now()}`,
+    rsTab: "details",
+    isDirty: false,
+  });
+  setDockedActive(id);
+  shell.render?.();
+  shell.saveState?.();
+}
+
 export function openWorkflowTab() {
   const id = `wf_${shell.state.nextId++}`;
   const wfInst = `wf_${shell.state.nextId - 1}_${Date.now()}`;
@@ -344,6 +379,7 @@ export function openShellActivityHistoryEntry(entry) {
   }
   if (normalized.tabType === "workflow") return openWorkflowTab();
   if (normalized.tabType === "agent_guide") return openAgentGuideTab();
+  if (normalized.tabType === "file_explorer") return openFileExplorerTab();
   return null;
 }
 
@@ -358,6 +394,27 @@ export function openBrowsingHistoryTab() {
   setDockedActive(id);
   shell.render?.();
   shell.saveState?.();
+}
+
+export function openFileExplorerTab() {
+  const existing = shell.state.tabs.find(t => t.type === "file_explorer");
+  if (existing) {
+    setActive(existing.id);
+    return existing;
+  }
+  const id = `fe_${shell.state.nextId++}`;
+  const tab = {
+    id,
+    title: "File Explorer",
+    type: "file_explorer",
+    iframe: null,
+    layout: "docked",
+  };
+  shell.state.tabs.push(tab);
+  setDockedActive(id);
+  shell.render?.();
+  shell.saveState?.();
+  return tab;
 }
 
 export function openAgentGuideTab() {

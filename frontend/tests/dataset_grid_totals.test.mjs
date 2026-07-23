@@ -22,8 +22,8 @@ const workspaceCss = await readFile(
   new URL("../ui/shared/components/workspace/workspace.css", import.meta.url),
   "utf8",
 );
-const dfmHtml = await readFile(
-  new URL("../ui/method_pages/dfm/dfm.html", import.meta.url),
+const dfmCss = await readFile(
+  new URL("../ui/method_pages/dfm/dfm.css", import.meta.url),
   "utf8",
 );
 const helperModuleUrl = `data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`;
@@ -75,7 +75,7 @@ test("the Data grid draws its own top and left perimeter inside the scroll wrapp
 test("Data and Ratios scroll frames share the same neutral border token", () => {
   assert.match(workspaceCss, /--ar-workspace-frame-border:\s*#d8dde3/u);
   assert.match(dataTabCss, /#tableWrap\s*\{[\s\S]*?border:\s*1px solid var\(--ar-workspace-frame-border\)/u);
-  assert.match(dfmHtml, /#ratioWrapHost\s*\{[\s\S]*?border:\s*1px solid var\(--ar-workspace-frame-border\)/u);
+  assert.match(dfmCss, /#ratioWrapHost\s*\{[\s\S]*?border:\s*1px solid var\(--ar-workspace-frame-border\)/u);
 });
 
 test("DFM retains its multiplication and division total-row policy", () => {

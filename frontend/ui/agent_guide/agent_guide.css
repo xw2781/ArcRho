@@ -1,0 +1,210 @@
+:root {
+  color-scheme: light;
+  --ag-bg: #f6f7f9;
+  --ag-panel: #ffffff;
+  --ag-bar: #eef2f6;
+  --ag-line: #d8e0ea;
+  --ag-text: #243244;
+  --ag-muted: #667589;
+  --ag-blue: #2563eb;
+  --ag-blue-soft: #eaf2ff;
+  --ag-blue-line: #9bbcf2;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--ag-bg);
+  color: var(--ag-text);
+  font: 13px/1.5 "Segoe UI", Arial, sans-serif;
+}
+.agShell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+}
+.agHeader {
+  padding: 16px 22px 13px;
+  border-bottom: 1px solid var(--ag-line);
+  background: var(--ag-bar);
+}
+.agTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+h1 {
+  margin: 0 0 5px;
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+.agSubtitle {
+  max-width: 980px;
+  color: var(--ag-muted);
+  font-size: 12px;
+}
+.agReloadBtn {
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #263747;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.agReloadBtn:hover {
+  background: #f3f6fa;
+  border-color: #b9c6d5;
+}
+.agMain {
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  min-height: 0;
+}
+.agNav {
+  min-width: 0;
+  overflow: auto;
+  padding: 14px;
+  border-right: 1px solid var(--ag-line);
+  background: #f8fafc;
+}
+.agPathBox {
+  padding: 10px;
+  margin-bottom: 13px;
+  border: 1px solid var(--ag-line);
+  border-radius: 8px;
+  background: var(--ag-panel);
+  color: var(--ag-muted);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.agPathBox strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #334155;
+  font-size: 12px;
+}
+.agTab {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  margin: 0 0 6px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.agTab:hover { background: #eef4fb; }
+.agTab.active {
+  border-color: var(--ag-blue-line);
+  background: var(--ag-blue-soft);
+  color: #174ea6;
+  font-weight: 600;
+}
+.agContent {
+  min-width: 0;
+  overflow: auto;
+  padding: 18px 22px 30px;
+}
+.agWorkflow,
+.agPane {
+  border: 1px solid var(--ag-line);
+  border-radius: 8px;
+  background: var(--ag-panel);
+}
+.agWorkflow {
+  margin-bottom: 16px;
+  padding: 13px 15px;
+}
+.agWorkflow h2 {
+  margin-top: 0;
+  font-size: 16px;
+}
+.agPane {
+  display: none;
+  overflow: hidden;
+}
+.agPane.active { display: block; }
+.agPaneHeader {
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--ag-line);
+  background: #f8fafc;
+}
+.agPaneHeader h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  line-height: 1.25;
+}
+.agComponentPath {
+  color: var(--ag-muted);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.agMarkdown {
+  padding: 15px;
+}
+.agMarkdown h2,
+.agMarkdown h3,
+.agMarkdown h4,
+.agMarkdown h5,
+.agMarkdown h6 {
+  margin: 1em 0 0.4em;
+  line-height: 1.25;
+}
+.agMarkdown p { margin: 0.45em 0; }
+.agMarkdown ul,
+.agMarkdown ol {
+  margin: 0.45em 0 0.75em 22px;
+  padding: 0;
+}
+.agMarkdown li { margin: 0.2em 0; }
+code {
+  padding: 1px 4px;
+  border: 1px solid #d8e0ea;
+  border-radius: 5px;
+  background: #f1f5f9;
+  font-family: Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+pre {
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+details {
+  padding: 0 15px 15px;
+}
+summary {
+  color: var(--ag-blue);
+  cursor: pointer;
+  font-weight: 600;
+}
+.agStatus {
+  padding: 16px;
+  color: var(--ag-muted);
+}
+.agStatus.error {
+  color: #b42318;
+}
+@media (max-width: 760px) {
+  body { overflow: auto; }
+  .agShell { height: auto; min-height: 100vh; }
+  .agMain { grid-template-columns: 1fr; }
+  .agNav { border-right: 0; border-bottom: 1px solid var(--ag-line); }
+}

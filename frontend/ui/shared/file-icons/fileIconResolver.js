@@ -19,7 +19,9 @@ export function createFileIconResolver(fileIconMap) {
   return function getFileIconPath(fileName, options = {}) {
     const name = normalizeName(fileName);
     if (!name) {
-      return fileIconMap.defaults.file;
+      return options.isDirectory
+        ? (options.isOpen ? fileIconMap.defaults.folderOpen : fileIconMap.defaults.folder)
+        : fileIconMap.defaults.file;
     }
 
     if (options.isDirectory) {

@@ -13,7 +13,7 @@ import {
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
-import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260714a";
+import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
@@ -27,7 +27,7 @@ import {
 import {
   buildResultSelectionChartSeries,
   createResultSelectionChart,
-} from "/ui/method_pages/result_selection/result_selection_chart.js?v=20260722a";
+} from "/ui/method_pages/result_selection/result_selection_chart.js?v=20260722b";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
 const RS_JSON_VALUE_DECIMAL_PLACES = 6;

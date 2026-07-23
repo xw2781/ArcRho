@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Home launch groups now use larger labels and subtle divider lines beneath the welcome panel."
+}

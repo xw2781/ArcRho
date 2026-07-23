@@ -22,8 +22,8 @@ const summarySource = await readFile(
   new URL("../ui/method_pages/dfm/dfm_ratios_summary_table.js", import.meta.url),
   "utf8",
 );
-const dfmHtmlSource = await readFile(
-  new URL("../ui/method_pages/dfm/dfm.html", import.meta.url),
+const dfmCssSource = await readFile(
+  new URL("../ui/method_pages/dfm/dfm.css", import.meta.url),
   "utf8",
 );
 
@@ -178,10 +178,10 @@ test("DFM Links records expose value previews and selected refresh scope", () =>
 
 test("DFM linked cells keep green text while array formulas receive a shared perimeter", () => {
   assert.match(
-    dfmHtmlSource,
+    dfmCssSource,
     /td\.summaryCell\.excelLinked,[\s\S]*td\.summaryCell\.excelRangeAffected[\s\S]*color:\s*#166534;[\s\S]*font-weight:\s*700;/u,
   );
-  assert.doesNotMatch(dfmHtmlSource, /td\.summaryCell\.excelLinked::after/u);
+  assert.doesNotMatch(dfmCssSource, /td\.summaryCell\.excelLinked::after/u);
   assert.match(
     summarySource,
     /const parsedArray = parseSummaryArrayFormula\(raw\);[\s\S]*?getSummaryArrayFormulaDestination\([\s\S]*?addArrayFormulaOutlineClasses/u,

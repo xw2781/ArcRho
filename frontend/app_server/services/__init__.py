@@ -1,6 +1,7 @@
 from . import workflow_service
 from . import audit_service
 from . import book_service
+from . import user_identity_service
 from . import dataset_sidecar_status_service
 from . import dataset_instance_index_service
 from . import dataset_number_format_service
@@ -42,4 +43,5 @@ __all__ = [
     "ui_automation_service",
     "snowflake_service",
     "data_processing_rules_service",
+    "user_identity_service",
 ]

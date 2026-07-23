@@ -1,12 +1,15 @@
 ﻿<!doctype html>
-<html>
+<html data-arcrho-app="arcode">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <script src="/ui/shared/services/color_theme.js?v=20260723a"></script>
   <title>Arcode</title>
   <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/arcode/main.css?v=20260621d"/>
+  <link rel="stylesheet" href="/ui/arcode/main.css?v=20260722a"/>
   <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260620m"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260722a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260723a"/>
 </head>
 <body>
   <div id="customTitlebar" class="host-drag-region">
@@ -38,7 +41,7 @@
     <div class="menu" data-menu="file">File</div>
     <div class="menu" data-menu="edit">Edit</div>
     <div class="menu" data-menu="view">View</div>
-    <div class="menu" data-menu="settings">Settings</div>
+    <div class="menu" data-menu="settings" data-color-theme-trigger role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false">Settings</div>
     <div class="menu" data-menu="window">Window</div>
     <div class="menu" data-menu="help">Help</div>
     <div class="menu-spacer"></div>
@@ -47,7 +50,10 @@
   <div id="fileMenuDropdown" class="menuDropdown">
     <div class="menuItem" data-action="open-file"><span>Open File...</span><span class="menuShortcut">Ctrl+O</span></div>
     <div class="menuItem hasSubmenu disabled" id="recentFilesMenuItem" data-action="recent-files">
-      <span>Recent Files</span><span class="menuArrow">›</span>
+      <span>Recent Files</span>
+      <svg class="menuSubmenuIcon" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+        <use href="/ui/shared/icons/chevron-right.svg?v=20260722a#chevron-right"></use>
+      </svg>
       <div class="menuSubmenu" id="recentFilesSubmenu">
         <div class="menuItem disabled"><span>No recent files</span></div>
       </div>
@@ -81,6 +87,27 @@
   </div>
 
   <div id="settingsMenuDropdown" class="menuDropdown">
+    <div class="menuItem hasSubmenu" id="arcodeColorThemeMenuItem" data-color-theme-menu role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false">
+      <span>Color Theme</span>
+      <svg class="menuSubmenuIcon" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+        <use href="/ui/shared/icons/chevron-right.svg?v=20260722a#chevron-right"></use>
+      </svg>
+      <div class="menuSubmenu" data-color-theme-options role="menu" aria-label="Color Theme">
+        <div class="menuItem" data-action="color-theme-light" data-color-theme-value="light" role="menuitemradio" aria-checked="true" tabindex="-1">
+          <span>Light</span>
+          <span class="menuThemeMark" aria-hidden="true">
+            <svg viewBox="0 0 12 12"><polyline points="2,6.5 4.7,9 10,3"></polyline></svg>
+          </span>
+        </div>
+        <div class="menuItem" data-action="color-theme-dark" data-color-theme-value="dark" role="menuitemradio" aria-checked="false" tabindex="-1">
+          <span>Dark</span>
+          <span class="menuThemeMark" aria-hidden="true">
+            <svg viewBox="0 0 12 12"><polyline points="2,6.5 4.7,9 10,3"></polyline></svg>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="menuSep"></div>
     <div class="menuItem" data-action="clear-cache-reload"><span>Clear Cache & Reload</span></div>
   </div>
 
@@ -152,7 +179,7 @@
     </footer>
   </div>
 
-  <script type="module" src="/ui/arcode/main.js?v=20260721b"></script>
+  <script type="module" src="/ui/arcode/main.js?v=20260723a"></script>
 </body>
 </html>
 

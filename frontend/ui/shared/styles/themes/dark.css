@@ -1,0 +1,3212 @@
+/* Dark-only tokens and visual overrides. Layout remains owned by feature base stylesheets. */
+:root[data-arcrho-theme="dark"] {
+  color-scheme: dark;
+
+  /* Native document/window paint. */
+  --ar-native-window-background: #10151c;
+
+  /* Operational workspace surfaces. */
+  --ar-color-canvas: #10151c;
+  --ar-color-canvas-subtle: #141b24;
+  --ar-color-surface: #171e28;
+  --ar-color-surface-raised: #1d2632;
+  --ar-color-surface-muted: #202a36;
+  --ar-color-surface-soft: #263241;
+  --ar-color-surface-hover: #2a3747;
+  --ar-color-surface-selected: #203d67;
+  --ar-color-input: #111923;
+
+  /* Text and icon hierarchy. */
+  --ar-color-text: #e5e7eb;
+  --ar-color-text-strong: #f1f5f9;
+  --ar-color-text-muted: #a7b1bf;
+  --ar-color-text-subtle: #7f8b9c;
+  --ar-color-text-disabled: #657184;
+  --ar-color-text-on-accent: #f8fbff;
+
+  /* Edges, focus, and elevation. */
+  --ar-color-border: #344252;
+  --ar-color-border-strong: #465568;
+  --ar-color-border-focus: #6ea0ff;
+  --ar-color-focus-ring: rgba(96, 165, 250, 0.28);
+  --ar-color-overlay: rgba(3, 8, 15, 0.68);
+  --ar-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --ar-shadow-floating: 0 8px 20px rgba(0, 0, 0, 0.34);
+  --ar-shadow-dialog: 0 18px 42px rgba(0, 0, 0, 0.52);
+
+  /* Shared live-DOM popout chrome. */
+  --ar-popout-surface: #171e28;
+  --ar-popout-border: #465568;
+  --ar-popout-header: #202a36;
+  --ar-popout-header-border: #344252;
+  --ar-popout-title: #f1f5f9;
+  --ar-popout-control-background: #111923;
+  --ar-popout-control-border: #465568;
+  --ar-popout-control-foreground: #e5e7eb;
+  --ar-popout-control-hover-background: #244b7e;
+  --ar-popout-control-hover-border: #6ea0ff;
+  --ar-popout-control-close-hover-background: #55212c;
+  --ar-popout-control-close-hover-border: #fb7185;
+  --ar-popout-tab-muted-background: #263241;
+
+  /* Canvas and SVG chart chrome; series colors stay data-semantic. */
+  --ar-chart-background: #111923;
+  --ar-chart-grid: #2b3745;
+  --ar-chart-axis: #526174;
+  --ar-chart-text: #d5dce6;
+  --ar-chart-text-muted: #9aa7b7;
+  --ar-chart-point-fill: #171e28;
+  --ar-chart-dataset-grid: #2b3745;
+  --ar-chart-dataset-axis: #66758b;
+  --ar-chart-dataset-text: #d5dce6;
+  --ar-chart-dataset-status-text: #d5dce6;
+  --ar-chart-dataset-strong-text: #f1f5f9;
+  --ar-chart-dfm-grid: #2b3745;
+  --ar-chart-dfm-axis: #65758a;
+  --ar-chart-dfm-text: #d5dce6;
+  --ar-chart-dfm-empty-text: #a7b1bf;
+  --ar-chart-dfm-mark: #c0cad7;
+  --ar-chart-dfm-mark-muted: #8e9bad;
+  --ar-chart-dfm-selection-fill: #111923;
+  --ar-chart-dfm-point-border: #65758a;
+  --ar-chart-dfm-band: rgba(148, 163, 184, 0.15);
+  --ar-chart-dfm-hover: rgba(148, 163, 184, 0.12);
+  --ar-chart-svg-grid: #2b3745;
+  --ar-chart-svg-axis: #66758b;
+  --ar-chart-svg-text: #cbd5e1;
+  --ar-chart-svg-text-muted: #9aa7b7;
+
+  /* Restrained application accents. */
+  --ar-color-accent: #6ea0ff;
+  --ar-color-accent-strong: #8bb3ff;
+  --ar-color-theme-mark: #6ea0ff;
+  --ar-color-accent-soft: #19345a;
+  --ar-color-accent-hover: #244b7e;
+  --ar-color-success: #4ade80;
+  --ar-color-success-soft: #123324;
+  --ar-color-warning: #fbbf24;
+  --ar-color-warning-soft: #3b2b0e;
+  --ar-color-danger: #fb7185;
+  --ar-color-danger-soft: #3b1822;
+  --ar-color-info: #60a5fa;
+  --ar-color-info-soft: #172e4e;
+
+  /* Dense tables and scrollbar trays. */
+  --ar-color-table-header: #202a36;
+  --ar-color-table-row-hover: #202c3a;
+  --ar-color-scrollbar-track: #151d27;
+  --ar-color-scrollbar-thumb: rgba(148, 163, 184, 0.3);
+  --ar-color-scrollbar-thumb-active: rgba(148, 163, 184, 0.55);
+
+  /* Compatibility aliases owned by older page-local styles. */
+  --border: var(--ar-color-border);
+  --bg: var(--ar-color-canvas);
+  --muted: var(--ar-color-text-muted);
+  --panel-bg: var(--ar-color-surface);
+  --header-bg: var(--ar-color-surface-muted);
+  --hover: var(--ar-color-surface-hover);
+  --active: var(--ar-color-surface-selected);
+  --shadow: var(--ar-shadow-dialog);
+  --shell-frame-border: #526782;
+  --ar-workspace-frame-border: var(--ar-color-border);
+
+  /* Shared form and spreadsheet aliases. */
+  --ar-details-label-color: var(--ar-color-text);
+  --ar-details-control-color: var(--ar-color-text);
+  --ar-details-readonly-color: var(--ar-color-text-muted);
+  --ar-details-control-border: var(--ar-color-border-strong);
+  --ar-details-control-background: var(--ar-color-input);
+  --ar-details-readonly-background: var(--ar-color-surface-muted);
+  --ar-details-focus-border: var(--ar-color-border-focus);
+  --ar-details-focus-ring: var(--ar-color-focus-ring);
+  --ar-notes-text-color: var(--ar-color-text);
+  --ar-spreadsheet-grid-border: #3a4655;
+  --ar-spreadsheet-header-fill: #2a3442;
+  --ar-spreadsheet-label-fill: #2a3442;
+  --ar-spreadsheet-label-text: var(--ar-color-text);
+
+  /* Feature-local variable contracts. */
+  --bf-border: var(--ar-color-border);
+  --bf-border-strong: var(--ar-color-border-strong);
+  --bf-bg: var(--ar-color-canvas);
+  --bf-panel: var(--ar-color-surface);
+  --bf-text: var(--ar-color-text);
+  --bf-muted: var(--ar-color-text-muted);
+  --bf-accent: var(--ar-color-accent);
+  --bf-accent-soft: var(--ar-color-accent-soft);
+  --bf-danger: var(--ar-color-danger);
+  --bf-table-head: var(--ar-color-table-header);
+  --rs-border: var(--ar-color-border);
+  --rs-grid-border: #3a4655;
+  --rs-label-cell: #2a3442;
+  --rs-header: var(--ar-color-table-header);
+  --dfm-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --dfm-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --dfm-scrollbar-button-active: var(--ar-color-surface-selected);
+  --dfm-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --dfm-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
+  --rs-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --rs-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --rs-scrollbar-button-active: var(--ar-color-surface-selected);
+  --rs-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --rs-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
+  --bf-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --bf-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --bf-scrollbar-button-active: var(--ar-color-surface-selected);
+  --bf-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --bf-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
+  --data-tab-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --data-tab-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --data-tab-scrollbar-button-active: var(--ar-color-surface-selected);
+  --data-tab-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --data-tab-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
+  --ar-audit-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --ar-audit-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --ar-audit-scrollbar-button-active: var(--ar-color-surface-selected);
+  --ar-audit-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --ar-audit-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
+  --dataset-grid-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --dataset-grid-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --dataset-grid-scrollbar-button-active: var(--ar-color-surface-selected);
+  --dataset-grid-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --dataset-grid-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
+  --dpr-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --dpr-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --dpr-scrollbar-button-active: var(--ar-color-surface-selected);
+  --dpr-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --dpr-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
+  --dpr-blue: var(--ar-color-accent);
+  --dpr-blue-soft: var(--ar-color-accent-soft);
+  --dpr-blue-border: #527db5;
+  --dpr-ink: var(--ar-color-text);
+  --dpr-ink-soft: var(--ar-color-text-muted);
+  --dpr-ink-faint: var(--ar-color-text-subtle);
+  --dpr-line: var(--ar-color-border);
+  --dpr-line-soft: #2b3745;
+  --dpr-bg: var(--ar-color-canvas-subtle);
+  --dpr-danger: var(--ar-color-danger);
+  --dpr-danger-soft: var(--ar-color-danger-soft);
+  --dpr-keep: var(--ar-color-success);
+  --dpr-keep-soft: var(--ar-color-success-soft);
+  --dpr-warn: var(--ar-color-warning);
+  --dpr-warn-soft: var(--ar-color-warning-soft);
+
+  /* Arcode contracts. */
+  --arcode-border: var(--ar-color-border);
+  --arcode-text: var(--ar-color-text);
+  --arcode-muted: var(--ar-color-text-muted);
+  --arcode-accent: #56c2a8;
+  --arcode-accent-strong: #7dd3bd;
+  --ce-border: var(--ar-color-border);
+  --ce-border-strong: var(--ar-color-border-strong);
+  --ce-bg: var(--ar-color-canvas);
+  --ce-surface: var(--ar-color-surface);
+  --ce-text: var(--ar-color-text);
+  --ce-muted: var(--ar-color-text-muted);
+  --ce-blue: var(--ar-color-accent);
+  --ce-red: var(--ar-color-danger);
+  --ce-green: var(--ar-color-success);
+  --sf-bg: var(--ar-color-canvas);
+  --sf-panel: var(--ar-color-surface);
+  --sf-border: var(--ar-color-border);
+  --sf-text: var(--ar-color-text);
+  --sf-muted: var(--ar-color-text-muted);
+  --sf-blue: var(--ar-color-accent);
+  --sf-blue-soft: var(--ar-color-accent-soft);
+  --sf-error: var(--ar-color-danger);
+  --sc-cells-panel-bg: var(--ar-color-canvas-subtle);
+
+  /* Agent Guide contracts. */
+  --ag-bg: var(--ar-color-canvas);
+  --ag-panel: var(--ar-color-surface);
+  --ag-bar: var(--ar-color-surface-muted);
+  --ag-line: var(--ar-color-border);
+  --ag-text: var(--ar-color-text);
+  --ag-muted: var(--ar-color-text-muted);
+  --ag-blue: var(--ar-color-accent);
+  --ag-blue-soft: var(--ar-color-accent-soft);
+  --ag-blue-line: #527db5;
+}
+
+/* Document defaults and native controls. */
+:root[data-arcrho-theme="dark"] body {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(input, textarea, select, option, button, [contenteditable="true"]) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(input, textarea)::placeholder {
+  color: var(--ar-color-text-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(input, textarea, select, button):focus-visible {
+  border-color: var(--ar-color-border-focus);
+  outline-color: var(--ar-color-border-focus);
+}
+
+:root[data-arcrho-theme="dark"] :is(input, textarea, select, button):disabled {
+  color: var(--ar-color-text-disabled);
+}
+
+:root[data-arcrho-theme="dark"] :is(a, [role="link"]) {
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(hr, fieldset) {
+  border-color: var(--ar-color-border);
+}
+
+/* Shared Chromium scrollbar paint. */
+:root[data-arcrho-theme="dark"] *::-webkit-scrollbar-track,
+:root[data-arcrho-theme="dark"] *::-webkit-scrollbar-corner,
+:root[data-arcrho-theme="dark"] *::-webkit-scrollbar-button {
+  background-color: var(--ar-color-scrollbar-track) !important;
+}
+
+:root[data-arcrho-theme="dark"] *::-webkit-scrollbar-thumb {
+  border-color: var(--ar-color-scrollbar-track) !important;
+  background-color: var(--ar-color-scrollbar-thumb) !important;
+}
+
+:root[data-arcrho-theme="dark"] *::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ar-color-scrollbar-thumb-active) !important;
+}
+
+/* Main shell, title bar, tabs, menus, status bar, and Home. */
+:root[data-arcrho-theme="dark"] :is(.menubar, #titlebar, #customTitlebar, .topbar, #statusBar) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.menu, .titlebarBtn, .zoomBtn, .plusTab, .tab .x) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .titlebarBtn {
+  background-color: var(--ar-color-surface-raised);
+  border-color: var(--ar-color-border-strong);
+}
+
+:root[data-arcrho-theme="dark"] .titlebarIcon {
+  stroke: currentColor;
+}
+
+:root[data-arcrho-theme="dark"] :is(.menu:hover, .titlebarBtn:hover, .zoomBtn:hover, .plusTab:hover, .tab .x:hover) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(#titlebarMinBtn, #titlebarMaxBtn):hover {
+  background-color: var(--ar-color-accent-soft);
+  border-color: var(--ar-color-border-focus);
+}
+
+:root[data-arcrho-theme="dark"] :is(.titlebarBtn:active, .zoomBtn:active, .plusTab:active) {
+  background-color: var(--ar-color-surface-selected);
+}
+
+:root[data-arcrho-theme="dark"] #titlebarCloseBtn:hover,
+:root[data-arcrho-theme="dark"] .floatingTabButton[data-action="close"]:hover {
+  background-color: #9f2940;
+  border-color: var(--ar-color-danger);
+  color: #ffffff;
+}
+
+:root[data-arcrho-theme="dark"] .content {
+  background-color: var(--ar-color-canvas);
+}
+
+:root[data-arcrho-theme="dark"] .tab {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .tab:hover {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .tab.active {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text-strong);
+  box-shadow: var(--ar-shadow-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tabMenu, .menuDropdown, .menuSubmenu, #tabCtxMenu) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tabMenuItem:hover, .menuItem:hover, .tabCtxItem:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tabMenuSep, .menuSep, .tabCtxSep) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] :is(.menuShortcut, .menuPathLabel, .menuItem.disabled, .tabCtxItem.disabled) {
+  color: var(--ar-color-text-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.home, .homeLayout, .homeMain) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .homeSidebar {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.homeBrandSub, .homeSubtitle, .homeNavLabel, .groupTitle, .muted) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.homeBrandTitle, .homeTitle, .card h3, #clockText, #zoomValue) {
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.autosaveLabel, .shellResizeGlyph) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .homeBrandMark {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] .homeBrandMark text {
+  fill: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .homeNavItem {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.homeNavItem:hover, .homeNavItem.active) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .card {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-subtle);
+}
+
+:root[data-arcrho-theme="dark"] .card.clickable:hover {
+  border-color: #526c8d;
+  background-color: var(--ar-color-surface-raised);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] .homeIconBox {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] .homeIconBox.project {
+  color: #8290a3;
+}
+
+:root[data-arcrho-theme="dark"] :is(.titlebarLogo rect, #aboutBox rect) {
+  fill: var(--ar-color-surface);
+}
+
+/* Shell dialogs, tooltips, automation, and floating tabs. */
+:root[data-arcrho-theme="dark"] :is(
+  #appConfirmOverlay,
+  #fontSettingsOverlay,
+  #rootPathSettingsOverlay,
+  #forceRebuildSettingsOverlay,
+  #aboutOverlay,
+  .uiAutomationOverlay
+) {
+  background-color: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #appConfirmBox,
+  #fontSettingsBox,
+  #rootPathSettingsBox,
+  #forceRebuildSettingsBox,
+  #aboutBox,
+  .uiAutomationDialog
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #fontPreview,
+  #rootPathInput,
+  .rootPathControl,
+  #forceRebuildToggle,
+  .uiAutomationDialogBody
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.appConfirmBtn, #rootPathBrowseBtn, .uiAutomationDialogBtn) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.appConfirmBtn:hover, #rootPathBrowseBtn:hover, .uiAutomationDialogBtn:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.appConfirmBtn.primary, .uiAutomationDialogBtn.primary) {
+  border-color: #527db5;
+  background-color: var(--ar-color-accent-soft);
+  color: #b9d2ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(#globalTooltip, .chartTooltip, .dsDataTabTooltip, .dataset-temp-view-tooltip) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] .arcrho-tooltip {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] #zoomToast {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] .floatingTabWindow {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] .floatingTabTitlebar {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .floatingTabWindow.active .floatingTabTitlebar {
+  background-color: #253449;
+}
+
+:root[data-arcrho-theme="dark"] :is(#floatingTabPreview, #floatingSnapPreview) {
+  border-color: var(--ar-color-accent);
+  background-color: rgba(62, 117, 190, 0.24);
+}
+
+:root[data-arcrho-theme="dark"] #shellFileDropOverlay {
+  border-color: var(--ar-color-accent) !important;
+  background-color: rgba(16, 31, 53, 0.84) !important;
+  box-shadow: inset 0 0 0 1px rgba(110, 160, 255, 0.24) !important;
+}
+
+:root[data-arcrho-theme="dark"] #shellFileDropOverlay > div {
+  border-color: #527db5 !important;
+  background-color: var(--ar-color-surface-raised) !important;
+  color: var(--ar-color-text) !important;
+  box-shadow: var(--ar-shadow-dialog) !important;
+}
+
+:root[data-arcrho-theme="dark"] #shellFileDropOverlay > div > div + div {
+  color: var(--ar-color-text-muted) !important;
+}
+
+/* ArcBot / assistant surfaces. */
+:root[data-arcrho-theme="dark"] :is(#aiAssistantPanel, #aiAssistantHistoryPage, #aiAssistantFolderPermissionsPage) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #aiAssistantHeader,
+  #aiAssistantComposer,
+  #aiAssistantHistoryToolbar,
+  #aiAssistantFolderPermissionsToolbar,
+  #aiAssistantFolderPermissionsFooter,
+  #aiAssistantDebugToolbar
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #aiAssistantLauncherContextMenu,
+  #aiAssistantModeMenu,
+  .aiAssistantSelectMenu,
+  #aiAssistantSkillsMenu,
+  #aiAssistantAttachMenu,
+  #aiAssistantSettingsPanel,
+  #aiAssistantContextPanel,
+  #aiAssistantDebugPanel,
+  #aiAssistantAppContextTooltip
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .aiAssistantSelectButton,
+  .aiAssistantMiniBtn,
+  .aiAssistantIconBtn,
+  .aiAssistantComposerIconBtn,
+  .aiAssistantSettingsAction,
+  .aiAssistantHistoryIconBtn,
+  .aiAssistantBtn,
+  .aiAssistantFolderAddBtn
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .aiAssistantSelectButton:hover,
+  .aiAssistantMiniBtn:hover,
+  .aiAssistantIconBtn:hover,
+  .aiAssistantComposerIconBtn:hover,
+  .aiAssistantSettingsAction:hover,
+  .aiAssistantHistoryIconBtn:hover,
+  .aiAssistantBtn:hover,
+  .aiAssistantFolderAddBtn:hover,
+  .aiAssistantSelectOption:hover
+) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.aiAssistantSelectOption.active, .aiAssistantSkillItem.active) {
+  background-color: var(--ar-color-accent-soft);
+  color: #b9d2ff;
+}
+
+:root[data-arcrho-theme="dark"] #aiAssistantMessages {
+  background-color: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] .aiAssistantMessage {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .aiAssistantMessage.user {
+  border-color: #3f6599;
+  background-color: #19345a;
+  color: #e8f1ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.aiAssistantMessage.rich code, .aiAssistantMessage.rich pre) {
+  border-color: var(--ar-color-border);
+  background-color: #0d141d;
+  color: #dce6f3;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .aiAssistantHistoryRow,
+  .aiAssistantFolderRow,
+  .aiAssistantWorkArchive,
+  .aiAssistantWorkCard,
+  .aiAssistantWorkStep,
+  .aiAssistantSkillItem,
+  .aiAssistantTokenAlert
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.aiAssistantHistoryRow:hover, .aiAssistantWorkStep.active) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .aiAssistantHistoryMeta,
+  .aiAssistantHistorySubtitle,
+  .aiAssistantWorkSubtitle,
+  .aiAssistantWorkMeta,
+  .aiAssistantWorkStepStatus,
+  .aiAssistantWorkStepDetails,
+  .aiAssistantDisclaimer,
+  .aiAssistantFolderStatus
+) {
+  color: var(--ar-color-text-muted);
+}
+
+/* Macro window and macro-owned dialog surfaces. */
+:root[data-arcrho-theme="dark"] #macroWindow {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] :is(.macroHeader, .macroFooter) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.macroBody, .macroContent, .macroList, .macroDescription) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.macroIconBtn, .macroRunButton) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.macroIconBtn:hover, .macroRunButton:hover, .macroListItem:hover) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .macroListItem.active {
+  border-color: #527db5;
+  background-color: var(--ar-color-accent-soft);
+}
+
+:root[data-arcrho-theme="dark"] :is(.macroItemContextMenu, .macroNotesPreviewWindow) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] .macroNotesPreviewOverlay {
+  background-color: var(--ar-color-overlay) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.macroNotesPreviewHeader, .macroNotesPreviewActions) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.macroNotesPreviewBody, .macroNotesPreviewCard, .macroNotesPreviewText) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] .macroNotesPreviewText {
+  background-color: #0d141d !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.macroNotesPreviewBtn, .macroNotesPreviewClose) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-input) !important;
+  color: var(--ar-color-text) !important;
+}
+
+/* Shared tab chrome and tab-page surfaces. */
+:root[data-arcrho-theme="dark"] .tabbedPageTabBar {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] .tabbedPageTabBar::after {
+  background-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .tabbedPageTab {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .tabbedPageTab:hover:not(:disabled) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .tabbedPageTab[aria-selected="true"] {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tabbedPageSaveBar, .datasetSaveBar, .dfmSaveBar, .rsSaveBar, .bfSaveBar) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tabPopoutWindow, [class$="TabPopoutWindow"]) {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-surface) !important;
+  color: var(--ar-color-text) !important;
+  box-shadow: var(--ar-shadow-dialog) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.tabPopoutHeader, [class$="TabPopoutWindow"] .tabPopoutHeader) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface-muted) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] .tabPopoutBody {
+  background-color: var(--ar-color-surface) !important;
+}
+
+/* Shared Data, Details, Notes, Links, and Audit tabs. */
+:root[data-arcrho-theme="dark"] :is(
+  #triPanel,
+  #tableWrapHost,
+  #tableWrap,
+  .arDetailsRoot,
+  .arNotesTabMount,
+  .arNotesTab,
+  .arExternalLinksMount,
+  .arExternalLinks,
+  .arAuditLogMount,
+  .arAuditLog
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #tableWrap table,
+  .arExternalLinksTable,
+  .arAuditLogTable
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #tableWrap th,
+  #tableWrap td:first-child,
+  .arExternalLinksTable th,
+  .arAuditLogTable th
+) {
+  border-color: #3a4655;
+  background-color: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #tableWrap td,
+  .arExternalLinksTable td,
+  .arAuditLogTable td
+) {
+  border-color: #3a4655;
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #tableWrap tbody tr:hover td,
+  .arExternalLinksTable tbody tr:hover td,
+  .arAuditLogTable tbody tr:hover td
+) {
+  background-color: var(--ar-color-table-row-hover);
+}
+
+:root[data-arcrho-theme="dark"] #tableWrap :is(td.sel, td.active, th.activeCol) {
+  color: inherit;
+}
+
+:root[data-arcrho-theme="dark"] :is(.arDetailsGroup, .arDetailsGrid, .arDetailsField) {
+  background-color: transparent;
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .arDetailsLabel {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .arDetailsControl {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .arDetailsControl[aria-readonly="true"] {
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .arNotesTabToolbar {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .arNotesTabFormatInput,
+  .arNotesTabFormatSelect,
+  .arNotesTabFormatToggle,
+  .arExternalLinksToolbarButton
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .arNotesTabFormatToggle:hover,
+  .arExternalLinksToolbarButton:hover:not(:disabled),
+  .arNotesTabPathMenuItem:focus-visible
+) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .arNotesTabInputWrap,
+:root[data-arcrho-theme="dark"] .arNotesTabInput {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.arNotesTabPathTooltip, .arNotesTabPathMenu) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(.arExternalLinksState, .arAuditLogState) {
+  color: var(--ar-color-text-muted);
+}
+
+/* Shared controls, menus, formula editor, and confirmation dialogs. */
+:root[data-arcrho-theme="dark"] :is(
+  .datasetTreeBtn,
+  .decimalPlacesWrap > input[type="number"],
+  .decimalPlacesStepBtn,
+  .pageCloseConfirmButton,
+  .ctx-item,
+  .arFormulaHoverInput
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.datasetDropdown, .ctx-menu, .arFormulaHover) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(.datasetOption:hover, .ctx-item:hover, .ctx-item:focus-visible, .arFormulaHoverInput:hover) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .decimalPlacesStepBtn:hover {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pageCloseConfirmOverlay {
+  background-color: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] .pageCloseConfirmBox {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] .pageCloseConfirmButton.primary {
+  border-color: #527db5;
+  background-color: var(--ar-color-accent-soft);
+  color: #b9d2ff;
+}
+
+:root[data-arcrho-theme="dark"] .pageCloseConfirmButton.secondary {
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] .arFormulaHoverMark {
+  border-color: #4f7e9d;
+  background-color: #182935;
+  color: #9cc9e7;
+}
+
+:root[data-arcrho-theme="dark"] .arFormulaHover.has-error {
+  border-color: #9f4350;
+}
+
+:root[data-arcrho-theme="dark"] .arcrho-load-popup-overlay {
+  background-color: var(--ar-color-overlay) !important;
+}
+
+:root[data-arcrho-theme="dark"] .arcrho-load-popup-card {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-surface-raised) !important;
+  color: var(--ar-color-text) !important;
+  box-shadow: var(--ar-shadow-dialog) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.arcrho-load-popup-msg, .arcrho-load-popup-elapsed) {
+  color: var(--ar-color-text-muted) !important;
+}
+
+/* Shared spreadsheet base. Semantic selection fills intentionally remain unchanged. */
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable {
+  border-color: #3a4655;
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable td:not([aria-selected="true"]):not(.arSpreadsheetSelectedLabel) {
+  border-color: #3a4655;
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable :is(thead th, tbody td:first-child):not(.arSpreadsheetSelectedLabel) {
+  border-color: #3a4655;
+  background-color: #2a3442;
+  color: var(--ar-color-text);
+}
+
+/* Shared floating path, dataset, reserving-class, and project pickers. */
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-window,
+  .dsp-window,
+  .rcf-window,
+  .rcprefs-window,
+  .rchp-window
+) {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-surface) !important;
+  color: var(--ar-color-text) !important;
+  box-shadow: var(--ar-shadow-dialog) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-titlebar,
+  .dsp-titlebar,
+  .rcf-titlebar,
+  .rcprefs-titlebar,
+  .rchp-titlebar,
+  .dsp-table-head
+) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface-muted) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-body,
+  .dsp-body,
+  .dsp-scroll,
+  .dsp-content,
+  .rcf-body,
+  .rcprefs-body,
+  .rchp-body
+) {
+  background-color: var(--ar-color-surface) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-title,
+  .ptree-label,
+  .ptree-leaf,
+  .ptree-favorite-name,
+  .ptree-favorite-menu button
+) {
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-section-title,
+  .ptree-favorite-folder-header,
+  .ptree-arrow,
+  .ptree-detail,
+  .ptree-level,
+  .ptree-empty,
+  .ptree-status,
+  .ptree-favorite-empty,
+  .ptree-favorite-folder-count,
+  .ptree-path-tooltip-caption,
+  .ptree-select-hint,
+  .ptree-type-icon.calculated-muted,
+  .ptree-type-icon.imported,
+  .ptree-type-icon.source
+) {
+  color: var(--ar-color-text-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.ptree-type-icon.calculated, .ptree-type-icon.recent-folder) {
+  color: var(--ar-color-accent) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.ptree-section-title, .ptree-favorite-menu button) {
+  background: transparent !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-favorite-row.active-path,
+  .ptree-folder.active-path,
+  .ptree-leaf.active-path
+) {
+  background: var(--ar-color-accent-soft) !important;
+  box-shadow: inset 0 0 0 1px #527db5 !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-favorite-row.active-path .ptree-favorite-name,
+  .ptree-folder.active-path .ptree-label,
+  .ptree-leaf.active-path .ptree-label
+) {
+  color: #d7e6ff !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-favorite-list.drag-over,
+  .ptree-favorite-folder.drag-over,
+  .ptree-section-header.drag-over
+) {
+  background: var(--ar-color-accent-soft) !important;
+  box-shadow: inset 0 0 0 1px #527db5 !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-toolbtn,
+  .ptree-close,
+  .ptree-section-action,
+  .ptree-fav-btn,
+  .dsp-toolbtn,
+  .dsp-close,
+  .dsp-head-btn,
+  .dsp-filter-btn,
+  .dsp-name-search-btn,
+  .rcf-close,
+  .rcprefs-close,
+  .rchp-close,
+  .rcf-btn,
+  .rchp-btn
+) {
+  border-color: var(--ar-color-border) !important;
+  background-color: transparent !important;
+  color: var(--ar-color-text-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-toolbtn:hover,
+  .ptree-close:hover,
+  .ptree-section-action:hover,
+  .ptree-favorite-row:hover,
+  .ptree-favorite-folder-header:hover,
+  .ptree-folder:hover,
+  .ptree-leaf:hover,
+  .dsp-toolbtn:hover,
+  .dsp-close:hover,
+  .dsp-head-btn:hover,
+  .dsp-row:hover,
+  .rcf-close:hover,
+  .rcprefs-close:hover,
+  .rchp-close:hover,
+  .rchp-row:hover,
+  .rcf-btn:hover,
+  .rchp-btn:hover
+) {
+  background-color: var(--ar-color-surface-hover) !important;
+  color: var(--ar-color-text-strong) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-favorite-menu,
+  .ptree-path-tooltip,
+  .dsp-filter-pop,
+  .dsp-name-search-pop,
+  .dsp-pref-pop,
+  .rctm-menu,
+  .pnctx-menu
+) {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-surface-raised) !important;
+  color: var(--ar-color-text) !important;
+  box-shadow: var(--ar-shadow-floating) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .ptree-favorite-menu button:hover,
+  .dsp-filter-item:hover,
+  .rctm-item:hover,
+  .pnctx-item:hover
+) {
+  background-color: var(--ar-color-surface-hover) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.dsp-cell, .dsp-group-cell, .dsp-group-title) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-input) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.rcf-input, .rcf-values, .rcf-chip, .dsp-name-search-input) {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-input) !important;
+  color: var(--ar-color-text) !important;
+}
+
+/* Dataset Viewer. */
+:root[data-arcrho-theme="dark"] :is(#datasetRoot, #dsDetailsPage, #dsDataPage, #dsChartPage, #dsNotesPage, #dsLinksPage, #dsAuditLogPage) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(#topFrame, #datasetTopBar, #chartPanel, .panel, .panelInner) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .topField select,
+  #datasetTopBar input,
+  #datasetTopBar .lenSelectDisplay,
+  #datasetTopBar .numberFormatDropdownBtn,
+  .dsDetailInput textarea,
+  .dsDetailFormulaBox
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  #datasetTopBar .lenDropdown,
+  #datasetTopBar .numberFormatDropdown,
+  .dsDependentFormulaTooltip
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(#datasetTopBar .lenOption:hover, #datasetTopBar .numberFormatOption:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.chartHeader, .chartLegend, .datasetSaveBar) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.chartToggle, .chartCanvasWrap) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+}
+
+:root[data-arcrho-theme="dark"] :is(.datasetSecondaryBtn, .datasetPrimaryBtn, #clearCacheReloadBtn) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.datasetPrimaryBtn, .chartToggleBtn.active) {
+  border-color: #527db5;
+  background-color: var(--ar-color-accent-soft);
+  color: #b9d2ff;
+}
+
+:root[data-arcrho-theme="dark"] .datasetRecalcOverlay {
+  background-color: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] .datasetRecalcBox {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] :is(.datasetRecalcList, .datasetRecalcItem) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dsFormulaComponentChip, .dsDatasetChipBox) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+/* Development Factor Method. Selection/highlight paint remains feature-owned. */
+:root[data-arcrho-theme="dark"] :is(
+  #dfmDetailsPage,
+  #dfmDataPage,
+  #dfmRatiosPage,
+  #dfmResultsPage,
+  #dfmNotesPage,
+  #dfmLinksPage,
+  #dfmAuditPage
+) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dfmSection, #ratioPanel, #ratioPanel .panelInner, #ratioWrapHost, #resultsWrap) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dfmFormField select,
+  .dfmSpinner input,
+  .dfmSpinner select,
+  .dfmSelectMenu,
+  .dfmCellNoteBox,
+  .dfmCellNoteText,
+  .dfmSummaryFormulaBar,
+  .dfmSummaryFormulaBarInput,
+  .dfmModalCard
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dfmSelectMenu, .dfmCtxMenu, .dfmCellNoteBox, .dfmModalCard) {
+  background-color: var(--ar-color-surface-raised);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dfmSelectMenuOption:hover, .dfmCtxItem:hover, .dfmActionBtn:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .dfmTabBar .dfmRpcSyncBtn {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-input) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] .dfmTabBar .dfmRpcSyncBtn:hover:not(:disabled) {
+  border-color: var(--ar-color-border-focus) !important;
+  background-color: var(--ar-color-accent-soft) !important;
+  color: #b9d2ff !important;
+}
+
+:root[data-arcrho-theme="dark"] #ratioWrap :is(table, td, th):not(.dfmTableActive):not(.dfmTableHighlight) {
+  border-color: #3a4655;
+}
+
+:root[data-arcrho-theme="dark"] #ratioWrap td:not(.dfmTableActive):not(.dfmTableHighlight):not(.ratioSelectedCell) {
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] #ratioWrap th:not(.dfmTableHighlight),
+:root[data-arcrho-theme="dark"] #ratioWrap td:first-child:not(.dfmTableHighlight) {
+  background-color: #2a3442;
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .dfmModalBackdrop,
+:root[data-arcrho-theme="dark"] .dfmRpcOverlay {
+  background-color: var(--ar-color-overlay) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.dfmRpcWindow, .dfmRpcMessageWindow, .dfmSummaryPlotWindow, .dfmDevelopedCurveWindow) {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-surface-raised) !important;
+  color: var(--ar-color-text) !important;
+  box-shadow: var(--ar-shadow-dialog) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.dfmRpcHeader, .dfmSummaryPlotHeader, .dfmDevelopedCurveHeader) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dfmDevelopedCurveBody,
+  .dfmDevelopedCurveProjectBar,
+  .dfmDevelopedCurveToolbar,
+  .dfmDevelopedCurveChartWrap,
+  .dfmDevelopedCurveSvg,
+  .dfmDevelopedCurveSegmentTable
+) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.dfmDevelopedCurveSegmentTable th, .dfmDevelopedCurveMenu) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-table-header) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] .dfmDevelopedCurveSegmentTable td {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-input) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.dfmDevelopedCurveProjectInputWrap input, .dfmDevelopedCurveSegmentType select) {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-input) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.dfmRpcBody, .dfmRpcActions, .dfmRpcVersionCard, .dfmRpcSnapshot) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] .dfmRpcVersionCard.selectable:hover {
+  background-color: var(--ar-color-surface-hover) !important;
+}
+
+:root[data-arcrho-theme="dark"] .dfmRpcVersionCard.selected {
+  border-color: var(--ar-color-accent) !important;
+  background-color: var(--ar-color-accent-soft) !important;
+}
+
+/* Bornhuetter Ferguson and Result Selection methods. */
+:root[data-arcrho-theme="dark"] :is(.bfShell, .bfTabbed, .bfPageHost, .bfPage, .rsPageHost, .rsPage) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .bfPanel,
+  .bfMethodToolbar,
+  .bfTableWrap,
+  .rsMethodToolbar,
+  .rsGridHost,
+  .rsChartPanel,
+  .rsBasisPanel
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .bfInput,
+  .bfDropdownButton,
+  .bfDropdownMenu,
+  .bfStepperInput,
+  .bfPriorList,
+  .rsInput,
+  .rsDropdownButton,
+  .rsDropdownMenu,
+  .rsStepperInput,
+  .rsRatioBasisPicker
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.bfDropdownMenu, .rsDropdownMenu, .bfCellContextMenu, .rsCellContextMenu) {
+  background-color: var(--ar-color-surface-raised);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .bfDropdownOption:focus,
+  .bfIconButton:hover,
+  .rsDropdownOption:focus,
+  .rsButton:hover:not(:disabled),
+  .bfCellContextMenu button:hover,
+  .rsCellContextMenu button:hover
+) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(table.bfMethodTable, .rsGrid) {
+  border-color: #3a4655;
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .bfMethodTable td:not(.bfHighlightedCell):not(.bfSelectedSourceCell),
+:root[data-arcrho-theme="dark"] .rsGrid td:not(.rsHighlightedCell):not(.rsHighlightedUltimateCell):not(.rsSelectedSourceCell) {
+  border-color: #3a4655;
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .bfMethodTable th,
+:root[data-arcrho-theme="dark"] .bfMethodTable td:first-child:not(.bfHighlightedRowLabel),
+:root[data-arcrho-theme="dark"] .rsGrid th,
+:root[data-arcrho-theme="dark"] .rsGrid td:first-child:not(.rsHighlightedRowLabel) {
+  border-color: #3a4655;
+  background-color: #2a3442;
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.rsChartHeader, .rsChartBody, .rsChartPlot) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] .rsRpcOverlay {
+  background-color: var(--ar-color-overlay) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.rsRpcWindow, .rsRpcMessageWindow) {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-surface-raised) !important;
+  color: var(--ar-color-text) !important;
+  box-shadow: var(--ar-shadow-dialog) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.rsRpcHeader, .rsRpcActions) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.rsRpcBody, .rsRpcVersionCard, .rsRpcSnapshot, .rsRpcStat, .rsRpcSourceRow) {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] .rsRpcVersionCard.selected {
+  border-color: var(--ar-color-accent) !important;
+  background-color: var(--ar-color-accent-soft) !important;
+}
+
+/* Workflow. */
+:root[data-arcrho-theme="dark"] :is(#workflowSidebar, #workspace, .left, .right) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] #workflowSidebar {
+  background-color: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.wfTitleInput, .stepRenameInput, .gc-table select, .gc-combo input) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.stepBtn, .stepAddTile, .importTile, .card) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.stepBtn:hover, .stepAddTile:hover, .importTile:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .stepBtn.active {
+  border-color: #527db5;
+  background-color: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.gc-table, .gc-table td, .gc-table th) {
+  border-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .gc-table th {
+  background-color: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.gc-combo-list, .gcCtxMenu, #stepCtxMenu, .rc-float-window) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(.gc-combo-list li.active, .gcCtxItem:hover, .stepCtxItem:hover, .rc-tree-folder:hover, .rc-tree-leaf:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .rc-float-titlebar {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+/* Project Instance. */
+:root[data-arcrho-theme="dark"] :is(.pi-root, .pi-layout, .pi-right) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-toolbar, .dataset_toolbar) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-left, .pi-path-tree, .pi-table-wrap, .pi-table-surface) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .pi-toolbar-path,
+  .pi-hidden-tabs-button,
+  .dataset-toolbar-btn,
+  .dataset-index-update-btn,
+  .dataset-group-chip,
+  .dataset-filter-chip,
+  .pi-table-filter-btn
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .pi-minimized-tab:hover,
+  .pi-hidden-tabs-action:hover,
+  .pi-hidden-tab-item:hover,
+  .dataset-toolbar-btn:hover,
+  .dataset-index-update-btn:hover,
+  .dataset-filter-chip:hover,
+  .pi-table-filter-btn:hover
+) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .pi-path-segment-menu,
+  .pi-hidden-tabs-menu,
+  .pi-minimized-tab-tooltip,
+  .dataset-temp-view-tooltip,
+  .dataset-group-hint-tooltip,
+  .pi-table-filter-popover,
+  .pi-table-row-context-menu,
+  .pi-context-submenu-menu
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table {
+  border-color: #3a4655;
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table td {
+  border-color: #3a4655;
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table th,
+:root[data-arcrho-theme="dark"] .pi-table .pi-table-group-row td {
+  border-color: #3a4655;
+  background-color: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table tbody tr[data-record-key]:hover td {
+  background-color: var(--ar-color-table-row-hover);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table tbody tr[data-record-key].selected td {
+  background-color: var(--ar-color-accent-soft);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-loading-overlay, .pi-delete-confirm-overlay, .pi-message-overlay) {
+  background-color: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-loading-card, .pi-delete-confirm-box, .pi-message-box, .pi-number-formats-window) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-header, .pi-message-header, .pi-number-formats-header, .pi-number-formats-actions) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-table, .pi-number-formats-table th, .pi-number-formats-table td, .pi-number-formats-empty) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-left-resizer {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-left-resizer:hover, .pi-left-resizer.dragging) {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+}
+
+:root[data-arcrho-theme="dark"] .pi-toolbar-path {
+  background: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-toolbar-path.has-path, .pi-toolbar-path-segment) {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-toolbar-path-segment {
+  background: transparent;
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-toolbar-path-segment:hover, .pi-toolbar-path-segment:focus-visible) {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+  box-shadow: 0 0 0 2px var(--ar-color-focus-ring);
+}
+
+:root[data-arcrho-theme="dark"] .pi-toolbar-path-separator {
+  color: var(--ar-color-text-subtle);
+}
+
+:root[data-arcrho-theme="dark"] .pi-path-segment-title {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-path-segment-option {
+  background: transparent;
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-path-segment-option:hover, .pi-path-segment-option:focus-visible) {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .pi-path-segment-option.selected {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] .pi-minimized-tab {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-minimized-tab-restore, .pi-minimized-tab-close, .pi-hidden-tab-item, .pi-hidden-tab-delete) {
+  background: transparent;
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-minimized-tab-close, .pi-hidden-tab-delete, .pi-hidden-tab-icon, .pi-hidden-tabs-empty) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-minimized-tab-close:hover, .pi-hidden-tab-delete:hover) {
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] .pi-hidden-tabs-actions {
+  border-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .pi-hidden-tabs-action {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-hidden-tabs-action.danger:hover {
+  border-color: #8f3f4f;
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] .pi-hidden-tab-item {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.ptree-empty, .pi-path-tree .ptree-leaf) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-path-tree .ptree-label {
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dataset-toolbar-status,
+  .dataset-group-status,
+  .dataset-active-filters,
+  .dataset-filter-none,
+  .pi-table-group-caret,
+  .pi-table-empty
+) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-group-label, .dataset-filter-label) {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-group-status, .dataset-active-filters) {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface);
+}
+
+:root[data-arcrho-theme="dark"] .dataset-group-status.has-groups .dataset-group-placeholder {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-group-chip, .dataset-filter-chip.is-all) {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-filter-chip, .dataset-index-update-btn) {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dataset-filter-chip:hover,
+  .dataset-index-update-btn:hover,
+  .dataset-group-status.has-groups .dataset-group-placeholder:hover
+) {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-accent-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dataset-toolbar-btn.active,
+  .pi-table-filter-btn.active,
+  .pi-hidden-tabs-wrap.open .pi-hidden-tabs-button
+) {
+  border-color: var(--ar-color-accent);
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .pi-hidden-tabs-button:hover,
+  .pi-hidden-tabs-wrap.open .pi-hidden-tabs-button
+) {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-group-status.drag-over, .dataset-active-filters.drag-over) {
+  border-color: var(--ar-color-accent);
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] .dataset-group-status.drag-invalid {
+  border-color: var(--ar-color-warning);
+  background: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
+}
+
+:root[data-arcrho-theme="dark"] .dataset-active-filters.drag-invalid {
+  border-color: var(--ar-color-danger);
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-temp-view-tooltip-title, .dataset-group-hint-tooltip) {
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-wrap {
+  --pi-dataset-table-chrome: var(--ar-color-scrollbar-track);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-header-cell {
+  background: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-group-count {
+  background: var(--ar-color-surface-soft);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-sort-icon {
+  color: var(--ar-color-accent);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-column-drag-image {
+  border-color: var(--ar-color-accent);
+  background: var(--ar-color-surface-raised);
+  color: var(--ar-color-accent-strong);
+  box-shadow: var(--ar-shadow-floating), inset 3px 0 0 var(--ar-color-accent);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-status-cell, .pi-status-cell.temp-indexed) {
+  color: var(--ar-color-success);
+}
+
+:root[data-arcrho-theme="dark"] .pi-status-cell.warning {
+  color: var(--ar-color-warning);
+}
+
+:root[data-arcrho-theme="dark"] .pi-status-cell.temp-unindexed {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-loading-message, .pi-loading-elapsed) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-title, .pi-message-title) {
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-body, .pi-message-body) {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-list, .pi-delete-confirm-actions, .pi-message-actions) {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-item, .pi-delete-confirm-more) {
+  border-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .pi-delete-confirm-more {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-close, .pi-message-close) {
+  background: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-close:hover, .pi-message-close:hover) {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pi-delete-confirm-actions button:not(.danger) {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-message-actions button {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .pi-table-context-menu,
+  .pi-table-group-context-menu,
+  .pi-add-picker-box
+) {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] .pi-context-menu-item {
+  background: transparent;
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .pi-context-menu-item:hover,
+  .pi-context-submenu:hover > .pi-context-menu-item,
+  .pi-context-submenu:focus-within > .pi-context-menu-item
+) {
+  background: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .pi-context-menu-item.active {
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-context-menu-icon, .pi-context-menu-item:disabled) {
+  color: var(--ar-color-text-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-add-picker-overlay, .pi-number-formats-overlay) {
+  background: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] .pi-add-picker-header {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pi-add-picker-close {
+  background: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-add-picker-close:hover {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pi-add-picker-body {
+  background: var(--ar-color-canvas-subtle);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-add-picker-status, .pi-add-picker-empty) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-add-picker-table-wrap, .pi-add-picker-table) {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-add-picker-table :is(th, td) {
+  border-color: #3a4655;
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-add-picker-table th,
+:root[data-arcrho-theme="dark"] .pi-add-picker-table th::before {
+  background: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-add-picker-table tbody tr:hover td,
+:root[data-arcrho-theme="dark"] .pi-add-picker-table tbody tr:focus td {
+  background: var(--ar-color-table-row-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-table-filter-title, .pi-table-filter-option) {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-filter-title {
+  border-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-filter-empty {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-filter-clear-all {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-filter-clear-all:hover:not(:disabled) {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-body {
+  background: var(--ar-color-canvas-subtle);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-path, .pi-number-formats-default-row span, .pi-number-formats-status) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-table-wrap {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-input);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-table th {
+  background: var(--ar-color-table-header);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-table tr:hover input {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-input);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button, .pi-number-formats-actions button) {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button:hover, .pi-number-formats-actions button:hover) {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-close, .pi-number-formats-remove) {
+  background: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-close:hover {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-remove:hover {
+  border-color: #8f3f4f;
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-actions button.primary {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-status.error {
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-status.success {
+  color: var(--ar-color-success);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window {
+  border-color: var(--ar-popout-border);
+  background: var(--ar-popout-surface);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window.active {
+  border-color: var(--ar-color-accent);
+  box-shadow: 0 0 0 2px rgba(110, 160, 255, 0.2), var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window-titlebar {
+  border-color: var(--ar-popout-header-border);
+  background: var(--ar-popout-header);
+  color: var(--ar-popout-title);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window.active .pi-window-titlebar {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] .pi-window-titlebar-btn {
+  border-color: var(--ar-popout-control-border);
+  background: var(--ar-popout-control-background);
+  color: var(--ar-popout-control-foreground);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-window-titlebar-btn:hover, .pi-window-titlebar-btn:active) {
+  border-color: var(--ar-popout-control-hover-border);
+  background: var(--ar-popout-control-hover-background);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window-close:hover {
+  border-color: var(--ar-popout-control-close-hover-border);
+  background: var(--ar-popout-control-close-hover-background);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window-titlebar-icon {
+  stroke: currentColor;
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-window-body, .pi-window-body iframe) {
+  background: var(--ar-popout-surface);
+}
+
+/* Project Settings, ribbons, tables, and editors. */
+:root[data-arcrho-theme="dark"] :is(.main, .detail-panel, .detail-content, .ribbon-content-area, .ribbon-panel) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tree-panel, .tree-header, .detail-header, .ribbon-bar, .dataset-types-toolbar, .dpr-toolbar) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tree-content, .detail-empty, .dataset-types-panel, .summary-header, .summary-stats) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tree-folder:hover, .tree-project:hover, .ribbon-item:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tree-project.active, .ribbon-item.active) {
+  border-color: #527db5;
+  background-color: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.context-menu, .fm-dataset-type-dropdown, .dt-category-filter-popover, .dpr-select-popup, .dpr-token-menu) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] :is(.context-menu-item:hover, .fm-dataset-type-option:hover, .dt-category-filter-option:hover, .dpr-select-option:hover, .dpr-token-menu-item:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dialog-overlay, .dataset-types-error-overlay, .dpr-json-overlay) {
+  background-color: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dialog-box, .dataset-types-error-dialog, .dpr-json-dialog, .rct-row-editor, .dpr-editor) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] .datasetTypesRecalcOverlay {
+  background-color: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] .datasetTypesRecalcBox {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] :is(.datasetTypesRecalcList, .datasetTypesRecalcItem) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-canvas-subtle);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.datasetTypesRecalcSummary, .datasetTypesRecalcMeta) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-editor-header, .dataset-types-error-header, .rct-row-editor-header) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dialog-input,
+  .summary-table-path-input,
+  .summary-derived-input,
+  .field-mapping-table input,
+  .dataset-types-table textarea,
+  .rct-row-editor textarea,
+  .dpr-editor input,
+  .dpr-editor select,
+  .dpr-select-trigger,
+  .dpr-token-box
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.summary-derived-frame, .stat-item, .rct-formula-frame, .rct-formula-review, .rct-formula-components-box, .dpr-section, .dpr-summary-bar) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) td {
+  border-color: #3a4655;
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) th,
+:root[data-arcrho-theme="dark"] :is(.dt-group-row, .rct-group-row) td {
+  border-color: #3a4655;
+  background-color: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) tbody tr:hover td {
+  background-color: var(--ar-color-table-row-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.rct-formula-token, .rct-formula-component-chip, .dpr-step-chip, .dpr-token) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-select-option.selected, .fm-dataset-type-option.active) {
+  background-color: var(--ar-color-accent-soft);
+  color: #b9d2ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.tree-folder, .tree-project, .context-menu-item, .dialog-title, .dialog-message) {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tree-folder-arrow, .tree-project-icon, .detail-rename-btn) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .tree-folder-count {
+  background: var(--ar-color-surface-soft);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .tree-folder.drop-target {
+  border-color: var(--ar-color-success);
+  background: var(--ar-color-success-soft);
+}
+
+:root[data-arcrho-theme="dark"] .tree-project.active .tree-project-icon {
+  color: var(--ar-color-accent);
+}
+
+:root[data-arcrho-theme="dark"] .context-menu-divider {
+  background: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .context-menu-item.danger {
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] .context-menu-item.danger:hover {
+  background: var(--ar-color-danger-soft);
+}
+
+:root[data-arcrho-theme="dark"] .dialog-btn {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .dialog-btn:hover {
+  background: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .dialog-btn.primary {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] .dialog-btn.primary:hover {
+  background: var(--ar-color-accent-hover);
+}
+
+:root[data-arcrho-theme="dark"] .dialog-btn.danger {
+  border-color: #8f3f4f;
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] :is(.detail-title, .project-operation-progress-title) {
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.detail-empty, .ribbon-panel-placeholder) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.detail-rename-btn:hover, .resize-handle:hover) {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] .detail-open-folder-btn {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+  box-shadow: none;
+}
+
+:root[data-arcrho-theme="dark"] .detail-open-folder-btn:hover:not(:disabled) {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-accent-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .detail-open-folder-btn:disabled {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-disabled);
+}
+
+:root[data-arcrho-theme="dark"] .project-operation-progress {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-surface-raised);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] .project-operation-progress-track {
+  background: var(--ar-color-surface-soft);
+}
+
+:root[data-arcrho-theme="dark"] :is(.ribbon-icon, .ribbon-label) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.ribbon-item.active .ribbon-icon, .ribbon-item.active .ribbon-label) {
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.ribbon-item:hover .ribbon-icon, .ribbon-item:hover .ribbon-label) {
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .ribbon-item.active {
+  border-bottom-color: var(--ar-color-accent-soft);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .field-mapping-help,
+  .dataset-types-help,
+  .field-mapping-status,
+  .dataset-types-status,
+  .field-mapping-empty,
+  .dataset-types-empty
+) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.field-mapping-status.error, .dataset-types-status.error) {
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] :is(.field-mapping-toolbar button, .dataset-types-toolbar button) {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.field-mapping-toolbar button:hover, .dataset-types-toolbar button:hover) {
+  background: var(--ar-color-accent-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.summary-columns, .field-mapping-grid, .dataset-types-grid) {
+  --dataset-grid-scrollbar-chrome: inherit;
+  --dataset-grid-scrollbar-button-hover: inherit;
+  --dataset-grid-scrollbar-button-active: inherit;
+  --dataset-grid-scrollbar-thumb: inherit;
+  --dataset-grid-scrollbar-thumb-active: inherit;
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-input);
+}
+
+:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table) th::before {
+  background: var(--ar-color-table-header);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .summary-table-path-label,
+  .summary-derived-frame-label,
+  .summary-derived-label,
+  .stat-label,
+  .summary-loading,
+  .columns-table td.col-type,
+  .columns-table td.col-sample
+) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.summary-header, .stat-value) {
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .summary-error {
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] :is(.summary-table-path-browse, .summary-derived-step-btn) {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.summary-table-path-browse:hover:not(:disabled), .summary-derived-step-btn:hover) {
+  background: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.summary-table-path-browse:disabled, .summary-derived-step-btn:disabled) {
+  background: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-disabled);
+}
+
+:root[data-arcrho-theme="dark"] :is(.summary-derived-stepper, .summary-derived-step-btn + .summary-derived-step-btn) {
+  border-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .field-mapping-table td input:disabled {
+  background: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-disabled);
+}
+
+:root[data-arcrho-theme="dark"] .field-mapping-table td .fm-inline-dropdown-arrow {
+  background: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .field-mapping-table td .fm-inline-dropdown-arrow:hover {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.fm-dataset-type-option, .dt-category-filter-option) {
+  background: transparent;
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.fm-dataset-type-empty, .dt-category-filter-empty) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(#datasetTypesErrorTitle, .dataset-types-error-body, .dt-category-filter-title) {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-types-error-close, .dt-group-toggle, #datasetTypesTable .dt-name-search-btn, #datasetTypesTable .dt-category-filter-btn) {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dataset-types-error-close:hover,
+  .dt-group-toggle:hover,
+  #datasetTypesTable .dt-name-search-btn:hover,
+  #datasetTypesTable .dt-category-filter-btn:hover
+) {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .rct-group-toggle {
+  background: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .rct-group-toggle:hover {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(#datasetTypesTable .dt-name-search-btn.active, #datasetTypesTable .dt-category-filter-btn.active) {
+  border-color: var(--ar-color-accent);
+  background: var(--ar-color-accent-soft);
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] #datasetTypesTable .dt-name-search-input {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(#datasetTypesTable th.dt-col-sorted, .dt-group-row.collapsed td) {
+  background: var(--ar-color-surface-soft);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] #datasetTypesTable .dt-sort-indicator {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-types-error-line, .dt-category-filter-title) {
+  border-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dataset-types-table td.invalid-formula-cell, .dataset-types-table td.invalid-formula-cell textarea) {
+  background: var(--ar-color-danger-soft);
+}
+
+:root[data-arcrho-theme="dark"] .datasetTypesRecalcName {
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .datasetTypesRecalcClose {
+  background: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .datasetTypesRecalcClose:hover {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.rct-row-editor-title, .rct-row-editor-body label) {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .rct-row-editor-actions {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.rct-formula-components-empty, .rct-formula-components-menu .context-menu-item.disabled) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .rct-formula-components-toggle {
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.rct-formula-calculated-icon, .dpr-token-menu-tick) {
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] .rct-formula-component-chip.selected {
+  border-color: var(--ar-color-accent);
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.rct-formula-token.component.unknown, .rct-formula-component-chip.unknown) {
+  border-color: #8f3f4f;
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] :is(.rct-formula-token.operator.plus, .rct-formula-component-chip.operator.plus) {
+  border-color: #367653;
+  background: var(--ar-color-success-soft);
+  color: var(--ar-color-success);
+}
+
+:root[data-arcrho-theme="dark"] :is(.rct-formula-token.operator.minus, .rct-formula-component-chip.operator.minus) {
+  border-color: #8c6f27;
+  background: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
+}
+
+:root[data-arcrho-theme="dark"] .rct-validation-tooltip {
+  border-color: #8c6f27;
+  background: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-editor {
+  --dpr-blue-soft: inherit;
+  --dpr-blue-border: inherit;
+  --dpr-ink: inherit;
+  --dpr-ink-soft: inherit;
+  --dpr-ink-faint: inherit;
+  --dpr-line: inherit;
+  --dpr-line-soft: inherit;
+  --dpr-bg: inherit;
+  --dpr-danger: inherit;
+  --dpr-danger-soft: inherit;
+  --dpr-keep: inherit;
+  --dpr-keep-soft: inherit;
+  --dpr-warn: inherit;
+  --dpr-warn-soft: inherit;
+}
+
+:root[data-arcrho-theme="dark"] .dpr-editor-body {
+  --dpr-scrollbar-chrome: inherit;
+  --dpr-scrollbar-button-hover: inherit;
+  --dpr-scrollbar-button-active: inherit;
+  --dpr-scrollbar-thumb: inherit;
+  --dpr-scrollbar-thumb-active: inherit;
+}
+
+:root[data-arcrho-theme="dark"] .dpr-row-drag-handle {
+  background: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-row-drag-handle:hover {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-rules-table .dpr-rule-row.dpr-drop-before td {
+  background: var(--ar-color-accent-soft);
+  box-shadow: inset 0 2px 0 var(--dpr-blue);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-rules-table .dpr-rule-row.dpr-drop-after td {
+  background: var(--ar-color-accent-soft);
+  box-shadow: inset 0 -2px 0 var(--dpr-blue);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-table-switch-track, .dpr-enabled-track) {
+  background: var(--ar-color-surface-soft);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-table-switch-track::after, .dpr-enabled-track::after) {
+  background: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-editor > .dpr-editor-header {
+  border-color: var(--dpr-line-soft);
+  background: var(--ar-color-surface-muted);
+  color: var(--dpr-ink);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-editor-close:hover {
+  border-color: transparent !important;
+  background: var(--ar-color-surface-hover) !important;
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dpr-editor-name input,
+  .dpr-editor .dpr-select-trigger,
+  .dpr-editor .dpr-select-trigger:focus-visible,
+  .dpr-editor .dpr-select-trigger[aria-expanded="true"]
+) {
+  border-color: var(--dpr-line);
+  background: var(--ar-color-input);
+  color: var(--dpr-ink);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-select-option, .dpr-token-menu-item) {
+  background: transparent;
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dpr-select-option:hover,
+  .dpr-select-option:focus-visible,
+  .dpr-token-menu-item:hover
+) {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-condition-empty, .dpr-token-menu-empty) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-editor .dpr-select-caret {
+  border-top-color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-summary-bar, .dpr-editor-actions) {
+  border-color: var(--dpr-line-soft);
+  background: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-token {
+  border-color: var(--dpr-blue-border);
+  background: var(--dpr-blue-soft);
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-token.warn, .dpr-vocab-warn) {
+  border-color: #8c6f27;
+  background: var(--dpr-warn-soft);
+  color: var(--dpr-warn);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-step-chip.then {
+  border-color: #367653;
+  background: var(--dpr-keep-soft);
+  color: var(--dpr-keep);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-token.bad, .dpr-vocab-warn.bad) {
+  border-color: #8f3f4f;
+  background: var(--dpr-danger-soft);
+  color: var(--dpr-danger);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-editor-error {
+  border-color: #8f3f4f;
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] .dpr-json-body {
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-toolbar button.primary, .dpr-editor button.primary) {
+  border-color: #527db5;
+  background: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-toolbar button:hover, .dpr-editor button:hover) {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-editor .dpr-token-remove:hover, .dpr-editor .dpr-condition-remove:hover) {
+  border-color: #8f3f4f;
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] :is(.dpr-toolbar button.primary:hover, .dpr-editor button.primary:hover) {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-accent-hover);
+  color: var(--ar-color-text-strong);
+}
+
+/* Task Designer. */
+:root[data-arcrho-theme="dark"] :is(.taskDesignerWindow, .taskDesignerBody) {
+  background-color: var(--ar-color-canvas) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] :is(.taskDesignerTableWrap, .taskDesignerDetailWindow) {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-surface) !important;
+  color: var(--ar-color-text) !important;
+  box-shadow: var(--ar-shadow-dialog) !important;
+}
+
+:root[data-arcrho-theme="dark"] .taskDesignerTable th,
+:root[data-arcrho-theme="dark"] .taskDesignerDetailTitlebar,
+:root[data-arcrho-theme="dark"] .taskDesignerFooter {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-surface-muted) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] .taskDesignerTable td {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-input) !important;
+  color: var(--ar-color-text) !important;
+}
+
+:root[data-arcrho-theme="dark"] .taskDesignerTable tr:hover td {
+  background-color: var(--ar-color-table-row-hover) !important;
+}
+
+:root[data-arcrho-theme="dark"] .taskDesignerDetailPre {
+  border-color: var(--ar-color-border) !important;
+  background-color: #0d141d !important;
+  color: #dce6f3 !important;
+}
+
+/* Agent Guide, Browsing History, launch pages, and splash screens. */
+:root[data-arcrho-theme="dark"] :is(.agShell, .agMain, .agContent, .agPane) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.agHeader, .agNav, .agPaneHeader) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.agPathBox, .agMarkdown, .agWorkflow, .agPane pre, .agPane code) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.agTab:hover, .agTab.active) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .page,
+:root[data-arcrho-theme="dark"] .page :is(.section, .list) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .historyRow {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .historyRow:hover {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .page :is(.subtitle, .path, .time, .empty) {
+  color: var(--ar-color-text-muted);
+}
+
+/* Startup splash; Electron supplies the last renderer-derived theme hint. */
+:root[data-arcrho-theme="dark"] .startupSplash {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .grid-bg {
+  background-image:
+    linear-gradient(rgba(110, 160, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(110, 160, 255, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+:root[data-arcrho-theme="dark"] .splash-container {
+  width: 292px;
+  padding: 26px 26px 22px;
+  border: 1px solid var(--ar-color-border);
+  border-radius: 6px;
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-arcrho-theme="dark"] .logo-container {
+  margin-bottom: 20px;
+  border: 0;
+  background: transparent;
+}
+
+:root[data-arcrho-theme="dark"] .logo-icon {
+  animation: none;
+}
+
+:root[data-arcrho-theme="dark"] .logo-icon img {
+  width: 88px;
+  height: 88px;
+  filter: drop-shadow(0 4px 12px rgba(76, 121, 230, 0.2));
+}
+
+:root[data-arcrho-theme="dark"] .splash-container .app-title {
+  margin-bottom: 5px;
+  color: var(--ar-color-text-strong);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+:root[data-arcrho-theme="dark"] .app-subtitle {
+  margin-bottom: 28px;
+  color: var(--ar-color-text-muted);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+:root[data-arcrho-theme="dark"] .loading-section {
+  width: 100%;
+}
+
+:root[data-arcrho-theme="dark"] .loading-indicator {
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+:root[data-arcrho-theme="dark"] .pulse-dot {
+  width: 5px;
+  height: 5px;
+  background-color: var(--ar-color-accent);
+}
+
+:root[data-arcrho-theme="dark"] .progress-container {
+  height: 2px;
+  margin-bottom: 14px;
+  border: 0;
+  background-color: var(--ar-color-input);
+}
+
+:root[data-arcrho-theme="dark"] .progress-bar {
+  background: var(--ar-color-accent);
+}
+
+:root[data-arcrho-theme="dark"] .status-text {
+  color: var(--ar-color-text-muted);
+  font-size: 11.5px;
+}
+
+:root[data-arcrho-theme="dark"] .version {
+  right: 14px;
+  bottom: 12px;
+  color: var(--ar-color-text-subtle);
+}
+
+:root[data-arcrho-theme="dark"] :is(.orb, .scan-line) {
+  display: none;
+}
+
+/* Arcode shell and explorer. */
+:root[data-arcrho-theme="dark"] :is(#arcodeApp, #arcodeMain, #arcodeHome, #arcodeFrameHost, .arcodeFrameWorkspace) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(#customTitlebar, #arcodeTitlebar, #arcodeStatus, .arcodeHomeSidebar) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .arcodeTab {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .arcodeTab.active {
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.arcodeHomeBtn, .arcodePlusTab, .arcodeExplorerRefreshBtn) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.arcodeHomeBtn:hover, .arcodePlusTab:hover, .arcodeExplorerRefreshBtn:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.arcodeExplorerWorkspace, .arcodeExplorerFolders, .arcodeHomeContent) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-canvas-subtle);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.arcodeCreateGroup, .arcodeCreateCard) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.arcodeCreateCard:hover, .arcodeExplorerEntry:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .arcodeExplorerEntry.active {
+  background-color: var(--ar-color-accent-soft);
+  color: #d7e6ff;
+}
+
+:root[data-arcrho-theme="dark"] :is(#arcodeFileDropOverlay, #arcodeFileDropOverlay.unsupported) {
+  background-color: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] .arcodeFileDropPanel {
+  border-color: #527db5;
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+/* Arcode code editor. */
+:root[data-arcrho-theme="dark"] :is(.ce-app, .ce-body, .ce-main, .ce-editor-host) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.ce-toolbar, .ce-panel-header, .ce-file-banner) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.ce-btn, .ce-output-panel, .ce-output-text) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .ce-btn:hover:not(:disabled) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .ce-btn.primary {
+  border-color: #527db5;
+  background-color: var(--ar-color-accent-soft);
+  color: #b9d2ff;
+}
+
+/* Arcode notebook editor. */
+:root[data-arcrho-theme="dark"] :is(.sc-main, .sc-workspace, .sc-cells-area, .sc-sidebar, .sc-sidebar-content) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-toolbar, .sc-vars-header, .sc-toc-header, .sc-nb-header, .sc-nb-footer, .sc-shortcuts-header, .sc-shortcuts-footer) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .sc-btn,
+  .sc-select,
+  .sc-select-btn,
+  .sc-cell-btn,
+  .sc-panel-icon-btn,
+  .sc-nb-input,
+  .sc-shortcuts-input
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-btn:hover, .sc-cell-btn:hover, .sc-panel-icon-btn:hover, .sc-toc-item:hover) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-type-menu, .sc-sidebar-ctxmenu, .sc-inspect-tooltip) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] .sc-cell {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-cell-input-frame, .sc-cell-output-frame, .sc-cell-output, .sc-markdown-render) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-markdown-render code, .sc-markdown-render pre, .sc-cell-output .out-html pre) {
+  border-color: var(--ar-color-border);
+  background-color: #0d141d;
+  color: #dce6f3;
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-var-table th, .sc-shortcuts-table th) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-var-table td, .sc-shortcuts-table td, .sc-nb-list li) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-var-table tr:hover td, .sc-nb-list li:hover) {
+  background-color: var(--ar-color-table-row-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-nb-overlay, .sc-shortcuts-overlay) {
+  background-color: var(--ar-color-overlay);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-nb-modal, .sc-shortcuts-modal) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+/* Arcode Snowflake console. */
+:root[data-arcrho-theme="dark"] :is(.sfApp, .sfEditorHost, .sfResults) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sfToolbar, .sfMetaBar, .sfResultsHeader) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sfBtn, .sfSelect, .sfChip) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .sfBtn:hover {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .sfTable {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .sfTable th {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .sfTable td {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .sfTable tbody tr:hover td {
+  background-color: var(--ar-color-table-row-hover);
+}

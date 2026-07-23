@@ -13,6 +13,10 @@ const SERIES_COLORS = [
   "#a0462f",
 ];
 
+function getChartColor(propertyName, fallback) {
+  return window.ArcRhoColorTheme?.getCssColor?.(propertyName, fallback) || fallback;
+}
+
 function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement("style");
@@ -411,11 +415,15 @@ function renderChart(data, zoom = null, hiddenSet = new Set()) {
   const yFor = (value) => pad.top + (1 - ((value - min) / (max - min))) * plotH;
   const yTicks = Array.from({ length: 5 }, (_unused, index) => min + ((max - min) * index) / 4);
   const mode = data?.mode || "values";
+  const chartBackground = escapeHtml(getChartColor("--ar-chart-background", "#ffffff"));
+  const chartGrid = escapeHtml(getChartColor("--ar-chart-svg-grid", "#e6ebf2"));
+  const chartAxis = escapeHtml(getChartColor("--ar-chart-svg-axis", "#aeb8c8"));
+  const chartTextMuted = escapeHtml(getChartColor("--ar-chart-svg-text-muted", "#667085"));
   const grid = yTicks.map((tick) => {
     const y = yFor(tick);
     return `
-      <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="#e6ebf2" />
-      <text x="${pad.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#667085">${escapeHtml(formatPlotValue(tick, mode))}</text>
+      <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="${chartGrid}" />
+      <text x="${pad.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="${chartTextMuted}">${escapeHtml(formatPlotValue(tick, mode))}</text>
     `;
   }).join("");
   const labelStep = Math.max(1, Math.ceil(colCount / 12));
@@ -423,7 +431,7 @@ function renderChart(data, zoom = null, hiddenSet = new Set()) {
     if (index < Math.ceil(xMin) || index > Math.floor(xMax)) return "";
     if (index % labelStep !== 0 && index !== colCount - 1) return "";
     const x = xFor(index);
-    return `<text x="${x}" y="${height - 24}" text-anchor="end" font-size="11" fill="#667085" transform="rotate(-38 ${x} ${height - 24})">${escapeHtml(label)}</text>`;
+    return `<text x="${x}" y="${height - 24}" text-anchor="end" font-size="11" fill="${chartTextMuted}" transform="rotate(-38 ${x} ${height - 24})">${escapeHtml(label)}</text>`;
   }).join("");
   const lines = series.map((item, seriesIndex) => {
     if (hiddenSet.has(seriesIndex)) return "";
@@ -447,10 +455,10 @@ function renderChart(data, zoom = null, hiddenSet = new Set()) {
       <defs>
         <clipPath id="dfmSummaryPlotClip"><rect x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" /></clipPath>
       </defs>
-      <rect x="0" y="0" width="${width}" height="${height}" fill="#fff" />
+      <rect x="0" y="0" width="${width}" height="${height}" fill="${chartBackground}" />
       ${grid}
-      <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" stroke="#aeb8c8" />
-      <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="#aeb8c8" />
+      <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" stroke="${chartAxis}" />
+      <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="${chartAxis}" />
       ${xAxisLabels}
       <g clip-path="url(#dfmSummaryPlotClip)">${lines}</g>
       <rect class="dfmSummaryPlotHitArea" x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" />
@@ -653,7 +661,10 @@ function setSelectionRect(rect, start, current) {
 export function openDfmSummaryPlotWindow(summaryTable, options = {}) {
   ensureStyles();
   const existing = document.querySelector(".dfmSummaryPlotWindow");
-  if (existing) existing.remove();
+  if (existing) {
+    if (typeof existing.__dfmSummaryPlotClose === "function") existing.__dfmSummaryPlotClose();
+    else existing.remove();
+  }
   let plotMode = "values";
   let data = getSummaryPlotData(summaryTable, plotMode);
   const win = document.createElement("div");
@@ -711,12 +722,18 @@ export function openDfmSummaryPlotWindow(summaryTable, options = {}) {
   let interaction = null;
   let pendingPanZoom = null;
   let panRaf = 0;
+  let onColorThemeChanged = null;
 
   const close = () => {
     document.removeEventListener("keydown", onKeyDown);
+    if (onColorThemeChanged) {
+      window.removeEventListener("arcrho:color-theme-changed", onColorThemeChanged);
+      onColorThemeChanged = null;
+    }
     cancelActiveInteraction();
     win.remove();
   };
+  win.__dfmSummaryPlotClose = close;
 
   function onKeyDown(event) {
     if (event.key !== "Escape" || !activeTool) return;
@@ -747,6 +764,8 @@ export function openDfmSummaryPlotWindow(summaryTable, options = {}) {
       });
     }
   };
+  onColorThemeChanged = () => render();
+  window.addEventListener("arcrho:color-theme-changed", onColorThemeChanged);
 
   const toggleSeries = (index, checked) => {
     if (!Number.isFinite(index)) return;

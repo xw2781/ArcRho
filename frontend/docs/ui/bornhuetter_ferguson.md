@@ -5,7 +5,7 @@ Bornhuetter Ferguson method page for producing a final ultimate vector from late
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.bornhuetter_ferguson.entry_points -->
-- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260720c`; inline imports _none_.
+- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260722a`, `/ui/shared/services/color_theme.js?v=20260723a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
@@ -31,7 +31,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Opens inside Project Instance as a floating iframe method window at `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`.
+- Opens either from its Home `Datasets & Methods` launch card as a standalone shell tab or inside Project Instance as a floating iframe method window at `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`.
 - Uses `ui/shared/tabbed_page/` for reusable tab chrome and pop-out behavior, and `ui/shared/tabs/details/`, `ui/shared/tabs/notes/`, and `ui/shared/tabs/audit_log/` for shared tab presentation. BF modules still own method persistence, calculations, dirty state, save/close coordination, and BF-specific behavior; the established BF tab IDs and `arcrho:*` contracts remain unchanged. BF also uses shared dataset origin-label, dataset picker, filename-sanitizer, and save-bar helpers, and its tab labels use the same Arial-first application font stack as Dataset tabs.
 - Details, Method table, Audit Log table, select carets, and save actions follow the compact DFM-style ArcRho controls; single-value BF dataset pickers use the same three-dot button design as DFM Details.
 - Every BF tab uses the shared white `bfPageHost` workspace surface inside the DFM-style gutter and border frame.

@@ -1,0 +1,131 @@
+/* Shared semantic values for the unchanged Light baseline. Feature-local Light
+   rules stay with their owning base stylesheet; Dark-only deviations stay in dark.css. */
+:root:not([data-arcrho-theme]),
+:root[data-arcrho-theme="light"] {
+  color-scheme: light;
+
+  /* Native document/window paint. */
+  --ar-native-window-background: #ffffff;
+
+  /* Operational workspace surfaces. */
+  --ar-color-canvas: #f4f7fa;
+  --ar-color-canvas-subtle: #f8fafc;
+  --ar-color-surface: #ffffff;
+  --ar-color-surface-raised: #fbfcfe;
+  --ar-color-surface-muted: #eef2f6;
+  --ar-color-surface-soft: #f1f5f9;
+  --ar-color-surface-hover: #e8eef6;
+  --ar-color-surface-selected: #dbeafe;
+  --ar-color-input: #ffffff;
+
+  /* Text and icon hierarchy. */
+  --ar-color-text: #1f2937;
+  --ar-color-text-strong: #111827;
+  --ar-color-text-muted: #64748b;
+  --ar-color-text-subtle: #94a3b8;
+  --ar-color-text-disabled: #9ca3af;
+  --ar-color-text-on-accent: #ffffff;
+
+  /* Edges, focus, and elevation. */
+  --ar-color-border: #d8dde3;
+  --ar-color-border-strong: #cbd5e1;
+  --ar-color-border-focus: #93c5fd;
+  --ar-color-focus-ring: rgba(96, 165, 250, 0.16);
+  --ar-color-overlay: rgba(15, 23, 42, 0.18);
+  --ar-shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --ar-shadow-floating: 0 8px 20px rgba(15, 23, 42, 0.08);
+  --ar-shadow-dialog: 0 18px 42px rgba(15, 23, 42, 0.24);
+
+  /* Shared live-DOM popout chrome (exact current light values). */
+  --ar-popout-surface: #ffffff;
+  --ar-popout-border: #aebbd0;
+  --ar-popout-header: #edf1f5;
+  --ar-popout-header-border: #c9d1dc;
+  --ar-popout-title: #202327;
+  --ar-popout-control-background: #ffffff;
+  --ar-popout-control-border: #c6ced8;
+  --ar-popout-control-foreground: #333333;
+  --ar-popout-control-hover-background: #dbeafe;
+  --ar-popout-control-hover-border: #93c5fd;
+  --ar-popout-control-close-hover-background: #fee2e2;
+  --ar-popout-control-close-hover-border: #fca5a5;
+  --ar-popout-tab-muted-background: #e5e7eb;
+
+  /* Canvas and SVG chart chrome; series colors stay data-semantic. */
+  --ar-chart-background: #ffffff;
+  --ar-chart-grid: #e5eaf0;
+  --ar-chart-axis: #aeb8c5;
+  --ar-chart-text: #4b5563;
+  --ar-chart-text-muted: #5f6b7a;
+  --ar-chart-point-fill: #ffffff;
+  --ar-chart-dataset-grid: #eeeeee;
+  --ar-chart-dataset-axis: #999999;
+  --ar-chart-dataset-text: #333333;
+  --ar-chart-dataset-status-text: #000000;
+  --ar-chart-dataset-strong-text: #000000;
+  --ar-chart-dfm-grid: #eef2f7;
+  --ar-chart-dfm-axis: #9ca3af;
+  --ar-chart-dfm-text: #374151;
+  --ar-chart-dfm-empty-text: #555555;
+  --ar-chart-dfm-mark: #4b5563;
+  --ar-chart-dfm-mark-muted: #6b7280;
+  --ar-chart-dfm-selection-fill: #ffffff;
+  --ar-chart-dfm-point-border: #94a3b8;
+  --ar-chart-dfm-band: rgba(107, 114, 128, 0.1);
+  --ar-chart-dfm-hover: rgba(15, 23, 42, 0.08);
+  --ar-chart-svg-grid: #e6ebf2;
+  --ar-chart-svg-axis: #aeb8c8;
+  --ar-chart-svg-text: #475569;
+  --ar-chart-svg-text-muted: #667085;
+
+  /* Restrained application accents. */
+  --ar-color-accent: #2b6df6;
+  --ar-color-accent-strong: #1d4ed8;
+  --ar-color-theme-mark: #2563eb;
+  --ar-color-accent-soft: #eaf2ff;
+  --ar-color-accent-hover: #dbeafe;
+  --ar-color-success: #15803d;
+  --ar-color-success-soft: #f0fdf4;
+  --ar-color-warning: #b45309;
+  --ar-color-warning-soft: #fffbeb;
+  --ar-color-danger: #be123c;
+  --ar-color-danger-soft: #fff1f2;
+  --ar-color-info: #2563eb;
+  --ar-color-info-soft: #eff6ff;
+
+  /* Dense tables and scrollbar trays. */
+  --ar-color-table-header: #f1f3f5;
+  --ar-color-table-row-hover: #f8fafc;
+  --ar-color-scrollbar-track: #f1f3f5;
+  --ar-color-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+  --ar-color-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+}
+
+:root[data-arcrho-app="arcode"]:not([data-arcrho-theme]),
+:root[data-arcrho-app="arcode"][data-arcrho-theme="light"] {
+  --ar-native-window-background: #f7f8fa;
+}
+
+[data-color-theme-menu].arcrhoThemeMenuOpen > [data-color-theme-options] {
+  display: block;
+}
+
+[data-color-theme-trigger]:focus-visible,
+[data-color-theme-menu]:focus-visible,
+[data-color-theme-value]:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+
+.menuSubmenuIcon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  margin-left: auto;
+  color: var(--ar-color-text-muted, #64748b);
+  overflow: visible;
+}
+
+.menuItem.disabled > .menuSubmenuIcon {
+  color: var(--ar-color-text-disabled, #9ca3af);
+}

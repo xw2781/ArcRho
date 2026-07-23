@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Refined the main window controls in Dark mode with theme-matched surfaces, borders, icons, and hover colors."
+}

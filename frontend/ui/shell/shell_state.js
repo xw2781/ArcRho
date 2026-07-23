@@ -76,7 +76,13 @@ export function loadState() {
       datasetId: t.datasetId,
       datasetInputs: normalizeBrowsingHistoryEntry(t.datasetInputs || null) || undefined,
       dfmInputs: t.type === "dfm" ? normalizeDfmInitialInputs(t.dfmInputs || null) : undefined,
-      dsInst: t.dsInst || (t.type === "dataset" ? `ds_${t.id}` : undefined),
+      dsInst: t.dsInst || (
+        t.type === "dataset" || t.type === "result_selection" || t.type === "bornhuetter_ferguson"
+          ? `${t.type === "dataset" ? "ds" : t.type === "result_selection" ? "rs" : "bf"}_${t.id}`
+          : undefined
+      ),
+      bfTab: t.type === "bornhuetter_ferguson" ? String(t.bfTab || "details") : undefined,
+      rsTab: t.type === "result_selection" ? String(t.rsTab || "details") : undefined,
       wfInst: t.wfInst,
       wfFresh: t.wfFresh,
       scInst: t.scInst || (t.type === "scripting" ? `sc_${t.id}` : undefined),
@@ -149,6 +155,8 @@ export function buildShellStateSnapshot() {
       datasetInputs: t.datasetInputs || undefined,
       dfmInputs: t.type === "dfm" ? normalizeDfmInitialInputs(t.dfmInputs || null) : undefined,
       dsInst: t.dsInst,
+      bfTab: t.type === "bornhuetter_ferguson" ? String(t.bfTab || "details") : undefined,
+      rsTab: t.type === "result_selection" ? String(t.rsTab || "details") : undefined,
       wfInst: t.wfInst,
       wfFresh: t.wfFresh,
       scInst: t.scInst,

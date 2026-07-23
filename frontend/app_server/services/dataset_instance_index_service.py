@@ -14,7 +14,7 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
-from app_server.services import dataset_sidecar_status_service
+from app_server.services import dataset_sidecar_status_service, user_identity_service
 
 INDEX_FILE_NAME = "index.json"
 INDEX_VERSION = 18
@@ -267,75 +267,15 @@ def _metadata_text(metadata: Dict[str, Any], keys: Tuple[str, ...]) -> str:
     return ""
 
 
-def _username_key(value: Any) -> str:
-    return _clean_text(value).casefold()
-
-
-def _load_username_display_names() -> Dict[str, str]:
-    try:
-        path = config.get_username_index_path()
-    except Exception:
-        return {}
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except Exception:
-        return {}
-
-    entries: List[Any]
-    if isinstance(raw, dict):
-        entries = raw.get("users") if isinstance(raw.get("users"), list) else []
-        if not entries:
-            out = {}
-            for key, value in raw.items():
-                if key == "users":
-                    continue
-                login = _username_key(key)
-                full_name = _clean_text(value)
-                if login and full_name:
-                    out[login] = full_name
-            return out
-    elif isinstance(raw, list):
-        entries = raw
-    else:
-        entries = []
-
-    out: Dict[str, str] = {}
-    for item in entries:
-        if isinstance(item, dict):
-            login = _username_key(
-                item.get("login_name")
-                or item.get("Login Name")
-                or item.get("username")
-                or item.get("user")
-            )
-            full_name = _clean_text(
-                item.get("full_name")
-                or item.get("Full Name")
-                or item.get("display_name")
-                or item.get("name")
-            )
-        elif isinstance(item, list) and len(item) >= 2:
-            login = _username_key(item[0])
-            full_name = _clean_text(item[1])
-        else:
-            continue
-        if login and full_name:
-            out[login] = full_name
-    return out
-
-
 def _apply_user_display_names(files: List[Dict[str, Any]]) -> None:
-    display_names = _load_username_display_names()
+    display_names = user_identity_service.load_username_display_names()
     if not display_names:
         return
     for item in files:
         user = _clean_text(item.get("user"))
         if not user:
             continue
-        item["user"] = display_names.get(_username_key(user), user)
+        item["user"] = display_names.get(user.casefold(), user)
 
 
 def _dataset_type_metadata(project_name: str) -> Dict[str, Dict[str, str]]:

@@ -1,8 +1,8 @@
 import { $, shell } from "./shell_context.js?v=20260510a";
-import { createIframeHost } from "./iframe_host.js?v=20260621b";
+import { createIframeHost } from "./iframe_host.js?v=20260723b";
 import { createFloatingTabsController, isFloatingTab } from "./floating_tabs.js?v=20260520b";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
-import { renderHomeViewOnce } from "./home_view.js?v=20260510a";
+import { renderHomeViewOnce } from "./home_view.js?v=20260723e";
 
 const datasetAutoRefreshDone = new Set();
 let homeView = null;
@@ -17,6 +17,7 @@ function initShellControllers() {
     iframeHostController = createIframeHost({
       closeAllShellMenus: () => shell.closeAllShellMenus?.(),
       getAutoSaveEnabled: () => shell.getAutoSaveEnabled?.(),
+      getColorTheme: () => shell.getColorTheme?.(),
       getIframeHost: () => iframeHost,
       getState: () => shell.state,
       handleShellFileDragOver: (event) => shell.handleShellFileDragOver?.(event),
@@ -165,7 +166,8 @@ export function renderContent() {
   const visibleDockedTab = isFloatingTab(activeTab)
     ? (shell.state.tabs.find(t => t.id === shell.state.lastDockedActiveId && !isFloatingTab(t)) || shell.state.tabs.find(t => t.id === "home"))
     : activeTab;
-  if (!visibleDockedTab || visibleDockedTab.type === "home") {
+  const homeIsVisible = !visibleDockedTab || visibleDockedTab.type === "home";
+  if (homeIsVisible) {
     if (homeView) homeView.style.display = "block";
     if (iframeHost) iframeHost.style.display = shell.state.tabs.some(isFloatingTab) ? "block" : "none";
   } else {
@@ -176,6 +178,15 @@ export function renderContent() {
     if (visibleDockedTab.iframe) visibleDockedTab.iframe.style.display = "block";
   }
   renderFloatingWindows();
+  for (const tab of shell.state.tabs) {
+    if (tab.type !== "file_explorer" || !tab.iframe?.contentWindow) continue;
+    try {
+      tab.iframe.contentWindow.postMessage({
+        type: "arcrho:file-explorer-visibility",
+        visible: tab.iframe.style.display !== "none",
+      }, "*");
+    } catch {}
+  }
   notifyTabActivated(activeTab);
 }
 

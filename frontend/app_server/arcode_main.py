@@ -27,6 +27,7 @@ ui_root = config.PROJECT_ROOT / "ui"
 arcode_ui = ui_root / "arcode"
 assistant_ui = ui_root / "ai-assistant"
 libs_ui = ui_root / "libs"
+shared_ui = ui_root / "shared"
 icons_root = config.PROJECT_ROOT / "icons"
 
 app.mount("/ui/arcode", StaticFiles(directory=str(arcode_ui), html=True), name="arcode-ui")
@@ -34,6 +35,8 @@ if assistant_ui.exists():
     app.mount("/ui/ai-assistant", StaticFiles(directory=str(assistant_ui)), name="ai-assistant-ui")
 if libs_ui.exists():
     app.mount("/ui/libs", StaticFiles(directory=str(libs_ui)), name="ui-libs")
+if shared_ui.exists():
+    app.mount("/ui/shared", StaticFiles(directory=str(shared_ui)), name="ui-shared")
 if icons_root.exists():
     app.mount("/icons", StaticFiles(directory=str(icons_root)), name="icons")
 

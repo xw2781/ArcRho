@@ -4,7 +4,7 @@ import {
   isAiAssistantLauncherVisible,
   toggleAiAssistantLauncherVisible,
 } from "/ui/ai-assistant/arcode.js?v=20260721a";
-import { createFileIconResolver } from "/ui/arcode/shared/file-icons/fileIconResolver.js?v=20260614a";
+import { createFileIconResolver } from "/ui/shared/file-icons/fileIconResolver.js?v=20260722a";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
 const initialOpenPath = new URLSearchParams(window.location.search).get("path") || "";
@@ -60,8 +60,8 @@ const HOME_CREATE_GROUPS = [
   { title: "Data & Query", icon: "database", kinds: ["sqlserver", "snowflake"] },
   { title: "Other", icon: "terminal", kinds: ["terminal", "text", "markdown"] },
 ];
-const FILE_ICON_BASE_PATH = "/ui/arcode/shared/file-icons/";
-const FILE_ICON_MAP_URL = `${FILE_ICON_BASE_PATH}file-icon-map.json?v=20260614a`;
+const FILE_ICON_BASE_PATH = "/ui/shared/file-icons/";
+const FILE_ICON_MAP_URL = `${FILE_ICON_BASE_PATH}file-icon-map.json?v=20260722a`;
 let resolveFileIconPath = null;
 
 const state = {
@@ -1740,6 +1740,7 @@ function initWindowControls() {
 function closeAllShellMenus() {
   document.querySelectorAll(".menuDropdown.open").forEach((el) => el.classList.remove("open"));
   document.querySelectorAll(".menu.open").forEach((el) => el.classList.remove("open"));
+  document.querySelectorAll('.menu[aria-expanded="true"]').forEach((el) => el.setAttribute("aria-expanded", "false"));
   closeTabContextMenu();
 }
 
@@ -1758,6 +1759,7 @@ function toggleMenu(menuName, forceOpen) {
   closeAllShellMenus();
   button.classList.toggle("open", shouldOpen);
   dropdown.classList.toggle("open", shouldOpen);
+  if (button.hasAttribute("aria-haspopup")) button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
   if (shouldOpen) {
     updateMenuState();
     positionMenu(button, dropdown);
@@ -1808,6 +1810,11 @@ function updateMenuState() {
   const aiBotIconLabel = document.querySelector('.menuItem[data-action="toggle-ai-bot-icon"] > span');
   if (aiBotIconLabel) {
     aiBotIconLabel.textContent = isAiAssistantLauncherVisible() ? "Hide AI Bot Icon" : "Show AI Bot Icon";
+  }
+  const colorTheme = window.ArcRhoColorTheme?.getTheme?.() || "light";
+  for (const theme of ["light", "dark"]) {
+    document.querySelector(`.menuItem[data-action="color-theme-${theme}"]`)
+      ?.setAttribute("aria-checked", theme === colorTheme ? "true" : "false");
   }
   ["save", "save-as", "close-tab", "close-others", "close-all", "render-markdown", "toggle-line-numbers", "toggle-exec-time", "refresh-tab", "hard-refresh", "rename"].forEach((action) => {
     setMenuItemDisabled(action, !hasTab);
@@ -1985,6 +1992,13 @@ async function runShellAction(action, detail = {}) {
   if (action === "zoom-reset") return setZoomPercent(100);
   if (action === "refresh-tab") return reloadActiveTab();
   if (action === "hard-refresh") return reloadActiveTab({ hard: true });
+  if (action === "color-theme-light" || action === "color-theme-dark") {
+    const theme = action.endsWith("dark") ? "dark" : "light";
+    window.ArcRhoColorTheme?.setTheme?.(theme, { source: "arcode-settings" });
+    updateMenuState();
+    updateStatus(`Color theme changed to ${theme === "dark" ? "Dark" : "Light"}.`);
+    return;
+  }
   if (action === "clear-cache-reload") {
     if (typeof window.ADAHost?.clearCacheAndReload !== "function") {
       updateStatus("Clear Cache & Reload requires the desktop app host.");
@@ -2000,7 +2014,10 @@ async function runShellAction(action, detail = {}) {
       return;
     }
     updateStatus("Clearing cache and reloading...");
-    return window.ADAHost.clearCacheAndReload({ restore: buildClearCacheReloadRestorePayload() });
+    return window.ADAHost.clearCacheAndReload({
+      restore: buildClearCacheReloadRestorePayload(),
+      colorTheme: window.ArcRhoColorTheme?.getTheme?.() || "light",
+    });
   }
   if (action === "new-window") return window.ADAHost?.openArcodeWindow?.({});
   if (action === "close-others") return activeTab() ? closeTabsExcept(state.activeId) : undefined;
@@ -2016,6 +2033,7 @@ async function runShellAction(action, detail = {}) {
 }
 
 function initShellMenus() {
+  window.ArcRhoColorTheme?.wireThemeMenus?.();
   document.querySelectorAll(".menu[data-menu]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -2299,6 +2317,7 @@ async function boot() {
   initAppFrameStyle();
   initWindowControls();
   initShellMenus();
+  window.addEventListener("arcrho:color-theme-changed", updateMenuState);
   initTabContextMenu();
   initAutoSaveControl();
   initZoomControls();

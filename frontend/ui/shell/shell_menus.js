@@ -36,6 +36,7 @@ function toggleDropdown(btn, dropdown, forceOpen) {
   if (!dropdown) return;
   const shouldOpen = typeof forceOpen === "boolean" ? forceOpen : !dropdown.classList.contains("open");
   dropdown.classList.toggle("open", shouldOpen);
+  if (btn?.hasAttribute?.("aria-haspopup")) btn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
   if (shouldOpen) positionDropdown(btn, dropdown);
 }
 function toggleFileMenu(forceOpen) { toggleDropdown(fileMenuBtn, fileMenuDropdown, forceOpen); }
@@ -54,6 +55,7 @@ function openShellMenu(type, forceOpen) {
   if (type === "file") updateFileMenuState();
   if (type === "edit") updateEditMenuState();
   if (type === "view") updateViewMenuState();
+  if (type === "settings") shell.updateColorThemeMenuState?.();
   if (type === "help") updateHelpMenuState();
   const isOpen = dropdown.classList.contains("open");
   const shouldOpen = typeof forceOpen === "boolean" ? forceOpen : !isOpen;
@@ -387,6 +389,7 @@ export async function openDevPanel() {
 export function initShellMenus() {
   if (shellMenusWired) return;
   shellMenusWired = true;
+  window.ArcRhoColorTheme?.wireThemeMenus?.();
   void refreshAboutVersion();
   window.addEventListener("adaHostReady", () => {
     aboutVersionLoaded = false;
@@ -458,7 +461,7 @@ export function initShellMenus() {
       sendScriptingCommand("arcrho:scripting-toggle-exec-time");
     }
   });
-  settingsMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action) return; toggleSettingsMenu(false); if (action === "font-settings") shell.openFontSettingsModal?.(); else if (action === "root-path-settings") shell.openRootPathSettingsModal?.(); else if (action === "force-rebuild-settings") shell.openForceRebuildSettingsModal?.(); else if (action === "refresh-page") shell.refreshActiveTab?.(); else if (action === "clear-cache-reload") Promise.resolve(shell.clearCacheAndReload?.()).catch((err) => { console.error("Clear Cache & Reload failed:", err); shell.updateStatusBar?.("Clear Cache & Reload failed."); }); });
+  settingsMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action) return; toggleSettingsMenu(false); if (action === "color-theme-light" || action === "color-theme-dark") { const theme = action.endsWith("dark") ? "dark" : "light"; shell.setColorTheme?.(theme); shell.updateStatusBar?.(`Color theme changed to ${theme === "dark" ? "Dark" : "Light"}.`); } else if (action === "font-settings") shell.openFontSettingsModal?.(); else if (action === "root-path-settings") shell.openRootPathSettingsModal?.(); else if (action === "force-rebuild-settings") shell.openForceRebuildSettingsModal?.(); else if (action === "refresh-page") shell.refreshActiveTab?.(); else if (action === "clear-cache-reload") Promise.resolve(shell.clearCacheAndReload?.()).catch((err) => { console.error("Clear Cache & Reload failed:", err); shell.updateStatusBar?.("Clear Cache & Reload failed."); }); });
   helpMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleHelpMenu(false); if (action === "view-dev-panel") openDevPanel(); else if (action === "reveal-project-instance-path") { shell.updateStatusBar?.("Opening reserving-class folder..."); sendProjectInstanceCommand("arcrho:project-instance-reveal-selected-path"); } else if (action === "open-project-instance-dataset-json") { shell.updateStatusBar?.("Opening dataset JSON file..."); sendProjectInstanceCommand("arcrho:project-instance-open-active-dataset-json"); } else if (action === "open-project-instance-dataset-sidecar") { shell.updateStatusBar?.("Opening dataset sidecar..."); sendProjectInstanceCommand("arcrho:project-instance-open-active-dataset-sidecar"); } else if (action === "open-dfm-json") { shell.updateStatusBar?.("Opening DFM JSON..."); sendDFMCommand("arcrho:dfm-open-method-json"); } });
   editMenuDropdown?.addEventListener("click", (e) => { const item = e.target?.closest?.(".menuItem"); const action = item?.getAttribute("data-action"); if (!action || item.classList.contains("disabled")) return; toggleEditMenu(false); if (action === "dfm-undo") sendDFMCommand("arcrho:dfm-undo"); else if (action === "dfm-redo") sendDFMCommand("arcrho:dfm-redo"); else if (action === "dfm-exclude-high") sendDFMCommand("arcrho:dfm-exclude-high"); else if (action === "dfm-exclude-low") sendDFMCommand("arcrho:dfm-exclude-low"); else if (action === "dfm-include-all") sendDFMCommand("arcrho:dfm-include-all"); else if (action === "render-all-markdown") sendScriptingCommand("arcrho:scripting-render-all-markdown"); });
   document.addEventListener("pointerdown", (e) => { const hit = e.target?.closest?.(".menu, .menuDropdown, .tabMenu, .plusTab, #tabCtxMenu, .macroSplitContextMenu, .macroItemContextMenu"); if (!hit) closeAllShellMenus(); }, true);

@@ -43,8 +43,6 @@ const APP_DISPLAY_VERSION = String(
   || process.env.ARCRHO_DISPLAY_VERSION
   || (app.isPackaged ? app.getVersion() : `${app.getVersion()}+`)
 ).trim() || app.getVersion();
-const URL = `http://${HOST}:${PORT}/ui/?v=${encodeURIComponent(UI_VERSION)}`;
-const ARCODE_URL = `http://${HOST}:${PORT}/ui/arcode/main.html?v=${encodeURIComponent(UI_VERSION)}`;
 const BACKEND_HEALTH_URL = `http://${HOST}:${PORT}/app/health`;
 const BACKEND_TOKEN = crypto.randomBytes(16).toString("hex");
 const START_BACKEND = (APP_MODE === "arcode" ? process.env.ARCODE_START_BACKEND : process.env.ARCRHO_START_BACKEND) !== "0";
@@ -71,6 +69,25 @@ function resolveDfmRatioUndoDir(dirPath) {
 
 const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const MAIN_WINDOW_PREFS_FILE = "main_window_prefs.json";
+const WINDOW_BACKGROUND_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const COLOR_THEMES = new Set(["light", "dark"]);
+const HOST_WINDOW_BACKGROUND_FALLBACK_COLOR = "#ffffff";
+const ARCODE_WINDOW_BACKGROUND_COLOR = "#f7f8fa";
+
+function readCanonicalLightWindowBackgroundColor() {
+  try {
+    const lightThemePath = path.join(APP_ROOT, "ui", "shared", "styles", "themes", "light.css");
+    const lightThemeCss = fs.readFileSync(lightThemePath, "utf8");
+    const match = lightThemeCss.match(/--ar-native-window-background:\s*(#[0-9a-fA-F]{6})/);
+    if (WINDOW_BACKGROUND_COLOR_RE.test(match?.[1] || "")) return match[1].toLowerCase();
+  } catch {
+    // Keep the host safe if packaged theme assets are temporarily unavailable.
+  }
+  return HOST_WINDOW_BACKGROUND_FALLBACK_COLOR;
+}
+
+const DEFAULT_WINDOW_BACKGROUND_COLOR = readCanonicalLightWindowBackgroundColor();
+const HOME_FOLDERS_PREFS_FILE = "home_folders.json";
 const ARCODE_USER_SETTINGS_FILE = "user_settings.json";
 const ARCODE_LEGACY_USER_SETTINGS_FILE = "settings.json";
 const SCRIPTING_SHORTCUTS_FILE = "scripting_shortcuts.json";
@@ -726,6 +743,10 @@ function getScriptingNotebookPrefsPath() {
   return path.join(getPrefsDir(), SCRIPTING_NOTEBOOK_PREFS_FILE);
 }
 
+function getHomeFoldersPrefsPath() {
+  return path.join(getPrefsDir(), HOME_FOLDERS_PREFS_FILE);
+}
+
 function normalizeRecentIpynbPaths(value, fallbackPath = "") {
   const inputs = Array.isArray(value) ? value : [];
   if (fallbackPath) inputs.unshift(fallbackPath);
@@ -1088,12 +1109,51 @@ async function openExcelWorkbookReadOnly(targetPath) {
   return { ok: false, error: detail || "Excel read-only open failed." };
 }
 
-function loadMainWindowPrefs() {
+function normalizeWindowBackgroundColor(value, fallback = DEFAULT_WINDOW_BACKGROUND_COLOR) {
+  const color = String(value || "").trim();
+  return WINDOW_BACKGROUND_COLOR_RE.test(color) ? color.toLowerCase() : fallback;
+}
+
+function isDarkWindowBackgroundColor(value) {
+  const color = normalizeWindowBackgroundColor(value);
+  const red = Number.parseInt(color.slice(1, 3), 16);
+  const green = Number.parseInt(color.slice(3, 5), 16);
+  const blue = Number.parseInt(color.slice(5, 7), 16);
+  return ((red * 299) + (green * 587) + (blue * 114)) / 1000 < 128;
+}
+
+function readMainWindowPrefsData() {
   try {
     const prefPath = getMainWindowPrefsPath();
-    if (!fs.existsSync(prefPath)) return null;
+    if (!fs.existsSync(prefPath)) return {};
     const raw = fs.readFileSync(prefPath, "utf8");
     const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeMainWindowPrefsData(value) {
+  try {
+    const prefPath = getMainWindowPrefsPath();
+    fs.mkdirSync(path.dirname(prefPath), { recursive: true });
+    const payload = {
+      ...(value && typeof value === "object" && !Array.isArray(value) ? value : {}),
+      updated_at: new Date().toISOString(),
+    };
+    const tmpPath = `${prefPath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), "utf8");
+    fs.renameSync(tmpPath, prefPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadMainWindowPrefs() {
+  try {
+    const parsed = readMainWindowPrefsData();
     const width = Math.round(Number(parsed?.width || 0));
     const height = Math.round(Number(parsed?.height || 0));
     if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
@@ -1105,34 +1165,56 @@ function loadMainWindowPrefs() {
 }
 
 function saveMainWindowPrefs(sizeLike) {
-  try {
-    const width = Math.round(Number(sizeLike?.width || 0));
-    const height = Math.round(Number(sizeLike?.height || 0));
-    if (!Number.isFinite(width) || !Number.isFinite(height)) return;
-    if (width < 820 || height < 620) return;
+  const width = Math.round(Number(sizeLike?.width || 0));
+  const height = Math.round(Number(sizeLike?.height || 0));
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+  if (width < 820 || height < 620) return;
+  writeMainWindowPrefsData({
+    ...readMainWindowPrefsData(),
+    width,
+    height,
+  });
+}
 
-    const prefPath = getMainWindowPrefsPath();
-    fs.mkdirSync(path.dirname(prefPath), { recursive: true });
+function loadCachedWindowBackgroundColor() {
+  return normalizeWindowBackgroundColor(readMainWindowPrefsData()?.theme_background_color);
+}
 
-    const payload = {
-      width,
-      height,
-      updated_at: new Date().toISOString(),
-    };
-    const tmpPath = `${prefPath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), "utf8");
-    fs.renameSync(tmpPath, prefPath);
-  } catch {
-    // ignore preference write failures
-  }
+function saveCachedWindowBackgroundColor(value) {
+  const color = normalizeWindowBackgroundColor(value, "");
+  if (!color) return false;
+  return writeMainWindowPrefsData({
+    ...readMainWindowPrefsData(),
+    theme_background_color: color,
+  });
+}
+
+function normalizeColorThemePreference(value, fallback = "") {
+  const theme = String(value || "").trim().toLowerCase();
+  return COLOR_THEMES.has(theme) ? theme : fallback;
+}
+
+function loadColorThemePreference() {
+  return normalizeColorThemePreference(readMainWindowPrefsData()?.color_theme);
+}
+
+function saveColorThemePreference(value) {
+  const theme = normalizeColorThemePreference(value);
+  if (!theme) return false;
+  return writeMainWindowPrefsData({
+    ...readMainWindowPrefsData(),
+    color_theme: theme,
+  });
 }
 
 function createSplashWindow() {
+  const startupBackgroundColor = loadCachedWindowBackgroundColor();
   splashWin = new BrowserWindow({
     width: 500,
     height: 400,
     frame: false,
     transparent: true,
+    backgroundColor: startupBackgroundColor,
     resizable: false,
     center: true,
     alwaysOnTop: false,
@@ -1145,7 +1227,10 @@ function createSplashWindow() {
   });
 
   splashWin.loadFile(path.join(APP_ROOT, "ui", "splash.html"), {
-    query: { version: APP_DISPLAY_VERSION },
+    query: {
+      version: APP_DISPLAY_VERSION,
+      theme: isDarkWindowBackgroundColor(startupBackgroundColor) ? "dark" : "light",
+    },
   });
   return splashWin;
 }
@@ -1659,14 +1744,25 @@ function wireAppWindowInput(targetWindow) {
 function buildArcodeUrl(options = {}) {
   const params = new URLSearchParams();
   params.set("v", String(options.uiVersion || UI_VERSION));
+  const theme = loadColorThemePreference();
+  if (theme) params.set("theme", theme);
   const openPath = String(options.path || options.openPath || "").trim();
   if (openPath) params.set("path", openPath);
   if (options.fresh) params.set("fresh", "1");
   return `http://${HOST}:${PORT}/ui/arcode/main.html?${params.toString()}`;
 }
 
+function buildArcRhoUrl(options = {}) {
+  const params = new URLSearchParams();
+  params.set("v", String(options.uiVersion || UI_VERSION));
+  const theme = loadColorThemePreference();
+  if (theme) params.set("theme", theme);
+  return `http://${HOST}:${PORT}/ui/?${params.toString()}`;
+}
+
 function createWindow() {
   const savedSize = loadMainWindowPrefs();
+  const startupBackgroundColor = loadCachedWindowBackgroundColor();
   const primaryDisplay = screen.getPrimaryDisplay();
   const screenWidth = Math.round(Number(primaryDisplay?.size?.width || 0));
   const screenHeight = Math.round(Number(primaryDisplay?.size?.height || 0));
@@ -1680,7 +1776,7 @@ function createWindow() {
     frame: false,
     thickFrame: true,  // Adds Windows border for resize handles and visibility on Win10
     show: false,  // Hidden until splash closes
-    backgroundColor: "#ffffff",
+    backgroundColor: startupBackgroundColor,
     title: APP_MODE === "arcode" ? "Arcode" : "ArcRho",
     webPreferences: {
       preload: PRELOAD_PATH,
@@ -1741,7 +1837,7 @@ function createWindow() {
     windowSizeSaveTimer = null;
   });
 
-  win.loadURL(APP_MODE === "arcode" ? ARCODE_URL : URL);
+  win.loadURL(APP_MODE === "arcode" ? buildArcodeUrl() : buildArcRhoUrl());
   wireAppWindowInput(win);
 }
 
@@ -1757,6 +1853,10 @@ function createArcodeWindow(options = {}) {
     return arcodeWin;
   }
 
+  const cachedBackgroundColor = loadCachedWindowBackgroundColor();
+  const startupBackgroundColor = isDarkWindowBackgroundColor(cachedBackgroundColor)
+    ? cachedBackgroundColor
+    : ARCODE_WINDOW_BACKGROUND_COLOR;
   arcodeWin = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -1765,7 +1865,7 @@ function createArcodeWindow(options = {}) {
     frame: false,
     thickFrame: true,
     show: false,
-    backgroundColor: "#f7f8fa",
+    backgroundColor: startupBackgroundColor,
     title: "Arcode",
     webPreferences: {
       preload: PRELOAD_PATH,
@@ -1889,26 +1989,40 @@ ipcMain.handle("pick-open-file", async (event, payload) => {
 ipcMain.handle("arcode-list-folder", async (_event, payload) => {
   const folderPath = String(payload?.path || "").trim();
   const includeHidden = !!payload?.includeHidden;
+  const includeMetadata = !!payload?.includeMetadata;
   if (!folderPath) return { ok: false, error: "Empty folder path.", entries: [] };
   try {
     const stat = await fs.promises.stat(folderPath);
     if (!stat.isDirectory()) return { ok: false, error: `Not a folder: ${folderPath}`, entries: [] };
     const dirents = await fs.promises.readdir(folderPath, { withFileTypes: true });
-    const entries = dirents
-      .filter((entry) => includeHidden || !entry.name.startsWith("."))
-      .map((entry) => {
-        const entryPath = path.join(folderPath, entry.name);
-        return {
-          name: entry.name,
-          path: entryPath,
-          isDirectory: entry.isDirectory(),
-          isFile: entry.isFile(),
-        };
-      })
-      .sort((a, b) => {
-        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-      });
+    const visibleDirents = dirents.filter((entry) => includeHidden || !entry.name.startsWith("."));
+    const entries = await Promise.all(visibleDirents.map(async (entry) => {
+      const entryPath = path.join(folderPath, entry.name);
+      let entryStat = null;
+      if (includeMetadata) {
+        try {
+          entryStat = await fs.promises.stat(entryPath);
+        } catch {
+          entryStat = null;
+        }
+      }
+      const isDirectory = entryStat ? entryStat.isDirectory() : entry.isDirectory();
+      const isFile = entryStat ? entryStat.isFile() : entry.isFile();
+      return {
+        name: entry.name,
+        path: entryPath,
+        isDirectory,
+        isFile,
+        ...(includeMetadata ? {
+          size: isFile && Number.isFinite(entryStat?.size) ? entryStat.size : null,
+          mtimeMs: Number.isFinite(entryStat?.mtimeMs) ? entryStat.mtimeMs : null,
+        } : {}),
+      };
+    }));
+    entries.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
     return { ok: true, path: folderPath, entries };
   } catch (err) {
     return { ok: false, error: String(err?.message || err || "Could not list folder."), entries: [] };
@@ -2444,6 +2558,41 @@ ipcMain.handle("arcode-user-settings-save", async (_event, payload) => {
   }
 });
 
+ipcMain.handle("home-folders-preferences-load", async () => {
+  const filePath = getHomeFoldersPrefsPath();
+  try {
+    if (!fs.existsSync(filePath)) return { ok: true, exists: false, preferences: {} };
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Home folder preferences must contain a JSON object.");
+    }
+    return { ok: true, exists: true, preferences: parsed };
+  } catch (err) {
+    return { ok: false, exists: false, preferences: {}, error: String(err?.message || err || "Could not load Home folder preferences.") };
+  }
+});
+
+ipcMain.handle("home-folders-preferences-save", async (_event, payload) => {
+  const preferences = payload?.preferences;
+  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
+    return { ok: false, error: "Invalid Home folder preferences payload." };
+  }
+  const filePath = getHomeFoldersPrefsPath();
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const stored = {
+      ...preferences,
+      updatedAt: new Date().toISOString(),
+    };
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(stored, null, 2), "utf8");
+    fs.renameSync(tmpPath, filePath);
+    return { ok: true, path: filePath, preferences: stored };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not save Home folder preferences.") };
+  }
+});
+
 ipcMain.handle("scripting-last-notebook-load", async () => {
   const filePath = getScriptingNotebookPrefsPath();
   try {
@@ -2542,6 +2691,8 @@ async function clearWindowCacheAndStorage(targetWindow, payload) {
   pendingClearCacheReloadRestore = payload?.restore && typeof payload.restore === "object"
     ? payload.restore
     : null;
+  const requestedTheme = normalizeColorThemePreference(payload?.colorTheme);
+  if (requestedTheme) saveColorThemePreference(requestedTheme);
   try {
     await targetWindow.webContents.session.clearCache();
     await targetWindow.webContents.session.clearStorageData();
@@ -2574,7 +2725,7 @@ ipcMain.handle("app-clear-cache-reload", async (event, payload) => {
       || pendingClearCacheReloadRestore?.kind === "arcode-clear-cache-reload-restore-v1";
     const reloadUrl = isArcodeReload
       ? buildArcodeUrl({ uiVersion })
-      : `http://${HOST}:${PORT}/ui/?v=${encodeURIComponent(uiVersion)}`;
+      : buildArcRhoUrl({ uiVersion });
     await targetWindow.loadURL(reloadUrl);
     return true;
   } catch (error) {
@@ -2654,6 +2805,33 @@ ipcMain.handle("window-resize", (event, payload) => {
   const w = Math.max(200, Number(payload?.width || 0));
   const h = Math.max(200, Number(payload?.height || 0));
   if (w && h) targetWindow.setSize(Math.round(w), Math.round(h));
+});
+
+ipcMain.handle("window-set-background-color", (event, payload) => {
+  const color = normalizeWindowBackgroundColor(payload?.color, "");
+  if (!color) return false;
+  const targetWindow = getIpcWindow(event);
+  if (!targetWindow || targetWindow.isDestroyed()) return false;
+  try {
+    targetWindow.setBackgroundColor(color);
+    saveCachedWindowBackgroundColor(color);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle("color-theme-preference-load", () => {
+  const theme = loadColorThemePreference();
+  return { exists: !!theme, theme: theme || "light" };
+});
+
+ipcMain.handle("color-theme-preference-save", (_event, payload) => {
+  const theme = normalizeColorThemePreference(payload?.theme);
+  if (!theme) return { ok: false, error: "Invalid color theme." };
+  return saveColorThemePreference(theme)
+    ? { ok: true, theme }
+    : { ok: false, error: "Could not save the color theme preference." };
 });
 
 ipcMain.handle("zoom-get", (event) => {

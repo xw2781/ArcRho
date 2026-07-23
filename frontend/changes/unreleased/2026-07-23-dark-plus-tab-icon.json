@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "The add-tab plus icon now has a refined centered shape and theme-correct contrast in Dark mode."
+}

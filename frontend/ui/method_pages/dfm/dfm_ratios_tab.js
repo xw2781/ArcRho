@@ -26,7 +26,7 @@ import {
   moveActiveSelectableTableSelection,
   wireSelectableTable,
 } from "/ui/shared/components/spreadsheet/table_selection.js";
-import { wirePercentDevelopedCurveMenu } from "/ui/method_pages/dfm/dfm_percent_developed_curve_window.js?v=20260514e";
+import { wirePercentDevelopedCurveMenu } from "/ui/method_pages/dfm/dfm_percent_developed_curve_window.js?v=20260722a";
 import {
   buildRatioSelectionPattern,
   buildAverageSelectionPayload,
@@ -47,7 +47,7 @@ import {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260716a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260722a";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -55,7 +55,7 @@ import {
   showRatioColumnChart,
   resetRatioChartThresholds,
   setRatioChartCallbacks,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260716a";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260722a";
 import {
   applyDfmCellNoteMarkers,
   hasDfmCellNote,
@@ -77,14 +77,14 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260716a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260722a";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
   scheduleRatioChartRender,
   showRatioColumnChart,
   resetRatioChartThresholds,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260716a";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260722a";
 
 
 

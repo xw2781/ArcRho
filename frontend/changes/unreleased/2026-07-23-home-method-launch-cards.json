@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "The Home page now groups Dataset, DFM, Bornhuetter Ferguson, and Result Selection launch cards under Datasets & Methods with title-case group labels."
+}

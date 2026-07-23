@@ -433,10 +433,16 @@ function positionPlusMenu() {
 function ensurePlusMenu(host) {
   if (!host) return;
   if (!plusBtnEl) {
-    plusBtnEl = document.createElement("div");
+    plusBtnEl = document.createElement("button");
     plusBtnEl.className = "plusTab";
     plusBtnEl.id = "plusTabBtn";
-    plusBtnEl.textContent = "+";
+    plusBtnEl.type = "button";
+    plusBtnEl.setAttribute("aria-label", "Add tab");
+    plusBtnEl.innerHTML = `
+      <svg class="plusTabIcon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="M8 3.5v9M3.5 8h9"></path>
+      </svg>
+    `;
     plusBtnEl.title = "Add...";
     plusBtnEl.addEventListener("click", (e) => { e.stopPropagation(); togglePlusMenu(true); });
   }

@@ -11,7 +11,7 @@ import {
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
-import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260714a";
+import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
@@ -19,7 +19,7 @@ import {
   formatSidecarAuditEventDate,
   normalizeSidecarAuditEntries,
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
-import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js";
+import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js?v=20260722a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 

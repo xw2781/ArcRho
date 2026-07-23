@@ -529,13 +529,6 @@ body.win10-borders::after {
   display: block;
 }
 
-.menuArrow {
-  margin-left: auto;
-  color: #64748b;
-  font-size: 15px;
-  line-height: 1;
-}
-
 .menuSubmenu {
   position: absolute;
   top: -6px;
@@ -567,6 +560,31 @@ body.win10-borders::after {
   margin-left: auto;
   color: #777;
   font-size: 11px;
+}
+
+.menuThemeMark {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ar-color-theme-mark, #2563eb);
+  opacity: 0;
+}
+
+.menuItem[aria-checked="true"] .menuThemeMark {
+  opacity: 1;
+}
+
+.menuThemeMark svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .menuSep {

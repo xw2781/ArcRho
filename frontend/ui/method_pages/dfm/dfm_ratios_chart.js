@@ -30,7 +30,7 @@ import {
   isUserEntryConfig,
   getUserEntryValueForCol,
   scheduleRatioSummaryUpdate,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260716a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260722a";
 import {
   beginRatioHistoryAction,
   cancelRatioHistoryAction,
@@ -44,6 +44,10 @@ let ratioChartDragAxisRange = null;
 let ratioChartYAxisRangeByCol = new Map();
 let ratioChartAxisDragPreview = null;
 let ratioChartAxisDragStart = null;
+
+function getRatioChartColor(propertyName, fallback) {
+  return window.ArcRhoColorTheme?.getCssColor?.(propertyName, fallback) || fallback;
+}
 
 export function setRatioChartCallbacks({ onRatioStateMutated } = {}) {
   if (typeof onRatioStateMutated === "function") _onRatioStateMutated = onRatioStateMutated;
@@ -611,6 +615,8 @@ function renderRatioColumnChart(canvas, labels, values, status) {
   const W_css = canvas.width / dpr;
   const H_css = canvas.height / dpr;
   ctx.clearRect(0, 0, W_css, H_css);
+  ctx.fillStyle = getRatioChartColor("--ar-chart-background", "#ffffff");
+  ctx.fillRect(0, 0, W_css, H_css);
 
   setRatioChartPoints([]);
   const valid = values
@@ -618,7 +624,7 @@ function renderRatioColumnChart(canvas, labels, values, status) {
     .filter(Boolean);
   if (!valid.length) {
     ctx.font = "12px Arial";
-    ctx.fillStyle = "#555";
+    ctx.fillStyle = getRatioChartColor("--ar-chart-dfm-empty-text", "#555555");
     ctx.fillText("No data to plot.", 10, 20);
     return;
   }
@@ -725,7 +731,7 @@ function renderRatioColumnChart(canvas, labels, values, status) {
   setRatioChartScale({ x0, x1, y0, y1, yMin, yMax, dataMin, dataMax, xSpan: span, width: W, height: H });
   const scale = getRatioChartScale();
 
-  ctx.strokeStyle = "#9ca3af";
+  ctx.strokeStyle = getRatioChartColor("--ar-chart-dfm-axis", "#9ca3af");
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(x0, y0);
@@ -741,12 +747,12 @@ function renderRatioColumnChart(canvas, labels, values, status) {
     const y = y1 - t * (y1 - y0);
     const v = yMin + t * (yMax - yMin);
     const tickLabel = formatRatio(v, getDfmDecimalPlaces());
-    ctx.strokeStyle = "#eef2f7";
+    ctx.strokeStyle = getRatioChartColor("--ar-chart-dfm-grid", "#eef2f7");
     ctx.beginPath();
     ctx.moveTo(x0, y);
     ctx.lineTo(x1, y);
     ctx.stroke();
-    ctx.fillStyle = "#374151";
+    ctx.fillStyle = getRatioChartColor("--ar-chart-dfm-text", "#374151");
     ctx.fillText(tickLabel, 6, y + 4);
     if (i === 0 || i === yTicks) {
       const w = ctx.measureText(tickLabel).width || 28;
@@ -761,13 +767,13 @@ function renderRatioColumnChart(canvas, labels, values, status) {
     }
   }
 
-  ctx.fillStyle = "#374151";
+  ctx.fillStyle = getRatioChartColor("--ar-chart-dfm-text", "#374151");
   ctx.font = denseLabels ? "10px Arial" : "11px Arial";
   ctx.textAlign = rotate90 ? "center" : (denseLabels ? "right" : "center");
   const labelY = H - extraBottomPad - (denseLabels ? 8 : 6);
   for (let i = 0; i < labels.length; i++) {
     let x = getX(i);
-    ctx.strokeStyle = "#eef2f7";
+    ctx.strokeStyle = getRatioChartColor("--ar-chart-dfm-grid", "#eef2f7");
     ctx.beginPath();
     ctx.moveTo(x, y0);
     ctx.lineTo(x, y1);
@@ -803,7 +809,7 @@ function renderRatioColumnChart(canvas, labels, values, status) {
   scale.leftThresholdX = leftThresholdX;
   if (leftThresholdX > x0) {
     ctx.save();
-    ctx.fillStyle = "rgba(107, 114, 128, 0.10)";
+    ctx.fillStyle = getRatioChartColor("--ar-chart-dfm-band", "rgba(107, 114, 128, 0.10)");
     ctx.fillRect(x0, y0, Math.max(0, leftThresholdX - x0), Math.max(0, y1 - y0));
     ctx.restore();
   }
@@ -811,7 +817,7 @@ function renderRatioColumnChart(canvas, labels, values, status) {
     const t = (upperVal - yMin) / (yMax - yMin);
     const upperY = y1 - t * (y1 - y0);
     ctx.save();
-    ctx.fillStyle = "rgba(15, 23, 42, 0.08)";
+    ctx.fillStyle = getRatioChartColor("--ar-chart-dfm-hover", "rgba(15, 23, 42, 0.08)");
     ctx.fillRect(x0, y0, Math.max(0, x1 - x0), Math.max(0, upperY - y0));
     ctx.restore();
   }
@@ -819,7 +825,7 @@ function renderRatioColumnChart(canvas, labels, values, status) {
     const t = (lowerVal - yMin) / (yMax - yMin);
     const lowerY = y1 - t * (y1 - y0);
     ctx.save();
-    ctx.fillStyle = "rgba(15, 23, 42, 0.08)";
+    ctx.fillStyle = getRatioChartColor("--ar-chart-dfm-hover", "rgba(15, 23, 42, 0.08)");
     ctx.fillRect(x0, lowerY, Math.max(0, x1 - x0), Math.max(0, y1 - lowerY));
     ctx.restore();
   }
@@ -827,7 +833,9 @@ function renderRatioColumnChart(canvas, labels, values, status) {
   if (Number.isFinite(leftThresholdX)) {
     const active = getRatioChartHoverLine() === "left" || (getRatioChartDragActive() && getRatioChartDragTarget() === "left");
     ctx.save();
-    ctx.strokeStyle = active ? "#4b5563" : "#6b7280";
+    ctx.strokeStyle = active
+      ? getRatioChartColor("--ar-chart-dfm-mark", "#4b5563")
+      : getRatioChartColor("--ar-chart-dfm-mark-muted", "#6b7280");
     ctx.lineWidth = active ? 2.2 : 1.5;
     ctx.setLineDash(active ? [] : [5, 4]);
     ctx.beginPath();
@@ -835,7 +843,9 @@ function renderRatioColumnChart(canvas, labels, values, status) {
     ctx.lineTo(leftThresholdX, y1);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = active ? "#4b5563" : "#6b7280";
+    ctx.fillStyle = active
+      ? getRatioChartColor("--ar-chart-dfm-mark", "#4b5563")
+      : getRatioChartColor("--ar-chart-dfm-mark-muted", "#6b7280");
     ctx.beginPath();
     ctx.arc(leftThresholdX, y0 + 6, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -957,8 +967,12 @@ function renderRatioColumnChart(canvas, labels, values, status) {
       const isSelected = pointStatus === "selected";
       ctx.beginPath();
       ctx.arc(x, y, 3.2, 0, Math.PI * 2);
-      ctx.fillStyle = isSelected ? "#2563eb" : "#ffffff";
-      ctx.strokeStyle = isSelected ? "#2563eb" : "#94a3b8";
+      ctx.fillStyle = isSelected
+        ? "#2563eb"
+        : getRatioChartColor("--ar-chart-dfm-selection-fill", "#ffffff");
+      ctx.strokeStyle = isSelected
+        ? "#2563eb"
+        : getRatioChartColor("--ar-chart-dfm-point-border", "#94a3b8");
       ctx.lineWidth = 1.5;
       ctx.fill();
       ctx.stroke();
@@ -1081,6 +1095,7 @@ export function wireRatioChartModal() {
   const modal = getRatioChartModalEl();
   if (!modal) return;
   setRatioChartWired(true);
+  window.addEventListener("arcrho:color-theme-changed", scheduleRatioChartRender);
   modal.querySelector(".dfmModalBackdrop")?.addEventListener("click", () => hideRatioColumnChart());
   document.getElementById("dfmRatioChartClose")?.addEventListener("click", () => hideRatioColumnChart());
   document.getElementById("dfmRatioChartIncludeAll")?.addEventListener("click", () => {

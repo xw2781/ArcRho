@@ -8,9 +8,9 @@ ArcRho embeds the Arcode launch path, and the same source can be packaged as the
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.arcode.entry_points -->
-- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260721b`; inline imports _none_.
-- `ui/arcode/notebook-editor/index.html`: external scripts `/ui/arcode/notebook-editor/cells.js?v=20260620a`, `/ui/arcode/notebook-editor/core.js?v=20260620a`, `/ui/arcode/notebook-editor/execution.js?v=20260620a`, `/ui/arcode/notebook-editor/index.js?v=20260620a`, `/ui/arcode/notebook-editor/notebook-io.js?v=20260620a`, `/ui/arcode/notebook-editor/panels.js?v=20260620a`, `/ui/arcode/notebook-editor/shortcuts.js?v=20260620a`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`; inline imports _none_.
-- `ui/arcode/code-editor/index.html`: external scripts `/ui/arcode/code-editor/index.js?v=20260721b`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`; inline imports _none_.
+- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260723a`, `/ui/shared/services/color_theme.js?v=20260723a`; inline imports _none_.
+- `ui/arcode/notebook-editor/index.html`: external scripts `/ui/arcode/notebook-editor/cells.js?v=20260620a`, `/ui/arcode/notebook-editor/core.js?v=20260722a`, `/ui/arcode/notebook-editor/execution.js?v=20260620a`, `/ui/arcode/notebook-editor/index.js?v=20260620a`, `/ui/arcode/notebook-editor/notebook-io.js?v=20260620a`, `/ui/arcode/notebook-editor/panels.js?v=20260620a`, `/ui/arcode/notebook-editor/shortcuts.js?v=20260620a`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`, `/ui/shared/services/color_theme.js?v=20260723a`; inline imports _none_.
+- `ui/arcode/code-editor/index.html`: external scripts `/ui/arcode/code-editor/index.js?v=20260722a`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`, `/ui/shared/services/color_theme.js?v=20260723a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `${window.location.origin}${path}`
@@ -45,6 +45,7 @@ Detected `fetch(...)` targets in key JS files:
 - Shows recent files in the File > Recent Files submenu; the home content area does not duplicate the recent-file list.
 - Shows home create cards grouped under Scripting, Data & Query, and Other; file-template cards create timestamped local files in the selected workspace folder, Snowflake files open in the Snowflake SQL editor, and the Terminal card opens a desktop terminal in the selected workspace folder through the Electron host bridge.
 - Shows a resizable file explorer in the Arcode workspace sidebar on Home and generic code editor tabs, stores the preferred sidebar width, exposes a manual refresh button, and watches visible workspace folders through the Electron host so folder listings refresh automatically when files are created, renamed, deleted, or otherwise changed on disk.
+- Resolves folder and common file-type artwork through the shared `ui/shared/file-icons/` package, which is also consumed by the ArcRho File Explorer tab; the resolver, JSON mapping, and SVG assets in that package are the single source of truth for both surfaces. The standalone Arcode server mounts `ui/shared`, and its PyInstaller specification bundles that canonical shared root alongside the Arcode UI.
 - Shows file-location, file-path copy, and close actions in the tab context menu.
 - The View menu includes a Show/Hide AI Bot Icon action that controls the Arcode ArcBot launcher without clearing assistant history.
 - Sends save/open/view commands to the active editor iframe using existing `arcode:scripting-*` messages and receives `arcode:update-active-tab-title`, `arcode:scripting-dirty`, and `arcode:status` responses.
@@ -55,11 +56,14 @@ Detected `fetch(...)` targets in key JS files:
 - ArcRho shell scripting launch actions open the desktop Arcode window through `openArcodeWindow`; browser fallback opens `/ui/arcode/main.html` directly.
 - Clear Cache & Reload stores a one-shot Arcode restore payload in the Electron host, clears Electron cache/storage, reloads the requesting Arcode window with a fresh timestamped UI URL, and restores the previously open Arcode tabs and active tab after boot.
 - The Arcode shell uses the same 10px left/right workspace gutter, flush compact menu bar, flush unclipped status bar with native resize indicator, bordered main frame, and status-bar zoom slider styling as the ArcRho main shell.
+- In Dark mode, Arcode shares ArcRho's raised titlebar-control surfaces, restrained accent hover for minimize/maximize, danger hover for close, and foreground-following SVG icon strokes.
+- Settings > Color Theme exposes the same Light and Dark choices as ArcRho. The shared theme service applies the selected palette immediately, relays it to existing notebook/code/Snowflake iframes, updates Monaco globally with `vs` or `vs-dark`, and synchronizes other same-origin ArcRho/Arcode windows without reloading editor state. Electron mirrors the renderer-computed background only as a startup paint hint so the next splash and hidden window pre-paint match the selected palette.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Stores Arcode recent files, the last selected workspace folder, and the preferred file-explorer width in the local Arcode user settings JSON, `%APPDATA%\Arcode\user_settings.json`, with browser local storage used only as a non-Electron fallback.
+- Uses the shared browser-owned `arcrho_color_theme` key for frontend color theme selection so ArcRho and Arcode have one preference source rather than competing app-specific copies. The value is restricted to `light` or `dark`, defaults to Light, and is intentionally cleared by Clear Cache & Reload.
 - Stores Snowflake connection profiles in `%APPDATA%\Arcode\snowflake_connections.json`; if that file is missing, the app-server can seed `my_example_connection` from `E:\XWSpace\Snowflake Config.txt` when present.
 - Leaves notebook cell persistence, output persistence, and notebook shortcut preferences inside the Arcode notebook-editor modules.
 - Leaves plain code/text persistence, autosave, disk conflict checks, formatting, Python run output, output panel layout, and text-file dirty state inside the Arcode code-editor modules.
@@ -79,6 +83,8 @@ Detected `fetch(...)` targets in key JS files:
 4. Change shared editor bridge behavior: update `ui/arcode/shared/editor_shared.js`, both editor consumers when applicable, and this doc together.
 5. Change Arcode assistant behavior: update the shared `ui/ai-assistant/` widget and the Arcode adapter together.
 6. Change Electron launch behavior: update `electron/main.js`, `electron/preload.js`, package scripts, and architecture notes together.
+7. Change Arcode theme behavior: update the shared theme service and Light/Dark stylesheets, then verify all three Monaco owners still resolve the shared initial theme and respond to live changes.
+8. Change explorer file icons: update `ui/shared/file-icons/` and verify both the Arcode sidebar and ArcRho File Explorer fallbacks.
 <!-- MANUAL:END -->
 
 ## Known Risks

@@ -1486,25 +1486,6 @@ export function createDatasetTypesFeature(deps = {}) {
   function showRecalcDialog(report) {
     const steps = collectRecalcSteps(report);
     if (!steps.length) return;
-    if (!document.getElementById("datasetTypesRecalcDialogStyles")) {
-      const style = document.createElement("style");
-      style.id = "datasetTypesRecalcDialogStyles";
-      style.textContent = `
-        .datasetTypesRecalcOverlay{position:fixed;inset:0;z-index:1400;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.18)}
-        .datasetTypesRecalcBox{position:relative;width:min(580px,calc(100vw - 40px));max-height:min(70vh,560px);border:1px solid #c9d1dc;border-radius:8px;background:#fff;box-shadow:0 18px 42px rgba(15,23,42,.24);padding:16px 18px 14px;box-sizing:border-box;display:flex;flex-direction:column;min-height:0}
-        .datasetTypesRecalcClose{position:absolute;top:7px;right:8px;width:24px;height:24px;border:none;border-radius:4px;background:transparent;color:#64748b;font-size:15px;line-height:24px;cursor:pointer}
-        .datasetTypesRecalcClose:hover{background:#f1f5f9;color:#0f172a}
-        .datasetTypesRecalcTitle{padding-right:26px;font-size:14px;font-weight:700}
-        .datasetTypesRecalcSummary{margin-top:8px;color:#475569;font-size:13px}
-        .datasetTypesRecalcList{margin-top:12px;padding:8px;border:1px solid #d8dde3;border-radius:6px;background:#f8fafc;overflow:auto;min-height:0;font-size:12px}
-        .datasetTypesRecalcItem{padding:7px 6px;border-bottom:1px solid #e5eaf1}
-        .datasetTypesRecalcItem:last-child{border-bottom:none}
-        .datasetTypesRecalcName{color:#111827;font-weight:700;overflow-wrap:anywhere}
-        .datasetTypesRecalcMeta{margin-top:2px;color:#64748b;overflow-wrap:anywhere}
-        .datasetTypesRecalcActions{display:flex;justify-content:flex-end;margin-top:16px}
-      `;
-      document.head.appendChild(style);
-    }
     const overlay = document.createElement("div");
     overlay.className = "datasetTypesRecalcOverlay";
     const box = document.createElement("div");

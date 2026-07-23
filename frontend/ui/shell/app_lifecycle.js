@@ -130,7 +130,10 @@ export async function clearCacheAndReload() {
   if (typeof hostApi?.clearCacheAndReload === "function") {
     try {
       shell.updateStatusBar?.("Clearing cache and reloading...");
-      const result = await hostApi.clearCacheAndReload({ restore });
+      const result = await hostApi.clearCacheAndReload({
+        restore,
+        colorTheme: shell.getColorTheme?.() || "light",
+      });
       if (result !== false) return;
       shell.updateStatusBar?.("Host cache reload was unavailable; using browser reload...");
     } catch (err) {
@@ -172,7 +175,10 @@ export async function restartApplication() {
   if (typeof hostApi?.clearAppCache === "function") {
     try {
       shell.updateStatusBar?.("Clearing cache before restart...");
-      const result = await hostApi.clearAppCache({ restore });
+      const result = await hostApi.clearAppCache({
+        restore,
+        colorTheme: shell.getColorTheme?.() || "light",
+      });
       if (result === false) shell.updateStatusBar?.("Host cache clear unavailable; restarting...");
     } catch (err) {
       console.warn("Host cache clear before restart failed:", err);

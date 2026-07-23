@@ -4,6 +4,26 @@ const DEFAULT_PALETTE = [
   "#d62728","#1f77b4","#2ca02c","#ff7f0e","#9467bd",
   "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"
 ];
+const renderedChartCanvases = new Set();
+
+function getChartColor(propertyName, fallback) {
+  return window.ArcRhoColorTheme?.getCssColor?.(propertyName, fallback) || fallback;
+}
+
+function paintChartBackground(ctx, width, height) {
+  ctx.fillStyle = getChartColor("--ar-chart-background", "#ffffff");
+  ctx.fillRect(0, 0, width, height);
+}
+
+window.addEventListener("arcrho:color-theme-changed", () => {
+  for (const canvas of renderedChartCanvases) {
+    if (!canvas.isConnected) {
+      renderedChartCanvases.delete(canvas);
+      continue;
+    }
+    canvas.__chartRedraw?.();
+  }
+});
 
 function getEffectiveDevLabels(model) {
   const devs = Array.isArray(model?.dev_labels) ? model.dev_labels : [];
@@ -41,7 +61,7 @@ function measurePadL(ctx, yTicks, formatValue) {
 
 // --- Shared: draw X-axis labels, rotated 90° if rotated=true ---
 function drawXLabels(ctx, labels, indices, getX, H, x0, x1, rotated) {
-  ctx.fillStyle = "#333";
+  ctx.fillStyle = getChartColor("--ar-chart-dataset-text", "#333333");
   ctx.font = "11px Arial";
   if (rotated) {
     for (const idx of indices) {
@@ -250,6 +270,8 @@ function buildCheckboxLegend(legendEl, labels, palette, hiddenSet, legendState, 
 // ============================================================
 export function renderChart(canvas, model, opts = {}) {
   if (!canvas) return;
+  renderedChartCanvases.add(canvas);
+  canvas.__chartRedraw = () => renderChart(canvas, model, opts);
 
   const mode = opts.mode || "byRow"; // "byRow" | "byCol"
   const byCol = mode === "byCol";
@@ -279,7 +301,9 @@ export function renderChart(canvas, model, opts = {}) {
     const ctx = canvas.getContext("2d");
     resizeCanvasToCSS(canvas);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    paintChartBackground(ctx, canvas.width, canvas.height);
     ctx.font = "12px Arial";
+    ctx.fillStyle = getChartColor("--ar-chart-dataset-status-text", "#000000");
     ctx.fillText("No data.", 10, 20);
     return;
   }
@@ -309,6 +333,7 @@ export function renderChart(canvas, model, opts = {}) {
   resizeCanvasToCSS(canvas);
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  paintChartBackground(ctx, canvas.width, canvas.height);
 
   const W = canvas.width;
   const H = canvas.height;
@@ -335,6 +360,7 @@ export function renderChart(canvas, model, opts = {}) {
 
   if (!yRange || pointCount < 2) {
     ctx.font = "12px Arial";
+    ctx.fillStyle = getChartColor("--ar-chart-dataset-status-text", "#000000");
     ctx.fillText("Not enough data to plot.", 10, 20);
     return;
   }
@@ -345,20 +371,20 @@ export function renderChart(canvas, model, opts = {}) {
   const getX = (idx) => x0 + (idx / (pointCount - 1)) * (x1 - x0);
 
   // Axes
-  ctx.strokeStyle = "#999";
+  ctx.strokeStyle = getChartColor("--ar-chart-dataset-axis", "#999999");
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(x0, y0); ctx.lineTo(x0, y1); ctx.lineTo(x1, y1);
   ctx.stroke();
 
   // Y ticks
-  ctx.fillStyle = "#333"; ctx.font = "11px Arial";
+  ctx.fillStyle = getChartColor("--ar-chart-dataset-text", "#333333"); ctx.font = "11px Arial";
   for (const v of yTicks) {
     const t = (v - yMin) / (yMax - yMin);
     const y = y1 - t * (y1 - y0);
-    ctx.strokeStyle = "#eee";
+    ctx.strokeStyle = getChartColor("--ar-chart-dataset-grid", "#eeeeee");
     ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-    ctx.fillStyle = "#333";
+    ctx.fillStyle = getChartColor("--ar-chart-dataset-text", "#333333");
     ctx.fillText(formatValue(v), 6, y + 4);
   }
 
@@ -374,7 +400,7 @@ export function renderChart(canvas, model, opts = {}) {
   }
   for (const idx of xIndices) {
     const x = getX(idx);
-    ctx.strokeStyle = "#eee";
+    ctx.strokeStyle = getChartColor("--ar-chart-dataset-grid", "#eeeeee");
     ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
   }
   drawXLabels(ctx, formattedXLabels, xIndices, getX, H, x0, x1, rotateX);
@@ -447,7 +473,6 @@ export function renderChart(canvas, model, opts = {}) {
   }
 
   storeHitPoints(canvas, allHitPts);
-  canvas.__chartRedraw = () => renderChart(canvas, model, opts);
 
   // Draw enlarged marker for hovered point
   const hoverPt = canvas.__chartHoverPt;
@@ -479,7 +504,7 @@ export function renderChart(canvas, model, opts = {}) {
       const v = vals[r][c];
       const x = getX(ptIdx);
       const y = y1 - ((v - yMin) / (yMax - yMin)) * (y1 - y0);
-      ctx.fillStyle = "#000";
+      ctx.fillStyle = getChartColor("--ar-chart-dataset-strong-text", "#000000");
       ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
       ctx.font = "12px Arial";
       const lbl = byCol
