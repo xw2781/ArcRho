@@ -27,7 +27,7 @@ export function setDfmNotesText(value) {
 
 function ensureNotesController() {
   if (notesController && !notesController.destroyed) return notesController;
-  const container = document.getElementById("dfmNotesMount");
+  const container = document.getElementById("dfmNotesPage");
   if (!container) return null;
   notesController = mountNotesTab({
     container,

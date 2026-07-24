@@ -929,6 +929,7 @@ export function renderResultsTable() {
   totalTr.className = "dfmResultsTotalRow";
   const totalHead = document.createElement("th");
   totalHead.textContent = "Total";
+  totalHead.classList.add("rowhdr");
   totalHead.dataset.r = String(origins.length);
   totalTr.appendChild(totalHead);
 
@@ -978,6 +979,10 @@ export function renderResultsTable() {
     scrollHost: wrap,
     onSelectionChange: ({ ranges }) => {
       syncResultsSelectionState(wrap.querySelector("table.dfmResultsTable"), ranges);
+      // Match the shared Data grid: once a table selection starts, keyboard
+      // commands belong to the table rather than the control last focused.
+      // This lets Escape clear a selected cell or range immediately.
+      wrap.focus({ preventScroll: true });
     },
     onContextMenu: (event, cell, api) => {
       event.preventDefault();
