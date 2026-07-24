@@ -63,16 +63,35 @@ const detailsPatched = patchFile(installSectionPath, (original) => {
     "  SetDetailsPrint none",
     "${endif}",
   ].join("\n");
-  const detailBlock = [
+  const legacyDetailBlock = [
     "${IfNot} ${Silent}",
     "  SetDetailsPrint both",
     "  SetDetailsView show",
     "  DetailPrint \"Preparing destination and installing ArcRho files...\"",
     "${endif}",
   ].join("\n");
+  const forcedOpenDetailBlock = [
+    "${IfNot} ${Silent}",
+    "  SetDetailsPrint listonly",
+    "  SetDetailsView show",
+    "${endif}",
+  ].join("\n");
+  const detailBlock = [
+    "${IfNot} ${Silent}",
+    "  SetDetailsPrint listonly",
+    "${endif}",
+  ].join("\n");
 
   if (original.includes(detailBlock)) {
     return original;
+  }
+
+  if (original.includes(forcedOpenDetailBlock)) {
+    return original.replace(forcedOpenDetailBlock, detailBlock);
+  }
+
+  if (original.includes(legacyDetailBlock)) {
+    return original.replace(legacyDetailBlock, detailBlock);
   }
 
   if (!original.includes(quietBlock)) {
@@ -91,7 +110,7 @@ if (compressorPatched) {
 }
 
 if (detailsPatched) {
-  console.log("Enabled ArcRho NSIS install detail output.");
+  console.log("Kept NSIS install details separate and user-expandable.");
 } else {
-  console.log("ArcRho NSIS install detail output is already enabled.");
+  console.log("NSIS install details are already separate and user-expandable.");
 }

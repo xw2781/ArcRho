@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "The Windows installer now shows progress percentage and estimated time remaining with optional installation details.",
+  "details": [
+    "The displayed percentage and time estimate use the same native progress value as the green bar.",
+    "The detailed output panel is collapsed by default and can be expanded at any time without replacing the progress summary."
+  ]
+}

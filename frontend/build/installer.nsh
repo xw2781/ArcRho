@@ -11,6 +11,8 @@
 
 !ifndef BUILD_UNINSTALLER
   Var ArcRhoInstallProgressLastText
+  Var ArcRhoInstallProgressStartedAt
+  Var ArcRhoInstallProgressStartedAtPosition
   Var ArcRhoInstallExcelAddIn
   Var ArcRhoInstallExcelAddInCheckbox
   Var ArcRhoServerRoot
@@ -19,14 +21,15 @@
   Var ArcRhoExcelAddInPath
 
   !macro ArcRho_PrintInstallDetail MSG
-    SetDetailsPrint both
-    SetDetailsView show
+    ; Keep action-level output in the details list so it cannot replace the
+    ; bar-derived percentage and time estimate in the status caption.
+    SetDetailsPrint listonly
     DetailPrint "${MSG}"
   !macroend
 !endif
 
-; Keep details visible by default so users can inspect installer actions.
-ShowInstDetails show
+; Keep details available through the native toggle without opening them by default.
+ShowInstDetails hide
 ShowUninstDetails show
 
 !macro preInit
@@ -35,7 +38,6 @@ ShowUninstDetails show
 
 !macro customInit
   SetDetailsPrint both
-  SetDetailsView show
   StrCpy $ArcRhoInstallExcelAddIn "1"
   Call ArcRho_DetectServerRoot
   DetailPrint "===== Installing ArcRho ====="
@@ -183,6 +185,11 @@ ShowUninstDetails show
 
   Function ArcRho_InstFiles_Show
     StrCpy $ArcRhoInstallProgressLastText ""
+    StrCpy $ArcRhoInstallProgressStartedAtPosition ""
+    Push $0
+    System::Call "kernel32::GetTickCount() i.r0"
+    StrCpy $ArcRhoInstallProgressStartedAt $0
+    Pop $0
     !insertmacro ArcRho_PrintInstallDetail "Installer progress monitoring started."
     !insertmacro ArcRho_PrintInstallDetail "Preparing destination and installing ArcRho files..."
     Call ArcRho_InstFiles_UpdateProgressText
@@ -190,37 +197,84 @@ ShowUninstDetails show
   FunctionEnd
 
   Function ArcRho_InstFiles_UpdateProgressText
+    ; Timer callbacks must not leak registers or NSIS execution flags.
+    System::Store "SF"
     FindWindow $0 "#32770" "" $HWNDPARENT
     GetDlgItem $1 $0 1004
     GetDlgItem $2 $0 1006
     ${If} $1 == 0
     ${OrIf} $2 == 0
     ${OrIf} $0 == 0
-      Return
+      Goto ArcRho_InstFiles_UpdateProgressText_Done
     ${EndIf}
 
     SendMessage $1 0x0408 0 0 $3
     SendMessage $1 0x0407 0 0 $4
     SendMessage $1 0x0407 1 0 $5
-    IntOp $8 $4 - $5
-    ${If} $8 <= 0
-      Return
+    IntOp $6 $4 - $5
+    ${If} $6 <= 0
+      Goto ArcRho_InstFiles_UpdateProgressText_Done
     ${EndIf}
 
-    IntOp $6 $3 - $5
-    IntOp $6 $6 * 100
-    IntOp $6 $6 / $8
-    ${If} $6 < 10
-      StrCpy $6 10
-    ${ElseIf} $6 > 99
-      StrCpy $6 99
+    IntOp $7 $3 - $5
+    ${If} $7 < 0
+      StrCpy $7 0
+    ${ElseIf} $7 > $6
+      StrCpy $7 $6
     ${EndIf}
 
-    StrCpy $7 "[$6%] Installing ArcRho files..."
-    ${If} $7 != $ArcRhoInstallProgressLastText
-      StrCpy $ArcRhoInstallProgressLastText $7
-      SendMessage $2 0x000C 0 "STR:$7"
+    ${If} $ArcRhoInstallProgressStartedAtPosition == ""
+      StrCpy $ArcRhoInstallProgressStartedAtPosition $3
     ${EndIf}
+
+    ; Derive both visible values from the exact native progress-bar position.
+    IntOp $8 $7 * 100
+    IntOp $8 $8 / $6
+    StrCpy $R6 "$8% complete - Estimating time left..."
+
+    ${If} $8 >= 100
+      StrCpy $R6 "100% complete - Finalizing installation..."
+    ${Else}
+      IntOp $R2 $3 - $ArcRhoInstallProgressStartedAtPosition
+      System::Call "kernel32::GetTickCount() i.r9"
+      IntOp $R0 $9 - $ArcRhoInstallProgressStartedAt
+      ${If} $R2 < 0
+        StrCpy $ArcRhoInstallProgressStartedAtPosition $3
+        StrCpy $ArcRhoInstallProgressStartedAt $9
+        StrCpy $R2 0
+      ${ElseIf} $R2 == 0
+        ; Exclude any pre-copy pause from the elapsed-rate estimate.
+        StrCpy $ArcRhoInstallProgressStartedAt $9
+      ${EndIf}
+
+      ; Wait for measurable work and elapsed time before presenting an ETA.
+      ${If} $R2 > 0
+      ${AndIf} $R0 >= 2000
+        IntOp $R1 $R0 / 1000
+        IntOp $R3 $6 - $7
+        IntOp $R3 $R1 * $R3
+        IntOp $R3 $R3 / $R2
+        ${If} $R3 < 1
+          StrCpy $R3 1
+        ${EndIf}
+
+        ${If} $R3 < 60
+          StrCpy $R6 "$8% complete - Estimated time left: $R3 sec"
+        ${Else}
+          IntOp $R4 $R3 / 60
+          IntOp $R5 $R3 % 60
+          StrCpy $R6 "$8% complete - Estimated time left: $R4 min $R5 sec"
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+
+    ${If} $R6 != $ArcRhoInstallProgressLastText
+      StrCpy $ArcRhoInstallProgressLastText $R6
+      SendMessage $2 0x000C 0 "STR:$R6"
+    ${EndIf}
+
+    ArcRho_InstFiles_UpdateProgressText_Done:
+    System::Store "fL"
   FunctionEnd
 
   Function ArcRho_InstFiles_CompleteProgressText
@@ -230,28 +284,30 @@ ShowUninstDetails show
     ${OrIf} $1 == 0
       Return
     ${EndIf}
-    SendMessage $1 0x000C 0 "STR:[100%] Installation complete."
+    SendMessage $1 0x000C 0 "STR:100% - Installation complete."
   FunctionEnd
 
-  ; electron-builder runs this after the embedded package is extracted.
+  !macro ArcRho_PrintCoreFileDetails
+    !insertmacro ArcRho_PrintInstallDetail "Core application files extracted."
+    !insertmacro ArcRho_PrintInstallDetail "Writing installer metadata..."
+  !macroend
+
+  ; electron-builder runs the matching hook after the embedded package is extracted.
   !macro customFiles_x64
-    !insertmacro ArcRho_PrintInstallDetail "[65%] Core application files extracted."
-    !insertmacro ArcRho_PrintInstallDetail "[75%] Writing installer metadata..."
+    !insertmacro ArcRho_PrintCoreFileDetails
   !macroend
 
   !macro customFiles_ia32
-    !insertmacro ArcRho_PrintInstallDetail "[65%] Core application files extracted."
-    !insertmacro ArcRho_PrintInstallDetail "[75%] Writing installer metadata..."
+    !insertmacro ArcRho_PrintCoreFileDetails
   !macroend
 
   !macro customFiles_arm64
-    !insertmacro ArcRho_PrintInstallDetail "[65%] Core application files extracted."
-    !insertmacro ArcRho_PrintInstallDetail "[75%] Writing installer metadata..."
+    !insertmacro ArcRho_PrintCoreFileDetails
   !macroend
 
-  ; Optional no-op hook used only to surface a progress line between file extraction and final completion.
+  ; Optional no-op hook used only to surface an action detail before final completion.
   !macro registerFileAssociations
-    !insertmacro ArcRho_PrintInstallDetail "[90%] Creating shortcuts and registry entries..."
+    !insertmacro ArcRho_PrintInstallDetail "Creating shortcuts and registry entries..."
   !macroend
 
   Function ArcRho_InstallExcelAddIn
@@ -260,15 +316,15 @@ ShowUninstDetails show
     Call ArcRho_SetExcelAddInPath
 
     ${If} $ArcRhoExcelAddInPath == ""
-      !insertmacro ArcRho_PrintInstallDetail "[95%] ArcRho Excel add-in installation skipped because no ArcRho Server root was selected or detected."
+      !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation skipped because no ArcRho Server root was selected or detected."
       ${IfNot} ${Silent}
         MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the Excel add-in could not be installed automatically because no ArcRho Server root was selected or detected."
       ${EndIf}
       Return
     ${EndIf}
 
-    !insertmacro ArcRho_PrintInstallDetail "[95%] Installing ArcRho Excel add-in..."
-    !insertmacro ArcRho_PrintInstallDetail "[95%] Excel add-in path: $ArcRhoExcelAddInPath"
+    !insertmacro ArcRho_PrintInstallDetail "Installing ArcRho Excel add-in..."
+    !insertmacro ArcRho_PrintInstallDetail "Excel add-in path: $ArcRhoExcelAddInPath"
     nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -STA -File "$PLUGINSDIR\install_arcrho_excel_addin.ps1" -AddInPath "$ArcRhoExcelAddInPath"'
     Pop $0
     Pop $1
@@ -278,9 +334,9 @@ ShowUninstDetails show
     ${EndIf}
 
     ${If} $0 == 0
-      !insertmacro ArcRho_PrintInstallDetail "[95%] ArcRho Excel add-in installed."
+      !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installed."
     ${Else}
-      !insertmacro ArcRho_PrintInstallDetail "[95%] ArcRho Excel add-in installation failed with exit code $0."
+      !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation failed with exit code $0."
       ${IfNot} ${Silent}
         MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the Excel add-in could not be installed automatically. You can install it manually from $ArcRhoExcelAddInPath.$\r$\n$\r$\n$1"
       ${EndIf}
@@ -288,14 +344,15 @@ ShowUninstDetails show
   FunctionEnd
 
   !macro customInstall
-    nsDialogs::KillTimer ArcRho_InstFiles_UpdateProgressText
     ${If} $ArcRhoInstallExcelAddIn == "1"
       Call ArcRho_InstallExcelAddIn
     ${Else}
-      !insertmacro ArcRho_PrintInstallDetail "[95%] ArcRho Excel add-in installation skipped."
+      !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation skipped."
     ${EndIf}
+    Call ArcRho_InstFiles_UpdateProgressText
+    nsDialogs::KillTimer ArcRho_InstFiles_UpdateProgressText
     Call ArcRho_InstFiles_CompleteProgressText
-    !insertmacro ArcRho_PrintInstallDetail "[100%] Installation complete."
+    !insertmacro ArcRho_PrintInstallDetail "Installation complete."
   !macroend
 !endif
 
