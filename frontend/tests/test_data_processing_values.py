@@ -25,13 +25,13 @@ class DataProcessingValuesServiceTests(unittest.TestCase):
         self.project_dir.mkdir(parents=True)
         self.table_path = self.project_dir / "source.csv"
         self.table_path.write_text(
-            "STATE_CD,IBNRCAT,Earned_Premium,Paid_Loss\n"
-            "NJ,BI,100,\n"
-            "NJ,PD,,50\n"
-            "PA,BI,75,\n"
-            ",BI,25,\n"
-            "NJ,,10,\n"
-            "NJ,UMBI,,0\n",
+            "STATE_CD,IBNRCAT,Earned_Premium,Paid_Loss,Paid_Loss_Copy\n"
+            "NJ,BI,100,,\n"
+            "NJ,PD,,50,50\n"
+            "PA,BI,75,,\n"
+            ",BI,25,,\n"
+            "NJ,,10,,\n"
+            "NJ,UMBI,,0,0\n",
             encoding="utf-8",
         )
         self._write_mapping()
@@ -75,6 +75,12 @@ class DataProcessingValuesServiceTests(unittest.TestCase):
                     "dataset_type": "Paid Loss",
                     "level": None,
                 },
+                {
+                    "field_name": "Paid_Loss_Copy",
+                    "significance": "Dataset",
+                    "dataset_type": "Paid Loss Copy",
+                    "level": None,
+                },
             ],
         }
         (self.project_dir / config.FIELD_MAPPING_FILE).write_text(
@@ -82,13 +88,20 @@ class DataProcessingValuesServiceTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    @staticmethod
+    def _dataset_combinations(payload: dict, source_measure: str) -> list:
+        dataset = payload["datasets"][source_measure]
+        return payload["combination_sets"][dataset["combination_set_id"]]
+
     def test_builds_chunked_dataset_vocabularies_and_omits_incomplete_keys(self) -> None:
         with patch.object(data_processing_values_service, "_CSV_CHUNK_SIZE", 2):
             payload = data_processing_values_service.get_data_processing_values(
                 self.project_name
             )
 
-        self.assertEqual(payload["json_format"], config.DATA_PROCESSING_VALUES_FORMAT)
+        self.assertEqual(
+            payload["json_format"], config.DATA_PROCESSING_VALUES_CACHE_FORMAT
+        )
         self.assertEqual(
             payload["key_fields"],
             [{"field": "STATE_CD", "level": 1}, {"field": "IBNRCAT", "level": 5}],
@@ -96,11 +109,23 @@ class DataProcessingValuesServiceTests(unittest.TestCase):
         earned = payload["datasets"]["Earned_Premium"]
         self.assertEqual(earned["dataset_type"], "Earned Premium")
         self.assertEqual(earned["row_count"], 4)
-        self.assertEqual(earned["combination_count"], 2)
-        self.assertEqual(earned["combinations"], [["NJ", "BI"], ["PA", "BI"]])
+        self.assertNotIn("combination_count", earned)
+        self.assertNotIn("combinations", earned)
+        self.assertEqual(
+            self._dataset_combinations(payload, "Earned_Premium"),
+            [["NJ", "BI"], ["PA", "BI"]],
+        )
         paid = payload["datasets"]["Paid_Loss"]
         self.assertEqual(paid["row_count"], 2)
-        self.assertEqual(paid["combinations"], [["NJ", "PD"], ["NJ", "UMBI"]])
+        self.assertEqual(
+            self._dataset_combinations(payload, "Paid_Loss"),
+            [["NJ", "PD"], ["NJ", "UMBI"]],
+        )
+        self.assertEqual(
+            paid["combination_set_id"],
+            payload["datasets"]["Paid_Loss_Copy"]["combination_set_id"],
+        )
+        self.assertEqual(len(payload["combination_sets"]), 2)
         self.assertEqual(payload["missing_columns"], [])
 
         cache_path = Path(config.get_data_processing_values_path(self.project_name))
@@ -132,7 +157,7 @@ class DataProcessingValuesServiceTests(unittest.TestCase):
         self.assertEqual(refreshed["datasets"]["Earned_Premium"]["row_count"], 5)
         self.assertIn(
             ["CT", "COL"],
-            refreshed["datasets"]["Earned_Premium"]["combinations"],
+            self._dataset_combinations(refreshed, "Earned_Premium"),
         )
 
     def test_mapping_signature_invalidates_dataset_label(self) -> None:
@@ -172,7 +197,7 @@ class DataProcessingValuesServiceTests(unittest.TestCase):
         self.assertEqual(payload["datasets"]["Earned_Premium"]["row_count"], 5)
         self.assertIn(
             ["CT", "COL"],
-            payload["datasets"]["Earned_Premium"]["combinations"],
+            self._dataset_combinations(payload, "Earned_Premium"),
         )
 
     def test_cache_lock_contention_has_a_typed_error(self) -> None:
@@ -200,7 +225,46 @@ class DataProcessingValuesServiceTests(unittest.TestCase):
 
         self.assertNotIn("source_table_fingerprint", options)
         self.assertNotIn("mapping_signature", options)
-        self.assertEqual(options["datasets"], payload["datasets"])
+        self.assertNotIn("combination_sets", options)
+        self.assertEqual(options["json_format"], config.DATA_PROCESSING_VALUES_FORMAT)
+        self.assertNotIn(
+            "combination_set_id", options["datasets"]["Earned_Premium"]
+        )
+        self.assertEqual(
+            options["datasets"]["Earned_Premium"],
+            {
+                "dataset_type": "Earned Premium",
+                "row_count": 4,
+                "combination_count": 2,
+                "combinations": [["NJ", "BI"], ["PA", "BI"]],
+            },
+        )
+
+    def test_old_or_malformed_cache_is_rebuilt_as_compact_v2(self) -> None:
+        cache_path = Path(config.get_data_processing_values_path(self.project_name))
+        original = data_processing_values_service.get_data_processing_values(
+            self.project_name
+        )
+
+        old_format = dict(original)
+        old_format["json_format"] = config.DATA_PROCESSING_VALUES_FORMAT
+        cache_path.write_text(json.dumps(old_format), encoding="utf-8")
+        rebuilt = data_processing_values_service.get_data_processing_values(self.project_name)
+        self.assertEqual(
+            rebuilt["json_format"], config.DATA_PROCESSING_VALUES_CACHE_FORMAT
+        )
+
+        malformed = dict(rebuilt)
+        malformed["combination_sets"] = {}
+        cache_path.write_text(json.dumps(malformed), encoding="utf-8")
+        repaired = data_processing_values_service.get_data_processing_values(self.project_name)
+        self.assertEqual(
+            repaired["json_format"], config.DATA_PROCESSING_VALUES_CACHE_FORMAT
+        )
+        self.assertEqual(
+            self._dataset_combinations(repaired, "Earned_Premium"),
+            [["NJ", "BI"], ["PA", "BI"]],
+        )
 
 
 if __name__ == "__main__":

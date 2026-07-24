@@ -247,7 +247,10 @@ DATASET_TYPES_FILE = "dataset_types.json"
 DATA_PROCESSING_RULES_FILE = "data_processing_rules.json"
 DATA_PROCESSING_RULES_FORMAT = "arcrho-data-processing-rules-v1"
 DATA_PROCESSING_VALUES_FILE = "data_processing_values.json"
+# The rule-editor response retains this public, materialized vocabulary contract.
 DATA_PROCESSING_VALUES_FORMAT = "arcrho-source-vocab-v1"
+# The project cache can evolve independently because it is regenerated on demand.
+DATA_PROCESSING_VALUES_CACHE_FORMAT = "arcrho-source-vocab-v2"
 DATA_PROCESSING_ALGORITHM_VERSION = "arcrho-data-processing-v1"
 USERNAME_INDEX_FILE = "username_index.json"
 PROJECT_SETTINGS_XLSX_FILE = "settings.xlsx"

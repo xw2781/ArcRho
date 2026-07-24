@@ -152,16 +152,61 @@ def _cache_is_current(
     contract: Dict[str, Any],
     fingerprint: Dict[str, Any],
 ) -> bool:
-    return bool(
+    if not (
         payload
-        and payload.get("json_format") == config.DATA_PROCESSING_VALUES_FORMAT
+        and payload.get("json_format") == config.DATA_PROCESSING_VALUES_CACHE_FORMAT
         and payload.get("source_table_fingerprint") == fingerprint
         and payload.get("mapping_signature") == contract.get("mapping_signature")
         and payload.get("key_fields") == contract.get("key_fields")
         and payload.get("dataset_fields") == contract.get("dataset_fields")
         and isinstance(payload.get("datasets"), dict)
+        and isinstance(payload.get("combination_sets"), dict)
         and isinstance(payload.get("missing_columns"), list)
-    )
+    ):
+        return False
+
+    datasets = payload["datasets"]
+    combination_sets = payload["combination_sets"]
+    dataset_fields = list(contract.get("dataset_fields") or [])
+    expected_measures = {
+        str(item.get("source_measure") or "")
+        for item in dataset_fields
+        if str(item.get("source_measure") or "")
+    }
+    if set(datasets) != expected_measures:
+        return False
+
+    key_field_count = len(contract.get("key_fields") or [])
+    for item in dataset_fields:
+        measure = str(item.get("source_measure") or "")
+        if not measure:
+            continue
+        dataset = datasets.get(measure)
+        if not isinstance(dataset, dict):
+            return False
+        if dataset.get("dataset_type") != item.get("dataset_type"):
+            return False
+        row_count = dataset.get("row_count")
+        if isinstance(row_count, bool) or not isinstance(row_count, int) or row_count < 0:
+            return False
+        combination_set_id = dataset.get("combination_set_id")
+        if (
+            not isinstance(combination_set_id, str)
+            or not combination_set_id
+        ):
+            return False
+        combinations = combination_sets.get(combination_set_id)
+        if (
+            not isinstance(combinations, list)
+            or any(
+                not isinstance(combination, list)
+                or len(combination) != key_field_count
+                or any(not isinstance(value, str) for value in combination)
+                for combination in combinations
+            )
+        ):
+            return False
+    return True
 
 
 def _sorted_combinations(values: set[Tuple[str, ...]]) -> List[List[str]]:
@@ -179,8 +224,7 @@ def _empty_dataset_payloads(dataset_fields: List[Dict[str, str]]) -> Dict[str, A
         str(item.get("source_measure") or ""): {
             "dataset_type": str(item.get("dataset_type") or ""),
             "row_count": 0,
-            "combination_count": 0,
-            "combinations": [],
+            "combination_set_id": "",
         }
         for item in dataset_fields
         if str(item.get("source_measure") or "")
@@ -207,6 +251,7 @@ def _build_cache_payload(
     combinations_by_measure: Dict[str, set[Tuple[str, ...]]] = {
         measure: set() for measure in measure_names
     }
+    combination_sets: Dict[str, List[List[str]]] = {}
     if fingerprint.get("exists"):
         try:
             header = pd.read_csv(
@@ -260,17 +305,19 @@ def _build_cache_payload(
 
     for measure, combinations in combinations_by_measure.items():
         values = _sorted_combinations(combinations)
-        datasets[measure]["combinations"] = values
-        datasets[measure]["combination_count"] = len(values)
+        combination_set_id = _hash_json(values)
+        datasets[measure]["combination_set_id"] = combination_set_id
+        combination_sets.setdefault(combination_set_id, values)
 
     return {
-        "json_format": config.DATA_PROCESSING_VALUES_FORMAT,
+        "json_format": config.DATA_PROCESSING_VALUES_CACHE_FORMAT,
         "updated_at": _utc_now(),
         "source_table_fingerprint": fingerprint,
         "mapping_signature": str(contract.get("mapping_signature") or ""),
         "key_fields": key_fields,
         "dataset_fields": dataset_fields,
         "missing_columns": missing_columns,
+        "combination_sets": combination_sets,
         "datasets": datasets,
     }
 
@@ -343,10 +390,34 @@ def get_data_processing_values(project_name: str) -> Dict[str, Any]:
 
 
 def source_vocabulary_options(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Return the path-free subset of a cache that is safe for API responses."""
+    """Return the path-free v1 editor response from the compact v2 cache."""
+    combination_sets = (
+        payload.get("combination_sets")
+        if isinstance(payload.get("combination_sets"), dict)
+        else {}
+    )
+    datasets: Dict[str, Any] = {}
+    raw_datasets = payload.get("datasets")
+    if isinstance(raw_datasets, dict):
+        for source_measure, raw_dataset in raw_datasets.items():
+            if not isinstance(raw_dataset, dict):
+                continue
+            combination_set_id = str(raw_dataset.get("combination_set_id") or "")
+            raw_combinations = combination_sets.get(combination_set_id)
+            combinations = (
+                [list(combination) for combination in raw_combinations]
+                if isinstance(raw_combinations, list)
+                else []
+            )
+            datasets[str(source_measure)] = {
+                "dataset_type": str(raw_dataset.get("dataset_type") or ""),
+                "row_count": raw_dataset.get("row_count", 0),
+                "combination_count": len(combinations),
+                "combinations": combinations,
+            }
     return {
-        "json_format": payload.get("json_format", config.DATA_PROCESSING_VALUES_FORMAT),
+        "json_format": config.DATA_PROCESSING_VALUES_FORMAT,
         "key_fields": list(payload.get("key_fields") or []),
-        "datasets": dict(payload.get("datasets") or {}),
+        "datasets": datasets,
         "missing_columns": list(payload.get("missing_columns") or []),
     }
