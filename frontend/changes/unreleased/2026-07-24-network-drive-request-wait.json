@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset and method requests now avoid stalled file-event waits on mapped network drives."
+}

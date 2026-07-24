@@ -26,6 +26,38 @@ except Exception:  # optional dependency
     FileSystemEventHandler = None
 
 
+_WINDOWS_DRIVE_REMOTE = 4
+
+
+def _windows_drive_type(root_path: str) -> int:
+    """Return the Windows drive type for an absolute drive root."""
+    import ctypes
+
+    return int(ctypes.windll.kernel32.GetDriveTypeW(root_path))
+
+
+def _is_network_path(path: str) -> bool:
+    """Whether *path* is a UNC path or resides on a mapped Windows network drive.
+
+    Windows file-system notifications are not reliable enough on SMB shares for a
+    synchronous request-result wait.  Detect a mapped drive through the Windows
+    drive type instead of relying on its drive letter, which is user-specific.
+    """
+    text = os.fspath(path)
+    if text.startswith(("\\\\", "//")):
+        return True
+    if os.name != "nt":
+        return False
+
+    drive, _ = os.path.splitdrive(text)
+    if not drive:
+        return False
+    try:
+        return _windows_drive_type(f"{drive}\\") == _WINDOWS_DRIVE_REMOTE
+    except (AttributeError, OSError):
+        return False
+
+
 # ---------------------------------------------------------------------------
 # String / filename sanitizers
 # ---------------------------------------------------------------------------
@@ -230,11 +262,13 @@ def _native_request_value(key: str, value: str) -> Any:
 
 
 def wait_for_file(path: str, timeout_sec: float, settle_ms: float = 50.0) -> bool:
+    timeout = max(0.0, float(timeout_sec))
+    deadline = time.monotonic() + timeout
     found = False
 
     if os.path.exists(path):
         found = True
-    else:
+    elif not _is_network_path(path):
         try:
             if Observer is None or FileSystemEventHandler is None:
                 raise RuntimeError("watchdog not available")
@@ -259,7 +293,7 @@ def wait_for_file(path: str, timeout_sec: float, settle_ms: float = 50.0) -> boo
             observer.schedule(handler, watch_dir, recursive=False)
             observer.start()
             try:
-                hit.wait(timeout=max(0.0, float(timeout_sec)))
+                hit.wait(timeout=max(0.0, deadline - time.monotonic()))
                 found = os.path.exists(path)
             finally:
                 observer.stop()
@@ -267,13 +301,15 @@ def wait_for_file(path: str, timeout_sec: float, settle_ms: float = 50.0) -> boo
         except Exception:
             pass
 
-        if not found:
-            t0 = time.time()
-            while time.time() - t0 <= timeout_sec:
-                if os.path.exists(path):
-                    found = True
-                    break
-                time.sleep(0.5)
+    if not found:
+        while time.monotonic() <= deadline:
+            if os.path.exists(path):
+                found = True
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.5, remaining))
 
     if found and settle_ms > 0:
         time.sleep(settle_ms / 1000.0)
