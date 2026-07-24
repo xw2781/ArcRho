@@ -8,6 +8,7 @@
   const DEFAULT_THEME = "light";
   const THEMES = Object.freeze(["light", "dark"]);
   const THEME_MENU_OPEN_CLASS = "arcrhoThemeMenuOpen";
+  const MONACO_ATOM_ONE_DARK_THEME = "arcrho-atom-one-dark";
   let hostPreferenceRevision = 0;
 
   function normalizeTheme(value) {
@@ -83,7 +84,9 @@
   }
 
   function getMonacoTheme(theme = getTheme()) {
-    return normalizeTheme(theme) === "dark" ? "vs-dark" : "vs";
+    if (normalizeTheme(theme) !== "dark") return "vs";
+    ensureAtomOneDarkMonacoTheme();
+    return MONACO_ATOM_ONE_DARK_THEME;
   }
 
   function getCssColor(propertyName, fallback = "", element = global.document?.documentElement) {
@@ -93,6 +96,88 @@
       return global.getComputedStyle(element).getPropertyValue(name).trim() || fallback;
     } catch {
       return fallback;
+    }
+  }
+
+  function toMonacoColor(value) {
+    return String(value || "").trim().replace(/^#/, "");
+  }
+
+  function buildAtomOneDarkMonacoTheme() {
+    const color = (propertyName) => getCssColor(propertyName);
+    const colors = Object.fromEntries([
+      ["editor.background", color("--ar-monaco-editor-background")],
+      ["editor.foreground", color("--ar-monaco-editor-foreground")],
+      ["editorCursor.foreground", color("--ar-monaco-editor-cursor")],
+      ["editor.lineHighlightBackground", color("--ar-monaco-editor-line-highlight")],
+      ["editor.selectionBackground", color("--ar-monaco-editor-selection")],
+      ["editor.inactiveSelectionBackground", color("--ar-monaco-editor-selection")],
+      ["editor.selectionHighlightBackground", color("--ar-monaco-editor-selection-highlight")],
+      ["editor.findMatchHighlightBackground", color("--ar-monaco-editor-find-match-highlight")],
+      ["editorIndentGuide.background1", color("--ar-monaco-editor-indent-guide")],
+      ["editorIndentGuide.activeBackground1", color("--ar-monaco-editor-indent-guide-active")],
+      ["editorLineNumber.foreground", color("--ar-monaco-editor-line-number")],
+      ["editorLineNumber.activeForeground", color("--ar-monaco-editor-foreground")],
+      ["editorWhitespace.foreground", color("--ar-monaco-editor-indent-guide")],
+      ["editorRuler.foreground", color("--ar-monaco-editor-indent-guide")],
+      ["editorGutter.background", color("--ar-monaco-editor-background")],
+      ["editorHoverWidget.background", color("--ar-monaco-editor-widget-background")],
+      ["editorHoverWidget.border", color("--ar-monaco-editor-widget-border")],
+      ["editorSuggestWidget.background", color("--ar-monaco-editor-widget-background")],
+      ["editorSuggestWidget.border", color("--ar-monaco-editor-widget-border")],
+      ["editorSuggestWidget.selectedBackground", color("--ar-monaco-editor-list-selection")],
+      ["editorWidget.background", color("--ar-monaco-editor-widget-background")],
+      ["editorWidget.border", color("--ar-monaco-editor-widget-border")],
+      ["list.activeSelectionBackground", color("--ar-monaco-editor-list-selection")],
+      ["list.activeSelectionForeground", color("--ar-monaco-editor-active-foreground")],
+      ["list.focusBackground", color("--ar-monaco-editor-list-selection")],
+      ["list.hoverBackground", color("--ar-monaco-editor-list-hover")],
+      ["scrollbarSlider.background", color("--ar-monaco-editor-scrollbar")],
+      ["scrollbarSlider.hoverBackground", color("--ar-monaco-editor-scrollbar-hover")],
+      ["scrollbarSlider.activeBackground", color("--ar-monaco-editor-scrollbar-active")],
+      ["editorError.foreground", color("--ar-monaco-syntax-invalid")],
+      ["editorWarning.foreground", color("--ar-monaco-syntax-type")],
+      ["editorInfo.foreground", color("--ar-monaco-syntax-function")],
+    ].filter(([, value]) => Boolean(value)));
+    const rule = (token, propertyName, fontStyle = "") => {
+      const foreground = toMonacoColor(color(propertyName));
+      if (!foreground) return null;
+      return fontStyle ? { token, foreground, fontStyle } : { token, foreground };
+    };
+
+    return {
+      base: "vs-dark",
+      inherit: true,
+      colors,
+      rules: [
+        rule("comment", "--ar-monaco-syntax-comment", "italic"),
+        rule("keyword", "--ar-monaco-syntax-keyword"),
+        rule("number", "--ar-monaco-syntax-number"),
+        rule("string", "--ar-monaco-syntax-string"),
+        rule("string.escape", "--ar-monaco-syntax-cyan"),
+        rule("regexp", "--ar-monaco-syntax-cyan"),
+        rule("type", "--ar-monaco-syntax-type"),
+        rule("class", "--ar-monaco-syntax-type"),
+        rule("function", "--ar-monaco-syntax-function"),
+        rule("variable", "--ar-monaco-syntax-variable"),
+        rule("variable.parameter", "--ar-monaco-editor-foreground"),
+        rule("tag", "--ar-monaco-syntax-variable"),
+        rule("attribute.name", "--ar-monaco-syntax-number"),
+        rule("delimiter", "--ar-monaco-editor-foreground"),
+        rule("identifier", "--ar-monaco-editor-foreground"),
+        rule("invalid", "--ar-monaco-syntax-invalid"),
+        rule("string.interpolated", "--ar-monaco-syntax-interpolation"),
+      ].filter(Boolean),
+    };
+  }
+
+  function ensureAtomOneDarkMonacoTheme() {
+    const defineTheme = global.monaco?.editor?.defineTheme;
+    if (typeof defineTheme !== "function") return;
+    try {
+      defineTheme(MONACO_ATOM_ONE_DARK_THEME, buildAtomOneDarkMonacoTheme());
+    } catch {
+      // Monaco may still be initializing; its next theme lookup will retry.
     }
   }
 

@@ -306,10 +306,11 @@ function initEditor() {
   return new Promise((resolve) => {
     window.require.config({ paths: { vs: "/ui/libs/monaco-editor/min/vs" } });
     window.require(["vs/editor/editor.main"], () => {
+      const monacoTheme = window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs";
       editor = window.monaco.editor.create($("editorHost"), {
         value: "",
         language: "sql",
-        theme: window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs",
+        theme: monacoTheme,
         automaticLayout: true,
         minimap: { enabled: false },
         fontSize: 13,

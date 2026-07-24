@@ -522,10 +522,11 @@ function initEditor() {
   return new Promise((resolve) => {
     window.require.config({ paths: { vs: "/ui/libs/monaco-editor/min/vs" } });
     window.require(["vs/editor/editor.main"], () => {
+      const monacoTheme = window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs";
       editor = window.monaco.editor.create($("editorHost"), {
         value: "",
         language: language(),
-        theme: window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs",
+        theme: monacoTheme,
         fontSize: 13,
         fontFamily: '"Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',
         minimap: { enabled: false },

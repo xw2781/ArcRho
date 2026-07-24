@@ -3,100 +3,100 @@
   color-scheme: dark;
 
   /* Native document/window paint. */
-  --ar-native-window-background: #10151c;
+  --ar-native-window-background: #282c34;
 
   /* Operational workspace surfaces. */
-  --ar-color-canvas: #10151c;
-  --ar-color-canvas-subtle: #141b24;
-  --ar-color-surface: #171e28;
-  --ar-color-surface-raised: #1d2632;
-  --ar-color-surface-muted: #202a36;
-  --ar-color-surface-soft: #263241;
-  --ar-color-surface-hover: #2a3747;
-  --ar-color-surface-selected: #203d67;
-  --ar-color-input: #111923;
+  --ar-color-canvas: #282c34;
+  --ar-color-canvas-subtle: #21252b;
+  --ar-color-surface: #282c34;
+  --ar-color-surface-raised: #333842;
+  --ar-color-surface-muted: #21252b;
+  --ar-color-surface-soft: #353b45;
+  --ar-color-surface-hover: #2c313a;
+  --ar-color-surface-selected: #2c313a;
+  --ar-color-input: #1b1d23;
 
   /* Text and icon hierarchy. */
-  --ar-color-text: #e5e7eb;
-  --ar-color-text-strong: #f1f5f9;
-  --ar-color-text-muted: #a7b1bf;
-  --ar-color-text-subtle: #7f8b9c;
-  --ar-color-text-disabled: #657184;
+  --ar-color-text: #abb2bf;
+  --ar-color-text-strong: #d7dae0;
+  --ar-color-text-muted: #9da5b4;
+  --ar-color-text-subtle: #8b93a2;
+  --ar-color-text-disabled: #636d83;
   --ar-color-text-on-accent: #f8fbff;
 
   /* Edges, focus, and elevation. */
-  --ar-color-border: #344252;
-  --ar-color-border-strong: #465568;
-  --ar-color-border-focus: #6ea0ff;
-  --ar-color-focus-ring: rgba(96, 165, 250, 0.28);
-  --ar-color-overlay: rgba(3, 8, 15, 0.68);
+  --ar-color-border: #181a1f;
+  --ar-color-border-strong: #3a3f4b;
+  --ar-color-border-focus: #528bff;
+  --ar-color-focus-ring: rgba(82, 139, 255, 0.28);
+  --ar-color-overlay: rgba(24, 26, 31, 0.72);
   --ar-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.32);
   --ar-shadow-floating: 0 8px 20px rgba(0, 0, 0, 0.34);
   --ar-shadow-dialog: 0 18px 42px rgba(0, 0, 0, 0.52);
 
   /* Shared live-DOM popout chrome. */
-  --ar-popout-surface: #171e28;
-  --ar-popout-border: #465568;
-  --ar-popout-header: #202a36;
-  --ar-popout-header-border: #344252;
-  --ar-popout-title: #f1f5f9;
-  --ar-popout-control-background: #111923;
-  --ar-popout-control-border: #465568;
-  --ar-popout-control-foreground: #e5e7eb;
-  --ar-popout-control-hover-background: #244b7e;
-  --ar-popout-control-hover-border: #6ea0ff;
-  --ar-popout-control-close-hover-background: #55212c;
-  --ar-popout-control-close-hover-border: #fb7185;
-  --ar-popout-tab-muted-background: #263241;
+  --ar-popout-surface: var(--ar-color-surface);
+  --ar-popout-border: var(--ar-color-border-strong);
+  --ar-popout-header: var(--ar-color-surface-muted);
+  --ar-popout-header-border: var(--ar-color-border);
+  --ar-popout-title: var(--ar-color-text-strong);
+  --ar-popout-control-background: var(--ar-color-input);
+  --ar-popout-control-border: var(--ar-color-border-strong);
+  --ar-popout-control-foreground: var(--ar-color-text);
+  --ar-popout-control-hover-background: var(--ar-color-surface-hover);
+  --ar-popout-control-hover-border: var(--ar-color-border-focus);
+  --ar-popout-control-close-hover-background: var(--ar-color-danger-soft);
+  --ar-popout-control-close-hover-border: var(--ar-color-danger);
+  --ar-popout-tab-muted-background: var(--ar-color-surface-soft);
 
   /* Canvas and SVG chart chrome; series colors stay data-semantic. */
-  --ar-chart-background: #111923;
-  --ar-chart-grid: #2b3745;
-  --ar-chart-axis: #526174;
-  --ar-chart-text: #d5dce6;
-  --ar-chart-text-muted: #9aa7b7;
-  --ar-chart-point-fill: #171e28;
-  --ar-chart-dataset-grid: #2b3745;
-  --ar-chart-dataset-axis: #66758b;
-  --ar-chart-dataset-text: #d5dce6;
-  --ar-chart-dataset-status-text: #d5dce6;
-  --ar-chart-dataset-strong-text: #f1f5f9;
-  --ar-chart-dfm-grid: #2b3745;
-  --ar-chart-dfm-axis: #65758a;
-  --ar-chart-dfm-text: #d5dce6;
-  --ar-chart-dfm-empty-text: #a7b1bf;
-  --ar-chart-dfm-mark: #c0cad7;
-  --ar-chart-dfm-mark-muted: #8e9bad;
-  --ar-chart-dfm-selection-fill: #111923;
-  --ar-chart-dfm-point-border: #65758a;
-  --ar-chart-dfm-band: rgba(148, 163, 184, 0.15);
-  --ar-chart-dfm-hover: rgba(148, 163, 184, 0.12);
-  --ar-chart-svg-grid: #2b3745;
-  --ar-chart-svg-axis: #66758b;
-  --ar-chart-svg-text: #cbd5e1;
-  --ar-chart-svg-text-muted: #9aa7b7;
+  --ar-chart-background: var(--ar-color-input);
+  --ar-chart-grid: #3a3f4b;
+  --ar-chart-axis: #626772;
+  --ar-chart-text: var(--ar-color-text);
+  --ar-chart-text-muted: var(--ar-color-text-muted);
+  --ar-chart-point-fill: var(--ar-color-surface);
+  --ar-chart-dataset-grid: #3a3f4b;
+  --ar-chart-dataset-axis: #626772;
+  --ar-chart-dataset-text: var(--ar-color-text);
+  --ar-chart-dataset-status-text: var(--ar-color-text);
+  --ar-chart-dataset-strong-text: var(--ar-color-text-strong);
+  --ar-chart-dfm-grid: #3a3f4b;
+  --ar-chart-dfm-axis: #626772;
+  --ar-chart-dfm-text: var(--ar-color-text);
+  --ar-chart-dfm-empty-text: var(--ar-color-text-muted);
+  --ar-chart-dfm-mark: #c5cad3;
+  --ar-chart-dfm-mark-muted: #8b93a2;
+  --ar-chart-dfm-selection-fill: var(--ar-color-input);
+  --ar-chart-dfm-point-border: #626772;
+  --ar-chart-dfm-band: rgba(171, 178, 191, 0.15);
+  --ar-chart-dfm-hover: rgba(171, 178, 191, 0.12);
+  --ar-chart-svg-grid: #3a3f4b;
+  --ar-chart-svg-axis: #626772;
+  --ar-chart-svg-text: var(--ar-color-text);
+  --ar-chart-svg-text-muted: var(--ar-color-text-muted);
 
   /* Restrained application accents. */
-  --ar-color-accent: #6ea0ff;
-  --ar-color-accent-strong: #8bb3ff;
-  --ar-color-theme-mark: #6ea0ff;
-  --ar-color-accent-soft: #19345a;
-  --ar-color-accent-hover: #244b7e;
-  --ar-color-success: #4ade80;
-  --ar-color-success-soft: #123324;
-  --ar-color-warning: #fbbf24;
+  --ar-color-accent: #528bff;
+  --ar-color-accent-strong: #61afef;
+  --ar-color-theme-mark: #528bff;
+  --ar-color-accent-soft: #21252b;
+  --ar-color-accent-hover: #2c313a;
+  --ar-color-success: #98c379;
+  --ar-color-success-soft: #1d3022;
+  --ar-color-warning: #e5c07b;
   --ar-color-warning-soft: #3b2b0e;
-  --ar-color-danger: #fb7185;
+  --ar-color-danger: #e06c75;
   --ar-color-danger-soft: #3b1822;
-  --ar-color-info: #60a5fa;
-  --ar-color-info-soft: #172e4e;
+  --ar-color-info: #61afef;
+  --ar-color-info-soft: #1c2e47;
 
   /* Dense tables and scrollbar trays. */
-  --ar-color-table-header: #202a36;
-  --ar-color-table-row-hover: #202c3a;
-  --ar-color-scrollbar-track: #151d27;
-  --ar-color-scrollbar-thumb: rgba(148, 163, 184, 0.3);
-  --ar-color-scrollbar-thumb-active: rgba(148, 163, 184, 0.55);
+  --ar-color-table-header: var(--ar-color-input);
+  --ar-color-table-row-hover: #2c313a;
+  --ar-color-scrollbar-track: #21252b;
+  --ar-color-scrollbar-thumb: #4e566680;
+  --ar-color-scrollbar-thumb-active: #747d9180;
 
   /* Compatibility aliases owned by older page-local styles. */
   --border: var(--ar-color-border);
@@ -107,7 +107,7 @@
   --hover: var(--ar-color-surface-hover);
   --active: var(--ar-color-surface-selected);
   --shadow: var(--ar-shadow-dialog);
-  --shell-frame-border: #526782;
+  --shell-frame-border: #3a3f4b;
   --ar-workspace-frame-border: var(--ar-color-border);
 
   /* Shared form and spreadsheet aliases. */
@@ -120,9 +120,9 @@
   --ar-details-focus-border: var(--ar-color-border-focus);
   --ar-details-focus-ring: var(--ar-color-focus-ring);
   --ar-notes-text-color: var(--ar-color-text);
-  --ar-spreadsheet-grid-border: #3a4655;
-  --ar-spreadsheet-header-fill: #2a3442;
-  --ar-spreadsheet-label-fill: #2a3442;
+  --ar-spreadsheet-grid-border: var(--ar-color-border-strong);
+  --ar-spreadsheet-header-fill: var(--ar-color-input);
+  --ar-spreadsheet-label-fill: var(--ar-color-input);
   --ar-spreadsheet-label-text: var(--ar-color-text);
 
   /* Feature-local variable contracts. */
@@ -137,8 +137,8 @@
   --bf-danger: var(--ar-color-danger);
   --bf-table-head: var(--ar-color-table-header);
   --rs-border: var(--ar-color-border);
-  --rs-grid-border: #3a4655;
-  --rs-label-cell: #2a3442;
+  --rs-grid-border: #3a3f4b;
+  --rs-label-cell: #333842;
   --rs-header: var(--ar-color-table-header);
   --dfm-scrollbar-chrome: var(--ar-color-scrollbar-track);
   --dfm-scrollbar-button-hover: var(--ar-color-surface-hover);
@@ -177,12 +177,12 @@
   --dpr-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
   --dpr-blue: var(--ar-color-accent);
   --dpr-blue-soft: var(--ar-color-accent-soft);
-  --dpr-blue-border: #527db5;
+  --dpr-blue-border: var(--ar-color-border-focus);
   --dpr-ink: var(--ar-color-text);
   --dpr-ink-soft: var(--ar-color-text-muted);
   --dpr-ink-faint: var(--ar-color-text-subtle);
   --dpr-line: var(--ar-color-border);
-  --dpr-line-soft: #2b3745;
+  --dpr-line-soft: #3a3f4b;
   --dpr-bg: var(--ar-color-canvas-subtle);
   --dpr-danger: var(--ar-color-danger);
   --dpr-danger-soft: var(--ar-color-danger-soft);
@@ -216,6 +216,36 @@
   --sf-error: var(--ar-color-danger);
   --sc-cells-panel-bg: var(--ar-color-canvas-subtle);
 
+  /* Atom One Dark editor palette. Monaco derives its custom theme from these tokens. */
+  --ar-monaco-editor-background: #282c34;
+  --ar-monaco-editor-foreground: #abb2bf;
+  --ar-monaco-editor-active-foreground: #d7dae0;
+  --ar-monaco-editor-cursor: #528bff;
+  --ar-monaco-editor-line-highlight: #99bbff0a;
+  --ar-monaco-editor-selection: #3e4451;
+  --ar-monaco-editor-selection-highlight: #3e445166;
+  --ar-monaco-editor-find-match-highlight: #528bff3d;
+  --ar-monaco-editor-indent-guide: #abb2bf26;
+  --ar-monaco-editor-indent-guide-active: #626772;
+  --ar-monaco-editor-line-number: #636d83;
+  --ar-monaco-editor-widget-background: #21252b;
+  --ar-monaco-editor-widget-border: #3a3f4b;
+  --ar-monaco-editor-list-selection: #2c313a;
+  --ar-monaco-editor-list-hover: #2c313a66;
+  --ar-monaco-editor-scrollbar: #4e566680;
+  --ar-monaco-editor-scrollbar-hover: #5a637580;
+  --ar-monaco-editor-scrollbar-active: #747d9180;
+  --ar-monaco-syntax-comment: #5c6370;
+  --ar-monaco-syntax-keyword: #c678dd;
+  --ar-monaco-syntax-number: #d19a66;
+  --ar-monaco-syntax-string: #98c379;
+  --ar-monaco-syntax-type: #e5c07b;
+  --ar-monaco-syntax-function: #61afef;
+  --ar-monaco-syntax-variable: #e06c75;
+  --ar-monaco-syntax-cyan: #56b6c2;
+  --ar-monaco-syntax-interpolation: #be5046;
+  --ar-monaco-syntax-invalid: #e05252;
+
   /* Agent Guide contracts. */
   --ag-bg: var(--ar-color-canvas);
   --ag-panel: var(--ar-color-surface);
@@ -225,7 +255,7 @@
   --ag-muted: var(--ar-color-text-muted);
   --ag-blue: var(--ar-color-accent);
   --ag-blue-soft: var(--ar-color-accent-soft);
-  --ag-blue-line: #527db5;
+  --ag-blue-line: var(--ar-color-border-focus);
 }
 
 /* Document defaults and native controls. */
@@ -370,6 +400,11 @@
   background-color: var(--ar-color-canvas-subtle);
 }
 
+:root[data-arcrho-theme="dark"] .homeWelcomePanel {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+}
+
 :root[data-arcrho-theme="dark"] :is(.homeBrandSub, .homeSubtitle, .homeNavLabel, .groupTitle, .muted) {
   color: var(--ar-color-text-muted);
 }
@@ -400,22 +435,22 @@
   color: var(--ar-color-text-strong);
 }
 
-:root[data-arcrho-theme="dark"] .card {
-  border-color: var(--ar-color-border);
-  background-color: var(--ar-color-surface);
+:root[data-arcrho-theme="dark"] .home .card {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-canvas-subtle);
   color: var(--ar-color-text);
   box-shadow: var(--ar-shadow-subtle);
 }
 
-:root[data-arcrho-theme="dark"] .card.clickable:hover {
-  border-color: #526c8d;
+:root[data-arcrho-theme="dark"] .home .card.clickable:hover {
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-surface-raised);
   box-shadow: var(--ar-shadow-floating);
 }
 
-:root[data-arcrho-theme="dark"] .homeIconBox {
+:root[data-arcrho-theme="dark"] .home .homeIconBox {
   border-color: var(--ar-color-border);
-  background-color: var(--ar-color-surface-muted);
+  background-color: var(--ar-color-input);
 }
 
 :root[data-arcrho-theme="dark"] .homeIconBox.project {
@@ -475,9 +510,9 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.appConfirmBtn.primary, .uiAutomationDialogBtn.primary) {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
-  color: #b9d2ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(#globalTooltip, .chartTooltip, .dsDataTabTooltip, .dataset-temp-view-tooltip) {
@@ -530,7 +565,7 @@
 }
 
 :root[data-arcrho-theme="dark"] #shellFileDropOverlay > div {
-  border-color: #527db5 !important;
+  border-color: var(--ar-color-border-focus) !important;
   background-color: var(--ar-color-surface-raised) !important;
   color: var(--ar-color-text) !important;
   box-shadow: var(--ar-shadow-dialog) !important;
@@ -610,7 +645,7 @@
 
 :root[data-arcrho-theme="dark"] :is(.aiAssistantSelectOption.active, .aiAssistantSkillItem.active) {
   background-color: var(--ar-color-accent-soft);
-  color: #b9d2ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] #aiAssistantMessages {
@@ -625,14 +660,14 @@
 
 :root[data-arcrho-theme="dark"] .aiAssistantMessage.user {
   border-color: #3f6599;
-  background-color: #19345a;
-  color: #e8f1ff;
+  background-color: var(--ar-color-accent-soft);
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.aiAssistantMessage.rich code, .aiAssistantMessage.rich pre) {
   border-color: var(--ar-color-border);
-  background-color: #0d141d;
-  color: #dce6f3;
+  background-color: var(--ar-monaco-editor-background);
+  color: var(--ar-monaco-editor-foreground);
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -697,7 +732,7 @@
 }
 
 :root[data-arcrho-theme="dark"] .macroListItem.active {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
 }
 
@@ -724,7 +759,7 @@
 }
 
 :root[data-arcrho-theme="dark"] .macroNotesPreviewText {
-  background-color: #0d141d !important;
+  background-color: var(--ar-monaco-editor-background) !important;
 }
 
 :root[data-arcrho-theme="dark"] :is(.macroNotesPreviewBtn, .macroNotesPreviewClose) {
@@ -735,29 +770,34 @@
 
 /* Shared tab chrome and tab-page surfaces. */
 :root[data-arcrho-theme="dark"] .tabbedPageTabBar {
-  border-color: var(--ar-color-border);
+  border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-muted);
 }
 
 :root[data-arcrho-theme="dark"] .tabbedPageTabBar::after {
-  background-color: var(--ar-color-border);
+  background-color: var(--ar-color-border-strong);
 }
 
 :root[data-arcrho-theme="dark"] .tabbedPageTab {
-  border-color: transparent;
-  background-color: transparent;
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-canvas);
   color: var(--ar-color-text-muted);
 }
 
 :root[data-arcrho-theme="dark"] .tabbedPageTab:hover:not(:disabled) {
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-surface-hover);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .tabbedPageTab[aria-selected="true"] {
-  border-color: var(--ar-color-border);
-  background-color: var(--ar-color-surface);
+:root[data-arcrho-theme="dark"] :is(.tabbedPageTab.active, .tabbedPageTab[aria-selected="true"]) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
   color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.tabbedPageTab.active::after, .tabbedPageTab[aria-selected="true"]::after) {
+  background-color: var(--ar-color-surface-raised);
 }
 
 :root[data-arcrho-theme="dark"] :is(.tabbedPageSaveBar, .datasetSaveBar, .dfmSaveBar, .rsSaveBar, .bfSaveBar) {
@@ -816,7 +856,7 @@
   .arExternalLinksTable th,
   .arAuditLogTable th
 ) {
-  border-color: #3a4655;
+  border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-table-header);
   color: var(--ar-color-text);
 }
@@ -826,8 +866,8 @@
   .arExternalLinksTable td,
   .arAuditLogTable td
 ) {
-  border-color: #3a4655;
-  background-color: var(--ar-color-input);
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
@@ -948,9 +988,9 @@
 }
 
 :root[data-arcrho-theme="dark"] .pageCloseConfirmButton.primary {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
-  color: #b9d2ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .pageCloseConfirmButton.secondary {
@@ -984,21 +1024,27 @@
 
 /* Shared spreadsheet base. Semantic selection fills intentionally remain unchanged. */
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable {
-  border-color: #3a4655;
-  background-color: var(--ar-color-input);
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable td:not([aria-selected="true"]):not(.arSpreadsheetSelectedLabel) {
-  border-color: #3a4655;
-  background-color: var(--ar-color-input);
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .arSpreadsheetTable :is(thead th, tbody td:first-child):not(.arSpreadsheetSelectedLabel) {
-  border-color: #3a4655;
-  background-color: #2a3442;
-  color: var(--ar-color-text);
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable thead th:not(.arSpreadsheetSelectedLabel) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-spreadsheet-header-fill);
+  color: var(--ar-spreadsheet-label-text);
+}
+
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable :is(tbody th, tbody td:first-child):not(.arSpreadsheetSelectedLabel) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-spreadsheet-label-fill);
+  color: var(--ar-spreadsheet-label-text);
 }
 
 /* Shared floating path, dataset, reserving-class, and project pickers. */
@@ -1084,7 +1130,7 @@
   .ptree-leaf.active-path
 ) {
   background: var(--ar-color-accent-soft) !important;
-  box-shadow: inset 0 0 0 1px #527db5 !important;
+  box-shadow: inset 0 0 0 1px var(--ar-color-border-focus) !important;
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -1092,7 +1138,7 @@
   .ptree-folder.active-path .ptree-label,
   .ptree-leaf.active-path .ptree-label
 ) {
-  color: #d7e6ff !important;
+  color: var(--ar-color-text-strong) !important;
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -1101,7 +1147,7 @@
   .ptree-section-header.drag-over
 ) {
   background: var(--ar-color-accent-soft) !important;
-  box-shadow: inset 0 0 0 1px #527db5 !important;
+  box-shadow: inset 0 0 0 1px var(--ar-color-border-focus) !important;
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -1190,6 +1236,11 @@
   color: var(--ar-color-text);
 }
 
+/* Dataset tabs share the same muted outer frame as the inner tab strip. */
+:root[data-arcrho-theme="dark"] :is(#dsDetailsPage, #dsDataPage, #dsChartPage, #dsNotesPage, #dsLinksPage, #dsAuditLogPage) {
+  border-color: var(--ar-color-border-strong);
+}
+
 :root[data-arcrho-theme="dark"] :is(#topFrame, #datasetTopBar, #chartPanel, .panel, .panelInner) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface);
@@ -1240,10 +1291,69 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.datasetPrimaryBtn, .chartToggleBtn.active) {
-  border-color: #527db5;
+/* Dataset Viewer Details keeps dense groups unframed while making fields and formula tokens readable. */
+:root[data-arcrho-theme="dark"] #dsDetailsPage .arDetailsLabel {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage .arDetailsControl {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage :is(.arDetailsControl[readonly], input[readonly], textarea[readonly], select:disabled) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage :is(.dsDetailFormulaBox, .dsDatasetChipBox) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage :is(.dsFormulaComponentChip, .dsDependentLink) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage :is(.dsFormulaComponentChip:hover, .dsFormulaComponentChip:focus, .dsDependentLink:hover, .dsDependentLink:focus) {
+  border-color: var(--ar-color-border-focus);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage .dsFormulaOperatorToken {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage .dsFormulaOperatorToken.plus {
+  border-color: var(--ar-color-success);
+  background-color: var(--ar-color-success-soft);
+  color: var(--ar-color-success);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage .dsFormulaOperatorToken.minus {
+  border-color: var(--ar-color-warning);
+  background-color: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
+}
+
+:root[data-arcrho-theme="dark"] #dsDetailsPage .dsFormulaOperatorToken.equals {
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
-  color: #b9d2ff;
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] :is(.datasetPrimaryBtn, .chartToggleBtn.active) {
+  border-color: var(--ar-color-border-focus);
+  background-color: var(--ar-color-accent-soft);
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .datasetRecalcOverlay {
@@ -1322,21 +1432,21 @@
 :root[data-arcrho-theme="dark"] .dfmTabBar .dfmRpcSyncBtn:hover:not(:disabled) {
   border-color: var(--ar-color-border-focus) !important;
   background-color: var(--ar-color-accent-soft) !important;
-  color: #b9d2ff !important;
+  color: var(--ar-color-text-strong) !important;
 }
 
 :root[data-arcrho-theme="dark"] #ratioWrap :is(table, td, th):not(.dfmTableActive):not(.dfmTableHighlight) {
-  border-color: #3a4655;
+  border-color: var(--ar-color-border-strong);
 }
 
 :root[data-arcrho-theme="dark"] #ratioWrap td:not(.dfmTableActive):not(.dfmTableHighlight):not(.ratioSelectedCell) {
-  background-color: var(--ar-color-input);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] #ratioWrap th:not(.dfmTableHighlight),
 :root[data-arcrho-theme="dark"] #ratioWrap td:first-child:not(.dfmTableHighlight) {
-  background-color: #2a3442;
+  background-color: var(--ar-color-table-header);
   color: var(--ar-color-text);
 }
 
@@ -1378,7 +1488,7 @@
 
 :root[data-arcrho-theme="dark"] .dfmDevelopedCurveSegmentTable td {
   border-color: var(--ar-color-border) !important;
-  background-color: var(--ar-color-input) !important;
+  background-color: var(--ar-color-surface) !important;
   color: var(--ar-color-text) !important;
 }
 
@@ -1457,15 +1567,15 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(table.bfMethodTable, .rsGrid) {
-  border-color: #3a4655;
-  background-color: var(--ar-color-input);
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] .bfMethodTable td:not(.bfHighlightedCell):not(.bfSelectedSourceCell),
 :root[data-arcrho-theme="dark"] .rsGrid td:not(.rsHighlightedCell):not(.rsHighlightedUltimateCell):not(.rsSelectedSourceCell) {
-  border-color: #3a4655;
-  background-color: var(--ar-color-input);
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
@@ -1473,8 +1583,8 @@
 :root[data-arcrho-theme="dark"] .bfMethodTable td:first-child:not(.bfHighlightedRowLabel),
 :root[data-arcrho-theme="dark"] .rsGrid th,
 :root[data-arcrho-theme="dark"] .rsGrid td:first-child:not(.rsHighlightedRowLabel) {
-  border-color: #3a4655;
-  background-color: #2a3442;
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-table-header);
   color: var(--ar-color-text);
 }
 
@@ -1538,13 +1648,18 @@
 }
 
 :root[data-arcrho-theme="dark"] .stepBtn.active {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.gc-table, .gc-table td, .gc-table th) {
   border-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .gc-table td {
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] .gc-table th {
@@ -1628,20 +1743,20 @@
 }
 
 :root[data-arcrho-theme="dark"] .pi-table {
-  border-color: #3a4655;
-  background-color: var(--ar-color-input);
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] .pi-table td {
-  border-color: #3a4655;
-  background-color: var(--ar-color-input);
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] .pi-table th,
 :root[data-arcrho-theme="dark"] .pi-table .pi-table-group-row td {
-  border-color: #3a4655;
+  border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-table-header);
   color: var(--ar-color-text);
 }
@@ -1670,9 +1785,21 @@
   background-color: var(--ar-color-surface-muted);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-table, .pi-number-formats-table th, .pi-number-formats-table td, .pi-number-formats-empty) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-table, .pi-number-formats-empty) {
   border-color: var(--ar-color-border);
-  background-color: var(--ar-color-input);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-table th {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-table-header);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-number-formats-table td {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
@@ -1682,7 +1809,7 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.pi-left-resizer:hover, .pi-left-resizer.dragging) {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
 }
 
@@ -1700,9 +1827,9 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.pi-toolbar-path-segment:hover, .pi-toolbar-path-segment:focus-visible) {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
   box-shadow: 0 0 0 2px var(--ar-color-focus-ring);
 }
 
@@ -1727,9 +1854,9 @@
 }
 
 :root[data-arcrho-theme="dark"] .pi-path-segment-option.selected {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .pi-minimized-tab {
@@ -1813,9 +1940,9 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.dataset-filter-chip, .dataset-index-update-btn) {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -1835,7 +1962,7 @@
 ) {
   border-color: var(--ar-color-accent);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -1850,7 +1977,7 @@
 :root[data-arcrho-theme="dark"] :is(.dataset-group-status.drag-over, .dataset-active-filters.drag-over) {
   border-color: var(--ar-color-accent);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .dataset-group-status.drag-invalid {
@@ -1948,9 +2075,9 @@
 }
 
 :root[data-arcrho-theme="dark"] .pi-message-actions button {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -1979,7 +2106,7 @@
 
 :root[data-arcrho-theme="dark"] .pi-context-menu-item.active {
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.pi-context-menu-icon, .pi-context-menu-item:disabled) {
@@ -2018,13 +2145,13 @@
 
 :root[data-arcrho-theme="dark"] :is(.pi-add-picker-table-wrap, .pi-add-picker-table) {
   border-color: var(--ar-color-border);
-  background: var(--ar-color-input);
+  background: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .pi-add-picker-table :is(th, td) {
-  border-color: #3a4655;
-  background: var(--ar-color-input);
+:root[data-arcrho-theme="dark"] .pi-add-picker-table td {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
@@ -2114,9 +2241,9 @@
 }
 
 :root[data-arcrho-theme="dark"] .pi-number-formats-actions button.primary {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .pi-number-formats-status.error {
@@ -2146,9 +2273,9 @@
 }
 
 :root[data-arcrho-theme="dark"] .pi-window.active .pi-window-titlebar {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .pi-window-titlebar-btn {
@@ -2198,9 +2325,9 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.tree-project.active, .ribbon-item.active) {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.context-menu, .fm-dataset-type-dropdown, .dt-category-filter-popover, .dpr-select-popup, .dpr-token-menu) {
@@ -2276,19 +2403,19 @@
 
 :root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) {
   border-color: var(--ar-color-border);
-  background-color: var(--ar-color-input);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) td {
-  border-color: #3a4655;
-  background-color: var(--ar-color-input);
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) th,
 :root[data-arcrho-theme="dark"] :is(.dt-group-row, .rct-group-row) td {
-  border-color: #3a4655;
+  border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-table-header);
   color: var(--ar-color-text);
 }
@@ -2305,7 +2432,7 @@
 
 :root[data-arcrho-theme="dark"] :is(.dpr-select-option.selected, .fm-dataset-type-option.active) {
   background-color: var(--ar-color-accent-soft);
-  color: #b9d2ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.tree-folder, .tree-project, .context-menu-item, .dialog-title, .dialog-message) {
@@ -2353,9 +2480,9 @@
 }
 
 :root[data-arcrho-theme="dark"] .dialog-btn.primary {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .dialog-btn.primary:hover {
@@ -2382,9 +2509,9 @@
 }
 
 :root[data-arcrho-theme="dark"] .detail-open-folder-btn {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
   box-shadow: none;
 }
 
@@ -2415,7 +2542,7 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.ribbon-item.active .ribbon-icon, .ribbon-item.active .ribbon-label) {
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.ribbon-item:hover .ribbon-icon, .ribbon-item:hover .ribbon-label) {
@@ -2442,9 +2569,9 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.field-mapping-toolbar button, .dataset-types-toolbar button) {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.field-mapping-toolbar button:hover, .dataset-types-toolbar button:hover) {
@@ -2627,7 +2754,7 @@
 :root[data-arcrho-theme="dark"] .rct-formula-component-chip.selected {
   border-color: var(--ar-color-accent);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.rct-formula-token.component.unknown, .rct-formula-component-chip.unknown) {
@@ -2793,9 +2920,9 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.dpr-toolbar button.primary, .dpr-editor button.primary) {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.dpr-toolbar button:hover, .dpr-editor button:hover) {
@@ -2829,7 +2956,12 @@
   box-shadow: var(--ar-shadow-dialog) !important;
 }
 
-:root[data-arcrho-theme="dark"] .taskDesignerTable th,
+:root[data-arcrho-theme="dark"] .taskDesignerTable th {
+  border-color: var(--ar-color-border) !important;
+  background-color: var(--ar-color-table-header) !important;
+  color: var(--ar-color-text) !important;
+}
+
 :root[data-arcrho-theme="dark"] .taskDesignerDetailTitlebar,
 :root[data-arcrho-theme="dark"] .taskDesignerFooter {
   border-color: var(--ar-color-border) !important;
@@ -2839,7 +2971,7 @@
 
 :root[data-arcrho-theme="dark"] .taskDesignerTable td {
   border-color: var(--ar-color-border) !important;
-  background-color: var(--ar-color-input) !important;
+  background-color: var(--ar-color-surface) !important;
   color: var(--ar-color-text) !important;
 }
 
@@ -2849,8 +2981,8 @@
 
 :root[data-arcrho-theme="dark"] .taskDesignerDetailPre {
   border-color: var(--ar-color-border) !important;
-  background-color: #0d141d !important;
-  color: #dce6f3 !important;
+  background-color: var(--ar-monaco-editor-background) !important;
+  color: var(--ar-monaco-editor-foreground) !important;
 }
 
 /* Agent Guide, Browsing History, launch pages, and splash screens. */
@@ -3041,7 +3173,7 @@
 
 :root[data-arcrho-theme="dark"] .arcodeExplorerEntry.active {
   background-color: var(--ar-color-accent-soft);
-  color: #d7e6ff;
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(#arcodeFileDropOverlay, #arcodeFileDropOverlay.unsupported) {
@@ -3049,7 +3181,7 @@
 }
 
 :root[data-arcrho-theme="dark"] .arcodeFileDropPanel {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-surface-raised);
   color: var(--ar-color-text);
   box-shadow: var(--ar-shadow-dialog);
@@ -3078,9 +3210,9 @@
 }
 
 :root[data-arcrho-theme="dark"] .ce-btn.primary {
-  border-color: #527db5;
+  border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
-  color: #b9d2ff;
+  color: var(--ar-color-text-strong);
 }
 
 /* Arcode notebook editor. */
@@ -3136,8 +3268,8 @@
 
 :root[data-arcrho-theme="dark"] :is(.sc-markdown-render code, .sc-markdown-render pre, .sc-cell-output .out-html pre) {
   border-color: var(--ar-color-border);
-  background-color: #0d141d;
-  color: #dce6f3;
+  background-color: var(--ar-monaco-editor-background);
+  color: var(--ar-monaco-editor-foreground);
 }
 
 :root[data-arcrho-theme="dark"] :is(.sc-var-table th, .sc-shortcuts-table th) {
@@ -3191,7 +3323,7 @@
 
 :root[data-arcrho-theme="dark"] .sfTable {
   border-color: var(--ar-color-border);
-  background-color: var(--ar-color-input);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
@@ -3203,7 +3335,7 @@
 
 :root[data-arcrho-theme="dark"] .sfTable td {
   border-color: var(--ar-color-border);
-  background-color: var(--ar-color-input);
+  background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 

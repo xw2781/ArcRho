@@ -51,10 +51,10 @@ const THEMED_DOCUMENTS = [
 test("every runtime frontend document bootstraps the shared theme before loading separated theme sheets", () => {
   for (const path of THEMED_DOCUMENTS) {
     const html = read(path);
-    const bootstrap = html.indexOf("/ui/shared/services/color_theme.js?v=20260723a");
+    const bootstrap = html.indexOf("/ui/shared/services/color_theme.js?v=20260724a");
     const firstStylesheet = html.indexOf("rel=\"stylesheet\"");
     const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260722a");
-    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260723a");
+    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260724g");
     const endHead = html.indexOf("</head>");
     assert.ok(bootstrap >= 0, `${path} loads the shared bootstrap`);
     assert.ok(firstStylesheet < 0 || bootstrap < firstStylesheet, `${path} applies theme state before visual CSS`);
@@ -80,6 +80,13 @@ test("light values remain explicit and dark values stay isolated", () => {
 
   assert.match(dark, /:root\[data-arcrho-theme="dark"\]/);
   assert.match(dark, /color-scheme:\s*dark/);
+  assert.match(dark, /--ar-color-canvas:\s*#282c34/);
+  assert.match(dark, /--ar-color-text:\s*#abb2bf/);
+  assert.match(dark, /--ar-color-surface-muted:\s*#21252b/);
+  assert.match(dark, /--ar-color-border-focus:\s*#528bff/);
+  assert.match(dark, /--ar-monaco-editor-background:\s*#282c34/);
+  assert.match(dark, /--ar-monaco-syntax-keyword:\s*#c678dd/);
+  assert.match(dark, /--ar-monaco-syntax-string:\s*#98c379/);
   assert.doesNotMatch(dark, /:root\[data-arcrho-theme="light"\]/);
 
   const lightTokens = [...light.matchAll(/(--ar-[\w-]+)\s*:/g)].map((match) => match[1]);
@@ -105,6 +112,98 @@ test("dark theme text tokens keep readable contrast on operational surfaces", ()
     const background = cssHexToken(dark, backgroundName);
     const ratio = contrastRatio(foreground, background);
     assert.ok(ratio >= 4.5, `${foregroundName} on ${backgroundName} has ${ratio.toFixed(2)}:1 contrast`);
+  }
+});
+
+test("Dark Home and shared spreadsheet tables distinguish panels, labels, and values", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const homeWelcome = declarationsFor(dark, ".homeWelcomePanel");
+  const homeCard = declarationsFor(dark, ".home .card");
+  const valueCell = declarationsFor(dark, ".arSpreadsheetTable td:not");
+  const headerCell = declarationsFor(dark, ".arSpreadsheetTable thead th:not");
+  const labelCell = declarationsFor(dark, ".arSpreadsheetTable :is(tbody th, tbody td:first-child)");
+
+  assert.match(homeWelcome, /background-color:\s*var\(--ar-color-input\)/);
+  assert.match(homeCard, /background-color:\s*var\(--ar-color-canvas-subtle\)/);
+  assert.match(homeCard, /border-color:\s*var\(--ar-color-border-strong\)/);
+  assert.match(valueCell, /background-color:\s*var\(--ar-color-surface\)/);
+  assert.match(headerCell, /background-color:\s*var\(--ar-spreadsheet-header-fill\)/);
+  assert.match(labelCell, /background-color:\s*var\(--ar-spreadsheet-label-fill\)/);
+  assert.match(dark, /--ar-spreadsheet-header-fill:\s*var\(--ar-color-input\)/);
+  assert.match(dark, /--ar-spreadsheet-label-fill:\s*var\(--ar-color-input\)/);
+});
+
+test("Dark tabbed pages keep tab frames and the selected seam visible", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const tabBar = declarationsFor(dark, ".tabbedPageTabBar");
+  const tabBarSeam = declarationsFor(dark, ".tabbedPageTabBar::after");
+  const tab = declarationsFor(dark, ".tabbedPageTab");
+  const selectedTab = declarationsFor(dark, ".tabbedPageTab.active, .tabbedPageTab[aria-selected");
+  const selectedSeam = declarationsFor(dark, ".tabbedPageTab.active::after");
+
+  assert.match(tabBar, /border-color:\s*var\(--ar-color-border-strong\)/);
+  assert.match(tabBarSeam, /background-color:\s*var\(--ar-color-border-strong\)/);
+  assert.match(tab, /border-color:\s*var\(--ar-color-border-strong\)/);
+  assert.match(tab, /background-color:\s*var\(--ar-color-canvas\)/);
+  assert.match(selectedTab, /background-color:\s*var\(--ar-color-surface-raised\)/);
+  assert.match(selectedSeam, /background-color:\s*var\(--ar-color-surface-raised\)/);
+});
+
+test("DSV Details keeps field values, relationships, and formula tokens readable in Dark mode", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const control = declarationsFor(dark, "#dsDetailsPage .arDetailsControl");
+  const readonly = declarationsFor(dark, "#dsDetailsPage :is(.arDetailsControl[readonly]");
+  const detailFrame = declarationsFor(dark, "#dsDetailsPage :is(.dsDetailFormulaBox, .dsDatasetChipBox)");
+  const formulaChip = declarationsFor(dark, "#dsDetailsPage :is(.dsFormulaComponentChip, .dsDependentLink)");
+  const operator = declarationsFor(dark, "#dsDetailsPage .dsFormulaOperatorToken");
+
+  assert.match(control, /background-color:\s*var\(--ar-color-input\)/);
+  assert.match(control, /color:\s*var\(--ar-color-text-strong\)/);
+  assert.match(readonly, /background-color:\s*var\(--ar-color-surface-muted\)/);
+  assert.match(readonly, /color:\s*var\(--ar-color-text-muted\)/);
+  assert.match(detailFrame, /border-color:\s*var\(--ar-color-border-strong\)/);
+  assert.match(formulaChip, /background-color:\s*var\(--ar-color-surface-muted\)/);
+  assert.match(operator, /background-color:\s*var\(--ar-color-surface-raised\)/);
+});
+
+test("DSV tab pages use the same muted outer frame as the tab strip in Dark mode", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const pageHost = declarationsFor(dark, ":is(#dsDetailsPage, #dsDataPage, #dsChartPage, #dsNotesPage, #dsLinksPage, #dsAuditLogPage)");
+
+  assert.match(pageHost, /border-color:\s*var\(--ar-color-border-strong\)/);
+});
+
+test("Dark-mode table value cells use the shared lighter surface", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const valueCellSelectors = [
+    "#tableWrap td",
+    "#ratioWrap td:not",
+    ".dfmDevelopedCurveSegmentTable td",
+    ".bfMethodTable td:not",
+    ".pi-table td",
+    ".pi-number-formats-table td",
+    ".pi-add-picker-table td",
+    ".columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) td",
+    ".taskDesignerTable td",
+    ".sfTable td",
+  ];
+
+  for (const selector of valueCellSelectors) {
+    const declarations = declarationsFor(dark, selector);
+    assert.match(declarations, /background(?:-color)?:\s*var\(--ar-color-surface\)/, `${selector} uses the shared table value fill`);
+  }
+  assert.match(declarationsFor(dark, ".gc-table td"), /background-color:\s*var\(--ar-color-surface\)/);
+  assert.match(dark, /--ar-color-table-header:\s*var\(--ar-color-input\)/);
+});
+
+test("Arcode code surfaces use the shared Atom One Dark editor tokens", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const notebookCode = declarationsFor(dark, ".sc-markdown-render code");
+  const taskDesignerCode = declarationsFor(dark, ".taskDesignerDetailPre");
+
+  for (const declarations of [notebookCode, taskDesignerCode]) {
+    assert.match(declarations, /background-color:\s*var\(--ar-monaco-editor-background\)/);
+    assert.match(declarations, /color:\s*var\(--ar-monaco-editor-foreground\)/);
   }
 });
 
@@ -166,6 +265,7 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
   const listeners = new Map();
   const posted = [];
   const monacoThemes = [];
+  const monacoDefinitions = new Map();
   const events = [];
   const nativeBackgrounds = [];
   const savedHostThemes = [];
@@ -173,6 +273,44 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
     getAttribute: (name) => attributes.get(name) || null,
     setAttribute: (name, value) => attributes.set(name, value),
   };
+  const atomOneDarkCss = {
+    "--ar-monaco-editor-background": "#282c34",
+    "--ar-monaco-editor-foreground": "#abb2bf",
+    "--ar-monaco-editor-active-foreground": "#d7dae0",
+    "--ar-monaco-editor-cursor": "#528bff",
+    "--ar-monaco-editor-line-highlight": "#99bbff0a",
+    "--ar-monaco-editor-selection": "#3e4451",
+    "--ar-monaco-editor-selection-highlight": "#3e445166",
+    "--ar-monaco-editor-find-match-highlight": "#528bff3d",
+    "--ar-monaco-editor-indent-guide": "#abb2bf26",
+    "--ar-monaco-editor-indent-guide-active": "#626772",
+    "--ar-monaco-editor-line-number": "#636d83",
+    "--ar-monaco-editor-widget-background": "#21252b",
+    "--ar-monaco-editor-widget-border": "#3a3f4b",
+    "--ar-monaco-editor-list-selection": "#2c313a",
+    "--ar-monaco-editor-list-hover": "#2c313a66",
+    "--ar-monaco-editor-scrollbar": "#4e566680",
+    "--ar-monaco-editor-scrollbar-hover": "#5a637580",
+    "--ar-monaco-editor-scrollbar-active": "#747d9180",
+    "--ar-monaco-syntax-comment": "#5c6370",
+    "--ar-monaco-syntax-keyword": "#c678dd",
+    "--ar-monaco-syntax-number": "#d19a66",
+    "--ar-monaco-syntax-string": "#98c379",
+    "--ar-monaco-syntax-type": "#e5c07b",
+    "--ar-monaco-syntax-function": "#61afef",
+    "--ar-monaco-syntax-variable": "#e06c75",
+    "--ar-monaco-syntax-cyan": "#56b6c2",
+    "--ar-monaco-syntax-interpolation": "#be5046",
+    "--ar-monaco-syntax-invalid": "#e05252",
+  };
+  const getComputedStyle = () => ({
+    getPropertyValue: (name) => {
+      if (name === "--ar-native-window-background") {
+        return attributes.get("data-arcrho-theme") === "dark" ? "#282c34" : "#ffffff";
+      }
+      return atomOneDarkCss[name] || "";
+    },
+  });
   const context = {
     CustomEvent: class CustomEvent {
       constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
@@ -187,8 +325,13 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
       setItem: (key, value) => storage.set(key, value),
     },
     location: { search: "" },
-    monaco: { editor: { setTheme: (theme) => monacoThemes.push(theme) } },
-    getComputedStyle: () => ({ getPropertyValue: () => "#ffffff" }),
+    monaco: {
+      editor: {
+        defineTheme: (name, definition) => monacoDefinitions.set(name, definition),
+        setTheme: (theme) => monacoThemes.push(theme),
+      },
+    },
+    getComputedStyle,
     ADAHost: {
       setWindowBackgroundColor: (color) => nativeBackgrounds.push(color),
       loadColorThemePreference: async () => ({ exists: false, theme: "light" }),
@@ -206,7 +349,7 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
   vm.runInNewContext(source, context, { filename: "color_theme.js" });
   assert.equal(attributes.get("data-arcrho-theme"), "light");
   assert.equal(context.ArcRhoColorTheme.normalizeTheme("unsupported"), "light");
-  assert.equal(context.ArcRhoColorTheme.getMonacoTheme("dark"), "vs-dark");
+  assert.equal(context.ArcRhoColorTheme.getMonacoTheme("dark"), "arcrho-atom-one-dark");
 
   context.ArcRhoColorTheme.setTheme("dark");
   await Promise.resolve();
@@ -214,11 +357,18 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
   assert.equal(storage.get("arcrho_color_theme"), "dark");
   assert.equal(savedHostThemes.at(-1), "dark");
   assert.equal(attributes.get("data-arcrho-theme"), "dark");
-  assert.equal(monacoThemes.at(-1), "vs-dark");
+  assert.equal(monacoThemes.at(-1), "arcrho-atom-one-dark");
   assert.equal(posted.at(-1)?.type, "arcrho:set-color-theme");
   assert.equal(posted.at(-1)?.theme, "dark");
   assert.equal(events.at(-1).type, "arcrho:color-theme-changed");
-  assert.equal(nativeBackgrounds.at(-1), "#ffffff");
+  assert.equal(nativeBackgrounds.at(-1), "#282c34");
+  const atomOneDarkTheme = monacoDefinitions.get("arcrho-atom-one-dark");
+  assert.ok(atomOneDarkTheme, "defines the shared Atom One Dark Monaco theme");
+  assert.equal(atomOneDarkTheme.colors["editor.background"], "#282c34");
+  assert.equal(atomOneDarkTheme.colors["editor.foreground"], "#abb2bf");
+  assert.equal(atomOneDarkTheme.colors["editor.selectionBackground"], "#3e4451");
+  assert.equal(atomOneDarkTheme.rules.find((rule) => rule.token === "keyword")?.foreground, "c678dd");
+  assert.equal(atomOneDarkTheme.rules.find((rule) => rule.token === "string")?.foreground, "98c379");
 
   listeners.get("message")?.({ data: { type: "arcrho:set-color-theme", theme: "light" } });
   assert.equal(attributes.get("data-arcrho-theme"), "light");
@@ -335,15 +485,18 @@ test("shell submenu indicators use the shared SVG chevron instead of text glyphs
 });
 
 test("all Monaco owners choose the shared initial theme and Electron accepts computed theme paint", () => {
-  const editorOwners = [
-    read("../ui/arcode/code-editor/index.js"),
-    read("../ui/arcode/notebook-editor/core.js"),
-    read("../ui/arcode/snowflake-console/index.js"),
-  ];
+  const codeEditor = read("../ui/arcode/code-editor/index.js");
+  const notebookEditor = read("../ui/arcode/notebook-editor/core.js");
+  const snowflakeEditor = read("../ui/arcode/snowflake-console/index.js");
+  const editorOwners = [codeEditor, notebookEditor, snowflakeEditor];
   for (const owner of editorOwners) {
     assert.match(owner, /ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs"/);
     assert.doesNotMatch(owner, /theme:\s*"vs"/);
   }
+  for (const owner of [codeEditor, snowflakeEditor]) {
+    assert.match(owner, /const monacoTheme = window\.ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs";[\s\S]*theme:\s*monacoTheme/);
+  }
+  assert.match(notebookEditor, /monacoReady = true;[\s\S]*EDITOR_OPTIONS\.theme = window\.ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs";/);
 
   const preload = read("../electron/preload.js");
   const main = read("../electron/main.js");
@@ -380,7 +533,7 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.match(splash, /requestedTheme === "dark" \? "dark" : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
   assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260722a/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260723a/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260724g/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
   assert.match(dark, /\.logo-icon img\s*\{[^}]*width:\s*88px[^}]*height:\s*88px/s);
@@ -400,9 +553,9 @@ test("changed theme and chart owners are reached through current cache-version c
     ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260722b"],
     ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260722a"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260722a"],
-    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260722a"],
-    ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260722a"],
-    ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260722a"],
+    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260724a"],
+    ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260724a"],
+    ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260724a"],
   ];
   for (const [path, reference] of expectedReferences) {
     assert.ok(read(path).includes(reference), `${path} loads ${reference}`);

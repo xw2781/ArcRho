@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "theme",
+  "audience": "user",
+  "summary": "Improved Dark-mode readability across Dataset pages, Home, tables, and tabbed workspaces.",
+  "details": [
+    "Dataset page frames now use the same muted border as their tabs; Home cards, Dataset Details controls, and tab frames have clearer panel boundaries, and all table value cells use the lighter dark-mode surface beneath darker labels."
+  ]
+}

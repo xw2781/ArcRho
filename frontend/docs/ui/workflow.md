@@ -7,7 +7,7 @@ Workflow editor page and save/load orchestration.
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.workflow.entry_points -->
-- `ui/workflow/workflow.html`: external scripts `/ui/shared/services/color_theme.js?v=20260723a`, `/ui/workflow/workflow_main.js?v=20260712a`; inline imports _none_.
+- `ui/workflow/workflow.html`: external scripts `/ui/shared/services/color_theme.js?v=20260724a`, `/ui/workflow/workflow_main.js?v=20260712a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/projects`

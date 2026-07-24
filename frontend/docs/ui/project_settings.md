@@ -8,7 +8,7 @@ Source Data tab derives origin/development date boundary inputs from table summa
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260722a`, `/ui/shared/services/color_theme.js?v=20260723a`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260722a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`

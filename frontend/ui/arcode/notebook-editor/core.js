@@ -182,6 +182,9 @@ require.config({ paths: { vs: "/ui/libs/monaco-editor/min/vs" } });
 
 require(["vs/editor/editor.main"], function () {
   monacoReady = true;
+  // Refresh startup state and register the shared Atom One Dark definition
+  // only after Monaco is available to accept it.
+  EDITOR_OPTIONS.theme = window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs";
 
   // New notebook tabs opened from Home card pass fresh=1 and should not restore prior drafts.
   const saved = forceFreshNotebook ? null : loadCellsFromStorage();
