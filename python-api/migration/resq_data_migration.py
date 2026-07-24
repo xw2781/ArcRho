@@ -104,8 +104,8 @@ def _configured_rc_paths(value: object) -> list[str]:
     return out
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-# PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
 
 # RC_PATH may be a string or a list of reserving-class paths.
@@ -125,9 +125,6 @@ RC_PATH = [
     r"Rider\MC\All States\Direct Group\BI+PIP", 
     r"Rider\MC\All States\Direct Group\PD+UMPD", 
     r"Rider\MC\All States\Direct Group\PhysDxCat",
-]
-
-RC_PATH = [
     r"PRNJ - PA\PA\MA\Direct Group\BI Total",
     r"PRNJ - PA\PA\MA\Direct Group\MP+PIP",
 ]
