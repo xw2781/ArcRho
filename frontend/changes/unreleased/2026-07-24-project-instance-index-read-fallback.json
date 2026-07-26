@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance now loads dataset rows when a shared-folder index cache cannot be updated.",
+  "details": [
+    "The dataset table shows a clear read-only index warning instead of failing the entire lookup.",
+    "The fallback is limited to dataset-list reads; mutation-triggered rebuilds retain their existing strict write behavior."
+  ]
+}

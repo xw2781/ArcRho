@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset charts now use the same clear legend panel and series controls as Result Selection charts."
+}

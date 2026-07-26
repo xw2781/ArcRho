@@ -1,4 +1,5 @@
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+import { publishProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 
 export function installProjectInstanceDatasetCache(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -68,6 +69,7 @@ function syncDatasetIndexUpdatePrompt() {
 
 function syncCachedDatasetToolbar() {
   const temporaryView = isTemporaryDatasetView();
+  const indexWarning = toText(cachedDatasetFilter.warning);
   if (els.datasetTempViewBtn) {
     els.datasetTempViewBtn.disabled = cachedDatasetFilter.loading || !state.selectedPath;
     els.datasetTempViewBtn.classList.toggle("active", temporaryView);
@@ -90,6 +92,11 @@ function syncCachedDatasetToolbar() {
   }
   syncDatasetIndexUpdatePrompt();
   if (!els.cachedDatasetStatus) return;
+  if (indexWarning) {
+    els.cachedDatasetStatus.setAttribute("aria-label", indexWarning);
+  } else {
+    els.cachedDatasetStatus.removeAttribute("aria-label");
+  }
   if (!state.selectedPath) {
     els.cachedDatasetStatus.textContent = "";
     return;
@@ -110,10 +117,10 @@ function syncCachedDatasetToolbar() {
     ? cachedDatasetFilter.visibleCount
     : cachedDatasetFilter.names.size;
   if (temporaryView) {
-    els.cachedDatasetStatus.textContent = `Temporary view | ${count} ${count === 1 ? "dataset" : "datasets"}`;
+    els.cachedDatasetStatus.textContent = `Temporary view | ${count} ${count === 1 ? "dataset" : "datasets"}${indexWarning ? " | Warning: index not saved" : ""}`;
     return;
   }
-  els.cachedDatasetStatus.textContent = `(${count} ${count === 1 ? "record" : "records"})`;
+  els.cachedDatasetStatus.textContent = `(${count} ${count === 1 ? "record" : "records"}${indexWarning ? " | Warning: index not saved" : ""})`;
 }
 
 function getSnapshotFolderPaths(payload) {
@@ -167,8 +174,9 @@ async function stopDatasetIndexWatch(options = {}) {
 
 async function startDatasetIndexWatchForSnapshot(payload, selectedPath) {
   const folderPath = getSnapshotDataFolder(payload);
+  const indexFileName = toText(payload?.index_file_name || payload?.indexFileName);
   const normalizedSelectedPath = normalizePath(selectedPath);
-  if (!folderPath || !normalizedSelectedPath || typeof window.ADAHost?.startProjectInstanceIndexWatch !== "function") {
+  if (!folderPath || !indexFileName || !normalizedSelectedPath || typeof window.ADAHost?.startProjectInstanceIndexWatch !== "function") {
     await stopDatasetIndexWatch();
     return;
   }
@@ -182,7 +190,10 @@ async function startDatasetIndexWatchForSnapshot(payload, selectedPath) {
   await stopDatasetIndexWatch();
   ensureDatasetIndexWatchListener();
   try {
-    const result = await window.ADAHost.startProjectInstanceIndexWatch({ path: folderPath });
+    const result = await window.ADAHost.startProjectInstanceIndexWatch({
+      path: folderPath,
+      indexFileName,
+    });
     if (normalizePath(state.selectedPath).toLowerCase() !== normalizedSelectedPath.toLowerCase()) {
       if (result?.watchId && typeof window.ADAHost?.stopProjectInstanceIndexWatch === "function") {
         try { await window.ADAHost.stopProjectInstanceIndexWatch({ watchId: result.watchId }); } catch {}
@@ -239,29 +250,10 @@ function isDatasetRecordCached(record) {
 }
 
 
-function stripDatasetCacheVariantSuffix(value) {
-  const text = toText(value);
-  const stem = text.replace(/\.csv$/iu, "");
-  const parts = stem.split("@");
-  if (
-    parts.length >= 5
-    && /^(dev|cal)$/i.test(parts[parts.length - 1])
-    && /^(cum|inc)$/i.test(parts[parts.length - 2])
-    && /^\d+$/.test(parts[parts.length - 3])
-    && /^\d+$/.test(parts[parts.length - 4])
-  ) {
-    return parts.slice(0, -4).join("@").trim();
-  }
-  if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) {
-    return parts.slice(0, -1).join("@").trim();
-  }
-  return text;
-}
-
 function getCachedFileDatasetNames(item) {
   const names = [];
   const add = (value) => {
-    const text = stripDatasetCacheVariantSuffix(value);
+    const text = toText(value);
     if (text) names.push(text);
   };
   add(item?.name);
@@ -353,9 +345,14 @@ function mergeCachedDatasetMetadata(existing, item) {
     meta.originLength = Math.trunc(originLength);
     meta._originLengthModifiedTs = lastModifiedTs;
   }
-  if (Array.isArray(item?.origin_labels) && item.origin_labels.length && (!meta.originLabels?.length || lastModifiedTs >= (meta._originLabelsModifiedTs || 0))) {
-    meta.originLabels = item.origin_labels.map((label) => String(label));
-    meta._originLabelsModifiedTs = lastModifiedTs;
+  const developmentLength = Number(item?.development_length);
+  if (
+    Number.isFinite(developmentLength)
+    && developmentLength > 0
+    && (!meta.developmentLength || lastModifiedTs >= (meta._developmentLengthModifiedTs || 0))
+  ) {
+    meta.developmentLength = Math.trunc(developmentLength);
+    meta._developmentLengthModifiedTs = lastModifiedTs;
   }
   const status = Number(item?.status);
   if (Number.isFinite(status) && (status === 0 || status === 2) && (!meta._statusModifiedTs || lastModifiedTs >= meta._statusModifiedTs)) {
@@ -432,12 +429,16 @@ async function fetchCachedDatasetSnapshot(path, options = {}) {
 function applyCachedDatasetSnapshot(payload, path = state.selectedPath) {
   const normalizedPath = normalizePath(path);
   const snapshot = normalizeCachedDatasetSnapshot(payload);
+  publishProjectInstanceDatasetSnapshot(projectName, normalizedPath, payload);
   cachedDatasetFilter.names = snapshot.names;
   cachedDatasetFilter.instanceRows = snapshot.instanceRows;
   cachedDatasetFilter.metadataByName = snapshot.metadataByName;
   cachedDatasetFilter.methodTypesByName = snapshot.methodTypesByName;
   cachedDatasetFilter.loadedPath = normalizedPath;
   cachedDatasetFilter.error = "";
+  cachedDatasetFilter.warning = payload?.index_persisted === false
+    ? toText(payload?.index_warning) || "Dataset table loaded, but index.json could not be updated."
+    : "";
   void startDatasetIndexWatchForSnapshot(payload, normalizedPath);
 }
 
@@ -446,6 +447,7 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   const seq = cachedDatasetFilter.requestSeq + 1;
   cachedDatasetFilter.requestSeq = seq;
   cachedDatasetFilter.error = "";
+  cachedDatasetFilter.warning = "";
   cachedDatasetFilter.names = new Set();
   cachedDatasetFilter.instanceRows = [];
   cachedDatasetFilter.metadataByName = new Map();
@@ -477,6 +479,7 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
     cachedDatasetFilter.metadataByName = new Map();
     cachedDatasetFilter.methodTypesByName = new Map();
     cachedDatasetFilter.error = toText(err?.message) || "Cached dataset lookup failed.";
+    cachedDatasetFilter.warning = "";
     setStatus(cachedDatasetFilter.error, true);
   } finally {
     if (seq !== cachedDatasetFilter.requestSeq) return;
@@ -507,6 +510,10 @@ async function refreshCachedDatasetTableFromDisk() {
   if (!cachedDatasetFilter.error) {
     datasetIndexWatch.pending = false;
     syncDatasetIndexUpdatePrompt();
+    if (cachedDatasetFilter.warning) {
+      setStatus(cachedDatasetFilter.warning, true);
+      return true;
+    }
     setStatus(isTemporaryDatasetView()
       ? "Dataset index status refreshed."
       : "Dataset table refreshed.");
@@ -624,7 +631,6 @@ function initCachedDatasetToolbar() {
     startDatasetIndexWatchForSnapshot,
     shouldUseCachedDatasetFilter,
     stopDatasetIndexWatch,
-    stripDatasetCacheVariantSuffix,
     syncCachedDatasetToolbar,
     toggleDatasetViewMode,
     isTemporaryDatasetView,

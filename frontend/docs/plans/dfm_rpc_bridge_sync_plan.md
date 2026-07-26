@@ -68,9 +68,6 @@ Relevant current behavior:
        "ultimate ratio decimal places": 2,
        "ratio basis dataset": ""
      },
-     "notes tab": {
-       "notes": ""
-     },
      "method metadata": {
        "last modified": ""
      }
@@ -234,9 +231,6 @@ The returned JSON from data-engine should be accepted if it contains at least:
       "selected": [[1, 1]]
     }
   },
-  "notes tab": {
-    "notes": "..."
-  },
   "method metadata": {
     "last modified": "2026-05-10T12:00:00.000Z"
   }
@@ -285,9 +279,6 @@ Recommended canonical full payload:
     "ultimate vector": [],
     "ultimate ratio decimal places": 2,
     "ratio basis dataset": ""
-  },
-  "notes tab": {
-    "notes": ""
   },
   "method metadata": {
     "last modified": ""

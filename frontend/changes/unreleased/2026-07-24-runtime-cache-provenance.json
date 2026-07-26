@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Background Dataset and method loads now reuse a valid generated cache instead of repeatedly regenerating it.",
+  "details": [
+    "Cache reuse verifies both the current data-processing configuration and the exact generated CSV content without overwriting saved Dataset settings.",
+    "A temporary server-share read failure leaves the existing CSV intact so the load can be retried."
+  ]
+}

@@ -246,7 +246,6 @@ function extractCellNotesSnapshot(payload) {
 
 function buildJsonSnapshot(payload) {
   const safePayload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
-  const notes = cleanText(jsonTab(safePayload, "notes tab").notes);
   const formulaPayload = jsonTab(jsonTab(safePayload, "ratios tab"), "average formulas");
   const formulas = Array.isArray(formulaPayload.label) ? formulaPayload.label : [];
   return {
@@ -255,8 +254,6 @@ function buildJsonSnapshot(payload) {
     ratio_pattern: extractPatternSnapshot(safePayload),
     average_formula_pattern: extractAverageFormulaSnapshot(safePayload),
     cell_notes: extractCellNotesSnapshot(safePayload),
-    notes,
-    notes_preview: notes.slice(0, 600),
     average_formulas: formulas.map((item) => String(item)),
     last_modified: cleanText(jsonTab(safePayload, "method metadata")["last modified"]),
   };

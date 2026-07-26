@@ -41,7 +41,7 @@ export function installProjectInstanceNumberFormats(ctx) {
     const query = text(els.datasetNumberFormatsFilter?.value).toLocaleLowerCase();
     if (!query) return editor.rows;
     return editor.rows.filter((row) => (
-      `${row.reserving_class} ${row.dataset_type_name} ${row.number_format}`.toLocaleLowerCase().includes(query)
+      `${row.dataset_type_name} ${row.number_format}`.toLocaleLowerCase().includes(query)
     ));
   }
 
@@ -58,16 +58,16 @@ export function installProjectInstanceNumberFormats(ctx) {
     els.datasetNumberFormatsEmpty.hidden = rows.length > 0;
     for (const row of rows) {
       const tr = document.createElement("tr");
-      const fields = ["reserving_class", "dataset_type_name", "number_format"];
+      const fields = ["dataset_type_name", "number_format"];
       for (const field of fields) {
         const td = document.createElement("td");
         const input = document.createElement("input");
         input.type = "text";
         input.value = row[field];
-        input.maxLength = field === "reserving_class" ? 512 : field === "dataset_type_name" ? 256 : 64;
+        input.maxLength = field === "dataset_type_name" ? 256 : 64;
         input.autocomplete = "off";
         input.spellcheck = false;
-        input.setAttribute("aria-label", field === "reserving_class" ? "Reserving Class Path" : field === "dataset_type_name" ? "Dataset Type Name" : "Number Format");
+        input.setAttribute("aria-label", field === "dataset_type_name" ? "Dataset Type Name" : "Number Format");
         input.addEventListener("input", () => updateRow(row.id, field, input.value));
         td.appendChild(input);
         tr.appendChild(td);
@@ -107,7 +107,6 @@ export function installProjectInstanceNumberFormats(ctx) {
       editor.loaded = true;
       editor.rows = (Array.isArray(payload.overrides) ? payload.overrides : []).map((row, index) => ({
         id: `row-${Date.now()}-${index}`,
-        reserving_class: text(row?.reserving_class),
         dataset_type_name: text(row?.dataset_type_name),
         number_format: text(row?.number_format),
       }));
@@ -136,7 +135,7 @@ export function installProjectInstanceNumberFormats(ctx) {
   }
 
   function addOverride() {
-    const row = { id: `row-${Date.now()}-${Math.random()}`, reserving_class: "", dataset_type_name: "", number_format: text(els.datasetNumberFormatsDefault?.value) || "0,000" };
+    const row = { id: `row-${Date.now()}-${Math.random()}`, dataset_type_name: "", number_format: text(els.datasetNumberFormatsDefault?.value) || "0,000" };
     editor.rows.push(row);
     if (els.datasetNumberFormatsFilter) els.datasetNumberFormatsFilter.value = "";
     renderRows();
@@ -149,16 +148,15 @@ export function installProjectInstanceNumberFormats(ctx) {
     const fallback = text(els.datasetNumberFormatsDefault?.value);
     if (!fallback) throw new Error("Fallback number format is required.");
     const overrides = editor.rows.map((row, index) => {
-      const reserving_class = text(row.reserving_class);
       const dataset_type_name = text(row.dataset_type_name);
       const number_format = text(row.number_format);
-      if (!reserving_class || !dataset_type_name || !number_format) throw new Error(`Override row ${index + 1} is incomplete.`);
-      return { reserving_class, dataset_type_name, number_format };
+      if (!dataset_type_name || !number_format) throw new Error(`Override row ${index + 1} is incomplete.`);
+      return { dataset_type_name, number_format };
     });
     const seen = new Set();
     for (const row of overrides) {
-      const key = `${row.reserving_class.toLocaleLowerCase()}\u0000${row.dataset_type_name.toLocaleLowerCase()}`;
-      if (seen.has(key)) throw new Error(`Duplicate override: ${row.reserving_class} / ${row.dataset_type_name}.`);
+      const key = row.dataset_type_name.toLocaleLowerCase();
+      if (seen.has(key)) throw new Error(`Duplicate override: ${row.dataset_type_name}.`);
       seen.add(key);
     }
     return { expected_revision: editor.revision, default_number_format: fallback, overrides };

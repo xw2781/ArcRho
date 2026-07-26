@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project preferences",
+  "audience": "user",
+  "summary": "Overlapping project preference saves no longer collide on a shared temporary file.",
+  "details": [
+    "Preference updates are serialized per project-user file and preserve independent patches.",
+    "Mapped-drive replace locks are retried, while persistent access failures remain non-blocking and are reported clearly.",
+    "Existing unreadable or invalid preference files are not overwritten."
+  ]
+}

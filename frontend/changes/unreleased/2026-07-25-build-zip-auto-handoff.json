@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Automated the ZIP-to-build handoff and opened the published installer after a successful build.",
+  "details": [
+    "Step 1 now publishes a unique readiness flag only after the ZIP and checksum are complete.",
+    "Step 2 waits for a new readiness token before building and records it only after success.",
+    "Successful Step 2 builds no longer pause before opening the published installer."
+  ]
+}

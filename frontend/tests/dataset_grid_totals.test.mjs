@@ -34,14 +34,12 @@ const {
   sumDatasetGridRow,
 } = await import(helperModuleUrl);
 
-test("Dataset Viewer keeps totals for calculated dataset formulas", () => {
-  for (const formula of ["Paid * 0.80", "Paid / Reported", "Paid + Reported", "Paid - Reported"]) {
-    assert.equal(
-      shouldShowDatasetGridTotals({ isDfmHost: false, formula }),
-      true,
-      formula,
-    );
-  }
+test("Dataset Viewer hides totals only for calculated division formulas", () => {
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid / Reported" }), false);
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid * 0.80" }), true);
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid + Reported" }), true);
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid - Reported" }), true);
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "" }), true);
 });
 
 test("the grid applies the total policy using its configured host", () => {

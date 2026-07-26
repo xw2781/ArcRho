@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Prevented legacy B&S source sidecars with missing labels from being reported as having different origin periods.",
+  "details": [
+    "B&S migration now fills missing source-sidecar origin labels while preserving labels that are already stored."
+  ]
+}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [projectInstanceHtml, projectInstanceCss, contextSource, cacheSource, tableSource, windowsSource, dataTabSource] = await Promise.all([
+const [projectInstanceHtml, projectInstanceCss, contextSource, cacheSource, tableSource, windowsSource, dataTabSource, datasetApiSource] = await Promise.all([
   readFile(new URL("../ui/project_instance/project_instance.html", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance.css", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_context.js", import.meta.url), "utf8"),
@@ -10,6 +10,7 @@ const [projectInstanceHtml, projectInstanceCss, contextSource, cacheSource, tabl
   readFile(new URL("../ui/project_instance/project_instance_dataset_table.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_windows.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/shared/tabs/data/data_tab_controller.js", import.meta.url), "utf8"),
+  readFile(new URL("../ui/shared/dataset/dataset_api.js", import.meta.url), "utf8"),
 ]);
 
 test("Project Instance exposes a session-only temporary dataset view", () => {
@@ -73,4 +74,9 @@ test("the Dataset Viewer sends the temporary-mode signal and blocks writes", () 
   assert.match(dataTabSource, /Temporary view does not save permanent dataset sidecars\./);
   assert.match(dataTabSource, /Temporary view is read-only and cannot save notes\./);
   assert.match(dataTabSource, /if \(isTemporaryDatasetView\) return false;/);
+  assert.match(dataTabSource, /loadTemporaryNumberFormatSettings/);
+  assert.match(dataTabSource, /resolved_number_format/);
+  assert.match(datasetApiSource, /dataset\/number-format-defaults/);
+  assert.match(datasetApiSource, /dataset_type_name/);
+  assert.doesNotMatch(datasetApiSource, /reserving_class/);
 });

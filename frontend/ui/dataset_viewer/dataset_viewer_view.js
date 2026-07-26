@@ -228,7 +228,13 @@ export function mountDatasetViewer(container) {
             <div class="chartCanvasWrap">
               <canvas id="devChart"></canvas>
             </div>
-            <div id="devChartLegend" class="chartLegend" aria-label="Legend"></div>
+            <aside class="arChartLegendPanel" aria-labelledby="devChartLegendTitle">
+              <div class="arChartLegendHeader">
+                <h3 class="arChartLegendTitle" id="devChartLegendTitle">Series</h3>
+                <span class="arChartLegendCount" id="devChartLegendCount"></span>
+              </div>
+              <div class="arChartLegendList" id="devChartLegend" role="group" aria-label="Chart series visibility"></div>
+            </aside>
           </div>
         </div>
       </div>

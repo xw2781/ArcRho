@@ -267,9 +267,6 @@ Use a grouped method JSON shape similar to DFM, with a distinct format marker. U
   },
   "results_tab": {},
   "validation_tab": {},
-  "notes_tab": {
-    "notes": ""
-  },
   "method_metadata": {
     "last_modified": ""
   }

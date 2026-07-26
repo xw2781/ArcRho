@@ -14,8 +14,9 @@ Top-level sections:
 - `ratios tab`: `ratio triangle`, `average formulas`, and `cell notes`.
 - `ratios tab`.`ratio triangle`: `origin labels`, GUI-display Ratios-tab `development labels` such as `(1) 2-14`, `ratio values`, and `excluded`.
 - `results tab`: `ratio basis dataset`, `ultimate ratio decimal places`, and `ultimate vector`.
-- `notes tab`: `notes`.
 - `method metadata`: `last modified`.
+
+Method notes are not part of DFM method JSON. They live only in the output dataset sidecar's top-level `notes` field.
 
 Data-engine readers should read fields from these sections directly rather than expecting flat top-level keys.
 

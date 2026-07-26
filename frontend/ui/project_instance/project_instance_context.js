@@ -183,6 +183,7 @@ export function createProjectInstanceContext(deps = {}) {
       methodTypesByName: new Map(),
       visibleCount: 0,
       error: "",
+      warning: "",
       requestSeq: 0,
     },
     cachedDatasetSnapshotRequests: new Map(),

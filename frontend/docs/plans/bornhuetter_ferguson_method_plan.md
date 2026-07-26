@@ -159,7 +159,7 @@ datasets/<Name>@<OriginLength>.csv
 
 Save writes:
 
-- BF v2 method JSON grouped by `details_tab`, `method_tab`, `chart_tab`, `notes_tab`, `audit_log_tab`, and `method_metadata`.
+- BF v2 method JSON grouped by `details_tab`, `method_tab`, `chart_tab`, `audit_log_tab`, and `method_metadata`; notes are owned only by the output dataset sidecar.
 - `method_tab.prior_datasets` stores each prior source name, loaded values, and row weights; `method_tab.show_weights` stores column visibility and `details_tab.statistic_decimal_places` stores formatting precision.
 - Native output vector CSV.
 - Aggregated coarser-period vector CSV variants when the selected origin length can aggregate to 3, 6, or 12.

@@ -56,11 +56,14 @@ test("Result Selection chart keeps the final visible item checked", () => {
 });
 
 test("Result Selection exposes Chart immediately after Method with a right-side visibility panel", async () => {
-  const [html, chartSource] = await Promise.all([
+  const [html, chartSource, sharedLegendSource] = await Promise.all([
     readFile(new URL("ui/method_pages/result_selection/result_selection.html", frontendRoot), "utf8"),
     readFile(new URL("ui/method_pages/result_selection/result_selection_chart.js", frontendRoot), "utf8"),
+    readFile(new URL("ui/shared/components/chart_legend/chart_legend.js", frontendRoot), "utf8"),
   ]);
   assert.match(html, /data-page="method"[\s\S]*data-page="chart"[\s\S]*data-page="results"/u);
-  assert.match(html, /id="rsChartPage"[\s\S]*id="rsChartCanvas"[\s\S]*class="rsChartLegendPanel"[\s\S]*id="rsChartLegendList"/u);
-  assert.match(chartSource, /item\.addEventListener\("contextmenu"/u);
+  assert.match(html, /id="rsChartPage"[\s\S]*id="rsChartCanvas"[\s\S]*class="arChartLegendPanel"[\s\S]*id="rsChartLegendList"/u);
+  assert.doesNotMatch(html, /Click to show or hide|arChartLegendHint/u);
+  assert.match(chartSource, /renderChartLegend\(\{/u);
+  assert.match(sharedLegendSource, /item\.addEventListener\("contextmenu"/u);
 });

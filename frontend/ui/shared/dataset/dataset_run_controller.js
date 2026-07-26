@@ -1,5 +1,7 @@
 import { isDfmDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 
+const DEFAULT_LOADING_POPUP_DELAY_MS = 300;
+
 export function createDatasetRunController(deps) {
   const {
     config,
@@ -16,15 +18,12 @@ export function createDatasetRunController(deps) {
     getTriInputs,
     buildTriRequestPayload,
     buildVecRequestPayload,
-    precheckArcRhoTriCsv,
-    precheckArcRhoVecCsv,
     getDatasetRunDataFormat = () => "",
     clearHeadersCacheForProject,
     ensureHeadersForProject,
     ensureDevHeadersForProject,
     saveLastDsId,
     recordDatasetBrowsingHistory,
-    syncNotesForCurrentDataset,
     syncSidecarForCurrentDataset,
     invalidateDatasetContextLoads = () => {},
     updateCurrentTabTitle,
@@ -33,12 +32,17 @@ export function createDatasetRunController(deps) {
     applyGridSelectionFromState,
     stepId,
     suppressLoadingPopup = false,
+    loadingPopupDelayMs = DEFAULT_LOADING_POPUP_DELAY_MS,
     isDatasetReadOnly = () => false,
   } = deps;
+  const resolvedLoadingPopupDelayMs = Number.isFinite(Number(loadingPopupDelayMs))
+    ? Math.max(0, Number(loadingPopupDelayMs))
+    : DEFAULT_LOADING_POPUP_DELAY_MS;
 
   let autoRunTimer = null;
   let lastAutoKey = "";
   let runInFlight = false;
+  let queuedRunOptions = null;
   let datasetLoadSequence = 0;
   let datasetLoadingPopupEl = null;
   let datasetLoadingPopupTimer = null;
@@ -193,6 +197,15 @@ export function createDatasetRunController(deps) {
     autoRunTimer = setTimeout(() => autoRun(), delayMs);
   }
 
+  function queueLatestRun(options = {}) {
+    queuedRunOptions = {
+      ...(queuedRunOptions || {}),
+      ...options,
+      clearCache: !!queuedRunOptions?.clearCache || !!options?.clearCache,
+    };
+    lastAutoKey = "";
+  }
+
   function bindAutoRunOnEnter(el) {
     if (!el) return;
 
@@ -248,52 +261,39 @@ export function createDatasetRunController(deps) {
     const clearCacheRequested = !!opts?.clearCache;
     const forceRebuild = isForceRebuildEnabled();
     let clearCache = clearCacheRequested || forceRebuild;
-    if (runInFlight) return;
+    if (runInFlight) {
+      queueLatestRun({
+        ...opts,
+        clearCache: clearCacheRequested,
+      });
+      return { ok: false, queued: true };
+    }
     runInFlight = true;
 
     const btn = document.getElementById("runArcRhoTriBtn");
     const clearBtn = document.getElementById("clearCacheReloadBtn");
     const status = document.getElementById("arcrhoTriStatus");
-    let validated = null;
-    try {
-      validated = await validateTriInputsBeforeRun({ showMessage: showValidationMessage });
-    } catch (err) {
-      console.error("Failed to validate ArcRhoTri inputs:", err);
-      runInFlight = false;
-      if (showValidationMessage) {
-        setStatus("Failed to validate inputs. Please check project/reserving class/dataset values.");
-      }
-      return;
-    }
-    if (!validated.ok) {
-      runInFlight = false;
-      return;
-    }
-    const forceLocalCsvOnly = !!validated?.dependencyBypassedByExistingCsv;
-    if (forceLocalCsvOnly && clearCache) {
-      clearCache = false;
-      setStatus("Dependencies unresolved: clear-cache refresh disabled; trying local CSV only.");
-    }
-    const { cumulative, calendar, originLen, devLen, instanceName } = getTriInputs();
-    const { project, path, tri } = validated;
-    const triRequestInputs = { project, path, tri, instanceName, cumulative, calendar, originLen, devLen };
-    const runIsCurrent = () => datasetInputContextIsCurrent(triRequestInputs);
-    const dataFormat = String(getDatasetRunDataFormat(tri) || "").trim().toLowerCase();
-    const isVector = dataFormat === "vector";
-    const requestPayload = isVector && typeof buildVecRequestPayload === "function"
-      ? buildVecRequestPayload(triRequestInputs)
-      : buildTriRequestPayload(triRequestInputs);
-    const precheckExistingCsv = isVector && typeof precheckArcRhoVecCsv === "function"
-      ? precheckArcRhoVecCsv
-      : precheckArcRhoTriCsv;
-    const routeRoot = isVector ? "/arcrho/vec" : "/arcrho/tri";
-    const runLabel = isVector ? "ArcRhoVec" : "ArcRhoTri";
-    const loadingTarget = String(tri || config.DS_ID || "").trim() || "dataset";
+    const validationInputs = getTriInputs();
+    const validationIsCurrent = () => datasetInputContextIsCurrent(validationInputs);
+    const loadingTarget = String(validationInputs?.tri || config.DS_ID || "").trim() || "dataset";
     let loadingPopupVisible = false;
+    let loadingPopupDelayTimer = null;
+    let popupContextIsCurrent = validationIsCurrent;
     const showLoadingPopup = () => {
       if (loadingPopupVisible) return;
       showDatasetLoadingPopup(`Loading dataset "${loadingTarget}" ...`);
       loadingPopupVisible = true;
+    };
+    const scheduleDelayedLoadingPopup = () => {
+      loadingPopupDelayTimer = setTimeout(() => {
+        loadingPopupDelayTimer = null;
+        if (popupContextIsCurrent()) showLoadingPopup();
+      }, resolvedLoadingPopupDelayMs);
+    };
+    const cancelDelayedLoadingPopup = () => {
+      if (loadingPopupDelayTimer === null) return;
+      clearTimeout(loadingPopupDelayTimer);
+      loadingPopupDelayTimer = null;
     };
     const hideLoadingPopup = () => {
       if (!loadingPopupVisible) return;
@@ -303,24 +303,68 @@ export function createDatasetRunController(deps) {
 
     if (status) {
       status.textContent = clearCache
-        ? "Clearing cache and sending request..."
-        : "Sending request...";
+        ? "Validating before cache refresh..."
+        : "Validating inputs...";
     }
     if (btn) btn.disabled = true;
     if (clearBtn) clearBtn.disabled = true;
     if (clearCache) {
       showLoadingPopup();
     } else {
-      const precheckResult = await precheckExistingCsv(triRequestInputs);
-      if (precheckResult.ok && precheckResult?.data?.ok && precheckResult.data.need_request === true) {
-        // Show ASAP after the app server decides a request must be sent.
-        showLoadingPopup();
-      } else if (!precheckResult.ok && !precheckResult.skipped) {
-        console.warn(`${runLabel} precheck failed.`);
-      }
+      // Avoid a second cache/provenance scan just to decide whether to show the
+      // popup. Fast cache hits stay quiet; any delayed end-to-end load remains
+      // visibly in progress while the authoritative run request is pending.
+      scheduleDelayedLoadingPopup();
     }
 
     try {
+      let validated = null;
+      try {
+        validated = await validateTriInputsBeforeRun({ showMessage: showValidationMessage });
+      } catch (err) {
+        console.error("Failed to validate ArcRhoTri inputs:", err);
+        if (showValidationMessage) {
+          setStatus("Failed to validate inputs. Please check project/reserving class/dataset values.");
+        }
+        return { ok: false, validationFailed: true };
+      }
+      if (!validated.ok) {
+        return { ok: false, invalid: true };
+      }
+      if (!validationIsCurrent()) {
+        logLine("Dataset run validation became stale; queued the latest inputs.");
+        queueLatestRun({ showValidationMessage: false });
+        return { ok: false, stale: true, queued: true };
+      }
+
+      const forceLocalCsvOnly = !!validated?.dependencyBypassedByExistingCsv;
+      if (forceLocalCsvOnly && clearCache) {
+        clearCache = false;
+        setStatus("Dependencies unresolved: clear-cache refresh disabled; trying local CSV only.");
+      }
+      const { cumulative, calendar, originLen, devLen, instanceName } = getTriInputs();
+      const { project, path, tri } = validated;
+      const triRequestInputs = { project, path, tri, instanceName, cumulative, calendar, originLen, devLen };
+      const runIsCurrent = () => datasetInputContextIsCurrent(triRequestInputs);
+      popupContextIsCurrent = runIsCurrent;
+      if (!runIsCurrent()) {
+        logLine("Dataset run inputs changed before request publication; queued the latest inputs.");
+        queueLatestRun({ showValidationMessage: false });
+        return { ok: false, stale: true, queued: true };
+      }
+
+      const dataFormat = String(getDatasetRunDataFormat(tri) || "").trim().toLowerCase();
+      const isVector = dataFormat === "vector";
+      const requestPayload = isVector && typeof buildVecRequestPayload === "function"
+        ? buildVecRequestPayload(triRequestInputs)
+        : buildTriRequestPayload(triRequestInputs);
+      const routeRoot = isVector ? "/arcrho/vec" : "/arcrho/tri";
+      const runLabel = isVector ? "ArcRhoVec" : "ArcRhoTri";
+      if (status) {
+        status.textContent = clearCache
+          ? "Clearing cache and sending request..."
+          : "Sending request...";
+      }
       const endpoint = clearCache ? `${routeRoot}/refresh` : routeRoot;
       const resp = await fetch(endpoint, {
         method: "POST",
@@ -332,8 +376,8 @@ export function createDatasetRunController(deps) {
 
       if (!runIsCurrent()) {
         logLine(`${runLabel} response ignored because dataset inputs changed while the request was running.`);
-        lastAutoKey = "";
-        return { ok: false, stale: true };
+        queueLatestRun({ showValidationMessage: false });
+        return { ok: false, stale: true, queued: true };
       }
 
       if (!resp.ok) {
@@ -361,17 +405,6 @@ export function createDatasetRunController(deps) {
       logLine(`${clearCache ? `${runLabel} refresh` : runLabel} OK. ds_id=${data.ds_id}`);
       if (status) status.textContent = `OK: ${data.ds_id}`;
 
-      const needRequest = !clearCache && (
-        data?.need_request === true
-        || !!String(data?.request_file || "").trim()
-      );
-      if (needRequest) {
-        showLoadingPopup();
-      } else if (!clearCache) {
-        // Cache hit: avoid showing loading popup just for quick local load.
-        hideLoadingPopup();
-        loadingPopupVisible = false;
-      }
       if (clearCache && project) {
         try {
           await clearHeadersCacheForProject(project, { remote: true, originLen, devLen });
@@ -388,8 +421,8 @@ export function createDatasetRunController(deps) {
         }
       }
       if (!runIsCurrent()) {
-        lastAutoKey = "";
-        return { ok: false, stale: true };
+        queueLatestRun({ showValidationMessage: false });
+        return { ok: false, stale: true, queued: true };
       }
       // Switch to the completed cache only after every awaited run step still
       // matches the inputs that produced it.
@@ -403,10 +436,18 @@ export function createDatasetRunController(deps) {
       recordDatasetBrowsingHistory({ project, path, tri });
       return loadResult;
     } finally {
+      cancelDelayedLoadingPopup();
       hideLoadingPopup();
       runInFlight = false;
       if (btn) btn.disabled = false;
       if (clearBtn) clearBtn.disabled = false;
+      const nextRunOptions = queuedRunOptions;
+      queuedRunOptions = null;
+      if (nextRunOptions) {
+        setTimeout(() => {
+          void runArcRhoTri(nextRunOptions);
+        }, 0);
+      }
     }
   }
 
@@ -429,17 +470,20 @@ export function createDatasetRunController(deps) {
       datasetId,
       loadInputs,
     );
+    const developmentHeadersPromise = project
+      ? Promise.resolve()
+        .then(() => ensureDevHeadersForProject(project, { isCurrent: loadIsCurrent }))
+        .catch((err) => {
+          console.warn("Failed to resolve development header labels:", err);
+          return [];
+        })
+      : Promise.resolve([]);
     let response;
     try {
-      if (project) {
-        await ensureHeadersForProject(project, { isCurrent: loadIsCurrent });
-        if (!loadIsCurrent()) return { ok: false, stale: true };
-        await ensureDevHeadersForProject(project, { isCurrent: loadIsCurrent });
-      }
-      if (!loadIsCurrent()) {
-        return { ok: false, stale: true };
-      }
-      response = await getDataset(datasetId, { projectName: project, originLength: originLen });
+      response = await getDataset(
+        datasetId,
+        { projectName: project, originLength: originLen },
+      );
     } catch (err) {
       response = {
         ok: false,
@@ -480,11 +524,6 @@ export function createDatasetRunController(deps) {
 
     // The backend validates origin labels against the dataset row count.
     state.headerLabels = Array.isArray(data.origin_labels) ? data.origin_labels.map(String) : [];
-    if (Array.isArray(state.devHeaderLabels) && state.devHeaderLabels.length) {
-      // Do not truncate dev labels by the UI selector.
-      // The triangle CSV may contain more columns than the current selector value.
-      state.model.dev_labels = state.devHeaderLabels.map(String);
-    }
 
     if (isDfmDataTabHost() && typeof syncSidecarForCurrentDataset === "function") {
       const sidecarSynced = await syncSidecarForCurrentDataset({
@@ -502,11 +541,27 @@ export function createDatasetRunController(deps) {
     renderTable();
     notifyDatasetUpdated();
     applyGridSelectionFromState();
-    if (typeof syncNotesForCurrentDataset === "function") {
-      const notesSynced = await syncNotesForCurrentDataset({ isCurrent: loadIsCurrent, forceReload: true });
-      if (!loadIsCurrent()) return { ok: false, stale: true };
-      if (notesSynced === false) return { ok: false, contextSyncFailed: true };
-    }
+    void developmentHeadersPromise.then((labels) => {
+      const resolvedLabels = Array.isArray(labels) ? labels.map(String) : [];
+      if (!resolvedLabels.length || !loadIsCurrent() || state.model !== data) return;
+      state.devHeaderLabels = resolvedLabels;
+      const currentLabels = Array.isArray(state.model.dev_labels)
+        ? state.model.dev_labels.map(String)
+        : [];
+      if (
+        currentLabels.length === resolvedLabels.length
+        && currentLabels.every((label, index) => label === resolvedLabels[index])
+      ) {
+        return;
+      }
+      // The dataset response is authoritative for the first paint. Header
+      // discovery is allowed to refine that paint only while this load still
+      // owns the visible dataset.
+      state.model.dev_labels = resolvedLabels;
+      renderTable();
+      notifyDatasetUpdated();
+      applyGridSelectionFromState();
+    });
     if (!isDfmDataTabHost() && typeof syncSidecarForCurrentDataset === "function") {
       const sidecarSynced = await syncSidecarForCurrentDataset({
         applyLengths: false,

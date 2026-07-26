@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Added inline close controls for removing Ratio Basis datasets without hover tooltips."
+}

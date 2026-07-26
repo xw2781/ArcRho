@@ -61,8 +61,7 @@ test("ArcRho macro validation ignores volatile timestamps but detects live DFM e
   const initial = {
     activeJson: {
       "method metadata": { "last modified": "2026-07-22T12:00:00.000Z" },
-      "notes tab": { notes: "Initial notes" },
-      "ratios tab": { "ratio values": [[1.1, 1.2]] },
+      "ratios tab": { "ratio values": [[1.1, 1.2]], "cell notes": {} },
     },
     dirty: true,
     fields: { methodName: "Paid Ultimate", project: "Example" },
@@ -81,7 +80,7 @@ test("ArcRho macro validation ignores volatile timestamps but detects live DFM e
     ...recaptured,
     activeJson: {
       ...recaptured.activeJson,
-      "notes tab": { notes: "Changed while macro was running" },
+      "ratios tab": { "ratio values": [[1.1, 1.2]], "cell notes": { Summary: { Paid: "Changed" } } },
     },
   };
 
@@ -100,4 +99,13 @@ test("standalone Arcode packages the first-party ArcRho API", () => {
   assert.match(spec, /collect_submodules\("arcrho_api"\)/);
   assert.match(fullRouter, /@router\.post\("\/scripting\/run-in-arcrho"\)/);
   assert.match(arcodeRouter, /@router\.post\("\/scripting\/run-in-arcrho"\)/);
+});
+
+test("packaged ArcRho server resolves the monorepo ArcRho API before collecting it", () => {
+  const spec = read("../build/server.spec");
+  const pathInsertion = spec.indexOf("sys.path.insert(0, str(python_api_src))");
+  const submoduleCollection = spec.indexOf("collect_submodules('arcrho_api')");
+
+  assert.ok(pathInsertion >= 0);
+  assert.ok(submoduleCollection > pathInsertion);
 });

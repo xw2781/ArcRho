@@ -413,21 +413,12 @@
         if (!list) return;
         list.replaceChildren();
 
-        if (!names.length) {
-          const empty = document.createElement("span");
-          empty.className = "rsRatioBasisEmpty";
-          empty.setAttribute("role", "listitem");
-          empty.textContent = "Select one or more ratio basis datasets.";
-          list.appendChild(empty);
-        }
-
         names.forEach((name, index) => {
           const token = document.createElement("span");
           token.className = "rsRatioBasisToken";
           token.setAttribute("role", "listitem");
           token.setAttribute("draggable", "true");
           token.dataset.ratioBasisIndex = String(index);
-          token.title = name;
 
           const openButton = document.createElement("button");
           openButton.className = "rsRatioBasisOpen";
@@ -440,6 +431,14 @@
           label.textContent = name;
           openButton.appendChild(label);
           token.appendChild(openButton);
+
+          const removeButton = document.createElement("button");
+          removeButton.className = "rsRatioBasisRemove";
+          removeButton.type = "button";
+          removeButton.dataset.ratioBasisRemoveIndex = String(index);
+          removeButton.setAttribute("aria-label", `Remove dataset ${name}`);
+          removeButton.innerHTML = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 6l12 12M18 6L6 18\"></path></svg>";
+          token.appendChild(removeButton);
           list.appendChild(token);
         });
 
@@ -941,6 +940,13 @@
           void openRatioBasisDatasetPicker();
         });
         els.ratioBasisList?.addEventListener("click", (event) => {
+          const removeButton = event.target.closest?.("button[data-ratio-basis-remove-index]");
+          if (removeButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            removeRatioBasisAt(Number.parseInt(removeButton.dataset.ratioBasisRemoveIndex || "", 10));
+            return;
+          }
           const button = event.target.closest?.("button[data-ratio-basis-open-index]");
           if (!button) return;
           event.preventDefault();

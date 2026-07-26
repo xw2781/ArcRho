@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Temporary-view datasets now use the saved workspace number-format fallback and Dataset Type Name overrides.",
+  "details": [
+    "Temporary datasets without sidecars resolve formatting by Dataset Type Name across all reserving-class paths.",
+    "Temporary view remains read-only and does not create sidecars or index entries."
+  ]
+}

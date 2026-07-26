@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Refined the Arcode Dark mode explorer and resize gutter with consistent, readable theme colors."
+}

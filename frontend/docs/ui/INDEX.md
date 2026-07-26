@@ -14,6 +14,7 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 | `ui/dataset_viewer/dataset_viewer.html` | 1 external script | 1 inline import |
 | `ui/method_pages/dfm/dfm.html` | 1 external script | 2 inline imports |
 | `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html` | 2 external scripts | - |
+| `ui/method_pages/berquist_sherman/berquist_sherman.html` | 2 external scripts | - |
 | `ui/method_pages/result_selection/result_selection.html` | 6 external scripts | - |
 | `ui/workflow/workflow.html` | 2 external scripts | - |
 | `ui/project_settings/project_settings.html` | 2 external scripts | - |
@@ -30,6 +31,7 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 - [`docs/ui/dataset.md`](dataset.md) - Dataset feature index.
 - [`docs/ui/dfm.md`](dfm.md) - DFM feature index.
 - [`docs/ui/bornhuetter_ferguson.md`](bornhuetter_ferguson.md) - Bornhuetter Ferguson method-page index.
+- [`docs/ui/berquist_sherman.md`](berquist_sherman.md) - Berquist Sherman method-page index.
 - [`docs/ui/result_selection.md`](result_selection.md) - Result Selection method-page index.
 - [`docs/ui/workflow.md`](workflow.md) - Workflow feature index.
 - [`docs/ui/project_settings.md`](project_settings.md) - Project settings feature index.

@@ -38,6 +38,21 @@ const testableRunControllerSource = runControllerSource.replace(
 const runControllerModule = await import(
   `data:text/javascript;base64,${Buffer.from(testableRunControllerSource).toString("base64")}`
 );
+const dataTabControllerSource = await readFile(
+  new URL("../ui/shared/tabs/data/data_tab_controller.js", import.meta.url),
+  "utf8",
+);
+const dfmTabsOrchestratorSource = await readFile(
+  new URL("../ui/method_pages/dfm/dfm_tabs_orchestrator.js", import.meta.url),
+  "utf8",
+);
+const queryInputsSource = await readFile(
+  new URL("../ui/shared/tabs/data/data_tab_query_inputs.js", import.meta.url),
+  "utf8",
+);
+const queryInputsModule = await import(
+  `data:text/javascript;base64,${Buffer.from(queryInputsSource).toString("base64")}`
+);
 
 test("accepts consecutive origin labels for every supported period length", () => {
   const cases = [
@@ -164,6 +179,292 @@ test("dataset API sends the encoded dataset, project, and origin length", async 
   assert.equal(parsed.searchParams.has("start_year"), false);
 });
 
+test("DFM URL aliases initialize the shared dataset input owner", () => {
+  const values = queryInputsModule.readDatasetInputQueryValues(
+    "?project=Example%20Project&class=LOB%5CState&method_name=Paid%20DFM&input_triangle=Paid%20Loss",
+  );
+  assert.equal(values.project, "Example Project");
+  assert.equal(values.path, "LOB\\State");
+  assert.equal(values.methodName, "Paid DFM");
+  assert.equal(values.tri, "Paid Loss");
+  assert.match(dataTabControllerSource, /readDatasetInputQueryValues\(qs\)/);
+  assert.match(dfmTabsOrchestratorSource, /readDatasetInputQueryValues\(_qs\)/);
+});
+
+test("Dataset Viewer paints backend labels without waiting for development headers", async () => {
+  const originalDocument = globalThis.document;
+  const tableWrap = { replaceChildren() {} };
+  const dsMeta = { textContent: "" };
+  globalThis.document = {
+    createElement: () => ({ style: {}, append() {} }),
+    createTextNode: (text) => ({ textContent: String(text) }),
+    getElementById: () => ({ value: "" }),
+  };
+  const inputs = {
+    project: "Example Project",
+    path: "Example Path",
+    tri: "Example Dataset",
+    instanceName: "Example Dataset",
+    cumulative: true,
+    calendar: false,
+    originLen: 12,
+    devLen: 12,
+  };
+  const state = {
+    dirty: new Map(),
+    model: null,
+    fileMtime: null,
+    headerLabels: [],
+    devHeaderLabels: [],
+  };
+  const headerStarts = [];
+  let releaseDevelopmentHeaders;
+  const developmentHeadersReady = new Promise((resolve) => { releaseDevelopmentHeaders = resolve; });
+  let datasetRequestCount = 0;
+  const renderedDevelopmentLabels = [];
+  const controller = runControllerModule.createDatasetRunController({
+    config: { API_BASE: "", DS_ID: "dataset-id" },
+    state,
+    $: (id) => (id === "tableWrap" ? tableWrap : dsMeta),
+    logLine: () => {},
+    getDataset: async () => {
+      datasetRequestCount += 1;
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          id: "dataset-id",
+          mtime: 2,
+          origin_labels: ["2020", "2021"],
+          dev_labels: ["12"],
+          values: [[1], [2]],
+          mask: [[true], [true]],
+        },
+      };
+    },
+    patchDataset: async () => ({}),
+    renderTable: () => {
+      renderedDevelopmentLabels.push([...(state.model?.dev_labels || [])]);
+    },
+    renderChart: () => {},
+    notifyDatasetUpdated: () => {},
+    isForceRebuildEnabled: () => false,
+    validateTriInputsBeforeRun: () => ({}),
+    getTriInputs: () => inputs,
+    buildTriRequestPayload: () => ({}),
+    buildVecRequestPayload: () => ({}),
+    clearHeadersCacheForProject: async () => {},
+    ensureHeadersForProject: () => {
+      throw new Error("origin labels must come from the authoritative dataset response");
+    },
+    ensureDevHeadersForProject: (_project, options) => {
+      assert.equal(options.forceRefresh, undefined);
+      assert.equal(options.isCurrent(), true);
+      headerStarts.push("development");
+      return developmentHeadersReady;
+    },
+    saveLastDsId: () => {},
+    recordDatasetBrowsingHistory: () => {},
+    syncNotesForCurrentDataset: async () => true,
+    syncSidecarForCurrentDataset: async () => true,
+    updateCurrentTabTitle: () => "",
+    setStatus: () => {},
+    applyGridSelectionFromState: () => {},
+  });
+
+  let loadTimeout = null;
+  try {
+    const loadPromise = controller.loadDataset();
+    await Promise.resolve();
+    assert.deepEqual(headerStarts, ["development"]);
+    assert.equal(datasetRequestCount, 1);
+    const result = await Promise.race([
+      loadPromise,
+      new Promise((_, reject) => {
+        loadTimeout = setTimeout(
+          () => reject(new Error("dataset load waited for development headers")),
+          500,
+        );
+      }),
+    ]);
+    assert.equal(result.ok, true);
+    assert.equal(datasetRequestCount, 1);
+    assert.deepEqual(state.model.dev_labels, ["12"]);
+    assert.deepEqual(renderedDevelopmentLabels, [["12"]]);
+
+    releaseDevelopmentHeaders(["6", "12"]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(state.model.dev_labels, ["6", "12"]);
+    assert.deepEqual(renderedDevelopmentLabels, [["12"], ["6", "12"]]);
+  } finally {
+    if (loadTimeout !== null) clearTimeout(loadTimeout);
+    releaseDevelopmentHeaders([]);
+    globalThis.document = originalDocument;
+  }
+});
+
+test("Dataset run replaces the duplicate precheck with a delayed loading indicator", () => {
+  assert.doesNotMatch(runControllerSource, /precheckArcRho(?:Tri|Vec)Csv/);
+  assert.match(runControllerSource, /const DEFAULT_LOADING_POPUP_DELAY_MS = 300/);
+  assert.match(runControllerSource, /scheduleDelayedLoadingPopup\(\)/);
+  assert.match(runControllerSource, /finally \{\s*cancelDelayedLoadingPopup\(\);\s*hideLoadingPopup\(\);/);
+});
+
+test("a stale deferred validation queues and publishes only the latest dataset run", async () => {
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const elements = {
+    runArcRhoTriBtn: { disabled: false },
+    clearCacheReloadBtn: { disabled: false },
+    arcrhoTriStatus: { textContent: "" },
+  };
+  globalThis.document = {
+    getElementById: (id) => elements[id] || { value: "" },
+  };
+  const oldInputs = {
+    project: "Example Project",
+    path: "Old Class",
+    tri: "Old Dataset",
+    instanceName: "Old Dataset",
+    cumulative: true,
+    calendar: false,
+    originLen: 12,
+    devLen: 12,
+  };
+  const newInputs = {
+    ...oldInputs,
+    path: "New Class",
+    tri: "New Dataset",
+    instanceName: "New Dataset",
+  };
+  let currentInputs = oldInputs;
+  let releaseFirstValidation;
+  let markValidationStarted;
+  const validationStarted = new Promise((resolve) => { markValidationStarted = resolve; });
+  let validationCount = 0;
+  const requestPayloads = [];
+  const requestUrls = [];
+  globalThis.fetch = async (url, options) => {
+    requestUrls.push(String(url));
+    requestPayloads.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: false, message: "Expected test stop." }),
+    };
+  };
+  const controller = runControllerModule.createDatasetRunController({
+    config: { API_BASE: "", DS_ID: "" },
+    state: { dirty: new Map(), model: null },
+    $: () => ({ textContent: "", replaceChildren() {} }),
+    logLine: () => {},
+    getDataset: async () => assert.fail("test response must stop before dataset loading"),
+    patchDataset: async () => ({}),
+    renderTable: () => {},
+    renderChart: () => {},
+    notifyDatasetUpdated: () => {},
+    isForceRebuildEnabled: () => false,
+    validateTriInputsBeforeRun: async () => {
+      validationCount += 1;
+      if (validationCount === 1) {
+        markValidationStarted();
+        return new Promise((resolve) => { releaseFirstValidation = resolve; });
+      }
+      return {
+        ok: true,
+        project: currentInputs.project,
+        path: currentInputs.path,
+        tri: currentInputs.tri,
+      };
+    },
+    getTriInputs: () => ({ ...currentInputs }),
+    buildTriRequestPayload: (inputs) => ({ ...inputs }),
+    buildVecRequestPayload: (inputs) => ({ ...inputs }),
+    clearHeadersCacheForProject: async () => {},
+    ensureHeadersForProject: async () => {},
+    ensureDevHeadersForProject: async () => {},
+    saveLastDsId: () => {},
+    recordDatasetBrowsingHistory: () => {},
+    syncNotesForCurrentDataset: async () => true,
+    syncSidecarForCurrentDataset: async () => true,
+    updateCurrentTabTitle: () => "",
+    setStatus: () => {},
+    applyGridSelectionFromState: () => {},
+    suppressLoadingPopup: true,
+  });
+
+  try {
+    const firstRun = controller.runArcRhoTri();
+    await validationStarted;
+    assert.equal(elements.runArcRhoTriBtn.disabled, true);
+    assert.equal(elements.arcrhoTriStatus.textContent, "Validating inputs...");
+
+    currentInputs = newInputs;
+    const queuedResult = await controller.runArcRhoTri({ clearCache: true });
+    assert.equal(queuedResult.queued, true);
+    releaseFirstValidation({
+      ok: true,
+      project: oldInputs.project,
+      path: oldInputs.path,
+      tri: oldInputs.tri,
+    });
+    const firstResult = await firstRun;
+    assert.equal(firstResult.stale, true);
+    assert.equal(requestPayloads.length, 0);
+
+    const deadline = Date.now() + 500;
+    while (requestPayloads.length === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(requestPayloads.length, 1);
+    assert.equal(requestUrls[0], "/arcrho/tri/refresh");
+    assert.equal(requestPayloads[0].path, "New Class");
+    assert.equal(requestPayloads[0].tri, "New Dataset");
+    assert.equal(validationCount, 2);
+    while (controller.isRunInFlight() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("DFM refresh delegates header and dataset ownership to the run controller", () => {
+  const refreshStart = dataTabControllerSource.indexOf("async function refreshDfmDatasetForCurrentInputs");
+  const refreshEnd = dataTabControllerSource.indexOf("if (isDfmDataTabHost())", refreshStart);
+  assert.notEqual(refreshStart, -1);
+  assert.notEqual(refreshEnd, -1);
+  const refreshSource = dataTabControllerSource.slice(refreshStart, refreshEnd);
+  assert.doesNotMatch(refreshSource, /ensure(?:Dev)?HeadersForProject/);
+  assert.match(refreshSource, /return runArcRhoTri/);
+});
+
+test("Result Selection materializes an engine source with one authoritative request", async () => {
+  const source = await readFile(
+    new URL("../ui/method_pages/result_selection/result_selection_data.js", import.meta.url),
+    "utf8",
+  );
+  const materializeStart = source.indexOf("async function materializeEngineSourceAtLength");
+  const loadStart = source.indexOf("async function loadMaterializedEngineDatasetPayload", materializeStart);
+  assert.notEqual(materializeStart, -1);
+  assert.notEqual(loadStart, -1);
+  const materializeSource = source.slice(materializeStart, loadStart);
+  assert.doesNotMatch(materializeSource, /\/precheck/);
+  assert.match(materializeSource, /const resp = await fetch\(routeRoot,/);
+});
+
+test("Dataset boot schedules auto-run without forced header refreshes", () => {
+  const bootStart = dataTabControllerSource.indexOf("export async function bootDatasetDataTab()");
+  assert.notEqual(bootStart, -1);
+  const bootSource = dataTabControllerSource.slice(bootStart);
+  assert.doesNotMatch(
+    bootSource,
+    /await ensure(?:Dev)?HeadersForProject\(project,\s*\{\s*forceRefresh:\s*true\s*\}\)/,
+  );
+  assert.match(bootSource, /scheduleAutoRun\(0\)/);
+});
+
 test("Dataset Viewer renders backend label errors and invalidates stale data", async () => {
   const originalDocument = globalThis.document;
   const tableWrap = { children: [], replaceChildren(...children) { this.children = children; } };
@@ -205,8 +506,6 @@ test("Dataset Viewer renders backend label errors and invalidates stale data", a
     getTriInputs: () => ({ project: "Example Project", originLen: 12 }),
     buildTriRequestPayload: () => ({}),
     buildVecRequestPayload: () => ({}),
-    precheckArcRhoTriCsv: async () => ({}),
-    precheckArcRhoVecCsv: async () => ({}),
     clearHeadersCacheForProject: async () => {},
     ensureHeadersForProject: async () => {},
     ensureDevHeadersForProject: async () => {},
@@ -283,8 +582,6 @@ test("an older dataset response cannot restore data after a newer load fails", a
     getTriInputs: () => ({ project: "Example Project", originLen: 12 }),
     buildTriRequestPayload: () => ({}),
     buildVecRequestPayload: () => ({}),
-    precheckArcRhoTriCsv: async () => ({}),
-    precheckArcRhoVecCsv: async () => ({}),
     clearHeadersCacheForProject: async () => {},
     ensureHeadersForProject: async () => {},
     ensureDevHeadersForProject: async () => {},
@@ -344,10 +641,10 @@ test("a stale notes sync cannot hide a newer origin-label failure", async () => 
     devHeaderLabels: [],
   };
   let requestCount = 0;
-  let releaseNotesSync;
-  let markNotesSyncStarted;
-  const notesSyncStarted = new Promise((resolve) => { markNotesSyncStarted = resolve; });
-  const notesSyncRelease = new Promise((resolve) => { releaseNotesSync = resolve; });
+  let releaseSidecarSync;
+  let markSidecarSyncStarted;
+  const sidecarSyncStarted = new Promise((resolve) => { markSidecarSyncStarted = resolve; });
+  const sidecarSyncRelease = new Promise((resolve) => { releaseSidecarSync = resolve; });
   let statusText = "";
   const controller = runControllerModule.createDatasetRunController({
     config: { API_BASE: "", DS_ID: "dataset-id" },
@@ -390,29 +687,26 @@ test("a stale notes sync cannot hide a newer origin-label failure", async () => 
     }),
     buildTriRequestPayload: () => ({}),
     buildVecRequestPayload: () => ({}),
-    precheckArcRhoTriCsv: async () => ({}),
-    precheckArcRhoVecCsv: async () => ({}),
     clearHeadersCacheForProject: async () => {},
     ensureHeadersForProject: async () => {},
     ensureDevHeadersForProject: async () => {},
     saveLastDsId: () => {},
     recordDatasetBrowsingHistory: () => {},
-    syncNotesForCurrentDataset: async ({ isCurrent, forceReload }) => {
+    syncSidecarForCurrentDataset: async ({ isCurrent, forceReload }) => {
       assert.equal(forceReload, true);
-      markNotesSyncStarted();
-      await notesSyncRelease;
+      markSidecarSyncStarted();
+      await sidecarSyncRelease;
       assert.equal(isCurrent(), false);
     },
-    syncSidecarForCurrentDataset: async () => {},
     updateCurrentTabTitle: () => "",
     setStatus: (value) => { statusText = value; },
     applyGridSelectionFromState: () => {},
   });
   try {
     const olderLoad = controller.loadDataset();
-    await notesSyncStarted;
+    await sidecarSyncStarted;
     const newerResult = await controller.loadDataset();
-    releaseNotesSync();
+    releaseSidecarSync();
     const olderResult = await olderLoad;
     assert.equal(newerResult.ok, false);
     assert.equal(olderResult.stale, true);
@@ -424,7 +718,7 @@ test("a stale notes sync cannot hide a newer origin-label failure", async () => 
   }
 });
 
-test("a blocked notes sync keeps its actionable status instead of reporting Ready", async () => {
+test("a blocked sidecar sync keeps its actionable status instead of reporting Ready", async () => {
   const originalDocument = globalThis.document;
   const tableWrap = { replaceChildren() {} };
   const dsMeta = { textContent: "old metadata" };
@@ -467,18 +761,16 @@ test("a blocked notes sync keeps its actionable status instead of reporting Read
     getTriInputs: () => ({ project: "Example Project", originLen: 12 }),
     buildTriRequestPayload: () => ({}),
     buildVecRequestPayload: () => ({}),
-    precheckArcRhoTriCsv: async () => ({}),
-    precheckArcRhoVecCsv: async () => ({}),
     clearHeadersCacheForProject: async () => {},
     ensureHeadersForProject: async () => {},
     ensureDevHeadersForProject: async () => {},
     saveLastDsId: () => {},
     recordDatasetBrowsingHistory: () => {},
-    syncNotesForCurrentDataset: async () => {
+    syncSidecarForCurrentDataset: async () => {
+      sidecarSyncCount += 1;
       statusText = "Notes changed while saving. Save the latest notes before switching datasets.";
       return false;
     },
-    syncSidecarForCurrentDataset: async () => { sidecarSyncCount += 1; return true; },
     updateCurrentTabTitle: () => "",
     setStatus: (value) => { statusText = value; },
     applyGridSelectionFromState: () => {},
@@ -487,7 +779,7 @@ test("a blocked notes sync keeps its actionable status instead of reporting Read
     const result = await controller.loadDataset();
     assert.equal(result.ok, false);
     assert.equal(result.contextSyncFailed, true);
-    assert.equal(sidecarSyncCount, 0);
+    assert.equal(sidecarSyncCount, 1);
     assert.equal(dsMeta.textContent, "");
     assert.match(statusText, /Notes changed while saving/);
   } finally {

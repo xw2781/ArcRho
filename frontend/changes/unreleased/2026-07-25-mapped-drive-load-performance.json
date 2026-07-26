@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Reduced Project Instance dataset and method loading delays when project data is stored on a mapped network drive.",
+  "details": [
+    "Missing dataset indexes now prefetch file metadata with bounded parallel reads while preserving deterministic results and serialized writes.",
+    "Dataset sidecar dependency graphs reuse shared metadata snapshots and read related sidecars in parallel.",
+    "Result Selection loads independent sources concurrently while preserving source order and stale-response protection."
+  ]
+}

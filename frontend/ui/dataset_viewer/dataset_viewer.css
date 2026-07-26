@@ -515,30 +515,18 @@ body {
   z-index: 100;
 }
 
-/* Legend checkbox */
-.legendChk {
-  margin-left: auto;
-  cursor: pointer;
-  flex: 0 0 auto;
-}
-
-.legendSelectAll {
-  border-bottom: 1px solid #e0e0e0;
-  padding-bottom: 2px;
-  margin-bottom: 2px;
-}
-
 .chartRow {
   flex: 1 1 auto;
   min-height: 0;
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
 }
 
 .chartCanvasWrap {
-  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
 }
 
 #devChart {
@@ -547,39 +535,11 @@ body {
   display: block;
 }
 
-.chartLegend {
-  width: 170px;
-  flex: 0 0 170px;
-  max-height: 100%;
-  overflow-y: auto;
-  border-left: 1px solid #eee;
-  padding-left: 8px;
-  box-sizing: border-box;
-}
-
-.legendItem {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  cursor: pointer;
-  padding: 0 2px;
-}
-
-.legendSwatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  flex: 0 0 auto;
-}
-
-.legendLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.legendItem.is-hover .legendLabel {
-  font-weight: 600;
+@media (max-width: 720px) {
+  .chartRow {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 1fr) minmax(96px, auto);
+  }
 }
 
 

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Refined the Result Selection Ratio Basis picker into full-width 30px dataset rows with a separate add row."
+}

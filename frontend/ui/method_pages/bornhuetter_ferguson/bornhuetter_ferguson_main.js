@@ -22,6 +22,7 @@ import {
 import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js?v=20260722a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
+import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 
 const BF_METHOD_TYPE = "Bornhuetter Ferguson";
 const BF_SOURCE_KIND = "bornhuetter_ferguson";
@@ -378,28 +379,9 @@ function csvBaseName(value) {
   return text(value).split(/[\\/]/).pop();
 }
 
-function stripDatasetCacheVariantSuffix(value) {
-  const raw = text(value);
-  const stem = raw.replace(/\.csv$/iu, "");
-  const parts = stem.split("@");
-  if (
-    parts.length >= 5
-    && /^(dev|cal)$/i.test(parts[parts.length - 1])
-    && /^(cum|inc)$/i.test(parts[parts.length - 2])
-    && /^\d+$/.test(parts[parts.length - 3])
-    && /^\d+$/.test(parts[parts.length - 4])
-  ) {
-    return parts.slice(0, -4).join("@").trim();
-  }
-  if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) {
-    return parts.slice(0, -1).join("@").trim();
-  }
-  return raw.replace(/\.[^.]+$/u, "");
-}
-
 function normalizeCachedRow(row) {
   const rawName = text(row?.datasetName || row?.dataset_name || row?.name || row?.datasetTypeName || row?.dataset_type);
-  const name = stripDatasetCacheVariantSuffix(rawName);
+  const name = rawName;
   return {
     ...row,
     name,
@@ -416,6 +398,13 @@ function normalizeCachedRow(row) {
 
 async function loadCachedRows(force = false) {
   if (!state.project || !state.reservingClass) return [];
+  const sharedPayload = !force && params.get("project_instance") === "1"
+    ? readProjectInstanceDatasetSnapshot(state.project, state.reservingClass)
+    : null;
+  if (sharedPayload) {
+    state.cachedRows = sharedPayload.files.map(normalizeCachedRow).filter((row) => row.name);
+    return state.cachedRows;
+  }
   const qs = new URLSearchParams({
     project_name: state.project,
     reserving_class: state.reservingClass,
@@ -666,16 +655,19 @@ function renderPriorSourceList() {
   if (!els.priorList) return;
   const sources = state.priorSources.length
     ? state.priorSources.map((source, sourceIndex) => `
-    <span class="bfPriorToken" role="listitem" draggable="true" data-prior-token-index="${sourceIndex}" title="${escapeHtml(source.name)}">
+    <span class="bfPriorToken" role="listitem" draggable="true" data-prior-token-index="${sourceIndex}">
       <button class="bfPriorOpen" type="button" data-prior-open-index="${sourceIndex}" aria-label="Open dataset ${escapeHtml(source.name)}">
         <span class="bfPriorTokenLabel">${escapeHtml(source.name)}</span>
       </button>
+      <button class="bfPriorRemove" type="button" data-prior-remove-index="${sourceIndex}" aria-label="Remove dataset ${escapeHtml(source.name)}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </button>
     </span>`).join("")
-    : '<span class="bfPriorEmpty" role="listitem">Select one or more prior vectors.</span>';
+    : "";
   els.priorList.innerHTML = `${sources}
     <span class="bfPriorAddSlot" role="listitem">
       <button class="bfPriorAdd" id="bfPriorAddBtn" type="button" data-prior-add title="Add prior vector" aria-label="Add prior vector">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+        + Add datasets
       </button>
     </span>`;
 }
@@ -845,22 +837,33 @@ async function refreshCalculations({ mark = false } = {}) {
     if (mark) markDirty();
     return;
   }
-  const latestPayload = await loadConfiguredSourcePayload(details.latestDataset, details);
-  const dfmPayload = await loadConfiguredSourcePayload(details.dfmDataset, details);
-  const priorSources = await Promise.all(state.priorSources.map(async (source) => {
+  const tasks = [
+    { kind: "latest", name: details.latestDataset },
+    { kind: "dfm", name: details.dfmDataset },
+    ...state.priorSources.map((source) => ({ kind: "prior", name: source.name, source })),
+  ];
+  const loaded = await mapWithConcurrency(tasks, 4, async (task) => {
     try {
-      const payload = await loadConfiguredSourcePayload(source.name, details);
+      const payload = await loadConfiguredSourcePayload(task.name, details);
+      if (task.kind !== "prior") return { ...task, payload };
       const values = vectorValues(payload?.values);
       return {
-        ...source,
-        values,
-        weights: normalizePriorWeights(source.weights, Math.max(values.length, rowCount()), 1),
+        ...task,
+        source: {
+          ...task.source,
+          values,
+          weights: normalizePriorWeights(task.source.weights, Math.max(values.length, rowCount()), 1),
+        },
       };
     } catch (err) {
-      postStatus(`Prior source unavailable (${source.name}): ${String(err?.message || err)}`, "warn");
-      return { ...source, values: [] };
+      if (task.kind !== "prior") throw err;
+      postStatus(`Prior source unavailable (${task.name}): ${String(err?.message || err)}`, "warn");
+      return { ...task, source: { ...task.source, values: [] } };
     }
-  }));
+  });
+  const latestPayload = loaded[0]?.payload || {};
+  const dfmPayload = loaded[1]?.payload || {};
+  const priorSources = loaded.slice(2).map((item) => item.source);
   state.latestValues = latestDiagonal(latestPayload?.values);
   state.dfmUltimateValues = vectorValues(dfmPayload?.values);
   state.priorSources = priorSources;
@@ -871,6 +874,21 @@ async function refreshCalculations({ mark = false } = {}) {
   calculateOutputs();
   renderMethodGrid();
   if (mark) markDirty();
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const values = Array.isArray(items) ? items : [];
+  const results = new Array(values.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < values.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await mapper(values[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), values.length) }, worker));
+  return results;
 }
 
 function sumMethodValues(values) {
@@ -1310,9 +1328,6 @@ function buildPayload() {
       new_ultimate: roundJsonVector(state.newUltimateValues),
     },
     chart_tab: {},
-    notes_tab: {
-      notes: els.notesInput?.value || "",
-    },
     audit_log_tab: {},
     method_metadata: {
       method_type: BF_METHOD_TYPE,
@@ -1332,7 +1347,6 @@ async function applyPayload(payload) {
     els.originLengthInput.value = String(validOriginLength(details.origin_length || els.originLengthInput.value));
     els.latestInput.value = text(method.latest_dataset || els.latestInput.value);
     els.dfmInput.value = text(method.dfm_dataset || els.dfmInput.value);
-    setNotesText(text(data.notes_tab?.notes));
   });
   syncOriginLengthControl();
   state.statisticDecimalPlaces = statisticDecimalPlaces(details.statistic_decimal_places, 1);
@@ -1361,7 +1375,7 @@ async function applyPayload(payload) {
 }
 
 function snapshotPayload() {
-  return JSON.stringify(buildPayload());
+  return JSON.stringify({ method: buildPayload(), notes: els.notesInput?.value || "" });
 }
 
 function markClean() {
@@ -1406,6 +1420,7 @@ async function loadSidecar() {
     }
     const sidecar = payload?.sidecar || payload?.data || payload;
     state.sidecarOriginLabels = Array.isArray(sidecar?.origin_labels) ? sidecar.origin_labels.map(String) : [];
+    setNotesText(text(sidecar?.notes));
     auditLogView.render(sidecar?.audit_log);
     return sidecar;
   } catch (err) {
@@ -1452,6 +1467,7 @@ async function saveSidecar(csvPath, originLabels = []) {
       calendar: false,
       origin_labels: Array.isArray(originLabels) ? originLabels.map(String) : [],
       csv_file: csvBaseName(csvPath),
+      notes: els.notesInput?.value || "",
       precedents: getSourcePrecedentNames(),
     }),
   });
@@ -1849,6 +1865,13 @@ function wireInputs() {
     const addButton = event.target.closest("button[data-prior-add]");
     if (addButton) {
       void openPicker("prior", addButton);
+      return;
+    }
+    const removeButton = event.target.closest("button[data-prior-remove-index]");
+    if (removeButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      void removePriorSource(Number.parseInt(removeButton.dataset.priorRemoveIndex || "", 10));
       return;
     }
     const openButton = event.target.closest("button[data-prior-open-index]");

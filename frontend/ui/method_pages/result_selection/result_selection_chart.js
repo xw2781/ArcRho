@@ -1,3 +1,9 @@
+import {
+  canHideChartLegendSeries,
+  hiddenChartSeriesIdsAfterContextToggle,
+  renderChartLegend,
+} from "../../shared/components/chart_legend/chart_legend.js?v=20260724a";
+
 const CHART_COLORS = [
   "#2b6df6",
   "#0f766e",
@@ -27,20 +33,8 @@ function sourceLabel(source, sourceIndex) {
   return String(source?.name || source?.datasetType || source?.dataset_type || `Source ${sourceIndex + 1}`).trim();
 }
 
-export function hiddenSeriesIdsAfterContextToggle(series = [], targetSeriesId = "", currentHiddenIds = []) {
-  const ids = series.map((entry) => entry?.id).filter(Boolean);
-  const currentHidden = new Set(currentHiddenIds);
-  const visibleIds = ids.filter((id) => !currentHidden.has(id));
-  if (visibleIds.length === 1 && visibleIds[0] === targetSeriesId) return new Set();
-  return new Set(ids.filter((id) => id !== targetSeriesId));
-}
-
-export function canHideChartSeries(series = [], targetSeriesId = "", currentHiddenIds = []) {
-  const currentHidden = new Set(currentHiddenIds);
-  if (currentHidden.has(targetSeriesId)) return true;
-  const visibleCount = series.reduce((count, entry) => count + (entry?.id && !currentHidden.has(entry.id) ? 1 : 0), 0);
-  return visibleCount > 1;
-}
+export const hiddenSeriesIdsAfterContextToggle = hiddenChartSeriesIdsAfterContextToggle;
+export const canHideChartSeries = canHideChartLegendSeries;
 
 export function buildResultSelectionChartSeries({
   sources = [],
@@ -160,61 +154,22 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
 
   function renderLegend() {
     if (!legendList) return;
-    const nextIds = new Set(data.series.map((series) => series.id));
-    for (const id of hiddenSeriesIds) {
-      if (!nextIds.has(id)) hiddenSeriesIds.delete(id);
-    }
     const signature = data.series.map((series) => `${series.id}\u0000${series.label}\u0000${series.color}`).join("\u0001");
     if (signature === legendSignature) {
       updateLegendCount();
       return;
     }
     legendSignature = signature;
-    const items = data.series.map((series) => {
-      const item = document.createElement("label");
-      item.className = "rsChartLegendItem";
-      item.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        const nextHiddenIds = hiddenSeriesIdsAfterContextToggle(data.series, series.id, hiddenSeriesIds);
-        hiddenSeriesIds.clear();
-        for (const id of nextHiddenIds) hiddenSeriesIds.add(id);
-        legendSignature = "";
-        renderLegend();
+    renderChartLegend({
+      listElement: legendList,
+      countElement: legendCount,
+      series: data.series,
+      hiddenIds: hiddenSeriesIds,
+      onVisibilityChange: () => {
         hideTooltip();
         scheduleRender();
-      });
-
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = !hiddenSeriesIds.has(series.id);
-      checkbox.setAttribute("aria-label", `Show ${series.label}`);
-      checkbox.addEventListener("change", () => {
-        if (checkbox.checked) {
-          hiddenSeriesIds.delete(series.id);
-        } else if (canHideChartSeries(data.series, series.id, hiddenSeriesIds)) {
-          hiddenSeriesIds.add(series.id);
-        } else {
-          checkbox.checked = true;
-          return;
-        }
-        hideTooltip();
-        updateLegendCount();
-        scheduleRender();
-      });
-
-      const swatch = document.createElement("span");
-      swatch.className = "rsChartLegendSwatch";
-      swatch.style.setProperty("--rs-chart-series", series.color);
-      swatch.setAttribute("aria-hidden", "true");
-
-      const label = document.createElement("span");
-      label.className = "rsChartLegendLabel";
-      label.textContent = series.label;
-      item.append(checkbox, swatch, label);
-      return item;
+      },
     });
-    legendList.replaceChildren(...items);
-    updateLegendCount();
   }
 
   function draw() {

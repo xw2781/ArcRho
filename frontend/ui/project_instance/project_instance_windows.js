@@ -1,3 +1,8 @@
+import {
+  getBerquistShermanContract,
+  normalizeBerquistShermanVariant,
+} from "/ui/shared/dataset/berquist_sherman_contract.js";
+
 export function installProjectInstanceWindows(ctx) {
   const { api, els, projectName, state } = ctx;
   const { DATASET_WINDOW_MIN_WIDTH, DATASET_WINDOW_MIN_HEIGHT, DATASET_WINDOW_DEFAULT_WIDTH_RATIO, DATASET_WINDOW_DEFAULT_HEIGHT_RATIO, DATASET_WINDOW_EDGE_VISIBLE_WIDTH, DATASET_WINDOW_TITLEBAR_HEIGHT } = ctx.constants;
@@ -34,6 +39,10 @@ function getBornhuetterFergusonWindowKey(datasetName, path = state.selectedPath)
   return `bf\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
 }
 
+function getBerquistShermanWindowKey(datasetName, variant, path = state.selectedPath) {
+  return `bs\u0001${normalizeBerquistShermanVariant(variant)}\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
+}
+
 function getWindowPath(frame) {
   return normalizePath(frame?.dataset?.windowPath || "");
 }
@@ -58,6 +67,9 @@ function getWindowMethodType(frame) {
   if (isDfmWindow(frame)) return "DFM";
   if (isResultSelectionWindow(frame)) return "Result Selection";
   if (isBornhuetterFergusonWindow(frame)) return "Bornhuetter Ferguson";
+  if (isBerquistShermanWindow(frame)) {
+    return getBerquistShermanContract(frame?.dataset?.bsVariant)?.methodType || "None";
+  }
   const key = normalizeLookupKey(frame?.dataset?.windowItemName || frame?.dataset?.windowDatasetName || "");
   return key ? state.cachedDatasetFilter.methodTypesByName.get(key) || "None" : "None";
 }
@@ -103,7 +115,9 @@ function getProjectInstanceWindowSnapshot(frame) {
       ? "result_selection"
       : isBornhuetterFergusonWindow(frame)
         ? "bornhuetter_ferguson"
-        : "dataset";
+        : isBerquistShermanWindow(frame)
+          ? "berquist_sherman"
+          : "dataset";
   const name = toText(frame.dataset.windowItemName || frame.dataset.windowDatasetName || "");
   if (!name) return null;
   const active = getActiveDatasetWindow() === frame;
@@ -122,6 +136,8 @@ function getProjectInstanceWindowSnapshot(frame) {
     dfmTab: kind === "dfm" ? toText(frame.dataset.dfmTab || "") : "",
     rsTab: kind === "result_selection" ? toText(frame.dataset.rsTab || "") : "",
     bfTab: kind === "bornhuetter_ferguson" ? toText(frame.dataset.bfTab || "") : "",
+    bsTab: kind === "berquist_sherman" ? toText(frame.dataset.bsTab || "") : "",
+    bsVariant: kind === "berquist_sherman" ? normalizeBerquistShermanVariant(frame.dataset.bsVariant) : "",
     rect: hiddenItem?.restoreRect || getFrameRect(frame),
   };
 }
@@ -164,6 +180,8 @@ function getVisibleProjectInstanceWindowSummaries() {
       dfmTab: snapshot.dfmTab || "",
       rsTab: snapshot.rsTab || "",
       bfTab: snapshot.bfTab || "",
+      bsTab: snapshot.bsTab || "",
+      bsVariant: snapshot.bsVariant || "",
       zIndex: Number.parseInt(frame.style.zIndex || "0", 10) || 0,
     });
   }
@@ -440,6 +458,10 @@ function isResultSelectionWindow(frame) {
 
 function isBornhuetterFergusonWindow(frame) {
   return frame?.dataset?.windowKind === "bornhuetter_ferguson";
+}
+
+function isBerquistShermanWindow(frame) {
+  return frame?.dataset?.windowKind === "berquist_sherman";
 }
 
 function findWindowByInstance(inst) {
@@ -723,6 +745,29 @@ function buildBornhuetterFergusonViewerUrl(datasetName, inst, options = {}) {
   return `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html?${params.toString()}`;
 }
 
+function buildBerquistShermanViewerUrl(datasetName, inst, options = {}) {
+  const params = new URLSearchParams();
+  const name = toText(datasetName);
+  const variant = normalizeBerquistShermanVariant(options?.variant || options?.methodType || options?.sourceKind);
+  const initialTab = toText(options?.initialTab || options?.bsTab || "details") || "details";
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  params.set("project", projectName);
+  params.set("class", targetPath);
+  params.set("variant", variant);
+  if (!options?.fresh && name) params.set("name", toText(options?.methodName || name));
+  if (options?.outputType) params.set("output_type", toText(options.outputType));
+  if (options?.datasetTypeName) params.set("dataset_type", toText(options.datasetTypeName));
+  if (options?.category) params.set("category", toText(options.category));
+  if (options?.originLength) params.set("origin_length", toText(options.originLength));
+  if (options?.fresh) params.set("fresh", "1");
+  if (options?.inputTriangle) params.set("input_triangle", toText(options.inputTriangle));
+  params.set("tab", initialTab);
+  params.set("inst", inst);
+  params.set("project_instance", "1");
+  params.set("v", String(Date.now()));
+  return `/ui/method_pages/berquist_sherman/berquist_sherman.html?${params.toString()}`;
+}
+
 function beginWindowDragCapture(mode) {
   const shield = document.createElement("div");
   shield.className = `pi-window-drag-shield ${mode || "moving"}`;
@@ -841,7 +886,9 @@ function createFloatingContentWindow(options = {}) {
       ? "DFM"
       : frame.dataset.windowKind === "bornhuetter_ferguson"
         ? "Bornhuetter Ferguson"
-        : ""
+        : frame.dataset.windowKind === "berquist_sherman"
+          ? getBerquistShermanContract(options.bsVariant || options.variant)?.methodType || ""
+          : ""
   ));
   if (methodType) frame.dataset.windowMethodType = methodType;
   if (frame.dataset.windowKind === "dfm") frame.dataset.dfmTab = "ratios";
@@ -850,6 +897,10 @@ function createFloatingContentWindow(options = {}) {
   }
   if (frame.dataset.windowKind === "bornhuetter_ferguson") {
     frame.dataset.bfTab = toText(options.bfTab || options.initialTab || "details") || "details";
+  }
+  if (frame.dataset.windowKind === "berquist_sherman") {
+    frame.dataset.bsTab = toText(options.bsTab || options.initialTab || "details") || "details";
+    frame.dataset.bsVariant = normalizeBerquistShermanVariant(options.bsVariant || options.variant || methodType);
   }
   frame.setAttribute("aria-label", title);
   frame.innerHTML = `
@@ -1123,6 +1174,86 @@ function openBornhuetterFergusonWindow(datasetName, options = {}) {
   });
 }
 
+function openBerquistShermanWindow(datasetName, options = {}) {
+  const name = toText(datasetName);
+  if (!name) return;
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  if (!targetPath) {
+    setStatus("Select a reserving class path before opening a Berquist Sherman object.", true);
+    return;
+  }
+  const contract = getBerquistShermanContract(options.variant || options.bsVariant || options.methodType || options.sourceKind);
+  if (!contract) {
+    setStatus("Choose a Berquist Sherman method variant before opening the object.", true);
+    return;
+  }
+
+  const windowKey = getBerquistShermanWindowKey(name, contract.variant, targetPath);
+  const title = `${targetPath}\\${contract.methodType}\\${name}`;
+  const initialTab = toText(options.initialTab || options.bsTab || "details") || "details";
+  const inst = `pi_bs_${contract.variant}_${Date.now()}_${state.windowSeq++}`;
+  return createFloatingContentWindow({
+    kind: "berquist_sherman",
+    name,
+    itemName: name,
+    title,
+    windowKey,
+    inst,
+    iframeSrc: buildBerquistShermanViewerUrl(name, inst, {
+      ...options,
+      variant: contract.variant,
+      path: targetPath,
+      initialTab,
+    }),
+    path: targetPath,
+    methodType: contract.methodType,
+    initialTab,
+    bsVariant: contract.variant,
+  });
+}
+
+function syncBerquistShermanWindowIdentity(frame, datasetName, variant = "") {
+  if (!frame?.isConnected || !isBerquistShermanWindow(frame)) return false;
+  const name = toText(datasetName);
+  const contract = getBerquistShermanContract(variant || frame.dataset.bsVariant || getWindowMethodType(frame));
+  const targetPath = getWindowPath(frame);
+  if (!name || !contract || !targetPath) return false;
+
+  const previousKey = toText(frame.dataset.windowKey);
+  const nextKey = getBerquistShermanWindowKey(name, contract.variant, targetPath);
+  const existing = datasetWindows.get(nextKey);
+  if (existing && existing !== frame) {
+    if (existing.isConnected) {
+      setStatus(`${contract.methodType} ${name} is already open.`, true);
+      return false;
+    }
+    datasetWindows.delete(nextKey);
+  }
+  if (previousKey && datasetWindows.get(previousKey) === frame) {
+    datasetWindows.delete(previousKey);
+  }
+
+  const title = `${targetPath}\\${contract.methodType}\\${name}`;
+  frame.dataset.windowKey = nextKey;
+  frame.dataset.windowDatasetName = name;
+  frame.dataset.windowItemName = name;
+  frame.dataset.windowTitle = title;
+  frame.dataset.windowMethodType = contract.methodType;
+  frame.dataset.bsVariant = contract.variant;
+  frame.setAttribute("aria-label", title);
+  datasetWindows.set(nextKey, frame);
+
+  const hiddenItem = hiddenWindows.get(frame.dataset.windowId || "");
+  if (hiddenItem) {
+    hiddenItem.title = name;
+    hiddenItem.fullTitle = title;
+  }
+  syncDatasetWindowChrome();
+  updateHiddenTabsArea();
+  notifyProjectInstanceStateChanged();
+  return true;
+}
+
 function applyRestoredWindowState(frame, item = {}) {
   if (!frame?.isConnected) return;
   const rect = item?.rect && typeof item.rect === "object" ? item.rect : null;
@@ -1141,6 +1272,11 @@ function applyRestoredWindowState(frame, item = {}) {
   }
   if (toText(item?.bfTab) && isBornhuetterFergusonWindow(frame)) {
     frame.dataset.bfTab = toText(item.bfTab);
+  }
+  if (isBerquistShermanWindow(frame)) {
+    if (toText(item?.bsTab)) frame.dataset.bsTab = toText(item.bsTab);
+    const variant = normalizeBerquistShermanVariant(item?.bsVariant || item?.methodType);
+    if (variant) frame.dataset.bsVariant = variant;
   }
   const id = frame.dataset.windowId || "";
   if (item?.hidden) {
@@ -1173,6 +1309,7 @@ async function applyProjectInstanceRestoreState(rawState) {
   for (const item of windows) {
     const rawKind = toText(item?.kind).toLowerCase();
     const methodType = toText(item?.methodType || item?.method_type);
+    const bsVariant = normalizeBerquistShermanVariant(item?.bsVariant || item?.bs_variant || methodType);
     const title = toText(item?.title);
     const isLegacyResultSelectionMethod = (
       rawKind === "dataset"
@@ -1186,7 +1323,9 @@ async function applyProjectInstanceRestoreState(rawState) {
         ? "result_selection"
         : rawKind === "bornhuetter_ferguson" || isBornhuetterFergusonMethod
           ? "bornhuetter_ferguson"
-          : "dataset";
+          : rawKind === "berquist_sherman" || !!bsVariant
+            ? "berquist_sherman"
+            : "dataset";
     const name = toText(item?.name || item?.datasetName || item?.methodName);
     if (!name) continue;
     const frame = kind === "dfm"
@@ -1195,7 +1334,15 @@ async function applyProjectInstanceRestoreState(rawState) {
         ? openResultSelectionWindow(name, { initialTab: item?.rsTab || "method", rsTab: item?.rsTab || "method", methodType })
         : kind === "bornhuetter_ferguson"
           ? openBornhuetterFergusonWindow(name, { initialTab: item?.bfTab || "method", bfTab: item?.bfTab || "method", methodType })
-          : openDatasetWindow(name, { methodType });
+          : kind === "berquist_sherman"
+            ? openBerquistShermanWindow(name, {
+              path: item?.path,
+              initialTab: item?.bsTab || "method",
+              bsTab: item?.bsTab || "method",
+              bsVariant,
+              methodType,
+            })
+            : openDatasetWindow(name, { methodType });
     applyRestoredWindowState(frame, item);
     if (item?.active) activeTarget = frame;
   }
@@ -1214,6 +1361,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     applyWindowRect,
     beginWindowDragCapture,
     buildBornhuetterFergusonViewerUrl,
+    buildBerquistShermanViewerUrl,
     buildDatasetViewerUrl,
     buildDfmViewerUrl,
     buildResultSelectionViewerUrl,
@@ -1229,6 +1377,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     getActiveDfmWindow,
     getDatasetWindowKey,
     getDfmWindowKey,
+    getBerquistShermanWindowKey,
     getFrameRect,
     getMaximizedWindowRect,
     getNextDatasetWindowRect,
@@ -1245,6 +1394,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     getWindowTopLimit,
     hasDirtyDfmWindow,
     isBornhuetterFergusonWindow,
+    isBerquistShermanWindow,
     isDatasetWindowMaximized,
     isDfmWindow,
     isResultSelectionWindow,
@@ -1258,6 +1408,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     openDatasetWindow,
     openNewDatasetDraftWindow,
     openBornhuetterFergusonWindow,
+    openBerquistShermanWindow,
     openDfmWindow,
     openResultSelectionWindow,
     raiseWindow,
@@ -1267,6 +1418,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     setWindowDirtyState,
     startMove,
     startResize,
+    syncBerquistShermanWindowIdentity,
     syncDatasetWindowChrome,
     syncMaximizedDatasetWindows,
     toggleDatasetWindowMaximized,

@@ -1,5 +1,7 @@
 // Dataset Viewer chart renderer.
 
+import { renderChartLegend } from "../../shared/components/chart_legend/chart_legend.js?v=20260724a";
+
 const DEFAULT_PALETTE = [
   "#d62728","#1f77b4","#2ca02c","#ff7f0e","#9467bd",
   "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"
@@ -165,103 +167,6 @@ function drawMarkers(ctx, pts, color, radius) {
   }
 }
 
-// --- Shared: build checkbox legend HTML ---
-function buildCheckboxLegend(legendEl, labels, palette, hiddenSet, legendState, onToggle, opts = {}) {
-  const rows = labels.length || 0;
-  const availH = legendEl.clientHeight || 0;
-  const dense = opts.dense || false; // many items: use fixed size, allow scroll
-  // +1 for the "Select All" row
-  let rowH = 16;
-  if (dense) {
-    rowH = 18; // comfortable fixed height, scrollbar will handle overflow
-  } else if (availH > 0 && (rows + 1) > 0) {
-    rowH = Math.max(12, Math.floor(availH / (rows + 1)));
-  }
-  const fontSize = dense ? 12 : Math.min(14, Math.max(9, rowH - 4));
-  legendEl.style.fontSize = `${fontSize}px`;
-  legendEl.innerHTML = "";
-
-  // "Select All" row
-  const allItem = document.createElement("div");
-  allItem.className = "legendItem legendSelectAll";
-  allItem.style.height = `${rowH}px`;
-  const allLabel = document.createElement("span");
-  allLabel.className = "legendLabel";
-  allLabel.textContent = "Select All";
-  allLabel.style.fontWeight = "600";
-  const allChk = document.createElement("input");
-  allChk.type = "checkbox";
-  allChk.className = "legendChk";
-  allChk.checked = hiddenSet.size === 0;
-  allChk.indeterminate = hiddenSet.size > 0 && hiddenSet.size < labels.length;
-  allChk.addEventListener("change", (e) => {
-    e.stopPropagation();
-    if (allChk.checked) {
-      hiddenSet.clear();
-    } else {
-      for (let i = 0; i < labels.length; i++) hiddenSet.add(i);
-    }
-    triggerLegendRedraw(legendEl);
-  });
-  allItem.appendChild(allLabel);
-  allItem.appendChild(allChk);
-  legendEl.appendChild(allItem);
-
-  // Individual rows
-  for (let i = 0; i < labels.length; i++) {
-    const item = document.createElement("div");
-    item.className = "legendItem";
-    item.style.height = `${rowH}px`;
-    item.dataset.index = String(i);
-    if (legendState?.hoverIndex === i) item.classList.add("is-hover");
-
-    const swatch = document.createElement("span");
-    swatch.className = "legendSwatch";
-    swatch.style.background = palette[i % palette.length];
-    if (hiddenSet.has(i)) swatch.style.opacity = "0.25";
-
-    const label = document.createElement("span");
-    label.className = "legendLabel";
-    label.textContent = String(labels[i] ?? i);
-    if (hiddenSet.has(i)) label.style.opacity = "0.4";
-
-    const chk = document.createElement("input");
-    chk.type = "checkbox";
-    chk.className = "legendChk";
-    chk.checked = !hiddenSet.has(i);
-    chk.addEventListener("change", (e) => {
-      e.stopPropagation();
-      // Prevent unchecking the last visible item
-      if (!chk.checked && hiddenSet.size === labels.length - 1) {
-        chk.checked = true;
-        return;
-      }
-      onToggle(i, chk.checked);
-    });
-
-    // Right-click on checkbox → show only this line (or select all if already the only one)
-    chk.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const isOnlyVisible = hiddenSet.size === labels.length - 1 && !hiddenSet.has(i);
-      if (isOnlyVisible) {
-        hiddenSet.clear();
-      } else {
-        hiddenSet.clear();
-        for (let j = 0; j < labels.length; j++) {
-          if (j !== i) hiddenSet.add(j);
-        }
-      }
-      triggerLegendRedraw(legendEl);
-    });
-
-    item.appendChild(swatch);
-    item.appendChild(label);
-    item.appendChild(chk);
-    legendEl.appendChild(item);
-  }
-}
-
 // ============================================================
 //  renderChart  (unified: byRow or byCol)
 //
@@ -295,7 +200,6 @@ export function renderChart(canvas, model, opts = {}) {
   const hiddenSet = legendState?.hiddenSet || new Set();
   const originLen = Number(opts.originLen) || 12;
   const rotateX = originLen <= 6;
-  const dense = originLen <= 6;
 
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) {
     const ctx = canvas.getContext("2d");
@@ -407,8 +311,6 @@ export function renderChart(canvas, model, opts = {}) {
 
   // Draw curves
   const allHitPts = [];
-  const hoverIndex = legendState?.hoverIndex ?? null;
-
   for (let line = 0; line < lineCount; line++) {
     if (hiddenSet.has(line)) continue;
 
@@ -441,33 +343,13 @@ export function renderChart(canvas, model, opts = {}) {
     }
     if (pts.length < 2) continue;
 
-    let alpha = 1;
-    if (hoverIndex !== null && line !== hoverIndex) {
-      const t0 = legendState?.hoverStartTime;
-      if (t0) {
-        const elapsed = performance.now() - t0;
-        const progress = Math.min(1, elapsed / 500); // 0.5s fade
-        alpha = 1 - progress * (1 - 0.15); // lerp 1 → 0.15
-      } else {
-        alpha = 0.15;
-      }
-    } else if (hoverIndex === null && legendState?.fadeBackStart) {
-      const elapsed = performance.now() - legendState.fadeBackStart;
-      const progress = Math.min(1, elapsed / 500);
-      const from = legendState.fadeBackFrom ?? 0.15;
-      alpha = from + progress * (1 - from); // lerp fadeBackFrom → 1
-    }
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
     ctx.strokeStyle = color;
-    ctx.lineWidth = line === hoverIndex ? 2.5 : 2;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
     ctx.stroke();
-    drawMarkers(ctx, pts, color, line === hoverIndex ? 4 : 3);
-    ctx.restore();
+    drawMarkers(ctx, pts, color, 3);
 
     for (const m of ptsMeta) allHitPts.push(m);
   }
@@ -487,11 +369,17 @@ export function renderChart(canvas, model, opts = {}) {
 
   // HTML legend with checkboxes
   if (legendEnabled && legendEl && !opts._skipLegend) {
-    buildCheckboxLegend(legendEl, lines, palette, hiddenSet, legendState, (idx, checked) => {
-      if (checked) hiddenSet.delete(idx);
-      else hiddenSet.add(idx);
-      triggerLegendRedraw(legendEl);
-    }, { dense });
+    renderChartLegend({
+      listElement: legendEl,
+      countElement: document.getElementById("devChartLegendCount"),
+      series: lines.map((label, index) => ({
+        id: index,
+        label: String(label ?? index),
+        color: palette[index % palette.length],
+      })),
+      hiddenIds: hiddenSet,
+      onVisibilityChange: () => triggerLegendRedraw(legendEl),
+    });
   }
 
   // Active cell highlight
@@ -531,97 +419,10 @@ function getLegendState(legendEl) {
   if (!legendEl) return null;
   if (!legendEl.__chartLegendState) {
     legendEl.__chartLegendState = {
-      hoverIndex: null,
-      selectedIndex: null,
       hiddenSet: new Set(),
-      hoverStartTime: null,
-      fadeBackStart: null,
-      fadeBackFrom: 0.15,
-      _animFrame: null,
     };
-    legendEl.addEventListener("mouseover", (event) => {
-      const item = event.target.closest(".legendItem");
-      if (!item || !legendEl.contains(item)) return;
-      if (event.target.closest(".legendChk")) return; // don't hover when on checkbox
-      const idx = Number(item.dataset.index);
-      const state = legendEl.__chartLegendState;
-      if (!Number.isFinite(idx)) return;
-      if (state.hoverIndex === idx) return;
-      // Update hover class on legend items directly (without rebuilding)
-      legendEl.querySelectorAll(".legendItem.is-hover").forEach(el => el.classList.remove("is-hover"));
-      if (item) item.classList.add("is-hover");
-      state.fadeBackStart = null; // cancel any fade-back
-      state.hoverIndex = idx;
-      state.hoverStartTime = performance.now();
-      startHoverAnimation(legendEl);
-    });
-    legendEl.addEventListener("mouseout", (event) => {
-      const related = event.relatedTarget;
-      if (related && legendEl.contains(related)) return;
-      const state = legendEl.__chartLegendState;
-      if (state.hoverIndex === null) return;
-      // Calculate current fade level to animate back from
-      const t0 = state.hoverStartTime;
-      const elapsed = t0 ? performance.now() - t0 : 500;
-      state.fadeBackFrom = Math.max(0.15, 1 - Math.min(1, elapsed / 500) * (1 - 0.15));
-      state.fadeBackStart = performance.now();
-      state.hoverIndex = null;
-      state.hoverStartTime = null;
-      if (state._animFrame) { cancelAnimationFrame(state._animFrame); state._animFrame = null; }
-      // Remove hover class directly
-      legendEl.querySelectorAll(".legendItem.is-hover").forEach(el => el.classList.remove("is-hover"));
-      // Start fade-back animation
-      startFadeBackAnimation(legendEl);
-    });
   }
   return legendEl.__chartLegendState;
-}
-
-function startHoverAnimation(legendEl) {
-  const state = legendEl.__chartLegendState;
-  if (state._animFrame) cancelAnimationFrame(state._animFrame);
-  const FADE_DURATION = 500; // ms
-  function tick() {
-    state._animFrame = null;
-    // Only redraw the canvas (not the legend HTML) during hover animation,
-    // so checkboxes remain stable and clickable.
-    if (legendEl.__chartRedrawCanvas) {
-      legendEl.__chartRedrawCanvas();
-    } else {
-      triggerLegendRedraw(legendEl);
-    }
-    // Keep animating if still hovering and not fully faded
-    if (state.hoverIndex !== null && state.hoverStartTime !== null) {
-      const elapsed = performance.now() - state.hoverStartTime;
-      if (elapsed < FADE_DURATION) {
-        state._animFrame = requestAnimationFrame(tick);
-      }
-    }
-  }
-  state._animFrame = requestAnimationFrame(tick);
-}
-
-function startFadeBackAnimation(legendEl) {
-  const state = legendEl.__chartLegendState;
-  if (state._animFrame) cancelAnimationFrame(state._animFrame);
-  const FADE_DURATION = 500; // ms
-  function tick() {
-    state._animFrame = null;
-    if (legendEl.__chartRedrawCanvas) {
-      legendEl.__chartRedrawCanvas();
-    } else {
-      triggerLegendRedraw(legendEl);
-    }
-    if (state.fadeBackStart !== null) {
-      const elapsed = performance.now() - state.fadeBackStart;
-      if (elapsed < FADE_DURATION) {
-        state._animFrame = requestAnimationFrame(tick);
-      } else {
-        state.fadeBackStart = null; // animation done
-      }
-    }
-  }
-  state._animFrame = requestAnimationFrame(tick);
 }
 
 function triggerLegendRedraw(legendEl) {

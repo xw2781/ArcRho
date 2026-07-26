@@ -3,13 +3,31 @@
 
   parts.installData = function installData(ctx) {
     with (ctx) {
+      const SOURCE_LOAD_CONCURRENCY = 4;
+
+      async function mapWithConcurrency(items, limit, mapper) {
+        const source = Array.isArray(items) ? items : [];
+        const results = new Array(source.length);
+        let nextIndex = 0;
+        async function worker() {
+          while (nextIndex < source.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            results[index] = await mapper(source[index], index);
+          }
+        }
+        const workerCount = Math.min(Math.max(1, Number(limit) || 1), source.length);
+        await Promise.all(Array.from({ length: workerCount }, () => worker()));
+        return results;
+      }
+
       function normalizeDatasetRows(payload) {
         const files = Array.isArray(payload?.files) ? payload.files : [];
         const byType = new Map(datasetTypeItems.map((item) => [norm(item.name), item]));
         const rows = [];
         const seen = new Set();
         for (const item of files) {
-          const name = stripDatasetCacheVariantSuffix(text(item?.name));
+          const name = text(item?.name);
           const key = norm(name);
           if (!name || seen.has(key)) continue;
           seen.add(key);
@@ -31,25 +49,6 @@
         return rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       }
 
-      function stripDatasetCacheVariantSuffix(value) {
-        const raw = text(value);
-        const stem = raw.replace(/\.csv$/iu, "");
-        const parts = stem.split("@");
-        if (
-          parts.length >= 5
-          && /^(dev|cal)$/i.test(parts[parts.length - 1])
-          && /^(cum|inc)$/i.test(parts[parts.length - 2])
-          && /^\d+$/.test(parts[parts.length - 3])
-          && /^\d+$/.test(parts[parts.length - 4])
-        ) {
-          return parts.slice(0, -4).join("@").trim();
-        }
-        if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) {
-          return parts.slice(0, -1).join("@").trim();
-        }
-        return raw.replace(/\.[^.]+$/u, "");
-      }
-
       async function loadDatasetTypes() {
         if (!state.project) return;
         try {
@@ -63,6 +62,13 @@
 
       async function loadCachedRows(refresh = false) {
         if (!state.project || !state.reservingClass) return [];
+        const sharedPayload = !refresh && params.get("project_instance") === "1"
+          ? readProjectInstanceDatasetSnapshot(state.project, state.reservingClass)
+          : null;
+        if (sharedPayload) {
+          cachedRows = normalizeDatasetRows(sharedPayload);
+          return cachedRows;
+        }
         const url = new URL("/datasets/cached", window.location.origin);
         url.searchParams.set("project_name", state.project);
         url.searchParams.set("reserving_class", state.reservingClass);
@@ -144,15 +150,7 @@
               DevelopmentLength: length,
             };
         const routeRoot = vector ? "/arcrho/vec" : "/arcrho/tri";
-        const precheckResp = await fetch(`${routeRoot}/precheck`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestPayload),
-        });
-        const precheck = await precheckResp.json().catch(() => ({}));
-        if (precheckResp.ok && precheck?.ok && precheck.need_request === true) {
-          postStatus(`Generating ${text(source.name)} at origin length ${length}...`);
-        }
+        postStatus(`Loading ${text(source.name)} at origin length ${length}...`);
         const resp = await fetch(routeRoot, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -185,8 +183,21 @@
       async function loadSourceDatasetPayload(source) {
         const rsOriginLength = getDetails().originLength;
         const nativeOriginLength = validSourceOriginLength(source?.originLength ?? source?.origin_length);
-        if (isEngineSource(source) && rsOriginLength && nativeOriginLength !== rsOriginLength) {
-          return loadMaterializedEngineDatasetPayload(source, rsOriginLength);
+        if (isEngineSource(source) && rsOriginLength) {
+          if (nativeOriginLength && nativeOriginLength !== rsOriginLength) {
+            return loadMaterializedEngineDatasetPayload(source, rsOriginLength);
+          }
+          if (!nativeOriginLength) {
+            try {
+              const existing = await loadDatasetValues(source.name);
+              if (validSourceOriginLength(existing?.origin_length) === rsOriginLength) {
+                return existing;
+              }
+            } catch {
+              // Fall through to the authoritative length-scoped engine request.
+            }
+            return loadMaterializedEngineDatasetPayload(source, rsOriginLength);
+          }
         }
         return loadDatasetValues(source.name);
       }
@@ -451,6 +462,8 @@
           auditLogView.render(payload?.audit_log);
           if (options.auditOnly === true) return true;
 
+          setNotesText(text(payload?.notes));
+
           const originLength = validOriginLength(payload?.origin_length, 0);
           const labels = Array.isArray(payload?.origin_labels) ? payload.origin_labels.map(String) : [];
           const resolvedLabels = shouldRejectOriginLabels(originLength, labels) ? [] : labels;
@@ -577,37 +590,64 @@
 
       async function initializeDefaultSources() {
         const records = defaultSourceRecords();
-        const sources = [];
-        for (const record of records) {
-          const source = await buildSourceFromRecord(record);
-          if (source) sources.push(source);
-        }
-        state.sources = sources;
+        state.sources = (await mapWithConcurrency(
+          records,
+          SOURCE_LOAD_CONCURRENCY,
+          (record) => buildSourceFromRecord(record),
+        )).filter(Boolean);
       }
 
       async function reloadSourcesForCurrentOriginLength(options = {}) {
         const seq = (state.sourceReloadSeq || 0) + 1;
         state.sourceReloadSeq = seq;
-        const sources = [];
-        for (const existing of state.sources || []) {
+        const existingSources = Array.isArray(state.sources) ? state.sources : [];
+        const sources = await mapWithConcurrency(existingSources, SOURCE_LOAD_CONCURRENCY, async (existing) => {
+          if (state.sourceReloadSeq !== seq) return null;
           const record = cachedRows.find((row) => norm(row.name) === norm(existing.name)) || null;
           const source = await buildSourceFromRecord(record || { name: existing.name }, existing);
-          if (state.sourceReloadSeq !== seq) return false;
-          if (source) sources.push(source);
-        }
-        state.sources = sources;
+          return state.sourceReloadSeq === seq ? source : null;
+        });
+        if (state.sourceReloadSeq !== seq) return false;
+        state.sources = sources.filter(Boolean);
         if (options.render !== false) renderMethodGrid();
         return true;
       }
 
       async function refreshRatioBasisValues() {
+        const seq = (state.ratioBasisReloadSeq || 0) + 1;
+        state.ratioBasisReloadSeq = seq;
         syncRatioBasisSelector();
         const basis = getActiveRatioBasisName();
+        const contextKey = [
+          text(state.project),
+          text(state.reservingClass),
+          String(getDetails().originLength || ""),
+          norm(basis),
+        ].join("||");
+        const refreshIsCurrent = () => (
+          state.ratioBasisReloadSeq === seq
+          && contextKey === [
+            text(state.project),
+            text(state.reservingClass),
+            String(getDetails().originLength || ""),
+            norm(getActiveRatioBasisName()),
+          ].join("||")
+        );
+        const postRefreshStatus = (message, tone = "") => {
+          if (!refreshIsCurrent()) return false;
+          postStatus(message, tone);
+          return true;
+        };
         if (!basis) {
-          state.ratioBasisValues = [];
-          renderMethodGrid();
-          return;
+          if (refreshIsCurrent()) {
+            state.ratioBasisValues = [];
+            postRefreshStatus("Ratio Basis cleared.");
+            renderMethodGrid();
+          }
+          return refreshIsCurrent();
         }
+        if (!postRefreshStatus(`Loading Ratio Basis '${basis}'...`)) return false;
+        let loadFailed = false;
         try {
           const record = cachedRows.find((row) => norm(row.name) === norm(basis)) || { name: basis };
           const source = {
@@ -618,20 +658,27 @@
             sourceKind: text(record.sourceKind || record.source_kind),
           };
           const payload = await loadRatioBasisDatasetPayload(source);
+          if (!refreshIsCurrent()) return false;
           state.ratioBasisValues = norm(record.dataFormat || payload.data_format) === "triangle"
             ? latestDiagonal(payload.values)
             : vectorValues(payload.values);
         } catch (err) {
+          if (!refreshIsCurrent()) return false;
           state.ratioBasisValues = [];
-          postStatus(`Ratio Basis load failed: ${err?.message || err}`, "error");
+          loadFailed = true;
+          postRefreshStatus(`Ratio Basis load failed: ${err?.message || err}`, "error");
         }
+        if (!refreshIsCurrent()) return false;
+        if (!loadFailed) postRefreshStatus(`Ratio Basis '${basis}' ready.`);
         renderMethodGrid();
+        return true;
       }
 
       async function restoreCleanState() {
         if (!cleanSnapshot) return;
-        const payload = JSON.parse(cleanSnapshot);
-        await applyPayload(payload);
+        const snapshot = JSON.parse(cleanSnapshot);
+        await applyPayload(snapshot.method || {});
+        setNotesText(text(snapshot.notes));
         markClean();
       }
 
@@ -681,8 +728,9 @@
       }
 
       return {
+        SOURCE_LOAD_CONCURRENCY,
+        mapWithConcurrency,
         normalizeDatasetRows,
-        stripDatasetCacheVariantSuffix,
         loadDatasetTypes,
         loadCachedRows,
         basenameFromPath,

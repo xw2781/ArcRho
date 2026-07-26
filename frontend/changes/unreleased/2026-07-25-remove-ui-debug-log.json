@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "app server",
+  "audience": "user",
+  "summary": "Stopped the ArcRho app server from automatically creating local UI debug JSONL files."
+}

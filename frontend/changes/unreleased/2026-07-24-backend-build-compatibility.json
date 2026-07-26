@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "user",
+  "summary": "App upgrades now replace an older local backend instead of reusing it.",
+  "details": [
+    "A stale server process can no longer keep a newly installed desktop app on older backend behavior.",
+    "Compatibility uses a build-time SHA-256 fingerprint of every packaged backend file, including served UI assets, rather than the release version alone."
+  ]
+}

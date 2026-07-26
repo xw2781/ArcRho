@@ -88,6 +88,7 @@ let ratioFileWatchPath = "";
 let ratioFileWatchRevisionToken = "";
 let ratioFileWatchDirtyWarnToken = "";
 let lastCleanDfmMethodPayload = null;
+let lastCleanDfmNotesText = "";
 let normalDfmMethodSavePath = "";
 let normalDfmMethodSaveName = "";
 let excelLinksOpenRefreshCompleted = false;
@@ -176,6 +177,7 @@ async function saveDatasetSidecar(_hostApi, csvPath, datasetName) {
         cumulative: true,
         calendar: false,
         csv_file: csvFile,
+        notes: getDfmNotesText(),
         precedents: inputTriangle ? [inputTriangle] : [],
       }),
     });
@@ -379,10 +381,6 @@ function getDfmRatioTriangleTab(payload) {
 
 function getDfmResultsTab(payload) {
   return getDfmJsonTab(payload, "results tab");
-}
-
-function getDfmNotesTab(payload) {
-  return getDfmJsonTab(payload, "notes tab");
 }
 
 function getSavedInputTriangleValue(payload) {
@@ -887,9 +885,6 @@ function buildDfmGroupedMethodPayload(methodPayload) {
       "ultimate ratio decimal places",
       "ultimate vector csv path",
     ]),
-    "notes tab": copyExistingFields(data, [
-      "notes",
-    ]),
     "method metadata": copyExistingFields(data, [
       "last modified",
     ]),
@@ -904,6 +899,7 @@ function recordCleanDfmMethodPayload(payload = null) {
   } catch {
     lastCleanDfmMethodPayload = cleanPayload;
   }
+  lastCleanDfmNotesText = getDfmNotesText();
 }
 
 export function recordCurrentDfmCleanState() {
@@ -920,10 +916,7 @@ async function refreshDfmDatasetAfterDetailsApply(options = {}) {
   const refreshFn = window.ADA_DFM_REFRESH_DATASET;
   if (typeof refreshFn !== "function") return;
   try {
-    await refreshFn({
-      forceRefreshLabels: !!options.forceRefreshLabels,
-      reason: options.reason || "dfm-method-payload",
-    });
+    await refreshFn();
   } catch (err) {
     console.warn("Failed to refresh DFM dataset after applying Details fields:", err);
     postDfmStatus("DFM settings were applied, but the Data table refresh failed.", { tone: "warn" });
@@ -944,7 +937,6 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
   const ratiosTab = getDfmRatiosTab(payload);
   const ratioTriangle = getDfmRatioTriangleTab(payload);
   const resultsTab = getDfmResultsTab(payload);
-  const notesTab = getDfmNotesTab(payload);
   const pattern = Array.isArray(payload) ? payload : ratioTriangle.excluded;
   let applied = applyRatioSelectionPattern(pattern);
   if (payload && !Array.isArray(payload)) {
@@ -970,7 +962,6 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     if (summaryUpdated) buildSummaryRows();
     applyDfmCellNotesPayload(cellNotes);
 
-    const notesText = notesTab["notes"];
     const savedMethodName = getSavedMethodNameValue(payload);
     const savedOutputType = getSavedOutputTypeValue(payload);
     const savedInputTriangle = getSavedInputTriangleValue(payload);
@@ -984,22 +975,17 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     applySavedMethodNameToUi(savedMethodName);
     applySavedDecimalPlacesToUi(savedDecimalPlaces);
     setResultsUltimateRatioDecimalPlacesSelection(savedUltimateRatioDecimalPlaces, { silent: true, render: false });
-    setDfmNotesText(notesText);
     await setResultsRatioBasisSelection(ratioBasisDataset, { silent: true, render: false });
     if (Array.isArray(formulas) && Array.isArray(matrix)) {
       applyAverageSelectionFromSaved(formulas, matrix);
     }
   } else {
     applyDfmCellNotesPayload(null);
-    setDfmNotesText("");
     await setResultsRatioBasisSelection("", { silent: true, render: false });
   }
 
   if (datasetInputsChanged) {
-    await refreshDfmDatasetAfterDetailsApply({
-      ...options,
-      forceRefreshLabels: true,
-    });
+    await refreshDfmDatasetAfterDetailsApply(options);
     if (!applied) {
       applied = applyRatioSelectionPattern(pattern);
     }
@@ -1065,6 +1051,8 @@ export async function loadRatioSelectionIfExists(reason) {
   emitDfmInstancePresence("found");
   const applied = await applyDfmMethodPayload(result.data);
   if (applied.ok) {
+    await refreshDfmAuditLog({ hydrateNotes: true });
+    recordCleanDfmMethodPayload();
     rememberDfmMethodFileRevision(path, result.revision);
     rememberNormalDfmMethodSavePath(path);
     postDfmStatus("Ready");
@@ -1094,7 +1082,10 @@ export function scheduleRatioSelectionLoad(reason) {
 
 export async function restoreCleanDfmMethodState() {
   if (lastCleanDfmMethodPayload) {
-    return applyDfmMethodPayload(lastCleanDfmMethodPayload, { reason: "cancel", markClean: true });
+    const cleanNotes = lastCleanDfmNotesText;
+    const result = await applyDfmMethodPayload(lastCleanDfmMethodPayload, { reason: "cancel", markClean: true });
+    if (result?.ok) setDfmNotesText(cleanNotes);
+    return result;
   }
   const hostApi = getHostApi();
   if (!hostApi || typeof hostApi.readJsonFile !== "function") {
@@ -1126,7 +1117,6 @@ export function buildDfmMethodPayload(options = {}) {
   const pattern = trimMatrixToReferenceRowShape(buildRatioSelectionPattern(), calculatedRatioTriangleValues);
   const averageFormulaValues = buildAverageFormulaValues();
   const cellNotes = buildDfmCellNotesPayload();
-  const notesText = getDfmNotesText();
   const ratioBasisDataset = getResultsRatioBasisSelection();
   const outputVector = getTrimmedInputValue("dfmOutputVector");
   const methodName = getTrimmedInputValue("dfmMethodName");
@@ -1147,7 +1137,6 @@ export function buildDfmMethodPayload(options = {}) {
     "average formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix, averageFormulaValues),
     "cell notes": cellNotes,
     "ultimate vector csv path": String(options?.ultimateVectorCsvPath || ""),
-    notes: notesText,
     name: methodName,
     "output type": outputVector,
     "input triangle": inputTriangle,

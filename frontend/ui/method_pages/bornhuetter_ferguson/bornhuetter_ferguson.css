@@ -120,54 +120,52 @@ body {
 }
 .bfPriorPicker {
   position: relative;
-  min-height: 70px;
+  min-height: 30px;
 }
 .bfPriorLabel {
   align-self: start;
   padding-top: 8px;
 }
 .bfPriorList {
-  display: flex;
-  min-height: 70px;
-  align-items: center;
-  align-content: flex-start;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 4px 6px;
-  border: 1px solid #cfcfcf;
+  display: block;
+  min-height: 30px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  outline: 1px solid #cfcfcf;
   border-radius: var(--tabbed-page-control-radius, 4px);
   background: #fff;
+  box-sizing: border-box;
 }
 .bfPriorList:focus-within {
-  border-color: #8aa8ff;
+  outline-color: #8aa8ff;
   box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
 }
-.bfPriorList.bfPriorDragActive { border-style: dashed; }
+.bfPriorList.bfPriorDragActive {
+  outline: 1px dashed #8aa8ff;
+}
 .bfPriorList.bfPriorDragOutside {
-  border-color: #e7a1ad;
+  outline-color: #e7a1ad;
   background: #fff8f9;
 }
-.bfPriorEmpty {
-  color: #94a3b8;
-  font-size: 12px;
-}
 .bfPriorToken {
-  display: inline-flex;
+  display: flex;
   min-width: 0;
-  max-width: min(420px, 100%);
   height: 30px;
   min-height: 30px;
   align-items: center;
   gap: 4px;
-  padding: 2px 9px;
-  border: 1px solid #d4d4d4;
-  border-radius: 14px;
-  background: #ffffff;
+  width: 100%;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
   color: var(--ar-details-control-color, #000);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 30px;
   white-space: nowrap;
   cursor: grab;
+  box-sizing: border-box;
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .bfPriorToken.bfPriorDragging {
@@ -186,6 +184,7 @@ body {
 }
 .bfPriorOpen {
   display: inline-flex;
+  flex: 1 1 auto;
   min-width: 0;
   height: 100%;
   align-items: center;
@@ -198,27 +197,58 @@ body {
   cursor: grab;
 }
 .bfPriorOpen:focus { outline: none; }
-.bfPriorAddSlot {
+.bfPriorRemove {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-}
-.bfPriorAdd {
-  appearance: none;
-  display: inline-flex;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
-  min-height: 30px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 50%;
-  background: #ffffff;
+  border: 0;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
   color: #64748b;
   cursor: pointer;
+}
+.bfPriorRemove svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.bfPriorRemove:hover,
+.bfPriorRemove:focus-visible {
+  outline: none;
+  background: #fff1f2;
+  color: #be123c;
+}
+.bfPriorAddSlot {
+  display: block;
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+}
+.bfPriorAdd {
+  appearance: none;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
+  color: #94a3b8;
+  font: var(--ar-details-control-font-size, 12px) var(--ar-details-font-family, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
+  cursor: pointer;
+  box-sizing: border-box;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .bfPriorAdd:hover,
@@ -227,16 +257,6 @@ body {
   border-color: #8aa8ff;
   background: #eaf2ff;
   color: #2b6df6;
-}
-.bfPriorAdd svg {
-  display: block;
-  width: 13px;
-  height: 13px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 .bfButton,
 .bfIconButton {

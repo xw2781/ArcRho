@@ -1,0 +1,13 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Restored fast ResQ reserving-class migration through the ArcRho Server worker pool.",
+  "details": [
+    "Migration-generated datasets now use the same shared request folder and running data-engine instances as the Excel add-in, with requests published as a batch so available workers can process them concurrently.",
+    "The import stops before connecting to ResQ or changing project data when no fresh data-engine heartbeat is available, and shows an explicit alert.",
+    "Worker-aware migration requests use an optional status sidecar so new workers can report calculation failures without an error CSV being accepted as a completed dataset; already-running legacy workers remain compatible and their recognizable error rows are rejected.",
+    "Maintained macros can suspend per-line tracing around trusted migration work while retaining cancellation checks and activity-based timeout protection.",
+    "Generated datasets skip unused ResQ value extraction, processing provenance is computed once per import, and final sidecar graph enrichment reuses one physical dataset inventory."
+  ]
+}

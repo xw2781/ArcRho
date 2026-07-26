@@ -331,7 +331,7 @@ function normalizeDfmMethodIndexNames(payload) {
   const out = [];
   for (const item of Array.isArray(payload?.files) ? payload.files : []) {
     if (normalizeKey(item?.method_type) !== "dfm") continue;
-    const name = toText(item?.name);
+    const name = toText(item?.method_name || item?.name);
     if (!name) continue;
     const key = normalizeKey(name);
     if (!key || seen.has(key)) continue;

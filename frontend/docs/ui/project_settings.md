@@ -119,7 +119,7 @@ Detected `arcrho:*` message types in key JS files:
 - When `auto_generated` is `false`, table reload will not overwrite the 3 date values unless `project_name` in JSON mismatches the project folder name (stale duplicated settings).
 - Source Data date inputs auto-derive from table summary + field mapping when values are missing, stale mismatch is detected, or reload is requested while `auto_generated=true`.
 - Source Data table reload clears project-level `ArcRhoHeaders*.csv` cache files under the project `data` folder before refreshing table summary.
-- Source Data table reload also clears generated dataset CSV caches under reserving-class `datasets` folders, preserving only CSVs whose `index.json` entry has `source_kind: input`; sidecars remain unchanged.
+- Source Data table reload also clears generated dataset CSV caches under reserving-class `datasets` folders, preserving only CSVs whose canonical scalar `index.json` entry has `source_kind: input`; sidecars remain unchanged and each affected reserving-class index is rebuilt before the refresh completes.
 - Folder-node context menu supports `Create New Project`, prompts for a project name, creates an empty project folder with a `data` subfolder via the app server, then persists folder-tree mapping + blank project row with rollback on intermediate failures.
 - Project creation, rename, and duplication keep the current project-index `mtime` in sync after intermediate folder-tree saves so the final project-row save does not trip the stale-file warning.
 - Project creation creates `data`; project duplication shows a running progress indicator and copies the canonical `data` folder with all source project files.

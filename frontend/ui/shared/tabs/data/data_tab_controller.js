@@ -2,10 +2,12 @@
 
 import { state } from "/ui/shared/dataset/dataset_state.js";
 import { config } from "/ui/shared/dataset/dataset_config.js";
+import { getBerquistShermanContract } from "/ui/shared/dataset/berquist_sherman_contract.js";
 import { $, logLine } from "/ui/shared/tabs/data/data_tab_dom.js";
 import {
   getDataset,
-  loadDatasetNotes,
+  getDatasetNumberFormatDefaults,
+  loadCachedDataset,
   loadDatasetSidecar,
   patchDataset,
   previewCalculatedDatasetDependents,
@@ -34,6 +36,7 @@ import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_por
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
 import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js";
 import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js";
+import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 import {
   applyDecimalPlacesToDatasetNumberFormat,
   clampDatasetDecimalPlaces,
@@ -634,6 +637,10 @@ const isProjectInstanceDraft = qs.get("draft_instance") === "1" || qs.get("draft
 const isReadOnlyDatasetViewer = qs.get("readonly") === "1";
 const temporaryDatasetSessionId = String(qs.get("temporary_session_id") || "").trim();
 const isTemporaryDatasetView = qs.get("temporary_view") === "1" && !!temporaryDatasetSessionId;
+const isProjectInstanceCachedDatasetOpen = isProjectInstanceHost
+  && !isDfmDataTabHost()
+  && !isProjectInstanceDraft
+  && !isTemporaryDatasetView;
 let isSidecarReadOnlyDataset = false;
 const stepId = instanceId.startsWith("step_") ? instanceId : null;
 const scopedKey = (k) => `${k}::${instanceId}`;
@@ -803,6 +810,8 @@ function normalizeDatasetMethodType(value) {
   if (text === "dfm") return "DFM";
   if (text === "result selection") return "Result Selection";
   if (text === "bornhuetter ferguson") return "Bornhuetter Ferguson";
+  const berquistShermanContract = getBerquistShermanContract(text);
+  if (berquistShermanContract) return berquistShermanContract.methodType;
   return "";
 }
 
@@ -1120,7 +1129,6 @@ let notesContextPayload = null;
 let notesDirty = false;
 let lastSavedNotesText = "";
 let datasetNotesController = null;
-let notesSyncNonce = 0;
 let datasetSettingsDirty = false;
 let datasetSaveInFlight = false;
 let datasetInstanceNameConflict = false;
@@ -1132,6 +1140,8 @@ let cachedDatasetInstanceLoadPromise = null;
 let sidecarContextKey = "";
 let sidecarContextPayload = null;
 let lastSavedDatasetSettings = null;
+let temporaryNumberFormatSettingsPromise = null;
+let temporaryNumberFormatSettingsKey = "";
 let currentDatasetSidecarSourceKind = "";
 let currentDatasetSidecarDataFormat = "";
 let currentDatasetPrecedents = [];
@@ -1199,30 +1209,18 @@ function setLastDatasetSelection(value) {
 }
 
 function readDatasetInputsFromQueryParams() {
-  const project = String(
-    qs.get("project")
-    || qs.get("project_name")
-    || qs.get("p")
-    || "",
-  ).trim();
-  const path = normalizeReservingClassPath(
-    qs.get("path")
-    || qs.get("reserving_class")
-    || qs.get("rc")
-    || "",
-  );
-  const tri = String(
-    qs.get("tri")
-    || qs.get("dataset_name")
-    || qs.get("dataset")
-    || "",
-  ).trim();
-  const instanceName = String(qs.get("instance_name") || qs.get("instanceName") || "").trim();
-  const originLen = String(qs.get("origin_len") || qs.get("originLen") || "").trim();
-  const devLen = String(qs.get("dev_len") || qs.get("devLen") || "").trim();
-  const dataFormat = String(qs.get("data_format") || qs.get("dataFormat") || "").trim();
-  const numberFormat = String(qs.get("number_format") || qs.get("numberFormat") || "").trim();
-  const decimalPlaces = String(qs.get("decimal_places") || qs.get("decimalPlaces") || "").trim();
+  const {
+    project,
+    path: rawPath,
+    tri,
+    instanceName,
+    originLen,
+    devLen,
+    dataFormat,
+    numberFormat,
+    decimalPlaces,
+  } = readDatasetInputQueryValues(qs);
+  const path = normalizeReservingClassPath(rawPath);
   const normalized = normalizeBrowsingHistoryEntry({ project, path, tri });
   if (normalized && instanceName) normalized.instanceName = instanceName;
   if (normalized && originLen) normalized.originLen = originLen;
@@ -3487,8 +3485,27 @@ function applyDatasetSettingsToControls(settings = {}) {
   refreshLenDropdowns();
 }
 
+async function loadTemporaryNumberFormatSettings(context) {
+  const key = String(context?.dataset_type || "").trim();
+  if (!key) return null;
+  if (temporaryNumberFormatSettingsKey !== key) {
+    temporaryNumberFormatSettingsKey = key;
+    temporaryNumberFormatSettingsPromise = getDatasetNumberFormatDefaults({
+      datasetTypeName: context.dataset_type,
+    }).then((response) => {
+      if (!response.ok || response.data?.ok === false) return null;
+      const numberFormat = String(response.data?.resolved_number_format || "").trim();
+      if (!numberFormat) return null;
+      return {
+        number_format: numberFormat,
+        decimal_places: response.data?.resolved_decimal_places,
+      };
+    }).catch(() => null);
+  }
+  return temporaryNumberFormatSettingsPromise;
+}
+
 function invalidateDatasetContextLoads() {
-  notesSyncNonce += 1;
   sidecarSyncNonce += 1;
   datasetExternalLinks.abort();
 }
@@ -3557,7 +3574,9 @@ async function syncSidecarForCurrentDataset(options = {}) {
   datasetAuditLog?.setLoading();
   let resp;
   try {
-    resp = await loadDatasetSidecar(context);
+    resp = options?.sidecarData
+      ? { ok: true, data: options.sidecarData }
+      : await loadDatasetSidecar(context);
   } catch (error) {
     if (!isCurrent()) return false;
     if (nonce === sidecarSyncNonce) {
@@ -3587,6 +3606,12 @@ async function syncSidecarForCurrentDataset(options = {}) {
   }
 
   const data = resp.data || {};
+  const notesSynced = await syncNotesForCurrentDataset({
+    isCurrent,
+    forceReload: options?.forceReload === true,
+    notes: data.exists ? String(data.notes ?? "") : "",
+  });
+  if (!isCurrent() || notesSynced === false) return false;
   currentDatasetSidecarSourceKind = data.exists ? String(data.source_kind || "") : (isProjectInstanceDraft ? "input" : "");
   currentDatasetSidecarDataFormat = data.exists ? String(data.data_format || "") : (isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : "");
   currentDatasetPrecedents = data.exists ? normalizeDatasetDependencyEntries(data.Precedents) : [];
@@ -3612,9 +3637,19 @@ async function syncSidecarForCurrentDataset(options = {}) {
     patchSaveBtn.disabled = isSidecarReadOnlyDataset;
     patchSaveBtn.title = isSidecarReadOnlyDataset ? "Calculated datasets are read-only." : "";
   }
-  const settings = data.exists
-    ? normalizeDatasetSettings(data)
-    : normalizeDatasetSettings(getCurrentDatasetSettings());
+  let settings;
+  if (data.exists) {
+    settings = normalizeDatasetSettings(data);
+  } else if (isTemporaryDatasetView) {
+    const temporarySettings = await loadTemporaryNumberFormatSettings(context);
+    if (!isCurrent()) return false;
+    settings = normalizeDatasetSettings({
+      ...getCurrentDatasetSettings(),
+      ...(temporarySettings || {}),
+    });
+  } else {
+    settings = normalizeDatasetSettings(getCurrentDatasetSettings());
+  }
   if (isDfmDataTabHost()) {
     setDatasetRenderNumberFormatSettings(data.exists ? settings : null);
   }
@@ -3629,6 +3664,10 @@ async function syncSidecarForCurrentDataset(options = {}) {
     datasetSettingsDirty = false;
     updateDatasetSaveUi();
     return true;
+  }
+  if (isTemporaryDatasetView && !data.exists) {
+    setDatasetDecimalPlacesValue(settings.decimal_places);
+    setDatasetNumberFormatValue(settings.number_format);
   }
   refreshDatasetSettingsDirty();
   return true;
@@ -3661,6 +3700,7 @@ async function saveDatasetSidecarForCurrentContext() {
   const resp = await saveDatasetSidecar({
     ...context,
     ...settings,
+    notes: String(getNotesEditorElements().input?.value ?? ""),
     ...getManualInputDatasetValuePayload(),
     ...getDatasetExternalLinksPayload(),
   });
@@ -3670,6 +3710,9 @@ async function saveDatasetSidecarForCurrentContext() {
   sidecarSyncNonce += 1;
   sidecarContextPayload = context;
   sidecarContextKey = buildDatasetSidecarContextKey(context);
+  notesContextPayload = { ...context };
+  notesContextKey = buildNotesContextKey(notesContextPayload);
+  applyNotesInputValue(String(resp.data?.notes ?? ""));
   lastSavedDatasetSettings = normalizeDatasetSettings(settings);
   currentDatasetSidecarSourceKind = String(resp.data?.source_kind || (isProjectInstanceDraft ? "input" : currentDatasetSidecarSourceKind) || "");
   currentDatasetSidecarDataFormat = String(resp.data?.data_format || settings.data_format || currentDatasetSidecarDataFormat || "");
@@ -3719,13 +3762,9 @@ async function saveDatasetChanges(options = {}) {
   updateDatasetSaveUi();
   void getDataTabLinksController()?.refresh?.();
   try {
-    if (datasetSettingsDirty || hasManualInputGridChanges() || datasetExternalLinks.isDirty()) {
+    if (datasetSettingsDirty || hasManualInputGridChanges() || datasetExternalLinks.isDirty() || notesDirty) {
       const sidecarResult = await saveDatasetSidecarForCurrentContext();
       if (!sidecarResult.ok) return sidecarResult;
-    }
-    if (notesDirty) {
-      const notesResult = await saveNotesForCurrentContext({ silentStatus: true });
-      if (!notesResult.ok) return notesResult;
     }
     updateDatasetSaveUi();
     if (!options?.silentStatus) setStatus("Dataset settings saved.");
@@ -4026,18 +4065,7 @@ async function syncNotesForCurrentDataset(options = {}) {
     return true;
   }
 
-  const nonce = ++notesSyncNonce;
-  const resp = await loadDatasetNotes(nextPayload);
-  if (nonce !== notesSyncNonce || !isCurrent()) return false;
-  if (!resp.ok) {
-    const err = getNotesErrorMessage(resp, "Failed to load notes.");
-    setStatus(`Notes load failed: ${err}`);
-    applyNotesInputValue("");
-    return false;
-  }
-
-  const text = resp?.data?.exists ? String(resp?.data?.notes ?? "") : "";
-  applyNotesInputValue(text);
+  applyNotesInputValue(String(options?.notes ?? ""));
   return true;
 }
 
@@ -4063,15 +4091,53 @@ function runArcRhoTri(opts = {}) {
   return datasetRunController.runArcRhoTri(opts);
 }
 
-async function refreshDfmDatasetForCurrentInputs(options = {}) {
+async function loadProjectInstanceCachedDataset() {
+  const { project, path, tri, instanceName, originLen, devLen, cumulative, calendar } = getTriInputs();
+  const datasetName = instanceName || tri;
+  if (!project || !path || !datasetName) return { ok: false, skipped: true };
+  setStatus(`Loading ${datasetName}...`);
+  const response = await loadCachedDataset({
+    project_name: project,
+    reserving_class: path,
+    dataset_name: datasetName,
+    origin_length: originLen,
+    development_length: devLen,
+    cumulative,
+    calendar,
+  });
+  if (!response.ok || response.data?.ok === false) {
+    const message = String(response.data?.detail || response.data?.error || `Dataset cache load failed (${response.status}).`);
+    setStatus(message);
+    return { ok: false, status: response.status, data: response.data, message };
+  }
+  const data = response.data || {};
+  config.DS_ID = String(data.id || "");
+  if (config.DS_ID) saveLastDsId(config.DS_ID);
+  state.dirty.clear();
+  state.model = data;
+  state.fileMtime = data.mtime;
+  state.headerLabels = Array.isArray(data.origin_labels) ? data.origin_labels.map(String) : [];
+  state.devHeaderLabels = Array.isArray(data.dev_labels) ? data.dev_labels.map(String) : [];
+  const sidecarSynced = await syncSidecarForCurrentDataset({
+    applyLengths: true,
+    sidecarData: data,
+  });
+  if (sidecarSynced === false) return { ok: false, contextSyncFailed: true };
+  renderTable();
+  renderChart();
+  notifyDatasetUpdated();
+  applyGridSelectionFromState();
+  updateCurrentTabTitle();
+  recordDatasetBrowsingHistory({ project, path, tri: datasetName });
+  const meta = document.getElementById("dsMeta");
+  if (meta) meta.textContent = `id=${data.id} | origins=${state.headerLabels.length} | dev=${state.devHeaderLabels.length} | mtime=${data.mtime}`;
+  setStatus([path, datasetName].filter(Boolean).join(" | ") || "Ready");
+  return { ok: true, data };
+}
+
+async function refreshDfmDatasetForCurrentInputs() {
   if (!isDfmDataTabHost()) return null;
   saveTriInputsToStorage();
-  const project = getResolvedProjectValue();
-  const forceRefreshLabels = !!options?.forceRefreshLabels;
-  if (project) {
-    await ensureHeadersForProject(project, { forceRefresh: forceRefreshLabels });
-    await ensureDevHeadersForProject(project, { forceRefresh: forceRefreshLabels });
-  }
   setStatus("Loading dataset...");
   return runArcRhoTri({ showValidationMessage: false });
 }
@@ -4227,8 +4293,6 @@ datasetRunController = createDatasetRunController({
   getTriInputs,
   buildTriRequestPayload,
   buildVecRequestPayload,
-  precheckArcRhoTriCsv,
-  precheckArcRhoVecCsv,
   getDatasetRunDataFormat,
   clearHeadersCacheForProject: (project, options = {}) =>
     datasetHeadersService.clearHeadersCacheForProject(project, options),
@@ -4238,8 +4302,7 @@ datasetRunController = createDatasetRunController({
     datasetHeadersService.ensureDevHeadersForProject(project, options),
   saveLastDsId,
   recordDatasetBrowsingHistory,
-    syncNotesForCurrentDataset,
-  syncSidecarForCurrentDataset,
+    syncSidecarForCurrentDataset,
   invalidateDatasetContextLoads,
   updateCurrentTabTitle,
   setStatus,
@@ -4815,30 +4878,28 @@ function wireEvents() {
 export async function bootDatasetDataTab() {
   wireNotesEditor();
   fillLenDropdowns();
-  await loadProjectsDropdown();
-
-  applyWorkflowDefaultsIfNew();
-
-  // restore user inputs AFTER dropdown options are populated
-  await restoreTriInputsFromStorage();
-  applyTriInputsFromQueryParams();
-  enforceDevLenRule();
-  const projectResult = validateAndNormalizeProjectInput({ strict: true, showMessage: false });
-  if (projectResult.ok) {
-    lastProjectSelection = projectResult.value;
-    if (!isDfmDataTabHost()) {
-      saveLastDatasetViewerProjectToAppData(projectResult.value);
-    }
-    await refreshDatasetTypesForProject(projectResult.value);
-    await refreshReservingClassPathsForProject(projectResult.value);
+  if (isProjectInstanceCachedDatasetOpen) {
+    applyTriInputsFromQueryParams();
   } else {
-    await refreshDatasetTypesForProject("");
-    await refreshReservingClassPathsForProject("");
+    await loadProjectsDropdown();
+    applyWorkflowDefaultsIfNew();
+    await restoreTriInputsFromStorage();
+    applyTriInputsFromQueryParams();
+    const projectResult = validateAndNormalizeProjectInput({ strict: true, showMessage: false });
+    if (projectResult.ok) {
+      lastProjectSelection = projectResult.value;
+      if (!isDfmDataTabHost()) saveLastDatasetViewerProjectToAppData(projectResult.value);
+      await refreshDatasetTypesForProject(projectResult.value);
+      await refreshReservingClassPathsForProject(projectResult.value);
+    } else {
+      await refreshDatasetTypesForProject("");
+      await refreshReservingClassPathsForProject("");
+    }
+    await validateAndNormalizeReservingClassInput(getResolvedProjectValue(), { strict: true, showMessage: false });
+    validateAndNormalizeDatasetInput({ strict: true, showMessage: false });
+    await syncSidecarForCurrentDataset({ applyLengths: !isProjectInstanceDraft });
+    await refreshDatasetInstanceNameConflict();
   }
-  await validateAndNormalizeReservingClassInput(getResolvedProjectValue(), { strict: true, showMessage: false });
-  validateAndNormalizeDatasetInput({ strict: true, showMessage: false });
-  await syncSidecarForCurrentDataset({ applyLengths: !isProjectInstanceDraft });
-  await refreshDatasetInstanceNameConflict();
   enforceDevLenRule({ source: "origin" });
 
   mountDataTabPageHost({
@@ -4858,11 +4919,11 @@ export async function bootDatasetDataTab() {
   // Otherwise, fall back to loading the last dataset.
   const { project, path, tri } = getTriInputs();
   if (project && path && tri) {
-    if (isProjectInstanceDraft) {
+    if (isProjectInstanceCachedDatasetOpen) {
+      await loadProjectInstanceCachedDataset();
+    } else if (isProjectInstanceDraft) {
       await refreshProjectInstanceDraftModel();
     } else {
-      await ensureHeadersForProject(project, { forceRefresh: true });
-      await ensureDevHeadersForProject(project, { forceRefresh: true });
       scheduleAutoRun(0);
     }
   } else if (isDfmDataTabHost()) {

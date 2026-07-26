@@ -9,6 +9,7 @@ import {
   getResolvedReservingClass,
   getDefaultMethodName,
 } from "/ui/method_pages/dfm/dfm_state.js";
+import { setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
 
 let auditLogView = null;
 let auditRequestSequence = 0;
@@ -43,7 +44,7 @@ export function renderDfmAuditLog(entries = []) {
   initDfmAuditLog()?.render(entries);
 }
 
-export async function refreshDfmAuditLog() {
+export async function refreshDfmAuditLog(options = {}) {
   const view = initDfmAuditLog();
   if (!view) return false;
 
@@ -61,6 +62,9 @@ export async function refreshDfmAuditLog() {
     if (!response.ok) {
       view.setError(response.data?.detail || "Unable to load the audit log.");
       return false;
+    }
+    if (options.hydrateNotes === true) {
+      setDfmNotesText(response.data?.exists ? String(response.data.notes ?? "") : "");
     }
     view.render(response.data?.exists ? response.data.audit_log : []);
     return true;

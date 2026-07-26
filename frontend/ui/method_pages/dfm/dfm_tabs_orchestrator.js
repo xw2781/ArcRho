@@ -75,6 +75,7 @@ import {
   runRatioRedo,
   runRatioUndo,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
+import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 
 const DEFAULT_TOKEN = "__DEFAULT__";
 let dfmSaveInFlight = false;
@@ -582,10 +583,12 @@ export function initDfmRatios() {
 
   /* ---- Apply project/class from URL params when embedded in workflow ---- */
   const _qs = new URLSearchParams(window.location.search);
-  const _urlProject = _qs.get("project") || "";
-  const _urlClass = _qs.get("class") || "";
-  const _urlMethodName = _qs.get("method_name") || "";
-  const _urlInputTriangle = _qs.get("input_triangle") || "";
+  const {
+    project: _urlProject,
+    path: _urlClass,
+    methodName: _urlMethodName,
+    tri: _urlInputTriangle,
+  } = readDatasetInputQueryValues(_qs);
   if (_urlProject || _urlClass || _urlMethodName || _urlInputTriangle) {
     const projEl = document.getElementById("projectSelect");
     const classEl = document.getElementById("pathInput");

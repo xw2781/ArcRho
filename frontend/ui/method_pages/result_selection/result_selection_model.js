@@ -37,9 +37,6 @@
           },
           results_tab: {},
           validation_tab: {},
-          notes_tab: {
-            notes: els.notesInput?.value || "",
-          },
           method_metadata: {
             last_modified: new Date().toISOString(),
           },
@@ -65,14 +62,16 @@
           els.statisticDecimalsInput.value = String(Math.max(0, Math.min(8, nonNegativeInt(details.statistic_decimal_places, 1))));
           syncStatisticDecimalInputs();
           els.showWeightsInput.checked = method.show_weights !== false;
-          setNotesText(text(data.notes_tab?.notes));
         });
-        const sources = [];
-        for (const source of Array.isArray(method.loaded_datasets) ? method.loaded_datasets : []) {
+        const sources = (await mapWithConcurrency(
+          Array.isArray(method.loaded_datasets) ? method.loaded_datasets : [],
+          SOURCE_LOAD_CONCURRENCY,
+          async (source) => {
           const record = cachedRows.find((row) => norm(row.name) === norm(source.name)) || null;
           const built = await buildSourceFromRecord(record || { name: source.name }, source);
-          if (built) sources.push(built);
-        }
+            return built;
+          },
+        )).filter(Boolean);
         state.sources = sources;
         const originLengthChanged = syncOriginLengthOptions();
         if (originLengthChanged) {
@@ -92,7 +91,7 @@
       }
 
       function snapshotPayload() {
-        return JSON.stringify(buildPayload());
+        return JSON.stringify({ method: buildPayload(), notes: els.notesInput?.value || "" });
       }
 
       function markClean() {
@@ -334,6 +333,7 @@
             calendar: false,
             origin_labels: Array.isArray(originLabels) ? originLabels.map(String) : [],
             csv_file: csvPath.split(/[\\/]/).pop(),
+            notes: els.notesInput?.value || "",
             precedents: getSourcePrecedentNames(),
           }),
         });

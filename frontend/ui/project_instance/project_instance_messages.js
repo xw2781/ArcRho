@@ -1,4 +1,8 @@
 import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/utils/filename.js";
+import {
+  getBerquistShermanContract,
+  normalizeBerquistShermanVariant,
+} from "/ui/shared/dataset/berquist_sherman_contract.js";
 
 export function installProjectInstanceMessages(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -18,6 +22,7 @@ export function installProjectInstanceMessages(ctx) {
   const hideDatasetWindow = (...args) => api.hideDatasetWindow(...args);
   const isDatasetWindowMaximized = (...args) => api.isDatasetWindowMaximized(...args);
   const isDfmWindow = (...args) => api.isDfmWindow(...args);
+  const isBerquistShermanWindow = (...args) => api.isBerquistShermanWindow(...args);
   const isBornhuetterFergusonWindow = (...args) => api.isBornhuetterFergusonWindow(...args);
   const isResultSelectionWindow = (...args) => api.isResultSelectionWindow(...args);
   const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
@@ -26,6 +31,7 @@ export function installProjectInstanceMessages(ctx) {
   const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
   const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
+  const openBerquistShermanWindow = (...args) => api.openBerquistShermanWindow(...args);
   const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
@@ -33,6 +39,7 @@ export function installProjectInstanceMessages(ctx) {
   const restoreDatasetWindow = (...args) => api.restoreDatasetWindow(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const setWindowDirtyState = (...args) => api.setWindowDirtyState(...args);
+  const syncBerquistShermanWindowIdentity = (...args) => api.syncBerquistShermanWindowIdentity(...args);
   const toText = (...args) => api.toText(...args);
   const activeCalculatedPreviewTargetsBySource = new Map();
 
@@ -42,6 +49,22 @@ function normalizeDependencyText(value) {
 
 function normalizeReservingClassPath(value) {
   return toText(value).replace(/\\+/g, "\\");
+}
+
+function indexedDfmMethodName(...names) {
+  const keys = new Set(names.map(normalizeLookupKey).filter(Boolean));
+  if (!keys.size) return "";
+  const rows = Array.isArray(state.cachedDatasetFilter?.instanceRows)
+    ? state.cachedDatasetFilter.instanceRows
+    : [];
+  const match = rows.find((item) => (
+    normalizeLookupKey(item?.method_type) === "dfm"
+    && (
+      keys.has(normalizeLookupKey(item?.name))
+      || keys.has(normalizeLookupKey(item?.dataset_type))
+    )
+  ));
+  return toText(match?.method_name || match?.name);
 }
 
 function dependencyMessageNames(message = {}) {
@@ -229,6 +252,7 @@ function getActiveWindowJsonKind(frame) {
   if (isDfmWindow(frame) || methodType === "dfm") return "dfm";
   if (isResultSelectionWindow(frame) || methodType === "result selection") return "result_selection";
   if (isBornhuetterFergusonWindow(frame) || methodType === "bornhuetter ferguson") return "bornhuetter_ferguson";
+  if (isBerquistShermanWindow(frame) || normalizeBerquistShermanVariant(methodType)) return "berquist_sherman";
   return "";
 }
 
@@ -266,11 +290,22 @@ async function openActiveDatasetRelatedFile(fileKind) {
       setStatus("Could not resolve dataset JSON folder.", true);
       return false;
     }
-    const filename = jsonKind === "dfm"
-      ? `DFM@${sanitizeFileNamePart(datasetName, "Name")}.json`
-      : jsonKind === "bornhuetter_ferguson"
-        ? `BF@${sanitizeFileNamePart(datasetName, "Name")}.json`
-        : `RS@${sanitizeFileNamePart(datasetName, "Name")}.json`;
+    const namePart = sanitizeFileNamePart(datasetName, "Name");
+    let filename = "";
+    if (jsonKind === "dfm") {
+      filename = `DFM@${namePart}.json`;
+    } else if (jsonKind === "bornhuetter_ferguson") {
+      filename = `BF@${namePart}.json`;
+    } else if (jsonKind === "berquist_sherman") {
+      const contract = getBerquistShermanContract(activeFrame.dataset.bsVariant || getWindowMethodType(activeFrame));
+      if (!contract) {
+        setStatus("Could not determine the Berquist Sherman JSON filename.", true);
+        return false;
+      }
+      filename = `${contract.filenamePrefix}${namePart}.json`;
+    } else {
+      filename = `RS@${namePart}.json`;
+    }
     targetPath = joinWindowsPath(folders.methods, filename);
   }
 
@@ -447,6 +482,8 @@ function getAutomationWindowInfo(frame) {
     hidden: frame.dataset.hidden === "1" || frame.style.display === "none",
     maximized: !!isDatasetWindowMaximized(frame),
     dirty: frame.dataset.dirty === "1",
+    bsTab: isBerquistShermanWindow(frame) ? toText(frame.dataset.bsTab) : "",
+    bsVariant: isBerquistShermanWindow(frame) ? normalizeBerquistShermanVariant(frame.dataset.bsVariant) : "",
     connected: true,
     rect: getFrameRect(frame),
   };
@@ -481,10 +518,15 @@ function handleAutomationOpenDataset(message, sourceWindow) {
   const requestedMethodType = toText(args.methodType || args.method_type);
   const openMethod = !!args.openMethod || !!args.open_method;
   const methodType = requestedMethodType.toLowerCase();
+  const dfmMethodName = toText(args.methodName || args.method_name)
+    || indexedDfmMethodName(datasetName, args.datasetTypeName, args.dataset_type_name)
+    || datasetName;
+  const bsVariant = normalizeBerquistShermanVariant(args.variant || args.bsVariant || args.bs_variant || requestedMethodType);
   const frame = openMethod && methodType === "dfm"
-    ? openDfmWindow(datasetName, {
+    ? openDfmWindow(dfmMethodName, {
       path: state.selectedPath,
       methodType: "DFM",
+      outputType: toText(args.datasetTypeName || args.dataset_type_name),
     })
     : openMethod && methodType === "result selection"
       ? openResultSelectionWindow(datasetName, {
@@ -498,11 +540,18 @@ function handleAutomationOpenDataset(message, sourceWindow) {
           initialTab: "method",
           methodType: "Bornhuetter Ferguson",
         })
-        : openDatasetWindow(datasetName, {
-          datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
-          readOnly: args.readOnly,
-          methodType: requestedMethodType,
-        });
+        : openMethod && bsVariant
+          ? openBerquistShermanWindow(datasetName, {
+            path: state.selectedPath,
+            initialTab: "method",
+            variant: bsVariant,
+            methodType: getBerquistShermanContract(bsVariant)?.methodType,
+          })
+          : openDatasetWindow(datasetName, {
+            datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
+            readOnly: args.readOnly,
+            methodType: requestedMethodType,
+          });
   if (!frame) {
     reply({ ok: false, error: `Could not open dataset: ${datasetName}` });
     return true;
@@ -629,11 +678,18 @@ function handleOpenDependentDataset(message, sourceWindow) {
     || toText(methodTypeMap.get(normalizeLookupKey(datasetName)))
     || toText(methodTypeMap.get(normalizeLookupKey(datasetTypeName)));
   const methodType = resolvedMethodType.toLowerCase();
+  const dfmMethodName = toText(message?.methodName || message?.method_name)
+    || indexedDfmMethodName(datasetName, datasetTypeName)
+    || datasetName;
+  const bsVariant = normalizeBerquistShermanVariant(
+    message?.variant || message?.bsVariant || message?.bs_variant || resolvedMethodType
+  );
   let frame = null;
   if (openMethod && methodType === "dfm") {
-    frame = openDfmWindow(datasetName, {
+    frame = openDfmWindow(dfmMethodName, {
       path: targetPath,
       methodType: "DFM",
+      outputType: datasetTypeName,
     });
   } else if (openMethod && methodType === "result selection") {
     frame = openResultSelectionWindow(datasetName, {
@@ -647,6 +703,13 @@ function handleOpenDependentDataset(message, sourceWindow) {
       initialTab: "method",
       methodType: "Bornhuetter Ferguson",
     });
+  } else if (openMethod && bsVariant) {
+    frame = openBerquistShermanWindow(datasetName, {
+      path: targetPath,
+      initialTab: "method",
+      variant: bsVariant,
+      methodType: getBerquistShermanContract(bsVariant)?.methodType,
+    });
   } else {
     frame = openDatasetWindow(datasetName, {
       datasetTypeName,
@@ -659,12 +722,14 @@ function handleOpenDependentDataset(message, sourceWindow) {
       ? "DFM"
       : methodType === "bornhuetter ferguson"
         ? "Bornhuetter Ferguson"
-        : "Result Selection";
-    setStatus(openMethod && methodType
+        : bsVariant
+          ? getBerquistShermanContract(bsVariant)?.methodType || "Berquist Sherman"
+          : "Result Selection";
+    setStatus(openMethod && (methodType || bsVariant)
       ? `Opened ${methodLabel} method ${datasetName}.`
       : `Opened dependent dataset ${datasetName}.`);
   } else {
-    setStatus(openMethod && methodType
+    setStatus(openMethod && (methodType || bsVariant)
       ? `Could not open method ${datasetName}.`
       : `Could not open dependent dataset ${datasetName}.`, true);
   }
@@ -1201,6 +1266,15 @@ window.addEventListener("message", (event) => {
     return;
   }
   if (msg.type === "arcrho:project-instance-refresh-datasets") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    const savedDatasetName = toText(msg.savedDatasetName || msg.saved_dataset_name);
+    if (frame && isBerquistShermanWindow(frame) && savedDatasetName) {
+      syncBerquistShermanWindowIdentity(
+        frame,
+        savedDatasetName,
+        msg.variant || msg.bsVariant || msg.bs_variant || getWindowMethodType(frame),
+      );
+    }
     void refreshCachedDatasetTableFromDisk().catch((err) => {
       setStatus(`Project Instance refresh failed: ${toText(err?.message) || err}`, true);
     });
@@ -1227,6 +1301,16 @@ window.addEventListener("message", (event) => {
     const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
     if (frame && isBornhuetterFergusonWindow(frame)) {
       frame.dataset.bfTab = toText(msg.tab || "");
+      notifyProjectInstanceStateChanged();
+    }
+    return;
+  }
+  if (msg.type === "arcrho:berquist-sherman-tab-changed") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isBerquistShermanWindow(frame)) {
+      frame.dataset.bsTab = toText(msg.tab || "");
+      const variant = normalizeBerquistShermanVariant(msg.variant || frame.dataset.bsVariant);
+      if (variant) frame.dataset.bsVariant = variant;
       notifyProjectInstanceStateChanged();
     }
     return;

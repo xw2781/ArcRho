@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed Project Instance Dataset Viewer windows showing an empty grid for older sidecars without origin labels.",
+  "details": [
+    "The aggregate dataset load now uses valid sidecar labels when present and otherwise resolves canonical project headers before rendering."
+  ]
+}

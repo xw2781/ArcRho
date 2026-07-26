@@ -153,15 +153,14 @@
 
 .pi-number-formats-table {
   width: 100%;
-  min-width: 700px;
+  min-width: 520px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
 }
 
-.pi-number-formats-table col.rc { width: 39%; }
-.pi-number-formats-table col.dataset { width: 34%; }
-.pi-number-formats-table col.format { width: 22%; }
+.pi-number-formats-table col.dataset { width: 64%; }
+.pi-number-formats-table col.format { width: 28%; }
 .pi-number-formats-table col.action { width: 38px; }
 
 .pi-number-formats-table th {

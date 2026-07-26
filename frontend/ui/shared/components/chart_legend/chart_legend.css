@@ -1,0 +1,102 @@
+.arChartLegendPanel {
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  border-left: 1px solid #e2e8f0;
+  background: #fbfcfe;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.arChartLegendHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.arChartLegendTitle {
+  margin: 0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.arChartLegendCount {
+  color: #64748b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.arChartLegendList {
+  display: grid;
+  gap: 2px;
+}
+
+.arChartLegendItem {
+  display: grid;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
+  grid-template-columns: 16px 18px minmax(0, 1fr);
+  gap: 6px;
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #334155;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.arChartLegendItem:hover {
+  border-color: #d8e1ec;
+  background: #f4f7fa;
+}
+
+.arChartLegendItem:focus-within {
+  border-color: #8aa8ff;
+  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.18);
+}
+
+.arChartLegendItem input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #2b6df6;
+}
+
+.arChartLegendSwatch {
+  position: relative;
+  width: 18px;
+  height: 2px;
+  background: var(--ar-chart-legend-series);
+}
+
+.arChartLegendSwatch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--ar-chart-legend-series);
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+}
+
+.arChartLegendLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .arChartLegendPanel {
+    max-height: 150px;
+    border-top: 1px solid #e2e8f0;
+    border-left: 0;
+  }
+}

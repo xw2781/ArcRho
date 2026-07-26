@@ -177,7 +177,7 @@ body {
   color: var(--ar-details-control-color, #000);
   font: var(--ar-details-control-font-size, 12px) var(--ar-details-font-family, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
 }
-.rsInput { width: min(100%, 980px); }
+.rsInput { width: 100%; }
 .rsNumber { width: 70px; }
 .rsOriginLengthSelect { width: 70px; }
 .rsNativeSelectHidden {
@@ -192,7 +192,7 @@ body {
 }
 .rsInputPicker {
   position: relative;
-  width: min(100%, 980px);
+  width: 100%;
   min-width: 0;
 }
 .rsInputPicker .rsInput {
@@ -250,16 +250,12 @@ body {
   padding-top: 8px;
 }
 .rsRatioBasisPicker {
-  display: flex;
-  min-height: 70px;
-  align-items: center;
-  align-content: flex-start;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: block;
+  min-height: 30px;
   width: 100%;
   min-width: 0;
-  padding: 4px 6px;
-  border: 1px solid #cfcfcf;
+  padding: 0;
+  outline: 1px solid #cfcfcf;
   border-radius: var(--tabbed-page-control-radius, 4px);
   background: #fff;
   box-sizing: border-box;
@@ -274,37 +270,36 @@ body {
 #rsDetailsPage button:disabled {
   color: var(--ar-details-readonly-color, #000);
 }
-.rsRatioBasisPicker.rsRatioBasisDragActive { border-style: dashed; }
+.rsRatioBasisPicker.rsRatioBasisDragActive {
+  outline: 1px dashed #8aa8ff;
+}
 .rsRatioBasisPicker.rsRatioBasisDragOutside {
-  border-color: #e7a1ad;
+  outline-color: #e7a1ad;
+  color: #be123c;
   background: #fff8f9;
 }
 .rsRatioBasisPicker:focus-within {
-  border-color: #8aa8ff;
+  outline-color: #8aa8ff;
   box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
 }
 .rsRatioBasisList {
-  display: contents;
-}
-.rsRatioBasisEmpty {
-  color: #94a3b8;
-  font-size: 12px;
+  display: block;
 }
 .rsRatioBasisToken {
-  display: inline-flex;
+  display: flex;
   min-width: 0;
-  max-width: min(420px, 100%);
   height: 30px;
   min-height: 30px;
   align-items: center;
   gap: 4px;
-  padding: 2px 9px;
-  border: 1px solid #d4d4d4;
-  border-radius: 14px;
-  background: #fff;
+  width: 100%;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
   color: var(--ar-details-control-color, #000);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 30px;
   white-space: nowrap;
   cursor: grab;
   box-sizing: border-box;
@@ -316,7 +311,7 @@ body {
 }
 .rsRatioBasisToken:hover,
 .rsRatioBasisToken:focus-within {
-  border-color: #9d9d9d;
+  border-color: #d8e1ec;
   background: #f6f9ff;
 }
 .rsRatioBasisTokenLabel {
@@ -326,6 +321,7 @@ body {
 }
 .rsRatioBasisOpen {
   display: inline-flex;
+  flex: 1 1 auto;
   min-width: 0;
   height: 100%;
   align-items: center;
@@ -338,30 +334,50 @@ body {
   cursor: grab;
 }
 .rsRatioBasisOpen:focus { outline: none; }
-.rsRatioBasisAdd svg {
-  display: block;
-  width: 13px;
-  height: 13px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.rsRatioBasisAdd {
-  appearance: none;
+.rsRatioBasisRemove {
   display: inline-flex;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
-  min-height: 30px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 50%;
-  background: #fff;
+  border: 0;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
   color: #64748b;
+  cursor: pointer;
+}
+.rsRatioBasisRemove svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.rsRatioBasisRemove:hover,
+.rsRatioBasisRemove:focus-visible {
+  outline: none;
+  background: #fff1f2;
+  color: #be123c;
+}
+.rsRatioBasisAdd {
+  appearance: none;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
+  color: #94a3b8;
+  font: 12px var(--rs-font);
   cursor: pointer;
   box-sizing: border-box;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
@@ -369,7 +385,7 @@ body {
 .rsRatioBasisAdd:hover:not(:disabled),
 .rsRatioBasisAdd:focus:not(:disabled) {
   outline: none;
-  border-color: #8aa8ff;
+  border-color: #d8e1ec;
   background: #eaf2ff;
   color: #2b6df6;
 }
@@ -1195,103 +1211,9 @@ body {
   white-space: nowrap;
 }
 .rsChartTooltip[hidden] { display: none; }
-.rsChartLegendPanel {
-  min-width: 0;
-  min-height: 0;
-  padding: 10px;
-  border-left: 1px solid #e2e8f0;
-  background: #fbfcfe;
-  overflow: auto;
-  box-sizing: border-box;
-}
-.rsChartLegendHeader {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 7px;
-}
-.rsChartLegendTitle {
-  margin: 0;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-.rsChartLegendCount {
-  color: #64748b;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.rsChartLegendHint {
-  margin: -2px 0 7px;
-  color: #64748b;
-  font-size: 11px;
-  line-height: 1.3;
-}
-.rsChartLegendList {
-  display: grid;
-  gap: 2px;
-}
-.rsChartLegendItem {
-  display: grid;
-  min-width: 0;
-  min-height: 30px;
-  align-items: center;
-  grid-template-columns: 16px 18px minmax(0, 1fr);
-  gap: 6px;
-  padding: 3px 5px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: #334155;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.rsChartLegendItem:hover {
-  border-color: #d8e1ec;
-  background: #f4f7fa;
-}
-.rsChartLegendItem:focus-within {
-  border-color: #8aa8ff;
-  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.18);
-}
-.rsChartLegendItem input {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  accent-color: #2b6df6;
-}
-.rsChartLegendSwatch {
-  position: relative;
-  width: 18px;
-  height: 2px;
-  background: var(--rs-chart-series);
-}
-.rsChartLegendSwatch::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 5px;
-  height: 5px;
-  border: 1px solid var(--rs-chart-series);
-  border-radius: 50%;
-  background: #fff;
-  transform: translate(-50%, -50%);
-}
-.rsChartLegendLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 @media (max-width: 720px) {
   .rsChartBody {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(260px, 1fr) minmax(96px, auto);
-  }
-  .rsChartLegendPanel {
-    max-height: 150px;
-    border-top: 1px solid #e2e8f0;
-    border-left: 0;
   }
 }

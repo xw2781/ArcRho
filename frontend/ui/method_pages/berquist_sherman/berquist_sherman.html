@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/ui/shared/services/color_theme.js?v=20260724a"></script>
+  <title>Berquist Sherman</title>
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260720b">
+  <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
+  <link rel="stylesheet" href="/ui/shared/tabs/audit_log/audit_log.css?v=20260714a">
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a">
+  <link rel="stylesheet" href="/ui/method_pages/berquist_sherman/berquist_sherman.css?v=20260724a">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260722a">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260724i">
+</head>
+<body>
+  <main class="bsShell">
+    <section class="bsTabbed" id="bsTabbedPage">
+      <div class="bsPageHost">
+        <section class="bsPage arDetailsRoot" id="bsDetailsPage" role="tabpanel">
+          <div class="bsDetailsStack">
+            <section class="bsPanel arDetailsGroup">
+              <div class="bsPanelBody">
+                <div class="bsFieldGrid arDetailsGrid">
+                  <label class="bsLabel arDetailsLabel" for="bsProjectInput">Project : </label>
+                  <div class="bsFieldControl arDetailsField">
+                    <input class="bsInput arDetailsControl" id="bsProjectInput" type="text" readonly>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsClassInput">Reserving Class : </label>
+                  <div class="bsFieldControl arDetailsField">
+                    <input class="bsInput arDetailsControl" id="bsClassInput" type="text" readonly>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsNameInput">Name : </label>
+                  <div class="bsFieldControl arDetailsField">
+                    <input class="bsInput arDetailsControl" id="bsNameInput" type="text">
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsMethodTypeInput">Method Type : </label>
+                  <div class="bsFieldControl arDetailsField">
+                    <input class="bsInput arDetailsControl" id="bsMethodTypeInput" type="text" readonly>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsOutputTypeInput">Output Type : </label>
+                  <div class="bsFieldControl arDetailsField withPicker">
+                    <input class="bsInput arDetailsControl" id="bsOutputTypeInput" type="text">
+                    <button class="bsIconButton" id="bsOutputTypeBtn" type="button" aria-label="Select output type">...</button>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsOriginLengthInput">Origin Length : </label>
+                  <div class="bsFieldControl arDetailsField">
+                    <input class="bsInput bsLengthInput arDetailsControl" id="bsOriginLengthInput" type="text" value="12" readonly>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsDevelopmentLengthInput">Development Length : </label>
+                  <div class="bsFieldControl arDetailsField">
+                    <input class="bsInput bsLengthInput arDetailsControl" id="bsDevelopmentLengthInput" type="text" value="12" readonly>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="bsPanel arDetailsGroup" id="bsSrInputs">
+              <div class="bsPanelBody">
+                <div class="bsFieldGrid arDetailsGrid">
+                  <label class="bsLabel arDetailsLabel" for="bsSrPaidInput">Paid Claims : </label>
+                  <div class="bsFieldControl arDetailsField withPicker">
+                    <input class="bsInput arDetailsControl" id="bsSrPaidInput" type="text" readonly>
+                    <button class="bsIconButton" type="button" data-picker-role="paid_claims" aria-label="Select paid claims">...</button>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsSrClosedInput">Closed Claim Counts : </label>
+                  <div class="bsFieldControl arDetailsField withPicker">
+                    <input class="bsInput arDetailsControl" id="bsSrClosedInput" type="text" readonly>
+                    <button class="bsIconButton" type="button" data-picker-role="closed_claim_numbers" aria-label="Select closed claim counts">...</button>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsSrUltimateInput">Ultimate Claim Counts : </label>
+                  <div class="bsFieldControl arDetailsField withPicker">
+                    <input class="bsInput arDetailsControl" id="bsSrUltimateInput" type="text" readonly>
+                    <button class="bsIconButton" type="button" data-picker-role="ultimate_claim_numbers" aria-label="Select ultimate claim counts">...</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="bsPanel arDetailsGroup" id="bsCraInputs" hidden>
+              <div class="bsPanelBody">
+                <div class="bsFieldGrid arDetailsGrid">
+                  <label class="bsLabel arDetailsLabel" for="bsCraReportedInput">Reported Claim Counts : </label>
+                  <div class="bsFieldControl arDetailsField withPicker">
+                    <input class="bsInput arDetailsControl" id="bsCraReportedInput" type="text" readonly>
+                    <button class="bsIconButton" type="button" data-picker-role="reported_claim_numbers" aria-label="Select reported claim counts">...</button>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsCraClosedInput">Closed Claim Counts : </label>
+                  <div class="bsFieldControl arDetailsField withPicker">
+                    <input class="bsInput arDetailsControl" id="bsCraClosedInput" type="text" readonly>
+                    <button class="bsIconButton" type="button" data-picker-role="closed_claim_numbers" aria-label="Select closed claim counts">...</button>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsCraIncurredInput">Incurred Claims : </label>
+                  <div class="bsFieldControl arDetailsField withPicker">
+                    <input class="bsInput arDetailsControl" id="bsCraIncurredInput" type="text" readonly>
+                    <button class="bsIconButton" type="button" data-picker-role="incurred_claims" aria-label="Select incurred claims">...</button>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsCraPaidInput">Paid Claims : </label>
+                  <div class="bsFieldControl arDetailsField withPicker">
+                    <input class="bsInput arDetailsControl" id="bsCraPaidInput" type="text" readonly>
+                    <button class="bsIconButton" type="button" data-picker-role="paid_claims" aria-label="Select paid claims">...</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="bsPage" id="bsMethodPage" role="tabpanel">
+          <div class="bsMethodToolbar">
+            <div class="bsViewButtons" id="bsViewButtons" role="group" aria-label="Calculation view"></div>
+          </div>
+          <div class="bsSelectionSummary" id="bsSelectionSummary"></div>
+          <div class="bsMethodMessage" id="bsMethodMessage" role="status"></div>
+          <div class="bsTableWrap">
+            <table class="bsMethodTable arSpreadsheetTable" aria-label="Berquist Sherman calculation table">
+              <thead id="bsMethodHead"></thead>
+              <tbody id="bsMethodBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="bsPage" id="bsNotesPage" role="tabpanel">
+          <div id="bsNotesMount"></div>
+        </section>
+
+        <section class="bsPage" id="bsAuditPage" role="tabpanel">
+          <div id="bsAuditLogMount"></div>
+        </section>
+      </div>
+    </section>
+
+    <footer class="bsSaveBar" id="bsSaveBar">
+      <div class="bsSaveActions">
+        <button class="bsButton primary" id="bsSaveBtn" type="button">Save</button>
+        <button class="bsButton" id="bsCancelBtn" type="button">Cancel</button>
+      </div>
+    </footer>
+  </main>
+
+  <script type="module" src="/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260724b"></script>
+</body>
+</html>

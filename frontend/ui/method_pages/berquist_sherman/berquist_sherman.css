@@ -1,0 +1,436 @@
+:root {
+  --bs-bg: #eef2f6;
+  --bs-surface: #ffffff;
+  --bs-surface-muted: #f8fafc;
+  --bs-border: #cfd6df;
+  --bs-border-strong: #b8c1cc;
+  --bs-text: #111827;
+  --bs-muted: #64748b;
+  --bs-blue: #2b6df6;
+  --bs-blue-soft: #eff6ff;
+  --bs-result: #fff7bf;
+  --bs-result-hover: #fff3a0;
+  --bs-input: #eef9cf;
+  --bs-row-hover: #f8fbff;
+  --bs-radius: 4px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: var(--bs-text);
+  background: var(--bs-bg);
+  font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.bsShell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-width: 620px;
+  padding: 6px;
+}
+
+.bsTabbed {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bsPageHost {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--bs-border);
+  border-top: 0;
+  background: var(--bs-surface);
+}
+
+.bsPage {
+  display: none;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bs-surface);
+}
+
+.bsPage.active {
+  display: block;
+}
+
+.bsDetailsStack {
+  display: grid;
+  align-content: start;
+  gap: 1px;
+  height: 100%;
+  padding: 18px 22px;
+  overflow: auto;
+}
+
+.bsPanel {
+  min-width: 0;
+}
+
+.bsPanelBody {
+  padding: 8px 0;
+}
+
+.bsFieldGrid {
+  align-items: center;
+}
+
+.bsLabel {
+  color: var(--bs-text);
+  white-space: nowrap;
+}
+
+.bsFieldControl {
+  min-width: 0;
+}
+
+.bsFieldControl.withPicker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 4px;
+}
+
+.bsInput {
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  padding: 0 8px;
+  color: var(--bs-text);
+  border: 1px solid var(--bs-border);
+  border-radius: var(--bs-radius);
+  outline: none;
+  background: var(--bs-surface);
+}
+
+.bsInput:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+}
+
+.bsInput[readonly] {
+  background: var(--bs-surface-muted);
+}
+
+.bsLengthInput {
+  width: 70px;
+}
+
+.bsIconButton,
+.bsButton,
+.bsViewButton {
+  height: 30px;
+  border: 1px solid var(--bs-border);
+  border-radius: var(--bs-radius);
+  color: var(--bs-text);
+  background: var(--bs-surface-muted);
+  cursor: pointer;
+}
+
+.bsIconButton:hover,
+.bsButton:hover,
+.bsViewButton:hover {
+  border-color: #9fb8e8;
+  background: var(--bs-blue-soft);
+}
+
+.bsIconButton:focus-visible,
+.bsButton:focus-visible,
+.bsViewButton:focus-visible {
+  outline: 2px solid rgba(43, 109, 246, 0.35);
+  outline-offset: 1px;
+}
+
+.bsIconButton {
+  width: 30px;
+  padding: 0;
+}
+
+#bsMethodPage {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+#bsMethodPage.active {
+  display: grid;
+}
+
+#bsMethodPage[aria-hidden="false"] {
+  display: grid !important;
+}
+
+.bsMethodToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 42px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--bs-border);
+  background: var(--bs-surface-muted);
+}
+
+.bsViewButtons {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.bsViewButton {
+  flex: 0 0 auto;
+  padding: 0 10px;
+}
+
+.bsViewButton[aria-pressed="true"] {
+  color: #1d4ed8;
+  border-color: #93b4f4;
+  background: var(--bs-blue-soft);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.bsSelectionSummary {
+  min-height: 38px;
+  max-height: 178px;
+  padding: 6px 8px;
+  overflow: auto;
+  color: var(--bs-muted);
+  border-bottom: 1px solid var(--bs-border);
+  background: var(--bs-surface-muted);
+}
+
+.bsSelectionHeading {
+  flex: 0 0 126px;
+  align-self: center;
+  color: var(--bs-text);
+  white-space: nowrap;
+}
+
+.bsSelectionEditorRow {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  width: max-content;
+  min-width: 100%;
+  margin-bottom: 5px;
+}
+
+.bsSelectionEditorRow:last-child {
+  margin-bottom: 0;
+}
+
+.bsSelectionEditor {
+  display: grid;
+  grid-template-columns: minmax(82px, 1fr) auto;
+  grid-template-areas:
+    "label label"
+    "number check";
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 154px;
+  padding: 5px 6px;
+  border: 1px solid var(--bs-border);
+  border-radius: 3px;
+  color: var(--bs-text);
+  background: var(--bs-surface);
+}
+
+.bsSelectionEditor.compact {
+  grid-template-areas:
+    "label label"
+    "number number";
+  min-width: 126px;
+}
+
+.bsSelectionEditor.wide {
+  display: flex;
+  align-items: center;
+  min-width: 396px;
+}
+
+.bsSelectionEditorLabel {
+  grid-area: label;
+  font-weight: 600;
+  color: var(--bs-text);
+  white-space: nowrap;
+}
+
+.bsSelectionSelect,
+.bsSelectionNumber {
+  height: 27px;
+  min-width: 0;
+  color: var(--bs-text);
+  border: 1px solid var(--bs-border);
+  border-radius: 3px;
+  outline: none;
+  background: var(--bs-input);
+}
+
+.bsSelectionSelect {
+  grid-area: number;
+  padding: 0 22px 0 6px;
+}
+
+.bsSelectionNumber {
+  grid-area: number;
+  width: 84px;
+  padding: 0 6px;
+}
+
+.bsSelectionNumber:disabled {
+  color: var(--bs-muted);
+  background: var(--bs-surface-muted);
+}
+
+.bsSelectionCheck {
+  grid-area: check;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.bsSelectionField {
+  display: grid;
+  grid-template-columns: 50px 112px 78px;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.bsSelectionField .bsSelectionNumber {
+  width: 78px;
+}
+
+.bsMethodMessage {
+  min-height: 25px;
+  padding: 5px 8px;
+  color: var(--bs-muted);
+}
+
+.bsMethodMessage.error {
+  color: var(--ar-color-danger, #be123c);
+}
+
+.bsTableWrap {
+  min-height: 0;
+  margin: 0 8px 8px;
+  overflow: auto;
+  border: 1px solid var(--bs-border);
+  scrollbar-gutter: stable both-edges;
+  background: var(--bs-surface);
+}
+
+.bsMethodTable {
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.bsMethodTable th,
+.bsMethodTable td {
+  min-width: 104px;
+  height: 31px;
+  padding: 4px 7px;
+  text-align: right;
+  border-right: 1px solid var(--bs-border);
+  border-bottom: 1px solid var(--bs-border);
+  white-space: nowrap;
+}
+
+.bsMethodTable th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  color: var(--bs-text);
+  background: var(--bs-surface-muted);
+}
+
+.bsMethodTable th:first-child,
+.bsMethodTable td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 118px;
+  text-align: left;
+  color: var(--bs-text);
+  background: var(--bs-surface-muted);
+}
+
+.bsMethodTable th:first-child {
+  z-index: 3;
+}
+
+.bsMethodTable td.bsResultCell {
+  background: var(--bs-result);
+}
+
+.bsMethodTable tr:hover td:not(:first-child) {
+  background: var(--bs-row-hover);
+}
+
+.bsMethodTable tr:hover td.bsResultCell {
+  background: var(--bs-result-hover);
+}
+
+.bsSaveBar {
+  min-height: 43px;
+  border: 1px solid var(--bs-border);
+  border-top: 0;
+  background: var(--bs-surface-muted);
+}
+
+.bsSaveActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 7px 10px;
+}
+
+.bsButton {
+  min-width: 76px;
+  padding: 0 14px;
+}
+
+.bsButton.primary {
+  color: #1d4ed8;
+  border-color: #a9c2f5;
+  background: var(--bs-blue-soft);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  .bsShell {
+    min-width: 520px;
+  }
+
+  .bsDetailsStack {
+    padding: 12px;
+  }
+
+  .bsMethodToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

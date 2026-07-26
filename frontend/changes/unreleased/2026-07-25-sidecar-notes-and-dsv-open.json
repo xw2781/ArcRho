@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Made dataset sidecars the only notes store and reduced Project Instance dataset opens to the sidecar and CSV cache.",
+  "details": [
+    "Removed standalone ArcRhoTriNotes files and notes sections from DFM, Result Selection, Bornhuetter Ferguson, and Berquist-Sherman method JSON.",
+    "DSV and method Notes tabs now read and write the output dataset sidecar notes field.",
+    "Existing DSV windows opened from Project Instance skip project/path/type validation lists and load their exact sidecar and CSV in one request.",
+    "PI method windows reuse the parent dataset-index snapshot, Result Selection and Bornhuetter Ferguson source loads use bounded concurrency, and Electron method JSON reads no longer block the main process with synchronous file I/O."
+  ]
+}

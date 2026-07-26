@@ -1,5 +1,6 @@
 const prefsByProject = new Map();
 const pendingSaveByProject = new Map();
+const activeSaveByProject = new Map();
 
 function normalizeProject(projectName) {
   return String(projectName || "").trim();
@@ -59,6 +60,23 @@ export async function saveProjectUserPreferences(projectName, patch) {
   return data;
 }
 
+function enqueueProjectUserPreferencesSave(project, patch) {
+  const key = projectKey(project);
+  const active = activeSaveByProject.get(key);
+  const queued = (active ? active.catch(() => null) : Promise.resolve())
+    .then(() => saveProjectUserPreferences(project, patch));
+  activeSaveByProject.set(key, queued);
+  queued.then(
+    () => {
+      if (activeSaveByProject.get(key) === queued) activeSaveByProject.delete(key);
+    },
+    () => {
+      if (activeSaveByProject.get(key) === queued) activeSaveByProject.delete(key);
+    },
+  );
+  return queued;
+}
+
 export function scheduleProjectUserPreferencesSave(projectName, patch, delayMs = 250) {
   const project = normalizeProject(projectName);
   if (!project || !patch || typeof patch !== "object") return;
@@ -71,7 +89,7 @@ export function scheduleProjectUserPreferencesSave(projectName, patch, delayMs =
     const next = pendingSaveByProject.get(key) || {};
     pendingSaveByProject.delete(key);
     const { timer: _timer, ...data } = next;
-    saveProjectUserPreferences(project, data).catch((err) => {
+    enqueueProjectUserPreferencesSave(project, data).catch((err) => {
       console.warn("Failed to save project user preferences:", err);
     });
   }, delayMs);

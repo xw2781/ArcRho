@@ -1,4 +1,9 @@
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
+import {
+  BERQUIST_SHERMAN_VARIANTS,
+  getBerquistShermanContract,
+  normalizeBerquistShermanVariant,
+} from "/ui/shared/dataset/berquist_sherman_contract.js";
 
 export function installProjectInstanceDatasetTable(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -25,6 +30,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const normalizePath = (...args) => api.normalizePath(...args);
   const openDatasetWindow = (...args) => api.openDatasetWindow(...args);
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
+  const openBerquistShermanWindow = (...args) => api.openBerquistShermanWindow(...args);
   const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const openNewDatasetDraftWindow = (...args) => api.openNewDatasetDraftWindow(...args);
@@ -738,25 +744,6 @@ function getDatasetName(row) {
   return toText(row?.[0]);
 }
 
-function stripDatasetCacheVariantSuffix(value) {
-  const text = toText(value);
-  const stem = text.replace(/\.csv$/iu, "");
-  const parts = stem.split("@");
-  if (
-    parts.length >= 5
-    && /^(dev|cal)$/i.test(parts[parts.length - 1])
-    && /^(cum|inc)$/i.test(parts[parts.length - 2])
-    && /^\d+$/.test(parts[parts.length - 3])
-    && /^\d+$/.test(parts[parts.length - 4])
-  ) {
-    return parts.slice(0, -4).join("@").trim();
-  }
-  if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) {
-    return parts.slice(0, -1).join("@").trim();
-  }
-  return text;
-}
-
 function getDatasetTypeRowByName(name) {
   const key = normalizeLookupKey(name);
   if (!key) return null;
@@ -764,7 +751,7 @@ function getDatasetTypeRowByName(name) {
 }
 
 function getInstanceDatasetName(item) {
-  return stripDatasetCacheVariantSuffix(toText(item?.name));
+  return toText(item?.name);
 }
 
 function getInstanceDatasetTypeName(item, instanceName = "") {
@@ -944,9 +931,11 @@ function getDatasetRecordCellValue(row, key, instance = null) {
     case "status":
       return getDatasetStatusLabel(getDatasetStatus({ row, instance }, instanceName));
     case "dataFormat":
-      return toText(row?.[1]);
+      return instance ? (toText(instance?.data_format) || toText(row?.[1])) : toText(row?.[1]);
     case "formula":
-      return instance ? (meta?.formula || toText(instance?.formula)) : toText(row?.[4]);
+      return instance
+        ? (meta?.formula || toText(instance?.formula) || toText(row?.[4]))
+        : toText(row?.[4]);
     case "category":
       return instance ? (getInstanceDatasetCategory(instance) || toText(row?.[2])) : toText(row?.[2]);
     case "methodType":
@@ -1040,6 +1029,16 @@ function isBornhuetterFergusonDatasetRecord(record) {
   return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "bornhuetter ferguson";
 }
 
+function getBerquistShermanRecordVariant(record) {
+  return normalizeBerquistShermanVariant(
+    getDatasetRecordValue(record, "methodType") || record?.sourceKind || record?.instance?.source_kind
+  );
+}
+
+function isBerquistShermanDatasetRecord(record) {
+  return !!getBerquistShermanRecordVariant(record);
+}
+
 function isDfmVectorDatasetRecord(record) {
   return (
     isDfmDatasetRecord(record)
@@ -1064,8 +1063,10 @@ function isBornhuetterFergusonVectorDatasetRecord(record) {
 function openDfmTabForDataset(record) {
   const datasetName = toText(record?.datasetName);
   if (!datasetName || !state.selectedPath) return;
-  openDfmWindow(datasetName, {
+  const methodName = toText(record?.instance?.method_name) || datasetName;
+  openDfmWindow(methodName, {
     methodType: getDatasetRecordValue(record, "methodType"),
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
   });
 }
 
@@ -1087,6 +1088,21 @@ function openBornhuetterFergusonTabForDataset(record) {
   openBornhuetterFergusonWindow(datasetName, {
     initialTab: "method",
     methodType: getDatasetRecordValue(record, "methodType") || "Bornhuetter Ferguson",
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
+    originLength: Number(record?.meta?.originLength) || undefined,
+  });
+}
+
+function openBerquistShermanTabForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  const variant = getBerquistShermanRecordVariant(record);
+  if (!datasetName || !variant || !state.selectedPath) return;
+  const contract = getBerquistShermanContract(variant);
+  openBerquistShermanWindow(datasetName, {
+    initialTab: "method",
+    variant,
+    methodType: contract?.methodType,
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
     originLength: Number(record?.meta?.originLength) || undefined,
@@ -1130,6 +1146,43 @@ function canAddResultSelectionForDataset(record) {
     && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
     && ["", "none"].includes(normalizeLookupKey(getDatasetRecordValue(record, "methodType")))
   );
+}
+
+function canAddBerquistShermanForDataset(record) {
+  const originLength = Number(record?.meta?.originLength || record?.instance?.origin_length);
+  const developmentLength = Number(record?.meta?.developmentLength || record?.instance?.development_length);
+  return (
+    !!record
+    && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "triangle"
+    && ["", "none"].includes(normalizeLookupKey(getDatasetRecordValue(record, "methodType")))
+    && originLength === 12
+    && developmentLength === 12
+  );
+}
+
+function addBerquistShermanForDataset(record, variant) {
+  const datasetName = toText(record?.datasetName);
+  const contract = getBerquistShermanContract(variant);
+  if (!datasetName || !contract) {
+    setStatus("Select an annual triangle before adding a Berquist Sherman object.", true);
+    return;
+  }
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before adding a Berquist Sherman object.", true);
+    return;
+  }
+  if (!canAddBerquistShermanForDataset(record)) {
+    setStatus("Berquist Sherman methods can be added only to annual triangles with Method Type None.", true);
+    return;
+  }
+  openBerquistShermanWindow(datasetName, {
+    fresh: true,
+    initialTab: "details",
+    inputTriangle: datasetName,
+    variant: contract.variant,
+    methodType: contract.methodType,
+  });
+  setStatus(`Opened ${contract.methodType} for ${datasetName}.`);
 }
 
 function addResultSelectionForDataset(record) {
@@ -2082,6 +2135,16 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
     addBornhuetterFergusonItem.disabled = !canAdd;
     addBornhuetterFergusonItem.title = canAdd ? "" : "Bornhuetter Ferguson can be added only to vector datasets with Method Type None.";
   }
+  for (const variant of BERQUIST_SHERMAN_VARIANTS) {
+    const addBerquistShermanItem = menu.querySelector(`[data-row-action='add-berquist-sherman-${variant}']`);
+    if (!addBerquistShermanItem) continue;
+    const canAdd = !temporaryView && !emptyContext && canAddBerquistShermanForDataset(viewRecord);
+    addBerquistShermanItem.hidden = temporaryView || emptyContext;
+    addBerquistShermanItem.disabled = !canAdd;
+    addBerquistShermanItem.title = canAdd
+      ? ""
+      : "Berquist Sherman methods can be added only to annual triangles with Method Type None.";
+  }
   const selectedCount = emptyContext ? 0 : getSelectedDatasetRecords().length;
   const deleteItem = menu.querySelector("[data-row-action='delete']");
   if (deleteItem) {
@@ -2179,6 +2242,10 @@ function openDatasetRecord(record) {
   }
   if (isBornhuetterFergusonDatasetRecord(record)) {
     openBornhuetterFergusonTabForDataset(record);
+    return;
+  }
+  if (isBerquistShermanDatasetRecord(record)) {
+    openBerquistShermanTabForDataset(record);
     return;
   }
   openDatasetRecordAsDataset(record);
@@ -2488,8 +2555,10 @@ function applyDatasetRowContextAction(action) {
     addResultSelectionForDataset(viewRecord);
   } else if (normalized === "add-bornhuetter-ferguson") {
     addBornhuetterFergusonForDataset(viewRecord);
-  } else if (normalized === "add-bsm") {
-    setStatus("Berquist Sherman Method is a placeholder.");
+  } else if (normalized === "add-berquist-sherman-sr") {
+    addBerquistShermanForDataset(viewRecord, "sr");
+  } else if (normalized === "add-berquist-sherman-cra") {
+    addBerquistShermanForDataset(viewRecord, "cra");
   } else if (normalized === "delete") {
     void deleteSelectedDatasetRows(records);
   }
@@ -3046,6 +3115,7 @@ async function loadDatasets() {
     handleDatasetTableKeyDown,
     initDatasetDeleteConfirmInteractions,
     initDatasetTableInteractions,
+    isBerquistShermanDatasetRecord,
     isBornhuetterFergusonDatasetRecord,
     isBornhuetterFergusonVectorDatasetRecord,
     isDatasetColumnFilterActive,
@@ -3057,6 +3127,7 @@ async function loadDatasets() {
     openDatasetRecord,
     addDatasetFromTypePicker,
     openDatasetTableFilterPopover,
+    openBerquistShermanTabForDataset,
     openBornhuetterFergusonTabForDataset,
     openDfmTabForDataset,
     parseDatasetGroupId,

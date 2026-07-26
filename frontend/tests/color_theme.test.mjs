@@ -54,7 +54,7 @@ test("every runtime frontend document bootstraps the shared theme before loading
     const bootstrap = html.indexOf("/ui/shared/services/color_theme.js?v=20260724a");
     const firstStylesheet = html.indexOf("rel=\"stylesheet\"");
     const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260722a");
-    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260724g");
+    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260724i");
     const endHead = html.indexOf("</head>");
     assert.ok(bootstrap >= 0, `${path} loads the shared bootstrap`);
     assert.ok(firstStylesheet < 0 || bootstrap < firstStylesheet, `${path} applies theme state before visual CSS`);
@@ -205,6 +205,47 @@ test("Arcode code surfaces use the shared Atom One Dark editor tokens", () => {
     assert.match(declarations, /background-color:\s*var\(--ar-monaco-editor-background\)/);
     assert.match(declarations, /color:\s*var\(--ar-monaco-editor-foreground\)/);
   }
+});
+
+test("Arcode Dark explorer uses quiet themed surfaces and a visible resize state", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const sidebar = declarationsFor(dark, ".arcodeHomeSidebar");
+  const resizer = declarationsFor(dark, ".arcodeExplorerResizer");
+  const resizerState = declarationsFor(dark, ".arcodeExplorerResizer:hover");
+  const entry = declarationsFor(dark, ".arcodeExplorerEntry");
+  const supportedEntry = declarationsFor(dark, ".arcodeExplorerEntry.file.supported");
+
+  assert.match(sidebar, /background-color:\s*var\(--ar-color-surface-muted\)/);
+  assert.match(resizer, /background-color:\s*var\(--ar-color-surface-muted\)/);
+  assert.match(resizerState, /background-color:\s*var\(--ar-color-border-focus\)/);
+  assert.match(entry, /background-color:\s*transparent/);
+  assert.match(entry, /border-color:\s*transparent/);
+  assert.match(entry, /color:\s*var\(--ar-color-text\)/);
+  assert.match(supportedEntry, /color:\s*var\(--ar-color-text\)/);
+});
+
+test("Arcode Dark notebook keeps its canvas, TOC, split panel, and code cells visually distinct", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const cellsArea = declarationsFor(dark, ".sc-cells-area");
+  const sidebar = declarationsFor(dark, ".sc-sidebar-content");
+  const tocItem = declarationsFor(dark, ".sc-toc-item");
+  const tocFold = declarationsFor(dark, ".sc-toc-fold");
+  const splitHandle = declarationsFor(dark, ".sc-split-resize-handle");
+  const cell = declarationsFor(dark, ".sc-cell");
+  const cellSide = declarationsFor(dark, ".sc-cell-side");
+  const outputSide = declarationsFor(dark, ".sc-cell.code .sc-cell-output-side-placeholder");
+  const inputFrame = declarationsFor(dark, ".sc-cell-input-frame");
+
+  assert.match(cellsArea, /background-color:\s*var\(--sc-cells-panel-bg\)/);
+  assert.match(sidebar, /background-color:\s*var\(--ar-color-surface-muted\)/);
+  assert.match(tocItem, /background-color:\s*transparent/);
+  assert.match(tocItem, /color:\s*var\(--ar-color-text\)/);
+  assert.match(tocFold, /border-color:\s*transparent/);
+  assert.match(splitHandle, /background-color:\s*var\(--ar-color-canvas\)/);
+  assert.match(cell, /border-color:\s*var\(--ar-color-border-strong\)/);
+  assert.match(cellSide, /background:\s*var\(--ar-color-surface-muted\)/);
+  assert.match(outputSide, /background:\s*var\(--ar-color-surface-muted\)/);
+  assert.match(inputFrame, /background-color:\s*var\(--ar-monaco-editor-background\)/);
 });
 
 test("dark titlebar window controls use themed surfaces and state colors", () => {
@@ -533,7 +574,7 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.match(splash, /requestedTheme === "dark" \? "dark" : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
   assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260722a/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260724g/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260724i/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
   assert.match(dark, /\.logo-icon img\s*\{[^}]*width:\s*88px[^}]*height:\s*88px/s);
@@ -545,11 +586,12 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
   const expectedReferences = [
-    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260722a"],
-    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260722a"],
-    ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260722a"],
+    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260724b"],
+    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260724b"],
+    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260724a"],
+    ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
     ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260722a"],
-    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260722b"],
+    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260724a"],
     ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260722b"],
     ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260722a"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260722a"],

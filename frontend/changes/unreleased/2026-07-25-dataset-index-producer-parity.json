@@ -1,0 +1,14 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Kept migrated reserving-class indexes usable without a slow sidecar rescan or frontend rewrite.",
+  "details": [
+    "Migration, frontend, Python API, and macro index producers now use the same portable minimal schema and payload normalization.",
+    "Valid current indexes no longer gain sidecar-only details such as origin_labels when opened.",
+    "Machine-local folder paths are response-only, so drive-letter and UNC aliases do not change persisted index content or break another frontend.",
+    "Index rebuilds use atomic replacement and a shared-drive-visible update lock, and interrupted imports rebuild before returning an error so another computer does not receive a stale current-version index.",
+    "Packaged and separately installed Python APIs now resolve the same canonical index implementation.",
+    "The canonical index version was advanced so indexes emitted by an intermediate case-sensitive producer are rebuilt once with filesystem-preserved project and reserving-class identity."
+  ]
+}

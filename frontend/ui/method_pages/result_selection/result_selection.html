@@ -12,9 +12,10 @@
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a"/>
   <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/components/chart_legend/chart_legend.css?v=20260724b"/>
   <link rel="stylesheet" href="/ui/method_pages/result_selection/result_selection.css?v=20260722a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260722a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260724g"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260724i"/>
 </head>
 <body>
   <div class="rsTabBar tabbedPageTabBar" id="rsTabBar">
@@ -72,9 +73,7 @@
           <div class="rsFieldRow arDetailsField">
             <div class="rsRatioBasisPicker">
               <div id="rsRatioBasisList" class="rsRatioBasisList" role="list" aria-live="polite"></div>
-              <button id="rsRatioBasisAddBtn" class="rsRatioBasisAdd" type="button" title="Add ratio basis" aria-label="Add ratio basis">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
-              </button>
+              <button id="rsRatioBasisAddBtn" class="rsRatioBasisAdd" type="button" title="Add ratio basis" aria-label="Add ratio basis">+ Add datasets</button>
               <input id="rsRatioBasisInput" type="hidden"/>
               <input id="rsRatioBasisInput2" type="hidden"/>
               <input id="rsRatioBasisInput3" type="hidden"/>
@@ -156,13 +155,12 @@
             <div class="rsChartEmpty" id="rsChartEmpty">Add a source dataset to plot vectors.</div>
             <div class="rsChartTooltip" id="rsChartTooltip" role="status" hidden></div>
           </div>
-          <aside class="rsChartLegendPanel" aria-labelledby="rsChartLegendTitle">
-            <div class="rsChartLegendHeader">
-              <h3 class="rsChartLegendTitle" id="rsChartLegendTitle">Columns</h3>
-              <span class="rsChartLegendCount" id="rsChartLegendCount"></span>
+          <aside class="arChartLegendPanel" aria-labelledby="rsChartLegendTitle">
+            <div class="arChartLegendHeader">
+              <h3 class="arChartLegendTitle" id="rsChartLegendTitle">Columns</h3>
+              <span class="arChartLegendCount" id="rsChartLegendCount"></span>
             </div>
-            <p class="rsChartLegendHint">Click to show or hide; one line stays visible. Right-click to isolate or restore all.</p>
-            <div class="rsChartLegendList" id="rsChartLegendList" role="group" aria-label="Chart column visibility"></div>
+            <div class="arChartLegendList" id="rsChartLegendList" role="group" aria-label="Chart column visibility"></div>
           </aside>
         </div>
       </section>
@@ -205,6 +203,6 @@
   <script src="/ui/method_pages/result_selection/result_selection_data.js?v=20260714a"></script>
   <script src="/ui/method_pages/result_selection/result_selection_grids.js?v=20260722a"></script>
   <script src="/ui/method_pages/result_selection/result_selection_model.js?v=20260714a"></script>
-  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260722b"></script>
+  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260724a"></script>
 </body>
 </html>

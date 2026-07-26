@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Calculated datasets with division formulas no longer show a misleading Total in the Data tab."
+}

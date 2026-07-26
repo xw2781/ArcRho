@@ -796,11 +796,6 @@ function renderFormulaPatternPreview(pattern, otherPattern, versionAge, labelFal
   `;
 }
 
-function getSnapshotNotes(snapshot) {
-  if (typeof snapshot?.notes === "string") return snapshot.notes;
-  return String(snapshot?.notes_preview || "");
-}
-
 function getSnapshotCellNotesText(snapshot) {
   const entries = Array.isArray(snapshot?.cell_notes?.entries) ? snapshot.cell_notes.entries : [];
   if (!entries.length) return "";
@@ -885,23 +880,6 @@ function renderHighlightedTokens(tokens, flags, className) {
   });
   flush();
   return html;
-}
-
-function renderNotesPreview(version, otherVersion) {
-  const notes = getSnapshotNotes(version.snapshot);
-  if (!notes) return escapeHtml("No notes");
-  if (!otherVersion || (version.age !== "old" && version.age !== "new")) {
-    return escapeHtml(notes);
-  }
-
-  const otherNotes = getSnapshotNotes(otherVersion.snapshot);
-  const oldNotes = version.age === "old" ? notes : otherNotes;
-  const newNotes = version.age === "new" ? notes : otherNotes;
-  const diff = buildNoteDiff(oldNotes, newNotes);
-  if (version.age === "old") {
-    return renderHighlightedTokens(diff.oldTokens, diff.deleted, "dfmRpcNoteDeleted");
-  }
-  return renderHighlightedTokens(diff.newTokens, diff.added, "dfmRpcNoteAdded");
 }
 
 function renderCellNotesPreview(version, otherVersion) {
@@ -1013,8 +991,6 @@ function renderVersionCard(version, selectedKey, versions, labelFallbacks = {}) 
         ${renderFormulaPatternPreview(snapshot.average_formula_pattern || {}, otherFormulaPattern, version.age, labelFallbacks)}
         <p class="dfmRpcSnapshotTitle">Cell Notes</p>
         <pre class="dfmRpcNotesPreview">${renderCellNotesPreview(version, otherVersion)}</pre>
-        <p class="dfmRpcSnapshotTitle">Notes</p>
-        <pre class="dfmRpcNotesPreview">${renderNotesPreview(version, otherVersion)}</pre>
       </div>
     </div>
   `;

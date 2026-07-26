@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Added annual B&S Settlement Rate and Case Reserve Adequacy methods with ResQ migration support.",
+  "details": [
+    "Both methods reproduce the reference COL calculations and save a minimal method JSON, result CSV, and sidecar.",
+    "Project Instance can create, reopen, preview, and restore the two B&S method variants."
+  ]
+}

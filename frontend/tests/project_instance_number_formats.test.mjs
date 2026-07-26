@@ -14,11 +14,13 @@ test("Project Instance exposes the global number-format editor from the dataset 
   assert.match(html, /id="datasetNumberFormatsBtn"/);
   assert.match(html, /id="datasetNumberFormatsOverlay"/);
   assert.match(html, /<th>Dataset Type Name<\/th>/);
+  assert.doesNotMatch(html, /<th>Reserving Class Path<\/th>/);
   assert.doesNotMatch(html, /<th>Dataset Name<\/th>/);
   assert.match(boot, /installProjectInstanceNumberFormats\(ctx\)/);
   assert.match(moduleSource, /\/dataset\/number-format-defaults/);
   assert.match(moduleSource, /method: "PUT"/);
   assert.match(moduleSource, /expected_revision/);
   assert.match(moduleSource, /dataset_type_name/);
+  assert.doesNotMatch(moduleSource, /reserving_class/);
   assert.doesNotMatch(moduleSource, /row\.dataset_name/);
 });

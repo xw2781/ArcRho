@@ -1,10 +1,11 @@
 {
-  "type": "improvement",
+  "type": "fix",
   "scope": "build",
   "audience": "user",
-  "summary": "The Windows installer now shows progress percentage and estimated time remaining with optional installation details.",
+  "summary": "Fixed the Windows installer progress header and installation-details controls.",
   "details": [
-    "The displayed percentage and time estimate use the same native progress value as the green bar.",
-    "The detailed output panel is collapsed by default and can be expanded at any time without replacing the progress summary."
+    "The installer retains NSIS's native file progress and uses an isolated observer to derive the displayed percentage and time estimate from that exact green bar.",
+    "The estimated time remaining refreshes every five seconds and never displays more than five minutes.",
+    "The detailed output panel remains collapsed by default, reuses one native control for matching Show details and Hide details states, and no longer repeats an Installing header above the progress view."
   ]
 }

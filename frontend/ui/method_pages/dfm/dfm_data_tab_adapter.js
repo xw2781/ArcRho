@@ -33,7 +33,7 @@ configureDataTabHost("dfm");
 configureDataTabHostPublisher(publishDfmInputHelpers);
 
 const { bootDatasetDataTab } = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260716a"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260724a"
 );
 
 window.ADA_DATASET_READY = bootDatasetDataTab();

@@ -275,18 +275,6 @@ function ensureStyles() {
       white-space: nowrap;
       font-size: 11px;
     }
-    .rsRpcNotesPreview {
-      max-height: 92px;
-      overflow: auto;
-      margin: 0;
-      padding: 8px;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      background: #fff;
-      color: #334155;
-      font: 12px/1.4 Arial, "Segoe UI", Tahoma, sans-serif;
-      white-space: pre-wrap;
-    }
     .rsRpcActions {
       display: flex;
       justify-content: flex-end;
@@ -519,8 +507,6 @@ function renderSnapshot(snapshot) {
       ${renderSourceRows(snapshot)}
       <h3 class="rsRpcSnapshotTitle">Selected Ultimate Preview</h3>
       ${renderUltimatePreview(snapshot)}
-      <h3 class="rsRpcSnapshotTitle">Notes</h3>
-      <pre class="rsRpcNotesPreview">${escapeHtml(snapshot.notes_preview || "No notes.")}</pre>
     </div>
   `;
 }

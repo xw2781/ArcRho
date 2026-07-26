@@ -27,7 +27,8 @@ import {
 import {
   buildResultSelectionChartSeries,
   createResultSelectionChart,
-} from "/ui/method_pages/result_selection/result_selection_chart.js?v=20260722b";
+} from "/ui/method_pages/result_selection/result_selection_chart.js?v=20260724a";
+import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 
 const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
 const RS_JSON_VALUE_DECIMAL_PLACES = 6;
@@ -196,6 +197,7 @@ const ctx = {
   notesController: rsNotesController,
   createSpreadsheetTableController,
   startResultSelectionRpcBridgeSync,
+  readProjectInstanceDatasetSnapshot,
   RS_JSON_FORMAT,
   RS_JSON_VALUE_DECIMAL_PLACES,
   MAX_RATIO_BASIS_COUNT,

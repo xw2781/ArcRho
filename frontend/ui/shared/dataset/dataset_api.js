@@ -23,16 +23,6 @@ export async function patchDataset(items, fileMtime, dsId = config.DS_ID) {
   return { ok: resp.ok, status: resp.status, data };
 }
 
-export async function loadDatasetNotes(payload) {
-  const resp = await fetch(`${config.API_BASE}/dataset/notes/load`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload || {}),
-  });
-  const data = await resp.json().catch(() => ({}));
-  return { ok: resp.ok, status: resp.status, data };
-}
-
 export async function saveDatasetNotes(payload) {
   const resp = await fetch(`${config.API_BASE}/dataset/notes/save`, {
     method: "POST",
@@ -45,6 +35,28 @@ export async function saveDatasetNotes(payload) {
 
 export async function loadDatasetSidecar(payload) {
   const resp = await fetch(`${config.API_BASE}/dataset/sidecar/load`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok, status: resp.status, data };
+}
+
+export async function getDatasetNumberFormatDefaults(options = {}) {
+  const params = new URLSearchParams();
+  const datasetTypeName = String(options?.datasetTypeName ?? options?.dataset_type_name ?? "").trim();
+  if (datasetTypeName) params.set("dataset_type_name", datasetTypeName);
+  const query = params.toString();
+  const resp = await fetch(`${config.API_BASE}/dataset/number-format-defaults${query ? `?${query}` : ""}`, {
+    cache: "no-store",
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok, status: resp.status, data };
+}
+
+export async function loadCachedDataset(payload) {
+  const resp = await fetch(`${config.API_BASE}/dataset/cache/load`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),

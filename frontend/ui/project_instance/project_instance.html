@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/ui/project_instance/project_instance_number_formats.css?v=20260720a"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260722a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260722a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260724g"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260724i"/>
 </head>
 <body>
   <div class="pi-root" id="projectInstanceRoot">
@@ -134,7 +134,8 @@
           <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-dfm">DFM</button>
           <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-result-selection">Result Selection</button>
           <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-bornhuetter-ferguson">Bornhuetter Ferguson</button>
-          <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-bsm">Berquist Sherman Method</button>
+          <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-berquist-sherman-sr">B&amp;S Settlement Rate Adjustment</button>
+          <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="add-berquist-sherman-cra">B&amp;S Case Reserve Adequacy Adjustment</button>
         </div>
       </div>
       <button class="pi-context-menu-item" type="button" role="menuitem" data-row-action="delete">Delete</button>
@@ -226,10 +227,10 @@
           <div class="pi-number-formats-default-row">
             <label for="datasetNumberFormatsDefault">Fallback number format</label>
             <input id="datasetNumberFormatsDefault" type="text" maxlength="64" autocomplete="off" spellcheck="false">
-            <span>Used when no reserving-class and Dataset Type override matches.</span>
+            <span>Used when no Dataset Type Name override matches.</span>
           </div>
           <div class="pi-number-formats-tools">
-            <input id="datasetNumberFormatsFilter" type="search" autocomplete="off" placeholder="Filter reserving class, Dataset Type Name, or format">
+            <input id="datasetNumberFormatsFilter" type="search" autocomplete="off" placeholder="Filter Dataset Type Name or format">
             <button id="datasetNumberFormatsAdd" type="button">
               <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10"></path></svg>
               <span>Add override</span>
@@ -237,8 +238,8 @@
           </div>
           <div class="pi-number-formats-table-wrap">
             <table class="pi-number-formats-table">
-              <colgroup><col class="rc"><col class="dataset"><col class="format"><col class="action"></colgroup>
-              <thead><tr><th>Reserving Class Path</th><th>Dataset Type Name</th><th>Number Format</th><th aria-label="Actions"></th></tr></thead>
+              <colgroup><col class="dataset"><col class="format"><col class="action"></colgroup>
+              <thead><tr><th>Dataset Type Name</th><th>Number Format</th><th aria-label="Actions"></th></tr></thead>
               <tbody id="datasetNumberFormatsBody"></tbody>
             </table>
             <div class="pi-number-formats-empty" id="datasetNumberFormatsEmpty" hidden>No matching overrides.</div>
@@ -252,6 +253,6 @@
       </section>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260721a"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260724c"></script>
 </body>
 </html>

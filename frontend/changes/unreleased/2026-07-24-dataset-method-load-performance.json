@@ -1,0 +1,14 @@
+{
+  "type": "fix",
+  "scope": "dataset and methods",
+  "audience": "user",
+  "summary": "Dataset, DFM, and Result Selection pages now avoid repeated network-drive cache and header checks while loading.",
+  "details": [
+    "Cached pages no longer wait for forced origin and development header refreshes before starting.",
+    "Advisory cache prechecks use stored file metadata instead of rereading full CSV contents; the authoritative load still verifies exact content before reuse.",
+    "Result Selection keeps indexed period lengths and sends one engine request only when a different length is actually required.",
+    "Background cache loads no longer synchronously rebuild the full dataset index or recalculate unrelated dependents; requested calculated chains validate exact precedent contents and refresh upstream-first on demand.",
+    "Calculated outputs retain the exact dataset format, instance, and DFM method source so a refresh cannot select an older or ambiguous cache variant, while saved DFM paths relocate safely to the current project root.",
+    "A Clear Cache request queued behind an active load keeps its refresh intent."
+  ]
+}

@@ -1,0 +1,174 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const toDataUrl = (source) => (
+  `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+);
+
+const helperSource = await readFile(
+  new URL("../ui/method_pages/berquist_sherman/calculation_helpers.js", import.meta.url),
+  "utf8",
+);
+const helperUrl = toDataUrl(helperSource);
+
+async function loadCalculationModule(filename) {
+  const source = await readFile(
+    new URL(`../ui/method_pages/berquist_sherman/${filename}`, import.meta.url),
+    "utf8",
+  );
+  return import(toDataUrl(source.replace("./calculation_helpers.js", helperUrl)));
+}
+
+const settlementRate = await loadCalculationModule(
+  "settlement_rate_calculation.js",
+);
+const caseReserveAdequacy = await loadCalculationModule(
+  "case_reserve_adequacy_calculation.js",
+);
+const fixture = JSON.parse(await readFile(
+  new URL("./fixtures/berquist_sherman_col_golden.json", import.meta.url),
+  "utf8",
+));
+
+function assertClose(actual, expected, path = "value") {
+  if (Array.isArray(expected)) {
+    assert.ok(Array.isArray(actual), `${path} must be an array`);
+    assert.equal(actual.length, expected.length, `${path} length`);
+    expected.forEach((value, index) => {
+      assertClose(actual[index], value, `${path}[${index}]`);
+    });
+    return;
+  }
+  if (expected === null) {
+    assert.equal(actual, null, path);
+    return;
+  }
+  assert.ok(Number.isFinite(actual), `${path} must be finite`);
+  const tolerance = Math.max(1e-9, Math.abs(expected) * 1e-11);
+  assert.ok(
+    Math.abs(actual - expected) <= tolerance,
+    `${path}: expected ${expected}, received ${actual}`,
+  );
+}
+
+test("settlement-rate calculation reproduces the annual COL ResQ object", () => {
+  const source = fixture.settlementRate;
+  const result = settlementRate.calculateSettlementRate(source.input);
+
+  assert.strictEqual(result.output, result.adjustedPaidClaims);
+  [
+    "proportionSettled",
+    "selectedClaimNumbers",
+    "pairsAdjustment",
+    "allAdjustment",
+    "adjustedPaidClaims",
+  ].forEach((name) => assertClose(result[name], source.expected[name], name));
+});
+
+test("settlement-rate defaults use the leading diagonal and preserve a one-point row", () => {
+  const result = settlementRate.calculateSettlementRate({
+    paidClaims: [[100, 400, 900], [40]],
+    closedClaimNumbers: [[10, 20, 20], [5]],
+    ultimateClaimNumbers: [20, 10],
+    selectedProportionIsDefault: [true, true, true],
+  });
+
+  assert.deepEqual(result.selectedProportionSettled, [0.5, 1, 1]);
+  assert.equal(result.pairsAdjustment[0][2], 600);
+  assert.equal(result.selectedAdjustment[1][0], "unadjusted");
+  assert.equal(result.adjustedPaidClaims[1][0], 40);
+});
+
+test("settlement-rate duplicate closed counts use the pair geometric mean", () => {
+  const result = settlementRate.calculateSettlementRate({
+    paidClaims: [[25, 100, 400]],
+    closedClaimNumbers: [[5, 10, 10]],
+    ultimateClaimNumbers: [10],
+    selectedProportionSettled: [1, 1, 1],
+    selectedAdjustment: [["pairs", "pairs", "pairs"]],
+  });
+
+  assertClose(result.pairsAdjustment[0][2], 200, "duplicate pair estimate");
+});
+
+test("case-reserve adequacy calculation reproduces the annual COL ResQ object", () => {
+  const source = fixture.caseReserveAdequacy;
+  const result = caseReserveAdequacy.calculateCaseReserveAdequacy(source.input);
+
+  assert.strictEqual(result.output, result.adjustedIncurredClaims);
+  [
+    "openClaimNumbers",
+    "caseReserves",
+    "averageCaseReserves",
+    "averagePaidClaims",
+    "caseInflationByColumn",
+    "caseInflationOverall",
+    "paidInflationByColumn",
+    "paidInflationOverall",
+    "selectedInflation",
+    "latestAverageCaseReserves",
+    "monotoneAverageCaseReserves",
+    "selectedAverageCaseReserves",
+    "adjustedAverageCaseReserves",
+    "adjustedIncurredClaims",
+  ].forEach((name) => assertClose(result[name], source.expected[name], name));
+});
+
+test("COL CRA exclusion flags are safely deferred because they do not change the result", () => {
+  const source = fixture.caseReserveAdequacy;
+  const cases = [
+    ["neither", [], []],
+    ["case only", source.input.avgCaseReserveExclusions, []],
+    ["paid only", [], source.input.avgPaidClaimsExclusions],
+    [
+      "both",
+      source.input.avgCaseReserveExclusions,
+      source.input.avgPaidClaimsExclusions,
+    ],
+  ];
+  for (const [label, avgCaseReserveExclusions, avgPaidClaimsExclusions] of cases) {
+    const result = caseReserveAdequacy.calculateCaseReserveAdequacy({
+      ...source.input,
+      avgCaseReserveExclusions,
+      avgPaidClaimsExclusions,
+    });
+    assertClose(
+      result.paidInflationOverall,
+      source.expected.paidInflationOverall,
+      `${label}.paidInflationOverall`,
+    );
+    assertClose(
+      result.selectedInflation,
+      source.expected.selectedInflation,
+      `${label}.selectedInflation`,
+    );
+    assertClose(
+      result.output,
+      source.expected.adjustedIncurredClaims,
+      `${label}.adjustedIncurredClaims`,
+    );
+  }
+});
+
+test("case-reserve adequacy supports semantic estimator selections", () => {
+  const common = {
+    reportedClaimNumbers: [[20, 40], [30]],
+    closedClaimNumbers: [[10, 20], [15]],
+    incurredClaims: [[300, 700], [600]],
+    paidClaims: [[100, 300], [200]],
+    inflationSelection: ["user", "case_column"],
+    userInflation: [0.1, 0],
+    averageCaseReserveSelection: ["user", "latest"],
+    userAverageCaseReserves: [50, 0],
+  };
+  const result = caseReserveAdequacy.calculateCaseReserveAdequacy(common);
+
+  assert.deepEqual(result.selectedInflation, [0.1, 0]);
+  assert.deepEqual(result.selectedAverageCaseReserves, [50, 20]);
+  assert.deepEqual(result.adjustedAverageCaseReserves, [[50 / 1.1, 20], [50]]);
+  assert.deepEqual(result.adjustedIncurredClaims, [
+    [100 + (50 / 1.1) * 10, 300 + 20 * 20],
+    [200 + 50 * 15],
+  ]);
+});
