@@ -74,6 +74,9 @@ When adding or editing a macro, update the file in `python-api/macros` first, th
 ## Python Runtime Preference
 Always prefer Python 3.10 for this repository. When validating Python code, running scripts, installing dependencies, or creating virtual environments, use a Python 3.10 interpreter unless the user explicitly asks for another version or a toolchain requires a different runtime.
 
+## ArcRho Bridge Deployment Authorization
+The user pre-authorizes agents to stop and restart only the live ArcRho Bridge supervisor and its child worker when deploying a verified ArcRho Bridge update. Do not stop ResQ, ArcRho Engine, or other services under this authorization. Continue to request any platform-required sandbox escalation, but do not request separate conversational confirmation for this specific Bridge restart.
+
 ## Node Runtime Preference
 The frontend includes a bundled portable Node runtime. When validating or running Node/npm commands for this repository, prefer `frontend\node-portable\node.exe` and `frontend\node-portable\npm.cmd` instead of plain `node` or `npm`, because Node is not expected to be installed globally or available on `PATH` in the agent environment. Do not report "Node is not installed in this environment" unless the bundled portable runtime is also missing or fails.
 
