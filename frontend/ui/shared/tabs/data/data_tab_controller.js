@@ -43,7 +43,10 @@ import {
   clampDatasetDecimalPlaces,
   normalizeDatasetNumberFormat,
 } from "/ui/shared/dataset/dataset_number_format.js";
-import { isDfmDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
+import {
+  isDfmDataTabHost,
+  isPersistedDfmMethodBootstrap,
+} from "/ui/shared/tabs/data/data_tab_context.js";
 import { mountDataTabPageHost } from "/ui/shared/tabs/data/data_tab_page_host_port.js";
 import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js";
 import { openProjectNameTreePicker } from "/ui/shared/components/pickers/project_name_tree_picker.js";
@@ -4143,8 +4146,55 @@ async function refreshDfmDatasetForCurrentInputs() {
   return runArcRhoTri({ showValidationMessage: false });
 }
 
+function applyDfmDatasetSnapshot(snapshot = {}) {
+  if (!isDfmDataTabHost()) return { ok: false, error: "DFM Data-tab host is not active." };
+  const originLabels = Array.isArray(snapshot.origin_labels)
+    ? snapshot.origin_labels.map((label) => String(label ?? ""))
+    : [];
+  const developmentLabels = Array.isArray(snapshot.dev_labels)
+    ? snapshot.dev_labels.map((label) => String(label ?? ""))
+    : [];
+  const values = Array.isArray(snapshot.values)
+    ? snapshot.values.map((row) => (Array.isArray(row) ? row.slice() : []))
+    : [];
+  const mask = Array.isArray(snapshot.mask)
+    ? snapshot.mask.map((row, rowIndex) => (
+      Array.isArray(row)
+        ? row.map(Boolean)
+        : (values[rowIndex] || []).map((value) => value !== null && value !== undefined)
+    ))
+    : values.map((row) => row.map((value) => value !== null && value !== undefined));
+  state.dirty.clear();
+  state.model = {
+    ...snapshot,
+    origin_labels: originLabels,
+    dev_labels: developmentLabels,
+    values,
+    mask,
+    data_format: String(snapshot.data_format || "Triangle"),
+    source_kind: String(snapshot.source_kind || "dfm-snapshot"),
+  };
+  state.headerLabels = originLabels.slice();
+  state.devHeaderLabels = developmentLabels.slice();
+  currentDatasetSidecarSourceKind = state.model.source_kind;
+  currentDatasetSidecarDataFormat = state.model.data_format;
+  currentDatasetPrecedents = [];
+  isSidecarReadOnlyDataset = true;
+  setDatasetRenderNumberFormatSettings({
+    number_format: snapshot.number_format,
+    decimal_places: snapshot.decimal_places,
+  });
+  renderTable();
+  renderChart();
+  applyGridSelectionFromState();
+  const meta = document.getElementById("dsMeta");
+  if (meta) meta.textContent = `snapshot | origins=${originLabels.length} | dev=${developmentLabels.length}`;
+  return { ok: true, data: state.model };
+}
+
 if (isDfmDataTabHost()) {
   window.ADA_DFM_REFRESH_DATASET = refreshDfmDatasetForCurrentInputs;
+  window.ADA_DFM_APPLY_DATASET_SNAPSHOT = applyDfmDatasetSnapshot;
 }
 
 function isRunInFlight() {
@@ -4879,7 +4929,10 @@ function wireEvents() {
 export async function bootDatasetDataTab() {
   wireNotesEditor();
   fillLenDropdowns();
-  if (isProjectInstanceCachedDatasetOpen) {
+  const persistedDfmBootstrap = isPersistedDfmMethodBootstrap();
+  if (persistedDfmBootstrap) {
+    applyTriInputsFromQueryParams();
+  } else if (isProjectInstanceCachedDatasetOpen) {
     applyTriInputsFromQueryParams();
   } else {
     await loadProjectsDropdown();
@@ -4919,7 +4972,9 @@ export async function bootDatasetDataTab() {
   // If the restored controls are complete, trigger an immediate autoRun.
   // Otherwise, fall back to loading the last dataset.
   const { project, path, tri } = getTriInputs();
-  if (project && path && tri) {
+  if (persistedDfmBootstrap) {
+    setStatus("Loading DFM method...");
+  } else if (project && path && tri) {
     if (isProjectInstanceCachedDatasetOpen) {
       await loadProjectInstanceCachedDataset();
     } else if (isProjectInstanceDraft) {

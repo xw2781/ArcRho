@@ -7,15 +7,19 @@ import {
   loadShellActivityHistory,
   normalizeShellActivityEntry,
 } from "/ui/shell/shell_activity_history.js";
+import { getWorkspaceHistoryEntries } from "/ui/shared/services/workspace_history.js?v=20260726a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const MAX_ENTRIES = 15;
 
-const activityListEl = document.getElementById("activityList");
-const activityEmptyEl = document.getElementById("activityEmpty");
+const projectInstanceListEl = document.getElementById("projectInstanceList");
+const projectInstanceEmptyEl = document.getElementById("projectInstanceEmpty");
+const workspaceListEl = document.getElementById("workspaceList");
+const workspaceEmptyEl = document.getElementById("workspaceEmpty");
 const listEl = document.getElementById("historyList");
 const emptyEl = document.getElementById("historyEmpty");
 let shellActivityEntries = [];
+let workspaceEntries = [];
 
 window.ArcRhoZoomBridge?.wirePageZoomBridge();
 
@@ -53,6 +57,10 @@ function postOpenActivity(entry) {
     // ignore
   }
   return false;
+}
+
+function postOpenWorkspacePath(path) {
+  try { window.parent?.postMessage({ type: "arcrho:open-file-explorer-from-history", path }, "*"); } catch {}
 }
 
 function openEntry(entry) {
@@ -179,24 +187,50 @@ function buildActivityRow(entry, index) {
   return row;
 }
 
+function buildWorkspaceRow(entry, index) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "historyRow";
+  row.dataset.workspaceIndex = String(index);
+  row.title = entry.path;
+  const label = document.createElement("div");
+  label.className = "project";
+  label.textContent = "My Workspace";
+  const path = document.createElement("div");
+  path.className = "path";
+  path.textContent = entry.path;
+  const time = document.createElement("div");
+  time.className = "time";
+  time.textContent = formatTimestamp(entry.ts);
+  row.append(label, path, time);
+  return row;
+}
+
 async function render() {
   if (!listEl || !emptyEl) return;
 
-  if (activityListEl && activityEmptyEl) {
-    activityListEl.innerHTML = "";
+  if (projectInstanceListEl && projectInstanceEmptyEl) {
+    projectInstanceListEl.innerHTML = "";
     try {
-      shellActivityEntries = await loadShellActivityHistory();
+      shellActivityEntries = (await loadShellActivityHistory()).filter((entry) => entry.tabType === "project_instance");
     } catch {
       shellActivityEntries = [];
     }
     if (!shellActivityEntries.length) {
-      activityEmptyEl.style.display = "block";
+      projectInstanceEmptyEl.style.display = "block";
     } else {
-      activityEmptyEl.style.display = "none";
+      projectInstanceEmptyEl.style.display = "none";
       shellActivityEntries.forEach((entry, idx) => {
-        activityListEl.appendChild(buildActivityRow(entry, idx));
+        projectInstanceListEl.appendChild(buildActivityRow(entry, idx));
       });
     }
+  }
+
+  if (workspaceListEl && workspaceEmptyEl) {
+    workspaceEntries = getWorkspaceHistoryEntries({ maxEntries: MAX_ENTRIES });
+    workspaceListEl.innerHTML = "";
+    workspaceEmptyEl.style.display = workspaceEntries.length ? "none" : "block";
+    workspaceEntries.forEach((entry, index) => workspaceListEl.appendChild(buildWorkspaceRow(entry, index)));
   }
 
   const entries = getBrowsingHistoryEntries({ maxEntries: MAX_ENTRIES });
@@ -213,7 +247,7 @@ async function render() {
   });
 }
 
-activityListEl?.addEventListener("click", (e) => {
+projectInstanceListEl?.addEventListener("click", (e) => {
   const row = e.target?.closest?.(".historyRow[data-activity-index]");
   if (!row) return;
   const idx = Number(row.dataset.activityIndex || -1);
@@ -221,6 +255,12 @@ activityListEl?.addEventListener("click", (e) => {
   const entry = normalizeShellActivityEntry(shellActivityEntries[idx] || null);
   if (!entry) return;
   postOpenActivity(entry);
+});
+
+workspaceListEl?.addEventListener("click", (e) => {
+  const row = e.target?.closest?.(".historyRow[data-workspace-index]");
+  const entry = workspaceEntries[Number(row?.dataset.workspaceIndex || -1)];
+  if (entry) postOpenWorkspacePath(entry.path);
 });
 
 listEl?.addEventListener("click", (e) => {

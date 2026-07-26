@@ -77,6 +77,15 @@ function installAutomationStyles() {
     .uiAutomationDialogIcon.warning { background: #b45309; }
     .uiAutomationDialogIcon.error { background: #b91c1c; }
     .uiAutomationDialogIcon.question { background: #047857; }
+    .uiAutomationDialogIcon svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+    }
     .uiAutomationDialogTitle {
       min-width: 0;
       flex: 1 1 auto;
@@ -237,10 +246,15 @@ function installAutomationStyles() {
 
 function getMessageBoxIcon(kind) {
   const normalized = toText(kind).toLowerCase();
-  if (normalized === "warning") return { text: "!", cls: "warning" };
-  if (normalized === "error") return { text: "x", cls: "error" };
-  if (normalized === "question") return { text: "?", cls: "question" };
-  return { text: "i", cls: "" };
+  if (normalized === "warning") return { content: "!", cls: "warning" };
+  if (normalized === "error") {
+    return {
+      content: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 7l10 10"></path><path d="M17 7L7 17"></path></svg>',
+      cls: "error",
+    };
+  }
+  if (normalized === "question") return { content: "?", cls: "question" };
+  return { content: "i", cls: "" };
 }
 
 function clampDialogPosition(dialog, left, top) {
@@ -397,7 +411,7 @@ export function showAutomationMessageBox(args = {}) {
   overlay.innerHTML = `
     <section class="uiAutomationDialog" role="dialog" aria-modal="true" aria-labelledby="uiAutomationDialogTitle">
       <div class="uiAutomationDialogHeader">
-        <span class="uiAutomationDialogIcon ${icon.cls}" aria-hidden="true">${icon.text}</span>
+        <span class="uiAutomationDialogIcon ${icon.cls}" aria-hidden="true">${icon.content}</span>
         <div class="uiAutomationDialogTitle" id="uiAutomationDialogTitle"></div>
       </div>
       <div class="uiAutomationDialogBody"></div>

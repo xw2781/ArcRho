@@ -506,6 +506,27 @@ test("explicit loading and error states retain rendered rows and destroy cleanly
   assert.equal(await controller.refresh(), false);
 });
 
+test("persistent warnings survive link refreshes until explicitly cleared", async () => {
+  const { container, controller } = setup({ getLinks: () => [sampleLink] });
+  await controller.refresh();
+  const root = container.children[0];
+  const state = byClass(root, "arExternalLinksState")[0];
+
+  controller.setWarning(
+    "Saved Excel values may be out of date",
+    "2 stale linked values. Stored values remain active.",
+  );
+  assert.equal(state.classList.contains("isWarning"), true);
+  assert.match(renderedText(state), /2 stale linked values/u);
+
+  await controller.refresh();
+  assert.equal(state.classList.contains("isWarning"), true);
+  assert.match(renderedText(state), /Saved Excel values may be out of date/u);
+
+  controller.clearWarning();
+  assert.equal(state.hidden, true);
+});
+
 test("shared styling keeps the toolbar frameless and separates link text from array outlines", () => {
   assert.match(stylesheetSource, /\.arExternalLinksToolbar\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/su);
   assert.match(stylesheetSource, /border-collapse:\s*separate;/u);
@@ -530,4 +551,6 @@ test("shared styling keeps the toolbar frameless and separates link text from ar
   }
   assert.match(spreadsheetStylesheetSource, /#2b6df6/u);
   assert.match(spreadsheetStylesheetSource, /rgba\(43, 109, 246, 0\.28\)/u);
+  assert.match(stylesheetSource, /\.arExternalLinksState\.isWarning/u);
+  assert.match(stylesheetSource, /color:\s*#b45309;/u);
 });

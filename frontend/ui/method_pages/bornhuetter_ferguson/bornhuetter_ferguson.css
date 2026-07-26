@@ -210,6 +210,17 @@ body {
   background: transparent;
   color: #64748b;
   cursor: pointer;
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: visibility 0s linear 120ms, opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+.bfPriorToken:hover .bfPriorRemove,
+.bfPriorToken:focus-within .bfPriorRemove {
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 1;
+  transition-delay: 0s;
 }
 .bfPriorRemove svg {
   display: block;

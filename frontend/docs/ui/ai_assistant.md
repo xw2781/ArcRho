@@ -37,7 +37,7 @@ _No entrypoints configured._
 - Persists chat/session data through the existing Electron assistant host APIs.
 - Persists launcher visibility per host prefix in the local ArcBot UI settings JSON, with localStorage kept as a browser fallback.
 - Creates the assistant DOM once per host page at runtime.
-- Keeps SQL skill diff/review state in memory only; applying the proposed SQL relies on the active editor's normal dirty/autosave behavior.
+- Keeps SQL skill diff/review state in memory only; applying the proposed SQL relies on the active editor's normal dirty/save behavior.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

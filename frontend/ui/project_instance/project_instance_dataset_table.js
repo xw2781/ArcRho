@@ -1067,6 +1067,7 @@ function openDfmTabForDataset(record) {
   openDfmWindow(methodName, {
     methodType: getDatasetRecordValue(record, "methodType"),
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    outputDataset: datasetName,
   });
 }
 

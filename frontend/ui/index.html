@@ -8,9 +8,10 @@
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260620m"/>
   <link rel="stylesheet" href="/ui/macro/macro_window.css?v=20260625a"/>
-  <link rel="stylesheet" href="/ui/shell/shell.css?v=20260723e"/>
+  <link rel="stylesheet" href="/ui/shell/shell.css?v=20260726a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260722a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260724i"/>
+  <link rel="stylesheet" href="/ui/shared/styles/theme_toggle.css?v=20260726e"/>
 </head>
 
 <body>
@@ -156,13 +157,10 @@
     <!-- <div class="brand">ArcRho</div> -->
 
     <div class="tabs" id="tabs"></div>
-    <div class="autosaveToggle host-nodrag" id="autoSaveToggle">
-      <span class="autosaveLabel">AutoSave</span>
-      <button class="autoSwitch" id="autoSaveSwitch" type="button" role="switch" aria-checked="true">
-        <span class="autoKnob"></span>
-        <span class="autoState" id="autoSaveState">On</span>
-      </button>
-    </div>
+    <button class="arThemeToggle host-nodrag" id="colorThemeToggle" type="button" aria-label="Switch to Dark theme" aria-pressed="false">
+      <svg class="arThemeToggleIcon arThemeToggleIcon--lightbulb" aria-hidden="true" focusable="false"><use href="/ui/shared/icons/color-theme.svg?v=20260726b#lightbulb"></use></svg>
+      <svg class="arThemeToggleIcon arThemeToggleIcon--moon" aria-hidden="true" focusable="false"><use href="/ui/shared/icons/color-theme.svg?v=20260726b#moon"></use></svg>
+    </button>
 
   </div>
 
@@ -311,7 +309,7 @@
       }
     })();
   </script>
-  <script type="module" src="/ui/shell/ui_shell.js?v=20260723h"></script>
+  <script type="module" src="/ui/shell/ui_shell.js?v=20260726d"></script>
 </body>
 </html>
 

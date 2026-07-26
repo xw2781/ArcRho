@@ -1,7 +1,6 @@
 import { $, shell } from "./shell_context.js?v=20260510a";
 
 const ZOOM_STORAGE_KEY = "arcrho_ui_zoom_pct";
-const AUTOSAVE_KEY = "arcrho_autosave_enabled";
 const FONT_STORAGE_KEY = "arcrho_app_font";
 const FORCE_REBUILD_KEY = "arcrho_force_rebuild_enabled";
 export const ZOOM_MIN = 70;
@@ -12,7 +11,6 @@ let zoomPercent = 100;
 let zoomToastTimer = null;
 let zoomUiWired = false;
 let zoomRangeDragging = false;
-let autoSaveEnabled = true;
 let forceRebuildEnabled = false;
 let colorTheme = "light";
 let fontModalWired = false;
@@ -29,15 +27,6 @@ function loadZoomPercent() {
     if (Number.isFinite(v) && v > 0) return v;
   } catch {}
   return 100;
-}
-
-function loadAutoSaveEnabled() {
-  try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (raw == null) return true;
-    return raw === "1";
-  } catch {}
-  return true;
 }
 
 export function loadAppFont() {
@@ -77,10 +66,6 @@ export function applyAppFont(font) {
   if (document.body) document.body.style.fontFamily = stack;
 }
 
-export function getAutoSaveEnabled() {
-  return autoSaveEnabled;
-}
-
 export function getZoomPercent() {
   return zoomPercent;
 }
@@ -101,6 +86,14 @@ export function updateColorThemeMenuState() {
     item.setAttribute("aria-checked", selected ? "true" : "false");
     item.classList.toggle("selected", selected);
   }
+}
+
+function updateColorThemeToggleUI() {
+  const button = $("colorThemeToggle");
+  if (!button) return;
+  const dark = colorTheme === "dark";
+  button.setAttribute("aria-pressed", dark ? "true" : "false");
+  button.setAttribute("aria-label", dark ? "Switch to Light theme" : "Switch to Dark theme");
 }
 
 export function broadcastColorTheme(theme = colorTheme) {
@@ -125,6 +118,7 @@ export function setColorTheme(theme, { persist = true, notify = true } = {}) {
     api?.applyTheme?.(colorTheme, { notifyChildren: false, persist: false, source: "shell" });
   }
   updateColorThemeMenuState();
+  updateColorThemeToggleUI();
   if (notify) broadcastColorTheme(colorTheme);
   return colorTheme;
 }
@@ -137,6 +131,7 @@ export function initColorThemePreference() {
     source: "shell-bootstrap",
   });
   updateColorThemeMenuState();
+  updateColorThemeToggleUI();
   if (colorThemeEventsWired) return;
   colorThemeEventsWired = true;
   window.addEventListener("arcrho:color-theme-changed", (event) => {
@@ -144,6 +139,19 @@ export function initColorThemePreference() {
     if (nextTheme === colorTheme) return;
     colorTheme = nextTheme;
     updateColorThemeMenuState();
+    updateColorThemeToggleUI();
+  });
+}
+
+export function initColorThemeToggle() {
+  const button = $("colorThemeToggle");
+  if (!button || button.dataset.themeToggleWired === "1") return;
+  button.dataset.themeToggleWired = "1";
+  updateColorThemeToggleUI();
+  button.addEventListener("click", () => {
+    const nextTheme = colorTheme === "dark" ? "light" : "dark";
+    setColorTheme(nextTheme);
+    shell.updateStatusBar?.(`Color theme changed to ${nextTheme === "dark" ? "Dark" : "Light"}.`);
   });
 }
 
@@ -167,50 +175,6 @@ export function setForceRebuildEnabled(enabled, { persist = true, notify = true 
     try { localStorage.setItem(FORCE_REBUILD_KEY, forceRebuildEnabled ? "1" : "0"); } catch {}
   }
   if (notify) broadcastForceRebuildToggle();
-}
-
-function updateAutoSaveToggleUI() {
-  const btn = $("autoSaveSwitch");
-  const stateEl = $("autoSaveState");
-  if (!btn) return;
-  btn.classList.toggle("on", autoSaveEnabled);
-  btn.classList.toggle("off", !autoSaveEnabled);
-  btn.setAttribute("aria-checked", autoSaveEnabled ? "true" : "false");
-  if (stateEl) stateEl.textContent = autoSaveEnabled ? "On" : "Off";
-}
-
-function broadcastAutoSaveToggle() {
-  for (const t of shell.state?.tabs || []) {
-    if (t.type !== "workflow") continue;
-    if (!t.iframe || !t.iframe.contentWindow) continue;
-    try {
-      t.iframe.contentWindow.postMessage({ type: "arcrho:autosave-toggle", enabled: autoSaveEnabled }, "*");
-    } catch {
-      // ignore
-    }
-  }
-}
-
-export function setAutoSaveEnabled(enabled, { persist = true, notify = true } = {}) {
-  autoSaveEnabled = !!enabled;
-  if (persist) {
-    try { localStorage.setItem(AUTOSAVE_KEY, autoSaveEnabled ? "1" : "0"); } catch {}
-  }
-  updateAutoSaveToggleUI();
-  if (notify) broadcastAutoSaveToggle();
-}
-
-export function initAutoSaveToggle() {
-  autoSaveEnabled = loadAutoSaveEnabled();
-  updateAutoSaveToggleUI();
-  const btn = $("autoSaveSwitch");
-  if (!btn || btn.dataset.shellWired === "1") return;
-  btn.dataset.shellWired = "1";
-  btn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setAutoSaveEnabled(!autoSaveEnabled);
-  });
 }
 
 function updateFontPreview(value) {

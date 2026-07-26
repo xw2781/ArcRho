@@ -484,6 +484,8 @@ test("ArcRho and standalone Arcode expose accessible live theme choices", () => 
   const iframeHost = read("../ui/shell/iframe_host.js");
   const arcodeHtml = read("../ui/arcode/main.html");
   const arcodeMain = read("../ui/arcode/main.js");
+  const themeToggleCss = read("../ui/shared/styles/theme_toggle.css");
+  const themeToggleIcon = read("../ui/shared/icons/color-theme.svg");
 
   for (const html of [shellHtml, arcodeHtml]) {
     assert.match(html, /data-action="color-theme-light"[^>]*role="menuitemradio"/);
@@ -491,13 +493,23 @@ test("ArcRho and standalone Arcode expose accessible live theme choices", () => 
     assert.match(html, /data-color-theme-trigger[^>]*tabindex="0"/);
     assert.match(html, /data-color-theme-menu[^>]*aria-haspopup="menu"/);
     assert.match(html, /data-color-theme-value="light"[^>]*tabindex="-1"/);
+    assert.ok(html.indexOf("/ui/shared/styles/themes/dark.css") < html.indexOf("/ui/shared/styles/theme_toggle.css"));
   }
   assert.match(shellPreferences, /api\?\.setTheme\?\./);
   assert.match(shellPreferences, /type:\s*messageType,\s*theme:\s*normalized/);
+  assert.match(shellPreferences, /function initColorThemeToggle\(\)/);
+  assert.match(shellHtml, /id="colorThemeToggle"[^>]*aria-label="Switch to Dark theme"/);
   assert.match(shellMenus, /action === "color-theme-light" \|\| action === "color-theme-dark"/);
   assert.match(iframeHost, /postMessage\(\{ type: messageType, theme \}/);
   assert.match(arcodeMain, /ArcRhoColorTheme\?\.setTheme/);
+  assert.match(arcodeMain, /function initColorThemeToggle\(\)/);
+  assert.match(arcodeHtml, /id="arcodeColorThemeToggle"[^>]*aria-label="Switch to Dark theme"/);
   assert.match(arcodeMain, /\.menu\[aria-expanded="true"\][^\n]*setAttribute\("aria-expanded", "false"\)/);
+  assert.match(themeToggleCss, /:root\[data-arcrho-theme="dark"\] \.arThemeToggleIcon--moon/);
+  assert.match(themeToggleCss, /:root\[data-arcrho-theme="dark"\] \.arThemeToggle\s*\{\s*border-color: transparent;\s*background-color: transparent;/);
+  assert.match(themeToggleCss, /\.arThemeToggle\s*\{[\s\S]*?background-color: transparent;/);
+  assert.match(themeToggleIcon, /<symbol id="lightbulb"/);
+  assert.match(themeToggleIcon, /<symbol id="moon"/);
 
   const runtime = read("../ui/shared/services/color_theme.js");
   assert.match(runtime, /wireThemeMenus/);
@@ -595,8 +607,8 @@ test("changed theme and chart owners are reached through current cache-version c
     ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260725a"],
     ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260722a"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260722a"],
-    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260724a"],
-    ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260724a"],
+    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260726a"],
+    ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260726a"],
     ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260724a"],
   ];
   for (const [path, reference] of expectedReferences) {

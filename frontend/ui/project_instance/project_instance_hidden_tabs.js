@@ -103,9 +103,8 @@ function updateHiddenTabsArea() {
       const closeBtn = document.createElement("button");
       closeBtn.type = "button";
       closeBtn.className = "pi-minimized-tab-close";
-      closeBtn.title = `Close ${item.title}`;
       closeBtn.setAttribute("aria-label", `Close ${item.title}`);
-      closeBtn.textContent = "x";
+      closeBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
       closeBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();

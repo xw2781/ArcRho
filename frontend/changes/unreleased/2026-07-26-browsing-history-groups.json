@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Grouped Browsing History into Project Instances, My Workspace folders, and Dataset Viewer records."
+}

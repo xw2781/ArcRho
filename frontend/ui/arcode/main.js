@@ -68,7 +68,6 @@ const state = {
   tabs: [],
   activeId: "home",
   nextId: 1,
-  autoSaveEnabled: true,
   zoomPercent: DEFAULT_ZOOM_PERCENT,
   recentFiles: [],
   workspaceFolders: readWorkspaceFolders(),
@@ -1536,7 +1535,6 @@ function createFrameForTab(tab) {
     } else if (tab.path && tab.type === "notebook") {
       postToTab(tab, { type: "arcode:scripting-open-path", path: tab.path });
     }
-    postToTab(tab, { type: "arcode:autosave-toggle", enabled: state.autoSaveEnabled });
     postToTab(tab, { type: "arcode:set-zoom", zoom: state.zoomPercent, statusBarHeight: 28 });
     wireFrameFileDropTarget(iframe);
   });
@@ -1816,12 +1814,35 @@ function updateMenuState() {
     document.querySelector(`.menuItem[data-action="color-theme-${theme}"]`)
       ?.setAttribute("aria-checked", theme === colorTheme ? "true" : "false");
   }
+  updateColorThemeToggleUI(colorTheme);
   ["save", "save-as", "close-tab", "close-others", "close-all", "render-markdown", "toggle-line-numbers", "toggle-exec-time", "refresh-tab", "hard-refresh", "rename"].forEach((action) => {
     setMenuItemDisabled(action, !hasTab);
   });
   setMenuItemDisabled("open-file-location", !hasPath);
   setMenuItemDisabled("copy-file-path", !hasPath);
   renderRecentFilesMenu();
+}
+
+function updateColorThemeToggleUI(theme = window.ArcRhoColorTheme?.getTheme?.() || "light") {
+  const button = $("arcodeColorThemeToggle");
+  if (!button) return;
+  const dark = theme === "dark";
+  button.setAttribute("aria-pressed", dark ? "true" : "false");
+  button.setAttribute("aria-label", dark ? "Switch to Light theme" : "Switch to Dark theme");
+}
+
+function initColorThemeToggle() {
+  const button = $("arcodeColorThemeToggle");
+  if (!button || button.dataset.themeToggleWired === "1") return;
+  button.dataset.themeToggleWired = "1";
+  updateColorThemeToggleUI();
+  button.addEventListener("click", () => {
+    const current = window.ArcRhoColorTheme?.getTheme?.() || "light";
+    const nextTheme = current === "dark" ? "light" : "dark";
+    window.ArcRhoColorTheme?.setTheme?.(nextTheme, { source: "arcode-topbar" });
+    updateMenuState();
+    updateStatus(`Color theme changed to ${nextTheme === "dark" ? "Dark" : "Light"}.`);
+  });
 }
 
 function closeTabsExcept(keepId) {
@@ -1856,22 +1877,6 @@ function reloadActiveTab({ hard = false } = {}) {
     tab.iframe.contentWindow?.location?.reload();
   }
   updateStatus(hard ? "Reloading tab without cache..." : "Reloading tab...");
-}
-
-function setAutoSaveEnabled(enabled, { quiet = false } = {}) {
-  state.autoSaveEnabled = !!enabled;
-  const button = $("arcodeAutoSaveSwitch");
-  const label = $("arcodeAutoSaveState");
-  button?.classList.toggle("on", state.autoSaveEnabled);
-  button?.setAttribute("aria-checked", state.autoSaveEnabled ? "true" : "false");
-  if (label) label.textContent = state.autoSaveEnabled ? "On" : "Off";
-  for (const tab of state.tabs) postToTab(tab, { type: "arcode:autosave-toggle", enabled: state.autoSaveEnabled });
-  if (!quiet) updateStatus(`AutoSave ${state.autoSaveEnabled ? "enabled" : "disabled"}.`);
-}
-
-function initAutoSaveControl() {
-  $("arcodeAutoSaveSwitch")?.addEventListener("click", () => setAutoSaveEnabled(!state.autoSaveEnabled));
-  setAutoSaveEnabled(state.autoSaveEnabled, { quiet: true });
 }
 
 function hostZoomAvailable() {
@@ -2317,9 +2322,9 @@ async function boot() {
   initAppFrameStyle();
   initWindowControls();
   initShellMenus();
+  initColorThemeToggle();
   window.addEventListener("arcrho:color-theme-changed", updateMenuState);
   initTabContextMenu();
-  initAutoSaveControl();
   initZoomControls();
   initHotkeys();
   initArcodeFileDrops();

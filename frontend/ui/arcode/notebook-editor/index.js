@@ -374,10 +374,6 @@ window.addEventListener("message", (event) => {
     renderAllMarkdownCells({ setStatusMessage: true });
     return;
   }
-  if (type === "arcode:autosave-toggle") {
-    setNotebookAutoSaveEnabled(!!event.data.enabled);
-    return;
-  }
   if (type === "arcode:assistant-context-request") {
     const requestId = event.data.requestId || "";
     try {

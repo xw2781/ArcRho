@@ -9,8 +9,6 @@ let savedText = "";
 let dirty = false;
 let lastDiskRevision = null;
 let diskConflict = "";
-let autoSaveEnabled = true;
-let autoSaveTimer = 0;
 let revisionPollTimer = 0;
 let isRunning = false;
 let runningMode = "";
@@ -54,7 +52,6 @@ function setDirty(nextDirty) {
   if (dirty === value) return;
   dirty = value;
   shared.postDirty({ inst: tabInstanceId, dirty });
-  scheduleAutoSave();
 }
 
 function updateDirtyFromEditor() {
@@ -258,7 +255,7 @@ function suggestedSaveName(copy = false) {
   return `${name.slice(0, dot)}.copy${name.slice(dot)}`;
 }
 
-async function saveCurrentFile({ saveAs = false, ignoreRevisionConflict = false, source = "manual", copy = false } = {}) {
+async function saveCurrentFile({ saveAs = false, ignoreRevisionConflict = false, copy = false } = {}) {
   const text = editor?.getValue() || "";
   const targetPath = saveAs || copy ? "" : currentPath;
 
@@ -292,16 +289,8 @@ async function saveCurrentFile({ saveAs = false, ignoreRevisionConflict = false,
   if (!copy) {
     markSavedBaseline(savedPath, text, revision);
   }
-  setStatus(source === "auto" ? `Auto-saved ${shared.filenameFromPath(savedPath)}` : `Saved ${shared.filenameFromPath(savedPath)}`);
+  setStatus(`Saved ${shared.filenameFromPath(savedPath)}`);
   return true;
-}
-
-function scheduleAutoSave() {
-  clearTimeout(autoSaveTimer);
-  if (!autoSaveEnabled || !dirty || diskConflict || !currentPath) return;
-  autoSaveTimer = setTimeout(() => {
-    void saveCurrentFile({ source: "auto" });
-  }, 1500);
 }
 
 function formatDocument() {
@@ -508,7 +497,6 @@ function buildAssistantContext() {
     targetPath: currentPath || "",
     path: currentPath || "",
     dirty,
-    autoSaveEnabled,
     fileState: diskConflict ? "changed-on-disk" : (dirty ? "unsaved-changes" : "saved"),
     language: language(),
     text: selected.text,
@@ -581,11 +569,6 @@ function initEvents() {
       lineNumbersVisible = !lineNumbersVisible;
       editor?.updateOptions({ lineNumbers: lineNumbersVisible ? "on" : "off" });
       setStatus(lineNumbersVisible ? "Line numbers shown" : "Line numbers hidden");
-      return;
-    }
-    if (msg.type === "arcode:autosave-toggle") {
-      autoSaveEnabled = !!msg.enabled;
-      scheduleAutoSave();
       return;
     }
     if (msg.type === "arcode:set-zoom") {

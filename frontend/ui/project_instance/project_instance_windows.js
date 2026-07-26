@@ -133,6 +133,7 @@ function getProjectInstanceWindowSnapshot(frame) {
     maximized: frame.dataset.maximized === "1",
     dirty: frame.dataset.dirty === "1",
     methodType: getWindowMethodType(frame),
+    outputDataset: kind === "dfm" ? toText(frame.dataset.windowOutputDataset || "") : "",
     dfmTab: kind === "dfm" ? toText(frame.dataset.dfmTab || "") : "",
     rsTab: kind === "result_selection" ? toText(frame.dataset.rsTab || "") : "",
     bfTab: kind === "bornhuetter_ferguson" ? toText(frame.dataset.bfTab || "") : "",
@@ -177,6 +178,7 @@ function getVisibleProjectInstanceWindowSummaries() {
       dirty: !!snapshot.dirty,
       maximized: !!snapshot.maximized,
       methodType: snapshot.methodType || getWindowMethodType(frame),
+      outputDataset: snapshot.outputDataset || "",
       dfmTab: snapshot.dfmTab || "",
       rsTab: snapshot.rsTab || "",
       bfTab: snapshot.bfTab || "",
@@ -693,12 +695,16 @@ function buildDfmViewerUrl(datasetName, inst, options = {}) {
   const initialTab = toText(options?.initialTab || options?.dfmTab || "ratios") || "ratios";
   const methodName = options?.fresh ? "" : toText(options?.methodName || name);
   const outputType = options?.fresh ? "" : toText(options?.outputType || name);
+  const outputDataset = options?.fresh
+    ? ""
+    : toText(options?.outputDataset || options?.output_dataset || "");
   const inputTriangle = toText(options?.inputTriangle || "");
   const targetPath = normalizePath(options?.path || state.selectedPath);
   params.set("project", projectName);
   params.set("class", targetPath);
   if (methodName) params.set("method_name", methodName);
   if (outputType) params.set("output_type", outputType);
+  if (outputDataset) params.set("output_dataset", outputDataset);
   if (inputTriangle) params.set("input_triangle", inputTriangle);
   params.set("tab", initialTab);
   params.set("inst", inst);
@@ -864,6 +870,10 @@ function createFloatingContentWindow(options = {}) {
 
   const existing = datasetWindows.get(windowKey);
   if (existing?.isConnected) {
+    if (toText(options.kind).toLowerCase() === "dfm") {
+      const outputDataset = toText(options.outputDataset || options.output_dataset || "");
+      if (outputDataset) existing.dataset.windowOutputDataset = outputDataset;
+    }
     void activateDatasetWindow(existing);
     return existing;
   }
@@ -878,6 +888,10 @@ function createFloatingContentWindow(options = {}) {
   frame.dataset.windowPath = normalizePath(options.path || state.selectedPath);
   frame.dataset.windowTitle = title;
   frame.dataset.windowKind = toText(options.kind) || "dataset";
+  if (frame.dataset.windowKind === "dfm") {
+    const outputDataset = toText(options.outputDataset || options.output_dataset || "");
+    if (outputDataset) frame.dataset.windowOutputDataset = outputDataset;
+  }
   const temporaryViewSessionId = toText(options.temporaryViewSessionId);
   if (temporaryViewSessionId) frame.dataset.temporaryViewSessionId = temporaryViewSessionId;
   frame.dataset.dirty = "0";
@@ -1117,7 +1131,53 @@ function openDfmWindow(datasetName, options = {}) {
     iframeSrc: buildDfmViewerUrl(name, inst, { ...options, path: targetPath, initialTab }),
     path: targetPath,
     methodType: options.methodType || "DFM",
+    outputDataset: toText(options.outputDataset || options.output_dataset || ""),
   });
+}
+
+function syncDfmWindowIdentity(frame, methodName, outputDataset = "") {
+  if (!frame?.isConnected || !isDfmWindow(frame)) return false;
+  const name = toText(methodName);
+  const targetPath = getWindowPath(frame);
+  if (!name || !targetPath) return false;
+
+  const previousKey = toText(frame.dataset.windowKey);
+  const canonicalKey = getDfmWindowKey(name, targetPath);
+  let nextKey = canonicalKey;
+  const existing = datasetWindows.get(canonicalKey);
+  if (existing && existing !== frame) {
+    if (existing.isConnected) {
+      // A server-side Save As should normally make this impossible. Keep both
+      // frames addressable if another live window nevertheless owns the key.
+      nextKey = `${canonicalKey}\u0001instance\u0001${toText(frame.dataset.windowId) || Date.now()}`;
+      setStatus(`DFM ${name} is already open; both windows were kept.`, true);
+    } else {
+      datasetWindows.delete(canonicalKey);
+    }
+  }
+  if (previousKey && datasetWindows.get(previousKey) === frame) {
+    datasetWindows.delete(previousKey);
+  }
+
+  const title = `${targetPath}\\DFM\\${name}`;
+  frame.dataset.windowKey = nextKey;
+  frame.dataset.windowDatasetName = name;
+  frame.dataset.windowItemName = name;
+  frame.dataset.windowTitle = title;
+  const declaredOutputDataset = toText(outputDataset);
+  if (declaredOutputDataset) frame.dataset.windowOutputDataset = declaredOutputDataset;
+  frame.setAttribute("aria-label", title);
+  datasetWindows.set(nextKey, frame);
+
+  const hiddenItem = hiddenWindows.get(frame.dataset.windowId || "");
+  if (hiddenItem) {
+    hiddenItem.title = name;
+    hiddenItem.fullTitle = title;
+  }
+  syncDatasetWindowChrome();
+  updateHiddenTabsArea();
+  notifyProjectInstanceStateChanged();
+  return true;
 }
 
 function openResultSelectionWindow(datasetName, options = {}) {
@@ -1329,7 +1389,11 @@ async function applyProjectInstanceRestoreState(rawState) {
     const name = toText(item?.name || item?.datasetName || item?.methodName);
     if (!name) continue;
     const frame = kind === "dfm"
-      ? openDfmWindow(name, { initialTab: item?.dfmTab, methodType })
+      ? openDfmWindow(name, {
+        initialTab: item?.dfmTab,
+        methodType,
+        outputDataset: toText(item?.outputDataset || item?.output_dataset || ""),
+      })
       : kind === "result_selection"
         ? openResultSelectionWindow(name, { initialTab: item?.rsTab || "method", rsTab: item?.rsTab || "method", methodType })
         : kind === "bornhuetter_ferguson"
@@ -1418,6 +1482,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     setWindowDirtyState,
     startMove,
     startResize,
+    syncDfmWindowIdentity,
     syncBerquistShermanWindowIdentity,
     syncDatasetWindowChrome,
     syncMaximizedDatasetWindows,

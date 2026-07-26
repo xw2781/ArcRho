@@ -45,12 +45,14 @@ function normalizeDfmInitialInputs(raw) {
   const reservingClass = String(source.reservingClass || source.reserving_class || source.path || source.class || "").trim();
   const methodName = String(source.methodName || source.method_name || source.name || "").trim();
   const outputType = String(source.outputType || source.output_type || source.outputVector || source.output_vector || "").trim();
+  const outputDataset = String(source.outputDataset || source.output_dataset || "").trim();
   const inputTriangle = String(source.inputTriangle || source.input_triangle || source.datasetName || source.dataset_name || "").trim();
   const out = {};
   if (project) out.project = project;
   if (reservingClass) out.reservingClass = reservingClass;
   if (methodName) out.methodName = methodName;
   if (outputType) out.outputType = outputType;
+  if (outputDataset) out.outputDataset = outputDataset;
   if (inputTriangle) out.inputTriangle = inputTriangle;
   return Object.keys(out).length ? out : undefined;
 }

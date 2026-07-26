@@ -39,6 +39,7 @@ export function installProjectInstanceMessages(ctx) {
   const restoreDatasetWindow = (...args) => api.restoreDatasetWindow(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const setWindowDirtyState = (...args) => api.setWindowDirtyState(...args);
+  const syncDfmWindowIdentity = (...args) => api.syncDfmWindowIdentity(...args);
   const syncBerquistShermanWindowIdentity = (...args) => api.syncBerquistShermanWindowIdentity(...args);
   const toText = (...args) => api.toText(...args);
   const activeCalculatedPreviewTargetsBySource = new Map();
@@ -478,6 +479,7 @@ function getAutomationWindowInfo(frame) {
     selectedPath: toText(state.selectedPath),
     path: toText(getWindowPath(frame) || frame.dataset.windowPath || state.selectedPath),
     methodType: toText(getWindowMethodType(frame)),
+    outputDataset: toText(frame.dataset.windowOutputDataset || ""),
     active: getActiveDatasetWindow() === frame,
     hidden: frame.dataset.hidden === "1" || frame.style.display === "none",
     maximized: !!isDatasetWindowMaximized(frame),
@@ -527,6 +529,7 @@ function handleAutomationOpenDataset(message, sourceWindow) {
       path: state.selectedPath,
       methodType: "DFM",
       outputType: toText(args.datasetTypeName || args.dataset_type_name),
+      outputDataset: datasetName,
     })
     : openMethod && methodType === "result selection"
       ? openResultSelectionWindow(datasetName, {
@@ -690,6 +693,7 @@ function handleOpenDependentDataset(message, sourceWindow) {
       path: targetPath,
       methodType: "DFM",
       outputType: datasetTypeName,
+      outputDataset: datasetName,
     });
   } else if (openMethod && methodType === "result selection") {
     frame = openResultSelectionWindow(datasetName, {
@@ -1221,6 +1225,20 @@ window.addEventListener("message", (event) => {
     if (frame && isDfmWindow(frame)) {
       setWindowDirtyState(frame, !!msg.dirty);
       notifyActiveDfmWindowState();
+    }
+    return;
+  }
+  if (msg.type === "arcrho:dfm-identity") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isDfmWindow(frame)) {
+      const methodName = toText(msg.methodName || msg.method_name);
+      const outputDataset = toText(msg.outputDataset || msg.output_dataset);
+      if (methodName) {
+        syncDfmWindowIdentity(frame, methodName, outputDataset);
+      } else {
+        if (outputDataset) frame.dataset.windowOutputDataset = outputDataset;
+        notifyProjectInstanceStateChanged();
+      }
     }
     return;
   }

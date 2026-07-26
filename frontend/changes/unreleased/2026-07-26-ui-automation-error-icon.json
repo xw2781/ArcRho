@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Automation error dialogs now render their close mark as an inline SVG."
+}

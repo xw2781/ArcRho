@@ -297,12 +297,20 @@ body.pi-resizing-table-column * {
   align-items: center;
   justify-content: center;
   margin-right: 3px;
-  padding: 0 0 1px;
-  font-size: 12px;
-  line-height: 1;
+  padding: 0;
   cursor: pointer;
 }
-.pi-minimized-tab-close:hover {
+.pi-minimized-tab-close svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.pi-minimized-tab-close:hover,
+.pi-minimized-tab-close:focus-visible {
+  outline: none;
   background: #fff1f0;
   color: #b42318;
 }

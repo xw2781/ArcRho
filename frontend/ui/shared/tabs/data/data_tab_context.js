@@ -17,3 +17,12 @@ export function getDataTabHost() {
 export function isDfmDataTabHost() {
   return dataTabHost === "dfm";
 }
+
+export function isPersistedDfmMethodBootstrap() {
+  if (!isDfmDataTabHost()) return false;
+  try {
+    return Boolean(new URLSearchParams(globalThis.location?.search || "").get("method_name")?.trim());
+  } catch {
+    return false;
+  }
+}

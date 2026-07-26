@@ -57,6 +57,16 @@ test("ArcRho captures and reapplies an exact DFM target around source execution"
   assert.match(projectMessages, /findWindowByInstance\(targetWindowId\)/);
 });
 
+test("ArcRho automation error dialogs render the close mark as SVG", () => {
+  const automation = read("../ui/shell/ui_automation.js");
+
+  assert.match(automation, /normalized === "error"/);
+  assert.match(automation, /content: '<svg viewBox="0 0 24 24"/);
+  assert.match(automation, /<path d="M7 7l10 10"><\/path><path d="M17 7L7 17"><\/path>/);
+  assert.match(automation, /\$\{icon\.content\}/);
+  assert.doesNotMatch(automation, /normalized === "error"\) return \{ text: "x"/);
+});
+
 test("ArcRho macro validation ignores volatile timestamps but detects live DFM edits", () => {
   const initial = {
     activeJson: {

@@ -1,7 +1,6 @@
 export function createIframeHost(deps) {
   const {
     closeAllShellMenus,
-    getAutoSaveEnabled,
     getColorTheme,
     getIframeHost,
     getState,
@@ -155,6 +154,7 @@ export function createIframeHost(deps) {
       if (inputs.reservingClass) params.set("class", String(inputs.reservingClass));
       if (inputs.methodName) params.set("method_name", String(inputs.methodName));
       if (inputs.outputType) params.set("output_type", String(inputs.outputType));
+      if (inputs.outputDataset) params.set("output_dataset", String(inputs.outputDataset));
       if (inputs.inputTriangle) params.set("input_triangle", String(inputs.inputTriangle));
       iframe.src = `/ui/method_pages/dfm/dfm.html?${params.toString()}`;
     } else if (tab.type === "bornhuetter_ferguson") {
@@ -177,13 +177,6 @@ export function createIframeHost(deps) {
       if (tab.wfFresh) params.set("fresh", "1");
       iframe.src = `/ui/workflow/workflow.html?${params.toString()}`;
       tab.wfFresh = false;
-      iframe.addEventListener("load", () => {
-        try {
-          iframe.contentWindow?.postMessage({ type: "arcrho:autosave-toggle", enabled: getAutoSaveEnabled() }, "*");
-        } catch {
-          // ignore
-        }
-      }, { once: true });
     } else if (tab.type === "project_settings") {
       iframe.src = `/ui/project_settings/project_settings.html?v=${encodeURIComponent(uiVersionParam)}`;
     } else if (tab.type === "project_instance") {
@@ -213,6 +206,7 @@ export function createIframeHost(deps) {
             type: "arcrho:file-explorer-visibility",
             visible: iframe.style.display !== "none",
           }, "*");
+          if (tab.fileExplorerPath) iframe.contentWindow?.postMessage({ type: "arcrho:file-explorer-open-path", path: tab.fileExplorerPath }, "*");
         } catch {
           // ignore
         }

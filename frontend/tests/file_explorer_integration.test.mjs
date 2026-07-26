@@ -13,12 +13,13 @@ test("Home launches File Explorer as a standard restorable ArcRho tab", async ()
   const history = await read("../ui/shell/shell_activity_history.js");
 
   assert.match(view, /id="cardFileExplorer"/u);
+  assert.match(view, /id="cardFileExplorer"[\s\S]*?<h3>My Workspace<\/h3>/u);
   assert.match(view, /shell\.openFileExplorerTab/u);
   assert.doesNotMatch(view, /id="homeFoldersNav"/u);
   assert.doesNotMatch(view, /id="homeFoldersPage"/u);
-  assert.match(actions, /export function openFileExplorerTab\(\)/u);
+  assert.match(actions, /export function openFileExplorerTab\(options = \{\}\)/u);
   assert.match(actions, /find\(t => t\.type === "file_explorer"\)/u);
-  assert.match(actions, /title:\s*"File Explorer"/u);
+  assert.match(actions, /title:\s*"My Workspace"/u);
   assert.match(actions, /type:\s*"file_explorer"/u);
   assert.match(actions, /"file_explorer",\s*\]\)/u);
   assert.match(host, /\/ui\/file_explorer\/file_explorer\.html/u);
@@ -38,7 +39,8 @@ test("File Explorer renders Favorites beside a persistent details-style file lis
   assert.match(html, /id="homeFoldersPage"/u);
   assert.match(html, /context_menu\/context_menu\.css/u);
   assert.match(html, /file_explorer\.js/u);
-  assert.match(styles, /\.fileExplorerLayout\s*\{[^}]*grid-template-columns:\s*220px minmax\(0, 1fr\)/su);
+  assert.match(styles, /\.fileExplorerLayout\s*\{[^}]*grid-template-columns:\s*var\(--file-explorer-sidebar-width, 220px\) 6px minmax\(0, 1fr\)/su);
+  assert.match(html, /id="homeSidebarResizeHandle"[^>]*role="separator"/u);
   assert.match(styles, /\.fileExplorerSidebar\s*\{[^}]*overflow-y:\s*auto/su);
   assert.match(styles, /\.homeExplorerTable\s*\{[^}]*border-collapse:\s*separate/su);
   assert.match(styles, /\.homeExplorerTable th\s*\{[^}]*position:\s*sticky/su);
@@ -65,6 +67,10 @@ test("File Explorer renders Favorites beside a persistent details-style file lis
   assert.match(explorer, /event\.key === "ContextMenu" \|\| \(event\.shiftKey && event\.key === "F10"\)/u);
   assert.match(explorer, /function ensureExplorerRowVisible\(row\)/u);
   assert.match(explorer, /arcrho:file-explorer-visibility/u);
+  assert.match(explorer, /function wireSidebarResize\(\)/u);
+  assert.doesNotMatch(explorer, /homeFolderShortcutMenuButton/u);
+  assert.match(explorer, /type:\s*"arcrho:update-active-tab-title"/u);
+  assert.match(explorer, /folderForPath\(state\.currentPath\)\?\.nickname \|\| defaultHomeFolderNickname\(state\.currentPath\)/u);
   assert.doesNotMatch(explorer, /scrollIntoView/u);
   assert.doesNotMatch(explorer, /\(xlsx\|xlsm\|xlsb\|xls\)/u);
 });

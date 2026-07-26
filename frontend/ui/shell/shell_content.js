@@ -1,8 +1,8 @@
 import { $, shell } from "./shell_context.js?v=20260510a";
-import { createIframeHost } from "./iframe_host.js?v=20260723c";
+import { createIframeHost } from "./iframe_host.js?v=20260726b";
 import { createFloatingTabsController, isFloatingTab } from "./floating_tabs.js?v=20260520b";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
-import { renderHomeViewOnce } from "./home_view.js?v=20260723e";
+import { renderHomeViewOnce } from "./home_view.js?v=20260726b";
 
 const datasetAutoRefreshDone = new Set();
 let homeView = null;
@@ -16,7 +16,6 @@ function initShellControllers() {
   if (!iframeHostController) {
     iframeHostController = createIframeHost({
       closeAllShellMenus: () => shell.closeAllShellMenus?.(),
-      getAutoSaveEnabled: () => shell.getAutoSaveEnabled?.(),
       getColorTheme: () => shell.getColorTheme?.(),
       getIframeHost: () => iframeHost,
       getState: () => shell.state,
@@ -97,7 +96,7 @@ export function notifyBrowsingHistoryTabs(message = {}) {
 
 export function notifyCalculatedDatasetTabs(message = {}) {
   for (const t of shell.state.tabs || []) {
-    if (t.type !== "dataset" && t.type !== "project_instance") continue;
+    if (t.type !== "dataset" && t.type !== "project_instance" && t.type !== "dfm") continue;
     if (!t.iframe || !t.iframe.contentWindow) continue;
     try { t.iframe.contentWindow.postMessage({ type: "arcrho:calculated-datasets-updated", ...message }, "*"); } catch {}
   }

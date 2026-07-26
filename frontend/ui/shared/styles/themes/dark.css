@@ -426,7 +426,7 @@
   color: var(--ar-color-text-strong);
 }
 
-:root[data-arcrho-theme="dark"] :is(.autosaveLabel, .shellResizeGlyph) {
+:root[data-arcrho-theme="dark"] .shellResizeGlyph {
   color: var(--ar-color-text-muted);
 }
 

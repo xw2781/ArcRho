@@ -1,7 +1,7 @@
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
 
 const EXTERNAL_LINKS_STYLESHEET_ID = "arExternalLinksStylesheet";
-const EXTERNAL_LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260715b";
+const EXTERNAL_LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260726a";
 const MOUNTED_EXTERNAL_LINKS_TABS = new WeakMap();
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -278,6 +278,7 @@ export function createExternalLinksTab({
   let scrollIdleTimer = null;
   let loading = false;
   let activeAction = "";
+  let advisory = null;
   let records = [];
   let selectionAnchorId = "";
   const selectedIds = new Set();
@@ -504,7 +505,9 @@ export function createExternalLinksTab({
     });
 
     loading = false;
-    if (records.length) {
+    if (advisory) {
+      showState("Warning", advisory.title, advisory.description);
+    } else if (records.length) {
       hideState();
     } else {
       showState("Empty", "No external links", emptyDescription);
@@ -525,6 +528,22 @@ export function createExternalLinksTab({
       "Unable to load external links",
       message || "The external links could not be loaded.",
     );
+    syncToolbar();
+  };
+
+  const setWarning = (title, description = "") => {
+    advisory = {
+      title: String(title || "External links require attention"),
+      description: String(description || ""),
+    };
+    showState("Warning", advisory.title, advisory.description);
+    syncToolbar();
+  };
+
+  const clearWarning = () => {
+    advisory = null;
+    if (records.length) hideState();
+    else showState("Empty", "No external links", emptyDescription);
     syncToolbar();
   };
 
@@ -606,6 +625,7 @@ export function createExternalLinksTab({
     refreshGeneration += 1;
     clearScrollIdleTimer();
     records = [];
+    advisory = null;
     selectedIds.clear();
     renderedRows.clear();
     scrollHost.removeEventListener("scroll", handleScroll);
@@ -623,6 +643,8 @@ export function createExternalLinksTab({
     refresh,
     setLoading,
     setError,
+    setWarning,
+    clearWarning,
     destroy,
   };
   MOUNTED_EXTERNAL_LINKS_TABS.set(container, controller);

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson now shows a Prior Vector remove icon only while its row is hovered or keyboard-focused."
+}

@@ -265,6 +265,18 @@
   color: #b42318;
 }
 
+.arExternalLinksState.isWarning {
+  border-color: #e8c47a;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+:root[data-arcrho-theme="dark"] .arExternalLinksState.isWarning {
+  border-color: #a16207;
+  background: #422006;
+  color: #fbbf24;
+}
+
 .arExternalLinksStateTitle {
   color: inherit;
   font-size: 12px;

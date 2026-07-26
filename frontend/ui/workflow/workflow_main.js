@@ -63,8 +63,6 @@ const WF_SIDEBAR_W_KEY = `arcrho_workflow_sidebar_w_v1::${instanceId}`;
 const WF_SIDEBAR_COLLAPSED_KEY = `arcrho_workflow_sidebar_collapsed_v1::${instanceId}`;
 const WF_LAST_PATH_KEY = `arcrho_workflow_last_path_v1::${instanceId}`;
 const WF_GLOBAL_CTRL_KEY = `arcrho_workflow_global_ctrl_v1::${instanceId}`;
-const WF_AUTOSAVE_MS = 60 * 1000;
-const AUTOSAVE_KEY = "arcrho_autosave_enabled";
 const FONT_STORAGE_KEY = "arcrho_app_font";
 const LOCAL_PROJECT_PREFS_ENDPOINT = "/local-project/preferences";
 
@@ -75,7 +73,6 @@ let suppressDirty = false;
 let lastSavedPath = "";
 let lastZoomValue = 100;
 let lastStatusBarHeight = 24;
-let autoSaveEnabled = true;
 
 function buildFontStack(font) {
   const raw = String(font || "").trim();
@@ -117,17 +114,6 @@ function loadAppFontFromStorage() {
   return "";
 }
 
-function loadAutoSaveEnabled() {
-  try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (raw == null) return true;
-    return raw === "1";
-  } catch {}
-  return true;
-}
-
-autoSaveEnabled = loadAutoSaveEnabled();
-
 function broadcastZoomToEmbeddedDatasets() {
   for (const [, frame] of datasetEmbedCache) {
     if (!frame || !frame.contentWindow) continue;
@@ -165,11 +151,6 @@ applyAppFont(loadAppFontFromStorage());
 window.addEventListener("message", (e) => {
   if (e?.data?.type === "arcrho:set-app-font") {
     applyAppFont(e.data.font);
-    return;
-  }
-  if (e?.data?.type === "arcrho:autosave-toggle") {
-    autoSaveEnabled = !!e.data.enabled;
-    try { localStorage.setItem(AUTOSAVE_KEY, autoSaveEnabled ? "1" : "0"); } catch {}
     return;
   }
   if (e?.data?.type === "arcrho:dfm-tab-changed") {
@@ -441,18 +422,6 @@ function markWorkflowDirty() {
   setWorkflowDirty(true);
 }
 
-function consumeRefreshAutosaveFlag() {
-  try {
-    const key = `arcrho_wf_autosave_on_load::${instanceId}`;
-    const v = sessionStorage.getItem(key);
-    if (v === "1") {
-      sessionStorage.removeItem(key);
-      return true;
-    }
-  } catch {}
-  return false;
-}
-
 function sanitizeFilename(name) {
   const base = String(name || "").trim() || "workflow";
   return base.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/\s+/g, " ").trim();
@@ -588,7 +557,7 @@ async function buildWorkflowSnapshot() {
   };
 }
 
-async function saveWorkflowToDefaultDir({ force = false, source = "auto" } = {}) {
+async function saveWorkflowToDefaultDir({ force = false } = {}) {
   if (!force && !workflowDirty) return;
   if (saveInFlight) return;
 
@@ -623,7 +592,7 @@ async function saveWorkflowToDefaultDir({ force = false, source = "auto" } = {})
     const savedPath = out.path || lastSavedPath;
     updateSaveStatus(`Saved: ${savedPath || ""}`);
     if (savedPath) {
-      window.parent.postMessage({ type: "arcrho:workflow-saved", path: savedPath, source, inst: instanceId }, "*");
+      window.parent.postMessage({ type: "arcrho:workflow-saved", path: savedPath, inst: instanceId }, "*");
     }
   } catch {
     updateSaveStatus("Save failed");
@@ -661,7 +630,7 @@ async function saveWorkflowAs() {
         setWorkflowDirty(false);
         updateSaveStatus(`Exported: ${exportedPath || ""}`);
         if (exportedPath) {
-          window.parent.postMessage({ type: "arcrho:workflow-saved", path: exportedPath, source: "manual", inst: instanceId }, "*");
+          window.parent.postMessage({ type: "arcrho:workflow-saved", path: exportedPath, inst: instanceId }, "*");
         }
         return;
       }
@@ -709,7 +678,7 @@ async function saveWorkflowAs() {
     setWorkflowDirty(false);
     updateSaveStatus(`Exported: ${exportedPath || ""}`);
     if (exportedPath) {
-      window.parent.postMessage({ type: "arcrho:workflow-saved", path: exportedPath, source: "manual", inst: instanceId }, "*");
+      window.parent.postMessage({ type: "arcrho:workflow-saved", path: exportedPath, inst: instanceId }, "*");
     }
   } catch {
     updateSaveStatus("Export failed");
@@ -1054,7 +1023,6 @@ function beginWorkflowTitleEdit() {
     if (commit) {
       const v = input.value.trim() || "Workflow Designer";
       setWorkflowTitle(v);
-      void saveWorkflowToDefaultDir({ force: true });
     }
     el.textContent = getWorkflowTitle();
     input.replaceWith(el);
@@ -1830,7 +1798,7 @@ function wireWorkflowCommands() {
   window.addEventListener("message", (e) => {
     const type = e?.data?.type;
     if (type === "arcrho:workflow-save") {
-      void saveWorkflowToDefaultDir({ force: true, source: "manual" });
+      void saveWorkflowToDefaultDir({ force: true });
     } else if (type === "arcrho:workflow-save-as") {
       void saveWorkflowAs();
     } else if (type === "arcrho:workflow-toggle-nav") {
@@ -2464,13 +2432,3 @@ if (!storedCollapsed) {
   if (Number.isFinite(storedW)) applySidebarWidth(storedW);
 }
 render();
-
-setInterval(() => {
-  if (!autoSaveEnabled) return;
-  void saveWorkflowToDefaultDir();
-}, WF_AUTOSAVE_MS);
-
-const shouldAutoSaveOnLoad = consumeRefreshAutosaveFlag();
-if (shouldAutoSaveOnLoad && autoSaveEnabled) {
-  void saveWorkflowToDefaultDir({ force: true, source: "auto" });
-}

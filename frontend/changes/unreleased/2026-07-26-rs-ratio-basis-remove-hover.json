@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection now shows a Ratio Basis remove icon only while its row is hovered or keyboard-focused."
+}

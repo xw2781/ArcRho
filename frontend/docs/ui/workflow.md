@@ -7,7 +7,7 @@ Workflow editor page and save/load orchestration.
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.workflow.entry_points -->
-- `ui/workflow/workflow.html`: external scripts `/ui/shared/services/color_theme.js?v=20260724a`, `/ui/workflow/workflow_main.js?v=20260712a`; inline imports _none_.
+- `ui/workflow/workflow.html`: external scripts `/ui/shared/services/color_theme.js?v=20260724a`, `/ui/workflow/workflow_main.js?v=20260726a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/projects`
@@ -62,7 +62,8 @@ Detected `arcrho:*` message types in key JS files:
 - The workflow sidebar supports folders for organizing steps. Sidebar context menus can create folders, folders can nest up to three levels, and drag/drop can reorder or move steps and folders into folders.
 - Enforces a single `global_control` step per workflow; duplicate instances are blocked or normalized to `picker`.
 - Stores DFM step settings snapshots (including optional `outputType`) via `arcrho:get-dfm-settings` / `arcrho:dfm-settings`.
-- Global Control stores built-in `<Default Project>` and `Default Path` variables, auto-saves table edits, and uses the table context menu for row add/delete actions.
+- Workflow files save only through explicit Save or Save As actions; normal edits remain in per-instance working state and mark the tab dirty.
+- Global Control stores built-in `<Default Project>` and `Default Path` variables and uses the table context menu for row add/delete actions.
 - Fresh workflows initialize Global Control's `<Default Project>` from the user's local last-project preference and `Default Path` from that project's user-specific `lastReservingClassPath`.
 - Project and path pickers opened from a workflow context expose `Current Workflow` shortcuts populated from Global Control rows with type `Project` / `Reserving Class`; workflow project rows show the control variable name with the resolved project in muted detail text.
 - Shared project/path picker windows load the app-wide `ui/shared/styles/scrollbars.css` styling so their scrollable tree areas match the rest of ArcRho.

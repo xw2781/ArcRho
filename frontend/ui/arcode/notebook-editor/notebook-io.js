@@ -126,7 +126,6 @@ function setNotebookDirty(nextDirty) {
 function updateNotebookDirtyState() {
   if (suppressNotebookDirtyTracking) return;
   setNotebookDirty(getNotebookStateText() !== savedNotebookText);
-  scheduleNotebookAutoSave();
 }
 
 function markNotebookSavedBaseline(pathLike = currentNotebookPath, revision = lastNotebookDiskRevision) {
@@ -297,24 +296,7 @@ function hideNotebookFileBanner() {
 }
 
 function setNotebookDiskConflict(message, conflict = "changed") {
-  clearTimeout(notebookAutoSaveTimer);
   showNotebookFileBanner(message, conflict);
-}
-
-function scheduleNotebookAutoSave() {
-  clearTimeout(notebookAutoSaveTimer);
-  if (!notebookAutoSaveEnabled || !notebookDirty || notebookDiskConflict || !currentNotebookPath) return;
-  const hostApi = getNotebookHostApi();
-  if (typeof hostApi?.saveJsonFile !== "function") return;
-  notebookAutoSaveTimer = setTimeout(() => {
-    void saveCurrentNotebookFile({ closeDialog: false, source: "auto" });
-  }, 1500);
-}
-
-function setNotebookAutoSaveEnabled(enabled) {
-  notebookAutoSaveEnabled = !!enabled;
-  if (!notebookAutoSaveEnabled) clearTimeout(notebookAutoSaveTimer);
-  else scheduleNotebookAutoSave();
 }
 
 function buildScriptingAssistantContext() {
@@ -330,7 +312,6 @@ function buildScriptingAssistantContext() {
     path: currentNotebookPath || "",
     notebookFilename: currentNotebookFilename || "",
     dirty: notebookDirty,
-    autoSaveEnabled: notebookAutoSaveEnabled,
     fileState,
     activeJson: buildNotebookFileData(),
   };
@@ -547,7 +528,6 @@ async function renameCurrentNotebook() {
       hideNotebookFileBanner();
       startNotebookRevisionPolling();
       setNotebookDirty(true);
-      scheduleNotebookAutoSave();
     } else {
       markNotebookSavedBaseline(nextPath, lastNotebookDiskRevision);
     }
@@ -915,7 +895,7 @@ async function openNotebookFilePath(filePath, options = {}) {
   }
 }
 
-async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConflict = false, source = "manual" } = {}) {
+async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConflict = false } = {}) {
   if (!currentNotebookPath) {
     return saveNotebookViaApi(currentNotebookFilename, { closeDialog });
   }
@@ -968,10 +948,10 @@ async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConfl
     }
     markNotebookSavedBaseline(savedPath, lastNotebookDiskRevision);
     const savedName = getNotebookFilenameFromPath(savedPath);
-    const msg = source === "auto" ? `Auto-saved ${savedName}` : `Saved ${savedName}`;
+    const msg = `Saved ${savedName}`;
     if (!codeTextFile) rememberLastOpenedIpynbPath(savedPath);
     setStatus(msg);
-    postShellStatus(`${msg}${source === "auto" ? "" : ` (${savedPath})`}`);
+    postShellStatus(`${msg} (${savedPath})`);
     if (closeDialog) closeSaveNbDialog();
     return true;
   } catch {

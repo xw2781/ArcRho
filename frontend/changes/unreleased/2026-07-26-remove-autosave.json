@@ -1,0 +1,6 @@
+{
+  "type": "breaking",
+  "scope": "autosave",
+  "audience": "user",
+  "summary": "Removed the AutoSave controls and automatic file saves from ArcRho workflows and Arcode editors."
+}

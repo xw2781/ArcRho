@@ -24,7 +24,7 @@ export function clearSavedStatusOnDirty() {
   const textEl = $("statusText") || $("statusBar");
   if (!textEl) return;
   const current = String(textEl.textContent || "").trim();
-  if (/^(auto-saved|saved)\s*:/i.test(current)) {
+  if (/^saved\s*:/i.test(current)) {
     updateStatusBar("Status: Ready");
   }
 }

@@ -101,6 +101,7 @@ export function normalizeShellActivityEntry(raw) {
       reservingClass: toText(inputs.reservingClass || inputs.path || raw.path),
       methodName: toText(inputs.methodName || raw.methodName),
       outputType: toText(inputs.outputType || raw.outputType),
+      outputDataset: toText(inputs.outputDataset || raw.outputDataset || raw.output_dataset),
       inputTriangle: toText(inputs.inputTriangle || raw.inputTriangle),
     };
     Object.keys(entry.dfmInputs).forEach((key) => {

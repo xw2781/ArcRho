@@ -2,17 +2,19 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
-Standard ArcRho tab for browsing local files with a customizable Favorite folders sidebar and a persistent details list.
+Standard ArcRho tab for browsing local files with a customizable, resizable Favorite folders sidebar and a persistent details list.
 <!-- MANUAL:END -->
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.file_explorer.entry_points -->
-- `ui/file_explorer/file_explorer.html`: external scripts `/ui/file_explorer/file_explorer.js?v=20260723a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/file_explorer/file_explorer.html`: external scripts `/ui/file_explorer/file_explorer.js?v=20260726d`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `arcrho:*` message types in key JS files:
+- `arcrho:browsing-history-updated`
 - `arcrho:close-active-tab`
 - `arcrho:hotkey`
 - `arcrho:status`
+- `arcrho:update-active-tab-title`
 - `arcrho:zoom`
 - `arcrho:zoom-reset`
 - `arcrho:zoom-step`
@@ -34,11 +36,13 @@ Detected `arcrho:*` message types in key JS files:
 - Opened from the Home File Explorer card as one restorable `file_explorer` shell tab.
 - Uses the Electron preload bridge for folder selection, directory listings, file opening, reveal/copy actions, and folder watches.
 - Receives explicit shell visibility messages so background or minimized tabs do not keep a live folder watcher.
+- The Favorites sidebar has a keyboard-accessible drag separator; its local-user width is retained in browser storage. Folder actions remain available from the folder row's context menu rather than a per-row overflow button.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Persists ordered favorite-folder paths and user nicknames in `%APPDATA%\ArcRho\prefs\home_folders.json`; browser local storage is a non-Electron fallback.
+- Persists the Favorites sidebar width as the local-user `arcrho_file_explorer_sidebar_width_v1` browser-storage value.
 - Requests file size and modified-time metadata only for File Explorer listings so existing Arcode listing payloads remain compatible.
 - Uses `ui/shared/file-icons/` as the canonical resolver, mapping, and asset package shared with Arcode.
 <!-- MANUAL:END -->

@@ -33,12 +33,6 @@ export function refreshActiveTab() {
     return;
   }
   if (t.iframe && t.iframe.tagName === "IFRAME") {
-    if (t.type === "workflow") {
-      try {
-        const inst = t.wfInst || t.id || "";
-        if (inst) sessionStorage.setItem(`arcrho_wf_autosave_on_load::${inst}`, "1");
-      } catch {}
-    }
     try {
       const src = t.iframe.getAttribute("src");
       if (src) {

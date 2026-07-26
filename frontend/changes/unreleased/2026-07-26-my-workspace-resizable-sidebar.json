@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "file explorer",
+  "audience": "user",
+  "summary": "Added a resizable Favorites sidebar in My Workspace and removed each folder's overflow button."
+}

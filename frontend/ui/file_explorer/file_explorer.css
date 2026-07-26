@@ -28,7 +28,7 @@ input {
   height: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: var(--file-explorer-sidebar-width, 220px) 6px minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -37,8 +37,32 @@ input {
   padding: 14px 10px;
   overflow-x: hidden;
   overflow-y: auto;
-  border-right: 1px solid var(--ar-color-border, #d8dde3);
   background: var(--ar-color-canvas-subtle, #eef2f6);
+}
+
+.fileExplorerSidebarResize {
+  position: relative;
+  cursor: col-resize;
+  background: var(--ar-color-canvas-subtle, #eef2f6);
+  outline: none;
+}
+
+.fileExplorerSidebarResize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--ar-color-border, #d8dde3);
+}
+
+.fileExplorerSidebarResize:hover::after,
+.fileExplorerSidebarResize:focus-visible::after,
+.fileExplorerSidebarResize.isResizing::after {
+  width: 2px;
+  left: 1px;
+  background: var(--ar-color-border-focus, #60a5fa);
 }
 
 .homeFoldersPage {
@@ -84,8 +108,7 @@ input {
   text-transform: uppercase;
 }
 
-.homeNavAddButton,
-.homeFolderShortcutMenuButton {
+.homeNavAddButton {
   width: 26px;
   height: 26px;
   flex: 0 0 26px;
@@ -99,24 +122,20 @@ input {
   cursor: pointer;
 }
 
-.homeNavAddButton:hover,
-.homeFolderShortcutMenuButton:hover,
-.homeFolderShortcutRow:focus-within .homeFolderShortcutMenuButton {
+.homeNavAddButton:hover {
   border-color: var(--ar-color-border, #d8dde3);
   background: var(--ar-color-surface, #ffffff);
   color: var(--ar-color-text-strong, #111827);
 }
 
 .homeNavAddButton:focus-visible,
-.homeFolderShortcutMenuButton:focus-visible,
 .homeFolderEmptyButton:focus-visible,
 .homeNavItem:focus-visible {
   outline: 2px solid var(--ar-color-border-focus, #93c5fd);
   outline-offset: -2px;
 }
 
-.homeNavAddButton svg,
-.homeFolderShortcutMenuButton svg {
+.homeNavAddButton svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -134,10 +153,7 @@ input {
 }
 
 .homeFolderShortcutRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 26px;
-  gap: 2px;
-  align-items: center;
+  min-width: 0;
 }
 
 .homeNavItem {
@@ -180,17 +196,6 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.homeFolderShortcutMenuButton {
-  opacity: 0;
-  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease;
-}
-
-.homeFolderShortcutRow:hover .homeFolderShortcutMenuButton,
-.homeFolderShortcutRow.active .homeFolderShortcutMenuButton,
-.homeFolderShortcutMenuButton:focus-visible {
-  opacity: 1;
 }
 
 .homeFolderEmptyButton {
@@ -698,7 +703,7 @@ input {
 
 @media (max-width: 760px) {
   .fileExplorerLayout {
-    grid-template-columns: 180px minmax(0, 1fr);
+    grid-template-columns: var(--file-explorer-sidebar-width, 180px) 6px minmax(0, 1fr);
   }
 
   .homeExplorerCommandStrip {

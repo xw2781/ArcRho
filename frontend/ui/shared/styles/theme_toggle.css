@@ -1,0 +1,54 @@
+.arThemeToggle {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 4px 3px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  color: var(--ar-color-text-strong, #334155);
+  cursor: pointer;
+  transition: color 150ms ease;
+  z-index: 1;
+}
+
+.arThemeToggle:hover {
+  color: var(--ar-color-accent, #2b6df6);
+}
+
+:root[data-arcrho-theme="dark"] .arThemeToggle {
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.arThemeToggle:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.42);
+  outline-offset: 1px;
+}
+
+.arThemeToggleIcon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.arThemeToggleIcon--moon {
+  display: none;
+}
+
+:root[data-arcrho-theme="dark"] .arThemeToggleIcon--lightbulb {
+  display: none;
+}
+
+:root[data-arcrho-theme="dark"] .arThemeToggleIcon--moon {
+  display: block;
+}

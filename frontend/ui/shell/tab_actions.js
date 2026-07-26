@@ -194,12 +194,14 @@ function normalizeDfmInitialInputs(raw) {
   ).trim();
   const methodName = String(source.methodName || source.method_name || source.name || "").trim();
   const outputType = String(source.outputType || source.output_type || source.outputVector || source.output_vector || "").trim();
+  const outputDataset = String(source.outputDataset || source.output_dataset || "").trim();
   const inputTriangle = String(source.inputTriangle || source.input_triangle || source.datasetName || source.dataset_name || "").trim();
   const out = {};
   if (project) out.project = project;
   if (reservingClass) out.reservingClass = reservingClass;
   if (methodName) out.methodName = methodName;
   if (outputType) out.outputType = outputType;
+  if (outputDataset) out.outputDataset = outputDataset;
   if (inputTriangle) out.inputTriangle = inputTriangle;
   return Object.keys(out).length ? out : null;
 }
@@ -396,17 +398,23 @@ export function openBrowsingHistoryTab() {
   shell.saveState?.();
 }
 
-export function openFileExplorerTab() {
+export function openFileExplorerTab(options = {}) {
+  const path = String(options.path || "").trim();
   const existing = shell.state.tabs.find(t => t.type === "file_explorer");
   if (existing) {
+    if (path) {
+      existing.fileExplorerPath = path;
+      try { existing.iframe?.contentWindow?.postMessage({ type: "arcrho:file-explorer-open-path", path }, "*"); } catch {}
+    }
     setActive(existing.id);
     return existing;
   }
   const id = `fe_${shell.state.nextId++}`;
   const tab = {
     id,
-    title: "File Explorer",
+    title: "My Workspace",
     type: "file_explorer",
+    fileExplorerPath: path,
     iframe: null,
     layout: "docked",
   };

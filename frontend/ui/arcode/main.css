@@ -817,67 +817,6 @@ body.tab-dragging #arcodeTabs.tabs {
   background: #dedede;
 }
 
-.autosaveToggle {
-  align-self: center;
-  display: flex;
-  align-items: center;
-  position: relative;
-  z-index: 1;
-  gap: 6px;
-  color: #555;
-  font-size: 12px;
-  user-select: none;
-}
-
-.autosaveLabel {
-  color: #747474c7;
-  font-size: 12px;
-}
-
-.autoSwitch {
-  position: relative;
-  width: 42px;
-  height: 19px;
-  border-radius: 999px;
-  border: 1px solid #808080be;
-  background: #e1e1e1;
-  color: #fff;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 6px;
-  cursor: pointer;
-  user-select: none;
-  transition: background-color 180ms ease, box-shadow 180ms ease;
-}
-
-.autoSwitch .autoState {
-  pointer-events: none;
-}
-
-.autoSwitch .autoKnob {
-  position: absolute;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #f7f7f7;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
-  transition: left 180ms ease, right 180ms ease, transform 120ms ease;
-}
-
-.autoSwitch.on {
-  justify-content: flex-start;
-  background: #007e09;
-  box-shadow: 0 0 0 2px rgba(120, 190, 135, 0.2);
-}
-
-.autoSwitch.on .autoKnob {
-  left: auto;
-  right: 2px;
-}
-
 #tabCtxMenu {
   position: fixed;
   z-index: 30010;

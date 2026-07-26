@@ -1545,7 +1545,7 @@ function createEditorForCell(cellId, container, code, cellType = CELL_TYPES.CODE
     enterCellEditMode(cellId, false);
   });
 
-  // Auto-save on change
+  // Keep the in-progress notebook state current on change.
   editor.onDidChangeModelContent(() => {
     saveCellsToStorage();
     if (normalizedType === CELL_TYPES.MARKDOWN) refreshToc();

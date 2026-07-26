@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added a right-aligned, frameless Light/Dark theme icon to the ArcRho and Arcode topbars."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Made My Workspace the default tab name and show the selected folder nickname or name after navigation."
+}

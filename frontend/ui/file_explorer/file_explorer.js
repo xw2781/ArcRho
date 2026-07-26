@@ -1,6 +1,7 @@
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260715a";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
 import { createFileIconResolver } from "/ui/shared/file-icons/fileIconResolver.js?v=20260722a";
+import { pushWorkspaceHistoryEntry } from "/ui/shared/services/workspace_history.js?v=20260726a";
 import { isExcelWorkbookPath } from "/ui/shared/tabs/notes/notes_paths.js?v=20260722a";
 import {
   FILE_EXPLORER_FAVORITES_SCHEMA_VERSION,
@@ -17,9 +18,12 @@ import {
 } from "./file_explorer_model.js?v=20260723a";
 
 const HOME_FOLDERS_STORAGE_KEY = "arcrho_home_folder_preferences_v1";
+const SIDEBAR_WIDTH_STORAGE_KEY = "arcrho_file_explorer_sidebar_width_v1";
 const FILE_ICON_BASE_PATH = "/ui/shared/file-icons/";
 const FILE_ICON_MAP_URL = `${FILE_ICON_BASE_PATH}file-icon-map.json?v=20260722a`;
 const WATCH_REFRESH_DELAY_MS = 220;
+const SIDEBAR_WIDTH_MIN = 180;
+const SIDEBAR_WIDTH_MAX = 480;
 
 const svgIcon = (name) => {
   const paths = {
@@ -74,6 +78,15 @@ function visibleMenuItems(menu) {
     .filter((item) => !item.hidden && !item.disabled);
 }
 
+function readSidebarWidth() {
+  try {
+    const width = Number(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+    return Number.isFinite(width) ? Math.round(width) : 220;
+  } catch {
+    return 220;
+  }
+}
+
 export function createFileExplorerController(homeView, options = {}) {
   if (!homeView) return null;
 
@@ -107,6 +120,7 @@ export function createFileExplorerController(homeView, options = {}) {
     menuReturnFocus: null,
     hostVisible: window.parent === window,
     favoritesReady: false,
+    sidebarWidth: readSidebarWidth(),
   };
 
   const get = (selector) => homeView.querySelector(selector);
@@ -338,7 +352,6 @@ export function createFileExplorerController(homeView, options = {}) {
             <img class="homeFolderShortcutIcon" src="${escapeHtml(iconAssetPath(folder.path, { isDirectory: true }))}" alt="" aria-hidden="true" draggable="false" />
             <span class="homeFolderShortcutName">${escapeHtml(folder.nickname)}</span>
           </button>
-          <button class="homeFolderShortcutMenuButton" type="button" aria-label="Actions for ${escapeHtml(folder.nickname)}" data-home-tooltip="Folder actions">${svgIcon("more")}</button>
         </div>
       `;
     }).join("");
@@ -367,6 +380,16 @@ export function createFileExplorerController(homeView, options = {}) {
     if (up) up.disabled = !parentFolderPath(state.currentPath);
     if (refresh) refresh.disabled = !state.currentPath || state.loading;
     updateSortHeaders();
+  }
+
+  function setSidebarWidth(width, { persist = false } = {}) {
+    const next = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, Math.round(Number(width) || 220)));
+    state.sidebarWidth = next;
+    homeView.style.setProperty("--file-explorer-sidebar-width", `${next}px`);
+    const handle = get("#homeSidebarResizeHandle");
+    handle?.setAttribute("aria-valuenow", String(next));
+    if (!persist) return;
+    try { localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(next)); } catch {}
   }
 
   function updateSortHeaders() {
@@ -574,6 +597,9 @@ export function createFileExplorerController(homeView, options = {}) {
         state.currentPath = String(result.path || path);
         state.entries = normalizeHomeFileEntries(result.entries);
         state.error = "";
+        pushWorkspaceHistoryEntry({ path: state.currentPath });
+        try { window.parent?.postMessage({ type: "arcrho:browsing-history-updated", workspacePath: state.currentPath }, "*"); } catch {}
+        try { window.parent?.postMessage({ type: "arcrho:update-active-tab-title", title: folderForPath(state.currentPath)?.nickname || defaultHomeFolderNickname(state.currentPath) || "My Workspace" }, "*"); } catch {}
         if (announce) setStatus(`Refreshed ${state.currentPath}.`);
         void startFolderWatch(state.currentPath);
       }
@@ -871,9 +897,7 @@ export function createFileExplorerController(homeView, options = {}) {
       const row = event.target.closest?.("[data-home-shortcut-path]");
       if (!row) return;
       const path = decodePath(row.dataset.homeShortcutPath);
-      if (event.target.closest?.(".homeFolderShortcutMenuButton")) {
-        openShortcutMenu(path, null, event.target.closest(".homeFolderShortcutMenuButton"));
-      } else if (event.target.closest?.(".homeFolderShortcut")) {
+      if (event.target.closest?.(".homeFolderShortcut")) {
         activateShortcut(path);
       }
     });
@@ -882,6 +906,43 @@ export function createFileExplorerController(homeView, options = {}) {
       if (!row) return;
       event.preventDefault();
       openShortcutMenu(decodePath(row.dataset.homeShortcutPath), event, row.querySelector(".homeFolderShortcut"));
+    });
+  }
+
+  function wireSidebarResize() {
+    const handle = get("#homeSidebarResizeHandle");
+    if (!handle) return;
+    setSidebarWidth(state.sidebarWidth);
+    let startX = 0;
+    let startWidth = 0;
+    const endResize = () => {
+      handle.classList.remove("isResizing");
+      document.body.style.cursor = "";
+    };
+    handle.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      startX = event.clientX;
+      startWidth = state.sidebarWidth;
+      handle.classList.add("isResizing");
+      document.body.style.cursor = "col-resize";
+      handle.setPointerCapture?.(event.pointerId);
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (!handle.hasPointerCapture?.(event.pointerId)) return;
+      setSidebarWidth(startWidth + event.clientX - startX);
+    });
+    handle.addEventListener("pointerup", (event) => {
+      if (!handle.hasPointerCapture?.(event.pointerId)) return;
+      setSidebarWidth(state.sidebarWidth, { persist: true });
+      handle.releasePointerCapture?.(event.pointerId);
+      endResize();
+    });
+    handle.addEventListener("pointercancel", endResize);
+    handle.addEventListener("keydown", (event) => {
+      const delta = event.key === "ArrowLeft" ? -10 : event.key === "ArrowRight" ? 10 : 0;
+      if (!delta) return;
+      event.preventDefault();
+      setSidebarWidth(state.sidebarWidth + delta, { persist: true });
     });
   }
 
@@ -1065,7 +1126,7 @@ export function createFileExplorerController(homeView, options = {}) {
     wireMenuKeyboard(fileMenu);
     wireMenuKeyboard(shortcutMenu);
     document.addEventListener("pointerdown", (event) => {
-      if (event.target.closest?.("#homeFileContextMenu, #homeFolderContextMenu, .homeFolderShortcutMenuButton")) return;
+      if (event.target.closest?.("#homeFileContextMenu, #homeFolderContextMenu")) return;
       closeMenus();
     });
     document.addEventListener("keydown", (event) => {
@@ -1126,6 +1187,8 @@ export function createFileExplorerController(homeView, options = {}) {
       if (!message || typeof message !== "object") return;
       if (message.type === "arcrho:file-explorer-visibility") {
         setHostVisible(!!message.visible);
+      } else if (message.type === "arcrho:file-explorer-open-path") {
+        navigateTo(message.path, { resetHistory: true });
       }
     });
     window.addEventListener("pagehide", () => {
@@ -1136,7 +1199,8 @@ export function createFileExplorerController(homeView, options = {}) {
   }
 
   ensureMarkup();
-  wireSidebar();
+    wireSidebar();
+    wireSidebarResize();
   wireExplorer();
   wireDialogsAndMenus();
   wireFolderWatch();

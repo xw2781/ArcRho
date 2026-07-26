@@ -9,6 +9,7 @@ test("Home groups every dataset and method launch under a title-case label", asy
   const styles = await read("../ui/shell/shell.css");
 
   assert.match(view, /id="homeLaunchDataGroup"[\s\S]*Datasets &amp; Methods/u);
+  assert.ok(view.indexOf('id="homeLaunchGeneralGroup"') < view.indexOf('id="homeLaunchDataGroup"'));
   for (const cardId of [
     "cardOpenDataset",
     "cardOpenDfm",

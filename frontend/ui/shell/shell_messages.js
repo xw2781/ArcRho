@@ -176,8 +176,7 @@ export function initShellMessages() {
         tab.isDirty = false;
         refreshDirtyIndicators();
       }
-      const label = msg.source === "auto" ? "Auto-saved" : "Saved";
-      shell.updateStatusBar?.(`${label}: ${path} (${shell.formatStatusTimestamp?.()})`);
+      shell.updateStatusBar?.(`Saved: ${path} (${shell.formatStatusTimestamp?.()})`);
       shell.setLastWorkflowPath?.(path);
       return;
     }
@@ -265,6 +264,18 @@ export function initShellMessages() {
       tab.isDirty = dirty;
       if (dirty) shell.clearSavedStatusOnDirty?.();
       refreshDirtyIndicators();
+      shell.saveState?.();
+      return;
+    }
+    if (msg.type === "arcrho:dfm-identity") {
+      const inst = String(msg.inst || "");
+      const tab = shell.state.tabs.find(t => t.type === "dfm" && t.dsInst === inst);
+      if (!tab) return;
+      tab.dfmInputs = {
+        ...(tab.dfmInputs || {}),
+        methodName: String(msg.methodName || msg.method_name || tab.dfmInputs?.methodName || "").trim(),
+        outputDataset: String(msg.outputDataset || msg.output_dataset || "").trim(),
+      };
       shell.saveState?.();
       return;
     }
@@ -365,6 +376,11 @@ export function initShellMessages() {
     if (msg.type === "arcrho:open-dfm") {
       const dfmInputs = msg?.dfmInputs && typeof msg.dfmInputs === "object" ? msg.dfmInputs : {};
       shell.openDFMTab?.({ dfmInputs, dfmTab: msg?.dfmTab });
+      return;
+    }
+    if (msg.type === "arcrho:open-file-explorer-from-history") {
+      const path = String(msg.path || "").trim();
+      if (path) shell.openFileExplorerTab?.({ path });
       return;
     }
     if (msg.type === "arcrho:open-project-instance") {
