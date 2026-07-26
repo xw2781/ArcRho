@@ -79,6 +79,7 @@ import {
   refreshDfmMethodIndex,
 } from "/ui/method_pages/dfm/dfm_startup_state.js";
 import { refreshDfmAuditLog, renderDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260714b";
+import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -131,7 +132,7 @@ function publishCalculatedDatasetUpdates(report, source = "DFM save") {
   const stepUpdated = Array.isArray(report?.steps)
     ? report.steps.some((step) => step?.ok || String(step?.status || "").toLowerCase() === "updated")
     : false;
-  if (!updatedCount && !stepUpdated) return;
+  if (!updatedCount && !stepUpdated && !hasResultSelectionUpdates(report)) return;
   try {
     window.parent.postMessage({
       type: CALCULATED_DATASETS_UPDATED_MESSAGE,
@@ -1347,16 +1348,6 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
           csvErrors.push(csvOut?.error ? String(csvOut.error) : "unknown error");
         } else {
           baseCsvSaved = true;
-          const sidecarOut = await saveDatasetSidecar(hostApi, csvPath, getResultsCsvSuggestedName().replace(/\.csv$/i, ""));
-          if (!sidecarOut.ok) {
-            csvErrors.push(`${csvPath.replace(/\.csv$/i, ".json")}: ${sidecarOut.error}`);
-          } else {
-            renderDfmAuditLog(sidecarOut.data?.audit_log);
-            if (Array.isArray(sidecarOut.data?.calculated_updates?.updated)) {
-              calculatedUpdatesReport = sidecarOut.data.calculated_updates;
-              calculatedUpdateCount = calculatedUpdatesReport.updated.length;
-            }
-          }
           const variants = buildAggregatedResultVariants(resultVector);
           for (const variant of variants) {
             const aggName = getResultsCsvSuggestedName({
@@ -1374,6 +1365,18 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
               continue;
             }
             aggregatedCsvPaths.push(aggPath);
+          }
+          if (!csvErrors.length) {
+            const sidecarOut = await saveDatasetSidecar(hostApi, csvPath, getResultsCsvSuggestedName().replace(/\.csv$/i, ""));
+            if (!sidecarOut.ok) {
+              csvErrors.push(`${csvPath.replace(/\.csv$/i, ".json")}: ${sidecarOut.error}`);
+            } else {
+              renderDfmAuditLog(sidecarOut.data?.audit_log);
+              if (Array.isArray(sidecarOut.data?.calculated_updates?.updated)) {
+                calculatedUpdatesReport = sidecarOut.data.calculated_updates;
+                calculatedUpdateCount = calculatedUpdatesReport.updated.length;
+              }
+            }
           }
         }
       } catch (err) {

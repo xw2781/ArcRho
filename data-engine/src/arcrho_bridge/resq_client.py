@@ -2,6 +2,7 @@
 from pathlib import Path
 import math
 import threading
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import pythoncom
 import win32com.client
@@ -12,7 +13,7 @@ from arcrho_bridge.bridge_utils import read_json, write_json, write_json_with_co
 
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 DFM_METHOD_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
-RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
+RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
 DFM_COMPACT_ROW_KEYS = (
     "input data triangle values",
     "ratio values",
@@ -201,14 +202,27 @@ class ResQClient:
             )
             output_type = self._nested_name(output_vector, "DatasetType") if output_vector is not None else ""
             ratio_basis_dataset = self._result_selection_ratio_basis_dataset_name(result_selection)
+            ratio_basis_values = []
+            if ratio_basis_dataset:
+                values = []
+                for origin_index in range(1, origin_count + 1):
+                    try:
+                        values.append(self._rs_json_number(
+                            self._result_selection_ratio_basis_value(
+                                result_selection,
+                                origin_index,
+                                origin_length,
+                            )
+                        ))
+                    except Exception:
+                        values.append(None)
+                ratio_basis_values.append({"name": ratio_basis_dataset, "values": values})
             payload = {
                 "json_format": RESULT_SELECTION_JSON_FORMAT,
                 "details_tab": {
                     "name": name,
                     "output_type": self._clean_label(request.get("OutputType") or output_type or name),
                     "origin_length": origin_length,
-                    "ratio_basis": ratio_basis_dataset,
-                    "ratio_basis_dataset": ratio_basis_dataset,
                     "ratio_basis_datasets": [ratio_basis_dataset] if ratio_basis_dataset else [],
                     "active_ratio_basis_dataset": ratio_basis_dataset,
                     "show_ratios_as_percentages": True,
@@ -218,6 +232,7 @@ class ResQClient:
                     "origin_labels": origin_labels,
                     "show_weights": True,
                     "loaded_datasets": loaded_datasets,
+                    "ratio_basis_values": ratio_basis_values,
                     "calculated_ultimate": calculated_ultimate,
                     "selected_ultimate": selected_ultimate,
                     "ultimate_overrides": ultimate_overrides,
@@ -360,11 +375,13 @@ class ResQClient:
         weights = []
         for origin_index in range(1, origin_count + 1):
             try:
-                values.append(self._json_value(self._result_selection_dataset_value(result_selection, dataset_index, origin_index, origin_length)))
+                values.append(self._rs_json_number(self._result_selection_dataset_value(result_selection, dataset_index, origin_index, origin_length)))
             except Exception:
                 values.append(None)
             try:
-                weights.append(self._json_value(self._result_selection_weight(result_selection, dataset_index, origin_index)))
+                weights.append(max(0.0, self._rs_json_number(
+                    self._result_selection_weight(result_selection, dataset_index, origin_index)
+                ) or 0.0))
             except Exception:
                 weights.append(0)
         return {
@@ -374,6 +391,7 @@ class ResQClient:
             "method_type": method_type,
             "category": self._nested_name(dataset_type, "Category") if dataset_type is not None else "",
             "source_kind": self._result_selection_source_kind(name, dataset_type_name, data_format, method_type_code),
+            "origin_length": self._positive_int_member(dataset, "OriginLength", origin_length),
             "values": values,
             "weights": weights,
         }
@@ -433,6 +451,17 @@ class ResQClient:
                 continue
         return ""
 
+    def _result_selection_ratio_basis_value(self, result_selection, origin_index, origin_length):
+        return self._call_result_selection_member(
+            result_selection,
+            "RatioBasisValues",
+            (
+                ((origin_index, origin_length), {}),
+                ((origin_index,), {}),
+                ((), {"OriginIndex": origin_index, "OriginLength": origin_length}),
+            ),
+        )
+
     def _result_selection_ultimate_overrides(self, result_selection, origin_count, origin_length):
         overrides = []
         for origin_index in range(1, origin_count + 1):
@@ -444,7 +473,7 @@ class ResQClient:
                 overrides.append(None)
                 continue
             try:
-                overrides.append(self._json_value(self._result_selection_ultimate(result_selection, origin_index, origin_length)))
+                overrides.append(self._rs_json_number(self._result_selection_ultimate(result_selection, origin_index, origin_length)))
             except Exception:
                 overrides.append(None)
         return overrides
@@ -590,7 +619,12 @@ class ResQClient:
             return None
         if isinstance(value, int):
             return value
-        return round(number, 6)
+        try:
+            rounded = Decimal(str(abs(number))).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        except InvalidOperation:
+            return None
+        result = float(rounded)
+        return -result if number < 0 else result
 
     def _positive_int_member(self, obj, attr_name, default=0):
         try:

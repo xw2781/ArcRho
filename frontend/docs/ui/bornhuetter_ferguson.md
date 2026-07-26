@@ -5,7 +5,7 @@ Bornhuetter Ferguson method page for producing a final ultimate vector from late
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.bornhuetter_ferguson.entry_points -->
-- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260722a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260725a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
@@ -16,6 +16,7 @@ Detected `fetch(...)` targets in key JS files:
 
 Detected `arcrho:*` message types in key JS files:
 - `arcrho:bf-tab-changed`
+- `arcrho:calculated-datasets-updated`
 - `arcrho:dataset-dirty`
 - `arcrho:project-instance-open-dependent-dataset`
 - `arcrho:project-instance-refresh-datasets`

@@ -97,10 +97,12 @@ async function runPrimaryAction(dialog, payload, action) {
 
   dialog.setBusy(true);
   const statusDialog = createResultSelectionRpcBridgeMessageBox("Preparing selected Result Selection version action...");
+  let persistedMutation = null;
   statusDialog.setBusy(true);
   dialog.close("primary-action");
   try {
     if (action === "update-local") {
+      persistedMutation = context.beginPersistedMutation?.() || null;
       statusDialog.setWaiting("Updating local Result Selection JSON from ResQ...");
       const data = await postJson("/result-selection/rpc-bridge/apply", payload);
       if (!data?.payload || typeof data.payload !== "object") {
@@ -108,14 +110,7 @@ async function runPrimaryAction(dialog, payload, action) {
         postStatus("Result Selection sync: local JSON updated, but tab reload was skipped.", "warn");
         return;
       }
-      await context.applyPayload?.(data.payload);
-      statusDialog.setWaiting("Saving refreshed Result Selection outputs...");
-      const saved = await context.save?.();
-      if (!saved?.ok) {
-        statusDialog.setMessage("Local tab was updated, but final output save failed. Save before closing.", "warn");
-        postStatus("Result Selection sync: local tab updated, but final output save failed.", "warn");
-        return;
-      }
+      await context.applySavedResult?.(data, persistedMutation);
       statusDialog.setMessage("Local Result Selection updated from ResQ.", "ok");
       postStatus("Result Selection sync: local Result Selection updated from ResQ.");
       return;
@@ -140,6 +135,7 @@ async function runPrimaryAction(dialog, payload, action) {
     statusDialog.setMessage(String(err?.message || err), "error");
     postStatus(`Result Selection sync failed: ${String(err?.message || err)}`, "warn");
   } finally {
+    context.finishPersistedMutation?.(persistedMutation);
     statusDialog.setBusy(false);
     dialog.setBusy(false);
   }

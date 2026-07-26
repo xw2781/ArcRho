@@ -32,6 +32,10 @@ INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
 INDEX_VERSION = DATASET_INDEX_VERSION
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
+RESULT_SELECTION_JSON_FORMATS = {
+    "arcrho-result-selection-method-by-tab-v1",
+    "arcrho-result-selection-method-by-tab-v2",
+}
 BF_METHOD_TYPE = dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON
 BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
 BERQUIST_SHERMAN_METHOD_CONTRACTS = {
@@ -250,7 +254,7 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
     if names:
         return names
     json_format = _clean_text(payload.get("json_format")).lower()
-    if json_format == "arcrho-result-selection-method-by-tab-v1":
+    if json_format in RESULT_SELECTION_JSON_FORMATS:
         details_tab = _json_tab(payload, "details_tab")
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
@@ -281,7 +285,7 @@ def _metadata_text(metadata: Dict[str, Any], keys: Tuple[str, ...]) -> str:
 
 def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None:
     json_format = _clean_text(payload.get("json_format") or payload.get("json format")).lower()
-    if json_format == "arcrho-result-selection-method-by-tab-v1":
+    if json_format in RESULT_SELECTION_JSON_FORMATS:
         details_tab = _json_tab(payload, "details_tab")
         dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
         dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type"))

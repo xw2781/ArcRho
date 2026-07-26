@@ -80,6 +80,25 @@
         return cachedRows;
       }
 
+      async function ensureDatasetCatalogLoaded(options = {}) {
+        const refresh = options.refresh === true;
+        if (!refresh && state.datasetCatalogLoaded) return cachedRows;
+        if (!refresh && state.datasetCatalogPromise) return state.datasetCatalogPromise;
+        const request = Promise.all([
+          loadDatasetTypes(),
+          loadCachedRows(refresh),
+        ]).then(() => {
+          state.datasetCatalogLoaded = true;
+          return cachedRows;
+        });
+        state.datasetCatalogPromise = request;
+        try {
+          return await request;
+        } finally {
+          if (state.datasetCatalogPromise === request) state.datasetCatalogPromise = null;
+        }
+      }
+
       function basenameFromPath(value) {
         const parts = text(value).split(/[\\/]/);
         return parts[parts.length - 1] || "";
@@ -312,6 +331,29 @@
         return source;
       }
 
+      function buildSourceFromPersisted(existing) {
+        const source = existing && typeof existing === "object" ? existing : {};
+        const name = text(source.name);
+        if (!name) return null;
+        const values = Array.isArray(source.values) ? source.values.map(numberOrNull) : [];
+        const weights = Array.isArray(source.weights)
+          ? source.weights.map((value) => Math.max(0, numberOrNull(value) ?? 0))
+          : [];
+        while (weights.length < values.length) weights.push(0);
+        return {
+          name,
+          datasetType: text(source.dataset_type || source.datasetType),
+          dataFormat: text(source.data_format || source.dataFormat),
+          originLength: validSourceOriginLength(source.origin_length || source.originLength),
+          methodType: text(source.method_type || source.methodType),
+          category: text(source.category || source.dataset_category),
+          sourceKind: text(source.source_kind || source.sourceKind),
+          values,
+          weights,
+          unavailable: false,
+        };
+      }
+
       function getRowCount() {
         if (originLabelsKey() === state.originLabelsKey && state.originLabels.length) {
           return state.originLabels.length;
@@ -440,38 +482,9 @@
         }
         auditLogView.setLoading();
         try {
-          const resp = await fetch("/dataset/sidecar/load", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              project_name: state.project,
-              reserving_class: state.reservingClass,
-              dataset_name: datasetName,
-            }),
-          });
-          const payload = await resp.json().catch(() => ({}));
+          const result = await fetchPersistedResultSelection(false);
           if (requestSequence !== outputSidecarLoadSequence) return false;
-          if (!resp.ok || payload?.ok === false) {
-            auditLogView.setError(payload?.detail || payload?.error || `Audit log load failed (${resp.status}).`);
-            return false;
-          }
-          if (payload?.exists === false) {
-            auditLogView.clear();
-            return false;
-          }
-          auditLogView.render(payload?.audit_log);
-          if (options.auditOnly === true) return true;
-
-          setNotesText(text(payload?.notes));
-
-          const originLength = validOriginLength(payload?.origin_length, 0);
-          const labels = Array.isArray(payload?.origin_labels) ? payload.origin_labels.map(String) : [];
-          const resolvedLabels = shouldRejectOriginLabels(originLength, labels) ? [] : labels;
-          state.sidecarOriginLength = originLength || null;
-          state.sidecarOriginLabels = resolvedLabels;
-          if (originLength) applyOriginLength(originLength);
-          if (resolvedLabels.length) setOriginLabels(resolvedLabels, originLength || getDetails().originLength);
-          return true;
+          return applyOutputSidecar(result.sidecar, options);
         } catch (err) {
           if (requestSequence !== outputSidecarLoadSequence) return false;
           auditLogView.setError(err?.message || "Audit log load failed.");
@@ -507,6 +520,7 @@
           postStatus("Select a project before adding a Result Selection source.", "warn");
           return;
         }
+        await ensureDatasetCatalogLoaded();
         const outputCategory = getOutputCategory();
         await openDatasetNamePicker({
           projectName: state.project,
@@ -613,6 +627,21 @@
         return true;
       }
 
+      async function loadRatioBasisValuesByName(basis) {
+        const record = cachedRows.find((row) => norm(row.name) === norm(basis)) || { name: basis };
+        const source = {
+          name: text(record.name),
+          datasetType: text(record.datasetType || record.dataset_type || record.name),
+          dataFormat: text(record.dataFormat || record.data_format),
+          originLength: validSourceOriginLength(record.originLength ?? record.origin_length),
+          sourceKind: text(record.sourceKind || record.source_kind),
+        };
+        const payload = await loadRatioBasisDatasetPayload(source);
+        return norm(record.dataFormat || payload.data_format) === "triangle"
+          ? latestDiagonal(payload.values)
+          : vectorValues(payload.values);
+      }
+
       async function refreshRatioBasisValues() {
         const seq = (state.ratioBasisReloadSeq || 0) + 1;
         state.ratioBasisReloadSeq = seq;
@@ -641,6 +670,7 @@
         if (!basis) {
           if (refreshIsCurrent()) {
             state.ratioBasisValues = [];
+            state.ratioBasisValueSets = [];
             postRefreshStatus("Ratio Basis cleared.");
             renderMethodGrid();
           }
@@ -649,19 +679,14 @@
         if (!postRefreshStatus(`Loading Ratio Basis '${basis}'...`)) return false;
         let loadFailed = false;
         try {
-          const record = cachedRows.find((row) => norm(row.name) === norm(basis)) || { name: basis };
-          const source = {
-            name: text(record.name),
-            datasetType: text(record.datasetType || record.dataset_type || record.name),
-            dataFormat: text(record.dataFormat || record.data_format),
-            originLength: validSourceOriginLength(record.originLength ?? record.origin_length),
-            sourceKind: text(record.sourceKind || record.source_kind),
-          };
-          const payload = await loadRatioBasisDatasetPayload(source);
+          const values = await loadRatioBasisValuesByName(basis);
           if (!refreshIsCurrent()) return false;
-          state.ratioBasisValues = norm(record.dataFormat || payload.data_format) === "triangle"
-            ? latestDiagonal(payload.values)
-            : vectorValues(payload.values);
+          state.ratioBasisValueSets = upsertRatioBasisValueSet(
+            state.ratioBasisValueSets,
+            basis,
+            values,
+          );
+          state.ratioBasisValues = ratioBasisValuesForName(state.ratioBasisValueSets, basis);
         } catch (err) {
           if (!refreshIsCurrent()) return false;
           state.ratioBasisValues = [];
@@ -674,11 +699,101 @@
         return true;
       }
 
+      async function refreshAllRatioBasisValues() {
+        const names = getRatioBasisNames();
+        if (!names.length) {
+          state.ratioBasisValueSets = [];
+          state.ratioBasisValues = [];
+          renderMethodGrid();
+          return true;
+        }
+        await ensureDatasetCatalogLoaded();
+        const sequence = (state.ratioBasisReloadSeq || 0) + 1;
+        state.ratioBasisReloadSeq = sequence;
+        const originLength = getDetails().originLength;
+        postStatus(`Refreshing ${names.length} Ratio Basis dataset${names.length === 1 ? "" : "s"}...`);
+        const loaded = await Promise.all(names.map(async (name) => ({
+          name,
+          values: await loadRatioBasisValuesByName(name),
+        })));
+        if (state.ratioBasisReloadSeq !== sequence || getDetails().originLength !== originLength) return false;
+        state.ratioBasisValueSets = normalizeRatioBasisValueSets(loaded, names);
+        state.ratioBasisValues = ratioBasisValuesForName(
+          state.ratioBasisValueSets,
+          getActiveRatioBasisName(),
+        );
+        renderMethodGrid();
+        postStatus("Ratio Basis values refreshed.");
+        return true;
+      }
+
+      function usePersistedRatioBasisValues() {
+        const basis = getActiveRatioBasisName();
+        const match = (Array.isArray(state.ratioBasisValueSets) ? state.ratioBasisValueSets : [])
+          .find((item) => norm(item?.name) === norm(basis));
+        if (!basis || !match) return false;
+        state.ratioBasisValues = ratioBasisValuesForName(state.ratioBasisValueSets, basis);
+        renderMethodGrid();
+        return true;
+      }
+
+      async function useOrRefreshRatioBasisValues() {
+        if (usePersistedRatioBasisValues()) return true;
+        return refreshRatioBasisValues();
+      }
+
+      async function refreshMissingRatioBasisValues() {
+        const names = getRatioBasisNames();
+        const stored = new Set(
+          (Array.isArray(state.ratioBasisValueSets) ? state.ratioBasisValueSets : [])
+            .map((item) => norm(item?.name))
+            .filter(Boolean),
+        );
+        const missing = names.filter((name) => !stored.has(norm(name)));
+        if (!missing.length) {
+          return usePersistedRatioBasisValues();
+        }
+        const sequence = (state.ratioBasisReloadSeq || 0) + 1;
+        state.ratioBasisReloadSeq = sequence;
+        const contextKey = [
+          text(state.project),
+          text(state.reservingClass),
+          String(getDetails().originLength || ""),
+          names.map(norm).join("|"),
+        ].join("||");
+        await ensureDatasetCatalogLoaded();
+        const loaded = await Promise.all(missing.map(async (name) => ({
+          name,
+          values: await loadRatioBasisValuesByName(name),
+        })));
+        const currentContextKey = [
+          text(state.project),
+          text(state.reservingClass),
+          String(getDetails().originLength || ""),
+          getRatioBasisNames().map(norm).join("|"),
+        ].join("||");
+        if (state.ratioBasisReloadSeq !== sequence || currentContextKey !== contextKey) return false;
+        for (const item of loaded) {
+          state.ratioBasisValueSets = upsertRatioBasisValueSet(
+            state.ratioBasisValueSets,
+            item.name,
+            item.values,
+          );
+        }
+        state.ratioBasisValueSets = normalizeRatioBasisValueSets(state.ratioBasisValueSets, names);
+        state.ratioBasisValues = ratioBasisValuesForName(
+          state.ratioBasisValueSets,
+          getActiveRatioBasisName(),
+        );
+        renderMethodGrid();
+        return true;
+      }
+
       async function restoreCleanState() {
         if (!cleanSnapshot) return;
         const snapshot = JSON.parse(cleanSnapshot);
         await applyPayload(snapshot.method || {});
-        setNotesText(text(snapshot.notes));
+        setNotesText(String(snapshot.notes ?? ""));
         markClean();
       }
 
@@ -695,6 +810,7 @@
           postStatus("Select a project before choosing a Ratio Basis dataset.", "warn");
           return;
         }
+        await ensureDatasetCatalogLoaded();
         if (button) button.disabled = true;
         try {
           await openDatasetNamePicker({
@@ -733,6 +849,7 @@
         normalizeDatasetRows,
         loadDatasetTypes,
         loadCachedRows,
+        ensureDatasetCatalogLoaded,
         basenameFromPath,
         loadDatasetValues,
         engineRequestBase,
@@ -743,6 +860,7 @@
         latestDiagonal,
         vectorValues,
         buildSourceFromRecord,
+        buildSourceFromPersisted,
         getRowCount,
         originLabelsKey,
         setOriginLabels,
@@ -768,7 +886,12 @@
         defaultSourceRecords,
         initializeDefaultSources,
         reloadSourcesForCurrentOriginLength,
+        loadRatioBasisValuesByName,
         refreshRatioBasisValues,
+        refreshAllRatioBasisValues,
+        usePersistedRatioBasisValues,
+        useOrRefreshRatioBasisValues,
+        refreshMissingRatioBasisValues,
         restoreCleanState,
         openRatioBasisDatasetPicker
       };

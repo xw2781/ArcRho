@@ -76,14 +76,8 @@ _SIDECAR_READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=_SIDECAR_READ_MAX_WORKERS,
     thread_name_prefix="arcrho-sidecar-read",
 )
-_SIDECAR_WRITE_LOCKS_GUARD = threading.Lock()
-_SIDECAR_WRITE_LOCKS: Dict[str, threading.RLock] = {}
-
-
 def _dataset_sidecar_write_lock(path: str) -> threading.RLock:
-    key = os.path.normcase(os.path.abspath(path))
-    with _SIDECAR_WRITE_LOCKS_GUARD:
-        return _SIDECAR_WRITE_LOCKS.setdefault(key, threading.RLock())
+    return dataset_sidecar_status_service.sidecar_write_lock(path)
 
 
 def _parse_origin_label(value: Any) -> Tuple[str, int] | None:
@@ -809,7 +803,7 @@ def _dataset_patch_mask(path: str, n_origin: int, n_dev: int) -> np.ndarray:
     return triangle_mask(n_origin, n_dev)
 
 
-def create_empty_cached_dataset(
+def _create_empty_cached_dataset_impl(
     project_name: str,
     reserving_class: str,
     dataset_type: str,
@@ -838,9 +832,20 @@ def create_empty_cached_dataset(
             ds_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
             config.DATASETS[ds_id] = csv_path
             try:
+                calculated_updates = calculated_dataset_service.recalculate_dependents(
+                    p,
+                    rc,
+                    ds_type,
+                    ds_type,
+                    rebuild_index=False,
+                )
+            except Exception as err:
+                calculated_updates = {"ok": False, "reason": str(err)}
+            index_error = ""
+            try:
                 dataset_instance_index_service.rebuild_index(p, rc)
-            except Exception:
-                pass
+            except Exception as err:
+                index_error = str(err)
             try:
                 n_origin, n_dev = infer_shape(csv_path)
             except Exception:
@@ -861,6 +866,10 @@ def create_empty_cached_dataset(
                 "path": csv_path,
                 "sidecar_path": str(calc_result.get("sidecar_path") or ""),
                 "calculated": True,
+                "calculated_updates": calculated_updates,
+                "propagation_ok": bool(calculated_updates and calculated_updates.get("ok")),
+                "index_ok": not index_error,
+                "index_error": index_error,
             }
     if calc_result.get("reason") not in {"not_calculated"}:
         detail = "; ".join(str(item) for item in calc_result.get("errors") or [])
@@ -921,23 +930,31 @@ def create_empty_cached_dataset(
     try:
         os.makedirs(folder, exist_ok=True)
         os.makedirs(sidecar_dir, exist_ok=True)
-        atomic_write_csv(df, csv_path)
-        _write_dataset_sidecar_payload(sidecar_path, payload)
+        _write_dataset_csv_and_sidecar(df, csv_path, sidecar_path, payload)
     except PermissionError:
         raise HTTPException(423, "Dataset cache file is locked or inaccessible.")
     except OSError as err:
         raise HTTPException(500, f"Failed to create empty dataset cache: {str(err)}")
 
-    try:
-        dataset_instance_index_service.rebuild_index(p, rc)
-    except Exception:
-        pass
+    dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [instance])
+    calculated_updates = None
     try:
         from app_server.services import calculated_dataset_service
 
-        calculated_dataset_service.recalculate_dependents(p, rc, instance, ds_type)
-    except Exception:
-        pass
+        calculated_updates = calculated_dataset_service.recalculate_dependents(
+            p,
+            rc,
+            instance,
+            ds_type,
+            rebuild_index=False,
+        )
+    except Exception as err:
+        calculated_updates = {"ok": False, "reason": str(err)}
+    index_error = ""
+    try:
+        dataset_instance_index_service.rebuild_index(p, rc)
+    except Exception as err:
+        index_error = str(err)
 
     ds_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
     config.DATASETS[ds_id] = csv_path
@@ -956,7 +973,26 @@ def create_empty_cached_dataset(
         "ds_id": ds_id,
         "path": csv_path,
         "sidecar_path": sidecar_path,
+        "calculated_updates": calculated_updates,
+        "propagation_ok": bool(calculated_updates and calculated_updates.get("ok")),
+        "index_ok": not index_error,
+        "index_error": index_error,
     }
+
+
+def create_empty_cached_dataset(
+    project_name: str,
+    reserving_class: str,
+    dataset_type: str,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+        return _create_empty_cached_dataset_impl(
+            project_name,
+            reserving_class,
+            dataset_type,
+            **kwargs,
+        )
 
 
 def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any]:
@@ -1493,7 +1529,7 @@ def load_cached_dataset_values(
     }
 
 
-def save_dataset_sidecar(
+def _save_dataset_sidecar_impl(
     project_name: str,
     reserving_class: str,
     dataset_name: str,
@@ -1531,7 +1567,6 @@ def save_dataset_sidecar(
     path = _get_dataset_sidecar_path(p, rc, ds, csv_file=csv_file)
     existing = _read_dataset_sidecar(path)
     existing_precedents = dataset_sidecar_status_service.entry_names(existing.get("Precedents"))
-    existing_dependents = existing.get("Dependents")
     created = str(existing.get("created") or "") if existing else ""
     if not created:
         created = _now_utc_iso()
@@ -1610,11 +1645,6 @@ def save_dataset_sidecar(
     from app_server.services import calculated_dataset_service
 
     calculated_dataset_service.apply_sidecar_graph_fields(payload, p, dataset_type_value)
-    if existing_dependents:
-        payload["Dependents"] = dataset_sidecar_status_service.merge_name_entries(
-            existing_dependents,
-            payload.get("Dependents"),
-        )
     if precedents is not None:
         if method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
             payload["Precedents"] = _normalize_name_list(precedents)
@@ -1662,18 +1692,28 @@ def save_dataset_sidecar(
             ds,
             existing_precedents,
             precedents,
+            require_new_precedents=(
+                method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION
+            ),
         )
     status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [ds])
 
-    try:
-        dataset_instance_index_service.rebuild_index(p, rc)
-    except Exception:
-        pass
     calculated_updates = None
     try:
-        calculated_updates = calculated_dataset_service.recalculate_dependents(p, rc, ds, dataset_type_value)
+        calculated_updates = calculated_dataset_service.recalculate_dependents(
+            p,
+            rc,
+            ds,
+            dataset_type_value,
+            rebuild_index=False,
+        )
     except Exception as err:
         calculated_updates = {"ok": False, "skipped": True, "reason": str(err)}
+    index_error = ""
+    try:
+        dataset_instance_index_service.rebuild_index(p, rc)
+    except Exception as err:
+        index_error = str(err)
     return {
         "ok": True,
         "project_name": p,
@@ -1706,11 +1746,29 @@ def save_dataset_sidecar(
         "ds_id": ds_id,
         "file_mtime": file_mtime,
         "calculated_updates": calculated_updates,
+        "propagation_ok": bool(calculated_updates and calculated_updates.get("ok")),
         "status_updates": status_updates,
+        "index_ok": not index_error,
+        "index_error": index_error,
     }
 
 
-def save_dataset_notes(project_name: str, reserving_class: str, dataset_name: str, notes: str) -> Dict[str, Any]:
+def save_dataset_sidecar(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+        return _save_dataset_sidecar_impl(
+            project_name,
+            reserving_class,
+            dataset_name,
+            **kwargs,
+        )
+
+
+def _save_dataset_notes_impl(project_name: str, reserving_class: str, dataset_name: str, notes: str) -> Dict[str, Any]:
     """Update notes in the owning dataset sidecar; no standalone notes file exists."""
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     path = _get_dataset_sidecar_path(p, rc, ds)
@@ -1732,7 +1790,12 @@ def save_dataset_notes(project_name: str, reserving_class: str, dataset_name: st
         "path": path,
     }
 
-def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str, Any]:
+
+def save_dataset_notes(project_name: str, reserving_class: str, dataset_name: str, notes: str) -> Dict[str, Any]:
+    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+        return _save_dataset_notes_impl(project_name, reserving_class, dataset_name, notes)
+
+def _patch_dataset_impl(ds_id: str, items: list, file_mtime: float = None) -> Dict[str, Any]:
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return None
@@ -1760,8 +1823,18 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
         df.iat[r, c] = np.nan if it.value is None else float(it.value)
         applied += 1
 
-    atomic_write_csv(df, path)
-    st2 = os.stat(path)
+    if applied == 0:
+        return {
+            "ok": True,
+            "applied": 0,
+            "rejected": rejected,
+            "mtime": st.st_mtime,
+            "calculated_updates": None,
+            "propagation_ok": True,
+        }
+
+    sidecar_path = ""
+    sidecar_payload: Dict[str, Any] = {}
     if applied > 0:
         sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
         sidecar_payload = _read_dataset_sidecar(sidecar_path)
@@ -1781,15 +1854,20 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
                     dataset_name,
                     path=sidecar_path,
                 )
-            _write_dataset_sidecar_payload(sidecar_path, sidecar_payload)
-            try:
-                dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                    str(sidecar_payload.get("project_name") or ""),
-                    str(sidecar_payload.get("reserving_class") or ""),
-                    [sidecar_payload.get("dataset_name") or sidecar_payload.get("dataset_type")],
-                )
-            except Exception:
-                pass
+    if sidecar_payload:
+        _write_dataset_csv_and_sidecar(df, path, sidecar_path, sidecar_payload)
+    else:
+        atomic_write_csv(df, path)
+    st2 = os.stat(path)
+    if sidecar_payload:
+        try:
+            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+                str(sidecar_payload.get("project_name") or ""),
+                str(sidecar_payload.get("reserving_class") or ""),
+                [sidecar_payload.get("dataset_name") or sidecar_payload.get("dataset_type")],
+            )
+        except Exception:
+            pass
     calculated_updates = None
     try:
         from app_server.services import calculated_dataset_service
@@ -1798,4 +1876,25 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
     except Exception as err:
         calculated_updates = {"ok": False, "skipped": True, "reason": str(err)}
 
-    return {"ok": True, "applied": applied, "rejected": rejected, "mtime": st2.st_mtime, "calculated_updates": calculated_updates}
+    return {
+        "ok": True,
+        "applied": applied,
+        "rejected": rejected,
+        "mtime": st2.st_mtime,
+        "calculated_updates": calculated_updates,
+        "propagation_ok": bool(calculated_updates and calculated_updates.get("ok")),
+    }
+
+
+def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str, Any]:
+    path = config.DATASETS.get(ds_id)
+    if not path or not os.path.exists(path):
+        return _patch_dataset_impl(ds_id, items, file_mtime)
+    sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
+    sidecar = _read_dataset_sidecar(sidecar_path)
+    project_name = str(sidecar.get("project_name") or "").strip()
+    reserving_class = str(sidecar.get("reserving_class") or "").strip()
+    if not project_name or not reserving_class:
+        return _patch_dataset_impl(ds_id, items, file_mtime)
+    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+        return _patch_dataset_impl(ds_id, items, file_mtime)

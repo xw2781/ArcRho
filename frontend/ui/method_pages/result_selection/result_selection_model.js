@@ -5,42 +5,17 @@
     with (ctx) {
       function buildPayload() {
         const details = getDetails();
-        return {
-          json_format: RS_JSON_FORMAT,
-          details_tab: {
-            name: details.name,
-            output_type: details.outputType,
-            origin_length: details.originLength,
-            ratio_basis: details.ratioBasis,
-            ratio_basis_dataset: details.ratioBasis,
-            ratio_basis_datasets: details.ratioBases,
-            active_ratio_basis_dataset: details.ratioBasis,
-            show_ratios_as_percentages: details.showRatiosAsPercentages,
-            statistic_decimal_places: details.statisticDecimalPlaces,
-          },
-          method_tab: {
-            origin_labels: Array.from({ length: getRowCount() }, (_, i) => originLabel(i)),
-            show_weights: details.showWeights,
-            loaded_datasets: state.sources.map((source) => ({
-              name: source.name,
-              dataset_type: source.datasetType,
-              data_format: source.dataFormat,
-              method_type: source.methodType,
-              category: source.category,
-              source_kind: source.sourceKind,
-              values: roundRsJsonVector(source.values),
-              weights: roundRsJsonVector(source.weights),
-            })),
-            calculated_ultimate: roundRsJsonVector(calculatedUltimateVector()),
-            selected_ultimate: roundRsJsonVector(selectedUltimateVector()),
-            ultimate_overrides: roundRsJsonVector(serializedUltimateOverrides()),
-          },
-          results_tab: {},
-          validation_tab: {},
-          method_metadata: {
-            last_modified: new Date().toISOString(),
-          },
-        };
+        return buildResultSelectionMethodPayload({
+          details,
+          originLabels: Array.from({ length: getRowCount() }, (_, index) => originLabel(index)),
+          showWeights: details.showWeights,
+          sources: state.sources,
+          ratioBasisValueSets: state.ratioBasisValueSets,
+          calculatedUltimate: calculatedUltimateVector(),
+          selectedUltimate: selectedUltimateVector(),
+          ultimateOverrides: serializedUltimateOverrides(),
+          lastModified: new Date().toISOString(),
+        });
       }
 
       async function applyPayload(payload) {
@@ -63,21 +38,19 @@
           syncStatisticDecimalInputs();
           els.showWeightsInput.checked = method.show_weights !== false;
         });
-        const sources = (await mapWithConcurrency(
-          Array.isArray(method.loaded_datasets) ? method.loaded_datasets : [],
-          SOURCE_LOAD_CONCURRENCY,
-          async (source) => {
-          const record = cachedRows.find((row) => norm(row.name) === norm(source.name)) || null;
-          const built = await buildSourceFromRecord(record || { name: source.name }, source);
-            return built;
-          },
-        )).filter(Boolean);
-        state.sources = sources;
-        const originLengthChanged = syncOriginLengthOptions();
-        if (originLengthChanged) {
-          await reloadSourcesForCurrentOriginLength({ render: false });
-        }
-        if (getActiveRatioBasisName()) await refreshRatioBasisValues();
+
+        state.sources = (Array.isArray(method.loaded_datasets) ? method.loaded_datasets : [])
+          .map((source) => buildSourceFromPersisted(source))
+          .filter(Boolean);
+        state.ratioBasisValueSets = normalizeRatioBasisValueSets(
+          method.ratio_basis_values,
+          ratioBasisDetails.names,
+        );
+        state.ratioBasisValues = ratioBasisValuesForName(
+          state.ratioBasisValueSets,
+          getActiveRatioBasisName(),
+        );
+
         const methodOriginLabels = Array.isArray(method.origin_labels) ? method.origin_labels.map(String) : [];
         if (methodOriginLabels.length && !shouldRejectOriginLabels(getDetails().originLength, methodOriginLabels)) {
           setOriginLabels(methodOriginLabels, getDetails().originLength);
@@ -88,6 +61,71 @@
         }
         state.ultimateOverrides = normalizeUltimateOverrides(method.ultimate_overrides, getRowCount());
         renderMethodGrid();
+      }
+
+      function applyOutputSidecar(sidecar, options = {}) {
+        const payload = sidecar && typeof sidecar === "object" ? sidecar : {};
+        if (payload.exists === false) {
+          auditLogView.clear();
+          return false;
+        }
+        auditLogView.render(payload.audit_log);
+        state.needsReview = Number(payload.status) === 2;
+        if (options.auditOnly === true) return true;
+        setNotesText(String(payload.notes ?? ""));
+        const originLength = validOriginLength(payload.origin_length, 0);
+        const labels = Array.isArray(payload.origin_labels) ? payload.origin_labels.map(String) : [];
+        const resolvedLabels = shouldRejectOriginLabels(originLength, labels) ? [] : labels;
+        state.sidecarOriginLength = originLength || null;
+        state.sidecarOriginLabels = resolvedLabels;
+        if (originLength) applyOriginLength(originLength);
+        if (resolvedLabels.length) setOriginLabels(resolvedLabels, originLength || getDetails().originLength);
+        return true;
+      }
+
+      async function fetchPersistedResultSelection(includeMethod = true) {
+        const resp = await fetch("/result-selection/load", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_name: state.project,
+            reserving_class: state.reservingClass,
+            method_name: text(els.nameInput.value),
+            include_method: includeMethod,
+          }),
+        });
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok || payload?.ok === false) {
+          throw new Error(payload?.detail || payload?.error || `Result Selection load failed (${resp.status}).`);
+        }
+        return payload;
+      }
+
+      async function tryLoadExistingMethod() {
+        if (!text(els.nameInput.value)) return false;
+        const loadSeq = invalidatePersistedRefresh();
+        const result = await fetchPersistedResultSelection(true);
+        if (state.persistedRefreshSeq !== loadSeq) return true;
+        applyOutputSidecar(result.sidecar);
+        if (!result.method_exists || !result.method) return false;
+        await applyPayload(result.method);
+        recordPersistedMethodDependencies(result.method);
+        state.methodRevision = String(result.method_revision || "");
+        state.loadBlocked = false;
+        const basisNames = getRatioBasisNames();
+        const storedBasisNames = new Set(
+          (Array.isArray(result.method?.method_tab?.ratio_basis_values)
+            ? result.method.method_tab.ratio_basis_values
+            : [])
+            .map((item) => norm(item?.name))
+            .filter(Boolean),
+        );
+        if (basisNames.some((name) => !storedBasisNames.has(norm(name)))) {
+          postStatus("This legacy Result Selection has no persisted Ratio Basis values. Save it once to upgrade the method JSON.", "warn");
+        } else {
+          postStatus(`Loaded Result Selection: ${getDetails().name}`);
+        }
+        return true;
       }
 
       function snapshotPayload() {
@@ -101,247 +139,80 @@
         postDirty(false, true);
       }
 
-      async function getWorkspacePathsConfig() {
-        const res = await fetch("/workspace_paths", { cache: "no-store" });
-        if (!res.ok) throw new Error(`Workspace paths failed (${res.status}).`);
-        const payload = await res.json().catch(() => ({}));
-        const config = payload?.config && typeof payload.config === "object" ? payload.config : {};
-        const paths = config.paths && typeof config.paths === "object" ? config.paths : {};
-        return {
-          root: text(config.workspace_root) || "E:\\ArcRho",
-          projectsDir: text(paths.projects_dir) || "projects",
+      function invalidatePersistedRefresh() {
+        state.persistedRefreshSeq = Number(state.persistedRefreshSeq || 0) + 1;
+        if (state.persistedRefreshTimer != null) {
+          window.clearTimeout(state.persistedRefreshTimer);
+          state.persistedRefreshTimer = null;
+        }
+        state.persistedRefreshReason = "";
+        return state.persistedRefreshSeq;
+      }
+
+      function assertPersistedMutationReady(mutation = null) {
+        if (state.loadBlocked) {
+          throw new Error("Reload the Result Selection successfully before saving.");
+        }
+        if (state.initialLoadPending) {
+          throw new Error("Wait for the Result Selection to finish loading before saving.");
+        }
+        if (state.dependencyRestoreError) {
+          throw new Error(`Resolve the upstream dependency restore error before saving: ${state.dependencyRestoreError}`);
+        }
+        if (state.dependencyRestorePending) {
+          throw new Error("Wait for the upstream dependency restore to finish before saving Result Selection.");
+        }
+        if (state.hasDependencyPreview) {
+          throw new Error("Save or discard the upstream dependency preview before saving Result Selection.");
+        }
+        if (mutation && state.persistedMutationInFlight !== mutation.id) {
+          throw new Error("Another Result Selection save or sync superseded this operation.");
+        }
+        if (mutation && Number(state.dependencyEventSeq || 0) !== mutation.dependencyEventSeq) {
+          throw new Error("An upstream dependency changed while Result Selection was preparing to save; wait for refresh and try again.");
+        }
+      }
+
+      function beginPersistedMutation() {
+        assertPersistedMutationReady();
+        if (state.persistedMutationInFlight) {
+          throw new Error("Another Result Selection save or sync is already in progress.");
+        }
+        const mutation = {
+          id: Number(state.persistedMutationSeq || 0) + 1,
+          dependencyEventSeq: Number(state.dependencyEventSeq || 0),
         };
+        state.persistedMutationSeq = mutation.id;
+        state.persistedMutationInFlight = mutation.id;
+        return mutation;
       }
 
-      function isAbsolutePath(value) {
-        return /^[A-Za-z]:[\\/]/.test(text(value)) || /^\\\\/.test(text(value));
-      }
-
-      function joinPath(...parts) {
-        return parts
-          .map((part, index) => {
-            const value = text(part);
-            if (!value) return "";
-            return index === 0 ? value.replace(/[\\/]+$/g, "") : value.replace(/^[\\/]+|[\\/]+$/g, "");
-          })
-          .filter(Boolean)
-          .join("\\");
-      }
-
-      async function getMethodsDir() {
-        const cfg = await getWorkspacePathsConfig();
-        const projectsRoot = isAbsolutePath(cfg.projectsDir) ? cfg.projectsDir : joinPath(cfg.root, cfg.projectsDir);
-        return joinPath(
-          projectsRoot,
-          sanitizeFileNamePart(state.project, "UnknownProject"),
-          "data",
-          sanitizeDataFolderPart(state.reservingClass, "ReservingClass"),
-          "methods",
-        );
-      }
-
-      async function getDatasetDir() {
-        const cfg = await getWorkspacePathsConfig();
-        const projectsRoot = isAbsolutePath(cfg.projectsDir) ? cfg.projectsDir : joinPath(cfg.root, cfg.projectsDir);
-        return joinPath(
-          projectsRoot,
-          sanitizeFileNamePart(state.project, "UnknownProject"),
-          "data",
-          sanitizeDataFolderPart(state.reservingClass, "ReservingClass"),
-          "datasets",
-        );
-      }
-
-      function getMethodFilename() {
-        const name = getDetails().name || "Result Selection";
-        return `RS@${sanitizeFileNamePart(name, "Name")}.json`;
-      }
-
-      async function getMethodPath() {
-        return `${await getMethodsDir()}\\${getMethodFilename()}`;
-      }
-
-      function getCsvFilename() {
-        const details = getDetails();
-        const origin = validOriginLength(details.originLength);
-        return `${sanitizeFileNamePart(details.name || "Result Selection", "Dataset")}@${origin}.csv`;
-      }
-
-      async function getCsvPath() {
-        return `${await getDatasetDir()}\\${getCsvFilename()}`;
-      }
-
-      function getCsvFilenameForLength(originLength) {
-        const details = getDetails();
-        const origin = validOriginLength(originLength);
-        return `${sanitizeFileNamePart(details.name || "Result Selection", "Dataset")}@${origin}.csv`;
-      }
-
-      function vectorCsv(values) {
-        return `${(Array.isArray(values) ? values : []).map((v) => v == null ? "" : String(v)).join("\n")}\n`;
-      }
-
-      const MONTH_NAME_TO_NUM = new Map([
-        ["jan", 1], ["january", 1],
-        ["feb", 2], ["february", 2],
-        ["mar", 3], ["march", 3],
-        ["apr", 4], ["april", 4],
-        ["may", 5],
-        ["jun", 6], ["june", 6],
-        ["jul", 7], ["july", 7],
-        ["aug", 8], ["august", 8],
-        ["sep", 9], ["sept", 9], ["september", 9],
-        ["oct", 10], ["october", 10],
-        ["nov", 11], ["november", 11],
-        ["dec", 12], ["december", 12],
-      ]);
-
-      function parseOriginStartMonth(label, baseLen) {
-        const s = text(label);
-        if (!s) return null;
-        if (baseLen === 1) {
-          const yyyymm = s.match(/^(\d{4})(\d{2})$/);
-          if (yyyymm) {
-            const year = Number.parseInt(yyyymm[1], 10);
-            const month = Number.parseInt(yyyymm[2], 10);
-            if (Number.isFinite(year) && month >= 1 && month <= 12) return { year, month };
-          }
-          const monYear = s.match(/^([A-Za-z]{3,9})\s+(\d{4})$/);
-          if (monYear) {
-            const month = MONTH_NAME_TO_NUM.get(monYear[1].toLowerCase());
-            const year = Number.parseInt(monYear[2], 10);
-            if (month && Number.isFinite(year)) return { year, month };
-          }
-          return null;
+      function finishPersistedMutation(mutation) {
+        if (mutation && state.persistedMutationInFlight === mutation.id) {
+          state.persistedMutationInFlight = 0;
         }
-        if (baseLen === 3) {
-          let match = s.match(/^(\d{4})\s*Q([1-4])$/i);
-          if (match) return { year: Number.parseInt(match[1], 10), month: (Number.parseInt(match[2], 10) - 1) * 3 + 1 };
-          match = s.match(/^Q([1-4])\s*(\d{4})$/i);
-          if (match) return { year: Number.parseInt(match[2], 10), month: (Number.parseInt(match[1], 10) - 1) * 3 + 1 };
-          return null;
-        }
-        if (baseLen === 6) {
-          let match = s.match(/^(\d{4})\s*H([1-2])$/i);
-          if (match) return { year: Number.parseInt(match[1], 10), month: (Number.parseInt(match[2], 10) - 1) * 6 + 1 };
-          match = s.match(/^H([1-2])\s*(\d{4})$/i);
-          if (match) return { year: Number.parseInt(match[2], 10), month: (Number.parseInt(match[1], 10) - 1) * 6 + 1 };
-          return null;
-        }
-        if (baseLen === 12 && /^\d{4}$/.test(s)) {
-          return { year: Number.parseInt(s, 10), month: 1 };
-        }
-        return null;
+        resumePersistedValuesRefresh();
       }
 
-      function aggregateVectorByLength(vector, originLabels, baseLen, targetLen) {
-        if (!Array.isArray(vector) || !vector.length) return [];
-        const factor = targetLen / baseLen;
-        if (!Number.isFinite(factor) || factor <= 1 || Math.floor(factor) !== factor) return [];
-
-        const labels = Array.isArray(originLabels) ? originLabels : [];
-        if (labels.length === vector.length && [1, 3, 6, 12].includes(baseLen)) {
-          const orderedKeys = [];
-          const bucketMap = new Map();
-          let parseFailed = false;
-          for (let i = 0; i < vector.length; i += 1) {
-            const parsed = parseOriginStartMonth(labels[i], baseLen);
-            if (!parsed) {
-              parseFailed = true;
-              break;
-            }
-            const bucketMonth = Math.floor((parsed.month - 1) / targetLen) * targetLen + 1;
-            const key = `${parsed.year}-${bucketMonth}`;
-            if (!bucketMap.has(key)) {
-              bucketMap.set(key, { sum: 0, hasValue: false });
-              orderedKeys.push(key);
-            }
-            const bucket = bucketMap.get(key);
-            const num = numberOrNull(vector[i]);
-            if (num !== null) {
-              bucket.sum += num;
-              bucket.hasValue = true;
-            }
-          }
-          if (!parseFailed) {
-            return orderedKeys.map((key) => {
-              const bucket = bucketMap.get(key);
-              return bucket?.hasValue ? bucket.sum : null;
-            });
-          }
+      function reconcilePersistedMutation(mutation, reason) {
+        reapplyActiveDependencyPreviews();
+        const dependencyChanged = !!mutation
+          && Number(state.dependencyEventSeq || 0) !== mutation.dependencyEventSeq;
+        if (dependencyChanged && !state.hasDependencyPreview && !state.dependencyRestorePending) {
+          schedulePersistedValuesRefresh(reason);
         }
-
-        const out = [];
-        for (let i = 0; i < vector.length; i += factor) {
-          let sum = 0;
-          let hasValue = false;
-          const end = Math.min(i + factor, vector.length);
-          for (let j = i; j < end; j += 1) {
-            const num = numberOrNull(vector[j]);
-            if (num === null) continue;
-            sum += num;
-            hasValue = true;
-          }
-          out.push(hasValue ? sum : null);
-        }
-        return out;
       }
 
-      function buildAggregatedResultVariants(vector, originLabels, baseLen) {
-        const nativeLen = validOriginLength(baseLen);
-        return [3, 6, 12]
-          .filter((len) => len > nativeLen && len % nativeLen === 0)
-          .map((originLen) => ({
-            originLen,
-            vector: aggregateVectorByLength(vector, originLabels, nativeLen, originLen),
-          }))
-          .filter((variant) => variant.vector.length);
-      }
-
-      function getSourcePrecedentNames() {
-        const seen = new Set();
-        const out = [];
-        for (const source of state.sources || []) {
-          const name = text(source?.name);
-          const key = norm(name);
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
-          out.push(name);
-        }
-        return out;
-      }
-
-      async function saveSidecar(csvPath, originLabels = []) {
-        const details = getDetails();
-        const resp = await fetch("/dataset/sidecar/save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_name: state.project,
-            reserving_class: state.reservingClass,
-            dataset_name: details.name,
-            dataset_type: details.outputType || details.name,
-            instance_name: details.name,
-            source_kind: "result_selection",
-            method_type: "Result Selection",
-            status: 0,
-            data_format: "Vector",
-            origin_length: details.originLength,
-            development_length: details.originLength,
-            cumulative: true,
-            transposed: false,
-            calendar: false,
-            origin_labels: Array.isArray(originLabels) ? originLabels.map(String) : [],
-            csv_file: csvPath.split(/[\\/]/).pop(),
-            notes: els.notesInput?.value || "",
-            precedents: getSourcePrecedentNames(),
-          }),
-        });
-        const payload = await resp.json().catch(() => ({}));
-        if (!resp.ok || payload?.ok === false) throw new Error(payload?.detail || payload?.error || `Sidecar save failed (${resp.status}).`);
-        invalidateOutputSidecarLoad();
-        auditLogView.render(payload?.audit_log);
-        return payload;
+      function publishPropagationReport(payload, source = "Result Selection save") {
+        const report = payload?.propagation;
+        if (!report || typeof report !== "object") return;
+        try {
+          window.parent?.postMessage({
+            type: "arcrho:calculated-datasets-updated",
+            report,
+            source,
+          }, "*");
+        } catch {}
       }
 
       async function saveResultSelection() {
@@ -350,64 +221,69 @@
           postStatus("Result Selection save requires Name and Output Type.", "error");
           return { ok: false };
         }
-        const hostApi = getHostApi();
-        if (!hostApi?.saveJsonFile || !hostApi?.saveTextFile) {
-          postStatus("Result Selection save requires the desktop app.", "error");
-          return { ok: false };
-        }
-        await refreshOriginLabels({ render: false });
-        const payload = buildPayload();
-        const methodPath = await getMethodPath();
-        const jsonOut = await hostApi.saveJsonFile({
-          path: methodPath,
-          suggestedName: getMethodFilename(),
-          startDir: await getMethodsDir(),
-          data: payload,
-        });
-        if (!jsonOut?.path || jsonOut?.error) throw new Error(jsonOut?.error || "Method JSON save failed.");
-        const vector = selectedUltimateVector();
-        const csvPath = await getCsvPath();
-        const csvOut = await hostApi.saveTextFile({
-          path: csvPath,
-          data: vectorCsv(vector),
-        });
-        if (csvOut?.error) throw new Error(csvOut.error);
-        await saveSidecar(csvPath, payload.method_tab.origin_labels || []);
-        const datasetDir = await getDatasetDir();
-        const aggregatedCsvPaths = [];
-        for (const variant of buildAggregatedResultVariants(vector, payload.method_tab.origin_labels || [], details.originLength)) {
-          const aggPath = `${datasetDir}\\${getCsvFilenameForLength(variant.originLen)}`;
-          if (aggPath.toLowerCase() === csvPath.toLowerCase()) continue;
-          const aggOut = await hostApi.saveTextFile({
-            path: aggPath,
-            data: vectorCsv(variant.vector),
+        const mutation = beginPersistedMutation();
+        try {
+          await refreshOriginLabels({ render: false });
+          assertPersistedMutationReady(mutation);
+          const method = buildPayload();
+          const resp = await fetch("/result-selection/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              project_name: state.project,
+              reserving_class: state.reservingClass,
+              method,
+              notes: els.notesInput?.value || "",
+              expected_revision: state.methodRevision,
+            }),
           });
-          if (aggOut?.error) throw new Error(aggOut.error);
-          aggregatedCsvPaths.push(aggPath);
+          const payload = await resp.json().catch(() => ({}));
+          if (!resp.ok || payload?.ok === false) {
+            throw new Error(payload?.detail || payload?.error || `Result Selection save failed (${resp.status}).`);
+          }
+          invalidateOutputSidecarLoad();
+          auditLogView.render(payload?.sidecar?.audit_log);
+          state.methodRevision = String(payload.method_revision || "");
+          recordPersistedMethodDependencies(payload.method || method);
+          state.needsReview = false;
+          markClean();
+          reconcilePersistedMutation(mutation, "dependency update during Result Selection save");
+          publishPropagationReport(payload);
+          try {
+            window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+          } catch {}
+          const aggregateCount = Array.isArray(payload.aggregated_csv_paths) ? payload.aggregated_csv_paths.length : 0;
+          if (payload.propagation_ok === false) {
+            postStatus(`Result Selection saved, but one or more downstream dependents still need review: ${details.name}`, "warn");
+          } else if (payload.index_ok === false) {
+            postStatus(`Result Selection saved, but the dataset index could not be refreshed: ${payload.index_error || details.name}`, "warn");
+          } else {
+            postStatus(`Result Selection saved: ${details.name}${aggregateCount ? ` (+${aggregateCount} aggregated)` : ""}`);
+          }
+          return payload;
+        } finally {
+          finishPersistedMutation(mutation);
         }
-        await loadCachedRows(true).catch(() => {});
+      }
+
+      async function applySavedResult(payload, mutation = null) {
+        const method = payload?.method || payload?.payload || {};
+        await applyPayload(method);
+        recordPersistedMethodDependencies(method);
+        applyOutputSidecar(payload?.sidecar || {});
+        state.methodRevision = String(payload?.method_revision || "");
+        state.needsReview = false;
+        state.loadBlocked = false;
         markClean();
+        reconcilePersistedMutation(mutation, "dependency update during Result Selection RPC sync");
+        publishPropagationReport(payload, "Result Selection RPC sync");
         try {
           window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
         } catch {}
-        postStatus(`Result Selection saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`);
-        return { ok: true, path: jsonOut.path, csvPath, aggregatedCsvPaths };
-      }
-
-      async function tryLoadExistingMethod() {
-        const hostApi = getHostApi();
-        if (!hostApi?.readJsonFile) return false;
-        const path = await getMethodPath();
-        const result = await hostApi.readJsonFile({ path });
-        if (!result?.exists || !result.data) return false;
-        await applyPayload(result.data);
-        postStatus(`Loaded Result Selection: ${getDetails().name}`);
-        return true;
       }
 
       function setNotesText(value) {
-        const next = text(value);
-        notesController.setValue(next, { markClean: true });
+        notesController.setValue(String(value ?? ""), { markClean: true });
       }
 
       function wireNotes() {
@@ -417,26 +293,16 @@
       return {
         buildPayload,
         applyPayload,
+        applyOutputSidecar,
+        fetchPersistedResultSelection,
+        tryLoadExistingMethod,
         snapshotPayload,
         markClean,
-        getWorkspacePathsConfig,
-        isAbsolutePath,
-        joinPath,
-        getMethodsDir,
-        getDatasetDir,
-        getMethodFilename,
-        getMethodPath,
-        getCsvFilename,
-        getCsvPath,
-        getCsvFilenameForLength,
-        vectorCsv,
-        parseOriginStartMonth,
-        aggregateVectorByLength,
-        buildAggregatedResultVariants,
-        getSourcePrecedentNames,
-        saveSidecar,
         saveResultSelection,
-        tryLoadExistingMethod,
+        applySavedResult,
+        beginPersistedMutation,
+        finishPersistedMutation,
+        assertPersistedMutationReady,
         setNotesText,
         wireNotes
       };

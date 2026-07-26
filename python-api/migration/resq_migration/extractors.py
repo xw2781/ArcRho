@@ -5,6 +5,7 @@ import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
@@ -51,7 +52,7 @@ from .number_formats import dataset_type_decimal_places, dataset_type_number_for
 
 
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
+RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
 BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
 METHOD_DATA_DIR = "methods"
 RS_JSON_VALUE_DECIMAL_PLACES = 6
@@ -964,18 +965,31 @@ def _result_selection_ratio_basis_dataset_name(result_selection) -> str:
         return ""
     return _normalize_import_name(_safe_attr(dataset, "Name", ""))
 
+def _result_selection_ratio_basis_value(result_selection, origin_index: int, origin_length: int):
+    call_shapes = [
+        ((origin_index, origin_length), {}),
+        ((origin_index,), {}),
+        ((), {"OriginIndex": origin_index, "OriginLength": origin_length}),
+    ]
+    return _try_call_member(result_selection, "RatioBasisValues", call_shapes)
+
 def _rs_json_number(value):
     if value is None or isinstance(value, bool):
-        return value
+        return None
     try:
         number = float(value)
     except (TypeError, ValueError):
-        return value
+        return None
     if not math.isfinite(number):
+        return None
+    try:
+        rounded = Decimal(str(abs(number))).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
         return None
     if isinstance(value, int):
         return value
-    return round(number, RS_JSON_VALUE_DECIMAL_PLACES)
+    result = float(rounded)
+    return -result if number < 0 else result
 
 def _result_selection_source_kind(name: str, dataset_type: str, data_format: str, method_type_code: int) -> str:
     if method_type_code == METHOD_TYPE_DFM_CODE:
@@ -1003,7 +1017,9 @@ def _result_selection_source_payload(result_selection, dataset_index: int, origi
         except Exception:
             values.append(None)
         try:
-            weights.append(_rs_json_number(_result_selection_weight(result_selection, dataset_index, origin_index)))
+            weights.append(max(0.0, _rs_json_number(
+                _result_selection_weight(result_selection, dataset_index, origin_index)
+            ) or 0.0))
         except Exception:
             weights.append(0)
     return {
@@ -1013,6 +1029,7 @@ def _result_selection_source_payload(result_selection, dataset_index: int, origi
         "method_type": method_type,
         "category": _normalize_import_name(_safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")),
         "source_kind": _result_selection_source_kind(name, dataset_type, data_format, method_type_code),
+        "origin_length": max(1, _safe_int_attr(dataset, "OriginLength", origin_length)),
         "values": values,
         "weights": weights,
     }
@@ -1065,6 +1082,17 @@ def export_result_selection(result_selection) -> dict:
     ]
     ratio_basis_dataset = _result_selection_ratio_basis_dataset_name(result_selection)
     ratio_basis_datasets = [ratio_basis_dataset] if ratio_basis_dataset else []
+    ratio_basis_values = []
+    if ratio_basis_dataset:
+        values = []
+        for origin_index in range(1, origin_count + 1):
+            try:
+                values.append(_rs_json_number(
+                    _result_selection_ratio_basis_value(result_selection, origin_index, origin_length)
+                ))
+            except Exception:
+                values.append(None)
+        ratio_basis_values.append({"name": ratio_basis_dataset, "values": values})
     ultimate_overrides: list = []
     for origin_index in range(1, origin_count + 1):
         try:
@@ -1096,8 +1124,6 @@ def export_result_selection(result_selection) -> dict:
             "name": name,
             "output_type": output_type,
             "origin_length": origin_length,
-            "ratio_basis": ratio_basis_dataset,
-            "ratio_basis_dataset": ratio_basis_dataset,
             "ratio_basis_datasets": ratio_basis_datasets,
             "active_ratio_basis_dataset": ratio_basis_dataset,
             "show_ratios_as_percentages": True,
@@ -1107,6 +1133,7 @@ def export_result_selection(result_selection) -> dict:
             "origin_labels": origin_labels,
             "show_weights": True,
             "loaded_datasets": loaded_datasets,
+            "ratio_basis_values": ratio_basis_values,
             "calculated_ultimate": calculated_ultimate,
             "selected_ultimate": selected_ultimate,
             "ultimate_overrides": ultimate_overrides,
@@ -1132,6 +1159,18 @@ def _result_selection_source_names(payload: dict) -> list[str]:
             names.append(name)
     return names
 
+def _result_selection_precedent_names(payload: dict) -> list[str]:
+    names = _result_selection_source_names(payload)
+    seen = {name.lower() for name in names}
+    details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    for raw_name in details_tab.get("ratio_basis_datasets", []) if isinstance(details_tab.get("ratio_basis_datasets"), list) else []:
+        name = _normalize_import_name(raw_name)
+        key = name.lower()
+        if name and key not in seen:
+            seen.add(key)
+            names.append(name)
+    return names
+
 def _result_selection_origin_labels_from_payload(payload: dict) -> list[str]:
     method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
     labels = method_tab.get("origin_labels") if isinstance(method_tab.get("origin_labels"), list) else []
@@ -1139,7 +1178,7 @@ def _result_selection_origin_labels_from_payload(payload: dict) -> list[str]:
 
 def _apply_result_selection_vector_metadata(payload: dict, result_selection_payload: dict) -> None:
     payload["notes"] = str(result_selection_payload.pop("_sidecar_notes", "") or "")
-    payload["precedents"] = _result_selection_source_names(result_selection_payload)
+    payload["precedents"] = _result_selection_precedent_names(result_selection_payload)
     origin_labels = _result_selection_origin_labels_from_payload(result_selection_payload)
     if origin_labels:
         payload["origin_labels"] = origin_labels

@@ -1068,7 +1068,7 @@ def _set_processing_provenance(
     payload["processing_by_csv"] = processing_by_csv
 
 
-def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
+def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
     dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
     instance_name = _pair_value(pairs, "InstanceName") or dataset_type
     if not instance_name:
@@ -1138,17 +1138,23 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         dataset_type,
     )
     _append_dataset_audit_entry(payload, "Insert", event_date=updated_at, user_name=user_name)
-    tmp_path = f"{sidecar_path}.{uuid.uuid4()}.tmp"
-    os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)
-    with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    os.replace(tmp_path, sidecar_path)
+    dataset_sidecar_status_service.write_sidecar(sidecar_path, payload)
     dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
         project_name,
         reserving_class,
         [instance_name, dataset_type],
     )
+
+
+def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
+    project_name = _pair_value(pairs, "ProjectName")
+    reserving_class = _pair_value(pairs, "Path")
+    sidecar_path = _dataset_sidecar_path(data_path, pairs)
+    with (
+        dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class),
+        dataset_sidecar_status_service.sidecar_write_lock(sidecar_path),
+    ):
+        _write_dataset_sidecar_impl(data_path, pairs)
 
 
 def _refresh_dataset_instance_index_after_cache_write(pairs: list) -> None:
@@ -1917,7 +1923,7 @@ def _recalculate_requested_app_dataset(
         if recalculate_dependents
         else None
     )
-    if refresh_index:
+    if refresh_index and not recalculate_dependents:
         try:
             dataset_instance_index_service.rebuild_index(project_name, reserving_class)
         except Exception:
@@ -2234,7 +2240,9 @@ def run_arcrho_tri(
         pairs,
         allow_derived=allow_derived,
         local_only=local_only,
-        refresh_index_on_materialize=write_sidecar,
+        refresh_index_on_materialize=(
+            write_sidecar and not recalculate_dependents_on_cache_write
+        ),
         allow_runtime_cache_provenance=not write_sidecar,
         processing_hash_getter=get_processing_hash,
     )
@@ -2243,7 +2251,8 @@ def run_arcrho_tri(
         if local_result.get("status") == "cache_derived":
             if write_sidecar:
                 _write_dataset_sidecar(data_path, pairs)
-                _refresh_dataset_instance_index_after_cache_write(pairs)
+                if not recalculate_dependents_on_cache_write:
+                    _refresh_dataset_instance_index_after_cache_write(pairs)
             else:
                 out["cache_provenance_recorded"] = _require_runtime_cache_provenance(
                     data_path,
@@ -2344,12 +2353,13 @@ def run_arcrho_tri(
     calculated_updates = None
     try:
         _write_dataset_sidecar(data_path, pairs)
-        _refresh_dataset_instance_index_after_cache_write(pairs)
         calculated_updates = (
             _recalculate_dependents_after_cache_write(pairs)
             if recalculate_dependents_on_cache_write
             else None
         )
+        if not recalculate_dependents_on_cache_write:
+            _refresh_dataset_instance_index_after_cache_write(pairs)
     except OSError as err:
         raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")
 

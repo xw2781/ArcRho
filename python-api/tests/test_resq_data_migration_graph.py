@@ -371,6 +371,9 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         }
         result_selection_payload = {
             "_sidecar_notes": "selection note",
+            "details_tab": {
+                "ratio_basis_datasets": ["Earned Premium"],
+            },
             "method_tab": {
                 "origin_labels": ["2016", "2017", "2018"],
                 "loaded_datasets": [
@@ -384,7 +387,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         self.assertEqual(payload["origin_labels"], ["2016", "2017", "2018"])
         self.assertEqual(payload["origin_count"], 3)
-        self.assertEqual(payload["precedents"], ["Paid Loss", "Reported Loss"])
+        self.assertEqual(payload["precedents"], ["Paid Loss", "Reported Loss", "Earned Premium"])
         self.assertEqual(payload["notes"], "selection note")
         self.assertNotIn("_sidecar_notes", result_selection_payload)
 
@@ -405,7 +408,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertNotIn("_sidecar_notes", method_payload)
         self.assertEqual(payload["precedents"], ["Paid Loss", "Paid Ultimate", "Prior Ultimate"])
 
-    def test_result_selection_source_payload_omits_redundant_source_metadata(self) -> None:
+    def test_result_selection_source_payload_includes_native_origin_length(self) -> None:
         class DatasetType:
             Name = "Paid Loss"
             DataFormat = 1
@@ -431,7 +434,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         self.assertNotIn("selected", payload)
         self.assertNotIn("value_source", payload)
-        self.assertNotIn("origin_length", payload)
+        self.assertEqual(payload["origin_length"], 12)
         self.assertEqual(payload["source_kind"], "input")
         self.assertEqual(payload["weights"], [1, 0])
 
@@ -485,24 +488,30 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
                     raise IndexError(dataset_index)
                 return type("RatioBasisDataset", (), {"Name": "Earned Premium"})()
 
+            def RatioBasisValues(self, origin_index, _origin_length):
+                return origin_index * 1000.123456789
+
         ResultSelection.OutputVector = OutputVector()
 
         payload = self.module.export_result_selection(ResultSelection())
 
-        self.assertEqual(payload["details_tab"]["ratio_basis_dataset"], "Earned Premium")
-        self.assertEqual(payload["details_tab"]["ratio_basis"], "Earned Premium")
         self.assertEqual(payload["details_tab"]["ratio_basis_datasets"], ["Earned Premium"])
         self.assertEqual(payload["details_tab"]["active_ratio_basis_dataset"], "Earned Premium")
+        self.assertNotIn("ratio_basis_dataset", payload["details_tab"])
+        self.assertNotIn("ratio_basis", payload["details_tab"])
         self.assertNotIn("dataset_category", payload["details_tab"])
         self.assertNotIn("output_category", payload["details_tab"])
         self.assertNotIn("sources", payload["method_tab"])
         self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["source_kind"], "input")
-        self.assertNotIn("origin_length", payload["method_tab"]["loaded_datasets"][0])
+        self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["origin_length"], 12)
         self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["values"], [10.123457, 20.246914])
         self.assertEqual(payload["method_tab"]["loaded_datasets"][0]["weights"], [1.987654, 1.987654])
         self.assertEqual(payload["method_tab"]["calculated_ultimate"], [10.123457, 20.246914])
         self.assertEqual(payload["method_tab"]["selected_ultimate"], [10.123457, 200.246914])
-        self.assertNotIn("ratio_basis_values", payload["method_tab"])
+        self.assertEqual(payload["method_tab"]["ratio_basis_values"], [{
+            "name": "Earned Premium",
+            "values": [1000.123457, 2000.246914],
+        }])
         self.assertEqual(payload["method_tab"]["ultimate_overrides"], [None, 200.246914])
 
     def test_write_result_selection_export_uses_simplified_method_filename(self) -> None:

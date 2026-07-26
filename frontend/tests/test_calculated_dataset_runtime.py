@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -66,6 +67,198 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["missing_dependencies"], ["Generated Input"])
+
+    def test_failed_calculated_step_blocks_its_downstream_and_keeps_rs_in_review(self) -> None:
+        rows = [
+            {"name": "Source", "calculated": False, "generated": False, "formula": ""},
+            {"name": "Calculated A", "calculated": True, "generated": False, "formula": "Source"},
+            {"name": "Calculated B", "calculated": True, "generated": False, "formula": "Calculated A"},
+        ]
+        with (
+            patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=rows),
+            patch.object(
+                calculated_dataset_service,
+                "_existing_downstream_keys",
+                return_value=["calculated a", "calculated b"],
+            ),
+            patch.object(
+                calculated_dataset_service,
+                "recalculate_dataset",
+                return_value={
+                    "ok": False,
+                    "dataset_type_name": "Calculated A",
+                    "reason": "formula_error",
+                    "errors": ["bad formula"],
+                },
+            ) as recalculate,
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "refresh_method_statuses_for_dependents",
+                return_value=[],
+            ),
+            patch("app_server.services.result_selection_service.refresh_dependents", return_value={
+                "ok": True,
+                "updated": [],
+                "errors": [],
+            }) as refresh_rs,
+            patch.object(calculated_dataset_service.dataset_instance_index_service, "rebuild_index"),
+        ):
+            result = calculated_dataset_service.recalculate_dependents(
+                "Example Project",
+                "Example RC",
+                "Source",
+                "Source",
+            )
+
+        self.assertFalse(result["ok"])
+        recalculate.assert_called_once_with(
+            "Example Project",
+            "Example RC",
+            "Calculated A",
+            dataset_type_rows=rows,
+            mark_dependents_review=False,
+        )
+        self.assertEqual(result["skipped"][1]["reason"], "upstream_calculation_failed")
+        refresh_rs.assert_called_once_with(
+            "Example Project",
+            "Example RC",
+            ["Source", "Source"],
+            rebuild_index=False,
+            allow_status_current=True,
+            blocked_precedent_names=["Calculated A", "Calculated B"],
+        )
+
+    def test_calculated_exception_does_not_abort_an_independent_branch(self) -> None:
+        rows = [
+            {"name": "Source", "calculated": False, "generated": False, "formula": ""},
+            {"name": "Broken", "calculated": True, "generated": False, "formula": "Source"},
+            {"name": "Broken Child", "calculated": True, "generated": False, "formula": "Broken"},
+            {"name": "Healthy", "calculated": True, "generated": False, "formula": "Source"},
+        ]
+
+        def recalculate(_project, _reserving, name, **_kwargs):
+            if name == "Broken":
+                raise OSError("network write failed")
+            return {"ok": True, "dataset_type_name": name}
+
+        with (
+            patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=rows),
+            patch.object(
+                calculated_dataset_service,
+                "_existing_downstream_keys",
+                return_value=["broken", "broken child", "healthy"],
+            ),
+            patch.object(calculated_dataset_service, "recalculate_dataset", side_effect=recalculate),
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "refresh_method_statuses_for_dependents",
+                return_value=[],
+            ),
+            patch("app_server.services.result_selection_service.refresh_dependents", return_value={
+                "ok": True,
+                "updated": [],
+                "errors": [],
+            }) as refresh_rs,
+            patch.object(calculated_dataset_service.dataset_instance_index_service, "rebuild_index"),
+        ):
+            result = calculated_dataset_service.recalculate_dependents(
+                "Example Project", "Example RC", "Source", "Source",
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["updated"], [{
+            "ok": True,
+            "dataset_type_name": "Healthy",
+            "status": "updated",
+        }])
+        self.assertEqual(result["skipped"][0]["reason"], "calculation_error")
+        self.assertEqual(result["skipped"][1]["reason"], "upstream_calculation_failed")
+        refresh_rs.assert_called_once_with(
+            "Example Project",
+            "Example RC",
+            ["Source", "Source", "Healthy"],
+            rebuild_index=False,
+            allow_status_current=True,
+            blocked_precedent_names=["Broken", "Broken Child"],
+        )
+
+    def test_recalculation_preserves_registered_result_selection_dependent(self) -> None:
+        row = {
+            "name": "Calculated Output",
+            "data_format": "Vector",
+            "formula": "Source",
+            "calculated": True,
+            "generated": False,
+        }
+        source_row = {
+            "name": "Source",
+            "data_format": "Vector",
+            "formula": "",
+            "calculated": False,
+            "generated": False,
+        }
+        csv_path = self.cache_dir / "Calculated Output@12.csv"
+        sidecar_path = self.cache_dir.parent / config.DATASET_SIDECAR_DIR / "Calculated Output.json"
+        sidecar_path.parent.mkdir(parents=True)
+        sidecar_path.write_text(json.dumps({
+            "dataset_name": "Calculated Output",
+            "dataset_type": "Calculated Output",
+            "project_name": "Example Project",
+            "reserving_class": "Example RC",
+            "Dependents": [{"dataset_type_name": "Selection"}],
+        }), encoding="utf-8")
+
+        with (
+            patch.object(calculated_dataset_service, "_calculated_rows_by_key", return_value={"calculated output": row}),
+            patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[source_row, row]),
+            patch.object(calculated_dataset_service, "_existing_target_settings", return_value={}),
+            patch.object(
+                calculated_dataset_service,
+                "_load_components",
+                return_value=({"_d0": [[1.0], [2.0]]}, ["Source"], []),
+            ),
+            patch.object(
+                calculated_dataset_service,
+                "_target_paths",
+                return_value=(str(csv_path), str(sidecar_path)),
+            ),
+            patch.object(
+                calculated_dataset_service,
+                "sidecar_graph_fields",
+                return_value={
+                    "Precedents": [{"dataset_type_name": "Source"}],
+                    "Dependents": [{"dataset_type_name": "Formula Output"}],
+                },
+            ),
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "read_sidecar",
+                return_value={"method_type": "Result Selection", "source_kind": "result_selection"},
+            ),
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "sidecar_path",
+                return_value=str(sidecar_path),
+            ),
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "refresh_method_statuses_for_dependents",
+                return_value=[],
+            ),
+            patch.dict(config.DATASETS, {}, clear=True),
+        ):
+            result = calculated_dataset_service.recalculate_dataset(
+                "Example Project",
+                "Example RC",
+                "Calculated Output",
+            )
+
+        self.assertTrue(result["ok"], result)
+        saved = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["Dependents"], [
+            {"dataset_type_name": "Formula Output"},
+            {"dataset_type_name": "Selection"},
+        ])
 
     def test_missing_app_calculated_cache_is_rebuilt_before_engine_request(self) -> None:
         calculated_path = str(

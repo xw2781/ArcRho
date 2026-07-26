@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection now opens from its own saved files and refreshes persisted source and Ratio Basis values when upstream datasets change.",
+  "details": [
+    "Current methods no longer reopen every source and Ratio Basis dataset during normal loading.",
+    "All configured Ratio Basis vectors are stored in the method JSON so statistics render without reopening basis files.",
+    "Legacy methods are upgraded once, and failed dependency refreshes preserve the last valid saved result for review.",
+    "Automatic refresh now continues through independent successful branches, keeps stale method-owned branches in review, and blocks saving while a live dependency preview is being restored.",
+    "Open Result Selection pages coalesce matching clear/update notifications, preserve failed local restores for retry, and prevent save or sync responses from superseding newer dependency updates."
+  ]
+}

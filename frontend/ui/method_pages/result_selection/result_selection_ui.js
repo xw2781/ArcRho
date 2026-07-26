@@ -9,17 +9,6 @@
         return Number.isFinite(n) ? n : null;
       }
 
-      function roundRsJsonNumber(value) {
-        const n = numberOrNull(value);
-        if (n === null) return null;
-        const factor = 10 ** RS_JSON_VALUE_DECIMAL_PLACES;
-        return Math.round(n * factor) / factor;
-      }
-
-      function roundRsJsonVector(values) {
-        return Array.isArray(values) ? values.map(roundRsJsonNumber) : [];
-      }
-
       function positiveInt(value, fallback = DEFAULT_ORIGIN_LENGTH) {
         const n = Number.parseInt(String(value ?? ""), 10);
         return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -122,6 +111,7 @@
           cancelButton: els.cancelBtn,
           dirty: next,
         });
+        if (state.loadBlocked && els.saveBtn) els.saveBtn.disabled = true;
         try {
           window.parent?.postMessage({ type: "arcrho:dataset-dirty", inst, dirty: next }, "*");
         } catch {}
@@ -129,8 +119,42 @@
 
       function markDirty() {
         if (programmatic) return;
+        if (state.loadBlocked) {
+          postStatus("Reload the Result Selection successfully before editing or saving.", "error");
+          if (els.saveBtn) els.saveBtn.disabled = true;
+          return;
+        }
         postDirty(true);
         postResultSelectionDependencyPreview();
+      }
+
+      function syncLoadBlockedControls() {
+        const blocked = !!state.loadBlocked;
+        const controls = [
+          els.nameInput,
+          els.outputTypeInput,
+          els.outputTypeBtn,
+          els.originLengthInput,
+          els.originLengthButton,
+          ...(els.ratioBasisInputs || []),
+          els.ratioBasisAddButton,
+          els.showRatiosPctInput,
+          els.statisticDecimalsInput,
+          els.methodStatisticDecimalsInput,
+          els.methodStatisticDecimalsUp,
+          els.methodStatisticDecimalsDown,
+          els.showWeightsInput,
+          els.weightDisplayButton,
+          els.activeRatioBasisButton,
+          els.syncBtn,
+          els.saveBtn,
+          els.notesInput,
+          ...Array.from(els.methodGrid?.querySelectorAll?.("input, button") || []),
+          ...Array.from(els.resultsGrid?.querySelectorAll?.("input, button") || []),
+        ];
+        for (const control of controls) {
+          if (control) control.disabled = blocked;
+        }
       }
 
       function sourceMessageNames(message = {}) {
@@ -146,11 +170,80 @@
         return true;
       }
 
+      function reportMatchesCurrentContext(report) {
+        const contexts = resultSelectionUpdateContexts(report);
+        if (!contexts.length) return false;
+        return contexts.some((context) => {
+          const project = text(context.project);
+          const reservingClass = text(context.reservingClass);
+          if (project && norm(project) !== norm(state.project)) return false;
+          if (reservingClass && norm(reservingClass) !== norm(state.reservingClass)) return false;
+          return !!(project || reservingClass);
+        });
+      }
+
+      function recordPersistedMethodDependencies(payload = {}) {
+        const details = payload?.details_tab || {};
+        const method = payload?.method_tab || {};
+        const names = [
+          ...(Array.isArray(method.loaded_datasets)
+            ? method.loaded_datasets.map((item) => item?.name)
+            : []),
+          ...(Array.isArray(details.ratio_basis_datasets)
+            ? details.ratio_basis_datasets
+            : []),
+        ];
+        state.persistedDependencyNames = new Set(names.map(norm).filter(Boolean));
+      }
+
       function sourceMessageMatchesSource(message, source) {
         if (!source) return false;
         const names = sourceMessageNames(message);
         return [source.name, source.datasetType, source.dataset_type]
           .some((value) => names.has(norm(value)));
+      }
+
+      function sourceMessageMatchesRatioBasis(message) {
+        const names = sourceMessageNames(message);
+        return getRatioBasisNames().some((value) => names.has(norm(value)));
+      }
+
+      function dependencyPreviewKey(message = {}) {
+        const messageInst = text(message.inst);
+        const names = Array.from(sourceMessageNames(message)).sort();
+        return `${messageInst}::${names.join("|")}`;
+      }
+
+      function removeDependencyPreview(message = {}) {
+        const key = dependencyPreviewKey(message);
+        let removed = state.dependencyPreviews.delete(key);
+        if (!removed && text(message.inst)) {
+          const clearedNames = sourceMessageNames(message);
+          for (const [candidateKey, candidate] of state.dependencyPreviews) {
+            if (text(candidate?.inst) !== text(message.inst)) continue;
+            const candidateNames = sourceMessageNames(candidate);
+            if (!Array.from(candidateNames).some((name) => clearedNames.has(name))) continue;
+            state.dependencyPreviews.delete(candidateKey);
+            removed = true;
+          }
+        }
+        state.hasDependencyPreview = state.dependencyPreviews.size > 0;
+        return removed;
+      }
+
+      function noteDependencyEvent() {
+        state.dependencyEventSeq = Number(state.dependencyEventSeq || 0) + 1;
+        return state.dependencyEventSeq;
+      }
+
+      function calculatedUpdateAffectsCurrentResultSelection(message = {}) {
+        if (!sourceMessageMatchesContext(message)) return false;
+        if (!reportMatchesCurrentContext(message.report)) return false;
+        const currentName = norm(getDetails().name);
+        if (!currentName) return false;
+        return Array.from(resultSelectionUpdateNames(message.report)).some(
+          (name) => norm(name) === currentName,
+        );
       }
 
       function normalizePreviewValues(values) {
@@ -173,7 +266,9 @@
           reason,
         };
         if (type === "arcrho:dependency-source-preview") {
-          payload.values = buildPayload().method_tab.selected_ultimate || [];
+          // Live previews remain available while a newly selected Ratio Basis is
+          // loading. Strict completeness validation still runs on save.
+          payload.values = selectedUltimateVector();
           payload.originLabels = state.originLabels.map(String);
         }
         return payload;
@@ -189,33 +284,270 @@
 
       function postResultSelectionDependencyPreview() {
         postResultSelectionDependencySourceMessage("arcrho:dependency-source-preview", "dirty");
+        state.dependencyPreviewPublished = true;
       }
 
       function clearResultSelectionDependencyPreview(reason = "") {
+        if (!state.dependencyPreviewPublished) return;
         postResultSelectionDependencySourceMessage("arcrho:dependency-source-cleared", reason || "clean");
+        state.dependencyPreviewPublished = false;
       }
 
-      async function reloadSourcesMatchingMessage(message, options = {}) {
-        if (!sourceMessageMatchesContext(message)) return false;
-        const matches = [];
-        for (let index = 0; index < state.sources.length; index += 1) {
-          if (sourceMessageMatchesSource(message, state.sources[index])) matches.push(index);
-        }
+      async function reloadSourcesMatchingMessages(messages = []) {
+        const scopedMessages = messages.filter(sourceMessageMatchesContext);
+        if (!scopedMessages.length) return false;
+        const matches = state.sources
+          .map((source, index) => ({ source, index }))
+          .filter(({ source }) => scopedMessages.some((message) => sourceMessageMatchesSource(message, source)));
         if (!matches.length) return false;
-        if (options.refreshCache) await loadCachedRows(true).catch(() => {});
-        for (const index of matches) {
-          const existing = state.sources[index];
-          const record = cachedRows.find((row) => norm(row.name) === norm(existing.name)) || null;
-          const reloadExisting = { ...existing, values: [] };
-          const built = await buildSourceFromRecord(record || { name: existing.name }, reloadExisting);
-          state.sources[index] = built;
+        const reloaded = await mapWithConcurrency(
+          matches,
+          SOURCE_LOAD_CONCURRENCY,
+          async ({ source, index }) => {
+            const record = cachedRows.find((row) => norm(row.name) === norm(source.name)) || null;
+            const built = await buildSourceFromRecord(
+              record || { name: source.name },
+              { ...source, values: [] },
+            );
+            if (!built || built.unavailable) {
+              throw new Error(`The cleared local source '${source.name}' could not be reloaded from disk.`);
+            }
+            return { source, index, built };
+          },
+        );
+        for (const { source, index, built } of reloaded) {
+          const currentIndex = state.sources.indexOf(source);
+          const targetIndex = currentIndex >= 0
+            ? currentIndex
+            : state.sources.findIndex((item) => norm(item?.name) === norm(source.name));
+          if (targetIndex >= 0) state.sources[targetIndex] = built;
+          else if (index < state.sources.length) state.sources[index] = built;
         }
-        state.sources = state.sources.filter(Boolean);
         renderMethodGrid();
         return true;
       }
 
-      function applyDependencySourcePreview(message) {
+      async function reloadSourcesMatchingMessage(message) {
+        return reloadSourcesMatchingMessages([message]);
+      }
+
+      async function refreshPersistedValuesFromDisk(reason = "dependency update") {
+        const refreshSeq = Number(state.persistedRefreshSeq || 0) + 1;
+        state.persistedRefreshSeq = refreshSeq;
+        const result = await fetchPersistedResultSelection(true);
+        if (state.persistedRefreshSeq !== refreshSeq) return false;
+        if (!result.method_exists || !result.method) {
+          throw new Error("Saved Result Selection method is missing.");
+        }
+        recordPersistedMethodDependencies(result.method);
+        if (!isDirty) {
+          applyOutputSidecar(result.sidecar);
+          await applyPayload(result.method);
+          state.methodRevision = String(result.method_revision || "");
+          state.loadBlocked = false;
+          syncLoadBlockedControls();
+          markClean();
+        } else {
+          const persistedOriginLength = validOriginLength(result.method?.details_tab?.origin_length, 0);
+          if (persistedOriginLength && persistedOriginLength !== getDetails().originLength) {
+            postStatus(
+              `Result Selection dependency refresh was deferred because the local Origin Length is unsaved (${getDetails().originLength}).`,
+              "warn",
+            );
+            return false;
+          }
+          const persistedSources = new Map(
+            (Array.isArray(result.method?.method_tab?.loaded_datasets)
+              ? result.method.method_tab.loaded_datasets
+              : [])
+              .map((item) => [norm(item?.name), buildSourceFromPersisted(item)])
+              .filter(([, item]) => !!item),
+          );
+          state.sources = state.sources.map((source) => {
+            const persisted = persistedSources.get(norm(source.name));
+            if (!persisted) return source;
+            return {
+              ...source,
+              datasetType: persisted.datasetType || source.datasetType,
+              dataFormat: persisted.dataFormat || source.dataFormat,
+              originLength: persisted.originLength || source.originLength,
+              methodType: persisted.methodType || source.methodType,
+              category: persisted.category || source.category,
+              sourceKind: persisted.sourceKind || source.sourceKind,
+              values: persisted.values.slice(),
+            };
+          });
+          const persistedBasisSets = normalizeRatioBasisValueSets(
+            result.method?.method_tab?.ratio_basis_values,
+            result.method?.details_tab?.ratio_basis_datasets,
+          );
+          const persistedBasisByName = new Map(
+            persistedBasisSets.map((item) => [norm(item.name), item]),
+          );
+          state.ratioBasisValueSets = normalizeRatioBasisValueSets(
+            getRatioBasisNames().map((name) => (
+              persistedBasisByName.get(norm(name))
+              || state.ratioBasisValueSets.find((item) => norm(item?.name) === norm(name))
+              || { name, values: [] }
+            )),
+            getRatioBasisNames(),
+          );
+          state.ratioBasisValues = ratioBasisValuesForName(
+            state.ratioBasisValueSets,
+            getActiveRatioBasisName(),
+          );
+          state.methodRevision = String(result.method_revision || "");
+          state.needsReview = Number(result.sidecar?.status) === 2;
+          renderMethodGrid();
+        }
+        reapplyActiveDependencyPreviews();
+        postStatus(
+          state.needsReview
+            ? `Result Selection still needs review after ${reason}.`
+            : `Result Selection values refreshed after ${reason}.`,
+          state.needsReview ? "warn" : "",
+        );
+        return true;
+      }
+
+      function queueDependencyClear(message, options = {}) {
+        const key = dependencyPreviewKey(message);
+        const existing = state.pendingDependencyClearMessages.find(
+          (item) => dependencyPreviewKey(item.message) === key,
+        );
+        if (existing) {
+          existing.reloadLocalSource ||= !!options.reloadLocalSource;
+          existing.reloadLocalBasis ||= !!options.reloadLocalBasis;
+          existing.message = { ...existing.message, ...message };
+          existing.generation = Number(state.dependencyEventSeq || 0);
+          return;
+        }
+        state.pendingDependencyClearMessages.push({
+          message: { ...message },
+          reloadLocalSource: !!options.reloadLocalSource,
+          reloadLocalBasis: !!options.reloadLocalBasis,
+          generation: Number(state.dependencyEventSeq || 0),
+        });
+      }
+
+      async function restoreLocalOnlyDependencies(clears = []) {
+        const sourceMessages = clears
+          .filter((item) => item.reloadLocalSource)
+          .map((item) => item.message);
+        if (sourceMessages.length) {
+          const reloaded = await reloadSourcesMatchingMessages(sourceMessages);
+          if (!reloaded) throw new Error("A cleared local source could not be reloaded from disk.");
+        }
+
+        const basisNames = new Set();
+        for (const item of clears) {
+          if (!item.reloadLocalBasis) continue;
+          for (const name of sourceMessageNames(item.message)) basisNames.add(name);
+        }
+        if (!basisNames.size) return;
+        state.ratioBasisValueSets = state.ratioBasisValueSets.filter(
+          (item) => !basisNames.has(norm(item?.name)),
+        );
+        state.ratioBasisValues = ratioBasisValuesForName(
+          state.ratioBasisValueSets,
+          getActiveRatioBasisName(),
+        );
+        const refreshed = await refreshMissingRatioBasisValues();
+        if (!refreshed) throw new Error("A cleared local Ratio Basis could not be reloaded from disk.");
+      }
+
+      async function flushPersistedValuesRefresh() {
+        if (state.initialLoadPending || state.persistedMutationInFlight) return false;
+        if (state.persistedRefreshTimer != null) {
+          window.clearTimeout(state.persistedRefreshTimer);
+          state.persistedRefreshTimer = null;
+        }
+        if (state.dependencyRefreshPromise) return state.dependencyRefreshPromise;
+
+        let retryQueuedRefresh = false;
+        const refreshPromise = (async () => {
+          while (state.persistedRefreshReason || state.pendingDependencyClearMessages.length) {
+            const refreshGeneration = Number(state.dependencyEventSeq || 0);
+            const clears = state.pendingDependencyClearMessages
+              .filter((item) => Number(item.generation || 0) <= refreshGeneration)
+              .map((item) => ({ ...item, message: { ...item.message } }));
+            const refreshReason = state.persistedRefreshReason
+              || text(clears.at(-1)?.message?.reason)
+              || "dependency update";
+            state.persistedRefreshReason = "";
+            try {
+              await restoreLocalOnlyDependencies(clears);
+              const refreshed = await refreshPersistedValuesFromDisk(refreshReason);
+              if (!refreshed) {
+                throw new Error("The latest persisted Result Selection refresh was superseded or deferred.");
+              }
+            } catch (err) {
+              state.persistedRefreshReason ||= refreshReason;
+              retryQueuedRefresh = Number(state.dependencyEventSeq || 0) > refreshGeneration
+                || state.pendingDependencyClearMessages.some(
+                  (item) => Number(item.generation || 0) > refreshGeneration,
+                );
+              throw err;
+            }
+            state.pendingDependencyClearMessages = state.pendingDependencyClearMessages.filter(
+              (item) => Number(item.generation || 0) > refreshGeneration,
+            );
+          }
+          return true;
+        })();
+        state.dependencyRefreshPromise = refreshPromise;
+        try {
+          const refreshed = await refreshPromise;
+          if (state.dependencyRefreshPromise === refreshPromise) {
+            state.dependencyRestorePending = false;
+            state.dependencyRestoreError = "";
+          }
+          return refreshed;
+        } catch (err) {
+          if (state.dependencyRefreshPromise === refreshPromise) {
+            state.dependencyRestorePending = true;
+            state.dependencyRestoreError = retryQueuedRefresh
+              ? ""
+              : String(err?.message || err || "Dependency restore failed.");
+          }
+          throw err;
+        } finally {
+          if (state.dependencyRefreshPromise === refreshPromise) {
+            state.dependencyRefreshPromise = null;
+            if (retryQueuedRefresh) armPersistedValuesRefresh();
+          }
+        }
+      }
+
+      function armPersistedValuesRefresh() {
+        if (state.initialLoadPending || state.persistedMutationInFlight || state.dependencyRefreshPromise) return;
+        if (state.persistedRefreshTimer != null) window.clearTimeout(state.persistedRefreshTimer);
+        state.persistedRefreshTimer = window.setTimeout(() => {
+          state.persistedRefreshTimer = null;
+          flushPersistedValuesRefresh()
+            .catch((err) => postStatus(`Result Selection refresh failed: ${err?.message || err}`, "error"));
+        }, 25);
+      }
+
+      function schedulePersistedValuesRefresh(reason = "dependency update") {
+        state.persistedRefreshReason = text(reason) || "dependency update";
+        state.dependencyRestorePending = true;
+        state.dependencyRestoreError = "";
+        armPersistedValuesRefresh();
+      }
+
+      function scheduleDependencyClearRestore(message, options = {}) {
+        queueDependencyClear(message, options);
+        schedulePersistedValuesRefresh(message.reason || "dependency update");
+      }
+
+      function resumePersistedValuesRefresh() {
+        if (state.persistedRefreshReason || state.pendingDependencyClearMessages.length) {
+          armPersistedValuesRefresh();
+        }
+      }
+
+      function applyDependencySourcePreview(message, options = {}) {
         if (!sourceMessageMatchesContext(message)) return false;
         const values = normalizePreviewValues(message.values);
         if (!values.length) return false;
@@ -231,8 +563,24 @@
           while (source.weights.length < source.values.length) source.weights.push(0);
           changed = true;
         }
-        if (changed) renderMethodGrid();
+        if (changed) {
+          if (options.store !== false) {
+            state.dependencyPreviews.set(dependencyPreviewKey(message), { ...message });
+          }
+          state.hasDependencyPreview = state.dependencyPreviews.size > 0;
+          renderMethodGrid();
+          if (options.publish !== false) postResultSelectionDependencyPreview();
+        }
         return changed;
+      }
+
+      function reapplyActiveDependencyPreviews() {
+        for (const preview of state.dependencyPreviews.values()) {
+          applyDependencySourcePreview(preview, { store: false, publish: false });
+        }
+        state.hasDependencyPreview = state.dependencyPreviews.size > 0;
+        if (state.hasDependencyPreview || isDirty) postResultSelectionDependencyPreview();
+        return state.hasDependencyPreview;
       }
 
       function withProgrammatic(fn) {
@@ -477,9 +825,10 @@
         els.ratioBasisList?.querySelector(".rsRatioBasisDragging")?.classList.remove("rsRatioBasisDragging");
       }
 
-      function openRatioBasisDataset(index) {
+      async function openRatioBasisDataset(index) {
         const name = getRatioBasisNames()[index];
         if (!name) return;
+        await ensureDatasetCatalogLoaded();
         const record = cachedRows.find((row) => norm(row?.name) === norm(name)) || null;
         const requestId = `rs_open_ratio_basis_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const onMessage = (event) => {
@@ -514,9 +863,10 @@
         names.splice(index, 1);
         setRatioBasisNames(names);
         syncRatioBasisSelector();
+        state.ratioBasisValueSets = normalizeRatioBasisValueSets(state.ratioBasisValueSets, names);
         if (previousActive !== state.activeRatioBasisName) state.ratioBasisValues = [];
         markDirty();
-        void refreshRatioBasisValues();
+        void useOrRefreshRatioBasisValues();
       }
 
       function syncRatioBasisSelector() {
@@ -735,9 +1085,11 @@
               setOriginLabels([], getDetails().originLength);
               void (async () => {
                 try {
+                  await ensureDatasetCatalogLoaded();
                   await refreshOriginLabels({ render: false });
                   await reloadSourcesForCurrentOriginLength({ render: false });
-                  if (getActiveRatioBasisName()) await refreshRatioBasisValues();
+                  state.ratioBasisValueSets = [];
+                  if (getActiveRatioBasisName()) await refreshAllRatioBasisValues();
                   else renderMethodGrid();
                 } catch (err) {
                   postStatus(`Origin length reload failed: ${err?.message || err}`, "error");
@@ -931,7 +1283,9 @@
             const previousActive = state.activeRatioBasisName;
             syncRatioBasisSelector();
             if (previousActive !== state.activeRatioBasisName) state.ratioBasisValues = [];
-            void refreshRatioBasisValues();
+            void refreshMissingRatioBasisValues().catch((err) => {
+              postStatus(`Ratio Basis load failed: ${err?.message || err}`, "error");
+            });
           });
         });
         els.ratioBasisAddButton?.addEventListener("click", (event) => {
@@ -951,7 +1305,8 @@
           if (!button) return;
           event.preventDefault();
           event.stopPropagation();
-          openRatioBasisDataset(Number.parseInt(button.dataset.ratioBasisOpenIndex || "", 10));
+          void openRatioBasisDataset(Number.parseInt(button.dataset.ratioBasisOpenIndex || "", 10))
+            .catch((err) => postStatus(`Ratio Basis open failed: ${err?.message || err}`, "error"));
         });
         els.ratioBasisList?.addEventListener("contextmenu", (event) => {
           const token = event.target.closest?.("[data-ratio-basis-index]");
@@ -998,7 +1353,7 @@
           state.activeRatioBasisName = text(value);
           syncRatioBasisSelector();
           markDirty();
-          void refreshRatioBasisValues();
+          void useOrRefreshRatioBasisValues();
         });
         document.addEventListener("mousedown", (event) => {
           const target = event.target;
@@ -1016,6 +1371,7 @@
             postStatus("Select a project before choosing an output vector.", "warn");
             return;
           }
+          await ensureDatasetCatalogLoaded();
           await openDatasetNamePicker({
             projectName: state.project,
             initialName: els.outputTypeInput?.value || "",
@@ -1051,7 +1407,9 @@
             getReservingClass: () => state.reservingClass,
             getIsDirty: () => isDirty,
             save: saveResultSelection,
-            applyPayload,
+            applySavedResult,
+            beginPersistedMutation,
+            finishPersistedMutation,
             postStatus,
           }, els.syncBtn).catch((err) => postStatus(`Result Selection sync failed: ${err?.message || err}`, "error"));
         });
@@ -1079,12 +1437,32 @@
             return;
           }
           if (msg.type === "arcrho:dependency-source-preview") {
-            applyDependencySourcePreview(msg);
+            if (applyDependencySourcePreview(msg)) noteDependencyEvent();
             return;
           }
           if (msg.type === "arcrho:dependency-source-cleared") {
-            reloadSourcesMatchingMessage(msg, { refreshCache: msg.reason === "save" || msg.reason === "clean" })
-              .catch((err) => postStatus(`Source reload failed: ${err?.message || err}`, "error"));
+            if (!sourceMessageMatchesContext(msg)) return;
+            const directMatch = state.sources.some((source) => sourceMessageMatchesSource(msg, source));
+            const basisMatch = sourceMessageMatchesRatioBasis(msg);
+            const clearedNames = sourceMessageNames(msg);
+            const reloadLocalSource = state.sources.some(
+              (source) => sourceMessageMatchesSource(msg, source)
+                && !state.persistedDependencyNames.has(norm(source.name)),
+            );
+            const reloadLocalBasis = getRatioBasisNames().some(
+              (name) => clearedNames.has(norm(name))
+                && !state.persistedDependencyNames.has(norm(name)),
+            );
+            const previewRemoved = removeDependencyPreview(msg);
+            if (!directMatch && !basisMatch && !previewRemoved) return;
+            noteDependencyEvent();
+            scheduleDependencyClearRestore(msg, { reloadLocalSource, reloadLocalBasis });
+            return;
+          }
+          if (msg.type === "arcrho:calculated-datasets-updated") {
+            if (!calculatedUpdateAffectsCurrentResultSelection(msg)) return;
+            noteDependencyEvent();
+            schedulePersistedValuesRefresh(msg.source || "calculated dataset update");
           }
         });
         window.__arcrho_request_close = () => {
@@ -1132,15 +1510,33 @@
         syncRatioBasisSelector();
         wireRsGridScrollbarActivity();
         wireNotes();
-        await loadOutputSidecarSettings().catch((err) => console.warn("Result Selection sidecar settings load failed:", err));
-        await loadDatasetTypes();
-        await loadCachedRows(false).catch((err) => postStatus(`Cached dataset lookup failed: ${err?.message || err}`, "error"));
+        let loadError = null;
         const loaded = await tryLoadExistingMethod().catch((err) => {
+          loadError = err;
+          state.loadBlocked = true;
+          syncLoadBlockedControls();
           postStatus(`Result Selection load failed: ${err?.message || err}`, "error");
           return false;
         });
+        state.initialLoadPending = false;
+        if (loaded) {
+          if (state.persistedRefreshReason || state.pendingDependencyClearMessages.length) {
+            try {
+              await flushPersistedValuesRefresh();
+            } catch (err) {
+              postStatus(`Result Selection dependency restore failed: ${err?.message || err}`, "error");
+            }
+          }
+        } else {
+          state.pendingDependencyClearMessages.length = 0;
+          state.dependencyRestorePending = false;
+          state.persistedRefreshReason = "";
+        }
         let originLabelError = "";
-        if (!state.originLabels.length) {
+        if (!loaded && !loadError) {
+          await ensureDatasetCatalogLoaded().catch((err) => postStatus(`Cached dataset lookup failed: ${err?.message || err}`, "error"));
+        }
+        if (!loaded && !loadError && !state.originLabels.length) {
           try {
             await refreshOriginLabels({ render: false });
           } catch (err) {
@@ -1148,14 +1544,20 @@
             renderMethodGrid();
           }
         }
-        if (!loaded) {
+        if (!loaded && !loadError) {
           await initializeDefaultSources().catch((err) => postStatus(`Default source load failed: ${err?.message || err}`, "error"));
           renderMethodGrid();
         }
         setTab(state.activeTab);
         markClean();
+        if (loadError) {
+          syncLoadBlockedControls();
+          return;
+        }
         if (originLabelError && !state.originLabels.length) {
           postStatus(`Origin labels unavailable: ${originLabelError}`, "error");
+        } else if (state.needsReview) {
+          postStatus("Result Selection loaded, but its saved dependency refresh needs review.", "warn");
         } else {
           postStatus("Result Selection ready.");
         }
@@ -1163,8 +1565,6 @@
 
       return {
         numberOrNull,
-        roundRsJsonNumber,
-        roundRsJsonVector,
         positiveInt,
         validOriginLength,
         validSourceOriginLength,
@@ -1185,13 +1585,21 @@
         sourceMessageNames,
         sourceMessageMatchesContext,
         sourceMessageMatchesSource,
+        syncLoadBlockedControls,
         normalizePreviewValues,
         buildResultSelectionDependencySourceMessage,
         postResultSelectionDependencySourceMessage,
         postResultSelectionDependencyPreview,
         clearResultSelectionDependencyPreview,
         reloadSourcesMatchingMessage,
+        refreshPersistedValuesFromDisk,
+        recordPersistedMethodDependencies,
+        flushPersistedValuesRefresh,
+        schedulePersistedValuesRefresh,
+        scheduleDependencyClearRestore,
+        resumePersistedValuesRefresh,
         applyDependencySourcePreview,
+        reapplyActiveDependencyPreviews,
         withProgrammatic,
         dropdownOptions,
         getDropdownValue,

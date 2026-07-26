@@ -51,17 +51,21 @@
 
     <section class="manual-section" id="save">
       <div class="section-head"><p class="eyebrow">Save</p><h2>What saving writes</h2></div>
+      <div class="task-grid">
+        <article class="task-card"><h3>Fast reopen</h3><ul><li>The saved method contains every source value, weight, override, and configured Ratio Basis vector used by the grids.</li><li>A current Result Selection reopens from its own method JSON and output sidecar without reopening each input dataset.</li></ul></article>
+        <article class="task-card"><h3>Automatic freshness</h3><ul><li>Saving an input dataset refreshes registered dependent Result Selections and their output vectors.</li><li>If an input cannot be read or a calculated branch fails, the prior published result is preserved and only that branch remains in review; independent branches continue.</li><li>Affected open Result Selection windows reload their own saved snapshot automatically; matching clear/update notifications share one reload, while unrelated project/path windows do not. Unsaved local weights and overrides are retained, and Save waits for any live-preview restore before it can persist.</li></ul></article>
+      </div>
       <pre class="code-sample"><code>Method JSON:
 methods\RS@Selected Ultimate.json
 
 Output vector CSV:
-datasets\Selected Ultimate@12@12@cum@dev.csv
+datasets\Selected Ultimate@12.csv
 
 Sidecar:
 sidecars\Selected Ultimate.json
 
 JSON format marker:
-arcrho-result-selection-method-by-tab-v1</code></pre>
+arcrho-result-selection-method-by-tab-v2</code></pre>
     </section>
   </main>
   <script src="../manual.js"></script>

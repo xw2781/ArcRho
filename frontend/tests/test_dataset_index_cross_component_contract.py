@@ -77,7 +77,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         catalog.configure_catalog(
             server_root=self.server_root,
             project_name=self.project_name,
-            rs_json_format="arcrho-result-selection-method-by-tab-v1",
+            rs_json_format="arcrho-result-selection-method-by-tab-v2",
             method_data_dir="methods",
         )
 
@@ -240,7 +240,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self._write_json(
             self.methods_dir / "RS@Selected Ultimate.json",
             {
-                "json_format": "arcrho-result-selection-method-by-tab-v1",
+                "json_format": "arcrho-result-selection-method-by-tab-v2",
                 "details_tab": {
                     "name": "Selected Ultimate",
                     "output_type": "Selected Ultimate",

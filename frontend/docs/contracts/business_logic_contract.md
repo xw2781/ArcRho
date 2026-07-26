@@ -16,6 +16,7 @@ This contract applies when changing app-server routes, schemas, services, runtim
 5. Keep API validation and status behavior explicit. Input problems should not become generic `500` responses, and lock/contention cases should remain distinguishable.
 6. Keep refresh/cache side effects visible in route behavior and docs when they matter to users or downstream features.
 7. Keep dataset number-format defaults in the workspace-global `config/dataset_number_formats.json`; ResQ migration and frontend-generated dataset producers must resolve the same fallback and Dataset Type Name overrides across all reserving-class paths.
+8. Keep current Result Selection method JSON self-contained. A valid v2 open reads only its own method JSON and output sidecar; source values, weights, native origin lengths, all configured Ratio Basis vectors, calculated/final ultimates, and overrides come from the method JSON. Durable precedent changes must refresh registered RS artifacts before the sidecar is marked current, and a failed refresh must preserve the last valid artifacts with review-needed status. Only an exact v1 marker may take the one-time dependency-reading upgrade path.
 
 ## Before Finishing
 1. State which business-logic area changed, or state "no business-logic impact."

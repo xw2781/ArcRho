@@ -1630,7 +1630,6 @@ async function saveBornhuetterFerguson() {
     data: vectorCsv(vector),
   });
   if (csvOut?.error) throw new Error(csvOut.error);
-  await saveSidecar(csvPath, payload.method_tab.origin_labels || []);
 
   const datasetDir = await getDatasetDir();
   const aggregatedCsvPaths = [];
@@ -1644,6 +1643,7 @@ async function saveBornhuetterFerguson() {
     if (aggOut?.error) throw new Error(aggOut.error);
     aggregatedCsvPaths.push(aggPath);
   }
+  const sidecarResult = await saveSidecar(csvPath, payload.method_tab.origin_labels || []);
 
   await Promise.all([
     loadCachedRows(true).catch(() => {}),
@@ -1652,9 +1652,21 @@ async function saveBornhuetterFerguson() {
   markClean();
   try {
     window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+    if (sidecarResult?.calculated_updates) {
+      window.parent?.postMessage({
+        type: "arcrho:calculated-datasets-updated",
+        report: sidecarResult.calculated_updates,
+        source: `${BF_METHOD_TYPE} save`,
+      }, "*");
+    }
   } catch {}
-  postStatus(`${BF_METHOD_TYPE} saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`);
-  return { ok: true, path: jsonOut.path, csvPath, aggregatedCsvPaths };
+  postStatus(
+    sidecarResult?.propagation_ok === false
+      ? `${BF_METHOD_TYPE} saved, but one or more downstream dependents still need review: ${details.name}`
+      : `${BF_METHOD_TYPE} saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`,
+    sidecarResult?.propagation_ok === false ? "warn" : "",
+  );
+  return { ok: true, path: jsonOut.path, csvPath, aggregatedCsvPaths, sidecar: sidecarResult };
 }
 
 function setNotesText(value) {

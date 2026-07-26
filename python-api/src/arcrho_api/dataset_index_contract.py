@@ -86,13 +86,15 @@ METHOD_TYPE_BS_CRA = "B&S Case Reserve Adequacy Adjustment"
 STATUS_CURRENT = 0
 STATUS_REVIEW_NEEDED = 2
 
-RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
+RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
+LEGACY_RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
 BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
 BS_SR_JSON_FORMAT = "arcrho-berquist-sherman-sr-method-by-tab-v1"
 BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-method-by-tab-v1"
 
 _METHOD_CONTRACTS = {
     RS_JSON_FORMAT: (METHOD_TYPE_RESULT_SELECTION, "result_selection", "Vector"),
+    LEGACY_RS_JSON_FORMAT: (METHOD_TYPE_RESULT_SELECTION, "result_selection", "Vector"),
     BF_JSON_FORMAT: (METHOD_TYPE_BF, "bornhuetter_ferguson", "Vector"),
     BS_SR_JSON_FORMAT: (METHOD_TYPE_BS_SR, "berquist_sherman_sr", "Triangle"),
     BS_CRA_JSON_FORMAT: (METHOD_TYPE_BS_CRA, "berquist_sherman_cra", "Triangle"),

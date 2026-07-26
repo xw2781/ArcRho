@@ -7,7 +7,7 @@ import {
   getRatioHeaderLabels,
   state,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { applyDfmMethodPayload, saveRatioSelectionPattern } from "/ui/method_pages/dfm/dfm_persistence.js?v=20260716a";
+import { applyDfmMethodPayload, saveRatioSelectionPattern } from "/ui/method_pages/dfm/dfm_persistence.js?v=20260725b";
 import {
   confirmDfmRpcBridgeAction,
   createDfmRpcBridgeDialog,

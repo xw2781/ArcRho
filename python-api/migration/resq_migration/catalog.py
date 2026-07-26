@@ -41,7 +41,7 @@ from .core import (
 
 SERVER_ROOT = Path(r"E:\ArcRho Server")
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
+RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
 INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
 INDEX_VERSION = DATASET_INDEX_VERSION
 METHOD_DATA_DIR = "methods"

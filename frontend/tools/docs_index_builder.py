@@ -667,6 +667,15 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("ui/shared/dataset/dataset_api.js", "Frontend client wrapper for dataset API."),
         ],
     },
+    "result_selection": {
+        "doc": "docs/app_server/domains/result_selection.md",
+        "files": [
+            ("app_server/api/result_selection_router.py", "Aggregate Result Selection load/save routes."),
+            ("app_server/services/result_selection_service.py", "V2 contract validation, persistence, and eager dependency refresh."),
+            ("app_server/schemas/result_selection.py", "Result Selection load/save request models."),
+            ("ui/method_pages/result_selection/result_selection_json_contract.js", "Canonical frontend v2 payload builder."),
+        ],
+    },
     "book": {
         "doc": "docs/app_server/domains/book.md",
         "files": [
@@ -1059,6 +1068,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Uses in-memory dataset map and patch payloads.",
             "1. Change patch semantics: align schema, service patch rules, and frontend expectations.",
             "- Patch operations can introduce subtle data integrity issues.",
+        ),
+        "result_selection": (
+            "Self-contained Result Selection v2 load, save, and eager dependency-refresh domain.",
+            "- Used by the Result Selection method page and its ResQ bridge.\n- Current loads aggregate one method JSON and its output sidecar.",
+            "- Persists Result Selection method JSON, output vector CSV variants, and an output dataset sidecar with dependency edges.",
+            "1. Change the v2 payload only across every producer and the exact parity test.\n2. Preserve two-file current loads and failure-safe eager refresh behavior.",
+            "- Broken reverse edges or bypassing durable ArcRho save paths can prevent automatic refresh.",
         ),
         "book": (
             "Workbook metadata/sheet/patch domain.",

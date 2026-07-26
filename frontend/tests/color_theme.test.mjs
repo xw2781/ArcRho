@@ -586,13 +586,13 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
   const expectedReferences = [
-    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260724b"],
+    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260725b"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260724b"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260724a"],
     ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
-    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260722a"],
-    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260724a"],
-    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260722b"],
+    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260725a"],
+    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260726a"],
+    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260725a"],
     ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260722a"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260722a"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260724a"],

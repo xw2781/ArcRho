@@ -278,7 +278,7 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
     json_format = _clean_text(payload.get("json_format"))
     status = _clean_text(payload.get("status"))
     message = _clean_text(payload.get("message"))
-    if json_format != "arcrho-result-selection-method-by-tab-v1":
+    if json_format != "arcrho-result-selection-method-by-tab-v2":
         if status or message or payload.get("ok") is False:
             detail = message or status or "Bridge returned a status JSON instead of Result Selection method JSON."
             return {
@@ -405,12 +405,39 @@ def apply_remote_to_local(req: ResultSelectionRpcBridgeRequest) -> Dict[str, Any
     if not os.path.exists(paths["remote_path"]):
         raise HTTPException(404, "Remote Result Selection JSON is missing.")
     remote_payload = _read_json(paths["remote_path"])
-    _atomic_write_json(paths["local_path"], remote_payload)
+    from app_server.services import result_selection_service
+
+    remote_payload = result_selection_service.normalize_method_payload(
+        remote_payload,
+        require_complete_basis=True,
+    )
+    if _clean_text(remote_payload.get("details_tab", {}).get("name")).casefold() != _clean_text(req.method_name).casefold():
+        raise HTTPException(422, "Remote Result Selection name does not match the requested local method.")
+    current = result_selection_service.load_result_selection(
+        req.project_name,
+        req.reserving_class,
+        req.method_name,
+    )
+    saved = result_selection_service.save_result_selection(
+        req.project_name,
+        req.reserving_class,
+        remote_payload,
+        str(current.get("sidecar", {}).get("notes") or ""),
+        str(current.get("method_revision") or ""),
+    )
     deleted = _try_remove(paths["remote_path"])
     return {
         "ok": True,
         "status": "applied",
-        "payload": remote_payload,
+        "payload": saved["method"],
+        "method_revision": saved["method_revision"],
+        "sidecar": saved["sidecar"],
+        "csv_path": saved["csv_path"],
+        "aggregated_csv_paths": saved["aggregated_csv_paths"],
+        "propagation_ok": saved.get("propagation_ok", True),
+        "propagation": saved.get("propagation"),
+        "index_ok": saved.get("index_ok", True),
+        "index_error": saved.get("index_error", ""),
         "local": _file_meta(paths["local_path"]),
         "remote_deleted": deleted,
         "paths": paths,

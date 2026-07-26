@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import re
-import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
 
@@ -16,7 +16,6 @@ import pandas as pd
 from app_server import config
 from app_server.helpers import (
     _canon_dataset_name,
-    atomic_write_csv,
     build_dataset_cache_file_name,
     sanitize_dataset_file_name,
 )
@@ -26,6 +25,11 @@ from app_server.services import (
     dataset_sidecar_status_service,
     dataset_types_service,
     runtime_cache_provenance_service,
+)
+
+_METHOD_DEPENDENT_READ_EXECUTOR = ThreadPoolExecutor(
+    max_workers=6,
+    thread_name_prefix="arcrho-method-dependent-read",
 )
 
 
@@ -280,12 +284,42 @@ def apply_sidecar_graph_fields(
         payload["formula"] = formula if is_calculated else ""
         payload["calculated"] = is_calculated
 
-    payload.update(sidecar_graph_fields(
+    existing_dependent_names = dataset_sidecar_status_service.entry_names(payload.get("Dependents"))
+    existing_precedents = payload.get("Precedents")
+    owning_method_type = dataset_sidecar_status_service.normalize_method_type(
+        payload.get("method_type"),
+        payload.get("source_kind"),
+    )
+    graph_fields = sidecar_graph_fields(
         project,
         dataset_type,
         dependency_info,
         _clean_text(payload.get("reserving_class")),
-    ))
+    )
+    reserving_class = _clean_text(payload.get("reserving_class"))
+    preserved_method_dependents: List[str] = []
+    if reserving_class and existing_dependent_names:
+        futures = {
+            name: _METHOD_DEPENDENT_READ_EXECUTOR.submit(
+                dataset_sidecar_status_service.read_sidecar,
+                dataset_sidecar_status_service.sidecar_path(project, reserving_class, name),
+            )
+            for name in existing_dependent_names
+        }
+        for name in existing_dependent_names:
+            dependent = futures[name].result()
+            if not dependent or dataset_sidecar_status_service.normalize_method_type(
+                dependent.get("method_type"),
+                dependent.get("source_kind"),
+            ) != dataset_sidecar_status_service.METHOD_TYPE_NONE:
+                preserved_method_dependents.append(name)
+    graph_fields["Dependents"] = dataset_sidecar_status_service.merge_name_entries(
+        graph_fields.get("Dependents"),
+        dataset_sidecar_status_service.name_entries(preserved_method_dependents),
+    )
+    if owning_method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE:
+        graph_fields["Precedents"] = existing_precedents if isinstance(existing_precedents, list) else []
+    payload.update(graph_fields)
     payload.pop("dependencies", None)
     return payload
 
@@ -1027,8 +1061,8 @@ def _calculated_rows_by_key(project_name: str) -> Dict[str, Dict[str, Any]]:
     }
 
 
-def _dependency_map(project_name: str) -> Dict[str, Set[str]]:
-    rows = _dataset_type_rows(project_name)
+def _dependency_map(project_name: str, rows: List[Dict[str, Any]] | None = None) -> Dict[str, Set[str]]:
+    rows = rows if rows is not None else _dataset_type_rows(project_name)
     known_names = [row["name"] for row in rows]
     out: Dict[str, Set[str]] = {}
     for row in rows:
@@ -1042,8 +1076,8 @@ def _dependency_map(project_name: str) -> Dict[str, Set[str]]:
     return out
 
 
-def _target_dependency_map(project_name: str) -> Dict[str, Set[str]]:
-    rows = _dataset_type_rows(project_name)
+def _target_dependency_map(project_name: str, rows: List[Dict[str, Any]] | None = None) -> Dict[str, Set[str]]:
+    rows = rows if rows is not None else _dataset_type_rows(project_name)
     known_names = [row["name"] for row in rows]
     out: Dict[str, Set[str]] = {}
     for row in rows:
@@ -1060,23 +1094,22 @@ def _target_dependency_map(project_name: str) -> Dict[str, Set[str]]:
 
 
 def _existing_dataset_keys(project_name: str, reserving_class: str) -> Set[str]:
-    try:
-        folder = config.get_project_reserving_class_data_dir(project_name, reserving_class)
-    except ValueError:
-        return set()
-    _names, files, _methods = dataset_instance_index_service._scan_cached_dataset_folder(folder)
+    index = dataset_instance_index_service.get_index(project_name, reserving_class, refresh=False)
     keys: Set[str] = set()
-    for item in files:
-        names = item.get("dataset_names") if isinstance(item.get("dataset_names"), list) else []
-        for value in [item.get("dataset_name"), item.get("dataset_type"), *names]:
+    for item in index.get("files", []) if isinstance(index.get("files"), list) else []:
+        for value in [item.get("name"), item.get("dataset_type")]:
             key = _canon_dataset_name(value)
             if key:
                 keys.add(key)
     return keys
 
 
-def _downstream_keys(project_name: str, changed_names: List[str]) -> List[str]:
-    dep_map = _dependency_map(project_name)
+def _downstream_keys(
+    project_name: str,
+    changed_names: List[str],
+    rows: List[Dict[str, Any]] | None = None,
+) -> List[str]:
+    dep_map = _dependency_map(project_name, rows)
     seen: Set[str] = set()
     out: List[str] = []
     queue = [_canon_dataset_name(name) for name in changed_names if _canon_dataset_name(name)]
@@ -1090,7 +1123,7 @@ def _downstream_keys(project_name: str, changed_names: List[str]) -> List[str]:
             queue.append(target)
 
     target_set = set(out)
-    deps_by_target = _target_dependency_map(project_name)
+    deps_by_target = _target_dependency_map(project_name, rows)
     ordered: List[str] = []
     visiting: Set[str] = set()
     visited: Set[str] = set()
@@ -1113,31 +1146,46 @@ def _downstream_keys(project_name: str, changed_names: List[str]) -> List[str]:
     return ordered
 
 
-def _existing_downstream_keys(project_name: str, reserving_class: str, changed_names: List[str]) -> List[str]:
+def _existing_downstream_keys(
+    project_name: str,
+    reserving_class: str,
+    changed_names: List[str],
+    rows: List[Dict[str, Any]] | None = None,
+) -> List[str]:
     existing_keys = _existing_dataset_keys(project_name, reserving_class)
     if not existing_keys:
         return []
     return [
         key
-        for key in _downstream_keys(project_name, changed_names)
+        for key in _downstream_keys(project_name, changed_names, rows)
         if key in existing_keys
     ]
 
 
-def recalculate_dataset(
+def _recalculate_dataset_impl(
     project_name: str,
     reserving_class: str,
     dataset_type_name: str,
     *,
     component_paths: Dict[str, str] | None = None,
     component_method_sources: Dict[str, Dict[str, str]] | None = None,
+    dataset_type_rows: List[Dict[str, Any]] | None = None,
+    mark_dependents_review: bool = True,
 ) -> Dict[str, Any]:
-    rows_by_key = _calculated_rows_by_key(project_name)
+    if dataset_type_rows is None:
+        rows_by_key = _calculated_rows_by_key(project_name)
+        all_rows = _dataset_type_rows(project_name)
+    else:
+        all_rows = dataset_type_rows
+        rows_by_key = {
+            _canon_dataset_name(item.get("name")): item
+            for item in all_rows
+            if item.get("calculated") and not item.get("generated") and _clean_text(item.get("formula"))
+        }
     row = rows_by_key.get(_canon_dataset_name(dataset_type_name))
     if not row:
         return {"ok": False, "dataset_type_name": dataset_type_name, "skipped": True, "reason": "not_calculated"}
 
-    all_rows = _dataset_type_rows(project_name)
     known_names = [item["name"] for item in all_rows]
     expr, refs = _replace_formula_refs(row["formula"], known_names)
     ordered_components = [refs[key] for key in sorted(refs.keys(), key=lambda item: int(item[2:]))]
@@ -1244,6 +1292,7 @@ def recalculate_dataset(
         "formula": row.get("formula") or "",
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
+        "Dependents": existing_sidecar.get("Dependents", []),
         "number_format": number_format,
         "decimal_places": dataset_number_format_service.normalize_decimal_places(
             decimal_places,
@@ -1251,22 +1300,24 @@ def recalculate_dataset(
         ),
     }
     apply_sidecar_graph_fields(payload, project_name, row["name"], precedents)
-    from app_server.services.dataset_service import _append_dataset_audit_entry
+    from app_server.services.dataset_service import (
+        _append_dataset_audit_entry,
+        _write_dataset_csv_and_sidecar,
+    )
 
     _append_dataset_audit_entry(payload, action_value, event_date=now, user_name=user_name)
 
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)
-    atomic_write_csv(pd.DataFrame(arr), csv_path)
-    tmp_sidecar = f"{sidecar_path}.{uuid.uuid4()}.tmp"
-    with open(tmp_sidecar, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(payload, fh, indent=2, ensure_ascii=False)
-        fh.write("\n")
-    os.replace(tmp_sidecar, sidecar_path)
-    status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-        project_name,
-        reserving_class,
-        [row["name"]],
+    _write_dataset_csv_and_sidecar(pd.DataFrame(arr), csv_path, sidecar_path, payload)
+    status_updates = (
+        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+            project_name,
+            reserving_class,
+            [row["name"]],
+        )
+        if mark_dependents_review
+        else []
     )
     config.DATASETS["arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]] = csv_path
 
@@ -1281,18 +1332,58 @@ def recalculate_dataset(
     }
 
 
-def recalculate_dataset_chain(project_name: str, reserving_class: str, dataset_type_name: str) -> Dict[str, Any]:
+def recalculate_dataset(
+    project_name: str,
+    reserving_class: str,
+    dataset_type_name: str,
+    *,
+    component_paths: Dict[str, str] | None = None,
+    component_method_sources: Dict[str, Dict[str, str]] | None = None,
+    dataset_type_rows: List[Dict[str, Any]] | None = None,
+    mark_dependents_review: bool = True,
+) -> Dict[str, Any]:
+    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+        return _recalculate_dataset_impl(
+            project_name,
+            reserving_class,
+            dataset_type_name,
+            component_paths=component_paths,
+            component_method_sources=component_method_sources,
+            dataset_type_rows=dataset_type_rows,
+            mark_dependents_review=mark_dependents_review,
+        )
+
+
+def recalculate_dataset_chain(
+    project_name: str,
+    reserving_class: str,
+    dataset_type_name: str,
+    *,
+    rebuild_index: bool = True,
+) -> Dict[str, Any]:
     first = recalculate_dataset(project_name, reserving_class, dataset_type_name)
     first_step = {
         **first,
         "status": "updated" if first.get("ok") else "skipped",
     }
-    downstream = recalculate_dependents(project_name, reserving_class, dataset_type_name, dataset_type_name)
+    downstream = recalculate_dependents(
+        project_name,
+        reserving_class,
+        dataset_type_name,
+        dataset_type_name,
+        rebuild_index=rebuild_index,
+    ) \
+        if first.get("ok") else {
+            "ok": False,
+            "steps": [],
+            "updated": [],
+            "skipped": [],
+        }
     steps = [first_step] + list(downstream.get("steps") or [])
     updated = [item for item in steps if item.get("ok")]
     skipped = [item for item in steps if not item.get("ok")]
     return {
-        "ok": True,
+        "ok": bool(first.get("ok")) and bool(downstream.get("ok")),
         "project_name": project_name,
         "reserving_class": reserving_class,
         "changed_dataset_name": dataset_type_name,
@@ -1304,34 +1395,126 @@ def recalculate_dataset_chain(project_name: str, reserving_class: str, dataset_t
     }
 
 
-def recalculate_dependents(
+def _recalculate_dependents_impl(
     project_name: str,
     reserving_class: str,
     changed_dataset_name: str,
     changed_dataset_type_name: str = "",
+    *,
+    include_result_selection: bool = True,
+    rebuild_index: bool = True,
 ) -> Dict[str, Any]:
     changed = [changed_dataset_name, changed_dataset_type_name]
-    targets = _existing_downstream_keys(project_name, reserving_class, changed)
-    rows_by_key = _calculated_rows_by_key(project_name)
+    dataset_type_rows = _dataset_type_rows(project_name)
+    targets = _existing_downstream_keys(project_name, reserving_class, changed, dataset_type_rows)
+    rows_by_key = {
+        _canon_dataset_name(item.get("name")): item
+        for item in dataset_type_rows
+        if item.get("calculated") and not item.get("generated") and _clean_text(item.get("formula"))
+    }
+    known_names = [item.get("name") for item in dataset_type_rows if _clean_text(item.get("name"))]
+    dependencies_by_key = {
+        key: {
+            _canon_dataset_name(name)
+            for name in _formula_components(row.get("formula") or "", known_names)
+            if _canon_dataset_name(name)
+        }
+        for key, row in rows_by_key.items()
+    }
     results: List[Dict[str, Any]] = []
+    failed_or_blocked: Set[str] = set()
     for key in targets:
         row = rows_by_key.get(key)
         if not row:
             continue
-        result = recalculate_dataset(project_name, reserving_class, row["name"])
+        blocked_by = sorted(dependencies_by_key.get(key, set()) & failed_or_blocked)
+        if blocked_by:
+            result = {
+                "ok": False,
+                "dataset_type_name": row["name"],
+                "skipped": True,
+                "reason": "upstream_calculation_failed",
+                "errors": [
+                    "Skipped because an upstream calculated dependency did not refresh: "
+                    + ", ".join(blocked_by)
+                ],
+            }
+        else:
+            try:
+                result = recalculate_dataset(
+                    project_name,
+                    reserving_class,
+                    row["name"],
+                    dataset_type_rows=dataset_type_rows,
+                    mark_dependents_review=False,
+                )
+            except Exception as exc:
+                result = {
+                    "ok": False,
+                    "dataset_type_name": row["name"],
+                    "skipped": True,
+                    "reason": "calculation_error",
+                    "errors": [str(exc)],
+                }
+        if not result.get("ok"):
+            failed_or_blocked.add(key)
         step = {
             **result,
             "status": "updated" if result.get("ok") else "skipped",
         }
         results.append(step)
 
-    try:
-        dataset_instance_index_service.rebuild_index(project_name, reserving_class)
-    except Exception:
-        pass
+    failed_dataset_names = [
+        _clean_text(result.get("dataset_type_name"))
+        for result in results
+        if not result.get("ok") and _clean_text(result.get("dataset_type_name"))
+    ]
+    for failed_name in failed_dataset_names:
+        if failed_name:
+            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+                project_name,
+                reserving_class,
+                [failed_name],
+            )
 
+    result_selection_updates = None
+    if include_result_selection:
+        try:
+            from app_server.services import result_selection_service
+
+            fresh_names = [changed_dataset_name, changed_dataset_type_name]
+            fresh_names.extend(
+                item.get("dataset_type_name")
+                for item in results
+                if item.get("ok") and _clean_text(item.get("dataset_type_name"))
+            )
+            result_selection_updates = result_selection_service.refresh_dependents(
+                project_name,
+                reserving_class,
+                fresh_names,
+                rebuild_index=False,
+                allow_status_current=True,
+                blocked_precedent_names=failed_dataset_names,
+            )
+        except Exception as err:
+            result_selection_updates = {
+                "ok": False,
+                "errors": [{"reason": str(err)}],
+                "updated": [],
+            }
+
+    index_error = ""
+    if rebuild_index:
+        try:
+            dataset_instance_index_service.rebuild_index(project_name, reserving_class)
+        except Exception as err:
+            index_error = str(err)
+
+    overall_ok = all(item.get("ok") for item in results)
+    if result_selection_updates is not None:
+        overall_ok = overall_ok and bool(result_selection_updates.get("ok"))
     return {
-        "ok": True,
+        "ok": overall_ok,
         "project_name": project_name,
         "reserving_class": reserving_class,
         "changed_dataset_name": changed_dataset_name,
@@ -1344,7 +1527,30 @@ def recalculate_dependents(
         "steps": results,
         "updated": [item for item in results if item.get("ok")],
         "skipped": [item for item in results if not item.get("ok")],
+        "result_selection_updates": result_selection_updates,
+        "index_ok": not index_error,
+        "index_error": index_error,
     }
+
+
+def recalculate_dependents(
+    project_name: str,
+    reserving_class: str,
+    changed_dataset_name: str,
+    changed_dataset_type_name: str = "",
+    *,
+    include_result_selection: bool = True,
+    rebuild_index: bool = True,
+) -> Dict[str, Any]:
+    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+        return _recalculate_dependents_impl(
+            project_name,
+            reserving_class,
+            changed_dataset_name,
+            changed_dataset_type_name,
+            include_result_selection=include_result_selection,
+            rebuild_index=rebuild_index,
+        )
 
 
 def recalculate_dependents_for_csv(csv_path: str) -> Dict[str, Any]:
@@ -1555,12 +1761,7 @@ def _write_sidecar_json(path: str, payload: Dict[str, Any]) -> None:
     payload = dict(payload)
     payload.pop("instance_name", None)
     payload.pop("dataset_type_name", None)
-    tmp_path = f"{path}.{uuid.uuid4()}.tmp"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(payload, fh, indent=2, ensure_ascii=False)
-        fh.write("\n")
-    os.replace(tmp_path, path)
+    dataset_sidecar_status_service.write_sidecar(path, payload)
 
 
 def refresh_sidecar_graphs_and_recalculate(
@@ -1584,14 +1785,22 @@ def refresh_sidecar_graphs_and_recalculate(
         if not dataset_key:
             continue
         try:
-            before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-            payload.pop("instance_name", None)
-            payload.pop("dataset_type_name", None)
-            apply_sidecar_graph_fields(payload, project_name, dataset_type)
-            after = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-            if before != after:
-                _write_sidecar_json(path, payload)
-                sidecars_updated += 1
+            with (
+                dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class),
+                dataset_sidecar_status_service.sidecar_write_lock(path),
+            ):
+                latest = _read_sidecar(path)
+                if not latest:
+                    raise RuntimeError("Dataset sidecar disappeared during graph refresh.")
+                payload = latest
+                before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+                payload.pop("instance_name", None)
+                payload.pop("dataset_type_name", None)
+                apply_sidecar_graph_fields(payload, project_name, dataset_type)
+                after = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+                if before != after:
+                    _write_sidecar_json(path, payload)
+                    sidecars_updated += 1
         except Exception as exc:
             errors.append(f"{os.path.basename(path)}: {exc}")
             continue
@@ -1602,7 +1811,12 @@ def refresh_sidecar_graphs_and_recalculate(
     chains: List[Dict[str, Any]] = []
     for reserving_class, dataset_type in sorted(recalc_seeds):
         try:
-            chains.append(recalculate_dataset_chain(project_name, reserving_class, dataset_type))
+            chains.append(recalculate_dataset_chain(
+                project_name,
+                reserving_class,
+                dataset_type,
+                rebuild_index=False,
+            ))
         except Exception as exc:
             chains.append({
                 "ok": False,
@@ -1621,11 +1835,11 @@ def refresh_sidecar_graphs_and_recalculate(
     for reserving_class in touched_rcs:
         try:
             dataset_instance_index_service.rebuild_index(project_name, reserving_class)
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(f"{reserving_class} index rebuild: {exc}")
 
     return {
-        "ok": not errors,
+        "ok": not errors and all(chain.get("ok") for chain in chains),
         "project_name": project_name,
         "changed_dataset_types": list(changed_dataset_types or []),
         "sidecars_updated": sidecars_updated,

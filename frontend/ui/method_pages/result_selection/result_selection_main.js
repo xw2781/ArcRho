@@ -16,7 +16,7 @@ import {
 import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
-import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selection/result_selection_rpc_bridge_client.js?v=20260626a";
+import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selection/result_selection_rpc_bridge_client.js?v=20260726a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
@@ -29,9 +29,17 @@ import {
   createResultSelectionChart,
 } from "/ui/method_pages/result_selection/result_selection_chart.js?v=20260724a";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
+import {
+  resultSelectionUpdateContexts,
+  resultSelectionUpdateNames,
+} from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
+import {
+  buildResultSelectionMethodPayload,
+  normalizeRatioBasisValueSets,
+  ratioBasisValuesForName,
+  upsertRatioBasisValueSet,
+} from "/ui/method_pages/result_selection/result_selection_json_contract.js?v=20260725a";
 
-const RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1";
-const RS_JSON_VALUE_DECIMAL_PLACES = 6;
 const MAX_RATIO_BASIS_COUNT = 3;
 const DEFAULT_ORIGIN_LENGTH = 12;
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
@@ -95,6 +103,7 @@ const state = {
   outputCategory: text(params.get("category")),
   sources: [],
   ratioBasisValues: [],
+  ratioBasisValueSets: [],
   outputValues: [],
   activeRatioBasisName: "",
   originLabels: [],
@@ -111,6 +120,26 @@ const state = {
   resultsHighlightDragging: false,
   weightEditSession: null,
   sourceReloadSeq: 0,
+  datasetCatalogLoaded: false,
+  datasetCatalogPromise: null,
+  methodRevision: "",
+  loadBlocked: false,
+  needsReview: false,
+  dependencyPreviewPublished: false,
+  hasDependencyPreview: false,
+  dependencyPreviews: new Map(),
+  persistedRefreshSeq: 0,
+  persistedRefreshTimer: null,
+  persistedRefreshReason: "",
+  dependencyRefreshPromise: null,
+  initialLoadPending: true,
+  pendingDependencyClearMessages: [],
+  persistedDependencyNames: new Set(),
+  dependencyRestorePending: false,
+  dependencyRestoreError: "",
+  dependencyEventSeq: 0,
+  persistedMutationSeq: 0,
+  persistedMutationInFlight: 0,
   ultimateOverrides: [],
   activeTab: ALLOWED_RS_TABS.has(norm(params.get("tab"))) ? norm(params.get("tab")) : "details",
 };
@@ -198,8 +227,12 @@ const ctx = {
   createSpreadsheetTableController,
   startResultSelectionRpcBridgeSync,
   readProjectInstanceDatasetSnapshot,
-  RS_JSON_FORMAT,
-  RS_JSON_VALUE_DECIMAL_PLACES,
+  resultSelectionUpdateContexts,
+  resultSelectionUpdateNames,
+  buildResultSelectionMethodPayload,
+  normalizeRatioBasisValueSets,
+  ratioBasisValuesForName,
+  upsertRatioBasisValueSet,
   MAX_RATIO_BASIS_COUNT,
   DEFAULT_ORIGIN_LENGTH,
   VALID_ORIGIN_LENGTHS,

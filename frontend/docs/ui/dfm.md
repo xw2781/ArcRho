@@ -8,7 +8,7 @@ DFM Notes reuses `ui/shared/tabs/notes/` for path highlighting, `Tab`/`Shift+Tab
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.dfm.entry_points -->
-- `ui/method_pages/dfm/dfm.html`: external scripts `/ui/shared/services/color_theme.js?v=20260724a`; inline imports `/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260716a`, `/ui/method_pages/dfm/dfm_main.js?v=20260722b`.
+- `ui/method_pages/dfm/dfm.html`: external scripts `/ui/shared/services/color_theme.js?v=20260724a`; inline imports `/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260725b`, `/ui/method_pages/dfm/dfm_main.js?v=20260725a`.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/tri`
