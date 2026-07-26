@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import csv
+import io
 import math
+import os
 import re
+import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+
+from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variants
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
 from .core import (
@@ -33,6 +39,7 @@ from .core import (
     _clean_name,
     _dataset_cache_csv_file_name,
     _encode_name_part,
+    _format_json,
     _is_result_selection_method_type,
     _iso_or_text,
     _json_sidecar_name,
@@ -1601,44 +1608,120 @@ def export_dfm_ultimate_vector(
         "modified": modified,
     }
 
-def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
-    name = _normalize_import_name(payload["name"])
-    dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
-    period_length = _vector_payload_period_length(payload)
-    csv_name = _vector_cache_csv_file_name(name, period_length)
-    csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
-    _write_csv_matrix(csv_path, payload["values"])
-    _write_aggregated_vector_cache_exports(payload, rc_dir)
 
-    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
-    meta = {
-        "dataset_name": name,
-        "dataset_type": dataset_type,
-        "dataset_category": _normalize_import_name(payload.get("category")),
-        "reserving_class": rc_path,
-        "project_name": PROJECT_NAME,
-        "source_kind": "dfm",
-        "calculated": True,
-        "source": "resq_dfm_ultimates",
-        "method_name": payload.get("method_name", ""),
-        "method_type": _method_type_name(payload.get("method_type")),
-        "method_type_code": payload.get("method_type_code", _method_type_code(payload.get("method_type"), -1)),
-        "data_format": "Vector",
-        "data_format_code": payload.get("data_format", 1),
-        "period_length": period_length,
-        "origin_count": payload.get("origin_count", 0),
-        "origin_labels": payload.get("origin_labels", []),
-        "development_labels": payload.get("development_labels", []),
-        "number_format": dataset_type_number_format(rc_path, dataset_type),
-        "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
-        "csv_file": csv_name,
-        "user": payload.get("user", ""),
-        "created": payload.get("created", ""),
-        "modified_by": payload.get("user", ""),
-        "notes": str(payload.get("notes") or ""),
-        "updated_at": updated_at,
-    }
-    _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
+def _csv_matrix_bytes(rows: list[list]) -> bytes:
+    stream = io.StringIO(newline="")
+    writer = csv.writer(stream, lineterminator="\n")
+    writer.writerows([
+        ["" if cell is None or str(cell).strip().lower() in {"none", "nan"} else str(cell).strip() for cell in row]
+        for row in rows
+    ])
+    return stream.getvalue().encode("utf-8")
+
+
+def build_dfm_ultimate_publication(
+    payload: dict,
+    method_payload: dict,
+    rc_path: str,
+    rc_dir: Path,
+) -> tuple[Path, dict[Path, bytes], Path]:
+    """Build every DFM output artifact without mutating disk."""
+
+    name = _normalize_import_name(payload["name"])
+    period_length = _vector_payload_period_length(payload)
+    files: dict[Path, bytes] = {}
+    primary_path = rc_dir / DATASET_CACHE_DIR / _vector_cache_csv_file_name(name, period_length)
+    for target_length, values in dfm_output_variants(method_payload).items():
+        path = rc_dir / DATASET_CACHE_DIR / _vector_cache_csv_file_name(name, target_length)
+        files[path] = _csv_matrix_bytes([[value] for value in values])
+
     meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
-    _write_json(meta_path, meta)
+    existing = _safe_read_json(meta_path)
+    publication_revision = _clean_name(
+        method_payload.get("method metadata", {}).get("publication revision")
+        if isinstance(method_payload.get("method metadata"), dict)
+        else ""
+    )
+    output_changed = _clean_name(existing.get("publication_revision")) != publication_revision
+    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    sidecar = build_dfm_output_sidecar(
+        method_payload,
+        project_name=PROJECT_NAME,
+        reserving_class=rc_path,
+        csv_file=primary_path.name,
+        existing=existing,
+        notes=None if existing else str(payload.get("notes") or ""),
+        timestamp=updated_at,
+        user=payload.get("user", ""),
+        output_changed=output_changed,
+        append_audit=not existing or output_changed,
+    )
+    files[meta_path] = f"{_format_json(sidecar)}\n".encode("utf-8")
+    return primary_path, files, meta_path
+
+def publish_dfm_artifacts(files: dict[Path, bytes], *, sidecar_path: Path) -> list[Path]:
+    """Publish staged DFM artifacts with rollback and sidecar-last replacement."""
+
+    ordered = sorted(files, key=lambda path: (path == sidecar_path, str(path).casefold()))
+    staged: dict[Path, Path] = {}
+    backups: dict[Path, bytes | None] = {}
+    replaced: list[Path] = []
+    try:
+        for path in ordered:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            current = path.read_bytes() if path.is_file() else None
+            if current == files[path]:
+                continue
+            backups[path] = current
+            temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+            temporary.write_bytes(files[path])
+            staged[path] = temporary
+        for path in ordered:
+            temporary = staged.pop(path, None)
+            if temporary is None:
+                continue
+            os.replace(temporary, path)
+            replaced.append(path)
+    except OSError as exc:
+        rollback_errors: list[str] = []
+        for path in reversed(replaced):
+            try:
+                original = backups[path]
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.rollback")
+                    temporary.write_bytes(original)
+                    os.replace(temporary, path)
+            except OSError as rollback_exc:
+                rollback_errors.append(f"{path.name}: {rollback_exc}")
+        detail = f"; rollback failed: {'; '.join(rollback_errors)}" if rollback_errors else ""
+        raise RuntimeError(f"Failed to publish DFM {sidecar_path.stem}: {exc}{detail}") from exc
+    finally:
+        for temporary in staged.values():
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return replaced
+
+
+def write_dfm_ultimate_vector_export(
+    payload: dict,
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    method_payload: dict | None = None,
+) -> Path:
+    """Compatibility publisher; a canonical v2 method payload is mandatory."""
+
+    if not isinstance(method_payload, dict):
+        raise ValueError("A canonical DFM v2 method payload is required to publish its output.")
+    csv_path, files, sidecar_path = build_dfm_ultimate_publication(
+        payload,
+        method_payload,
+        rc_path,
+        rc_dir,
+    )
+    publish_dfm_artifacts(files, sidecar_path=sidecar_path)
     return csv_path

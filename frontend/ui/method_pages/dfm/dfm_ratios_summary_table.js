@@ -32,6 +32,7 @@ import {
 import {
   collectDfmExternalLinkGroups as collectDfmExternalLinkGroupsModel,
   getDfmExternalLinkHardCodeTargets,
+  getDfmExternalLinkRangeTargets,
 } from "/ui/method_pages/dfm/dfm_external_links_model.js?v=20260715a";
 import {
   DFM_FORMULA_VALIDATION_TIMEOUT_MS,
@@ -123,11 +124,20 @@ const _xlCellValueCache = new Map();
 let _dfmExcelRefreshGeneration = 0;
 let _dfmExcelRefreshAbortController = null;
 let _applyingDfmExcelRefresh = false;
+let _dfmExcelFreshnessGeneration = 0;
+let _dfmExcelFreshnessAbortController = null;
+
+export function cancelDfmExcelFreshnessCheck() {
+  _dfmExcelFreshnessGeneration += 1;
+  _dfmExcelFreshnessAbortController?.abort?.();
+  _dfmExcelFreshnessAbortController = null;
+}
 
 function invalidateDfmExcelRefresh() {
   _dfmExcelRefreshGeneration += 1;
   _dfmExcelRefreshAbortController?.abort?.();
   _dfmExcelRefreshAbortController = null;
+  cancelDfmExcelFreshnessCheck();
 }
 
 function dfmExternalInputStillMatches(rowId, col, expectedInput) {
@@ -2053,6 +2063,158 @@ export async function refreshAllExcelLinks(options = {}) {
     ) {
       _dfmExcelRefreshAbortController = null;
     }
+  }
+}
+
+function canonicalExcelComparisonValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  const scaled = Math.abs(number) * 1_000_000;
+  const rounded = Math.floor(scaled + 0.5 + Number.EPSILON);
+  return Math.sign(number || 1) * rounded / 1_000_000;
+}
+
+function excelFreshnessSourceKey(bookPath, sheet, cell) {
+  return [
+    String(bookPath || "").trim().toLowerCase(),
+    String(sheet || "").trim().toLowerCase(),
+    String(cell || "").trim().toUpperCase(),
+  ].join("\u001f");
+}
+
+/**
+ * Checks saved workbook values without mutating DFM rows, Excel caches, dirty
+ * state, JSON, or rendering. All source cells are deduplicated into one batch.
+ */
+export async function checkDfmExcelLinkFreshness(options = {}) {
+  cancelDfmExcelFreshnessCheck();
+  const generation = _dfmExcelFreshnessGeneration;
+  const controller = new AbortController();
+  _dfmExcelFreshnessAbortController = controller;
+  const signal = options.signal || controller.signal;
+  const isCurrent = () => generation === _dfmExcelFreshnessGeneration && !signal.aborted;
+  const itemsByKey = new Map();
+  const consumers = [];
+  const columnCount = getCurrentRatioColumnCount();
+
+  for (const cfg of summaryRowConfigs) {
+    if (!isUserEntryConfig(cfg)) continue;
+    const inputs = Array.isArray(cfg.inputs) ? cfg.inputs : [];
+    inputs.forEach((rawInput, col) => {
+      const inputRaw = String(rawInput || "").trim();
+      if (!containsExcelRef(inputRaw)) return;
+      const range = parseStandaloneExcelRange(inputRaw);
+      if (range) {
+        const sourceCells = buildExcelRangeSourceCells(range).flat();
+        const targets = getDfmExternalLinkRangeTargets({
+          rows: summaryRowConfigs,
+          rowId: String(cfg.id),
+          startColumn: col,
+          range,
+          columnCount,
+          isUserEntry: isUserEntryConfig,
+        });
+        targets.forEach((target, index) => {
+          const cell = sourceCells[index];
+          const key = excelFreshnessSourceKey(range.bookPath, range.sheet, cell);
+          if (!itemsByKey.has(key)) {
+            itemsByKey.set(key, { book_path: range.bookPath, sheet: range.sheet, cell });
+          }
+          consumers.push({
+            kind: "value",
+            sourceKeys: [key],
+            expected: getUserEntryValueForCol(target.cfg, target.col),
+          });
+        });
+        return;
+      }
+
+      const refs = findExcelRefsInline(inputRaw.startsWith("=") ? inputRaw : `=${inputRaw}`);
+      const sourceKeys = [];
+      refs.forEach((ref) => {
+        const key = excelFreshnessSourceKey(ref.bookPath, ref.sheet, ref.cell);
+        sourceKeys.push(key);
+        if (!itemsByKey.has(key)) {
+          itemsByKey.set(key, { book_path: ref.bookPath, sheet: ref.sheet, cell: ref.cell });
+        }
+      });
+      consumers.push({
+        kind: "formula",
+        sourceKeys,
+        refs,
+        inputRaw,
+        col,
+        expected: getUserEntryValueForCol(cfg, col),
+      });
+    });
+  }
+
+  if (!itemsByKey.size) {
+    if (_dfmExcelFreshnessAbortController === controller) _dfmExcelFreshnessAbortController = null;
+    return { ok: true, linkedCellCount: 0, staleCount: 0, unverifiedCount: 0 };
+  }
+
+  const entries = Array.from(itemsByKey.entries());
+  try {
+    const result = await readExcelCellsBatch(entries.map(([, item]) => item), { signal });
+    if (!isCurrent()) return { ok: false, aborted: true, staleCount: 0, unverifiedCount: 0 };
+    const values = new Map();
+    entries.forEach(([key], index) => {
+      const itemResult = result?.results?.[index];
+      const value = Number(itemResult?.value);
+      values.set(key, itemResult?.ok && Number.isFinite(value) ? value : null);
+    });
+
+    let staleCount = 0;
+    let unverifiedCount = 0;
+    const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
+    consumers.forEach((consumer) => {
+      if (consumer.sourceKeys.some((key) => !Number.isFinite(values.get(key)))) {
+        unverifiedCount += 1;
+        return;
+      }
+      let freshValue = null;
+      if (consumer.kind === "value") {
+        freshValue = values.get(consumer.sourceKeys[0]);
+      } else {
+        let expression = consumer.inputRaw.startsWith("=")
+          ? consumer.inputRaw
+          : `=${consumer.inputRaw}`;
+        consumer.refs.forEach((ref, index) => {
+          expression = expression.split(ref.match).join(String(values.get(consumer.sourceKeys[index])));
+        });
+        freshValue = evaluateSimpleMathExpression(
+          expression,
+          summaryTable ? buildSummaryReferenceValues(summaryTable, consumer.col) : new Map(),
+        );
+      }
+      const expected = canonicalExcelComparisonValue(consumer.expected);
+      const actual = canonicalExcelComparisonValue(freshValue);
+      if (!Number.isFinite(actual) || actual <= 0 || !Number.isFinite(expected)) {
+        unverifiedCount += 1;
+      } else if (actual !== expected) {
+        staleCount += 1;
+      }
+    });
+    return {
+      ok: true,
+      linkedCellCount: consumers.length,
+      staleCount,
+      unverifiedCount,
+    };
+  } catch (error) {
+    if (error?.name === "AbortError" || !isCurrent()) {
+      return { ok: false, aborted: true, staleCount: 0, unverifiedCount: 0 };
+    }
+    return {
+      ok: false,
+      linkedCellCount: consumers.length,
+      staleCount: 0,
+      unverifiedCount: consumers.length,
+      error: String(error?.message || error || "Excel freshness check failed."),
+    };
+  } finally {
+    if (_dfmExcelFreshnessAbortController === controller) _dfmExcelFreshnessAbortController = null;
   }
 }
 

@@ -259,6 +259,27 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.assertEqual(write_calls, [])  # no ResQ fallback write
         self.assertFalse(any(self.datasets_dir.glob("Paid Loss@*.csv")))
 
+    def test_missing_engine_skips_generated_dataset_without_resq_value_read(self) -> None:
+        rc = _FakeReservingClass({"Paid Loss": _fake_triangle("Paid Loss", "Paid Loss")})
+        self.module.export_triangle = lambda *_args, **_kwargs: self.fail(
+            "engine-owned datasets must not extract ResQ cell values"
+        )
+        progress_state = {"completed": 0, "total": 1}
+
+        written, errors = self.module.export_triangles_for_rc(
+            rc,
+            r"Auto\PP",
+            self.rc_dir,
+            progress_state=progress_state,
+            triangle_names=["Paid Loss"],
+            engine_available=False,
+            verbose=False,
+        )
+
+        self.assertEqual((written, errors), (0, 0))
+        self.assertEqual(progress_state["engine_skipped"], 1)
+        self.assertEqual(progress_state["skipped"], 1)
+
     def test_generated_requests_are_all_published_before_waiting(self) -> None:
         rc = _FakeReservingClass({
             "Paid Loss": _fake_triangle("Paid Loss", "Paid Loss"),
@@ -267,6 +288,7 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         published = []
         waited = []
         preflight_roots = []
+        events = []
 
         def publish(job, *, check_workers=True):
             self.assertFalse(check_workers)
@@ -295,6 +317,7 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
             self.rc_dir,
             triangle_names=["Paid Loss", "Generated Premium"],
             engine_provenance=self.provenance,
+            progress_callback=events.append,
             verbose=False,
         )
 
@@ -303,6 +326,30 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.assertEqual(len(waited), 2)
         self.assertEqual(preflight_roots, [self.root])
         self.assertTrue((self.datasets_dir / "Paid Loss@12@12@cum@dev.csv").is_file())
+        messages = [str(event.get("message") or "") for event in events]
+        self.assertIn("Submitting 2 generated dataset(s) to ArcRho Engine...", messages)
+        self.assertIn("Submitted generated dataset 2 of 2: Generated Premium", messages)
+        self.assertIn("Waiting for ArcRho Engine result 1 of 2: Paid Loss", messages)
+        self.assertIn("Waiting for ArcRho Engine result 2 of 2: Generated Premium", messages)
+
+    def test_resq_inventory_reports_live_discovered_counts_before_total(self) -> None:
+        events = []
+        rc = _FakeReservingClass({
+            "Paid Loss": _fake_triangle("Paid Loss", "Paid Loss"),
+            "Reported Loss": _fake_triangle("Reported Loss", "Reported Loss"),
+        })
+
+        names, _items, _method_types = self.module._triangle_export_inventory(
+            rc,
+            events.append,
+        )
+
+        self.assertEqual(names, ["Paid Loss", "Reported Loss"])
+        self.assertEqual(
+            [event["message"] for event in events],
+            ["Scanning ResQ triangles: 1 found", "Scanning ResQ triangles: 2 found"],
+        )
+        self.assertTrue(all("total" not in event for event in events))
 
     def test_generated_vector_skips_resq_value_extraction(self) -> None:
         vector = types.SimpleNamespace(
@@ -343,6 +390,41 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.assertEqual((written, errors), (1, 0))
         self.assertTrue((self.datasets_dir / "Generated Premium@6.csv").is_file())
 
+    def test_dfm_export_does_not_request_engine_ratio_basis_generation(self) -> None:
+        vector = types.SimpleNamespace(
+            Name="C 12 - CWP DFM w/ Selected LDFs",
+            MethodType=self.module.METHOD_TYPE_DFM_CODE,
+        )
+        reserving_class = types.SimpleNamespace(
+            Vectors=lambda: _FakeCollection({vector.Name: vector}),
+        )
+        dfm = object()
+        calls = []
+
+        def export_dfm_output(_dfm, _rc_path, _rc_dir, **kwargs):
+            calls.append(kwargs)
+            return vector.Name, "    OK DFM", False
+
+        with (
+            patch.object(self.module, "_dfm_methods_by_output_name", return_value={vector.Name.lower(): (vector.Name, dfm)}),
+            patch.object(self.module, "_export_dfm_output_dataset", side_effect=export_dfm_output),
+            patch.object(self.module, "publish_engine_request") as publish,
+        ):
+            written, errors = self.module.export_vectors_for_rc(
+                reserving_class,
+                r"Auto\PP",
+                self.rc_dir,
+                vector_names=[vector.Name],
+                include_dfm_methods=True,
+                engine_available=True,
+                verbose=False,
+            )
+
+        self.assertEqual((written, errors), (1, 0))
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("ratio_basis_snapshot", calls[0])
+        publish.assert_not_called()
+
     def test_no_engine_worker_stops_before_resq_import(self) -> None:
         error = self.module.EngineUnavailableError("no workers")
         with (
@@ -359,6 +441,83 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
                 server_root=self.root,
                 verbose=False,
             )
+
+    def test_bridge_mode_keeps_stored_import_when_engine_preflight_fails(self) -> None:
+        """A failed engine component must not suppress stored ResQ methods."""
+
+        reserving_class = object()
+        project = types.SimpleNamespace(
+            ReservingClasses=lambda: types.SimpleNamespace(
+                Item=lambda _path: reserving_class
+            )
+        )
+        application = types.SimpleNamespace(
+            ConnectByName=Mock(),
+            Projects=lambda: types.SimpleNamespace(Item=lambda _name: project),
+            Disconnect=Mock(),
+        )
+        client_module = types.ModuleType("win32com.client")
+        client_module.Dispatch = Mock(return_value=application)
+        win32com_module = types.ModuleType("win32com")
+        win32com_module.client = client_module
+        rebuild = Mock()
+        engine_error = self.module.EngineGenerationError("provenance unavailable")
+
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "win32com": win32com_module,
+                    "win32com.client": client_module,
+                },
+            ),
+            patch.object(
+                self.module,
+                "discover_fresh_engine_heartbeats",
+                return_value=(Path("worker.json"),),
+            ),
+            patch.object(
+                self.module,
+                "get_engine_processing_provenance",
+                side_effect=engine_error,
+            ),
+            patch.object(
+                self.module,
+                "_selected_exports",
+                return_value=(False, False, True),
+            ),
+            patch.object(
+                self.module,
+                "resq_export_dataset_counts",
+                return_value={
+                    "total": 0,
+                    "triangles": 0,
+                    "vectors": 0,
+                    "dfms": 1,
+                    "methods": 1,
+                    "dfm_names": ["Stored DFM"],
+                },
+            ),
+            patch.object(self.module, "export_dfms_for_rc", return_value=(1, 0)) as export_dfms,
+            patch.object(self.module, "rebuild_dataset_instance_index", rebuild),
+        ):
+            result = self.module.import_reserving_class_from_resq(
+                "Demo",
+                r"Auto\PP",
+                server_root=self.root,
+                export_mode="dfm",
+                cleanup_target=False,
+                skip_unavailable_engine=True,
+                verbose=False,
+            )
+
+        export_dfms.assert_called_once()
+        self.assertFalse(result["engine_available"])
+        self.assertEqual(result["engine_errors"], 1)
+        self.assertEqual(result["errors"], 1)
+        self.assertEqual(result["dfms_written"], 1)
+        self.assertEqual(result["error_details"][0]["kind"], "engine_preflight")
+        application.Disconnect.assert_called_once_with()
 
     def test_interrupted_import_rebuilds_index_after_mutation_started(self) -> None:
         reserving_class = object()
@@ -435,6 +594,119 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
 
         rebuild.assert_called_once_with("Demo", r"Auto\PP", self.rc_dir)
         application.Disconnect.assert_called_once_with()
+
+    def test_partial_triangle_migration_refreshes_existing_dfm_dependents(self) -> None:
+        reserving_class = object()
+        project = types.SimpleNamespace(
+            ReservingClasses=lambda: types.SimpleNamespace(Item=lambda _path: reserving_class)
+        )
+        application = types.SimpleNamespace(
+            ConnectByName=Mock(),
+            Projects=lambda: types.SimpleNamespace(Item=lambda _name: project),
+            Disconnect=Mock(),
+        )
+        client_module = types.ModuleType("win32com.client")
+        client_module.Dispatch = Mock(return_value=application)
+        win32com_module = types.ModuleType("win32com")
+        win32com_module.client = client_module
+        propagation = self.module.DfmPropagationResult(("Paid DFM",), ("branch warning",))
+
+        with (
+            patch.dict("sys.modules", {"win32com": win32com_module, "win32com.client": client_module}),
+            patch.object(self.module, "discover_fresh_engine_heartbeats", return_value=(Path("worker.json"),)),
+            patch.object(self.module, "get_engine_processing_provenance", return_value=self.provenance),
+            patch.object(self.module, "_selected_exports", return_value=(True, False, False)),
+            patch.object(self.module, "resq_export_dataset_counts", return_value={
+                "total": 1,
+                "triangles": 1,
+                "vectors": 0,
+                "dfms": 0,
+                "methods": 0,
+                "triangle_names": ["Paid Loss"],
+                "triangle_items": {},
+                "triangle_method_types": {},
+            }),
+            patch.object(self.module, "export_triangles_for_rc", return_value=(1, 0)),
+            patch.object(self.module, "refresh_sidecar_graphs_for_rc", return_value=1),
+            patch.object(
+                self.module,
+                "refresh_migrated_dfm_dependents",
+                return_value=propagation,
+            ) as refresh_dfms,
+            patch.object(self.module, "rebuild_dataset_instance_index"),
+        ):
+            result = self.module.import_reserving_class_from_resq(
+                "Demo",
+                r"Auto\PP",
+                server_root=self.root,
+                export_mode="triangles",
+                cleanup_target=False,
+                skip_unavailable_engine=True,
+                verbose=False,
+            )
+
+        refresh_dfms.assert_called_once_with(r"Auto\PP", ["Paid Loss"])
+        self.assertEqual(result["dfm_dependents_refreshed"], ["Paid DFM"])
+        self.assertEqual(result["propagation_warnings"], ["branch warning"])
+
+    def test_full_migration_refreshes_preserved_local_dfm_source_selections(self) -> None:
+        reserving_class = object()
+        project = types.SimpleNamespace(
+            ReservingClasses=lambda: types.SimpleNamespace(Item=lambda _path: reserving_class)
+        )
+        application = types.SimpleNamespace(
+            ConnectByName=Mock(),
+            Projects=lambda: types.SimpleNamespace(Item=lambda _name: project),
+            Disconnect=Mock(),
+        )
+        client_module = types.ModuleType("win32com.client")
+        client_module.Dispatch = Mock(return_value=application)
+        win32com_module = types.ModuleType("win32com")
+        win32com_module.client = client_module
+        propagation = self.module.DfmPropagationResult(("Locally Selected DFM",), ())
+
+        with (
+            patch.dict("sys.modules", {"win32com": win32com_module, "win32com.client": client_module}),
+            patch.object(self.module, "discover_fresh_engine_heartbeats", return_value=(Path("worker.json"),)),
+            patch.object(self.module, "get_engine_processing_provenance", return_value=self.provenance),
+            patch.object(self.module, "_selected_exports", return_value=(True, True, True)),
+            patch.object(self.module, "resq_export_dataset_counts", return_value={
+                "total": 2,
+                "triangles": 1,
+                "vectors": 1,
+                "dfms": 1,
+                "methods": 1,
+                "triangle_names": ["Locally Selected Triangle"],
+                "triangle_items": {},
+                "triangle_method_types": {},
+                "vector_names": ["Locally Selected Basis"],
+                "dfm_names": ["ResQ DFM"],
+            }),
+            patch.object(self.module, "export_triangles_for_rc", return_value=(1, 0)),
+            patch.object(self.module, "export_vectors_for_rc", return_value=(1, 0)),
+            patch.object(self.module, "refresh_sidecar_graphs_for_rc", return_value=2),
+            patch.object(
+                self.module,
+                "refresh_migrated_dfm_dependents",
+                return_value=propagation,
+            ) as refresh_dfms,
+            patch.object(self.module, "rebuild_dataset_instance_index"),
+        ):
+            result = self.module.import_reserving_class_from_resq(
+                "Demo",
+                r"Auto\PP",
+                server_root=self.root,
+                export_mode="all",
+                cleanup_target=False,
+                skip_unavailable_engine=True,
+                verbose=False,
+            )
+
+        refresh_dfms.assert_called_once_with(
+            r"Auto\PP",
+            ["Locally Selected Triangle", "Locally Selected Basis"],
+        )
+        self.assertEqual(result["dfm_dependents_refreshed"], ["Locally Selected DFM"])
 
 
 if __name__ == "__main__":

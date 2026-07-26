@@ -1,56 +1,98 @@
-# DFM JSON Format Notes
+# DFM JSON Format
 
-This note tracks recent DFM JSON format decisions so future ArcBot and DFM changes keep the saved method file, remote-sync file, and ArcBot active-context file consistent.
+## Canonical Method JSON
 
-## Canonical DFM Method JSON
+Current DFM methods use `json format = arcrho-dfm-method-by-tab-v2`. The payload is a complete, location-independent snapshot that can render every DFM tab without reopening an Input Triangle, Ratio Basis dataset, CSV, sidecar, or reserving-class index.
 
-DFM method JSON now uses the GUI-tab grouped shape as the canonical save/load format. Old flat top-level method JSON is intentionally out of scope for the frontend/app-server readers.
+An existing v2 open reads only:
 
-Top-level sections:
+1. `methods/DFM@<details tab.name>.json`
+2. `sidecars/<details tab.output dataset>.json`
 
-- `json format`: currently `arcrho-dfm-method-by-tab-v1`.
-- `details tab`: `name`, `output type`, `input triangle`, `origin length`, `development length`, and `decimal places`.
-- `data tab`: `origin labels`, raw Data-tab `development labels` such as `2m` and `14m`, `input data triangle values`, and mode-qualified `input data triangle csv path`.
-- `ratios tab`: `ratio triangle`, `average formulas`, and `cell notes`.
-- `ratios tab`.`ratio triangle`: `origin labels`, GUI-display Ratios-tab `development labels` such as `(1) 2-14`, `ratio values`, and `excluded`.
-- `results tab`: `ratio basis dataset`, `ultimate ratio decimal places`, and `ultimate vector`.
-- `method metadata`: `last modified`.
+Project Instance supplies both identities so the reads can run in parallel. A method-name-only caller reads the method first and then reads the sidecar identity declared by that method. An exact `arcrho-dfm-method-by-tab-v1` file may take the one-time dependency-reading upgrade path; any other incomplete or unknown format is rejected rather than treated as current v2.
 
-Method notes are not part of DFM method JSON. They live only in the output dataset sidecar's top-level `notes` field.
+## Identity and Ownership
 
-Data-engine readers should read fields from these sections directly rather than expecting flat top-level keys.
+- `details tab.name` is the method identity and owns the `DFM@<name>.json` filename.
+- `details tab.output dataset` is the output CSV/sidecar identity. A new GUI method defaults it to its method name, but migrated methods may keep a different output name.
+- `details tab.output type` is the output Vector Dataset Type.
+- `details tab.input triangle`, period lengths, decimal places, ratio exclusions, average definitions/order/selections/inputs, literal User Entry values, stored values for any Excel-linked formula, Ratio Basis selection, ultimate-ratio decimals, and ratio-cell notes are DFM-owned state.
+- Input/basis snapshots, ratio values, standard-average values, non-Excel formula results, and ultimates are derived state.
+- Method Notes, Audit, status, and `Precedents`/`Dependents` live only in the output sidecar. Ratio-cell notes live only in method JSON.
 
-The formatter writes any 2D array with one child row per JSON line.
+The output sidecar registers both the Input Triangle and configured Ratio Basis as precedents. A method save cannot silently reuse an output sidecar owned by another method.
 
-`ratios tab`.`average formulas` is a columnar object. `label` is the persistent formula identity and row order. `selected` is the former `average index` matrix. `values` is the former `average formula values` analysis matrix. `inputs` stores User Entry formula/input text aligned with `label` and `values`; blank input rows may be omitted or empty arrays. Formula metadata arrays live under `custom average formula settings`; arrays such as `averageType`, `base`, `periods`, and `exclude` align by index with `label`.
+## Stored Sections
 
-The DFM Links tab is derived from external Excel references in `ratios tab`.`average formulas`.`inputs`; it does not add a `links tab` or other top-level JSON section. Breaking a link replaces every related User Entry input, including cells controlled by a spilled external range, with its current numeric value. The existing `values` field remains the numeric analysis snapshot.
+`details tab` stores:
 
-`summary rows` and `summary order` are not part of the JSON contract. Runtime-only formula row `id` values are generated after load for DOM rows, selection maps, drag handling, and other in-session UI mechanics; `id` is not saved in DFM method JSON.
+- `name`
+- `output type`
+- `output dataset`
+- `output category`
+- `input triangle`
+- `origin length`
+- `development length`
+- `decimal places`
 
-`ratios tab`.`cell notes` stores user-entered comments for Ratios-tab cells. Each table stores notes as a nested object keyed by the visible row label and visible development-column label, for example `ratio main table`.`2026`.`(1) 12-24` or `ratio summary table`.`Volume - all`.`(1) 12-24`. Empty notes are omitted. Older flat index keys such as `"0,0"` and `"rowId,0"` are still accepted on load and are migrated to label keys on the next save.
+`data tab` stores:
 
-## Analysis Snapshots
-
-Saved DFM method JSON and ArcBot context include read-analysis snapshots:
-
+- exact `origin labels` and `development labels`
 - `input data triangle values`
-- `input data triangle csv path`
-- `ratios tab`.`ratio triangle`.`ratio values`
-- `ratios tab`.`average formulas`.`values`
+- the structural `input data triangle mask`
+- data format, number format, decimal places, and `source revision`
 
-Numeric snapshot values for input-data and ratio arrays are rounded to 4 decimals. `ratios tab`.`average formulas`.`values` is rounded to 6 decimals so cached User Entry formula results can still display an accurate fourth decimal in the UI. For triangle-shaped arrays, each row trims only trailing `null` values to reduce file size and token usage; internal `null` values remain in place so column position is still recoverable from the row and labels.
+`ratios tab.ratio triangle` stores aligned origin/development labels, calculated `ratio values`, and DFM-owned `excluded` cells. `ratios tab.average formulas` remains the columnar object with `label`, `custom average formula settings`, `selected`, `values`, and aligned User Entry `inputs`. `ratios tab.cell notes` remains keyed by visible row label and visible development-column label.
 
-These analysis snapshots are ignored when restoring editable method selections. Editable restore behavior remains driven by `ratios tab`.`ratio triangle`.`excluded`, `ratios tab`.`average formulas`.`selected`, and related canonical selection fields.
+`results tab` stores:
 
-`ratios tab`.`ratio triangle`.`excluded` uses the same row shape as `ratio values`: each excluded row is clipped to the corresponding ratio-value row length, so non-value columns such as the trailing Ult mask column are not persisted. RPC server sync payloads may intentionally keep `input data triangle values` and `ratio values` empty to avoid copying full triangles back to the local method. For `ratios tab`.`average formulas`.`values`, RPC server sync only needs to populate the first `User Entry` formula row with stored RPC server values; non-user formula value rows can remain empty arrays while preserving row alignment with `average formulas`.`label`.
+- `ratio basis dataset`
+- Ratio Basis data/number format and decimal places
+- aligned Ratio Basis origin labels and values
+- `ratio basis source revision`
+- `ultimate ratio decimal places`
+- the calculated `ultimate vector`
 
-## Average Formula Space Savings
+`method metadata` stores:
 
-The former `average formulas` label list, `summary rows` metadata list, `average index`, and `average formula values` are combined under one `ratios tab`.`average formulas` object. Formula metadata is grouped under `custom average formula settings` to keep identity/selection/value arrays separate from custom formula configuration, while keeping the row order explicit through `label`.
+- `last modified`: changed only by an owned user save
+- `data refreshed`: changed when embedded precedent data is refreshed
+- `owned revision`
+- `derived revision`
+- `publication revision`
 
-## ArcBot Active Context
+Revisions are deterministic hashes over their canonical projections. They are separate so a dirty window can rebase an owned patch over a newer derived-only disk refresh, while a concurrent owned change produces a conflict.
 
-ArcBot receives and edits the same canonical grouped DFM method JSON shape. The Electron host no longer flattens ArcBot edits before applying them; it validates the target path, backs up the existing JSON or active-page snapshot, and writes the grouped JSON with the shared row-compact formatter.
+V2 never stores absolute input or output CSV paths.
 
-This keeps ArcBot, normal DFM save/load, and RPC sync on one schema.
+## Calculation and Numeric Rules
+
+All persisted numeric values use six-decimal, half-away-from-zero normalization. The canonical Python contract owns ratio calculation, average calculation, internal User Entry formula evaluation, ultimate calculation, field projection, and revisions. The frontend calls the local preview endpoint for canonical interactive derivation.
+
+A formula containing any Excel reference freezes its complete stored result during automatic upstream refresh, including mixed Excel/internal formulas. A non-Excel User Entry formula is recalculated. Literal User Entry values, formula definitions, selections, and exclusions are preserved.
+
+Opaque migrated average rows such as ResQ `Benchmark` keep their persisted values. They are not reinterpreted as a standard Simple or Volume average by either the canonical contract or the frontend renderer.
+
+Origin changes remap owned state by exact label; new origins default to included. Development geometry must remain compatible. Positional remapping is forbidden: an incompatible geometry leaves the prior publication intact and marks the DFM Review Needed.
+
+Ratio Basis values are aligned by exact origin label. A missing or duplicate required label is a refresh error rather than a positional fallback.
+
+## Refresh and Publication
+
+ArcRho-managed durable precedent saves refresh affected DFM snapshots and calculations. In the desktop app-server workflow, DFM refresh runs before calculated datasets and Result Selection descendants. Ratio-Basis-only changes update the embedded basis snapshot but do not rewrite ultimate CSV variants or cascade when the ultimate vector is unchanged.
+
+Standalone public-Python and ResQ-migration execution refreshes DFM descendants but does not host the app server's calculated-dataset or Result Selection evaluators. If propagation reaches either method type, that branch is marked Review Needed and a warning is returned so it can be recalculated through the app-server workflow.
+
+Publication runs under the reserving-class lock and uses staged files, revision checks, rollback, unchanged-file suppression, and sidecar-last replacement. A failed branch retains its last valid publication, becomes Review Needed, and blocks only its descendants. The upstream save remains successful and reports the propagation warning.
+
+Automatic refresh adds an Audit row only when the ultimate publication changes. Same-output and basis-only refreshes update freshness/status without Audit noise.
+
+## Excel Freshness
+
+Excel links are derived from User Entry `inputs`; there is no separate persisted Links section. DFM hydration never refreshes Excel values. After Ready, one abortable check-only task per applied method revision reads saved workbook values in a deduplicated batch, compares canonical results, and reports stale/unverified counts without changing method state, caches, rendering, JSON, or dirty state.
+
+Manual refresh from the existing Links or Ratios controls remains mutating. Changed values mark the method dirty and require Save; ignoring a warning keeps the stored values.
+
+## Producer Parity
+
+The app server, public Python API, ResQ migration, and bridge-owned-patch flow delegate to the canonical v2 contract. Sparse RPC, ArcBot, macro, and template payloads are treated as owned-setting patches followed by canonical local calculation; sparse payloads are never persisted directly as v2.

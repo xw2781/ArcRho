@@ -19,7 +19,10 @@ import {
   saveNaBorders,
   saveRatioInteractionMode,
 } from "/ui/method_pages/dfm/dfm_storage.js";
-import { renderResultsTable } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260715a";
+import {
+  invalidatePersistedResultsDerivations,
+  renderResultsTable,
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260726a";
 import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260721a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import {
@@ -47,7 +50,7 @@ import {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260722a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726a";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -68,6 +71,19 @@ import {
   commitRatioHistoryAction,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
 
+let persistedRatioTriangleValues = null;
+
+export function applyPersistedRatioDerivedSnapshot(ratioTriangle = {}) {
+  const values = ratioTriangle?.["ratio values"];
+  persistedRatioTriangleValues = Array.isArray(values)
+    ? values.map((row) => (
+      Array.isArray(row)
+        ? row.map((value) => (Number.isFinite(Number(value)) ? Number(value) : null))
+        : []
+    ))
+    : null;
+}
+
 export {
   buildRatioSelectionPattern,
   buildAverageSelectionPayload,
@@ -77,7 +93,7 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260722a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726a";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -593,11 +609,14 @@ export function includeAllInActiveCol() {
 // =============================================================================
 export function onRatioStateMutated() {
   recalculateUserEntryDependencies();
+  persistedRatioTriangleValues = null;
+  invalidatePersistedResultsDerivations();
   if (document.getElementById("resultsWrap")) renderResultsTable();
   if (isRatioChartOpen()) scheduleRatioChartRender();
   notifyRatioStateChanged();
   markDfmDirty();
   window.dispatchEvent(new CustomEvent("arcrho:dfm-links-changed"));
+  window.dispatchEvent(new CustomEvent("arcrho:dfm-owned-state-mutated"));
 }
 
 // Forward declaration - will be set by sync module
@@ -821,7 +840,10 @@ export function renderRatioTable() {
         const hasA = !!(mask[r] && mask[r][c]);
         const hasB = !!(mask[r] && mask[r][c + 1]);
         if (hasA && hasB) {
-          const ratio = calcRatio(vals?.[r]?.[c], vals?.[r]?.[c + 1]);
+          const persistedRatio = persistedRatioTriangleValues?.[r]?.[c];
+          const ratio = Number.isFinite(persistedRatio)
+            ? persistedRatio
+            : calcRatio(vals?.[r]?.[c], vals?.[r]?.[c + 1]);
           if (Number.isFinite(ratio)) {
             const rounded = roundRatio(ratio, 6);
             td.textContent = formatRatio(rounded, getDfmDecimalPlaces());

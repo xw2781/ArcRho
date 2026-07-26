@@ -2,7 +2,7 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
-DFM RPC bridge routes create request files for remote data-engine DFM method sync, compare local and returned remote DFM JSON `last modified` timestamps, apply newer remote JSON locally through an explicit component sync list, finalize keeping local JSON without sending a `SyncDFM` request, and send confirmed `SyncDFM` write-back requests to the RPC server through `arcrho_bridge`.
+DFM RPC bridge routes create request files for remote data-engine DFM owned-state sync, compare local and returned metadata, apply an approved owned patch through the canonical DFM v2 calculator/save service, finalize keeping local JSON without sending a `SyncDFM` request, and send confirmed write-back requests to the RPC server through `arcrho_bridge`.
 <!-- MANUAL:END -->
 
 ## Entry Points
@@ -13,7 +13,7 @@ Routes:
 | --- | --- | --- |
 | `POST` | `/dfm/rpc-bridge/sync` | Write `Function = DFM` request, wait up to the requested timeout for remote DFM JSON, and return comparison metadata plus local/remote JSON snapshots. |
 | `POST` | `/dfm/rpc-bridge/compare` | Compare current local and remote DFM JSON file metadata without sending a request, returning the same snapshot fields. |
-| `POST` | `/dfm/rpc-bridge/apply` | Apply the remote DFM JSON over the local DFM JSON after `Update Local DFM` using the explicit component sync list, preserving local-only components such as labels and analysis snapshots, returning missing RPC component names for the UI result message, writing the merged method with the row-compact DFM method JSON formatter, return payload for frontend reload, and delete the remote RPC JSON. |
+| `POST` | `/dfm/rpc-bridge/apply` | Validate the remote owned-patch marker, merge approved owned components over the newest local derived snapshot, canonically recalculate/save v2, return the saved payload for frontend reload, and delete the temporary response. |
 | `POST` | `/dfm/rpc-bridge/keep-local` | Keep the local DFM JSON unchanged after `Keep Using Local` and delete the remote RPC JSON without writing a `SyncDFM` request. |
 | `POST` | `/dfm/rpc-bridge/cleanup` | Delete temporary remote DFM JSON and `SyncDFM` status JSON for the current project/reserving-class/method after the sync dialog is dismissed or a pending sync returns after dismissal. |
 | `POST` | `/dfm/rpc-bridge/update-remote` | Require explicit RPC server write confirmation, write `Function = SyncDFM` request with the local method JSON path, wait for the `SyncDFM...json` status response, return pass/fail message, and delete the stale remote RPC JSON. |
@@ -36,7 +36,7 @@ Routes:
 - Request files are flat JSON `request-*.json` payloads with native booleans/numbers. Temporary `.tmp` files are atomically renamed to `.json`, and `arcrho_bridge` scans JSON requests only.
 - `SyncDFM` status JSON must include fields that let the frontend report final result, for example `ok`, `status`, and `message`.
 - `arcrho_bridge` handles confirmed `SyncDFM` requests by reading `MethodJsonPath`, writing excluded ratio cells, User Entry average-formula values with `SetUserRatios`, selected average formula indexes with `SetSelectedRatios`, and notes to the RPC server DFM method, calling `Save()`, and writing the status JSON to `DataPath`. ResQ exposes DFM cell notes as a read-side `CellNotes` string, so RPC bridge imports them into returned DFM JSON and local apply syncs them, while remote write-back leaves existing ResQ cell notes unchanged until a safe per-cell setter is available.
-- Compare responses include snapshots read from canonical grouped local and remote DFM JSON files: `method metadata`.`last modified`, `ratio triangle`.`excluded` dimensions/excluded count/full preview with `0`/`1`/`2` values preserved, preview `origin_labels` and `development_labels` for ratio-cell tooltips, `average formulas`.`label` plus `average formulas`.`selected` dimensions/selected count/full preview for formula-selection diffs, cell-note entries, and notes preview.
+- A DFM read response uses `payload format = arcrho-dfm-owned-patch-v1` and contains only RPC-owned settings. It is not a complete v2 method and must never be persisted directly. Compare responses still project exclusions, average definitions/selections, cell notes, and other owned components for the review dialog.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
@@ -45,10 +45,9 @@ Routes:
 - Remote DFM method JSON path: `projects/<project>/data/<ReservingClassFolder>/methods/tmp_rpc/DFM@<Name>.json`.
 - Remote update status JSON path: `projects/<project>/data/<ReservingClassFolder>/methods/tmp_rpc/SyncDFM@<Name>.json`.
 - `<ReservingClassFolder>` and `<Name>` use the shared reversible `_%XX_` filename escaping rule for Windows-invalid filename characters.
-- Applying the remote version writes the canonical GUI-tab grouped DFM method JSON with the same row-compact layout used by normal DFM saves, so any 2D array remains one child row per JSON line, including `ratio triangle`.`excluded`, `average formulas`.`selected`, input data triangle values, `ratio triangle`.`ratio values`, `average formulas`.`values`, and extra or nested 2D arrays when present.
-- Applying the remote version is driven by an explicit component list matching the current grouped RPC JSON shape. Synced RPC components include Details fields, `ratio triangle`.`excluded`, average formula labels/settings/selected values, `ratios tab`.`cell notes`, Results ratio-basis settings, notes, and `method metadata`.`last modified`.
-- Local-only or active-page-owned components are explicitly preserved when local values exist: Data-tab labels, Ratios-tab labels, input data triangle values, input data triangle CSV path, ratio values, and ultimate vector. `average formulas`.`values` merges by row so populated RPC rows update local values while empty RPC rows preserve local rows.
-- The apply response includes `sync_report.missing_components`; the frontend result dialog lists required RPC component paths that were absent from the returned RPC JSON. `results tab`.`ultimate vector csv path` is optional for RPC sync and is not listed when absent.
+- Applying a remote patch delegates to the same owned projection and preview/save contract used by normal DFM v2 saves. Embedded input/basis snapshots, calculated ratios/averages, ultimates, source revisions, and publication metadata always come from the canonical local base and recalculation.
+- Sparse RPC fields are interpreted through the canonical DFM owned-state projection. Supported Details settings, exclusions, formula definitions/selections/inputs and owned stored values, ratio-cell notes, Ratio Basis selection, and Method Notes are applied when present; omitted owned fields retain their local values.
+- `json format`, embedded source snapshots, derived arrays, revisions, and absolute paths are never accepted as RPC-owned fields. The apply response reports the fields that were actually applied; a sparse patch does not produce a competing required-component list.
 - JSON request files are kept for audit/debug. Returned RPC bridge JSON files are deleted before each new sync request, after the user completes the final action, closes the sync review window without choosing an action, or closes the window while a pending sync later returns.
 <!-- MANUAL:END -->
 

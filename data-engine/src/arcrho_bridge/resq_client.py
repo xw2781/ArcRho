@@ -12,7 +12,7 @@ from arcrho_bridge.bridge_utils import read_json, write_json, write_json_with_co
 
 
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
-DFM_METHOD_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
+DFM_OWNED_PATCH_FORMAT = "arcrho-dfm-owned-patch-v1"
 RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
 DFM_COMPACT_ROW_KEYS = (
     "input data triangle values",
@@ -84,6 +84,26 @@ class ResQClient:
     def close(self):
         self._disconnect()
 
+    def write_resq_reserving_class_import(self, request, *, progress_callback=None):
+        """Run the canonical staged ResQ import from this Bridge worker.
+
+        The importer owns its full-reserving-class COM session and canonical
+        JSON writer. Keeping this as a small delegation prevents the Bridge
+        client from becoming a second persisted-data producer while preserving
+        the existing RPC methods and their shorter-lived COM sessions.
+        """
+
+        # The canonical migration creates its own COM objects, so initialize
+        # COM on this worker-owned thread before delegating to it.
+        self._ensure_com_initialized()
+
+        from arcrho_bridge.resq_import_runner import run_reserving_class_import
+
+        return run_reserving_class_import(
+            request,
+            progress_callback=progress_callback,
+        )
+
     def write_dfm_payload(self, request):
         self._connect()
         try:
@@ -105,7 +125,7 @@ class ResQClient:
                 average_data.get("label", []),
             )
             payload = {
-                "json format": DFM_METHOD_JSON_FORMAT,
+                "payload format": DFM_OWNED_PATCH_FORMAT,
                 "details tab": {
                     "name": self._clean_label(request.get("MethodName") or self._optional_value(dfm, "Name", "")),
                     "output type": output_type or output_dataset,
@@ -117,17 +137,10 @@ class ResQClient:
                     "development length": self._optional_value(dfm, "DevelopmentLength", ""),
                     "decimal places": self._optional_value(dfm, "RatioDecimalPlaces", request.get("DecimalPlaces", 4)),
                 },
-                "data tab": {
-                    "origin labels": origin_labels,
-                    "development labels": data_development_labels,
-                    "input data triangle values": [],
-                    "input data triangle csv path": "",
-                },
                 "ratios tab": {
                     "ratio triangle": {
                         "origin labels": origin_labels,
                         "development labels": ratio_development_labels,
-                        "ratio values": [],
                         "excluded": self._excluded_ratio_pattern(dfm),
                     },
                     "average formulas": average_data,
@@ -136,7 +149,6 @@ class ResQClient:
                 "results tab": {
                     "ratio basis dataset": self._nested_name(dfm, "SummaryRatioBasis"),
                     "ultimate ratio decimal places": self._optional_value(dfm, "SummaryRatioDecimalPlaces", 2),
-                    "ultimate vector": [],
                 },
                 "method metadata": {
                     "last modified": self._dfm_last_modified(dfm),

@@ -1401,12 +1401,45 @@ def _recalculate_dependents_impl(
     changed_dataset_name: str,
     changed_dataset_type_name: str = "",
     *,
+    include_dfm: bool = True,
     include_result_selection: bool = True,
     rebuild_index: bool = True,
 ) -> Dict[str, Any]:
     changed = [changed_dataset_name, changed_dataset_type_name]
+    dfm_updates = None
+    dfm_output_names: List[str] = []
+    failed_dfm_names: List[str] = []
+    if include_dfm:
+        try:
+            from app_server.services import dfm_service
+
+            dfm_updates = dfm_service.refresh_dependents(
+                project_name,
+                reserving_class,
+                changed,
+            )
+            dfm_output_names = [
+                _clean_text(value)
+                for item in dfm_updates.get("updated", [])
+                if item.get("output_changed")
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            ]
+            failed_dfm_names = [
+                _clean_text(value)
+                for item in dfm_updates.get("errors", [])
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            ]
+        except Exception as err:
+            dfm_updates = {
+                "ok": False,
+                "errors": [{"reason": str(err)}],
+                "updated": [],
+            }
+    changed.extend([*dfm_output_names, *failed_dfm_names])
     dataset_type_rows = _dataset_type_rows(project_name)
-    targets = _existing_downstream_keys(project_name, reserving_class, changed, dataset_type_rows)
+    targets = list(_existing_downstream_keys(project_name, reserving_class, changed, dataset_type_rows))
     rows_by_key = {
         _canon_dataset_name(item.get("name")): item
         for item in dataset_type_rows
@@ -1422,8 +1455,14 @@ def _recalculate_dependents_impl(
         for key, row in rows_by_key.items()
     }
     results: List[Dict[str, Any]] = []
-    failed_or_blocked: Set[str] = set()
+    failed_or_blocked: Set[str] = {
+        _canon_dataset_name(name) for name in failed_dfm_names if _canon_dataset_name(name)
+    }
+    processed_target_keys: Set[str] = set()
     for key in targets:
+        if key in processed_target_keys:
+            continue
+        processed_target_keys.add(key)
         row = rows_by_key.get(key)
         if not row:
             continue
@@ -1463,6 +1502,62 @@ def _recalculate_dependents_impl(
             "status": "updated" if result.get("ok") else "skipped",
         }
         results.append(step)
+        if include_dfm:
+            try:
+                from app_server.services import dfm_service
+
+                calculated_name = _clean_text(result.get("dataset_type_name") or row["name"])
+                next_dfm = dfm_service.refresh_dependents(
+                    project_name,
+                    reserving_class,
+                    [calculated_name],
+                    blocked_precedent_names=[calculated_name] if not result.get("ok") else [],
+                )
+            except Exception as err:
+                next_dfm = {
+                    "ok": False,
+                    "updated": [],
+                    "status_refreshed": [],
+                    "skipped": [],
+                    "errors": [{"reason": str(err)}],
+                }
+            if dfm_updates is None:
+                dfm_updates = next_dfm
+            else:
+                dfm_updates["ok"] = bool(dfm_updates.get("ok")) and bool(next_dfm.get("ok"))
+                for field in ("updated", "status_refreshed", "skipped", "errors"):
+                    dfm_updates.setdefault(field, []).extend(next_dfm.get(field, []))
+            next_output_roots = [
+                _clean_text(value)
+                for item in next_dfm.get("updated", [])
+                if item.get("output_changed")
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            ]
+            next_failed_roots = [
+                _clean_text(value)
+                for item in next_dfm.get("errors", [])
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            ]
+            for name in next_output_roots:
+                if _canon_dataset_name(name) not in {_canon_dataset_name(item) for item in dfm_output_names}:
+                    dfm_output_names.append(name)
+            for name in next_failed_roots:
+                if _canon_dataset_name(name) not in {_canon_dataset_name(item) for item in failed_dfm_names}:
+                    failed_dfm_names.append(name)
+                if _canon_dataset_name(name):
+                    failed_or_blocked.add(_canon_dataset_name(name))
+            next_roots = [*next_output_roots, *next_failed_roots]
+            if next_roots:
+                for next_key in _existing_downstream_keys(
+                    project_name,
+                    reserving_class,
+                    next_roots,
+                    dataset_type_rows,
+                ):
+                    if next_key not in processed_target_keys and next_key not in targets:
+                        targets.append(next_key)
 
     failed_dataset_names = [
         _clean_text(result.get("dataset_type_name"))
@@ -1482,7 +1577,12 @@ def _recalculate_dependents_impl(
         try:
             from app_server.services import result_selection_service
 
-            fresh_names = [changed_dataset_name, changed_dataset_type_name]
+            fresh_names = [
+                changed_dataset_name,
+                changed_dataset_type_name,
+                *dfm_output_names,
+                *failed_dfm_names,
+            ]
             fresh_names.extend(
                 item.get("dataset_type_name")
                 for item in results
@@ -1494,7 +1594,7 @@ def _recalculate_dependents_impl(
                 fresh_names,
                 rebuild_index=False,
                 allow_status_current=True,
-                blocked_precedent_names=failed_dataset_names,
+                blocked_precedent_names=[*failed_dfm_names, *failed_dataset_names],
             )
         except Exception as err:
             result_selection_updates = {
@@ -1511,6 +1611,8 @@ def _recalculate_dependents_impl(
             index_error = str(err)
 
     overall_ok = all(item.get("ok") for item in results)
+    if dfm_updates is not None:
+        overall_ok = overall_ok and bool(dfm_updates.get("ok"))
     if result_selection_updates is not None:
         overall_ok = overall_ok and bool(result_selection_updates.get("ok"))
     return {
@@ -1527,6 +1629,7 @@ def _recalculate_dependents_impl(
         "steps": results,
         "updated": [item for item in results if item.get("ok")],
         "skipped": [item for item in results if not item.get("ok")],
+        "dfm_updates": dfm_updates,
         "result_selection_updates": result_selection_updates,
         "index_ok": not index_error,
         "index_error": index_error,
@@ -1539,6 +1642,7 @@ def recalculate_dependents(
     changed_dataset_name: str,
     changed_dataset_type_name: str = "",
     *,
+    include_dfm: bool = True,
     include_result_selection: bool = True,
     rebuild_index: bool = True,
 ) -> Dict[str, Any]:
@@ -1548,6 +1652,7 @@ def recalculate_dependents(
             reserving_class,
             changed_dataset_name,
             changed_dataset_type_name,
+            include_dfm=include_dfm,
             include_result_selection=include_result_selection,
             rebuild_index=rebuild_index,
         )

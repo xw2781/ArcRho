@@ -5,6 +5,7 @@ DFM Results Tab - results table rendering and CSV export
 */
 import { getDataset } from "/ui/shared/dataset/dataset_api.js";
 import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260721a";
+import { formatDatasetNumberValue } from "/ui/shared/dataset/dataset_number_format.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { wireSelectableTable } from "/ui/shared/components/spreadsheet/table_selection.js";
@@ -29,6 +30,13 @@ let ratioBasisOptionsLoadSeq = 0;
 let ratioBasisColumnLoadSeq = 0;
 let ratioBasisSelectedName = "";
 let ratioBasisSelectedFormat = "";
+let ratioBasisEmbeddedSnapshot = Boolean(
+  new URLSearchParams(globalThis.location?.search || "").get("method_name"),
+);
+let ratioBasisNumberFormat = "";
+let ratioBasisDecimalPlaces = null;
+let ratioBasisSourceRevision = "";
+let persistedUltimateVector = null;
 let ratioBasisProgrammaticUpdate = false;
 let ultimateRatioDecimalProgrammaticUpdate = false;
 let ratioBasisOptionsRenderedProjectKey = "";
@@ -191,6 +199,16 @@ function markRatioBasisOptionsRendered(projectKey) {
   ratioBasisOptionsRenderedProjectKey = String(projectKey || "");
 }
 
+function formatRatioBasisCellValue(value) {
+  if (!Number.isFinite(Number(value))) return "";
+  if (!ratioBasisNumberFormat) return formatCellValue(value);
+  return formatDatasetNumberValue(
+    value,
+    ratioBasisNumberFormat,
+    Number.isFinite(ratioBasisDecimalPlaces) ? ratioBasisDecimalPlaces : 0,
+  );
+}
+
 function syncResultsSelectionState(table, ranges = []) {
   if (!table) return;
   const selectedRows = new Set();
@@ -296,6 +314,92 @@ function clearRatioBasisColumnState(options = {}) {
   if (!options?.keepStatus) setRatioBasisStatus("", "");
 }
 
+function applyRatioBasisColumnMetadata(columnState) {
+  ratioBasisNumberFormat = toText(columnState?.numberFormat || columnState?.number_format);
+  ratioBasisDecimalPlaces = Number.isFinite(Number(columnState?.decimalPlaces ?? columnState?.decimal_places))
+    ? Number(columnState?.decimalPlaces ?? columnState?.decimal_places)
+    : null;
+  ratioBasisSourceRevision = toText(
+    columnState?.sourceRevision || columnState?.source_revision || columnState?.revision,
+  );
+}
+
+function clonePersistedNumber(value) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+/**
+ * Hydrates Results directly from the canonical v2 method payload. This path is
+ * deliberately disk-free: it does not validate the Ratio Basis against the
+ * project index or reload the source dataset.
+ */
+export function applyPersistedResultsSnapshot(resultsTab = {}) {
+  const source = resultsTab && typeof resultsTab === "object" ? resultsTab : {};
+  const datasetName = toText(source["ratio basis dataset"]);
+  const originLabels = Array.isArray(source["ratio basis origin labels"])
+    ? source["ratio basis origin labels"].map((label) => String(label ?? ""))
+    : [];
+  const values = Array.isArray(source["ratio basis values"])
+    ? source["ratio basis values"].map(clonePersistedNumber)
+    : [];
+  const input = getRatioBasisInputEl();
+  ratioBasisEmbeddedSnapshot = true;
+  ratioBasisSelectedName = datasetName;
+  ratioBasisSelectedFormat = toText(source["ratio basis data format"] || "vector").toLowerCase();
+  ratioBasisNumberFormat = toText(source["ratio basis number format"]);
+  ratioBasisDecimalPlaces = Number.isFinite(Number(source["ratio basis decimal places"]))
+    ? Number(source["ratio basis decimal places"])
+    : null;
+  ratioBasisSourceRevision = toText(source["ratio basis source revision"]);
+  if (input) input.value = datasetName;
+
+  const valuesByOrigin = new Map();
+  originLabels.forEach((label, index) => {
+    const value = values[index];
+    const key = normalizeOriginKey(label);
+    if (key && Number.isFinite(value)) valuesByOrigin.set(key, value);
+  });
+  ratioBasisColumnState = {
+    requestKey: `embedded::${datasetName}::${ratioBasisSourceRevision}`,
+    status: datasetName ? "ready" : "idle",
+    datasetName,
+    dataFormat: ratioBasisSelectedFormat,
+    headerText: buildRatioBasisHeaderText(datasetName),
+    valuesByOrigin,
+    valuesByIndex: values,
+    originLabels,
+    error: "",
+  };
+  persistedUltimateVector = Array.isArray(source["ultimate vector"])
+    ? source["ultimate vector"].map(clonePersistedNumber)
+    : null;
+  setRatioBasisStatus("", "");
+}
+
+export function getResultsRatioBasisSnapshot() {
+  const origins = Array.isArray(ratioBasisColumnState.originLabels)
+    ? ratioBasisColumnState.originLabels.slice()
+    : Array.from(ratioBasisColumnState.valuesByOrigin?.keys?.() || []);
+  const values = Array.isArray(ratioBasisColumnState.valuesByIndex)
+    ? ratioBasisColumnState.valuesByIndex.slice()
+    : [];
+  return {
+    "ratio basis dataset": toText(ratioBasisSelectedName),
+    "ratio basis data format": toText(ratioBasisSelectedFormat),
+    "ratio basis origin labels": origins,
+    "ratio basis values": values,
+    "ratio basis number format": ratioBasisNumberFormat,
+    "ratio basis decimal places": ratioBasisDecimalPlaces,
+    "ratio basis source revision": ratioBasisSourceRevision,
+  };
+}
+
+export function invalidatePersistedResultsDerivations() {
+  persistedUltimateVector = null;
+}
+
 function readCurrentOriginLen() {
   const raw = Number.parseInt(document.getElementById("originLenSelect")?.value, 10);
   return Number.isFinite(raw) ? raw : 12;
@@ -399,6 +503,7 @@ function getRatioBasisRowValue(stateLike, originLabel, rowIndex) {
   if (originKey && stateLike.valuesByOrigin instanceof Map && stateLike.valuesByOrigin.has(originKey)) {
     return stateLike.valuesByOrigin.get(originKey);
   }
+  if (Array.isArray(stateLike.originLabels) && stateLike.originLabels.length) return null;
   if (Array.isArray(stateLike.valuesByIndex) && rowIndex >= 0 && rowIndex < stateLike.valuesByIndex.length) {
     return stateLike.valuesByIndex[rowIndex];
   }
@@ -452,6 +557,10 @@ async function loadRatioBasisColumnForContext(ctx) {
     headerText: ctx.headerText,
     valuesByOrigin: extracted.valuesByOrigin,
     valuesByIndex: extracted.valuesByIndex,
+    originLabels: Array.isArray(dsResp.data?.origin_labels) ? dsResp.data.origin_labels.slice() : [],
+    numberFormat: dsResp.data?.number_format,
+    decimalPlaces: dsResp.data?.decimal_places,
+    sourceRevision: dsResp.data?.source_revision || dsResp.data?.revision || dsResp.data?.sidecar_revision,
     error: "",
   };
 }
@@ -476,6 +585,7 @@ function queueRatioBasisColumnLoadIfNeeded() {
   const cached = ratioBasisColumnCache.get(ctx.requestKey);
   if (cached) {
     ratioBasisColumnState = { ...cached, status: "ready", error: "" };
+    applyRatioBasisColumnMetadata(ratioBasisColumnState);
     setRatioBasisStatus("", "");
     return ctx;
   }
@@ -505,6 +615,7 @@ function queueRatioBasisColumnLoadIfNeeded() {
       const latestCtx = buildRatioBasisRequestContext();
       if (!latestCtx || latestCtx.requestKey !== ctx.requestKey) return;
       ratioBasisColumnState = loaded;
+      applyRatioBasisColumnMetadata(loaded);
       setRatioBasisStatus("", "");
       if (isResultsTabVisible()) renderResultsTable();
     } catch (err) {
@@ -593,6 +704,7 @@ export function wireResultsRatioBasisControls() {
 
   if (input) {
     input.addEventListener("focus", () => {
+      ratioBasisEmbeddedSnapshot = false;
       void ensureRatioBasisOptionsForCurrentProject().catch((err) => {
         console.error("Failed to load ratio-basis options:", err);
         if (toText(input.value)) {
@@ -602,6 +714,7 @@ export function wireResultsRatioBasisControls() {
     });
 
     input.addEventListener("input", () => {
+      ratioBasisEmbeddedSnapshot = false;
       const raw = toText(input.value);
       if (!raw) {
         ratioBasisSelectedName = "";
@@ -734,6 +847,7 @@ export function setResultsUltimateRatioDecimalPlacesSelection(value, options = {
 }
 
 export function buildResultsVector() {
+  if (Array.isArray(persistedUltimateVector)) return persistedUltimateVector.slice();
   const model = state.model;
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) return [];
   const origins = model.origin_labels || [];
@@ -765,7 +879,7 @@ export function renderResultsTable() {
   if (!wrap) return;
   wrap.innerHTML = "";
 
-  if (getRatioBasisInputEl()) {
+  if (getRatioBasisInputEl() && !ratioBasisEmbeddedSnapshot) {
     void ensureRatioBasisOptionsForCurrentProject().catch((err) => {
       console.error("Failed to load ratio-basis options:", err);
       if (ratioBasisSelectedName) {
@@ -773,11 +887,14 @@ export function renderResultsTable() {
       }
     });
   }
-  const ratioBasisCtx = queueRatioBasisColumnLoadIfNeeded();
-  const ratioBasisActive = !!ratioBasisCtx;
+  const ratioBasisCtx = ratioBasisEmbeddedSnapshot ? null : queueRatioBasisColumnLoadIfNeeded();
+  const ratioBasisActive = ratioBasisEmbeddedSnapshot
+    ? Boolean(ratioBasisSelectedName && ratioBasisColumnState.status === "ready")
+    : Boolean(ratioBasisCtx);
   const ratioBasisHeaderText = ratioBasisColumnState.headerText || ratioBasisCtx?.headerText || "Ratio Basis";
-  const ratioBasisStateForRender =
-    ratioBasisActive && ratioBasisCtx && ratioBasisColumnState.requestKey === ratioBasisCtx.requestKey
+  const ratioBasisStateForRender = ratioBasisEmbeddedSnapshot
+    ? ratioBasisColumnState
+    : ratioBasisActive && ratioBasisCtx && ratioBasisColumnState.requestKey === ratioBasisCtx.requestKey
       ? ratioBasisColumnState
       : null;
 
@@ -882,8 +999,10 @@ export function renderResultsTable() {
       latestTotalHasValue = true;
     }
 
-    let ultimateValue = null;
-    if (latest && Number.isFinite(cumulative[latest.col])) {
+    let ultimateValue = Array.isArray(persistedUltimateVector)
+      ? clonePersistedNumber(persistedUltimateVector[r])
+      : null;
+    if (!Array.isArray(persistedUltimateVector) && latest && Number.isFinite(cumulative[latest.col])) {
       ultimateValue = latest.value * cumulative[latest.col];
     }
     if (Number.isFinite(ultimateValue) && Number.isFinite(latestValue)) {
@@ -905,7 +1024,7 @@ export function renderResultsTable() {
     tr.appendChild(ultTd);
     if (basisTd) {
       const basisValue = getRatioBasisRowValue(ratioBasisStateForRender, origins[r], r);
-      basisTd.textContent = Number.isFinite(basisValue) ? formatCellValue(basisValue) : "";
+      basisTd.textContent = formatRatioBasisCellValue(basisValue);
       if (Number.isFinite(basisValue)) {
         basisTotal += basisValue;
         basisTotalHasValue = true;
@@ -951,7 +1070,7 @@ export function renderResultsTable() {
   if (ratioBasisActive) {
     const basisTotalTd = document.createElement("td");
     tagResultCell(basisTotalTd, origins.length, 3);
-    basisTotalTd.textContent = basisTotalHasValue ? formatCellValue(basisTotal) : "";
+    basisTotalTd.textContent = basisTotalHasValue ? formatRatioBasisCellValue(basisTotal) : "";
     totalTr.appendChild(basisTotalTd);
 
     const totalUltRatioTd = document.createElement("td");

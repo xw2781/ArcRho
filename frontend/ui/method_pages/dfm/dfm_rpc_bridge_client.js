@@ -7,7 +7,10 @@ import {
   getRatioHeaderLabels,
   state,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { applyDfmMethodPayload, saveRatioSelectionPattern } from "/ui/method_pages/dfm/dfm_persistence.js?v=20260725b";
+import {
+  applyDfmOwnedPatchPayload,
+  saveRatioSelectionPattern,
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260726a";
 import {
   confirmDfmRpcBridgeAction,
   createDfmRpcBridgeDialog,
@@ -328,7 +331,7 @@ export function reviewArcBotDfmEditApproval(options = {}) {
         statusDialog.setBusy(true);
         dialog.close("primary-action");
         try {
-          const applied = await applyDfmMethodPayload(proposedJson, { markClean: false, reason: "arcbot-approval" });
+          const applied = await applyDfmOwnedPatchPayload(proposedJson, { reason: "arcbot-approval" });
           if (!applied?.ok) {
             statusDialog.setMessage("Could not apply the approved DFM edit to this tab.", "error");
             finish({ ok: false, error: "Could not apply the approved DFM edit to this tab." });
@@ -408,21 +411,19 @@ async function runPrimaryAction(dialog, payload, action) {
     if (action === "update-local") {
       statusDialog.setWaiting("Updating local DFM JSON from remote...");
       const data = await postJson("/dfm/rpc-bridge/apply", payload);
-      const applied = await applyDfmMethodPayload(data?.payload);
+      const applied = await applyDfmOwnedPatchPayload(data?.payload, { reason: "rpc-update-local" });
       if (!applied?.ok) {
         statusDialog.setMessage("Updated, but could not reload this tab.", "error");
         postStatus("DFM sync: local JSON updated, but tab apply failed.", "warn");
         return;
       }
-      if (applied.datasetInputsChanged) {
-        statusDialog.setWaiting("Saving recalculated local DFM JSON...");
-        const saved = await saveRatioSelectionPattern(false);
-        if (!saved?.ok) {
-          markDfmDirty();
-          statusDialog.setMessage("Local updated in app, but final JSON save failed. Save the DFM before closing.", "warn");
-          postStatus("DFM sync: local app data updated, but final JSON save failed.", "warn");
-          return;
-        }
+      markDfmDirty();
+      statusDialog.setWaiting("Saving recalculated local DFM JSON...");
+      const saved = await saveRatioSelectionPattern(false);
+      if (!saved?.ok) {
+        statusDialog.setMessage("Local updated in app, but final JSON save failed. Save the DFM before closing.", "warn");
+        postStatus("DFM sync: local app data updated, but final JSON save failed.", "warn");
+        return;
       }
       const resultMessage = formatApplyResultMessage(data);
       statusDialog.setMessage(resultMessage.text, resultMessage.tone);

@@ -45,3 +45,5 @@ class TriangleCacheResult:
     file_path: Path
     from_cache: bool
     request_path: Path | None = None
+    refreshed_dfm_outputs: tuple[str, ...] = ()
+    propagation_warnings: tuple[str, ...] = ()

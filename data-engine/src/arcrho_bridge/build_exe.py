@@ -1,5 +1,6 @@
 import shutil
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
 SOURCE_ROOT = BASE_DIR.parent
+REPO_ROOT = PROJECT_ROOT.parent
 for path in (PROJECT_ROOT, SOURCE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -22,6 +24,13 @@ REQ_FILE = BASE_DIR / "requirements.txt"
 ENTRY_PY = BASE_DIR / "main.py"
 APP_NAME = component_app_name("bridge")
 ICON = PROJECT_ROOT.parent / "assets" / "icons" / "ArcRho Engine.ico"
+RESQ_MIGRATION_SOURCE = REPO_ROOT / "python-api" / "migration"
+RESQ_PYTHON_API_SOURCE = REPO_ROOT / "python-api" / "src"
+RESQ_FRONTEND_APP_SERVER_SOURCE = REPO_ROOT / "frontend" / "app_server"
+RESQ_IMPORT_CONTRACT_FILE = BASE_DIR / "resq_reserving_class_import_contract.json"
+RESQ_MIGRATION_BUNDLE_TARGET = r"resq_importer\python-api\migration"
+RESQ_PYTHON_API_BUNDLE_TARGET = r"resq_importer\python-api\src"
+RESQ_IMPORT_CONTRACT_BUNDLE_TARGET = "arcrho_bridge"
 
 BUILD_DIR = BUILD_ROOT / "build"
 SPEC_DIR = BUILD_ROOT / "spec"
@@ -65,6 +74,19 @@ def install_requirements():
 
 def build_exe():
     APPS_DIR.mkdir(parents=True, exist_ok=True)
+    for source in (
+        RESQ_MIGRATION_SOURCE,
+        RESQ_PYTHON_API_SOURCE,
+        RESQ_FRONTEND_APP_SERVER_SOURCE,
+    ):
+        if not source.is_dir():
+            raise FileNotFoundError(
+                f"Canonical ResQ import bundle source was not found: {source}"
+            )
+    if not RESQ_IMPORT_CONTRACT_FILE.is_file():
+        raise FileNotFoundError(
+            f"ResQ reserving-class import contract was not found: {RESQ_IMPORT_CONTRACT_FILE}"
+        )
     cmd = [
         VENV_PYTHON,
         "-m",
@@ -75,13 +97,31 @@ def build_exe():
         "--onedir",
         "--paths",
         SOURCE_ROOT,
+        "--paths",
+        REPO_ROOT / "frontend",
         "--hidden-import",
         "utils",
         "--hidden-import",
         "win32timezone",
+        "--hidden-import",
+        "app_server.services.data_processing_rules_service",
+        "--hidden-import",
+        "app_server.services.data_processing_values_service",
+        "--hidden-import",
+        "app_server.services.audit_service",
+        "--hidden-import",
+        "arcrho_bridge.resq_import_runner",
         f"--icon={ICON}",
         "--add-data",
         f"{ICON};.",
+        "--add-data",
+        f"{RESQ_MIGRATION_SOURCE};{RESQ_MIGRATION_BUNDLE_TARGET}",
+        "--add-data",
+        f"{RESQ_PYTHON_API_SOURCE};{RESQ_PYTHON_API_BUNDLE_TARGET}",
+        "--add-data",
+        f"{RESQ_FRONTEND_APP_SERVER_SOURCE};resq_importer/frontend/app_server",
+        "--add-data",
+        f"{RESQ_IMPORT_CONTRACT_FILE};{RESQ_IMPORT_CONTRACT_BUNDLE_TARGET}",
         "--noconsole",
         "--clean",
         "--name",

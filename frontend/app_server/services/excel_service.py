@@ -1,10 +1,15 @@
 """Excel COM interop operations (win32com)."""
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List
 
 import openpyxl
+
+
+EXCEL_BATCH_MAX_WORKERS = 4
 
 
 def excel_active_selection() -> Dict[str, Any]:
@@ -130,37 +135,56 @@ def excel_read_cell(book_path: str, sheet: str, cell: str) -> Dict[str, Any]:
 
 
 def excel_read_cells_batch(items: list) -> Dict[str, Any]:
-    from collections import defaultdict
-    groups: Dict[str, list] = defaultdict(list)
-    for i, item in enumerate(items):
-        groups[item.book_path].append((i, item))
+    groups: Dict[str, Dict[str, Any]] = {}
+    result_keys: List[tuple[str, str, str]] = []
+    for item in items:
+        resolved = str(Path(item.book_path).resolve())
+        book_key = os.path.normcase(resolved)
+        cell_key = (book_key, str(item.sheet), str(item.cell).upper())
+        result_keys.append(cell_key)
+        group = groups.setdefault(book_key, {"path": resolved, "items": {}})
+        group["items"].setdefault(cell_key, item)
 
-    results = [None] * len(items)
-    for book_path, batch_items in groups.items():
+    def read_workbook(group: Dict[str, Any]) -> Dict[tuple[str, str, str], Dict[str, Any]]:
+        book_path = str(group["path"])
+        unique_items = group["items"]
+        workbook_results: Dict[tuple[str, str, str], Dict[str, Any]] = {}
         p = Path(book_path).resolve()
         if not p.exists():
-            for i, item in batch_items:
-                results[i] = {"ok": False, "error": f"File not found: {book_path}"}
-            continue
+            return {
+                key: {"ok": False, "error": f"File not found: {book_path}"}
+                for key in unique_items
+            }
         try:
             wb = openpyxl.load_workbook(str(p), data_only=True, read_only=True)
-            for i, item in batch_items:
-                if item.sheet not in wb.sheetnames:
-                    results[i] = {"ok": False, "error": f"Sheet not found: {item.sheet}"}
-                    continue
-                ws = wb[item.sheet]
-                val = ws[item.cell].value
-                try:
-                    numeric = float(val) if val is not None else None
-                    results[i] = {"ok": True, "value": numeric}
-                except (ValueError, TypeError):
-                    results[i] = {"ok": False, "error": f"Not numeric: {repr(val)}"}
-            wb.close()
+            try:
+                for key, item in unique_items.items():
+                    if item.sheet not in wb.sheetnames:
+                        workbook_results[key] = {"ok": False, "error": f"Sheet not found: {item.sheet}"}
+                        continue
+                    val = wb[item.sheet][item.cell].value
+                    try:
+                        numeric = float(val) if val is not None else None
+                        workbook_results[key] = {"ok": True, "value": numeric}
+                    except (ValueError, TypeError):
+                        workbook_results[key] = {"ok": False, "error": f"Not numeric: {repr(val)}"}
+            finally:
+                wb.close()
         except Exception as e:
-            for i, item in batch_items:
-                if results[i] is None:
-                    results[i] = {"ok": False, "error": str(e)}
+            for key in unique_items:
+                workbook_results.setdefault(key, {"ok": False, "error": str(e)})
+        return workbook_results
 
+    by_key: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    if groups:
+        with ThreadPoolExecutor(
+            max_workers=min(EXCEL_BATCH_MAX_WORKERS, len(groups)),
+            thread_name_prefix="arcrho-excel-check",
+        ) as executor:
+            futures = [executor.submit(read_workbook, group) for group in groups.values()]
+            for future in futures:
+                by_key.update(future.result())
+    results = [dict(by_key[key]) for key in result_keys]
     return {"ok": True, "results": results}
 
 

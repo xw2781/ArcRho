@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "development factor method",
+  "audience": "user",
+  "summary": "Development Factor Methods now open from their own saved files and refresh stored results when upstream datasets change.",
+  "details": [
+    "Current DFM methods load their method JSON and output sidecar without reopening the Input Triangle or Ratio Basis datasets.",
+    "Input, Ratio Basis, calculated ratio, average, and ultimate snapshots are stored with independent owned and derived revisions.",
+    "ArcRho-managed precedent saves refresh affected DFM results while preserving selections, formulas, Excel-linked stored values, and notes.",
+    "Excel freshness checking now runs after the method is ready, never changes stored values automatically, and reports stale or unverifiable links for optional manual refresh.",
+    "Legacy DFM methods upgrade once; failed refresh branches retain their last valid publication and are marked for review."
+  ]
+}

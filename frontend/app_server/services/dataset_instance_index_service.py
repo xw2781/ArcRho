@@ -263,7 +263,14 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
     details_tab = _json_tab(payload, "details tab")
-    _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
+    _add_cached_dataset_name(
+        names,
+        _normalize_cached_dataset_name(
+            details_tab.get("output dataset")
+            or details_tab.get("output vector")
+            or details_tab.get("name")
+        ),
+    )
     return names
 
 
@@ -337,12 +344,17 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
             "status": dataset_sidecar_status_service.STATUS_CURRENT,
         }
     details_tab = _json_tab(payload, "details tab")
-    dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
+    method_name = _normalize_cached_dataset_name(details_tab.get("name"))
+    dataset_name = _normalize_cached_dataset_name(
+        details_tab.get("output dataset")
+        or details_tab.get("output vector")
+        or method_name
+    )
     dataset_type = _normalize_cached_dataset_name(details_tab.get("output type"))
     dataset_category = _clean_text(details_tab.get("output dataset_category") or details_tab.get("output category"))
     if not dataset_name:
         return None
-    return {
+    entry = {
         "dataset_name": dataset_name,
         "dataset_type": dataset_type or dataset_name,
         "dataset_category": dataset_category,
@@ -351,6 +363,9 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
         "source_kind": "dfm",
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
+    if method_name and method_name.casefold() != dataset_name.casefold():
+        entry["method_name"] = method_name
+    return entry
 
 
 def _is_index_file(filename: str) -> bool:

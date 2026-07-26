@@ -1,0 +1,52 @@
+{
+  "contract_version": 1,
+  "function": "ImportResQReservingClass",
+  "request_relative_dir": [
+    "requests",
+    "RPC bridge",
+    "resq_reserving_class_import",
+    "requests"
+  ],
+  "status_relative_dir": [
+    "requests",
+    "RPC bridge",
+    "resq_reserving_class_import",
+    "statuses"
+  ],
+  "worker_heartbeat_relative_dir": [
+    "runtime",
+    "instances",
+    "arcrho_bridge_worker"
+  ],
+  "worker_role": "bridge_worker",
+  "worker_heartbeat_max_age_seconds": 6,
+  "required_request_fields": [
+    "Function",
+    "ContractVersion",
+    "RequestId",
+    "ProjectName",
+    "Path",
+    "UserName",
+    "ExportMode"
+  ],
+  "forbidden_path_fields": [
+    "StatusPath",
+    "DataPath",
+    "TargetPath",
+    "ServerRoot"
+  ],
+  "allowed_export_modes": [
+    "configured",
+    "all",
+    "triangles",
+    "vectors",
+    "vector",
+    "dfm",
+    "dfms"
+  ],
+  "status_values": [
+    "processing",
+    "success",
+    "error"
+  ]
+}

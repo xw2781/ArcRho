@@ -3,19 +3,42 @@
 from __future__ import annotations
 
 import csv
+import getpass
+import os
 import re
+import threading
+import uuid
 from collections.abc import Iterable as IterableABC, Sequence
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
-from .exceptions import DfmDataError, InvalidDfmJsonError
-from .io import read_json, write_json_atomic
+from .dfm_contract import (
+    LEGACY_DFM_JSON_FORMAT,
+    build_dfm_output_sidecar,
+    dependency_entries,
+    dfm_output_variants,
+    dfm_precedent_names,
+    normalize_dfm_method,
+    recalculate_dfm_method,
+)
+from .exceptions import DfmDataError, InvalidDfmJsonError, ReadOnlyError
+from .io import format_json_for_save, read_json
 from .paths import DFM_JSON_FORMAT, clean_text, sanitize_file_name_part
 
 if TYPE_CHECKING:
     from .reserving_class import ReservingClass
+
+
+_DFM_PUBLISH_LOCKS_GUARD = threading.Lock()
+_DFM_PUBLISH_LOCKS: dict[str, threading.RLock] = {}
+
+
+def _dfm_publish_lock(path: Path) -> threading.RLock:
+    key = str(path.resolve()).casefold()
+    with _DFM_PUBLISH_LOCKS_GUARD:
+        return _DFM_PUBLISH_LOCKS.setdefault(key, threading.RLock())
 
 
 def _tab(payload: dict[str, Any], key: str) -> dict[str, Any]:
@@ -241,6 +264,57 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()
 
 
+def _json_bytes(payload: dict[str, Any]) -> bytes:
+    return f"{format_json_for_save(payload)}\n".encode("utf-8")
+
+
+def _commit_bytes_atomic(files: dict[Path, bytes], *, last_paths: Iterable[Path] = ()) -> None:
+    """Replace a small related file set transactionally, with sidecar-last ordering."""
+
+    last_keys = {str(path.resolve()).casefold() for path in last_paths}
+    ordered = sorted(files, key=lambda path: (str(path.resolve()).casefold() in last_keys, str(path).casefold()))
+    staged: dict[Path, Path] = {}
+    backups: dict[Path, bytes | None] = {}
+    replaced: list[Path] = []
+    try:
+        for path in ordered:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            current = path.read_bytes() if path.is_file() else None
+            if current == files[path]:
+                continue
+            backups[path] = current
+            temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+            temporary.write_bytes(files[path])
+            staged[path] = temporary
+        for path in ordered:
+            temporary = staged.pop(path, None)
+            if temporary is None:
+                continue
+            os.replace(temporary, path)
+            replaced.append(path)
+    except OSError as err:
+        rollback_errors: list[str] = []
+        for path in reversed(replaced):
+            try:
+                original = backups.get(path)
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.rollback")
+                    temporary.write_bytes(original)
+                    os.replace(temporary, path)
+            except OSError as rollback_err:
+                rollback_errors.append(f"{path.name}: {rollback_err}")
+        detail = f"; rollback failed: {'; '.join(rollback_errors)}" if rollback_errors else ""
+        raise DfmDataError(f"Failed to publish DFM files: {err}{detail}") from err
+    finally:
+        for temporary in staged.values():
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 class DfmMethod:
     """One ArcRho DFM method JSON file."""
 
@@ -254,6 +328,8 @@ class DfmMethod:
         self.payload = payload
         self._pending_notes: str | None = None
         self._last_ratio_adjustment: dict[str, Any] | None = None
+        self._last_refreshed_dfm_outputs: tuple[str, ...] = ()
+        self._propagation_warnings: tuple[str, ...] = ()
         self._ensure_grouped_payload()
 
     def __len__(self) -> int:
@@ -338,6 +414,8 @@ class DfmMethod:
             "details tab": {
                 "name": method_name,
                 "output type": clean_text(output_vector),
+                "output dataset": method_name,
+                "output category": "",
                 "input triangle": clean_text(input_triangle),
                 "origin length": int(origin_length),
                 "development length": int(development_length),
@@ -346,7 +424,11 @@ class DfmMethod:
             "data tab": {
                 "origin labels": [],
                 "development labels": [],
-                "input data triangle csv path": "",
+                "input data triangle values": [],
+                "input data triangle mask": [],
+                "number format": "#,##0",
+                "decimal places": 0,
+                "source revision": "",
             },
             "ratios tab": {
                 "ratio triangle": {
@@ -359,11 +441,17 @@ class DfmMethod:
             },
             "results tab": {
                 "ratio basis dataset": "",
+                "ratio basis origin labels": [],
+                "ratio basis values": [],
+                "ratio basis number format": "#,##0",
+                "ratio basis decimal places": 0,
+                "ratio basis source revision": "",
                 "ultimate ratio decimal places": 2,
-                "ultimate vector csv path": "",
+                "ultimate vector": [],
             },
             "method metadata": {
                 "last modified": _now_iso(),
+                "data refreshed": _now_iso(),
             },
         }
         if extra:
@@ -386,27 +474,334 @@ class DfmMethod:
     def to_dict(self) -> dict[str, Any]:
         return deepcopy(self.payload)
 
-    def save(self) -> Path:
-        if self._pending_notes is not None and not self._sidecar_path().exists():
-            raise DfmDataError(
-                f"DFM output sidecar not found: {self._sidecar_path()}. "
-                "Materialize the output dataset before saving DFM notes."
+    def set_input_snapshot(self, snapshot: dict[str, Any]) -> "DfmMethod":
+        try:
+            self.payload = recalculate_dfm_method(self.payload, input_snapshot=snapshot)
+        except ValueError as err:
+            raise DfmDataError(str(err)) from err
+        return self
+
+    def set_ratio_basis_snapshot(self, snapshot: dict[str, Any]) -> "DfmMethod":
+        try:
+            self.payload = recalculate_dfm_method(self.payload, ratio_basis_snapshot=snapshot)
+        except ValueError as err:
+            raise DfmDataError(str(err)) from err
+        return self
+
+    def _source_sidecar(self, dataset_name: str) -> dict[str, Any]:
+        data_dir = self.project.reserving_class_data_dir(self.reserving_class)
+        path = data_dir / "sidecars" / f"{sanitize_file_name_part(dataset_name, 'Dataset')}.json"
+        return read_json(path) if path.is_file() else {}
+
+    def _source_csv_path(
+        self,
+        dataset_name: str,
+        sidecar: dict[str, Any],
+        *,
+        legacy_path: Any = None,
+    ) -> Path:
+        data_dir = self.project.reserving_class_data_dir(self.reserving_class)
+        datasets_dir = data_dir / "datasets"
+        csv_file = clean_text(sidecar.get("csv_file"))
+        if csv_file:
+            candidate = datasets_dir / Path(csv_file).name
+            if candidate.is_file():
+                return candidate
+        if clean_text(legacy_path):
+            resolved = self._resolve_data_path(legacy_path)
+            if resolved and resolved.is_file():
+                return resolved
+        prefix = f"{sanitize_file_name_part(dataset_name, 'Dataset')}@".casefold()
+        candidates = sorted(
+            (
+                path
+                for path in datasets_dir.glob("*.csv")
+                if path.name.casefold().startswith(prefix)
+                or path.stem.casefold() == sanitize_file_name_part(dataset_name, "Dataset").casefold()
+            ),
+            key=lambda path: path.name.casefold(),
+        )
+        if len(candidates) == 1:
+            return candidates[0]
+        if not candidates:
+            raise DfmDataError(f"DFM source dataset CSV not found: {dataset_name}")
+        raise DfmDataError(f"DFM source dataset CSV is ambiguous: {dataset_name}")
+
+    def _source_snapshot(
+        self,
+        dataset_name: str,
+        *,
+        vector: bool,
+        legacy_path: Any = None,
+    ) -> dict[str, Any]:
+        sidecar = self._source_sidecar(dataset_name)
+        path = self._source_csv_path(dataset_name, sidecar, legacy_path=legacy_path)
+        matrix = _read_csv_matrix(path)
+        fallback_origins = (
+            self.results_tab.get("ratio basis origin labels")
+            if vector
+            else self.data_tab.get("origin labels")
+        )
+        origin_labels = sidecar.get("origin_labels")
+        if not isinstance(origin_labels, list) or len(origin_labels) != len(matrix):
+            origin_labels = fallback_origins if isinstance(fallback_origins, list) and len(fallback_origins) == len(matrix) else []
+        if not origin_labels:
+            origin_labels = [str(index + 1) for index in range(len(matrix))]
+        data_format = clean_text(sidecar.get("data_format")) or ("Vector" if vector else "Triangle")
+        values: Any = matrix
+        development_labels: list[str] = []
+        if vector:
+            if data_format.lower() == "triangle":
+                values = [
+                    next((value for value in reversed(row) if _number(value) is not None), None)
+                    for row in matrix
+                ]
+            else:
+                values = [row[0] if row else None for row in matrix]
+        else:
+            development_labels = sidecar.get("development_labels") if isinstance(sidecar.get("development_labels"), list) else []
+            if not development_labels:
+                existing = self.data_tab.get("development labels")
+                if isinstance(existing, list) and len(existing) == max((len(row) for row in matrix), default=0):
+                    development_labels = [str(item) for item in existing]
+            if not development_labels:
+                development_length = int(self.details.get("development length") or 12)
+                development_labels = [
+                    f"{development_length * (index + 1)}m"
+                    for index in range(max((len(row) for row in matrix), default=0))
+                ]
+        snapshot: dict[str, Any] = {
+            "name": dataset_name,
+            "origin_labels": [str(item) for item in origin_labels],
+            "values": values,
+            "data_format": data_format,
+            "number_format": clean_text(sidecar.get("number_format")) or "#,##0",
+            "decimal_places": int(sidecar.get("decimal_places") or 0),
+            "revision": clean_text(
+                sidecar.get("publication_revision")
+                or sidecar.get("updated_at")
+                or sidecar.get("modified")
+            ),
+        }
+        if not vector:
+            snapshot["development_labels"] = development_labels
+            snapshot["mask"] = [[_number(value) is not None for value in row] for row in matrix]
+        return snapshot
+
+    def _upgrade_or_hydrate_v2(self) -> None:
+        json_format = self.payload.get("json format")
+        if json_format == LEGACY_DFM_JSON_FORMAT:
+            legacy = deepcopy(self.payload)
+            legacy["json format"] = DFM_JSON_FORMAT
+            details = _tab(legacy, "details tab")
+            details["output dataset"] = clean_text(details.get("output dataset")) or self.name
+            details["output category"] = clean_text(
+                details.get("output category") or details.get("output dataset_category")
             )
+            self.payload = legacy
+        input_name = clean_text(self.details.get("input triangle"))
+        if not input_name:
+            raise DfmDataError("DFM input triangle is required before save.")
+        input_values = self.data_tab.get("input data triangle values")
+        if not isinstance(input_values, list) or not input_values:
+            legacy_path = self.data_tab.get("input data triangle csv path")
+            self.payload = recalculate_dfm_method(
+                self.payload,
+                input_snapshot=self._source_snapshot(input_name, vector=False, legacy_path=legacy_path),
+            )
+        basis_name = clean_text(self.results_tab.get("ratio basis dataset"))
+        basis_values = self.results_tab.get("ratio basis values")
+        if basis_name and (not isinstance(basis_values, list) or not basis_values):
+            self.payload = recalculate_dfm_method(
+                self.payload,
+                ratio_basis_snapshot=self._source_snapshot(basis_name, vector=True),
+            )
+
+    def _output_csv_files(self) -> tuple[Path, dict[Path, bytes]]:
+        output_dataset = clean_text(self.details.get("output dataset")) or self.name
+        origin_length = int(self.details.get("origin length") or 12)
+        data_dir = self.project.reserving_class_data_dir(self.reserving_class) / "datasets"
+        files: dict[Path, bytes] = {}
+        for period_length, values in dfm_output_variants(self.payload).items():
+            filename = f"{sanitize_file_name_part(output_dataset, 'Dataset')}@{period_length}.csv"
+            text = "".join(f"{'' if value is None else value}\n" for value in values)
+            files[data_dir / filename] = text.encode("utf-8")
+        primary = data_dir / f"{sanitize_file_name_part(output_dataset, 'Dataset')}@{origin_length}.csv"
+        return primary, files
+
+    def _output_sidecar_payload(
+        self,
+        csv_path: Path,
+        existing: dict[str, Any],
+        *,
+        modified_at: str,
+        automatic: bool,
+        output_changed: bool,
+    ) -> dict[str, Any]:
+        try:
+            return build_dfm_output_sidecar(
+                self.payload,
+                project_name=self.project_name,
+                reserving_class=self.reserving_class,
+                csv_file=csv_path.name,
+                existing=existing,
+                notes=self._pending_notes,
+                timestamp=modified_at,
+                user=getpass.getuser(),
+                output_changed=output_changed,
+                append_audit=not automatic or output_changed,
+                audit_action="Auto Refresh" if automatic and output_changed else None,
+            )
+        except ValueError as err:
+            raise DfmDataError(str(err)) from err
+
+    def _precedent_graph_files(
+        self,
+        existing_output_sidecar: dict[str, Any],
+        *,
+        output_dataset: str,
+    ) -> dict[Path, bytes]:
+        sidecar_dir = self.project.reserving_class_data_dir(self.reserving_class) / "sidecars"
+        old_precedents = [
+            item["dataset_type_name"]
+            for item in dependency_entries(existing_output_sidecar.get("Precedents"))
+        ]
+        new_precedents = dfm_precedent_names(self.payload)
+        old_by_key = {clean_text(name).casefold(): clean_text(name) for name in old_precedents if clean_text(name)}
+        new_by_key = {clean_text(name).casefold(): clean_text(name) for name in new_precedents if clean_text(name)}
+        graph_changed = set(old_by_key) != set(new_by_key)
+        if graph_changed:
+            targets = set(new_by_key)
+            queue = [
+                item["dataset_type_name"]
+                for item in dependency_entries(existing_output_sidecar.get("Dependents"))
+            ]
+            visited: set[str] = set()
+            while queue:
+                dependent = clean_text(queue.pop(0))
+                dependent_key = dependent.casefold()
+                if not dependent_key or dependent_key in visited:
+                    continue
+                if dependent_key in targets:
+                    raise DfmDataError(
+                        f"DFM precedent '{new_by_key[dependent_key]}' would create a dependency cycle."
+                    )
+                visited.add(dependent_key)
+                dependent_path = sidecar_dir / f"{sanitize_file_name_part(dependent, 'Dataset')}.json"
+                if not dependent_path.is_file():
+                    continue
+                dependent_sidecar = read_json(dependent_path)
+                queue.extend(
+                    item["dataset_type_name"]
+                    for item in dependency_entries(dependent_sidecar.get("Dependents"))
+                )
+        files: dict[Path, bytes] = {}
+        for key in sorted(set(old_by_key) | set(new_by_key)):
+            name = new_by_key.get(key) or old_by_key[key]
+            path = sidecar_dir / f"{sanitize_file_name_part(name, 'Dataset')}.json"
+            if path == self._sidecar_path():
+                raise DfmDataError("A DFM output dataset cannot also be its own precedent.")
+            if not path.is_file():
+                if graph_changed and key in new_by_key:
+                    raise DfmDataError(f"DFM precedent sidecar is missing: {name}")
+                continue
+            source = read_json(path)
+            dependents = [
+                item["dataset_type_name"]
+                for item in dependency_entries(source.get("Dependents"))
+            ]
+            next_dependents = [
+                item for item in dependents if clean_text(item).casefold() != output_dataset.casefold()
+            ]
+            if key in new_by_key:
+                next_dependents.append(output_dataset)
+            normalized = dependency_entries(next_dependents)
+            if normalized == dependency_entries(source.get("Dependents")):
+                continue
+            source["Dependents"] = normalized
+            files[path] = _json_bytes(source)
+        return files
+
+    def save(self, *, automatic: bool = False, output_changed: bool | None = None) -> Path:
+        if self.project.read_only:
+            raise ReadOnlyError(f"Cannot write {self.file_path}; client is read-only.")
         self._sync_details_identity()
-        self._trim_saved_triangle_arrays()
-        _tab(self.payload, "method metadata")["last modified"] = _now_iso()
-        path = write_json_atomic(self.file_path, self.payload, read_only=self.project.read_only)
-        if self._pending_notes is not None:
-            sidecar = read_json(self._sidecar_path())
-            sidecar["notes"] = self._pending_notes
-            write_json_atomic(self._sidecar_path(), sidecar, read_only=self.project.read_only)
-            self._pending_notes = None
+        self._upgrade_or_hydrate_v2()
+        modified_at = _now_iso()
+        if not automatic:
+            _tab(self.payload, "method metadata")["last modified"] = modified_at
+        try:
+            self.payload = recalculate_dfm_method(
+                self.payload,
+                timestamp=modified_at,
+                update_refresh_timestamp=False,
+            )
+        except ValueError as err:
+            raise DfmDataError(str(err)) from err
+        csv_path, output_files = self._output_csv_files()
+        sidecar_path = self._sidecar_path()
+        output_dataset = clean_text(self.details.get("output dataset")) or self.name
+        rc_data_dir = self.project.reserving_class_data_dir(self.reserving_class)
+        published_output_changed = True
+        with _dfm_publish_lock(rc_data_dir):
+            existing_sidecar = read_json(sidecar_path) if sidecar_path.is_file() else {}
+            if existing_sidecar:
+                existing_owner = clean_text(existing_sidecar.get("method_name"))
+                if existing_owner.casefold() != self.name.casefold():
+                    owner_text = existing_owner or "a non-DFM dataset"
+                    raise DfmDataError(
+                        f"DFM output dataset '{output_dataset}' is already owned by {owner_text!r}."
+                    )
+            published_output_changed = (
+                bool(output_changed)
+                if output_changed is not None
+                else clean_text(existing_sidecar.get("publication_revision"))
+                != clean_text(self.metadata.get("publication revision"))
+            )
+            sidecar = self._output_sidecar_payload(
+                csv_path,
+                existing_sidecar,
+                modified_at=modified_at,
+                automatic=automatic,
+                output_changed=published_output_changed,
+            )
+            files = self._precedent_graph_files(
+                existing_sidecar,
+                output_dataset=output_dataset,
+            )
+            if not automatic or published_output_changed:
+                files.update(output_files)
+            files.update({
+                self.file_path: _json_bytes(self.payload),
+                sidecar_path: _json_bytes(sidecar),
+            })
+            _commit_bytes_atomic(files, last_paths=(sidecar_path,))
+        self._pending_notes = None
         rebuild_one = getattr(self.project, "rebuild_reserving_class_index", None)
         if callable(rebuild_one):
             rebuild_one(self.reserving_class_obj.path)
         else:
             self.project.rebuild_dfm_index()
-        return path
+        self._last_refreshed_dfm_outputs = ()
+        self._propagation_warnings = ()
+        if not automatic and published_output_changed:
+            try:
+                from .dfm_propagation import refresh_dfm_dependents
+
+                propagation = refresh_dfm_dependents(self.reserving_class_obj, output_dataset)
+                self._last_refreshed_dfm_outputs = propagation.refreshed_outputs
+                self._propagation_warnings = propagation.warnings
+            except Exception as err:
+                self._propagation_warnings = (f"DFM propagation could not start: {err}",)
+        return self.file_path
+
+    @property
+    def refreshed_dfm_outputs(self) -> tuple[str, ...]:
+        return self._last_refreshed_dfm_outputs
+
+    @property
+    def propagation_warnings(self) -> tuple[str, ...]:
+        return self._propagation_warnings
 
     @property
     def output_vector(self) -> str:
@@ -523,8 +918,6 @@ class DfmMethod:
 
     def agent_summary(self) -> dict[str, Any]:
         ratio_values = self.ratio_values()
-        input_data_path = clean_text(self.data_tab.get("input data triangle csv path"))
-        ultimate_path = clean_text(self.results_tab.get("ultimate vector csv path"))
         labels = self._average_labels()
         selected = _coerce_matrix(self.average_formulas.get("selected"))
         selected_by_dev: list[dict[str, Any]] = []
@@ -551,7 +944,7 @@ class DfmMethod:
             "data tab": {
                 "origin labels": self.data_tab.get("origin labels") or [],
                 "development labels": self.data_tab.get("development labels") or [],
-                "input data triangle csv path": input_data_path,
+                "source revision": self.data_tab.get("source revision") or "",
             },
             "ratios tab": {
                 "origin labels": self.ratio_triangle.get("origin labels") or [],
@@ -562,12 +955,18 @@ class DfmMethod:
             },
             "results tab": {
                 "ratio basis dataset": self.results_tab.get("ratio basis dataset") or "",
-                "ultimate vector csv path": ultimate_path,
+                "ratio basis source revision": self.results_tab.get("ratio basis source revision") or "",
+                "publication revision": self.metadata.get("publication revision") or "",
             },
             "notes preview": self.notes[:500],
         }
 
     def input_data_triangle(self) -> list[list[Any]]:
+        embedded = self.data_tab.get("input data triangle values")
+        if isinstance(embedded, list):
+            return deepcopy(_coerce_matrix(embedded))
+        if self.payload.get("json format") != LEGACY_DFM_JSON_FORMAT:
+            return []
         path = self._resolve_data_path(self.data_tab.get("input data triangle csv path"))
         if not path:
             return []
@@ -1042,6 +1441,11 @@ class DfmMethod:
             raise DfmDataError(f"Ultimate value not found at row={row}.") from err
 
     def ultimate_vector(self) -> list[Any]:
+        embedded = self.results_tab.get("ultimate vector")
+        if isinstance(embedded, list):
+            return deepcopy(embedded)
+        if self.payload.get("json format") != LEGACY_DFM_JSON_FORMAT:
+            return []
         path = self._resolve_data_path(self.results_tab.get("ultimate vector csv path"))
         if not path:
             return []
@@ -1126,14 +1530,24 @@ class DfmMethod:
     def set_summary_ratio_basis(self, basis_object: Any, data_type: str = "Vector") -> "DfmMethod":
         name = getattr(basis_object, "name", None) or getattr(basis_object, "Name", None) or str(basis_object)
         self.results_tab["ratio basis dataset"] = clean_text(name)
-        self.results_tab["ratio basis dataset type"] = clean_text(data_type) or "Vector"
+        self.results_tab["ratio basis data format"] = clean_text(data_type) or "Vector"
+        self.results_tab["ratio basis origin labels"] = []
+        self.results_tab["ratio basis values"] = []
+        self.results_tab["ratio basis source revision"] = ""
         return self
 
     def reset_ratio_basis(self, source: "DfmMethod" | str | None = None) -> "DfmMethod":
         reference = self._resolve_source_dfm(source)
-        self.results_tab["ratio basis dataset"] = reference.results_tab.get("ratio basis dataset", "")
-        if "ratio basis dataset type" in reference.results_tab:
-            self.results_tab["ratio basis dataset type"] = reference.results_tab.get("ratio basis dataset type", "")
+        for key in (
+            "ratio basis dataset",
+            "ratio basis origin labels",
+            "ratio basis values",
+            "ratio basis data format",
+            "ratio basis number format",
+            "ratio basis decimal places",
+            "ratio basis source revision",
+        ):
+            self.results_tab[key] = deepcopy(reference.results_tab.get(key))
         return self
 
     def extended_ratio_data(self) -> dict[str, Any]:
@@ -1197,11 +1611,20 @@ class DfmMethod:
         if not isinstance(self.payload, dict):
             raise InvalidDfmJsonError("DFM payload must be a JSON object.")
         self.payload.setdefault("json format", DFM_JSON_FORMAT)
-        if self.payload.get("json format") != DFM_JSON_FORMAT:
+        json_format = self.payload.get("json format")
+        if json_format not in {DFM_JSON_FORMAT, LEGACY_DFM_JSON_FORMAT}:
             raise InvalidDfmJsonError(
                 f"Unsupported DFM JSON format: {self.payload.get('json format')!r}. "
-                f"Expected {DFM_JSON_FORMAT!r}."
+                f"Expected {DFM_JSON_FORMAT!r} or {LEGACY_DFM_JSON_FORMAT!r}."
             )
+        if json_format == DFM_JSON_FORMAT:
+            try:
+                self.payload = normalize_dfm_method(
+                    self.payload,
+                    require_complete=self.file_path.is_file(),
+                )
+            except ValueError as err:
+                raise InvalidDfmJsonError(str(err)) from err
         _tab(self.payload, "details tab")
         _tab(self.payload, "data tab")
         ratios = _tab(self.payload, "ratios tab")
@@ -1211,13 +1634,15 @@ class DfmMethod:
         _tab(self.payload, "results tab")
         self.payload.pop("notes tab", None)
         _tab(self.payload, "method metadata")
-        self.data_tab.pop("input data triangle values", None)
-        self.results_tab.pop("ultimate vector", None)
+        if json_format == LEGACY_DFM_JSON_FORMAT:
+            self.data_tab.pop("input data triangle values", None)
+            self.results_tab.pop("ultimate vector", None)
         self._sync_details_identity()
 
     def _sidecar_path(self) -> Path:
         data_dir = self.project.reserving_class_data_dir(self.reserving_class)
-        return data_dir / "sidecars" / f"{sanitize_file_name_part(self.name, 'Dataset')}.json"
+        output_dataset = clean_text(self.details.get("output dataset")) or self.name
+        return data_dir / "sidecars" / f"{sanitize_file_name_part(output_dataset, 'Dataset')}.json"
 
     def _trim_saved_triangle_arrays(self) -> None:
         input_values = self.data_tab.get("input data triangle values")
@@ -1252,6 +1677,8 @@ class DfmMethod:
         self.details.setdefault("name", self.name)
         self.details["name"] = clean_text(self.details.get("name")) or self.name
         self.name = clean_text(self.details.get("name"))
+        if self.payload.get("json format") == DFM_JSON_FORMAT:
+            self.details["output dataset"] = clean_text(self.details.get("output dataset")) or self.name
 
     def _ratio_values(self) -> list[list[Any]]:
         return self.ratio_values()

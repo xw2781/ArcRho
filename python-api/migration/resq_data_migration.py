@@ -58,6 +58,13 @@ if str(_PYTHON_API_SRC) not in sys.path:
 if str(_MIGRATION_DIR) not in sys.path:
     sys.path.insert(0, str(_MIGRATION_DIR))
 
+from arcrho_api.dfm_contract import DFM_JSON_FORMAT  # noqa: E402
+from arcrho_api.client import ArcRhoClient  # noqa: E402
+from arcrho_api.dfm_propagation import (  # noqa: E402
+    DfmPropagationResult,
+    refresh_dfm_dependents_for_sources,
+)
+
 from resq_migration.catalog import (  # noqa: E402
     _dataset_type_rows,
     _dataset_type_keys,
@@ -127,11 +134,16 @@ from resq_migration.extractors import (  # noqa: E402
     write_triangle_export,
     write_vector_export,
 )
+from resq_migration.number_formats import (  # noqa: E402
+    configure_number_formats_path,
+)
 from resq_migration.engine import (  # noqa: E402
+    EngineGenerationError,
     EngineRequestJob,
     EngineUnavailableError,
     cleanup_engine_request_job,
     create_engine_request_job,
+    discover_fresh_engine_heartbeats,
     finalize_engine_request,
     get_engine_processing_provenance,
     publish_engine_request,
@@ -142,8 +154,6 @@ from resq_migration.engine import (  # noqa: E402
 # Public preflight used by the saved migration macro before it opens progress UI
 # or connects to ResQ.
 require_running_engine_instances = require_engine_workers
-
-
 def _configured_rc_paths(value: object) -> list[str]:
     raw = value if isinstance(value, (list, tuple, set)) else [value]
     out: list[str] = []
@@ -168,7 +178,6 @@ PASSWORD = ""
 
 SERVER_ROOT = Path(r"E:\ArcRho Server")
 PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
-DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
 BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
 INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
@@ -193,6 +202,7 @@ ProgressCallback = Callable[[dict], None]
 
 
 def _configure_migration_modules() -> None:
+    configure_number_formats_path(SERVER_ROOT)
     configure_catalog(
         server_root=SERVER_ROOT,
         project_name=PROJECT_NAME,
@@ -414,6 +424,24 @@ def _report_progress(progress_callback: ProgressCallback | None, **payload: obje
         pass
 
 
+def _report_inventory_item(
+    progress_callback: ProgressCallback | None,
+    *,
+    kind: str,
+    noun: str,
+    name: str,
+    discovered: int,
+) -> None:
+    _report_progress(
+        progress_callback,
+        event="inventory",
+        kind=kind,
+        name=name,
+        discovered=discovered,
+        message=f"Scanning ResQ {noun}: {discovered} found",
+    )
+
+
 def _record_skipped(progress_state: dict) -> None:
     progress_state["skipped"] = int(progress_state.get("skipped") or 0) + 1
 
@@ -453,11 +481,12 @@ def _triangle_export_inventory(
         names.append(clean_name)
         items[key] = item
         method_types[key] = _safe_int_attr(item, "MethodType", METHOD_TYPE_NONE_CODE)
-        _report_progress(
+        _report_inventory_item(
             progress_callback,
-            event="activity",
             kind="triangle_inventory",
+            noun="triangles",
             name=clean_name,
+            discovered=len(names),
         )
     return names, items, method_types
 
@@ -482,7 +511,13 @@ def _vector_export_names(
         if not name:
             continue
         names.append(name)
-        _report_progress(progress_callback, event="activity", kind="vector_inventory", name=name)
+        _report_inventory_item(
+            progress_callback,
+            kind="vector_inventory",
+            noun="vectors",
+            name=name,
+            discovered=len(names),
+        )
     return names
 
 
@@ -499,7 +534,13 @@ def _dfm_export_names(
         if not name:
             continue
         names.append(name)
-        _report_progress(progress_callback, event="activity", kind="dfm_inventory", name=name)
+        _report_inventory_item(
+            progress_callback,
+            kind="dfm_inventory",
+            noun="DFM methods",
+            name=name,
+            discovered=len(names),
+        )
     return names
 
 
@@ -517,7 +558,13 @@ def _bf_export_names(
         if not name:
             continue
         names.append(name)
-        _report_progress(progress_callback, event="activity", kind="bf_inventory", name=name)
+        _report_inventory_item(
+            progress_callback,
+            kind="bf_inventory",
+            noun="BF methods",
+            name=name,
+            discovered=len(names),
+        )
     return names
 
 
@@ -546,6 +593,12 @@ def resq_export_dataset_counts(
 ) -> dict:
     """Return ResQ dataset counts plus method counts for one reserving class."""
 
+    _report_progress(
+        progress_callback,
+        event="inventory",
+        kind="resq_inventory",
+        message="Scanning ResQ datasets and methods...",
+    )
     triangle_names, triangle_items, triangle_method_types = (
         _triangle_export_inventory(reserving_class, progress_callback)
         if run_triangles
@@ -697,11 +750,32 @@ def _complete_engine_generated_tasks(
     written = errors = 0
     try:
         require_running_engine_instances(tasks[0]["job"].server_root)
-        for task in tasks:
+        _report_progress(
+            progress_callback,
+            event="engine_submit",
+            kind="engine_batch",
+            completed=int(progress_state.get("completed") or 0),
+            total=int(progress_state.get("total") or len(tasks)),
+            engine_completed=0,
+            engine_total=len(tasks),
+            message=f"Submitting {len(tasks)} generated dataset(s) to ArcRho Engine...",
+        )
+        for engine_index, task in enumerate(tasks, start=1):
             job = task["job"]
             try:
                 publish_engine_request(job, check_workers=False)
                 published.append(task)
+                _report_progress(
+                    progress_callback,
+                    event="engine_submit",
+                    kind="engine_batch",
+                    name=task["name"],
+                    completed=int(progress_state.get("completed") or 0),
+                    total=int(progress_state.get("total") or len(tasks)),
+                    engine_position=engine_index,
+                    engine_total=len(tasks),
+                    message=f"Submitted generated dataset {engine_index} of {len(tasks)}: {task['name']}",
+                )
             except EngineUnavailableError:
                 raise
             except Exception as exc:
@@ -714,6 +788,7 @@ def _complete_engine_generated_tasks(
                     detail=str(exc),
                 )
                 errors += 1
+                progress_state["engine_errors"] = int(progress_state.get("engine_errors") or 0) + 1
                 progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
                 _report_progress(
                     progress_callback,
@@ -727,17 +802,37 @@ def _complete_engine_generated_tasks(
                 )
                 cleanup_engine_request_job(job)
 
-        for task in published:
+        for engine_index, task in enumerate(published, start=1):
             job = task["job"]
             try:
+                wait_message = (
+                    f"Waiting for ArcRho Engine result {engine_index} of "
+                    f"{len(published)}: {task['name']}"
+                )
+                _report_progress(
+                    progress_callback,
+                    event="engine_wait",
+                    kind="engine_wait",
+                    name=task["name"],
+                    completed=int(progress_state.get("completed") or 0),
+                    total=int(progress_state.get("total") or len(tasks)),
+                    engine_position=engine_index,
+                    engine_total=len(published),
+                    message=wait_message,
+                )
                 wait_for_engine_request(
                     job,
                     timeout_sec=ENGINE_DATASET_TIMEOUT_SEC,
-                    on_poll=lambda task=task: _report_progress(
+                    on_poll=lambda task=task, engine_index=engine_index, wait_message=wait_message: _report_progress(
                         progress_callback,
-                        event="activity",
+                        event="engine_wait",
                         kind="engine_wait",
                         name=task["name"],
+                        completed=int(progress_state.get("completed") or 0),
+                        total=int(progress_state.get("total") or len(tasks)),
+                        engine_position=engine_index,
+                        engine_total=len(published),
+                        message=wait_message,
                     ),
                 )
                 csv_path = finalize_engine_request(job)
@@ -776,6 +871,7 @@ def _complete_engine_generated_tasks(
                     detail=str(exc),
                 )
                 errors += 1
+                progress_state["engine_errors"] = int(progress_state.get("engine_errors") or 0) + 1
                 progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
                 _report_progress(
                     progress_callback,
@@ -795,6 +891,40 @@ def _complete_engine_generated_tasks(
             if isinstance(job, EngineRequestJob):
                 cleanup_engine_request_job(job)
     return written, errors
+
+
+def _skip_engine_generated_tasks(
+    tasks: list[dict],
+    *,
+    progress_callback: ProgressCallback | None,
+    progress_state: dict,
+    reason: str,
+    verbose: bool,
+) -> None:
+    """Report engine-owned datasets as skipped without reading their ResQ values.
+
+    The caller has already read the small amount of instance metadata needed to
+    form an engine request.  When no engine is available, that metadata must not
+    cause a fallback to ResQ values: the previous engine cache is retained by
+    the bridge transaction instead.
+    """
+
+    for task in tasks:
+        detail = f"    SKIP engine {task['kind']} {task['name']}: {reason}"
+        _log(verbose, detail)
+        _record_skipped(progress_state)
+        progress_state["engine_skipped"] = int(progress_state.get("engine_skipped") or 0) + 1
+        progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+        _report_progress(
+            progress_callback,
+            event="finish",
+            kind=task["kind"],
+            name=task["name"],
+            completed=int(progress_state.get("completed") or 0),
+            total=int(progress_state.get("total") or len(tasks)),
+            status="skipped",
+            message=detail.strip(),
+        )
 
 
 def _write_engine_generated_dataset(
@@ -839,6 +969,7 @@ def export_triangles_for_rc(
     triangle_method_types: dict[str, int] | None = None,
     method_counts: dict | None = None,
     engine_provenance: dict | None = None,
+    engine_available: bool = True,
     verbose: bool = True,
 ) -> tuple[int, int]:
     """Export triangle datasets for one reserving class. Returns (written, errors)."""
@@ -994,7 +1125,15 @@ def export_triangles_for_rc(
                 status="error",
                 message=detail.strip(),
             )
-    if engine_tasks:
+    if engine_tasks and not engine_available:
+        _skip_engine_generated_tasks(
+            engine_tasks,
+            progress_callback=progress_callback,
+            progress_state=progress_state,
+            reason="no active ArcRho Engine worker was available",
+            verbose=verbose,
+        )
+    elif engine_tasks:
         resolved_provenance = engine_provenance or get_engine_processing_provenance(PROJECT_NAME)
         engine_written, engine_errors = _complete_engine_generated_tasks(
             engine_tasks,
@@ -1021,6 +1160,7 @@ def export_vectors_for_rc(
     dfm_names: list[str] | None = None,
     method_counts: dict | None = None,
     engine_provenance: dict | None = None,
+    engine_available: bool = True,
     verbose: bool = True,
 ) -> tuple[int, int]:
     """Export vector datasets for one reserving class. Returns (written, errors)."""
@@ -1218,7 +1358,15 @@ def export_vectors_for_rc(
                 status="error",
                 message=detail.strip(),
             )
-    if engine_tasks:
+    if engine_tasks and not engine_available:
+        _skip_engine_generated_tasks(
+            engine_tasks,
+            progress_callback=progress_callback,
+            progress_state=progress_state,
+            reason="no active ArcRho Engine worker was available",
+            verbose=verbose,
+        )
+    elif engine_tasks:
         resolved_provenance = engine_provenance or get_engine_processing_provenance(PROJECT_NAME)
         engine_written, engine_errors = _complete_engine_generated_tasks(
             engine_tasks,
@@ -1349,7 +1497,11 @@ def _selected_exports(export_mode: str) -> tuple[bool, bool, bool]:
     return bool(EXPORT_TRIANGLES), bool(EXPORT_VECTORS), bool(EXPORT_DFMS)
 
 
-def _apply_runtime_scope(project_name: str, server_root: str | Path | None = None) -> tuple[Path, str, Path]:
+def _apply_runtime_scope(
+    project_name: str,
+    server_root: str | Path | None = None,
+    project_data_dir: str | Path | None = None,
+) -> tuple[Path, str, Path]:
     global SERVER_ROOT, PROJECT_NAME, PROJECT_DATA_DIR
 
     previous = (SERVER_ROOT, PROJECT_NAME, PROJECT_DATA_DIR)
@@ -1359,7 +1511,11 @@ def _apply_runtime_scope(project_name: str, server_root: str | Path | None = Non
     if server_root is not None:
         SERVER_ROOT = Path(server_root).expanduser().resolve()
     PROJECT_NAME = clean_project_name
-    PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
+    PROJECT_DATA_DIR = (
+        Path(project_data_dir).expanduser().resolve()
+        if project_data_dir is not None
+        else SERVER_ROOT / "projects" / PROJECT_NAME / "data"
+    )
     _configure_migration_modules()
     return previous
 
@@ -1371,13 +1527,37 @@ def _restore_runtime_scope(previous: tuple[Path, str, Path]) -> None:
     _configure_migration_modules()
 
 
+def refresh_migrated_dfm_dependents(
+    rc_path: str,
+    precedent_names: list[str],
+) -> DfmPropagationResult:
+    """Refresh canonical DFM branches after a partial durable ResQ migration."""
+
+    reserving_class = ArcRhoClient(SERVER_ROOT).project(PROJECT_NAME).reserving_class(rc_path)
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw_name in precedent_names:
+        name = _normalize_import_name(raw_name)
+        key = name.casefold()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    try:
+        return refresh_dfm_dependents_for_sources(reserving_class, names)
+    except Exception as exc:
+        return DfmPropagationResult((), (f"DFM propagation could not start: {exc}",))
+
+
 def import_reserving_class_from_resq(
     project_name: str,
     rc_path: str,
     *,
     server_root: str | Path | None = None,
+    project_data_dir: str | Path | None = None,
     export_mode: str = "configured",
     cleanup_target: bool | None = None,
+    skip_unavailable_engine: bool = False,
     connection_name: str = CONNECTION_NAME,
     user_name: str = USER_NAME,
     password: str = PASSWORD,
@@ -1386,7 +1566,7 @@ def import_reserving_class_from_resq(
 ) -> dict:
     """Import one ResQ reserving class into ArcRho using caller-provided UI context."""
 
-    previous_scope = _apply_runtime_scope(project_name, server_root)
+    previous_scope = _apply_runtime_scope(project_name, server_root, project_data_dir)
     rc_dir: Path | None = None
     rc_mutation_started = False
     index_rebuilt = False
@@ -1396,13 +1576,41 @@ def import_reserving_class_from_resq(
             raise ValueError("rc_path is required.")
         run_triangles, run_vectors, run_dfms = _selected_exports(str(export_mode or "configured"))
         should_cleanup = CLEAN_TARGET_RC if cleanup_target is None else bool(cleanup_target)
-        worker_instances = require_running_engine_instances(SERVER_ROOT)
-        engine_provenance = get_engine_processing_provenance(PROJECT_NAME)
+        worker_instances = (
+            discover_fresh_engine_heartbeats(SERVER_ROOT)
+            if skip_unavailable_engine
+            else require_running_engine_instances(SERVER_ROOT)
+        )
+        engine_available = bool(worker_instances)
+        engine_provenance = None
+        engine_preflight_error = ""
+        if engine_available:
+            try:
+                engine_provenance = get_engine_processing_provenance(PROJECT_NAME)
+            except EngineGenerationError as exc:
+                if not skip_unavailable_engine:
+                    raise
+                # The Bridge transaction can safely retain the previous engine
+                # component, but it must never write generated values without
+                # the app's authoritative provenance contract.
+                engine_available = False
+                engine_preflight_error = str(exc)
         _report_progress(
             progress_callback,
             event="activity",
             kind="engine_preflight",
             workers=len(worker_instances),
+            status="success" if engine_available else "warning",
+            message=(
+                f"{len(worker_instances)} data-engine worker(s) available"
+                if engine_available
+                else (
+                    "ArcRho Engine processing provenance is unavailable; "
+                    "generated datasets will be skipped."
+                    if engine_preflight_error
+                    else "No ArcRho Engine worker is available; generated datasets will be skipped."
+                )
+            ),
         )
         try:
             import win32com.client
@@ -1432,7 +1640,9 @@ def import_reserving_class_from_resq(
             "bfs_written": 0,
             "bssr_written": 0,
             "bscra_written": 0,
-            "errors": 0,
+            "engine_skipped": 0,
+            "engine_errors": 1 if engine_preflight_error else 0,
+            "errors": 1 if engine_preflight_error else 0,
         }
 
         try:
@@ -1458,7 +1668,16 @@ def import_reserving_class_from_resq(
                 "total": progress_total,
                 "count_methods": method_only_progress,
                 "skipped": 0,
+                "engine_skipped": 0,
+                "engine_errors": 1 if engine_preflight_error else 0,
             }
+            if engine_preflight_error:
+                _record_error_detail(
+                    progress_state,
+                    kind="engine_preflight",
+                    name=PROJECT_NAME,
+                    detail=engine_preflight_error,
+                )
             total_message = (
                 f"Found {progress_state['total']} DFM method(s)."
                 if method_only_progress
@@ -1507,6 +1726,7 @@ def import_reserving_class_from_resq(
                         triangle_method_types=dataset_counts.get("triangle_method_types") if isinstance(dataset_counts.get("triangle_method_types"), dict) else None,
                         method_counts=counts,
                         engine_provenance=engine_provenance,
+                        engine_available=engine_available,
                         verbose=verbose,
                     )
                     rc_written += written
@@ -1526,6 +1746,7 @@ def import_reserving_class_from_resq(
                         dfm_names=dataset_counts.get("dfm_names") if isinstance(dataset_counts.get("dfm_names"), list) else None,
                         method_counts=counts,
                         engine_provenance=engine_provenance,
+                        engine_available=engine_available,
                         verbose=verbose,
                     )
                     rc_written += written
@@ -1546,10 +1767,55 @@ def import_reserving_class_from_resq(
                     counts["dfms_written"] += written
                     counts["errors"] += errors
 
+            counts["engine_skipped"] = int(progress_state.get("engine_skipped") or 0)
+            counts["engine_errors"] = int(progress_state.get("engine_errors") or 0)
+
+            _report_progress(
+                progress_callback,
+                event="finalize",
+                kind="sidecar_graph",
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or 0),
+                message="Finalizing imported dataset metadata...",
+            )
             if rc_written:
+                _report_progress(
+                    progress_callback,
+                    event="finalize",
+                    kind="sidecar_graph",
+                    completed=int(progress_state.get("completed") or 0),
+                    total=int(progress_state.get("total") or 0),
+                    message="Refreshing dataset dependency metadata...",
+                )
                 refreshed = refresh_sidecar_graphs_for_rc(rc_dir)
                 if refreshed:
                     _log(verbose, f"    OK  refreshed sidecar graph metadata ({refreshed} files)")
+            propagation = DfmPropagationResult()
+            if rc_written:
+                precedent_names = []
+                if run_triangles and isinstance(dataset_counts.get("triangle_names"), list):
+                    precedent_names.extend(dataset_counts["triangle_names"])
+                if run_vectors and isinstance(dataset_counts.get("vector_names"), list):
+                    precedent_names.extend(dataset_counts["vector_names"])
+                _report_progress(
+                    progress_callback,
+                    event="finalize",
+                    kind="dfm_dependents",
+                    completed=int(progress_state.get("completed") or 0),
+                    total=int(progress_state.get("total") or 0),
+                    message="Refreshing dependent DFM methods...",
+                )
+                propagation = refresh_migrated_dfm_dependents(rc_path, precedent_names)
+                for warning in propagation.warnings:
+                    _log(verbose, f"    WARN {warning}")
+            _report_progress(
+                progress_callback,
+                event="finalize",
+                kind="dataset_index",
+                completed=int(progress_state.get("completed") or 0),
+                total=int(progress_state.get("total") or 0),
+                message="Rebuilding the reserving-class dataset index...",
+            )
             rebuild_dataset_instance_index(PROJECT_NAME, rc_path, rc_dir)
             index_rebuilt = True
 
@@ -1567,6 +1833,9 @@ def import_reserving_class_from_resq(
                 "reserving_class": rc_path,
                 "rc_dir": str(rc_dir),
                 "engine_workers": len(worker_instances),
+                "engine_available": engine_available,
+                "engine_skipped": int(progress_state.get("engine_skipped") or 0),
+                "engine_errors": int(progress_state.get("engine_errors") or 0),
                 "datasets_imported": datasets_written,
                 "total_written": total_written,
                 "skipped": skipped,
@@ -1579,6 +1848,8 @@ def import_reserving_class_from_resq(
                 "bscras_total": dataset_counts.get("bscras", 0),
                 "methods_total": dataset_counts.get("methods", 0),
                 "grand_total": progress_state["total"],
+                "dfm_dependents_refreshed": list(propagation.refreshed_outputs),
+                "propagation_warnings": list(propagation.warnings),
                 "error_details": progress_state.get("error_details", []),
                 **counts,
             }
@@ -1647,6 +1918,11 @@ def main(argv: list[str] | None = None) -> None:
             rc_dir = PROJECT_DATA_DIR / rc_folder
 
             reserving_class = project.ReservingClasses().Item(rc_path)
+            migrated_precedent_names: list[str] = []
+            if run_triangles:
+                migrated_precedent_names.extend(_triangle_export_names(reserving_class))
+            if run_vectors:
+                migrated_precedent_names.extend(_vector_export_names(reserving_class))
             print(f"\nRC {rc_index}/{len(rc_paths)}: {rc_path}")
             print(f"Export mode: {args.export} (triangles={run_triangles}, vectors={run_vectors}, dfm={run_dfms})")
             active_index_context = (rc_path, rc_dir)
@@ -1713,6 +1989,10 @@ def main(argv: list[str] | None = None) -> None:
                 refreshed = refresh_sidecar_graphs_for_rc(rc_dir)
                 if refreshed:
                     print(f"    OK  refreshed sidecar graph metadata ({refreshed} files)")
+            if rc_written and migrated_precedent_names:
+                propagation = refresh_migrated_dfm_dependents(rc_path, migrated_precedent_names)
+                for warning in propagation.warnings:
+                    print(f"    WARN {warning}")
             rebuild_dataset_instance_index(PROJECT_NAME, rc_path, rc_dir)
             active_index_context = None
 

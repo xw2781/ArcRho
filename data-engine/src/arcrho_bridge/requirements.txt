@@ -2,3 +2,5 @@ watchdog==4.0.1
 pyinstaller>=6.15,<7
 pywin32
 pygetwindow
+pandas==2.2.2
+pydantic>=1.10,<3

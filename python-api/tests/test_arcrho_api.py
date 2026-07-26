@@ -137,10 +137,26 @@ class ArcRhoApiTests(unittest.TestCase):
         self.sidecars_dir.mkdir(parents=True)
         self.method_path = self.methods_dir / dfm_filename("Paid DFM")
         self.sidecar_path = self.sidecars_dir / "Paid DFM.json"
-        self.sidecar_path.write_text(json.dumps({"dataset_name": "Paid DFM", "notes": "original"}), encoding="utf-8")
+        self.sidecar_path.write_text(json.dumps({
+            "dataset_name": "Paid DFM",
+            "method_name": "Paid DFM",
+            "method_type": "DFM",
+            "source_kind": "dfm",
+            "notes": "original",
+        }), encoding="utf-8")
         self.input_csv = self.datasets_dir / "input.csv"
         test_log(f"SETUP_STEP write_input_csv={self.input_csv}")
         self.input_csv.write_text("10,20,30\n11,22,\n12,,\n", encoding="utf-8")
+        (self.sidecars_dir / "Paid Loss.json").write_text(json.dumps({
+            "dataset_name": "Paid Loss",
+            "data_format": "Triangle",
+            "csv_file": self.input_csv.name,
+            "origin_labels": ["2019", "2020", "2021"],
+            "development_labels": ["12m", "24m", "36m"],
+            "number_format": "#,##0",
+            "decimal_places": 0,
+            "Dependents": [],
+        }), encoding="utf-8")
         self.ultimate_csv = self.datasets_dir / "ultimate.csv"
         test_log(f"SETUP_STEP write_ultimate_csv={self.ultimate_csv}")
         self.ultimate_csv.write_text("100\n200\n300\n", encoding="utf-8")
@@ -177,7 +193,7 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertEqual(index["reserving_class"], r"Auto\PP")
         self.assertEqual(
             [row["name"] for row in index["files"]],
-            ["input", "Paid DFM", "ultimate"],
+            ["input", "Paid DFM", "Paid Loss", "ultimate"],
         )
         dfm_row = next(row for row in index["files"] if row["name"] == "Paid DFM")
         self.assertEqual(dfm_row["dataset_type"], "Paid Ultimate")
@@ -230,7 +246,7 @@ class ArcRhoApiTests(unittest.TestCase):
             finally:
                 api_config._server_root = original_root
 
-    def test_dfm_helpers_preserve_unknown_fields(self) -> None:
+    def test_dfm_helpers_upgrade_to_canonical_v2(self) -> None:
         payload = json.loads(self.method_path.read_text(encoding="utf-8"))
         payload["ratios tab"]["percent developed curve"] = {"x-axis label": "Development Month", "selected curves": []}
         self.method_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -246,16 +262,19 @@ class ArcRhoApiTests(unittest.TestCase):
         dfm.save()
         saved_text = self.method_path.read_text(encoding="utf-8")
         saved = json.loads(saved_text)
-        self.assertEqual(saved["unknown section"], {"preserve": True})
-        self.assertNotIn("input data triangle values", saved["data tab"])
+        self.assertEqual(saved["json format"], "arcrho-dfm-method-by-tab-v2")
+        self.assertNotIn("unknown section", saved)
+        self.assertIn("input data triangle values", saved["data tab"])
+        self.assertNotIn("input data triangle csv path", saved["data tab"])
         self.assertNotIn("percent developed curve", saved["ratios tab"])
-        self.assertNotIn("ultimate vector", saved["results tab"])
-        self.assertEqual(saved["ratios tab"]["ratio triangle"]["excluded"][1], [1, 0])
-        self.assertIn("[1, 1]", saved_text)
+        self.assertIn("ultimate vector", saved["results tab"])
+        self.assertNotIn("ultimate vector csv path", saved["results tab"])
+        self.assertEqual(saved["ratios tab"]["ratio triangle"]["excluded"][1], [1])
+        self.assertIn('["", "", ""]', saved_text)
         self.assertEqual(saved["ratios tab"]["average formulas"]["selected"][1][0], 1)
         self.assertEqual(saved["ratios tab"]["average formulas"]["selected"][2][1], 1)
         self.assertEqual(saved["ratios tab"]["average formulas"]["inputs"][2][1], '="Simple - 3" * 0.961538')
-        self.assertEqual(saved["ratios tab"]["average formulas"]["values"][2][1], 1.25)
+        self.assertEqual(saved["ratios tab"]["average formulas"]["values"][2][1], 0.961538)
         self.assertNotIn("notes tab", saved)
         self.assertIn("reviewed", json.loads(self.sidecar_path.read_text(encoding="utf-8"))["notes"])
         self.assertNotEqual(saved["method metadata"]["last modified"], "2026-01-01T00:00:00")
@@ -511,7 +530,7 @@ class ArcRhoApiTests(unittest.TestCase):
         with self.assertRaises(DfmDataError):
             dfm.ex_hi(1)
 
-    def test_save_uses_row_compact_json_and_trims_triangle_rows(self) -> None:
+    def test_save_uses_row_compact_json_for_canonical_triangles(self) -> None:
         payload = sample_payload()
         payload["ratios tab"]["ratio triangle"]["ratio values"] = [[1.2, None, None]]
         payload["ratios tab"]["ratio triangle"]["excluded"] = [[1, 0, 2, 2]]
@@ -521,11 +540,13 @@ class ArcRhoApiTests(unittest.TestCase):
         dfm.save()
         saved_text = self.method_path.read_text(encoding="utf-8")
         saved = json.loads(saved_text)
-        self.assertEqual(saved["ratios tab"]["ratio triangle"]["ratio values"], [[1.2]])
-        self.assertEqual(saved["ratios tab"]["ratio triangle"]["excluded"], [[1]])
-        self.assertEqual(saved["ratios tab"]["average formulas"]["values"], [[1.2], [], [1.3]])
-        self.assertIn("[1.2]", saved_text)
-        self.assertIn("[1]", saved_text)
+        ratio_values = saved["ratios tab"]["ratio triangle"]["ratio values"]
+        excluded = saved["ratios tab"]["ratio triangle"]["excluded"]
+        self.assertEqual(ratio_values, [[2.0, 1.5], [2.0], []])
+        self.assertEqual([len(row) for row in excluded], [len(row) for row in ratio_values])
+        self.assertTrue(all(not row or row[-1] is not None for row in ratio_values))
+        self.assertIn("[2.0, 1.5]", saved_text)
+        self.assertIn("[2.0]", saved_text)
 
 
 if __name__ == "__main__":

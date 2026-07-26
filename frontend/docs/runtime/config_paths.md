@@ -70,11 +70,13 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 - Saving Server Connection hot-applies the new config by refreshing `app_server.config` runtime globals and notifying open UI frames; app restart is not required for new server requests.
 - DFM RPC Bridge writes request files under `<workspace_root>/<requests_dir>/RPC bridge` and expects remote DFM/SyncDFM JSON files under `<workspace_root>/<projects_dir>/<project>/data/<ReservingClassFolder>/methods/tmp_rpc`.
 - Dataset number-format preferences are read from `<workspace_root>/config/dataset_number_formats.json`; `ARCRHO_DATASET_NUMBER_FORMATS_PATH` may override this path for migration tooling or controlled deployments.
+- `ARCRHO_RUNTIME_SERVER_ROOT` is a trusted process-only override for server-owned workers. It takes precedence over the user-local AppData workspace preference, is never persisted, and lets the deployed ResQ Bridge calculate processing provenance against its own shared ArcRho Server root.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - `%APPDATA%\ArcRho\workspace_paths.json` is the persistent user-local source-of-truth for workspace root/path mapping.
+- `ARCRHO_RUNTIME_SERVER_ROOT`, when set by a trusted worker, supersedes the persisted root only for that process. It is not a user preference and must not be written back to `%APPDATA%`.
 - If the AppData workspace path file does not exist yet, the app uses built-in defaults until the Server Connection setting is saved.
 - Runtime globals in `app_server/config.py` are refreshed from config after `/workspace_paths` updates.
 - The workspace-global `config/dataset_number_formats.json` stores a fallback display format plus reserving-class/Dataset Type Name overrides shared by ResQ migration and frontend dataset generation. Override rows use `reserving_class`, `dataset_type_name`, and `number_format`; they are not keyed by dataset instance Name and are not project-specific.

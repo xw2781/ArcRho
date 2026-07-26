@@ -890,6 +890,7 @@ def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
             continue
         preserve_method_precedents = (
             _clean_name(meta.get("source_kind")).lower() == "result_selection"
+            or _clean_name(meta.get("source_kind")).lower() == "dfm"
             or _is_result_selection_method_type(meta.get("method_type"))
             or _clean_name(meta.get("source_kind")).lower() in {
                 BS_SR_SOURCE_KIND,

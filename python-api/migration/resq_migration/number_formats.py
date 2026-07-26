@@ -14,11 +14,31 @@ DEFAULT_NUMBER_FORMAT = "0,000"
 DEFAULT_DECIMAL_PLACES = 0
 NUMBER_FORMATS_PATH_ENV = "ARCRHO_DATASET_NUMBER_FORMATS_PATH"
 DEFAULT_NUMBER_FORMATS_PATH = Path(r"E:\ArcRho Server\config\dataset_number_formats.json")
+_configured_number_formats_path: Path | None = None
+
+
+def configure_number_formats_path(server_root: object | None = None) -> None:
+    """Use the active ArcRho Server's shared number-format configuration.
+
+    ResQ imports run both from the command line and from macros.  The latter
+    supplies the server root at runtime, so the module must not retain a
+    previous server's preferences between macro executions.
+    """
+    global _configured_number_formats_path
+    root_text = str(server_root or "").strip()
+    _configured_number_formats_path = (
+        Path(root_text) / "config" / "dataset_number_formats.json"
+        if root_text
+        else None
+    )
+    _load_number_format_preferences_from_path.cache_clear()
 
 
 def _number_formats_path() -> Path:
     configured = str(os.environ.get(NUMBER_FORMATS_PATH_ENV) or "").strip()
-    return Path(configured) if configured else DEFAULT_NUMBER_FORMATS_PATH
+    if configured:
+        return Path(configured)
+    return _configured_number_formats_path or DEFAULT_NUMBER_FORMATS_PATH
 
 
 @lru_cache(maxsize=4)
@@ -43,14 +63,12 @@ def _load_number_format_preferences() -> dict[str, Any]:
 
 def dataset_type_number_format(rc_path: object, dataset_type_name: object) -> str:
     preferences = _load_number_format_preferences()
-    rc_key = _normalize_import_name(rc_path).casefold()
     dataset_type_key = _normalize_import_name(dataset_type_name).casefold()
     for item in preferences["overrides"]:
         if not isinstance(item, dict):
             continue
-        configured_rc = _normalize_import_name(item.get("reserving_class")).casefold()
         configured_name = _normalize_import_name(item.get("dataset_type_name")).casefold()
-        if configured_rc == rc_key and configured_name == dataset_type_key:
+        if configured_name == dataset_type_key:
             return _normalize_number_format(item.get("number_format"))
     return preferences["default_number_format"]
 

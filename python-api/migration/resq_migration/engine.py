@@ -29,7 +29,9 @@ from typing import Any, Callable
 # .../python-api/migration/resq_migration/engine.py -> ArcRho repo root
 _MIGRATION_PKG_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _MIGRATION_PKG_DIR.parents[2]
-_FRONTEND_ROOT = _REPO_ROOT / "frontend"
+_FRONTEND_ROOT = Path(
+    os.environ.get("ARCRHO_FRONTEND_ROOT") or (_REPO_ROOT / "frontend")
+).expanduser()
 
 _DEFAULT_SERVER_ROOT = r"E:\ArcRho Server"
 ENGINE_HEARTBEAT_MAX_AGE_SEC = 60.0

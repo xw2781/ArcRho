@@ -1,0 +1,13 @@
+{
+  "type": "feature",
+  "scope": "resq import",
+  "audience": "user",
+  "summary": "Added a synchronous remote ResQ reserving-class import through a shared ArcRho Bridge worker.",
+  "details": [
+    "The macro now stops before publishing when no fresh ResQ-connected Bridge worker is available.",
+    "Import progress now identifies ResQ scanning, ArcRho Engine submission and waiting, metadata finalization, index rebuild, and commit phases.",
+    "Generated datasets remain ArcRho Engine outputs while ResQ-stored methods are imported by the Bridge.",
+    "DFM Ratio Basis snapshots are read directly from the related ResQ DFM instead of requesting a shape-specific data-engine dataset.",
+    "Imports stage and validate the reserving-class folder before replacing existing data."
+  ]
+}

@@ -48,19 +48,21 @@ import {
   applyRatioSelectionPattern,
   buildAverageSelectionPayload,
   applyAverageSelectionFromSaved,
+  applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-  refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260722a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260726a";
 import {
+  applyPersistedResultsSnapshot,
   renderResultsTable,
   buildResultsVector,
   buildResultsVectorCsv,
   getResultsRatioBasisSelection,
+  getResultsRatioBasisSnapshot,
   getResultsUltimateRatioDecimalPlacesSelection,
   setResultsRatioBasisSelection,
   setResultsUltimateRatioDecimalPlacesSelection,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260715a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260726a";
 import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
 import {
   buildDfmAverageFormulaObject,
@@ -78,8 +80,25 @@ import {
   recordCurrentDfmObjectSnapshot,
   refreshDfmMethodIndex,
 } from "/ui/method_pages/dfm/dfm_startup_state.js";
-import { refreshDfmAuditLog, renderDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260714b";
+import {
+  hydrateDfmOutputSidecar,
+  refreshDfmAuditLog,
+  renderDfmAuditLog,
+} from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260726a";
 import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
+import {
+  DFM_METHOD_JSON_FORMAT_V2,
+  isDfmV2Method,
+  loadDfmMethod,
+  previewDfmMethod,
+  readDfmMethodIdentityFromPage,
+  saveDfmMethod,
+} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260726a";
+import {
+  cancelDfmExcelFreshnessCheck,
+  checkDfmExcelLinkFreshness,
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726a";
+import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260726a";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -92,12 +111,20 @@ let lastCleanDfmMethodPayload = null;
 let lastCleanDfmNotesText = "";
 let normalDfmMethodSavePath = "";
 let normalDfmMethodSaveName = "";
-let excelLinksOpenRefreshCompleted = false;
+let currentDfmOutputDataset = "";
+let currentOwnedRevision = "";
+let currentDerivedRevision = "";
+let currentPublicationRevision = "";
+let checkedExcelAppliedRevision = "";
+let checkingExcelAppliedRevision = "";
+let dfmPreviewTimer = null;
+let dfmPreviewGeneration = 0;
+let dfmPreviewAbortController = null;
 const DFM_INSTANCE_PRESENCE_EVENT = "arcrho:dfm-instance-presence";
 const DFM_LOCAL_LOOKUP_DEBUG_STATUS = true; // Temporary debug aid.
-const DFM_ANALYSIS_DECIMALS = 4;
+const DFM_ANALYSIS_DECIMALS = 6;
 const DFM_AVERAGE_FORMULA_DECIMALS = 6;
-const DFM_METHOD_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1";
+const DFM_METHOD_JSON_FORMAT = DFM_METHOD_JSON_FORMAT_V2;
 const DFM_METHOD_FILE_WATCH_INTERVAL_MS = 2000;
 const CALCULATED_DATASETS_UPDATED_MESSAGE = "arcrho:calculated-datasets-updated";
 
@@ -370,6 +397,10 @@ function getDfmJsonTab(payload, tabKey) {
 
 function getDfmDetailsTab(payload) {
   return getDfmJsonTab(payload, "details tab");
+}
+
+function getDfmDataTab(payload) {
+  return getDfmJsonTab(payload, "data tab");
 }
 
 function getDfmRatiosTab(payload) {
@@ -801,7 +832,8 @@ function hydrateUserEntryValuesFromAverageFormulaValues(summaryRows, formulas, a
     if (key && !formulaIndexByLabel.has(key)) formulaIndexByLabel.set(key, index);
   });
   return summaryRows.map((row) => {
-    if (!isUserEntrySummaryRow(row) || Array.isArray(row?.values)) return row;
+    const isFrozenBenchmark = String(row?.base || "").trim().toLowerCase() === "benchmark";
+    if ((!isUserEntrySummaryRow(row) && !isFrozenBenchmark) || Array.isArray(row?.values)) return row;
     const labelKey = String(row?.label || row?.id || "").replace(/\s+/g, " ").trim().toLowerCase();
     const rowIndex = formulaIndexByLabel.get(labelKey);
     const valueRow = Number.isInteger(rowIndex) ? averageFormulaValues[rowIndex] : null;
@@ -859,7 +891,12 @@ function buildDfmGroupedMethodPayload(methodPayload) {
   const dataTab = {};
   copyExistingField(data, "origin labels", dataTab);
   copyExistingField(data, "data development labels", dataTab, "development labels");
-  copyExistingField(data, "input data triangle csv path", dataTab);
+  copyExistingField(data, "input data triangle values", dataTab);
+  copyExistingField(data, "input data triangle mask", dataTab);
+  copyExistingField(data, "data format", dataTab);
+  copyExistingField(data, "number format", dataTab);
+  copyExistingField(data, "data decimal places", dataTab, "decimal places");
+  copyExistingField(data, "input source revision", dataTab, "source revision");
   const ratiosTab = {};
   const ratioTriangle = {};
   copyExistingField(data, "origin labels", ratioTriangle);
@@ -874,6 +911,7 @@ function buildDfmGroupedMethodPayload(methodPayload) {
     "details tab": copyExistingFields(data, [
       "name",
       "output type",
+      "output dataset",
       "input triangle",
       "origin length",
       "development length",
@@ -883,11 +921,21 @@ function buildDfmGroupedMethodPayload(methodPayload) {
     "ratios tab": ratiosTab,
     "results tab": copyExistingFields(data, [
       "ratio basis dataset",
+      "ratio basis data format",
+      "ratio basis origin labels",
+      "ratio basis values",
+      "ratio basis number format",
+      "ratio basis decimal places",
+      "ratio basis source revision",
       "ultimate ratio decimal places",
-      "ultimate vector csv path",
+      "ultimate vector",
     ]),
     "method metadata": copyExistingFields(data, [
       "last modified",
+      "data refreshed",
+      "owned revision",
+      "derived revision",
+      "publication revision",
     ]),
   };
   return grouped;
@@ -928,7 +976,74 @@ export async function applyDfmMethodPayload(payload, options = {}) {
   return runDfmProgrammatic(() => applyDfmMethodPayloadProgrammatically(payload, options));
 }
 
+function cloneJsonValue(value) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function mergePlainObject(target, patch) {
+  const out = target && typeof target === "object" && !Array.isArray(target)
+    ? cloneJsonValue(target)
+    : {};
+  Object.entries(patch && typeof patch === "object" && !Array.isArray(patch) ? patch : {})
+    .forEach(([key, value]) => {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        out[key] = mergePlainObject(out[key], value);
+      } else {
+        out[key] = cloneJsonValue(value);
+      }
+    });
+  return out;
+}
+
+function projectDfmOwnedPatch(payload) {
+  const patch = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  const projected = {};
+  const details = getDfmJsonTab(patch, "details tab");
+  if (Object.keys(details).length) projected["details tab"] = cloneJsonValue(details);
+  const ratios = getDfmJsonTab(patch, "ratios tab");
+  const ratioTriangle = getDfmJsonTab(ratios, "ratio triangle");
+  const projectedRatios = {};
+  if (Object.prototype.hasOwnProperty.call(ratioTriangle, "excluded")) {
+    projectedRatios["ratio triangle"] = { excluded: cloneJsonValue(ratioTriangle.excluded) };
+  }
+  for (const key of ["average formulas", "cell notes"]) {
+    if (Object.prototype.hasOwnProperty.call(ratios, key)) projectedRatios[key] = cloneJsonValue(ratios[key]);
+  }
+  if (Object.keys(projectedRatios).length) projected["ratios tab"] = projectedRatios;
+  const results = getDfmJsonTab(patch, "results tab");
+  const projectedResults = {};
+  for (const key of ["ratio basis dataset", "ultimate ratio decimal places"]) {
+    if (Object.prototype.hasOwnProperty.call(results, key)) projectedResults[key] = cloneJsonValue(results[key]);
+  }
+  if (Object.keys(projectedResults).length) projected["results tab"] = projectedResults;
+  return projected;
+}
+
+export async function applyDfmOwnedPatchPayload(payload, options = {}) {
+  const merged = isDfmV2Method(payload)
+    ? cloneJsonValue(payload)
+    : mergePlainObject(buildDfmMethodPayload(), projectDfmOwnedPatch(payload));
+  try {
+    const response = await previewDfmMethod(merged);
+    if (!response?.method || !isDfmV2Method(response.method)) {
+      throw new Error("Owned DFM patch preview did not return a canonical v2 method.");
+    }
+    return applyDfmMethodPayload(response.method, {
+      ...options,
+      markClean: false,
+      reason: options.reason || "owned-patch",
+    });
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error || "Could not preview DFM owned patch.") };
+  }
+}
+
 async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
+  const isV2 = isDfmV2Method(payload);
   let datasetInputsChanged = false;
   if (payload && !Array.isArray(payload)) {
     datasetInputsChanged = applySavedSelectValueToUi("originLenSelect", getSavedOriginLengthValue(payload)) || datasetInputsChanged;
@@ -938,6 +1053,24 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
   const ratiosTab = getDfmRatiosTab(payload);
   const ratioTriangle = getDfmRatioTriangleTab(payload);
   const resultsTab = getDfmResultsTab(payload);
+  if (isV2) {
+    const dataTab = getDfmDataTab(payload);
+    const snapshotResult = window.ADA_DFM_APPLY_DATASET_SNAPSHOT?.({
+      origin_labels: dataTab["origin labels"],
+      dev_labels: dataTab["development labels"],
+      values: dataTab["input data triangle values"],
+      mask: dataTab["input data triangle mask"],
+      data_format: dataTab["data format"] || "Triangle",
+      number_format: dataTab["number format"],
+      decimal_places: dataTab["decimal places"],
+      source_revision: dataTab["source revision"],
+      source_kind: "dfm-v2-snapshot",
+    });
+    if (snapshotResult?.ok === false) {
+      return { ok: false, error: snapshotResult.error || "Could not hydrate the embedded input snapshot." };
+    }
+    applyPersistedRatioDerivedSnapshot(ratioTriangle);
+  }
   const pattern = Array.isArray(payload) ? payload : ratioTriangle.excluded;
   let applied = applyRatioSelectionPattern(pattern);
   if (payload && !Array.isArray(payload)) {
@@ -976,7 +1109,11 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     applySavedMethodNameToUi(savedMethodName);
     applySavedDecimalPlacesToUi(savedDecimalPlaces);
     setResultsUltimateRatioDecimalPlacesSelection(savedUltimateRatioDecimalPlaces, { silent: true, render: false });
-    await setResultsRatioBasisSelection(ratioBasisDataset, { silent: true, render: false });
+    if (isV2) {
+      applyPersistedResultsSnapshot(resultsTab);
+    } else {
+      await setResultsRatioBasisSelection(ratioBasisDataset, { silent: true, render: false });
+    }
     if (Array.isArray(formulas) && Array.isArray(matrix)) {
       applyAverageSelectionFromSaved(formulas, matrix);
     }
@@ -985,7 +1122,7 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     await setResultsRatioBasisSelection("", { silent: true, render: false });
   }
 
-  if (datasetInputsChanged) {
+  if (datasetInputsChanged && !isV2) {
     await refreshDfmDatasetAfterDetailsApply(options);
     if (!applied) {
       applied = applyRatioSelectionPattern(pattern);
@@ -1001,10 +1138,91 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     markMethodSaved();
     markDfmClean({ force: true });
   }
+  if (applied && isV2 && options.markClean !== false) {
+    const details = getDfmDetailsTab(payload);
+    const metadata = getDfmJsonTab(payload, "method metadata");
+    currentDfmOutputDataset = String(details["output dataset"] || currentDfmOutputDataset || details.name || "").trim();
+    currentOwnedRevision = String(metadata["owned revision"] || currentOwnedRevision || "").trim();
+    currentDerivedRevision = String(metadata["derived revision"] || currentDerivedRevision || "").trim();
+    currentPublicationRevision = String(metadata["publication revision"] || currentPublicationRevision || "").trim();
+  }
   if (applied && getCurrentDfmTab() === "audit") {
     void refreshDfmAuditLog();
   }
   return { ok: applied, datasetInputsChanged };
+}
+
+function applyDfmAggregateRevisions(response, method) {
+  const metadata = getDfmJsonTab(method, "method metadata");
+  currentOwnedRevision = String(response?.owned_revision || metadata["owned revision"] || "").trim();
+  currentDerivedRevision = String(response?.derived_revision || metadata["derived revision"] || "").trim();
+  currentPublicationRevision = String(response?.publication_revision || metadata["publication revision"] || "").trim();
+}
+
+function syncDfmIdentityQuery(method) {
+  const details = getDfmDetailsTab(method);
+  const methodName = String(details.name || "").trim();
+  const outputDataset = String(details["output dataset"] || "").trim();
+  if (!methodName) return;
+  if (globalThis.history?.replaceState && globalThis.location?.href) {
+    try {
+      const url = new URL(globalThis.location.href);
+      url.searchParams.set("method_name", methodName);
+      if (outputDataset) url.searchParams.set("output_dataset", outputDataset);
+      globalThis.history.replaceState(globalThis.history.state, "", url.toString());
+    } catch {
+      // Identity state remains available in memory when URL replacement is unavailable.
+    }
+  }
+  try {
+    const query = new URLSearchParams(globalThis.location?.search || "");
+    window.parent?.postMessage?.({
+      type: "arcrho:dfm-identity",
+      inst: query.get("inst") || "",
+      methodName,
+      outputDataset,
+    }, "*");
+  } catch {
+    // The aggregate loader still retains both identities locally.
+  }
+}
+
+function scheduleDfmExcelFreshnessCheck(method) {
+  const metadata = getDfmJsonTab(method, "method metadata");
+  const appliedRevision = [
+    currentOwnedRevision || metadata["owned revision"],
+    currentDerivedRevision || metadata["derived revision"],
+    currentPublicationRevision || metadata["publication revision"],
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join("\u001f");
+  if (
+    !appliedRevision
+    || appliedRevision === checkedExcelAppliedRevision
+    || appliedRevision === checkingExcelAppliedRevision
+  ) return;
+  checkingExcelAppliedRevision = appliedRevision;
+  cancelDfmExcelFreshnessCheck();
+  setTimeout(async () => {
+    try {
+      if (getDfmIsDirty() || appliedRevision !== checkingExcelAppliedRevision) return;
+      const result = await checkDfmExcelLinkFreshness();
+      if (result?.aborted || appliedRevision !== checkingExcelAppliedRevision || getDfmIsDirty()) return;
+      checkedExcelAppliedRevision = appliedRevision;
+      setDfmExcelFreshnessState(result);
+      const staleCount = Number(result?.staleCount || 0);
+      const unverifiedCount = Number(result?.unverifiedCount || 0);
+      if (staleCount || unverifiedCount) {
+        const parts = [];
+        if (staleCount) parts.push(`${staleCount} stale`);
+        if (unverifiedCount) parts.push(`${unverifiedCount} unverified`);
+        postDfmStatus(`Excel links: ${parts.join(", ")}. Stored values remain active; use Links > Refresh to update.`, { tone: "warn" });
+      }
+    } finally {
+      if (checkingExcelAppliedRevision === appliedRevision) checkingExcelAppliedRevision = "";
+    }
+  }, 0);
 }
 
 export async function loadRatioSelectionIfExists(reason) {
@@ -1012,61 +1230,57 @@ export async function loadRatioSelectionIfExists(reason) {
   if (!hasRequiredDfmLookupInputs()) {
     postDfmLookupDebugStatus("skipped (waiting for required fields)", { reason });
     emitDfmInstancePresence("incomplete");
-    return;
+    return { ok: false, incomplete: true };
   }
   if (getDfmIsDirty()) {
     postDfmLookupDebugStatus("skipped (dirty)", { reason });
-    return;
+    return { ok: false, dirty: true };
   }
-  const hostApi = getHostApi();
-  if (!hostApi || typeof hostApi.readJsonFile !== "function") {
-    postDfmLookupDebugStatus("skipped (desktop host readJsonFile unavailable)", { reason });
-    emitDfmInstancePresence("incomplete");
-    return;
+
+  cancelDfmExcelFreshnessCheck();
+  checkingExcelAppliedRevision = "";
+  const identity = readDfmMethodIdentityFromPage();
+  if (!identity.output_dataset && currentDfmOutputDataset) {
+    identity.output_dataset = currentDfmOutputDataset;
   }
-  const standardPath = await buildRatioSavePath();
-  let path = standardPath;
-  postDfmLookupDebugStatus(`checking ${path}`, { reason });
-  const result = await hostApi.readJsonFile({ path });
-  if (!result || !result.exists) {
-    clearDfmMethodFileRevision(path);
-    emitDfmInstancePresence("missing");
-    postDfmStatus("This method object has not been created yet, changes will be saved to a new container.", { tone: "warn" });
-    if (getDfmIsDirty()) {
-      return;
+  postDfmStatus("Loading DFM method...");
+  try {
+    const response = await loadDfmMethod(identity);
+    const method = response?.method;
+    if (!method || !isDfmV2Method(method)) {
+      throw new Error("DFM load did not return a canonical v2 method.");
     }
-    await runDfmProgrammatic(async () => {
-      ratioStrikeSet.clear();
-      selectedSummaryByCol.clear();
-      applyDfmCellNotesPayload(null);
-      setDfmNotesText("");
-      await setResultsRatioBasisSelection("", { silent: true, render: false });
-      clearMethodSavedFlag();
-      renderRatioTable();
-      renderResultsTable();
-      recordCleanDfmMethodPayload();
-      markDfmClean({ force: true });
+    applyDfmAggregateRevisions(response, method);
+    const applied = await applyDfmMethodPayload(method, { reason: reason || "dfm-open" });
+    if (!applied?.ok) throw new Error(applied?.error || "The DFM method could not be applied.");
+    const details = getDfmDetailsTab(method);
+    currentDfmOutputDataset = String(details["output dataset"] || identity.output_dataset || details.name || "").trim();
+    syncDfmIdentityQuery(method);
+    hydrateDfmOutputSidecar(response?.sidecar, {
+      hydrateNotes: true,
+      outputDataset: currentDfmOutputDataset,
     });
-    return;
-  }
-  emitDfmInstancePresence("found");
-  const applied = await applyDfmMethodPayload(result.data);
-  if (applied.ok) {
-    await refreshDfmAuditLog({ hydrateNotes: true });
-    recordCleanDfmMethodPayload();
-    rememberDfmMethodFileRevision(path, result.revision);
-    rememberNormalDfmMethodSavePath(path);
-    postDfmStatus("Ready");
-    if (!excelLinksOpenRefreshCompleted) {
-      excelLinksOpenRefreshCompleted = true;
-      try {
-        await refreshAllExcelLinks({ source: "dfm-open", silentErrors: true });
-      } catch (_error) {
-        postDfmStatus("Excel linked-value refresh failed.", { tone: "warn" });
-      }
+    recordCleanDfmMethodPayload(method);
+    markDfmClean({ force: true });
+    emitDfmInstancePresence("found");
+    const sidecarStatus = response?.sidecar?.status;
+    const reviewNeeded = Number(sidecarStatus) === 2
+      || /review/i.test(String(sidecarStatus || response?.sidecar?.status_label || ""));
+    postDfmStatus(
+      reviewNeeded ? "DFM loaded with Review Needed status." : "Ready",
+      reviewNeeded ? { tone: "warn" } : {},
+    );
+    scheduleDfmExcelFreshnessCheck(method);
+    return { ok: true, method, sidecar: response?.sidecar };
+  } catch (error) {
+    if (Number(error?.status) === 404) {
+      emitDfmInstancePresence("missing");
+      postDfmStatus("This method object has not been created yet.", { tone: "warn" });
+      return { ok: false, missing: true, error: error.message };
     }
-  } else if (reason) {
-    postDfmStatus("Error: Ratio file found but could not be applied.");
+    emitDfmInstancePresence("incomplete");
+    postDfmStatus(`DFM load failed: ${String(error?.message || error)}`, { tone: "error" });
+    return { ok: false, error: String(error?.message || error) };
   }
 }
 
@@ -1088,22 +1302,7 @@ export async function restoreCleanDfmMethodState() {
     if (result?.ok) setDfmNotesText(cleanNotes);
     return result;
   }
-  const hostApi = getHostApi();
-  if (!hostApi || typeof hostApi.readJsonFile !== "function") {
-    return { ok: false, error: "desktop app required" };
-  }
-  try {
-    const path = await resolveCurrentDfmMethodSavePath();
-    const result = await hostApi.readJsonFile({ path });
-    if (!result?.exists) {
-      return { ok: false, error: "No saved DFM method is available to restore." };
-    }
-    const applied = await applyDfmMethodPayload(result.data, { reason: "cancel", markClean: true });
-    if (applied?.ok) rememberDfmMethodFileRevision(path, result.revision);
-    return applied;
-  } catch (err) {
-    return { ok: false, error: String(err?.message || err || "Could not restore DFM method.") };
-  }
+  return loadRatioSelectionIfExists("cancel");
 }
 
 export function buildDfmMethodPayload(options = {}) {
@@ -1119,8 +1318,11 @@ export function buildDfmMethodPayload(options = {}) {
   const averageFormulaValues = buildAverageFormulaValues();
   const cellNotes = buildDfmCellNotesPayload();
   const ratioBasisDataset = getResultsRatioBasisSelection();
+  const ratioBasisSnapshot = getResultsRatioBasisSnapshot();
   const outputVector = getTrimmedInputValue("dfmOutputVector");
   const methodName = getTrimmedInputValue("dfmMethodName");
+  const queryOutputDataset = new URLSearchParams(globalThis.location?.search || "").get("output_dataset") || "";
+  const outputDataset = String(options?.outputDataset || currentDfmOutputDataset || queryOutputDataset || methodName).trim();
   const inputTriangle = getTrimmedInputValue("triInput");
   const originLength = readSelectedLengthNumber("originLenSelect");
   const developmentLength = readSelectedLengthNumber("devLenSelect");
@@ -1133,20 +1335,37 @@ export function buildDfmMethodPayload(options = {}) {
     "origin labels": originLabels,
     "data development labels": dataDevelopmentLabels,
     "ratio development labels": ratioDevelopmentLabels,
-    "input data triangle csv path": String(options?.inputTriangleCsvPath || ""),
+    "input data triangle values": Array.isArray(state?.model?.values)
+      ? state.model.values.map((row) => (Array.isArray(row) ? row.slice() : []))
+      : [],
+    "input data triangle mask": Array.isArray(state?.model?.mask)
+      ? state.model.mask.map((row) => (Array.isArray(row) ? row.map(Boolean) : []))
+      : [],
+    "data format": String(state?.model?.data_format || "Triangle"),
+    "number format": String(state?.model?.number_format || "Number"),
+    "data decimal places": Number.isFinite(Number(state?.model?.decimal_places))
+      ? Number(state.model.decimal_places)
+      : decimalPlaces,
+    "input source revision": String(state?.model?.source_revision || state?.model?.revision || ""),
     "ratio values": calculatedRatioTriangleValues,
     "average formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix, averageFormulaValues),
     "cell notes": cellNotes,
-    "ultimate vector csv path": String(options?.ultimateVectorCsvPath || ""),
+    "ultimate vector": buildResultsVector(),
     name: methodName,
     "output type": outputVector,
+    "output dataset": outputDataset,
     "input triangle": inputTriangle,
     "origin length": originLength,
     "development length": developmentLength,
     "decimal places": decimalPlaces,
     "ultimate ratio decimal places": ultimateRatioDecimalPlaces,
     "ratio basis dataset": ratioBasisDataset,
+    ...ratioBasisSnapshot,
     "last modified": new Date().toISOString(),
+    "data refreshed": String(lastCleanDfmMethodPayload?.["method metadata"]?.["data refreshed"] || ""),
+    "owned revision": currentOwnedRevision,
+    "derived revision": currentDerivedRevision,
+    "publication revision": currentPublicationRevision,
   };
   return buildDfmGroupedMethodPayload(data);
 }
@@ -1291,11 +1510,8 @@ async function checkDfmMethodFileWatch() {
 }
 
 export function startDfmMethodFileWatcher() {
-  if (ratioFileWatchTimer) return;
-  ratioFileWatchTimer = setInterval(() => {
-    checkDfmMethodFileWatch();
-  }, DFM_METHOD_FILE_WATCH_INTERVAL_MS);
-  checkDfmMethodFileWatch();
+  // v2 refreshes are published by ArcRho mutations and reloaded through the
+  // aggregate endpoint. Out-of-band file edits require explicit Refresh/Repair.
 }
 
 export function stopDfmMethodFileWatcher() {
@@ -1304,135 +1520,129 @@ export function stopDfmMethodFileWatcher() {
   ratioFileWatchTimer = null;
 }
 
-export async function saveRatioSelectionPattern(forceSaveAs) {
-  const hostApi = getHostApi();
-  if (!hostApi || typeof hostApi.saveJsonFile !== "function") {
-    alert("Save requires the desktop app.");
-    window.parent.postMessage({ type: "arcrho:status", text: "Save failed: desktop app required." }, "*");
-    return { ok: false, error: "desktop app required" };
-  }
-  const previousSavePath = normalDfmMethodSavePath;
-  const previousSaveName = normalDfmMethodSaveName || getDfmMethodNameFromPath(previousSavePath);
-  const currentMethodName = getTrimmedInputValue("dfmMethodName");
-  const data = await buildDfmMethodPayloadWithPaths();
-  const resultVector = buildResultsVector();
-  const payload = {
-    data,
-    suggestedName: getRatioSaveSuggestedName(),
-    startDir: await getRatioSaveBaseDir(),
-  };
-  if (!forceSaveAs) {
-    payload.path = await buildRatioSavePath();
-  }
-  const result = await hostApi.saveJsonFile(payload);
-  if (result && result.path) {
-    try {
-      localStorage.setItem(RATIO_SAVE_PATH_KEY, result.path);
-    } catch {}
-    let csvPath = "";
-    let csvError = "";
-    const aggregatedCsvPaths = [];
-    let baseCsvSaved = false;
-    let calculatedUpdateCount = 0;
-    let calculatedUpdatesReport = null;
-    if (typeof hostApi.saveTextFile === "function") {
-      const csvErrors = [];
-      try {
-        const dataDir = await getRatioDataDir();
-        csvPath = `${dataDir}\\${getResultsCsvSuggestedName()}`;
-        const csvOut = await hostApi.saveTextFile({
-          path: csvPath,
-          data: buildResultsVectorCsv(resultVector),
-        });
-        if (!csvOut || csvOut.error) {
-          csvErrors.push(csvOut?.error ? String(csvOut.error) : "unknown error");
-        } else {
-          baseCsvSaved = true;
-          const variants = buildAggregatedResultVariants(resultVector);
-          for (const variant of variants) {
-            const aggName = getResultsCsvSuggestedName({
-              originLen: variant.originLen,
-              devLen: variant.devLen,
-            });
-            const aggPath = `${dataDir}\\${aggName}`;
-            if (aggPath.toLowerCase() === csvPath.toLowerCase()) continue;
-            const aggOut = await hostApi.saveTextFile({
-              path: aggPath,
-              data: buildResultsVectorCsv(variant.vector),
-            });
-            if (!aggOut || aggOut.error) {
-              csvErrors.push(`${aggPath}: ${aggOut?.error ? String(aggOut.error) : "unknown error"}`);
-              continue;
-            }
-            aggregatedCsvPaths.push(aggPath);
-          }
-          if (!csvErrors.length) {
-            const sidecarOut = await saveDatasetSidecar(hostApi, csvPath, getResultsCsvSuggestedName().replace(/\.csv$/i, ""));
-            if (!sidecarOut.ok) {
-              csvErrors.push(`${csvPath.replace(/\.csv$/i, ".json")}: ${sidecarOut.error}`);
-            } else {
-              renderDfmAuditLog(sidecarOut.data?.audit_log);
-              if (Array.isArray(sidecarOut.data?.calculated_updates?.updated)) {
-                calculatedUpdatesReport = sidecarOut.data.calculated_updates;
-                calculatedUpdateCount = calculatedUpdatesReport.updated.length;
-              }
-            }
-          }
-        }
-      } catch (err) {
-        csvErrors.push(String(err?.message || err));
-      }
-      csvError = csvErrors.join("; ");
-    } else {
-      csvError = "desktop host does not support csv save";
+async function runDfmMethodPreview() {
+  if (!getDfmIsDirty()) return { ok: true, skipped: true };
+  dfmPreviewGeneration += 1;
+  const generation = dfmPreviewGeneration;
+  dfmPreviewAbortController?.abort?.();
+  const controller = new AbortController();
+  dfmPreviewAbortController = controller;
+  try {
+    const response = await previewDfmMethod(buildDfmMethodPayload(), { signal: controller.signal });
+    if (generation !== dfmPreviewGeneration || controller.signal.aborted) {
+      return { ok: false, aborted: true };
     }
-    markMethodSaved();
-    recordCleanDfmMethodPayload(data);
-    markDfmClean();
-    rememberNormalDfmMethodSavePath(result.path);
-    emitDfmInstancePresence("found");
-    await refreshDfmMethodFileRevision(result.path);
-    const objectSnapshot = recordCurrentDfmObjectSnapshot();
-    refreshDfmMethodIndex(objectSnapshot.project, objectSnapshot.reservingClass).catch((err) => {
-      console.warn("Failed to refresh DFM method index:", err);
+    const method = response?.method;
+    if (!method || !isDfmV2Method(method)) {
+      throw new Error("DFM preview did not return a canonical v2 method.");
+    }
+    const applied = await applyDfmMethodPayload(method, {
+      reason: "owned-state-preview",
+      markClean: false,
     });
-    const time = new Date().toLocaleTimeString();
-    let statusText = `Method saved at ${time}.`;
-    if (baseCsvSaved) {
-      statusText += ` | CSV saved${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`;
+    return applied?.ok ? { ok: true, method } : applied;
+  } catch (error) {
+    if (error?.name === "AbortError") return { ok: false, aborted: true };
+    postDfmStatus(`DFM preview failed: ${String(error?.message || error)}`, { tone: "warn" });
+    return { ok: false, error: String(error?.message || error) };
+  } finally {
+    if (dfmPreviewAbortController === controller) dfmPreviewAbortController = null;
+  }
+}
+
+export function scheduleDfmMethodPreview() {
+  cancelDfmExcelFreshnessCheck();
+  checkingExcelAppliedRevision = "";
+  if (dfmPreviewTimer) clearTimeout(dfmPreviewTimer);
+  dfmPreviewTimer = setTimeout(() => {
+    dfmPreviewTimer = null;
+    void runDfmMethodPreview();
+  }, 180);
+}
+
+export async function flushDfmMethodPreview() {
+  if (dfmPreviewTimer) {
+    clearTimeout(dfmPreviewTimer);
+    dfmPreviewTimer = null;
+  }
+  return runDfmMethodPreview();
+}
+
+export function cancelDfmMethodAsyncTasks() {
+  if (dfmPreviewTimer) clearTimeout(dfmPreviewTimer);
+  dfmPreviewTimer = null;
+  dfmPreviewGeneration += 1;
+  dfmPreviewAbortController?.abort?.();
+  dfmPreviewAbortController = null;
+  cancelDfmExcelFreshnessCheck();
+}
+
+export async function saveRatioSelectionPattern(forceSaveAs) {
+  const preview = await flushDfmMethodPreview();
+  if (preview?.ok === false && !preview?.skipped) return preview;
+
+  const previousDetails = getDfmDetailsTab(lastCleanDfmMethodPayload || {});
+  const previousMethodName = String(previousDetails.name || "").trim();
+  const previousOutputDataset = String(
+    previousDetails["output dataset"] || currentDfmOutputDataset || previousMethodName,
+  ).trim();
+  const currentMethodName = getTrimmedInputValue("dfmMethodName");
+  const identityChanged = Boolean(
+    previousMethodName
+      && normalizeDfmIdentityKey(previousMethodName) !== normalizeDfmIdentityKey(currentMethodName),
+  );
+  if (forceSaveAs && !identityChanged) {
+    const message = "Save As requires a new unique Name before saving.";
+    postDfmStatus(message, { tone: "warn" });
+    return { ok: false, error: message };
+  }
+  const nextOutputDataset = (forceSaveAs || identityChanged)
+    ? currentMethodName
+    : (previousOutputDataset || currentMethodName);
+  const method = buildDfmMethodPayload({ outputDataset: nextOutputDataset });
+  const identity = readDfmMethodIdentityFromPage();
+  try {
+    postDfmStatus("Saving DFM method...");
+    const response = await saveDfmMethod({
+      project_name: identity.project_name,
+      reserving_class: identity.reserving_class,
+      method,
+      notes: getDfmNotesText(),
+      ...((forceSaveAs || identityChanged) ? {} : {
+        expected_owned_revision: currentOwnedRevision,
+        expected_derived_revision: currentDerivedRevision,
+      }),
+    });
+    const canonicalMethod = response?.method;
+    if (!canonicalMethod || !isDfmV2Method(canonicalMethod)) {
+      throw new Error("DFM save did not return a canonical v2 method.");
     }
-    if (calculatedUpdateCount) {
-      statusText += ` | ${calculatedUpdateCount} dependent dataset${calculatedUpdateCount === 1 ? "" : "s"} refreshed`;
-    }
-    if (csvError) {
-      statusText += ` | CSV save failed: ${csvError}`;
-    }
-    if (!forceSaveAs) {
-      const newPath = String(result.path || "");
-      const renamed = previousSavePath
-        && newPath
-        && previousSavePath.toLowerCase() !== newPath.toLowerCase()
-        && normalizeDfmIdentityKey(previousSaveName) !== normalizeDfmIdentityKey(currentMethodName);
-      if (renamed) {
-        const cleanup = await deleteOldDfmIdentityFiles(previousSaveName, currentMethodName);
-        if (!cleanup.ok) {
-          statusText += ` | Old DFM cleanup failed: ${cleanup.error}`;
-        }
-      }
-    }
-    window.parent.postMessage(
-      { type: "arcrho:status", text: statusText },
-      "*"
-    );
+    applyDfmAggregateRevisions(response, canonicalMethod);
+    const applied = await applyDfmMethodPayload(canonicalMethod, { reason: "save", markClean: true });
+    if (!applied?.ok) throw new Error(applied?.error || "Saved DFM could not be applied.");
+    const details = getDfmDetailsTab(canonicalMethod);
+    currentDfmOutputDataset = String(details["output dataset"] || nextOutputDataset).trim();
+    syncDfmIdentityQuery(canonicalMethod);
+    hydrateDfmOutputSidecar(response?.sidecar, {
+      hydrateNotes: true,
+      outputDataset: currentDfmOutputDataset,
+    });
+    recordCleanDfmMethodPayload(canonicalMethod);
+    markMethodSaved();
+    markDfmClean({ force: true });
+    emitDfmInstancePresence("found");
     requestProjectInstanceDatasetTableRefresh();
-    publishCalculatedDatasetUpdates(calculatedUpdatesReport, "DFM save");
-    return { ok: true, path: result.path, csvPath, csvError, aggregatedCsvPaths };
-  } else if (result && result.error) {
-    window.parent.postMessage({ type: "arcrho:status", text: `Save failed: ${result.error}` }, "*");
-    return { ok: false, error: result.error };
-  } else {
-    window.parent.postMessage({ type: "arcrho:status", text: "Save canceled." }, "*");
-    return { ok: false, canceled: true };
+    const updates = response?.calculated_updates
+      || response?.propagation
+      || response?.sidecar?.calculated_updates;
+    publishCalculatedDatasetUpdates(updates, "DFM save");
+    postDfmStatus(`Method saved at ${new Date().toLocaleTimeString()}.`);
+    scheduleDfmExcelFreshnessCheck(canonicalMethod);
+    return { ok: true, method: canonicalMethod, sidecar: response?.sidecar };
+  } catch (error) {
+    const message = String(error?.message || error || "DFM save failed.");
+    postDfmStatus(`Save failed: ${message}`, { tone: "error" });
+    return { ok: false, error: message, status: error?.status };
   }
 }
 
@@ -1448,11 +1658,16 @@ export async function saveDfmTemplate() {
   const cfgKey = getSummaryConfigKey();
   const summaryRows = getSummaryRowsForPersistence(cfgKey);
 
-  const data = buildDfmGroupedMethodPayload({
-    "origin length": readSelectedLengthNumber("originLenSelect"),
-    "development length": readSelectedLengthNumber("devLenSelect"),
-    "average formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix),
-  });
+  const data = {
+    "payload format": "arcrho-dfm-owned-patch-v1",
+    "details tab": {
+      "origin length": readSelectedLengthNumber("originLenSelect"),
+      "development length": readSelectedLengthNumber("devLenSelect"),
+    },
+    "ratios tab": {
+      "average formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix),
+    },
+  };
 
   const project = sanitizeFileNamePart(getRatioSaveProjectName(), "UnknownProject");
   const rc = sanitizeFileNamePart(getResolvedReservingClass() || "ReservingClass", "ReservingClass");

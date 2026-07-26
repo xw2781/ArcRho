@@ -10,10 +10,10 @@ from .dataset_index_contract import (
     INDEX_FILE_NAME,
     canonical_existing_directory,
 )
+from .dfm_contract import DFM_JSON_FORMAT, LEGACY_DFM_JSON_FORMAT
 
 
 RESERVING_CLASS_INDEX_FILE_NAME = INDEX_FILE_NAME
-DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 _FILENAME_REPLACEMENTS = {
     "\\": "_%5C_",
     "/": "_%2F_",

@@ -137,7 +137,12 @@ class ReservingClass:
             development_length=development_length,
         )
         if data_path.is_file() and not force_refresh:
-            self._write_triangle_sidecar_if_allowed(data_path, dataset_name)
+            self._write_triangle_sidecar_if_allowed(
+                data_path,
+                dataset_name,
+                origin_length=origin_length,
+                development_length=development_length,
+            )
             return TriangleCacheResult(dataset_name=dataset_name, file_path=data_path, from_cache=True)
 
         if self.read_only:
@@ -162,12 +167,29 @@ class ReservingClass:
                 "Timed out waiting for ArcRhoTri CSV cache. "
                 f"Request file: {request_path}; expected CSV: {data_path}"
             )
-        self._write_triangle_sidecar(data_path, dataset_name)
+        self._write_triangle_sidecar(
+            data_path,
+            dataset_name,
+            origin_length=origin_length,
+            development_length=development_length,
+        )
+        refreshed_outputs: tuple[str, ...] = ()
+        propagation_warnings: tuple[str, ...] = ()
+        try:
+            from .dfm_propagation import refresh_dfm_dependents
+
+            propagation = refresh_dfm_dependents(self, dataset_name)
+            refreshed_outputs = propagation.refreshed_outputs
+            propagation_warnings = propagation.warnings
+        except Exception as err:
+            propagation_warnings = (f"DFM propagation could not start: {err}",)
         return TriangleCacheResult(
             dataset_name=dataset_name,
             file_path=data_path,
             from_cache=False,
             request_path=request_path,
+            refreshed_dfm_outputs=refreshed_outputs,
+            propagation_warnings=propagation_warnings,
         )
 
     def _write_triangle_request(
@@ -210,13 +232,43 @@ class ReservingClass:
             raise DfmDataError(f"Failed to write ArcRhoTri request file: {err}") from err
         return final_path
 
-    def _write_triangle_sidecar_if_allowed(self, data_path: Path, dataset_name: str) -> None:
+    def _write_triangle_sidecar_if_allowed(
+        self,
+        data_path: Path,
+        dataset_name: str,
+        *,
+        origin_length: int,
+        development_length: int,
+    ) -> None:
         if self.read_only:
             return
-        self._write_triangle_sidecar(data_path, dataset_name)
+        self._write_triangle_sidecar(
+            data_path,
+            dataset_name,
+            origin_length=origin_length,
+            development_length=development_length,
+        )
 
-    def _write_triangle_sidecar(self, data_path: Path, dataset_name: str) -> None:
+    def _write_triangle_sidecar(
+        self,
+        data_path: Path,
+        dataset_name: str,
+        *,
+        origin_length: int,
+        development_length: int,
+    ) -> Path:
+        sidecar_dir = data_path.parent.parent / "sidecars" if data_path.parent.name == "datasets" else data_path.parent / "sidecars"
+        sidecar_dir.mkdir(parents=True, exist_ok=True)
+        sidecar_path = sidecar_dir / f"{sanitize_file_name_part(dataset_name, 'Dataset')}.json"
+        existing: dict[str, Any] = {}
+        if sidecar_path.is_file():
+            try:
+                parsed = json.loads(sidecar_path.read_text(encoding="utf-8"))
+                existing = parsed if isinstance(parsed, dict) else {}
+            except (OSError, json.JSONDecodeError):
+                existing = {}
         payload = {
+            **existing,
             "dataset_name": dataset_name,
             "dataset_type": dataset_name,
             "instance_name": dataset_name,
@@ -224,12 +276,17 @@ class ReservingClass:
             "project_name": self.project.name,
             "source_kind": "engine",
             "calculated": False,
+            "method_type": "None",
+            "status": 0,
+            "data_format": "Triangle",
+            "data_format_code": 0,
+            "origin_length": int(origin_length),
+            "development_length": int(development_length),
             "csv_file": data_path.name,
             "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "Precedents": existing.get("Precedents") if isinstance(existing.get("Precedents"), list) else [],
+            "Dependents": existing.get("Dependents") if isinstance(existing.get("Dependents"), list) else [],
         }
-        sidecar_dir = data_path.parent.parent / "sidecars" if data_path.parent.name == "datasets" else data_path.parent / "sidecars"
-        sidecar_dir.mkdir(parents=True, exist_ok=True)
-        sidecar_path = sidecar_dir / f"{sanitize_file_name_part(dataset_name, 'Dataset')}.json"
         temp_path = sidecar_path.with_name(f"{sidecar_path.name}.{uuid.uuid4()}.tmp")
         try:
             temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -240,6 +297,7 @@ class ReservingClass:
             except OSError:
                 pass
             raise DfmDataError(f"Failed to write ArcRhoTri cache metadata {sidecar_path}: {err}") from err
+        return sidecar_path
 
 
 def _parse_csv_cell(value: str) -> Any:

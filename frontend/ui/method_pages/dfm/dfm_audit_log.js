@@ -13,12 +13,19 @@ import { setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=2026071
 
 let auditLogView = null;
 let auditRequestSequence = 0;
+let hydratedDfmSidecar = null;
+let hydratedOutputDataset = "";
+
+function isPersistedMethodBootstrap() {
+  return Boolean(new URLSearchParams(globalThis.location?.search || "").get("method_name"));
+}
 
 function getDfmAuditContext() {
   return {
     project_name: String(getResolvedProjectName() || "").trim(),
     reserving_class: String(getResolvedReservingClass() || "").trim(),
-    dataset_name: String(document.getElementById("dfmMethodName")?.value || "").trim()
+    dataset_name: hydratedOutputDataset
+      || String(document.getElementById("dfmMethodName")?.value || "").trim()
       || getDefaultMethodName(),
   };
 }
@@ -44,9 +51,38 @@ export function renderDfmAuditLog(entries = []) {
   initDfmAuditLog()?.render(entries);
 }
 
+export function hydrateDfmOutputSidecar(sidecar, options = {}) {
+  auditRequestSequence += 1;
+  hydratedDfmSidecar = sidecar && typeof sidecar === "object" ? sidecar : {};
+  hydratedOutputDataset = String(options.outputDataset || hydratedDfmSidecar.dataset_name || "").trim();
+  if (options.hydrateNotes !== false) {
+    setDfmNotesText(String(hydratedDfmSidecar.notes ?? ""));
+  }
+  initDfmAuditLog()?.render(hydratedDfmSidecar.audit_log || []);
+  return hydratedDfmSidecar;
+}
+
+export function clearHydratedDfmOutputSidecar() {
+  auditRequestSequence += 1;
+  hydratedDfmSidecar = null;
+  hydratedOutputDataset = "";
+}
+
 export async function refreshDfmAuditLog(options = {}) {
   const view = initDfmAuditLog();
   if (!view) return false;
+
+  if (hydratedDfmSidecar) {
+    if (options.hydrateNotes === true) {
+      setDfmNotesText(String(hydratedDfmSidecar.notes ?? ""));
+    }
+    view.render(hydratedDfmSidecar.audit_log || []);
+    return true;
+  }
+  if (isPersistedMethodBootstrap()) {
+    view.setLoading("Loading audit log...");
+    return false;
+  }
 
   const context = getDfmAuditContext();
   const requestSequence = ++auditRequestSequence;

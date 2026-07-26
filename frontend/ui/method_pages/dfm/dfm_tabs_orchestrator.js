@@ -25,7 +25,7 @@ import {
   notifyDfmEditState,
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { ALLOWED_DFM_TABS, DFM_TAB_DEFS } from "/ui/method_pages/dfm/dfm_tab_config.js?v=20260715a";
-import { initDfmAuditLog, refreshDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260714b";
+import { initDfmAuditLog, refreshDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260726a";
 import {
   renderRatioTable,
   wireRatioStrikeToggle,
@@ -37,14 +37,14 @@ import {
   isRatioChartOpen,
   scheduleRatioChartRender,
   restoreRatioHistoryUi,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260722a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260726a";
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,
   buildResultsVector,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260715a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260726a";
 import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
-import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260722a";
+import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260726a";
 import {
   syncMethodNameFromInputs,
   syncOutputTypeFromProject,
@@ -58,15 +58,17 @@ import {
   restoreCleanDfmMethodState,
   recordCurrentDfmCleanState,
   saveDfmTemplate,
-  applyDfmMethodPayload,
+  applyDfmOwnedPatchPayload,
   buildDfmAssistantContextPayload,
   resolveCurrentDfmMethodSavePath,
   startDfmMethodFileWatcher,
   stopDfmMethodFileWatcher,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260725b";
+  scheduleDfmMethodPreview,
+  cancelDfmMethodAsyncTasks,
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260726a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260722a";
-import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260725a";
-import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260725a";
+import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260726a";
+import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260726a";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260722a";
 import {
   clearRatioHistoryTempSession,
@@ -81,6 +83,9 @@ const DEFAULT_TOKEN = "__DEFAULT__";
 let dfmSaveInFlight = false;
 const dfmCloseConfirm = createPageCloseConfirm({ subject: "DFM" });
 let dependencyPreviewTimer = 0;
+const persistedDfmBootstrap = Boolean(
+  new URLSearchParams(globalThis.location?.search || "").get("method_name"),
+);
 
 function wireDfmScrollbarActivity(scrollHost) {
   if (!scrollHost || scrollHost.dataset.scrollbarActivityWired === "1") return;
@@ -135,11 +140,64 @@ function handleDatasetUpdated() {
   refreshDfmTabContent("dataset-updated");
 }
 
+function normalizeDfmIdentity(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function handleDfmPropagationReport(report) {
+  const updates = report?.dfm_updates;
+  if (!updates || typeof updates !== "object") return false;
+  const currentProject = normalizeDfmIdentity(getDfmInputSnapshotSafe().resolved?.project);
+  const currentClass = normalizeDfmIdentity(getDfmInputSnapshotSafe().resolved?.reservingClass);
+  if (
+    updates.project_name
+    && normalizeDfmIdentity(updates.project_name) !== currentProject
+  ) return false;
+  if (
+    updates.reserving_class
+    && normalizeDfmIdentity(updates.reserving_class) !== currentClass
+  ) return false;
+
+  const query = new URLSearchParams(globalThis.location?.search || "");
+  const identities = new Set([
+    normalizeDfmIdentity(query.get("output_dataset")),
+    normalizeDfmIdentity(query.get("method_name")),
+    normalizeDfmIdentity(document.getElementById("dfmMethodName")?.value),
+  ].filter(Boolean));
+  const all = [
+    ...(Array.isArray(updates.updated) ? updates.updated : []),
+    ...(Array.isArray(updates.status_refreshed) ? updates.status_refreshed : []),
+    ...(Array.isArray(updates.errors) ? updates.errors : []),
+  ];
+  const matched = all.filter((item) => identities.has(normalizeDfmIdentity(item?.dataset_name)));
+  if (!matched.length) return false;
+  const failed = matched.find((item) => item?.reason);
+  if (failed) {
+    window.parent.postMessage({
+      type: "arcrho:status",
+      text: `DFM refresh requires review: ${String(failed.reason || "upstream refresh failed")}`,
+      tone: "warn",
+    }, "*");
+  }
+  if (getDfmIsDirty()) {
+    window.parent.postMessage({
+      type: "arcrho:status",
+      text: "Upstream DFM data changed while this window has edits. Save will rebase the owned edits onto the latest derived state.",
+      tone: "warn",
+    }, "*");
+    return true;
+  }
+  scheduleRatioSelectionLoad("upstream-refresh");
+  return true;
+}
+
 function refreshDfmTabContent(reason = "") {
   renderRatioTable();
   renderResultsTable();
-  syncMethodNameFromInputs();
-  syncOutputTypeFromProject();
+  if (!persistedDfmBootstrap) {
+    syncMethodNameFromInputs();
+    syncOutputTypeFromProject();
+  }
   if (!getDfmIsDirty()) {
     scheduleRatioSelectionLoad(reason || "dfm-refresh");
   }
@@ -493,7 +551,7 @@ function initDfmTabs() {
       if (tabId === "links") refreshDfmLinks();
       if (tabId === "audit") refreshDfmAuditLog();
       notifyDfmEditState();
-      if (tabId === "details") {
+      if (tabId === "details" && !persistedDfmBootstrap) {
         syncMethodNameFromInputs();
         syncOutputTypeFromProject();
       }
@@ -554,14 +612,19 @@ export function initDfmRatios() {
   setStorageInstance(getDfmInst());
   initDfmTabs();
   notifyDfmEditState();
-  syncMethodNameFromInputs();
-  syncOutputTypeFromProject();
-  wireDfmRpcBridgeTabBar();
-  setTimeout(() => {
+  if (!persistedDfmBootstrap) {
+    syncMethodNameFromInputs();
     syncOutputTypeFromProject();
-  }, 500);
+  }
+  wireDfmRpcBridgeTabBar();
+  if (!persistedDfmBootstrap) {
+    setTimeout(() => {
+      syncOutputTypeFromProject();
+    }, 500);
+  }
 
   window.addEventListener("arcrho:workflow-defaults-updated", () => {
+    if (persistedDfmBootstrap) return;
     syncMethodNameFromInputs();
     syncOutputTypeFromProject();
   });
@@ -576,10 +639,15 @@ export function initDfmRatios() {
   startDfmMethodFileWatcher();
   window.addEventListener("beforeunload", () => {
     stopDfmMethodFileWatcher();
+    cancelDfmMethodAsyncTasks();
     clearRatioHistoryTempSession();
   }, { once: true });
 
   window.addEventListener("arcrho:dataset-updated", handleDatasetUpdated);
+  window.addEventListener("arcrho:dfm-owned-state-mutated", scheduleDfmMethodPreview);
+  window.addEventListener("arcrho:dfm-dirty-state", (event) => {
+    if (event?.detail?.dirty) scheduleDfmMethodPreview();
+  });
 
   /* ---- Apply project/class from URL params when embedded in workflow ---- */
   const _qs = new URLSearchParams(window.location.search);
@@ -598,14 +666,20 @@ export function initDfmRatios() {
     if (_urlClass && classEl) classEl.value = _urlClass;
     if (_urlMethodName && methodEl) methodEl.value = _urlMethodName;
     if (_urlInputTriangle && triEl) triEl.value = _urlInputTriangle;
-    syncMethodNameFromInputs();
-    syncOutputTypeFromProject({ forceReload: true });
+    if (!persistedDfmBootstrap) {
+      syncMethodNameFromInputs();
+      syncOutputTypeFromProject({ forceReload: true });
+    }
   }
   refreshDfmTabContent("dfm-open");
   recordCurrentDfmCleanState();
 
   window.addEventListener("message", (e) => {
     if (e?.data?.type === "arcrho:open-path" && forwardChildOpenPathRequest(e.data, e.source)) {
+      return;
+    }
+    if (e?.data?.type === "arcrho:calculated-datasets-updated") {
+      handleDfmPropagationReport(e.data?.report || null);
       return;
     }
     /* Respond to workflow requesting DFM step settings for snapshot */
@@ -699,7 +773,7 @@ export function initDfmRatios() {
           // ignore stale shell messaging
         }
       };
-      applyDfmMethodPayload(e.data.payload, { markClean: false, reason: "macro" })
+      applyDfmOwnedPatchPayload(e.data.payload, { reason: "macro" })
         .then((applied) => {
           if (applied?.ok) {
             markDfmDirty();

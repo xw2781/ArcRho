@@ -276,6 +276,50 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(rows["Net Ultimate"]["user"], "xwei")
 
     def test_dfm_ultimate_vector_sidecar_uses_period_length(self) -> None:
+        contract = importlib.import_module("arcrho_api.dfm_contract")
+        method_payload = contract.recalculate_dfm_method({
+            "json format": contract.DFM_JSON_FORMAT,
+            "details tab": {
+                "name": "Paid DFM",
+                "output type": "DFM Ultimate",
+                "output dataset": "Ultimate",
+                "input triangle": "Paid Loss",
+                "origin length": 6,
+                "development length": 6,
+                "decimal places": 4,
+            },
+            "data tab": {},
+            "ratios tab": {
+                "ratio triangle": {"excluded": [[0]]},
+                "average formulas": {
+                    "label": ["Simple - all"],
+                    "custom average formula settings": {
+                        "averageType": ["custom"],
+                        "base": ["simple"],
+                        "periods": ["all"],
+                        "exclude": [0],
+                    },
+                    "selected": [[1]],
+                    "values": [[1]],
+                    "inputs": [[""]],
+                },
+                "cell notes": {"ratio main table": {}, "ratio summary table": {}},
+            },
+            "results tab": {},
+            "method metadata": {
+                "last modified": "2026-01-02T00:00:00",
+                "data refreshed": "2026-01-02T00:00:00",
+            },
+        }, input_snapshot={
+            "name": "Paid Loss",
+            "origin_labels": ["2026"],
+            "development_labels": ["6m", "12m"],
+            "values": [[100.0, 123.0]],
+            "mask": [[True, True]],
+            "data_format": "Triangle",
+            "number_format": "#,##0",
+            "decimal_places": 0,
+        })
         self.extractors.write_dfm_ultimate_vector_export({
             "name": "Ultimate",
             "dataset_type": "DFM Ultimate",
@@ -294,7 +338,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "user": "tester",
             "created": "2026-01-01T00:00:00",
             "modified": "2026-01-02T00:00:00",
-        }, r"Auto\PP", self.rc_dir)
+        }, r"Auto\PP", self.rc_dir, method_payload=method_payload)
 
         payload = json.loads((self.sidecars_dir / "Ultimate.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["source_kind"], "dfm")

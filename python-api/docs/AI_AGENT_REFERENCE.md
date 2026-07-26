@@ -40,10 +40,10 @@ dfm = session.DFM("Method Name")
 
 ## DFM JSON Contract
 
-Only the grouped GUI shape is supported:
+The canonical grouped GUI shape is self-contained:
 
 ```text
-json format = arcrho-dfm-method-by-tab-v1
+json format = arcrho-dfm-method-by-tab-v2
 details tab
 data tab
 ratios tab
@@ -51,15 +51,21 @@ results tab
 method metadata
 ```
 
-DFM notes are stored only in the output dataset sidecar's top-level `notes` field, not in method JSON.
+`details tab.name` is the method-file identity, `details tab.output dataset` is the output CSV/sidecar identity, and `details tab.output type` is the Vector Dataset Type. DFM notes are stored only in the declared output dataset sidecar's top-level `notes` field, not in method JSON.
+
+V2 embeds the complete input triangle snapshot, Ratio Basis snapshot, calculated ratio/average state, ultimate vector, formatting, and source revisions. It does not persist absolute input/output CSV paths. Ratio-cell notes remain in method JSON; Method Notes, Audit, status, and dependency graph remain in the output sidecar.
 
 Save behavior:
 
-- Preserve unknown JSON fields.
-- Update `method metadata.last modified`.
+- Normalize and recalculate through `arcrho_api.dfm_contract`.
+- Update `method metadata.last modified` only for owned user changes and keep a separate `data refreshed` timestamp.
+- Maintain independent owned, derived, and publication revisions.
 - Write with a temporary file and atomic replace.
 - Rebuild each reserving-class folder's `index.json`.
 - Refuse writes when the client is `read_only=True`.
+- Refresh dependent DFM v2 methods and expose refreshed output identities and nonblocking branch warnings through `DfmMethod.refreshed_dfm_outputs`, `DfmMethod.propagation_warnings`, `TriangleCacheResult.refreshed_dfm_outputs`, and `TriangleCacheResult.propagation_warnings`.
+
+The standalone package does not contain the app server's calculated-dataset or Result Selection evaluators. If a DFM propagation wave reaches either method type, the public API preserves its current publication, marks the branch Review Needed, and returns a warning. The complete DFM -> calculated dataset -> Result Selection cascade runs in the app-server workflow.
 
 DFM cell notes use the grouped `ratios tab.cell notes` shape keyed by visible row label, then visible development label. Use `set_cell_note(row_label, development, note)`, `clear_cell_notes_for_development(development)`, or `set_selected_average_cell_note(development, note, clear_column=True)` for average-formula notes.
 

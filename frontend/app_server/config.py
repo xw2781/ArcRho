@@ -40,6 +40,7 @@ PROJECT_ROOT = _resolve_project_root()
 # ---------------------------------------------------------------------------
 
 DEFAULT_WORKSPACE_ROOT = r"E:\ArcRho Server"
+RUNTIME_SERVER_ROOT_ENV = "ARCRHO_RUNTIME_SERVER_ROOT"
 DEFAULT_WORKSPACE_PATHS = {
     "projects_dir": "projects",
     "requests_dir": "requests",
@@ -94,9 +95,13 @@ def load_workspace_paths() -> Dict[str, Any]:
     """Load runtime workspace path configuration."""
     raw = _read_json_file(WORKSPACE_PATHS_PATH)
 
-    workspace_root = raw.get("workspace_root")
-    if not isinstance(workspace_root, str) or not workspace_root.strip():
-        workspace_root = DEFAULT_WORKSPACE_ROOT
+    runtime_root = str(os.environ.get(RUNTIME_SERVER_ROOT_ENV) or "").strip()
+    if runtime_root:
+        workspace_root = runtime_root
+    else:
+        workspace_root = raw.get("workspace_root")
+        if not isinstance(workspace_root, str) or not workspace_root.strip():
+            workspace_root = DEFAULT_WORKSPACE_ROOT
 
     paths = raw.get("paths")
     if not isinstance(paths, dict):

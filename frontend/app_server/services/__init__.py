@@ -1,26 +1,15 @@
-from . import workflow_service
-from . import audit_service
-from . import book_service
-from . import user_identity_service
-from . import dataset_sidecar_status_service
-from . import dataset_instance_index_service
-from . import dataset_number_format_service
-from . import dataset_service
-from . import excel_service
-from . import arcrho_runtime_service
-from . import project_settings_service
-from . import table_summary_service
-from . import dataset_types_service
-from . import calculated_dataset_service
-from . import reserving_class_service
-from . import field_mapping_service
-from . import dfm_rpc_bridge_service
-from . import result_selection_rpc_bridge_service
-from . import result_selection_service
-from . import project_user_preferences_service
-from . import ui_automation_service
-from . import snowflake_service
-from . import data_processing_rules_service
+"""Application service package with explicit lazy module loading.
+
+Service modules are independent units.  Eagerly importing every one of them
+made a targeted service import load unrelated integrations (including the web
+application's optional runtime dependencies).  Keep the public module names
+unchanged while importing a service only when a consumer asks for it.
+"""
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
 
 __all__ = [
     "workflow_service",
@@ -39,6 +28,7 @@ __all__ = [
     "reserving_class_service",
     "field_mapping_service",
     "dfm_rpc_bridge_service",
+    "dfm_service",
     "result_selection_rpc_bridge_service",
     "result_selection_service",
     "project_user_preferences_service",
@@ -47,3 +37,13 @@ __all__ = [
     "data_processing_rules_service",
     "user_identity_service",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve a documented service module on first access."""
+
+    if name not in __all__:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(f"{__name__}.{name}")
+    globals()[name] = module
+    return module

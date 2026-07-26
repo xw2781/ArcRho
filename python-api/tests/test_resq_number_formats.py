@@ -18,13 +18,13 @@ extractors = importlib.import_module("resq_migration.extractors")
 
 
 class ResqNumberFormatPreferencesTests(unittest.TestCase):
-    def test_migration_reads_the_shared_json_mapping_and_fallback(self) -> None:
+    def test_migration_reads_the_shared_type_mapping_for_every_reserving_class(self) -> None:
         with tempfile.TemporaryDirectory(dir=str(PYTHON_API_ROOT)) as temp_dir:
             path = Path(temp_dir) / "dataset_number_formats.json"
             path.write_text(json.dumps({
+                "json_format": "arcrho.dataset-number-formats.v1",
                 "default_number_format": "0,000.00",
                 "overrides": [{
-                    "reserving_class": "Example RC",
                     "dataset_type_name": "Percent Dataset Type",
                     "number_format": "0.0%",
                 }],
@@ -32,6 +32,10 @@ class ResqNumberFormatPreferencesTests(unittest.TestCase):
             with patch.dict(os.environ, {number_formats.NUMBER_FORMATS_PATH_ENV: str(path)}):
                 self.assertEqual(
                     number_formats.dataset_type_number_format(" example rc ", "PERCENT DATASET TYPE"),
+                    "0.0%",
+                )
+                self.assertEqual(
+                    number_formats.dataset_type_number_format("another rc", "Percent Dataset Type"),
                     "0.0%",
                 )
                 self.assertEqual(number_formats.dataset_type_decimal_places("Example RC", "Percent Dataset Type"), 1)
@@ -43,6 +47,32 @@ class ResqNumberFormatPreferencesTests(unittest.TestCase):
             self.assertEqual(number_formats.dataset_type_number_format("Any", "Dataset Type"), "0,000")
             self.assertEqual(number_formats.dataset_type_decimal_places("Any", "Dataset Type"), 0)
 
+    def test_runtime_server_root_refreshes_the_shared_mapping(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(PYTHON_API_ROOT)) as temp_dir:
+            root = Path(temp_dir)
+            path = root / "config" / "dataset_number_formats.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps({
+                "default_number_format": "0,000",
+                "overrides": [{
+                    "dataset_type_name": "Frequency Type",
+                    "number_format": "0.0%",
+                }],
+            }), encoding="utf-8")
+            with patch.dict(os.environ, {number_formats.NUMBER_FORMATS_PATH_ENV: ""}):
+                try:
+                    number_formats.configure_number_formats_path(root)
+                    self.assertEqual(number_formats.dataset_type_number_format("Any RC", "Frequency Type"), "0.0%")
+
+                    path.write_text(json.dumps({
+                        "default_number_format": "0,000.00",
+                        "overrides": [],
+                    }), encoding="utf-8")
+                    number_formats.configure_number_formats_path(root)
+                    self.assertEqual(number_formats.dataset_type_number_format("Any RC", "Frequency Type"), "0,000.00")
+                finally:
+                    number_formats.configure_number_formats_path()
+
     def test_triangle_export_looks_up_format_by_dataset_type_not_instance_name(self) -> None:
         with tempfile.TemporaryDirectory(dir=str(PYTHON_API_ROOT)) as temp_dir:
             root = Path(temp_dir)
@@ -50,7 +80,6 @@ class ResqNumberFormatPreferencesTests(unittest.TestCase):
             path.write_text(json.dumps({
                 "default_number_format": "0,000",
                 "overrides": [{
-                    "reserving_class": "Example RC",
                     "dataset_type_name": "Shared Dataset Type",
                     "number_format": "0.0%",
                 }],

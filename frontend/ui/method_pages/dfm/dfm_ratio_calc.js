@@ -47,6 +47,21 @@ export function computeAverageForColumn(model, col, excludedSet, options = {}) {
     value: null,
   };
 
+  // ResQ benchmark rows do not expose a portable local formula. Their
+  // canonical values are therefore owned, frozen values that must be rendered
+  // and selected exactly as persisted instead of being treated as a simple
+  // average.
+  if (baseRaw === "benchmark") {
+    const value = Number(Array.isArray(options.values) ? options.values[col] : null);
+    if (Number.isFinite(value) && value > 0) {
+      out.sum = value;
+      out.totalValid = 1;
+      out.totalIncluded = 1;
+      out.value = value;
+    }
+    return out;
+  }
+
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) return out;
   const vals = model.values;
   const mask = model.mask;

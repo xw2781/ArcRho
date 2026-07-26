@@ -5,34 +5,40 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
+from arcrho_api.dfm_contract import (
+    DFM_JSON_FORMAT,
+    apply_owned_patch,
+    canonical_number,
+    recalculate_dfm_method,
+)
+
 from .catalog import _is_known_dataset_type, _unknown_dataset_type_skip_detail
 from .core import (
-    DATASET_CACHE_DIR,
-    DEFAULT_CALENDAR,
-    DEFAULT_CUMULATIVE,
     _clean_name,
-    _dataset_cache_csv_file_name,
-    _dataset_sidecar_path_for_cached_csv,
-    _encode_rc_folder,
     _encode_name_part,
+    _format_json,
     _iso_or_text,
     _normalize_import_name,
     _safe_attr,
     _safe_read_json,
-    _vector_cache_csv_file_name,
-    _write_json,
 )
-from .extractors import export_dfm_ultimate_vector, write_dfm_ultimate_vector_export
+from .extractors import (
+    build_dfm_ultimate_publication,
+    export_dfm_ultimate_vector,
+    export_triangle,
+    publish_dfm_artifacts,
+)
+from .number_formats import dataset_type_decimal_places, dataset_type_number_format
 
 
-DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 MAX_AVERAGE_FORMULA_PROBE = 30
 
 
 def configure_dfm(*, dfm_json_format: str) -> None:
-    global DFM_JSON_FORMAT
-
-    DFM_JSON_FORMAT = str(dfm_json_format)
+    if str(dfm_json_format) != DFM_JSON_FORMAT:
+        raise ValueError(
+            f"DFM JSON format is owned by arcrho_api.dfm_contract and must be {DFM_JSON_FORMAT!r}."
+        )
 
 
 def _dict_child(parent: dict, key: str) -> dict:
@@ -121,11 +127,22 @@ def _copy_local_user_entry_inputs(remote_payload: dict, local_payload: dict) -> 
     local_inputs = local_avg.get("inputs")
     if not isinstance(local_inputs, list):
         local_inputs = local_avg.get("formulas")
-    if (
-        not isinstance(local_inputs, list)
-        or local_user_row >= len(local_inputs)
-        or not isinstance(local_inputs[local_user_row], list)
-    ):
+    local_input_row = (
+        local_inputs[local_user_row]
+        if isinstance(local_inputs, list)
+        and local_user_row < len(local_inputs)
+        and isinstance(local_inputs[local_user_row], list)
+        else []
+    )
+    local_values = local_avg.get("values")
+    local_value_row = (
+        local_values[local_user_row]
+        if isinstance(local_values, list)
+        and local_user_row < len(local_values)
+        and isinstance(local_values[local_user_row], list)
+        else []
+    )
+    if not local_input_row and not local_value_row:
         return False
 
     remote_inputs = remote_avg.get("inputs")
@@ -133,36 +150,80 @@ def _copy_local_user_entry_inputs(remote_payload: dict, local_payload: dict) -> 
         remote_inputs = []
         remote_avg["inputs"] = remote_inputs
     remote_row = _ensure_matrix_row(remote_inputs, remote_user_row)
+    remote_values = remote_avg.get("values")
+    if not isinstance(remote_values, list):
+        remote_values = []
+        remote_avg["values"] = remote_values
+    remote_value_row = _ensure_matrix_row(remote_values, remote_user_row)
 
     remote_dev_labels = _dfm_ratio_development_labels(remote_payload)
     local_dev_labels = _dfm_ratio_development_labels(local_payload)
     remote_label_to_col = {
-        label.lower(): index
+        label: index
         for index, label in enumerate(remote_dev_labels)
         if label
     }
 
     copied = False
-    for local_col, formula in enumerate(local_inputs[local_user_row]):
-        formula_text = _clean_name(formula)
-        if not formula_text:
-            continue
+    for local_col in range(max(len(local_input_row), len(local_value_row))):
+        formula_text = _clean_name(local_input_row[local_col] if local_col < len(local_input_row) else "")
+        local_value = local_value_row[local_col] if local_col < len(local_value_row) else None
         remote_col = local_col
         if local_col < len(local_dev_labels):
-            remote_col = remote_label_to_col.get(local_dev_labels[local_col].lower(), local_col)
+            remote_col = remote_label_to_col.get(local_dev_labels[local_col], local_col)
         while len(remote_row) <= remote_col:
             remote_row.append("")
+        while len(remote_value_row) <= remote_col:
+            remote_value_row.append(None)
         remote_row[remote_col] = formula_text
-        copied = True
+        remote_value_row[remote_col] = canonical_number(local_value)
+        copied = copied or bool(formula_text) or local_value is not None
     return copied
 
 
 def _preserve_local_dfm_data(remote_payload: dict, local_payload: dict) -> tuple[dict, set[str]]:
-    """Keep local-only DFM annotations when refreshing from ResQ."""
+    """Rebase every canonical ArcRho-owned setting onto fresh ResQ snapshots."""
     preserved: set[str] = set()
     if not isinstance(local_payload, dict):
         return remote_payload, preserved
 
+    if local_payload.get("json format") == DFM_JSON_FORMAT:
+        base = deepcopy(remote_payload)
+        remote_details = _dict_child(base, "details tab")
+        local_details = _dict_path(local_payload, ("details tab",))
+        if _clean_name(local_details.get("input triangle")) != _clean_name(remote_details.get("input triangle")):
+            base["data tab"] = deepcopy(_dict_path(local_payload, ("data tab",)))
+            preserved.add("input selection and snapshot")
+        remote_results = _dict_child(base, "results tab")
+        local_results = _dict_path(local_payload, ("results tab",))
+        if _clean_name(local_results.get("ratio basis dataset")) != _clean_name(
+            remote_results.get("ratio basis dataset")
+        ):
+            for key in (
+                "ratio basis origin labels",
+                "ratio basis values",
+                "ratio basis data format",
+                "ratio basis number format",
+                "ratio basis decimal places",
+                "ratio basis source revision",
+            ):
+                remote_results[key] = deepcopy(local_results.get(key))
+            preserved.add("ratio basis selection and snapshot")
+        refreshed_at = _dict_path(remote_payload, ("method metadata",)).get("data refreshed")
+        rebased = apply_owned_patch(base, local_payload, timestamp=refreshed_at)
+        local_last_modified = _dict_path(local_payload, ("method metadata",)).get("last modified")
+        if local_last_modified:
+            _dict_child(rebased, "method metadata")["last modified"] = local_last_modified
+        preserved.update({
+            "exclusions",
+            "formula definitions and selections",
+            "stored user values",
+            "cell notes",
+        })
+        return rebased, preserved
+
+    # Legacy files have no complete owned-state contract. Preserve the two
+    # historically local fields until their transactional v2 upgrade succeeds.
     remote_ratios = _dict_child(remote_payload, "ratios tab")
     remote_notes = remote_ratios.get("cell notes")
     local_notes = _dict_path(local_payload, ("ratios tab", "cell notes"))
@@ -177,23 +238,6 @@ def _preserve_local_dfm_data(remote_payload: dict, local_payload: dict) -> tuple
         preserved.add("user entry formulas")
     return remote_payload, preserved
 
-
-def _csv_abs_path(
-    project_data_dir: Path,
-    rc_folder: str,
-    name: str,
-    origin_length: int,
-    dev_length: int,
-    *,
-    cumulative: bool = DEFAULT_CUMULATIVE,
-    calendar: bool = DEFAULT_CALENDAR,
-) -> str:
-    filename = _dataset_cache_csv_file_name(name, origin_length, dev_length, cumulative=cumulative, calendar=calendar)
-    return str(project_data_dir / rc_folder / DATASET_CACHE_DIR / filename)
-
-def _vector_csv_abs_path(project_data_dir: Path, rc_folder: str, name: str, period_length: int) -> str:
-    filename = _vector_cache_csv_file_name(name, period_length)
-    return str(project_data_dir / rc_folder / DATASET_CACHE_DIR / filename)
 
 def _strip_formula_index_prefix(raw: str) -> str:
     """Remove leading '0: ' or '13: ' index that ResQ prepends to formula names."""
@@ -288,14 +332,48 @@ def _get_ratio_value(dfm, i: int, j: int) -> float | None:
     except Exception:
         return None
 
+
+def _ratio_basis_snapshot(dfm, name: str, origin_labels: list[str], rc_path: str) -> dict:
+    if not name:
+        return {}
+    basis = _safe_attr(dfm, "SummaryRatioBasis", None)
+    if basis is None:
+        raise ValueError(f"Unable to read DFM Ratio Basis dataset {name!r} from ResQ.")
+
+    try:
+        basis_values = [
+            canonical_number(basis.ValuesByIndex(index))
+            for index in range(1, int(dfm.OriginCount) + 1)
+        ]
+    except Exception as exc:
+        raise ValueError(f"Unable to read DFM Ratio Basis dataset {name!r} from ResQ: {exc}") from exc
+
+    dataset_type_obj = _safe_attr(basis, "DatasetType", None)
+    dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
+    revision = _iso_or_text(
+        _safe_attr(basis, "Modified", "")
+        or _safe_attr(_safe_attr(basis, "OutputVector", None), "Modified", "")
+    )
+    return {
+        "name": name,
+        "origin_labels": origin_labels,
+        "values": basis_values,
+        "data_format": "Vector",
+        "number_format": dataset_type_number_format(rc_path, dataset_type),
+        "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
+        "revision": revision,
+    }
+
 def export_dfm(
     dfm,
     rc_path: str,
     project_data_dir: Path,
     *,
     max_average_formula_probe: int = MAX_AVERAGE_FORMULA_PROBE,
+    ratio_basis_snapshot: dict | None = None,
 ) -> dict:
     """Extract all DFM data from a ResQ DFM COM object and return a JSON-ready dict."""
+    del project_data_dir
     name = _normalize_import_name(dfm.Name)
     input_tri_name = _normalize_import_name(dfm.InputTriangle.Name)
     output_vec_name = _normalize_import_name(dfm.OutputVector.Name)
@@ -322,14 +400,21 @@ def export_dfm(
     except Exception:
         last_modified = datetime.now(timezone.utc).astimezone().isoformat()
 
-    origin_count: int = dfm.OriginCount
-    dev_count: int = dfm.DevelopmentCount(1) if origin_count > 0 else 0
+    input_payload = export_triangle(dfm.InputTriangle)
+    origin_labels = [str(item) for item in input_payload.get("origin_labels", [])]
+    data_dev_labels = [str(item) for item in input_payload.get("development_labels", [])]
+    input_values = input_payload.get("values") if isinstance(input_payload.get("values"), list) else []
+    input_mask = [
+        [canonical_number(value) is not None for value in row] if isinstance(row, list) else []
+        for row in input_values
+    ]
+    input_dataset_type = _normalize_import_name(input_payload.get("dataset_type")) or input_tri_name
+
+    origin_count: int = len(origin_labels)
+    dev_count: int = len(data_dev_labels)
     org_rng = range(1, origin_count + 1)
     dev_rng = range(1, dev_count + 1)
-
-    origin_labels = [_normalize_import_name(dfm.OriginLabel(i)) for i in org_rng]
     ratio_dev_labels = [_normalize_import_name(dfm.DevelopmentLabel(j)) for j in dev_rng]
-    data_dev_labels = _build_data_dev_labels(ratio_dev_labels)
 
     # Ratio triangle values (staircase shape)
     ratio_values: list[list] = []
@@ -424,31 +509,12 @@ def export_dfm(
         cell_notes_raw = ""
     cell_notes = _parse_cell_notes(cell_notes_raw, origin_labels, formula_labels)
 
-    # CSV paths
-    rc_folder = _encode_rc_folder(rc_path)
-    input_csv = _csv_abs_path(
-        project_data_dir,
-        rc_folder,
-        input_tri_name,
-        origin_length,
-        dev_length,
-        cumulative=DEFAULT_CUMULATIVE,
-        calendar=DEFAULT_CALENDAR,
-    )
-    output_csv = _vector_csv_abs_path(
-        project_data_dir,
-        rc_folder,
-        output_vec_name,
-        origin_length,
-    )
-
-    return {
+    base_payload = {
         "json format": DFM_JSON_FORMAT,
         "details tab": {
             "name": name,
             "output type": output_dataset_type,
             "output dataset": output_vec_name,
-            "output dataset_category": output_category,
             "output category": output_category,
             "input triangle": input_tri_name,
             "origin length": origin_length,
@@ -458,7 +524,12 @@ def export_dfm(
         "data tab": {
             "origin labels": origin_labels,
             "development labels": data_dev_labels,
-            "input data triangle csv path": input_csv,
+            "input data triangle values": input_values,
+            "input data triangle mask": input_mask,
+            "data format": "Triangle",
+            "number format": dataset_type_number_format(rc_path, input_dataset_type),
+            "decimal places": dataset_type_decimal_places(rc_path, input_dataset_type),
+            "source revision": _iso_or_text(input_payload.get("modified")),
         },
         "ratios tab": {
             "ratio triangle": {
@@ -472,18 +543,49 @@ def export_dfm(
                 "custom average formula settings": avg_settings,
                 "selected": selected,
                 "values": values,
+                "inputs": [[""] * dev_count for _ in range(n_formulas)],
             },
             "cell notes": cell_notes,
         },
         "results tab": {
             "ratio basis dataset": ratio_basis,
+            "ratio basis origin labels": [],
+            "ratio basis values": [],
+            "ratio basis data format": "Vector",
+            "ratio basis number format": "#,##0",
+            "ratio basis decimal places": 0,
+            "ratio basis source revision": "",
             "ultimate ratio decimal places": ultimate_dp,
-            "ultimate vector csv path": output_csv,
+            "ultimate vector": [],
         },
         "method metadata": {
             "last modified": last_modified,
+            "data refreshed": last_modified,
         },
     }
+    input_snapshot = {
+        "name": input_tri_name,
+        "origin_labels": origin_labels,
+        "development_labels": data_dev_labels,
+        "values": input_values,
+        "mask": input_mask,
+        "data_format": "Triangle",
+        "number_format": dataset_type_number_format(rc_path, input_dataset_type),
+        "decimal_places": dataset_type_decimal_places(rc_path, input_dataset_type),
+        "revision": _iso_or_text(input_payload.get("modified")),
+    }
+    return recalculate_dfm_method(
+        base_payload,
+        input_snapshot=input_snapshot,
+        ratio_basis_snapshot=(
+            ratio_basis_snapshot
+            if ratio_basis_snapshot is not None
+            else _ratio_basis_snapshot(dfm, ratio_basis, origin_labels, rc_path)
+            if ratio_basis
+            else None
+        ),
+        timestamp=last_modified,
+    )
 
 
 def dfm_methods_by_output_name(reserving_class, dfm_names: list[str] | None = None) -> dict[str, tuple[str, object]]:
@@ -517,42 +619,6 @@ def dfm_methods_by_output_name(reserving_class, dfm_names: list[str] | None = No
     return out
 
 
-def warn_if_dfm_input_sidecar_missing(
-    payload: dict,
-    *,
-    debug_log,
-    log,
-    verbose: bool = True,
-) -> None:
-    details = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
-    data_tab = payload.get("data tab") if isinstance(payload.get("data tab"), dict) else {}
-    input_path = _clean_name(data_tab.get("input data triangle csv path"))
-    if not input_path:
-        debug_log("dfm_input_sidecar_check", method_name=_clean_name(details.get("name")), input_path="", skipped=True)
-        return
-    path = Path(input_path)
-    sidecar_path = _dataset_sidecar_path_for_cached_csv(path)
-    debug_log(
-        "dfm_input_sidecar_check",
-        method_name=_clean_name(details.get("name")),
-        input_triangle=_clean_name(details.get("input triangle")),
-        origin_length=details.get("origin length"),
-        development_length=details.get("development length"),
-        input_csv_path=str(path),
-        input_csv_exists=path.is_file(),
-        sidecar_path=str(sidecar_path),
-        sidecar_exists=sidecar_path.is_file(),
-    )
-    if sidecar_path.is_file():
-        return
-    log(
-        verbose,
-        "    WARN missing DFM input sidecar "
-        f"{sidecar_path.name} for {_clean_name(details.get('name')) or 'DFM method'}; "
-        "export the input triangle before opening the DFM in ArcRho."
-    )
-
-
 def export_dfm_output_dataset(
     dfm,
     rc_path: str,
@@ -565,6 +631,7 @@ def export_dfm_output_dataset(
     log,
     known_dataset_type_keys: set[str] | None = None,
     max_average_formula_probe: int = MAX_AVERAGE_FORMULA_PROBE,
+    ratio_basis_snapshot: dict | None = None,
     verbose: bool = True,
 ) -> tuple[str, str, bool]:
     dfm_name = _normalize_import_name(_safe_attr(dfm, "Name", ""))
@@ -578,12 +645,10 @@ def export_dfm_output_dataset(
         return output_dataset_name, detail, True
     file_name = f"DFM@{_encode_name_part(dfm_name)}.json"
     out_path = rc_dir / method_data_dir / file_name
-    payload = export_dfm(
-        dfm,
-        rc_path,
-        project_data_dir,
-        max_average_formula_probe=max_average_formula_probe,
-    )
+    export_kwargs = {"max_average_formula_probe": max_average_formula_probe}
+    if ratio_basis_snapshot is not None:
+        export_kwargs["ratio_basis_snapshot"] = ratio_basis_snapshot
+    payload = export_dfm(dfm, rc_path, project_data_dir, **export_kwargs)
     details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
     output_dataset_name = _normalize_import_name(details_tab.get("output dataset")) or output_dataset_name
     debug_log(
@@ -594,9 +659,17 @@ def export_dfm_output_dataset(
         input_triangle=payload.get("details tab", {}).get("input triangle") if isinstance(payload.get("details tab"), dict) else "",
         origin_length=payload.get("details tab", {}).get("origin length") if isinstance(payload.get("details tab"), dict) else "",
         development_length=payload.get("details tab", {}).get("development length") if isinstance(payload.get("details tab"), dict) else "",
-        input_csv_path=payload.get("data tab", {}).get("input data triangle csv path") if isinstance(payload.get("data tab"), dict) else "",
+        input_source_revision=payload.get("data tab", {}).get("source revision") if isinstance(payload.get("data tab"), dict) else "",
     )
-    warn_if_dfm_input_sidecar_missing(payload, debug_log=debug_log, log=log, verbose=verbose)
+    existing_payload = _safe_read_json(out_path)
+    payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
+    payload = recalculate_dfm_method(
+        payload,
+        timestamp=payload.get("method metadata", {}).get("data refreshed")
+        if isinstance(payload.get("method metadata"), dict)
+        else None,
+        update_refresh_timestamp=False,
+    )
     ultimate_payload = export_dfm_ultimate_vector(
         dfm,
         payload["data tab"]["origin labels"],
@@ -607,10 +680,27 @@ def export_dfm_output_dataset(
         detail = _unknown_dataset_type_skip_detail("DFM", output_dataset_name, ultimate_payload.get("dataset_type"))
         log(verbose, detail)
         return output_dataset_name, detail, True
-    ultimate_csv_path = write_dfm_ultimate_vector_export(ultimate_payload, rc_path, rc_dir)
-    existing_payload = _safe_read_json(out_path)
-    payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
-    _write_json(out_path, payload)
+    ultimate_payload["origin_labels"] = list(payload["data tab"]["origin labels"])
+    ultimate_payload["origin_count"] = len(payload["data tab"]["origin labels"])
+    ultimate_payload["values"] = [[value] for value in payload["results tab"]["ultimate vector"]]
+    ultimate_payload["method_name"] = payload["details tab"]["name"]
+    ultimate_payload["precedents"] = [
+        value
+        for value in (
+            payload["details tab"].get("input triangle"),
+            payload["results tab"].get("ratio basis dataset"),
+        )
+        if _clean_name(value)
+    ]
+    ultimate_payload["publication_revision"] = payload["method metadata"]["publication revision"]
+    ultimate_csv_path, publication_files, sidecar_path = build_dfm_ultimate_publication(
+        ultimate_payload,
+        payload,
+        rc_path,
+        rc_dir,
+    )
+    publication_files[out_path] = f"{_format_json(payload)}\n".encode("utf-8")
+    publish_dfm_artifacts(publication_files, sidecar_path=sidecar_path)
 
     suffix = f" (preserved {', '.join(sorted(preserved))})" if preserved else ""
     log(verbose, f"    OK  {_clean_name(ultimate_csv_path.name)}")
