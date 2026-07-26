@@ -336,6 +336,30 @@ def _safe_read_json(path: str) -> Dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _read_processing_config_json(path: str) -> Dict[str, Any]:
+    """Read hash inputs without turning an inaccessible share into empty config."""
+    if not path:
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except FileNotFoundError as error:
+        if os.path.isdir(os.path.dirname(path)):
+            return {}
+        raise OSError(
+            f"Processing configuration folder is unavailable: {os.path.dirname(path)}"
+        ) from error
+    except json.JSONDecodeError as error:
+        raise StoredRulesContractError(
+            f"Invalid processing configuration JSON '{path}': {str(error)}"
+        )
+    if not isinstance(raw, dict):
+        raise StoredRulesContractError(
+            f"Processing configuration file must contain a JSON object: {path}"
+        )
+    return raw
+
+
 def _column_index(columns: Any) -> Dict[str, int]:
     out: Dict[str, int] = {}
     if not isinstance(columns, list):
@@ -1483,35 +1507,42 @@ def _normalized_source_table_signature(field_mapping: Dict[str, Any]) -> Dict[st
     )
     signature: Dict[str, Any] = {
         "path": normalized_path,
-        "exists": bool(table_path and os.path.isfile(table_path)),
+        "exists": False,
         "mtime_ns": None,
         "size": None,
     }
-    if signature["exists"]:
-        try:
-            stat = os.stat(table_path)
-            signature["mtime_ns"] = int(stat.st_mtime_ns)
-            signature["size"] = int(stat.st_size)
-        except OSError:
-            signature["exists"] = False
+    if not table_path:
+        return signature
+    try:
+        stat = os.stat(table_path)
+    except FileNotFoundError as error:
+        if os.path.isdir(os.path.dirname(table_path)):
+            return signature
+        raise OSError(
+            f"Source table folder is unavailable: {os.path.dirname(table_path)}"
+        ) from error
+    signature["exists"] = True
+    signature["mtime_ns"] = int(stat.st_mtime_ns)
+    signature["size"] = int(stat.st_size)
     return signature
 
 
 def processing_config_payload(project_name: str) -> Dict[str, Any]:
     rules_path = config.get_data_processing_rules_path(project_name)
-    document = _read_rules_document(rules_path)
-    field_mapping = _safe_read_json(config.get_field_mapping_path(project_name))
+    rules_raw = _read_processing_config_json(rules_path)
+    document = _parse_rules_data(rules_raw, stored=True) if rules_raw else _empty_document()
+    field_mapping = _read_processing_config_json(config.get_field_mapping_path(project_name))
     return {
         "algorithm_version": config.DATA_PROCESSING_ALGORITHM_VERSION,
         "field_mapping": _strip_audit_metadata(field_mapping),
         "dataset_types": _strip_audit_metadata(
-            _safe_read_json(config.get_dataset_types_path(project_name))
+            _read_processing_config_json(config.get_dataset_types_path(project_name))
         ),
         "reserving_class_types": _strip_audit_metadata(
-            _safe_read_json(config.get_reserving_class_types_path(project_name))
+            _read_processing_config_json(config.get_reserving_class_types_path(project_name))
         ),
         "general_settings": _strip_audit_metadata(
-            _safe_read_json(config.get_general_settings_path(project_name))
+            _read_processing_config_json(config.get_general_settings_path(project_name))
         ),
         "data_processing_rules": _canonical_rules_for_hash(document),
         "source_table": _normalized_source_table_signature(field_mapping),
@@ -1522,10 +1553,14 @@ def get_processing_config_hash(project_name: str) -> str:
     return _hash_json(processing_config_payload(project_name))
 
 
-def get_processing_provenance(project_name: str) -> Dict[str, Any]:
+def get_processing_provenance(
+    project_name: str,
+    *,
+    config_hash: str | None = None,
+) -> Dict[str, Any]:
     document = _read_rules_document(config.get_data_processing_rules_path(project_name))
     return {
-        "config_hash": get_processing_config_hash(project_name),
+        "config_hash": config_hash or get_processing_config_hash(project_name),
         "algorithm_version": config.DATA_PROCESSING_ALGORITHM_VERSION,
         "rules_format": config.DATA_PROCESSING_RULES_FORMAT,
         "rules_revision": int(document.get("revision", 0)),

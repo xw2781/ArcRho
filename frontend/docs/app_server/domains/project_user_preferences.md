@@ -41,5 +41,5 @@ Routes:
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - The folder name uses the backend process Windows login from the shared user-identity service. If the app-server process runs under a service account, preferences will follow that account.
-- Project folders must be writable to create `users/<windows-login>/preferences.json`; otherwise UI preference saves fail silently and the app continues with current in-memory/default values.
+- Project folders must be writable to create and atomically replace `users/<windows-login>/preferences.json`; otherwise UI preference saves remain non-blocking and the app continues with current in-memory/default values. Saves are serialized per preference path, use unique same-folder temporary files, and retry transient mapped-drive sharing violations. Persistent lock/access failures return `423`, while unreadable or invalid existing JSON is never replaced from an empty fallback.
 <!-- MANUAL:END -->

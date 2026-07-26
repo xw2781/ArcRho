@@ -27,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_ROOT = REPO_ROOT / "docs"
 
 EXCLUDED_DIRS = {
+    ".cache",
     "node_modules",
     "node-portable",
     "node-v24.13.0-win-x64",
@@ -59,6 +60,7 @@ FRONTEND_ENTRY_HTMLS = [
     "ui/dataset_viewer/dataset_viewer.html",
     "ui/method_pages/dfm/dfm.html",
     "ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html",
+    "ui/method_pages/berquist_sherman/berquist_sherman.html",
     "ui/method_pages/result_selection/result_selection.html",
     "ui/workflow/workflow.html",
     "ui/project_settings/project_settings.html",
@@ -526,6 +528,17 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js", "BF Chart-tab renderer."),
         ],
     },
+    "berquist_sherman": {
+        "doc": "docs/ui/berquist_sherman.md",
+        "html": ["ui/method_pages/berquist_sherman/berquist_sherman.html"],
+        "files": [
+            ("ui/method_pages/berquist_sherman/berquist_sherman.html", "Shared annual B&S method page."),
+            ("ui/method_pages/berquist_sherman/berquist_sherman_main.js", "B&S state, persistence, source preview, and tab coordination."),
+            ("ui/method_pages/berquist_sherman/settlement_rate_calculation.js", "Settlement Rate Adjustment calculation engine."),
+            ("ui/method_pages/berquist_sherman/case_reserve_adequacy_calculation.js", "Case Reserve Adequacy Adjustment calculation engine."),
+            ("ui/shared/dataset/berquist_sherman_contract.js", "Canonical B&S labels and storage identities."),
+        ],
+    },
     "workflow": {
         "doc": "docs/ui/workflow.md",
         "html": ["ui/workflow/workflow.html"],
@@ -949,6 +962,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "tasks": "1. Change BF calculations or persistence: update `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js`.\n2. Change BF chart behavior: update `bornhuetter_ferguson_chart.js` in the same feature directory.",
             "risks": "- Source period alignment affects calculated ultimates.\n- Dirty-state and close messages must remain coordinated with Project Instance.",
         },
+        "berquist_sherman": {
+            "purpose": "Annual Berquist Sherman method page for settlement-rate and case-reserve-adequacy adjustments.",
+            "external": "- Opens inside Project Instance as a nested method iframe.\n- Loads named annual datasets and exchanges dependency preview messages with its host.",
+            "data": "- Persists one small method JSON, one final triangle CSV, and one output sidecar.\n- Recalculates in memory when a matching source preview changes.",
+            "tasks": "1. Change a B&S formula in its pure calculation module and update the COL parity fixture test.\n2. Change B&S persistence or page behavior in `berquist_sherman_main.js` while preserving the shared contract module.",
+            "risks": "- Source triangle shapes and annual period metadata must agree.\n- Canonical method labels, prefixes, and source kinds must stay aligned with migration and the dataset index.",
+        },
         "workflow": {
             "purpose": "Workflow editor page and save/load orchestration.",
             "external": "- Calls `/workflow/*` app-server routes.\n- Coordinates with shell and embedded dataset/DFM iframes via message bridge.",
@@ -1181,10 +1201,10 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
         title="Build and Packaging",
         manual_sections={
             "Purpose": "Document Electron + Python packaging inputs and scripts.",
-            "External Interfaces": "- Node scripts from `package.json` drive build orchestration.\n- PyInstaller spec (`build/server.spec`) builds app-server executable artifacts.\n- `build/release_notes.py` validates unreleased change fragments and generates versioned release notes in `docs/releases/`.\n- Electron packaging enables NSIS's built-in compressor path before `electron-builder` runs so installer file progress is visible during the main install phase.",
-            "Data/State/Caches": "- Build outputs: `dist/`, `python_build/`, `python_dist/`.\n- Installer settings live in `package.json`, `build/installer.nsh`, and `build/patch_nsis_installer_progress.js`.\n- Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.",
+            "External Interfaces": "- Node scripts from `package.json` drive build orchestration.\n- PyInstaller spec (`build/server.spec`) builds app-server executable artifacts.\n- `build/release_notes.py` validates unreleased change fragments and generates versioned release notes in `docs/releases/`.\n- ArcRho packaging preserves electron-builder's built-in NSIS file installation path and compiles an isolated native-bar progress observer.",
+            "Data/State/Caches": "- Build outputs: `dist/`, `python_build/`, `python_dist/`.\n- Installer settings live in `package.json`, `build/installer.nsh`, `build/installer_progress_helper.cs`, and `build/patch_nsis_installer_progress.js`.\n- Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.",
             "Common Change Tasks": "1. Update app packaging metadata: edit `package.json` `build` block.\n2. Update bundled app server: edit `build/server.spec` and verify `extraResources` mappings.\n3. Add or update unreleased change fragments in `changes/unreleased/` before packaging a release.\n4. If you need a specific release version, run `build\\build_app.bat <version>` (for example `build\\build_app.bat 2.0.0`); otherwise the script auto-increments the patch version.\n5. If electron-builder is reinstalled or upgraded, rerun `npm run build:electron` or `build\\build_app.bat`; both paths reapply the ArcRho NSIS installer-progress patch before packaging.",
-            "Known Risks": "- Packaging excludes can accidentally omit runtime files.\n- Divergence between dev and packaged paths causes startup failures.\n- electron-builder NSIS implementation changes can break the ArcRho installer-progress patch; `build/patch_nsis_installer_progress.js` fails fast when the upstream compressor setting no longer matches the expected form.",
+            "Known Risks": "- Packaging excludes can accidentally omit runtime files.\n- Divergence between dev and packaged paths causes startup failures.\n- electron-builder NSIS implementation changes can break the ArcRho installer-progress patch; `build/patch_nsis_installer_progress.js` fails fast when upstream templates no longer match a supported form.\n- ArcRho installer packaging requires the Windows .NET Framework 4 C# compiler for the isolated progress observer.",
         },
         auto_sections={
             "Entry Points": "build.packaging.entry_points",
@@ -1398,6 +1418,7 @@ def render_frontend_index_key_files(doc_path: str) -> str:
         ("docs/ui/dataset.md", "Dataset feature index."),
         ("docs/ui/dfm.md", "DFM feature index."),
         ("docs/ui/bornhuetter_ferguson.md", "Bornhuetter Ferguson method-page index."),
+        ("docs/ui/berquist_sherman.md", "Berquist Sherman method-page index."),
         ("docs/ui/result_selection.md", "Result Selection method-page index."),
         ("docs/ui/workflow.md", "Workflow feature index."),
         ("docs/ui/project_settings.md", "Project settings feature index."),
@@ -1469,11 +1490,13 @@ def render_build_key_files(doc_path: str) -> str:
         ("package.json", "Build scripts, Electron builder config, installer metadata."),
         ("build/server.spec", "PyInstaller spec for Python app-server executable."),
         ("build/server_entry.py", "PyInstaller entrypoint for the bundled app server."),
+        ("build/write_backend_artifact_manifest.py", "Build-time identity manifest for the complete collected backend bundle."),
         ("build/release_notes.py", "Release fragment validator and versioned release note generator."),
         ("electron/main.js", "Electron main process entry."),
         ("app_launcher.py", "Python host launcher used by packaged runtime."),
         ("build/installer.nsh", "NSIS custom installer script include."),
-        ("build/patch_nsis_installer_progress.js", "Build-time helper that enables NSIS built-in file progress before electron-builder runs."),
+        ("build/patch_nsis_installer_progress.js", "Build-time helper that restores NSIS's built-in file installation path and compiles the progress observer before electron-builder runs."),
+        ("build/installer_progress_helper.cs", "Isolated Windows UI observer that derives installer percentage and time remaining from the native progress control."),
         ("build/build_app.bat", "Convenience build script wrapper."),
         ("build/convert_icon.js", "Build helper for regenerating Windows icon assets."),
     ]

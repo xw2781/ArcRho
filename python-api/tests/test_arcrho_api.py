@@ -28,6 +28,11 @@ from arcrho_api import (
     set_server_root,
 )
 from arcrho_api.paths import dfm_filename, parse_dfm_filename
+from arcrho_api.dataset_index_contract import (
+    DATASET_INDEX_VERSION,
+    FORBIDDEN_INDEX_ROW_FIELDS,
+    INDEX_ROW_FIELDS,
+)
 from arcrho_api.migration import ArcRhoSession
 
 
@@ -104,7 +109,6 @@ def sample_payload() -> dict:
             "ultimate ratio decimal places": 2,
             "ultimate vector csv path": "",
         },
-        "notes tab": {"notes": "original"},
         "method metadata": {"last modified": "2026-01-01T00:00:00"},
         "unknown section": {"preserve": True},
     }
@@ -132,6 +136,8 @@ class ArcRhoApiTests(unittest.TestCase):
         test_log(f"SETUP_STEP mkdir_sidecars={self.sidecars_dir}")
         self.sidecars_dir.mkdir(parents=True)
         self.method_path = self.methods_dir / dfm_filename("Paid DFM")
+        self.sidecar_path = self.sidecars_dir / "Paid DFM.json"
+        self.sidecar_path.write_text(json.dumps({"dataset_name": "Paid DFM", "notes": "original"}), encoding="utf-8")
         self.input_csv = self.datasets_dir / "input.csv"
         test_log(f"SETUP_STEP write_input_csv={self.input_csv}")
         self.input_csv.write_text("10,20,30\n11,22,\n12,,\n", encoding="utf-8")
@@ -167,11 +173,19 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertEqual(len(refs), 1)
         self.assertEqual(refs[0].name, "Paid DFM")
         index = json.loads((self.rc_data_dir / "index.json").read_text(encoding="utf-8"))
-        self.assertEqual(index["files"], [{
-            "name": "Paid Ultimate",
-            "dataset_type": "Paid Ultimate",
-            "method_type": "DFM",
-        }])
+        self.assertEqual(index["version"], DATASET_INDEX_VERSION)
+        self.assertEqual(index["reserving_class"], r"Auto\PP")
+        self.assertEqual(
+            [row["name"] for row in index["files"]],
+            ["input", "Paid DFM", "ultimate"],
+        )
+        dfm_row = next(row for row in index["files"] if row["name"] == "Paid DFM")
+        self.assertEqual(dfm_row["dataset_type"], "Paid Ultimate")
+        self.assertNotIn("method_name", dfm_row)
+        for row in index["files"]:
+            self.assertLessEqual(set(row), set(INDEX_ROW_FIELDS))
+            self.assertTrue(set(row).isdisjoint(FORBIDDEN_INDEX_ROW_FIELDS))
+            self.assertFalse(any(isinstance(value, (dict, list)) for value in row.values()))
 
     def test_dfm_filename_uses_reversible_display_name_encoding(self) -> None:
         method_name = r"Paid/DFM\Selected"
@@ -242,8 +256,28 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertEqual(saved["ratios tab"]["average formulas"]["selected"][2][1], 1)
         self.assertEqual(saved["ratios tab"]["average formulas"]["inputs"][2][1], '="Simple - 3" * 0.961538')
         self.assertEqual(saved["ratios tab"]["average formulas"]["values"][2][1], 1.25)
-        self.assertIn("reviewed", saved["notes tab"]["notes"])
+        self.assertNotIn("notes tab", saved)
+        self.assertIn("reviewed", json.loads(self.sidecar_path.read_text(encoding="utf-8"))["notes"])
         self.assertNotEqual(saved["method metadata"]["last modified"], "2026-01-01T00:00:00")
+
+    def test_dfm_save_rebuilds_only_its_reserving_class_index(self) -> None:
+        project = ArcRhoClient(self.root).project("Demo")
+        dfm = project.reserving_class(r"Auto\PP").dfm("Paid DFM")
+        with (
+            patch.object(
+                project,
+                "rebuild_reserving_class_index",
+                wraps=project.rebuild_reserving_class_index,
+            ) as scoped_rebuild,
+            patch.object(
+                project,
+                "rebuild_dfm_index",
+                side_effect=AssertionError("DFM save must not scan every reserving class"),
+            ),
+        ):
+            dfm.save()
+
+        scoped_rebuild.assert_called_once_with(r"Auto\PP")
 
     def test_read_only_blocks_save(self) -> None:
         dfm = ArcRhoClient(self.root, read_only=True).project("Demo").reserving_class(r"Auto\PP").dfm("Paid DFM")

@@ -5,8 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .exceptions import ProjectNotFoundError
-from .io import read_json, write_json_atomic
+from .dataset_index_contract import (
+    build_dataset_index_payload,
+    canonical_existing_directory,
+    decode_filename_segment,
+    index_update_lock,
+    write_index_json_unlocked,
+)
+from .exceptions import ArcRhoApiError, ProjectNotFoundError, ReadOnlyError
+from .io import read_json
 from .models import DatasetTypeInfo, DfmMethodRef, ProjectSettings
 from .paths import (
     RESERVING_CLASS_INDEX_FILE_NAME,
@@ -30,6 +37,7 @@ class Project:
         self.client = client
         self.name = clean_text(name)
         self.path = self._require_path()
+        self.name = self.path.name
         self.data_dir = self.path / "data"
         self.users_dir = self.path / "users"
 
@@ -126,6 +134,8 @@ class Project:
         return refs
 
     def rebuild_dfm_index(self) -> list[DfmMethodRef]:
+        """Rebuild each reserving class's canonical dataset/method index."""
+
         refs = self.list_dfm_methods(refresh=False)
         refs_by_path: dict[str, list[DfmMethodRef]] = {}
         for item in refs:
@@ -138,45 +148,55 @@ class Project:
                 if item.is_dir() and item.name.lower() != "tmp"
             )
         for folder_name in sorted(folder_names, key=str.lower):
-            folder_refs = refs_by_path.get(folder_name, [])
-            methods: list[dict[str, str]] = []
-            for item in folder_refs:
-                payload = read_json(item.file_path)
-                details = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
-                dataset_name = clean_text(details.get("output type"))
-                if not dataset_name:
-                    continue
-                methods.append({
-                    "name": dataset_name,
-                    "dataset_type": dataset_name,
-                    "method_type": "DFM",
-                })
-            methods.sort(key=lambda item: (item["name"].lower(), item["method_type"].lower()))
-            write_json_atomic(
-                self.data_dir / folder_name / RESERVING_CLASS_INDEX_FILE_NAME,
-                {
-                    "ok": True,
-                    "version": 7,
-                    "project_name": self.name,
-                    "reserving_class": folder_name,
-                    "folder_paths": {
-                        "data": str(self.data_dir / folder_name),
-                        "datasets": str(self.data_dir / folder_name / "datasets"),
-                        "methods": str(self.data_dir / folder_name / "methods"),
-                        "sidecars": str(self.data_dir / folder_name / "sidecars"),
-                    },
-                    "files": [
-                        {
-                            "name": item["name"],
-                            "dataset_type": item["dataset_type"],
-                            "method_type": item["method_type"],
-                        }
-                        for item in methods
-                    ],
-                },
-                read_only=self.read_only,
+            rc_dir = self.data_dir / folder_name
+            self._rebuild_reserving_class_index(
+                decode_filename_segment(folder_name),
+                rc_dir,
             )
         return refs
+
+    def rebuild_reserving_class_index(self, reserving_class: str) -> Path:
+        """Rebuild only one reserving class's canonical dataset/method index."""
+
+        rc = clean_text(reserving_class)
+        rc_dir = self.reserving_class_data_dir(rc)
+        canonical_dir = canonical_existing_directory(rc_dir)
+        if canonical_dir is not None:
+            rc = decode_filename_segment(canonical_dir.name)
+            rc_dir = canonical_dir
+        return self._rebuild_reserving_class_index(
+            rc,
+            rc_dir,
+        )
+
+    def _rebuild_reserving_class_index(
+        self,
+        reserving_class: str,
+        rc_dir: Path,
+    ) -> Path:
+        index_path = rc_dir / RESERVING_CLASS_INDEX_FILE_NAME
+        if self.read_only:
+            raise ReadOnlyError(
+                f"Cannot write {index_path}; client is read-only."
+            )
+        try:
+            rc_dir.mkdir(parents=True, exist_ok=True)
+            with index_update_lock(
+                index_path,
+                project_name=self.name,
+                reserving_class=reserving_class,
+            ):
+                payload = build_dataset_index_payload(
+                    self.name,
+                    reserving_class,
+                    rc_dir,
+                )
+                write_index_json_unlocked(index_path, payload)
+        except OSError as err:
+            raise ArcRhoApiError(
+                f"Failed to rebuild dataset index {index_path}: {err}"
+            ) from err
+        return index_path
 
 
 def _bool_cell(value: Any) -> bool:

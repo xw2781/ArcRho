@@ -8,7 +8,7 @@ import os
 import re
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 import pandas as pd
 from fastapi import HTTPException
@@ -26,6 +26,7 @@ from app_server.services import (
     dataset_number_format_service,
     dataset_sidecar_status_service,
     project_settings_service,
+    runtime_cache_provenance_service,
 )
 from app_server.services.data_processing_rules_service import (
     get_processing_config_hash,
@@ -50,6 +51,10 @@ def _dataset_sidecar_path(data_path: str, pairs: list) -> str:
     else:
         sidecar_dir = os.path.join(dataset_dir, config.DATASET_SIDECAR_DIR)
     return os.path.join(sidecar_dir, f"{dataset_file}.json")
+
+
+def _runtime_cache_provenance_path(data_path: str) -> str:
+    return runtime_cache_provenance_service.provenance_path(data_path)
 
 
 def _utc_timestamp_from_stat(value: float) -> str:
@@ -98,16 +103,433 @@ def _safe_read_json(path: str) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _read_existing_cache_json(path: str, project_name: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as error:
+        raise HTTPException(
+            500,
+            f"Calculated dataset metadata is invalid for '{project_name}': {str(error)}",
+        ) from error
+    except OSError as error:
+        raise HTTPException(
+            503,
+            (
+                f"Calculated dataset metadata is unavailable for '{project_name}'. "
+                "The existing dataset cache was left unchanged."
+            ),
+        ) from error
+    if not isinstance(data, dict):
+        raise HTTPException(
+            500,
+            f"Calculated dataset metadata must contain a JSON object: {path}",
+        )
+    return data
+
+
 def _request_dataset_name(pairs: list) -> str:
     return _pair_value(pairs, "InstanceName") or _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
+
+
+ProcessingHashGetter = Callable[[], str]
+FileFingerprintGetter = Callable[[str], Dict[str, Any]]
+CalculatedValidationMemo = Dict[str, bool]
+
+
+def _processing_hash_getter(pairs: list) -> ProcessingHashGetter:
+    project_name = _pair_value(pairs, "ProjectName")
+    current_hash: str | None = None
+
+    def get_current_hash() -> str:
+        nonlocal current_hash
+        if current_hash is not None:
+            return current_hash
+        if not project_name:
+            raise HTTPException(422, "ProjectName is required to validate a generated dataset cache.")
+        try:
+            current_hash = get_processing_config_hash(project_name)
+        except HTTPException:
+            raise
+        except Exception as error:
+            raise HTTPException(
+                503,
+                (
+                    f"Unable to validate the processing settings for '{project_name}'. "
+                    "The existing dataset cache was left unchanged."
+                ),
+            ) from error
+        return current_hash
+
+    return get_current_hash
+
+
+def _processing_hash_matches(
+    processing: Any,
+    pairs: list,
+    processing_hash_getter: ProcessingHashGetter | None = None,
+) -> bool:
+    if not isinstance(processing, dict):
+        return False
+    stored_hash = _clean_cache_text(processing.get("config_hash"))
+    project_name = _pair_value(pairs, "ProjectName")
+    if not stored_hash or not project_name:
+        return False
+    get_current_hash = processing_hash_getter or _processing_hash_getter(pairs)
+    return stored_hash == get_current_hash()
+
+
+def _file_fingerprint_getter() -> FileFingerprintGetter:
+    fingerprints: Dict[str, Dict[str, Any]] = {}
+
+    def get_fingerprint(path: str) -> Dict[str, Any]:
+        key = os.path.normcase(os.path.abspath(path))
+        if key not in fingerprints:
+            fingerprints[key] = runtime_cache_provenance_service.file_fingerprint(path)
+        return fingerprints[key]
+
+    return get_fingerprint
+
+
+def _stored_file_fingerprint_matches(
+    payload: Dict[str, Any],
+    path: str,
+    get_fingerprint: FileFingerprintGetter,
+    *,
+    prefix: str = "",
+    verify_content: bool = True,
+) -> bool:
+    expected_size = payload.get(f"{prefix}size")
+    expected_mtime_ns = payload.get(f"{prefix}mtime_ns")
+    expected_sha256 = _clean_cache_text(payload.get(f"{prefix}sha256")).lower()
+    if (
+        expected_size in (None, "")
+        or expected_mtime_ns in (None, "")
+        or not expected_sha256
+    ):
+        return False
+    current_stat = os.stat(path)
+    try:
+        if (
+            int(current_stat.st_size) != int(expected_size)
+            or int(current_stat.st_mtime_ns) != int(expected_mtime_ns)
+        ):
+            return False
+    except (TypeError, ValueError):
+        return False
+    if not verify_content:
+        return True
+    current = get_fingerprint(path)
+    try:
+        return _clean_cache_text(current.get("sha256")).lower() == expected_sha256
+    except (TypeError, ValueError):
+        return False
+
+
+def _calculated_precedent_sidecar(
+    precedent: Dict[str, Any],
+    path: str,
+    pairs: list,
+) -> Dict[str, Any]:
+    dataset_name = _clean_cache_text(
+        precedent.get("dataset_name")
+        or precedent.get("dataset_type_name")
+    )
+    if not dataset_name:
+        return {}
+    sidecar_path = _dataset_sidecar_path(
+        path,
+        [("InstanceName", dataset_name)],
+    )
+    try:
+        with open(sidecar_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
+    except OSError as error:
+        project_name = _pair_value(pairs, "ProjectName") or "(unknown)"
+        raise HTTPException(
+            503,
+            (
+                f"Unable to validate a calculated dataset dependency for '{project_name}'. "
+                "The existing calculated cache was left unchanged."
+            ),
+        ) from error
+    return payload if isinstance(payload, dict) else {}
+
+
+def _calculated_precedent_request_pairs(
+    pairs: list,
+    precedent: Dict[str, Any],
+    sidecar: Dict[str, Any],
+) -> list:
+    dataset_type = _clean_cache_text(
+        precedent.get("dataset_type_name")
+        or sidecar.get("dataset_type")
+        or sidecar.get("dataset_name")
+    )
+    instance_name = _clean_cache_text(
+        precedent.get("dataset_name")
+        or sidecar.get("dataset_name")
+        or dataset_type
+    )
+    data_format = _clean_cache_text(
+        precedent.get("data_format")
+        or sidecar.get("data_format")
+        or "Triangle"
+    )
+    return _dependency_request_pairs(
+        pairs,
+        dataset_type,
+        data_format,
+        instance_name=instance_name,
+        settings=_dependency_cache_settings(
+            precedent,
+            data_format,
+            _clean_cache_text(precedent.get("path")),
+        ),
+    )
+
+
+def _calculated_dependencies_match(
+    payload: Dict[str, Any],
+    pairs: list,
+    data_path: str,
+    *,
+    processing_hash_getter: ProcessingHashGetter | None = None,
+    file_fingerprint_getter: FileFingerprintGetter | None = None,
+    validation_memo: CalculatedValidationMemo | None = None,
+    validation_stack: set[str] | None = None,
+    verify_content: bool = True,
+) -> bool:
+    cache_key = "::".join([
+        os.path.normcase(os.path.abspath(data_path)),
+        _canon_dataset_name(_pair_value(pairs, "ProjectName")),
+        _canon_dataset_name(_pair_value(pairs, "Path")),
+        _canon_dataset_name(
+            _pair_value(pairs, "DatasetName")
+            or _pair_value(pairs, "TriangleName")
+        ),
+        _canon_dataset_name(_pair_value(pairs, "InstanceName")),
+        _canon_dataset_name(_pair_value(pairs, "Function")),
+        "content" if verify_content else "metadata",
+    ])
+    memo = validation_memo if validation_memo is not None else {}
+    if cache_key in memo:
+        return memo[cache_key]
+    active_stack = set(validation_stack or set())
+    if cache_key in active_stack:
+        memo[cache_key] = False
+        return False
+    active_stack.add(cache_key)
+
+    precedents = payload.get("Precedents")
+    project_name = _pair_value(pairs, "ProjectName") or "(unknown)"
+    dataset_type = _clean_cache_text(
+        payload.get("dataset_type")
+        or _pair_value(pairs, "DatasetName")
+        or _pair_value(pairs, "TriangleName")
+    )
+    from app_server.services import calculated_dataset_service
+
+    contract = calculated_dataset_service.calculated_dataset_contract(
+        project_name,
+        dataset_type,
+    )
+    if contract is None:
+        memo[cache_key] = False
+        return False
+    stored_formula = _clean_cache_text(payload.get("formula"))
+    current_formula = _clean_cache_text(contract.get("formula"))
+    stored_names = [
+        _canon_dataset_name(item.get("dataset_type_name"))
+        for item in precedents or []
+        if isinstance(item, dict) and _canon_dataset_name(item.get("dataset_type_name"))
+    ]
+    current_names = [
+        _canon_dataset_name(name)
+        for name in contract.get("precedents") or []
+        if _canon_dataset_name(name)
+    ]
+    if stored_formula != current_formula or stored_names != current_names:
+        memo[cache_key] = False
+        return False
+    if not current_names:
+        memo[cache_key] = True
+        return True
+
+    if not isinstance(precedents, list) or not precedents:
+        memo[cache_key] = False
+        return False
+    dataset_folder = os.path.dirname(data_path)
+    if (
+        os.path.basename(dataset_folder).lower()
+        == config.TEMPORARY_VIEW_DATASET_CACHE_DIR.lower()
+    ):
+        dataset_folder = os.path.dirname(dataset_folder)
+    method_folder = os.path.join(
+        os.path.dirname(dataset_folder),
+        config.METHOD_DATA_DIR,
+    )
+    if not _path_is_within_folder(data_path, dataset_folder):
+        memo[cache_key] = False
+        return False
+    current_precedent_contracts = (
+        contract.get("precedent_contracts")
+        if isinstance(contract.get("precedent_contracts"), dict)
+        else {}
+    )
+    get_fingerprint = file_fingerprint_getter or _file_fingerprint_getter()
+    for precedent in precedents:
+        if not isinstance(precedent, dict):
+            memo[cache_key] = False
+            return False
+        path = _clean_cache_text(precedent.get("path"))
+        if not path or not (
+            _path_is_within_folder(path, dataset_folder)
+            or _path_is_within_folder(path, method_folder)
+        ):
+            memo[cache_key] = False
+            return False
+        try:
+            if not _stored_file_fingerprint_matches(
+                precedent,
+                path,
+                get_fingerprint,
+                verify_content=verify_content,
+            ):
+                memo[cache_key] = False
+                return False
+            input_path = _clean_cache_text(precedent.get("input_path"))
+            if input_path:
+                if not _path_is_within_folder(input_path, dataset_folder):
+                    memo[cache_key] = False
+                    return False
+                if not _stored_file_fingerprint_matches(
+                    precedent,
+                    input_path,
+                    get_fingerprint,
+                    prefix="input_",
+                    verify_content=verify_content,
+                ):
+                    memo[cache_key] = False
+                    return False
+
+            stored_source_kind = _clean_cache_text(precedent.get("source_kind")).lower()
+            dependency_sidecar: Dict[str, Any] = {}
+            if stored_source_kind in {"", "engine", "calculated"}:
+                dependency_sidecar = _calculated_precedent_sidecar(
+                    precedent,
+                    path,
+                    pairs,
+                )
+            source_kind = (
+                stored_source_kind
+                or _clean_cache_text(dependency_sidecar.get("source_kind")).lower()
+            )
+            dependency_definition = current_precedent_contracts.get(
+                _canon_dataset_name(precedent.get("dataset_type_name"))
+            )
+            if isinstance(dependency_definition, dict):
+                current_data_format = _clean_cache_text(
+                    dependency_definition.get("data_format")
+                ).lower()
+                stored_data_format = _clean_cache_text(
+                    precedent.get("data_format")
+                    or dependency_sidecar.get("data_format")
+                    or _cache_path_data_format(path)
+                ).lower()
+                if (
+                    current_data_format
+                    and stored_data_format
+                    and stored_data_format != current_data_format
+                ):
+                    memo[cache_key] = False
+                    return False
+            if (
+                isinstance(dependency_definition, dict)
+                and stored_source_kind in {"", "input", "engine", "calculated"}
+            ):
+                if dependency_definition.get("generated"):
+                    source_kind = "engine"
+                elif (
+                    dependency_definition.get("calculated")
+                    and _clean_cache_text(dependency_definition.get("formula"))
+                ):
+                    source_kind = "calculated"
+                else:
+                    source_kind = "input"
+            if (
+                not source_kind
+                and runtime_cache_provenance_service.provenance_exists(path)
+            ):
+                source_kind = "engine"
+            if source_kind in {"engine", "calculated"}:
+                validation_precedent = dict(precedent)
+                if isinstance(dependency_definition, dict):
+                    current_data_format = _clean_cache_text(
+                        dependency_definition.get("data_format")
+                    )
+                    if current_data_format:
+                        validation_precedent["data_format"] = current_data_format
+                dependency_pairs = _calculated_precedent_request_pairs(
+                    pairs,
+                    validation_precedent,
+                    dependency_sidecar,
+                )
+                if not arcrho_tri_cache_matches(
+                    path,
+                    dependency_pairs,
+                    allow_runtime_cache_provenance=source_kind == "engine",
+                    processing_hash_getter=processing_hash_getter,
+                    file_fingerprint_getter=get_fingerprint,
+                    calculated_validation_memo=memo,
+                    calculated_validation_stack=active_stack,
+                    verify_content=verify_content,
+                ):
+                    memo[cache_key] = False
+                    return False
+        except FileNotFoundError:
+            memo[cache_key] = False
+            return False
+        except OSError as error:
+            raise HTTPException(
+                503,
+                (
+                    f"Unable to validate calculated dataset inputs for '{project_name}'. "
+                    "The existing calculated cache was left unchanged."
+                ),
+            ) from error
+    memo[cache_key] = True
+    return True
 
 
 def _processing_config_matches(
     payload: Dict[str, Any],
     pairs: list,
     data_path: str = "",
+    processing_hash_getter: ProcessingHashGetter | None = None,
+    file_fingerprint_getter: FileFingerprintGetter | None = None,
+    calculated_validation_memo: CalculatedValidationMemo | None = None,
+    calculated_validation_stack: set[str] | None = None,
+    verify_content: bool = True,
 ) -> bool:
     source_kind = _clean_cache_text(payload.get("source_kind")).lower()
+    if source_kind == "calculated":
+        return _calculated_dependencies_match(
+            payload,
+            pairs,
+            data_path,
+            processing_hash_getter=processing_hash_getter,
+            file_fingerprint_getter=file_fingerprint_getter,
+            validation_memo=calculated_validation_memo,
+            validation_stack=calculated_validation_stack,
+            verify_content=verify_content,
+        )
     if source_kind != "engine" or is_imported_snapshot_payload(payload):
         return True
     processing: Any = None
@@ -122,16 +544,107 @@ def _processing_config_matches(
         processing = payload.get("processing")
     else:
         processing = payload.get("processing")
-    if not isinstance(processing, dict):
+    return _processing_hash_matches(processing, pairs, processing_hash_getter)
+
+
+def _runtime_cache_identity(data_path: str, pairs: list) -> Dict[str, str]:
+    return {
+        "csv_file": os.path.basename(data_path),
+        "dataset_name": _request_dataset_name(pairs),
+        "dataset_type": _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
+        "reserving_class": _pair_value(pairs, "Path"),
+        "project_name": _pair_value(pairs, "ProjectName"),
+        "function": _pair_value(pairs, "Function"),
+    }
+
+
+def _runtime_cache_provenance_matches(
+    data_path: str,
+    pairs: list,
+    processing_hash_getter: ProcessingHashGetter | None = None,
+    file_fingerprint_getter: FileFingerprintGetter | None = None,
+    *,
+    verify_content: bool = True,
+) -> bool:
+    identity = _runtime_cache_identity(data_path, pairs)
+    if not all(identity.values()):
         return False
-    stored_hash = _clean_cache_text(processing.get("config_hash"))
+    get_current_hash = processing_hash_getter or _processing_hash_getter(pairs)
+    try:
+        if not runtime_cache_provenance_service.provenance_exists(data_path):
+            return False
+        return runtime_cache_provenance_service.matches(
+            data_path,
+            expected_identity=identity,
+            processing_config_hash=get_current_hash(),
+            fingerprint_getter=file_fingerprint_getter,
+            verify_content=verify_content,
+        )
+    except OSError as error:
+        project_name = _pair_value(pairs, "ProjectName") or "(unknown)"
+        raise HTTPException(
+            503,
+            (
+                f"Unable to read technical cache provenance for '{project_name}'. "
+                "The existing CSV was left unchanged."
+            ),
+        ) from error
+
+
+def _write_runtime_cache_provenance(
+    data_path: str,
+    pairs: list,
+    processing_hash_getter: ProcessingHashGetter | None = None,
+) -> bool:
+    """Record only the processing identity of a background-generated cache.
+
+    ``WriteSidecar: false`` callers must not overwrite the user-editable dataset
+    sidecar, but their generated CSV still needs durable provenance before it can
+    be safely reused after a restart.
+    """
+    if not os.path.isfile(data_path):
+        return False
+    identity = _runtime_cache_identity(data_path, pairs)
     project_name = _pair_value(pairs, "ProjectName")
-    if not stored_hash or not project_name:
+    if not all(identity.values()):
         return False
     try:
-        return stored_hash == get_processing_config_hash(project_name)
-    except Exception:
+        get_current_hash = processing_hash_getter or _processing_hash_getter(pairs)
+        return runtime_cache_provenance_service.record(
+            data_path,
+            identity=identity,
+            processing=get_processing_provenance(
+                project_name,
+                config_hash=get_current_hash(),
+            ),
+        )
+    except Exception as error:
+        print(f"Unable to record ArcRho runtime cache provenance: {error}")
         return False
+
+
+def _remove_runtime_cache_provenance(data_path: str) -> None:
+    try:
+        runtime_cache_provenance_service.remove(data_path)
+    except OSError as error:
+        print(f"Unable to remove ArcRho runtime cache provenance: {error}")
+
+
+def _require_runtime_cache_provenance(
+    data_path: str,
+    pairs: list,
+    processing_hash_getter: ProcessingHashGetter,
+) -> bool:
+    if _write_runtime_cache_provenance(data_path, pairs, processing_hash_getter):
+        return True
+    raise HTTPException(
+        503,
+        (
+            "The generated dataset CSV is available, but ArcRho could not record "
+            "its technical cache provenance. The CSV was left unchanged; check "
+            "write access to the reserving-class data folder and retry."
+        ),
+    )
 
 
 def _triangle_sidecar_payload(
@@ -140,6 +653,11 @@ def _triangle_sidecar_payload(
     *,
     local_only: bool = False,
     validate_processing_for_path: bool = True,
+    processing_hash_getter: ProcessingHashGetter | None = None,
+    file_fingerprint_getter: FileFingerprintGetter | None = None,
+    calculated_validation_memo: CalculatedValidationMemo | None = None,
+    calculated_validation_stack: set[str] | None = None,
+    verify_content: bool = True,
 ) -> Dict[str, Any]:
     sidecar_path = _dataset_sidecar_path(data_path, pairs)
     payload = _safe_read_json(sidecar_path)
@@ -155,7 +673,16 @@ def _triangle_sidecar_payload(
     source_kind = _clean_cache_text(payload.get("source_kind")).lower()
     if not local_only and source_kind != "input":
         return {}
-    if validate_processing_for_path and not _processing_config_matches(payload, pairs, data_path):
+    if validate_processing_for_path and not _processing_config_matches(
+        payload,
+        pairs,
+        data_path,
+        processing_hash_getter,
+        file_fingerprint_getter,
+        calculated_validation_memo,
+        calculated_validation_stack,
+        verify_content=verify_content,
+    ):
         return {}
     data_format = _clean_cache_text(payload.get("data_format") or "Triangle").lower()
     if data_format and data_format != "triangle":
@@ -196,12 +723,27 @@ def _parse_cache_variant(filename: str) -> Dict[str, Any]:
     }
 
 
-def _local_cache_candidates(data_path: str, pairs: list, *, local_only: bool = False) -> list[Dict[str, Any]]:
+def _local_cache_candidates(
+    data_path: str,
+    pairs: list,
+    *,
+    local_only: bool = False,
+    processing_hash_getter: ProcessingHashGetter | None = None,
+    file_fingerprint_getter: FileFingerprintGetter | None = None,
+    calculated_validation_memo: CalculatedValidationMemo | None = None,
+    calculated_validation_stack: set[str] | None = None,
+    verify_content: bool = True,
+) -> list[Dict[str, Any]]:
     payload = _triangle_sidecar_payload(
         data_path,
         pairs,
         local_only=local_only,
         validate_processing_for_path=False,
+        processing_hash_getter=processing_hash_getter,
+        file_fingerprint_getter=file_fingerprint_getter,
+        calculated_validation_memo=calculated_validation_memo,
+        calculated_validation_stack=calculated_validation_stack,
+        verify_content=verify_content,
     )
     if not payload:
         return []
@@ -210,20 +752,42 @@ def _local_cache_candidates(data_path: str, pairs: list, *, local_only: bool = F
     if not os.path.isdir(dataset_dir):
         return []
     out: list[Dict[str, Any]] = []
-    for filename in os.listdir(dataset_dir):
+    seen_paths: set[str] = set()
+
+    def add_candidate(filename: str) -> None:
         parsed = _parse_cache_variant(filename)
         if not parsed or parsed["base"] != expected_base:
-            continue
-        path = os.path.join(dataset_dir, filename)
-        if not os.path.isfile(path):
-            continue
-        if not _processing_config_matches(payload, pairs, path):
-            continue
+            return
+        path = os.path.join(dataset_dir, os.path.basename(filename))
+        path_key = os.path.normcase(os.path.abspath(path))
+        if path_key in seen_paths or not os.path.isfile(path):
+            return
+        if not _processing_config_matches(
+            payload,
+            pairs,
+            path,
+            processing_hash_getter,
+            file_fingerprint_getter,
+            calculated_validation_memo,
+            calculated_validation_stack,
+            verify_content=verify_content,
+        ):
+            return
+        seen_paths.add(path_key)
         out.append({
             **parsed,
             "path": path,
             "payload": payload,
         })
+
+    preferred_csv = _clean_cache_text(payload.get("csv_file"))
+    if preferred_csv:
+        add_candidate(preferred_csv)
+        if out and _can_derive_cache(out[0], pairs, data_path)[0]:
+            return out
+
+    for filename in os.listdir(dataset_dir):
+        add_candidate(filename)
     return out
 
 
@@ -311,10 +875,41 @@ def resolve_local_triangle_cache(
     local_only: bool = False,
     materialize_path: str | None = None,
     refresh_index_on_materialize: bool = True,
+    allow_runtime_cache_provenance: bool = False,
+    processing_hash_getter: ProcessingHashGetter | None = None,
+    file_fingerprint_getter: FileFingerprintGetter | None = None,
+    calculated_validation_memo: CalculatedValidationMemo | None = None,
+    calculated_validation_stack: set[str] | None = None,
+    verify_content: bool = True,
 ) -> Dict[str, Any]:
     target_path = materialize_path or data_path
-    if arcrho_tri_cache_matches(data_path, pairs):
-        payload = _triangle_sidecar_payload(data_path, pairs, local_only=True)
+    get_processing_hash = processing_hash_getter or _processing_hash_getter(pairs)
+    get_file_fingerprint = file_fingerprint_getter or _file_fingerprint_getter()
+    validation_memo = (
+        calculated_validation_memo
+        if calculated_validation_memo is not None
+        else {}
+    )
+    if arcrho_tri_cache_matches(
+        data_path,
+        pairs,
+        allow_runtime_cache_provenance=allow_runtime_cache_provenance,
+        processing_hash_getter=get_processing_hash,
+        file_fingerprint_getter=get_file_fingerprint,
+        calculated_validation_memo=validation_memo,
+        calculated_validation_stack=calculated_validation_stack,
+        verify_content=verify_content,
+    ):
+        payload = _triangle_sidecar_payload(
+            data_path,
+            pairs,
+            local_only=True,
+            processing_hash_getter=get_processing_hash,
+            file_fingerprint_getter=get_file_fingerprint,
+            calculated_validation_memo=validation_memo,
+            calculated_validation_stack=calculated_validation_stack,
+            verify_content=verify_content,
+        )
         return {
             "ok": True,
             "status": "cache_exact",
@@ -329,6 +924,10 @@ def resolve_local_triangle_cache(
         pairs,
         local_only=local_only,
         validate_processing_for_path=False,
+        processing_hash_getter=get_processing_hash,
+        file_fingerprint_getter=get_file_fingerprint,
+        calculated_validation_memo=validation_memo,
+        calculated_validation_stack=calculated_validation_stack,
     )
     if not payload:
         return {
@@ -341,9 +940,19 @@ def resolve_local_triangle_cache(
             "data_path": data_path,
         }
     generated_source_found = _is_generated_triangle_payload(payload)
-    manual_source_found = bool(_manual_input_sidecar_payload(data_path, pairs))
-    candidates = _local_cache_candidates(data_path, pairs, local_only=local_only)
-    if not candidates:
+    manual_source_found = bool(
+        _triangle_sidecar_payload(
+            data_path,
+            pairs,
+            local_only=False,
+            processing_hash_getter=get_processing_hash,
+            file_fingerprint_getter=get_file_fingerprint,
+            calculated_validation_memo=validation_memo,
+            calculated_validation_stack=calculated_validation_stack,
+            verify_content=verify_content,
+        )
+    )
+    if not allow_derived:
         return {
             "ok": False,
             "status": "cache_missing",
@@ -354,7 +963,17 @@ def resolve_local_triangle_cache(
             "data_path": data_path,
         }
 
-    if not allow_derived:
+    candidates = _local_cache_candidates(
+        data_path,
+        pairs,
+        local_only=local_only,
+        processing_hash_getter=get_processing_hash,
+        file_fingerprint_getter=get_file_fingerprint,
+        calculated_validation_memo=validation_memo,
+        calculated_validation_stack=calculated_validation_stack,
+        verify_content=verify_content,
+    )
+    if not candidates:
         return {
             "ok": False,
             "status": "cache_missing",
@@ -506,7 +1125,7 @@ def _write_dataset_sidecar(data_path: str, pairs: list) -> None:
         "updated_at": updated_at,
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
-        **dataset_number_format_service.dataset_type_number_format_settings(reserving_class, dataset_type),
+        **dataset_number_format_service.dataset_type_number_format_settings(dataset_type),
     }
     _set_processing_provenance(payload, project_name, data_path)
     _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)
@@ -543,35 +1162,84 @@ def _refresh_dataset_instance_index_after_cache_write(pairs: list) -> None:
         return
 
 
-def arcrho_tri_cache_matches(data_path: str, pairs: list) -> bool:
-    if not os.path.exists(data_path):
+def arcrho_tri_cache_matches(
+    data_path: str,
+    pairs: list,
+    *,
+    allow_runtime_cache_provenance: bool = False,
+    processing_hash_getter: ProcessingHashGetter | None = None,
+    file_fingerprint_getter: FileFingerprintGetter | None = None,
+    calculated_validation_memo: CalculatedValidationMemo | None = None,
+    calculated_validation_stack: set[str] | None = None,
+    verify_content: bool = True,
+) -> bool:
+    if not os.path.isfile(data_path):
         return False
+
+    def runtime_provenance_matches() -> bool:
+        return allow_runtime_cache_provenance and _runtime_cache_provenance_matches(
+            data_path,
+            pairs,
+            processing_hash_getter,
+            file_fingerprint_getter,
+            verify_content=verify_content,
+        )
+
     sidecar_path = _dataset_sidecar_path(data_path, pairs)
-    if not os.path.exists(sidecar_path):
-        return False
     try:
         with open(sidecar_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
-    except Exception:
-        return False
+    except FileNotFoundError:
+        return runtime_provenance_matches()
+    except json.JSONDecodeError:
+        return runtime_provenance_matches()
+    except OSError as error:
+        project_name = _pair_value(pairs, "ProjectName") or "(unknown)"
+        raise HTTPException(
+            503,
+            (
+                f"Unable to validate the dataset cache for '{project_name}'. "
+                "The existing CSV was left unchanged."
+            ),
+        ) from error
     if not isinstance(payload, dict):
-        return False
+        return runtime_provenance_matches()
+    sidecar_allows_runtime_provenance = (
+        _clean_cache_text(payload.get("source_kind")).lower() == "engine"
+    )
+
+    def sidecar_mismatch() -> bool:
+        return (
+            runtime_provenance_matches()
+            if sidecar_allows_runtime_provenance
+            else False
+        )
+
     expected_name = _pair_value(pairs, "InstanceName")
     dataset_type = _pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName")
     if not expected_name:
         expected_name = dataset_type
     if not _cache_payload_name_matches(payload, expected_name):
-        return False
+        return sidecar_mismatch()
     if not _cache_text_matches(payload.get("reserving_class"), _pair_value(pairs, "Path")):
-        return False
+        return sidecar_mismatch()
     if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
-        return False
-    if not _processing_config_matches(payload, pairs, data_path):
-        return False
+        return sidecar_mismatch()
+    if not _processing_config_matches(
+        payload,
+        pairs,
+        data_path,
+        processing_hash_getter,
+        file_fingerprint_getter,
+        calculated_validation_memo,
+        calculated_validation_stack,
+        verify_content=verify_content,
+    ):
+        return sidecar_mismatch()
     if not _pair_value(pairs, "InstanceName") and dataset_type:
         payload_type = payload.get("dataset_type")
         if payload_type and not _cache_text_matches(payload_type, dataset_type):
-            return False
+            return sidecar_mismatch()
     return True
 
 
@@ -813,30 +1481,144 @@ def _recalculate_dependents_after_cache_write(pairs: list) -> Dict[str, Any] | N
         return {"ok": False, "skipped": True, "reason": str(err)}
 
 
-def _dependency_request_pairs(pairs: list, dataset_name: str, data_format: str) -> list:
-    excluded = {"function", "datasetname", "trianglename", "vectorname", "instancename"}
+def _dependency_request_pairs(
+    pairs: list,
+    dataset_name: str,
+    data_format: str,
+    *,
+    instance_name: str = "",
+    settings: Dict[str, Any] | None = None,
+) -> list:
+    excluded = {
+        "function",
+        "datasetname",
+        "trianglename",
+        "vectorname",
+        "instancename",
+        "originlength",
+        "developmentlength",
+        "periodlength",
+    }
+    resolved_settings = settings or {}
     dependency_pairs = [
-        (key, value)
+        (
+            key,
+            resolved_settings.get(str(key or "").strip().lower(), value),
+        )
         for key, value in pairs
         if str(key or "").strip().lower() not in excluded
     ]
-    function_name = "ArcRhoVec" if str(data_format or "").strip().lower() == "vector" else "ArcRhoTri"
-    return [
+    is_vector = str(data_format or "").strip().lower() == "vector"
+    function_name = "ArcRhoVec" if is_vector else "ArcRhoTri"
+    vector_period = resolved_settings.get(
+        "periodlength",
+        resolved_settings.get(
+            "originlength",
+            _pair_value(pairs, "PeriodLength")
+            or _pair_value(pairs, "OriginLength")
+            or "12",
+        ),
+    )
+    dimensions = (
+        [
+            ("OriginLength", vector_period),
+            ("DevelopmentLength", vector_period),
+        ]
+        if is_vector
+        else [
+            (
+                "OriginLength",
+                resolved_settings.get(
+                    "originlength",
+                    _pair_value(pairs, "OriginLength") or "12",
+                ),
+            ),
+            (
+                "DevelopmentLength",
+                resolved_settings.get(
+                    "developmentlength",
+                    _pair_value(pairs, "DevelopmentLength") or "12",
+                ),
+            ),
+        ]
+    )
+    output = [
         ("Function", function_name),
         ("DatasetName", dataset_name),
-        ("InstanceName", dataset_name),
+        ("InstanceName", instance_name or dataset_name),
+        *dimensions,
         *dependency_pairs,
     ]
+    return [
+        (key, "" if value is None else str(value))
+        for key, value in output
+    ]
+
+
+def _dependency_cache_settings(
+    descriptor: Dict[str, Any],
+    data_format: str,
+    path: str,
+) -> Dict[str, Any]:
+    settings: Dict[str, Any] = {}
+    field_map = {
+        "origin_length": "originlength",
+        "development_length": "developmentlength",
+        "period_length": "periodlength",
+        "cumulative": "cumulative",
+        "calendar": "calendar",
+    }
+    for source_key, pair_key in field_map.items():
+        if descriptor.get(source_key) not in (None, ""):
+            settings[pair_key] = descriptor[source_key]
+
+    if str(data_format or "").strip().lower() == "vector":
+        stem = os.path.splitext(os.path.basename(path))[0]
+        parts = stem.rsplit("@", 1)
+        if len(parts) == 2 and parts[1].isdigit():
+            settings["periodlength"] = int(parts[1])
+        return settings
+
+    parsed = _parse_cache_variant(os.path.basename(path))
+    if parsed:
+        settings.update({
+            "originlength": parsed["origin_length"],
+            "developmentlength": parsed["development_length"],
+            "cumulative": parsed["cumulative"],
+            "calendar": parsed["calendar"],
+        })
+    return settings
+
+
+def _cache_path_data_format(path: str) -> str:
+    if _parse_cache_variant(os.path.basename(path)):
+        return "Triangle"
+    stem = os.path.splitext(os.path.basename(path))[0]
+    parts = stem.rsplit("@", 1)
+    return "Vector" if len(parts) == 2 and parts[1].isdigit() else ""
+
+
+def _calculation_dataset_key(pairs: list) -> str:
+    parts = [
+        _canon_dataset_name(_pair_value(pairs, "ProjectName")),
+        _canon_dataset_name(_pair_value(pairs, "Path")),
+        _canon_dataset_name(
+            _pair_value(pairs, "DatasetName")
+            or _pair_value(pairs, "TriangleName")
+        ),
+    ]
+    return "::".join(parts) if all(parts) else ""
 
 
 def _materialize_calculated_dependencies(
     pairs: list,
-    dependency_names: list[str],
+    dependencies: list[Any],
     timeout_sec: float,
     *,
     local_only: bool,
     allow_derived: bool,
     calculation_stack: set[str],
+    dataset_folder: str,
 ) -> List[Dict[str, Any]]:
     project_name = _pair_value(pairs, "ProjectName")
     if not project_name:
@@ -850,7 +1632,12 @@ def _materialize_calculated_dependencies(
         if _canon_dataset_name(row.get("name"))
     }
     results: List[Dict[str, Any]] = []
-    for dependency_name in dependency_names:
+    for dependency in dependencies:
+        descriptor = dependency if isinstance(dependency, dict) else {}
+        dependency_name = _clean_cache_text(
+            descriptor.get("dataset_type_name")
+            or dependency
+        )
         row = rows_by_key.get(_canon_dataset_name(dependency_name))
         if not row:
             continue
@@ -860,12 +1647,48 @@ def _materialize_calculated_dependencies(
         )
         if not can_materialize:
             continue
+        instance_name = _clean_cache_text(
+            descriptor.get("dataset_name")
+            or row.get("name")
+            or dependency_name
+        )
+        data_format = _clean_cache_text(
+            row.get("data_format")
+            or descriptor.get("data_format")
+            or "Triangle"
+        )
+        stored_path = _clean_cache_text(descriptor.get("path"))
+        stored_data_format = _clean_cache_text(
+            descriptor.get("data_format")
+            or _cache_path_data_format(stored_path)
+        )
+        if (
+            stored_path
+            and stored_data_format
+            and stored_data_format.lower() != data_format.lower()
+        ):
+            stored_path = ""
         dependency_pairs = _dependency_request_pairs(
             pairs,
             str(row.get("name") or dependency_name),
-            str(row.get("data_format") or "Triangle"),
+            data_format,
+            instance_name=instance_name,
+            settings=_dependency_cache_settings(
+                descriptor,
+                data_format,
+                stored_path,
+            ),
         )
-        dependency_path = set_data_path_like_vba(dependency_pairs)
+        canonical_dependency_path = set_data_path_like_vba(dependency_pairs)
+        dependency_path = (
+            stored_path
+            if (
+                stored_path
+                and _path_is_within_folder(stored_path, dataset_folder)
+                and _same_resolved_path(stored_path, canonical_dependency_path)
+            )
+            else canonical_dependency_path
+        )
         result = run_arcrho_tri(
             dependency_pairs,
             dependency_path,
@@ -889,6 +1712,8 @@ def _recalculate_requested_app_dataset(
     local_only: bool,
     allow_derived: bool,
     calculation_stack: set[str] | None = None,
+    recalculate_dependents: bool = True,
+    refresh_index: bool = True,
 ) -> Dict[str, Any] | None:
     project_name = _pair_value(pairs, "ProjectName")
     reserving_class = _pair_value(pairs, "Path")
@@ -896,11 +1721,7 @@ def _recalculate_requested_app_dataset(
     if not project_name or not reserving_class or not dataset_type:
         return None
 
-    dataset_key = "::".join([
-        _canon_dataset_name(project_name),
-        _canon_dataset_name(reserving_class),
-        _canon_dataset_name(dataset_type),
-    ])
+    dataset_key = _calculation_dataset_key(pairs)
     active_stack = set(calculation_stack or set())
     if dataset_key in active_stack:
         return {
@@ -915,11 +1736,158 @@ def _recalculate_requested_app_dataset(
     try:
         from app_server.services import calculated_dataset_service
 
+        contract = calculated_dataset_service.calculated_dataset_contract(
+            project_name,
+            dataset_type,
+        )
+        if contract is None:
+            return None
+        dependency_names = [
+            str(item).strip()
+            for item in contract.get("precedents") or []
+            if str(item).strip()
+        ]
+        requested_sidecar = _read_existing_cache_json(
+            _dataset_sidecar_path(requested_data_path, pairs),
+            project_name,
+        )
+        stored_precedents = {
+            _canon_dataset_name(item.get("dataset_type_name")): item
+            for item in requested_sidecar.get("Precedents") or []
+            if isinstance(item, dict)
+            and _canon_dataset_name(item.get("dataset_type_name"))
+        }
+        dependency_descriptors = [
+            {
+                **dict(stored_precedents.get(_canon_dataset_name(name)) or {}),
+                "dataset_type_name": name,
+            }
+            for name in dependency_names
+        ]
+        dataset_folder = os.path.dirname(requested_data_path)
+        current_dependency_contracts = (
+            contract.get("precedent_contracts")
+            if isinstance(contract.get("precedent_contracts"), dict)
+            else {}
+        )
+        component_paths = {
+            _canon_dataset_name(item.get("dataset_type_name")): _clean_cache_text(
+                item.get("path")
+            )
+            for item in dependency_descriptors
+            if _canon_dataset_name(item.get("dataset_type_name"))
+            and _clean_cache_text(item.get("path")).lower().endswith(".csv")
+            and _path_is_within_folder(
+                _clean_cache_text(item.get("path")),
+                dataset_folder,
+            )
+            and (
+                not _clean_cache_text(
+                    (
+                        current_dependency_contracts.get(
+                            _canon_dataset_name(item.get("dataset_type_name"))
+                        )
+                        or {}
+                    ).get("data_format")
+                )
+                or _clean_cache_text(
+                    item.get("data_format")
+                    or _cache_path_data_format(_clean_cache_text(item.get("path")))
+                ).lower()
+                == _clean_cache_text(
+                    (
+                        current_dependency_contracts.get(
+                            _canon_dataset_name(item.get("dataset_type_name"))
+                        )
+                        or {}
+                    ).get("data_format")
+                ).lower()
+            )
+        }
+        component_method_sources: Dict[str, Dict[str, str]] = {}
+        for item in dependency_descriptors:
+            dependency_key = _canon_dataset_name(
+                item.get("dataset_type_name")
+            )
+            dependency_definition = (
+                current_dependency_contracts.get(dependency_key) or {}
+            )
+            currently_runtime_materialized = bool(
+                dependency_definition.get("generated")
+                or (
+                    dependency_definition.get("calculated")
+                    and _clean_cache_text(dependency_definition.get("formula"))
+                )
+            )
+            if (
+                dependency_key
+                and not currently_runtime_materialized
+                and _clean_cache_text(item.get("source_kind")).lower()
+                == "dfm_method"
+                and _clean_cache_text(item.get("path"))
+            ):
+                component_method_sources[dependency_key] = {
+                    "path": _clean_cache_text(item.get("path")),
+                    "input_path": _clean_cache_text(item.get("input_path")),
+                }
+        dependency_results = _materialize_calculated_dependencies(
+            pairs,
+            dependency_descriptors,
+            timeout_sec,
+            local_only=local_only,
+            allow_derived=allow_derived,
+            calculation_stack=active_stack,
+            dataset_folder=dataset_folder,
+        )
+        failed_dependencies = [
+            item for item in dependency_results if not item.get("ok")
+        ]
+        if failed_dependencies:
+            messages = [
+                _clean_cache_text(
+                    item.get("message")
+                    or item.get("reason")
+                    or item.get("status")
+                )
+                for item in failed_dependencies
+            ]
+            message = "; ".join(item for item in messages if item)
+            return {
+                "ok": False,
+                "status": "calculation_failed",
+                "need_request": False,
+                "data_path": requested_data_path,
+                "message": message or "Failed to refresh a calculated dataset dependency.",
+                "dependency_results": dependency_results,
+            }
+
+        for item in dependency_results:
+            dependency_name = _canon_dataset_name(item.get("dataset_type_name"))
+            dependency_path = _clean_cache_text(
+                item.get("data_path")
+                or item.get("path")
+            )
+            if (
+                dependency_name
+                and dependency_path.lower().endswith(".csv")
+                and _path_is_within_folder(dependency_path, dataset_folder)
+            ):
+                component_paths[dependency_name] = dependency_path
+        recalculate_kwargs: Dict[str, Any] = {
+            "component_paths": component_paths,
+        }
+        if component_method_sources:
+            recalculate_kwargs["component_method_sources"] = (
+                component_method_sources
+            )
         result = calculated_dataset_service.recalculate_dataset(
             project_name,
             reserving_class,
             dataset_type,
+            **recalculate_kwargs,
         )
+    except HTTPException:
+        raise
     except Exception as err:
         return {
             "ok": False,
@@ -929,29 +1897,6 @@ def _recalculate_requested_app_dataset(
             "message": str(err),
         }
 
-    if result.get("reason") == "not_calculated":
-        return None
-    dependency_results: List[Dict[str, Any]] = []
-    missing_dependencies = [
-        str(item).strip()
-        for item in result.get("missing_dependencies") or []
-        if str(item).strip()
-    ]
-    if not result.get("ok") and missing_dependencies:
-        dependency_results = _materialize_calculated_dependencies(
-            pairs,
-            missing_dependencies,
-            timeout_sec,
-            local_only=local_only,
-            allow_derived=allow_derived,
-            calculation_stack=active_stack,
-        )
-        if dependency_results and all(item.get("ok") for item in dependency_results):
-            result = calculated_dataset_service.recalculate_dataset(
-                project_name,
-                reserving_class,
-                dataset_type,
-            )
     if not result.get("ok"):
         errors = [str(item).strip() for item in result.get("errors") or [] if str(item).strip()]
         message = "; ".join(errors) or str(result.get("reason") or "Failed to calculate dataset.")
@@ -967,11 +1912,16 @@ def _recalculate_requested_app_dataset(
 
     data_path = str(result.get("path") or requested_data_path)
     ds_id = _register_arcrho_dataset(data_path, pairs)
-    calculated_updates = _recalculate_dependents_after_cache_write(pairs)
-    try:
-        dataset_instance_index_service.rebuild_index(project_name, reserving_class)
-    except Exception:
-        pass
+    calculated_updates = (
+        _recalculate_dependents_after_cache_write(pairs)
+        if recalculate_dependents
+        else None
+    )
+    if refresh_index:
+        try:
+            dataset_instance_index_service.rebuild_index(project_name, reserving_class)
+        except Exception:
+            pass
     return {
         "ok": True,
         "need_request": False,
@@ -993,12 +1943,19 @@ def _normalize_temporary_session_id(value: Any) -> str:
 
 
 def _path_is_within_folder(path: str, folder: str) -> bool:
-    child = os.path.normcase(os.path.abspath(path))
-    parent = os.path.normcase(os.path.abspath(folder))
+    child = os.path.normcase(os.path.realpath(os.path.abspath(path)))
+    parent = os.path.normcase(os.path.realpath(os.path.abspath(folder)))
     try:
         return os.path.commonpath([child, parent]) == parent
     except ValueError:
         return False
+
+
+def _same_resolved_path(left: str, right: str) -> bool:
+    return (
+        os.path.normcase(os.path.realpath(os.path.abspath(left)))
+        == os.path.normcase(os.path.realpath(os.path.abspath(right)))
+    )
 
 
 def _temporary_dataset_path(data_path: str, pairs: list) -> str:
@@ -1060,6 +2017,7 @@ def arcrho_precheck(
     local_only: bool = False,
     allow_derived: bool = True,
     temporary_session_id: str | None = None,
+    allow_runtime_cache_provenance: bool = False,
 ) -> Dict[str, Any]:
     session_id = _normalize_temporary_session_id(temporary_session_id) if temporary_session_id else None
     temporary_data_path = _temporary_dataset_path(data_path, pairs) if session_id else None
@@ -1069,6 +2027,10 @@ def arcrho_precheck(
         allow_derived=allow_derived,
         materialize=False,
         local_only=local_only,
+        allow_runtime_cache_provenance=allow_runtime_cache_provenance and not session_id,
+        # Precheck is advisory. Execute requests keep the authoritative
+        # SHA-256 comparison before they reuse any matching cache.
+        verify_content=False,
     )
     local_available = bool(local_result.get("ok"))
     canonical_cache_exact = local_result.get("status") == "cache_exact"
@@ -1112,6 +2074,7 @@ def _run_temporary_arcrho_tri(
 ) -> Dict[str, Any]:
     session_id = _normalize_temporary_session_id(temporary_session_id)
     temporary_data_path = _temporary_dataset_path(data_path, pairs)
+    get_processing_hash = _processing_hash_getter(pairs)
 
     local_result = resolve_local_triangle_cache(
         data_path,
@@ -1119,6 +2082,7 @@ def _run_temporary_arcrho_tri(
         allow_derived=allow_derived,
         materialize=False,
         local_only=local_only,
+        processing_hash_getter=get_processing_hash,
     )
     if local_result.get("ok") and local_result.get("status") == "cache_exact" and not force_refresh:
         out = _local_cache_response(local_result, data_path, pairs)
@@ -1145,6 +2109,7 @@ def _run_temporary_arcrho_tri(
             local_only=local_only,
             materialize_path=temporary_data_path,
             refresh_index_on_materialize=False,
+            processing_hash_getter=get_processing_hash,
         )
         if derived_result.get("ok"):
             derived_data_path = str(derived_result.get("data_path") or temporary_data_path)
@@ -1236,6 +2201,19 @@ def run_arcrho_tri(
     recalculate_dependents_on_cache_write: bool = True,
     calculation_stack: set[str] | None = None,
 ) -> Dict[str, Any]:
+    calculation_key = _calculation_dataset_key(pairs)
+    if calculation_key and calculation_key in set(calculation_stack or set()):
+        dataset_type = (
+            _pair_value(pairs, "DatasetName")
+            or _pair_value(pairs, "TriangleName")
+        )
+        return {
+            "ok": False,
+            "status": "calculation_failed",
+            "need_request": False,
+            "data_path": data_path,
+            "message": f"Calculated dataset dependency cycle detected: {dataset_type}",
+        }
     if temporary_session_id:
         return _run_temporary_arcrho_tri(
             pairs,
@@ -1249,11 +2227,34 @@ def run_arcrho_tri(
 
     request_file = None
     cache_cleared = False
+    get_processing_hash = _processing_hash_getter(pairs)
 
-    local_result = resolve_local_triangle_cache(data_path, pairs, allow_derived=allow_derived, local_only=local_only)
+    local_result = resolve_local_triangle_cache(
+        data_path,
+        pairs,
+        allow_derived=allow_derived,
+        local_only=local_only,
+        refresh_index_on_materialize=write_sidecar,
+        allow_runtime_cache_provenance=not write_sidecar,
+        processing_hash_getter=get_processing_hash,
+    )
     if local_result.get("ok") and not force_refresh:
         out = _local_cache_response(local_result, data_path, pairs)
-        if recalculate_dependents_on_cache_write and local_result.get("status") != "cache_exact":
+        if local_result.get("status") == "cache_derived":
+            if write_sidecar:
+                _write_dataset_sidecar(data_path, pairs)
+                _refresh_dataset_instance_index_after_cache_write(pairs)
+            else:
+                out["cache_provenance_recorded"] = _require_runtime_cache_provenance(
+                    data_path,
+                    pairs,
+                    get_processing_hash,
+                )
+        if (
+            write_sidecar
+            and recalculate_dependents_on_cache_write
+            and local_result.get("status") != "cache_exact"
+        ):
             out["calculated_updates"] = _recalculate_dependents_after_cache_write(pairs)
         return out
 
@@ -1264,6 +2265,10 @@ def run_arcrho_tri(
         local_only=local_only,
         allow_derived=allow_derived,
         calculation_stack=calculation_stack,
+        recalculate_dependents=bool(
+            write_sidecar and recalculate_dependents_on_cache_write
+        ),
+        refresh_index=bool(write_sidecar),
     )
     if calculated_result is not None:
         return calculated_result
@@ -1283,10 +2288,11 @@ def run_arcrho_tri(
             "manual_source_found": manual_source_found,
         }
 
-    cache_matches = arcrho_tri_cache_matches(data_path, pairs)
+    cache_matches = local_result.get("status") == "cache_exact"
     if (force_refresh or not cache_matches) and os.path.exists(data_path):
         try:
             os.remove(data_path)
+            _remove_runtime_cache_provenance(data_path)
             cache_cleared = True
         except OSError as e:
             raise HTTPException(423, f"Cannot clear cached ArcRho tri file: {str(e)}")
@@ -1314,25 +2320,23 @@ def run_arcrho_tri(
             return timeout_out
 
     if not write_sidecar:
-        try:
-            _refresh_dataset_instance_index_after_cache_write(pairs)
-        except Exception:
-            pass
-        ds_id = _register_arcrho_dataset(data_path, pairs)
-        calculated_updates = (
-            _recalculate_dependents_after_cache_write(pairs)
-            if need_request and recalculate_dependents_on_cache_write
+        cache_provenance_recorded = (
+            _require_runtime_cache_provenance(data_path, pairs, get_processing_hash)
+            if need_request
             else None
         )
+        ds_id = _register_arcrho_dataset(data_path, pairs)
         out: Dict[str, Any] = {
             "ok": True,
             "need_request": need_request,
             "ds_id": ds_id,
             "request_file": request_file,
             "data_path": data_path,
-            "calculated_updates": calculated_updates,
+            "calculated_updates": None,
             "sidecar_written": False,
         }
+        if cache_provenance_recorded is not None:
+            out["cache_provenance_recorded"] = cache_provenance_recorded
         if force_refresh:
             out["cache_cleared"] = cache_cleared
         return out
@@ -1341,7 +2345,11 @@ def run_arcrho_tri(
     try:
         _write_dataset_sidecar(data_path, pairs)
         _refresh_dataset_instance_index_after_cache_write(pairs)
-        calculated_updates = _recalculate_dependents_after_cache_write(pairs)
+        calculated_updates = (
+            _recalculate_dependents_after_cache_write(pairs)
+            if recalculate_dependents_on_cache_write
+            else None
+        )
     except OSError as err:
         raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")
 

@@ -66,6 +66,7 @@ def _arcrho_precheck_response(req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: l
         local_only=bool(req.LocalOnly),
         allow_derived=bool(req.AllowDerived),
         temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
+        allow_runtime_cache_provenance=not bool(req.WriteSidecar),
     )
 
 

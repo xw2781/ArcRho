@@ -1,9 +1,9 @@
 ﻿# <arcrho-macro>
 # Title: Import Active Dataset from ResQ
-# Version: 1.0.0
-# Release Note: Establish the initial versioned release with existing import behavior unchanged.
-# Description: Import only the active Project Instance dataset, DFM method output, or Result Selection method output from ResQ.
-# Scope: Dataset, DFM, Result Selection
+# Version: 1.1.3
+# Release Note: Avoid creating reserving-class folders before the ResQ target is resolved.
+# Description: Import the active Project Instance dataset or supported method output from ResQ.
+# Scope: Dataset, DFM, Result Selection, Bornhuetter Ferguson, Berquist Sherman
 # </arcrho-macro>
 
 from __future__ import annotations
@@ -142,6 +142,40 @@ def _resolve_single_export(migration, reserving_class, properties):
     vector_name = _first_match(migration, vector_lookup, candidates)
     triangle_name = _first_match(migration, triangle_lookup, candidates)
     dfm_name = _first_match(migration, dfm_lookup, candidates)
+    bs_sr_types = {
+        "b&s settlement rate adjustment",
+        "berquist sherman settlement rate adjustment",
+    }
+    bs_cra_types = {
+        "b&s case reserve adequacy adjustment",
+        "berquist sherman case reserve adequacy adjustment",
+    }
+    bs_kinds = {
+        "berquist_sherman",
+        "berquist_sherman_sr",
+        "berquist_sherman_cra",
+        "berquistshermansr",
+        "berquistshermancra",
+    }
+
+    if kind in bs_kinds or method_type in bs_sr_types | bs_cra_types:
+        if triangle_name:
+            is_cra = (
+                kind in {"berquist_sherman_cra", "berquistshermancra"}
+                or method_type in bs_cra_types
+            )
+            return {
+                "export_kind": "triangle",
+                "names": [triangle_name],
+                "display_kind": (
+                    "B&S Case Reserve Adequacy Adjustment output"
+                    if is_cra
+                    else "B&S Settlement Rate Adjustment output"
+                ),
+            }
+        raise ValueError(
+            f"Active Berquist Sherman output was not found in ResQ triangles: {candidates[0]}"
+        )
 
     if kind == "dfm" or method_type == "dfm":
         if vector_name:
@@ -190,7 +224,10 @@ def _resolve_single_export(migration, reserving_class, properties):
         details = ", ".join(f"{kind_name} '{name}'" for kind_name, name in matches)
         raise ValueError(f"Active target name is ambiguous in ResQ: {details}")
     if not matches:
-        raise ValueError(f"Active target was not found in ResQ triangles, vectors, or DFM methods: {candidates[0]}")
+        raise ValueError(
+            f"Active target was not found in ResQ triangles, vectors, DFM methods, "
+            f"or Berquist Sherman methods: {candidates[0]}"
+        )
 
     export_kind, name = matches[0]
     return {
@@ -281,13 +318,11 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
         raise RuntimeError("pywin32 is required: pip install pywin32") from exc
 
     previous_scope = migration._apply_runtime_scope(project_name, server_root)
+    rc_dir = None
+    mutation_started = False
+    index_rebuilt = False
     try:
-        migration.PROJECT_DATA_DIR.mkdir(parents=True, exist_ok=True)
         rc_dir = migration.PROJECT_DATA_DIR / migration._encode_rc_folder(rc_path)
-        rc_dir.mkdir(parents=True, exist_ok=True)
-        (rc_dir / migration.DATASET_CACHE_DIR).mkdir(parents=True, exist_ok=True)
-        (rc_dir / migration.METHOD_DATA_DIR).mkdir(parents=True, exist_ok=True)
-        (rc_dir / migration.DATASET_SIDECAR_DIR).mkdir(parents=True, exist_ok=True)
 
         progress_callback({"event": "connect", "completed": 0, "total": 0, "message": f"Connecting to ResQ: {migration.CONNECTION_NAME}"})
         app = win32com.client.Dispatch("ResQ3Automation.ResQApplication")
@@ -300,11 +335,25 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
         reserving_class = project.ReservingClasses().Item(rc_path)
         target = _resolve_single_export(migration, reserving_class, properties)
         names = list(target["names"])
+        mutation_started = True
+        migration.PROJECT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        rc_dir.mkdir(parents=True, exist_ok=True)
+        (rc_dir / migration.DATASET_CACHE_DIR).mkdir(parents=True, exist_ok=True)
+        (rc_dir / migration.METHOD_DATA_DIR).mkdir(parents=True, exist_ok=True)
+        (rc_dir / migration.DATASET_SIDECAR_DIR).mkdir(parents=True, exist_ok=True)
         cleaned_files, cleaned_dirs = _cleanup_active_target_artifacts(migration, reserving_class, rc_dir, target)
         progress_state = {"completed": 0, "total": len(names), "skipped": 0, "count_methods": target["export_kind"] == "dfm"}
         progress_callback({"event": "total", "completed": 0, "total": len(names), "message": f"Importing {target['display_kind']}: {names[0]}"})
 
-        counts = {"triangles_written": 0, "vectors_written": 0, "dfms_written": 0, "bfs_written": 0, "errors": 0}
+        counts = {
+            "triangles_written": 0,
+            "vectors_written": 0,
+            "dfms_written": 0,
+            "bfs_written": 0,
+            "bssr_written": 0,
+            "bscra_written": 0,
+            "errors": 0,
+        }
         if target["export_kind"] == "triangle":
             written, errors = migration.export_triangles_for_rc(
                 reserving_class,
@@ -313,6 +362,7 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
                 progress_callback=progress_callback,
                 progress_state=progress_state,
                 triangle_names=names,
+                method_counts=counts,
                 verbose=False,
             )
             counts["triangles_written"] += written
@@ -353,11 +403,14 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
             + counts["vectors_written"]
             + counts["dfms_written"]
             + counts["bfs_written"]
+            + counts["bssr_written"]
+            + counts["bscra_written"]
         )
         refreshed = 0
         if total_written:
             refreshed = migration.refresh_sidecar_graphs_for_rc(rc_dir)
-            migration.rebuild_dataset_instance_index(migration.PROJECT_NAME, rc_path, rc_dir)
+        migration.rebuild_dataset_instance_index(migration.PROJECT_NAME, rc_path, rc_dir)
+        index_rebuilt = True
         return {
             "project_name": migration.PROJECT_NAME,
             "rc_path": rc_path,
@@ -372,6 +425,25 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
             "migration_path": str(MIGRATION_SCRIPT),
         }
     finally:
+        active_error = sys.exc_info()[1]
+        if mutation_started and not index_rebuilt and rc_dir is not None:
+            try:
+                migration.rebuild_dataset_instance_index(
+                    migration.PROJECT_NAME,
+                    rc_path,
+                    rc_dir,
+                )
+            except Exception as rebuild_error:
+                if active_error is None:
+                    raise
+                try:
+                    progress_callback({
+                        "event": "finish",
+                        "status": "error",
+                        "message": f"Index rebuild after interrupted import failed: {rebuild_error}",
+                    })
+                except Exception:
+                    pass
         migration._restore_runtime_scope(previous_scope)
 
 
@@ -386,6 +458,10 @@ def _method_type_for_reopen(properties):
         return "Result Selection"
     if kind == "bornhuetter_ferguson":
         return "Bornhuetter Ferguson"
+    if kind in {"berquist_sherman_sr", "berquistshermansr"}:
+        return "B&S Settlement Rate Adjustment"
+    if kind in {"berquist_sherman_cra", "berquistshermancra"}:
+        return "B&S Case Reserve Adequacy Adjustment"
     return ""
 
 
@@ -395,7 +471,13 @@ def _reopen_active_target_window(ui, window, properties, target_name):
         return {"reopened": False, "reason": "missing_target_name"}
 
     method_type = _method_type_for_reopen(properties)
-    open_method = method_type.strip().casefold() in {"dfm", "result selection", "bornhuetter ferguson"}
+    open_method = method_type.strip().casefold() in {
+        "dfm",
+        "result selection",
+        "bornhuetter ferguson",
+        "b&s settlement rate adjustment",
+        "b&s case reserve adequacy adjustment",
+    }
     closed = False
     try:
         closed = bool(window.close(timeout_sec=15))
@@ -421,11 +503,19 @@ def _reopen_active_target_window(ui, window, properties, target_name):
 
 
 def run_macro(active_dfm=None, active_context=None):
+    migration = None
+    migration_load_error = None
+    try:
+        migration = _load_resq_migration_module()
+    except Exception as exc:
+        migration_load_error = exc
     from arcrho_api import ArcRhoUI, get_server_root
 
     ui = ArcRhoUI()
     progress = None
     try:
+        if migration_load_error is not None:
+            raise migration_load_error
         context = active_context if isinstance(active_context, dict) else ui.project_instance.context(timeout_sec=10)
         window = ui.project_instance.active_window(timeout_sec=10)
         if window is None:
@@ -469,7 +559,6 @@ def run_macro(active_dfm=None, active_context=None):
             return {"status": "cancelled", "reason": "missing_target_name"}
 
         server_root = get_server_root(required=True)
-        migration = _load_resq_migration_module()
         progress = ui.progress_bar(
             progress_id=PROGRESS_ID,
             title=PROGRESS_TITLE,

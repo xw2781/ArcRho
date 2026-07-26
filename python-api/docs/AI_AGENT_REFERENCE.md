@@ -48,9 +48,10 @@ details tab
 data tab
 ratios tab
 results tab
-notes tab
 method metadata
 ```
+
+DFM notes are stored only in the output dataset sidecar's top-level `notes` field, not in method JSON.
 
 Save behavior:
 

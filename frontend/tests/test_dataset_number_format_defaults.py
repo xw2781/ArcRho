@@ -36,28 +36,57 @@ class DatasetNumberFormatDefaultsTests(unittest.TestCase):
         payload = dataset_number_format_service.get_preferences()
         self.assertEqual(payload["default_number_format"], "0,000")
         self.assertEqual(payload["overrides"], [])
-        self.assertEqual(dataset_number_format_service.dataset_type_number_format("Any RC", "Any Dataset Type"), "0,000")
+        self.assertEqual(dataset_number_format_service.dataset_type_number_format("Any Dataset Type"), "0,000")
 
-    def test_save_and_lookup_use_case_insensitive_reserving_class_and_dataset_type_keys(self) -> None:
+    def test_save_and_lookup_use_case_insensitive_dataset_type_keys(self) -> None:
         saved = dataset_number_format_service.save_preferences(
             expected_revision=0,
             default_number_format="0,000.00",
             overrides=[{
-                "reserving_class": "Example RC",
                 "dataset_type_name": "Frequency Type",
                 "number_format": "0.000",
             }],
         )
 
         self.assertEqual(saved["revision"], 1)
-        self.assertEqual(dataset_number_format_service.dataset_type_number_format(" example rc ", "FREQUENCY TYPE"), "0.000")
-        self.assertEqual(dataset_number_format_service.dataset_type_number_format("Other", "Dataset Type"), "0,000.00")
+        self.assertEqual(dataset_number_format_service.dataset_type_number_format("FREQUENCY TYPE"), "0.000")
+        self.assertEqual(dataset_number_format_service.dataset_type_number_format("Dataset Type"), "0,000.00")
         self.assertEqual(
-            dataset_number_format_service.dataset_type_number_format_settings("Example RC", "Frequency Type"),
+            dataset_number_format_service.dataset_type_number_format_settings("Frequency Type"),
             {"number_format": "0.000", "decimal_places": 3},
         )
         on_disk = json.loads(self.preferences_path.read_text(encoding="utf-8"))
         self.assertEqual(on_disk["json_format"], dataset_number_format_service.JSON_FORMAT)
+
+    def test_preferences_can_return_a_resolved_format_for_temporary_view(self) -> None:
+        dataset_number_format_service.save_preferences(
+            expected_revision=0,
+            default_number_format="0,000",
+            overrides=[{
+                "dataset_type_name": "Frequency Type",
+                "number_format": "0.0%",
+            }],
+        )
+
+        payload = dataset_number_format_service.get_preferences(dataset_type_name="FREQUENCY TYPE")
+        self.assertEqual(payload["default_number_format"], "0,000")
+        self.assertEqual(payload["resolved_number_format"], "0.0%")
+        self.assertEqual(payload["resolved_decimal_places"], 1)
+
+    def test_legacy_reserving_class_rows_normalize_to_one_type_only_override(self) -> None:
+        self.preferences_path.parent.mkdir(parents=True)
+        self.preferences_path.write_text(json.dumps({
+            "json_format": dataset_number_format_service.JSON_FORMAT,
+            "revision": 1,
+            "default_number_format": "0,000",
+            "overrides": [
+                {"reserving_class": "RC A", "dataset_type_name": "Frequency Type", "number_format": "0.0%"},
+                {"reserving_class": "RC B", "dataset_type_name": "Frequency Type", "number_format": "0.0%"},
+            ],
+        }), encoding="utf-8")
+
+        payload = dataset_number_format_service.get_preferences()
+        self.assertEqual(payload["overrides"], [{"dataset_type_name": "Frequency Type", "number_format": "0.0%"}])
 
     def test_revision_conflict_does_not_overwrite_the_file(self) -> None:
         dataset_number_format_service.save_preferences(

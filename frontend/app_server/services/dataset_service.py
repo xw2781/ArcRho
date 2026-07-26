@@ -7,9 +7,11 @@ import json
 import os
 import re
 import shutil
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -21,7 +23,10 @@ from app_server.helpers import (
     build_dataset_cache_file_name,
     sanitize_dataset_file_name,
 )
-from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service
+from app_server.services import (
+    dataset_instance_index_service,
+    dataset_sidecar_status_service,
+)
 
 
 _ORIGIN_YEAR_RE = re.compile(r"^(\d{4})$")
@@ -59,6 +64,26 @@ _ORIGIN_MONTH_NUMBERS = {
     "december": 12,
 }
 _ORIGIN_KIND_BY_LENGTH = {12: "year", 6: "half", 3: "quarter", 1: "month"}
+_METHOD_CALCULATED_TYPES = frozenset((
+    dataset_sidecar_status_service.METHOD_TYPE_DFM,
+    dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION,
+    dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON,
+    dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_SR,
+    dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_CRA,
+))
+_SIDECAR_READ_MAX_WORKERS = 8
+_SIDECAR_READ_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_SIDECAR_READ_MAX_WORKERS,
+    thread_name_prefix="arcrho-sidecar-read",
+)
+_SIDECAR_WRITE_LOCKS_GUARD = threading.Lock()
+_SIDECAR_WRITE_LOCKS: Dict[str, threading.RLock] = {}
+
+
+def _dataset_sidecar_write_lock(path: str) -> threading.RLock:
+    key = os.path.normcase(os.path.abspath(path))
+    with _SIDECAR_WRITE_LOCKS_GUARD:
+        return _SIDECAR_WRITE_LOCKS.setdefault(key, threading.RLock())
 
 
 def _parse_origin_label(value: Any) -> Tuple[str, int] | None:
@@ -544,27 +569,28 @@ def _normalize_dataset_external_links(
 
 
 def _write_dataset_sidecar_payload(path: str, payload: Dict[str, Any]) -> None:
-    tmp_path = f"{path}.{uuid.uuid4()}.tmp"
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump(payload, fh, indent=2, ensure_ascii=False)
-            fh.write("\n")
-        os.replace(tmp_path, path)
-    except PermissionError:
+    with _dataset_sidecar_write_lock(path):
+        tmp_path = f"{path}.{uuid.uuid4()}.tmp"
         try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError:
-            pass
-        raise HTTPException(423, "Dataset sidecar is locked or inaccessible.")
-    except OSError as err:
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError:
-            pass
-        raise HTTPException(500, f"Failed to write dataset sidecar: {str(err)}")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
+                json.dump(payload, fh, indent=2, ensure_ascii=False)
+                fh.write("\n")
+            os.replace(tmp_path, path)
+        except PermissionError:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+            raise HTTPException(423, "Dataset sidecar is locked or inaccessible.")
+        except OSError as err:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+            raise HTTPException(500, f"Failed to write dataset sidecar: {str(err)}")
 
 
 def _write_dataset_csv_and_sidecar(
@@ -983,29 +1009,6 @@ def get_diagonal(ds_id: str, project_name: str, origin_length: int, k: int = 0) 
     return {"id": ds_id, "k": k, "items": items}
 
 
-def _build_notes_dataset_id(project_name: str, reserving_class: str, dataset_name: str) -> str:
-    _ = project_name
-    ds_component = sanitize_dataset_file_name(dataset_name)
-    return f"ArcRhoTriNotes@{ds_component}"
-
-
-def _require_notes_fields(project_name: str, reserving_class: str, dataset_name: str) -> Tuple[str, str, str]:
-    p = str(project_name if project_name is not None else "")
-    rc = str(reserving_class if reserving_class is not None else "")
-    ds = str(dataset_name if dataset_name is not None else "")
-    if not p.strip() or not rc.strip() or not ds.strip():
-        raise HTTPException(400, "project_name, reserving_class, and dataset_name are required.")
-    return p, rc, ds
-
-
-def _get_notes_file_path(project_name: str, reserving_class: str, dataset_id: str) -> str:
-    try:
-        data_dir = config.get_project_dataset_sidecar_dir(project_name, reserving_class)
-    except ValueError as err:
-        raise HTTPException(404, str(err))
-    return os.path.join(data_dir, f"{dataset_id}.json")
-
-
 def _require_dataset_fields(project_name: str, reserving_class: str, dataset_name: str) -> Tuple[str, str, str]:
     p = str(project_name if project_name is not None else "")
     rc = str(reserving_class if reserving_class is not None else "")
@@ -1020,12 +1023,15 @@ def _get_dataset_sidecar_path(
     reserving_class: str,
     dataset_name: str,
     csv_file: str = "",
+    *,
+    sidecar_dir: str = "",
 ) -> str:
     _ = csv_file
-    try:
-        sidecar_dir = config.get_project_dataset_sidecar_dir(project_name, reserving_class)
-    except ValueError as err:
-        raise HTTPException(404, str(err))
+    if not sidecar_dir:
+        try:
+            sidecar_dir = config.get_project_dataset_sidecar_dir(project_name, reserving_class)
+        except ValueError as err:
+            raise HTTPException(404, str(err))
     ds_file = sanitize_dataset_file_name(dataset_name)
     return os.path.join(sidecar_dir, f"{ds_file}.json")
 
@@ -1056,40 +1062,71 @@ def _read_dataset_sidecar(path: str) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _is_app_calculated_dataset_type(project_name: str, dataset_type_name: str) -> tuple[bool, str]:
-    name_key = str(dataset_type_name or "").strip().lower()
-    if not name_key:
-        return False, ""
+def _dataset_type_calculation_map(project_name: str) -> Dict[str, tuple[bool, str]]:
     try:
         from app_server.services import calculated_dataset_service
 
         rows = calculated_dataset_service._dataset_type_rows(project_name)
     except Exception:
-        return False, ""
+        return {}
+    out: Dict[str, tuple[bool, str]] = {}
     for row in rows:
-        if str(row.get("name") or "").strip().lower() != name_key:
+        name_key = str(row.get("name") or "").strip().lower()
+        if not name_key:
             continue
-        return bool(row.get("calculated") and not row.get("generated") and str(row.get("formula") or "").strip()), str(row.get("formula") or "")
-    return False, ""
+        formula = str(row.get("formula") or "").strip()
+        out[name_key] = (
+            bool(row.get("calculated") and not row.get("generated") and formula),
+            formula,
+        )
+    return out
 
 
-def _method_type_from_dataset_index(project_name: str, reserving_class: str, dataset_name: str) -> str:
-    name_key = str(dataset_name or "").strip().lower()
+def _is_app_calculated_dataset_type(
+    project_name: str,
+    dataset_type_name: str,
+    *,
+    calculation_map: Dict[str, tuple[bool, str]] | None = None,
+) -> tuple[bool, str]:
+    name_key = str(dataset_type_name or "").strip().lower()
     if not name_key:
-        return dataset_sidecar_status_service.METHOD_TYPE_NONE
+        return False, ""
+    resolved = calculation_map if calculation_map is not None else _dataset_type_calculation_map(project_name)
+    return resolved.get(name_key, (False, ""))
+
+
+def _dataset_index_method_type_map(project_name: str, reserving_class: str) -> Dict[str, str]:
     try:
         index = dataset_instance_index_service.get_index(project_name, reserving_class, refresh=False)
     except Exception:
-        return dataset_sidecar_status_service.METHOD_TYPE_NONE
+        return {}
+    out: Dict[str, str] = {}
     for item in index.get("files") or []:
         if not isinstance(item, dict):
             continue
-        names = [item.get("name")]
-        item_keys = {str(value or "").strip().lower() for value in names if str(value or "").strip()}
-        if name_key not in item_keys:
+        name = str(item.get("name") or "").strip()
+        if not name:
             continue
-        return dataset_sidecar_status_service.normalize_method_type(item.get("method_type"))
-    return dataset_sidecar_status_service.METHOD_TYPE_NONE
+        out[name.lower()] = dataset_sidecar_status_service.normalize_method_type(item.get("method_type"))
+    return out
+
+
+def _method_type_from_dataset_index(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    *,
+    method_type_map: Dict[str, str] | None = None,
+) -> str:
+    name_key = str(dataset_name or "").strip().lower()
+    if not name_key:
+        return dataset_sidecar_status_service.METHOD_TYPE_NONE
+    resolved = (
+        method_type_map
+        if method_type_map is not None
+        else _dataset_index_method_type_map(project_name, reserving_class)
+    )
+    return resolved.get(name_key, dataset_sidecar_status_service.METHOD_TYPE_NONE)
 
 
 def _sidecar_graph_entries(
@@ -1099,23 +1136,43 @@ def _sidecar_graph_entries(
     *,
     include_formula: bool = False,
     include_method_type: bool = False,
+    calculation_map: Dict[str, tuple[bool, str]] | None = None,
+    method_type_map: Dict[str, str] | None = None,
+    sidecar_dir: str = "",
 ) -> List[Dict[str, str]]:
     out = dataset_sidecar_status_service.name_entries(
         dataset_sidecar_status_service.entry_names(entries)
     )
     if not include_formula and not include_method_type:
         return out
-    for item in out:
+    sidecar_paths = [
+        _get_dataset_sidecar_path(
+            project_name,
+            reserving_class,
+            str(item.get("dataset_type_name") or "").strip(),
+            sidecar_dir=sidecar_dir,
+        )
+        for item in out
+    ]
+    sidecar_futures = [
+        _SIDECAR_READ_EXECUTOR.submit(_read_dataset_sidecar, path)
+        for path in sidecar_paths
+    ]
+    for item, sidecar_future in zip(out, sidecar_futures):
         name = str(item.get("dataset_type_name") or "").strip()
         if not name:
             continue
         try:
-            dep_payload = _read_dataset_sidecar(_get_dataset_sidecar_path(project_name, reserving_class, name))
+            dep_payload = sidecar_future.result()
         except Exception:
             dep_payload = {}
         dataset_name = str(dep_payload.get("dataset_name") or name).strip()
         dataset_type = str(dep_payload.get("dataset_type") or name).strip()
-        _, type_formula = _is_app_calculated_dataset_type(project_name, dataset_type)
+        _, type_formula = _is_app_calculated_dataset_type(
+            project_name,
+            dataset_type,
+            calculation_map=calculation_map,
+        )
         formula = str(dep_payload.get("formula") or type_formula or "").strip()
         item["dataset_name"] = dataset_name or name
         item["dataset_type"] = dataset_type or name
@@ -1125,7 +1182,12 @@ def _sidecar_graph_entries(
                 dep_payload.get("source_kind"),
             )
             if method_type == dataset_sidecar_status_service.METHOD_TYPE_NONE:
-                method_type = _method_type_from_dataset_index(project_name, reserving_class, dataset_name or name)
+                method_type = _method_type_from_dataset_index(
+                    project_name,
+                    reserving_class,
+                    dataset_name or name,
+                    method_type_map=method_type_map,
+                )
             item["method_type"] = method_type
         if formula:
             item["formula"] = formula
@@ -1135,6 +1197,7 @@ def _sidecar_graph_entries(
 def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     path = _get_dataset_sidecar_path(p, rc, ds)
+    sidecar_dir = os.path.dirname(path)
     payload = _read_dataset_sidecar(path)
     if not payload:
         return {
@@ -1152,7 +1215,35 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
     period_length = payload.get("period_length")
     origin_length = period_length if is_vector else payload.get("origin_length")
     development_length = period_length if is_vector else payload.get("development_length")
-    app_calculated, formula = _is_app_calculated_dataset_type(p, dataset_type)
+    calculation_map = _dataset_type_calculation_map(p)
+    method_type_map = (
+        _dataset_index_method_type_map(p, rc)
+        if dataset_sidecar_status_service.entry_names(payload.get("Precedents"))
+        else {}
+    )
+    app_calculated, formula = _is_app_calculated_dataset_type(
+        p,
+        dataset_type,
+        calculation_map=calculation_map,
+    )
+    precedents = _sidecar_graph_entries(
+        p,
+        rc,
+        payload.get("Precedents"),
+        include_method_type=True,
+        calculation_map=calculation_map,
+        method_type_map=method_type_map,
+        sidecar_dir=sidecar_dir,
+    )
+    dependents = _sidecar_graph_entries(
+        p,
+        rc,
+        payload.get("Dependents"),
+        include_formula=True,
+        calculation_map=calculation_map,
+        method_type_map=method_type_map,
+        sidecar_dir=sidecar_dir,
+    )
     return {
         "ok": True,
         "exists": True,
@@ -1178,11 +1269,12 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
             payload.get("source_kind"),
         ),
         "status": dataset_sidecar_status_service.normalize_status(payload.get("status")),
+        "notes": str(payload.get("notes") or ""),
         "calculated": True if app_calculated else payload.get("calculated"),
         "formula": formula or str(payload.get("formula") or ""),
         "external_links": _normalize_dataset_external_links(payload.get("external_links")),
-        "Precedents": _sidecar_graph_entries(p, rc, payload.get("Precedents"), include_method_type=True),
-        "Dependents": _sidecar_graph_entries(p, rc, payload.get("Dependents"), include_formula=True),
+        "Precedents": precedents,
+        "Dependents": dependents,
         "user": str(payload.get("user") or ""),
         "modified_by": str(payload.get("modified_by") or ""),
         "created": str(payload.get("created") or ""),
@@ -1192,17 +1284,38 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
     }
 
 
-def _cached_csv_candidates(project_name: str, reserving_class: str, dataset_name: str, sidecar: Dict[str, Any]) -> List[str]:
+def _cached_csv_candidates(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    sidecar: Dict[str, Any],
+) -> Iterator[str]:
     try:
         data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
     except ValueError as err:
         raise HTTPException(404, str(err))
-    names: List[str] = []
+    seen = set()
+
+    def candidate_path(name: str) -> str:
+        clean = os.path.basename(str(name or "").strip())
+        key = clean.lower()
+        if not clean or key in seen:
+            return ""
+        seen.add(key)
+        return os.path.join(data_dir, clean)
+
     csv_file = str(sidecar.get("csv_file") or "").strip()
     if csv_file:
-        names.append(csv_file)
+        candidate = candidate_path(csv_file)
+        if candidate:
+            yield candidate
     base = sanitize_dataset_file_name(dataset_name, "Dataset")
-    names.append(f"{base}.csv")
+    candidate = candidate_path(f"{base}.csv")
+    if candidate:
+        yield candidate
+
+    # Directory enumeration is the network-drive fallback, not the normal path.
+    # The caller checks each yielded preferred path before requesting the next.
     if os.path.isdir(data_dir):
         prefix = f"{base}@".lower()
         for filename in os.listdir(data_dir):
@@ -1210,17 +1323,9 @@ def _cached_csv_candidates(project_name: str, reserving_class: str, dataset_name
             if not name_l.endswith(".csv"):
                 continue
             if name_l == f"{base}.csv".lower() or name_l.startswith(prefix):
-                names.append(filename)
-    seen = set()
-    out: List[str] = []
-    for name in names:
-        clean = os.path.basename(str(name or "").strip())
-        key = clean.lower()
-        if not clean or key in seen:
-            continue
-        seen.add(key)
-        out.append(os.path.join(data_dir, clean))
-    return out
+                candidate = candidate_path(filename)
+                if candidate:
+                    yield candidate
 
 
 def _parse_length_scoped_cache_name(filename: str) -> Dict[str, Any]:
@@ -1270,10 +1375,16 @@ def load_cached_dataset_values(
         data_dir = config.get_project_dataset_cache_dir(p, rc)
     except ValueError as err:
         raise HTTPException(404, str(err))
-    candidates: List[str] = []
+    exact_candidates: List[str] = []
     exact_requested = bool(csv_file or (origin_length and development_length))
     if csv_file:
-        candidates.append(os.path.join(data_dir, os.path.basename(str(csv_file).strip())))
+        exact_candidates.append(
+            os.path.join(data_dir, os.path.basename(str(csv_file).strip()))
+        )
+    elif sidecar.get("csv_file"):
+        exact_candidates.append(
+            os.path.join(data_dir, os.path.basename(str(sidecar.get("csv_file")).strip()))
+        )
     if origin_length and development_length:
         cache_name = build_dataset_cache_file_name(
             ds,
@@ -1283,9 +1394,12 @@ def load_cached_dataset_values(
             cumulative,
             calendar,
         )
-        candidates.append(os.path.join(data_dir, f"{cache_name}.csv"))
-    if not exact_requested:
-        candidates.extend(_cached_csv_candidates(p, rc, ds, sidecar))
+        exact_candidates.append(os.path.join(data_dir, f"{cache_name}.csv"))
+    candidates: Iterable[str] = (
+        exact_candidates
+        if exact_requested
+        else _cached_csv_candidates(p, rc, ds, sidecar)
+    )
 
     seen = set()
     csv_path = ""
@@ -1317,18 +1431,62 @@ def load_cached_dataset_values(
     is_vector = data_format.strip().lower() == "vector"
     sidecar_origin_length = sidecar_period_length if is_vector else sidecar.get("origin_length")
     sidecar_development_length = sidecar_period_length if is_vector else sidecar.get("development_length")
+    resolved_origin_length = _int_or_default(parsed_name.get("origin_length") or sidecar_origin_length, max(1, len(values)))
+    resolved_development_length = _int_or_default(parsed_name.get("development_length") or sidecar_development_length, max(1, len(values[0]) if values else 1))
+    dataset_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
+    origin_labels, _ = _validate_origin_labels(
+        sidecar.get("origin_labels"),
+        len(values),
+        resolved_origin_length,
+    )
+    if not origin_labels:
+        origin_labels = _resolve_origin_labels(
+            dataset_id,
+            csv_path,
+            p,
+            resolved_origin_length,
+            len(values),
+        )
+    column_count = max((len(row) for row in values), default=0)
+    development_labels = _normalize_origin_labels(sidecar.get("development_labels"))
+    if len(development_labels) != column_count:
+        development_labels = ["Ultimate"] if is_vector and column_count == 1 else [str(12 * (index + 1)) for index in range(column_count)]
+    try:
+        file_mtime = os.stat(csv_path).st_mtime
+    except OSError:
+        file_mtime = None
+    config.DATASETS[dataset_id] = csv_path
     return {
         "ok": True,
+        "id": dataset_id,
         "project_name": p,
         "reserving_class": rc,
         "dataset_name": str(sidecar.get("dataset_name") or ds),
         "dataset_type": str(sidecar.get("dataset_type") or ds),
         "data_format": data_format,
-        "origin_length": _int_or_default(parsed_name.get("origin_length") or sidecar_origin_length, max(1, len(values))),
-        "development_length": _int_or_default(parsed_name.get("development_length") or sidecar_development_length, max(1, len(values[0]) if values else 1)),
-        "origin_labels": _normalize_origin_labels(sidecar.get("origin_labels")),
+        "origin_length": resolved_origin_length,
+        "development_length": resolved_development_length,
+        "origin_labels": origin_labels,
+        "dev_labels": development_labels,
+        "mask": [[value is not None for value in row] for row in values],
+        "mtime": file_mtime,
         "csv_file": os.path.basename(csv_path),
         "source_kind": str(sidecar.get("source_kind") or ""),
+        "method_type": dataset_sidecar_status_service.normalize_method_type(sidecar.get("method_type"), sidecar.get("source_kind")),
+        "status": dataset_sidecar_status_service.normalize_status(sidecar.get("status")),
+        "notes": str(sidecar.get("notes") or ""),
+        "cumulative": sidecar.get("cumulative"),
+        "transposed": sidecar.get("transposed"),
+        "calendar": sidecar.get("calendar"),
+        "number_format": _normalize_number_format(sidecar.get("number_format") or "0,000"),
+        "decimal_places": _normalize_decimal_places(sidecar.get("decimal_places")),
+        "formula": str(sidecar.get("formula") or ""),
+        "calculated": sidecar.get("calculated"),
+        "external_links": _normalize_dataset_external_links(sidecar.get("external_links")),
+        "Precedents": sidecar.get("Precedents") if isinstance(sidecar.get("Precedents"), list) else [],
+        "Dependents": sidecar.get("Dependents") if isinstance(sidecar.get("Dependents"), list) else [],
+        "audit_log": _normalize_dataset_audit_log(sidecar.get("audit_log")),
+        "exists": bool(sidecar),
         "path": csv_path,
         "sidecar_path": sidecar_path,
         "values": values,
@@ -1355,6 +1513,7 @@ def save_dataset_sidecar(
     csv_file: str = "",
     method_type: str = "",
     status: int | None = None,
+    notes: str | None = None,
     precedents: List[str] | None = None,
     external_links: List[Any] | None = None,
     values: List[List[Any]] | None = None,
@@ -1383,6 +1542,7 @@ def save_dataset_sidecar(
     data_format_value = str(data_format or existing.get("data_format") or "Triangle")
     is_vector = data_format_value.strip().lower() == "vector"
     method_type_value = dataset_sidecar_status_service.normalize_method_type(method_type or existing.get("method_type"), source_kind_value)
+    method_calculated = method_type_value in _METHOD_CALCULATED_TYPES
     number_format_value = _normalize_number_format(number_format or existing.get("number_format") or "0,000")
     decimal_places_value = _normalize_decimal_places(decimal_places)
     if values is not None and app_calculated:
@@ -1421,9 +1581,10 @@ def save_dataset_sidecar(
         "number_format": number_format_value,
         "decimal_places": decimal_places_value,
         "csv_file": csv_file_value,
-        "calculated": True if app_calculated else (False if values is not None else existing.get("calculated")),
+        "calculated": True if app_calculated or method_calculated else (False if values is not None else existing.get("calculated")),
         "formula": formula or str(existing.get("formula") or ""),
         "method_type": method_type_value,
+        "notes": str(notes if notes is not None else existing.get("notes") or ""),
         "user": user_name,
         "created": created,
         "modified_by": user_name,
@@ -1534,6 +1695,7 @@ def save_dataset_sidecar(
         "source_kind": payload["source_kind"],
         "method_type": payload["method_type"],
         "status": payload["status"],
+        "notes": payload["notes"],
         "external_links": _normalize_dataset_external_links(payload.get("external_links")),
         "Precedents": _sidecar_graph_entries(p, rc, payload.get("Precedents"), include_method_type=True),
         "Dependents": _sidecar_graph_entries(p, rc, payload.get("Dependents"), include_formula=True),
@@ -1548,85 +1710,20 @@ def save_dataset_sidecar(
     }
 
 
-def load_dataset_notes(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
-    p, rc, ds = _require_notes_fields(project_name, reserving_class, dataset_name)
-    dataset_id = _build_notes_dataset_id(p, rc, ds)
-    path = _get_notes_file_path(p, rc, dataset_id)
-
-    if not os.path.exists(path):
-        return {
-            "ok": True,
-            "exists": False,
-            "dataset_id": dataset_id,
-            "project_name": p,
-            "reserving_class": rc,
-            "dataset_name": ds,
-            "notes": "",
-            "path": path,
-        }
-
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            payload = json.load(fh)
-    except PermissionError:
-        raise HTTPException(423, "Notes file is locked or inaccessible.")
-    except OSError as err:
-        raise HTTPException(500, f"Failed to read notes file: {str(err)}")
-    except json.JSONDecodeError as err:
-        raise HTTPException(500, f"Invalid notes JSON format: {str(err)}")
-
-    notes = payload.get("notes", "")
-    return {
-        "ok": True,
-        "exists": True,
-        "dataset_id": str(payload.get("dataset_id") or dataset_id),
-        "project_name": str(payload.get("project_name") or p),
-        "reserving_class": str(payload.get("reserving_class") or rc),
-        "dataset_name": str(payload.get("dataset_name") or ds),
-        "notes": str(notes if notes is not None else ""),
-        "updated_at": str(payload.get("updated_at") or ""),
-        "path": path,
-    }
-
-
 def save_dataset_notes(project_name: str, reserving_class: str, dataset_name: str, notes: str) -> Dict[str, Any]:
-    p, rc, ds = _require_notes_fields(project_name, reserving_class, dataset_name)
-    dataset_id = _build_notes_dataset_id(p, rc, ds)
-    path = _get_notes_file_path(p, rc, dataset_id)
-    data_dir = os.path.dirname(path)
-    payload = {
-        "dataset_id": dataset_id,
-        "project_name": p,
-        "reserving_class": rc,
-        "dataset_name": ds,
-        "notes": str(notes if notes is not None else ""),
-        "updated_at": datetime.now().isoformat(timespec="seconds"),
-    }
-
-    tmp_path = f"{path}.tmp"
-    try:
-        os.makedirs(data_dir, exist_ok=True)
-        with open(tmp_path, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, path)
-    except PermissionError:
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError:
-            pass
-        raise HTTPException(423, "Notes file is locked or inaccessible.")
-    except OSError as err:
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError:
-            pass
-        raise HTTPException(500, f"Failed to write notes file: {str(err)}")
-
+    """Update notes in the owning dataset sidecar; no standalone notes file exists."""
+    p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
+    path = _get_dataset_sidecar_path(p, rc, ds)
+    with _dataset_sidecar_write_lock(path):
+        payload = _read_dataset_sidecar(path)
+        if not payload:
+            raise HTTPException(404, f"Dataset sidecar not found for '{ds}'.")
+        payload["notes"] = str(notes if notes is not None else "")
+        payload["modified_by"] = _current_user_name()
+        payload["updated_at"] = _now_utc_iso()
+        _write_dataset_sidecar_payload(path, payload)
     return {
         "ok": True,
-        "dataset_id": dataset_id,
         "project_name": p,
         "reserving_class": rc,
         "dataset_name": ds,
@@ -1634,7 +1731,6 @@ def save_dataset_notes(project_name: str, reserving_class: str, dataset_name: st
         "updated_at": payload["updated_at"],
         "path": path,
     }
-
 
 def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str, Any]:
     path = config.DATASETS.get(ds_id)

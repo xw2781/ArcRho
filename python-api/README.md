@@ -86,7 +86,9 @@ result = ui.macros.run_file(r"E:\My ArcRho Work\apply_growth_adjustments.py")
 print(result["message"])
 ```
 
-For an unsaved editor buffer, call `ui.macros.run_source(source, filename="draft.py", source_path=...)`. ArcRho captures the exact active DFM, runs the conventional `run_macro(active_dfm, active_context)` entry point (also accepting `main(...)`), then applies the returned/mutated payload only if the captured DFM is still open and unchanged. UI-only scripts can run with no active DFM and receive `active_dfm=None`; a returned DFM payload is rejected in that case. Source execution is limited to 120 seconds, and unchanged DFM state is not reapplied or marked dirty. A script's saved parent folder is available for sibling imports. Third-party dependencies still need to be part of the packaged app runtime.
+For an unsaved editor buffer, call `ui.macros.run_source(source, filename="draft.py", source_path=...)`. ArcRho captures the exact active DFM, runs the conventional `run_macro(active_dfm, active_context)` entry point (also accepting `main(...)`), then applies the returned/mutated payload only if the captured DFM is still open and unchanged. UI-only scripts can run with no active DFM and receive `active_dfm=None`; a returned DFM payload is rejected in that case. Source execution times out after 120 seconds without an activity heartbeat, and unchanged DFM state is not reapplied or marked dirty. Maintained macros can wrap trusted long-running service calls with the injected `run_trusted_macro_call()` helper to avoid per-line tracing overhead while using `check_macro_cancelled()` or `report_macro_activity()` at cooperative checkpoints. A script's saved parent folder is available for sibling imports. Third-party dependencies still need to be part of the packaged app runtime.
+
+The `Import ResQ Reserving Class` macro requires at least one fresh ArcRho Engine heartbeat before it connects to ResQ or changes project data. Generated datasets are submitted to `<ArcRho Server>/requests` using the same request contract as the Excel add-in; the migration does not start or import a private data-engine. It publishes generated requests as a batch so the running worker pool can process them concurrently, then writes the migration-owned sidecars and final reserving-class index.
 
 ArcBot uses the same package through a compact command helper. For DFM inspection, prefer the bundled `inspect` command so summary, components, and optional ratio rows are returned in one call:
 
@@ -101,14 +103,14 @@ This installation is only needed for external IDEs or Python environments. Arcod
 ArcRho release builds ship a pip-installable wheel in the app resources folder:
 
 ```powershell
-python -m pip install "<ArcRho install folder>\resources\python_packages\arcrho_api-0.2.0-py3-none-any.whl"
+python -m pip install "<ArcRho install folder>\resources\python_packages\arcrho_api-0.2.1-py3-none-any.whl"
 ```
 
 Development builds can create the same wheel without network access:
 
 ```powershell
 python python-api\tools\build_wheel.py --out-dir python-api\dist
-python -m pip install python-api\dist\arcrho_api-0.2.0-py3-none-any.whl
+python -m pip install python-api\dist\arcrho_api-0.2.1-py3-none-any.whl
 ```
 
 API-only releases can publish the wheel to the shared ArcRho Server packages folder without rebuilding the desktop app:

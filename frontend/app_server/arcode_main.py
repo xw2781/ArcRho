@@ -57,5 +57,9 @@ def app_health():
         "ok": True,
         "app": "arcode",
         "token": os.environ.get("ARCODE_BACKEND_TOKEN") or os.environ.get("ARCRHO_BACKEND_TOKEN", ""),
+        "backend_artifact_id": (
+            os.environ.get("ARCODE_BACKEND_ARTIFACT_ID")
+            or os.environ.get("ARCRHO_BACKEND_ARTIFACT_ID", "")
+        ),
         "project_root": str(config.PROJECT_ROOT),
     }

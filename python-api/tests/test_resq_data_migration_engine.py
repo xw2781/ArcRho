@@ -7,6 +7,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 _TMP_ROOT = Path(__file__).resolve().parent / "logs" / "tmp"
@@ -65,6 +66,9 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.datasets_dir.mkdir(parents=True)
         self.methods_dir.mkdir()
         self.sidecars_dir.mkdir()
+        instances_dir = self.root / "runtime" / "instances" / "arcrho_engine"
+        instances_dir.mkdir(parents=True)
+        (instances_dir / "worker.json").write_text("{}", encoding="utf-8")
 
         self.module = load_migration_module()
         self.module.SERVER_ROOT = self.root
@@ -77,8 +81,6 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
             project_name="Demo",
             rs_json_format=self.module.RS_JSON_FORMAT,
             method_data_dir=self.module.METHOD_DATA_DIR,
-            index_file_name=self.module.INDEX_FILE_NAME,
-            index_version=self.module.INDEX_VERSION,
         )
         self.extractors = importlib.import_module("resq_migration.extractors")
         self.extractors.configure_extractors(
@@ -207,15 +209,6 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
     # -- orchestration: period preservation + no fallback ---------------------
 
     def test_generated_dataset_orchestration_preserves_periods(self) -> None:
-        calls = {}
-
-        def _fake_generate(**kwargs):
-            Path(kwargs["data_path"]).write_text("1,2\n", encoding="utf-8")
-            calls.update(kwargs)
-
-        self.module.generate_engine_csv = _fake_generate
-        self.module.get_engine_processing_provenance = lambda project: self.provenance
-
         payload = {
             "name": "Paid Loss",
             "dataset_type": "Paid Loss",
@@ -225,33 +218,31 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
             "development_length": 18,
             "user": "tester",
         }
-        self.module._write_engine_generated_dataset(payload, r"Auto\PP", self.rc_dir, is_vector=False)
+        task = self.module._create_engine_generated_task(
+            payload,
+            r"Auto\PP",
+            self.rc_dir,
+            is_vector=False,
+        )
+        job = task["job"]
 
-        # ResQ period configuration is passed through to the engine unchanged.
-        self.assertEqual(calls["origin_length"], 24)
-        self.assertEqual(calls["development_length"], 18)
-        self.assertEqual(calls["is_vector"], False)
-        self.assertTrue((self.datasets_dir / "Paid Loss@24@18@cum@dev.csv").is_file())
-        self.assertTrue((self.sidecars_dir / "Paid Loss.json").is_file())
+        self.assertEqual(job.payload["OriginLength"], 24)
+        self.assertEqual(job.payload["DevelopmentLength"], 18)
+        self.assertEqual(job.payload["Function"], "ArcRhoTri")
+        self.assertEqual(job.target_path.name, "Paid Loss@24@18@cum@dev.csv")
 
     def test_engine_failure_records_error_without_resq_fallback(self) -> None:
         write_calls = []
 
-        def _boom(*_args, **_kwargs):
-            raise self.module.EngineGenerationError("engine down")
+        def _boom(_job, **_kwargs):
+            raise RuntimeError("engine down")
 
-        self.module._write_engine_generated_dataset = _boom
+        self.module.publish_engine_request = _boom
         self.module.write_triangle_export = lambda *a, **k: write_calls.append(a)
-
         rc = _FakeReservingClass({"Paid Loss": _fake_triangle("Paid Loss", "Paid Loss")})
-        self.module.export_triangle = lambda _triangle: {
-            "name": "Paid Loss",
-            "dataset_type": "Paid Loss",
-            "origin_length": 12,
-            "development_length": 12,
-            "values": [[1]],
-            "user": "tester",
-        }
+        self.module.export_triangle = lambda *_args, **_kwargs: self.fail(
+            "engine-owned datasets must not extract ResQ cell values"
+        )
 
         progress_state = {"completed": 0, "total": 1}
         written, errors = self.module.export_triangles_for_rc(
@@ -260,12 +251,190 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
             self.rc_dir,
             progress_state=progress_state,
             triangle_names=["Paid Loss"],
+            engine_provenance=self.provenance,
             verbose=False,
         )
 
         self.assertEqual((written, errors), (0, 1))
         self.assertEqual(write_calls, [])  # no ResQ fallback write
         self.assertFalse(any(self.datasets_dir.glob("Paid Loss@*.csv")))
+
+    def test_generated_requests_are_all_published_before_waiting(self) -> None:
+        rc = _FakeReservingClass({
+            "Paid Loss": _fake_triangle("Paid Loss", "Paid Loss"),
+            "Generated Premium": _fake_triangle("Generated Premium", "Generated Premium"),
+        })
+        published = []
+        waited = []
+        preflight_roots = []
+
+        def publish(job, *, check_workers=True):
+            self.assertFalse(check_workers)
+            published.append(job)
+            job.output_path.parent.mkdir(parents=True, exist_ok=True)
+            job.output_path.write_text("1,2\n", encoding="utf-8")
+            return job.request_path
+
+        def wait(job, **_kwargs):
+            self.assertEqual(len(published), 2)
+            waited.append(job)
+            return job.output_path
+
+        self.module.publish_engine_request = publish
+        self.module.wait_for_engine_request = wait
+        self.module.require_running_engine_instances = (
+            lambda root: preflight_roots.append(Path(root)) or (Path("worker.json"),)
+        )
+        self.module.export_triangle = lambda *_args, **_kwargs: self.fail(
+            "engine-owned datasets must not extract ResQ cell values"
+        )
+
+        written, errors = self.module.export_triangles_for_rc(
+            rc,
+            r"Auto\PP",
+            self.rc_dir,
+            triangle_names=["Paid Loss", "Generated Premium"],
+            engine_provenance=self.provenance,
+            verbose=False,
+        )
+
+        self.assertEqual((written, errors), (2, 0))
+        self.assertEqual(len(published), 2)
+        self.assertEqual(len(waited), 2)
+        self.assertEqual(preflight_roots, [self.root])
+        self.assertTrue((self.datasets_dir / "Paid Loss@12@12@cum@dev.csv").is_file())
+
+    def test_generated_vector_skips_resq_value_extraction(self) -> None:
+        vector = types.SimpleNamespace(
+            Name="Generated Premium",
+            DatasetType=types.SimpleNamespace(
+                Name="Generated Premium",
+                Category=types.SimpleNamespace(Name="Premium"),
+                DataFormat=1,
+            ),
+            MethodType=0,
+            PeriodLength=6,
+        )
+        reserving_class = types.SimpleNamespace(
+            Vectors=lambda: _FakeCollection({"Generated Premium": vector}),
+        )
+
+        def publish(job, *, check_workers=True):
+            self.assertFalse(check_workers)
+            job.output_path.parent.mkdir(parents=True, exist_ok=True)
+            job.output_path.write_text("10\n", encoding="utf-8")
+            return job.request_path
+
+        self.module.publish_engine_request = publish
+        self.module.wait_for_engine_request = lambda job, **_kwargs: job.output_path
+        self.module.export_vector = lambda *_args, **_kwargs: self.fail(
+            "engine-owned vectors must not extract ResQ values"
+        )
+
+        written, errors = self.module.export_vectors_for_rc(
+            reserving_class,
+            r"Auto\PP",
+            self.rc_dir,
+            vector_names=["Generated Premium"],
+            engine_provenance=self.provenance,
+            verbose=False,
+        )
+
+        self.assertEqual((written, errors), (1, 0))
+        self.assertTrue((self.datasets_dir / "Generated Premium@6.csv").is_file())
+
+    def test_no_engine_worker_stops_before_resq_import(self) -> None:
+        error = self.module.EngineUnavailableError("no workers")
+        with (
+            patch.object(
+                self.module,
+                "require_running_engine_instances",
+                side_effect=error,
+            ),
+            self.assertRaises(self.module.EngineUnavailableError),
+        ):
+            self.module.import_reserving_class_from_resq(
+                "Demo",
+                r"Auto\PP",
+                server_root=self.root,
+                verbose=False,
+            )
+
+    def test_interrupted_import_rebuilds_index_after_mutation_started(self) -> None:
+        reserving_class = object()
+        project = types.SimpleNamespace(
+            ReservingClasses=lambda: types.SimpleNamespace(
+                Item=lambda _path: reserving_class
+            )
+        )
+        application = types.SimpleNamespace(
+            ConnectByName=Mock(),
+            Projects=lambda: types.SimpleNamespace(Item=lambda _name: project),
+            Disconnect=Mock(),
+        )
+        client_module = types.ModuleType("win32com.client")
+        client_module.Dispatch = Mock(return_value=application)
+        win32com_module = types.ModuleType("win32com")
+        win32com_module.client = client_module
+        rebuild = Mock()
+
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "win32com": win32com_module,
+                    "win32com.client": client_module,
+                },
+            ),
+            patch.object(
+                self.module,
+                "require_running_engine_instances",
+                return_value=(Path("worker.json"),),
+            ),
+            patch.object(
+                self.module,
+                "get_engine_processing_provenance",
+                return_value=self.provenance,
+            ),
+            patch.object(
+                self.module,
+                "_selected_exports",
+                return_value=(True, False, False),
+            ),
+            patch.object(
+                self.module,
+                "resq_export_dataset_counts",
+                return_value={
+                    "total": 1,
+                    "triangles": 1,
+                    "vectors": 0,
+                    "dfms": 0,
+                    "methods": 0,
+                    "triangle_names": ["Paid Loss"],
+                },
+            ),
+            patch.object(
+                self.module,
+                "export_triangles_for_rc",
+                side_effect=RuntimeError("export interrupted"),
+            ),
+            patch.object(
+                self.module,
+                "rebuild_dataset_instance_index",
+                rebuild,
+            ),
+            self.assertRaisesRegex(RuntimeError, "export interrupted"),
+        ):
+            self.module.import_reserving_class_from_resq(
+                "Demo",
+                r"Auto\PP",
+                server_root=self.root,
+                cleanup_target=False,
+                verbose=False,
+            )
+
+        rebuild.assert_called_once_with("Demo", r"Auto\PP", self.rc_dir)
+        application.Disconnect.assert_called_once_with()
 
 
 if __name__ == "__main__":

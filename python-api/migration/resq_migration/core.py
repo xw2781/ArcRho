@@ -5,11 +5,26 @@ import json
 import re
 from pathlib import Path
 
+from arcrho_api.dataset_index_contract import (
+    DATASET_INDEX_VERSION,
+    INDEX_FILE_NAME as DATASET_INDEX_FILE_NAME,
+)
+
 
 METHOD_TYPE_NONE_CODE = 0
 METHOD_TYPE_DFM_CODE = 1
 METHOD_TYPE_BF_CODE = 2
 METHOD_TYPE_RESULT_SELECTION_CODE = 4
+METHOD_TYPE_BS_SR_CODE = 8
+METHOD_TYPE_BS_CRA_CODE = 9
+BS_SR_METHOD_TYPE = "B&S Settlement Rate Adjustment"
+BS_CRA_METHOD_TYPE = "B&S Case Reserve Adequacy Adjustment"
+BS_SR_SOURCE_KIND = "berquist_sherman_sr"
+BS_CRA_SOURCE_KIND = "berquist_sherman_cra"
+BS_SR_JSON_FORMAT = "arcrho-berquist-sherman-sr-method-by-tab-v1"
+BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-method-by-tab-v1"
+BS_SR_FILE_PREFIX = "BSSR@"
+BS_CRA_FILE_PREFIX = "BSCRA@"
 METHOD_TYPE_NAMES = {
     METHOD_TYPE_NONE_CODE: "None",
     METHOD_TYPE_DFM_CODE: "DFM",
@@ -18,7 +33,8 @@ METHOD_TYPE_NAMES = {
     METHOD_TYPE_RESULT_SELECTION_CODE: "Result Selection",
     6: "Bootstrap",
     7: "Stochastic Consolidation",
-    8: "Berquist Sherman"
+    METHOD_TYPE_BS_SR_CODE: BS_SR_METHOD_TYPE,
+    METHOD_TYPE_BS_CRA_CODE: BS_CRA_METHOD_TYPE,
 }
 
 
@@ -315,7 +331,7 @@ def _cached_dataset_names_from_file(filename: str) -> set[str]:
         return names
     if ext != ".json":
         return names
-    for prefix in ("ArcRhoTriNotes@", "DFM@"):
+    for prefix in ("DFM@", BS_SR_FILE_PREFIX, BS_CRA_FILE_PREFIX):
         if stem.startswith(prefix):
             _add_cached_dataset_name(names, stem[len(prefix):])
             return names

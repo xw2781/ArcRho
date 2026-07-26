@@ -7,10 +7,20 @@ import json
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List
 
 from fastapi import HTTPException
+from arcrho_api.dataset_index_contract import (
+    INDEX_FILE_NAME as DATASET_INDEX_FILE_NAME,
+    build_dataset_index_payload,
+    cached_dataset_name_from_filename,
+    decode_filename_segment,
+    index_update_lock,
+    resolve_canonical_index_identity,
+    write_index_json_unlocked,
+)
 
 from app_server import config
 from app_server.helpers import (
@@ -21,7 +31,11 @@ from app_server.helpers import (
     _normalize_folder_structure_entry,
     sanitize_dataset_file_name,
 )
+from app_server.services import runtime_cache_provenance_service
 from app_server.services.audit_service import safe_append_project_audit_log
+
+
+_GENERATED_CACHE_MAX_WORKERS = 4
 
 
 def _project_index_path() -> str:
@@ -428,8 +442,10 @@ def duplicate_project_folder(source: str, old_name: str, new_name: str) -> Dict[
 
 
 def _csv_stem_base(file_name: str) -> str:
-    stem = os.path.splitext(os.path.basename(str(file_name or "")))[0]
-    return stem.split("@", 1)[0].strip().lower()
+    logical_name = cached_dataset_name_from_filename(
+        os.path.basename(str(file_name or ""))
+    )
+    return sanitize_dataset_file_name(logical_name).lower()
 
 
 def _input_dataset_cache_keys_from_index(index_path: str) -> Dict[str, set[str]]:
@@ -445,17 +461,8 @@ def _input_dataset_cache_keys_from_index(index_path: str) -> Dict[str, set[str]]
         if str(item.get("source_kind") or "").strip().lower() != "input":
             continue
 
-        for key in ("csv_file", "name"):
-            value = str(item.get(key) or "").strip()
-            if value.lower().endswith(".csv"):
-                keep_files.add(os.path.basename(value).lower())
-
-        candidate_names = []
-        for key in ("dataset_name", "name", "dataset_type"):
-            candidate_names.append(item.get(key))
-        candidate_names.extend(item.get("dataset_names") or [])
-        for value in candidate_names:
-            text = str(value or "").strip()
+        for key in ("name", "dataset_type"):
+            text = str(item.get(key) or "").strip()
             if not text:
                 continue
             if text.lower().endswith(".csv"):
@@ -464,6 +471,108 @@ def _input_dataset_cache_keys_from_index(index_path: str) -> Dict[str, set[str]]
             keep_base_names.add(sanitize_dataset_file_name(text).lower())
 
     return {"files": keep_files, "base_names": keep_base_names}
+
+
+def _remove_generated_dataset_csv(path: str) -> None:
+    os.remove(path)
+    try:
+        runtime_cache_provenance_service.remove(path)
+    except OSError:
+        pass
+
+
+def _clear_reserving_class_generated_dataset_csv_caches(
+    *,
+    project_name: str,
+    reserving_class_dir: str,
+    data_dir: str,
+) -> Dict[str, List[str]]:
+    reserving_class = decode_filename_segment(
+        os.path.basename(os.path.normpath(reserving_class_dir))
+    )
+    project_name, reserving_class = resolve_canonical_index_identity(
+        project_name,
+        reserving_class,
+        reserving_class_dir,
+    )
+    index_path = os.path.join(reserving_class_dir, DATASET_INDEX_FILE_NAME)
+    dataset_dir = os.path.join(reserving_class_dir, config.DATASET_CACHE_DIR)
+
+    with index_update_lock(
+        index_path,
+        project_name=project_name,
+        reserving_class=reserving_class,
+    ):
+        keep = _input_dataset_cache_keys_from_index(index_path)
+        cleared_candidates: List[tuple[str, str]] = []
+        preserved_files: List[str] = []
+        with os.scandir(dataset_dir) as iterator:
+            entries = sorted(
+                (
+                    (entry.name, entry.path)
+                    for entry in iterator
+                    if entry.is_file()
+                ),
+                key=lambda entry: (entry[0].casefold(), entry[0]),
+            )
+        for entry_name, entry_path in entries:
+            if not entry_name.lower().endswith(".csv"):
+                continue
+            relative_path = os.path.relpath(entry_path, data_dir)
+            normalized_entry_name = entry_name.lower()
+            entry_base = _csv_stem_base(entry_name)
+            if (
+                normalized_entry_name in keep["files"]
+                or entry_base in keep["base_names"]
+            ):
+                preserved_files.append(relative_path)
+                continue
+            cleared_candidates.append((entry_path, relative_path))
+
+        if cleared_candidates:
+            worker_count = min(
+                _GENERATED_CACHE_MAX_WORKERS,
+                len(cleared_candidates),
+            )
+            cleared_files: List[str] = []
+            deletion_error: Exception | None = None
+            with ThreadPoolExecutor(
+                max_workers=worker_count,
+                thread_name_prefix="arcrho-cache-clear-file",
+            ) as executor:
+                futures = [
+                    executor.submit(_remove_generated_dataset_csv, path)
+                    for path, _relative_path in cleared_candidates
+                ]
+                for (_path, relative_path), future in zip(
+                    cleared_candidates,
+                    futures,
+                ):
+                    try:
+                        future.result()
+                    except Exception as error:
+                        if deletion_error is None:
+                            deletion_error = error
+                    else:
+                        cleared_files.append(relative_path)
+
+            if cleared_files:
+                payload = build_dataset_index_payload(
+                    project_name,
+                    reserving_class,
+                    reserving_class_dir,
+                    max_workers=_GENERATED_CACHE_MAX_WORKERS,
+                )
+                write_index_json_unlocked(index_path, payload)
+            if deletion_error is not None:
+                raise deletion_error
+        else:
+            cleared_files = []
+
+        return {
+            "cleared_files": cleared_files,
+            "preserved_files": preserved_files,
+        }
 
 
 def clear_generated_dataset_csv_caches(source: str, project_name: str) -> Dict[str, Any]:
@@ -490,36 +599,67 @@ def clear_generated_dataset_csv_caches(source: str, project_name: str) -> Dict[s
             "preserved_files": [],
         }
 
-    cleared_files: List[str] = []
-    preserved_files: List[str] = []
+    canonical_project_name = (
+        os.path.basename(os.path.dirname(os.path.normpath(data_dir)))
+        or project_name_clean
+    )
+    reserving_class_dirs: List[str] = []
     try:
         for current_dir, dirs, files in os.walk(data_dir):
-            if config.DATASET_CACHE_DIR not in dirs:
+            directory_names = {name.casefold(): name for name in dirs}
+            dataset_dir_name = directory_names.get(config.DATASET_CACHE_DIR.casefold())
+            skipped_subdirectories = {
+                config.DATASET_CACHE_DIR.casefold(),
+                config.METHOD_DATA_DIR.casefold(),
+                config.DATASET_SIDECAR_DIR.casefold(),
+                config.RUNTIME_CACHE_PROVENANCE_DIR.casefold(),
+            }
+            dirs[:] = [
+                name
+                for name in dirs
+                if name.casefold() not in skipped_subdirectories
+            ]
+            if dataset_dir_name is None:
                 continue
-            index_path = os.path.join(current_dir, config.PROJECT_INDEX_FILE)
-            if not os.path.isfile(index_path):
-                continue
 
-            keep = _input_dataset_cache_keys_from_index(index_path)
-            dataset_dir = os.path.join(current_dir, config.DATASET_CACHE_DIR)
-            with os.scandir(dataset_dir) as it:
-                for entry in it:
-                    if not entry.is_file():
-                        continue
-                    if not entry.name.lower().endswith(".csv"):
-                        continue
+            index_names = {name.casefold() for name in files}
+            if DATASET_INDEX_FILE_NAME.casefold() in index_names:
+                reserving_class_dirs.append(current_dir)
 
-                    relative_path = os.path.relpath(entry.path, data_dir)
-                    entry_name = entry.name.lower()
-                    entry_base = _csv_stem_base(entry.name)
-                    if entry_name in keep["files"] or entry_base in keep["base_names"]:
-                        preserved_files.append(relative_path)
-                        continue
-
-                    os.remove(entry.path)
-                    cleared_files.append(relative_path)
+        reserving_class_dirs.sort(
+            key=lambda path: (os.path.normcase(path), path)
+        )
+        cleared_files: List[str] = []
+        preserved_files: List[str] = []
+        if reserving_class_dirs:
+            worker_count = min(
+                _GENERATED_CACHE_MAX_WORKERS,
+                len(reserving_class_dirs),
+            )
+            with ThreadPoolExecutor(
+                max_workers=worker_count,
+                thread_name_prefix="arcrho-cache-clear-rc",
+            ) as executor:
+                futures = [
+                    executor.submit(
+                        _clear_reserving_class_generated_dataset_csv_caches,
+                        project_name=canonical_project_name,
+                        reserving_class_dir=reserving_class_dir,
+                        data_dir=data_dir,
+                    )
+                    for reserving_class_dir in reserving_class_dirs
+                ]
+                for future in futures:
+                    result = future.result()
+                    cleared_files.extend(result["cleared_files"])
+                    preserved_files.extend(result["preserved_files"])
     except json.JSONDecodeError as e:
         raise HTTPException(400, f"Invalid reserving-class dataset index JSON: {str(e)}")
+    except TimeoutError:
+        raise HTTPException(
+            423,
+            "Cannot clear generated dataset cache files because a dataset index is locked.",
+        )
     except PermissionError:
         raise HTTPException(423, "Cannot clear generated dataset cache files because a project data folder is locked.")
     except OSError as e:

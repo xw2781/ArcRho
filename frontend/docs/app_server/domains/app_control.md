@@ -27,7 +27,7 @@ Application lifecycle control domain (restart/shutdown flags) coordinated betwee
 <!-- MANUAL:BEGIN -->
 - Called by shell app control actions.
 - Coordinated with launcher/electron host watchers.
-- Electron host startup clears stale lifecycle flags before spawning the app server on fixed local port `28765` by default; if another process is already listening there and does not match the per-launch health token, the host clears that listener before starting its backend. Shutdown paths post `/app/shutdown` then wait before force-kill fallback.
+- Electron host startup clears stale lifecycle flags before spawning the app server on fixed local port `28765` by default. Each packaged backend build contains a `backend-artifact.json` manifest whose identity hashes the complete collected PyInstaller bundle, including the executable and served assets. The host reuses an existing listener only when the health response has the matching app mode and either the current per-launch token or that exact artifact identity; a same-version older or unknown backend is cleared before startup. Development keeps same-project-root reuse because it has no packaged artifact. Shutdown paths post `/app/shutdown` then wait before force-kill fallback.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

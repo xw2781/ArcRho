@@ -1,0 +1,310 @@
+from __future__ import annotations
+
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from fastapi import HTTPException
+
+
+FRONTEND_ROOT = Path(__file__).resolve().parents[1]
+if str(FRONTEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(FRONTEND_ROOT))
+
+from app_server.services import dataset_instance_index_service
+from arcrho_api.dataset_index_contract import canonicalize_index_row
+
+
+class DatasetInstanceIndexMetadataTests(unittest.TestCase):
+    def test_folder_scan_overlaps_independent_metadata_reads(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            data_root = Path(temp_dir)
+            dataset_dir = data_root / "datasets"
+            sidecar_dir = data_root / "sidecars"
+            method_dir = data_root / "methods"
+            dataset_dir.mkdir()
+            sidecar_dir.mkdir()
+            method_dir.mkdir()
+            for index in range(8):
+                (dataset_dir / f"Dataset {index}@12.csv").write_text("1\n", encoding="utf-8")
+                (sidecar_dir / f"Dataset {index}.json").write_text("{}", encoding="utf-8")
+
+            active = 0
+            max_active = 0
+            activity_lock = threading.Lock()
+
+            def slow_metadata_read(path: str):
+                nonlocal active, max_active
+                with activity_lock:
+                    active += 1
+                    max_active = max(max_active, active)
+                time.sleep(0.02)
+                with activity_lock:
+                    active -= 1
+                return {
+                    "dataset_name": Path(path).stem,
+                    "dataset_type": Path(path).stem,
+                    "data_format": "Vector",
+                }
+
+            with (
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "_safe_read_json",
+                    side_effect=slow_metadata_read,
+                ),
+            ):
+                _names, files, _methods = dataset_instance_index_service._scan_cached_dataset_folder(
+                    str(data_root)
+                )
+
+        self.assertEqual(len(files), 16)
+        self.assertGreater(max_active, 1)
+
+    def test_canonical_row_keeps_scalar_period_lengths(self) -> None:
+        logical = canonicalize_index_row(
+            {
+                "name": "Paid Loss",
+                "dataset_type": "Paid Loss",
+                "origin_length": 12,
+                "development_length": 36,
+            }
+        )
+
+        self.assertEqual(logical["name"], "Paid Loss")
+        self.assertEqual(logical["origin_length"], 12)
+        self.assertEqual(logical["development_length"], 36)
+
+    def _rebuild_patches(self, write_side_effect: OSError):
+        folder_paths = {
+            "data": r"E:\ArcRho Server\projects\Example\data\Paid",
+            "datasets": r"E:\ArcRho Server\projects\Example\data\Paid\datasets",
+            "methods": r"E:\ArcRho Server\projects\Example\data\Paid\methods",
+            "sidecars": r"E:\ArcRho Server\projects\Example\data\Paid\sidecars",
+        }
+        payload = {
+            "ok": True,
+            "version": dataset_instance_index_service.INDEX_VERSION,
+            "exists": True,
+            "project_name": "Example",
+            "reserving_class": "Paid",
+            "folder_signature": "sha256:" + ("0" * 64),
+            "files": [
+                {
+                    "name": "Paid Loss",
+                    "dataset_type": "Paid Loss",
+                    "method_type": "None",
+                    "status": 0,
+                    "last_modified": "",
+                    "last_modified_timestamp": 0.0,
+                    "created": "",
+                    "created_timestamp": 0.0,
+                    "user": "",
+                },
+            ],
+        }
+        return (
+            mock.patch.object(dataset_instance_index_service, "_folder_paths", return_value=folder_paths),
+            mock.patch.object(dataset_instance_index_service.os.path, "isdir", return_value=True),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "index_update_lock",
+                return_value=threading.Lock(),
+            ),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "build_dataset_index_payload",
+                return_value=payload,
+            ),
+            mock.patch.object(dataset_instance_index_service, "index_rebuild_reason"),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "_write_index_file",
+                side_effect=write_side_effect,
+            ),
+        )
+
+    def test_get_index_returns_scanned_rows_when_index_write_fails(self) -> None:
+        write_error = OSError(53, "The network path was not found")
+        patches = self._rebuild_patches(write_error)
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5] as write,
+        ):
+            result = dataset_instance_index_service.get_index("Example", "Paid", refresh=True)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual([item["name"] for item in result["files"]], ["Paid Loss"])
+        self.assertFalse(result["index_persisted"])
+        self.assertEqual(result["folder_paths"], {
+            "data": r"E:\ArcRho Server\projects\Example\data\Paid",
+            "datasets": r"E:\ArcRho Server\projects\Example\data\Paid\datasets",
+            "methods": r"E:\ArcRho Server\projects\Example\data\Paid\methods",
+            "sidecars": r"E:\ArcRho Server\projects\Example\data\Paid\sidecars",
+        })
+        self.assertIn("Dataset table loaded from the dataset folder", result["index_warning"])
+        self.assertIn("The network path was not found", result["index_warning"])
+        written_payload = write.call_args.args[1]
+        self.assertNotIn("index_persisted", written_payload)
+        self.assertNotIn("index_warning", written_payload)
+
+    def test_direct_rebuild_remains_strict_when_index_write_fails(self) -> None:
+        write_error = OSError(53, "The network path was not found")
+        patches = self._rebuild_patches(write_error)
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                dataset_instance_index_service.rebuild_index("Example", "Paid")
+
+        self.assertEqual(raised.exception.status_code, 500)
+        self.assertIn("Failed to write dataset instance index", raised.exception.detail)
+
+    def test_permission_failure_can_fall_back_only_for_read_path(self) -> None:
+        write_error = PermissionError(13, "Access is denied")
+        patches = self._rebuild_patches(write_error)
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+        ):
+            result = dataset_instance_index_service.get_index("Example", "Paid", refresh=True)
+
+        self.assertFalse(result["index_persisted"])
+        self.assertIn("Access is denied", result["index_warning"])
+
+    def test_index_read_failure_does_not_trigger_a_folder_rebuild(self) -> None:
+        read_error = HTTPException(500, "Failed to read dataset instance index: network unavailable")
+        with (
+            mock.patch.object(
+                dataset_instance_index_service,
+                "_folder_paths",
+                return_value={
+                    "data": "",
+                    "datasets": "datasets",
+                    "methods": "methods",
+                    "sidecars": "sidecars",
+                },
+            ),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "_read_index_file",
+                side_effect=read_error,
+            ),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "rebuild_index",
+                side_effect=AssertionError("an index read failure must not trigger a folder scan"),
+            ) as rebuild,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                dataset_instance_index_service.get_index("Example", "Paid")
+
+        self.assertEqual(raised.exception.status_code, 500)
+        rebuild.assert_not_called()
+
+    def test_non_utf8_index_is_treated_as_invalid_and_rebuilt(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            data_dir = Path(temp_dir)
+            index_path = data_dir / "index.json"
+            index_path.write_bytes(b"\xff\xfe\x00")
+            folder_paths = {
+                "data": str(data_dir),
+                "datasets": str(data_dir / "datasets"),
+                "methods": str(data_dir / "methods"),
+                "sidecars": str(data_dir / "sidecars"),
+            }
+            rebuilt = {
+                "ok": True,
+                "project_name": "Example",
+                "reserving_class": "Paid",
+                "files": [],
+            }
+            with (
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "_folder_paths",
+                    return_value=folder_paths,
+                ),
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "rebuild_index",
+                    return_value=rebuilt,
+                ) as rebuild,
+            ):
+                result = dataset_instance_index_service.get_index("Example", "Paid")
+
+        self.assertEqual(result, rebuilt)
+        rebuild.assert_called_once()
+
+    def test_current_index_reports_persisted_without_changing_saved_payload(self) -> None:
+        saved_payload = {
+            "ok": True,
+            "version": dataset_instance_index_service.INDEX_VERSION,
+            "exists": True,
+            "project_name": "Example",
+            "reserving_class": "Paid",
+            "folder_signature": "sha256:" + ("0" * 64),
+            "files": [
+                {
+                    "name": "Paid Loss",
+                    "dataset_type": "Paid Loss",
+                    "method_type": "None",
+                    "status": 0,
+                    "last_modified": "",
+                    "last_modified_timestamp": 0.0,
+                    "created": "",
+                    "created_timestamp": 0.0,
+                    "user": "",
+                },
+            ],
+        }
+
+        with (
+            mock.patch.object(
+                dataset_instance_index_service,
+                "_folder_paths",
+                return_value={
+                    "data": "data",
+                    "datasets": "datasets",
+                    "methods": "methods",
+                    "sidecars": "sidecars",
+                },
+            ),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "_read_index_file",
+                return_value=saved_payload,
+            ),
+        ):
+            result = dataset_instance_index_service.get_index("Example", "Paid")
+
+        self.assertTrue(result["index_persisted"])
+        self.assertEqual(result["index_warning"], "")
+        self.assertEqual(result["folder_paths"]["data"], "data")
+        self.assertNotIn("folder_paths", saved_payload)
+        self.assertNotIn("index_persisted", saved_payload)
+        self.assertNotIn("index_warning", saved_payload)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -13,6 +15,11 @@ from app_server import config
 from app_server.services import user_identity_service
 
 USER_PREFS_FILE = config.PROJECT_USER_PREFERENCES_FILE
+_PREFERENCES_WRITE_LOCKS: Dict[str, threading.Lock] = {}
+_PREFERENCES_WRITE_LOCKS_GUARD = threading.Lock()
+_PREFERENCES_WRITE_LOCK_TIMEOUT_SECONDS = 5.0
+_WINDOWS_LOCK_ERRORS = {32, 33}
+_PREFERENCES_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.35, 0.5)
 
 
 def _clean_text(value: Any) -> str:
@@ -44,6 +51,56 @@ def _prefs_path(project_name: str) -> str:
     return os.path.join(project_dir, "users", _current_user_name(), USER_PREFS_FILE)
 
 
+def _get_preferences_write_lock(path: str) -> threading.Lock:
+    key = os.path.normcase(os.path.abspath(path))
+    with _PREFERENCES_WRITE_LOCKS_GUARD:
+        lock = _PREFERENCES_WRITE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _PREFERENCES_WRITE_LOCKS[key] = lock
+        return lock
+
+
+def _is_file_lock_error(err: OSError) -> bool:
+    return getattr(err, "winerror", None) in _WINDOWS_LOCK_ERRORS or isinstance(err, PermissionError)
+
+
+def _unique_preferences_temp_path(path: str) -> str:
+    return (
+        f"{path}."
+        f"{os.getpid()}."
+        f"{threading.get_ident()}."
+        f"{time.monotonic_ns()}.tmp"
+    )
+
+
+def _replace_preferences_with_retry(temp_path: str, path: str) -> None:
+    for delay in (*_PREFERENCES_REPLACE_RETRY_DELAYS, None):
+        try:
+            os.replace(temp_path, path)
+            return
+        except OSError as err:
+            if delay is None or not _is_file_lock_error(err):
+                raise
+            time.sleep(delay)
+
+
+def _write_preferences_file(path: str, data: Dict[str, Any]) -> None:
+    temp_path = _unique_preferences_temp_path(path)
+    try:
+        with open(temp_path, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        _replace_preferences_with_retry(temp_path, path)
+    finally:
+        try:
+            os.remove(temp_path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+
+
 def _read_json(path: str) -> Dict[str, Any]:
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -53,6 +110,32 @@ def _read_json(path: str) -> Dict[str, Any]:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _read_json_for_update(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except PermissionError as err:
+        raise HTTPException(
+            423,
+            f"Project user preferences are locked or inaccessible: {str(err)}",
+        ) from err
+    except OSError as err:
+        raise HTTPException(500, f"Failed to read project user preferences: {str(err)}") from err
+    except json.JSONDecodeError as err:
+        raise HTTPException(
+            409,
+            f"Project user preferences contain invalid JSON; no changes were written: {str(err)}",
+        ) from err
+    if not isinstance(data, dict):
+        raise HTTPException(
+            409,
+            "Project user preferences must contain a JSON object; no changes were written.",
+        )
+    return data
 
 
 def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
@@ -168,22 +251,27 @@ def update_preferences(project_name: str, patch: Dict[str, Any]) -> Dict[str, An
     if not isinstance(patch, dict):
         raise HTTPException(400, "data must be an object.")
     path = _prefs_path(project_name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    current = _read_json(path)
-    next_data = _normalize_project_user_preferences(_deep_merge(current, patch))
-    next_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    temp_path = f"{path}.tmp"
+    lock = _get_preferences_write_lock(path)
+    if not lock.acquire(timeout=_PREFERENCES_WRITE_LOCK_TIMEOUT_SECONDS):
+        raise HTTPException(423, "Project user preferences are busy. Please retry.")
     try:
-        with open(temp_path, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump(next_data, fh, indent=2, ensure_ascii=False)
-            fh.write("\n")
-        os.replace(temp_path, path)
-    except OSError as err:
         try:
-            os.remove(temp_path)
-        except OSError:
-            pass
-        raise HTTPException(500, f"Failed to write project user preferences: {str(err)}")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            current = _read_json_for_update(path)
+            next_data = _normalize_project_user_preferences(_deep_merge(current, patch))
+            next_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            _write_preferences_file(path, next_data)
+        except HTTPException:
+            raise
+        except PermissionError as err:
+            raise HTTPException(
+                423,
+                f"Project user preferences are locked or inaccessible: {str(err)}",
+            ) from err
+        except OSError as err:
+            raise HTTPException(500, f"Failed to write project user preferences: {str(err)}") from err
+    finally:
+        lock.release()
     return {
         "ok": True,
         "project_name": _clean_text(project_name),

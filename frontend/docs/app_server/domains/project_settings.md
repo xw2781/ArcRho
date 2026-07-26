@@ -48,7 +48,7 @@ Provides project-folder filesystem operations used by Project Settings tree acti
 - Handles project folder open requests by resolving the project directory through config path helpers before launching OS file explorer.
 - `create_project_folder` creates an empty project folder plus a `data` subfolder; client coordinates rollback if later folder-structure/settings saves fail.
 - `duplicate_project_folder` copies project configuration files and the canonical `data` folder when present so duplicated projects start with the same files as the source project.
-- `POST /project_settings/{source}/generated_dataset_cache/clear` clears project `data/*/datasets/*.csv` files during Source Data refresh while preserving CSVs identified by reserving-class `index.json` entries with `source_kind: input`; sidecar JSON, methods, and indexes are left unchanged.
+- `POST /project_settings/{source}/generated_dataset_cache/clear` clears project `data/*/datasets/*.csv` files during Source Data refresh while preserving CSVs identified by canonical scalar `index.json` entries with `source_kind: input`. Independent reserving-class scans/deletes use bounded parallelism, sidecar and method JSON remain unchanged, and each affected reserving class is rebuilt through the canonical index producer under the shared update lock before the request completes or reports a partial-delete failure.
 - Handles per-project `general_settings.json` persistence in each project folder.
 - Normalizes stored Origin/Development boundary values to plain integer strings (no commas, no trailing `.0`/`.00`).
 - Stores `auto_generated` in `general_settings.json`; the app server writes `project_name` as current project folder name to detect stale duplicated files.

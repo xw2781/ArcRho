@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from .exceptions import DfmDataError, InvalidDfmJsonError
 from .io import read_json, write_json_atomic
-from .paths import DFM_JSON_FORMAT, clean_text
+from .paths import DFM_JSON_FORMAT, clean_text, sanitize_file_name_part
 
 if TYPE_CHECKING:
     from .reserving_class import ReservingClass
@@ -252,6 +252,7 @@ class DfmMethod:
         self.name = clean_text(name)
         self.file_path = file_path
         self.payload = payload
+        self._pending_notes: str | None = None
         self._last_ratio_adjustment: dict[str, Any] | None = None
         self._ensure_grouped_payload()
 
@@ -361,21 +362,21 @@ class DfmMethod:
                 "ultimate ratio decimal places": 2,
                 "ultimate vector csv path": "",
             },
-            "notes tab": {
-                "notes": str(notes or ""),
-            },
             "method metadata": {
                 "last modified": _now_iso(),
             },
         }
         if extra:
             payload["api metadata"] = {"new_dfm extra": extra}
-        return cls(
+        method = cls(
             reserving_class,
             method_name,
             payload,
             reserving_class.project.dfm_path(reserving_class.path, method_name),
         )
+        if notes:
+            method.update_notes(notes)
+        return method
 
     def load(self) -> "DfmMethod":
         self.payload = read_json(self.file_path)
@@ -386,11 +387,25 @@ class DfmMethod:
         return deepcopy(self.payload)
 
     def save(self) -> Path:
+        if self._pending_notes is not None and not self._sidecar_path().exists():
+            raise DfmDataError(
+                f"DFM output sidecar not found: {self._sidecar_path()}. "
+                "Materialize the output dataset before saving DFM notes."
+            )
         self._sync_details_identity()
         self._trim_saved_triangle_arrays()
         _tab(self.payload, "method metadata")["last modified"] = _now_iso()
         path = write_json_atomic(self.file_path, self.payload, read_only=self.project.read_only)
-        self.project.rebuild_dfm_index()
+        if self._pending_notes is not None:
+            sidecar = read_json(self._sidecar_path())
+            sidecar["notes"] = self._pending_notes
+            write_json_atomic(self._sidecar_path(), sidecar, read_only=self.project.read_only)
+            self._pending_notes = None
+        rebuild_one = getattr(self.project, "rebuild_reserving_class_index", None)
+        if callable(rebuild_one):
+            rebuild_one(self.reserving_class_obj.path)
+        else:
+            self.project.rebuild_dfm_index()
         return path
 
     @property
@@ -425,7 +440,12 @@ class DfmMethod:
 
     @property
     def notes(self) -> str:
-        return str(self.notes_tab.get("notes") or "")
+        if self._pending_notes is not None:
+            return self._pending_notes
+        path = self._sidecar_path()
+        if not path.exists():
+            return ""
+        return str(read_json(path).get("notes") or "")
 
     @property
     def last_modified(self) -> str:
@@ -460,10 +480,6 @@ class DfmMethod:
         return _tab(self.payload, "results tab")
 
     @property
-    def notes_tab(self) -> dict[str, Any]:
-        return _tab(self.payload, "notes tab")
-
-    @property
     def metadata(self) -> dict[str, Any]:
         return _tab(self.payload, "method metadata")
 
@@ -486,7 +502,7 @@ class DfmMethod:
         return self
 
     def update_notes(self, text: str) -> "DfmMethod":
-        self.notes_tab["notes"] = str(text or "")
+        self._pending_notes = str(text or "")
         return self
 
     def add_notes(self, text: str, *, append: bool = True, add_space: bool | None = None) -> "DfmMethod":
@@ -1193,11 +1209,15 @@ class DfmMethod:
         _tab(ratios, "average formulas")
         ratios.pop("percent developed curve", None)
         _tab(self.payload, "results tab")
-        _tab(self.payload, "notes tab")
+        self.payload.pop("notes tab", None)
         _tab(self.payload, "method metadata")
         self.data_tab.pop("input data triangle values", None)
         self.results_tab.pop("ultimate vector", None)
         self._sync_details_identity()
+
+    def _sidecar_path(self) -> Path:
+        data_dir = self.project.reserving_class_data_dir(self.reserving_class)
+        return data_dir / "sidecars" / f"{sanitize_file_name_part(self.name, 'Dataset')}.json"
 
     def _trim_saved_triangle_arrays(self) -> None:
         input_values = self.data_tab.get("input data triangle values")

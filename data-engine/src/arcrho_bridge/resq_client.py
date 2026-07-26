@@ -137,9 +137,6 @@ class ResQClient:
                     "ultimate ratio decimal places": self._optional_value(dfm, "SummaryRatioDecimalPlaces", 2),
                     "ultimate vector": [],
                 },
-                "notes tab": {
-                    "notes": self._optional_value(dfm, "Notes", ""),
-                },
                 "method metadata": {
                     "last modified": self._dfm_last_modified(dfm),
                 },
@@ -157,7 +154,6 @@ class ResQClient:
             excluded_count = self._sync_excluded_ratios(dfm, payload)
             user_entry_count = self._sync_user_entry_values(dfm, payload)
             selected_count = self._sync_selected_ratios(dfm, payload)
-            notes_changed = self._sync_notes(dfm, payload)
             cell_notes_changed = self._sync_cell_notes(dfm, payload)
             dfm.Save()
             payload = {
@@ -168,7 +164,6 @@ class ResQClient:
                     "excluded ratios": excluded_count,
                     "selected ratios": selected_count,
                     "user entry values": user_entry_count,
-                    "notes": notes_changed,
                     "cell notes": cell_notes_changed,
                 },
             }
@@ -229,9 +224,6 @@ class ResQClient:
                 },
                 "results_tab": {},
                 "validation_tab": {},
-                "notes_tab": {
-                    "notes": self._optional_value(result_selection, "Notes", ""),
-                },
                 "method_metadata": {
                     "last_modified": self._result_selection_last_modified(result_selection),
                 },
@@ -249,7 +241,6 @@ class ResQClient:
             origin_length_changed = self._sync_result_selection_origin_length(result_selection, payload)
             weight_count = self._sync_result_selection_weights(result_selection, payload)
             ultimate_count = self._sync_result_selection_ultimate_overrides(result_selection, payload)
-            notes_changed = self._sync_result_selection_notes(result_selection, payload)
             result_selection.Save()
             status_payload = {
                 "ok": True,
@@ -259,7 +250,6 @@ class ResQClient:
                     "origin length": origin_length_changed,
                     "weights": weight_count,
                     "ultimate overrides": ultimate_count,
-                    "notes": notes_changed,
                 },
             }
             write_json(request["DataPath"], status_payload)
@@ -571,14 +561,6 @@ class ResQClient:
             updates += 1
         return updates
 
-    def _sync_result_selection_notes(self, result_selection, payload):
-        notes_tab = self._dict_path(payload, ("notes_tab",))
-        if not isinstance(notes_tab, dict) or "notes" not in notes_tab:
-            return False
-        notes = str(notes_tab.get("notes") or "")
-        result_selection.Notes = notes.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
-        return True
-
     def _result_selection_dataset_indexes(self, result_selection):
         out = {}
         dataset_count = int(self._optional_value(result_selection, "DatasetCount", 0) or 0)
@@ -787,14 +769,6 @@ class ResQClient:
             if row[column_index] in (1, True, "1", "true", "True"):
                 return str(labels[row_index])
         return ""
-
-    def _sync_notes(self, dfm, payload):
-        notes_tab = self._dict_path(payload, ("notes tab",))
-        if not isinstance(notes_tab, dict) or "notes" not in notes_tab:
-            return False
-        notes = str(notes_tab.get("notes") or "")
-        dfm.Notes = notes.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
-        return True
 
     def _sync_cell_notes(self, dfm, payload):
         cell_notes = self._dict_path(payload, ("ratios tab", "cell notes"))

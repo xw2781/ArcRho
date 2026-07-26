@@ -4,85 +4,68 @@ from __future__ import annotations
 import json
 import os
 import re
-import hashlib
-import threading
-import time
+import stat
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
 
+from arcrho_api.dataset_index_contract import (
+    DATASET_INDEX_VERSION,
+    INDEX_FILE_NAME as DATASET_INDEX_FILE_NAME,
+    build_dataset_index_payload,
+    canonical_existing_directory,
+    decode_filename_segment,
+    index_update_lock,
+    index_rebuild_reason,
+    write_index_json_unlocked,
+)
 from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
-from app_server.services import dataset_sidecar_status_service, user_identity_service
+from app_server.services import (
+    dataset_sidecar_status_service,
+    runtime_cache_provenance_service,
+)
 
-INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 18
+INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
+INDEX_VERSION = DATASET_INDEX_VERSION
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
-BF_METHOD_TYPE = "Bornhuetter Ferguson"
+BF_METHOD_TYPE = dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON
 BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
-_INDEX_WRITE_LOCKS: Dict[str, threading.Lock] = {}
-_INDEX_WRITE_LOCKS_GUARD = threading.Lock()
-_WINDOWS_LOCK_ERRORS = {32, 33}
-_INDEX_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.35, 0.5)
+BERQUIST_SHERMAN_METHOD_CONTRACTS = {
+    "arcrho-berquist-sherman-sr-method-by-tab-v1": {
+        "method_type": dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_SR,
+        "source_kind": dataset_sidecar_status_service.SOURCE_KIND_BERQUIST_SHERMAN_SR,
+        "filename_prefix": "BSSR@",
+    },
+    "arcrho-berquist-sherman-cra-method-by-tab-v1": {
+        "method_type": dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_CRA,
+        "source_kind": dataset_sidecar_status_service.SOURCE_KIND_BERQUIST_SHERMAN_CRA,
+        "filename_prefix": "BSCRA@",
+    },
+}
+METHOD_JSON_FILENAME_PREFIXES = (
+    "DFM@",
+    "RS@",
+    "BF@",
+    *(contract["filename_prefix"] for contract in BERQUIST_SHERMAN_METHOD_CONTRACTS.values()),
+)
+CACHED_JSON_FILENAME_PREFIXES = METHOD_JSON_FILENAME_PREFIXES
+_INDEX_SCAN_MAX_WORKERS = 12
+_INDEX_SCAN_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_INDEX_SCAN_MAX_WORKERS,
+    thread_name_prefix="arcrho-index-scan",
+)
 
 
 def _clean_text(value: Any) -> str:
     return str(value if value is not None else "").strip()
 
 
-def _get_index_write_lock(index_path: str) -> threading.Lock:
-    key = os.path.normcase(os.path.abspath(index_path))
-    with _INDEX_WRITE_LOCKS_GUARD:
-        lock = _INDEX_WRITE_LOCKS.get(key)
-        if lock is None:
-            lock = threading.Lock()
-            _INDEX_WRITE_LOCKS[key] = lock
-        return lock
-
-
-def _is_file_lock_error(err: OSError) -> bool:
-    winerror = getattr(err, "winerror", None)
-    if winerror in _WINDOWS_LOCK_ERRORS:
-        return True
-    return isinstance(err, PermissionError)
-
-
-def _unique_index_temp_path(index_path: str) -> str:
-    return (
-        f"{index_path}."
-        f"{os.getpid()}."
-        f"{threading.get_ident()}."
-        f"{time.monotonic_ns()}.tmp"
-    )
-
-
-def _replace_index_with_retry(temp_path: str, index_path: str) -> None:
-    for delay in (*_INDEX_REPLACE_RETRY_DELAYS, None):
-        try:
-            os.replace(temp_path, index_path)
-            return
-        except OSError as err:
-            if delay is None or not _is_file_lock_error(err):
-                raise
-            time.sleep(delay)
-
-
-def _write_index_file(index_path: str, data: Dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(index_path), exist_ok=True)
-    temp_path = _unique_index_temp_path(index_path)
-    try:
-        with open(temp_path, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump(data, fh, indent=2, ensure_ascii=False)
-            fh.write("\n")
-        _replace_index_with_retry(temp_path, index_path)
-    except OSError:
-        try:
-            os.remove(temp_path)
-        except OSError:
-            pass
-        raise
+def _write_index_file(index_path: str, data: Dict[str, Any]) -> bool:
+    return write_index_json_unlocked(index_path, data)
 
 
 def _require_project_dir(project_name: str) -> str:
@@ -107,14 +90,6 @@ def _reserving_class_dir(project_name: str, reserving_class: str) -> str:
     return os.path.join(_project_data_dir(project_name), _reserving_class_folder(reserving_class))
 
 
-def _sidecar_dir(project_name: str, reserving_class: str) -> str:
-    return os.path.join(_reserving_class_dir(project_name, reserving_class), config.DATASET_SIDECAR_DIR)
-
-
-def _dataset_dir(project_name: str, reserving_class: str) -> str:
-    return os.path.join(_reserving_class_dir(project_name, reserving_class), config.DATASET_CACHE_DIR)
-
-
 def _method_dir(project_name: str, reserving_class: str) -> str:
     return os.path.join(_reserving_class_dir(project_name, reserving_class), config.METHOD_DATA_DIR)
 
@@ -125,16 +100,37 @@ def _method_json_path(project_name: str, reserving_class: str, method_name: str)
 
 
 def _folder_paths(project_name: str, reserving_class: str) -> Dict[str, str]:
+    data_dir = _reserving_class_dir(project_name, reserving_class)
     return {
-        "data": _reserving_class_dir(project_name, reserving_class),
-        "datasets": _dataset_dir(project_name, reserving_class),
-        "methods": _method_dir(project_name, reserving_class),
-        "sidecars": _sidecar_dir(project_name, reserving_class),
+        "data": data_dir,
+        "datasets": os.path.join(data_dir, config.DATASET_CACHE_DIR),
+        "methods": os.path.join(data_dir, config.METHOD_DATA_DIR),
+        "sidecars": os.path.join(data_dir, config.DATASET_SIDECAR_DIR),
     }
 
 
-def _index_path(project_name: str, reserving_class: str) -> str:
-    return os.path.join(_reserving_class_dir(project_name, reserving_class), INDEX_FILE_NAME)
+def _canonical_project_name(folder_paths: Dict[str, str], fallback: str) -> str:
+    data_dir = os.path.normpath(_clean_text(folder_paths.get("data")))
+    if data_dir:
+        project_dir = os.path.dirname(os.path.dirname(data_dir))
+        canonical_dir = canonical_existing_directory(project_dir)
+        folder_name = os.path.basename(str(canonical_dir or project_dir))
+        if folder_name:
+            return folder_name
+    return _clean_text(fallback)
+
+
+def _canonical_reserving_class(
+    folder_paths: Dict[str, str],
+    fallback: str,
+) -> str:
+    data_dir = _clean_text(folder_paths.get("data"))
+    canonical_dir = canonical_existing_directory(data_dir) if data_dir else None
+    if canonical_dir is not None:
+        decoded = _clean_text(decode_filename_segment(canonical_dir.name))
+        if decoded:
+            return decoded
+    return _clean_text(fallback)
 
 
 def _safe_read_json(path: str) -> Dict[str, Any]:
@@ -143,6 +139,21 @@ def _safe_read_json(path: str) -> Dict[str, Any]:
             data = json.load(fh)
     except Exception:
         return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _read_index_file(path: str) -> Dict[str, Any] | None:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    except PermissionError:
+        raise HTTPException(423, "Dataset instance index is locked or inaccessible.")
+    except OSError as err:
+        raise HTTPException(500, f"Failed to read dataset instance index: {str(err)}")
     return data if isinstance(data, dict) else {}
 
 
@@ -225,7 +236,7 @@ def _cached_dataset_names_from_file(filename: str) -> Set[str]:
     if ext_l != ".json":
         return names
 
-    for prefix in ("ArcRhoTriNotes@", "DFM@", "RS@", "BF@"):
+    for prefix in CACHED_JSON_FILENAME_PREFIXES:
         if stem.startswith(prefix):
             _add_cached_dataset_name_from_filename(names, stem[len(prefix):])
             return names
@@ -238,11 +249,12 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
     _add_cached_dataset_name(names, _normalize_cached_dataset_name(payload.get("dataset_name")))
     if names:
         return names
-    if _clean_text(payload.get("json_format")).lower() == "arcrho-result-selection-method-by-tab-v1":
+    json_format = _clean_text(payload.get("json_format")).lower()
+    if json_format == "arcrho-result-selection-method-by-tab-v1":
         details_tab = _json_tab(payload, "details_tab")
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
-    if _clean_text(payload.get("json_format")).lower() == BF_JSON_FORMAT:
+    if json_format == BF_JSON_FORMAT or json_format in BERQUIST_SHERMAN_METHOD_CONTRACTS:
         details_tab = _json_tab(payload, "details_tab")
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
@@ -265,51 +277,6 @@ def _metadata_text(metadata: Dict[str, Any], keys: Tuple[str, ...]) -> str:
         if text:
             return text
     return ""
-
-
-def _apply_user_display_names(files: List[Dict[str, Any]]) -> None:
-    display_names = user_identity_service.load_username_display_names()
-    if not display_names:
-        return
-    for item in files:
-        user = _clean_text(item.get("user"))
-        if not user:
-            continue
-        item["user"] = display_names.get(user.casefold(), user)
-
-
-def _dataset_type_metadata(project_name: str) -> Dict[str, Dict[str, str]]:
-    try:
-        from app_server.services import dataset_types_service
-
-        path = config.get_dataset_types_path(project_name)
-        if not os.path.exists(path):
-            return {}
-        with open(path, "r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-        data = dataset_types_service.normalize_dataset_types_data(raw)
-    except Exception:
-        return {}
-    out: Dict[str, Dict[str, str]] = {}
-    for row in data.get("rows") or []:
-        if not isinstance(row, list):
-            continue
-        name = _clean_text(row[0] if len(row) > 0 else "")
-        category = _clean_text(row[2] if len(row) > 2 else "")
-        formula = _clean_text(row[4] if len(row) > 4 else "")
-        if name:
-            out[name.lower()] = {
-                "category": category,
-                "formula": formula,
-            }
-    return out
-
-
-def _dataset_type_info(dataset_type: Any, metadata_by_name: Dict[str, Dict[str, str]]) -> Dict[str, str]:
-    name = _clean_text(dataset_type)
-    if not name:
-        return {}
-    return metadata_by_name.get(name.lower(), {})
 
 
 def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -346,6 +313,25 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
             "source_kind": "bornhuetter_ferguson",
             "status": dataset_sidecar_status_service.STATUS_CURRENT,
         }
+    berquist_sherman_contract = BERQUIST_SHERMAN_METHOD_CONTRACTS.get(json_format)
+    if berquist_sherman_contract:
+        details_tab = _json_tab(payload, "details_tab")
+        dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
+        dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type"))
+        dataset_category = _clean_text(details_tab.get("dataset_category") or details_tab.get("output_category"))
+        if not dataset_name:
+            return None
+        return {
+            "dataset_name": dataset_name,
+            "dataset_type": dataset_type or dataset_name,
+            "dataset_category": dataset_category,
+            "method_type": berquist_sherman_contract["method_type"],
+            "data_format": "Triangle",
+            "source_kind": berquist_sherman_contract["source_kind"],
+            "origin_length": details_tab.get("origin_length"),
+            "development_length": details_tab.get("development_length"),
+            "status": dataset_sidecar_status_service.STATUS_CURRENT,
+        }
     details_tab = _json_tab(payload, "details tab")
     dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
     dataset_type = _normalize_cached_dataset_name(details_tab.get("output type"))
@@ -365,39 +351,6 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
 
 def _is_index_file(filename: str) -> bool:
     return filename == INDEX_FILE_NAME
-
-
-def _cached_folder_signature(files: List[Dict[str, Any]], folder_paths: Dict[str, str]) -> str:
-    source = {
-        "folders": {
-            name: {
-                "path": path,
-                "exists": os.path.isdir(path),
-            }
-            for name, path in sorted(folder_paths.items())
-        },
-        "files": [
-            {
-                "name": _clean_text(item.get("name")),
-                "source_kind": _clean_text(item.get("source_kind")),
-                "size": int(item.get("size") or 0),
-                "mtime_ns": int(item.get("mtime_ns") or 0),
-            }
-            for item in sorted(files, key=lambda item: (
-                _clean_text(item.get("name")).lower(),
-            ))
-        ],
-    }
-    signature_source = json.dumps(source, sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(signature_source.encode("utf-8")).hexdigest()
-
-
-def _numeric_timestamp(value: Any) -> float:
-    try:
-        parsed = float(value)
-        return parsed if parsed > 0 else 0.0
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def _parse_metadata_datetime(value: Any) -> datetime | None:
@@ -453,203 +406,80 @@ def _file_dataset_names(item: Dict[str, Any]) -> Set[str]:
     return names
 
 
-def _logical_file_dataset_names(item: Dict[str, Any]) -> Set[str]:
-    names: Set[str] = set()
-    _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get("dataset_name")))
-    if names:
-        return names
-    for value in item.get("dataset_names") or []:
-        _add_cached_dataset_name(names, _normalize_cached_dataset_name(value))
-    if names:
-        return names
-    _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get("name")))
-    return names
-
-
-def _merge_logical_file(existing: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
-    last_modified_ts = _numeric_timestamp(source.get("last_modified_timestamp") or source.get("mtime"))
-    source_sidecar_ts = bool(source.get("_last_modified_from_sidecar"))
-    existing_sidecar_ts = bool(existing.get("_last_modified_from_sidecar"))
-    should_update_modified = (
-        last_modified_ts
-        and (
-            (source_sidecar_ts and not existing_sidecar_ts)
-            or (source_sidecar_ts == existing_sidecar_ts and last_modified_ts >= _numeric_timestamp(existing.get("last_modified_timestamp")))
-        )
-    )
-    if should_update_modified:
-        existing["last_modified"] = _clean_text(source.get("last_modified"))
-        existing["last_modified_timestamp"] = last_modified_ts
-        if source_sidecar_ts:
-            existing["_last_modified_from_sidecar"] = True
-        user = _clean_text(source.get("user"))
-        if user:
-            existing["user"] = user
-
-    created_ts = _numeric_timestamp(source.get("created_timestamp"))
-    existing_created_ts = _numeric_timestamp(existing.get("created_timestamp"))
-    source_created_sidecar = bool(source.get("_created_from_sidecar"))
-    existing_created_sidecar = bool(existing.get("_created_from_sidecar"))
-    should_update_created = (
-        created_ts
-        and (
-            (source_created_sidecar and not existing_created_sidecar)
-            or (source_created_sidecar == existing_created_sidecar and (not existing_created_ts or created_ts < existing_created_ts))
-        )
-    )
-    if should_update_created:
-        existing["created"] = _clean_text(source.get("created"))
-        existing["created_timestamp"] = created_ts
-        if source_created_sidecar:
-            existing["_created_from_sidecar"] = True
-    dataset_type = _clean_text(source.get("dataset_type"))
-    if dataset_type and not _clean_text(existing.get("dataset_type")):
-        existing["dataset_type"] = dataset_type
-    dataset_category = _clean_text(source.get("dataset_category") or source.get("category"))
-    if dataset_category and not _clean_text(existing.get("dataset_category")):
-        existing["dataset_category"] = dataset_category
-    source_kind = _clean_text(source.get("source_kind"))
-    if source_kind and not _clean_text(existing.get("source_kind")):
-        existing["source_kind"] = source_kind
-    data_format = _clean_text(source.get("data_format"))
-    if data_format and not _clean_text(existing.get("data_format")):
-        existing["data_format"] = data_format
-    method_type = dataset_sidecar_status_service.normalize_method_type(
-        source.get("method_type"),
-        source.get("source_kind"),
-    )
-    existing_method_type = dataset_sidecar_status_service.normalize_method_type(existing.get("method_type"))
-    if method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE or existing_method_type == dataset_sidecar_status_service.METHOD_TYPE_NONE:
-        existing["method_type"] = method_type
-    if "status" in source:
-        existing["status"] = dataset_sidecar_status_service.normalize_status(source.get("status"))
-    elif "status" not in existing:
-        existing["status"] = dataset_sidecar_status_service.STATUS_CURRENT
-    formula = _clean_text(source.get("formula"))
-    if formula:
-        existing["formula"] = formula
-    for flag in ("calculated",):
-        if flag in source and flag not in existing:
-            existing[flag] = source.get(flag)
-    return existing
-
-
-def _logical_files_from_physical_files(files: List[Dict[str, Any]], methods: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    by_name: Dict[str, Dict[str, Any]] = {}
-    display_names: Dict[str, str] = {}
-    method_types = _method_type_by_name(methods)
-
-    for item in files:
-        for dataset_name in _logical_file_dataset_names(item):
-            key = dataset_name.lower()
-            display_names.setdefault(key, dataset_name)
-            logical = by_name.get(key)
-            if logical is None:
-                logical = {
-                    "name": display_names[key],
-                    "last_modified": "",
-                    "last_modified_timestamp": 0,
-                    "created": "",
-                    "created_timestamp": 0,
-                    "user": "",
-                }
-                by_name[key] = logical
-            _merge_logical_file(logical, item)
-
-    for key, method_type in method_types.items():
-        logical = by_name.get(key)
-        if logical is None:
-            method_item = next(
-                (item for item in methods if _clean_text(item.get("dataset_name")).lower() == key),
-                {},
-            )
-            name = display_names.get(key) or _clean_text(method_item.get("dataset_name")) or key
-            logical = {
-                "name": name,
-                "last_modified": "",
-                "last_modified_timestamp": 0,
-                "created": "",
-                "created_timestamp": 0,
-                "user": "",
-            }
-            dataset_type = _clean_text(method_item.get("dataset_type"))
-            if dataset_type:
-                logical["dataset_type"] = dataset_type
-            dataset_category = _clean_text(method_item.get("dataset_category"))
-            if dataset_category:
-                logical["dataset_category"] = dataset_category
-            source_kind = _clean_text(method_item.get("source_kind"))
-            if source_kind:
-                logical["source_kind"] = source_kind
-            by_name[key] = logical
-        logical["method_type"] = method_type
-        if "status" not in logical:
-            logical["status"] = dataset_sidecar_status_service.STATUS_CURRENT
-
-    for item in by_name.values():
-        item.pop("_last_modified_from_sidecar", None)
-        item.pop("_created_from_sidecar", None)
-    return sorted(by_name.values(), key=lambda item: _clean_text(item.get("name")).lower())
-
-
-def _apply_dataset_type_metadata(files: List[Dict[str, Any]], project_name: str) -> None:
-    metadata_by_name = _dataset_type_metadata(project_name)
-    if not metadata_by_name:
-        return
-    for item in files:
-        info = _dataset_type_info(item.get("dataset_type") or item.get("name"), metadata_by_name)
-        if not info:
-            continue
-        category = _clean_text(info.get("category"))
-        if category and not _clean_text(item.get("dataset_category")):
-            item["dataset_category"] = category
-        formula = _clean_text(info.get("formula"))
-        if formula and not _clean_text(item.get("formula")):
-            item["formula"] = formula
-
-
 def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
     names: Set[str] = set()
     files: List[Dict[str, Any]] = []
     methods: List[Dict[str, Any]] = []
-    metadata_cache: Dict[str, Dict[str, Any]] = {}
     if not os.path.isdir(folder_path):
         return names, files, methods
 
-    def process_entry(entry: os.DirEntry, *, sidecar_metadata: bool = False) -> None:
-            if not entry.is_file():
-                return
-            ext = os.path.splitext(entry.name)[1].lower()
-            if ext not in {".csv", ".json"} or _is_index_file(entry.name):
-                return
+    entries: List[Tuple[str, str, bool]] = []
+    def collect_entries(directory: str, *, sidecar_metadata: bool = False) -> None:
+        if not os.path.isdir(directory):
+            return
+        with os.scandir(directory) as iterator:
+            for entry in iterator:
+                ext = os.path.splitext(entry.name)[1].lower()
+                if ext not in {".csv", ".json"} or _is_index_file(entry.name):
+                    continue
+                entries.append((entry.path, entry.name, sidecar_metadata))
 
-            stat = entry.stat()
+    collect_entries(os.path.join(folder_path, config.DATASET_CACHE_DIR))
+    collect_entries(os.path.join(folder_path, config.METHOD_DATA_DIR))
+    collect_entries(
+        os.path.join(folder_path, config.DATASET_SIDECAR_DIR),
+        sidecar_metadata=True,
+    )
+
+    metadata_paths: Set[str] = set()
+    for entry_path, entry_name, _sidecar_metadata in entries:
+        ext = os.path.splitext(entry_name)[1].lower()
+        metadata_paths.add(
+            _dataset_sidecar_path_for_cached_csv(entry_path)
+            if ext == ".csv"
+            else entry_path
+        )
+
+    stat_futures: Dict[str, Future] = {
+        entry_path: _INDEX_SCAN_EXECUTOR.submit(os.stat, entry_path)
+        for entry_path, _entry_name, _sidecar_metadata in entries
+    }
+    metadata_futures: Dict[str, Future] = {
+        metadata_path: _INDEX_SCAN_EXECUTOR.submit(_safe_read_json, metadata_path)
+        for metadata_path in metadata_paths
+    }
+
+    def process_entry(entry_path: str, entry_name: str, *, sidecar_metadata: bool = False) -> None:
+            entry_stat = stat_futures[entry_path].result()
+            if not stat.S_ISREG(entry_stat.st_mode):
+                return
+            ext = os.path.splitext(entry_name)[1].lower()
             file_names: Set[str] = set()
             metadata: Dict[str, Any] = {}
-            metadata_path = entry.path
+            metadata_path = entry_path
             method_entry = None
-            entry_stem = os.path.splitext(entry.name)[0]
+            entry_stem = os.path.splitext(entry_name)[0]
             legacy_length_only_name = _has_legacy_length_only_suffix(entry_stem)
 
             if ext == ".csv":
-                file_names = set(_cached_dataset_names_from_file(entry.name))
-                metadata_path = _dataset_sidecar_path_for_cached_csv(entry.path)
-                metadata = metadata_cache.setdefault(metadata_path, _safe_read_json(metadata_path))
+                file_names = set(_cached_dataset_names_from_file(entry_name))
+                metadata_path = _dataset_sidecar_path_for_cached_csv(entry_path)
+                metadata = metadata_futures[metadata_path].result()
                 metadata_is_sidecar = True
                 legacy_length_only_name = legacy_length_only_name or _has_legacy_length_only_suffix(
                     os.path.splitext(os.path.basename(metadata_path))[0]
                 )
             elif ext == ".json":
-                metadata = metadata_cache.setdefault(entry.path, _safe_read_json(entry.path))
+                metadata = metadata_futures[entry_path].result()
                 metadata_is_sidecar = sidecar_metadata
                 payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
-                if not sidecar_metadata and entry.name.startswith(("DFM@", "RS@", "BF@")):
+                if not sidecar_metadata and entry_name.startswith(METHOD_JSON_FILENAME_PREFIXES):
                     method_entry = _method_entry_from_payload(metadata)
                     if method_entry:
                         methods.append(method_entry)
                         _add_cached_dataset_name(file_names, method_entry.get("dataset_name"))
                 if not file_names:
-                    file_names.update(payload_names or _cached_dataset_names_from_file(entry.name))
+                    file_names.update(payload_names or _cached_dataset_names_from_file(entry_name))
 
             if metadata and not legacy_length_only_name:
                 payload_names = _cached_dataset_names_from_payload(metadata)
@@ -658,13 +488,13 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
             names.update(file_names)
 
             file_info = {
-                "name": entry.name,
-                "path": entry.path,
-                "size": stat.st_size,
-                "mtime": stat.st_mtime,
-                "mtime_ns": stat.st_mtime_ns,
-                "last_modified": _format_file_timestamp(stat.st_mtime),
-                "last_modified_timestamp": stat.st_mtime,
+                "name": entry_name,
+                "path": entry_path,
+                "size": entry_stat.st_size,
+                "mtime": entry_stat.st_mtime,
+                "mtime_ns": entry_stat.st_mtime_ns,
+                "last_modified": _format_file_timestamp(entry_stat.st_mtime),
+                "last_modified_timestamp": entry_stat.st_mtime,
             }
             if file_names:
                 file_info["dataset_names"] = sorted(file_names, key=lambda item: item.lower())
@@ -686,8 +516,7 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                     file_info["origin_length"] = metadata.get("period_length")
                 else:
                     file_info["origin_length"] = metadata.get("origin_length")
-                if isinstance(metadata.get("origin_labels"), list):
-                    file_info["origin_labels"] = [str(item) for item in metadata.get("origin_labels")]
+                file_info["development_length"] = metadata.get("development_length")
                 file_info["calculated"] = metadata.get("calculated")
                 file_info["formula"] = _clean_text(metadata.get("formula"))
                 file_info["user"] = _metadata_text(metadata, (
@@ -722,156 +551,169 @@ def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[s
                 file_info["method_type"] = method_entry["method_type"]
                 file_info["status"] = method_entry.get("status", dataset_sidecar_status_service.STATUS_CURRENT)
                 file_info["data_format"] = method_entry.get("data_format", "")
+                if method_entry.get("origin_length") not in (None, ""):
+                    file_info["origin_length"] = method_entry["origin_length"]
+                if method_entry.get("development_length") not in (None, ""):
+                    file_info["development_length"] = method_entry["development_length"]
             files.append(file_info)
 
-    dataset_folder = os.path.join(folder_path, config.DATASET_CACHE_DIR)
-    if os.path.isdir(dataset_folder):
-        with os.scandir(dataset_folder) as it:
-            for entry in it:
-                process_entry(entry)
+    for entry_path, entry_name, sidecar_metadata in entries:
+        process_entry(entry_path, entry_name, sidecar_metadata=sidecar_metadata)
 
-    method_folder = os.path.join(folder_path, config.METHOD_DATA_DIR)
-    if os.path.isdir(method_folder):
-        with os.scandir(method_folder) as it:
-            for entry in it:
-                process_entry(entry)
-
-    sidecar_folder = os.path.join(folder_path, config.DATASET_SIDECAR_DIR)
-    if os.path.isdir(sidecar_folder):
-        with os.scandir(sidecar_folder) as it:
-            for entry in it:
-                process_entry(entry, sidecar_metadata=True)
     return names, files, methods
 
 
-def _dedupe_methods(methods: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    seen = set()
-    for item in methods:
-        dataset_name = _normalize_cached_dataset_name(item.get("dataset_name"))
-        method_type = _clean_text(item.get("method_type")) or "None"
-        key = (dataset_name.lower(), method_type.lower())
-        if not dataset_name or key in seen:
-            continue
-        seen.add(key)
-        out.append({
-            "dataset_name": dataset_name,
-            "dataset_type": _clean_text(item.get("dataset_type")) or dataset_name,
-            "dataset_category": _clean_text(item.get("dataset_category")),
-            "source_kind": _clean_text(item.get("source_kind")),
-            "method_type": method_type,
-        })
-    out.sort(key=lambda item: (
-        _clean_text(item.get("dataset_name")).lower(),
-        _clean_text(item.get("method_type")).lower(),
-    ))
-    return out
+def _index_response(
+    data: Dict[str, Any],
+    *,
+    persisted: bool,
+    warning: str = "",
+    folder_paths: Dict[str, str] | None = None,
+) -> Dict[str, Any]:
+    response = dict(data)
+    response["folder_paths"] = dict(
+        folder_paths
+        or _folder_paths(
+            _clean_text(data.get("project_name")),
+            _clean_text(data.get("reserving_class")),
+        )
+    )
+    response["index_file_name"] = INDEX_FILE_NAME
+    response["index_persisted"] = bool(persisted)
+    response["index_warning"] = _clean_text(warning)
+    return response
 
 
-def _method_type_by_name(methods: List[Dict[str, Any]]) -> Dict[str, str]:
-    out: Dict[str, str] = {}
-    for item in methods:
-        name = _normalize_cached_dataset_name(item.get("dataset_name"))
-        method_type = _clean_text(item.get("method_type"))
-        if name and method_type:
-            out[name.lower()] = method_type
-    return out
+def _unpersisted_index_warning(err: OSError) -> str:
+    return (
+        "Dataset table loaded from the dataset folder, but index.json could not be updated: "
+        f"{str(err)}"
+    )
 
 
-def _apply_method_types_to_files(files: List[Dict[str, Any]], methods: List[Dict[str, Any]]) -> None:
-    by_name = _method_type_by_name(methods)
-    if not by_name:
-        return
-    for item in files:
-        names = list(item.get("dataset_names") or [])
-        direct_name = _clean_text(item.get("dataset_name"))
-        if direct_name:
-            names.append(direct_name)
-        for name in names:
-            method_type = by_name.get(_clean_text(name).lower())
-            if method_type:
-                item["method_type"] = method_type
-                break
-
-
-def _empty_index(project: str, reserving_class: str, folder_paths: Dict[str, str]) -> Dict[str, Any]:
-    return {
-        "ok": True,
-        "version": INDEX_VERSION,
-        "exists": False,
-        "project_name": project,
-        "reserving_class": reserving_class,
-        "folder_paths": folder_paths,
-        "folder_signature": _cached_folder_signature([], folder_paths),
-        "files": [],
-    }
-
-
-def rebuild_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
-    project = _clean_text(project_name)
+def rebuild_index(
+    project_name: str,
+    reserving_class: str,
+    *,
+    allow_unpersisted: bool = False,
+    _resolved_folder_paths: Dict[str, str] | None = None,
+) -> Dict[str, Any]:
+    requested_project = _clean_text(project_name)
     rc = _clean_text(reserving_class)
     if not rc:
         raise HTTPException(400, "reserving_class is required.")
-    folder_paths = _folder_paths(project, rc)
+    folder_paths = _resolved_folder_paths or _folder_paths(requested_project, rc)
+    project = _canonical_project_name(folder_paths, requested_project)
+    rc = _canonical_reserving_class(folder_paths, rc)
     if not os.path.isdir(folder_paths["data"]):
-        return _empty_index(project, rc, folder_paths)
+        return _index_response(
+            build_dataset_index_payload(
+                project,
+                rc,
+                folder_paths["data"],
+                max_workers=_INDEX_SCAN_MAX_WORKERS,
+            ),
+            persisted=False,
+            warning="Dataset instance folder does not exist; index.json was not written.",
+            folder_paths=folder_paths,
+        )
 
-    index_path = _index_path(project, rc)
-    with _get_index_write_lock(index_path):
-        physical_files: List[Dict[str, Any]] = []
-        methods: List[Dict[str, Any]] = []
+    index_path = os.path.join(folder_paths["data"], INDEX_FILE_NAME)
+    with index_update_lock(
+        index_path,
+        project_name=project,
+        reserving_class=rc,
+    ):
         try:
-            _folder_names, physical_files, methods = _scan_cached_dataset_folder(folder_paths["data"])
+            data = build_dataset_index_payload(
+                project,
+                rc,
+                folder_paths["data"],
+                max_workers=_INDEX_SCAN_MAX_WORKERS,
+            )
         except PermissionError:
             raise HTTPException(423, "Dataset instance folder is locked or inaccessible.")
         except OSError as err:
             raise HTTPException(500, f"Failed to read dataset instance folder: {str(err)}")
 
-        methods = _dedupe_methods(methods)
-        _apply_method_types_to_files(physical_files, methods)
-        files = _logical_files_from_physical_files(physical_files, methods)
-        _apply_dataset_type_metadata(files, project)
-        _apply_user_display_names(files)
-        data = {
-            "ok": True,
-            "version": INDEX_VERSION,
-            "exists": True,
-            "project_name": project,
-            "reserving_class": rc,
-            "folder_paths": folder_paths,
-            "folder_signature": _cached_folder_signature(physical_files, folder_paths),
-            "files": files,
-        }
-
         try:
             _write_index_file(index_path, data)
-        except PermissionError:
+        except PermissionError as err:
+            if allow_unpersisted:
+                return _index_response(
+                    data,
+                    persisted=False,
+                    warning=_unpersisted_index_warning(err),
+                    folder_paths=folder_paths,
+                )
             raise HTTPException(423, "Dataset instance index is locked or inaccessible.")
         except OSError as err:
+            if allow_unpersisted:
+                return _index_response(
+                    data,
+                    persisted=False,
+                    warning=_unpersisted_index_warning(err),
+                    folder_paths=folder_paths,
+                )
             raise HTTPException(500, f"Failed to write dataset instance index: {str(err)}")
-        return data
-
-
-def _is_current_index(data: Dict[str, Any]) -> bool:
-    return (
-        data.get("version") == INDEX_VERSION
-        and isinstance(data.get("files"), list)
-        and _clean_text(data.get("folder_signature")) != ""
-    )
+        return _index_response(data, persisted=True, folder_paths=folder_paths)
 
 
 def get_index(project_name: str, reserving_class: str, refresh: bool = False) -> Dict[str, Any]:
-    project = _clean_text(project_name)
+    requested_project = _clean_text(project_name)
     rc = _clean_text(reserving_class)
     if not rc:
         raise HTTPException(400, "reserving_class is required.")
-    path = _index_path(project, rc)
-    if refresh or not os.path.exists(path):
-        return rebuild_index(project, rc)
-    data = _safe_read_json(path)
-    if not data or not _is_current_index(data):
-        return rebuild_index(project, rc)
-    return data
+    folder_paths = _folder_paths(requested_project, rc)
+    path = os.path.join(folder_paths["data"], INDEX_FILE_NAME)
+    if refresh:
+        project = _canonical_project_name(folder_paths, requested_project)
+        rc = _canonical_reserving_class(folder_paths, rc)
+        return rebuild_index(
+            project,
+            rc,
+            allow_unpersisted=True,
+            _resolved_folder_paths=folder_paths,
+        )
+    data = _read_index_file(path)
+    if data is None:
+        project = _canonical_project_name(folder_paths, requested_project)
+        rc = _canonical_reserving_class(folder_paths, rc)
+        return rebuild_index(
+            project,
+            rc,
+            allow_unpersisted=True,
+            _resolved_folder_paths=folder_paths,
+        )
+    saved_project = _clean_text(data.get("project_name"))
+    project = (
+        saved_project
+        if saved_project.casefold() == requested_project.casefold()
+        else _canonical_project_name(folder_paths, requested_project)
+    )
+    saved_rc = _clean_text(data.get("reserving_class"))
+    rc = (
+        saved_rc
+        if saved_rc.casefold() == rc.casefold()
+        else _canonical_reserving_class(folder_paths, rc)
+    )
+    rebuild_reason = index_rebuild_reason(
+        data,
+        expected_project_name=project,
+        expected_reserving_class=rc,
+    )
+    if rebuild_reason:
+        return rebuild_index(
+            project,
+            rc,
+            allow_unpersisted=True,
+            _resolved_folder_paths=folder_paths,
+        )
+    return _index_response(
+        data,
+        persisted=True,
+        folder_paths=folder_paths,
+    )
 
 
 def get_cached_dataset_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
@@ -941,6 +783,11 @@ def delete_cached_datasets(project_name: str, reserving_class: str, dataset_name
         path = item["path"]
         try:
             os.remove(path)
+            if os.path.splitext(path)[1].lower() == ".csv":
+                try:
+                    runtime_cache_provenance_service.remove(path)
+                except OSError:
+                    pass
             deleted.append(item)
         except FileNotFoundError:
             continue

@@ -25,6 +25,7 @@ from app_server.services import (
     dataset_number_format_service,
     dataset_sidecar_status_service,
     dataset_types_service,
+    runtime_cache_provenance_service,
 )
 
 
@@ -56,18 +57,10 @@ def _current_user_name() -> str:
 
 
 def _dataset_type_rows(project_name: str) -> List[Dict[str, Any]]:
-    try:
-        path = config.get_dataset_types_path(project_name)
-    except ValueError:
-        return []
-    if not os.path.exists(path):
-        return []
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except Exception:
-        return []
-    data = dataset_types_service.normalize_dataset_types_data(raw)
+    data = dataset_types_service.load_dataset_types_data(
+        project_name,
+        strict=True,
+    )
     rows = []
     for row in data.get("rows") or []:
         if not isinstance(row, list):
@@ -131,17 +124,60 @@ def _formula_components(formula: str, known_names: List[str]) -> List[str]:
     return out
 
 
-def _direct_precedent_names(project_name: str, dataset_type_name: str) -> List[str]:
-    rows = _dataset_type_rows(project_name)
+def _calculated_dataset_contract_from_rows(
+    rows: List[Dict[str, Any]],
+    dataset_type_name: str,
+) -> Dict[str, Any] | None:
     known_names = [row["name"] for row in rows]
     target_key = _canon_dataset_name(dataset_type_name)
     for row in rows:
         if _canon_dataset_name(row["name"]) != target_key:
             continue
         if not row.get("calculated") or row.get("generated") or not _clean_text(row.get("formula")):
-            return []
-        return _formula_components(row["formula"], known_names)
-    return []
+            return None
+        precedents = _formula_components(row["formula"], known_names)
+        rows_by_key = {
+            _canon_dataset_name(item.get("name")): dict(item)
+            for item in rows
+            if _canon_dataset_name(item.get("name"))
+        }
+        return {
+            **row,
+            "precedents": precedents,
+            "precedent_contracts": {
+                _canon_dataset_name(name): rows_by_key.get(
+                    _canon_dataset_name(name),
+                    {},
+                )
+                for name in precedents
+            },
+        }
+    return None
+
+
+def calculated_dataset_contract(
+    project_name: str,
+    dataset_type_name: str,
+) -> Dict[str, Any] | None:
+    contract = _calculated_dataset_contract_from_rows(
+        _dataset_type_rows(project_name),
+        dataset_type_name,
+    )
+    return dict(contract) if contract else None
+
+
+def _direct_precedent_names(project_name: str, dataset_type_name: str) -> List[str]:
+    contract = calculated_dataset_contract(project_name, dataset_type_name)
+    return list(contract.get("precedents") or []) if contract else []
+
+
+def calculated_dataset_dependency_names(
+    project_name: str,
+    dataset_type_name: str,
+) -> List[str] | None:
+    """Return direct inputs for an app-calculated type, or ``None`` otherwise."""
+    contract = calculated_dataset_contract(project_name, dataset_type_name)
+    return list(contract.get("precedents") or []) if contract else None
 
 
 def _direct_dependent_names(project_name: str, dataset_type_name: str) -> List[str]:
@@ -337,6 +373,22 @@ def _csv_base_name(path: str) -> str:
     return dataset_instance_index_service._normalize_cached_dataset_name(stem)
 
 
+def _cached_csv_data_format(path: str, sidecar: Dict[str, Any]) -> str:
+    stem = os.path.splitext(os.path.basename(path))[0]
+    parts = stem.split("@")
+    if (
+        len(parts) >= 5
+        and parts[-4].strip().isdigit()
+        and parts[-3].strip().isdigit()
+        and parts[-2].strip().lower() in {"cum", "inc"}
+        and parts[-1].strip().lower() in {"dev", "cal"}
+    ):
+        return "Triangle"
+    if len(parts) >= 2 and parts[-1].strip().isdigit():
+        return "Vector"
+    return _clean_text(sidecar.get("data_format"))
+
+
 def _sidecar_for_csv(path: str) -> Dict[str, Any]:
     sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
     payload = _read_sidecar(sidecar_path)
@@ -415,9 +467,28 @@ def _candidate_dfm_methods(
 
 def _path_in_dir(path: str, folder: str) -> bool:
     try:
-        return os.path.commonpath([os.path.abspath(path), os.path.abspath(folder)]) == os.path.abspath(folder)
+        child = os.path.normcase(os.path.realpath(os.path.abspath(path)))
+        parent = os.path.normcase(os.path.realpath(os.path.abspath(folder)))
+        return os.path.commonpath([child, parent]) == parent
     except Exception:
         return False
+
+
+def _existing_path_in_dir(path: str, folder: str) -> str:
+    recorded_path = _clean_text(path)
+    if not recorded_path:
+        return ""
+    candidates = [recorded_path]
+    relocated_path = os.path.join(
+        folder,
+        os.path.basename(recorded_path),
+    )
+    if os.path.normcase(relocated_path) != os.path.normcase(recorded_path):
+        candidates.append(relocated_path)
+    for candidate in candidates:
+        if _path_in_dir(candidate, folder) and os.path.isfile(candidate):
+            return candidate
+    return ""
 
 
 def _finite_float(value: Any) -> float | None:
@@ -438,10 +509,22 @@ def _read_dfm_input_triangle(
     reserving_class: str,
     payload: Dict[str, Any],
     target_settings: Dict[str, Any],
+    exact_input_path: str = "",
 ) -> Tuple[np.ndarray | None, str, str]:
     data_tab = _json_tab(payload, "data tab")
     details = _json_tab(payload, "details tab")
     dataset_folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
+    if exact_input_path:
+        if (
+            not _path_in_dir(exact_input_path, dataset_folder)
+            or not os.path.isfile(exact_input_path)
+        ):
+            return None, exact_input_path, "Recorded DFM input triangle path is invalid."
+        try:
+            return _read_numeric_csv(exact_input_path), exact_input_path, ""
+        except Exception as exc:
+            return None, exact_input_path, str(exc)
+
     path = _clean_text(data_tab.get("input data triangle csv path"))
     if path and os.path.isfile(path) and _path_in_dir(path, dataset_folder):
         try:
@@ -515,9 +598,16 @@ def _build_dfm_method_vector(
     reserving_class: str,
     payload: Dict[str, Any],
     target_settings: Dict[str, Any],
+    exact_input_path: str = "",
 ) -> Tuple[np.ndarray | None, str, str]:
     data_tab = _json_tab(payload, "data tab")
-    input_values, input_path, error = _read_dfm_input_triangle(project_name, reserving_class, payload, target_settings)
+    input_values, input_path, error = _read_dfm_input_triangle(
+        project_name,
+        reserving_class,
+        payload,
+        target_settings,
+        exact_input_path=exact_input_path,
+    )
     if error:
         return None, input_path, error
     if input_values is None or input_values.ndim != 2:
@@ -553,6 +643,7 @@ def _candidate_csvs(
     reserving_class: str,
     dataset_type_name: str,
     target_settings: Dict[str, Any],
+    expected_data_format: str = "",
 ) -> List[Dict[str, Any]]:
     folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
     dep_key = _canon_dataset_name(dataset_type_name)
@@ -564,6 +655,13 @@ def _candidate_csvs(
             continue
         path = os.path.join(folder, name)
         sidecar = _sidecar_for_csv(path)
+        candidate_data_format = _cached_csv_data_format(path, sidecar)
+        if (
+            _clean_text(expected_data_format)
+            and candidate_data_format
+            and candidate_data_format.lower() != _clean_text(expected_data_format).lower()
+        ):
+            continue
         dataset_name = _clean_text(sidecar.get("dataset_name") or _csv_base_name(path))
         type_name = _clean_text(sidecar.get("dataset_type") or _csv_base_name(path))
         if dep_key not in {_canon_dataset_name(dataset_name), _canon_dataset_name(type_name), _canon_dataset_name(_csv_base_name(path))}:
@@ -582,6 +680,7 @@ def _candidate_csvs(
         out.append({
             "path": path,
             "sidecar": sidecar,
+            "data_format": candidate_data_format,
             "score": score,
             "mtime": os.stat(path).st_mtime,
         })
@@ -635,12 +734,20 @@ def _load_components(
     components: List[str],
     target_settings: Dict[str, Any],
     component_overrides: Dict[str, np.ndarray] | None = None,
+    component_paths: Dict[str, str] | None = None,
+    component_formats: Dict[str, str] | None = None,
+    component_method_sources: Dict[str, Dict[str, str]] | None = None,
 ) -> Tuple[Dict[str, np.ndarray], List[Dict[str, Any]], List[str]]:
     values: Dict[str, np.ndarray] = {}
     dependency_info: List[Dict[str, Any]] = []
     errors: List[str] = []
     overrides = component_overrides or {}
+    exact_paths = component_paths or {}
+    expected_formats = component_formats or {}
+    exact_method_sources = component_method_sources or {}
     for index, component in enumerate(components):
+        component_key = _canon_dataset_name(component)
+        expected_format = _clean_text(expected_formats.get(component_key))
         override = overrides.get(_canon_dataset_name(component))
         if override is not None:
             arr = np.asarray(override, dtype="float64")
@@ -656,9 +763,133 @@ def _load_components(
                 "source_kind": "live_preview",
             })
             continue
-        candidates = _candidate_csvs(project_name, reserving_class, component, target_settings)
+        exact_method_source = exact_method_sources.get(component_key)
+        exact_method = (
+            exact_method_source
+            if isinstance(exact_method_source, dict)
+            else {}
+        )
+        exact_method_path = _clean_text(exact_method.get("path"))
+        exact_method_input_path = _clean_text(exact_method.get("input_path"))
+        validated_method_input_path = ""
+        exact_path = _clean_text(exact_paths.get(component_key))
+        candidates: List[Dict[str, Any]]
+        method_candidates: List[Dict[str, Any]] | None = None
+        if exact_method_path:
+            method_folder = config.get_project_method_data_dir(
+                project_name,
+                reserving_class,
+            )
+            dataset_folder = config.get_project_dataset_cache_dir(
+                project_name,
+                reserving_class,
+            )
+            resolved_method_path = _existing_path_in_dir(
+                exact_method_path,
+                method_folder,
+            )
+            method_payload = (
+                _read_sidecar(resolved_method_path)
+                if resolved_method_path
+                else {}
+            )
+            method_output_matches = component_key in {
+                _canon_dataset_name(name)
+                for name in _method_output_names(
+                    method_payload,
+                    resolved_method_path,
+                )
+            }
+            if resolved_method_path and method_output_matches:
+                if exact_method_input_path:
+                    data_tab = _json_tab(method_payload, "data tab")
+                    details = _json_tab(method_payload, "details tab")
+                    current_input_path = _clean_text(
+                        data_tab.get("input data triangle csv path")
+                    )
+                    resolved_recorded_input = _existing_path_in_dir(
+                        exact_method_input_path,
+                        dataset_folder,
+                    )
+                    resolved_current_input = _existing_path_in_dir(
+                        current_input_path,
+                        dataset_folder,
+                    )
+                    if (
+                        resolved_recorded_input
+                        and resolved_current_input
+                        and os.path.normcase(os.path.realpath(resolved_recorded_input))
+                        == os.path.normcase(os.path.realpath(resolved_current_input))
+                    ):
+                        validated_method_input_path = resolved_current_input
+                    elif resolved_recorded_input and not current_input_path:
+                        input_name = _clean_text(details.get("input triangle"))
+                        input_sidecar = _sidecar_for_csv(resolved_recorded_input)
+                        exact_input_names = {
+                            _canon_dataset_name(input_sidecar.get("dataset_name")),
+                            _canon_dataset_name(input_sidecar.get("dataset_type")),
+                            _canon_dataset_name(
+                                _csv_base_name(resolved_recorded_input)
+                            ),
+                        }
+                        if _canon_dataset_name(input_name) in exact_input_names:
+                            validated_method_input_path = resolved_recorded_input
+                method_candidates = [{
+                    "path": resolved_method_path,
+                    "payload": method_payload,
+                    "score": 1,
+                    "mtime": os.stat(resolved_method_path).st_mtime,
+                }]
+                candidates = []
+            else:
+                candidates = _candidate_csvs(
+                    project_name,
+                    reserving_class,
+                    component,
+                    target_settings,
+                    expected_data_format=expected_format,
+                )
+        elif exact_path:
+            sidecar = _sidecar_for_csv(exact_path)
+            exact_data_format = _cached_csv_data_format(exact_path, sidecar)
+            exact_names = {
+                _canon_dataset_name(sidecar.get("dataset_name")),
+                _canon_dataset_name(sidecar.get("dataset_type")),
+                _canon_dataset_name(_csv_base_name(exact_path)),
+            }
+            if (
+                not os.path.isfile(exact_path)
+                or component_key not in exact_names
+                or (
+                    expected_format
+                    and exact_data_format
+                    and exact_data_format.lower() != expected_format.lower()
+                )
+            ):
+                errors.append(f"Invalid exact dependency path: {component}")
+                continue
+            candidates = [{
+                "path": exact_path,
+                "sidecar": sidecar,
+                "data_format": exact_data_format,
+                "score": 1,
+                "mtime": os.stat(exact_path).st_mtime,
+            }]
+        else:
+            candidates = _candidate_csvs(
+                project_name,
+                reserving_class,
+                component,
+                target_settings,
+                expected_data_format=expected_format,
+            )
         if not candidates:
-            method_candidates = _candidate_dfm_methods(project_name, reserving_class, component)
+            if method_candidates is None:
+                method_candidates = _candidate_dfm_methods(
+                    project_name,
+                    reserving_class,
+                    component,
+                )
             if not method_candidates:
                 errors.append(f"Missing dependency: {component}")
                 continue
@@ -672,21 +903,30 @@ def _load_components(
                 reserving_class,
                 method_item.get("payload") if isinstance(method_item.get("payload"), dict) else {},
                 target_settings,
+                exact_input_path=validated_method_input_path,
             )
             if error or arr is None:
                 errors.append(f"Failed to rebuild DFM dependency {component}: {error or 'unknown error'}")
                 continue
             var = f"_d{index}"
             values[var] = arr
-            stat = os.stat(method_path)
-            dependency_info.append({
+            fingerprint = runtime_cache_provenance_service.file_fingerprint(method_path)
+            dependency_entry = {
                 "dataset_type_name": component,
                 "path": method_path,
                 "source_kind": "dfm_method",
                 "input_path": input_path,
-                "mtime": stat.st_mtime,
-                "mtime_ns": stat.st_mtime_ns,
-            })
+                "mtime": fingerprint["mtime_ns"] / 1_000_000_000,
+                **fingerprint,
+            }
+            if input_path:
+                input_fingerprint = runtime_cache_provenance_service.file_fingerprint(
+                    input_path
+                )
+                dependency_entry["input_mtime_ns"] = input_fingerprint["mtime_ns"]
+                dependency_entry["input_size"] = input_fingerprint["size"]
+                dependency_entry["input_sha256"] = input_fingerprint["sha256"]
+            dependency_info.append(dependency_entry)
             continue
         if len(candidates) > 1:
             errors.append(f"Ambiguous dependency: {component}")
@@ -700,12 +940,21 @@ def _load_components(
             continue
         var = f"_d{index}"
         values[var] = df.to_numpy(dtype="float64")
-        stat = os.stat(path)
+        fingerprint = runtime_cache_provenance_service.file_fingerprint(path)
+        sidecar = item.get("sidecar") if isinstance(item.get("sidecar"), dict) else {}
         dependency_info.append({
             "dataset_type_name": component,
+            "dataset_name": _clean_text(sidecar.get("dataset_name") or component),
             "path": path,
-            "mtime": stat.st_mtime,
-            "mtime_ns": stat.st_mtime_ns,
+            "source_kind": _clean_text(sidecar.get("source_kind")),
+            "data_format": _clean_text(sidecar.get("data_format")),
+            "origin_length": sidecar.get("origin_length"),
+            "development_length": sidecar.get("development_length"),
+            "period_length": sidecar.get("period_length"),
+            "cumulative": sidecar.get("cumulative"),
+            "calendar": sidecar.get("calendar"),
+            "mtime": fingerprint["mtime_ns"] / 1_000_000_000,
+            **fingerprint,
         })
     return values, dependency_info, errors
 
@@ -875,7 +1124,14 @@ def _existing_downstream_keys(project_name: str, reserving_class: str, changed_n
     ]
 
 
-def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_name: str) -> Dict[str, Any]:
+def recalculate_dataset(
+    project_name: str,
+    reserving_class: str,
+    dataset_type_name: str,
+    *,
+    component_paths: Dict[str, str] | None = None,
+    component_method_sources: Dict[str, Dict[str, str]] | None = None,
+) -> Dict[str, Any]:
     rows_by_key = _calculated_rows_by_key(project_name)
     row = rows_by_key.get(_canon_dataset_name(dataset_type_name))
     if not row:
@@ -887,7 +1143,19 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
     ordered_components = [refs[key] for key in sorted(refs.keys(), key=lambda item: int(item[2:]))]
 
     settings = _existing_target_settings(project_name, reserving_class, row["name"])
-    values, precedents, errors = _load_components(project_name, reserving_class, ordered_components, settings)
+    values, precedents, errors = _load_components(
+        project_name,
+        reserving_class,
+        ordered_components,
+        settings,
+        component_paths=component_paths,
+        component_method_sources=component_method_sources,
+        component_formats={
+            _canon_dataset_name(item.get("name")): _clean_text(item.get("data_format"))
+            for item in all_rows
+            if _canon_dataset_name(item.get("name"))
+        },
+    )
     if errors:
         missing_prefix = "Missing dependency: "
         return {
@@ -946,7 +1214,6 @@ def recalculate_dataset(project_name: str, reserving_class: str, dataset_type_na
     user_name = _current_user_name()
     action_value = "Update" if existing_sidecar else "Insert"
     default_format_settings = dataset_number_format_service.dataset_type_number_format_settings(
-        reserving_class,
         row["name"],
     )
     number_format = dataset_number_format_service.normalize_number_format(
@@ -1278,7 +1545,7 @@ def _iter_project_sidecars(project_name: str):
         if not os.path.isdir(sidecar_dir):
             continue
         for entry in os.scandir(sidecar_dir):
-            if entry.is_file() and entry.name.lower().endswith(".json") and not entry.name.startswith("ArcRhoTriNotes@"):
+            if entry.is_file() and entry.name.lower().endswith(".json"):
                 payload = _read_sidecar(entry.path)
                 if payload:
                     yield entry.path, payload

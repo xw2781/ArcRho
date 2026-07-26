@@ -6,7 +6,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-RESERVING_CLASS_INDEX_FILE_NAME = "index.json"
+from .dataset_index_contract import (
+    INDEX_FILE_NAME,
+    canonical_existing_directory,
+)
+
+
+RESERVING_CLASS_INDEX_FILE_NAME = INDEX_FILE_NAME
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
 _FILENAME_REPLACEMENTS = {
     "\\": "_%5C_",
@@ -91,7 +97,7 @@ def project_dir_case_insensitive(projects_dir: Path, project_name: str) -> Path 
         return None
     direct = projects_dir / wanted
     if direct.is_dir():
-        return direct
+        return canonical_existing_directory(direct) or direct
     wanted_lower = wanted.lower()
     for item in projects_dir.iterdir():
         if item.is_dir() and item.name.lower() == wanted_lower:
@@ -99,7 +105,7 @@ def project_dir_case_insensitive(projects_dir: Path, project_name: str) -> Path 
     sanitized = sanitize_project_dir_name(wanted)
     direct = projects_dir / sanitized
     if direct.is_dir():
-        return direct
+        return canonical_existing_directory(direct) or direct
     sanitized_lower = sanitized.lower()
     for item in projects_dir.iterdir():
         if item.is_dir() and item.name.lower() == sanitized_lower:

@@ -13,8 +13,28 @@ from app_server.helpers import _canon_dataset_name, sanitize_dataset_file_name
 METHOD_TYPE_NONE = "None"
 METHOD_TYPE_DFM = "DFM"
 METHOD_TYPE_RESULT_SELECTION = "Result Selection"
+METHOD_TYPE_BORN_HUETTER_FERGUSON = "Bornhuetter Ferguson"
+METHOD_TYPE_BERQUIST_SHERMAN_SR = "B&S Settlement Rate Adjustment"
+METHOD_TYPE_BERQUIST_SHERMAN_CRA = "B&S Case Reserve Adequacy Adjustment"
+SOURCE_KIND_BERQUIST_SHERMAN_SR = "berquist_sherman_sr"
+SOURCE_KIND_BERQUIST_SHERMAN_CRA = "berquist_sherman_cra"
 STATUS_CURRENT = 0
 STATUS_REVIEW_NEEDED = 2
+
+_CANONICAL_METHOD_TYPES = {
+    METHOD_TYPE_DFM.lower(): METHOD_TYPE_DFM,
+    METHOD_TYPE_RESULT_SELECTION.lower(): METHOD_TYPE_RESULT_SELECTION,
+    METHOD_TYPE_BORN_HUETTER_FERGUSON.lower(): METHOD_TYPE_BORN_HUETTER_FERGUSON,
+    METHOD_TYPE_BERQUIST_SHERMAN_SR.lower(): METHOD_TYPE_BERQUIST_SHERMAN_SR,
+    METHOD_TYPE_BERQUIST_SHERMAN_CRA.lower(): METHOD_TYPE_BERQUIST_SHERMAN_CRA,
+}
+_METHOD_TYPE_BY_SOURCE_KIND = {
+    "dfm": METHOD_TYPE_DFM,
+    "result_selection": METHOD_TYPE_RESULT_SELECTION,
+    "bornhuetter_ferguson": METHOD_TYPE_BORN_HUETTER_FERGUSON,
+    SOURCE_KIND_BERQUIST_SHERMAN_SR: METHOD_TYPE_BERQUIST_SHERMAN_SR,
+    SOURCE_KIND_BERQUIST_SHERMAN_CRA: METHOD_TYPE_BERQUIST_SHERMAN_CRA,
+}
 
 
 def _clean_text(value: Any) -> str:
@@ -24,17 +44,10 @@ def _clean_text(value: Any) -> str:
 def normalize_method_type(value: Any = "", source_kind: Any = "") -> str:
     text = _clean_text(value)
     if text and text.lower() not in {"none", "null"}:
-        if text.lower() == "dfm":
-            return METHOD_TYPE_DFM
-        if text.lower().replace("_", " ") == "result selection":
-            return METHOD_TYPE_RESULT_SELECTION
-        return text
+        normalized = text.lower().replace("_", " ")
+        return _CANONICAL_METHOD_TYPES.get(normalized, text)
     source = _clean_text(source_kind).lower()
-    if source == "dfm":
-        return METHOD_TYPE_DFM
-    if source == "result_selection":
-        return METHOD_TYPE_RESULT_SELECTION
-    return METHOD_TYPE_NONE
+    return _METHOD_TYPE_BY_SOURCE_KIND.get(source, METHOD_TYPE_NONE)
 
 
 def normalize_status(value: Any) -> int:

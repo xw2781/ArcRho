@@ -1,13 +1,30 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from arcrho_api.dataset_index_contract import (
+    build_dataset_index_payload,
+    index_update_lock,
+    resolve_canonical_index_identity,
+    write_index_json_unlocked,
+)
+
 from .core import (
+    BS_CRA_FILE_PREFIX,
+    BS_CRA_JSON_FORMAT,
+    BS_CRA_METHOD_TYPE,
+    BS_CRA_SOURCE_KIND,
+    BS_SR_FILE_PREFIX,
+    BS_SR_JSON_FORMAT,
+    BS_SR_METHOD_TYPE,
+    BS_SR_SOURCE_KIND,
     DATASET_CACHE_DIR,
+    DATASET_INDEX_FILE_NAME,
+    DATASET_INDEX_VERSION,
     DATASET_SIDECAR_DIR,
     _add_cached_dataset_name,
     _bool_value,
@@ -25,8 +42,8 @@ from .core import (
 SERVER_ROOT = Path(r"E:\ArcRho Server")
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
-INDEX_FILE_NAME = "index.json"
-INDEX_VERSION = 17
+INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
+INDEX_VERSION = DATASET_INDEX_VERSION
 METHOD_DATA_DIR = "methods"
 
 
@@ -36,17 +53,13 @@ def configure_catalog(
     project_name: str,
     rs_json_format: str,
     method_data_dir: str,
-    index_file_name: str = "index.json",
-    index_version: int = 17,
 ) -> None:
-    global SERVER_ROOT, PROJECT_NAME, RS_JSON_FORMAT, METHOD_DATA_DIR, INDEX_FILE_NAME, INDEX_VERSION
+    global SERVER_ROOT, PROJECT_NAME, RS_JSON_FORMAT, METHOD_DATA_DIR
 
     SERVER_ROOT = Path(server_root)
     PROJECT_NAME = str(project_name)
     RS_JSON_FORMAT = str(rs_json_format)
     METHOD_DATA_DIR = str(method_data_dir)
-    INDEX_FILE_NAME = str(index_file_name)
-    INDEX_VERSION = int(index_version)
 
 
 def _dataset_type_rows() -> list[dict]:
@@ -193,21 +206,51 @@ def _direct_dependent_names(rows: list[dict], dataset_type_name: str) -> list[st
             out.append(row["name"])
     return out
 
-def _rc_existing_dataset_keys(rc_dir: Path | None) -> set[str] | None:
-    if rc_dir is None or not rc_dir.is_dir():
+
+@dataclass
+class _PhysicalDatasetInventory:
+    available: bool
+    items: list[dict]
+    items_by_dataset_key: dict[str, list[dict]]
+    dependency_info_by_dataset_key: dict[str, dict] = field(default_factory=dict)
+
+
+def _physical_item_dataset_keys(item: dict) -> set[str]:
+    names: set[str] = set()
+    _add_cached_dataset_name(names, item.get("dataset_name"))
+    _add_cached_dataset_name(names, item.get("dataset_type"))
+    for value in item.get("dataset_names") or []:
+        _add_cached_dataset_name(names, value)
+    return {
+        key
+        for key in (_canon_dataset_name(name) for name in names)
+        if key
+    }
+
+
+def _build_physical_dataset_inventory(rc_dir: Path | None) -> _PhysicalDatasetInventory:
+    available = bool(rc_dir is not None and rc_dir.is_dir())
+    items = _scan_physical_dataset_files(rc_dir) if available and rc_dir is not None else []
+    items_by_dataset_key: dict[str, list[dict]] = {}
+    for item in items:
+        for key in _physical_item_dataset_keys(item):
+            items_by_dataset_key.setdefault(key, []).append(item)
+    return _PhysicalDatasetInventory(
+        available=available,
+        items=items,
+        items_by_dataset_key=items_by_dataset_key,
+    )
+
+
+def _rc_existing_dataset_keys(
+    rc_dir: Path | None,
+    *,
+    physical_inventory: _PhysicalDatasetInventory | None = None,
+) -> set[str] | None:
+    inventory = physical_inventory or _build_physical_dataset_inventory(rc_dir)
+    if not inventory.available:
         return None
-    keys: set[str] = set()
-    for item in _scan_physical_dataset_files(rc_dir):
-        names: set[str] = set()
-        _add_cached_dataset_name(names, item.get("dataset_name"))
-        _add_cached_dataset_name(names, item.get("dataset_type"))
-        for value in item.get("dataset_names") or []:
-            _add_cached_dataset_name(names, value)
-        for name in names:
-            key = _canon_dataset_name(name)
-            if key:
-                keys.add(key)
-    return keys
+    return set(inventory.items_by_dataset_key)
 
 def _filter_existing_dependents(names: list[str], existing_dataset_keys: set[str] | None) -> list[str]:
     if existing_dataset_keys is None:
@@ -217,14 +260,6 @@ def _filter_existing_dependents(names: list[str], existing_dataset_keys: set[str
         for name in names
         if _canon_dataset_name(name) in existing_dataset_keys
     ]
-
-def _physical_item_matches_dataset(item: dict, dataset_key: str) -> bool:
-    names: set[str] = set()
-    _add_cached_dataset_name(names, item.get("dataset_name"))
-    _add_cached_dataset_name(names, item.get("dataset_type"))
-    for value in item.get("dataset_names") or []:
-        _add_cached_dataset_name(names, value)
-    return dataset_key in {_canon_dataset_name(name) for name in names}
 
 def _dependency_item_score(item: dict, dataset_key: str) -> tuple[int, float]:
     path = Path(_clean_name(item.get("path")))
@@ -241,18 +276,23 @@ def _dependency_item_score(item: dict, dataset_key: str) -> tuple[int, float]:
         score += 2
     return score, _numeric_timestamp(item.get("last_modified_timestamp") or item.get("mtime"))
 
-def _dependency_file_info(rc_dir: Path | None, dataset_type_name: str) -> dict:
-    if rc_dir is None or not rc_dir.is_dir():
-        return {}
+def _dependency_file_info(
+    rc_dir: Path | None,
+    dataset_type_name: str,
+    *,
+    physical_inventory: _PhysicalDatasetInventory | None = None,
+) -> dict:
     dataset_key = _canon_dataset_name(dataset_type_name)
     if not dataset_key:
         return {}
-    matches = [
-        item
-        for item in _scan_physical_dataset_files(rc_dir)
-        if _physical_item_matches_dataset(item, dataset_key)
-    ]
+    inventory = physical_inventory or _build_physical_dataset_inventory(rc_dir)
+    if not inventory.available:
+        return {}
+    if dataset_key in inventory.dependency_info_by_dataset_key:
+        return dict(inventory.dependency_info_by_dataset_key[dataset_key])
+    matches = inventory.items_by_dataset_key.get(dataset_key, [])
     if not matches:
+        inventory.dependency_info_by_dataset_key[dataset_key] = {}
         return {}
     item = sorted(matches, key=lambda entry: _dependency_item_score(entry, dataset_key), reverse=True)[0]
     out: dict = {}
@@ -283,6 +323,7 @@ def _dependency_file_info(rc_dir: Path | None, dataset_type_name: str) -> dict:
         input_path = _clean_name(data_tab.get("input data triangle csv path"))
         if input_path:
             out["input_path"] = input_path
+    inventory.dependency_info_by_dataset_key[dataset_key] = dict(out)
     return out
 
 def _dependency_entry(
@@ -291,9 +332,16 @@ def _dependency_entry(
     rc_dir: Path | None,
     *,
     include_formula: bool = False,
+    physical_inventory: _PhysicalDatasetInventory | None = None,
 ) -> dict:
     entry = {"dataset_type_name": name}
-    entry.update(_dependency_file_info(rc_dir, name))
+    entry.update(
+        _dependency_file_info(
+            rc_dir,
+            name,
+            physical_inventory=physical_inventory,
+        )
+    )
     row = rows_by_key.get(_canon_dataset_name(name))
     if include_formula and row:
         formula = _clean_name(row.get("formula"))
@@ -352,16 +400,34 @@ def _dataset_type_graph_fields(
     rc_dir: Path | None = None,
     *,
     existing_dataset_keys: set[str] | None = None,
+    physical_inventory: _PhysicalDatasetInventory | None = None,
+    dataset_type_rows: list[dict] | None = None,
 ) -> dict:
-    rows = _dataset_type_rows()
+    rows = _dataset_type_rows() if dataset_type_rows is None else dataset_type_rows
     rows_by_key = _dataset_type_rows_by_key(rows)
-    rc_dataset_keys = _rc_existing_dataset_keys(rc_dir) if existing_dataset_keys is None else existing_dataset_keys
+    inventory = physical_inventory or _build_physical_dataset_inventory(rc_dir)
+    rc_dataset_keys = (
+        _rc_existing_dataset_keys(rc_dir, physical_inventory=inventory)
+        if existing_dataset_keys is None
+        else existing_dataset_keys
+    )
     precedents = [
-        _dependency_entry(name, rows_by_key, rc_dir)
+        _dependency_entry(
+            name,
+            rows_by_key,
+            rc_dir,
+            physical_inventory=inventory,
+        )
         for name in _direct_precedent_names(rows, dataset_type_name)
     ]
     dependents = [
-        _dependency_entry(name, rows_by_key, rc_dir, include_formula=True)
+        _dependency_entry(
+            name,
+            rows_by_key,
+            rc_dir,
+            include_formula=True,
+            physical_inventory=inventory,
+        )
         for name in _filter_existing_dependents(
             _direct_dependent_names(rows, dataset_type_name),
             rc_dataset_keys,
@@ -377,8 +443,16 @@ def _apply_sidecar_graph_meta(
     *,
     preserve_precedents: bool = False,
     existing_dataset_keys: set[str] | None = None,
+    physical_inventory: _PhysicalDatasetInventory | None = None,
+    dataset_type_rows: list[dict] | None = None,
 ) -> None:
-    fields = _dataset_type_graph_fields(dataset_type_name, rc_dir, existing_dataset_keys=existing_dataset_keys)
+    fields = _dataset_type_graph_fields(
+        dataset_type_name,
+        rc_dir,
+        existing_dataset_keys=existing_dataset_keys,
+        physical_inventory=physical_inventory,
+        dataset_type_rows=dataset_type_rows,
+    )
     if preserve_precedents:
         meta["Dependents"] = fields["Dependents"]
     else:
@@ -386,8 +460,16 @@ def _apply_sidecar_graph_meta(
     meta.pop("dependencies", None)
 
 
-def _reconcile_sidecar_dependents(sidecars: list[tuple[Path, dict]], rc_dir: Path) -> int:
-    rows_by_key = _dataset_type_rows_by_key(_dataset_type_rows())
+def _reconcile_sidecar_dependents(
+    sidecars: list[tuple[Path, dict]],
+    rc_dir: Path,
+    *,
+    physical_inventory: _PhysicalDatasetInventory | None = None,
+    dataset_type_rows: list[dict] | None = None,
+) -> int:
+    rows = _dataset_type_rows() if dataset_type_rows is None else dataset_type_rows
+    rows_by_key = _dataset_type_rows_by_key(rows)
+    inventory = physical_inventory or _build_physical_dataset_inventory(rc_dir)
     by_key: dict[str, tuple[Path, dict]] = {}
     additions_by_key: dict[str, list[dict]] = {}
     for path, meta in sidecars:
@@ -404,7 +486,13 @@ def _reconcile_sidecar_dependents(sidecars: list[tuple[Path, dict]], rc_dir: Pat
             if not precedent_key or not dataset_identity:
                 continue
             additions_by_key.setdefault(precedent_key, []).append(
-                _dependency_entry(dataset_identity, rows_by_key, rc_dir, include_formula=True)
+                _dependency_entry(
+                    dataset_identity,
+                    rows_by_key,
+                    rc_dir,
+                    include_formula=True,
+                    physical_inventory=inventory,
+                )
             )
 
     updated = 0
@@ -437,10 +525,20 @@ def _sidecar_status_timestamp(path: Path, meta: dict) -> float:
 
 def _sidecar_is_method(meta: dict) -> bool:
     source_kind = _clean_name(meta.get("source_kind")).lower()
-    if source_kind in {"dfm", "result_selection"}:
+    if source_kind in {"dfm", "result_selection", BS_SR_SOURCE_KIND, BS_CRA_SOURCE_KIND}:
         return True
     method_type = _clean_name(meta.get("method_type")).lower().replace("_", " ")
-    return method_type in {"dfm", "result selection"}
+    return method_type in {
+        "dfm",
+        "result selection",
+        BS_SR_METHOD_TYPE.lower(),
+        BS_CRA_METHOD_TYPE.lower(),
+    }
+
+
+def _is_berquist_sherman_payload(payload: dict) -> bool:
+    json_format = _clean_name(payload.get("json_format")).lower()
+    return json_format in {BS_SR_JSON_FORMAT, BS_CRA_JSON_FORMAT}
 
 
 def _refresh_sidecar_statuses(sidecars: list[tuple[Path, dict]]) -> None:
@@ -486,6 +584,10 @@ def _cached_dataset_names_from_payload(payload: dict) -> set[str]:
         details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
         _add_cached_dataset_name(names, details_tab.get("name"))
         return names
+    if _is_berquist_sherman_payload(payload):
+        details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+        _add_cached_dataset_name(names, details_tab.get("name"))
+        return names
     details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
     _add_cached_dataset_name(names, details_tab.get("output dataset") or details_tab.get("output vector") or details_tab.get("output type"))
     return names
@@ -497,6 +599,12 @@ def _dataset_type_from_payload(payload: dict) -> str:
         if text:
             return text
         return _normalize_cached_dataset_name(details_tab.get("name"))
+    if _is_berquist_sherman_payload(payload):
+        details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+        return (
+            _normalize_cached_dataset_name(details_tab.get("output_type"))
+            or _normalize_cached_dataset_name(details_tab.get("name"))
+        )
     text = _normalize_cached_dataset_name(payload.get("dataset_type"))
     if text:
         return text
@@ -508,6 +616,9 @@ def _category_from_payload(payload: dict) -> str:
     if _clean_name(payload.get("json_format")).lower() == RS_JSON_FORMAT:
         details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
         return _clean_name(details_tab.get("dataset_category") or details_tab.get("output_category"))
+    if _is_berquist_sherman_payload(payload):
+        details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+        return _clean_name(details_tab.get("dataset_category") or details_tab.get("output_category"))
     text = _clean_name(payload.get("dataset_category") or payload.get("category"))
     if text:
         return text
@@ -515,87 +626,12 @@ def _category_from_payload(payload: dict) -> str:
     return _clean_name(details_tab.get("output dataset_category") or details_tab.get("output category"))
 
 
-def _dataset_type_category(dataset_type_name: object, rows_by_key: dict[str, dict] | None = None) -> str:
-    key = _canon_dataset_name(dataset_type_name)
-    if not key:
-        return ""
-    lookup = rows_by_key if rows_by_key is not None else _dataset_type_rows_by_key(_dataset_type_rows())
-    row = lookup.get(key)
-    return _clean_name(row.get("category")) if row else ""
-
-def _dataset_type_formula(dataset_type_name: object, rows_by_key: dict[str, dict] | None = None) -> str:
-    key = _canon_dataset_name(dataset_type_name)
-    if not key:
-        return ""
-    lookup = rows_by_key if rows_by_key is not None else _dataset_type_rows_by_key(_dataset_type_rows())
-    row = lookup.get(key)
-    return _clean_name(row.get("formula")) if row else ""
-
 def _metadata_text(metadata: dict, keys: tuple[str, ...]) -> str:
     for key in keys:
         text = _clean_name(metadata.get(key))
         if text:
             return text
     return ""
-
-def _username_key(value: object) -> str:
-    return _clean_name(value).casefold()
-
-def _username_index_path() -> Path:
-    return SERVER_ROOT / "config" / "username_index.json"
-
-def _load_username_display_names() -> dict[str, str]:
-    raw = _safe_read_json(_username_index_path())
-    entries: list[object] = []
-    if isinstance(raw, dict):
-        raw_entries = raw.get("users")
-        if isinstance(raw_entries, list):
-            entries = raw_entries
-        else:
-            out: dict[str, str] = {}
-            for key, value in raw.items():
-                if key == "users":
-                    continue
-                login = _username_key(key)
-                full_name = _clean_name(value)
-                if login and full_name:
-                    out[login] = full_name
-            return out
-    elif isinstance(raw, list):
-        entries = raw
-
-    out: dict[str, str] = {}
-    for item in entries:
-        if isinstance(item, dict):
-            login = _username_key(
-                item.get("login_name")
-                or item.get("Login Name")
-                or item.get("username")
-                or item.get("user")
-            )
-            full_name = _clean_name(
-                item.get("full_name")
-                or item.get("Full Name")
-                or item.get("display_name")
-                or item.get("name")
-            )
-        elif isinstance(item, list) and len(item) >= 2:
-            login = _username_key(item[0])
-            full_name = _clean_name(item[1])
-        else:
-            continue
-        if login and full_name:
-            out[login] = full_name
-    return out
-
-def _apply_user_display_names(files: list[dict]) -> None:
-    display_names = _load_username_display_names()
-    if not display_names:
-        return
-    for item in files:
-        user = _clean_name(item.get("user"))
-        if user:
-            item["user"] = display_names.get(_username_key(user), user)
 
 def _format_file_timestamp(value: float) -> str:
     try:
@@ -679,6 +715,9 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
         method_type = ""
         method_dataset_name = ""
         method_dataset_type = ""
+        method_data_format = ""
+        method_origin_length: object = ""
+        method_development_length: object = ""
         legacy_length_only_name = _has_legacy_length_only_suffix(entry.stem)
 
         if ext == ".csv":
@@ -706,6 +745,20 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
                 method_dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
                 method_dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type")) or method_dataset_name
                 method_type = "Result Selection" if file_names else ""
+            elif not is_sidecar and entry.name.startswith((BS_SR_FILE_PREFIX, BS_CRA_FILE_PREFIX)):
+                details_tab = metadata.get("details_tab") if isinstance(metadata.get("details_tab"), dict) else {}
+                _add_cached_dataset_name(file_names, details_tab.get("name"))
+                method_dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
+                method_dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type")) or method_dataset_name
+                method_data_format = "Triangle"
+                method_origin_length = details_tab.get("origin_length")
+                method_development_length = details_tab.get("development_length")
+                if file_names:
+                    method_type = (
+                        BS_SR_METHOD_TYPE
+                        if entry.name.startswith(BS_SR_FILE_PREFIX)
+                        else BS_CRA_METHOD_TYPE
+                    )
             else:
                 payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
                 file_names = payload_names or _cached_dataset_names_from_file(entry.name)
@@ -738,6 +791,15 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
             if category:
                 file_info["dataset_category"] = category
             file_info["source_kind"] = _clean_name(metadata.get("source_kind"))
+            file_info["data_format"] = _clean_name(metadata.get("data_format"))
+            file_info["method_type"] = _clean_name(metadata.get("method_type"))
+            if "status" in metadata:
+                file_info["status"] = metadata.get("status")
+            if file_info["data_format"].lower() == "vector":
+                file_info["origin_length"] = metadata.get("period_length")
+            else:
+                file_info["origin_length"] = metadata.get("origin_length")
+            file_info["development_length"] = metadata.get("development_length")
             if "calculated" in metadata:
                 file_info["calculated"] = metadata.get("calculated")
             formula = _clean_name(metadata.get("formula"))
@@ -773,160 +835,38 @@ def _scan_physical_dataset_files(folder_path: Path) -> list[dict]:
             if method_dataset_type:
                 file_info["dataset_type"] = method_dataset_type
             file_info["method_type"] = method_type
+            if method_data_format:
+                file_info["data_format"] = method_data_format
+            if method_origin_length not in (None, ""):
+                file_info["origin_length"] = method_origin_length
+            if method_development_length not in (None, ""):
+                file_info["development_length"] = method_development_length
+            if method_type == BS_SR_METHOD_TYPE:
+                file_info["source_kind"] = BS_SR_SOURCE_KIND
+            elif method_type == BS_CRA_METHOD_TYPE:
+                file_info["source_kind"] = BS_CRA_SOURCE_KIND
         files.append(file_info)
     return files
 
-def _file_dataset_names(item: dict) -> set[str]:
-    names: set[str] = set()
-    _add_cached_dataset_name(names, item.get("dataset_name"))
-    for value in item.get("dataset_names") or []:
-        _add_cached_dataset_name(names, value)
-    if names:
-        return names
-    _add_cached_dataset_name(names, item.get("name"))
-    return names
-
-def _merge_logical_file(existing: dict, source: dict) -> dict:
-    last_modified_ts = _numeric_timestamp(source.get("last_modified_timestamp") or source.get("mtime"))
-    source_sidecar_ts = bool(source.get("_last_modified_from_sidecar"))
-    existing_sidecar_ts = bool(existing.get("_last_modified_from_sidecar"))
-    should_update_modified = (
-        last_modified_ts
-        and (
-            (source_sidecar_ts and not existing_sidecar_ts)
-            or (source_sidecar_ts == existing_sidecar_ts and last_modified_ts >= _numeric_timestamp(existing.get("last_modified_timestamp")))
-        )
-    )
-    if should_update_modified:
-        existing["last_modified"] = _clean_name(source.get("last_modified"))
-        existing["last_modified_timestamp"] = last_modified_ts
-        if source_sidecar_ts:
-            existing["_last_modified_from_sidecar"] = True
-        user = _clean_name(source.get("user"))
-        if user:
-            existing["user"] = user
-
-    created_ts = _numeric_timestamp(source.get("created_timestamp"))
-    existing_created_ts = _numeric_timestamp(existing.get("created_timestamp"))
-    source_created_sidecar = bool(source.get("_created_from_sidecar"))
-    existing_created_sidecar = bool(existing.get("_created_from_sidecar"))
-    should_update_created = (
-        created_ts
-        and (
-            (source_created_sidecar and not existing_created_sidecar)
-            or (source_created_sidecar == existing_created_sidecar and (not existing_created_ts or created_ts < existing_created_ts))
-        )
-    )
-    if should_update_created:
-        existing["created"] = _clean_name(source.get("created"))
-        existing["created_timestamp"] = created_ts
-        if source_created_sidecar:
-            existing["_created_from_sidecar"] = True
-
-    method_type = _clean_name(source.get("method_type"))
-    if method_type:
-        existing["method_type"] = method_type
-    dataset_type = _clean_name(source.get("dataset_type"))
-    if dataset_type and not _clean_name(existing.get("dataset_type")):
-        existing["dataset_type"] = dataset_type
-    dataset_category = _clean_name(source.get("dataset_category") or source.get("category"))
-    if dataset_category and not _clean_name(existing.get("dataset_category")):
-        existing["dataset_category"] = dataset_category
-    source_kind = _clean_name(source.get("source_kind"))
-    if source_kind and not _clean_name(existing.get("source_kind")):
-        existing["source_kind"] = source_kind
-    formula = _clean_name(source.get("formula"))
-    if formula:
-        existing["formula"] = formula
-    for flag in ("calculated",):
-        if flag in source and flag not in existing:
-            existing[flag] = source.get(flag)
-    return existing
-
-def _logical_files_from_physical_files(files: list[dict]) -> list[dict]:
-    by_name: dict[str, dict] = {}
-    display_names: dict[str, str] = {}
-    dataset_type_rows_by_key = _dataset_type_rows_by_key(_dataset_type_rows())
-    for item in files:
-        for dataset_name in _file_dataset_names(item):
-            key = dataset_name.lower()
-            display_names.setdefault(key, dataset_name)
-            logical = by_name.get(key)
-            if logical is None:
-                logical = {
-                    "name": display_names[key],
-                    "last_modified": "",
-                    "last_modified_timestamp": 0,
-                    "created": "",
-                    "created_timestamp": 0,
-                    "user": "",
-                }
-                by_name[key] = logical
-            _merge_logical_file(logical, item)
-    for item in by_name.values():
-        if not _clean_name(item.get("dataset_type")):
-            item["dataset_type"] = _clean_name(item.get("name"))
-        if not _clean_name(item.get("dataset_category")):
-            item["dataset_category"] = _dataset_type_category(item.get("dataset_type"), dataset_type_rows_by_key)
-        if not _clean_name(item.get("formula")):
-            formula = _dataset_type_formula(item.get("dataset_type") or item.get("name"), dataset_type_rows_by_key)
-            if formula:
-                item["formula"] = formula
-        item.pop("_last_modified_from_sidecar", None)
-        item.pop("_created_from_sidecar", None)
-    _apply_user_display_names(list(by_name.values()))
-    return sorted(by_name.values(), key=lambda item: _clean_name(item.get("name")).lower())
-
-def _cached_folder_signature(files: list[dict], folder_paths: dict[str, str]) -> str:
-    source = {
-        "folders": {
-            name: {
-                "path": path,
-                "exists": Path(path).is_dir(),
-            }
-            for name, path in sorted(folder_paths.items())
-        },
-        "files": [
-            {
-                "name": _clean_name(item.get("name")),
-                "source_kind": _clean_name(item.get("source_kind")),
-                "size": int(item.get("size") or 0),
-                "mtime_ns": int(item.get("mtime_ns") or 0),
-            }
-            for item in sorted(files, key=lambda item: (
-                _clean_name(item.get("name")).lower(),
-            ))
-        ],
-    }
-    signature_source = json.dumps(source, sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(signature_source.encode("utf-8")).hexdigest()
-
 def rebuild_dataset_instance_index(project_name: str, rc_path: str, rc_dir: Path) -> Path:
-    folder_paths = {
-        "data": str(rc_dir),
-        "datasets": str(rc_dir / DATASET_CACHE_DIR),
-        "methods": str(rc_dir / METHOD_DATA_DIR),
-        "sidecars": str(rc_dir / DATASET_SIDECAR_DIR),
-    }
-    physical_files = _scan_physical_dataset_files(rc_dir)
-    files = _logical_files_from_physical_files(physical_files)
-    payload = {
-        "ok": True,
-        "version": INDEX_VERSION,
-        "exists": rc_dir.is_dir(),
-        "project_name": project_name,
-        "reserving_class": rc_path,
-        "folder_paths": folder_paths,
-        "folder_signature": _cached_folder_signature(physical_files, folder_paths),
-        "files": files,
-    }
-
     rc_dir.mkdir(parents=True, exist_ok=True)
+    project_name, rc_path = resolve_canonical_index_identity(
+        project_name,
+        rc_path,
+        rc_dir,
+    )
     index_path = rc_dir / INDEX_FILE_NAME
-    temp_path = index_path.with_name(f"{index_path.name}.tmp")
-    _write_json(temp_path, payload)
-    temp_path.replace(index_path)
-    print(f"    OK  {INDEX_FILE_NAME} ({len(files)} entries, version {INDEX_VERSION})")
+    with index_update_lock(
+        index_path,
+        project_name=project_name,
+        reserving_class=rc_path,
+    ):
+        payload = build_dataset_index_payload(project_name, rc_path, rc_dir)
+        write_index_json_unlocked(index_path, payload)
+    print(
+        f"    OK  {INDEX_FILE_NAME} "
+        f"({len(payload['files'])} entries, version {INDEX_VERSION})"
+    )
     return index_path
 
 def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
@@ -935,29 +875,47 @@ def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
     if not sidecar_dir.is_dir():
         return 0
     sidecars: list[tuple[Path, dict]] = []
-    existing_dataset_keys = _rc_existing_dataset_keys(rc_dir)
+    physical_inventory = _build_physical_dataset_inventory(rc_dir)
+    dataset_type_rows = _dataset_type_rows()
+    existing_dataset_keys = _rc_existing_dataset_keys(
+        rc_dir,
+        physical_inventory=physical_inventory,
+    )
     for path in sorted(sidecar_dir.glob("*.json"), key=lambda item: item.name.lower()):
-        if path.name.startswith("ArcRhoTriNotes@"):
-            continue
         meta = _safe_read_json(path)
         if not meta:
             continue
         dataset_type = _clean_name(meta.get("dataset_type") or meta.get("dataset_name"))
         if not dataset_type:
             continue
-        is_result_selection = (
+        preserve_method_precedents = (
             _clean_name(meta.get("source_kind")).lower() == "result_selection"
             or _is_result_selection_method_type(meta.get("method_type"))
+            or _clean_name(meta.get("source_kind")).lower() in {
+                BS_SR_SOURCE_KIND,
+                BS_CRA_SOURCE_KIND,
+            }
+            or _clean_name(meta.get("method_type")).lower() in {
+                BS_SR_METHOD_TYPE.lower(),
+                BS_CRA_METHOD_TYPE.lower(),
+            }
         )
         _apply_sidecar_graph_meta(
             meta,
             dataset_type,
             rc_dir,
-            preserve_precedents=is_result_selection,
+            preserve_precedents=preserve_method_precedents,
             existing_dataset_keys=existing_dataset_keys,
+            physical_inventory=physical_inventory,
+            dataset_type_rows=dataset_type_rows,
         )
         sidecars.append((path, meta))
-    _reconcile_sidecar_dependents(sidecars, rc_dir)
+    _reconcile_sidecar_dependents(
+        sidecars,
+        rc_dir,
+        physical_inventory=physical_inventory,
+        dataset_type_rows=dataset_type_rows,
+    )
     _refresh_sidecar_statuses(sidecars)
     updated = 0
     for path, meta in sidecars:

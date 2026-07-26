@@ -88,5 +88,6 @@ def app_health():
         "ok": True,
         "app": "arcrho",
         "token": os.environ.get("ARCRHO_BACKEND_TOKEN", ""),
+        "backend_artifact_id": os.environ.get("ARCRHO_BACKEND_ARTIFACT_ID", ""),
         "project_root": str(config.PROJECT_ROOT),
     }

@@ -86,28 +86,26 @@ def _normalize_document(raw: Any, *, strict: bool) -> Dict[str, Any]:
         raw_overrides = []
 
     overrides: List[Dict[str, str]] = []
-    seen = set()
+    seen = {}
     for index, item in enumerate(raw_overrides, start=1):
         if not isinstance(item, dict):
             if strict:
                 raise ValueError(f"Override row {index} must be a JSON object.")
             continue
-        reserving_class = _clean_lookup_text(item.get("reserving_class"))[:512]
         dataset_type_name = _clean_lookup_text(item.get("dataset_type_name"))[:256]
         raw_number_format = str(item.get("number_format") or "").replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
-        if not reserving_class or not dataset_type_name or not raw_number_format:
+        if not dataset_type_name or not raw_number_format:
             if strict:
-                raise ValueError(f"Override row {index} requires reserving_class, dataset_type_name, and number_format.")
+                raise ValueError(f"Override row {index} requires dataset_type_name and number_format.")
             continue
         number_format = normalize_number_format(raw_number_format)
-        key = (reserving_class.casefold(), dataset_type_name.casefold())
+        key = dataset_type_name.casefold()
         if key in seen:
-            if strict:
-                raise ValueError(f"Override row {index} duplicates reserving class and dataset type name: {reserving_class} / {dataset_type_name}.")
+            if seen[key] != number_format and strict:
+                raise ValueError(f"Override row {index} conflicts with the existing Dataset Type Name override: {dataset_type_name}.")
             continue
-        seen.add(key)
+        seen[key] = number_format
         overrides.append({
-            "reserving_class": reserving_class,
             "dataset_type_name": dataset_type_name,
             "number_format": number_format,
         })
@@ -134,30 +132,35 @@ def _read_document(*, strict: bool) -> Dict[str, Any]:
         return _empty_document()
 
 
-def get_preferences() -> Dict[str, Any]:
+def get_preferences(*, dataset_type_name: Any = "") -> Dict[str, Any]:
     document = _read_document(strict=True)
-    return {
+    payload = {
         "ok": True,
         "path": config.get_dataset_number_formats_path(),
         **document,
     }
+    if _clean_lookup_text(dataset_type_name):
+        number_format = _document_number_format(document, dataset_type_name)
+        payload["resolved_number_format"] = number_format
+        payload["resolved_decimal_places"] = number_format_decimal_places(number_format)
+    return payload
 
 
-def dataset_type_number_format(reserving_class: Any, dataset_type_name: Any) -> str:
-    document = _read_document(strict=False)
-    rc_key = _clean_lookup_text(reserving_class).casefold()
+def _document_number_format(document: Dict[str, Any], dataset_type_name: Any) -> str:
     dataset_type_key = _clean_lookup_text(dataset_type_name).casefold()
     for item in document["overrides"]:
-        if (
-            item["reserving_class"].casefold() == rc_key
-            and item["dataset_type_name"].casefold() == dataset_type_key
-        ):
+        if item["dataset_type_name"].casefold() == dataset_type_key:
             return item["number_format"]
     return document["default_number_format"]
 
 
-def dataset_type_number_format_settings(reserving_class: Any, dataset_type_name: Any) -> Dict[str, Any]:
-    number_format = dataset_type_number_format(reserving_class, dataset_type_name)
+def dataset_type_number_format(dataset_type_name: Any) -> str:
+    document = _read_document(strict=False)
+    return _document_number_format(document, dataset_type_name)
+
+
+def dataset_type_number_format_settings(dataset_type_name: Any) -> Dict[str, Any]:
+    number_format = dataset_type_number_format(dataset_type_name)
     return {
         "number_format": number_format,
         "decimal_places": number_format_decimal_places(number_format),

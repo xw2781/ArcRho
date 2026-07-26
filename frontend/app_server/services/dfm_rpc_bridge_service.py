@@ -44,7 +44,6 @@ RPC_APPLY_COMPONENTS = [
     ("sync", ("results tab", "ratio basis dataset")),
     ("sync", ("results tab", "ultimate ratio decimal places")),
     ("preserve-local", ("results tab", "ultimate vector csv path")),
-    ("sync", ("notes tab", "notes")),
     ("sync", ("method metadata", "last modified")),
 ]
 RPC_OPTIONAL_MISSING_COMPONENTS = {
@@ -407,8 +406,6 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
             "ratio_pattern": _extract_pattern_snapshot({}),
             "average_formula_pattern": _extract_average_formula_snapshot({}),
             "cell_notes": _extract_cell_notes_snapshot({}),
-            "notes": "",
-            "notes_preview": "",
             "average_formulas": [],
             "last_modified": "",
         }
@@ -421,12 +418,9 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
             "ratio_pattern": _extract_pattern_snapshot({}),
             "average_formula_pattern": _extract_average_formula_snapshot({}),
             "cell_notes": _extract_cell_notes_snapshot({}),
-            "notes": "",
-            "notes_preview": "",
             "average_formulas": [],
             "last_modified": "",
         }
-    notes = _clean_text(_json_tab(payload, "notes tab").get("notes"))
     formula_payload = _json_tab(payload, "ratios tab").get("average formulas", {})
     formulas = formula_payload.get("label", []) if isinstance(formula_payload, dict) else []
     if not isinstance(formulas, list):
@@ -437,8 +431,6 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
         "ratio_pattern": _extract_pattern_snapshot(payload),
         "average_formula_pattern": _extract_average_formula_snapshot(payload),
         "cell_notes": _extract_cell_notes_snapshot(payload),
-        "notes": notes,
-        "notes_preview": notes[:600],
         "average_formulas": [str(item) for item in formulas],
         "last_modified": _clean_text(_json_tab(payload, "method metadata").get("last modified")),
     }

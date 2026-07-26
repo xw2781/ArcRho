@@ -267,8 +267,6 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
         "calculated_ultimate_preview": [],
         "selected_ultimate_preview": [],
         "ultimate_overrides_preview": [],
-        "notes": "",
-        "notes_preview": "",
         "last_modified": "",
     }
     if not os.path.exists(path):
@@ -299,7 +297,6 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
         }
     details = _json_tab(payload, "details_tab")
     method = _json_tab(payload, "method_tab")
-    notes = _clean_text(_json_tab(payload, "notes_tab").get("notes"))
     loaded_datasets = [
         item for item in (_source_snapshot(source) for source in method.get("loaded_datasets", []))
         if item is not None
@@ -320,8 +317,6 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
         "calculated_ultimate_preview": method.get("calculated_ultimate", [])[:12] if isinstance(method.get("calculated_ultimate"), list) else [],
         "selected_ultimate_preview": method.get("selected_ultimate", [])[:12] if isinstance(method.get("selected_ultimate"), list) else [],
         "ultimate_overrides_preview": method.get("ultimate_overrides", [])[:12] if isinstance(method.get("ultimate_overrides"), list) else [],
-        "notes": notes,
-        "notes_preview": notes[:600],
         "last_modified": _clean_text(_json_tab(payload, "method_metadata").get("last_modified")),
     }
 

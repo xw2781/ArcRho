@@ -84,7 +84,29 @@ def _normalize_session_id(session_id: Optional[str]) -> str:
     return sid
 
 
-def _run_with_timeout(func, timeout_sec: int, cancel_event: threading.Event):
+class _ExecutionActivity:
+    """Thread-safe monotonic activity marker for cooperative long-running work."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last_activity = py_time.monotonic()
+
+    def touch(self) -> None:
+        with self._lock:
+            self._last_activity = py_time.monotonic()
+
+    def inactive_for(self) -> float:
+        with self._lock:
+            return max(0.0, py_time.monotonic() - self._last_activity)
+
+
+def _run_with_timeout(
+    func,
+    timeout_sec: float,
+    cancel_event: threading.Event,
+    *,
+    activity: _ExecutionActivity | None = None,
+):
     """Run *func* with a timeout.  Works on Windows (no SIGALRM)."""
     result: Dict[str, Any] = {}
     exc_info: list = [None]
@@ -97,13 +119,21 @@ def _run_with_timeout(func, timeout_sec: int, cancel_event: threading.Event):
 
     thread = threading.Thread(target=_target, daemon=True)
     thread.start()
-    thread.join(timeout=timeout_sec)
+    if activity is None:
+        thread.join(timeout=timeout_sec)
+    else:
+        while thread.is_alive():
+            remaining = float(timeout_sec) - activity.inactive_for()
+            if remaining <= 0:
+                break
+            thread.join(timeout=min(0.1, remaining))
 
     if thread.is_alive():
         # Signal cancellation so the thread can check and exit
         cancel_event.set()
         thread.join(timeout=1.0)
-        raise _ScriptTimeout(f"Script exceeded {timeout_sec}s timeout")
+        timeout_kind = " inactivity" if activity is not None else ""
+        raise _ScriptTimeout(f"Script exceeded {timeout_sec}s{timeout_kind} timeout")
 
     if exc_info[0]:
         raise exc_info[0][1].with_traceback(exc_info[0][2])
@@ -118,12 +148,95 @@ def interrupt_execution(session_id: Optional[str] = None) -> Dict[str, Any]:
     return {"success": True, "message": "Interrupt signal sent."}
 
 
+def _raise_if_cancelled(cancel_event: threading.Event) -> None:
+    if cancel_event.is_set():
+        raise KeyboardInterrupt("Execution cancelled by user")
+
+
+def _make_cooperative_cancel_checker(cancel_event: threading.Event):
+    """Return an explicit cancellation checkpoint for temporarily untraced work."""
+
+    def _check_macro_cancelled() -> None:
+        _raise_if_cancelled(cancel_event)
+
+    return _check_macro_cancelled
+
+
+def _make_trusted_macro_call(cancel_event: threading.Event):
+    """Wrap a trusted call with tracing suspended on the macro execution thread."""
+
+    check_cancelled = _make_cooperative_cancel_checker(cancel_event)
+
+    def _run_trusted_macro_call(func, *args, **kwargs):
+        if not callable(func):
+            raise TypeError("run_trusted_macro_call requires a callable.")
+
+        check_cancelled()
+        previous_trace = sys.gettrace()
+        sys.settrace(None)
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            sys.settrace(previous_trace)
+        check_cancelled()
+        return result
+
+    return _run_trusted_macro_call
+
+
 def _make_cancel_trace(cancel_event: threading.Event):
     """Create a tracing hook that aborts execution when cancellation is requested."""
     def _trace(_frame, _event, _arg):
-        if cancel_event.is_set():
-            raise KeyboardInterrupt("Execution cancelled by user")
+        _raise_if_cancelled(cancel_event)
         return _trace
+    return _trace
+
+
+def _make_scoped_cancel_trace(
+    cancel_event: threading.Event,
+    *,
+    traced_files: Set[str],
+    traced_roots: Tuple[str, ...],
+):
+    """Trace macro source files for cancellation without tracing imported libraries line by line."""
+
+    normalized_files = {os.path.normcase(os.path.abspath(path)) for path in traced_files if path}
+    normalized_roots = tuple(
+        os.path.normcase(os.path.abspath(path)).rstrip(os.sep) + os.sep
+        for path in traced_roots
+        if path
+    )
+    filename_decisions: Dict[str, bool] = {}
+    code_decisions: Dict[types.CodeType, bool] = {}
+
+    def _should_trace(frame) -> bool:
+        code = frame.f_code
+        try:
+            return code_decisions[code]
+        except KeyError:
+            pass
+
+        raw_filename = str(code.co_filename or "")
+        try:
+            decision = filename_decisions[raw_filename]
+        except KeyError:
+            if not raw_filename:
+                decision = False
+            else:
+                filename = os.path.normcase(os.path.abspath(raw_filename))
+                decision = filename in normalized_files
+                if not decision:
+                    decision = any(filename.startswith(root) for root in normalized_roots)
+            filename_decisions[raw_filename] = decision
+        code_decisions[code] = decision
+        return decision
+
+    def _trace(frame, event, _arg):
+        _raise_if_cancelled(cancel_event)
+        if event == "call" and not _should_trace(frame):
+            return None
+        return _trace
+
     return _trace
 
 
@@ -144,8 +257,7 @@ def _make_interruptible_sleep(
 
         deadline = py_time.monotonic() + duration
         while True:
-            if cancel_event.is_set():
-                raise KeyboardInterrupt("Execution cancelled by user")
+            _raise_if_cancelled(cancel_event)
             remaining = deadline - py_time.monotonic()
             if remaining <= 0:
                 return None
@@ -322,11 +434,7 @@ def _make_get_data_path():
 
 
 def _make_check_cancel(session: _SessionState):
-    def check_cancel() -> None:
-        """Call in loops to allow cancellation. Raises KeyboardInterrupt if cancelled."""
-        if session.cancel_event.is_set():
-            raise KeyboardInterrupt("Execution cancelled by user")
-    return check_cancel
+    return _make_cooperative_cancel_checker(session.cancel_event)
 
 
 # ---------------------------------------------------------------------------
@@ -1937,10 +2045,18 @@ def _execute_macro_source_body(
     task_mode: str,
     output: io.StringIO,
     cancel_event: threading.Event,
+    activity: _ExecutionActivity,
 ) -> Dict[str, Any]:
     with _MACRO_EXECUTION_LOCK:
         previous_trace = sys.gettrace()
-        sys.settrace(_make_cancel_trace(cancel_event))
+        macro_root = _get_macros_dir()
+        sys.settrace(
+            _make_scoped_cancel_trace(
+                cancel_event,
+                traced_files={compile_path, source_path},
+                traced_roots=(macro_root,),
+            )
+        )
         source_directory = ""
         inserted_source_directory = False
         try:
@@ -1970,6 +2086,8 @@ def _execute_macro_source_body(
             )
             macro_builtins = dict(vars(builtins))
             macro_builtins["__import__"] = macro_import
+            check_macro_cancelled = _make_cooperative_cancel_checker(cancel_event)
+            run_trusted_macro_call = _make_trusted_macro_call(cancel_event)
             namespace: Dict[str, Any] = {
                 "__name__": "__arcrho_macro__",
                 "__file__": compile_path,
@@ -1982,6 +2100,9 @@ def _execute_macro_source_body(
                 "task_mode": str(task_mode or ""),
                 "task_designer": task_designer,
                 "run_task_macro": run_task_macro,
+                "check_macro_cancelled": check_macro_cancelled,
+                "run_trusted_macro_call": run_trusted_macro_call,
+                "report_macro_activity": activity.touch,
                 "log": print,
             }
             if source_path:
@@ -2032,6 +2153,7 @@ def run_macro_source(
         source, compile_path, display_name = _normalize_macro_source(source, filename, source_path)
         active_context = active_context if isinstance(active_context, dict) else {}
         cancel_event = threading.Event()
+        activity = _ExecutionActivity()
         execution = _run_with_timeout(
             lambda: _execute_macro_source_body(
                 source,
@@ -2043,9 +2165,11 @@ def run_macro_source(
                 task_mode,
                 output,
                 cancel_event,
+                activity,
             ),
             _MACRO_TIMEOUT_SEC,
             cancel_event,
+            activity=activity,
         )
         runner_result = execution.get("runner_result")
         runner_success = not (

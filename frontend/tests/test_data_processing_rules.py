@@ -487,6 +487,26 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
         with self.assertRaises(data_processing_rules_service.StoredRulesContractError):
             data_processing_rules_service.get_data_processing_rules(self.project_name)
 
+    def test_processing_hash_rejects_malformed_config_instead_of_hashing_empty_data(self) -> None:
+        (self.project_dir / "dataset_types.json").write_text(
+            "{not valid json",
+            encoding="utf-8",
+        )
+        with self.assertRaises(data_processing_rules_service.StoredRulesContractError):
+            data_processing_rules_service.get_processing_config_hash(self.project_name)
+
+    def test_processing_hash_reports_an_unavailable_project_folder(self) -> None:
+        unavailable_path = self.root / "unavailable" / config.DATA_PROCESSING_RULES_FILE
+        with (
+            patch.object(
+                config,
+                "get_data_processing_rules_path",
+                return_value=str(unavailable_path),
+            ),
+            self.assertRaises(OSError),
+        ):
+            data_processing_rules_service.get_processing_config_hash(self.project_name)
+
     def test_semantic_save_clears_only_temporary_view_caches(self) -> None:
         datasets_dir = self.project_dir / "data" / "All States" / config.DATASET_CACHE_DIR
         temporary_dir = datasets_dir / config.TEMPORARY_VIEW_DATASET_CACHE_DIR

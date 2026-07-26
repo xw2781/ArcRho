@@ -15,12 +15,6 @@ class PatchRequest(BaseModel):
     file_mtime: Optional[float] = None
 
 
-class DatasetNotesLoadRequest(BaseModel):
-    project_name: str
-    reserving_class: str
-    dataset_name: str
-
-
 class DatasetNotesSaveRequest(BaseModel):
     project_name: str
     reserving_class: str
@@ -132,6 +126,7 @@ class DatasetSidecarSaveRequest(BaseModel):
     csv_file: str = ""
     method_type: str = ""
     status: Optional[int] = None
+    notes: Optional[str] = None
     precedents: Optional[List[str]] = None
     external_links: Optional[List[DatasetExternalLink]] = None
     values: Optional[List[List[Optional[float]]]] = None

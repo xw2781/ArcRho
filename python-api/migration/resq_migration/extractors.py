@@ -2,16 +2,28 @@ from __future__ import annotations
 
 import math
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
 from .core import (
+    BS_CRA_FILE_PREFIX,
+    BS_CRA_JSON_FORMAT,
+    BS_CRA_METHOD_TYPE,
+    BS_CRA_SOURCE_KIND,
+    BS_SR_FILE_PREFIX,
+    BS_SR_JSON_FORMAT,
+    BS_SR_METHOD_TYPE,
+    BS_SR_SOURCE_KIND,
     DATASET_CACHE_DIR,
     DATASET_SIDECAR_DIR,
     DEFAULT_CALENDAR,
     DEFAULT_CUMULATIVE,
     METHOD_TYPE_BF_CODE,
+    METHOD_TYPE_BS_CRA_CODE,
+    METHOD_TYPE_BS_SR_CODE,
     METHOD_TYPE_NONE_CODE,
     METHOD_TYPE_DFM_CODE,
     METHOD_TYPE_RESULT_SELECTION_CODE,
@@ -28,6 +40,7 @@ from .core import (
     _normalize_import_name,
     _safe_attr,
     _safe_int_attr,
+    _safe_read_json,
     _triangle_source_kind,
     _try_call_member,
     _vector_cache_csv_file_name,
@@ -45,8 +58,45 @@ RS_JSON_VALUE_DECIMAL_PLACES = 6
 BF_METHOD_TYPE = "Bornhuetter Ferguson"
 BF_SOURCE_KIND = "bornhuetter_ferguson"
 
+BS_SR_ADJUSTMENT_TYPES = {
+    0: "unadjusted",
+    1: "pairs",
+    2: "all",
+    3: "loess",
+}
+BS_CRA_INFLATION_TYPES = {
+    0: "case_column",
+    1: "case_all",
+    2: "paid_column",
+    3: "paid_all",
+    4: "user",
+}
+BS_CRA_AVERAGE_CASE_RESERVE_TYPES = {
+    0: "latest",
+    1: "monotone",
+    2: "loess",
+    3: "user",
+}
+
+_DEFER_GRAPH_ENRICHMENT_DEPTH: ContextVar[int] = ContextVar(
+    "resq_migration_defer_graph_enrichment_depth",
+    default=0,
+)
+
+
+@contextmanager
+def defer_sidecar_graph_enrichment():
+    """Defer per-write graph work until the caller performs a bulk graph refresh."""
+    token = _DEFER_GRAPH_ENRICHMENT_DEPTH.set(_DEFER_GRAPH_ENRICHMENT_DEPTH.get() + 1)
+    try:
+        yield
+    finally:
+        _DEFER_GRAPH_ENRICHMENT_DEPTH.reset(token)
+
 
 def _apply_graph_meta_best_effort(meta: dict, dataset_type: str, rc_dir: Path, **kwargs) -> None:
+    if _DEFER_GRAPH_ENRICHMENT_DEPTH.get() > 0:
+        return
     try:
         _apply_sidecar_graph_meta(meta, dataset_type, rc_dir, **kwargs)
     except Exception as exc:
@@ -166,13 +216,16 @@ def _vector_value(vector, origin_index: int):
         f"for origin index {origin_index}."
     )
 
-def export_triangle(triangle) -> dict:
+def export_triangle(triangle, *, method_type_code: int | None = None) -> dict:
     """Extract a ResQ Triangle COM object into ArcRho CSV values and metadata."""
     name = _normalize_import_name(triangle.Name)
     dataset_type_obj = _safe_attr(triangle, "DatasetType", None)
     dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", ""))
     category = _normalize_import_name(_safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", ""))
     data_format = _safe_int_attr(dataset_type_obj, "DataFormat", 0)
+    if method_type_code is None:
+        method_type_code = _safe_int_attr(triangle, "MethodType", METHOD_TYPE_NONE_CODE)
+    method_type = _method_type_name(method_type_code)
     origin_length = _safe_int_attr(triangle, "OriginLength", 12)
     dev_length = _safe_int_attr(triangle, "DevelopmentLength", 12)
     origin_count = _safe_int_attr(triangle, "OriginCount", 0)
@@ -222,6 +275,8 @@ def export_triangle(triangle) -> dict:
         "dataset_type": dataset_type,
         "category": category,
         "data_format": data_format,
+        "method_type": method_type,
+        "method_type_code": method_type_code,
         "origin_length": origin_length,
         "development_length": dev_length,
         "origin_count": origin_count,
@@ -250,7 +305,9 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     _write_csv_matrix(csv_path, payload["values"])
 
     updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
-    source_kind = _triangle_source_kind(name, dataset_type)
+    method_source_kind = _clean_name(payload.get("source_kind"))
+    is_berquist_sherman = method_source_kind in {BS_SR_SOURCE_KIND, BS_CRA_SOURCE_KIND}
+    source_kind = method_source_kind if is_berquist_sherman else _triangle_source_kind(name, dataset_type)
     meta = {
         "dataset_name": name,
         "dataset_type": dataset_type,
@@ -258,8 +315,14 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
-        "calculated": False,
-        "source": "resq_triangle",
+        "calculated": is_berquist_sherman,
+        "source": (
+            "resq_berquist_sherman_sr_triangle"
+            if method_source_kind == BS_SR_SOURCE_KIND
+            else "resq_berquist_sherman_cra_triangle"
+            if method_source_kind == BS_CRA_SOURCE_KIND
+            else "resq_triangle"
+        ),
         "data_format": "Triangle",
         "data_format_code": payload.get("data_format", 0),
         "origin_length": origin_length,
@@ -276,12 +339,327 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "user": payload.get("user", ""),
         "created": payload.get("created", ""),
         "modified_by": payload.get("user", ""),
+        "notes": str(payload.get("notes") or ""),
         "updated_at": updated_at,
     }
-    _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
+    if is_berquist_sherman:
+        meta["method_name"] = _normalize_import_name(payload.get("method_name")) or name
+        meta["method_type"] = _method_type_name(payload.get("method_type"))
+        meta["method_type_code"] = payload.get(
+            "method_type_code",
+            _method_type_code(payload.get("method_type"), METHOD_TYPE_NONE_CODE),
+        )
+        meta["Precedents"] = [
+            _normalize_import_name(item)
+            for item in payload.get("precedents", [])
+            if _normalize_import_name(item)
+        ]
+        meta["Dependents"] = []
+        meta["status"] = 0
+        _apply_graph_meta_best_effort(meta, dataset_type, rc_dir, preserve_precedents=True)
+    else:
+        _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
     meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     _write_json(meta_path, meta)
     return csv_path
+
+
+def _bs_indexed_value(method, member_name: str, *indices: int):
+    keyword_names = (
+        ("DevIndex",)
+        if len(indices) == 1
+        else ("OriginIndex", "DevIndex")
+    )
+    keyword_args = {
+        name: value
+        for name, value in zip(keyword_names, indices)
+    }
+    return _try_call_member(
+        method,
+        member_name,
+        [
+            (tuple(indices), {}),
+            ((), keyword_args),
+        ],
+    )
+
+
+def _bs_source_name(method, attr_name: str) -> str:
+    source = _safe_attr(method, attr_name, None)
+    return _normalize_import_name(_safe_attr(source, "Name", ""))
+
+
+def _bs_selection_label(value: object, labels: dict[int, str], field_name: str) -> str:
+    try:
+        code = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid ResQ {field_name} value: {value!r}.") from exc
+    if code not in labels:
+        raise ValueError(f"Unsupported ResQ {field_name} code: {code}.")
+    return labels[code]
+
+
+def _bs_precedents(method_tab: dict, variant: str) -> list[str]:
+    keys = (
+        ("paid_claims", "closed_claim_numbers", "ultimate_claim_numbers")
+        if variant == "sr"
+        else ("reported_claim_numbers", "closed_claim_numbers", "incurred_claims", "paid_claims")
+    )
+    names: list[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        name = _normalize_import_name(method_tab.get(key))
+        name_key = name.casefold()
+        if name and name_key not in seen:
+            seen.add(name_key)
+            names.append(name)
+    return names
+
+
+def _bs_variant_from_payload(payload: dict) -> str:
+    json_format = _clean_name(payload.get("json_format")).casefold()
+    if json_format == BS_SR_JSON_FORMAT:
+        return "sr"
+    if json_format == BS_CRA_JSON_FORMAT:
+        return "cra"
+    raise ValueError(f"Unsupported Berquist Sherman JSON format: {json_format!r}.")
+
+
+def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
+    """Extract the annual B&S configuration needed to reproduce a ResQ output."""
+    clean_variant = _clean_name(variant).casefold()
+    if clean_variant not in {"sr", "cra"}:
+        raise ValueError(f"Unsupported Berquist Sherman variant: {variant!r}.")
+
+    origin_length = int(output_payload.get("origin_length") or _safe_int_attr(method, "OriginLength", 0))
+    development_length = int(
+        output_payload.get("development_length")
+        or _safe_int_attr(method, "DevelopmentLength", 0)
+    )
+    if origin_length != 12 or development_length != 12:
+        raise ValueError(
+            "ArcRho's Berquist Sherman MVP supports annual triangles only "
+            f"(got origin_length={origin_length}, development_length={development_length})."
+        )
+
+    name = _normalize_import_name(output_payload.get("name")) or _normalize_import_name(
+        _safe_attr(method, "Name", "")
+    )
+    if not name:
+        raise ValueError("The ResQ Berquist Sherman method does not expose an output name.")
+    output_type = _normalize_import_name(output_payload.get("dataset_type")) or name
+    origin_labels = [
+        _normalize_import_name(label)
+        for label in output_payload.get("origin_labels", [])
+    ]
+    development_labels = [
+        _normalize_import_name(label)
+        for label in output_payload.get("development_labels", [])
+    ]
+    origin_count = len(origin_labels)
+    development_count = len(development_labels)
+    if origin_count <= 0 or development_count <= 0:
+        raise ValueError(f"Berquist Sherman method {name!r} does not expose annual triangle labels.")
+
+    if clean_variant == "sr":
+        method_type = BS_SR_METHOD_TYPE
+        source_kind = BS_SR_SOURCE_KIND
+        method_tab = {
+            "paid_claims": _bs_source_name(method, "PaidClaims"),
+            "closed_claim_numbers": _bs_source_name(method, "ClosedClaimNos"),
+            "ultimate_claim_numbers": _bs_source_name(method, "UltimateClaimNos"),
+            "origin_labels": origin_labels,
+            "development_labels": development_labels,
+            "selected_proportion_settled": [
+                float(_bs_indexed_value(method, "SelectedProportionSettled", dev_index))
+                for dev_index in range(1, development_count + 1)
+            ],
+            "selected_proportion_is_default": [
+                _bool_value(_bs_indexed_value(method, "IsDefaultProportionSettled", dev_index))
+                for dev_index in range(1, development_count + 1)
+            ],
+            "selected_adjustment": [],
+        }
+        selected_adjustment: list[list[str | None]] = []
+        for origin_index in range(1, origin_count + 1):
+            row_count = min(development_count, origin_count - origin_index + 1)
+            row: list[str | None] = []
+            for dev_index in range(1, development_count + 1):
+                if dev_index > row_count:
+                    row.append(None)
+                    continue
+                raw = _bs_indexed_value(method, "SelectedAdjustment", origin_index, dev_index)
+                row.append(_bs_selection_label(raw, BS_SR_ADJUSTMENT_TYPES, "SelectedAdjustment"))
+            selected_adjustment.append(row)
+        method_tab["selected_adjustment"] = selected_adjustment
+        json_format = BS_SR_JSON_FORMAT
+    else:
+        method_type = BS_CRA_METHOD_TYPE
+        source_kind = BS_CRA_SOURCE_KIND
+        method_tab = {
+            "reported_claim_numbers": _bs_source_name(method, "ReportedClaimNos"),
+            "closed_claim_numbers": _bs_source_name(method, "ClosedClaimNos"),
+            "incurred_claims": _bs_source_name(method, "IncurredClaims"),
+            "paid_claims": _bs_source_name(method, "PaidClaims"),
+            "origin_labels": origin_labels,
+            "development_labels": development_labels,
+            "inflation_selection": [
+                _bs_selection_label(
+                    _bs_indexed_value(method, "SelectedAvgInflation", dev_index),
+                    BS_CRA_INFLATION_TYPES,
+                    "SelectedAvgInflation",
+                )
+                for dev_index in range(1, development_count + 1)
+            ],
+            "user_inflation": [
+                float(_bs_indexed_value(method, "UserAvgInflation", dev_index))
+                for dev_index in range(1, development_count + 1)
+            ],
+            "average_case_reserve_selection": [
+                _bs_selection_label(
+                    _bs_indexed_value(method, "SelectedAvgCaseReserves", dev_index),
+                    BS_CRA_AVERAGE_CASE_RESERVE_TYPES,
+                    "SelectedAvgCaseReserves",
+                )
+                for dev_index in range(1, development_count + 1)
+            ],
+            "user_average_case_reserves": [
+                float(_bs_indexed_value(method, "UserAvgCaseReserves", dev_index))
+                for dev_index in range(1, development_count + 1)
+            ],
+        }
+        json_format = BS_CRA_JSON_FORMAT
+
+    notes = _clean_name(_safe_attr(method, "Notes", ""))
+    modified = output_payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    return {
+        "json_format": json_format,
+        "details_tab": {
+            "name": name,
+            "method_type": method_type,
+            "output_type": output_type,
+            "origin_length": origin_length,
+            "development_length": development_length,
+        },
+        "method_tab": method_tab,
+        "_sidecar_notes": notes,
+        "audit_log_tab": {},
+        "method_metadata": {
+            "method_type": method_type,
+            "source_kind": source_kind,
+            "last_modified": modified,
+        },
+    }
+
+
+def _apply_berquist_sherman_triangle_metadata(payload: dict, method_payload: dict) -> None:
+    payload["notes"] = str(method_payload.pop("_sidecar_notes", "") or "")
+    variant = _bs_variant_from_payload(method_payload)
+    if variant == "sr":
+        payload["source_kind"] = BS_SR_SOURCE_KIND
+        payload["method_type"] = BS_SR_METHOD_TYPE
+        payload["method_type_code"] = METHOD_TYPE_BS_SR_CODE
+    elif variant == "cra":
+        payload["source_kind"] = BS_CRA_SOURCE_KIND
+        payload["method_type"] = BS_CRA_METHOD_TYPE
+        payload["method_type_code"] = METHOD_TYPE_BS_CRA_CODE
+    else:
+        raise ValueError(f"Unsupported Berquist Sherman variant: {variant!r}.")
+    details_tab = method_payload.get("details_tab") if isinstance(method_payload.get("details_tab"), dict) else {}
+    method_tab = method_payload.get("method_tab") if isinstance(method_payload.get("method_tab"), dict) else {}
+    payload["method_name"] = _normalize_import_name(details_tab.get("name")) or _normalize_import_name(
+        payload.get("name")
+    )
+    payload["precedents"] = _bs_precedents(method_tab, variant)
+
+
+def _backfill_berquist_sherman_precedent_origin_labels(
+    payload: dict,
+    variant: str,
+    rc_dir: Path,
+) -> None:
+    method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
+    origin_labels = method_tab.get("origin_labels")
+    if not isinstance(origin_labels, list) or not origin_labels:
+        return
+
+    canonical_labels = [str(label) for label in origin_labels]
+    for precedent in _bs_precedents(method_tab, variant):
+        sidecar_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(precedent)
+        if not sidecar_path.is_file():
+            continue
+        sidecar = _safe_read_json(sidecar_path)
+        if not sidecar:
+            continue
+        existing_labels = sidecar.get("origin_labels")
+        if existing_labels not in (None, []):
+            continue
+        sidecar["origin_labels"] = canonical_labels
+        _write_json(sidecar_path, sidecar)
+
+
+def write_berquist_sherman_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
+    del rc_path
+    variant = _bs_variant_from_payload(payload)
+    details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    name = _normalize_import_name(details_tab.get("name"))
+    if variant == "sr":
+        prefix = BS_SR_FILE_PREFIX
+    elif variant == "cra":
+        prefix = BS_CRA_FILE_PREFIX
+    else:
+        raise ValueError(f"Unsupported Berquist Sherman variant: {variant!r}.")
+    if not name:
+        raise ValueError("Berquist Sherman method JSON is missing details_tab.name.")
+    out_path = rc_dir / METHOD_DATA_DIR / f"{prefix}{_encode_name_part(name)}.json"
+    method_payload = dict(payload)
+    method_payload.pop("_sidecar_notes", None)
+    _write_json(out_path, method_payload)
+    _backfill_berquist_sherman_precedent_origin_labels(method_payload, variant, rc_dir)
+    return out_path
+
+
+def _find_berquist_sherman_for_triangle(
+    reserving_class,
+    triangle_name: str,
+    method_type_code: int,
+) -> tuple[str, object] | None:
+    if method_type_code == METHOD_TYPE_BS_SR_CODE:
+        variants = (("sr", "GetBerquistShermanSR", "BerquistShermanSRs"),)
+    elif method_type_code == METHOD_TYPE_BS_CRA_CODE:
+        variants = (("cra", "GetBerquistShermanCRA", "BerquistShermanCRAs"),)
+    else:
+        return None
+
+    target = _normalize_import_name(triangle_name).casefold()
+    for variant, getter_name, collection_name in variants:
+        try:
+            method = _call_member(reserving_class, getter_name, triangle_name)
+            if method is not None:
+                return variant, method
+        except Exception:
+            pass
+        try:
+            collection = _call_member(reserving_class, collection_name)
+        except Exception:
+            continue
+        try:
+            method = collection.Item(triangle_name)
+            if method is not None:
+                return variant, method
+        except Exception:
+            pass
+        try:
+            for method in collection:
+                output = _safe_attr(method, "OutputTriangle", None)
+                output_name = _normalize_import_name(_safe_attr(output, "Name", "")).casefold()
+                method_name = _normalize_import_name(_safe_attr(method, "Name", "")).casefold()
+                if target and target in {output_name, method_name}:
+                    return variant, method
+        except Exception:
+            continue
+    return None
+
 
 def export_vector(vector) -> dict:
     """Extract a ResQ Vector COM object into ArcRho CSV values and metadata."""
@@ -408,6 +786,7 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "user": payload.get("user", ""),
         "created": payload.get("created", ""),
         "modified_by": payload.get("user", ""),
+        "notes": str(payload.get("notes") or ""),
         "updated_at": updated_at,
     }
     if is_result_selection:
@@ -734,9 +1113,7 @@ def export_result_selection(result_selection) -> dict:
         },
         "results_tab": {},
         "validation_tab": {},
-        "notes_tab": {
-            "notes": notes,
-        },
+        "_sidecar_notes": notes,
         "method_metadata": {
             "last_modified": modified,
         },
@@ -761,6 +1138,7 @@ def _result_selection_origin_labels_from_payload(payload: dict) -> list[str]:
     return [_normalize_import_name(label) for label in labels if _normalize_import_name(label)]
 
 def _apply_result_selection_vector_metadata(payload: dict, result_selection_payload: dict) -> None:
+    payload["notes"] = str(result_selection_payload.pop("_sidecar_notes", "") or "")
     payload["precedents"] = _result_selection_source_names(result_selection_payload)
     origin_labels = _result_selection_origin_labels_from_payload(result_selection_payload)
     if origin_labels:
@@ -883,9 +1261,7 @@ def export_bornhuetter_ferguson(method) -> dict:
             "new_ultimate": [],
         },
         "chart_tab": {},
-        "notes_tab": {
-            "notes": notes,
-        },
+        "_sidecar_notes": notes,
         "audit_log_tab": {},
         "method_metadata": {
             "method_type": BF_METHOD_TYPE,
@@ -921,6 +1297,7 @@ def _bornhuetter_ferguson_source_names(payload: dict) -> list[str]:
 
 
 def _apply_bornhuetter_ferguson_vector_metadata(payload: dict, bf_payload: dict) -> None:
+    payload["notes"] = str(bf_payload.pop("_sidecar_notes", "") or "")
     payload["source_kind"] = BF_SOURCE_KIND
     payload["method_type"] = BF_METHOD_TYPE
     payload["method_type_code"] = METHOD_TYPE_BF_CODE
@@ -938,7 +1315,9 @@ def write_bornhuetter_ferguson_export(payload: dict, rc_path: str, rc_dir: Path)
     name = _normalize_import_name(details_tab.get("name")) or BF_METHOD_TYPE
     file_name = f"BF@{_encode_name_part(name)}.json"
     out_path = rc_dir / METHOD_DATA_DIR / file_name
-    _write_json(out_path, payload)
+    method_payload = dict(payload)
+    method_payload.pop("_sidecar_notes", None)
+    _write_json(out_path, method_payload)
     return out_path
 
 
@@ -1091,7 +1470,9 @@ def write_result_selection_export(payload: dict, rc_path: str, rc_dir: Path) -> 
     name = _normalize_import_name(details_tab.get("name")) or "Result Selection"
     file_name = f"RS@{_encode_name_part(name)}.json"
     out_path = rc_dir / METHOD_DATA_DIR / file_name
-    _write_json(out_path, payload)
+    method_payload = dict(payload)
+    method_payload.pop("_sidecar_notes", None)
+    _write_json(out_path, method_payload)
     return out_path
 
 def _find_result_selection_for_vector(reserving_class, vector_name: str):
@@ -1175,6 +1556,7 @@ def export_dfm_ultimate_vector(
         "development_labels": ["Ultimate"],
         "values": values,
         "method_name": _normalize_import_name(dfm.Name),
+        "notes": str(_safe_attr(dfm, "Notes", "") or ""),
         "user": user,
         "created": created,
         "modified": modified,
@@ -1214,6 +1596,7 @@ def write_dfm_ultimate_vector_export(payload: dict, rc_path: str, rc_dir: Path) 
         "user": payload.get("user", ""),
         "created": payload.get("created", ""),
         "modified_by": payload.get("user", ""),
+        "notes": str(payload.get("notes") or ""),
         "updated_at": updated_at,
     }
     _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)

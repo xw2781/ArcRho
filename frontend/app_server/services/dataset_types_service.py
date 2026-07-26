@@ -108,6 +108,63 @@ def normalize_dataset_types_data(data: Any) -> Dict[str, Any]:
     }
 
 
+def load_dataset_types_data(
+    project_name: str,
+    *,
+    strict: bool = False,
+) -> Dict[str, Any]:
+    """Load the canonical dataset-type document.
+
+    Strict callers distinguish a confirmed missing file from an unavailable
+    project share so a transient network failure cannot be treated as an empty
+    dataset contract.
+    """
+    try:
+        filepath = config.get_dataset_types_path(project_name)
+    except ValueError:
+        return normalize_dataset_types_data({})
+
+    try:
+        with open(filepath, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except FileNotFoundError as error:
+        if not strict or os.path.isdir(os.path.dirname(filepath)):
+            return normalize_dataset_types_data({})
+        raise HTTPException(
+            503,
+            (
+                f"Dataset-type configuration is unavailable for '{project_name}'. "
+                "Existing dataset caches were left unchanged."
+            ),
+        ) from error
+    except json.JSONDecodeError as error:
+        if not strict:
+            return normalize_dataset_types_data({})
+        raise HTTPException(
+            500,
+            f"Dataset-type configuration is invalid for '{project_name}': {str(error)}",
+        ) from error
+    except OSError as error:
+        if not strict:
+            return normalize_dataset_types_data({})
+        raise HTTPException(
+            503,
+            (
+                f"Dataset-type configuration is unavailable for '{project_name}'. "
+                "Existing dataset caches were left unchanged."
+            ),
+        ) from error
+
+    if not isinstance(raw, (dict, list)):
+        if strict:
+            raise HTTPException(
+                500,
+                f"Dataset-type configuration must contain a JSON object or list: {filepath}",
+            )
+        return normalize_dataset_types_data({})
+    return normalize_dataset_types_data(raw)
+
+
 def _normalize_dataset_types_header_row(values: List[Any]) -> List[str]:
     out: List[str] = []
     for v in values:
@@ -307,29 +364,18 @@ def save_dataset_types_payload(filepath: str, payload: Dict[str, Any]) -> Dict[s
 
 
 def get_dataset_type_names(project_name: str) -> List[str]:
-    try:
-        filepath = config.get_dataset_types_path(project_name)
-    except ValueError:
-        return []
-    if not os.path.exists(filepath):
-        return []
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        data = normalize_dataset_types_data(raw)
-        names: List[str] = []
-        seen = set()
-        for row in data.get("rows", []):
-            if not isinstance(row, list) or not row:
-                continue
-            name = str(row[0] if row[0] is not None else "").strip()
-            if not name or name in seen:
-                continue
-            seen.add(name)
-            names.append(name)
-        return names
-    except Exception:
-        return []
+    data = load_dataset_types_data(project_name)
+    names: List[str] = []
+    seen = set()
+    for row in data.get("rows", []):
+        if not isinstance(row, list) or not row:
+            continue
+        name = str(row[0] if row[0] is not None else "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
 
 
 def _load_dataset_source_map(project_name: str) -> Dict[str, str]:

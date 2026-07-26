@@ -417,11 +417,6 @@ def export_dfm(
         avg_settings["exclude"].append(s["exclude"])
 
     # Notes
-    try:
-        notes_text: str = dfm.Notes or ""
-    except Exception:
-        notes_text = ""
-
     # Cell notes
     try:
         cell_notes_raw: str = dfm.CellNotes or ""
@@ -484,9 +479,6 @@ def export_dfm(
             "ratio basis dataset": ratio_basis,
             "ultimate ratio decimal places": ultimate_dp,
             "ultimate vector csv path": output_csv,
-        },
-        "notes tab": {
-            "notes": notes_text,
         },
         "method metadata": {
             "last modified": last_modified,

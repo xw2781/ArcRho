@@ -58,16 +58,22 @@ from arcrho_engine.general_utils import (
 
 class RequestHandler(FileSystemEventHandler):
 
-    def on_moved(self, event):
+    def _process_event_path(self, event, file_path):
         if event.is_directory:
             return
-        if not event.dest_path.lower().endswith(".json"):
+        if not str(file_path).lower().endswith(".json"):
             return
 
-        file_path = event.dest_path
-
-        # Process request immediately in the watchdog event thread
+        # Process request immediately in the watchdog event thread.
         self.process_file(file_path)
+
+    def on_created(self, event):
+        # Excel normally publishes with an atomic move, but its compatibility
+        # fallback copies directly to the final .json path.
+        self._process_event_path(event, event.src_path)
+
+    def on_moved(self, event):
+        self._process_event_path(event, event.dest_path)
 
     def process_file_debug(self, file_path):
         if debug_mode == 0:
@@ -81,28 +87,43 @@ class RequestHandler(FileSystemEventHandler):
     def process_file(self, file_path):
         try:
             arg = read_json(file_path)
-        except:
+        except Exception:
             # print(f'\n* request sent to another agent')
             return
 
+        # Every engine sees the same filesystem event.  Reading is safe, but
+        # exactly one engine must atomically remove (claim) the request before
+        # doing validation or writing any output.
         try:
-            project_name = arg['ProjectName']
+            if not safe_remove(file_path):
+                return
+        except Exception:  # Already removed by another engine.
+            return
+
+        if not _write_request_status(arg, "processing"):
+            # A caller that supplied StatusPath relies on the processing marker
+            # to distinguish this worker from the legacy CSV-only protocol.
+            return
+
+        project_name = str(arg.get("ProjectName") or "").strip()
+        try:
+            if not project_name:
+                raise FileNotFoundError("ProjectName is missing")
             if not project_exists(project_name):
                 raise FileNotFoundError(project_name)
             get_project_table_path(project_name)
-        except Exception:
-            write_lists_to_csv(arg['DataPath'], [[f'(project not found: {project_name})']])
-            return
-
-        try:
-            safe_remove(file_path)
-        except: # Already removed by another agent
+        except Exception as exc:
+            message = f"(project not found: {project_name or exc})"
+            _finish_request_error(arg, message, [[message]])
             return
 
         if debug_mode == 1:
             print(arg)
 
-        print(f"\n> {get_current_time()} \n> new request # {robot_id} # user [{arg['UserName']}]")
+        print(
+            f"\n> {get_current_time()} \n> new request # {robot_id} "
+            f"# user [{arg.get('UserName', '')}]"
+        )
 
         # Check project configuration updates (guarded).
         try:
@@ -121,10 +142,19 @@ class RequestHandler(FileSystemEventHandler):
                 # If missing, _get_df() will load it later.
         except DataProcessingConfigurationError as e:
             print(str(e))
-            write_lists_to_csv(
-                arg['DataPath'],
+            message = f"(data processing configuration error: {e})"
+            _finish_request_error(
+                arg,
+                message,
                 [[f"(data processing configuration error: {e})"]],
             )
+            return
+        except Exception as e:
+            if debug_mode:
+                import traceback
+                traceback.print_exc()
+            message = f"(error: {str(e).upper()})"
+            _finish_request_error(arg, message, [[0]])
             return
 
         # Go to Functions
@@ -137,41 +167,98 @@ class RequestHandler(FileSystemEventHandler):
             elif function_name == 'ADASHeaders':
                 UDF_ADASHeaders(arg)
             else:
-                write_lists_to_csv(arg['DataPath'], [['(invalid function name)']])
+                message = "(invalid function name)"
+                _finish_request_error(arg, message, [[message]])
+                return
 
         except DataProcessingRulesError as e:
             print(str(e))
-            write_lists_to_csv(
-                arg['DataPath'],
+            message = f"(data processing rules error: {e})"
+            _finish_request_error(
+                arg,
+                message,
                 [[f"(data processing rules error: {e})"]],
             )
             return
 
         except DataProcessingConfigurationError as e:
             print(str(e))
-            write_lists_to_csv(
-                arg['DataPath'],
+            message = f"(data processing configuration error: {e})"
+            _finish_request_error(
+                arg,
+                message,
                 [[f"(data processing configuration error: {e})"]],
             )
             return
 
         except ProjectSettingsError as e:
             print(str(e))
-            write_lists_to_csv(arg['DataPath'], [['project settings not defined']])
+            _finish_request_error(
+                arg,
+                f"project settings not defined: {e}",
+                [['project settings not defined']],
+            )
             return
-        
+
         except Exception as e:
             if debug_mode:
                 import traceback
                 traceback.print_exc()
                 print(arg)
-            else:
-                err_msg = f"(error: {str(e).upper()})"
-                print(err_msg)
-            write_lists_to_csv(arg['DataPath'], [[0]])
+            message = f"(error: {str(e).upper()})"
+            print(message)
+            _finish_request_error(arg, message, [[0]])
             return
 
+        _write_request_status(arg, "success")
         print(f"> request completed @ {get_current_time().split(' ')[1]}")
+
+
+def _write_request_status(arg, status, message=""):
+    """Atomically publish optional request status without affecting legacy callers."""
+
+    status_path = str(arg.get("StatusPath") or "").strip()
+    if not status_path:
+        return True
+
+    payload = {
+        "status": str(status),
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    request_id = str(arg.get("RequestId") or "").strip()
+    if request_id:
+        payload["request_id"] = request_id
+    if message:
+        payload["message"] = str(message)
+
+    try:
+        if write_json(status_path, payload):
+            return True
+        print(f"(error: could not write request status to {status_path})")
+    except Exception as exc:
+        print(f"(error: could not write request status to {status_path}: {exc})")
+    return False
+
+
+def _finish_request_error(arg, message, csv_rows):
+    """Preserve the legacy error CSV and publish terminal status when requested."""
+
+    status_message = str(message)
+    try:
+        write_lists_to_csv(arg.get("DataPath"), csv_rows)
+    except Exception as exc:
+        status_message = f"{status_message}; failed to write error CSV: {exc}"
+        print(status_message)
+    finally:
+        _write_request_status(arg, "error", status_message)
+
+
+def _remove_instance_heartbeat():
+    try:
+        if os.path.exists(id_path):
+            safe_remove(id_path)
+    except Exception:
+        pass
 
 
 def start_monitoring(path):
@@ -189,6 +276,10 @@ def start_monitoring(path):
 
     try:
         while True:
+
+            if not observer.is_alive():
+                _remove_instance_heartbeat()
+                break
 
             if not os.path.exists(id_path):
                 observer.stop(); break

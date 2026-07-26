@@ -1,0 +1,610 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from contextlib import contextmanager
+from pathlib import Path
+from unittest import mock
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_ROOT = REPOSITORY_ROOT / "frontend"
+PYTHON_API_SRC = REPOSITORY_ROOT / "python-api" / "src"
+MIGRATION_ROOT = REPOSITORY_ROOT / "python-api" / "migration"
+for import_root in (MIGRATION_ROOT, PYTHON_API_SRC, FRONTEND_ROOT):
+    import_path = str(import_root)
+    if import_path not in sys.path:
+        sys.path.insert(0, import_path)
+
+from app_server import config
+from app_server.services import dataset_instance_index_service
+from arcrho_api import ArcRhoClient
+from arcrho_api import dataset_index_contract
+from arcrho_api.dataset_index_contract import (
+    DATASET_INDEX_VERSION,
+    FORBIDDEN_INDEX_ROW_FIELDS,
+    INDEX_ROW_FIELDS,
+    normalize_cached_dataset_name,
+)
+from resq_migration import catalog
+
+
+_TEST_TEMP_ROOT = FRONTEND_ROOT / "tests" / "logs" / "tmp"
+_FIXED_MTIME_NS = 1_767_225_600_000_000_000
+_FIXTURE_FORBIDDEN_FIELDS = {
+    "origin_labels",
+    "Precedents",
+    "Dependents",
+    "audit_log",
+    "external_links",
+    "calculated",
+}
+
+
+class DatasetIndexCrossComponentContractTests(unittest.TestCase):
+    project_name = "Demo"
+    reserving_class = r"Auto\PP"
+
+    def setUp(self) -> None:
+        _TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(_TEST_TEMP_ROOT))
+        self.addCleanup(self.temp_dir.cleanup)
+
+        self.server_root = Path(self.temp_dir.name) / "ArcRho Server"
+        self.projects_dir = self.server_root / "projects"
+        self.project_dir = self.projects_dir / self.project_name
+        self.rc_dir = self.project_dir / "data" / "Auto_%5C_PP"
+        self.datasets_dir = self.rc_dir / "datasets"
+        self.methods_dir = self.rc_dir / "methods"
+        self.sidecars_dir = self.rc_dir / "sidecars"
+        self.datasets_dir.mkdir(parents=True)
+        self.methods_dir.mkdir()
+        self.sidecars_dir.mkdir()
+
+        old_catalog_config = {
+            "server_root": catalog.SERVER_ROOT,
+            "project_name": catalog.PROJECT_NAME,
+            "rs_json_format": catalog.RS_JSON_FORMAT,
+            "method_data_dir": catalog.METHOD_DATA_DIR,
+        }
+        self.addCleanup(catalog.configure_catalog, **old_catalog_config)
+        catalog.configure_catalog(
+            server_root=self.server_root,
+            project_name=self.project_name,
+            rs_json_format="arcrho-result-selection-method-by-tab-v1",
+            method_data_dir="methods",
+        )
+
+        self._write_project_metadata()
+        self._write_index_source_fixture()
+
+    @property
+    def index_path(self) -> Path:
+        return self.rc_dir / "index.json"
+
+    def _write_json(self, path: Path, payload: dict) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        os.utime(path, ns=(_FIXED_MTIME_NS, _FIXED_MTIME_NS))
+
+    def _write_text(self, path: Path, text: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+        os.utime(path, ns=(_FIXED_MTIME_NS, _FIXED_MTIME_NS))
+
+    def _write_project_metadata(self) -> None:
+        dataset_types = {
+            "columns": [
+                "Name",
+                "Data Format",
+                "Category",
+                "Calculated",
+                "Formula",
+                "Source",
+                "Generated",
+            ],
+            "rows": [
+                ["Paid Loss", "Triangle", "Loss", False, "", "", False],
+                [
+                    "Projected Premium",
+                    "Vector",
+                    "Premium",
+                    True,
+                    '"Written Premium" * 1.05',
+                    "",
+                    False,
+                ],
+                ["Ultimate Loss", "Vector", "Ultimate", False, "", "", False],
+                ["Selected Ultimate", "Vector", "Ultimate", False, "", "", False],
+                ["BF Ultimate", "Vector", "Ultimate", False, "", "", False],
+                ["Adjusted Paid", "Triangle", "Loss", False, "", "", False],
+            ],
+        }
+        self._write_json(self.project_dir / "dataset_types.json", dataset_types)
+        self._write_json(
+            self.server_root / "config" / "username_index.json",
+            {
+                "users": [
+                    {
+                        "login_name": "migration_user",
+                        "full_name": "Migration User",
+                    }
+                ]
+            },
+        )
+
+    def _write_index_source_fixture(self) -> None:
+        common_forbidden_metadata = {
+            "origin_labels": ["2024", "2025"],
+            "Precedents": ["Written Premium"],
+            "Dependents": ["Selected Ultimate"],
+            "audit_log": [{"action": "migration"}],
+            "external_links": [{"label": "Source workbook", "target": "book.xlsx"}],
+            "calculated": False,
+        }
+        self._write_text(
+            self.datasets_dir / "Paid Loss@12@24@cum@dev.csv",
+            "Origin,12,24\n2024,100,150\n2025,125,\n",
+        )
+        self._write_json(
+            self.sidecars_dir / "Paid Loss.json",
+            {
+                "dataset_name": "Paid Loss",
+                "dataset_type": "Paid Loss",
+                "dataset_category": "Loss",
+                "source_kind": "input",
+                "method_type": "None",
+                "data_format": "Triangle",
+                "origin_length": 12,
+                "development_length": 24,
+                "status": 0,
+                "user": "migration_user",
+                "created": "2026-01-01T01:02:03",
+                "last_modified": "2026-01-02T03:04:05",
+                **common_forbidden_metadata,
+            },
+        )
+
+        self._write_text(
+            self.datasets_dir / "Projected Premium@12.csv",
+            "Origin,Value\n2024,1000\n2025,1100\n",
+        )
+        self._write_json(
+            self.sidecars_dir / "Projected Premium.json",
+            {
+                "dataset_name": "Projected Premium",
+                "dataset_type": "Projected Premium",
+                "dataset_category": "Premium",
+                "source_kind": "calculated",
+                "method_type": "None",
+                "data_format": "Vector",
+                "period_length": 12,
+                "status": 0,
+                "formula": '"Written Premium" * 1.05',
+                "calculated": True,
+                "origin_labels": ["2024", "2025"],
+            },
+        )
+
+        self._write_json(
+            self.methods_dir / "DFM@Paid Development Method.json",
+            {
+                "json format": "arcrho-dfm-method-by-tab-v1",
+                "details tab": {
+                    "name": "Paid Development Method",
+                    "output dataset": "Paid DFM Ultimate",
+                    "output type": "Ultimate Loss",
+                    "output category": "Ultimate",
+                },
+                "data tab": {
+                    "origin labels": ["2024", "2025"],
+                },
+            },
+        )
+        self._write_text(
+            self.datasets_dir / "Paid DFM Ultimate@12.csv",
+            "Origin,Value\n2024,175\n2025,200\n",
+        )
+        self._write_json(
+            self.sidecars_dir / "Paid DFM Ultimate.json",
+            {
+                "dataset_name": "Paid DFM Ultimate",
+                "dataset_type": "Ultimate Loss",
+                "source_kind": "dfm",
+                "method_type": "DFM",
+                "data_format": "Vector",
+                "period_length": 12,
+                "status": 2,
+            },
+        )
+        for method_name in ("Frontend DFM A", "Frontend DFM B"):
+            self._write_json(
+                self.methods_dir / f"DFM@{method_name}.json",
+                {
+                    "json format": "arcrho-dfm-method-by-tab-v1",
+                    "details tab": {
+                        "name": method_name,
+                        "output type": "Ultimate Loss",
+                    },
+                },
+            )
+        self._write_json(
+            self.methods_dir / "RS@Selected Ultimate.json",
+            {
+                "json_format": "arcrho-result-selection-method-by-tab-v1",
+                "details_tab": {
+                    "name": "Selected Ultimate",
+                    "output_type": "Selected Ultimate",
+                    "dataset_category": "Ultimate",
+                },
+                "method_tab": {
+                    "origin_labels": ["2024", "2025"],
+                },
+            },
+        )
+        self._write_json(
+            self.methods_dir / "BF@BF Ultimate.json",
+            {
+                "json_format": "arcrho-bornhuetter-ferguson-method-by-tab-v2",
+                "details_tab": {
+                    "name": "BF Ultimate",
+                    "output_type": "BF Ultimate",
+                    "dataset_category": "Ultimate",
+                },
+                "method_tab": {
+                    "origin_labels": ["2024", "2025"],
+                },
+            },
+        )
+        self._write_json(
+            self.methods_dir / "BSSR@Adjusted Paid.json",
+            {
+                "json_format": "arcrho-berquist-sherman-sr-method-by-tab-v1",
+                "details_tab": {
+                    "name": "Adjusted Paid",
+                    "output_type": "Adjusted Paid",
+                    "dataset_category": "Loss",
+                    "origin_length": 12,
+                    "development_length": 24,
+                },
+                "method_tab": {
+                    "origin_labels": ["2024", "2025"],
+                },
+            },
+        )
+
+    @contextmanager
+    def _frontend_workspace(self):
+        with (
+            mock.patch.object(config, "PROJECT_SETTINGS_DIR", str(self.projects_dir)),
+            mock.patch.object(config, "get_root_path", return_value=str(self.server_root)),
+        ):
+            yield
+
+    def _migration_rebuild(self) -> tuple[dict, str]:
+        rebuilt_path = catalog.rebuild_dataset_instance_index(
+            self.project_name,
+            self.reserving_class,
+            self.rc_dir,
+        )
+        self.assertEqual(rebuilt_path, self.index_path)
+        text = self.index_path.read_text(encoding="utf-8")
+        return json.loads(text), text
+
+    def _assert_minimal_rows(self, payload: dict) -> None:
+        rows = payload["files"]
+        self.assertEqual(
+            {row["name"] for row in rows},
+            {
+                "Adjusted Paid",
+                "BF Ultimate",
+                "Frontend DFM A",
+                "Frontend DFM B",
+                "Paid DFM Ultimate",
+                "Paid Loss",
+                "Projected Premium",
+                "Selected Ultimate",
+            },
+        )
+        self.assertNotIn("Paid Development Method", {row["name"] for row in rows})
+        dfm_row = next(
+            row for row in rows if row["name"] == "Paid DFM Ultimate"
+        )
+        self.assertEqual(dfm_row["dataset_type"], "Ultimate Loss")
+        self.assertEqual(dfm_row["method_name"], "Paid Development Method")
+        self.assertEqual(dfm_row["status"], 2)
+        frontend_dfm_rows = [
+            row for row in rows if row["name"].startswith("Frontend DFM ")
+        ]
+        self.assertEqual(
+            [row["name"] for row in frontend_dfm_rows],
+            ["Frontend DFM A", "Frontend DFM B"],
+        )
+        self.assertEqual(
+            [row.get("method_name", row["name"]) for row in frontend_dfm_rows],
+            ["Frontend DFM A", "Frontend DFM B"],
+        )
+        self.assertTrue(all("method_name" not in row for row in frontend_dfm_rows))
+        for row in rows:
+            with self.subTest(dataset=row["name"]):
+                self.assertLessEqual(set(row), set(INDEX_ROW_FIELDS))
+                self.assertTrue(set(row).isdisjoint(FORBIDDEN_INDEX_ROW_FIELDS))
+                self.assertTrue(set(row).isdisjoint(_FIXTURE_FORBIDDEN_FIELDS))
+                self.assertFalse(
+                    {
+                        key.casefold()
+                        for key in row
+                    }
+                    & {key.casefold() for key in _FIXTURE_FORBIDDEN_FIELDS}
+                )
+                self.assertFalse(
+                    any(isinstance(value, (dict, list)) for value in row.values()),
+                    f"index row contains structured detail data: {row}",
+                )
+                for timestamp_field in ("last_modified", "created"):
+                    timestamp = row.get(timestamp_field)
+                    if timestamp:
+                        self.assertTrue(
+                            timestamp.endswith("Z"),
+                            f"{timestamp_field} must carry an explicit UTC marker: {row}",
+                        )
+
+    def test_legacy_two_length_only_name_remains_a_literal_instance_name(self) -> None:
+        self.assertEqual(
+            normalize_cached_dataset_name("Legacy Name@12@24"),
+            "Legacy Name@12@24",
+        )
+
+    def test_canonical_builder_enumerates_network_folders_concurrently(self) -> None:
+        original_enumerate = dataset_index_contract._enumerate_folder
+        active = 0
+        max_active = 0
+        activity_lock = threading.Lock()
+
+        def slow_enumerate(*args):
+            nonlocal active, max_active
+            with activity_lock:
+                active += 1
+                max_active = max(max_active, active)
+            try:
+                time.sleep(0.01)
+                return original_enumerate(*args)
+            finally:
+                with activity_lock:
+                    active -= 1
+
+        with mock.patch.object(
+            dataset_index_contract,
+            "_enumerate_folder",
+            side_effect=slow_enumerate,
+        ):
+            dataset_index_contract.build_dataset_index_payload(
+                self.project_name,
+                self.reserving_class,
+                self.rc_dir,
+                max_workers=4,
+            )
+
+        self.assertGreater(max_active, 1)
+
+    def test_canonical_builder_reads_independent_json_files_concurrently(self) -> None:
+        original_read = dataset_index_contract._safe_read_json
+        active = 0
+        max_active = 0
+        activity_lock = threading.Lock()
+
+        def slow_read(path):
+            nonlocal active, max_active
+            with activity_lock:
+                active += 1
+                max_active = max(max_active, active)
+            try:
+                time.sleep(0.01)
+                return original_read(path)
+            finally:
+                with activity_lock:
+                    active -= 1
+
+        with mock.patch.object(
+            dataset_index_contract,
+            "_safe_read_json",
+            side_effect=slow_read,
+        ):
+            payload = dataset_index_contract.build_dataset_index_payload(
+                self.project_name,
+                self.reserving_class,
+                self.rc_dir,
+                max_workers=4,
+            )
+
+        self._assert_minimal_rows(payload)
+        self.assertGreater(max_active, 1)
+
+    def test_migration_and_frontend_emit_identical_minimal_index_json(self) -> None:
+        migration_payload, migration_text = self._migration_rebuild()
+        self.assertEqual(migration_payload["version"], DATASET_INDEX_VERSION)
+        self._assert_minimal_rows(migration_payload)
+
+        with self._frontend_workspace():
+            frontend_response = dataset_instance_index_service.rebuild_index(
+                self.project_name,
+                self.reserving_class,
+            )
+
+        frontend_text = self.index_path.read_text(encoding="utf-8")
+        frontend_payload = json.loads(frontend_text)
+        self._assert_minimal_rows(frontend_payload)
+        self.assertEqual(frontend_payload, migration_payload)
+        self.assertEqual(frontend_text, migration_text)
+
+        persisted_response = dict(frontend_response)
+        self.assertTrue(persisted_response.pop("index_persisted"))
+        self.assertEqual(persisted_response.pop("index_warning"), "")
+        self.assertEqual(
+            persisted_response.pop("index_file_name"),
+            dataset_index_contract.INDEX_FILE_NAME,
+        )
+        response_paths = persisted_response.pop("folder_paths")
+        self.assertEqual(
+            os.path.normcase(os.path.abspath(response_paths["data"])),
+            os.path.normcase(os.path.abspath(self.rc_dir)),
+        )
+        self.assertNotIn("folder_paths", migration_payload)
+        self.assertEqual(persisted_response, migration_payload)
+
+    def test_python_api_emits_the_same_canonical_index_json(self) -> None:
+        migration_payload, migration_text = self._migration_rebuild()
+        self.index_path.unlink()
+
+        refs = (
+            ArcRhoClient(self.server_root)
+            .project(self.project_name.lower())
+            .rebuild_dfm_index()
+        )
+
+        self.assertEqual(
+            [item.name for item in refs],
+            ["Frontend DFM A", "Frontend DFM B", "Paid Development Method"],
+        )
+        api_text = self.index_path.read_text(encoding="utf-8")
+        api_payload = json.loads(api_text)
+        self._assert_minimal_rows(api_payload)
+        self.assertEqual(api_payload, migration_payload)
+        self.assertEqual(api_text, migration_text)
+
+    def test_python_api_lowercase_reserving_class_keeps_filesystem_identity(self) -> None:
+        migration_payload, migration_text = self._migration_rebuild()
+        self.index_path.unlink()
+
+        index_path = (
+            ArcRhoClient(self.server_root)
+            .project(self.project_name.lower())
+            .rebuild_reserving_class_index(self.reserving_class.lower())
+        )
+
+        self.assertEqual(
+            os.path.normcase(os.path.abspath(index_path)),
+            os.path.normcase(os.path.abspath(self.index_path)),
+        )
+        api_text = self.index_path.read_text(encoding="utf-8")
+        self.assertEqual(json.loads(api_text), migration_payload)
+        self.assertEqual(api_text, migration_text)
+
+    def test_migration_lowercase_alias_keeps_filesystem_identity(self) -> None:
+        migration_payload, migration_text = self._migration_rebuild()
+        self.index_path.unlink()
+
+        catalog.rebuild_dataset_instance_index(
+            self.project_name.lower(),
+            self.reserving_class.lower(),
+            self.rc_dir,
+        )
+
+        alias_text = self.index_path.read_text(encoding="utf-8")
+        self.assertEqual(json.loads(alias_text), migration_payload)
+        self.assertEqual(alias_text, migration_text)
+
+    def test_payload_is_location_independent_across_drive_or_unc_aliases(self) -> None:
+        alias_rc_dir = Path(self.temp_dir.name) / "UNC-alias" / "Auto_%5C_PP"
+        shutil.copytree(self.rc_dir, alias_rc_dir)
+
+        local_payload = dataset_index_contract.build_dataset_index_payload(
+            self.project_name,
+            self.reserving_class,
+            self.rc_dir,
+        )
+        alias_payload = dataset_index_contract.build_dataset_index_payload(
+            self.project_name,
+            self.reserving_class,
+            alias_rc_dir,
+        )
+
+        self.assertNotIn("folder_paths", local_payload)
+        self.assertEqual(alias_payload, local_payload)
+
+    def test_network_json_read_failure_aborts_instead_of_persisting_degraded_index(
+        self,
+    ) -> None:
+        original_read = dataset_index_contract._safe_read_json
+        blocked_path = self.methods_dir / "DFM@Paid Development Method.json"
+
+        def fail_one_read(path):
+            if Path(path) == blocked_path:
+                raise PermissionError(13, "Network path unavailable", str(path))
+            return original_read(path)
+
+        with mock.patch.object(
+            dataset_index_contract,
+            "_safe_read_json",
+            side_effect=fail_one_read,
+        ):
+            with self.assertRaises(PermissionError):
+                dataset_index_contract.build_dataset_index_payload(
+                    self.project_name,
+                    self.reserving_class,
+                    self.rc_dir,
+                )
+
+    def test_frontend_accepts_migration_index_without_scan_rebuild_or_write(self) -> None:
+        migration_payload, migration_text = self._migration_rebuild()
+
+        with (
+            self._frontend_workspace(),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "_scan_cached_dataset_folder",
+                side_effect=AssertionError("current migration index must not trigger a folder scan"),
+            ) as scan,
+            mock.patch.object(
+                dataset_instance_index_service,
+                "rebuild_index",
+                side_effect=AssertionError("current migration index must not trigger a rebuild"),
+            ) as rebuild,
+            mock.patch.object(
+                dataset_instance_index_service,
+                "_write_index_file",
+                side_effect=AssertionError("opening a current migration index must not write it"),
+            ) as write,
+            mock.patch.object(
+                dataset_index_contract,
+                "build_dataset_index_payload",
+                side_effect=AssertionError("current migration index must not trigger a shared folder scan"),
+            ) as shared_build,
+        ):
+            response = dataset_instance_index_service.get_index(
+                self.project_name.lower(),
+                self.reserving_class.lower(),
+            )
+
+        scan.assert_not_called()
+        rebuild.assert_not_called()
+        write.assert_not_called()
+        shared_build.assert_not_called()
+        self.assertEqual(self.index_path.read_text(encoding="utf-8"), migration_text)
+
+        persisted_response = dict(response)
+        self.assertTrue(persisted_response.pop("index_persisted"))
+        self.assertEqual(persisted_response.pop("index_warning"), "")
+        self.assertEqual(
+            persisted_response.pop("index_file_name"),
+            dataset_index_contract.INDEX_FILE_NAME,
+        )
+        response_paths = persisted_response.pop("folder_paths")
+        self.assertEqual(
+            os.path.normcase(os.path.abspath(response_paths["data"])),
+            os.path.normcase(os.path.abspath(self.rc_dir)),
+        )
+        self.assertEqual(persisted_response, migration_payload)
+
+
+if __name__ == "__main__":
+    unittest.main()

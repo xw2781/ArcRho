@@ -82,3 +82,9 @@ For `ArcRhoVec`, the cache identity only needs the vector period length:
 `data/<ReservingClass>/datasets/<InstanceName>@<PeriodLength>.csv`
 
 If the triangle/instance name is not found in `dataset_types.json`, Excel should treat it as a non-generated dataset instance, load that exact CSV if it exists, and never clear it because of `removeData=True`. No legacy unsuffixed CSV fallback is required.
+
+## ResQ Reserving-Class Migration
+
+The ResQ reserving-class migration uses the same external worker contract as the Excel add-in for generated datasets. Before opening ResQ, it requires at least one fresh heartbeat under `runtime/instances/arcrho_engine`; if none exists, the import stops without changing the selected reserving class.
+
+Generated triangle and vector requests are atomically published under `<ArcRho Server>/requests` and target unique staging paths. The migration publishes the batch before waiting so the configured data-engine worker pool can claim requests concurrently. Migration requests also provide optional `RequestId` and `StatusPath` fields. Status-aware workers atomically report `processing`, then `success` or `error`; the migration finalizes a status-aware result only after `success`, so an error CSV cannot become a canonical dataset. Workers that predate the optional fields remain compatible through the original atomic CSV completion contract. Only a completed staging CSV replaces its canonical dataset cache. The migration process does not import the data-engine calculation module or launch a private engine instance; it remains responsible for canonical sidecars, processing provenance, graph enrichment, and `index.json`.

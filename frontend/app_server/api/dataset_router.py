@@ -8,7 +8,6 @@ from app_server.schemas.dataset import (
     CachedDatasetDeleteRequest,
     DatasetCacheLoadRequest,
     DatasetCalculatedPreviewRequest,
-    DatasetNotesLoadRequest,
     DatasetNotesSaveRequest,
     DatasetNumberFormatsSaveRequest,
     DatasetSidecarLoadRequest,
@@ -24,8 +23,12 @@ router = APIRouter()
 
 
 @router.get("/dataset/number-format-defaults")
-def get_dataset_number_format_defaults() -> Dict[str, Any]:
-    return dataset_number_format_service.get_preferences()
+def get_dataset_number_format_defaults(
+    dataset_type_name: str = "",
+) -> Dict[str, Any]:
+    return dataset_number_format_service.get_preferences(
+        dataset_type_name=dataset_type_name,
+    )
 
 
 @router.put("/dataset/number-format-defaults")
@@ -102,9 +105,9 @@ def patch_dataset(ds_id: str, req: PatchRequest) -> Dict[str, Any]:
     return result
 
 
-@router.post("/dataset/notes/load")
-def load_dataset_notes(req: DatasetNotesLoadRequest) -> Dict[str, Any]:
-    return dataset_service.load_dataset_notes(
+@router.post("/dataset/sidecar/load")
+def load_dataset_sidecar(req: DatasetSidecarLoadRequest) -> Dict[str, Any]:
+    return dataset_service.load_dataset_sidecar(
         req.project_name,
         req.reserving_class,
         req.dataset_name,
@@ -118,15 +121,6 @@ def save_dataset_notes(req: DatasetNotesSaveRequest) -> Dict[str, Any]:
         req.reserving_class,
         req.dataset_name,
         req.notes,
-    )
-
-
-@router.post("/dataset/sidecar/load")
-def load_dataset_sidecar(req: DatasetSidecarLoadRequest) -> Dict[str, Any]:
-    return dataset_service.load_dataset_sidecar(
-        req.project_name,
-        req.reserving_class,
-        req.dataset_name,
     )
 
 
@@ -179,6 +173,7 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
         csv_file=req.csv_file,
         method_type=req.method_type,
         status=req.status,
+        notes=req.notes,
         precedents=req.precedents,
         external_links=req.external_links,
         values=req.values,

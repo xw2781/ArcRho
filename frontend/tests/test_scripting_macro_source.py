@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -107,6 +108,57 @@ def main():
 
         self.assertFalse(result["success"])
         self.assertIn("timeout", result["message"])
+
+    def test_run_macro_source_extends_timeout_when_activity_is_reported(self) -> None:
+        source = """
+import time
+for _ in range(4):
+    report_macro_activity()
+    time.sleep(0.03)
+"""
+        with (
+            patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+            patch.object(scripting_service, "_MACRO_TIMEOUT_SEC", 0.05),
+        ):
+            result = scripting_service.run_macro_source(source, "active_import.py", {})
+
+        self.assertTrue(result["success"], result)
+
+    def test_run_macro_source_trusted_call_suspends_and_restores_trace(self) -> None:
+        source = """
+import sys
+
+trace_before = sys.gettrace()
+trace_inside = run_trusted_macro_call(sys.gettrace)
+
+def fail_while_untraced():
+    assert sys.gettrace() is None
+    raise ValueError("expected")
+
+try:
+    run_trusted_macro_call(fail_while_untraced)
+except ValueError:
+    pass
+
+print(f"suspended={trace_inside is None}")
+print(f"restored={sys.gettrace() is trace_before}")
+"""
+        with patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()):
+            result = scripting_service.run_macro_source(source, "trusted_call.py", {})
+
+        self.assertTrue(result["success"], result)
+        self.assertIn("suspended=True", result["stdout"])
+        self.assertIn("restored=True", result["stdout"])
+
+    def test_cooperative_macro_cancel_checker_raises_when_signalled(self) -> None:
+        cancel_event = threading.Event()
+        check_macro_cancelled = scripting_service._make_cooperative_cancel_checker(cancel_event)
+
+        check_macro_cancelled()
+        cancel_event.set()
+
+        with self.assertRaisesRegex(KeyboardInterrupt, "cancelled by user"):
+            check_macro_cancelled()
 
     def test_registered_macro_delegates_to_canonical_source_runner(self) -> None:
         with (
