@@ -19,12 +19,37 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 ## Mandatory Read Before Editing
 Before changing files under `frontend/`, read `frontend/FRONTEND_AGENT_GUIDELINES.md`.
 
+## Agent Project Data Access (MUST)
+Agents may view on-disk metadata JSON files under `E:\ArcRho Server\projects` only for project `NJ_Annual_Prod_202605_Fake` by default.
+
+Do not read metadata JSON files on disk for any other ArcRho Server project unless the user gives explicit permission for that project in the current session. If a user references another project without giving session-specific permission, ask for permission or ask the user to provide the needed excerpts directly in the chat.
+
+This restriction applies to agent tool use and analysis only; it does not change runnable scripts that a human may execute, such as `python-api/resq_data_migration.py`.
+
 ## Single Source of Truth (MUST)
 Before changing code, configuration, schemas, data contracts, automation, documentation, or tests, identify the canonical owner of every value and rule.
 - Define each value or rule once. Consumers must import, read, derive, generate from, or delegate to that source; clearly model legitimate runtime overrides and derived values.
 - When direct reuse across languages or build boundaries is impractical, use one canonical machine-readable source and generate validated adapters or artifacts so drift is detected.
 - Tests may assert canonical behavior, but fixtures, expected values, generated documentation, and inventories must not become competing sources of truth.
 - When the touched area already contains duplication, consolidate it within the task's safe scope and remove obsolete copies. Ask before cleanup that broadens behavior or compatibility risk.
+
+## Persisted JSON Producer Parity (MUST)
+When more than one ArcRho component can create the same persisted JSON file, all producers must emit the exact same full parsed payload for the same logical inputs.
+- Keep one canonical owner for the schema, version, field projection, inclusion/omission rules, defaults, normalization, timestamp representation, and deterministic list ordering. Frontend, Python API, migration, macro, and other producers must import, generate from, or delegate to that owner; producer-specific enrichment is forbidden.
+- Keep reserving-class `index.json` a minimal scalar summary of logical dataset instances. Do not copy arrays or nested sidecar/method details into it. In particular, `origin_labels`, dependency graphs, audit logs, and other detail payloads remain in their owning sidecar or method JSON.
+- Persist only location-independent, reserving-class-owned data in `index.json`. Do not persist producer-local drive letters, UNC aliases, absolute folder paths, or rebuild-time enrichment from project/global JSON. Resolve machine-local paths and other presentation-only values in the API response or consumer instead.
+- Reading a valid current `index.json` must return it without scanning sidecars/methods and without rewriting or enriching the file. Rebuild only when the index is missing, invalid, explicitly refreshed, made stale by a durable mutation, or uses an outdated canonical version/schema.
+- A transient permission/network read failure during rebuild must abort and preserve the last valid index; it must never be converted into and persist a degraded but schema-valid payload.
+- Coordinate any `index.json` contract or build-logic change across the bundled frontend app server, the public Python API, `python-api/migration/resq_data_migration.py`, its migration modules, and the mirrored macro under `python-api/macros`.
+- Every such change must include an exact full-payload cross-producer parity test, including path-alias independence, and a test proving that a valid current index is served without a sidecar scan or rewrite.
+
+## Network-Drive Project Data I/O (MUST)
+When designing or maintaining a frontend feature, including its bundled app-server code, assume ArcRho project JSON and related metadata may live on a mapped or UNC network drive.
+- Do not read or write multiple independent small files sequentially in a per-file awaited loop. Every network filesystem operation can add a full round trip.
+- For reads, enumerate folders once, deduplicate paths, reuse request-scoped configuration/index snapshots, and use bounded parallel I/O or a batch/aggregate read. Do not reload the same JSON, index, or configuration once per dataset, method, precedent, or dependent.
+- For writes, coalesce updates and avoid rewriting unchanged files. Preserve correctness by serializing writes per target or protected folder, using the existing lock and atomic temporary-file replacement patterns; do not use unsafe unbounded parallel writes.
+- If a true data dependency requires sequential I/O, document that dependency in the implementation and minimize the number of network operations.
+- Add focused coverage for bounded concurrency, deterministic result ordering, write atomicity, and failure handling whenever this rule changes an I/O workflow.
 
 ## Conditional Instruction Entry Points
 
