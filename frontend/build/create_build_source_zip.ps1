@@ -129,7 +129,6 @@ function Assert-BuildArchive {
 
     $requiredFiles = @(
         "BUILD_SOURCE_MANIFEST.json",
-        "frontend/build/build_app.bat",
         "frontend/build/build_app_via_local_workspace.bat",
         "frontend/build/prepare_local_build_workspace_from_zip.ps1",
         "frontend/package.json",
@@ -259,7 +258,6 @@ if (
 
 $prepareScript = Join-Path $SourceRoot "frontend\build\prepare_local_build_workspace.ps1"
 $requiredSourcePaths = @(
-    "frontend\build\build_app.bat",
     "frontend\build\build_app_via_local_workspace.bat",
     "frontend\build\prepare_local_build_workspace_from_zip.ps1",
     "frontend\package.json",

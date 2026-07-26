@@ -1,0 +1,6 @@
+{
+  "type": "breaking",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "ArcRho packaging now runs only through the local-workspace one-click build workflow."
+}

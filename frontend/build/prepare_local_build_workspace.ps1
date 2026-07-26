@@ -200,7 +200,7 @@ if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
 
 $Destination = Resolve-FullPath $Destination
 
-if (-not (Test-Path -LiteralPath (Join-Path $SourceRoot "frontend\build\build_app.bat") -PathType Leaf)) {
+if (-not (Test-Path -LiteralPath (Join-Path $SourceRoot "frontend\build\build_app_via_local_workspace.bat") -PathType Leaf)) {
     throw "SourceRoot does not look like the ArcRho repository root: $SourceRoot"
 }
 
@@ -294,7 +294,5 @@ Invoke-RobocopyChecked `
 
 Write-Host ""
 Write-Host "Local build workspace is ready."
-Write-Host "Next commands on the build PC:"
-Write-Host "  cd /d `"$Destination\frontend`""
-Write-Host "  set ARCRHO_INSTALL_PYTHON_DEPS=1"
-Write-Host "  build\build_app.bat"
+Write-Host "Start packaging through E:\XWSpace\Build ArcRho App\build_app_one_click.bat."
+Write-Host "It requests a fresh ZIP and recreates the local workspace automatically."

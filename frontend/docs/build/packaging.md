@@ -36,7 +36,7 @@ Electron main entry: `electron/main.js`
 - [`build/installer.nsh`](../../build/installer.nsh) - NSIS custom installer script include.
 - [`build/patch_nsis_installer_progress.js`](../../build/patch_nsis_installer_progress.js) - Build-time helper that restores NSIS's built-in file installation path and compiles the progress observer before electron-builder runs.
 - [`build/installer_progress_helper.cs`](../../build/installer_progress_helper.cs) - Isolated Windows UI observer that derives installer percentage and time remaining from the native progress control.
-- [`build/build_app.bat`](../../build/build_app.bat) - Convenience build script wrapper.
+- [`build/build_app_via_local_workspace.bat`](../../build/build_app_via_local_workspace.bat) - The only supported ArcRho application build entry point; prepares a local workspace and runs the complete package build.
 - [`build/convert_icon.js`](../../build/convert_icon.js) - Build helper for regenerating Windows icon assets.
 <!-- AUTO-GEN:END -->
 

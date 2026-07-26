@@ -1,15 +1,17 @@
-# ArcRho Two-PC ZIP Build Workflow
+# ArcRho Automated Two-PC ZIP Build Workflow
 
 ## Purpose
 
 Use this workflow when the ArcRho repository is maintained on one Windows PC, but application packaging must run on another Windows PC because the source PC cannot execute the complete build toolchain with the required permissions.
 
-The ZIP is a transport artifact. The build PC reads it through its permanent `E:` mapping to the source PC, copies it to a local workspace, extracts it locally, and runs the complete build from that local workspace.
+The ZIP is a transport artifact. A listener on the source PC creates it only when the build PC requests one. The build PC then copies the requested ZIP to a local workspace, extracts it locally, and runs the complete build from that local workspace.
 
 ```text
 Source PC repository
+    -> build_app_listener
     -> curated ArcRho.zip
     -> permanent E: mapping on build PC
+    -> build_app_one_click request and response
     -> build PC local Documents workspace
     -> Python + Electron + NSIS build
     -> installer and published update feed
@@ -22,6 +24,8 @@ Source PC repository
 | Source repository | `E:\XWSpace\Repos\ArcRho` on the source PC | Source of truth for files placed in the build ZIP. |
 | Source ZIP | `E:\XWSpace\Build ArcRho App\ArcRho.zip` on the source PC | Curated build input copied across the network. |
 | Network view from build PC | `E:\XWSpace\Build ArcRho App\ArcRho.zip` | The build PC's permanent `E:` mapping to the source PC. |
+| Source-PC listener | `E:\XWSpace\Build ArcRho App\build_app_listener.bat` | Visible long-running process that receives requests and creates a fresh ZIP. |
+| Build-PC launcher | `E:\XWSpace\Build ArcRho App\build_app_one_click.bat` | Requests a fresh ZIP, waits for it, then runs the local build. |
 | Local build workspace | `%USERPROFILE%\Documents\build_arcrho_app` on the build PC | Disposable local extraction and build directory. |
 | Local installer output | `%USERPROFILE%\Documents\build_arcrho_app\frontend\dist` | Installer produced by the local build. |
 | Published installer feed | `E:\ArcRho Server\releases\installers` on the build PC | Installer, checksum, and `latest.json` published after a successful build. |
@@ -43,19 +47,35 @@ Before starting a full build, confirm that the build PC has:
 
 The wrapper deletes the entire local build workspace before each extraction. Never set `ARCRHO_LOCAL_BUILD_ROOT` to a directory containing files that must be preserved.
 
-## Step 1: Create a Curated ZIP on the Source PC
+## Step 1: Start the Listener on the Source PC
+
+On the source PC, run this once and leave its visible terminal window open while the build PC should be able to request builds:
+
+```bat
+call "E:\XWSpace\Build ArcRho App\build_app_listener.bat"
+```
+
+The listener checks `build_requests`, processes requests one at a time, creates a fresh curated ZIP, and writes a success or failure response in `build_responses`. Press Ctrl+C in its terminal to stop it.
+
+To check the listener prerequisites without starting it:
+
+```bat
+call "E:\XWSpace\Build ArcRho App\build_app_listener.bat" --check
+```
+
+### How the Listener Creates the Curated ZIP
 
 Do not ZIP the live repository folder directly. A raw repository ZIP includes `.git`, agent metadata, old build outputs, caches, and logs. Those files make the archive much larger and can trigger Windows path-length and extraction failures.
 
 Use the clean ZIP creator beside the build scripts. It creates a disposable curated staging tree, validates required build inputs, and only replaces the existing ZIP after the new archive passes validation.
 
-First check the source prerequisites without creating an archive:
+The listener invokes the clean ZIP creator beside the repository build scripts. To check that creator directly without creating an archive:
 
 ```bat
 call "E:\XWSpace\Repos\ArcRho\frontend\build\create_build_source_zip.bat" --check
 ```
 
-Then create the archive:
+For maintenance or troubleshooting, it can also be run manually:
 
 ```bat
 call "E:\XWSpace\Repos\ArcRho\frontend\build\create_build_source_zip.bat"
@@ -88,7 +108,6 @@ The creator always includes `frontend\node-portable` and `frontend\node_modules`
 
 The ZIP may contain one top-level `ArcRho` folder or the repository contents directly. It must contain at least:
 
-- `frontend\build\build_app.bat`
 - `frontend\build\build_app_via_local_workspace.bat`
 - `frontend\build\prepare_local_build_workspace_from_zip.ps1`
 - `frontend\package.json`
@@ -110,50 +129,46 @@ The build PC is expected to keep the source PC mapped as `E:`. Confirm the mappi
 ```bat
 net use E:
 dir "E:\XWSpace\Build ArcRho App\ArcRho.zip"
-dir "E:\XWSpace\Repos\ArcRho\frontend\build\build_app_via_local_workspace.bat"
+dir "E:\XWSpace\Build ArcRho App\build_app_one_click.bat"
 ```
 
 If `E:` is unavailable or points somewhere else, restore the established mapping before continuing. Do not substitute another drive letter for this workflow.
 
-## Step 3: Configure and Check the Wrapper on the Build PC
+## Step 3: Check the One-Click Launcher on the Build PC
 
-Open CMD on the build PC. The wrapper already defaults to `E:\XWSpace\Build ArcRho App\ArcRho.zip`; only the local workspace override is optional:
+Open CMD on the build PC. The launcher defaults to `E:\XWSpace\Build ArcRho App\ArcRho.zip`; the local workspace override remains optional through `ARCRHO_LOCAL_BUILD_ROOT`:
 
 ```bat
 set "ARCRHO_LOCAL_BUILD_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
-call "E:\XWSpace\Repos\ArcRho\frontend\build\build_app_via_local_workspace.bat" --check
+call "E:\XWSpace\Build ArcRho App\build_app_one_click.bat" --check
 ```
 
-The `--check` command prints the resolved configuration and verifies that the ZIP preparation helper is beside the wrapper. The full run waits for a new Step 1 completion token; it starts automatically when the ZIP, checksum, and new readiness flag are all visible.
+The `--check` command prints the resolved shared-folder and local-wrapper paths. Ensure the source-PC listener is already running before starting a build.
 
-## Step 4: Run the Build on the Build PC
+## Step 4: Run the One-Click Build on the Build PC
 
-Run without an argument to auto-increment the patch version:
+Run:
 
 ```bat
-call "E:\XWSpace\Repos\ArcRho\frontend\build\build_app_via_local_workspace.bat"
+call "E:\XWSpace\Build ArcRho App\build_app_one_click.bat"
 ```
 
-Or pass an explicit semantic version through to `build_app.bat`:
+To use a specific semantic version instead of auto-incrementing the patch version:
 
 ```bat
-call "E:\XWSpace\Repos\ArcRho\frontend\build\build_app_via_local_workspace.bat" 1.2.0
+call "E:\XWSpace\Build ArcRho App\build_app_one_click.bat" 1.2.0
 ```
 
-The wrapper performs these steps:
+The launcher and its delegated local-workspace wrapper perform these steps:
 
-1. Waits for a Step 1 readiness token that differs from the last successfully built token.
-2. Deletes and recreates the local build workspace.
-3. Copies the ZIP from the source PC to the local workspace.
-4. Extracts the source locally while rejecting unsafe paths and skipping repository/agent metadata.
-5. Enters the local `frontend` directory and enables installation of missing Python build dependencies.
-6. Builds the Python API wheel and PyInstaller app server.
-7. Builds the Electron application and NSIS installer.
-8. Generates release notes and publishes the installer update feed and Python API package.
-9. Records the readiness token only after the complete build succeeds.
-10. Opens the published installer named by `E:\ArcRho Server\releases\installers\latest.json` without requiring a key press, then closes the successful Step 2 terminal session.
+1. Atomically writes a unique request into the shared `build_requests` folder.
+2. Waits for the source-PC listener to create a fresh ZIP and return the matching response.
+3. Waits for the fresh readiness token, then deletes and recreates the local build workspace.
+4. Copies and extracts the ZIP locally while rejecting unsafe paths and skipping repository/agent metadata.
+5. Builds the Python API wheel, PyInstaller app server, Electron application, and NSIS installer.
+6. Publishes release artifacts, records the consumed readiness token after success, and opens the installer named by `E:\ArcRho Server\releases\installers\latest.json`.
 
-Do not run `build_app.bat` directly from the mapped repository. The purpose of this workflow is to ensure that dependency execution, PyInstaller, Electron Builder, and NSIS all run from a local filesystem on the build PC.
+Do not run build tooling directly from the mapped repository. The one-click workflow ensures that dependency execution, PyInstaller, Electron Builder, and NSIS all run from a local filesystem on the build PC.
 
 ## Step 5: Verify Outputs and Preserve Logs
 
@@ -172,14 +187,14 @@ E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\create_build_source_zip_<timesta
 E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\build_app_via_local_workspace_<timestamp>.log
 ```
 
-The build-PC local-workspace log covers ZIP validation, local copying and extraction, the complete application build, publishing, and the final exit code. Direct `build_app.bat` runs use `build_app_<timestamp>.log`. Logs no longer need to be copied back from the build PC's local workspace.
+The build-PC local-workspace log covers ZIP validation, local copying and extraction, the complete application build, publishing, and the final exit code. Logs no longer need to be copied back from the build PC's local workspace.
 
 ## ZIP Freshness Rules
 
-- Regenerate `ArcRho.zip` after every source change that must be included in the final app.
+- Run `build_app_one_click.bat` after every source change that must be included in the final app; it requests a fresh ZIP automatically.
 - The ZIP is a snapshot; editing the repository after ZIP creation does not update the build input.
-- Step 2 waits while the readiness token matches the archive used by the previous successful build. Run Step 1 again to publish a new token and trigger another build.
-- A failed build does not update the consumed-signal marker, so restarting Step 2 retries that ZIP.
+- The local build wrapper waits while the readiness token matches the archive used by the previous successful build. Each listener-created ZIP publishes a new token.
+- A failed build does not update the consumed-signal marker, so another one-click run retries with a newly requested ZIP.
 - The ZIP creator writes `ArcRho.zip.sha256`. For important releases, compare that value with `Get-FileHash -Algorithm SHA256` on the build PC.
 
 ## Troubleshooting
@@ -187,6 +202,10 @@ The build-PC local-workspace log covers ZIP validation, local copying and extrac
 ### ZIP extraction fails on `.agents` or another directory entry
 
 Use the current `prepare_local_build_workspace_from_zip.ps1`. It handles standard forward-slash ZIP directory entries that Windows PowerShell 5.1 `Expand-Archive` can misinterpret.
+
+### The one-click launcher waits without receiving a response
+
+Confirm that `build_app_listener.bat` is still running visibly on the source PC. Its terminal and logs report any ZIP-creation failure. The build-PC launcher leaves a failed response in `E:\XWSpace\Build ArcRho App\build_responses` for troubleshooting.
 
 ### ZIP extraction reports a very long `.git\refs\codex` path
 
@@ -214,8 +233,8 @@ Verify that the build PC can write through its mapped `E:` drive to `E:\ArcRho S
 
 ## Completion Checklist
 
-- The ZIP was regenerated from the intended source revision.
-- The ZIP was created with `create_build_source_zip.bat`, not from the raw repository.
+- The source-PC listener was running before the build request was sent.
+- The one-click launcher received a fresh ZIP response from the listener.
 - The build PC's permanent `E:` mapping is available and can read the source ZIP.
 - The build ran from `%USERPROFILE%\Documents\build_arcrho_app`, not the network share.
 - The build exited with code `0`.

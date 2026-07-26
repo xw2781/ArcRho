@@ -106,7 +106,7 @@ Expand-BuildArchive -ArchivePath $localZip -DestinationPath $extractDir
 
 $candidates = @($extractDir) + @(Get-ChildItem -LiteralPath $extractDir -Directory -Force | ForEach-Object { $_.FullName })
 $repoRoot = $candidates |
-    Where-Object { Test-Path -LiteralPath (Join-Path $_ "frontend\build\build_app.bat") -PathType Leaf } |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_ "frontend\build\build_app_via_local_workspace.bat") -PathType Leaf } |
     Select-Object -First 1
 
 if (-not $repoRoot) {
@@ -117,7 +117,7 @@ Write-Host "Using extracted repository root: $repoRoot"
 Get-ChildItem -LiteralPath $repoRoot -Force | Move-Item -Destination $Destination -Force
 Remove-Item -LiteralPath $extractDir -Recurse -Force
 
-if (-not (Test-Path -LiteralPath (Join-Path $Destination "frontend\build\build_app.bat") -PathType Leaf)) {
+if (-not (Test-Path -LiteralPath (Join-Path $Destination "frontend\build\build_app_via_local_workspace.bat") -PathType Leaf)) {
     throw "Local build script was not found after extracting the ZIP."
 }
 
