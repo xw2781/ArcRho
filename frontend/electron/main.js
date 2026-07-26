@@ -5,6 +5,10 @@ const fs = require("fs");
 const http = require("http");
 const os = require("os");
 const crypto = require("crypto");
+const {
+  backendArtifactIdForBundle,
+  isCompatibleBackendHealth: isCompatibleBackendHealthResponse,
+} = require("./backend_health_compatibility");
 const { registerArcBotIpc } = require("./arcbot_host");
 
 // Detect Windows 11 (build number >= 22000)
@@ -164,6 +168,8 @@ let pendingClearCacheReloadRestore = null;
 let serverSpawnError = null;
 let backendShutdownPromise = null;
 let backendClientMarkerPath = "";
+let backendArtifactId = "";
+let backendArtifactIdPromise = null;
 function toggleDevPanelForWindow(target = BrowserWindow.getFocusedWindow() || win) {
   if (!target || target.isDestroyed()) return { ok: false, error: "Window unavailable." };
   target.webContents.toggleDevTools();
@@ -1441,17 +1447,34 @@ async function getBackendPortListenerPids() {
 }
 
 function isCompatibleBackendHealth(health) {
-  if (!health || health.ok !== true) return false;
-  const healthApp = String(health.app || "").trim().toLowerCase();
-  if (healthApp && healthApp !== APP_MODE) return false;
-  if (health.token === BACKEND_TOKEN) return true;
-  const projectRoot = String(health.project_root || health.projectRoot || "").trim();
-  if (!projectRoot) return false;
-  try {
-    return path.resolve(projectRoot).toLowerCase() === path.resolve(APP_ROOT).toLowerCase();
-  } catch {
-    return false;
+  return isCompatibleBackendHealthResponse(health, {
+    appMode: APP_MODE,
+    backendToken: BACKEND_TOKEN,
+    appRoot: APP_ROOT,
+    backendArtifactId,
+    allowProjectRootFallback: !app.isPackaged,
+  });
+}
+
+async function ensureBackendArtifactId() {
+  if (!app.isPackaged) return "";
+  if (backendArtifactId) return backendArtifactId;
+  const bundledServer = getBundledServerPath();
+  if (!bundledServer || !fs.existsSync(bundledServer)) {
+    throw new Error("Bundled app server executable is missing.");
   }
+  if (!backendArtifactIdPromise) {
+    backendArtifactIdPromise = backendArtifactIdForBundle(bundledServer)
+      .then((artifactId) => {
+        backendArtifactId = artifactId;
+        return artifactId;
+      })
+      .catch((error) => {
+        backendArtifactIdPromise = null;
+        throw error;
+      });
+  }
+  return backendArtifactIdPromise;
 }
 
 async function stopMismatchedBackendListener() {
@@ -1473,9 +1496,12 @@ async function stopMismatchedBackendListener() {
 function startBackend() {
   const env = { ...process.env };
   env.TRI_DATA_DIR = env.TRI_DATA_DIR || APP_ROOT;
+  delete env.ARCODE_BACKEND_ARTIFACT_ID;
+  delete env.ARCRHO_BACKEND_ARTIFACT_ID;
   if (APP_MODE === "arcode") {
     env.ARCODE_DATA_DIR = env.ARCODE_DATA_DIR || path.join(os.homedir(), "Documents", "Arcode", "scripts");
     env.ARCODE_BACKEND_TOKEN = BACKEND_TOKEN;
+    if (backendArtifactId) env.ARCODE_BACKEND_ARTIFACT_ID = backendArtifactId;
     env.ARCRHO_APP_MODE = "arcode";
   } else {
     env.ARCRHO_WORKFLOW_DIR =
@@ -1483,6 +1509,7 @@ function startBackend() {
       path.join(os.homedir(), "Documents", "ArcRho", "workflows");
   }
   env.ARCRHO_BACKEND_TOKEN = BACKEND_TOKEN;
+  if (backendArtifactId) env.ARCRHO_BACKEND_ARTIFACT_ID = backendArtifactId;
   serverSpawnError = null;
   backendOwned = true;
 
@@ -1549,6 +1576,7 @@ async function waitForServer(timeoutMs = BACKEND_STARTUP_TIMEOUT_MS) {
 }
 
 async function startBackendWithRetry() {
+  await ensureBackendArtifactId();
   let lastErr = null;
   for (let attempt = 1; attempt <= BACKEND_STARTUP_ATTEMPTS; attempt++) {
     clearBackendControlFlags();
@@ -2142,6 +2170,8 @@ ipcMain.handle("arcode-folder-watch-stop", async (_event, payload) => {
 ipcMain.handle("project-instance-index-watch-start", async (event, payload) => {
   const folderPath = String(payload?.path || "").trim();
   if (!folderPath) return { ok: false, error: "Empty folder path." };
+  const indexFileName = path.basename(String(payload?.indexFileName || "").trim());
+  if (!indexFileName) return { ok: false, error: "Empty index filename." };
   const targetWindow = getIpcWindow(event);
   if (!targetWindow || targetWindow.isDestroyed()) return { ok: false, error: "Window is unavailable." };
   const targetFrame = event.senderFrame || null;
@@ -2174,8 +2204,8 @@ ipcMain.handle("project-instance-index-watch-start", async (event, payload) => {
         return;
       }
       const normalizedName = filename ? String(filename) : "";
-      if (normalizedName && normalizedName.toLowerCase() !== "index.json") return;
-      const indexPath = path.join(resolvedFolderPath, "index.json");
+      if (normalizedName && normalizedName.toLowerCase() !== indexFileName.toLowerCase()) return;
+      const indexPath = path.join(resolvedFolderPath, indexFileName);
       let indexStat = null;
       try {
         indexStat = await fs.promises.stat(indexPath);
@@ -2192,7 +2222,7 @@ ipcMain.handle("project-instance-index-watch-start", async (event, payload) => {
         path: resolvedFolderPath,
         indexPath,
         eventType: String(eventType || ""),
-        filename: normalizedName || "index.json",
+        filename: normalizedName || indexFileName,
         mtimeMs: indexStat ? indexStat.mtimeMs : 0,
         size: indexStat ? indexStat.size : 0,
       });
@@ -2409,12 +2439,14 @@ ipcMain.handle("read-json-file", async (_event, payload) => {
   const filePath = String(payload?.path || "");
   if (!filePath) return { exists: false };
   try {
-    if (!fs.existsSync(filePath)) return { exists: false };
-    const raw = fs.readFileSync(filePath, "utf8");
-    const stat = fs.statSync(filePath);
+    const [raw, stat] = await Promise.all([
+      fs.promises.readFile(filePath, "utf8"),
+      fs.promises.stat(filePath),
+    ]);
     const hash = crypto.createHash("sha256").update(raw).digest("hex");
     return { exists: true, data: JSON.parse(raw), revision: { path: filePath, size: stat.size, mtimeMs: stat.mtimeMs, hash } };
   } catch (err) {
+    if (err?.code === "ENOENT") return { exists: false };
     return { exists: false, error: String(err?.message || err) };
   }
 });
@@ -2423,13 +2455,15 @@ ipcMain.handle("get-file-revision", async (_event, payload) => {
   const filePath = String(payload?.path || "");
   if (!filePath) return { exists: false };
   try {
-    if (!fs.existsSync(filePath)) return { exists: false };
-    const stat = fs.statSync(filePath);
+    const [stat, raw] = await Promise.all([
+      fs.promises.stat(filePath),
+      fs.promises.readFile(filePath),
+    ]);
     if (!stat.isFile()) return { exists: false, error: "Path is not a file." };
-    const raw = fs.readFileSync(filePath);
     const hash = crypto.createHash("sha256").update(raw).digest("hex");
     return { exists: true, revision: { path: filePath, size: stat.size, mtimeMs: stat.mtimeMs, hash } };
   } catch (err) {
+    if (err?.code === "ENOENT") return { exists: false };
     return { exists: false, error: String(err?.message || err) };
   }
 });

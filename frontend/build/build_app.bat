@@ -211,7 +211,7 @@ echo - %UPDATE_FEED_DIR%\latest.json  (Update Manifest)
 echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
 echo - %RELEASE_NOTE_PATH%  (Release Notes)
 echo.
-pause
+if not defined ARCRHO_SKIP_SUCCESS_PAUSE pause
 endlocal
 exit /b 0
 

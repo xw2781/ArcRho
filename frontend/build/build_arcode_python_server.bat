@@ -36,5 +36,11 @@ if not exist "python_dist\arcode_server\_internal\ui\libs\monaco-editor\min\vs\l
     exit /b 1
 )
 
+%PYTHON_EXE% build\write_backend_artifact_manifest.py python_dist\arcode_server
+if errorlevel 1 (
+    echo ERROR: Failed to write the Arcode backend artifact manifest.
+    exit /b 1
+)
+
 echo Arcode Python server bundle is ready.
 exit /b 0

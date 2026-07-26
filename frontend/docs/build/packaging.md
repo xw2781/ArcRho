@@ -29,11 +29,13 @@ Electron main entry: `electron/main.js`
 - [`package.json`](../../package.json) - Build scripts, Electron builder config, installer metadata.
 - [`build/server.spec`](../../build/server.spec) - PyInstaller spec for Python app-server executable.
 - [`build/server_entry.py`](../../build/server_entry.py) - PyInstaller entrypoint for the bundled app server.
+- [`build/write_backend_artifact_manifest.py`](../../build/write_backend_artifact_manifest.py) - Build-time identity manifest for the complete collected backend bundle.
 - [`build/release_notes.py`](../../build/release_notes.py) - Release fragment validator and versioned release note generator.
 - [`electron/main.js`](../../electron/main.js) - Electron main process entry.
 - [`app_launcher.py`](../../app_launcher.py) - Python host launcher used by packaged runtime.
 - [`build/installer.nsh`](../../build/installer.nsh) - NSIS custom installer script include.
-- [`build/patch_nsis_installer_progress.js`](../../build/patch_nsis_installer_progress.js) - Build-time helper that enables NSIS built-in file progress before electron-builder runs.
+- [`build/patch_nsis_installer_progress.js`](../../build/patch_nsis_installer_progress.js) - Build-time helper that restores NSIS's built-in file installation path and compiles the progress observer before electron-builder runs.
+- [`build/installer_progress_helper.cs`](../../build/installer_progress_helper.cs) - Isolated Windows UI observer that derives installer percentage and time remaining from the native progress control.
 - [`build/build_app.bat`](../../build/build_app.bat) - Convenience build script wrapper.
 - [`build/convert_icon.js`](../../build/convert_icon.js) - Build helper for regenerating Windows icon assets.
 <!-- AUTO-GEN:END -->
@@ -41,15 +43,16 @@ Electron main entry: `electron/main.js`
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - Node scripts from `package.json` drive build orchestration.
-- PyInstaller spec (`build/server.spec`) builds backend executable artifacts and includes the served `ui/` and `icons/` asset trees.
+- PyInstaller spec (`build/server.spec`) builds backend executable artifacts and includes the served `ui/` and `icons/` asset trees. Both ArcRho and Arcode specs prepend the monorepo `python-api/src` path before collecting `arcrho_api`, so a separately installed older wheel cannot replace the canonical source bundled for that build.
+- After each ArcRho or Arcode PyInstaller collection completes, `build/write_backend_artifact_manifest.py` hashes every collected backend file except its own output and atomically writes `backend-artifact.json`. Electron passes that immutable full-bundle identity to the server and uses it to reject a stale same-version listener.
 - `build/release_notes.py` validates unreleased change fragments and generates versioned release notes in `docs/releases/`.
 - `build/build_app.bat` updates the app version before packaging: by default it bumps the patch version, and an explicit semantic version argument overrides that default.
 - `build/build_app.bat` mirrors console output into timestamped `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\build_app_<timestamp>.log` files for troubleshooting packaging failures from either PC.
 - `build/create_build_source_zip.bat` creates and validates the curated `ArcRho.zip` consumed by the local-workspace build wrapper, preserving portable Node dependencies while excluding repository metadata and generated artifacts; it logs each run to `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\create_build_source_zip_<timestamp>.log`.
 - `build/build_app_from_network.bat` maps its UNC build directory with `pushd`, resolves Python 3.10, and delegates to `build/build_app.bat`; use it when starting the build from a shared path such as `\\Ne7saswpn02\e\XWSpace\Repos\ArcRho\frontend\build`.
 - Windows packaging currently sets `win.signAndEditExecutable` to `false` so local unsigned test installers skip Electron Builder's executable signing/resource-edit helper on locked-down PCs.
-- Electron packaging enables NSIS's built-in compressor path before `electron-builder` runs so installer file progress is visible during the main install phase.
-- The assisted ArcRho installer keeps action-level file output in a details panel that is collapsed by default and can be expanded at any time with the native details toggle. The status caption above the green bar is reserved for the exact percentage read from that native progress control and an elapsed-rate estimate of the time remaining.
+- ArcRho and Arcode packaging use electron-builder's built-in `APP_BUILD_DIR` / `File /r` installation path, preserving NSIS's native green progress behavior. For ArcRho, the patcher compiles a hidden x86 .NET Framework observer before packaging; the InstFiles page launches it before the installation worker starts, and it reads the native progress control to update the visible percentage and elapsed-rate estimate without running callbacks inside the NSIS interpreter. The time-left value refreshes every five seconds and is capped at five minutes while the percentage can continue advancing between estimate refreshes.
+- The assisted ArcRho installer keeps action-level output in a details panel that is collapsed by default. The same native NSIS details button is used in both states: **Show details** expands the panel, then the observer moves that control below the panel and relabels it **Hide details**; its native click signal restores the collapsed layout. The InstFiles header omits the redundant **Installing** title while retaining its explanatory subtitle, and the status caption above the green bar remains reserved for percentage and estimated time remaining.
 - The custom NSIS include loads `MUI2.nsh` before using Modern UI header macros because electron-builder prepends the custom include ahead of its base installer template.
 - The ArcRho assisted installer shows an Excel add-in option at the start of setup, checked by default. It first scans available drive roots for an existing `ArcRho Server` folder and uses that folder when found; otherwise, it asks the user to choose the root drive from a dropdown and derives `<drive>\ArcRho Server\Excel Add-ins\ArcRho.xlam` from that selection. When selected, the installer opens `User Guide.xlsm` in an isolated hidden Excel instance, runs its `InstallNetworkXLAM` macro with the derived add-in path, and verifies that Excel reports the add-in as installed. Excel's configured Trust Center policy remains in force; the installer does not lower macro security.
 - Successful build flows now clean `python_dist/` and `python_build/` automatically.
@@ -65,9 +68,10 @@ Electron main entry: `electron/main.js`
 <!-- MANUAL:BEGIN -->
 - Build outputs: `dist/`, `python_build/`, `python_dist/`.
 - The packaged server bundle is expected to contain `python_dist/arcrho_server/_internal/ui/index.html` and `python_dist/arcrho_server/_internal/icons/icon.png`; `build/build_python_server.bat` fails fast when either served asset tree is missing.
+- Packaged ArcRho and Arcode server bundles contain a sibling `backend-artifact.json` manifest covering the executable, Python runtime, and served assets. The manifest is generated only after required bundle files are validated.
 - The packaged Arcode server bundle is expected to contain `python_dist/arcode_server/_internal/ui/arcode/main.html`, `python_dist/arcode_server/_internal/ui/ai-assistant/index.js`, `python_dist/arcode_server/_internal/ui/libs/monaco-editor/min/vs/loader.js`, and the Snowflake connector runtime modules; `build/build_arcode_python_server.bat` fails fast when required served assets are missing.
 - Shared build logs: `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\create_build_source_zip_<timestamp>.log`, `build_app_via_local_workspace_<timestamp>.log`, and `build_app_<timestamp>.log` for direct builds.
-- Installer settings in `package.json`, `build/installer.nsh`, `build/install_arcrho_excel_addin.ps1`, and `build/patch_nsis_installer_progress.js`.
+- Installer settings in `package.json`, `build/installer.nsh`, `build/installer_progress_helper.cs`, `build/install_arcrho_excel_addin.ps1`, and `build/patch_nsis_installer_progress.js`.
 - Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.
 - `python_dist/` and `python_build/` are transient and removed after successful packaging.
 - Runtime update feed files are external deployment artifacts under `E:\ArcRho Server\releases\installers`; `build/build_app.bat` writes them during release packaging.
@@ -91,5 +95,6 @@ Electron main entry: `electron/main.js`
 - Packaging excludes can accidentally omit runtime files.
 - Divergence between dev and packaged paths causes startup failures.
 - Disabling `win.signAndEditExecutable` is intended for local unsigned launch testing; restore the normal resource-edit/signing path before preparing a polished release installer.
-- electron-builder NSIS implementation changes can break the ArcRho installer-progress patch; `build/patch_nsis_installer_progress.js` fails fast when the upstream compressor setting no longer matches the expected form.
+- electron-builder NSIS implementation changes can break the ArcRho installer-progress patch; `build/patch_nsis_installer_progress.js` fails fast when the upstream compressor, details, or extraction templates no longer match a supported form.
+- ArcRho installer packaging requires the Windows .NET Framework 4 C# compiler to build the isolated progress observer. The helper has no network or filesystem behavior at runtime, but managed endpoint security should still be smoke-tested against the generated executable launched from NSIS's plugin directory.
 <!-- MANUAL:END -->

@@ -10,9 +10,13 @@
 !include "nsDialogs.nsh"
 
 !ifndef BUILD_UNINSTALLER
-  Var ArcRhoInstallProgressLastText
-  Var ArcRhoInstallProgressStartedAt
-  Var ArcRhoInstallProgressStartedAtPosition
+  ; electron-builder expands this hook after common.nsh, whose default is
+  ; "nevershow". Keep the log collapsed while exposing the native Show details
+  ; control on the assisted installer page.
+  !macro customHeader
+    ShowInstDetails hide
+  !macroend
+
   Var ArcRhoInstallExcelAddIn
   Var ArcRhoInstallExcelAddInCheckbox
   Var ArcRhoServerRoot
@@ -28,8 +32,6 @@
   !macroend
 !endif
 
-; Keep details available through the native toggle without opening them by default.
-ShowInstDetails hide
 ShowUninstDetails show
 
 !macro preInit
@@ -40,6 +42,12 @@ ShowUninstDetails show
   SetDetailsPrint both
   StrCpy $ArcRhoInstallExcelAddIn "1"
   Call ArcRho_DetectServerRoot
+  ${IfNot} ${Silent}
+    ; Extract the observer before the InstFiles worker starts. It only reads
+    ; the native bar and never executes installer script on the UI thread.
+    InitPluginsDir
+    File /oname=$PLUGINSDIR\ArcRhoInstallerProgress.exe "${PROJECT_DIR}\build\generated\ArcRhoInstallerProgress.exe"
+  ${EndIf}
   DetailPrint "===== Installing ArcRho ====="
   DetailPrint "Preparing installation..."
 !macroend
@@ -184,97 +192,30 @@ ShowUninstDetails show
   !macroend
 
   Function ArcRho_InstFiles_Show
-    StrCpy $ArcRhoInstallProgressLastText ""
-    StrCpy $ArcRhoInstallProgressStartedAtPosition ""
-    Push $0
-    System::Call "kernel32::GetTickCount() i.r0"
-    StrCpy $ArcRhoInstallProgressStartedAt $0
-    Pop $0
+    !insertmacro MUI_HEADER_TEXT "" "$(MUI_TEXT_INSTALLING_SUBTITLE)"
     !insertmacro ArcRho_PrintInstallDetail "Installer progress monitoring started."
     !insertmacro ArcRho_PrintInstallDetail "Preparing destination and installing ArcRho files..."
-    Call ArcRho_InstFiles_UpdateProgressText
-    nsDialogs::CreateTimer ArcRho_InstFiles_UpdateProgressText 500
-  FunctionEnd
-
-  Function ArcRho_InstFiles_UpdateProgressText
-    ; Timer callbacks must not leak registers or NSIS execution flags.
-    System::Store "SF"
     FindWindow $0 "#32770" "" $HWNDPARENT
     GetDlgItem $1 $0 1004
     GetDlgItem $2 $0 1006
+    ; Standard NSIS InstFiles control IDs: details list and Show details button.
+    GetDlgItem $4 $0 1016
+    GetDlgItem $5 $0 1027
     ${If} $1 == 0
     ${OrIf} $2 == 0
+    ${OrIf} $4 == 0
+    ${OrIf} $5 == 0
     ${OrIf} $0 == 0
-      Goto ArcRho_InstFiles_UpdateProgressText_Done
+      Return
     ${EndIf}
 
-    SendMessage $1 0x0408 0 0 $3
-    SendMessage $1 0x0407 0 0 $4
-    SendMessage $1 0x0407 1 0 $5
-    IntOp $6 $4 - $5
-    ${If} $6 <= 0
-      Goto ArcRho_InstFiles_UpdateProgressText_Done
+    SendMessage $2 0x000C 0 "STR:0% complete - Estimating time left..."
+    System::Call "kernel32::GetCurrentProcessId() i.r3"
+    ClearErrors
+    Exec '"$PLUGINSDIR\ArcRhoInstallerProgress.exe" "$HWNDPARENT" "$0" "$1" "$2" "$4" "$5" "$3"'
+    ${If} ${Errors}
+      !insertmacro ArcRho_PrintInstallDetail "Progress text observer could not be started."
     ${EndIf}
-
-    IntOp $7 $3 - $5
-    ${If} $7 < 0
-      StrCpy $7 0
-    ${ElseIf} $7 > $6
-      StrCpy $7 $6
-    ${EndIf}
-
-    ${If} $ArcRhoInstallProgressStartedAtPosition == ""
-      StrCpy $ArcRhoInstallProgressStartedAtPosition $3
-    ${EndIf}
-
-    ; Derive both visible values from the exact native progress-bar position.
-    IntOp $8 $7 * 100
-    IntOp $8 $8 / $6
-    StrCpy $R6 "$8% complete - Estimating time left..."
-
-    ${If} $8 >= 100
-      StrCpy $R6 "100% complete - Finalizing installation..."
-    ${Else}
-      IntOp $R2 $3 - $ArcRhoInstallProgressStartedAtPosition
-      System::Call "kernel32::GetTickCount() i.r9"
-      IntOp $R0 $9 - $ArcRhoInstallProgressStartedAt
-      ${If} $R2 < 0
-        StrCpy $ArcRhoInstallProgressStartedAtPosition $3
-        StrCpy $ArcRhoInstallProgressStartedAt $9
-        StrCpy $R2 0
-      ${ElseIf} $R2 == 0
-        ; Exclude any pre-copy pause from the elapsed-rate estimate.
-        StrCpy $ArcRhoInstallProgressStartedAt $9
-      ${EndIf}
-
-      ; Wait for measurable work and elapsed time before presenting an ETA.
-      ${If} $R2 > 0
-      ${AndIf} $R0 >= 2000
-        IntOp $R1 $R0 / 1000
-        IntOp $R3 $6 - $7
-        IntOp $R3 $R1 * $R3
-        IntOp $R3 $R3 / $R2
-        ${If} $R3 < 1
-          StrCpy $R3 1
-        ${EndIf}
-
-        ${If} $R3 < 60
-          StrCpy $R6 "$8% complete - Estimated time left: $R3 sec"
-        ${Else}
-          IntOp $R4 $R3 / 60
-          IntOp $R5 $R3 % 60
-          StrCpy $R6 "$8% complete - Estimated time left: $R4 min $R5 sec"
-        ${EndIf}
-      ${EndIf}
-    ${EndIf}
-
-    ${If} $R6 != $ArcRhoInstallProgressLastText
-      StrCpy $ArcRhoInstallProgressLastText $R6
-      SendMessage $2 0x000C 0 "STR:$R6"
-    ${EndIf}
-
-    ArcRho_InstFiles_UpdateProgressText_Done:
-    System::Store "fL"
   FunctionEnd
 
   Function ArcRho_InstFiles_CompleteProgressText
@@ -284,7 +225,7 @@ ShowUninstDetails show
     ${OrIf} $1 == 0
       Return
     ${EndIf}
-    SendMessage $1 0x000C 0 "STR:100% - Installation complete."
+    SendMessage $1 0x000C 0 "STR:100% complete - Installation complete."
   FunctionEnd
 
   !macro ArcRho_PrintCoreFileDetails
@@ -349,8 +290,6 @@ ShowUninstDetails show
     ${Else}
       !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation skipped."
     ${EndIf}
-    Call ArcRho_InstFiles_UpdateProgressText
-    nsDialogs::KillTimer ArcRho_InstFiles_UpdateProgressText
     Call ArcRho_InstFiles_CompleteProgressText
     !insertmacro ArcRho_PrintInstallDetail "Installation complete."
   !macroend

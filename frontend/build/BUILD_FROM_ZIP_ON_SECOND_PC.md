@@ -66,7 +66,10 @@ With the repository at the standard location, the default outputs are:
 ```text
 E:\XWSpace\Build ArcRho App\ArcRho.zip
 E:\XWSpace\Build ArcRho App\ArcRho.zip.sha256
+E:\XWSpace\Build ArcRho App\ArcRho.zip.ready
 ```
+
+The `.ready` flag is published only after both the ZIP and checksum have been finalized successfully. It contains a unique token for that ZIP creation run. A failed or still-running ZIP creation leaves no readiness flag.
 
 Disposable `.arczip-*` staging folders, `.building-*` files, and atomic `.backup-*` files are also kept under `E:\XWSpace\Build ArcRho App`. They are removed after success; a replacement backup is retained and reported if publication fails.
 
@@ -121,7 +124,7 @@ set "ARCRHO_LOCAL_BUILD_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
 call "E:\XWSpace\Repos\ArcRho\frontend\build\build_app_via_local_workspace.bat" --check
 ```
 
-The `--check` command prints the resolved configuration and verifies that the ZIP preparation helper is beside the wrapper. The full run performs the source-ZIP existence and timestamp checks.
+The `--check` command prints the resolved configuration and verifies that the ZIP preparation helper is beside the wrapper. The full run waits for a new Step 1 completion token; it starts automatically when the ZIP, checksum, and new readiness flag are all visible.
 
 ## Step 4: Run the Build on the Build PC
 
@@ -139,7 +142,7 @@ call "E:\XWSpace\Repos\ArcRho\frontend\build\build_app_via_local_workspace.bat" 
 
 The wrapper performs these steps:
 
-1. Verifies the source ZIP and checks whether its timestamp matches the last successful ZIP build.
+1. Waits for a Step 1 readiness token that differs from the last successfully built token.
 2. Deletes and recreates the local build workspace.
 3. Copies the ZIP from the source PC to the local workspace.
 4. Extracts the source locally while rejecting unsafe paths and skipping repository/agent metadata.
@@ -147,7 +150,8 @@ The wrapper performs these steps:
 6. Builds the Python API wheel and PyInstaller app server.
 7. Builds the Electron application and NSIS installer.
 8. Generates release notes and publishes the installer update feed and Python API package.
-9. Records the source-ZIP timestamp only after the complete build succeeds.
+9. Records the readiness token only after the complete build succeeds.
+10. Opens the published installer named by `E:\ArcRho Server\releases\installers\latest.json` without requiring a key press, then closes the successful Step 2 terminal session.
 
 Do not run `build_app.bat` directly from the mapped repository. The purpose of this workflow is to ensure that dependency execution, PyInstaller, Electron Builder, and NSIS all run from a local filesystem on the build PC.
 
@@ -174,8 +178,8 @@ The build-PC local-workspace log covers ZIP validation, local copying and extrac
 
 - Regenerate `ArcRho.zip` after every source change that must be included in the final app.
 - The ZIP is a snapshot; editing the repository after ZIP creation does not update the build input.
-- The wrapper warns when the ZIP timestamp matches the archive used by the previous successful build. Continue with an unchanged ZIP only when rebuilding the same snapshot intentionally.
-- A failed build does not update the successful-build timestamp marker.
+- Step 2 waits while the readiness token matches the archive used by the previous successful build. Run Step 1 again to publish a new token and trigger another build.
+- A failed build does not update the consumed-signal marker, so restarting Step 2 retries that ZIP.
 - The ZIP creator writes `ArcRho.zip.sha256`. For important releases, compare that value with `Get-FileHash -Algorithm SHA256` on the build PC.
 
 ## Troubleshooting

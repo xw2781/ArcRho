@@ -14,7 +14,8 @@ exit /b %ERRORLEVEL%
 :after_wrapper_log_setup
 
 REM Copies the network/source archive to a local Documents build workspace,
-REM then runs the ArcRho app build from that local workspace.
+REM waits for its completion flag, then runs the ArcRho app build from that
+REM local workspace and opens the published installer.
 REM Create or refresh the default source archive on the source PC with:
 REM   frontend\build\create_build_source_zip.bat
 REM Optional:
@@ -27,7 +28,10 @@ if defined ARCRHO_LOCAL_BUILD_SOURCE_ZIP set "SOURCE_ZIP=%ARCRHO_LOCAL_BUILD_SOU
 set "LOCAL_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
 if defined ARCRHO_LOCAL_BUILD_ROOT set "LOCAL_ROOT=%ARCRHO_LOCAL_BUILD_ROOT%"
 set "LOCAL_FRONTEND=%LOCAL_ROOT%\frontend"
-set "ZIP_TIMESTAMP_FILE=%LOCAL_ROOT%.source_zip_timestamp"
+set "SOURCE_ZIP_READY_FLAG=%SOURCE_ZIP%.ready"
+set "SOURCE_ZIP_HASH=%SOURCE_ZIP%.sha256"
+set "READY_SIGNAL_FILE=%LOCAL_ROOT%.source_zip_ready_signal"
+set "RELEASE_FEED_DIR=E:\ArcRho Server\releases\installers"
 set "ARCRHO_BUILD_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
 set "ARCRHO_LOCAL_BUILD_START_SECONDS="
 for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()" 2^>nul`) do set "ARCRHO_LOCAL_BUILD_START_SECONDS=%%I"
@@ -35,8 +39,10 @@ for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "[DateTimeOffs
 if /i "%~1"=="--check" (
     echo Network/source build script: %SCRIPT_DIR%
     echo Source archive:              %SOURCE_ZIP%
+    echo Source completion flag:      %SOURCE_ZIP_READY_FLAG%
     echo Local workspace:           %LOCAL_ROOT%
-    echo ZIP timestamp marker:       %ZIP_TIMESTAMP_FILE%
+    echo Consumed-signal marker:     %READY_SIGNAL_FILE%
+    echo Published installer feed:  %RELEASE_FEED_DIR%
     echo Shared build log directory: %ARCRHO_BUILD_LOG_DIR%
     if not exist "%SCRIPT_DIR%prepare_local_build_workspace_from_zip.ps1" (
         echo ERROR: Missing prepare_local_build_workspace_from_zip.ps1 beside this batch file.
@@ -51,15 +57,16 @@ echo Preparing local ArcRho build workspace
 echo ========================================
 echo Source build script: %SCRIPT_DIR%
 echo Source archive:      %SOURCE_ZIP%
+echo Completion flag:     %SOURCE_ZIP_READY_FLAG%
 echo Local workspace:     %LOCAL_ROOT%
-echo ZIP timestamp file:  %ZIP_TIMESTAMP_FILE%
+echo Signal marker:       %READY_SIGNAL_FILE%
 echo Shared log directory: %ARCRHO_BUILD_LOG_DIR%
 echo.
 
-call :check_source_zip_timestamp
+call :wait_for_new_source_zip_signal
 if errorlevel 1 (
     echo.
-    echo Build stopped. Create a new source ZIP, then rerun this script.
+    echo ERROR: Failed while waiting for a completed source ZIP.
     pause
     exit /b 1
 )
@@ -93,6 +100,7 @@ if errorlevel 1 (
 )
 
 set "ARCRHO_INSTALL_PYTHON_DEPS=1"
+set "ARCRHO_SKIP_SUCCESS_PAUSE=1"
 call build\build_app.bat %*
 set "BUILD_EXIT_CODE=%ERRORLEVEL%"
 
@@ -113,50 +121,54 @@ echo Local ArcRho build completed successfully
 echo ========================================
 echo Local output directory: %LOCAL_FRONTEND%\dist
 echo.
-call :record_source_zip_timestamp
+call :record_source_zip_signal
+if errorlevel 1 (
+    echo WARNING: Could not record the completed ZIP signal.
+    echo The next Step 2 run may build this ZIP again.
+    echo.
+)
 call :print_total_time
-pause
+call :open_released_installer
+if errorlevel 1 (
+    echo.
+    echo WARNING: The build succeeded, but the published installer could not be opened.
+    echo Published installer feed: %RELEASE_FEED_DIR%
+    pause
+)
 exit /b 0
 
-:check_source_zip_timestamp
-if not exist "%SOURCE_ZIP%" (
-    echo.
-    echo ERROR: Source ZIP not found: %SOURCE_ZIP%
-    exit /b 1
-)
+:wait_for_new_source_zip_signal
+set "LAST_READY_SIGNAL="
+if exist "%READY_SIGNAL_FILE%" set /p LAST_READY_SIGNAL=<"%READY_SIGNAL_FILE%"
+echo Waiting for Step 1 to publish a new completed ZIP signal...
+echo Press Ctrl+C to stop waiting.
 
-set "CURRENT_ZIP_TIMESTAMP="
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-Item -LiteralPath $env:SOURCE_ZIP).LastWriteTimeUtc.Ticks" 2^>nul`) do set "CURRENT_ZIP_TIMESTAMP=%%I"
-if not defined CURRENT_ZIP_TIMESTAMP (
-    echo.
-    echo ERROR: Could not read source ZIP timestamp: %SOURCE_ZIP%
-    exit /b 1
-)
-
-set "LAST_ZIP_TIMESTAMP="
-if exist "%ZIP_TIMESTAMP_FILE%" (
-    for /f "usebackq delims=" %%I in ("%ZIP_TIMESTAMP_FILE%") do set "LAST_ZIP_TIMESTAMP=%%I"
-)
-
-if defined LAST_ZIP_TIMESTAMP if "%CURRENT_ZIP_TIMESTAMP%"=="%LAST_ZIP_TIMESTAMP%" (
-    echo.
-    echo WARNING: Source ZIP timestamp has not changed since the last ZIP-based local build.
-    echo Source ZIP: %SOURCE_ZIP%
-    echo.
-    choice /C YN /N /M "Continue with the existing ZIP anyway? [Y/N] "
-    if errorlevel 2 exit /b 1
-)
-
+:wait_for_new_source_zip_signal_loop
+set "CURRENT_READY_SIGNAL="
+if exist "%SOURCE_ZIP_READY_FLAG%" set /p CURRENT_READY_SIGNAL=<"%SOURCE_ZIP_READY_FLAG%"
+if not defined CURRENT_READY_SIGNAL goto wait_for_new_source_zip_signal_delay
+if defined LAST_READY_SIGNAL if "%CURRENT_READY_SIGNAL%"=="%LAST_READY_SIGNAL%" goto wait_for_new_source_zip_signal_delay
+if not exist "%SOURCE_ZIP%" goto wait_for_new_source_zip_signal_delay
+if not exist "%SOURCE_ZIP_HASH%" goto wait_for_new_source_zip_signal_delay
+echo New completed source ZIP detected.
+echo Signal: %CURRENT_READY_SIGNAL%
+echo.
 exit /b 0
 
-:record_source_zip_timestamp
-if not exist "%SOURCE_ZIP%" exit /b 0
-set "CURRENT_ZIP_TIMESTAMP="
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-Item -LiteralPath $env:SOURCE_ZIP).LastWriteTimeUtc.Ticks" 2^>nul`) do set "CURRENT_ZIP_TIMESTAMP=%%I"
-if not defined CURRENT_ZIP_TIMESTAMP exit /b 0
-for %%I in ("%ZIP_TIMESTAMP_FILE%") do if not exist "%%~dpI" mkdir "%%~dpI" >nul 2>nul
-> "%ZIP_TIMESTAMP_FILE%" echo %CURRENT_ZIP_TIMESTAMP%
+:wait_for_new_source_zip_signal_delay
+timeout /t 5 /nobreak >nul
+goto wait_for_new_source_zip_signal_loop
+
+:record_source_zip_signal
+if not defined CURRENT_READY_SIGNAL exit /b 1
+for %%I in ("%READY_SIGNAL_FILE%") do if not exist "%%~dpI" mkdir "%%~dpI" >nul 2>nul
+> "%READY_SIGNAL_FILE%" echo %CURRENT_READY_SIGNAL%
+if errorlevel 1 exit /b 1
 exit /b 0
+
+:open_released_installer
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$manifestPath = Join-Path $env:RELEASE_FEED_DIR 'latest.json'; if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw ('Published installer manifest not found: ' + $manifestPath) }; $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json; $installerName = [string]$manifest.installer; if ([string]::IsNullOrWhiteSpace($installerName) -or [System.IO.Path]::GetFileName($installerName) -ne $installerName -or $installerName -notmatch '^ArcRho-Setup-.+\.exe$') { throw 'Published installer manifest contains an invalid installer name.' }; $installerPath = Join-Path $env:RELEASE_FEED_DIR $installerName; if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) { throw ('Published installer not found: ' + $installerPath) }; Write-Host ('Opening published installer: ' + $installerPath); Start-Process -FilePath $installerPath"
+exit /b %ERRORLEVEL%
 
 :print_total_time
 if not defined ARCRHO_LOCAL_BUILD_START_SECONDS exit /b 0

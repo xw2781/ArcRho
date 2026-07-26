@@ -54,4 +54,10 @@ if not exist "python_dist\arcrho_server\_internal\icons\icon.png" (
     exit /b 1
 )
 
+"%PYTHON_EXE%" build\write_backend_artifact_manifest.py python_dist\arcrho_server
+if errorlevel 1 (
+    echo ERROR: Failed to write the ArcRho backend artifact manifest.
+    exit /b 1
+)
+
 exit /b 0

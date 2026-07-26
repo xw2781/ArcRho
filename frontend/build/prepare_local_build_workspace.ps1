@@ -246,6 +246,7 @@ $frontendExcludeDirs = @(
     (Join-Path $SourceRoot "frontend\build\local_workspace_log"),
     (Join-Path $SourceRoot "frontend\build\python_packages"),
     (Join-Path $SourceRoot "frontend\build\__pycache__"),
+    (Join-Path $SourceRoot "frontend\build\generated"),
     (Join-Path $SourceRoot "frontend\logs"),
     "__pycache__",
     ".pytest_cache",

@@ -146,6 +146,7 @@ function Assert-BuildArchive {
         "frontend/build/server.spec",
         "frontend/build/server_entry.py",
         "frontend/build/patch_nsis_installer_progress.js",
+        "frontend/build/installer_progress_helper.cs",
         "frontend/build/installer.nsh",
         "frontend/build/install_arcrho_excel_addin.ps1",
         "frontend/build/publish_update_feed.ps1",
@@ -186,7 +187,7 @@ function Assert-BuildArchive {
         $forbiddenPatterns = @(
             '^(?:[^/]+/)?\.(?:git|agents|codex)(?:/|$)',
             '^(?:[^/]+/)?frontend/(?:dist|python_dist|python_build)(?:/|$)',
-            '^(?:[^/]+/)?frontend/build/(?:log|local_workspace_log|python_packages|__pycache__)(?:/|$)'
+            '^(?:[^/]+/)?frontend/build/(?:generated|log|local_workspace_log|python_packages|__pycache__)(?:/|$)'
         )
         foreach ($entryName in $entryNames) {
             foreach ($pattern in $forbiddenPatterns) {
@@ -278,6 +279,7 @@ $requiredSourcePaths = @(
     "frontend\build\server.spec",
     "frontend\build\server_entry.py",
     "frontend\build\patch_nsis_installer_progress.js",
+    "frontend\build\installer_progress_helper.cs",
     "frontend\build\installer.nsh",
     "frontend\build\install_arcrho_excel_addin.ps1",
     "frontend\build\publish_update_feed.ps1",
@@ -299,14 +301,20 @@ foreach ($relativePath in $requiredSourcePaths) {
     }
 }
 
+$readyFlagPath = "$OutputZip.ready"
 Write-Host "ArcRho clean build ZIP creator"
 Write-Host "Source repository: $SourceRoot"
 Write-Host "Output ZIP:        $OutputZip"
+Write-Host "Completion flag:   $readyFlagPath"
 Write-Host ""
 
 if ($Check) {
     Write-Host "Source ZIP creation prerequisites passed."
     exit 0
+}
+
+if (Test-Path -LiteralPath $readyFlagPath) {
+    Remove-Item -LiteralPath $readyFlagPath -Force
 }
 
 $computerName = if ([string]::IsNullOrWhiteSpace($env:COMPUTERNAME)) { "unknown-pc" } else { $env:COMPUTERNAME }
@@ -326,6 +334,7 @@ $stagingContainer = Join-Path $outputDirectory ".arczip-$shortRunId"
 $stagingRepository = Join-Path $stagingContainer "ArcRho"
 $temporaryZip = Join-Path $outputDirectory "ArcRho.building-$runId.zip"
 $temporaryHash = Join-Path $outputDirectory "ArcRho.building-$runId.sha256"
+$temporaryReadyFlag = Join-Path $outputDirectory "ArcRho.building-$runId.ready"
 $zipBackup = Join-Path $outputDirectory "ArcRho.backup-$runId.zip"
 $hashBackup = Join-Path $outputDirectory "ArcRho.backup-$runId.sha256"
 $hashPath = "$OutputZip.sha256"
@@ -408,10 +417,18 @@ try {
 
     $outputInfo = Get-Item -LiteralPath $OutputZip
     $elapsed = (Get-Date) - $startedAt
+    [System.IO.File]::WriteAllText(
+        $temporaryReadyFlag,
+        $runId + [Environment]::NewLine,
+        [System.Text.Encoding]::ASCII
+    )
+    [System.IO.File]::Move($temporaryReadyFlag, $readyFlagPath)
+
     Write-Host ""
     Write-Host "Clean ArcRho build ZIP created successfully."
     Write-Host "ZIP:        $OutputZip"
     Write-Host "SHA-256:    $hashPath"
+    Write-Host "Ready flag: $readyFlagPath"
     Write-Host "Entries:    $entryCount"
     Write-Host "Size:       $([Math]::Round($outputInfo.Length / 1MB, 1)) MB"
     Write-Host "Elapsed:    $($elapsed.ToString('hh\:mm\:ss'))"
@@ -428,6 +445,9 @@ finally {
     }
     if (Test-Path -LiteralPath $temporaryHash) {
         Remove-Item -LiteralPath $temporaryHash -Force
+    }
+    if (Test-Path -LiteralPath $temporaryReadyFlag) {
+        Remove-Item -LiteralPath $temporaryReadyFlag -Force
     }
     if (Test-Path -LiteralPath $stagingContainer) {
         $stagingFullName = [System.IO.Path]::GetFullPath($stagingContainer)

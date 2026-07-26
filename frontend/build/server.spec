@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import sys
 from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
@@ -7,6 +8,8 @@ build_dir = Path(SPECPATH)
 repo_root = build_dir.parent
 monorepo_root = repo_root.parent
 python_api_src = monorepo_root / 'python-api' / 'src'
+if str(python_api_src) not in sys.path:
+    sys.path.insert(0, str(python_api_src))
 
 # Collect served frontend assets and app-server data files.
 static_files = []
