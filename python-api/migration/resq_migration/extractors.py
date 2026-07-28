@@ -12,6 +12,14 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
+from arcrho_api.bornhuetter_ferguson_contract import (
+    BF_JSON_FORMAT,
+    BF_METHOD_TYPE,
+    BF_SOURCE_KIND,
+    bornhuetter_ferguson_precedent_names,
+    build_bornhuetter_ferguson_output_sidecar,
+    recalculate_bornhuetter_ferguson_method,
+)
 from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variants
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
@@ -46,6 +54,7 @@ from .core import (
     _method_type_code,
     _method_type_name,
     _normalize_import_name,
+    normalize_method_status,
     _safe_attr,
     _safe_int_attr,
     _safe_read_json,
@@ -60,11 +69,8 @@ from .number_formats import dataset_type_decimal_places, dataset_type_number_for
 
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
-BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
 METHOD_DATA_DIR = "methods"
 RS_JSON_VALUE_DECIMAL_PLACES = 6
-BF_METHOD_TYPE = "Bornhuetter Ferguson"
-BF_SOURCE_KIND = "bornhuetter_ferguson"
 
 BS_SR_ADJUSTMENT_TYPES = {
     0: "unadjusted",
@@ -114,12 +120,14 @@ def _apply_graph_meta_best_effort(meta: dict, dataset_type: str, rc_dir: Path, *
 
 
 def configure_extractors(*, project_name: str, rs_json_format: str, method_data_dir: str, bf_json_format: str | None = None) -> None:
-    global PROJECT_NAME, RS_JSON_FORMAT, BF_JSON_FORMAT, METHOD_DATA_DIR
+    global PROJECT_NAME, RS_JSON_FORMAT, METHOD_DATA_DIR
 
     PROJECT_NAME = str(project_name)
     RS_JSON_FORMAT = str(rs_json_format)
-    if bf_json_format:
-        BF_JSON_FORMAT = str(bf_json_format)
+    if bf_json_format and str(bf_json_format) != BF_JSON_FORMAT:
+        raise ValueError(
+            f"The ResQ producer only supports canonical BF format {BF_JSON_FORMAT!r}."
+        )
     METHOD_DATA_DIR = str(method_data_dir)
 
 
@@ -295,6 +303,7 @@ def export_triangle(triangle, *, method_type_code: int | None = None) -> dict:
         "user": user,
         "created": created,
         "modified": modified,
+        "status": normalize_method_status(_safe_attr(triangle, "Status", 0)),
     }
 
 def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
@@ -363,7 +372,7 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
             if _normalize_import_name(item)
         ]
         meta["Dependents"] = []
-        meta["status"] = 0
+        meta["status"] = normalize_method_status(payload.get("status"))
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir, preserve_precedents=True)
     else:
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
@@ -551,6 +560,9 @@ def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
         },
         "method_tab": method_tab,
         "_sidecar_notes": notes,
+        "_sidecar_status": normalize_method_status(
+            _safe_attr(_safe_attr(method, "OutputTriangle", None), "Status", 0)
+        ),
         "audit_log_tab": {},
         "method_metadata": {
             "method_type": method_type,
@@ -562,6 +574,9 @@ def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
 
 def _apply_berquist_sherman_triangle_metadata(payload: dict, method_payload: dict) -> None:
     payload["notes"] = str(method_payload.pop("_sidecar_notes", "") or "")
+    payload["status"] = normalize_method_status(
+        method_payload.pop("_sidecar_status", payload.get("status"))
+    )
     variant = _bs_variant_from_payload(method_payload)
     if variant == "sr":
         payload["source_kind"] = BS_SR_SOURCE_KIND
@@ -622,6 +637,7 @@ def write_berquist_sherman_export(payload: dict, rc_path: str, rc_dir: Path) -> 
     out_path = rc_dir / METHOD_DATA_DIR / f"{prefix}{_encode_name_part(name)}.json"
     method_payload = dict(payload)
     method_payload.pop("_sidecar_notes", None)
+    method_payload.pop("_sidecar_status", None)
     _write_json(out_path, method_payload)
     _backfill_berquist_sherman_precedent_origin_labels(method_payload, variant, rc_dir)
     return out_path
@@ -729,13 +745,20 @@ def export_vector(vector) -> dict:
         "user": user,
         "created": created,
         "modified": modified,
+        "status": normalize_method_status(_safe_attr(vector, "Status", 0)),
     }
 
 def _vector_payload_period_length(payload: dict) -> int:
     return int(payload.get("period_length") or payload.get("origin_length") or 0)
 
 
-def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
+def write_vector_export(
+    payload: dict,
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    bf_method_payload: dict | None = None,
+) -> Path:
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
     period_length = _vector_payload_period_length(payload)
@@ -797,8 +820,34 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "notes": str(payload.get("notes") or ""),
         "updated_at": updated_at,
     }
-    if is_result_selection:
-        meta["status"] = 0
+    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    if is_bornhuetter_ferguson and isinstance(bf_method_payload, dict):
+        existing = _safe_read_json(meta_path)
+        publication_revision = _clean_name(
+            bf_method_payload.get("method_metadata", {}).get("publication_revision")
+            if isinstance(bf_method_payload.get("method_metadata"), dict)
+            else ""
+        )
+        output_changed = _clean_name(existing.get("publication_revision")) != publication_revision
+        meta = build_bornhuetter_ferguson_output_sidecar(
+            bf_method_payload,
+            project_name=PROJECT_NAME,
+            reserving_class=rc_path,
+            csv_file=csv_name,
+            existing=existing,
+            notes=str(payload.get("notes") or ""),
+            timestamp=updated_at,
+            user=payload.get("user", ""),
+            output_changed=output_changed,
+            append_audit=not existing or output_changed,
+            status=normalize_method_status(payload.get("status")),
+        )
+    elif is_bornhuetter_ferguson:
+        # A BF-coded vector without a matching exported method is an ordinary
+        # imported dataset, not a BF publication. Preserve the legacy fallback
+        # rather than manufacturing an incomplete canonical BF sidecar.
+        meta.pop("formula", None)
+        meta["status"] = normalize_method_status(payload.get("status"))
         source_names = [
             _normalize_import_name(item)
             for item in payload.get("precedents", [])
@@ -806,9 +855,8 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         ]
         meta["Precedents"] = source_names
         meta["Dependents"] = []
-    elif is_bornhuetter_ferguson:
-        meta.pop("formula", None)
-        meta["status"] = 0
+    elif is_result_selection:
+        meta["status"] = normalize_method_status(payload.get("status"))
         source_names = [
             _normalize_import_name(item)
             for item in payload.get("precedents", [])
@@ -818,7 +866,6 @@ def write_vector_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         meta["Dependents"] = []
     else:
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
-    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     _write_json(meta_path, meta)
     return csv_path
 
@@ -1148,6 +1195,7 @@ def export_result_selection(result_selection) -> dict:
         "results_tab": {},
         "validation_tab": {},
         "_sidecar_notes": notes,
+        "_sidecar_status": normalize_method_status(_safe_attr(output_vector, "Status", 0)),
         "method_metadata": {
             "last_modified": modified,
         },
@@ -1185,27 +1233,14 @@ def _result_selection_origin_labels_from_payload(payload: dict) -> list[str]:
 
 def _apply_result_selection_vector_metadata(payload: dict, result_selection_payload: dict) -> None:
     payload["notes"] = str(result_selection_payload.pop("_sidecar_notes", "") or "")
+    payload["status"] = normalize_method_status(
+        result_selection_payload.pop("_sidecar_status", payload.get("status"))
+    )
     payload["precedents"] = _result_selection_precedent_names(result_selection_payload)
     origin_labels = _result_selection_origin_labels_from_payload(result_selection_payload)
     if origin_labels:
         payload["origin_labels"] = origin_labels
         payload["origin_count"] = len(origin_labels)
-
-PERCENTAGE_DEVELOPED_TYPES = {
-    0: "Latest/Ultimates",
-    1: "Pattern Vector",
-    2: "DFM dev factors",
-    3: "DFM dev factors (adj)",
-}
-PRIOR_TYPES = {
-    0: "Ultimates",
-}
-
-
-def _bf_source_name(method, attr_name: str) -> str:
-    source = _safe_attr(method, attr_name, None)
-    return _normalize_import_name(_safe_attr(source, "Name", ""))
-
 
 def _bf_origin_count(method, output_vector) -> int:
     origin_count = _safe_int_attr(method, "OriginCount", 0)
@@ -1238,32 +1273,76 @@ def _bf_origin_labels(method, output_vector, fallback_count: int = 0) -> list[st
     return labels
 
 
-def _bf_type_label(value: object, labels: dict[int, str]) -> str:
-    try:
-        code = int(value)
-    except (TypeError, ValueError):
-        return _normalize_import_name(value)
-    return labels.get(code, str(code))
+def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool) -> dict:
+    """Extract the exact source vector BF consumes, without filesystem I/O."""
+
+    name = _normalize_import_name(_safe_attr(source, "Name", ""))
+    if not name:
+        raise ValueError("A ResQ BF precedent does not expose a dataset name.")
+    values: list = []
+    successful_reads = 0
+    errors: list[Exception] = []
+    for origin_index in range(1, len(origin_labels) + 1):
+        try:
+            if not latest:
+                value = _vector_value(source, origin_index)
+                successful_reads += 1
+                values.append(value)
+                continue
+            development_count = _triangle_development_count(source, origin_index)
+            if development_count <= 0:
+                value = _vector_value(source, origin_index)
+                successful_reads += 1
+                values.append(value)
+                continue
+            value = None
+            row_read = False
+            for development_index in range(development_count, 0, -1):
+                try:
+                    candidate = _triangle_value(source, origin_index, development_index)
+                    row_read = True
+                except Exception as exc:
+                    errors.append(exc)
+                    continue
+                if _rs_json_number(candidate) is not None:
+                    value = candidate
+                    break
+            if row_read:
+                successful_reads += 1
+            values.append(value)
+        except Exception as exc:
+            errors.append(exc)
+            values.append(None)
+    if origin_labels and successful_reads <= 0:
+        detail = f": {errors[0]}" if errors else ""
+        raise ValueError(f"Failed to read BF source {name!r}{detail}")
+    return {
+        "name": name,
+        "origin_labels": list(origin_labels),
+        "values": values,
+    }
 
 
 def export_bornhuetter_ferguson(method) -> dict:
-    """Extract BF method configuration from ResQ into ArcRho's BF method JSON shape.
+    """Extract a complete, self-contained canonical BF v3 payload from ResQ."""
 
-    BF V2 stores prior sources as a weighted dataset list. A ResQ BF exposes one
-    Prior vector, so migration emits that vector as one source with row weights
-    of 1. ArcRho then loads the migrated sources and recalculates the Method table.
-    """
     output_vector = _safe_attr(method, "OutputVector", None)
     name = _normalize_import_name(_safe_attr(output_vector, "Name", "")) or _normalize_import_name(_safe_attr(method, "Name", ""))
     dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
     output_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
+    dataset_category = _normalize_import_name(
+        _safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")
+    )
     origin_length = _safe_int_attr(method, "OriginLength", _safe_int_attr(output_vector, "PeriodLength", 12))
-    latest_dataset = _bf_source_name(method, "Latest")
-    dfm_dataset = _bf_source_name(method, "PercentageDeveloped")
-    prior_dataset = _bf_source_name(method, "Prior")
-    pct_type_code = _safe_int_attr(method, "PercentageDevelopedType", -1)
-    prior_type_code = _safe_int_attr(method, "PriorType", -1)
     origin_labels = _bf_origin_labels(method, output_vector)
+    if not origin_labels or any(not label for label in origin_labels):
+        raise ValueError(f"Bornhuetter Ferguson method {name!r} does not expose complete origin labels.")
+    latest_source = _safe_attr(method, "Latest", None)
+    dfm_source = _safe_attr(method, "PercentageDeveloped", None)
+    prior_source = _safe_attr(method, "Prior", None)
+    latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True)
+    dfm_snapshot = _bf_source_snapshot(dfm_source, origin_labels, latest=False)
+    prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False)
     try:
         notes = _clean_name(method.Notes)
     except Exception:
@@ -1273,32 +1352,28 @@ def export_bornhuetter_ferguson(method) -> dict:
     except Exception:
         modified = datetime.now(timezone.utc).astimezone().isoformat()
 
-    return {
+    owned = {
         "json_format": BF_JSON_FORMAT,
         "details_tab": {
             "name": name,
             "method_type": BF_METHOD_TYPE,
             "output_type": output_type,
+            "dataset_category": dataset_category,
             "origin_length": origin_length,
             "statistic_decimal_places": 1,
         },
         "method_tab": {
-            "latest_dataset": latest_dataset,
-            "latest_type": "Triangle",
-            "dfm_dataset": dfm_dataset,
-            "percentage_developed_dataset": dfm_dataset,
-            "percentage_developed_type_code": pct_type_code,
-            "percentage_developed_type": _bf_type_label(pct_type_code, PERCENTAGE_DEVELOPED_TYPES),
+            "latest_dataset": latest_snapshot["name"],
+            "dfm_dataset": dfm_snapshot["name"],
             "show_weights": True,
+            "show_effective_weights": False,
             "prior_datasets": [
                 {
-                    "name": prior_dataset,
+                    "name": prior_snapshot["name"],
                     "values": [],
                     "weights": [1.0 for _ in origin_labels],
                 }
-            ] if prior_dataset else [],
-            "prior_type_code": prior_type_code,
-            "prior_type": _bf_type_label(prior_type_code, PRIOR_TYPES),
+            ],
             "origin_labels": origin_labels,
             "latest_values": [],
             "dfm_ultimate_values": [],
@@ -1313,46 +1388,46 @@ def export_bornhuetter_ferguson(method) -> dict:
             "method_type": BF_METHOD_TYPE,
             "source_kind": BF_SOURCE_KIND,
             "last_modified": modified,
+            "data_refreshed": modified,
         },
     }
-
-
-def _bornhuetter_ferguson_source_names(payload: dict) -> list[str]:
-    method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
-    names: list[str] = []
-    seen: set[str] = set()
-    for key in ("latest_dataset", "dfm_dataset"):
-        name = _normalize_import_name(method_tab.get(key))
-        name_key = name.lower()
-        if name and name_key not in seen:
-            seen.add(name_key)
-            names.append(name)
-    prior_datasets = method_tab.get("prior_datasets") if isinstance(method_tab.get("prior_datasets"), list) else []
-    for prior in prior_datasets:
-        name = _normalize_import_name(prior.get("name")) if isinstance(prior, dict) else ""
-        name_key = name.lower()
-        if name and name_key not in seen:
-            seen.add(name_key)
-            names.append(name)
-    if not prior_datasets:
-        legacy_prior_name = _normalize_import_name(method_tab.get("prior_dataset"))
-        legacy_prior_key = legacy_prior_name.lower()
-        if legacy_prior_name and legacy_prior_key not in seen:
-            names.append(legacy_prior_name)
-    return names
+    payload = recalculate_bornhuetter_ferguson_method(
+        owned,
+        source_snapshots={
+            "latest": latest_snapshot,
+            "dfm": dfm_snapshot,
+            "priors": [prior_snapshot],
+        },
+        timestamp=modified,
+    )
+    payload["_sidecar_notes"] = notes
+    payload["_sidecar_status"] = normalize_method_status(_safe_attr(output_vector, "Status", 0))
+    return payload
 
 
 def _apply_bornhuetter_ferguson_vector_metadata(payload: dict, bf_payload: dict) -> None:
     payload["notes"] = str(bf_payload.pop("_sidecar_notes", "") or "")
+    payload["status"] = normalize_method_status(
+        bf_payload.pop("_sidecar_status", payload.get("status"))
+    )
     payload["source_kind"] = BF_SOURCE_KIND
     payload["method_type"] = BF_METHOD_TYPE
     payload["method_type_code"] = METHOD_TYPE_BF_CODE
-    payload["precedents"] = _bornhuetter_ferguson_source_names(bf_payload)
+    payload["precedents"] = bornhuetter_ferguson_precedent_names(bf_payload)
+    details_tab = bf_payload.get("details_tab") if isinstance(bf_payload.get("details_tab"), dict) else {}
+    metadata = bf_payload.get("method_metadata") if isinstance(bf_payload.get("method_metadata"), dict) else {}
+    payload["method_name"] = _normalize_import_name(details_tab.get("name"))
+    payload["publication_revision"] = _clean_name(metadata.get("publication_revision"))
     method_tab = bf_payload.get("method_tab") if isinstance(bf_payload.get("method_tab"), dict) else {}
     origin_labels = method_tab.get("origin_labels") if isinstance(method_tab.get("origin_labels"), list) else []
     if origin_labels:
         payload["origin_labels"] = [_normalize_import_name(label) for label in origin_labels]
         payload["origin_count"] = len(origin_labels)
+        payload["values"] = [[value] for value in method_tab.get("new_ultimate", [])]
+    payload["origin_length"] = int(
+        details_tab.get("origin_length") or payload.get("origin_length") or 12
+    )
+    payload["period_length"] = payload["origin_length"]
 
 
 def write_bornhuetter_ferguson_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
@@ -1363,6 +1438,7 @@ def write_bornhuetter_ferguson_export(payload: dict, rc_path: str, rc_dir: Path)
     out_path = rc_dir / METHOD_DATA_DIR / file_name
     method_payload = dict(payload)
     method_payload.pop("_sidecar_notes", None)
+    method_payload.pop("_sidecar_status", None)
     _write_json(out_path, method_payload)
     return out_path
 
@@ -1518,6 +1594,7 @@ def write_result_selection_export(payload: dict, rc_path: str, rc_dir: Path) -> 
     out_path = rc_dir / METHOD_DATA_DIR / file_name
     method_payload = dict(payload)
     method_payload.pop("_sidecar_notes", None)
+    method_payload.pop("_sidecar_status", None)
     _write_json(out_path, method_payload)
     return out_path
 
@@ -1606,6 +1683,7 @@ def export_dfm_ultimate_vector(
         "user": user,
         "created": created,
         "modified": modified,
+        "status": normalize_method_status(_safe_attr(output_vector, "Status", 0)),
     }
 
 
@@ -1655,6 +1733,7 @@ def build_dfm_ultimate_publication(
         user=payload.get("user", ""),
         output_changed=output_changed,
         append_audit=not existing or output_changed,
+        status=normalize_method_status(payload.get("status")),
     )
     files[meta_path] = f"{_format_json(sidecar)}\n".encode("utf-8")
     return primary_path, files, meta_path

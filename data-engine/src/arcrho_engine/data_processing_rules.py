@@ -342,11 +342,6 @@ class ReservingClassCatalog:
         self._coefficients[key] = coefficients
         return coefficients
 
-    def validate_all_sources(self) -> None:
-        for key in self.types:
-            self._resolve_coefficients(key, ())
-
-
 def build_reserving_class_catalog(
     field_mapping_payload: Any,
     reserving_class_payload: Any,
@@ -445,7 +440,6 @@ def build_reserving_class_catalog(
         types=types,
         _field_by_name=field_by_name,
     )
-    catalog.validate_all_sources()
     return catalog
 
 

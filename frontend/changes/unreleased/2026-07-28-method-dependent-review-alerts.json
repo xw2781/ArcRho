@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "method dependencies",
+  "audience": "user",
+  "summary": "Downstream method review alerts now remain visible after automatic data refresh.",
+  "details": [
+    "Every explicit method Save, including a no-op Save, acknowledges that method and refreshes its full downstream dependency chain.",
+    "Automatically refreshed downstream method outputs remain Needs Review until each method is explicitly saved.",
+    "Plain input and formula-calculated datasets remain OK while dependency traversal continues through them to later methods.",
+    "Refresh, propagation, and index failures are reported separately from the review status flag."
+  ]
+}

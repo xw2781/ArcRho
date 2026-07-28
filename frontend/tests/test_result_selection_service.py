@@ -193,6 +193,81 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 409)
         self.assertIn("changed on disk", str(raised.exception.detail))
 
+    def test_review_needed_save_revalidates_only_the_revised_precedent_list(self) -> None:
+        self.write_selection()
+        current = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
+        removed = {**current["method_tab"]["loaded_datasets"][0], "name": "Removed"}
+        current["method_tab"]["loaded_datasets"].append(removed)
+        self.write_json(self.methods / "RS@Selection.json", current)
+        sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
+        sidecar["Precedents"] = ["Paid", "Removed"]
+        self.write_json(self.sidecars / "Selection.json", sidecar)
+        self.write_source("Paid", [30, 40])
+        incoming = self.method_payload()
+        expected_revision = result_selection_service._method_revision(
+            result_selection_service.normalize_method_payload(current, require_complete_basis=True)
+        )
+
+        with (
+            mock.patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
+            mock.patch.object(calculated_dataset_service, "recalculate_dependents", return_value={"ok": True}),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            result = result_selection_service.save_result_selection(
+                "Project",
+                "Class",
+                incoming,
+                expected_revision=expected_revision,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["method"]["method_tab"]["loaded_datasets"][0]["values"], [30.0, 40.0])
+        self.assertEqual(result["method"]["method_tab"]["selected_ultimate"], [30.0, 99])
+        self.assertEqual((self.datasets / "Selection@12.csv").read_text(encoding="utf-8"), "30.0\n99\n")
+        saved_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved_sidecar["status"], 0)
+        self.assertEqual(saved_sidecar["Precedents"], ["Paid"])
+
+    def test_review_needed_save_warns_and_still_saves_with_unreviewed_precedent(self) -> None:
+        self.write_selection()
+        self.write_source("Paid", [30, 40])
+        paid_path = self.sidecars / "Paid.json"
+        paid = json.loads(paid_path.read_text(encoding="utf-8"))
+        paid["source_kind"] = "dfm"
+        paid["method_type"] = "DFM"
+        paid["status"] = 2
+        self.write_json(paid_path, paid)
+
+        with (
+            mock.patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
+            mock.patch.object(calculated_dataset_service, "recalculate_dependents", return_value={"ok": True}),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            result = result_selection_service.save_result_selection(
+                "Project",
+                "Class",
+                self.method_payload(),
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["unreviewed_precedents"], ["Paid"])
+        self.assertEqual(result["unreviewed_precedent_count"], 1)
+        saved_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved_sidecar["status"], 0)
+
+    def test_review_needed_save_names_missing_revised_precedents(self) -> None:
+        self.write_selection()
+
+        with self.assertRaises(HTTPException) as raised:
+            result_selection_service.save_result_selection(
+                "Project",
+                "Class",
+                self.method_payload(),
+            )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertIn("are missing: Paid", str(raised.exception.detail))
+
     def test_missing_new_precedent_rolls_back_method_csv_and_sidecar(self) -> None:
         with (
             mock.patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
@@ -321,10 +396,48 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(saved["method_tab"]["selected_ultimate"], [30.0, 99])
         self.assertEqual((self.datasets / "Selection@12.csv").read_text(encoding="utf-8"), "30.0\n99\n")
         sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
-        self.assertEqual(sidecar["status"], 0)
+        self.assertEqual(sidecar["status"], 2)
+        self.assertEqual(
+            result["review_status_updates"],
+            [{"dataset_name": "Selection", "status": 2}],
+        )
 
-    def test_dataset_save_eagerly_refreshes_registered_result_selection(self) -> None:
+    def test_dataset_save_refreshes_transitive_result_selection_chain_but_keeps_review_alerts(self) -> None:
         self.write_selection()
+        first_sidecar_path = self.sidecars / "Selection.json"
+        first_sidecar = json.loads(first_sidecar_path.read_text(encoding="utf-8"))
+        first_sidecar["Dependents"] = ["Selection Two"]
+        self.write_json(first_sidecar_path, first_sidecar)
+
+        second = self.method_payload()
+        second["details_tab"]["name"] = "Selection Two"
+        second["method_tab"]["loaded_datasets"][0].update({
+            "name": "Selection",
+            "dataset_type": "Selected Ultimate",
+            "method_type": "Result Selection",
+            "source_kind": "result_selection",
+            "values": [10, 99],
+        })
+        second["method_tab"]["calculated_ultimate"] = [10, 99]
+        second["method_tab"]["selected_ultimate"] = [10, 99]
+        second["method_tab"]["ultimate_overrides"] = [None, None]
+        self.write_json(self.methods / "RS@Selection Two.json", second)
+        self.write_json(self.sidecars / "Selection Two.json", {
+            "dataset_name": "Selection Two",
+            "dataset_type": "Selected Ultimate",
+            "project_name": "Project",
+            "reserving_class": "Class",
+            "source_kind": "result_selection",
+            "method_type": "Result Selection",
+            "data_format": "Vector",
+            "period_length": 12,
+            "csv_file": "Selection Two@12.csv",
+            "status": 2,
+            "Precedents": ["Selection"],
+            "Dependents": [],
+            "audit_log": [],
+        })
+        (self.datasets / "Selection Two@12.csv").write_text("10\n99\n", encoding="utf-8")
         self.write_source("Paid", [10, 20])
         with (
             mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
@@ -353,13 +466,26 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertTrue(result["propagation_ok"], result)
         self.assertEqual(
             result["calculated_updates"]["result_selection_updates"]["updated"],
-            [{"dataset_name": "Selection"}],
+            [{"dataset_name": "Selection"}, {"dataset_name": "Selection Two"}],
         )
         saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["method_tab"]["loaded_datasets"][0]["values"], [30.0, 40.0])
         self.assertEqual(saved["method_tab"]["selected_ultimate"], [30.0, 99])
+        source_sidecar = json.loads((self.sidecars / "Paid.json").read_text(encoding="utf-8"))
+        self.assertEqual(source_sidecar["status"], 0)
         sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
-        self.assertEqual(sidecar["status"], 0)
+        self.assertEqual(sidecar["status"], 2)
+        downstream_method = json.loads(
+            (self.methods / "RS@Selection Two.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            downstream_method["method_tab"]["loaded_datasets"][0]["values"],
+            [30.0, 99.0],
+        )
+        downstream_sidecar = json.loads(
+            (self.sidecars / "Selection Two.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(downstream_sidecar["status"], 2)
 
     def test_source_update_uses_matching_aggregate_period_instead_of_native_rows(self) -> None:
         self.write_selection()
@@ -390,7 +516,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["method_tab"]["loaded_datasets"][0]["values"], [300.0, 400.0])
 
-    def test_review_needed_method_reloads_every_precedent_before_becoming_current(self) -> None:
+    def test_review_needed_method_reloads_every_precedent_but_waits_for_save_acknowledgement(self) -> None:
         self.write_selection()
         method_path = self.methods / "RS@Selection.json"
         method = json.loads(method_path.read_text(encoding="utf-8"))
@@ -420,7 +546,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(saved["method_tab"]["loaded_datasets"][0]["values"], [30.0, 50.0])
         self.assertEqual(saved["method_tab"]["loaded_datasets"][1]["values"], [50.0, 70.0])
         self.assertEqual(saved["method_tab"]["selected_ultimate"], [40.0, 60.0])
-        self.assertEqual(json.loads(sidecar_path.read_text(encoding="utf-8"))["status"], 0)
+        self.assertEqual(json.loads(sidecar_path.read_text(encoding="utf-8"))["status"], 2)
 
     def test_review_refresh_missing_precedent_sidecar_preserves_artifacts(self) -> None:
         self.write_selection()
@@ -836,7 +962,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(saved["method_tab"]["selected_ultimate"], [10.0, 99])
         self.assertEqual((self.datasets / "Selection@12.csv").read_text(encoding="utf-8"), "10.0\n99\n")
 
-    def test_unchanged_upstream_values_restore_current_status_without_rewriting_method(self) -> None:
+    def test_unchanged_upstream_values_keep_review_alert_without_rewriting_method(self) -> None:
         self.write_selection()
         self.write_source("Paid", [10, 20])
         downstream = self.method_payload()
@@ -892,9 +1018,9 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(method_path.read_bytes(), method_before)
         self.assertEqual(downstream_method_path.read_bytes(), downstream_method_before)
         saved_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved_sidecar["status"], 0)
+        self.assertEqual(saved_sidecar["status"], 2)
         downstream_sidecar = json.loads((self.sidecars / "Selection Two.json").read_text(encoding="utf-8"))
-        self.assertEqual(downstream_sidecar["status"], 0)
+        self.assertEqual(downstream_sidecar["status"], 2)
         rebuild_index.assert_called_once_with("Project", "Class")
 
     def test_result_selection_refresh_propagates_transitively_once(self) -> None:
@@ -1010,6 +1136,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             rebuild_index=False,
             allow_status_current=True,
             blocked_precedent_names=[],
+            finalize_method_review_status=False,
         )
 
     def test_calculated_graph_rebuild_preserves_registered_method_dependents(self) -> None:

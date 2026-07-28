@@ -68,6 +68,16 @@ function indexedDfmMethodName(...names) {
   return toText(match?.method_name || match?.name);
 }
 
+function indexedDatasetTypeName(datasetName) {
+  const key = normalizeLookupKey(datasetName);
+  if (!key) return "";
+  const rows = Array.isArray(state.cachedDatasetFilter?.instanceRows)
+    ? state.cachedDatasetFilter.instanceRows
+    : [];
+  const match = rows.find((item) => normalizeLookupKey(item?.name) === key);
+  return toText(match?.dataset_type);
+}
+
 function dependencyMessageNames(message = {}) {
   return [
     ...(Array.isArray(message.names) ? message.names : []),
@@ -673,7 +683,9 @@ function handleOpenDependentDataset(message, sourceWindow) {
     return true;
   }
   const openMethod = !!message?.openMethod || !!message?.open_method;
-  const datasetTypeName = toText(message?.datasetTypeName || message?.dataset_type_name) || datasetName;
+  const datasetTypeName = toText(message?.datasetTypeName || message?.dataset_type_name)
+    || indexedDatasetTypeName(datasetName)
+    || datasetName;
   const methodTypeMap = state.cachedDatasetFilter?.methodTypesByName instanceof Map
     ? state.cachedDatasetFilter.methodTypesByName
     : new Map();

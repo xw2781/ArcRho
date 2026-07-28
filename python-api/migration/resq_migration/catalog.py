@@ -6,6 +6,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from arcrho_api.bornhuetter_ferguson_contract import (
+    BF_METHOD_TYPE,
+    BF_SOURCE_KIND,
+)
 from arcrho_api.dataset_index_contract import (
     build_dataset_index_payload,
     index_update_lock,
@@ -26,14 +30,16 @@ from .core import (
     DATASET_INDEX_FILE_NAME,
     DATASET_INDEX_VERSION,
     DATASET_SIDECAR_DIR,
+    METHOD_STATUS_NEEDS_REVIEW,
+    METHOD_STATUS_OK,
     _add_cached_dataset_name,
     _bool_value,
     _cached_dataset_names_from_file,
     _clean_name,
     _dataset_sidecar_path_for_cached_csv,
     _has_legacy_length_only_suffix,
-    _is_result_selection_method_type,
     _normalize_cached_dataset_name,
+    normalize_method_status,
     _safe_read_json,
     _write_json,
 )
@@ -525,12 +531,19 @@ def _sidecar_status_timestamp(path: Path, meta: dict) -> float:
 
 def _sidecar_is_method(meta: dict) -> bool:
     source_kind = _clean_name(meta.get("source_kind")).lower()
-    if source_kind in {"dfm", "result_selection", BS_SR_SOURCE_KIND, BS_CRA_SOURCE_KIND}:
+    if source_kind in {
+        "dfm",
+        "result_selection",
+        BF_SOURCE_KIND,
+        BS_SR_SOURCE_KIND,
+        BS_CRA_SOURCE_KIND,
+    }:
         return True
     method_type = _clean_name(meta.get("method_type")).lower().replace("_", " ")
     return method_type in {
         "dfm",
         "result selection",
+        BF_METHOD_TYPE.lower(),
         BS_SR_METHOD_TYPE.lower(),
         BS_CRA_METHOD_TYPE.lower(),
     }
@@ -557,21 +570,16 @@ def _refresh_sidecar_statuses(sidecars: list[tuple[Path, dict]]) -> None:
         if not _sidecar_is_method(meta):
             continue
         current_ts = _sidecar_status_timestamp(path, meta)
-        status = 0
-        if current_ts > 0:
+        status = normalize_method_status(meta.get("status"))
+        if status == METHOD_STATUS_OK and current_ts > 0:
             for precedent_name in _entry_names(meta.get("Precedents")):
                 source = by_key.get(_canon_dataset_name(precedent_name))
                 if not source:
                     continue
                 source_path, source_meta = source
                 if _sidecar_status_timestamp(source_path, source_meta) > current_ts + 0.000001:
-                    status = 2
+                    status = METHOD_STATUS_NEEDS_REVIEW
                     break
-        else:
-            try:
-                status = 2 if int(meta.get("status")) == 2 else 0
-            except Exception:
-                status = 0
         meta["status"] = status
 
 
@@ -888,24 +896,11 @@ def refresh_sidecar_graphs_for_rc(rc_dir: Path) -> int:
         dataset_type = _clean_name(meta.get("dataset_type") or meta.get("dataset_name"))
         if not dataset_type:
             continue
-        preserve_method_precedents = (
-            _clean_name(meta.get("source_kind")).lower() == "result_selection"
-            or _clean_name(meta.get("source_kind")).lower() == "dfm"
-            or _is_result_selection_method_type(meta.get("method_type"))
-            or _clean_name(meta.get("source_kind")).lower() in {
-                BS_SR_SOURCE_KIND,
-                BS_CRA_SOURCE_KIND,
-            }
-            or _clean_name(meta.get("method_type")).lower() in {
-                BS_SR_METHOD_TYPE.lower(),
-                BS_CRA_METHOD_TYPE.lower(),
-            }
-        )
         _apply_sidecar_graph_meta(
             meta,
             dataset_type,
             rc_dir,
-            preserve_precedents=preserve_method_precedents,
+            preserve_precedents=_sidecar_is_method(meta),
             existing_dataset_keys=existing_dataset_keys,
             physical_inventory=physical_inventory,
             dataset_type_rows=dataset_type_rows,

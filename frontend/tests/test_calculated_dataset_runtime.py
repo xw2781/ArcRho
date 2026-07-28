@@ -126,6 +126,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             rebuild_index=False,
             allow_status_current=True,
             blocked_precedent_names=["Calculated A", "Calculated B"],
+            finalize_method_review_status=False,
         )
 
     def test_calculated_exception_does_not_abort_an_independent_branch(self) -> None:
@@ -180,6 +181,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             rebuild_index=False,
             allow_status_current=True,
             blocked_precedent_names=["Broken", "Broken Child"],
+            finalize_method_review_status=False,
         )
 
     def test_recalculation_preserves_registered_result_selection_dependent(self) -> None:

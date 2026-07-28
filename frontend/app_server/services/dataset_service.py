@@ -1696,6 +1696,11 @@ def _save_dataset_sidecar_impl(
                 method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION
             ),
         )
+    unreviewed_precedents = dataset_sidecar_status_service.review_needed_precedent_names(
+        p,
+        rc,
+        payload.get("Precedents"),
+    ) if method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE else []
     status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [ds])
 
     calculated_updates = None
@@ -1748,6 +1753,8 @@ def _save_dataset_sidecar_impl(
         "calculated_updates": calculated_updates,
         "propagation_ok": bool(calculated_updates and calculated_updates.get("ok")),
         "status_updates": status_updates,
+        "unreviewed_precedents": unreviewed_precedents,
+        "unreviewed_precedent_count": len(unreviewed_precedents),
         "index_ok": not index_error,
         "index_error": index_error,
     }

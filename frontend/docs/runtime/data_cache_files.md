@@ -12,6 +12,7 @@ Index cache/data files and refresh points used by app-server services.
 | `POST` | `/arcrho/headers/cache/clear` | `arcrho` | `clear_arcrho_headers_cache` |
 | `POST` | `/arcrho/tri/refresh` | `arcrho` | `arcrho_tri_refresh` |
 | `POST` | `/arcrho/vec/refresh` | `arcrho` | `arcrho_vec_refresh` |
+| `POST` | `/bornhuetter-ferguson/refresh` | `bornhuetter_ferguson` | `refresh_bornhuetter_ferguson` |
 | `POST` | `/dataset/cache/load` | `dataset` | `load_dataset_cache` |
 | `GET` | `/datasets/cached` | `dataset` | `list_cached_dataset_names` |
 | `POST` | `/datasets/cached/delete` | `dataset` | `delete_cached_datasets` |
@@ -64,6 +65,7 @@ Cache/lock constants detected:
 - Dataset Viewer and DFM store the local last selected Project Name in `%APPDATA%\ArcRho\local_project_prefs.json` so it can be checked and edited manually without opening the server project folder. The same file also stores `recentProjectNames`, capped to the last three project names selected from the project tree picker, which appear in the picker's blue virtual `Recent Projects` folder above real project folders, and `projectExplorer.expandedFolders`, which restores the Project Settings folder expansion state.
 - Reserving-class tree filter specs are stored in each project-user preference file under `projects/<project>/users/<windows-login>/preferences.json`; `%APPDATA%\ArcRho\cache\reserving_class_filter_spec.json` is obsolete and is no longer read or written.
 - Refresh endpoints can clear and rebuild cache files.
+- ResQ method imports persist the output object's review status in the dataset sidecar: vector-backed methods use `OutputVector.Status`, while Berquist-Sherman methods use `OutputTriangle.Status`. Status `2` remains Needs Review through graph refresh even when precedent timestamps are current; status `0` can still become Needs Review when ArcRho detects a newer precedent.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

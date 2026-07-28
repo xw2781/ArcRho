@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Result Selection methods that need review can now save after stale precedents are removed or refreshed.",
+  "details": [
+    "Review recovery validates only the revised precedent list and refreshes its stored values before saving.",
+    "Save errors identify each remaining missing or review-needed dataset."
+  ]
+}

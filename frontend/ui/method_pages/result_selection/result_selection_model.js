@@ -260,6 +260,11 @@
           } else {
             postStatus(`Result Selection saved: ${details.name}${aggregateCount ? ` (+${aggregateCount} aggregated)` : ""}`);
           }
+          await showMethodSaveReviewWarning(payload, {
+            instanceId: inst,
+            projectName: state.project,
+            reservingClass: state.reservingClass,
+          });
           return payload;
         } finally {
           finishPersistedMutation(mutation);

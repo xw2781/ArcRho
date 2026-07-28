@@ -1,0 +1,12 @@
+{
+  "type": "breaking",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson methods now require the self-contained v3 format and reopen without rereading every dependency.",
+  "details": [
+    "Earlier BF JSON formats are rejected and must be re-imported from their canonical source.",
+    "ResQ reserving-class imports now preserve each BF output sidecar's method-owned precedent list during graph refresh.",
+    "Managed upstream saves refresh affected BF method JSON and output artifacts before the next open.",
+    "BF method, output CSV variants, and sidecar metadata are published together with failure-safe rollback."
+  ]
+}

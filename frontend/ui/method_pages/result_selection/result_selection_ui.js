@@ -793,9 +793,7 @@
         if (els.ratioBasisAddButton) {
           const atLimit = names.length >= MAX_RATIO_BASIS_COUNT;
           els.ratioBasisAddButton.disabled = atLimit;
-          els.ratioBasisAddButton.title = atLimit
-            ? `A maximum of ${MAX_RATIO_BASIS_COUNT} ratio basis datasets is allowed.`
-            : "Add ratio basis";
+          els.ratioBasisAddButton.hidden = atLimit;
         }
       }
 

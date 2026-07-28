@@ -164,6 +164,35 @@ class ResqDfmV2Tests(unittest.TestCase):
         self.assertEqual(snapshot["origin_labels"], ["2020", "2021"])
         self.assertEqual(snapshot["revision"], "producer timestamp")
 
+    def test_dfm_output_status_comes_from_output_vector(self) -> None:
+        output_vector = types.SimpleNamespace(
+            Name="Paid Selected",
+            DatasetType=types.SimpleNamespace(
+                Name="Paid Ultimate",
+                DataFormat=1,
+                Category=types.SimpleNamespace(Name="Loss"),
+            ),
+            MethodType=1,
+            Status=2,
+            User="tester",
+            Created="2026-01-01T00:00:00",
+            Modified="2026-01-02T00:00:00",
+        )
+
+        class Dfm:
+            Name = "Paid DFM"
+            Notes = ""
+            OutputVector = output_vector
+
+            def Ultimates(self, index):
+                return [100, 200][index - 1]
+
+        payload = extractors.export_dfm_ultimate_vector(
+            Dfm(), ["2025", "2026"], 12, 12
+        )
+
+        self.assertEqual(payload["status"], 2)
+
     def test_migrated_benchmark_setting_stays_frozen(self) -> None:
         self.assertEqual(migration_dfm._infer_avg_settings("Benchmark")["base"], "benchmark")
         payload = _owned_payload()

@@ -50,6 +50,7 @@ class _Triangle:
     def __init__(self, name: str, method_type: int, base_value: float):
         self.Name = name
         self.MethodType = method_type
+        self.Status = 2
         self.DatasetType = _DatasetType()
         self._base_value = base_value
 
@@ -262,6 +263,7 @@ class ResqBerquistShermanMigrationTests(unittest.TestCase):
         self.assertEqual(sidecar["source_kind"], "berquist_sherman_sr")
         self.assertEqual(sidecar["method_type"], "B&S Settlement Rate Adjustment")
         self.assertEqual(sidecar["method_type_code"], 8)
+        self.assertEqual(sidecar["status"], 2)
         self.assertEqual(sidecar["notes"], "Settlement rate migration note")
         self.assertEqual(
             sidecar["Precedents"],

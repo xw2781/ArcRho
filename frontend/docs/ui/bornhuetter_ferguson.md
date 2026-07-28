@@ -5,14 +5,11 @@ Bornhuetter Ferguson method page for producing a final ultimate vector from late
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.bornhuetter_ferguson.entry_points -->
-- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260725a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260726a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
-- `/dataset/sidecar/load`
-- `/dataset/sidecar/save`
 - `/datasets/cached?${qs.toString()}`
-- `/workspace_paths`
 
 Detected `arcrho:*` message types in key JS files:
 - `arcrho:bf-tab-changed`
@@ -41,22 +38,22 @@ Detected `arcrho:*` message types in key JS files:
 - The Details tab stacks the object fields above the source fields in two full-width panels without separate panel-header bars. Its contents use the shared Details-page typography: Arial-first, 12px black labels and controls, literal `Label : ` punctuation, and a 1px label-to-control gap.
 - The source fields are labeled `Latest`, `Development Pattern`, and `Prior Vector`; their persisted method fields remain `latest_dataset`, `dfm_dataset`, and `prior_datasets`.
 - Selected Prior Vector entries use a full-width 30px stacked row with the standard outer frame and pale-blue hover/focus treatment. The Prior Vector picker height grows in 30px increments, with a separate `+ Add datasets` row after the entries. The inline SVG close control appears when its row is hovered or receives keyboard focus; clicking an entry opens its dataset through the Project Instance related-dataset route, while clicking the close control removes it. Dropping a dragged entry outside the Prior Vector box or choosing Delete from its right-click context menu also removes it.
-- Saves method JSON to `methods/BF@<Name>.json`.
-- Saves the output vector to `datasets/<Name>@<OriginLength>.csv` and writes coarser aggregated vector CSV variants when possible.
-- Saves output sidecar metadata through `/dataset/sidecar/save` with `source_kind: "bornhuetter_ferguson"` and `method_type: "Bornhuetter Ferguson"`.
-- Audit Log loads the output dataset sidecar's canonical `audit_log` on tab activation and after save, then renders it newest first with the shared Dataset/BF/RS/DFM audit table and loading/error/empty states. This read-only history is not part of BF dirty-state tracking; the method JSON keeps only an empty structural `audit_log_tab` group.
+- Loads a saved BF through `/bornhuetter-ferguson/load`, which reads only `methods/BF@<Name>.json` and the output sidecar in parallel. The saved method snapshot hydrates Details, Method, and Chart; the same aggregate response hydrates Notes and Audit without generic sidecar graph enrichment.
+- Saves through `/bornhuetter-ferguson/save`, which publishes `methods/BF@<Name>.json`, the native `datasets/<Name>@<OriginLength>.csv`, any supported coarser CSV variants, and the output sidecar as one server-owned transaction with the sidecar written last.
+- The output sidecar keeps `source_kind: "bornhuetter_ferguson"`, `method_type: "Bornhuetter Ferguson"`, Notes, Audit, status, and dependency graph fields. Audit renders newest first with the shared Dataset/BF/RS/DFM table and is not part of BF dirty-state tracking; the method JSON keeps only an empty structural `audit_log_tab` group.
 - Uses Project Instance `arcrho:dataset-dirty`, `arcrho:dataset-save`, `arcrho:dependency-source-preview`, `arcrho:dependency-source-cleared`, `arcrho:project-instance-refresh-datasets`, `arcrho:project-instance-open-dependent-dataset`, and `arcrho:bf-tab-changed` messages.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - The canonical method type label is exactly `Bornhuetter Ferguson` in UI, method JSON, and sidecar metadata.
-- V2 inputs are one latest triangle, one DFM output vector, and one or more prior ultimate vectors with non-negative row weights. Existing v1 single-prior JSON loads as one source with default row weights of `1`.
-- Existing or migrated BF method JSON that stores source configuration is hydrated on open by loading those sources and recomputing the Method table.
-- When opened inside Project Instance, BF reuses the parent page's already-loaded dataset-index snapshot for its initial source inventory. Explicit refreshes and post-save refreshes still request the authoritative server index.
-- Open BF windows consume matching Project Instance live dependency previews for Latest, Development Pattern, and Prior Vector sources. Dirty upstream Dataset, DFM, or method changes temporarily replace the matching in-memory source vector and immediately recompute Percentage Developed, Selected Prior, New Ultimate, and the Chart without changing the BF window's own dirty state. When the upstream preview is cleared, saved, or discarded, BF reloads that source from disk while preserving any other active dependency previews.
+- V3 inputs are one latest triangle, one DFM output vector, and one or more prior ultimate vectors with non-negative row weights. V3 is the only supported self-contained format; earlier BF files must be re-imported from their canonical source.
+- A current saved BF opens from its method JSON and own raw sidecar only. It does not load the reserving-class index, Dataset Types, project headers, source sidecars, source CSVs, or dependency graph details. Dataset inventory is loaded lazily only for a new method or an explicit source picker.
+- Open BF windows consume matching Project Instance live dependency previews for Latest, Development Pattern, and Prior Vector sources. Dirty upstream Dataset, DFM, or method changes temporarily replace the matching in-memory source vector and immediately recompute Percentage Developed, Selected Prior, New Ultimate, and the Chart without changing the BF window's own dirty state. When a preview is cleared, saved, or discarded, BF restores the aggregate persisted BF snapshot and reapplies any other active previews instead of reopening each precedent.
+- Durable ArcRho precedent saves eagerly refresh registered BF method JSON, output CSV variants, and sidecar while preserving row weights and display settings. The refreshed BF remains Review Needed until its own explicit Save; Refresh alone does not acknowledge the alert. Every Save starts downstream propagation even when the publication values are unchanged, but a valid v3 Save uses its embedded source snapshots rather than reopening precedents to validate duplicate label metadata. Readable precedents that remain Review Needed do not block Save; after the save commits, a page-local message box reports how many have not been reviewed. A failed source read, geometry check, calculation, or publication keeps the last valid method/output and reports the refresh failure separately.
+- The post-save review warning lists every unreviewed precedent by name. Each name is a keyboard-focusable link that opens its related method window when the dataset is method-backed, or its Dataset Viewer otherwise, while keeping the saved BF unchanged.
 - Migrated BF method origin labels come from the ResQ BF method `OriginLabel(OriginIndex=...)` values and are preserved when source data is refreshed.
-- BF accepts only consecutive origin labels that match the selected Origin Length and, when source rows are loaded, the source row count. It uses valid method/sidecar labels or ArcRho project headers; if none can be resolved, the Method grid leaves labels blank, reports an Origin Start Date error, and blocks saving instead of manufacturing labels from a default year.
+- BF accepts only consecutive method origin labels that match the selected Origin Length and, when source rows are refreshed, the source row count. The persisted BF method axis is canonical for refresh: CSV values are mapped to it without consulting precedent-sidecar `origin_labels`. New methods use ArcRho project headers; if no valid labels can be resolved, the Method grid leaves labels blank, reports an Origin Start Date error, and blocks saving instead of manufacturing labels from a default year.
 - Latest values come from the latest diagonal of the selected actual triangle.
 - Percentage Developed is derived as `Latest / DFM Ultimate`; blank values, non-numeric values, and zero DFM ultimate values produce blank percentage-developed values.
 - The Method grid follows the compact ResQ BF presentation with Accident Year, Latest, Percentage Developed, one dynamic prior column and optional Weight column per selected source, Selected Prior, New Ultimate, and a selectable Total row. It is the reference consumer of `ui/shared/components/spreadsheet/spreadsheet_table.css`, which centralizes the standard grid border, header/label fills, cell dimensions, selection palette, and anchor treatment used by Dataset and other spreadsheet-style tables; BF keeps its semantic source, Weight, and result colors as local overrides. Its range normalization, selection painting, anchor/label state, movement, context-cell preparation, TSV generation, and clipboard copy use the shared `ui/shared/components/spreadsheet/spreadsheet_table.js` controller, while BF retains its weight-editing and recalculation adapter. Missing data cells display a muted gray `null` placeholder without changing the underlying empty value; structural Total-row cells remain blank. DFM Ultimate remains calculation state but is not shown separately.
@@ -70,11 +67,13 @@ Detected `arcrho:*` message types in key JS files:
 ## Common Change Tasks
 <!-- MANUAL:BEGIN -->
 1. Change BF calculation behavior: update `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js` and keep `frontend/docs/plans/bornhuetter_ferguson_method_plan.md` in sync.
-2. Change BF routing: update Project Instance dataset table, window, and message modules together.
+2. Change BF persistence or refresh behavior: update the canonical Python BF contract, app-server BF service, frontend payload adapter, migration producer, exact parity tests, and app-server domain documentation together.
+3. Change BF routing: update Project Instance dataset table, window, and message modules together.
 <!-- MANUAL:END -->
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - BF output depends on source vector/triangle period alignment; mismatched source periods can produce blank or misaligned rows.
 - The persisted method label must remain `Bornhuetter Ferguson` so Project Instance and dataset dependency chips route to the BF page.
+- Out-of-band source-file edits bypass the managed dependency event and require an ArcRho save or explicit repair before a BF can be refreshed automatically.
 <!-- MANUAL:END -->

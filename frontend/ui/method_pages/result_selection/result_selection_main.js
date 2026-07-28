@@ -18,6 +18,7 @@ import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selection/result_selection_rpc_bridge_client.js?v=20260726a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
 import {
@@ -225,6 +226,7 @@ const ctx = {
   wireTabPopoutWindows,
   notesController: rsNotesController,
   createSpreadsheetTableController,
+  showMethodSaveReviewWarning,
   startResultSelectionRpcBridgeSync,
   readProjectInstanceDatasetSnapshot,
   resultSelectionUpdateContexts,

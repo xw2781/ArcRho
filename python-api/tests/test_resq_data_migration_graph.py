@@ -247,6 +247,50 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertNotIn("cumulative", payload)
         self.assertNotIn("calendar", payload)
 
+    def test_result_selection_output_vector_status_is_persisted(self) -> None:
+        class OutputVector:
+            Name = "Current Selection"
+            OriginCount = 1
+            PeriodLength = 12
+            MethodType = 4
+            Status = 2
+            User = "tester"
+            Created = "2026-01-01T00:00:00"
+            Modified = "2026-01-02T00:00:00"
+            Formula = ""
+            DatasetType = type(
+                "DatasetType",
+                (),
+                {
+                    "Name": "Net Ultimate",
+                    "DataFormat": 1,
+                    "Category": type("Category", (), {"Name": "Loss"})(),
+                },
+            )()
+
+            def OriginLabel(self, _index):
+                return "2026"
+
+            def ValuesByIndex(self, _index):
+                return 123.0
+
+        payload = self.extractors.export_vector(OutputVector())
+        payload["precedents"] = ["DFM Ultimate"]
+        self.extractors.write_vector_export(payload, r"Auto\PP", self.rc_dir)
+
+        sidecar = json.loads(
+            (self.sidecars_dir / "Current Selection.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(payload["status"], 2)
+        self.assertEqual(sidecar["status"], 2)
+
+        index_path = self.catalog.rebuild_dataset_instance_index(
+            "Demo", r"Auto\PP", self.rc_dir
+        )
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        item = next(row for row in index["files"] if row["name"] == "Current Selection")
+        self.assertEqual(item["status"], 2)
+
     def test_dataset_instance_index_uses_only_reserving_class_metadata(self) -> None:
         config_dir = self.root / "config"
         config_dir.mkdir()
@@ -373,6 +417,68 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(payload["Precedents"], ["Paid Loss"])
         self.assertEqual(payload["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
 
+    def test_refresh_preserves_bf_precedents_and_refreshes_method_status(self) -> None:
+        (self.sidecars_dir / "Paid Loss.json").write_text(json.dumps({
+            "dataset_name": "Paid Loss",
+            "dataset_type": "Paid Loss",
+            "source_kind": "engine",
+            "updated_at": "2026-07-02T00:00:00Z",
+        }), encoding="utf-8")
+        path = self.sidecars_dir / "Net Ultimate.json"
+        precedents = [
+            {"dataset_type_name": "Paid Loss"},
+            {"dataset_type_name": "Selected DFM"},
+            {"dataset_type_name": "Prior Ultimate"},
+        ]
+        path.write_text(json.dumps({
+            "dataset_name": "Net Ultimate",
+            "dataset_type": "Net Ultimate",
+            "source_kind": "bornhuetter_ferguson",
+            "method_type": "Bornhuetter Ferguson",
+            "updated_at": "2026-07-01T00:00:00Z",
+            "status": 0,
+            "Precedents": precedents,
+            "Dependents": [],
+        }), encoding="utf-8")
+        (self.sidecars_dir / "Loaded Ultimate.json").write_text(json.dumps({
+            "dataset_name": "Loaded Ultimate",
+            "dataset_type": "Loaded Ultimate",
+            "source_kind": "calculated",
+            "formula": "\"Net Ultimate\" * 1.1",
+        }), encoding="utf-8")
+
+        updated = self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(updated, 1)
+        self.assertEqual(payload["Precedents"], precedents)
+        self.assertEqual(payload["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
+        self.assertEqual(payload["status"], 2)
+
+    def test_refresh_preserves_imported_needs_review_status_when_precedents_are_current(self) -> None:
+        (self.sidecars_dir / "Paid Loss.json").write_text(json.dumps({
+            "dataset_name": "Paid Loss",
+            "dataset_type": "Paid Loss",
+            "source_kind": "engine",
+            "updated_at": "2026-07-01T00:00:00Z",
+        }), encoding="utf-8")
+        path = self.sidecars_dir / "Current Selection.json"
+        path.write_text(json.dumps({
+            "dataset_name": "Current Selection",
+            "dataset_type": "Net Ultimate",
+            "source_kind": "result_selection",
+            "method_type": "Result Selection",
+            "updated_at": "2026-07-02T00:00:00Z",
+            "status": 2,
+            "Precedents": ["Paid Loss"],
+            "Dependents": [],
+        }), encoding="utf-8")
+
+        self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["status"], 2)
+
     def test_refresh_adds_result_selection_to_precedent_dependents(self) -> None:
         source_path = self.sidecars_dir / "DFM Ultimate.json"
         source_path.write_text(json.dumps({
@@ -489,6 +595,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         class OutputVector:
             Name = "Selected Ultimate"
             Modified = "2026-01-01T00:00:00"
+            Status = 2
 
         OutputVector.DatasetType = OutputDatasetType()
 
@@ -539,6 +646,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         payload = self.module.export_result_selection(ResultSelection())
 
+        self.assertEqual(payload["_sidecar_status"], 2)
         self.assertEqual(payload["details_tab"]["ratio_basis_datasets"], ["Earned Premium"])
         self.assertEqual(payload["details_tab"]["active_ratio_basis_dataset"], "Earned Premium")
         self.assertNotIn("ratio_basis_dataset", payload["details_tab"])

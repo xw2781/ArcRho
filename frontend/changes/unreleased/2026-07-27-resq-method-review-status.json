@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "ResQ import",
+  "audience": "user",
+  "summary": "ResQ method review status now remains accurate after import into ArcRho.",
+  "details": [
+    "DFM, Bornhuetter Ferguson, and Result Selection imports use OutputVector.Status.",
+    "Berquist-Sherman imports use OutputTriangle.Status.",
+    "Macro worker threads initialize Windows COM before connecting to ResQ so review status is evaluated correctly.",
+    "Imported Needs Review status is preserved while ArcRho also checks for newer precedents."
+  ]
+}

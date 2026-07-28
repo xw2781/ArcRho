@@ -79,13 +79,13 @@ Ratio Basis values are aligned by exact origin label. A missing or duplicate req
 
 ## Refresh and Publication
 
-ArcRho-managed durable precedent saves refresh affected DFM snapshots and calculations. In the desktop app-server workflow, DFM refresh runs before calculated datasets and Result Selection descendants. Ratio-Basis-only changes update the embedded basis snapshot but do not rewrite ultimate CSV variants or cascade when the ultimate vector is unchanged.
+ArcRho-managed durable precedent saves refresh affected DFM snapshots and calculations. In the desktop app-server workflow, DFM refresh runs before calculated datasets and Result Selection descendants. After the refresh wave, the DFM remains Review Needed until its own explicit Save; Refresh alone does not acknowledge the alert. Every explicit Save starts downstream propagation even when the DFM publication values are unchanged.
 
 Standalone public-Python and ResQ-migration execution refreshes DFM descendants but does not host the app server's calculated-dataset or Result Selection evaluators. If propagation reaches either method type, that branch is marked Review Needed and a warning is returned so it can be recalculated through the app-server workflow.
 
-Publication runs under the reserving-class lock and uses staged files, revision checks, rollback, unchanged-file suppression, and sidecar-last replacement. A failed branch retains its last valid publication, becomes Review Needed, and blocks only its descendants. The upstream save remains successful and reports the propagation warning.
+Publication runs under the reserving-class lock and uses staged files, revision checks, rollback, unchanged-file suppression, and sidecar-last replacement. A failed branch retains its last valid publication and blocks only its descendants. The upstream save remains successful and reports the propagation warning separately from the human-review status.
 
-Automatic refresh adds an Audit row only when the ultimate publication changes. Same-output and basis-only refreshes update freshness/status without Audit noise.
+Automatic refresh adds an Audit row only when the ultimate publication changes. Same-output and basis-only refreshes update freshness without Audit noise and do not clear Review Needed.
 
 ## Excel Freshness
 

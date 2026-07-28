@@ -4,7 +4,6 @@ import {
   validateDatasetOriginLabels,
 } from "/ui/shared/dataset/dataset_origin_labels.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
-import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/utils/filename.js";
 import {
   applyTabbedPageSaveBar,
   createTabbedPage,
@@ -21,12 +20,22 @@ import {
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js?v=20260722a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
+import {
+  BORN_HUETTER_FERGUSON_METHOD_TYPE,
+  buildBornhuetterFergusonMethodPayload,
+  isBornhuetterFergusonV3Method,
+  rebaseBornhuetterFergusonWeightsByOriginLabel,
+  roundBornhuetterFergusonWholeNumber,
+} from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_json_contract.js?v=20260726a";
+import {
+  loadBornhuetterFergusonMethod,
+  saveBornhuetterFergusonMethod,
+} from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_method_api.js?v=20260726a";
 
-const BF_METHOD_TYPE = "Bornhuetter Ferguson";
-const BF_SOURCE_KIND = "bornhuetter_ferguson";
-const BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2";
+const BF_METHOD_TYPE = BORN_HUETTER_FERGUSON_METHOD_TYPE;
 const DEFAULT_ORIGIN_LENGTH = 12;
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
 const BF_TABS = [
@@ -57,6 +66,12 @@ const state = {
   showWeights: true,
   showEffectiveWeights: false,
   statisticDecimalPlaces: 1,
+  datasetCategory: text(params.get("category")),
+  methodMetadata: {},
+  ownedRevision: "",
+  derivedRevision: "",
+  publicationRevision: "",
+  methodLastModified: new Date().toISOString(),
   methodHighlight: null,
   methodHighlightDragging: false,
   weightEditSession: null,
@@ -67,7 +82,7 @@ let isDirty = false;
 let programmatic = false;
 let tabbedPage = null;
 let bfChart = null;
-let sidecarLoadSequence = 0;
+let aggregateLoadSequence = 0;
 const bfCloseConfirm = createPageCloseConfirm({ subject: BF_METHOD_TYPE });
 const activeDependencyPreviews = new Map();
 const bfNotesController = mountNotesTab({
@@ -224,6 +239,7 @@ function getDetails() {
   return {
     name: text(els.nameInput?.value),
     outputType: text(els.outputTypeInput?.value),
+    datasetCategory: state.datasetCategory,
     originLength: validOriginLength(els.originLengthInput?.value),
     latestDataset: text(els.latestInput?.value),
     dfmDataset: text(els.dfmInput?.value),
@@ -233,11 +249,6 @@ function getDetails() {
   };
 }
 
-function hasRequiredSourceConfig() {
-  const details = getDetails();
-  return !!(details.latestDataset && details.dfmDataset && details.priorDatasets.length);
-}
-
 function withProgrammatic(fn) {
   programmatic = true;
   try {
@@ -245,19 +256,6 @@ function withProgrammatic(fn) {
   } finally {
     programmatic = false;
   }
-}
-
-function getHostApi() {
-  if (window.ADAHost) return window.ADAHost;
-  try {
-    let w = window.parent;
-    while (w && w !== window) {
-      if (w.ADAHost) return w.ADAHost;
-      if (w === w.parent) break;
-      w = w.parent;
-    }
-  } catch {}
-  return null;
 }
 
 function postStatus(message, tone = "") {
@@ -292,72 +290,6 @@ function syncTitles() {
   document.title = title;
   if (els.title) els.title.textContent = title;
   if (els.subtitle) els.subtitle.textContent = [state.project, state.reservingClass].filter(Boolean).join(" / ");
-}
-
-async function getWorkspacePathsConfig() {
-  const res = await fetch("/workspace_paths", { cache: "no-store" });
-  if (!res.ok) throw new Error(`Workspace paths failed (${res.status}).`);
-  const payload = await res.json().catch(() => ({}));
-  const config = payload?.config && typeof payload.config === "object" ? payload.config : {};
-  const paths = config.paths && typeof config.paths === "object" ? config.paths : {};
-  return {
-    root: text(config.workspace_root) || "E:\\ArcRho",
-    projectsDir: text(paths.projects_dir) || "projects",
-  };
-}
-
-function isAbsolutePath(value) {
-  return /^[A-Za-z]:[\\/]/.test(text(value)) || /^\\\\/.test(text(value));
-}
-
-function joinPath(...parts) {
-  return parts
-    .map((part, index) => {
-      const value = text(part);
-      if (!value) return "";
-      return index === 0 ? value.replace(/[\\/]+$/g, "") : value.replace(/^[\\/]+|[\\/]+$/g, "");
-    })
-    .filter(Boolean)
-    .join("\\");
-}
-
-async function getProjectDataDir() {
-  const cfg = await getWorkspacePathsConfig();
-  const projectsRoot = isAbsolutePath(cfg.projectsDir) ? cfg.projectsDir : joinPath(cfg.root, cfg.projectsDir);
-  return joinPath(
-    projectsRoot,
-    sanitizeFileNamePart(state.project, "UnknownProject"),
-    "data",
-    sanitizeDataFolderPart(state.reservingClass, "ReservingClass"),
-  );
-}
-
-async function getMethodsDir() {
-  return joinPath(await getProjectDataDir(), "methods");
-}
-
-async function getDatasetDir() {
-  return joinPath(await getProjectDataDir(), "datasets");
-}
-
-function getMethodFilename() {
-  return `BF@${sanitizeFileNamePart(getDetails().name || BF_METHOD_TYPE, "Name")}.json`;
-}
-
-async function getMethodPath() {
-  return `${await getMethodsDir()}\\${getMethodFilename()}`;
-}
-
-function getCsvFilenameForLength(originLength) {
-  return `${sanitizeFileNamePart(getDetails().name || BF_METHOD_TYPE, "Dataset")}@${validOriginLength(originLength)}.csv`;
-}
-
-async function getCsvPath() {
-  return `${await getDatasetDir()}\\${getCsvFilenameForLength(getDetails().originLength)}`;
-}
-
-function vectorCsv(values) {
-  return `${(Array.isArray(values) ? values : []).map((v) => v == null ? "" : String(v)).join("\n")}\n`;
 }
 
 function displayNumber(value, decimals = 0) {
@@ -622,33 +554,12 @@ function applyDependencySourcePreview(message = {}) {
   return true;
 }
 
-async function reloadDependencyRolesFromDisk(roles, { refreshCache = false } = {}) {
-  if (!Array.isArray(roles) || !roles.length) return false;
-  if (refreshCache) await loadCachedRows(true).catch(() => {});
-  const details = getDetails();
-  const loaded = await Promise.all(roles.map(async (role) => {
-    const payload = await loadConfiguredSourcePayload(role.name, details);
-    return {
-      role,
-      values: role.kind === "latest" ? latestDiagonal(payload?.values) : vectorValues(payload?.values),
-    };
-  }));
-  for (const item of loaded) applyDependencyValuesToRole(item.role, item.values);
-  reapplyActiveDependencyPreviews();
-  calculateOutputs();
-  renderMethodGrid();
-  return true;
-}
-
 async function clearDependencySourcePreview(message = {}) {
   const roles = dependencyRolesMatchingMessage(message)
     .filter((role) => activeDependencyPreviews.has(role.key));
   if (!roles.length) return false;
   for (const role of roles) activeDependencyPreviews.delete(role.key);
-  const reason = norm(message.reason);
-  return reloadDependencyRolesFromDisk(roles, {
-    refreshCache: reason === "save" || reason === "clean",
-  });
+  return reloadPersistedBornhuetterFerguson({ preserveOwnedState: isDirty });
 }
 
 function renderPriorSourceList() {
@@ -795,7 +706,7 @@ function calculateOutputs() {
       ultimate = selectedPrior === null
         ? latest
         : pct !== null
-          ? Math.round(latest + (1 - pct) * selectedPrior)
+          ? roundBornhuetterFergusonWholeNumber(latest + (1 - pct) * selectedPrior)
           : null;
     }
     state.percentDevelopedValues.push(pct);
@@ -1289,58 +1200,32 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function roundJsonNumber(value) {
-  const n = numberOrNull(value);
-  if (n === null) return null;
-  return Math.round(n * 1000000) / 1000000;
-}
-
-function roundJsonVector(values) {
-  return Array.isArray(values) ? values.map(roundJsonNumber) : [];
-}
-
-function buildPayload() {
+function buildPayload(options = {}) {
   const details = getDetails();
   const count = rowCount();
-  return {
-    json_format: BF_JSON_FORMAT,
-    details_tab: {
-      name: details.name,
-      method_type: BF_METHOD_TYPE,
-      output_type: details.outputType,
-      origin_length: details.originLength,
-      statistic_decimal_places: details.statisticDecimalPlaces,
-    },
-    method_tab: {
-      latest_dataset: details.latestDataset,
-      dfm_dataset: details.dfmDataset,
-      show_weights: details.showWeights,
-      prior_datasets: state.priorSources.map((source) => ({
-        name: source.name,
-        values: roundJsonVector(Array.from({ length: count }, (_, index) => source.values?.[index] ?? null)),
-        weights: roundJsonVector(normalizePriorWeights(source.weights, count, 1)),
-      })),
-      origin_labels: Array.from({ length: count }, (_, i) => originLabel(i)),
-      latest_values: roundJsonVector(state.latestValues),
-      dfm_ultimate_values: roundJsonVector(state.dfmUltimateValues),
-      percentage_developed: roundJsonVector(state.percentDevelopedValues),
-      selected_prior_values: roundJsonVector(state.selectedPriorValues),
-      new_ultimate: roundJsonVector(state.newUltimateValues),
-    },
-    chart_tab: {},
-    audit_log_tab: {},
-    method_metadata: {
-      method_type: BF_METHOD_TYPE,
-      source_kind: BF_SOURCE_KIND,
-      last_modified: new Date().toISOString(),
-    },
-  };
+  return buildBornhuetterFergusonMethodPayload({
+    details,
+    originLabels: Array.from({ length: count }, (_, index) => originLabel(index)),
+    latestValues: state.latestValues,
+    dfmUltimateValues: state.dfmUltimateValues,
+    priorSources: state.priorSources,
+    percentageDeveloped: state.percentDevelopedValues,
+    selectedPriorValues: state.selectedPriorValues,
+    newUltimate: state.newUltimateValues,
+    showWeights: state.showWeights,
+    showEffectiveWeights: state.showEffectiveWeights,
+    methodMetadata: state.methodMetadata,
+    lastModified: text(options.lastModified) || state.methodLastModified,
+  });
 }
 
 async function applyPayload(payload) {
   const data = payload && typeof payload === "object" ? payload : {};
   const details = data.details_tab || {};
   const method = data.method_tab || {};
+  const metadata = data.method_metadata && typeof data.method_metadata === "object"
+    ? data.method_metadata
+    : {};
   withProgrammatic(() => {
     els.nameInput.value = text(details.name || els.nameInput.value);
     els.outputTypeInput.value = text(details.output_type || els.outputTypeInput.value);
@@ -1350,23 +1235,19 @@ async function applyPayload(payload) {
   });
   syncOriginLengthControl();
   state.statisticDecimalPlaces = statisticDecimalPlaces(details.statistic_decimal_places, 1);
+  state.datasetCategory = text(details.dataset_category);
   state.showWeights = method.show_weights !== false;
+  state.showEffectiveWeights = method.show_effective_weights === true;
   state.originLabels = Array.isArray(method.origin_labels) ? method.origin_labels.map(String) : [];
   state.latestValues = Array.isArray(method.latest_values) ? method.latest_values.map(numberOrNull) : [];
   state.dfmUltimateValues = Array.isArray(method.dfm_ultimate_values) ? method.dfm_ultimate_values.map(numberOrNull) : [];
   state.percentDevelopedValues = Array.isArray(method.percentage_developed) ? method.percentage_developed.map(numberOrNull) : [];
-  const storedPriorSources = Array.isArray(method.prior_datasets)
-    ? method.prior_datasets
-    : text(method.prior_dataset)
-      ? [{
-          name: text(method.prior_dataset),
-          values: Array.isArray(method.prior_ultimate_values) ? method.prior_ultimate_values : [],
-          weights: [],
-        }]
-      : [];
+  const storedPriorSources = Array.isArray(method.prior_datasets) ? method.prior_datasets : [];
   state.priorSources = storedPriorSources.map((source) => normalizePriorSource(source, rowCount())).filter((source) => source.name);
   state.selectedPriorValues = Array.isArray(method.selected_prior_values) ? method.selected_prior_values.map(numberOrNull) : [];
   state.newUltimateValues = Array.isArray(method.new_ultimate) ? method.new_ultimate.map(numberOrNull) : [];
+  state.methodMetadata = { ...metadata };
+  state.methodLastModified = text(metadata.last_modified) || state.methodLastModified;
   syncTitles();
   syncFormattingControls();
   renderPriorSourceList();
@@ -1384,214 +1265,158 @@ function markClean() {
   postDirty(false, true);
 }
 
+function applyOutputSidecar(sidecar, options = {}) {
+  const payload = sidecar && typeof sidecar === "object" ? sidecar : {};
+  if (payload.exists === false) {
+    state.sidecarOriginLabels = [];
+    if (!options.preserveNotes) setNotesText("");
+    auditLogView.clear();
+    return false;
+  }
+  state.sidecarOriginLabels = Array.isArray(payload.origin_labels)
+    ? payload.origin_labels.map(String)
+    : [];
+  if (!options.preserveNotes) setNotesText(String(payload.notes ?? ""));
+  auditLogView.render(payload.audit_log);
+  return true;
+}
+
+function applyAggregateRevisions(result, method = {}) {
+  const metadata = method?.method_metadata && typeof method.method_metadata === "object"
+    ? method.method_metadata
+    : {};
+  state.ownedRevision = text(result?.owned_revision || metadata.owned_revision);
+  state.derivedRevision = text(result?.derived_revision || metadata.derived_revision);
+  state.publicationRevision = text(result?.publication_revision || metadata.publication_revision);
+}
+
+function captureLocalOwnedState() {
+  return {
+    details: getDetails(),
+    originLabels: state.originLabels.slice(),
+    latestValues: state.latestValues.slice(),
+    dfmUltimateValues: state.dfmUltimateValues.slice(),
+    priorSources: state.priorSources.map((source) => ({
+      name: source.name,
+      values: Array.isArray(source.values) ? source.values.slice() : [],
+      weights: Array.isArray(source.weights) ? source.weights.slice() : [],
+    })),
+    showWeights: state.showWeights,
+    showEffectiveWeights: state.showEffectiveWeights,
+    statisticDecimalPlaces: state.statisticDecimalPlaces,
+    notes: els.notesInput?.value || "",
+  };
+}
+
+function restoreLocalOwnedState(local, persisted) {
+  if (!local || !persisted) return;
+  const localDetails = local.details || {};
+  const persistedDetails = persisted.details || {};
+  withProgrammatic(() => {
+    els.nameInput.value = text(localDetails.name);
+    els.outputTypeInput.value = text(localDetails.outputType);
+    els.originLengthInput.value = String(validOriginLength(localDetails.originLength));
+    els.latestInput.value = text(localDetails.latestDataset);
+    els.dfmInput.value = text(localDetails.dfmDataset);
+  });
+  state.showWeights = local.showWeights !== false;
+  state.showEffectiveWeights = local.showEffectiveWeights === true;
+  state.statisticDecimalPlaces = statisticDecimalPlaces(local.statisticDecimalPlaces, 1);
+  state.datasetCategory = text(localDetails.datasetCategory);
+  state.latestValues = norm(localDetails.latestDataset) === norm(persistedDetails.latestDataset)
+    ? persisted.latestValues.slice()
+    : local.latestValues.slice();
+  state.dfmUltimateValues = norm(localDetails.dfmDataset) === norm(persistedDetails.dfmDataset)
+    ? persisted.dfmUltimateValues.slice()
+    : local.dfmUltimateValues.slice();
+  const persistedPriors = new Map(
+    persisted.priorSources.map((source) => [norm(source.name), source]),
+  );
+  const usePersistedOriginLabels = validOriginLength(localDetails.originLength)
+    === validOriginLength(persistedDetails.originLength)
+    && persisted.originLabels.length > 0;
+  const nextOriginLabels = usePersistedOriginLabels
+    ? persisted.originLabels.slice()
+    : local.originLabels.slice();
+  state.priorSources = local.priorSources.map((source) => ({
+    name: source.name,
+    values: persistedPriors.get(norm(source.name))?.values?.slice() || source.values.slice(),
+    weights: usePersistedOriginLabels
+      ? rebaseBornhuetterFergusonWeightsByOriginLabel({
+          localOriginLabels: local.originLabels,
+          localWeights: source.weights,
+          persistedOriginLabels: nextOriginLabels,
+          persistedWeights: persistedPriors.get(norm(source.name))?.weights,
+        })
+      : source.weights.slice(),
+  }));
+  state.originLabels = nextOriginLabels;
+  setNotesText(local.notes);
+  syncOriginLengthControl();
+  syncTitles();
+  syncFormattingControls();
+  renderPriorSourceList();
+  calculateOutputs();
+  renderMethodGrid();
+}
+
+async function applyPersistedAggregate(result, options = {}) {
+  const method = result?.method;
+  if (!method || !isBornhuetterFergusonV3Method(method)) {
+    throw new Error(`${BF_METHOD_TYPE} load did not return a canonical v3 method.`);
+  }
+  const local = options.preserveOwnedState ? captureLocalOwnedState() : null;
+  applyOutputSidecar(result?.sidecar || {}, { preserveNotes: !!local });
+  await applyPayload(method);
+  applyAggregateRevisions(result, method);
+  if (local) {
+    const persisted = captureLocalOwnedState();
+    restoreLocalOwnedState(local, persisted);
+  }
+  const previewChanged = reapplyActiveDependencyPreviews();
+  if (previewChanged) {
+    calculateOutputs();
+    renderMethodGrid();
+  }
+  return true;
+}
+
+async function fetchPersistedBornhuetterFerguson() {
+  return loadBornhuetterFergusonMethod({
+    project_name: state.project,
+    reserving_class: state.reservingClass,
+    method_name: getDetails().name,
+  });
+}
+
 async function tryLoadExistingMethod() {
-  const hostApi = getHostApi();
-  if (!hostApi?.readJsonFile) return false;
-  const path = await getMethodPath();
-  const result = await hostApi.readJsonFile({ path });
-  if (!result?.exists || !result.data) return false;
-  await applyPayload(result.data);
+  if (!getDetails().name) return false;
+  const requestSequence = ++aggregateLoadSequence;
+  let result;
+  try {
+    result = await fetchPersistedBornhuetterFerguson();
+  } catch (err) {
+    if (Number(err?.status) === 404) return false;
+    throw err;
+  }
+  if (requestSequence !== aggregateLoadSequence) return true;
+  await applyPersistedAggregate(result);
   postStatus(`Loaded ${BF_METHOD_TYPE}: ${getDetails().name}`);
   return true;
 }
 
-async function loadSidecar() {
-  const requestSequence = ++sidecarLoadSequence;
-  const details = getDetails();
-  if (!state.project || !state.reservingClass || !details.name) {
-    auditLogView.clear();
-    return null;
+async function reloadPersistedBornhuetterFerguson(options = {}) {
+  if (!getDetails().name) return false;
+  const requestSequence = ++aggregateLoadSequence;
+  const result = await fetchPersistedBornhuetterFerguson();
+  if (requestSequence !== aggregateLoadSequence) return false;
+  await applyPersistedAggregate(result, options);
+  if (options.preserveOwnedState) {
+    postDirty(snapshotPayload() !== cleanSnapshot, true);
+  } else {
+    markClean();
   }
-  auditLogView.setLoading();
-  try {
-    const resp = await fetch("/dataset/sidecar/load", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_name: state.project,
-        reserving_class: state.reservingClass,
-        dataset_name: details.name,
-      }),
-    });
-    const payload = await resp.json().catch(() => ({}));
-    if (requestSequence !== sidecarLoadSequence) return null;
-    if (!resp.ok || payload?.ok === false) {
-      throw new Error(text(payload?.detail || payload?.error) || `Dataset sidecar load failed (${resp.status}).`);
-    }
-    const sidecar = payload?.sidecar || payload?.data || payload;
-    state.sidecarOriginLabels = Array.isArray(sidecar?.origin_labels) ? sidecar.origin_labels.map(String) : [];
-    setNotesText(text(sidecar?.notes));
-    auditLogView.render(sidecar?.audit_log);
-    return sidecar;
-  } catch (err) {
-    if (requestSequence !== sidecarLoadSequence) return null;
-    const message = text(err?.message || err) || "Unknown error.";
-    auditLogView.setError(`Could not load the audit log. ${message}`);
-    return null;
-  }
-}
-
-function getSourcePrecedentNames() {
-  const seen = new Set();
-  const out = [];
-  const details = getDetails();
-  for (const name of [details.latestDataset, details.dfmDataset, ...details.priorDatasets]) {
-    const clean = text(name);
-    const key = norm(clean);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(clean);
-  }
-  return out;
-}
-
-async function saveSidecar(csvPath, originLabels = []) {
-  const details = getDetails();
-  const resp = await fetch("/dataset/sidecar/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project_name: state.project,
-      reserving_class: state.reservingClass,
-      dataset_name: details.name,
-      dataset_type: details.outputType || details.name,
-      instance_name: details.name,
-      source_kind: BF_SOURCE_KIND,
-      method_type: BF_METHOD_TYPE,
-      status: 0,
-      data_format: "Vector",
-      origin_length: details.originLength,
-      development_length: details.originLength,
-      cumulative: true,
-      transposed: false,
-      calendar: false,
-      origin_labels: Array.isArray(originLabels) ? originLabels.map(String) : [],
-      csv_file: csvBaseName(csvPath),
-      notes: els.notesInput?.value || "",
-      precedents: getSourcePrecedentNames(),
-    }),
-  });
-  const payload = await resp.json().catch(() => ({}));
-  if (!resp.ok || payload?.ok === false) throw new Error(payload?.detail || payload?.error || `Sidecar save failed (${resp.status}).`);
-  sidecarLoadSequence += 1;
-  auditLogView.render(payload?.audit_log);
-  return payload;
-}
-
-const MONTH_NAME_TO_NUM = new Map([
-  ["jan", 1], ["january", 1],
-  ["feb", 2], ["february", 2],
-  ["mar", 3], ["march", 3],
-  ["apr", 4], ["april", 4],
-  ["may", 5],
-  ["jun", 6], ["june", 6],
-  ["jul", 7], ["july", 7],
-  ["aug", 8], ["august", 8],
-  ["sep", 9], ["sept", 9], ["september", 9],
-  ["oct", 10], ["october", 10],
-  ["nov", 11], ["november", 11],
-  ["dec", 12], ["december", 12],
-]);
-
-function parseOriginStartMonth(label, baseLen) {
-  const s = text(label);
-  if (!s) return null;
-  if (baseLen === 1) {
-    const yyyymm = s.match(/^(\d{4})(\d{2})$/);
-    if (yyyymm) {
-      const year = Number.parseInt(yyyymm[1], 10);
-      const month = Number.parseInt(yyyymm[2], 10);
-      if (Number.isFinite(year) && month >= 1 && month <= 12) return { year, month };
-    }
-    const monYear = s.match(/^([A-Za-z]{3,9})\s+(\d{4})$/);
-    if (monYear) {
-      const month = MONTH_NAME_TO_NUM.get(monYear[1].toLowerCase());
-      const year = Number.parseInt(monYear[2], 10);
-      if (month && Number.isFinite(year)) return { year, month };
-    }
-    return null;
-  }
-  if (baseLen === 3) {
-    let match = s.match(/^(\d{4})\s*Q([1-4])$/i);
-    if (match) return { year: Number.parseInt(match[1], 10), month: (Number.parseInt(match[2], 10) - 1) * 3 + 1 };
-    match = s.match(/^Q([1-4])\s*(\d{4})$/i);
-    if (match) return { year: Number.parseInt(match[2], 10), month: (Number.parseInt(match[1], 10) - 1) * 3 + 1 };
-    return null;
-  }
-  if (baseLen === 6) {
-    let match = s.match(/^(\d{4})\s*H([1-2])$/i);
-    if (match) return { year: Number.parseInt(match[1], 10), month: (Number.parseInt(match[2], 10) - 1) * 6 + 1 };
-    match = s.match(/^H([1-2])\s*(\d{4})$/i);
-    if (match) return { year: Number.parseInt(match[2], 10), month: (Number.parseInt(match[1], 10) - 1) * 6 + 1 };
-    return null;
-  }
-  if (baseLen === 12 && /^\d{4}$/.test(s)) {
-    return { year: Number.parseInt(s, 10), month: 1 };
-  }
-  return null;
-}
-
-function aggregateVectorByLength(vector, originLabels, baseLen, targetLen) {
-  if (!Array.isArray(vector) || !vector.length) return [];
-  const factor = targetLen / baseLen;
-  if (!Number.isFinite(factor) || factor <= 1 || Math.floor(factor) !== factor) return [];
-
-  const labels = Array.isArray(originLabels) ? originLabels : [];
-  if (labels.length === vector.length && [1, 3, 6, 12].includes(baseLen)) {
-    const orderedKeys = [];
-    const bucketMap = new Map();
-    let parseFailed = false;
-    for (let i = 0; i < vector.length; i += 1) {
-      const parsed = parseOriginStartMonth(labels[i], baseLen);
-      if (!parsed) {
-        parseFailed = true;
-        break;
-      }
-      const bucketMonth = Math.floor((parsed.month - 1) / targetLen) * targetLen + 1;
-      const key = `${parsed.year}-${bucketMonth}`;
-      if (!bucketMap.has(key)) {
-        bucketMap.set(key, { sum: 0, hasValue: false });
-        orderedKeys.push(key);
-      }
-      const bucket = bucketMap.get(key);
-      const num = numberOrNull(vector[i]);
-      if (num !== null) {
-        bucket.sum += num;
-        bucket.hasValue = true;
-      }
-    }
-    if (!parseFailed) return orderedKeys.map((key) => {
-      const bucket = bucketMap.get(key);
-      return bucket?.hasValue ? bucket.sum : null;
-    });
-  }
-
-  const out = [];
-  for (let i = 0; i < vector.length; i += factor) {
-    const slice = vector.slice(i, i + factor);
-    let sum = 0;
-    let hasValue = false;
-    for (const value of slice) {
-      const num = numberOrNull(value);
-      if (num !== null) {
-        sum += num;
-        hasValue = true;
-      }
-    }
-    out.push(hasValue ? sum : null);
-  }
-  return out;
-}
-
-function buildAggregatedResultVariants(vector, originLabels, baseLen) {
-  const nativeLen = validOriginLength(baseLen);
-  return [3, 6, 12]
-    .filter((len) => len > nativeLen && len % nativeLen === 0)
-    .map((originLen) => ({
-      originLen,
-      vector: aggregateVectorByLength(vector, originLabels, nativeLen, originLen),
-    }))
-    .filter((variant) => variant.vector.length);
+  return true;
 }
 
 async function saveBornhuetterFerguson() {
@@ -1604,73 +1429,57 @@ async function saveBornhuetterFerguson() {
     postStatus(`${BF_METHOD_TYPE} save requires Latest, Development Pattern, and at least one Prior Vector.`, "error");
     return { ok: false };
   }
-  const hostApi = getHostApi();
-  if (!hostApi?.saveJsonFile || !hostApi?.saveTextFile) {
-    postStatus(`${BF_METHOD_TYPE} save requires the desktop app.`, "error");
-    return { ok: false };
-  }
-  await refreshCalculations({ mark: false });
+  await refreshOriginLabels({ render: false });
+  calculateOutputs();
+  renderMethodGrid();
   const vector = state.newUltimateValues;
   if (!vector.some((value) => numberOrNull(value) !== null)) {
     postStatus(`${BF_METHOD_TYPE} output vector is blank. Check source selections.`, "error");
     return { ok: false };
   }
-  const payload = buildPayload();
-  const methodPath = await getMethodPath();
-  const jsonOut = await hostApi.saveJsonFile({
-    path: methodPath,
-    suggestedName: getMethodFilename(),
-    startDir: await getMethodsDir(),
-    data: payload,
+  const method = buildPayload({ lastModified: new Date().toISOString() });
+  const result = await saveBornhuetterFergusonMethod({
+    project_name: state.project,
+    reserving_class: state.reservingClass,
+    method,
+    notes: els.notesInput?.value || "",
+    expected_owned_revision: state.ownedRevision,
+    expected_derived_revision: state.derivedRevision,
   });
-  if (!jsonOut?.path || jsonOut?.error) throw new Error(jsonOut?.error || "Method JSON save failed.");
-  const csvPath = await getCsvPath();
-  const csvOut = await hostApi.saveTextFile({
-    path: csvPath,
-    data: vectorCsv(vector),
-  });
-  if (csvOut?.error) throw new Error(csvOut.error);
-
-  const datasetDir = await getDatasetDir();
-  const aggregatedCsvPaths = [];
-  for (const variant of buildAggregatedResultVariants(vector, payload.method_tab.origin_labels || [], details.originLength)) {
-    const aggPath = `${datasetDir}\\${getCsvFilenameForLength(variant.originLen)}`;
-    if (aggPath.toLowerCase() === csvPath.toLowerCase()) continue;
-    const aggOut = await hostApi.saveTextFile({
-      path: aggPath,
-      data: vectorCsv(variant.vector),
-    });
-    if (aggOut?.error) throw new Error(aggOut.error);
-    aggregatedCsvPaths.push(aggPath);
-  }
-  const sidecarResult = await saveSidecar(csvPath, payload.method_tab.origin_labels || []);
-
-  await Promise.all([
-    loadCachedRows(true).catch(() => {}),
-    loadSidecar().catch(() => null),
-  ]);
+  await applyPersistedAggregate(result);
   markClean();
   try {
     window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
-    if (sidecarResult?.calculated_updates) {
+    const propagation = result?.propagation || result?.calculated_updates;
+    if (propagation) {
       window.parent?.postMessage({
         type: "arcrho:calculated-datasets-updated",
-        report: sidecarResult.calculated_updates,
+        report: propagation,
         source: `${BF_METHOD_TYPE} save`,
       }, "*");
     }
   } catch {}
+  const aggregatedCsvPaths = Array.isArray(result?.aggregated_csv_paths)
+    ? result.aggregated_csv_paths
+    : [];
   postStatus(
-    sidecarResult?.propagation_ok === false
+    result?.propagation_ok === false
       ? `${BF_METHOD_TYPE} saved, but one or more downstream dependents still need review: ${details.name}`
+      : result?.index_ok === false
+        ? `${BF_METHOD_TYPE} saved, but the dataset index could not be refreshed: ${result.index_error || details.name}`
       : `${BF_METHOD_TYPE} saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`,
-    sidecarResult?.propagation_ok === false ? "warn" : "",
+    result?.propagation_ok === false || result?.index_ok === false ? "warn" : "",
   );
-  return { ok: true, path: jsonOut.path, csvPath, aggregatedCsvPaths, sidecar: sidecarResult };
+  await showMethodSaveReviewWarning(result, {
+    instanceId: inst,
+    projectName: state.project,
+    reservingClass: state.reservingClass,
+  });
+  return result;
 }
 
 function setNotesText(value) {
-  const next = text(value);
+  const next = String(value ?? "");
   bfNotesController.setValue(next, { markClean: true });
 }
 
@@ -1720,6 +1529,10 @@ async function openPicker(kind, anchor) {
         postStatus(`Prior Vector is already selected: ${selected}`, "warn");
         return;
       }
+      if (kind === "output") {
+        const record = cachedRecordByName(selected);
+        state.datasetCategory = text(item?.dataset_category || item?.category || record?.category);
+      }
       withProgrammatic(() => {
         if (kind === "output") els.outputTypeInput.value = selected;
         if (kind === "latest") els.latestInput.value = selected;
@@ -1764,7 +1577,6 @@ async function initTabbedPage() {
     initialTab: ALLOWED_BF_TABS.has(text(params.get("tab") || params.get("initial_tab"))) ? text(params.get("tab") || params.get("initial_tab")) : "details",
     onTabChange: (tabId) => {
       if (tabId === "chart") requestAnimationFrame(() => bfChart?.refresh());
-      if (tabId === "audit" && tabbedPage) void loadSidecar();
       try {
         window.parent?.postMessage({ type: "arcrho:bf-tab-changed", inst, tab: tabId }, "*");
       } catch {}
@@ -1776,9 +1588,6 @@ async function initTabbedPage() {
     tabs: BF_TABS,
     tabSystem: () => tabbedPage,
     getTitle: () => `${getDetails().name || BF_METHOD_TYPE} - ${BF_METHOD_TYPE}`,
-    onPopoutTab: (tabId) => {
-      if (tabId === "audit") void loadSidecar();
-    },
   });
   bfChart = createBornhuetterFergusonChart({
     canvas: els.chartCanvas,
@@ -1953,11 +1762,14 @@ function wireInputs() {
   els.weightDisplayMenu?.addEventListener("click", (event) => {
     const option = event.target.closest("button[data-value]");
     if (!option) return;
-    state.showEffectiveWeights = option.dataset.value === "effective";
+    const nextShowEffectiveWeights = option.dataset.value === "effective";
+    const changed = state.showEffectiveWeights !== nextShowEffectiveWeights;
+    state.showEffectiveWeights = nextShowEffectiveWeights;
     state.weightEditSession = null;
     closeWeightDisplayDropdown();
     syncFormattingControls();
     renderMethodGrid();
+    if (changed) markDirty();
   });
   els.originLengthButton?.addEventListener("click", () => {
     const open = !els.originLengthDropdown?.classList.contains("open");
@@ -2075,25 +1887,15 @@ async function init() {
   await initTabbedPage();
   wireInputs();
   wireMessages();
-  try {
-    await loadCachedRows();
-  } catch (err) {
-    postStatus(`Dataset cache unavailable: ${String(err?.message || err)}`, "warn");
-  }
-  await loadSidecar().catch(() => null);
+  let loadError = null;
   const loaded = await tryLoadExistingMethod().catch((err) => {
-    postStatus(`Could not load existing ${BF_METHOD_TYPE}: ${String(err?.message || err)}`, "warn");
+    loadError = err;
+    postStatus(`Could not load existing ${BF_METHOD_TYPE}: ${String(err?.message || err)}`, "error");
     return false;
   });
-  if (loaded && hasRequiredSourceConfig()) {
-    try {
-      postStatus("Loading Bornhuetter Ferguson source data...");
-      await refreshCalculations({ mark: false });
-      postStatus(`${BF_METHOD_TYPE} ready.`);
-    } catch (err) {
-      postStatus(`Source refresh failed: ${String(err?.message || err)}`, "error");
-    }
-  } else if (!loaded) {
+  if (loaded) {
+    postStatus(`${BF_METHOD_TYPE} ready.`);
+  } else if (!loadError) {
     try {
       await refreshOriginLabels({ render: false });
       calculateOutputs();

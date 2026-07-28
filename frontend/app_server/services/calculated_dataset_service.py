@@ -1403,6 +1403,8 @@ def _recalculate_dependents_impl(
     *,
     include_dfm: bool = True,
     include_result_selection: bool = True,
+    include_bornhuetter_ferguson: bool = True,
+    finalize_method_review_status: bool = True,
     rebuild_index: bool = True,
 ) -> Dict[str, Any]:
     changed = [changed_dataset_name, changed_dataset_type_name]
@@ -1417,6 +1419,7 @@ def _recalculate_dependents_impl(
                 project_name,
                 reserving_class,
                 changed,
+                finalize_method_review_status=False,
             )
             dfm_output_names = [
                 _clean_text(value)
@@ -1512,6 +1515,7 @@ def _recalculate_dependents_impl(
                     reserving_class,
                     [calculated_name],
                     blocked_precedent_names=[calculated_name] if not result.get("ok") else [],
+                    finalize_method_review_status=False,
                 )
             except Exception as err:
                 next_dfm = {
@@ -1595,6 +1599,7 @@ def _recalculate_dependents_impl(
                 rebuild_index=False,
                 allow_status_current=True,
                 blocked_precedent_names=[*failed_dfm_names, *failed_dataset_names],
+                finalize_method_review_status=False,
             )
         except Exception as err:
             result_selection_updates = {
@@ -1603,7 +1608,85 @@ def _recalculate_dependents_impl(
                 "updated": [],
             }
 
+    bornhuetter_ferguson_updates = None
+    if include_bornhuetter_ferguson:
+        try:
+            from app_server.services import bornhuetter_ferguson_service
+
+            dfm_fresh_names = [
+                _clean_text(value)
+                for item in (dfm_updates or {}).get("updated", [])
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            ]
+            dfm_fresh_names.extend(
+                _clean_text(item.get("dataset_name"))
+                for item in (dfm_updates or {}).get("status_refreshed", [])
+                if _clean_text(item.get("dataset_name"))
+            )
+            calculated_fresh_names = [
+                _clean_text(item.get("dataset_type_name"))
+                for item in results
+                if item.get("ok") and _clean_text(item.get("dataset_type_name"))
+            ]
+            result_selection_fresh_names = [
+                _clean_text(item.get("dataset_name"))
+                for field in ("updated", "status_refreshed")
+                for item in (result_selection_updates or {}).get(field, [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            result_selection_fresh_names.extend(
+                _clean_text(name)
+                for name in (result_selection_updates or {}).get("downstream_fresh_names", [])
+                if _clean_text(name)
+            )
+            failed_result_selection_names = [
+                _clean_text(item.get("dataset_name"))
+                for item in (result_selection_updates or {}).get("errors", [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            failed_result_selection_names.extend(
+                _clean_text(name)
+                for name in (result_selection_updates or {}).get("downstream_blocked_names", [])
+                if _clean_text(name)
+            )
+            bf_roots = [
+                changed_dataset_name,
+                changed_dataset_type_name,
+                *dfm_fresh_names,
+                *failed_dfm_names,
+                *calculated_fresh_names,
+                *failed_dataset_names,
+                *result_selection_fresh_names,
+                *failed_result_selection_names,
+            ]
+            bornhuetter_ferguson_updates = bornhuetter_ferguson_service.refresh_dependents(
+                project_name,
+                reserving_class,
+                bf_roots,
+                rebuild_index=False,
+                blocked_precedent_names=[
+                    *failed_dfm_names,
+                    *failed_dataset_names,
+                    *failed_result_selection_names,
+                ],
+                finalize_method_review_status=False,
+            )
+        except Exception as err:
+            bornhuetter_ferguson_updates = {
+                "ok": False,
+                "errors": [{"reason": str(err)}],
+                "updated": [],
+            }
+
     index_error = ""
+    if finalize_method_review_status:
+        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+            project_name,
+            reserving_class,
+            [changed_dataset_name, changed_dataset_type_name],
+        )
+
     if rebuild_index:
         try:
             dataset_instance_index_service.rebuild_index(project_name, reserving_class)
@@ -1615,6 +1698,8 @@ def _recalculate_dependents_impl(
         overall_ok = overall_ok and bool(dfm_updates.get("ok"))
     if result_selection_updates is not None:
         overall_ok = overall_ok and bool(result_selection_updates.get("ok"))
+    if bornhuetter_ferguson_updates is not None:
+        overall_ok = overall_ok and bool(bornhuetter_ferguson_updates.get("ok"))
     return {
         "ok": overall_ok,
         "project_name": project_name,
@@ -1631,6 +1716,7 @@ def _recalculate_dependents_impl(
         "skipped": [item for item in results if not item.get("ok")],
         "dfm_updates": dfm_updates,
         "result_selection_updates": result_selection_updates,
+        "bornhuetter_ferguson_updates": bornhuetter_ferguson_updates,
         "index_ok": not index_error,
         "index_error": index_error,
     }
@@ -1644,6 +1730,8 @@ def recalculate_dependents(
     *,
     include_dfm: bool = True,
     include_result_selection: bool = True,
+    include_bornhuetter_ferguson: bool = True,
+    finalize_method_review_status: bool = True,
     rebuild_index: bool = True,
 ) -> Dict[str, Any]:
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
@@ -1654,6 +1742,8 @@ def recalculate_dependents(
             changed_dataset_type_name,
             include_dfm=include_dfm,
             include_result_selection=include_result_selection,
+            include_bornhuetter_ferguson=include_bornhuetter_ferguson,
+            finalize_method_review_status=finalize_method_review_status,
             rebuild_index=rebuild_index,
         )
 

@@ -583,7 +583,6 @@ def save_result_selection(
     method_tab = payload["method_tab"]
     name = details["name"]
     method_path = _method_path(project, reserving, name)
-    output_files = _output_files(project, reserving, payload)
     primary_path = os.path.join(
         config.get_project_dataset_cache_dir(project, reserving),
         f"{sanitize_dataset_file_name(name)}@{details['origin_length']}.csv",
@@ -595,12 +594,6 @@ def save_result_selection(
         current_method = _read_json(method_path)
         if current_method:
             current_sidecar = _read_json(output_sidecar_path)
-            if dataset_sidecar_status_service.normalize_status(current_sidecar.get("status")) \
-                    == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED:
-                raise HTTPException(
-                    409,
-                    "Result Selection dependency refresh needs review; refresh the upstream dataset before saving.",
-                )
             if _clean(current_method.get("json_format")) != RESULT_SELECTION_JSON_FORMAT:
                 raise HTTPException(409, "Result Selection changed on disk; reload it before saving.")
             current_method = normalize_method_payload(current_method, require_complete_basis=True)
@@ -608,9 +601,13 @@ def save_result_selection(
             current_revision = _method_revision(current_method)
             if expected_revision is not None and _clean(expected_revision) != current_revision:
                 raise HTTPException(409, "Result Selection changed on disk; reload the latest values before saving.")
+            if dataset_sidecar_status_service.normalize_status(current_sidecar.get("status")) \
+                    == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED:
+                _refresh_review_save_payload(project, reserving, payload)
         elif expected_revision is not None and _clean(expected_revision):
             raise HTTPException(409, "Result Selection was removed on disk; reload before saving.")
         _assert_new_precedents_do_not_cycle(project, reserving, name, new_precedents)
+        output_files = _output_files(project, reserving, payload)
         previous_files = {
             path: _read_bytes_if_file(path)
             for path in [method_path, *output_files, output_sidecar_path]
@@ -674,6 +671,11 @@ def save_result_selection(
                 ) from exc
             raise
     aggregate_paths = [path for path in output_files if os.path.normcase(path) != os.path.normcase(primary_path)]
+    unreviewed_precedents = dataset_sidecar_status_service.review_needed_precedent_names(
+        project,
+        reserving,
+        new_precedents,
+    )
     return {
         "ok": True,
         "method": payload,
@@ -686,6 +688,8 @@ def save_result_selection(
         "propagation": sidecar.get("calculated_updates"),
         "index_ok": bool(sidecar.get("index_ok", True)),
         "index_error": _clean(sidecar.get("index_error")),
+        "unreviewed_precedents": unreviewed_precedents,
+        "unreviewed_precedent_count": len(unreviewed_precedents),
     }
 
 
@@ -819,6 +823,90 @@ def _read_sidecars(project_name: str, reserving_class: str, names: Iterable[str]
         for name in ordered
     }
     return {name: futures[name].result() for name in ordered}
+
+
+def _refresh_review_save_payload(
+    project_name: str,
+    reserving_class: str,
+    payload: Dict[str, Any],
+) -> None:
+    """Rebase a review-needed save on exactly the revised incoming precedent set."""
+    method = payload["method_tab"]
+    details = payload["details_tab"]
+    origin_length = int(details["origin_length"])
+    row_count = len(method.get("origin_labels", []))
+    sources = method.get("loaded_datasets", [])
+    source_names = [source["name"] for source in sources]
+    basis_names = list(details.get("ratio_basis_datasets", []))
+    dependency_names = _unique_names([*source_names, *basis_names])
+    sidecars = _read_sidecars(project_name, reserving_class, dependency_names)
+    missing = [name for name in dependency_names if not sidecars.get(name)]
+    if missing:
+        raise HTTPException(
+            409,
+            "Result Selection cannot save because datasets in the revised precedent list "
+            "are missing: " + ", ".join(missing)
+            + ". Restore or remove those datasets, then save again.",
+        )
+
+    tasks: Dict[Tuple[str, bool], Any] = {}
+    for name in source_names:
+        tasks[(name, False)] = _READ_EXECUTOR.submit(
+            _dependency_values,
+            project_name,
+            reserving_class,
+            name,
+            sidecars[name],
+            origin_length,
+            exact=False,
+        )
+    for name in basis_names:
+        tasks[(name, True)] = _READ_EXECUTOR.submit(
+            _dependency_values,
+            project_name,
+            reserving_class,
+            name,
+            sidecars[name],
+            origin_length,
+            exact=True,
+        )
+
+    for source in sources:
+        name = source["name"]
+        values = tasks[(name, False)].result()
+        if len(values) != row_count:
+            raise HTTPException(
+                422,
+                f"Result Selection source '{name}' returned {len(values)} values; expected {row_count}.",
+            )
+        sidecar = sidecars[name]
+        source.update({
+            "dataset_type": _clean(sidecar.get("dataset_type")) or source.get("dataset_type"),
+            "data_format": _clean(sidecar.get("data_format")) or source.get("data_format"),
+            "method_type": dataset_sidecar_status_service.normalize_method_type(
+                sidecar.get("method_type"),
+                sidecar.get("source_kind"),
+            ),
+            "category": _clean(sidecar.get("dataset_category") or sidecar.get("category"))
+            or source.get("category"),
+            "source_kind": _clean(sidecar.get("source_kind")) or source.get("source_kind"),
+            "origin_length": _source_period(sidecar) or source.get("origin_length") or origin_length,
+            "values": values,
+        })
+        source["weights"] = _fit_vector(source.get("weights"), row_count, fill=0.0)
+
+    method["ratio_basis_values"] = [
+        {"name": name, "values": tasks[(name, True)].result()}
+        for name in basis_names
+    ]
+    for basis in method["ratio_basis_values"]:
+        if len(basis["values"]) != row_count:
+            raise HTTPException(
+                422,
+                f"Result Selection Ratio Basis '{basis['name']}' returned "
+                f"{len(basis['values'])} values; expected {row_count}.",
+            )
+    _recalculate_method(payload)
 
 
 def _read_sidecars_cached(
@@ -1238,6 +1326,7 @@ def refresh_dependents(
     rebuild_index: bool = True,
     allow_status_current: bool = True,
     blocked_precedent_names: Iterable[Any] = (),
+    finalize_method_review_status: bool = True,
 ) -> Dict[str, Any]:
     project = _clean(project_name)
     reserving = _clean(reserving_class)
@@ -1253,6 +1342,8 @@ def refresh_dependents(
     status_refreshed = []
     skipped = []
     errors = []
+    downstream_fresh_names: List[str] = []
+    downstream_blocked_names: List[str] = []
     index_error = ""
     dependency_value_cache: Dict[Tuple[str, int, bool], List[Any]] = {}
     sidecar_snapshot: Dict[str, Dict[str, Any]] = {}
@@ -1274,6 +1365,9 @@ def refresh_dependents(
                 "status_refreshed": [],
                 "skipped": [],
                 "errors": [{"reason": str(exc)}],
+                "downstream_fresh_names": [],
+                "downstream_blocked_names": [],
+                "review_status_updates": [],
                 "index_error": "",
             }
         while queue:
@@ -1407,6 +1501,8 @@ def refresh_dependents(
                             dependent_name,
                             _clean(sidecar.get("dataset_type")) or dependent_name,
                             include_result_selection=False,
+                            include_bornhuetter_ferguson=False,
+                            finalize_method_review_status=False,
                             rebuild_index=False,
                         )
                         calculated_names = [
@@ -1419,20 +1515,45 @@ def refresh_dependents(
                             for item in calculated.get("skipped", [])
                             if _clean(item.get("dataset_type_name"))
                         ]
-                        successful_calculated_keys = {_key(name) for name in calculated_names}
-                        failed_calculated_keys = {_key(name) for name in failed_calculated_names}
+                        nested_dfm = calculated.get("dfm_updates") \
+                            if isinstance(calculated.get("dfm_updates"), dict) else {}
+                        nested_dfm_names = [
+                            _clean(item.get("dataset_name") or item.get("dataset_type"))
+                            for field in ("updated", "status_refreshed")
+                            for item in nested_dfm.get(field, [])
+                            if isinstance(item, dict)
+                            and _clean(item.get("dataset_name") or item.get("dataset_type"))
+                        ]
+                        failed_nested_dfm_names = [
+                            _clean(item.get("dataset_name") or item.get("dataset_type"))
+                            for item in nested_dfm.get("errors", [])
+                            if isinstance(item, dict)
+                            and _clean(item.get("dataset_name") or item.get("dataset_type"))
+                        ]
+                        nested_fresh_names = _unique_names([
+                            *calculated_names,
+                            *nested_dfm_names,
+                        ])
+                        nested_failed_names = _unique_names([
+                            *failed_calculated_names,
+                            *failed_nested_dfm_names,
+                        ])
+                        downstream_fresh_names.extend(nested_fresh_names)
+                        downstream_blocked_names.extend(nested_failed_names)
+                        successful_calculated_keys = {_key(name) for name in nested_fresh_names}
+                        failed_calculated_keys = {_key(name) for name in nested_failed_names}
                         blocked_precedent_keys.difference_update(successful_calculated_keys)
                         fresh_precedent_keys.update(successful_calculated_keys)
                         fresh_precedent_keys.difference_update(failed_calculated_keys)
                         blocked_precedent_keys.update(failed_calculated_keys)
-                        for calculated_name in [*calculated_names, *failed_calculated_names]:
+                        for calculated_name in [*nested_fresh_names, *nested_failed_names]:
                             sidecar_snapshot.pop(_key(calculated_name), None)
-                        for calculated_name in calculated_names:
+                        for calculated_name in nested_fresh_names:
                             calculated_key = _key(calculated_name)
                             for cache_key in list(dependency_value_cache):
                                 if cache_key[0] == calculated_key:
                                     dependency_value_cache.pop(cache_key, None)
-                        queue.extend(calculated_names)
+                        queue.extend(nested_fresh_names)
                         if not calculated.get("ok", True):
                             failed_steps = calculated.get("skipped") or []
                             errors.append({
@@ -1458,7 +1579,16 @@ def refresh_dependents(
                         "dataset_name": dependent_name,
                         "reason": result.get("reason") or "not_updated",
                     })
-        if (updated or status_refreshed) and rebuild_index:
+        review_status_updates = (
+            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+                project,
+                reserving,
+                changed_names,
+            )
+            if finalize_method_review_status
+            else []
+        )
+        if (updated or status_refreshed or review_status_updates) and rebuild_index:
             try:
                 from app_server.services import dataset_instance_index_service
 
@@ -1478,6 +1608,9 @@ def refresh_dependents(
         "status_refreshed": unique_updates(status_refreshed),
         "skipped": skipped,
         "errors": errors,
+        "downstream_fresh_names": _unique_names(downstream_fresh_names),
+        "downstream_blocked_names": _unique_names(downstream_blocked_names),
+        "review_status_updates": review_status_updates,
         "index_error": index_error,
     }
 

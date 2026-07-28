@@ -42,6 +42,14 @@ const dataTabControllerSource = await readFile(
   new URL("../ui/shared/tabs/data/data_tab_controller.js", import.meta.url),
   "utf8",
 );
+const dataTabHostSource = await readFile(
+  new URL("../ui/shared/tabs/data/data_tab_host_controller.js", import.meta.url),
+  "utf8",
+);
+const dataTabRequestSource = await readFile(
+  new URL("../ui/shared/tabs/data/data_tab_request_controller.js", import.meta.url),
+  "utf8",
+);
 const dfmTabsOrchestratorSource = await readFile(
   new URL("../ui/method_pages/dfm/dfm_tabs_orchestrator.js", import.meta.url),
   "utf8",
@@ -187,7 +195,7 @@ test("DFM URL aliases initialize the shared dataset input owner", () => {
   assert.equal(values.path, "LOB\\State");
   assert.equal(values.methodName, "Paid DFM");
   assert.equal(values.tri, "Paid Loss");
-  assert.match(dataTabControllerSource, /readDatasetInputQueryValues\(qs\)/);
+  assert.match(dataTabRequestSource, /readDatasetInputQueryValues\(qs\)/);
   assert.match(dfmTabsOrchestratorSource, /readDatasetInputQueryValues\(_qs\)/);
 });
 
@@ -431,11 +439,11 @@ test("a stale deferred validation queues and publishes only the latest dataset r
 });
 
 test("DFM refresh delegates header and dataset ownership to the run controller", () => {
-  const refreshStart = dataTabControllerSource.indexOf("async function refreshDfmDatasetForCurrentInputs");
-  const refreshEnd = dataTabControllerSource.indexOf("if (isDfmDataTabHost())", refreshStart);
+  const refreshStart = dataTabHostSource.indexOf("async function refreshDfmDatasetForCurrentInputs");
+  const refreshEnd = dataTabHostSource.indexOf("if (isDfmDataTabHost())", refreshStart);
   assert.notEqual(refreshStart, -1);
   assert.notEqual(refreshEnd, -1);
-  const refreshSource = dataTabControllerSource.slice(refreshStart, refreshEnd);
+  const refreshSource = dataTabHostSource.slice(refreshStart, refreshEnd);
   assert.doesNotMatch(refreshSource, /ensure(?:Dev)?HeadersForProject/);
   assert.match(refreshSource, /return runArcRhoTri/);
 });
@@ -455,14 +463,14 @@ test("Result Selection materializes an engine source with one authoritative requ
 });
 
 test("Dataset boot schedules auto-run without forced header refreshes", () => {
-  const bootStart = dataTabControllerSource.indexOf("export async function bootDatasetDataTab()");
+  const bootStart = dataTabControllerSource.indexOf("async function bootDatasetDataTabOnce()");
   assert.notEqual(bootStart, -1);
   const bootSource = dataTabControllerSource.slice(bootStart);
   assert.doesNotMatch(
     bootSource,
     /await ensure(?:Dev)?HeadersForProject\(project,\s*\{\s*forceRefresh:\s*true\s*\}\)/,
   );
-  assert.match(bootSource, /scheduleAutoRun\(0\)/);
+  assert.match(bootSource, /runtime\.scheduleAutoRun\(0\)/);
 });
 
 test("Dataset Viewer renders backend label errors and invalidates stale data", async () => {
@@ -802,6 +810,16 @@ test("dataset sources contain no hard-coded start-year fallback", async () => {
     "../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js",
   ];
   const sources = await Promise.all(sourceUrls.map((url) => readFile(new URL(url, import.meta.url), "utf8")));
+  const dataTabModules = await Promise.all([
+    "../ui/shared/tabs/data/data_tab_controller.js",
+    "../ui/shared/tabs/data/data_tab_host_controller.js",
+    "../ui/shared/tabs/data/data_tab_details_controller.js",
+    "../ui/shared/tabs/data/data_tab_inputs_controller.js",
+    "../ui/shared/tabs/data/data_tab_preferences_controller.js",
+    "../ui/shared/tabs/data/data_tab_request_controller.js",
+    "../ui/shared/tabs/data/data_tab_persistence_controller.js",
+  ].map((url) => readFile(new URL(url, import.meta.url), "utf8")));
+  sources[5] = dataTabModules.join("\n");
   const combined = sources.join("\n");
 
   const hardCodedFallbackPatterns = [

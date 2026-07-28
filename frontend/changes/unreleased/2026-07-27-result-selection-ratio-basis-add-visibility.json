@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Hid the tooltip-free Ratio Basis add row after three datasets are selected."
+}

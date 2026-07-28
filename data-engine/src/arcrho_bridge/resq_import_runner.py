@@ -3,8 +3,10 @@
 The Bridge deliberately does not own a second set of migration writers.  It
 loads the same ``resq_data_migration`` source bundle used by the direct
 migration entry point, runs it in an isolated staging reserving-class folder,
-then atomically swaps that staged folder into the live project only after the
-ResQ portion has succeeded.
+then commits that staged folder into the live project file by file, only after
+the ResQ portion has succeeded.  Every replaced or removed live file is moved
+into the job's backup folder first, so a commit that fails part way still
+restores the exact previous reserving-class contents.
 
 The queue request contains logical identifiers only.  In particular, callers
 cannot select a server root, staging path, or target folder: all of those are
@@ -12,6 +14,7 @@ derived from the Bridge's configured ArcRho Server root.
 """
 from __future__ import annotations
 
+import errno
 import importlib
 import importlib.util
 import json
@@ -20,6 +23,8 @@ import re
 import shutil
 import sys
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,6 +55,17 @@ _IMPORT_STAGED_DATA_DIR_NAME = "d"
 _IMPORT_LOCK_DIR_NAME = ".locks"
 _IMPORT_LOCK_SUFFIX = ".lock"
 _MODULE_LOAD_LOCK = threading.RLock()
+# Windows refuses to replace or delete a file that another process still holds
+# open without FILE_SHARE_DELETE, and reports that as access denied (5),
+# sharing violation (32), or lock violation (33).  The live reserving class is
+# read continuously by the ArcRho app server and by virus scanners, so those
+# short-lived readers must not discard a fully staged import.
+_TRANSIENT_FOLDER_LOCK_WINERRORS = frozenset({5, 32, 33})
+_COMMIT_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.8, 1.5, 2.5)
+_FOLDER_DELETE_RETRY_DELAYS = (0.1, 0.3, 0.6)
+# Project data can live on a network share, where each file operation costs a
+# round trip. Commit files with bounded parallelism instead of one at a time.
+_COMMIT_MAX_WORKERS = 8
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -284,6 +300,7 @@ def run_reserving_class_import(
             stage_rc_dir,
             job_root,
             project_data_dir,
+            _canonical_index_file_name(module),
         )
         committed = True
         cleanup_job_root = previous_data_deleted
@@ -474,6 +491,17 @@ def _canonical_rc_folder(module: ModuleType, rc_path: str) -> str:
     if not folder or folder in {".", ".."} or any(char in folder for char in "\\/"):
         raise ResQMigrationBundleError("The canonical RC folder encoder returned an unsafe folder name.")
     return folder
+
+
+def _canonical_index_file_name(module: ModuleType) -> str:
+    """Read the index file name from the canonical bundle instead of assuming it."""
+
+    name = str(getattr(module, "INDEX_FILE_NAME", "") or "").strip()
+    if not name or name in {".", ".."} or Path(name).name != name:
+        raise ResQMigrationBundleError(
+            "The canonical ResQ migration bundle does not expose a safe index file name."
+        )
+    return name
 
 
 def _project_data_dir(server_root: Path, project_name: str) -> Path:
@@ -757,8 +785,17 @@ def _commit_staged_rc(
     stage_rc_dir: Path,
     job_root: Path,
     project_data_dir: Path,
+    index_file_name: str,
 ) -> tuple[bool, str]:
-    """Swap stage into the live direct-child RC folder with rollback on failure."""
+    """Make the live RC folder identical to the staged folder, reversibly.
+
+    The commit never renames the reserving-class folder itself. Windows refuses
+    a folder rename while *any* file below it is open, so one unrelated reader
+    could discard a finished import. Committing file by file narrows that to
+    the single file a reader actually holds, and every replaced or removed live
+    file is moved into this job's backup folder first, so a failure anywhere
+    still restores the exact previous folder contents.
+    """
 
     _validate_live_target(live_rc_dir, project_data_dir)
     _require_staged_rc_dir(stage_rc_dir, stage_rc_dir.parent)
@@ -768,40 +805,195 @@ def _commit_staged_rc(
     if live_rc_dir.exists() and not live_rc_dir.is_dir():
         raise ResQImportCommitError("The live reserving-class target is not a directory.")
 
-    moved_live = False
+    staged_files = _relative_commit_files(stage_rc_dir, index_file_name)
+    live_files = _relative_commit_files(live_rc_dir, index_file_name)
+    index_key = index_file_name.casefold()
+    if index_key not in staged_files:
+        raise ResQImportCommitError(
+            "The staged reserving class has no canonical index; refusing to commit it."
+        )
+    installs = sorted(name for key, name in staged_files.items() if key != index_key)
+    removals = sorted(name for key, name in live_files.items() if key not in staged_files)
+
+    journal = _CommitJournal()
     try:
-        if live_rc_dir.exists():
-            live_rc_dir.rename(backup_dir)
-            moved_live = True
-        stage_rc_dir.rename(live_rc_dir)
+        _apply_commit_plan(
+            installs,
+            removals,
+            live_rc_dir=live_rc_dir,
+            stage_rc_dir=stage_rc_dir,
+            backup_dir=backup_dir,
+            journal=journal,
+        )
+        # The index is the folder's published summary, so it flips to the new
+        # truth only once every file it describes is already in place.
+        _install_commit_file(
+            staged_files[index_key],
+            live_rc_dir=live_rc_dir,
+            stage_rc_dir=stage_rc_dir,
+            backup_dir=backup_dir,
+            journal=journal,
+        )
     except Exception as exc:
-        rollback_error: Exception | None = None
-        if moved_live and backup_dir.exists() and not live_rc_dir.exists():
-            try:
-                backup_dir.rename(live_rc_dir)
-            except Exception as rollback_exc:  # pragma: no cover - catastrophic filesystem state
-                rollback_error = rollback_exc
+        restore_errors = journal.rollback()
         detail = "Could not commit staged ResQ import."
-        if rollback_error is not None:
-            detail += f" Rollback also failed: {rollback_error}"
+        if _is_transient_folder_lock_error(exc):
+            detail += (
+                " A reserving-class file is still open in another program."
+                " Close it in ArcRho, Excel, or Windows Explorer and import again."
+            )
+        if restore_errors:
+            detail += (
+                f" Rollback also failed for {len(restore_errors)} file(s); the previous"
+                f" contents were retained in the Bridge staging backup: {restore_errors[0]}"
+            )
+        else:
+            detail += " The live reserving class was restored to its previous contents."
         raise ResQImportCommitError(f"{detail} {exc}") from exc
 
-    if not moved_live:
+    if not journal.has_backups():
         return True, ""
 
     try:
         _remove_validated_tree(backup_dir, job_root)
     except Exception as exc:
-        # The live folder has already been atomically replaced. Do not turn a
-        # cleanup problem into an apparent rollback-safe failure: retain the
-        # prior folder under this isolated job root and surface it to the
-        # caller for later cleanup.
+        # The live folder is already committed. Do not turn a cleanup problem
+        # into an apparent rollback-safe failure: retain the prior files under
+        # this isolated job root and surface it to the caller for later cleanup.
         return (
             False,
-            "Import committed, but the previous reserving-class folder could not "
-            f"be deleted and was retained in its Bridge staging backup: {exc}",
+            "Import committed, but the previous reserving-class files could not "
+            f"be deleted and were retained in the Bridge staging backup: {exc}",
         )
     return True, ""
+
+
+class _CommitJournal:
+    """Ordered record of live files moved aside so a failed commit can undo."""
+
+    def __init__(self) -> None:
+        self._entries: list[tuple[Path, Path | None]] = []
+        self._guard = threading.Lock()
+
+    def record(self, live_path: Path, backup_path: Path | None) -> None:
+        with self._guard:
+            self._entries.append((live_path, backup_path))
+
+    def has_backups(self) -> bool:
+        with self._guard:
+            return any(backup is not None for _live, backup in self._entries)
+
+    def rollback(self) -> list[str]:
+        """Undo every recorded change; return one message per file left wrong."""
+
+        with self._guard:
+            entries = list(self._entries)
+            self._entries.clear()
+        errors: list[str] = []
+        for live_path, backup_path in reversed(entries):
+            try:
+                if live_path.exists():
+                    _retry_transient_folder_operation(
+                        live_path.unlink,
+                        _COMMIT_RETRY_DELAYS,
+                    )
+                if backup_path is not None:
+                    _replace_path(backup_path, live_path)
+            except OSError as exc:
+                errors.append(f"[{live_path.name}]: {exc}")
+        return errors
+
+
+def _apply_commit_plan(
+    installs: list[str],
+    removals: list[str],
+    *,
+    live_rc_dir: Path,
+    stage_rc_dir: Path,
+    backup_dir: Path,
+    journal: _CommitJournal,
+) -> None:
+    """Install and remove reserving-class files with bounded parallel I/O."""
+
+    def install(name: str) -> None:
+        _install_commit_file(
+            name,
+            live_rc_dir=live_rc_dir,
+            stage_rc_dir=stage_rc_dir,
+            backup_dir=backup_dir,
+            journal=journal,
+        )
+
+    def remove(name: str) -> None:
+        live_path = live_rc_dir / name
+        backup_path = backup_dir / name
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        _replace_path(live_path, backup_path)
+        journal.record(live_path, backup_path)
+
+    tasks = [(install, name) for name in installs] + [(remove, name) for name in removals]
+    if not tasks:
+        return
+    workers = min(_COMMIT_MAX_WORKERS, len(tasks))
+    failures: list[BaseException] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(action, name) for action, name in tasks]
+        # Let every task settle before deciding: the journal must be complete
+        # before a rollback can restore the previous folder contents.
+        for future in futures:
+            error = future.exception()
+            if error is not None:
+                failures.append(error)
+    if failures:
+        raise failures[0]
+
+
+def _install_commit_file(
+    name: str,
+    *,
+    live_rc_dir: Path,
+    stage_rc_dir: Path,
+    backup_dir: Path,
+    journal: _CommitJournal,
+) -> None:
+    stage_path = stage_rc_dir / name
+    live_path = live_rc_dir / name
+    if live_path.exists():
+        backup_path = backup_dir / name
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        _replace_path(live_path, backup_path)
+        journal.record(live_path, backup_path)
+    else:
+        journal.record(live_path, None)
+    live_path.parent.mkdir(parents=True, exist_ok=True)
+    _replace_path(stage_path, live_path)
+
+
+def _relative_commit_files(root: Path, index_file_name: str) -> dict[str, str]:
+    """Map casefolded relative path -> relative path for every committable file."""
+
+    if not root.is_dir():
+        return {}
+    lock_name = f".{index_file_name}.lock".casefold()
+    files: dict[str, str] = {}
+    try:
+        candidates = sorted(root.rglob("*"), key=lambda path: str(path).casefold())
+    except OSError as exc:
+        raise ResQImportCommitError(f"Could not enumerate reserving-class files: {exc}") from exc
+    for path in candidates:
+        if path.is_symlink():
+            raise ResQImportCommitError(
+                f"Refusing to commit a symlinked reserving-class path [{path.name}]."
+            )
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        # The index update lock is owned by whichever process holds it, not by
+        # the reserving-class contents, so a commit never moves or deletes it.
+        if len(relative.parts) == 1 and relative.name.casefold() == lock_name:
+            continue
+        files[str(relative).casefold()] = str(relative)
+    return files
 
 
 def _remove_job_root(job_root: Path, staging_parent: Path) -> None:
@@ -817,7 +1009,50 @@ def _remove_validated_tree(path: Path, expected_parent: Path) -> None:
         raise ResQImportCommitError("Refusing to delete a path outside the validated import folder.")
     if target.is_symlink():
         raise ResQImportCommitError("Refusing to recursively delete a symlinked import path.")
-    shutil.rmtree(target)
+    _retry_transient_folder_operation(
+        lambda: shutil.rmtree(target),
+        _FOLDER_DELETE_RETRY_DELAYS,
+    )
+
+
+def _replace_path(source: Path, destination: Path) -> None:
+    """Move one file into place, waiting out transient reader handles.
+
+    The live reserving class is read by the ArcRho app server, the engine, and
+    desktop virus scanners while an import runs. Those readers open files
+    without ``FILE_SHARE_DELETE``, so Windows can refuse the move for the few
+    milliseconds one of them holds a sidecar or CSV open. A fully staged import
+    must not be discarded for a handle that closes on its own.
+    """
+
+    _retry_transient_folder_operation(
+        lambda: os.replace(source, destination),
+        _COMMIT_RETRY_DELAYS,
+    )
+
+
+def _retry_transient_folder_operation(
+    operation: Callable[[], Any],
+    delays: tuple[float, ...],
+) -> None:
+    for delay in (*delays, None):
+        try:
+            operation()
+            return
+        except OSError as error:
+            if delay is None or not _is_transient_folder_lock_error(error):
+                raise
+            time.sleep(delay)
+
+
+def _is_transient_folder_lock_error(error: BaseException) -> bool:
+    if not isinstance(error, OSError):
+        return False
+    winerror = getattr(error, "winerror", None)
+    if winerror is not None:
+        return winerror in _TRANSIENT_FOLDER_LOCK_WINERRORS
+    # Non-Windows Bridge hosts surface the same contention as EACCES/EBUSY.
+    return isinstance(error, PermissionError) or error.errno == errno.EBUSY
 
 
 def _safe_progress_callback(callback: ProgressCallback | None) -> ProgressCallback | None:

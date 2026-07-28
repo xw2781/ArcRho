@@ -2,7 +2,7 @@ import {
   getTopLeftRangeCell,
   normalizeRange,
   writeTextToClipboard,
-} from "./table_selection.js";
+} from "./table_selection.js?v=20260726a";
 
 export { getTopLeftRangeCell, normalizeRange, writeTextToClipboard };
 

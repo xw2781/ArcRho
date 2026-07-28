@@ -36,6 +36,7 @@ _READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=READ_MAX_WORKERS,
     thread_name_prefix="arcrho-dfm-read",
 )
+SnapshotCacheKey = Tuple[str, bool, Tuple[str, ...], Tuple[str, ...], int, int]
 
 
 def _clean(value: Any) -> str:
@@ -44,6 +45,22 @@ def _clean(value: Any) -> str:
 
 def _key(value: Any) -> str:
     return " ".join(_clean(value).lower().split())
+
+
+def _axis_labels(values: Any) -> List[str]:
+    if values is None or isinstance(values, (str, bytes, Mapping)):
+        return []
+    try:
+        return [str(item if item is not None else "") for item in values]
+    except TypeError:
+        return []
+
+
+def _positive_int(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _now() -> str:
@@ -220,6 +237,11 @@ def _load_source_snapshot(
     dataset_name: str,
     *,
     vector: bool,
+    allow_review_needed: bool = False,
+    canonical_origin_labels: Iterable[Any] = (),
+    canonical_development_labels: Iterable[Any] = (),
+    expected_origin_length: int = 0,
+    expected_development_length: int = 0,
 ) -> Dict[str, Any]:
     sidecar_path = _sidecar_path(project_name, reserving_class, dataset_name)
     sidecar = _read_json(sidecar_path)
@@ -229,13 +251,34 @@ def _load_source_snapshot(
         sidecar.get("method_type"), sidecar.get("source_kind")
     )
     source_status = dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
-    if source_method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE \
+    if not allow_review_needed \
+            and source_method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE \
             and source_status == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED:
         raise HTTPException(409, f"DFM precedent requires review: {dataset_name}")
     data_format = _clean(sidecar.get("data_format")) or "Triangle"
     is_vector = data_format.lower() == "vector"
     if not vector and is_vector:
         raise HTTPException(422, f"DFM input '{dataset_name}' must be a Triangle dataset.")
+    source_origin_length = _positive_int(
+        sidecar.get("period_length") if is_vector else sidecar.get("origin_length")
+    )
+    required_origin_length = _positive_int(expected_origin_length)
+    if source_origin_length and required_origin_length \
+            and source_origin_length != required_origin_length:
+        raise HTTPException(
+            422,
+            f"DFM precedent '{dataset_name}' has incompatible origin period length "
+            f"({source_origin_length}; expected {required_origin_length}).",
+        )
+    source_development_length = _positive_int(sidecar.get("development_length"))
+    required_development_length = _positive_int(expected_development_length)
+    if not vector and source_development_length and required_development_length \
+            and source_development_length != required_development_length:
+        raise HTTPException(
+            422,
+            f"DFM input '{dataset_name}' has incompatible development period length "
+            f"({source_development_length}; expected {required_development_length}).",
+        )
     csv_file = os.path.basename(_clean(sidecar.get("csv_file")))
     if not csv_file:
         raise HTTPException(422, f"DFM precedent '{dataset_name}' does not identify its cache CSV.")
@@ -251,10 +294,14 @@ def _load_source_snapshot(
         raise HTTPException(422, f"DFM precedent CSV is invalid: {dataset_name}: {exc}") from exc
     frame = frame.where(pd.notnull(frame), None)
     raw_values = frame.values.tolist()
-    origin_labels = [str(item) for item in sidecar.get("origin_labels", [])] \
-        if isinstance(sidecar.get("origin_labels"), list) else []
+    method_origin_labels = _axis_labels(canonical_origin_labels)
+    origin_labels = method_origin_labels or _axis_labels(sidecar.get("origin_labels"))
     if len(origin_labels) != len(raw_values):
-        raise HTTPException(422, f"DFM precedent '{dataset_name}' has incompatible origin labels.")
+        raise HTTPException(
+            422,
+            f"DFM precedent '{dataset_name}' has {len(raw_values)} rows; "
+            f"expected {len(origin_labels)}.",
+        )
     try:
         decimal_places = int(sidecar.get("decimal_places") or 0)
     except (TypeError, ValueError):
@@ -282,10 +329,18 @@ def _load_source_snapshot(
             "decimal_places": decimal_places,
         }
     else:
-        development_labels = [str(item) for item in sidecar.get("development_labels", [])] \
-            if isinstance(sidecar.get("development_labels"), list) else []
         column_count = max((len(row) for row in raw_values), default=0)
-        if len(development_labels) != column_count:
+        method_development_labels = _axis_labels(canonical_development_labels)
+        if method_development_labels:
+            if len(method_development_labels) != column_count:
+                raise HTTPException(
+                    422,
+                    f"DFM input '{dataset_name}' has incompatible development geometry.",
+                )
+            development_labels = method_development_labels
+        else:
+            development_labels = _axis_labels(sidecar.get("development_labels"))
+        if not method_development_labels and len(development_labels) != column_count:
             try:
                 first_development = max(1, int(sidecar.get("origin_length") or 12))
                 development_step = max(1, int(sidecar.get("development_length") or 12))
@@ -318,16 +373,36 @@ def _source_snapshots(
     *,
     load_input: bool,
     load_basis: bool,
-    snapshot_cache: Dict[Tuple[str, bool], Dict[str, Any]] | None = None,
+    allow_review_needed: bool = False,
+    snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] | None = None,
 ) -> Tuple[Dict[str, Any] | None, Dict[str, Any] | None]:
     details = _details(payload)
+    data = _data_tab(payload)
     results = _results_tab(payload)
     input_name = _clean(details.get("input triangle"))
     basis_name = _clean(results.get("ratio basis dataset"))
+    method_origin_labels = tuple(_axis_labels(data.get("origin labels")))
+    method_development_labels = tuple(_axis_labels(data.get("development labels")))
+    origin_length = _positive_int(details.get("origin length"))
+    development_length = _positive_int(details.get("development length"))
     cache = snapshot_cache if snapshot_cache is not None else {}
     futures = {}
-    input_cache_key = (_key(input_name), False)
-    basis_cache_key = (_key(basis_name), True)
+    input_cache_key: SnapshotCacheKey = (
+        _key(input_name),
+        False,
+        method_origin_labels,
+        method_development_labels,
+        origin_length,
+        development_length,
+    )
+    basis_cache_key: SnapshotCacheKey = (
+        _key(basis_name),
+        True,
+        method_origin_labels,
+        (),
+        origin_length,
+        0,
+    )
     if load_input:
         if not input_name:
             raise HTTPException(422, "DFM input triangle is required.")
@@ -338,6 +413,11 @@ def _source_snapshots(
                 reserving_class,
                 input_name,
                 vector=False,
+                allow_review_needed=allow_review_needed,
+                canonical_origin_labels=method_origin_labels,
+                canonical_development_labels=method_development_labels,
+                expected_origin_length=origin_length,
+                expected_development_length=development_length,
             )
     if load_basis and basis_name:
         if basis_cache_key not in cache:
@@ -347,6 +427,9 @@ def _source_snapshots(
                 reserving_class,
                 basis_name,
                 vector=True,
+                allow_review_needed=allow_review_needed,
+                canonical_origin_labels=method_origin_labels,
+                expected_origin_length=origin_length,
             )
     if "input" in futures:
         cache[input_cache_key] = futures["input"].result()
@@ -364,8 +447,9 @@ def _recalculate_with_sources(
     *,
     load_input: bool,
     load_basis: bool,
+    allow_review_needed: bool = False,
     changed_precedents: Iterable[str] = (),
-    snapshot_cache: Dict[Tuple[str, bool], Dict[str, Any]] | None = None,
+    snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     input_snapshot, basis_snapshot = _source_snapshots(
         project_name,
@@ -373,6 +457,7 @@ def _recalculate_with_sources(
         payload,
         load_input=load_input,
         load_basis=load_basis,
+        allow_review_needed=allow_review_needed,
         snapshot_cache=snapshot_cache,
     )
     return _contract_call(
@@ -389,22 +474,23 @@ def _assert_refreshable_precedents(
     project_name: str,
     reserving_class: str,
     payload: Mapping[str, Any],
-    snapshot_cache: Mapping[Tuple[str, bool], Mapping[str, Any]],
+    snapshot_cache: Mapping[SnapshotCacheKey, Mapping[str, Any]],
     precedent_names: Iterable[str] | None = None,
 ) -> None:
     missing = []
-    review_needed = []
     futures = {}
     names = list(precedent_names) if precedent_names is not None else _precedent_names(payload)
     for name in names:
         normalized = _key(name)
-        cached = snapshot_cache.get((normalized, False)) or snapshot_cache.get((normalized, True))
+        cached = next(
+            (
+                snapshot
+                for cache_key, snapshot in snapshot_cache.items()
+                if cache_key[0] == normalized
+            ),
+            None,
+        )
         if cached is not None:
-            method_type = _clean(cached.get("_method_type"))
-            status = dataset_sidecar_status_service.normalize_status(cached.get("_status"))
-            if method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE \
-                    and status == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED:
-                review_needed.append(name)
             continue
         futures[name] = _READ_EXECUTOR.submit(
             _read_json,
@@ -414,18 +500,8 @@ def _assert_refreshable_precedents(
         sidecar = future.result()
         if not sidecar:
             missing.append(name)
-            continue
-        method_type = dataset_sidecar_status_service.normalize_method_type(
-            sidecar.get("method_type"), sidecar.get("source_kind")
-        )
-        if method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE \
-                and dataset_sidecar_status_service.normalize_status(sidecar.get("status")) \
-                == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED:
-            review_needed.append(name)
     if missing:
         raise RuntimeError("DFM precedent sidecar is missing: " + ", ".join(missing))
-    if review_needed:
-        raise RuntimeError("DFM precedent requires review: " + ", ".join(review_needed))
 
 
 def _csv_text(values: Iterable[Any]) -> str:
@@ -793,6 +869,7 @@ def save_dfm_method(
                 merged,
                 load_input=load_input,
                 load_basis=load_basis,
+                allow_review_needed=True,
                 changed_precedents=[
                     name for name, changed_identity in (
                         (next_input, load_input),
@@ -832,26 +909,25 @@ def save_dfm_method(
         and expected_derived_revision is not None
         and _clean(expected_derived_revision) != _revision_response(current)["derived_revision"]
     )
-    if publication_changed:
-        try:
-            from app_server.services import calculated_dataset_service
+    response["unreviewed_precedents"] = dataset_sidecar_status_service.review_needed_precedent_names(
+        project,
+        reserving,
+        _precedent_names(refreshed),
+    )
+    response["unreviewed_precedent_count"] = len(response["unreviewed_precedents"])
+    try:
+        from app_server.services import calculated_dataset_service
 
-            response["propagation"] = calculated_dataset_service.recalculate_dependents(
-                project,
-                reserving,
-                output_dataset,
-                _clean(_details(refreshed).get("output type")) or output_dataset,
-                include_dfm=True,
-                rebuild_index=True,
-            )
-        except Exception as exc:
-            response["propagation"] = {"ok": False, "errors": [{"reason": str(exc)}]}
-    else:
-        response["propagation"] = {
-            "ok": True,
-            "skipped": True,
-            "reason": "publication_unchanged",
-        }
+        response["propagation"] = calculated_dataset_service.recalculate_dependents(
+            project,
+            reserving,
+            output_dataset,
+            _clean(_details(refreshed).get("output type")) or output_dataset,
+            include_dfm=True,
+            rebuild_index=True,
+        )
+    except Exception as exc:
+        response["propagation"] = {"ok": False, "errors": [{"reason": str(exc)}]}
     response["propagation_ok"] = bool(response["propagation"].get("ok"))
     response["calculated_updates"] = response["propagation"]
     return response
@@ -876,7 +952,7 @@ def _refresh_one(
     output_dataset: str,
     sidecar: Mapping[str, Any],
     changed_names: Iterable[str],
-    snapshot_cache: Dict[Tuple[str, bool], Dict[str, Any]],
+    snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]],
     method_payload: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
     previous_status = dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
@@ -894,27 +970,6 @@ def _refresh_one(
     changed_keys = {_key(item) for item in changed_names if _key(item)}
     load_input = _key(input_name) in changed_keys
     load_basis = bool(basis_name and _key(basis_name) in changed_keys)
-    if load_input and basis_name and not load_basis:
-        # Input values can refresh from the embedded basis without touching
-        # its files. A true origin-label change creates a data dependency on a
-        # fresh basis snapshot so the new labels can be aligned exactly.
-        input_snapshot, _ = _source_snapshots(
-            project_name,
-            reserving_class,
-            method,
-            load_input=True,
-            load_basis=False,
-            snapshot_cache=snapshot_cache,
-        )
-        next_origins = [
-            str(value if value is not None else "")
-            for value in (input_snapshot or {}).get("origin_labels", [])
-        ]
-        embedded_basis_origins = [
-            str(value if value is not None else "")
-            for value in (_results_tab(method).get("ratio basis origin labels") or [])
-        ]
-        load_basis = next_origins != embedded_basis_origins
     if not load_input and not load_basis:
         return {"ok": True, "dataset_name": output_dataset, "skipped": True, "reason": "stale_reverse_dependency_edge"}
     refreshed = _recalculate_with_sources(
@@ -923,6 +978,7 @@ def _refresh_one(
         method,
         load_input=load_input,
         load_basis=load_basis,
+        allow_review_needed=True,
         changed_precedents=changed_names,
         snapshot_cache=snapshot_cache,
     )
@@ -1003,6 +1059,10 @@ def refresh_dfm_method(
                 raise HTTPException(409, "DFM output sidecar is missing.")
             if _clean(method.get("json format")) != DFM_JSON_FORMAT:
                 raise HTTPException(409, "Open the legacy DFM once to upgrade it before refreshing.")
+            was_review_needed = (
+                dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
+                == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED
+            )
             result = _refresh_one(
                 project,
                 reserving,
@@ -1012,6 +1072,10 @@ def refresh_dfm_method(
                 {},
                 method_payload=method,
             )
+            if was_review_needed:
+                _mark_review_needed(project, reserving, stored_output)
+                result["sidecar"] = _read_json(sidecar_path) or result.get("sidecar") or sidecar
+                result["status_refreshed"] = False
     response = _method_response(
         project,
         reserving,
@@ -1057,6 +1121,7 @@ def refresh_dependents(
     changed_dataset_names: Iterable[Any],
     *,
     blocked_precedent_names: Iterable[Any] = (),
+    finalize_method_review_status: bool = True,
 ) -> Dict[str, Any]:
     """Refresh affected DFM methods transitively, without cascading other domains."""
 
@@ -1075,7 +1140,7 @@ def refresh_dependents(
     status_refreshed: List[Dict[str, Any]] = []
     skipped: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
-    snapshot_cache: Dict[Tuple[str, bool], Dict[str, Any]] = {}
+    snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] = {}
     sidecar_cache: Dict[str, Dict[str, Any]] = {}
     processed_source_keys = set()
     queue = list(changed)
@@ -1188,6 +1253,15 @@ def refresh_dependents(
                         "dataset_name": output_dataset,
                         "reason": result.get("reason") or "not_updated",
                     })
+        review_status_updates = (
+            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+                project,
+                reserving,
+                changed,
+            )
+            if finalize_method_review_status
+            else []
+        )
     return {
         "ok": not errors,
         "project_name": project,
@@ -1197,4 +1271,5 @@ def refresh_dependents(
         "status_refreshed": status_refreshed,
         "skipped": skipped,
         "errors": errors,
+        "review_status_updates": review_status_updates,
     }

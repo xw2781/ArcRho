@@ -29,7 +29,7 @@ const [
   readFile(new URL("../ui/project_instance/project_instance_dataset_table.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_windows.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_messages.js", import.meta.url), "utf8"),
-  readFile(new URL("../ui/shared/tabs/data/data_tab_controller.js", import.meta.url), "utf8"),
+  readFile(new URL("../ui/shared/tabs/data/data_tab_details_controller.js", import.meta.url), "utf8"),
   readFile(new URL("../app_server/services/dataset_instance_index_service.py", import.meta.url), "utf8"),
   readFile(new URL("../app_server/services/dataset_sidecar_status_service.py", import.meta.url), "utf8"),
   readFile(new URL("../../python-api/migration/resq_migration/core.py", import.meta.url), "utf8"),

@@ -17,6 +17,8 @@ METHOD_TYPE_BF_CODE = 2
 METHOD_TYPE_RESULT_SELECTION_CODE = 4
 METHOD_TYPE_BS_SR_CODE = 8
 METHOD_TYPE_BS_CRA_CODE = 9
+METHOD_STATUS_OK = 0
+METHOD_STATUS_NEEDS_REVIEW = 2
 BS_SR_METHOD_TYPE = "B&S Settlement Rate Adjustment"
 BS_CRA_METHOD_TYPE = "B&S Case Reserve Adequacy Adjustment"
 BS_SR_SOURCE_KIND = "berquist_sherman_sr"
@@ -78,6 +80,18 @@ def _safe_int_attr(obj, attr: str, default: int = 0) -> int:
         return int(value)
     except Exception:
         return default
+
+
+def normalize_method_status(value: object) -> int:
+    """Map ResQ method output status to ArcRho's canonical 0/2 review status."""
+    try:
+        return (
+            METHOD_STATUS_NEEDS_REVIEW
+            if int(value) == METHOD_STATUS_NEEDS_REVIEW
+            else METHOD_STATUS_OK
+        )
+    except (TypeError, ValueError):
+        return METHOD_STATUS_OK
 
 
 def _method_type_name(value: object) -> str:

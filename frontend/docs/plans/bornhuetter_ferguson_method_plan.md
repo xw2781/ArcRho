@@ -1,7 +1,7 @@
-# Bornhuetter Ferguson Method V1 Plan
+# Bornhuetter Ferguson Method Plan
 
-Version: v2.0
-Last updated: 2026-07-09
+Version: v3.0
+Last updated: 2026-07-26
 
 ## Summary
 
@@ -159,8 +159,8 @@ datasets/<Name>@<OriginLength>.csv
 
 Save writes:
 
-- BF v2 method JSON grouped by `details_tab`, `method_tab`, `chart_tab`, `audit_log_tab`, and `method_metadata`; notes are owned only by the output dataset sidecar.
-- `method_tab.prior_datasets` stores each prior source name, loaded values, and row weights; `method_tab.show_weights` stores column visibility and `details_tab.statistic_decimal_places` stores formatting precision.
+- Self-contained BF v3 method JSON grouped by `details_tab`, `method_tab`, `chart_tab`, `audit_log_tab`, and `method_metadata`; notes are owned only by the output dataset sidecar. Earlier BF formats are unsupported and must be re-imported.
+- `method_tab` stores the Latest and DFM snapshots, origin labels, every prior source name/value/weight vector, all calculated/output vectors, weight-column visibility and weight-display mode. `details_tab.statistic_decimal_places` stores formatting precision.
 - Native output vector CSV.
 - Aggregated coarser-period vector CSV variants when the selected origin length can aggregate to 3, 6, or 12.
 - Dataset sidecar metadata with:
@@ -172,7 +172,7 @@ Save writes:
   - `csv_file`
   - `precedents` containing the Latest triangle, DFM source, and every Prior Ultimate source.
 
-Project Instance refreshes the cached dataset table after a successful save.
+The app server stages and publishes the method JSON, native/coarser output CSVs, and sidecar together, with the sidecar last. Project Instance refreshes the cached dataset table after a successful save. Durable precedent saves update the complete BF publication directly; opening a current v3 never needs a dependency review.
 
 ## Deferred From V2
 
@@ -190,7 +190,7 @@ Project Instance refreshes the cached dataset table after a successful save.
 6. Verify Method table values, weighted Selected Prior, and New Ultimate calculation:
    `New Ultimate = ROUND(Latest + (1 - Percentage Developed) * Selected Prior, 0)`.
 7. Confirm the Chart tab plots DFM Implied Ultimate, Selected Prior, and BF Ultimate against the Method table origin labels.
-8. Open a configured dependency in the same Project Instance, make unsaved edits, and confirm the BF Method table and Chart immediately use the live preview values; save or discard the dependency and confirm BF reloads the persisted source.
+8. Open a configured dependency in the same Project Instance, make unsaved edits, and confirm the BF Method table and Chart immediately use the live preview values; save or discard the dependency and confirm BF restores its aggregate persisted snapshot without per-source reads.
 9. Save, close, and reopen.
 10. Confirm method JSON restores prior sources, weights, formatting, Notes, Audit Log, and metadata.
 11. Confirm native output vector CSV and aggregated vector CSV variants are written.
@@ -198,3 +198,4 @@ Project Instance refreshes the cached dataset table after a successful save.
 13. Confirm Project Instance refresh shows the BF output vector.
 14. Confirm `Show as vector` opens the BF output vector.
 15. Confirm no BF Sync workflow appears.
+16. Confirm reopening a current v3 reads only its method JSON and output sidecar, while an upstream durable save has already refreshed its embedded snapshots.

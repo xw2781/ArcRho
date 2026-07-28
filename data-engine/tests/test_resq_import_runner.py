@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
 import sys
@@ -98,29 +99,25 @@ class ResQImportRunnerTests(unittest.TestCase):
                 "total_written": 1,
             }
 
+        def rebuild(project, rc, path):
+            rebuild_calls.append((project, rc, Path(path)))
+            self._write_index(Path(path))
+
         module = SimpleNamespace(
+            INDEX_FILE_NAME="index.json",
             _encode_rc_folder=lambda _rc_path: "rc",
             import_reserving_class_from_resq=importer,
             _apply_runtime_scope=lambda *args: ("previous", args),
             _restore_runtime_scope=lambda _previous: None,
             refresh_sidecar_graphs_for_rc=lambda path: refresh_calls.append(Path(path)),
-            rebuild_dataset_instance_index=lambda project, rc, path: rebuild_calls.append(
-                (project, rc, Path(path))
-            ),
+            rebuild_dataset_instance_index=rebuild,
         )
-        request = {
-            "RequestId": "run-123",
-            "ProjectName": "Demo",
-            "Path": r"Business\Auto",
-            "ExportMode": "configured",
-            "UserName": "tester",
-        }
 
         with (
             patch.object(runner, "get_project_root", return_value=server_root),
             patch.object(runner, "load_resq_data_migration", return_value=module),
         ):
-            result = runner.run_reserving_class_import(request, events.append)
+            result = runner.run_reserving_class_import(self._swap_request("run-123"), events.append)
 
         self.assertTrue(result["committed"])
         self.assertTrue(result["engine_component_preserved"])
@@ -189,44 +186,161 @@ class ResQImportRunnerTests(unittest.TestCase):
         live_rc = server_root / "projects" / "Demo" / "data" / "rc"
         self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
 
-        def importer(_project_name, _rc_path, **kwargs):
-            stage_rc = Path(kwargs["project_data_dir"]) / "rc"
-            self._write_dataset(stage_rc, "new-resq", source_kind="input", value="new")
-            return {"errors": 0, "engine_errors": 0, "engine_available": True}
-
-        module = SimpleNamespace(
-            _encode_rc_folder=lambda _rc_path: "rc",
-            import_reserving_class_from_resq=importer,
-            _apply_runtime_scope=lambda *args: ("previous", args),
-            _restore_runtime_scope=lambda _previous: None,
-            refresh_sidecar_graphs_for_rc=lambda _path: 0,
-            rebuild_dataset_instance_index=lambda *_args: None,
-        )
-        request = {
-            "RequestId": "run-backup-cleanup",
-            "ProjectName": "Demo",
-            "Path": r"Business\Auto",
-            "ExportMode": "configured",
-            "UserName": "tester",
-        }
-
         with (
             patch.object(runner, "get_project_root", return_value=server_root),
-            patch.object(runner, "load_resq_data_migration", return_value=module),
+            patch.object(runner, "load_resq_data_migration", return_value=self._swap_module()),
             patch.object(
                 runner,
                 "_remove_validated_tree",
                 side_effect=OSError("network share is busy"),
             ),
         ):
-            result = runner.run_reserving_class_import(request)
+            result = runner.run_reserving_class_import(self._swap_request("run-backup-cleanup"))
 
         staging_root = server_root / "r" / "run-backup-cleanup"
         self.assertTrue(result["committed"])
         self.assertFalse(result["previous_data_deleted"])
-        self.assertIn("previous reserving-class folder", result["message"])
+        self.assertIn("previous reserving-class files", result["message"])
         self.assertTrue((live_rc / "sidecars" / "new-resq.json").is_file())
         self.assertTrue((staging_root / "previous" / "sidecars" / "old-resq.json").is_file())
+
+    def test_the_commit_replaces_files_and_writes_the_index_last(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "kept", source_kind="input", value="old")
+        self._write_dataset(live_rc, "dropped-by-resq", source_kind="input", value="old")
+        self._write_index(live_rc, "live")
+        installed = []
+        real_replace = runner.os.replace
+
+        def recording_replace(source, target):
+            if str(target).startswith(str(live_rc)):
+                installed.append(Path(target).name)
+            return real_replace(source, target)
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(
+                runner,
+                "load_resq_data_migration",
+                return_value=self._swap_module("kept", "added"),
+            ),
+            patch.object(runner.os, "replace", recording_replace),
+        ):
+            result = runner.run_reserving_class_import(self._swap_request("run-reconcile"))
+
+        self.assertTrue(result["committed"])
+        # The index publishes the folder, so it must land after its contents.
+        self.assertEqual(installed[-1], "index.json")
+        self.assertEqual(json.loads((live_rc / "index.json").read_text())["marker"], "staged")
+        self.assertEqual((live_rc / "datasets" / "kept.csv").read_text().strip(), "new")
+        self.assertTrue((live_rc / "sidecars" / "added.json").is_file())
+        # A dataset ResQ no longer exports must not survive as an orphan.
+        self.assertFalse((live_rc / "sidecars" / "dropped-by-resq.json").exists())
+        self.assertFalse((live_rc / "datasets" / "dropped-by-resq.csv").exists())
+        self.assertFalse((server_root / "r" / "run-reconcile").exists())
+
+    def test_a_transient_file_lock_does_not_discard_a_staged_import(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+        self._write_index(live_rc, "live")
+        contended = live_rc / "datasets" / "new-resq.csv"
+        remaining_failures = [2]
+        real_replace = runner.os.replace
+
+        def flaky_replace(source, target):
+            if remaining_failures[0] and Path(target) == contended:
+                remaining_failures[0] -= 1
+                raise PermissionError(13, "Access is denied", str(source), 5, str(target))
+            return real_replace(source, target)
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=self._swap_module()),
+            patch.object(runner.time, "sleep"),
+            patch.object(runner.os, "replace", flaky_replace),
+        ):
+            result = runner.run_reserving_class_import(self._swap_request("run-flaky-file"))
+
+        self.assertEqual(remaining_failures[0], 0)
+        self.assertTrue(result["committed"])
+        self.assertTrue(result["previous_data_deleted"])
+        self.assertTrue(contended.is_file())
+        self.assertFalse((live_rc / "sidecars" / "old-resq.json").exists())
+
+    def test_a_persistent_file_lock_rolls_the_live_rc_back_completely(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+        self._write_dataset(live_rc, "dropped-by-resq", source_kind="input", value="old")
+        self._write_index(live_rc, "live")
+        before = self._folder_snapshot(live_rc)
+        blocked = live_rc / "datasets" / "new-resq.csv"
+        real_replace = runner.os.replace
+
+        def blocked_replace(source, target):
+            if Path(target) == blocked:
+                raise PermissionError(13, "Access is denied", str(source), 5, str(target))
+            return real_replace(source, target)
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=self._swap_module()),
+            patch.object(runner.time, "sleep") as sleep,
+            patch.object(runner.os, "replace", blocked_replace),
+            self.assertRaises(runner.ResQImportCommitError) as raised,
+        ):
+            runner.run_reserving_class_import(self._swap_request("run-blocked-file"))
+
+        self.assertEqual(sleep.call_count, len(runner._COMMIT_RETRY_DELAYS))
+        self.assertIn("still open in another program", str(raised.exception))
+        self.assertIn("restored to its previous contents", str(raised.exception))
+        # Every replaced and removed file must be back, byte for byte.
+        self.assertEqual(self._folder_snapshot(live_rc), before)
+
+    def test_a_non_transient_commit_failure_is_raised_without_waiting(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+        self._write_index(live_rc, "live")
+        before = self._folder_snapshot(live_rc)
+        real_replace = runner.os.replace
+
+        def broken_replace(source, target):
+            if Path(target) == live_rc / "datasets" / "new-resq.csv":
+                raise OSError(errno.EXDEV, "Invalid cross-device link")
+            return real_replace(source, target)
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=self._swap_module()),
+            patch.object(runner.time, "sleep") as sleep,
+            patch.object(runner.os, "replace", broken_replace),
+            self.assertRaises(runner.ResQImportCommitError) as raised,
+        ):
+            runner.run_reserving_class_import(self._swap_request("run-cross-device"))
+
+        self.assertEqual(sleep.call_count, 0)
+        self.assertNotIn("still open in another program", str(raised.exception))
+        self.assertEqual(self._folder_snapshot(live_rc), before)
+
+    def test_the_commit_never_moves_the_index_update_lock(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+        self._write_index(live_rc, "live")
+        lock_path = live_rc / ".index.json.lock"
+        lock_path.write_text("", encoding="utf-8")
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=self._swap_module()),
+        ):
+            result = runner.run_reserving_class_import(self._swap_request("run-index-lock"))
+
+        self.assertTrue(result["committed"])
+        self.assertTrue(lock_path.is_file())
 
     def test_lock_failure_removes_its_new_job_folder(self):
         server_root = self.root / "server"
@@ -265,6 +379,48 @@ class ResQImportRunnerTests(unittest.TestCase):
         }
         with self.assertRaises(runner.ResQImportRequestError):
             runner.run_reserving_class_import(request)
+
+    def _swap_module(self, *staged_names: str) -> SimpleNamespace:
+        names = staged_names or ("new-resq",)
+
+        def importer(_project_name, _rc_path, **kwargs):
+            stage_rc = Path(kwargs["project_data_dir"]) / "rc"
+            for name in names:
+                self._write_dataset(stage_rc, name, source_kind="input", value="new")
+            return {"errors": 0, "engine_errors": 0, "engine_available": True}
+
+        return SimpleNamespace(
+            INDEX_FILE_NAME="index.json",
+            _encode_rc_folder=lambda _rc_path: "rc",
+            import_reserving_class_from_resq=importer,
+            _apply_runtime_scope=lambda *args: ("previous", args),
+            _restore_runtime_scope=lambda _previous: None,
+            refresh_sidecar_graphs_for_rc=lambda _path: 0,
+            rebuild_dataset_instance_index=lambda _project, _rc, path: self._write_index(Path(path)),
+        )
+
+    def _folder_snapshot(self, rc_dir: Path) -> dict:
+        return {
+            str(path.relative_to(rc_dir)): path.read_bytes()
+            for path in sorted(rc_dir.rglob("*"))
+            if path.is_file()
+        }
+
+    def _write_index(self, rc_dir: Path, marker: str = "staged"):
+        rc_dir.mkdir(parents=True, exist_ok=True)
+        (rc_dir / "index.json").write_text(
+            json.dumps({"schema_version": 1, "marker": marker}),
+            encoding="utf-8",
+        )
+
+    def _swap_request(self, request_id: str) -> dict:
+        return {
+            "RequestId": request_id,
+            "ProjectName": "Demo",
+            "Path": r"Business\Auto",
+            "ExportMode": "configured",
+            "UserName": "tester",
+        }
 
     def _write_dataset(self, rc_dir: Path, name: str, *, source_kind: str, value: str):
         dataset_dir = rc_dir / "datasets"

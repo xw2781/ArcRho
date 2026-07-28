@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from .bornhuetter_ferguson_contract import BF_JSON_FORMAT
+
 
 DATASET_INDEX_VERSION = 22
 INDEX_FILE_NAME = "index.json"
@@ -88,7 +90,6 @@ STATUS_REVIEW_NEEDED = 2
 
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
 LEGACY_RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
-BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
 BS_SR_JSON_FORMAT = "arcrho-berquist-sherman-sr-method-by-tab-v1"
 BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-method-by-tab-v1"
 

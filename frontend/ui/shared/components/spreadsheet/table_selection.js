@@ -25,6 +25,31 @@ export function getTopLeftRangeCell(ranges = []) {
   return best;
 }
 
+export function scrollSpreadsheetCellIntoView(cell, scrollHost) {
+  if (!cell) return;
+  if (!scrollHost) {
+    cell.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  const hostRect = scrollHost.getBoundingClientRect();
+  const cellRect = cell.getBoundingClientRect();
+  const table = cell.closest("table");
+  const thead = table?.querySelector("thead");
+  const stickyHeader = thead && Array.from(thead.querySelectorAll("th"))
+    .some((header) => getComputedStyle(header).position === "sticky");
+  const topInset = stickyHeader ? thead.getBoundingClientRect().height : 0;
+  const rowHeader = cell.parentElement?.querySelector("th");
+  const rowHeaderStyle = rowHeader ? getComputedStyle(rowHeader) : null;
+  const stickyRowHeader = rowHeaderStyle?.position === "sticky" && rowHeaderStyle?.left !== "auto";
+  const leftInset = stickyRowHeader ? rowHeader.getBoundingClientRect().width : 0;
+  const visibleTop = hostRect.top + topInset;
+  const visibleLeft = hostRect.left + leftInset;
+  if (cellRect.top < visibleTop) scrollHost.scrollTop += cellRect.top - visibleTop;
+  else if (cellRect.bottom > hostRect.bottom) scrollHost.scrollTop += cellRect.bottom - hostRect.bottom;
+  if (cellRect.left < visibleLeft) scrollHost.scrollLeft += cellRect.left - visibleLeft;
+  else if (cellRect.right > hostRect.right) scrollHost.scrollLeft += cellRect.right - hostRect.right;
+}
+
 export async function writeTextToClipboard(text) {
   const value = String(text ?? "");
   if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
@@ -81,6 +106,12 @@ export function wireSelectableTable(options = {}) {
   const container = options.container;
   if (!container || container.dataset.tableSelectionWired === "1") return null;
   container.dataset.tableSelectionWired = "1";
+
+  const listenerCleanup = [];
+  const listen = (target, type, handler, eventOptions) => {
+    target.addEventListener(type, handler, eventOptions);
+    listenerCleanup.push(() => target.removeEventListener(type, handler, eventOptions));
+  };
 
   const selectedClass = options.selectedClass || "sel";
   const activeClass = options.activeClass || "active";
@@ -289,28 +320,7 @@ export function wireSelectableTable(options = {}) {
     if (!state.activeCell) return;
     const cell = container.querySelector(cellSelectorFor(state.activeCell.r, state.activeCell.c, rowKey, colKey));
     if (!cell) return;
-    const scrollHost = getScrollHost();
-    if (!scrollHost) {
-      cell.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-      return;
-    }
-    const hostRect = scrollHost.getBoundingClientRect();
-    const cellRect = cell.getBoundingClientRect();
-    const table = cell.closest("table");
-    const thead = table?.querySelector("thead");
-    const stickyHeader = thead && Array.from(thead.querySelectorAll("th"))
-      .some((header) => getComputedStyle(header).position === "sticky");
-    const topInset = stickyHeader ? thead.getBoundingClientRect().height : 0;
-    const rowHeader = cell.parentElement?.querySelector("th");
-    const rowHeaderStyle = rowHeader ? getComputedStyle(rowHeader) : null;
-    const stickyRowHeader = rowHeaderStyle?.position === "sticky" && rowHeaderStyle?.left !== "auto";
-    const leftInset = stickyRowHeader ? rowHeader.getBoundingClientRect().width : 0;
-    const visibleTop = hostRect.top + topInset;
-    const visibleLeft = hostRect.left + leftInset;
-    if (cellRect.top < visibleTop) scrollHost.scrollTop += cellRect.top - visibleTop;
-    else if (cellRect.bottom > hostRect.bottom) scrollHost.scrollTop += cellRect.bottom - hostRect.bottom;
-    if (cellRect.left < visibleLeft) scrollHost.scrollLeft += cellRect.left - visibleLeft;
-    else if (cellRect.right > hostRect.right) scrollHost.scrollLeft += cellRect.right - hostRect.right;
+    scrollSpreadsheetCellIntoView(cell, getScrollHost());
   }
 
   function moveSelection(deltaRow, deltaCol, settings = {}) {
@@ -358,7 +368,7 @@ export function wireSelectableTable(options = {}) {
 
   state.moveSelection = moveSelection;
 
-  container.addEventListener("mousedown", (event) => {
+  listen(container, "mousedown", (event) => {
     if (event.button !== 0 || isTypingTarget(event.target)) return;
     if (!canStartPointerSelection(event)) return;
     const cell = event.target?.closest?.(cellQuery);
@@ -376,7 +386,7 @@ export function wireSelectableTable(options = {}) {
     applyClasses();
   });
 
-  container.addEventListener("mouseover", (event) => {
+  listen(container, "mouseover", (event) => {
     if (!state.drag) return;
     const cell = event.target?.closest?.(cellQuery);
     if (!cell || !container.contains(cell) || !isSelectableCell(cell)) return;
@@ -389,7 +399,7 @@ export function wireSelectableTable(options = {}) {
     applyClasses();
   });
 
-  container.addEventListener("contextmenu", (event) => {
+  listen(container, "contextmenu", (event) => {
     const cell = event.target?.closest?.(cellQuery);
     if (!cell || !container.contains(cell) || !isSelectableCell(cell)) return;
     markActive();
@@ -397,7 +407,7 @@ export function wireSelectableTable(options = {}) {
     if (onContextMenu) onContextMenu(event, cell, { copySelection, state });
   });
 
-  container.addEventListener("click", (event) => {
+  listen(container, "click", (event) => {
     if (isTypingTarget(event.target) || !canStartLabelSelection(event)) return;
     const rowHeader = rowHeaderSelector ? event.target?.closest?.(rowHeaderSelector) : null;
     if (rowHeader && container.contains(rowHeader)) {
@@ -416,11 +426,11 @@ export function wireSelectableTable(options = {}) {
     event.preventDefault();
   });
 
-  document.addEventListener("mouseup", () => {
+  listen(document, "mouseup", () => {
     state.drag = null;
   });
 
-  document.addEventListener("keydown", (event) => {
+  listen(document, "keydown", (event) => {
     if (isTypingTarget(event.target)) return;
     if (event.key === "Escape" && activeSelectableTable === state && state.isActive) {
       clearSelection();
@@ -454,6 +464,17 @@ export function wireSelectableTable(options = {}) {
     void copySelection();
   });
 
+  function destroy() {
+    while (listenerCleanup.length) listenerCleanup.pop()?.();
+    if (activeSelectableTable === state) activeSelectableTable = null;
+    state.activeCell = null;
+    state.anchorCell = null;
+    state.ranges = [];
+    state.drag = null;
+    state.isActive = false;
+    delete container.dataset.tableSelectionWired;
+  }
+
   return {
     copySelection,
     selectCell,
@@ -463,5 +484,6 @@ export function wireSelectableTable(options = {}) {
     selectRow,
     state,
     applyClasses,
+    destroy,
   };
 }

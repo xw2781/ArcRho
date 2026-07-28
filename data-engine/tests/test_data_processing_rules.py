@@ -366,34 +366,58 @@ class ReservingClassCompilerTests(unittest.TestCase):
         expected = pd.Series([1, -1, 0], dtype="int64")
         assert_series_equal(actual.reset_index(drop=True), expected)
 
-    def test_rejects_unsupported_and_unknown_source_components(self):
+    def test_ignores_unknown_source_members_for_unselected_types(self):
+        catalog = build_reserving_class_catalog(
+            _field_mapping(),
+            _reserving_class_types(
+                extra_rows=[
+                    ["Unused Bad", "5", "Missing", '"Missing"'],
+                ]
+            ),
+        )
+
+        context, coefficients = resolve_request_path(
+            catalog,
+            ["All States", "BI Total"],
+        )
+
+        self.assertEqual(context[("IBNRCAT", 5)], "BI Total")
+        self.assertIn("BI", coefficients["IBNRCAT"])
+
+    def test_rejects_unsupported_source_components_when_selected(self):
+        unsupported_catalog = build_reserving_class_catalog(
+            _field_mapping(),
+            _reserving_class_types(
+                extra_rows=[
+                    ["A", "5", "", '"A"'],
+                    ["B", "5", "", '"B"'],
+                    ["Bad", "5", "A * B", '"A" * "B"'],
+                ]
+            ),
+        )
         with self.assertRaisesRegex(
             ReservingClassConfigurationError,
             "Unsupported operator",
         ):
-            build_reserving_class_catalog(
-                _field_mapping(),
-                _reserving_class_types(
-                    extra_rows=[
-                        ["A", "5", "", '"A"'],
-                        ["B", "5", "", '"B"'],
-                        ["Bad", "5", "A * B", '"A" * "B"'],
-                    ]
-                ),
+            resolve_request_path(
+                unsupported_catalog,
+                ["All States", "Bad"],
             )
 
+    def test_atomic_coefficient_resolution_remains_strict_for_unknown_members(self):
+        unknown_catalog = build_reserving_class_catalog(
+            _field_mapping(),
+            _reserving_class_types(
+                extra_rows=[
+                    ["Bad", "5", "Missing", '"Missing"'],
+                ]
+            ),
+        )
         with self.assertRaisesRegex(
             ReservingClassConfigurationError,
             "unknown member",
         ):
-            build_reserving_class_catalog(
-                _field_mapping(),
-                _reserving_class_types(
-                    extra_rows=[
-                        ["Bad", "5", "Missing", '"Missing"'],
-                    ]
-                ),
-            )
+            unknown_catalog.coefficients_for("IBNRCAT", 5, "Bad")
 
 
 class DataProcessingRuleTests(unittest.TestCase):

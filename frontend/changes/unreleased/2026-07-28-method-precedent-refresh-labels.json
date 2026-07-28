@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "method dependencies",
+  "audience": "user",
+  "summary": "Saved precedent changes now remain durable in downstream BF and DFM methods imported from ResQ.",
+  "details": [
+    "BF and DFM refreshes align source CSV values to each method's canonical axes instead of requiring duplicate labels in precedent sidecars.",
+    "Review Needed BF methods no longer reload unrelated precedents during an ordinary Save or a single-source automatic refresh.",
+    "Dataset saves now warn when the source was committed but a downstream method refresh failed."
+  ]
+}

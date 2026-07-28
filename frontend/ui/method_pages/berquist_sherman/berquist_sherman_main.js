@@ -16,6 +16,7 @@ import {
   normalizeSidecarAuditEntries,
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
 import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
@@ -1570,7 +1571,7 @@ async function saveMethod() {
     data: matrixCsv(output),
   });
   if (csvResult?.error) throw new Error(csvResult.error);
-  await saveSidecar(csvPath);
+  const sidecar = await saveSidecar(csvPath);
   await Promise.all([
     loadCachedRows(true).catch(() => {}),
     loadSidecar().catch(() => null),
@@ -1585,6 +1586,11 @@ async function saveMethod() {
     }, "*");
   } catch {}
   postStatus(`${contract.methodType} saved: ${details.name}`);
+  await showMethodSaveReviewWarning(sidecar, {
+    instanceId: inst,
+    projectName: state.project,
+    reservingClass: state.reservingClass,
+  });
   return { ok: true, path: jsonResult.path, csvPath };
 }
 

@@ -97,6 +97,35 @@ def entry_names(entries: Any) -> List[str]:
     return out
 
 
+def review_needed_precedent_names(
+    project_name: str,
+    reserving_class: str,
+    precedents: Any,
+) -> List[str]:
+    """Return method-backed precedents awaiting human review in input order."""
+    names = entry_names(precedents)
+    futures = {
+        name: _SIDECAR_READ_EXECUTOR.submit(
+            read_sidecar,
+            sidecar_path(project_name, reserving_class, name),
+        )
+        for name in names
+    }
+    review_needed: List[str] = []
+    for name in names:
+        payload = futures[name].result()
+        if not payload:
+            continue
+        method_type = normalize_method_type(
+            payload.get("method_type"),
+            payload.get("source_kind"),
+        )
+        if method_type != METHOD_TYPE_NONE \
+                and normalize_status(payload.get("status")) == STATUS_REVIEW_NEEDED:
+            review_needed.append(name)
+    return review_needed
+
+
 def merge_name_entries(*entry_lists: Any) -> List[Dict[str, str]]:
     names: List[str] = []
     for entries in entry_lists:

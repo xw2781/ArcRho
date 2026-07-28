@@ -58,6 +58,7 @@ if str(_PYTHON_API_SRC) not in sys.path:
 if str(_MIGRATION_DIR) not in sys.path:
     sys.path.insert(0, str(_MIGRATION_DIR))
 
+from arcrho_api.bornhuetter_ferguson_contract import BF_JSON_FORMAT  # noqa: E402
 from arcrho_api.dfm_contract import DFM_JSON_FORMAT  # noqa: E402
 from arcrho_api.client import ArcRhoClient  # noqa: E402
 from arcrho_api.dfm_propagation import (  # noqa: E402
@@ -179,7 +180,6 @@ PASSWORD = ""
 SERVER_ROOT = Path(r"E:\ArcRho Server")
 PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
 RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
-BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v2"
 INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
 INDEX_VERSION = DATASET_INDEX_VERSION
 METHOD_DATA_DIR = "methods"
@@ -1314,7 +1314,12 @@ def export_vectors_for_rc(
                 _apply_result_selection_vector_metadata(payload, result_selection_payload)
             if bf_payload:
                 _apply_bornhuetter_ferguson_vector_metadata(payload, bf_payload)
-            write_vector_export(payload, rc_path, rc_dir)
+            write_vector_export(
+                payload,
+                rc_path,
+                rc_dir,
+                bf_method_payload=bf_payload,
+            )
             detail = (
                 f"    OK  {_method_type_name(method_type)} vector "
                 f"{_vector_cache_csv_file_name(payload['name'], payload['origin_length'])}"

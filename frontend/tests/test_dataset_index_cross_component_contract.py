@@ -254,7 +254,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self._write_json(
             self.methods_dir / "BF@BF Ultimate.json",
             {
-                "json_format": "arcrho-bornhuetter-ferguson-method-by-tab-v2",
+                "json_format": "arcrho-bornhuetter-ferguson-method-by-tab-v3",
                 "details_tab": {
                     "name": "BF Ultimate",
                     "output_type": "BF Ultimate",

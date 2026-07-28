@@ -134,6 +134,8 @@ class DfmServiceTests(unittest.TestCase):
         *,
         data_format: str,
         dependents: list[str] | None = None,
+        method_type: str = "None",
+        status: int = 0,
     ) -> None:
         csv_file = f"{name}@12.csv"
         (self.datasets / csv_file).write_text(csv_text, encoding="utf-8")
@@ -142,8 +144,8 @@ class DfmServiceTests(unittest.TestCase):
             "dataset_type": name,
             "project_name": "Project",
             "reserving_class": "Class",
-            "source_kind": "input",
-            "method_type": "None",
+            "source_kind": "dfm" if method_type == "DFM" else "input",
+            "method_type": method_type,
             "data_format": data_format,
             "origin_length": 12,
             "development_length": 12,
@@ -152,7 +154,7 @@ class DfmServiceTests(unittest.TestCase):
             "csv_file": csv_file,
             "number_format": "#,##0",
             "decimal_places": 0,
-            "status": 0,
+            "status": status,
             "Precedents": [],
             "Dependents": [
                 {"dataset_type_name": item} for item in (dependents or [])
@@ -238,7 +240,7 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(method_path.read_bytes(), before)
 
     def test_existing_save_rebases_owned_patch_without_precedent_reads(self) -> None:
-        method = self.write_method_pair()
+        method = self.write_method_pair(status=2)
         method["ratios tab"]["cell notes"]["ratio main table"]["2024"]["(1) 12-24"] = "updated"
         owned_revision = method_revisions(self.method_payload())["owned revision"]
         with (
@@ -256,13 +258,47 @@ class DfmServiceTests(unittest.TestCase):
             )
 
         self.assertTrue(result["ok"])
-        cascade.assert_not_called()
-        self.assertEqual(result["propagation"]["reason"], "publication_unchanged")
+        cascade.assert_called_once_with(
+            "Project",
+            "Class",
+            "Development Output",
+            "Selected Ultimate",
+            include_dfm=True,
+            rebuild_index=True,
+        )
+        self.assertTrue(result["propagation_ok"])
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
         self.assertEqual(
             saved["ratios tab"]["cell notes"]["ratio main table"]["2024"]["(1) 12-24"],
             "updated",
         )
+
+    def test_explicit_save_warns_and_still_saves_with_unreviewed_precedent(self) -> None:
+        method = self.write_method_pair(status=2)
+        self.write_source(
+            "Paid",
+            "100,150\n200,\n",
+            data_format="Triangle",
+            method_type="DFM",
+            status=2,
+        )
+        self.write_source("Premium", "1000\n1100\n", data_format="Vector")
+
+        with mock.patch(
+            "app_server.services.calculated_dataset_service.recalculate_dependents",
+            return_value={"ok": True, "updated": []},
+        ):
+            result = dfm_service.save_dfm_method(
+                "Project",
+                "Class",
+                method,
+                expected_owned_revision=method_revisions(method)["owned revision"],
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["sidecar"]["status"], 0)
+        self.assertEqual(result["unreviewed_precedents"], ["Paid"])
+        self.assertEqual(result["unreviewed_precedent_count"], 1)
 
     def test_existing_save_rejects_owned_revision_conflict_without_mutation(self) -> None:
         method = self.write_method_pair()
@@ -299,6 +335,122 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["origin_labels"], ["2024", "2025"])
         self.assertEqual(snapshot["values"], [150, 200])
 
+    def test_input_refresh_uses_saved_method_axes_when_sidecar_labels_are_absent(self) -> None:
+        method = self.write_method_pair()
+        self.write_source(
+            "Paid",
+            "100,175\n200,\n",
+            data_format="Triangle",
+            dependents=["Development Output"],
+        )
+        source_path = self.sidecars / "Paid.json"
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        source.pop("origin_labels")
+        self.write_json(source_path, source)
+
+        result = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertTrue(result["ok"], result)
+        saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["data tab"]["origin labels"], method["data tab"]["origin labels"])
+        self.assertEqual(
+            saved["data tab"]["development labels"],
+            method["data tab"]["development labels"],
+        )
+        self.assertEqual(saved["data tab"]["input data triangle values"], [[100, 175], [200, None]])
+
+    def test_basis_refresh_ignores_numeric_sidecar_labels_and_review_status(self) -> None:
+        method = self.write_method_pair()
+        self.write_source(
+            "Premium",
+            "2000\n2200\n",
+            data_format="Vector",
+            dependents=["Development Output"],
+            method_type="DFM",
+            status=2,
+        )
+        source_path = self.sidecars / "Premium.json"
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        source["origin_labels"] = ["1", "2"]
+        self.write_json(source_path, source)
+
+        result = dfm_service.refresh_dependents("Project", "Class", ["Premium"])
+
+        self.assertTrue(result["ok"], result)
+        saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            saved["results tab"]["ratio basis origin labels"],
+            method["data tab"]["origin labels"],
+        )
+        self.assertEqual(saved["results tab"]["ratio basis values"], [2000, 2200])
+
+    def test_snapshot_cache_is_scoped_by_saved_method_axes(self) -> None:
+        method = self.method_payload()
+        self.write_source("Paid", "100,150\n200,\n", data_format="Triangle")
+        source_path = self.sidecars / "Paid.json"
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        source.pop("origin_labels")
+        self.write_json(source_path, source)
+        snapshot_cache = {}
+
+        first, _ = dfm_service._source_snapshots(
+            "Project",
+            "Class",
+            method,
+            load_input=True,
+            load_basis=False,
+            snapshot_cache=snapshot_cache,
+        )
+        second_method = json.loads(json.dumps(method))
+        second_method["data tab"]["origin labels"] = ["2022", "2023"]
+        second, _ = dfm_service._source_snapshots(
+            "Project",
+            "Class",
+            second_method,
+            load_input=True,
+            load_basis=False,
+            snapshot_cache=snapshot_cache,
+        )
+
+        self.assertEqual(first["origin_labels"], ["2024", "2025"])
+        self.assertEqual(second["origin_labels"], ["2022", "2023"])
+        self.assertEqual(len(snapshot_cache), 2)
+
+    def test_missing_sidecar_labels_do_not_hide_row_or_period_mismatches(self) -> None:
+        self.write_method_pair()
+        method_path = self.methods / "DFM@Development.json"
+        output_path = self.datasets / "Development Output@12.csv"
+        before_method = method_path.read_bytes()
+        before_output = output_path.read_bytes()
+        self.write_source(
+            "Paid",
+            "100,150\n200,\n300,\n",
+            data_format="Triangle",
+            dependents=["Development Output"],
+        )
+        source_path = self.sidecars / "Paid.json"
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        source.pop("origin_labels")
+        self.write_json(source_path, source)
+
+        row_result = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertFalse(row_result["ok"])
+        self.assertIn("has 3 rows; expected 2", row_result["errors"][0]["reason"])
+        self.assertEqual(method_path.read_bytes(), before_method)
+        self.assertEqual(output_path.read_bytes(), before_output)
+
+        (self.datasets / "Paid@12.csv").write_text("100,150\n200,\n", encoding="utf-8")
+        source["origin_length"] = 3
+        self.write_json(source_path, source)
+
+        period_result = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertFalse(period_result["ok"])
+        self.assertIn("incompatible origin period length", period_result["errors"][0]["reason"])
+        self.assertEqual(method_path.read_bytes(), before_method)
+        self.assertEqual(output_path.read_bytes(), before_output)
+
     def test_output_csv_variants_are_projected_by_the_canonical_contract(self) -> None:
         method = self.write_method_pair()
         method["details tab"]["origin length"] = 3
@@ -319,7 +471,7 @@ class DfmServiceTests(unittest.TestCase):
 
         self.assertEqual(actual, expected)
 
-    def test_origin_label_publication_change_cascades_when_ultimate_values_match(self) -> None:
+    def test_precedent_sidecar_label_change_does_not_replace_saved_method_axis(self) -> None:
         method = self.write_method_pair()
         self.write_source(
             "Paid",
@@ -342,14 +494,14 @@ class DfmServiceTests(unittest.TestCase):
             [{
                 "dataset_name": "Development Output",
                 "dataset_type": "Selected Ultimate",
-                "output_changed": True,
+                "output_changed": False,
             }],
         )
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["results tab"]["ultimate vector"], method["results tab"]["ultimate vector"])
-        self.assertEqual(saved["data tab"]["origin labels"], ["2023", "2025"])
+        self.assertEqual(saved["data tab"]["origin labels"], method["data tab"]["origin labels"])
         sidecar = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
-        self.assertEqual(sidecar["audit_log"][-1]["action"], "Auto Refresh")
+        self.assertEqual(sidecar["audit_log"], [])
 
     def test_basis_only_refresh_updates_method_without_rewriting_ultimate_csv(self) -> None:
         method = self.write_method_pair(status=0)
@@ -379,7 +531,11 @@ class DfmServiceTests(unittest.TestCase):
             "keep",
         )
         sidecar = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
-        self.assertEqual(sidecar["status"], 0)
+        self.assertEqual(sidecar["status"], 2)
+        self.assertEqual(
+            result["review_status_updates"],
+            [{"dataset_name": "Development Output", "status": 2}],
+        )
         self.assertEqual(result["errors"], [])
         self.assertEqual(
             result["updated"],
@@ -413,7 +569,7 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(source_reads, [("Paid", False)])
         self.assertFalse((self.sidecars / "Premium.json").exists())
 
-    def test_explicit_refresh_propagates_genuine_review_status_recovery(self) -> None:
+    def test_explicit_refresh_keeps_review_alert_until_save(self) -> None:
         self.write_method_pair(status=2)
         self.write_source("Paid", "100,150\n200,\n", data_format="Triangle")
         self.write_source("Premium", "1000\n1100\n", data_format="Vector")
@@ -429,8 +585,15 @@ class DfmServiceTests(unittest.TestCase):
             )
 
         self.assertFalse(result["output_changed"])
-        self.assertTrue(result["status_refreshed"])
-        cascade.assert_called_once()
+        self.assertFalse(result["status_refreshed"])
+        cascade.assert_not_called()
+        sidecar = json.loads(
+            (self.sidecars / "Development Output.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            sidecar["status"],
+            dataset_sidecar_status_service.STATUS_REVIEW_NEEDED,
+        )
 
     def test_incompatible_input_refresh_preserves_last_valid_artifacts_and_marks_review(self) -> None:
         self.write_method_pair()

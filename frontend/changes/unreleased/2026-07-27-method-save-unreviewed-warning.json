@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "method save",
+  "audience": "user",
+  "summary": "Methods now save with an in-window warning when precedent datasets still need review.",
+  "details": [
+    "The warning reports the number of unreviewed precedent datasets after the current method has saved and links each name to its related method window, or to Dataset Viewer for a plain dataset.",
+    "Missing, unreadable, or incompatible precedent data continues to block the save."
+  ]
+}
