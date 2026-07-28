@@ -17,10 +17,12 @@ from .dfm_rpc_bridge_router import router as dfm_rpc_bridge_router
 from .dfm_method_router import router as dfm_method_router
 from .result_selection_rpc_bridge_router import router as result_selection_rpc_bridge_router
 from .result_selection_router import router as result_selection_router
+from .bornhuetter_ferguson_router import router as bornhuetter_ferguson_router
 from .dfm_method_index_router import router as dfm_method_index_router
 from .project_user_preferences_router import router as project_user_preferences_router
 from .ui_automation_router import router as ui_automation_router
 from .snowflake_router import router as snowflake_router
+from .sql_formatting_router import router as sql_formatting_router
 from .data_processing_rules_router import router as data_processing_rules_router
 from .user_identity_router import router as user_identity_router
 
@@ -44,10 +46,12 @@ __all__ = [
     "dfm_method_router",
     "result_selection_rpc_bridge_router",
     "result_selection_router",
+    "bornhuetter_ferguson_router",
     "dfm_method_index_router",
     "project_user_preferences_router",
     "ui_automation_router",
     "snowflake_router",
+    "sql_formatting_router",
     "data_processing_rules_router",
     "user_identity_router",
 ]

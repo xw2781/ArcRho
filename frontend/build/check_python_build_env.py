@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.metadata
 import subprocess
 import sys
 import warnings
@@ -17,6 +18,8 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
     text = str(path)
     if text not in sys.path:
         sys.path.insert(0, text)
+
+from app_server.services.sql_formatting.version import SQLFLUFF_REQUIREMENT
 
 REQUIRED_MODULES = {
     "PyInstaller": "pyinstaller",
@@ -34,6 +37,7 @@ REQUIRED_MODULES = {
     "pywintypes": "pywin32",
     "win32com": "pywin32",
     "arcrho_api": None,
+    "sqlfluff": SQLFLUFF_REQUIREMENT,
 }
 
 
@@ -44,6 +48,11 @@ def find_missing_modules() -> list[tuple[str, str | None]]:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 importlib.import_module(module_name)
+            if package_name and "==" in package_name:
+                distribution_name, expected_version = package_name.split("==", 1)
+                installed_version = importlib.metadata.version(distribution_name)
+                if installed_version != expected_version:
+                    missing.append((module_name, package_name))
         except Exception:
             missing.append((module_name, package_name))
     return missing

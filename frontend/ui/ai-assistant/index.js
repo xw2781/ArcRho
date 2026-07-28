@@ -47,15 +47,20 @@ import { formatElapsed, formatWorkDuration } from "./activity.js";
 import { normalizeReadableRootList } from "./settings.js";
 import { clampAssistantPanelSize } from "./layout.js";
 import { getHostErrorMessage } from "./host.js";
+import { createAssistantRunGate } from "./run-gate.js?v=20260726a";
 import {
   SQL_FORMAT_VALIDATION_SKILL,
+  SQL_AI_REVIEW_RESPONSE_SCHEMA,
   SQL_CODING_STANDARDS_MARKDOWN_LINK,
   buildSqlFormatFindings,
   buildSqlReviewPrompt,
-  formatMssqlSql,
-} from "./skills.js?v=20260620g";
+  inferSqlDialect,
+  renderSqlAiReviewResponse,
+  requestSqlFormatPreview,
+} from "./skills.js?v=20260726a";
 
 const defaultShell = {};
+const assistantRunGate = createAssistantRunGate();
 let shell = defaultShell;
 let getHostApi = () => window.ADAHost || null;
 let $ = (id) => document.getElementById(id);
@@ -84,6 +89,7 @@ let currentContext = null;
 let currentUsage = null;
 let currentRequestId = "";
 let currentPendingMessageEl = null;
+let currentAssistantStreamText = "";
 let currentRunStartedAt = 0;
 let currentStepStartedAt = 0;
 let currentWorkCardEl = null;
@@ -116,15 +122,12 @@ let assistantSqlReviewDragState = null;
 let assistantSqlReviewDialogPosition = null;
 let assistantSqlReviewResizeState = null;
 let assistantSqlReviewDialogSize = null;
-let assistantSqlReviewRevealTimer = null;
-let assistantSqlReviewRevealPending = false;
 const assistantSkills = [SQL_FORMAT_VALIDATION_SKILL];
 const SQL_REVIEW_DIALOG_MIN_WIDTH = 520;
 const SQL_REVIEW_DIALOG_MIN_HEIGHT = 360;
 const SQL_REVIEW_DIALOG_Z = 9400;
 const SQL_REVIEW_DIALOG_ACTIVE_Z = 9500;
 const ASSISTANT_PANEL_FRONT_Z = 9600;
-const SQL_REVIEW_DIALOG_REVEAL_DELAY_MS = 5000;
 const SQL_DIFF_KEYWORDS = new Set([
   "ADD", "ALL", "ALTER", "AND", "AS", "ASC", "BEGIN", "BETWEEN", "BY", "CASE", "CREATE",
   "CROSS", "DELETE", "DESC", "DISTINCT", "DROP", "ELSE", "END", "EXCEPT", "EXEC", "EXISTS",
@@ -1894,29 +1897,6 @@ function countChangedLines(original, proposed) {
   return changed;
 }
 
-function escapeRegExp(value) {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function normalizeSqlReviewGroupLabels(text) {
-  const groupLabels = new Map([
-    ["1", "Syntax and formatting suggestions beyond deterministic validation"],
-    ["2", "Performance and optimizations"],
-  ]);
-  return String(text || "").split(/\r?\n/).map((line) => {
-    const trimmed = line.trim();
-    const plain = trimmed
-      .replace(/^\*\*\s*/, "")
-      .replace(/\s*\*\*$/, "")
-      .replace(/^([12])[.)]\s+\*\*(.+)\*\*$/, "$1. $2");
-    const match = plain.match(/^([12])[.)]\s+(.+)$/);
-    if (!match) return line;
-    const expected = groupLabels.get(match[1]);
-    if (!expected || match[2].trim().toLowerCase() !== expected.toLowerCase()) return line;
-    return `**${match[1]}. ${expected}**`;
-  }).join("\n");
-}
-
 function normalizeDiffText(value) {
   return String(value ?? "").replace(/\r\n?/g, "\n").replace(/\s+$/g, "");
 }
@@ -2084,7 +2064,26 @@ function renderSqlReviewDialog({ allowOpen = true } = {}) {
     : state.context?.title || state.context?.targetPath || "Active SQL tab";
   setText($("aiAssistantSqlReviewSubtitle"), subtitle);
   setText($("aiAssistantSqlReviewStatus"), state.status || "Review the proposed formatting before applying it to the active tab.");
-  setText($("aiAssistantSqlReviewMeta"), `${changedLines} changed line${changedLines === 1 ? "" : "s"}`);
+  const dialectLabel = state.dialect === "snowflake" ? "Snowflake" : "T-SQL";
+  const engineName = String(state.preview?.engine?.name || state.preview?.engine?.formatter || "SQLFluff").trim();
+  const elapsedMs = Number(state.preview?.elapsed_ms);
+  const meta = [
+    dialectLabel,
+    `${changedLines} changed line${changedLines === 1 ? "" : "s"}`,
+    engineName,
+    Number.isFinite(elapsedMs) ? `${Math.round(elapsedMs)} ms` : "",
+  ].filter(Boolean).join(" · ");
+  setText($("aiAssistantSqlReviewMeta"), meta);
+  const applyButton = $("aiAssistantSqlReviewApplyBtn");
+  if (applyButton) {
+    const canApply = state.safeToApply && state.changed;
+    applyButton.disabled = !canApply;
+    applyButton.textContent = !state.safeToApply
+      ? "Formatting unavailable"
+      : state.changed
+        ? "Apply formatted SQL"
+        : "Already formatted";
+  }
   renderUnifiedDiff($("aiAssistantSqlReviewUnified"), diff.lines);
   const findingsEl = $("aiAssistantSqlReviewFindings");
   if (findingsEl) {
@@ -2103,28 +2102,8 @@ function renderSqlReviewDialog({ allowOpen = true } = {}) {
   applyStoredSqlReviewDialogPosition();
 }
 
-function renderSqlReviewDialogIfAllowed() {
-  renderSqlReviewDialog({ allowOpen: !assistantSqlReviewRevealPending });
-}
-
-function clearSqlReviewRevealTimer() {
-  if (!assistantSqlReviewRevealTimer) return;
-  window.clearTimeout(assistantSqlReviewRevealTimer);
-  assistantSqlReviewRevealTimer = null;
-}
-
-function revealSqlReviewDialog(expectedState = null) {
-  if (expectedState && assistantSqlReviewState !== expectedState) return;
-  if (!assistantSqlReviewState) return;
-  assistantSqlReviewRevealPending = false;
-  clearSqlReviewRevealTimer();
-  renderSqlReviewDialog();
-}
-
 function closeSqlReviewDialog() {
   assistantSqlReviewState = null;
-  assistantSqlReviewRevealPending = false;
-  clearSqlReviewRevealTimer();
   stopSqlReviewDialogDrag();
   stopSqlReviewDialogResize();
   $("aiAssistantSqlReviewDialog")?.classList.remove("open");
@@ -2327,8 +2306,20 @@ function startSqlReviewDialogResize(event) {
   event.stopPropagation();
 }
 
-function requestActiveTextReplacement({ proposed, original, range = null }) {
+function requestActiveTextReplacement({
+  proposed,
+  original,
+  range = null,
+  expectedTabId,
+  expectedTargetPath,
+}) {
   const activeTab = shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId) || null;
+  if (!expectedTabId || activeTab?.id !== expectedTabId) {
+    return Promise.resolve({
+      ok: false,
+      error: "The reviewed SQL tab is no longer active. Run the skill again before applying.",
+    });
+  }
   const iframe = activeTab?.iframe || null;
   if (!iframe?.contentWindow) {
     return Promise.resolve({ ok: false, error: "No active editor tab is available." });
@@ -2355,6 +2346,7 @@ function requestActiveTextReplacement({ proposed, original, range = null }) {
         requestId,
         text: proposed,
         expectedText: original,
+        expectedTargetPath: String(expectedTargetPath || ""),
         range,
       }, "*");
     } catch (err) {
@@ -2368,11 +2360,23 @@ function requestActiveTextReplacement({ proposed, original, range = null }) {
 async function applySqlReviewReplacement() {
   const state = assistantSqlReviewState;
   if (!state) return;
+  if (!state.safeToApply) {
+    const message = "The parser-backed safety checks did not approve this formatting preview; the SQL was not changed.";
+    setText($("aiAssistantSqlReviewStatus"), message);
+    setStatus(message, "error");
+    return;
+  }
+  if (!state.changed) {
+    setText($("aiAssistantSqlReviewStatus"), "The active SQL already matches the formatter profile.");
+    return;
+  }
   setText($("aiAssistantSqlReviewStatus"), "Applying formatted SQL to the active tab...");
   const result = await requestActiveTextReplacement({
     proposed: state.proposed,
     original: state.original,
     range: state.selection || null,
+    expectedTabId: state.context?.tabId || "",
+    expectedTargetPath: state.context?.targetPath || state.context?.path || "",
   });
   if (!result?.ok) {
     const message = result?.error || "Could not apply formatted SQL.";
@@ -2388,19 +2392,49 @@ async function applySqlReviewReplacement() {
   shell.updateStatusBar?.(message);
 }
 
-async function updateSqlReviewWithLlm(context, original, proposed, findings) {
+function deterministicSqlReviewStatus(state, suffix) {
+  if (!state?.safeToApply) return `${suffix}; the unsafe formatting preview was left unchanged.`;
+  if (!state?.changed) return `${suffix}; the SQL already matches the deterministic formatter profile.`;
+  return `${suffix}; deterministic formatting remains ready to apply.`;
+}
+
+function matchesSqlReviewRequest(state, { context, original, dialect, preview }) {
+  return !!state
+    && state.original === original
+    && state.dialect === dialect
+    && state.context?.tabId === context?.tabId
+    && state.preview?.source_hash === preview?.source_hash;
+}
+
+async function updateSqlReviewWithLlm(context, original, proposed, findings, dialect, preview) {
   const host = getHostApi();
   if (!host?.codexAssistantSend || !assistantReady || assistantBusy) {
-    if (assistantSqlReviewState) {
-      assistantSqlReviewState.status = "Optional AI review skipped; deterministic formatting is ready to apply.";
-      renderSqlReviewDialogIfAllowed();
+    if (matchesSqlReviewRequest(assistantSqlReviewState, { context, original, dialect, preview })) {
+      assistantSqlReviewState.status = deterministicSqlReviewStatus(assistantSqlReviewState, "Optional AI review skipped");
+      renderSqlReviewDialog();
     }
     return;
   }
-  await ensureAssistantSession();
+  const runToken = assistantRunGate.tryAcquire("sql-review");
+  if (!runToken) return;
+  assistantBusy = true;
+  setComposerEnabled(false);
+  try {
+    if (!currentSessionId) await ensureAssistantSession();
+  } catch (err) {
+    assistantRunGate.release(runToken);
+    assistantBusy = false;
+    setComposerEnabled(assistantReady);
+    const message = `Optional AI review unavailable: ${String(err?.message || err)}`;
+    if (matchesSqlReviewRequest(assistantSqlReviewState, { context, original, dialect, preview })) {
+      assistantSqlReviewState.status = message;
+      renderSqlReviewDialog();
+    }
+    return;
+  }
   const title = String(context?.title || context?.targetPath || context?.path || "Active SQL tab").trim();
   const visiblePrompt = [
-    context?.selectionOnly ? "Run SQL Format Validation AI review on selected SQL lines." : "Run SQL Format Validation AI review on the entire SQL file.",
+    context?.selectionOnly ? `Run ${dialect} SQL Format Validation AI review on selected SQL lines.` : `Run ${dialect} SQL Format Validation AI review on the entire SQL file.`,
     title ? `File: ${title}` : "",
     context?.selectionOnly
       ? "Review the deterministic formatting changes and call out SQL risks before I apply them."
@@ -2428,36 +2462,74 @@ async function updateSqlReviewWithLlm(context, original, proposed, findings) {
   const pending = appendMessage("assistant", "Thinking ...");
   pending?.classList.add("thinking");
   currentPendingMessageEl = pending;
-  await saveCurrentSession();
-  assistantBusy = true;
+  currentAssistantStreamText = "";
+  try {
+    await saveCurrentSession();
+  } catch (err) {
+    assistantRunGate.release(runToken);
+    assistantBusy = false;
+    currentRequestId = "";
+    currentRunStartedAt = 0;
+    currentStepStartedAt = 0;
+    stopAssistantProgressTicker();
+    currentPendingMessageEl = null;
+    currentAssistantStreamText = "";
+    assistantCancelRequested = false;
+    assistantHostRequestSubmitted = false;
+    setComposerEnabled(assistantReady);
+    const message = `Optional AI review unavailable: ${String(err?.message || err)}`;
+    await resolveAssistantPendingMessage(pending, message);
+    return;
+  }
   assistantHostRequestSubmitted = true;
   setComposerEnabled(false);
-  if (assistantSqlReviewState) {
+  if (matchesSqlReviewRequest(assistantSqlReviewState, { context, original, dialect, preview })) {
     assistantSqlReviewState.status = "Deterministic formatting is ready. Optional AI review is running...";
-    renderSqlReviewDialogIfAllowed();
+    renderSqlReviewDialog();
   }
   try {
+    const activeContext = {
+      available: true,
+      tabId: context?.tabId || "",
+      pageType: context?.pageType || "",
+      tabType: context?.tabType || "",
+      title: context?.title || "",
+      targetPath: context?.targetPath || context?.path || "",
+      language: context?.language || "sql",
+      sqlDialect: dialect,
+      selectionOnly: !!context?.selectionOnly,
+      selection: context?.selection || null,
+      sqlFormatPreview: {
+        sourceHash: preview?.source_hash || "",
+        formattedHash: preview?.formatted_hash || "",
+        safeToApply: !!preview?.safety?.safe_to_apply,
+      },
+    };
     const result = await host.codexAssistantSend({
       requestId: currentRequestId,
       sessionId: currentSessionId,
       mode: "review",
       model: assistantModel,
       reasoningEffort: assistantReasoningEffort,
-      messages: [{ role: "user", content: buildSqlReviewPrompt({ title: context?.title, path: context?.targetPath || context?.path, original, proposed, findings }) }],
-      activeContext: { ...context, text: proposed },
+      messages: [{ role: "user", content: buildSqlReviewPrompt({ title: context?.title, path: context?.targetPath || context?.path, original, proposed, findings, dialect }) }],
+      activeContext,
       attachments: [],
+      outputSchema: SQL_AI_REVIEW_RESPONSE_SCHEMA,
+      streamDeltas: false,
     });
-    const reviewStateMatches = !!assistantSqlReviewState && assistantSqlReviewState.original === original;
+    const reviewStateMatches = matchesSqlReviewRequest(
+      assistantSqlReviewState,
+      { context, original, dialect, preview },
+    );
     if (assistantCancelRequested) {
       const message = "SQL AI review canceled.";
       await resolveAssistantPendingMessage(pending, message);
       assistantMessages.push({ role: "assistant", content: message, timestamp: nowIso() });
       appendActivity("SQL AI review canceled.", "activity");
       failAssistantProgress("Review canceled");
-      if (reviewStateMatches) assistantSqlReviewState.status = "Optional AI review canceled; deterministic formatting is ready to apply.";
+      if (reviewStateMatches) assistantSqlReviewState.status = deterministicSqlReviewStatus(assistantSqlReviewState, "Optional AI review canceled");
     } else if (result?.ok && result?.text) {
-      const standardsLinkRe = new RegExp(`\\n?\\s*(?:(?:Standards|Reference):\\s*)?${escapeRegExp(SQL_CODING_STANDARDS_MARKDOWN_LINK)}\\s*$`, "i");
-      const reviewText = normalizeSqlReviewGroupLabels(String(result.text).replace(standardsLinkRe, "").trim());
+      const reviewText = renderSqlAiReviewResponse(result.text, { expectedDialect: dialect });
       const reply = [
         "**SQL Format Validation AI Review**",
         title ? `For: ${title}${context?.selectionOnly ? " (selected lines)" : ""}` : "",
@@ -2465,11 +2537,11 @@ async function updateSqlReviewWithLlm(context, original, proposed, findings) {
         "",
         reviewText,
       ].filter((part) => part !== "").join("\n");
-      await resolveAssistantPendingMessage(pending, reply, { animate: true });
+      await resolveAssistantPendingMessage(pending, reply, { animate: !currentAssistantStreamText });
       assistantMessages.push({ role: "assistant", content: reply, timestamp: nowIso() });
       appendActivity("SQL AI review completed.", "activity");
       completeAssistantProgress("Review completed");
-      if (reviewStateMatches) assistantSqlReviewState.status = "Optional AI review completed. Review the diff before applying.";
+      if (reviewStateMatches) assistantSqlReviewState.status = deterministicSqlReviewStatus(assistantSqlReviewState, "Optional AI review completed");
     } else {
       const message = result?.error
         ? `Optional AI review unavailable: ${result.error}`
@@ -2486,7 +2558,7 @@ async function updateSqlReviewWithLlm(context, original, proposed, findings) {
     assistantMessages.push({ role: "assistant", content: message, timestamp: nowIso() });
     appendActivity("SQL AI review failed.", "error");
     failAssistantProgress("Review failed");
-    if (assistantSqlReviewState && assistantSqlReviewState.original === original) {
+    if (matchesSqlReviewRequest(assistantSqlReviewState, { context, original, dialect, preview })) {
       assistantSqlReviewState.status = message;
     }
   } finally {
@@ -2496,14 +2568,18 @@ async function updateSqlReviewWithLlm(context, original, proposed, findings) {
     stopAssistantProgressTicker();
     renderActivities();
     currentPendingMessageEl = null;
-    await saveCurrentSession();
-    await refreshSessionList(currentSessionId);
-    assistantBusy = false;
-    assistantCancelRequested = false;
-    assistantHostRequestSubmitted = false;
-    setComposerEnabled(assistantReady);
+    currentAssistantStreamText = "";
+    try {
+      await saveCurrentSession();
+      await refreshSessionList(currentSessionId);
+    } finally {
+      if (assistantRunGate.release(runToken)) assistantBusy = false;
+      assistantCancelRequested = false;
+      assistantHostRequestSubmitted = false;
+      setComposerEnabled(assistantReady);
+    }
   }
-  renderSqlReviewDialogIfAllowed();
+  renderSqlReviewDialog();
 }
 
 async function runSqlFormatValidationSkill() {
@@ -2529,24 +2605,47 @@ async function runSqlFormatValidationSkill() {
     return;
   }
   const original = String(context.text || "");
-  const proposed = formatMssqlSql(original);
-  const findings = buildSqlFormatFindings(original, proposed);
+  let dialect = "tsql";
+  let preview = null;
+  try {
+    dialect = inferSqlDialect(context);
+    setStatus(`Running parser-backed ${dialect === "snowflake" ? "Snowflake" : "T-SQL"} formatting checks...`);
+    preview = await requestSqlFormatPreview({ sql: original, dialect });
+  } catch (err) {
+    const message = String(err?.message || err || "SQL formatting is unavailable.");
+    setStatus(message, "error");
+    return;
+  }
+  const proposed = preview.formatted_sql;
+  const findings = buildSqlFormatFindings(preview);
+  const safeToApply = !!preview.safety?.safe_to_apply;
+  const firstDiagnostic = preview.diagnostics
+    .map((entry) => String(entry?.message || entry?.detail || entry || "").trim())
+    .find(Boolean);
   resetSqlReviewDialogPosition();
   assistantSqlReviewState = {
     context,
+    preview,
+    dialect,
     original,
     proposed,
     findings,
+    safeToApply,
+    changed: !!preview.changed,
     selection: context.selection || null,
     selectionOnly: !!context.selectionOnly,
-    status: "Review the proposed formatting before applying it to the active tab.",
+    status: !safeToApply
+      ? `${firstDiagnostic || "Parser-backed safety checks did not approve this preview."} The SQL was left unchanged.`
+      : preview.changed
+        ? "Review the parser-backed formatting diff before applying it to the active tab."
+        : "The active SQL already matches the parser-backed formatter profile.",
   };
-  assistantSqlReviewRevealPending = true;
-  clearSqlReviewRevealTimer();
-  const reviewState = assistantSqlReviewState;
-  assistantSqlReviewRevealTimer = window.setTimeout(() => revealSqlReviewDialog(reviewState), SQL_REVIEW_DIALOG_REVEAL_DELAY_MS);
-  setStatus("SQL formatting is ready. Waiting briefly for AI review before opening the diff...");
-  void updateSqlReviewWithLlm(context, original, proposed, findings).finally(() => revealSqlReviewDialog(reviewState));
+  renderSqlReviewDialog();
+  setStatus(safeToApply
+    ? preview.changed ? "SQL formatting preview is ready." : "SQL already matches the formatter profile."
+    : firstDiagnostic || "SQL formatting failed its safety checks.",
+  safeToApply ? "" : "error");
+  void updateSqlReviewWithLlm(context, original, proposed, findings, dialect, preview);
 }
 
 async function runAssistantSkill(skillId) {
@@ -3312,9 +3411,21 @@ async function sendAssistantMessage() {
   const input = $("aiAssistantInput");
   const text = String(input?.value || "").trim();
   if ((!text && !assistantAttachments.length) || !host?.codexAssistantSend) return;
-  if (!currentSessionId) await ensureAssistantSession();
   if (!assistantReady) {
     setStatus("Install Codex CLI or sign in before sending.", "error");
+    return;
+  }
+  const runToken = assistantRunGate.tryAcquire("chat");
+  if (!runToken) return;
+  assistantBusy = true;
+  setComposerEnabled(false);
+  try {
+    if (!currentSessionId) await ensureAssistantSession();
+  } catch (err) {
+    assistantRunGate.release(runToken);
+    assistantBusy = false;
+    setComposerEnabled(assistantReady);
+    setStatus(String(err?.message || err || "Could not create the ArcBot session."), "error");
     return;
   }
 
@@ -3348,17 +3459,15 @@ async function sendAssistantMessage() {
   const pending = appendMessage("assistant", "Thinking ...");
   pending?.classList.add("thinking");
   currentPendingMessageEl = pending;
-  await saveCurrentSession();
-
-  assistantBusy = true;
-  setComposerEnabled(false);
-  setStatus(assistantAppContextEnabled ? "ArcBot is checking the active page context..." : "ArcBot is responding without app context...");
-  appendActivity(
-    assistantAppContextEnabled ? "Looking for usable data in the active app tab." : "App Context is off, so Codex will not receive active app contents.",
-    "activity",
-    { save: false },
-  );
+  currentAssistantStreamText = "";
   try {
+    await saveCurrentSession();
+    setStatus(assistantAppContextEnabled ? "ArcBot is checking the active page context..." : "ArcBot is responding without app context...");
+    appendActivity(
+      assistantAppContextEnabled ? "Looking for usable data in the active app tab." : "App Context is off, so Codex will not receive active app contents.",
+      "activity",
+      { save: false },
+    );
     const activeContext = assistantAppContextEnabled
       ? await requestActivePageContext()
       : {
@@ -3463,7 +3572,7 @@ async function sendAssistantMessage() {
         appendActivity("Edit completed.", "activity");
       }
     }
-    await resolveAssistantPendingMessage(pending, reply, { animate: true });
+    await resolveAssistantPendingMessage(pending, reply, { animate: !currentAssistantStreamText });
     assistantMessages.push({ role: "assistant", content: reply, timestamp: nowIso() });
     if (editApplied && result?.editApplied) notifyActivePageJsonUpdated(result);
     appendActivity(editApplied ? "Edit completed." : "Response completed.", "activity");
@@ -3488,17 +3597,31 @@ async function sendAssistantMessage() {
     stopAssistantProgressTicker();
     renderActivities();
     currentPendingMessageEl = null;
-    await saveCurrentSession();
-    await refreshSessionList(currentSessionId);
-    assistantBusy = false;
-    assistantCancelRequested = false;
-    assistantHostRequestSubmitted = false;
-    setComposerEnabled(assistantReady);
+    currentAssistantStreamText = "";
+    try {
+      await saveCurrentSession();
+      await refreshSessionList(currentSessionId);
+    } finally {
+      if (assistantRunGate.release(runToken)) assistantBusy = false;
+      assistantCancelRequested = false;
+      assistantHostRequestSubmitted = false;
+      setComposerEnabled(assistantReady);
+    }
   }
 }
 
 function handleAssistantEvent(event) {
   if (!event || event.requestId !== currentRequestId) return;
+  if (event.type === "assistant-delta") {
+    const delta = String(event.text || "");
+    if (!delta || !currentPendingMessageEl) return;
+    if (!currentAssistantStreamText) currentPendingMessageEl.textContent = "";
+    currentAssistantStreamText += delta;
+    currentPendingMessageEl.classList.remove("thinking", "typing");
+    currentPendingMessageEl.append(document.createTextNode(delta));
+    scrollMessagesToBottom();
+    return;
+  }
   if (event.type === "stdout") {
     appendDebugLog(event.text, "stdout");
     return;

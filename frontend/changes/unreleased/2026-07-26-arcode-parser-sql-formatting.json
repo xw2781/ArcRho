@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "Arcode",
+  "audience": "user",
+  "summary": "Replaced Arcode's regex SQL rewriter with safe parser-backed T-SQL and Snowflake formatting previews.",
+  "details": [
+    "The Arcode Format command and ArcBot SQL Format Validation skill now share the same dialect-aware formatter.",
+    "Formatting preserves protected SQL text and leaves the source unchanged when parsing or safety checks fail.",
+    "ArcBot opens deterministic SQL diffs immediately, uses structured AI review results, and streams normal chat responses as they arrive.",
+    "ArcBot reuses one warm Codex app-server process with fresh per-request threads and hardened cancellation and transport recovery."
+  ]
+}

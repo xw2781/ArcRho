@@ -16,12 +16,14 @@ from app_server import config
 from app_server.api.app_control_router import router as app_control_router
 from app_server.api.arcode_scripting_router import router as arcode_scripting_router
 from app_server.api.snowflake_router import router as snowflake_router
+from app_server.api.sql_formatting_router import router as sql_formatting_router
 
 app = FastAPI(title="Arcode API", version="0.1")
 
 app.include_router(app_control_router)
 app.include_router(arcode_scripting_router)
 app.include_router(snowflake_router)
+app.include_router(sql_formatting_router)
 
 ui_root = config.PROJECT_ROOT / "ui"
 arcode_ui = ui_root / "arcode"

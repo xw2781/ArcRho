@@ -1,9 +1,17 @@
+import {
+  inferSqlDialect,
+  isSqlFormatPreviewCurrent,
+  isSqlFormatTargetCurrent,
+  requestSqlFormatPreview,
+} from "../../ai-assistant/skills.js?v=20260726a";
+
 const API_BASE = "";
 const urlParams = new URLSearchParams(window.location.search);
 let currentPath = String(urlParams.get("path") || "").trim();
 let editor = null;
 let savedText = "";
 let dirty = false;
+let isFormattingSql = false;
 let connections = {};
 let activeConnection = "";
 
@@ -164,6 +172,7 @@ function buildAssistantContext() {
     dirty,
     fileState: dirty ? "unsaved-changes" : "saved",
     language: "sql",
+    sqlDialect: inferSqlDialect({ pageType: "snowflake" }),
     text: selected.text,
     fullText: editor?.getValue() || "",
     selection: selected.selection,
@@ -302,6 +311,75 @@ async function testConnection() {
   }
 }
 
+async function formatSqlDocument() {
+  if (isFormattingSql) return;
+  const sourceText = editor?.getValue() || "";
+  const sourcePath = currentPath;
+  const sourceModel = editor?.getModel();
+  if (!sourceText.trim()) {
+    setStatus("SQL is empty.");
+    return;
+  }
+  const dialect = inferSqlDialect({ pageType: "snowflake" });
+  const button = $("formatBtn");
+  isFormattingSql = true;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Formatting...";
+    button.setAttribute("aria-busy", "true");
+  }
+  setStatus("Formatting Snowflake SQL...");
+  try {
+    const preview = await requestSqlFormatPreview({ sql: sourceText, dialect });
+    if (!preview.safety.safe_to_apply) {
+      const diagnostic = preview.diagnostics.find((entry) => entry && typeof entry.message === "string");
+      setStatus(diagnostic?.message || "SQL formatting was blocked by a safety check.");
+      return;
+    }
+    const previewMatchesSource = await isSqlFormatPreviewCurrent(preview, sourceText);
+    const sourceIsCurrent = isSqlFormatTargetCurrent({
+      previewMatchesSource,
+      sourceText,
+      currentText: editor?.getValue() || "",
+      sourcePath,
+      currentPath,
+      sourceModel,
+      currentModel: editor?.getModel(),
+    });
+    if (!sourceIsCurrent) {
+      setStatus("SQL changed while formatting. Run Format again.");
+      return;
+    }
+    if (!preview.changed) {
+      setStatus("Snowflake SQL formatting is already clean.");
+      return;
+    }
+    const model = editor?.getModel();
+    if (!model) {
+      setStatus("The editor is not ready.");
+      return;
+    }
+    editor.pushUndoStop?.();
+    editor.executeEdits("arcode-sql-format-toolbar", [{
+      range: model.getFullModelRange(),
+      text: preview.formatted_sql,
+      forceMoveMarkers: true,
+    }]);
+    editor.pushUndoStop?.();
+    setDirty((editor.getValue() || "") !== savedText);
+    setStatus("Formatted Snowflake SQL.");
+  } catch (error) {
+    setStatus(`SQL formatting failed: ${String(error?.message || error)}`);
+  } finally {
+    isFormattingSql = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Format";
+      button.setAttribute("aria-busy", "false");
+    }
+  }
+}
+
 function initEditor() {
   return new Promise((resolve) => {
     window.require.config({ paths: { vs: "/ui/libs/monaco-editor/min/vs" } });
@@ -327,6 +405,7 @@ function initEditor() {
 
 function initEvents() {
   $("saveBtn")?.addEventListener("click", () => void saveSqlFile());
+  $("formatBtn")?.addEventListener("click", () => void formatSqlDocument());
   $("runBtn")?.addEventListener("click", () => void runQuery());
   $("testConnectionBtn")?.addEventListener("click", () => void testConnection());
   $("connectionSelect")?.addEventListener("change", (event) => {
@@ -356,6 +435,18 @@ function initEvents() {
     }
     if (msg.type === "arcode:assistant-replace-text") {
       const requestId = msg.requestId || "";
+      if (
+        typeof msg.expectedTargetPath === "string"
+        && msg.expectedTargetPath !== (currentPath || "")
+      ) {
+        window.parent?.postMessage({
+          type: "arcode:assistant-replace-text-result",
+          requestId,
+          ok: false,
+          error: "The reviewed SQL file is no longer active. Run the skill again before applying.",
+        }, "*");
+        return;
+      }
       if (!editor) {
         window.parent?.postMessage({
           type: "arcode:assistant-replace-text-result",

@@ -1,3 +1,10 @@
+import {
+  inferSqlDialect,
+  isSqlFormatPreviewCurrent,
+  isSqlFormatTargetCurrent,
+  requestSqlFormatPreview,
+} from "../../ai-assistant/skills.js?v=20260726a";
+
 const shared = window.ArcodeEditorShared;
 const params = new URLSearchParams(window.location.search);
 const tabInstanceId = shared.sanitizeStorageId(params.get("inst") || "");
@@ -12,6 +19,7 @@ let diskConflict = "";
 let revisionPollTimer = 0;
 let isRunning = false;
 let runningMode = "";
+let isFormattingSql = false;
 let lineNumbersVisible = true;
 let outputPanelHeight = 180;
 const OUTPUT_PANEL_HIDE_THRESHOLD = 28;
@@ -152,7 +160,10 @@ function updateCommandState() {
   $("runBtn").disabled = !canRun || isRunning;
   $("runSelectionBtn").disabled = !canRun || isRunning;
   $("restartBtn").disabled = !canRun || isRunning;
-  $("formatBtn").disabled = !editor;
+  const formatButton = $("formatBtn");
+  formatButton.disabled = !editor || isFormattingSql;
+  formatButton.textContent = isFormattingSql ? "Formatting..." : "Format";
+  formatButton.setAttribute("aria-busy", String(isFormattingSql));
   $("stopBtn").hidden = !isRunning || runningMode !== "local";
 }
 
@@ -293,8 +304,76 @@ async function saveCurrentFile({ saveAs = false, ignoreRevisionConflict = false,
   return true;
 }
 
-function formatDocument() {
+async function formatSqlDocument() {
+  if (isFormattingSql) return;
+  const sourceText = editor?.getValue() || "";
+  const sourcePath = currentPath;
+  const sourceModel = editor?.getModel();
+  if (!sourceText.trim()) {
+    setStatus("SQL is empty");
+    return;
+  }
+  const dialect = inferSqlDialect({
+    pageType: "code-editor",
+    language: language(),
+    path: sourcePath,
+  });
+  isFormattingSql = true;
+  updateCommandState();
+  setStatus(`Formatting ${dialect === "snowflake" ? "Snowflake SQL" : "T-SQL"}...`);
+  try {
+    const preview = await requestSqlFormatPreview({ sql: sourceText, dialect });
+    if (!preview.safety.safe_to_apply) {
+      const diagnostic = preview.diagnostics.find((entry) => entry && typeof entry.message === "string");
+      setStatus(diagnostic?.message || "SQL formatting was blocked by a safety check");
+      return;
+    }
+    const previewMatchesSource = await isSqlFormatPreviewCurrent(preview, sourceText);
+    const sourceIsCurrent = isSqlFormatTargetCurrent({
+      previewMatchesSource,
+      sourceText,
+      currentText: editor?.getValue() || "",
+      sourcePath,
+      currentPath,
+      sourceModel,
+      currentModel: editor?.getModel(),
+    });
+    if (!sourceIsCurrent) {
+      setStatus("SQL changed while formatting. Run Format again.");
+      return;
+    }
+    if (!preview.changed) {
+      setStatus("SQL formatting is already clean");
+      return;
+    }
+    const model = editor?.getModel();
+    if (!model) {
+      setStatus("The editor is not ready");
+      return;
+    }
+    editor.pushUndoStop?.();
+    editor.executeEdits("arcode-sql-format-toolbar", [{
+      range: model.getFullModelRange(),
+      text: preview.formatted_sql,
+      forceMoveMarkers: true,
+    }]);
+    editor.pushUndoStop?.();
+    updateDirtyFromEditor();
+    setStatus(`Formatted ${dialect === "snowflake" ? "Snowflake SQL" : "T-SQL"}`);
+  } catch (error) {
+    setStatus(`SQL formatting failed: ${String(error?.message || error)}`);
+  } finally {
+    isFormattingSql = false;
+    updateCommandState();
+  }
+}
+
+async function formatDocument() {
   if (!editor) return;
+  if (language() === "sql") {
+    await formatSqlDocument();
+    return;
+  }
   if (language() === "json") {
     const raw = editor.getValue();
     try {
@@ -307,7 +386,12 @@ function formatDocument() {
   }
   const action = editor.getAction?.("editor.action.formatDocument");
   if (action) {
-    void action.run().then(() => setStatus("Formatted")).catch(() => setStatus("No formatter available"));
+    try {
+      await action.run();
+      setStatus("Formatted");
+    } catch {
+      setStatus("No formatter available");
+    }
   }
 }
 
@@ -499,6 +583,7 @@ function buildAssistantContext() {
     dirty,
     fileState: diskConflict ? "changed-on-disk" : (dirty ? "unsaved-changes" : "saved"),
     language: language(),
+    sqlDialect: language() === "sql" ? inferSqlDialect({ pageType: "code-editor", path: currentPath }) : "",
     text: selected.text,
     fullText: editor?.getValue() || "",
     selection: selected.selection,
@@ -542,7 +627,7 @@ function initEvents() {
   $("runSelectionBtn")?.addEventListener("click", () => void runPython(selectedTextOrAll()));
   $("stopBtn")?.addEventListener("click", () => void interruptExecution());
   $("restartBtn")?.addEventListener("click", () => void restartSession());
-  $("formatBtn")?.addEventListener("click", formatDocument);
+  $("formatBtn")?.addEventListener("click", () => void formatDocument());
   $("clearOutputBtn")?.addEventListener("click", () => {
     setOutput("");
     $("runInfo").textContent = "";
@@ -585,6 +670,18 @@ function initEvents() {
     }
     if (msg.type === "arcode:assistant-replace-text") {
       const requestId = msg.requestId || "";
+      if (
+        typeof msg.expectedTargetPath === "string"
+        && msg.expectedTargetPath !== (currentPath || "")
+      ) {
+        shared.postParentMessage({
+          type: "arcode:assistant-replace-text-result",
+          requestId,
+          ok: false,
+          error: "The reviewed SQL file is no longer active. Run the skill again before applying.",
+        });
+        return;
+      }
       if (!editor) {
         shared.postParentMessage({
           type: "arcode:assistant-replace-text-result",

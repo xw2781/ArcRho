@@ -33,10 +33,12 @@ from app_server.api import (
     dfm_method_router,
     result_selection_rpc_bridge_router,
     result_selection_router,
+    bornhuetter_ferguson_router,
     dfm_method_index_router,
     project_user_preferences_router,
     ui_automation_router,
     snowflake_router,
+    sql_formatting_router,
     data_processing_rules_router,
     user_identity_router,
 )
@@ -67,10 +69,12 @@ app.include_router(dfm_rpc_bridge_router)
 app.include_router(dfm_method_router)
 app.include_router(result_selection_rpc_bridge_router)
 app.include_router(result_selection_router)
+app.include_router(bornhuetter_ferguson_router)
 app.include_router(dfm_method_index_router)
 app.include_router(project_user_preferences_router)
 app.include_router(ui_automation_router)
 app.include_router(snowflake_router)
+app.include_router(sql_formatting_router)
 app.include_router(data_processing_rules_router)
 app.include_router(user_identity_router)
 

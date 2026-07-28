@@ -495,7 +495,13 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/dataset_viewer/dataset_viewer_view.js", "Dataset Viewer markup and DOM mounting."),
             ("ui/dataset_viewer/dataset_viewer.css", "Dataset Viewer-only chart, relationship, and page styling."),
             ("ui/dataset_viewer/tabs/dataset_chart_tab.js", "Dataset Viewer Chart-tab adapter."),
-            ("ui/shared/tabs/data/data_tab_controller.js", "Host-neutral Data-tab coordinator."),
+            ("ui/shared/tabs/data/data_tab_controller.js", "Stable host-neutral Data-tab facade and composition root."),
+            ("ui/shared/tabs/data/data_tab_host_controller.js", "Data-tab host messages, dependency previews, and run-session bridge."),
+            ("ui/shared/tabs/data/data_tab_details_controller.js", "Data-tab formula, relationships, audit, and chrome controller."),
+            ("ui/shared/tabs/data/data_tab_inputs_controller.js", "Data-tab project, reserving-class, and dataset input controller."),
+            ("ui/shared/tabs/data/data_tab_preferences_controller.js", "Data-tab preferences, saved inputs, and browsing-history controller."),
+            ("ui/shared/tabs/data/data_tab_request_controller.js", "Data-tab request payload, period, and validation controller."),
+            ("ui/shared/tabs/data/data_tab_persistence_controller.js", "Data-tab sidecar, dirty, save, close, Notes, and Links controller."),
             ("ui/shared/tabs/data/dataset_grid_view.js", "Reusable Dataset/DFM grid rendering."),
             ("ui/shared/tabs/data/dataset_grid_interactions.js", "Reusable Dataset/DFM grid interactions."),
             ("ui/shared/tabs/data/data_tab.css", "Reusable Data-tab presentation."),
@@ -514,9 +520,24 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/method_pages/dfm/dfm_data_tab_adapter.js", "DFM adapter for the host-neutral Data tab."),
             ("ui/method_pages/dfm/dfm_details.js", "Details tab logic and title syncing."),
             ("ui/method_pages/dfm/dfm_ratios_tab.js", "Ratios tab calculations and controls."),
+            ("ui/method_pages/dfm/dfm_ratios_summary_table.js", "Stable Ratios-summary facade and render scheduler."),
+            ("ui/method_pages/dfm/ratios_summary/summary_runtime.js", "Ratios-summary shared dependencies and lifecycle state."),
+            ("ui/method_pages/dfm/ratios_summary/summary_model.js", "Ratios-summary selection, row, and formula model."),
+            ("ui/method_pages/dfm/ratios_summary/summary_formula_bar.js", "Ratios-summary formula-bar and edit-session controller."),
+            ("ui/method_pages/dfm/ratios_summary/summary_excel.js", "Ratios-summary Excel refresh, freshness, and external-link controller."),
+            ("ui/method_pages/dfm/ratios_summary/summary_entries.js", "Ratios-summary User Entry persistence and recalculation controller."),
+            ("ui/method_pages/dfm/ratios_summary/summary_interactions.js", "Ratios-summary selection, context-menu, and direct-edit interactions."),
             ("ui/method_pages/dfm/dfm_results_tab.js", "Results table rendering and CSV export."),
             ("ui/method_pages/dfm/dfm_persistence.js", "DFM template/pattern persistence."),
             ("ui/shared/tabs/data/data_tab_controller.js", "Host-neutral Data-tab coordinator consumed by DFM."),
+        ],
+        "interface_files": [
+            "ui/shared/tabs/data/data_tab_host_controller.js",
+            "ui/shared/tabs/data/data_tab_details_controller.js",
+            "ui/shared/tabs/data/data_tab_inputs_controller.js",
+            "ui/shared/tabs/data/data_tab_preferences_controller.js",
+            "ui/shared/tabs/data/data_tab_request_controller.js",
+            "ui/shared/tabs/data/data_tab_persistence_controller.js",
         ],
     },
     "bornhuetter_ferguson": {
@@ -606,7 +627,9 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/arcode/notebook-editor/panels.js", "Notebook sidebar, TOC, and variables panels."),
             ("ui/arcode/notebook-editor/notebook-io.js", "Notebook save/open and `.ipynb` import/export helpers."),
             ("ui/arcode/code-editor/index.html", "Plain code/text editor page layout."),
-            ("ui/arcode/code-editor/index.js", "Plain text-file open/save, dirty state, Python run output, and output panel controls."),
+            ("ui/arcode/code-editor/index.js", "Plain text-file open/save, parser-backed SQL formatting, Python run output, and output panel controls."),
+            ("ui/arcode/snowflake-console/index.html", "Snowflake connection, formatting, and query toolbar layout."),
+            ("ui/arcode/snowflake-console/index.js", "Snowflake editor context, parser-backed formatting, connection, and query behavior."),
             ("ui/arcode/shared/editor_shared.js", "Shared Arcode editor host bridge, path, tab message, revision, and scripting session helpers."),
         ],
     },
@@ -617,6 +640,8 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/ai-assistant/index.js", "Shared ArcBot widget behavior and host-configurable message/storage contracts."),
             ("ui/ai-assistant/template.js", "Idempotent assistant launcher and panel DOM creation."),
             ("ui/ai-assistant/assistant.css", "Shared assistant launcher, panel, composer, message, history, and activity styling."),
+            ("ui/ai-assistant/skills.js", "ArcBot skill contracts, SQL formatting client, and structured SQL review schema."),
+            ("ui/ai-assistant/run-gate.js", "Single-owner gate preventing overlapping chat and skill runs."),
             ("ui/ai-assistant/arcrho.js", "ArcRho host adapter for arcrho messages, storage keys, and DFM edit approval."),
             ("ui/ai-assistant/arcode.js", "Arcode host adapter for arcode notebook context messages and storage keys."),
         ],
@@ -674,6 +699,17 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/services/result_selection_service.py", "V2 contract validation, persistence, and eager dependency refresh."),
             ("app_server/schemas/result_selection.py", "Result Selection load/save request models."),
             ("ui/method_pages/result_selection/result_selection_json_contract.js", "Canonical frontend v2 payload builder."),
+        ],
+    },
+    "bornhuetter_ferguson": {
+        "doc": "docs/app_server/domains/bornhuetter_ferguson.md",
+        "files": [
+            ("app_server/api/bornhuetter_ferguson_router.py", "Aggregate BF load/save/refresh routes."),
+            ("app_server/services/bornhuetter_ferguson_service.py", "V3 contract persistence, transactional publication, and eager dependency refresh."),
+            ("app_server/schemas/bornhuetter_ferguson.py", "BF identity and revision-aware save request models."),
+            ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js", "BF page state and aggregate persistence flow."),
+            ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_json_contract.js", "Canonical browser-side v3 payload builder."),
+            ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_method_api.js", "Aggregate BF transport adapter."),
         ],
     },
     "book": {
@@ -777,6 +813,18 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/services/snowflake_service.py", "Connection profile loading and Snowflake query execution."),
             ("app_server/schemas/scripting.py", "Snowflake request models shared with scripting schemas."),
             ("ui/arcode/snowflake-console/index.js", "Arcode Snowflake SQL editor client."),
+        ],
+    },
+    "sql_formatting": {
+        "doc": "docs/app_server/domains/sql_formatting.md",
+        "files": [
+            ("app_server/api/sql_formatting_router.py", "Thin SQL formatting preview route."),
+            ("app_server/services/sql_formatting_service.py", "Shared formatter lifetime and request delegation."),
+            ("app_server/services/sql_formatting/engine.py", "Canonical parser-backed formatter and atomic safety gates."),
+            ("app_server/services/sql_formatting/version.py", "Canonical SQLFluff distribution and version requirement."),
+            ("app_server/services/sql_formatting/advisories.py", "Canonical-lexer SQL advisory rules."),
+            ("app_server/schemas/sql_formatting.py", "Typed preview, diagnostic, advisory, nested-region, and safety contracts."),
+            ("ui/ai-assistant/skills.js", "Shared Arcode and ArcBot SQL formatting client contract."),
         ],
     },
 }
@@ -1076,6 +1124,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "1. Change the v2 payload only across every producer and the exact parity test.\n2. Preserve two-file current loads and failure-safe eager refresh behavior.",
             "- Broken reverse edges or bypassing durable ArcRho save paths can prevent automatic refresh.",
         ),
+        "bornhuetter_ferguson": (
+            "Self-contained Bornhuetter Ferguson v3 load, save, and eager dependency-refresh domain.",
+            "- Used by the BF method page.\n- Current loads aggregate one method JSON and its raw output sidecar; earlier BF formats are rejected without dependency reads.",
+            "- Persists the complete BF method snapshot, native/coarser output vector CSVs, and its output sidecar with dependency edges and a matching publication revision.",
+            "1. Change the v3 payload only across every producer and exact parity test.\n2. Preserve the two-file current load and failure-safe, bounded eager refresh behavior.",
+            "- Out-of-band source edits bypass managed propagation; failed refresh branches retain their last valid publication and remain Review Needed.",
+        ),
         "book": (
             "Workbook metadata/sheet/patch domain.",
             "- Shared by dataset-related frontend flows.",
@@ -1159,6 +1214,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Stores connection profiles in `%APPDATA%\\Arcode\\snowflake_connections.json` in Arcode mode and can seed the default profile from `E:\\XWSpace\\Snowflake Config.txt`.",
             "1. Add a Snowflake route: keep schemas in `app_server/schemas/scripting.py`, router delegation, and `snowflake_service` behavior aligned.\n2. Change connection storage: update `config.py`, this domain doc, and Arcode UI callers together.",
             "- Query execution requires `snowflake-connector-python`; missing connectors must return explicit user-facing errors.",
+        ),
+        "sql_formatting": (
+            "Parser-backed, dialect-aware SQL formatting previews shared by Arcode and ArcBot.",
+            "- `POST /arcode/sql/format-preview` accepts exact source text, an explicit `tsql` or `snowflake` dialect, and nested-`OPENQUERY` mode.\n- Responses include exact hashes, proposed text, structured diagnostics/advisories, engine metadata, and safety gates.",
+            "- Formatting is request-local and never persists editor text.\n- One process-level formatter instance serializes access to the canonical pinned SQLFluff runtime.\n- The canonical lexer owns both protected-text safety checks and deterministic advisories.",
+            "1. Change the formatter contract only across schema, router, service, both Arcode clients, ArcBot skill, tests, packaging, and docs.\n2. Preserve fail-closed atomic output, exact hashes, protected regions, token equivalence, and whole-document idempotence.",
+            "- Parser acceptance and token preservation do not prove intended business semantics or performance.\n- The canonical SQLFluff runtime and its package data/metadata must remain pinned in both PyInstaller bundles.",
         ),
     }
 
@@ -1538,7 +1600,11 @@ def build_autogen_blocks(
     for name, meta in FRONTEND_DOC_META.items():
         html_files = meta["html"]  # type: ignore[index]
         file_specs = meta["files"]  # type: ignore[index]
-        js_files = [path for path, _ in file_specs if path.endswith(".js")]
+        interface_files = meta.get("interface_files", [])  # type: ignore[union-attr]
+        js_files = list(dict.fromkeys(
+            [path for path, _ in file_specs if path.endswith(".js")]
+            + [str(path) for path in interface_files]
+        ))
         endpoints, messages = parse_js_interface_patterns(js_files)
 
         entry_block = render_frontend_entrypoint_block(entrypoints, html_files)

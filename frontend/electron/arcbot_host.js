@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
+const { StringDecoder } = require("string_decoder");
 
 let ipcMain = null;
 let app = null;
@@ -41,10 +42,10 @@ const CODEX_ASSISTANT_CONTEXT_WINDOW_TOKENS = Math.max(
   1000,
   parseInt(process.env.ARCRHO_CODEX_ASSISTANT_CONTEXT_WINDOW_TOKENS || "200000", 10) || 200000
 );
+const CODEX_APP_SERVER_MAX_FRAME_CHARS = 16 * 1024 * 1024;
 const CODEX_APP_SERVER_ENABLED = process.env.ARCRHO_CODEX_APP_SERVER !== "0";
 const mappedDriveRemoteCache = new Map();
 const activeCodexAssistantRequests = new Map();
-const arcBotCodexThreads = new Map();
 const arcBotRequestLoggers = new Map();
 let codexAppServerClient = null;
 
@@ -773,13 +774,6 @@ function getCodexSpawnSpec(args = []) {
   return { command, args: nextArgs, shell: false };
 }
 
-function getArcBotCodexThreadKey(payload, mode) {
-  const sessionId = sanitizeArcBotSessionId(payload?.sessionId || "");
-  const model = normalizeArcBotModel(payload?.model);
-  const effort = normalizeArcBotReasoningEffort(payload?.reasoningEffort);
-  return sessionId ? `${mode}:${model}:${effort}:${sessionId}` : "";
-}
-
 function normalizeSandboxRoots(paths = []) {
   const seen = new Set();
   const roots = [];
@@ -890,13 +884,11 @@ function writeArcBotUiSettings(settingsLike) {
   return payload;
 }
 
-function getCodexSandboxPolicy(sandboxMode, codexCwd, readableRoots = []) {
-  const extraReadableRoots = normalizeSandboxRoots(readableRoots);
+function getCodexSandboxPolicy(sandboxMode, codexCwd) {
   if (sandboxMode === "workspace-write") {
     return {
       type: "workspaceWrite",
       writableRoots: [codexCwd],
-      readableRoots: extraReadableRoots,
       networkAccess: false,
       excludeTmpdirEnvVar: false,
       excludeSlashTmp: false,
@@ -904,7 +896,6 @@ function getCodexSandboxPolicy(sandboxMode, codexCwd, readableRoots = []) {
   }
   return {
     type: "readOnly",
-    readableRoots: extraReadableRoots,
     networkAccess: false,
   };
 }
@@ -917,15 +908,49 @@ function extractAgentTextFromTurn(turn) {
   return messages.length ? messages[messages.length - 1] : "";
 }
 
+function getCodexNotificationIdentity(message) {
+  return {
+    threadId: String(message?.params?.threadId || message?.params?.turn?.threadId || ""),
+    turnId: String(message?.params?.turnId || message?.params?.turn?.id || ""),
+  };
+}
+
+function isCodexNotificationForTurn(
+  message,
+  { threadId, turnId = "", allowPendingTurn = false } = {}
+) {
+  const identity = getCodexNotificationIdentity(message);
+  if (identity.threadId && identity.threadId !== threadId) return false;
+  if (!turnId) {
+    return !!allowPendingTurn && identity.threadId === threadId && !!identity.turnId;
+  }
+  if (identity.turnId && identity.turnId !== turnId) return false;
+  return !!(identity.threadId || identity.turnId);
+}
+
+function getCodexInterruptParams(threadId, turnId) {
+  const normalizedThreadId = String(threadId || "");
+  const normalizedTurnId = String(turnId || "");
+  return normalizedThreadId && normalizedTurnId
+    ? { threadId: normalizedThreadId, turnId: normalizedTurnId }
+    : null;
+}
+
 class CodexAppServerClient {
-  constructor() {
+  constructor(options = {}) {
+    this.spawnProcess = typeof options.spawnProcess === "function" ? options.spawnProcess : spawn;
+    this.resolveSpawnSpec = typeof options.resolveSpawnSpec === "function"
+      ? options.resolveSpawnSpec
+      : getCodexSpawnSpec;
     this.proc = null;
     this.started = false;
     this.starting = null;
     this.nextId = 1;
     this.pending = new Map();
     this.notificationHandlers = new Set();
+    this.disconnectHandlers = new Set();
     this.stdoutBuffer = "";
+    this.stdoutDecoder = new StringDecoder("utf8");
     this.stderr = "";
     this.lastError = "";
   }
@@ -948,33 +973,42 @@ class CodexAppServerClient {
 
   async startFresh() {
     this.stop();
-    const spec = getCodexSpawnSpec(["app-server", "--listen", "stdio://"]);
+    const spec = this.resolveSpawnSpec(["app-server", "--listen", "stdio://"]);
     if (!spec) throw new Error("Codex CLI was not found. Install Codex CLI before using ArcBot.");
-    this.proc = spawn(spec.command, spec.args, {
+    const proc = this.spawnProcess(spec.command, spec.args, {
       cwd: APP_ROOT,
       env: getArcBotCodexEnv(process.env),
       shell: spec.shell,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
+    this.proc = proc;
     this.started = false;
     this.stdoutBuffer = "";
+    this.stdoutDecoder = new StringDecoder("utf8");
     this.stderr = "";
     this.lastError = "";
-    this.proc.stdout?.on("data", (chunk) => this.handleStdout(chunk));
-    this.proc.stderr?.on("data", (chunk) => {
+    proc.stdout?.on("data", (chunk) => this.handleStdout(chunk, proc));
+    proc.stderr?.on("data", (chunk) => {
+      if (this.proc !== proc) return;
       const text = String(chunk || "");
       this.stderr += text;
       if (this.stderr.length > 200000) this.stderr = this.stderr.slice(-200000);
     });
-    this.proc.once("error", (err) => {
-      this.failAll(String(err?.message || err || "Codex app-server failed."));
-      this.started = false;
+    proc.stdin?.on("error", (err) => {
+      this.handleProcessFailure(
+        proc,
+        `Codex app-server input failed: ${String(err?.message || err || "unknown error")}`,
+      );
     });
-    this.proc.once("close", (code, signal) => {
-      this.failAll(`Codex app-server exited (code=${code ?? "unknown"}, signal=${signal || "none"}).`);
-      this.started = false;
-      arcBotCodexThreads.clear();
+    proc.once("error", (err) => {
+      this.handleProcessFailure(proc, String(err?.message || err || "Codex app-server failed."));
+    });
+    proc.once("close", (code, signal) => {
+      this.handleProcessFailure(
+        proc,
+        `Codex app-server exited (code=${code ?? "unknown"}, signal=${signal || "none"}).`,
+      );
     });
     await this.request("initialize", {
       clientInfo: { name: "ArcRho ArcBot", title: "ArcRho ArcBot", version: "0.1.0" },
@@ -991,6 +1025,7 @@ class CodexAppServerClient {
     this.proc = null;
     this.started = false;
     this.stdoutBuffer = "";
+    this.stdoutDecoder = new StringDecoder("utf8");
     if (proc && proc.exitCode == null && !proc.killed) {
       try {
         proc.kill();
@@ -999,7 +1034,25 @@ class CodexAppServerClient {
       }
     }
     this.failAll("Codex app-server stopped.");
-    arcBotCodexThreads.clear();
+  }
+
+  handleProcessFailure(proc, message) {
+    if (!proc || this.proc !== proc) return false;
+    const detail = String(message || "Codex app-server disconnected.");
+    this.proc = null;
+    this.started = false;
+    this.stdoutBuffer = "";
+    this.stdoutDecoder = new StringDecoder("utf8");
+    this.lastError = detail;
+    if (proc.exitCode == null && !proc.killed) {
+      try {
+        proc.kill();
+      } catch {
+        // ignore
+      }
+    }
+    this.failAll(detail);
+    return true;
   }
 
   failAll(message) {
@@ -1008,18 +1061,35 @@ class CodexAppServerClient {
       pending.reject(new Error(message));
     }
     this.pending.clear();
+    for (const handler of this.disconnectHandlers) {
+      try {
+        handler(String(message || "Codex app-server disconnected."));
+      } catch {
+        // One stale listener should not block other disconnect observers.
+      }
+    }
   }
 
-  handleStdout(chunk) {
-    this.stdoutBuffer += String(chunk || "");
+  handleStdout(chunk, proc = this.proc) {
+    if (proc && this.proc !== proc) return;
+    const bytes = Buffer.isBuffer(chunk)
+      ? chunk
+      : Buffer.from(String(chunk ?? ""), "utf8");
+    this.stdoutBuffer += this.stdoutDecoder.write(bytes);
     let newlineIndex = this.stdoutBuffer.indexOf("\n");
     while (newlineIndex >= 0) {
+      if (newlineIndex > CODEX_APP_SERVER_MAX_FRAME_CHARS) {
+        this.handleProcessFailure(proc, "Codex app-server returned an oversized protocol frame.");
+        return;
+      }
       const line = this.stdoutBuffer.slice(0, newlineIndex).trim();
       this.stdoutBuffer = this.stdoutBuffer.slice(newlineIndex + 1);
       if (line) this.handleMessageLine(line);
       newlineIndex = this.stdoutBuffer.indexOf("\n");
     }
-    if (this.stdoutBuffer.length > 100000) this.stdoutBuffer = this.stdoutBuffer.slice(-100000);
+    if (this.stdoutBuffer.length > CODEX_APP_SERVER_MAX_FRAME_CHARS) {
+      this.handleProcessFailure(proc, "Codex app-server returned an oversized protocol frame.");
+    }
   }
 
   handleMessageLine(line) {
@@ -1030,11 +1100,21 @@ class CodexAppServerClient {
       this.stderr += `${line}\n`;
       return;
     }
-    if (message && Object.prototype.hasOwnProperty.call(message, "id")) {
-      if (message.method && !this.pending.has(message.id)) {
+    if (message?.method) {
+      if (Object.prototype.hasOwnProperty.call(message, "id")) {
         this.respondUnsupported(message.id, message.method);
         return;
       }
+      for (const handler of this.notificationHandlers) {
+        try {
+          handler(message);
+        } catch {
+          // One stale listener should not break the app-server stream.
+        }
+      }
+      return;
+    }
+    if (message && Object.prototype.hasOwnProperty.call(message, "id")) {
       const pending = this.pending.get(message.id);
       if (!pending) return;
       clearTimeout(pending.timer);
@@ -1047,20 +1127,29 @@ class CodexAppServerClient {
       }
       return;
     }
-    if (message?.method) {
-      for (const handler of this.notificationHandlers) {
-        try {
-          handler(message);
-        } catch {
-          // One stale listener should not break the app-server stream.
-        }
-      }
-    }
   }
 
   writeMessage(message) {
-    if (!this.isAlive()) throw new Error("Codex app-server is not running.");
-    this.proc.stdin.write(`${JSON.stringify(message)}\n`);
+    const proc = this.proc;
+    if (!proc || proc.killed || proc.exitCode != null || typeof proc.stdin?.write !== "function") {
+      throw new Error("Codex app-server is not running.");
+    }
+    const serialized = `${JSON.stringify(message)}\n`;
+    try {
+      proc.stdin.write(serialized, (err) => {
+        if (!err) return;
+        this.handleProcessFailure(
+          proc,
+          `Codex app-server input failed: ${String(err?.message || err || "unknown error")}`,
+        );
+      });
+    } catch (err) {
+      this.handleProcessFailure(
+        proc,
+        `Codex app-server input failed: ${String(err?.message || err || "unknown error")}`,
+      );
+      throw err;
+    }
   }
 
   request(method, params, timeoutMs = CODEX_ASSISTANT_TIMEOUT_MS) {
@@ -1104,22 +1193,21 @@ class CodexAppServerClient {
     return () => this.notificationHandlers.delete(handler);
   }
 
-  async ensureThread(threadKey, mode, codexCwd, model) {
-    if (threadKey && arcBotCodexThreads.has(threadKey)) {
-      return arcBotCodexThreads.get(threadKey);
-    }
+  onDisconnect(handler) {
+    this.disconnectHandlers.add(handler);
+    return () => this.disconnectHandlers.delete(handler);
+  }
+
+  async startThread(mode, codexCwd, model) {
     const result = await this.request("thread/start", {
       model: getArcBotRuntimeModel(model),
       cwd: codexCwd,
       approvalPolicy: "never",
       sandbox: mode === "edit" ? "workspace-write" : "read-only",
       ephemeral: true,
-      experimentalRawEvents: false,
-      persistExtendedHistory: false,
     });
     const threadId = String(result?.thread?.id || "");
     if (!threadId) throw new Error("Codex app-server did not return a thread id.");
-    if (threadKey) arcBotCodexThreads.set(threadKey, threadId);
     return threadId;
   }
 }
@@ -1130,19 +1218,37 @@ async function ensureCodexAppServerStarted() {
   return codexAppServerClient.start();
 }
 
-async function runCodexWarmTurn({ event, requestId, requestState, payload, mode, model, reasoningEffort, codexCwd, codexSandbox, prompt, readableRoots = [] }) {
-  const client = await ensureCodexAppServerStarted();
-  const threadKey = getArcBotCodexThreadKey(payload, mode);
-  const threadId = await client.ensureThread(threadKey, mode, codexCwd, model);
+async function startCodexWarmThread({ isCanceled, mode, codexCwd, model, ensureClient = ensureCodexAppServerStarted }) {
+  if (isCanceled()) return { canceled: true, client: null, threadId: "" };
+  const client = await ensureClient();
+  if (isCanceled()) return { canceled: true, client, threadId: "" };
+  const threadId = await client.startThread(mode, codexCwd, model);
+  if (isCanceled()) return { canceled: true, client, threadId };
+  return { canceled: false, client, threadId };
+}
+
+async function runCodexWarmTurn({ event, requestId, requestState, payload, mode, model, reasoningEffort, codexCwd, codexSandbox, prompt }) {
+  let client = null;
+  let threadId = "";
   let turnId = "";
   let agentText = "";
   let canceled = false;
   let agentStartedSent = false;
   let lastNotificationSummary = "";
+  let waitTimer = null;
+  let assistantDeltaTimer = null;
+  let assistantDeltaBuffer = "";
+  let removeNotificationHandler = null;
+  let removeDisconnectHandler = null;
+  let earlyDisconnectError = null;
+  let resolveCompletedTurn = null;
+  let rejectCompletedTurn = null;
+  const queuedNotifications = [];
   const cancelTurn = () => {
     canceled = true;
-    if (turnId) {
-      client.request("turn/interrupt", { threadId }, 8000).catch(() => {});
+    const interruptParams = getCodexInterruptParams(threadId, turnId);
+    if (client && interruptParams) {
+      client.request("turn/interrupt", interruptParams, 8000).catch(() => {});
     }
     return true;
   };
@@ -1150,77 +1256,167 @@ async function runCodexWarmTurn({ event, requestId, requestState, payload, mode,
     requestState.cancelProcess = cancelTurn;
     if (requestState.canceled) cancelTurn();
   }
-  const waitForCompletedTurn = () => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("Codex app-server turn timed out."));
-    }, CODEX_ASSISTANT_TIMEOUT_MS);
-    const cleanup = client.onNotification((message) => {
-      if (message?.method === "item/agentMessage/delta" &&
-          message.params?.threadId === threadId &&
-          message.params?.turnId === turnId) {
-        agentText += String(message.params?.delta || "");
-        if (!agentStartedSent) {
-          agentStartedSent = true;
-          sendArcBotActivity(event, requestId, "activity", "ArcBot is drafting a response.");
-        }
-      } else {
-        const notificationSummary = summarizeCodexTurnNotification(message);
-        const summary = typeof notificationSummary === "string"
-          ? notificationSummary
-          : String(notificationSummary?.text || "");
-        if (summary && summary !== lastNotificationSummary) {
-          lastNotificationSummary = summary;
-          const extra = notificationSummary && typeof notificationSummary === "object"
-            ? { debugText: notificationSummary.debugText || "" }
-            : {};
-          sendArcBotActivity(event, requestId, "activity", summary, extra);
-        }
-      }
-      if (message?.method === "turn/completed" &&
-          message.params?.threadId === threadId &&
-          message.params?.turn?.id === turnId) {
-        clearTimeout(timer);
-        cleanup();
-        resolve(message.params?.turn || null);
-      }
-      if (message?.method === "error") {
-        const detail = String(message.params?.message || message.params?.error || "Codex app-server turn failed.");
-        clearTimeout(timer);
-        cleanup();
-        reject(new Error(detail));
-      }
-    });
+  const startup = await startCodexWarmThread({
+    isCanceled: () => canceled || !!requestState?.canceled,
+    mode,
+    codexCwd,
+    model,
   });
-  const started = await client.request("turn/start", {
-    threadId,
-    input: [{ type: "text", text: prompt, text_elements: [] }],
-    cwd: codexCwd,
-    model: getArcBotRuntimeModel(model),
-    effort: normalizeArcBotReasoningEffort(reasoningEffort),
-    approvalPolicy: "never",
-    sandboxPolicy: getCodexSandboxPolicy(codexSandbox, codexCwd, readableRoots),
-  });
-  turnId = String(started?.turn?.id || "");
-  sendArcBotActivity(event, requestId, "activity", "Codex warm session accepted the request.");
-  if (canceled || requestState?.canceled) {
-    cancelTurn();
+  client = startup.client;
+  threadId = startup.threadId;
+  if (startup.canceled) {
     return { ok: false, canceled: true, stdout: "", stderr: "", error: "Request canceled." };
   }
-  const turn = started?.turn?.status === "completed" ? started.turn : await waitForCompletedTurn();
-  if (canceled || requestState?.canceled) {
-    return { ok: false, canceled: true, stdout: "", stderr: "", error: "Request canceled." };
-  }
-  const turnText = extractAgentTextFromTurn(turn);
-  return {
-    ok: true,
-    code: 0,
-    signal: null,
-    stdout: String(turnText || agentText || "").trim(),
-    stderr: "",
-    timedOut: false,
-    canceled: false,
+  const flushAssistantDelta = () => {
+    if (!assistantDeltaBuffer) return;
+    const delta = assistantDeltaBuffer;
+    assistantDeltaBuffer = "";
+    sendArcBotActivity(event, requestId, "assistant-delta", delta);
   };
+  const queueAssistantDelta = (delta) => {
+    if (!delta || payload?.streamDeltas === false) return;
+    assistantDeltaBuffer += delta;
+    if (assistantDeltaTimer) return;
+    assistantDeltaTimer = setTimeout(() => {
+      assistantDeltaTimer = null;
+      flushAssistantDelta();
+    }, 32);
+  };
+  const cleanupTurnWait = () => {
+    if (waitTimer) clearTimeout(waitTimer);
+    waitTimer = null;
+    if (assistantDeltaTimer) clearTimeout(assistantDeltaTimer);
+    assistantDeltaTimer = null;
+    flushAssistantDelta();
+    removeNotificationHandler?.();
+    removeNotificationHandler = null;
+    removeDisconnectHandler?.();
+    removeDisconnectHandler = null;
+  };
+  const completedTurn = new Promise((resolve, reject) => {
+    resolveCompletedTurn = resolve;
+    rejectCompletedTurn = reject;
+  });
+  const handleTurnNotification = (message) => {
+    if (!turnId) {
+      if (isCodexNotificationForTurn(message, { threadId, allowPendingTurn: true })) {
+        queuedNotifications.push(message);
+      }
+      return;
+    }
+    if (!isCodexNotificationForTurn(message, { threadId, turnId })) return;
+
+    if (message?.method === "item/agentMessage/delta") {
+      const delta = String(message.params?.delta || "");
+      agentText += delta;
+      queueAssistantDelta(delta);
+      if (!agentStartedSent) {
+        agentStartedSent = true;
+        sendArcBotActivity(event, requestId, "activity", "ArcBot is drafting a response.");
+      }
+    } else {
+      const notificationSummary = summarizeCodexTurnNotification(message);
+      const summary = typeof notificationSummary === "string"
+        ? notificationSummary
+        : String(notificationSummary?.text || "");
+      if (summary && summary !== lastNotificationSummary) {
+        lastNotificationSummary = summary;
+        const extra = notificationSummary && typeof notificationSummary === "object"
+          ? { debugText: notificationSummary.debugText || "" }
+          : {};
+        sendArcBotActivity(event, requestId, "activity", summary, extra);
+      }
+    }
+    if (message?.method === "turn/completed") {
+      cleanupTurnWait();
+      resolveCompletedTurn(message.params?.turn || null);
+    } else if (message?.method === "error") {
+      const turnError = message.params?.error;
+      const detail = String(
+        turnError?.message
+        || turnError?.additionalDetails
+        || message.params?.message
+        || "Codex app-server turn failed."
+      );
+      if (message.params?.willRetry) {
+        sendArcBotActivity(event, requestId, "activity", "Codex is retrying the current turn.", {
+          debugText: detail,
+        });
+        return;
+      }
+      cleanupTurnWait();
+      rejectCompletedTurn(new Error(detail));
+    }
+  };
+  removeNotificationHandler = client.onNotification(handleTurnNotification);
+  removeDisconnectHandler = client.onDisconnect((message) => {
+    const error = new Error(String(message || "Codex app-server disconnected."));
+    if (!turnId) {
+      earlyDisconnectError = error;
+      return;
+    }
+    cleanupTurnWait();
+    rejectCompletedTurn(error);
+  });
+
+  try {
+    const outputSchema = payload?.outputSchema && typeof payload.outputSchema === "object"
+      ? payload.outputSchema
+      : null;
+    const started = await client.request("turn/start", {
+      threadId,
+      input: [{ type: "text", text: prompt, text_elements: [] }],
+      cwd: codexCwd,
+      model: getArcBotRuntimeModel(model),
+      effort: normalizeArcBotReasoningEffort(reasoningEffort),
+      approvalPolicy: "never",
+      sandboxPolicy: getCodexSandboxPolicy(codexSandbox, codexCwd),
+      ...(outputSchema ? { outputSchema } : {}),
+    });
+    turnId = String(started?.turn?.id || "");
+    if (!turnId) throw new Error("Codex app-server did not return a turn id.");
+    if (earlyDisconnectError) throw earlyDisconnectError;
+    sendArcBotActivity(event, requestId, "activity", "Codex warm session accepted the request.");
+    if (canceled || requestState?.canceled) {
+      cancelTurn();
+      return { ok: false, canceled: true, stdout: "", stderr: "", error: "Request canceled." };
+    }
+    let turn = null;
+    if (["completed", "failed", "interrupted"].includes(String(started?.turn?.status || ""))) {
+      queuedNotifications.length = 0;
+      cleanupTurnWait();
+      turn = started.turn;
+    } else {
+      waitTimer = setTimeout(() => {
+        cleanupTurnWait();
+        rejectCompletedTurn(new Error("Codex app-server turn timed out."));
+      }, CODEX_ASSISTANT_TIMEOUT_MS);
+      queuedNotifications.splice(0).forEach(handleTurnNotification);
+      turn = await completedTurn;
+    }
+    if (canceled || requestState?.canceled) {
+      return { ok: false, canceled: true, stdout: "", stderr: "", error: "Request canceled." };
+    }
+    const turnStatus = String(turn?.status || "");
+    if (turnStatus === "failed") {
+      throw new Error(String(turn?.error?.message || turn?.error?.additionalDetails || "Codex app-server turn failed."));
+    }
+    if (turnStatus === "interrupted") {
+      return { ok: false, canceled: true, stdout: "", stderr: "", error: "Request canceled." };
+    }
+    const turnText = extractAgentTextFromTurn(turn);
+    return {
+      ok: true,
+      code: 0,
+      signal: null,
+      stdout: String(turnText || agentText || "").trim(),
+      stderr: "",
+      timedOut: false,
+      canceled: false,
+    };
+  } finally {
+    cleanupTurnWait();
+  }
 }
 
 function combinedCommandOutput(result) {
@@ -2238,7 +2434,7 @@ function estimateArcBotContextUsage(prompt, messages, activeContext, activeJson,
 
 function sendArcBotActivity(event, requestId, type, text, extra = {}) {
   const logger = arcBotRequestLoggers.get(String(requestId || ""));
-  if (logger) logger.activity(type, text, extra);
+  if (logger && type !== "assistant-delta") logger.activity(type, text, extra);
   if (!event?.sender || !requestId) return;
   try {
     event.sender.send("codex-assistant-event", {
@@ -2780,7 +2976,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
       mode,
       model,
       reasoningEffort,
-      readableRoots: roots.serverReadRoots || [],
+      configuredReadRoots: roots.serverReadRoots || [],
     });
     try {
       result = await runCodexWarmTurn({
@@ -2794,7 +2990,6 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
         codexCwd,
         codexSandbox,
         prompt,
-        readableRoots: roots.serverReadRoots,
       });
       requestLog.end("warm_codex_turn", {
         ok: !!result?.ok,
@@ -3018,4 +3213,12 @@ return {
 
 module.exports = {
   registerArcBotIpc,
+  testHooks: {
+    CodexAppServerClient,
+    getCodexSandboxPolicy,
+    getCodexInterruptParams,
+    getCodexNotificationIdentity,
+    isCodexNotificationForTurn,
+    startCodexWarmThread,
+  },
 };

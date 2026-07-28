@@ -2,7 +2,7 @@
 from pathlib import Path
 import sys
 import warnings
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 block_cipher = None
 build_dir = Path(SPECPATH)
@@ -41,11 +41,16 @@ for asset_dir in asset_roots:
             if f.is_file():
                 static_files.append((str(f), str(f.relative_to(repo_root).parent)))
 
+sql_formatting_profile = repo_root / "app_server" / "services" / "sql_formatting" / "default.sqlfluff"
+if sql_formatting_profile.is_file():
+    static_files.append((str(sql_formatting_profile), str(sql_formatting_profile.relative_to(repo_root).parent)))
+sqlfluff_data = collect_data_files("sqlfluff") + copy_metadata("sqlfluff")
+
 a = Analysis(
     [str(build_dir / "arcode_server_entry.py")],
     pathex=[str(repo_root), str(python_api_src)],
     binaries=[],
-    datas=static_files,
+    datas=static_files + sqlfluff_data,
     hiddenimports=[
         "uvicorn",
         "uvicorn.logging",
@@ -72,7 +77,7 @@ a = Analysis(
         "app_server",
         "app_server.arcode_main",
         "app_server.api.arcode_scripting_router",
-    ] + snowflake_hiddenimports + collect_submodules("arcrho_api"),
+    ] + snowflake_hiddenimports + collect_submodules("arcrho_api") + collect_submodules("sqlfluff"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

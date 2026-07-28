@@ -21,6 +21,31 @@ class _FakeDfm:
 
 
 class MacroSourceExecutionTests(unittest.TestCase):
+    def test_macro_worker_initializes_and_uninitializes_com_on_its_execution_thread(self) -> None:
+        events = []
+        com_apartment = Mock()
+        com_apartment.CoUninitialize.side_effect = lambda: events.append(
+            ("uninitialize", threading.get_ident())
+        )
+
+        def initialize():
+            events.append(("initialize", threading.get_ident()))
+            return com_apartment
+
+        source = "import threading\nprint(f'runner={threading.get_ident()}')"
+        with (
+            patch.object(scripting_service, "_initialize_macro_com_apartment", side_effect=initialize),
+            patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+        ):
+            result = scripting_service.run_macro_source(source, "com_macro.py", {})
+
+        runner_thread = int(result["stdout"].strip().split("=", 1)[1])
+        self.assertTrue(result["success"], result)
+        self.assertEqual(events, [
+            ("initialize", runner_thread),
+            ("uninitialize", runner_thread),
+        ])
+
     def test_apply_growth_adjustments_is_valid_unregistered_macro_source(self) -> None:
         macro_path = Path(__file__).resolve().parents[2] / "python-api" / "macros" / "apply_growth_adjustments.py"
         source = macro_path.read_text(encoding="utf-8-sig")

@@ -184,6 +184,16 @@ def _make_trusted_macro_call(cancel_event: threading.Event):
     return _run_trusted_macro_call
 
 
+def _initialize_macro_com_apartment():
+    """Initialize the macro worker as an STA when Windows COM is available."""
+    try:
+        import pythoncom
+    except ImportError:
+        return None
+    pythoncom.CoInitialize()
+    return pythoncom
+
+
 def _make_cancel_trace(cancel_event: threading.Event):
     """Create a tracing hook that aborts execution when cancellation is requested."""
     def _trace(_frame, _event, _arg):
@@ -2047,94 +2057,99 @@ def _execute_macro_source_body(
     cancel_event: threading.Event,
     activity: _ExecutionActivity,
 ) -> Dict[str, Any]:
-    with _MACRO_EXECUTION_LOCK:
-        previous_trace = sys.gettrace()
-        macro_root = _get_macros_dir()
-        sys.settrace(
-            _make_scoped_cancel_trace(
-                cancel_event,
-                traced_files={compile_path, source_path},
-                traced_roots=(macro_root,),
-            )
-        )
-        source_directory = ""
-        inserted_source_directory = False
-        try:
-            active_dfm = _build_active_dfm(active_context) if isinstance(active_context.get("activeJson"), dict) else None
-            before_payload = copy.deepcopy(active_dfm.to_dict()) if active_dfm is not None else None
-            task_designer = _MacroTaskDesignerProxy(task_window_id, task_session_id)
-
-            def run_task_macro(
-                child_macro_id: str,
-                task_id: str = "",
-                name: str = "",
-                description: str = "",
-            ) -> Dict[str, Any]:
-                return _run_task_child_macro(
-                    child_macro_id,
-                    active_context,
-                    task_designer,
-                    task_id=task_id,
-                    name=name,
-                    description=description,
+    com_apartment = _initialize_macro_com_apartment()
+    try:
+        with _MACRO_EXECUTION_LOCK:
+            previous_trace = sys.gettrace()
+            macro_root = _get_macros_dir()
+            sys.settrace(
+                _make_scoped_cancel_trace(
+                    cancel_event,
+                    traced_files={compile_path, source_path},
+                    traced_roots=(macro_root,),
                 )
-
-            macro_import, _time_proxy = _make_session_import_hook(
-                builtins.__import__,
-                cancel_event,
-                threading.get_ident(),
             )
-            macro_builtins = dict(vars(builtins))
-            macro_builtins["__import__"] = macro_import
-            check_macro_cancelled = _make_cooperative_cancel_checker(cancel_event)
-            run_trusted_macro_call = _make_trusted_macro_call(cancel_event)
-            namespace: Dict[str, Any] = {
-                "__name__": "__arcrho_macro__",
-                "__file__": compile_path,
-                "__builtins__": macro_builtins,
-                "active_dfm": active_dfm,
-                "dfm": active_dfm,
-                "active_context": active_context,
-                "task_window_id": str(task_window_id or ""),
-                "task_session_id": str(task_session_id or ""),
-                "task_mode": str(task_mode or ""),
-                "task_designer": task_designer,
-                "run_task_macro": run_task_macro,
-                "check_macro_cancelled": check_macro_cancelled,
-                "run_trusted_macro_call": run_trusted_macro_call,
-                "report_macro_activity": activity.touch,
-                "log": print,
-            }
-            if source_path:
-                try:
-                    source_directory = str(Path(source_path).expanduser().resolve().parent)
-                except (OSError, RuntimeError, ValueError):
-                    source_directory = ""
-            inserted_source_directory = bool(
-                source_directory
-                and os.path.isdir(source_directory)
-                and source_directory not in sys.path
-            )
-            if inserted_source_directory:
-                sys.path.insert(0, source_directory)
+            source_directory = ""
+            inserted_source_directory = False
+            try:
+                active_dfm = _build_active_dfm(active_context) if isinstance(active_context.get("activeJson"), dict) else None
+                before_payload = copy.deepcopy(active_dfm.to_dict()) if active_dfm is not None else None
+                task_designer = _MacroTaskDesignerProxy(task_window_id, task_session_id)
 
-            with redirect_stdout(output):
-                exec(compile(source, compile_path, "exec"), namespace)
-                runner = namespace.get("run_macro") or namespace.get("main")
-                runner_result = _invoke_macro_runner(runner, active_dfm, active_context) if callable(runner) else None
-            after_payload = copy.deepcopy(active_dfm.to_dict()) if active_dfm is not None else None
-            return {
-                "runner_result": runner_result,
-                "before_payload": before_payload,
-                "after_payload": after_payload,
-            }
-        finally:
-            if inserted_source_directory:
-                try:
-                    sys.path.remove(source_directory)
-                except ValueError:
-                    pass
-            sys.settrace(previous_trace)
+                def run_task_macro(
+                    child_macro_id: str,
+                    task_id: str = "",
+                    name: str = "",
+                    description: str = "",
+                ) -> Dict[str, Any]:
+                    return _run_task_child_macro(
+                        child_macro_id,
+                        active_context,
+                        task_designer,
+                        task_id=task_id,
+                        name=name,
+                        description=description,
+                    )
+
+                macro_import, _time_proxy = _make_session_import_hook(
+                    builtins.__import__,
+                    cancel_event,
+                    threading.get_ident(),
+                )
+                macro_builtins = dict(vars(builtins))
+                macro_builtins["__import__"] = macro_import
+                check_macro_cancelled = _make_cooperative_cancel_checker(cancel_event)
+                run_trusted_macro_call = _make_trusted_macro_call(cancel_event)
+                namespace: Dict[str, Any] = {
+                    "__name__": "__arcrho_macro__",
+                    "__file__": compile_path,
+                    "__builtins__": macro_builtins,
+                    "active_dfm": active_dfm,
+                    "dfm": active_dfm,
+                    "active_context": active_context,
+                    "task_window_id": str(task_window_id or ""),
+                    "task_session_id": str(task_session_id or ""),
+                    "task_mode": str(task_mode or ""),
+                    "task_designer": task_designer,
+                    "run_task_macro": run_task_macro,
+                    "check_macro_cancelled": check_macro_cancelled,
+                    "run_trusted_macro_call": run_trusted_macro_call,
+                    "report_macro_activity": activity.touch,
+                    "log": print,
+                }
+                if source_path:
+                    try:
+                        source_directory = str(Path(source_path).expanduser().resolve().parent)
+                    except (OSError, RuntimeError, ValueError):
+                        source_directory = ""
+                inserted_source_directory = bool(
+                    source_directory
+                    and os.path.isdir(source_directory)
+                    and source_directory not in sys.path
+                )
+                if inserted_source_directory:
+                    sys.path.insert(0, source_directory)
+
+                with redirect_stdout(output):
+                    exec(compile(source, compile_path, "exec"), namespace)
+                    runner = namespace.get("run_macro") or namespace.get("main")
+                    runner_result = _invoke_macro_runner(runner, active_dfm, active_context) if callable(runner) else None
+                after_payload = copy.deepcopy(active_dfm.to_dict()) if active_dfm is not None else None
+                return {
+                    "runner_result": runner_result,
+                    "before_payload": before_payload,
+                    "after_payload": after_payload,
+                }
+            finally:
+                if inserted_source_directory:
+                    try:
+                        sys.path.remove(source_directory)
+                    except ValueError:
+                        pass
+                sys.settrace(previous_trace)
+    finally:
+        if com_apartment is not None:
+            com_apartment.CoUninitialize()
 
 
 def run_macro_source(
