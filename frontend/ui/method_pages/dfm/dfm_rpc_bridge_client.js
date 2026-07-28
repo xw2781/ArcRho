@@ -338,7 +338,7 @@ export function reviewArcBotDfmEditApproval(options = {}) {
             return;
           }
           statusDialog.setWaiting("Saving approved DFM method...");
-          const saved = await saveRatioSelectionPattern(false);
+          const saved = await saveRatioSelectionPattern(false, { showReviewWarning: false });
           if (!saved?.ok) {
             markDfmDirty();
             statusDialog.setMessage("Applied in the app, but final JSON save failed. Save the DFM before closing.", "warn");
@@ -368,7 +368,7 @@ async function ensureSavedBeforeSync(dialog) {
   const shouldSave = window.confirm("This DFM tab has unsaved edits. Save and proceed with sync?");
   if (!shouldSave) return false;
   dialog.setWaiting("Saving current DFM method before sync...");
-  const result = await saveRatioSelectionPattern(false);
+  const result = await saveRatioSelectionPattern(false, { showReviewWarning: false });
   if (!result?.ok) {
     dialog.setMessage(result?.error ? `Save failed: ${result.error}` : "Save was canceled. Sync stopped.", "error");
     return false;
@@ -419,7 +419,7 @@ async function runPrimaryAction(dialog, payload, action) {
       }
       markDfmDirty();
       statusDialog.setWaiting("Saving recalculated local DFM JSON...");
-      const saved = await saveRatioSelectionPattern(false);
+      const saved = await saveRatioSelectionPattern(false, { showReviewWarning: false });
       if (!saved?.ok) {
         statusDialog.setMessage("Local updated in app, but final JSON save failed. Save the DFM before closing.", "warn");
         postStatus("DFM sync: local app data updated, but final JSON save failed.", "warn");

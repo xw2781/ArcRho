@@ -5,7 +5,7 @@ import test from "node:test";
 const helperUrl = new URL("../ui/method_pages/dfm/dfm_formula_validation.js", import.meta.url);
 const helperSource = await readFile(helperUrl, "utf8");
 const summarySource = await readFile(
-  new URL("../ui/method_pages/dfm/dfm_ratios_summary_table.js", import.meta.url),
+  new URL("../ui/method_pages/dfm/ratios_summary/summary_formula_bar.js", import.meta.url),
   "utf8",
 );
 const ratiosTabSource = await readFile(

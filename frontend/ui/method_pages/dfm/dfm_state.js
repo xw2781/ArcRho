@@ -77,8 +77,8 @@ let ratioSyncChannel = null;
 let ratioSyncMuted = false;
 let dfmProgrammaticDepth = 0;
 
-export let summaryRowConfigs = [];
-export let summaryRowMap = new Map();
+export const summaryRowConfigs = [];
+export const summaryRowMap = new Map();
 
 // Getter/setter pairs for primitives
 export function getRatioColAllActive() { return ratioColAllActive; }
@@ -476,9 +476,10 @@ export function buildSummaryRows() {
   const merged = Array.isArray(savedRows) && savedRows.length
     ? savedRows
     : BASE_SUMMARY_ROWS.map((row) => ({ ...row }));
-  summaryRowConfigs = merged;
-  summaryRowMap = new Map(merged.map((row) => [row.id, row]));
-  return merged;
+  summaryRowConfigs.splice(0, summaryRowConfigs.length, ...merged);
+  summaryRowMap.clear();
+  summaryRowConfigs.forEach((row) => summaryRowMap.set(row.id, row));
+  return summaryRowConfigs;
 }
 
 export function parsePeriodsValue(raw) {

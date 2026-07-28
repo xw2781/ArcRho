@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "frontend architecture",
+  "audience": "internal",
+  "summary": "Split the Dataset Data-tab and DFM Ratios summary controllers into focused modules without changing their public workflows."
+}

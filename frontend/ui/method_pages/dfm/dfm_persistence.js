@@ -28,6 +28,7 @@ import {
   getRatioSaveProjectName,
   getResolvedProjectName,
   getResolvedReservingClass,
+  getDfmInst,
   getDfmDecimalPlaces,
   getEffectiveDevLabelsForModel,
   getRatioHeaderLabels,
@@ -36,6 +37,7 @@ import {
   computeAverageForColumn,
   buildExcludedSetForColumn,
 } from "/ui/method_pages/dfm/dfm_state.js";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
 import {
   getSummaryConfigKey,
   saveCustomSummaryRows,
@@ -51,7 +53,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260726b";
 import {
   applyPersistedResultsSnapshot,
   renderResultsTable,
@@ -97,7 +99,7 @@ import {
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726b";
 import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260726a";
 
 let ratioLoadTimer = null;
@@ -1577,7 +1579,7 @@ export function cancelDfmMethodAsyncTasks() {
   cancelDfmExcelFreshnessCheck();
 }
 
-export async function saveRatioSelectionPattern(forceSaveAs) {
+export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
   const preview = await flushDfmMethodPreview();
   if (preview?.ok === false && !preview?.skipped) return preview;
 
@@ -1638,6 +1640,13 @@ export async function saveRatioSelectionPattern(forceSaveAs) {
     publishCalculatedDatasetUpdates(updates, "DFM save");
     postDfmStatus(`Method saved at ${new Date().toLocaleTimeString()}.`);
     scheduleDfmExcelFreshnessCheck(canonicalMethod);
+    if (options.showReviewWarning !== false) {
+      await showMethodSaveReviewWarning(response, {
+        instanceId: getDfmInst(),
+        projectName: getResolvedProjectName(),
+        reservingClass: getResolvedReservingClass(),
+      });
+    }
     return { ok: true, method: canonicalMethod, sidecar: response?.sidecar };
   } catch (error) {
     const message = String(error?.message || error || "DFM save failed.");

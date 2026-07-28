@@ -19,7 +19,11 @@ const linkModel = await import(
   `data:text/javascript;base64,${Buffer.from(modelSource).toString("base64")}`
 );
 const summarySource = await readFile(
-  new URL("../ui/method_pages/dfm/dfm_ratios_summary_table.js", import.meta.url),
+  new URL("../ui/method_pages/dfm/ratios_summary/summary_excel.js", import.meta.url),
+  "utf8",
+);
+const summaryEntriesSource = await readFile(
+  new URL("../ui/method_pages/dfm/ratios_summary/summary_entries.js", import.meta.url),
   "utf8",
 );
 const dfmCssSource = await readFile(
@@ -38,9 +42,9 @@ function sourceSlice(text, startMarker, endMarker) {
 function createExcelFreshnessHarness(rows, readExcelCellsBatch) {
   const cancelSource = sourceSlice(
     summarySource,
-    "export function cancelDfmExcelFreshnessCheck",
+    "function cancelDfmExcelFreshnessCheck",
     "function invalidateDfmExcelRefresh",
-  ).replace("export function", "function");
+  );
   const canonicalSource = sourceSlice(
     summarySource,
     "function canonicalExcelComparisonValue",
@@ -53,13 +57,15 @@ function createExcelFreshnessHarness(rows, readExcelCellsBatch) {
   );
   const checkSource = sourceSlice(
     summarySource,
-    "export async function checkDfmExcelLinkFreshness",
+    "async function checkDfmExcelLinkFreshness",
     "function collectDfmExternalLinkGroups",
-  ).replace("export async function", "async function");
+  );
   const factory = new Function("deps", `
     "use strict";
-    let _dfmExcelFreshnessGeneration = 0;
-    let _dfmExcelFreshnessAbortController = null;
+    const summaryRuntime = {
+      _dfmExcelFreshnessGeneration: 0,
+      _dfmExcelFreshnessAbortController: null,
+    };
     const {
       summaryRowConfigs,
       readExcelCellsBatch,
@@ -278,8 +284,8 @@ test("DFM break and formula mutations invalidate in-flight Excel refreshes", () 
     /readExcelRangeValues\(link\.range,[\s\S]*?signal: refreshController\.signal[\s\S]*?dfmExternalInputStillMatches/u,
   );
   assert.match(
-    summarySource,
-    /function setUserEntryCellEntry[\s\S]*?!_applyingDfmExcelRefresh[\s\S]*?invalidateDfmExcelRefresh\(\)/u,
+    summaryEntriesSource,
+    /function setUserEntryCellEntry[\s\S]*?!summaryRuntime\._applyingDfmExcelRefresh[\s\S]*?invalidateDfmExcelRefresh\(\)/u,
   );
 });
 

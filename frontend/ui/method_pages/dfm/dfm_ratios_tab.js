@@ -28,7 +28,7 @@ import { openContextMenu } from "/ui/shared/components/context_menu/context_menu
 import {
   moveActiveSelectableTableSelection,
   wireSelectableTable,
-} from "/ui/shared/components/spreadsheet/table_selection.js";
+} from "/ui/shared/components/spreadsheet/table_selection.js?v=20260726a";
 import { wirePercentDevelopedCurveMenu } from "/ui/method_pages/dfm/dfm_percent_developed_curve_window.js?v=20260722a";
 import {
   buildRatioSelectionPattern,
@@ -50,7 +50,7 @@ import {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726b";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -93,7 +93,7 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726b";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -707,6 +707,8 @@ export function renderRatioTable() {
   if (!wrap) return;
   clearRatioActionError();
   resetSummaryFormulaEditState();
+  selectedRowsTableHighlight?.destroy?.();
+  selectedRowsTableHighlight = null;
   wrap.innerHTML = "";
   const formulaBar = document.getElementById("dfmSummaryFormulaBar");
   if (formulaBar) formulaBar.remove();

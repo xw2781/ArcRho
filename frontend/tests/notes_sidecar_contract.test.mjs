@@ -41,7 +41,11 @@ test("dataset sidecars are the only persisted notes owner", async () => {
 });
 
 test("Project Instance DSV open uses the aggregate sidecar and CSV cache route", async () => {
-  const controller = await read("frontend/ui/shared/tabs/data/data_tab_controller.js");
+  const controller = (await Promise.all([
+    "frontend/ui/shared/tabs/data/data_tab_controller.js",
+    "frontend/ui/shared/tabs/data/data_tab_host_controller.js",
+    "frontend/ui/shared/tabs/data/data_tab_persistence_controller.js",
+  ].map(read))).join("\n");
   assert.match(controller, /isProjectInstanceCachedDatasetOpen/u);
   assert.match(controller, /loadProjectInstanceCachedDataset/u);
   assert.match(controller, /loadCachedDataset\(/u);

@@ -41,6 +41,12 @@ test("shared tab surfaces live in feature-neutral logical groups", async () => {
     "ui/shared/tabs/audit_log/audit_log_view.js",
     "ui/shared/tabs/audit_log/audit_log.css",
     "ui/shared/tabs/data/data_tab_controller.js",
+    "ui/shared/tabs/data/data_tab_host_controller.js",
+    "ui/shared/tabs/data/data_tab_details_controller.js",
+    "ui/shared/tabs/data/data_tab_inputs_controller.js",
+    "ui/shared/tabs/data/data_tab_preferences_controller.js",
+    "ui/shared/tabs/data/data_tab_request_controller.js",
+    "ui/shared/tabs/data/data_tab_persistence_controller.js",
     "ui/shared/tabs/data/data_tab_controls.js",
     "ui/shared/tabs/data/data_tab_dom.js",
     "ui/shared/tabs/data/data_tab_context.js",
@@ -111,8 +117,11 @@ test("DSV and DFM place reusable Links tabs immediately after Notes", async () =
     source("ui/method_pages/dfm/dfm.html"),
     source("ui/method_pages/dfm/dfm_tab_config.js"),
     source("ui/method_pages/dfm/dfm_links_tab.js"),
-    source("ui/method_pages/dfm/dfm_ratios_summary_table.js"),
-    source("ui/shared/tabs/data/data_tab_controller.js"),
+    Promise.all([
+      source("ui/method_pages/dfm/dfm_ratios_summary_table.js"),
+      runtimeSources("ui/method_pages/dfm/ratios_summary/"),
+    ]).then((parts) => parts.join("\n")),
+    runtimeSources("ui/shared/tabs/data/"),
   ]);
 
   for (const sourceText of [datasetView, datasetMain, dfmHtml, dfmConfig]) {
@@ -121,10 +130,10 @@ test("DSV and DFM place reusable Links tabs immediately after Notes", async () =
   assert.match(datasetMain, /shared\/tabs\/links\/links_tab\.js/u);
   assert.match(dfmLinks, /shared\/tabs\/links\/links_tab\.js/u);
   assert.match(dfmSummary, /shared\/integrations\/excel_reference\.js/u);
-  assert.match(dfmSummary, /export function getDfmExternalLinkRecords/u);
-  assert.match(dfmSummary, /export function breakDfmExternalLink/u);
+  assert.match(dfmSummary, /\bgetDfmExternalLinkRecords\b/u);
+  assert.match(dfmSummary, /\bbreakDfmExternalLink\b/u);
   assert.match(dataController, /shared\/dataset\/dataset_external_links\.js/u);
-  assert.match(dataController, /external_links:\s*datasetExternalLinks\.serialize\(\)/u);
+  assert.match(dataController, /external_links:\s*runtime\.datasetExternalLinks\.serialize\(\)/u);
 });
 
 test("method pages and shared runtime do not depend on Dataset feature assets", async () => {

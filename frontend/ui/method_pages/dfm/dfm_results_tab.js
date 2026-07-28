@@ -8,7 +8,7 @@ import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=202
 import { formatDatasetNumberValue } from "/ui/shared/dataset/dataset_number_format.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
-import { wireSelectableTable } from "/ui/shared/components/spreadsheet/table_selection.js";
+import { wireSelectableTable } from "/ui/shared/components/spreadsheet/table_selection.js?v=20260726a";
 import {
   state,
   getEffectiveDevLabelsForModel,

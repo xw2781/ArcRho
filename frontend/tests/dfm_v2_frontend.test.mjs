@@ -26,7 +26,7 @@ const [
   source("ui/project_instance/project_instance_windows.js"),
   source("ui/project_instance/project_instance_dataset_table.js"),
   source("ui/project_instance/project_instance_messages.js"),
-  source("ui/method_pages/dfm/dfm_ratios_summary_table.js"),
+  source("ui/method_pages/dfm/ratios_summary/summary_excel.js"),
   source("ui/method_pages/dfm/dfm_links_tab.js"),
   source("ui/method_pages/dfm/dfm_ratio_calc.js"),
 ]);
@@ -100,8 +100,8 @@ test("v2 open hydrates aggregate snapshots without dependency or workbook reads"
   assert.match(load, /scheduleDfmExcelFreshnessCheck/u);
   assert.doesNotMatch(load, /readJsonFile|refreshAllExcelLinks|ADA_DFM_REFRESH_DATASET|loadDatasetSidecar/u);
 
-  assert.match(dataControllerSource, /if \(persistedDfmBootstrap\) \{\s*applyTriInputsFromQueryParams\(\);/u);
-  assert.match(dataControllerSource, /if \(persistedDfmBootstrap\) \{\s*setStatus\("Loading DFM method\.\.\."\);/u);
+  assert.match(dataControllerSource, /if \(persistedDfmBootstrap \|\| isProjectInstanceCachedDatasetOpen\) \{\s*runtime\.applyTriInputsFromQueryParams\(\);/u);
+  assert.match(dataControllerSource, /if \(persistedDfmBootstrap\) \{\s*runtime\.setStatus\("Loading DFM method\.\.\."\);/u);
   assert.match(resultsSource, /applyPersistedResultsSnapshot/u);
   assert.match(resultsSource, /getRatioBasisInputEl\(\) && !ratioBasisEmbeddedSnapshot/u);
   assert.match(resultsSource, /ratioBasisEmbeddedSnapshot \? null : queueRatioBasisColumnLoadIfNeeded/u);
@@ -204,7 +204,7 @@ test("preview/save and Excel freshness retain owned and stored-value semantics",
 
   const check = functionSlice(
     summarySource,
-    "export async function checkDfmExcelLinkFreshness",
+    "async function checkDfmExcelLinkFreshness",
     "function collectDfmExternalLinkGroups",
   );
   assert.match(check, /itemsByKey/u);

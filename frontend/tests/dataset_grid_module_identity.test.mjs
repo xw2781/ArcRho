@@ -4,6 +4,7 @@ import test from "node:test";
 
 const frontendRoot = new URL("../", import.meta.url);
 const gridViewPath = "/ui/shared/tabs/data/dataset_grid_view.js";
+const dataTabControllerPath = "/ui/shared/tabs/data/data_tab_controller.js";
 
 const gridViewConsumers = [
   "ui/shared/tabs/data/data_tab_controller.js",
@@ -40,4 +41,19 @@ test("the data-tab controller and its interaction adapter share the grid module 
     new URL(interactionsUrl, "http://arcrho.test").searchParams.get("v"),
     new URL(gridViewUrl, "http://arcrho.test").searchParams.get("v"),
   );
+});
+
+test("Dataset Viewer and DFM load one cache-busted Data-tab facade", async () => {
+  const consumers = [
+    "ui/dataset_viewer/dataset_viewer_main.js",
+    "ui/method_pages/dfm/dfm_data_tab_adapter.js",
+  ];
+  const urls = await Promise.all(consumers.map(async (path) => {
+    const source = await readFile(new URL(path, frontendRoot), "utf8");
+    const match = source.match(/"(\/ui\/shared\/tabs\/data\/data_tab_controller\.js\?v=[^"]+)"/u);
+    assert.ok(match, path + " must import the versioned Data-tab facade.");
+    return match[1];
+  }));
+  assert.equal(new Set(urls).size, 1);
+  assert.equal(new URL(urls[0], "http://arcrho.test").pathname, dataTabControllerPath);
 });

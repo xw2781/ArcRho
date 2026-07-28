@@ -37,7 +37,7 @@ import {
   isRatioChartOpen,
   scheduleRatioChartRender,
   restoreRatioHistoryUi,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260726b";
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,

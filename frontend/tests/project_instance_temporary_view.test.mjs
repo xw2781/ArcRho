@@ -9,7 +9,11 @@ const [projectInstanceHtml, projectInstanceCss, contextSource, cacheSource, tabl
   readFile(new URL("../ui/project_instance/project_instance_dataset_cache.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_dataset_table.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_windows.js", import.meta.url), "utf8"),
-  readFile(new URL("../ui/shared/tabs/data/data_tab_controller.js", import.meta.url), "utf8"),
+  Promise.all([
+    readFile(new URL("../ui/shared/tabs/data/data_tab_controller.js", import.meta.url), "utf8"),
+    readFile(new URL("../ui/shared/tabs/data/data_tab_persistence_controller.js", import.meta.url), "utf8"),
+    readFile(new URL("../ui/shared/tabs/data/data_tab_request_controller.js", import.meta.url), "utf8"),
+  ]).then((sources) => sources.join("\n")),
   readFile(new URL("../ui/shared/dataset/dataset_api.js", import.meta.url), "utf8"),
 ]);
 
