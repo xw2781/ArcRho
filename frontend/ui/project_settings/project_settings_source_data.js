@@ -8,7 +8,6 @@
  */
 
 const COLUMN_MIN_WIDTH = { name: 120, type: 74 };
-const PREVIEW_OPEN_DELAY_MS = 110;
 const DETAILS_CLOSE_DELAY_MS = 160;
 const AREA_VIEWBOX_HEIGHT = 20;
 
@@ -22,6 +21,59 @@ function formatPercent(ratio) {
   const value = clampRatio(ratio) * 100;
   if (value > 0 && value < 0.1) return "<0.1%";
   return `${value.toFixed(1)}%`;
+}
+
+export function formatSummaryNumber(value, decimals = 0) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "";
+  if (Number.isInteger(num) || decimals <= 0) return Math.round(num).toLocaleString("en-US");
+  return num.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+export function getHistBarRangeLabels(edges, { asDate = false } = {}) {
+  const values = Array.isArray(edges) ? edges.map(Number) : [];
+  if (values.length < 2 || values.some((value) => !Number.isFinite(value))) return [];
+  if (asDate) {
+    return values.slice(1).map((hi, index) => `${Math.round(values[index])} ~ ${Math.round(hi)}`);
+  }
+  const magnitude = Math.max(Math.abs(values[0]), Math.abs(values[values.length - 1]));
+  const decimals = magnitude < 10 ? 4 : 0;
+  return values.slice(1).map((hi, index) =>
+    `${formatSummaryNumber(values[index], decimals)} ~ ${formatSummaryNumber(hi, decimals)}`);
+}
+
+export function getColumnRowSummary(column, { asDate = false } = {}) {
+  const stats = column?.stats;
+  const dist = column?.distribution || {};
+
+  if (stats && stats.min !== null && stats.min !== undefined
+      && stats.max !== null && stats.max !== undefined) {
+    // Date-role columns hold YYYYMM values: plain integers without grouping.
+    if (asDate) {
+      const toDateLabel = (v) => (typeof v === "number" ? String(Math.round(v)) : String(v));
+      const min = toDateLabel(stats.min);
+      const max = toDateLabel(stats.max);
+      return min === max ? min : `${min} ~ ${max}`;
+    }
+    // Decimals only when the whole column stays small; large ranges read as 0,000.
+    const bounds = [stats.min, stats.max].filter((v) => typeof v === "number").map(Math.abs);
+    const decimals = bounds.length && Math.max(...bounds) < 10 ? 4 : 0;
+    const min = typeof stats.min === "number" ? formatSummaryNumber(stats.min, decimals) : String(stats.min);
+    const max = typeof stats.max === "number" ? formatSummaryNumber(stats.max, decimals) : String(stats.max);
+    return min === max ? min : `${min} ~ ${max}`;
+  }
+  if (dist.kind === "categorical") {
+    const distinct = Number(column?.distinct_count);
+    const top = Array.isArray(dist.items) && dist.items.length ? dist.items[0] : null;
+    const parts = [];
+    if (Number.isFinite(distinct)) parts.push(`${distinct.toLocaleString("en-US")} distinct`);
+    if (top) parts.push(`${String(top.label)} ${formatPercent(top.share)}`);
+    if (parts.length) return parts.join(" · ");
+  }
+  return String(column?.values || "");
 }
 
 export function getLastClosedMonthCanonical(now = new Date()) {
@@ -87,10 +139,8 @@ export function createSourceDataFeature(deps = {}) {
   let columns = [];
   let dateRoles = { originField: "", developmentField: "" };
   let previewCard = null;
-  let previewTimer = null;
   let previewRow = null;
   let previewCell = null;
-  let previewPinned = false;
   let detailsPinned = false;
   let detailsTimer = null;
   let activeMonthInput = null;
@@ -232,9 +282,14 @@ export function createSourceDataFeature(deps = {}) {
             ? `<p class="sd-preview-values">and ${Number(dist.other_count).toLocaleString()} more values</p>`
             : "");
     } else if (dist.kind === "numeric" && Array.isArray(dist.bins) && dist.bins.length) {
+      // Full-height bar cells keep short bars hoverable; the title carries the bin range.
+      const rangeLabels = getHistBarRangeLabels(dist.edges, { asDate: !!role });
       body = '<p class="sd-preview-section">Distribution</p><div class="sd-hist">'
-        + dist.bins.map((value) =>
-            `<i style="height:${Math.max(2, Math.round((Number(value) || 0) * 100))}%"></i>`).join("")
+        + dist.bins.map((value, index) => {
+            const title = rangeLabels[index] ? ` title="${escapeHtml(rangeLabels[index])}"` : "";
+            return `<span class="sd-hist-bar"${title}>`
+              + `<i style="height:${Math.max(2, Math.round((Number(value) || 0) * 100))}%"></i></span>`;
+          }).join("")
         + "</div>"
         + `<p class="sd-preview-values">${escapeHtml(String(column?.values || ""))}</p>`;
     } else {
@@ -247,7 +302,7 @@ export function createSourceDataFeature(deps = {}) {
 
     return '<div class="sd-preview-head">'
       + `<span class="sd-preview-name">${escapeHtml(column?.name)}</span>`
-      + `<span class="sd-preview-type">${escapeHtml(column?.type)}${role ? ` &middot; ${escapeHtml(role)}` : ""}</span>`
+      + `<span class="sd-preview-type">${escapeHtml(role ? "Date" : column?.type)}${role ? ` &middot; ${escapeHtml(role)}` : ""}</span>`
       + "</div>"
       + `<div class="sd-preview-meta">${meta}</div>`
       + `<div class="sd-preview-completeness" aria-label="${filledPercent} filled, ${nullPercent} null">`
@@ -274,13 +329,18 @@ export function createSourceDataFeature(deps = {}) {
       dom.list.innerHTML = rows.map((column) => {
         const role = roleForColumn(column?.name);
         const index = columns.indexOf(column);
+        const summary = getColumnRowSummary(column, { asDate: !!role });
+        const typeLabel = role ? "Date" : column?.type;
         return `<div class="sd-row" data-index="${index}" role="button" tabindex="0">`
           + '<span class="sd-c-name">'
           + `<span class="sd-row-name" title="${escapeHtml(column?.name)}">${escapeHtml(column?.name)}</span>`
           + (role ? `<span class="sd-row-role">${escapeHtml(role)}</span>` : "")
           + "</span>"
-          + `<span class="sd-c-type"><span class="sd-row-type sd-type-${escapeHtml(column?.type)}">${escapeHtml(column?.type)}</span></span>`
-          + `<span class="sd-c-dist">${distributionMark(column)}</span>`
+          + `<span class="sd-c-type"><span class="sd-row-type sd-type-${escapeHtml(typeLabel)}">${escapeHtml(typeLabel)}</span></span>`
+          + '<span class="sd-c-dist">'
+          + `<span class="sd-dist-mark">${distributionMark(column)}</span>`
+          + `<span class="sd-dist-summary">${escapeHtml(summary)}</span>`
+          + "</span>"
           + "</div>";
       }).join("");
     }
@@ -297,54 +357,34 @@ export function createSourceDataFeature(deps = {}) {
     if (previewCard) return previewCard;
     previewCard = document.createElement("div");
     previewCard.className = "sd-preview-card";
-    previewCard.setAttribute("role", "tooltip");
+    previewCard.setAttribute("role", "dialog");
+    previewCard.setAttribute("aria-label", "Column distribution preview");
     previewCard.hidden = true;
     document.body.appendChild(previewCard);
     return previewCard;
   }
 
-  function showPreview(row, pointer, { pinned = false, cell = null } = {}) {
-    if (previewPinned && !pinned) return;
+  function showPreview(row, pointer, { cell = null } = {}) {
     const column = columns[Number(row?.dataset?.index)];
     if (!column) return;
-    clearTimeout(previewTimer);
-    previewTimer = null;
     const card = ensurePreviewCard();
     if (previewRow && previewRow !== row) previewRow.classList.remove("active");
     previewRow = row;
-    previewCell = pinned ? (cell || row.querySelector(".sd-c-dist")) : null;
-    previewPinned = pinned;
+    previewCell = cell || row.querySelector(".sd-c-dist");
     row.classList.add("active");
-    card.dataset.pinned = String(pinned);
-    card.setAttribute("role", pinned ? "dialog" : "tooltip");
-    if (pinned) card.setAttribute("aria-label", "Column distribution preview");
-    else card.removeAttribute("aria-label");
     card.innerHTML = previewHtml(column);
     card.hidden = false;
     card.style.left = "-9999px";
     card.style.top = "0px";
-    if (pointer) {
-      placeAtPointer(card, pointer.x, pointer.y);
-    } else {
-      const cell = row.querySelector(".sd-c-dist") || row;
-      placeFloating(card, cell.getBoundingClientRect(), 6);
-    }
+    if (pointer) placeAtPointer(card, pointer.x, pointer.y);
+    else placeFloating(card, (previewCell || row).getBoundingClientRect(), 6);
   }
 
-  function hidePreview({ force = false } = {}) {
-    clearTimeout(previewTimer);
-    previewTimer = null;
-    if (previewPinned && !force) return;
+  function hidePreview() {
     if (previewRow) previewRow.classList.remove("active");
     previewRow = null;
     previewCell = null;
-    previewPinned = false;
-    if (previewCard) {
-      previewCard.hidden = true;
-      previewCard.dataset.pinned = "false";
-      previewCard.setAttribute("role", "tooltip");
-      previewCard.removeAttribute("aria-label");
-    }
+    if (previewCard) previewCard.hidden = true;
   }
 
   /* ---------------- floating table details ---------------- */
@@ -738,11 +778,12 @@ export function createSourceDataFeature(deps = {}) {
     dom.statsCard?.addEventListener("mouseleave", scheduleCloseDetails);
     document.addEventListener("mousedown", (event) => {
       if (
-        previewPinned
-        && !previewCard?.contains(event.target)
+        previewCard
+        && !previewCard.hidden
+        && !previewCard.contains(event.target)
         && !previewCell?.contains(event.target)
       ) {
-        hidePreview({ force: true });
+        hidePreview();
       }
       if (
         activeMonthPickerButton
@@ -757,7 +798,7 @@ export function createSourceDataFeature(deps = {}) {
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
-        hidePreview({ force: true });
+        hidePreview();
         closeDetails();
         closeMonthPicker({ restoreFocus: true, force: true });
       }
@@ -769,37 +810,21 @@ export function createSourceDataFeature(deps = {}) {
       renderColumns();
     });
 
-    // Hover previews follow the pointer; clicking a Distribution cell pins one in place.
-    dom.list?.addEventListener("mousemove", (event) => {
-      if (previewPinned) return;
-      const cell = event.target.closest(".sd-c-dist");
-      if (!cell) {
-        if (previewRow || previewTimer) hidePreview();
-        return;
-      }
-      const row = cell.closest(".sd-row");
-      if (!row) return;
-      const pointer = { x: event.clientX, y: event.clientY };
-      if (row === previewRow) {
-        if (previewCard && !previewCard.hidden) placeAtPointer(previewCard, pointer.x, pointer.y);
-        return;
-      }
-      clearTimeout(previewTimer);
-      previewTimer = setTimeout(() => showPreview(row, pointer), PREVIEW_OPEN_DELAY_MS);
-    });
+    // The preview opens only from a Distribution & Summary cell click (or Enter/Space
+    // on a focused row); Escape or an outside click closes it.
     dom.list?.addEventListener("click", (event) => {
       const cell = event.target.closest(".sd-c-dist");
       const row = cell?.closest(".sd-row");
       if (!cell || !row) return;
-      showPreview(row, { x: event.clientX, y: event.clientY }, { pinned: true, cell });
+      showPreview(row, { x: event.clientX, y: event.clientY }, { cell });
     });
-    dom.list?.addEventListener("mouseleave", () => hidePreview());
-    dom.list?.addEventListener("scroll", () => hidePreview());
-    dom.list?.addEventListener("focusin", (event) => {
+    dom.list?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
       const row = event.target.closest(".sd-row");
-      if (row) showPreview(row, null);
+      if (!row) return;
+      event.preventDefault();
+      showPreview(row, null);
     });
-    dom.list?.addEventListener("focusout", () => hidePreview());
 
     [dom.originStart, dom.originEnd].forEach((input) => {
       input?.addEventListener("input", refreshOriginSpanNote);
@@ -833,19 +858,19 @@ export function createSourceDataFeature(deps = {}) {
     showLoading(message = "Reading the source table...") {
       setBodyVisible(true);
       showMessage(message, false);
-      hidePreview({ force: true });
+      hidePreview();
       if (dom.list) dom.list.innerHTML = "";
       if (dom.count) dom.count.textContent = "";
     },
     showError(message) {
       showMessage(message, true);
-      hidePreview({ force: true });
+      hidePreview();
     },
     showNoPath(message = "No source file is configured for this project.") {
       setBodyVisible(false);
       showMessage(message, false);
       columns = [];
-      hidePreview({ force: true });
+      hidePreview();
       closeDetails();
       if (dom.list) dom.list.innerHTML = "";
       if (dom.count) dom.count.textContent = "";
@@ -853,7 +878,7 @@ export function createSourceDataFeature(deps = {}) {
       syncPathDisplay();
     },
     renderSummary(data) {
-      hidePreview({ force: true });
+      hidePreview();
       columns = Array.isArray(data?.columns) ? data.columns : [];
       setBodyVisible(true);
       showMessage("", false);

@@ -1,0 +1,102 @@
+/* Project Settings owns one PI-aligned scrollbar treatment for every scroll surface. */
+.project-settings-page {
+  --ps-scrollbar-size: 20px;
+  --ps-scrollbar-button-size: 16px;
+  --ps-scrollbar-arrow-size: 12px;
+}
+
+.project-settings-page *::-webkit-scrollbar {
+  width: var(--ps-scrollbar-size);
+  height: var(--ps-scrollbar-size);
+}
+
+.project-settings-page *::-webkit-scrollbar-track,
+.project-settings-page *::-webkit-scrollbar-corner,
+.project-settings-page *::-webkit-resizer {
+  background-color: var(--ar-color-scrollbar-track, #f1f3f5);
+}
+
+.project-settings-page *::-webkit-scrollbar-thumb {
+  min-width: 32px;
+  min-height: 32px;
+  border: 3px solid var(--ar-color-scrollbar-track, #f1f3f5);
+  border-radius: 5px;
+  background-color: var(--ar-color-scrollbar-thumb, rgba(182, 182, 182, 0.2));
+  background-clip: content-box;
+  transition: background-color 150ms ease;
+}
+
+.project-settings-page .isScrolling::-webkit-scrollbar-thumb,
+.project-settings-page .isScrollbarHover::-webkit-scrollbar-thumb,
+.project-settings-page *::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ar-color-scrollbar-thumb-active, rgba(120, 120, 120, 0.267)) !important;
+}
+
+.project-settings-page *::-webkit-scrollbar-button {
+  display: block;
+  width: var(--ps-scrollbar-button-size);
+  height: var(--ps-scrollbar-button-size);
+  background-color: var(--ar-color-scrollbar-track, #f1f3f5);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: var(--ps-scrollbar-arrow-size) var(--ps-scrollbar-arrow-size);
+}
+
+.project-settings-page *::-webkit-scrollbar-button:hover {
+  background-color: var(--ar-color-surface-hover, #e8eef6) !important;
+}
+
+.project-settings-page *::-webkit-scrollbar-button:active {
+  background-color: var(--ar-color-surface-selected, #dbeafe) !important;
+}
+
+.project-settings-page *::-webkit-scrollbar-button:horizontal:start:increment,
+.project-settings-page *::-webkit-scrollbar-button:horizontal:end:decrement,
+.project-settings-page *::-webkit-scrollbar-button:vertical:start:increment,
+.project-settings-page *::-webkit-scrollbar-button:vertical:end:decrement {
+  display: none;
+  width: 0;
+  height: 0;
+  background-image: none;
+}
+
+.project-settings-page *::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+}
+
+.project-settings-page *::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+}
+
+.project-settings-page *::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+}
+
+.project-settings-page *::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+}
+
+.project-settings-page *::-webkit-resizer {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%2398a2b3' stroke-width='1.2' d='M4 10 10 4M7 10l3-3'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 10px 10px;
+}
+
+/* Navigation side panels follow the quiet, arrowless PI path-tree treatment. */
+.project-settings-page .tree-content::-webkit-scrollbar-track,
+.project-settings-page .tree-content::-webkit-scrollbar-corner {
+  background-color: transparent !important;
+}
+
+.project-settings-page .tree-content::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.project-settings-page .tree-content::-webkit-scrollbar-thumb {
+  border-color: transparent !important;
+}

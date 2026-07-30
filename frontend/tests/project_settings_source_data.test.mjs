@@ -6,7 +6,13 @@ const moduleSource = await readFile(
   new URL("../ui/project_settings/project_settings_source_data.js", import.meta.url),
   "utf8",
 );
-const { getLastClosedMonthCanonical, getMonthPickerYearRange } = await import(
+const {
+  getLastClosedMonthCanonical,
+  getMonthPickerYearRange,
+  formatSummaryNumber,
+  getColumnRowSummary,
+  getHistBarRangeLabels,
+} = await import(
   new URL("../ui/project_settings/project_settings_source_data.js", import.meta.url)
 );
 const generalSettingsSource = await readFile(
@@ -107,7 +113,19 @@ test("period band uses the requested labels and omits the normal origin span", (
   assert.match(projectSettingsHtml, /id="summaryDevelopmentLabel">Development End:<\/span>/);
   assert.ok(!moduleSource.includes("`${months} months`"), "the derived month-span label remains");
   assert.match(moduleSource, /dom\.originSpanNote\.textContent = "";/);
-  assert.match(summaryCss, /\.sd-key-gap\s*\{\s*margin-left:\s*24px;/);
+  // Each label wraps together with its inputs; groups are separated by a column gap.
+  assert.match(
+    projectSettingsHtml,
+    /class="sd-band-group">\s*<span class="sd-key" id="summaryOriginLabel"/,
+  );
+  assert.match(
+    projectSettingsHtml,
+    /class="sd-band-group">\s*<span class="sd-key" id="summaryDevelopmentLabel"/,
+  );
+  assert.match(summaryCss, /\.sd-band\s*\{[\s\S]*?column-gap:\s*24px;/);
+  assert.match(summaryCss, /\.sd-band-group\s*\{[\s\S]*?display:\s*flex;/);
+  assert.ok(!projectSettingsHtml.includes("sd-key-gap"), "the retired label margin class remains in markup");
+  assert.ok(!summaryCss.includes(".sd-key-gap"), "the retired label margin styles remain");
   assert.match(summaryCss, /\.sd-note:empty\s*\{\s*display:\s*none;/);
 });
 
@@ -200,20 +218,29 @@ test("project_settings.js delegates Source Data rendering to the feature module"
   );
 });
 
-test("the column preview follows hover and pins from a Distribution-cell click", () => {
+test("the column preview opens only from a Distribution-cell click", () => {
   assert.match(moduleSource, /closest\("\.sd-c-dist"\)/);
   assert.match(moduleSource, /placeAtPointer\(/);
-  assert.match(moduleSource, /let previewPinned = false;/);
-  assert.match(moduleSource, /if \(previewPinned\) return;/);
-  assert.match(moduleSource, /showPreview\(row, \{ x: event\.clientX, y: event\.clientY \}, \{ pinned: true, cell \}\)/);
-  assert.match(moduleSource, /previewPinned && !force/);
-  assert.match(moduleSource, /!previewCard\?\.contains\(event\.target\)[\s\S]*!previewCell\?\.contains\(event\.target\)/);
-  assert.match(moduleSource, /hidePreview\(\{ force: true \}\);[\s\S]*closeDetails\(\)/);
-  assert.match(summaryCss, /\.sd-preview-card\[data-pinned="true"\]\s*\{\s*pointer-events:\s*auto;/);
   assert.match(
     moduleSource,
-    /addEventListener\("click", \(event\) => \{\s*const cell = event\.target\.closest\("\.sd-c-dist"\);[\s\S]*if \(!cell \|\| !row\) return;[\s\S]*showPreview\(/,
+    /addEventListener\("click", \(event\) => \{\s*const cell = event\.target\.closest\("\.sd-c-dist"\);[\s\S]*if \(!cell \|\| !row\) return;[\s\S]*showPreview\(row, \{ x: event\.clientX, y: event\.clientY \}, \{ cell \}\)/,
   );
+  // No hover- or focus-driven preview remains.
+  assert.ok(!moduleSource.includes('dom.list?.addEventListener("mousemove"'), "the hover preview handler remains");
+  assert.ok(!moduleSource.includes('dom.list?.addEventListener("focusin"'), "the focus auto-open handler remains");
+  assert.ok(!moduleSource.includes("PREVIEW_OPEN_DELAY_MS"), "the hover open delay remains");
+  assert.ok(!moduleSource.includes("previewPinned"), "the retired pinned flag remains");
+  assert.ok(!moduleSource.includes("hidePreview({ force: true })"), "the retired force option remains");
+  // Keyboard rows open the same preview anchored to the cell.
+  assert.match(moduleSource, /event\.key !== "Enter" && event\.key !== " "/);
+  // Escape or an outside click closes it.
+  assert.match(moduleSource, /!previewCard\.contains\(event\.target\)[\s\S]*!previewCell\?\.contains\(event\.target\)/);
+  assert.match(moduleSource, /hidePreview\(\);[\s\S]*closeDetails\(\)/);
+  // The card is always interactive; no pinned-state pointer-events toggle remains.
+  const previewCardRule = summaryCss.match(/\.sd-preview-card\s*\{([\s\S]*?)\}/)?.[1] || "";
+  assert.ok(!previewCardRule.includes("pointer-events"), "the preview card still toggles pointer events");
+  assert.ok(!summaryCss.includes('[data-pinned="true"]'), "the retired pinned selector remains");
+  assert.match(summaryCss, /\.sd-row \.sd-c-dist\s*\{\s*cursor:\s*pointer;/);
 });
 
 test("distribution marks cover categorical and numeric columns", () => {
@@ -222,6 +249,84 @@ test("distribution marks cover categorical and numeric columns", () => {
   assert.match(moduleSource, /preserveAspectRatio="none"/);
   assert.match(summaryCss, /\.sd-area\b/);
   assert.match(summaryCss, /\.sd-strip\b/);
+});
+
+test("distribution cells pair the mark with an inline key-value summary", () => {
+  assert.match(projectSettingsHtml, /class="sd-head-label">Distribution &amp; Summary</);
+  assert.match(moduleSource, /class="sd-dist-mark"/);
+  assert.match(moduleSource, /class="sd-dist-summary"/);
+  assert.match(summaryCss, /\.sd-dist-mark\s*\{[\s\S]*?flex:\s*0 0 196px;/);
+  assert.match(summaryCss, /\.sd-dist-summary\s*\{[\s\S]*?margin-left:\s*8px;/);
+  assert.match(summaryCss, /\.sd-dist-summary\s*\{[\s\S]*?text-overflow:\s*ellipsis;/);
+  // Null shares stay out of the row cells; the floating preview owns completeness.
+  assert.ok(!moduleSource.includes("sd-dist-null"), "the removed inline null note remains rendered");
+  assert.ok(!summaryCss.includes(".sd-dist-null"), "the removed inline null note styles remain");
+
+  assert.equal(formatSummaryNumber(202612), "202,612");
+  // Floats group thousands without decimals unless decimals are requested.
+  assert.equal(formatSummaryNumber(1234567.891), "1,234,568");
+  assert.equal(formatSummaryNumber(0.5, 4), "0.5000");
+  assert.equal(formatSummaryNumber("bad"), "");
+
+  assert.equal(
+    getColumnRowSummary({
+      type: "Float",
+      stats: { min: -1400.6, max: 21630.29 },
+      null_ratio: 0.021,
+      distribution: { kind: "numeric", bins: [1] },
+    }),
+    "-1,401 ~ 21,630",
+  );
+  // Decimals stay only when the column's largest magnitude is under 10.
+  assert.equal(
+    getColumnRowSummary({
+      type: "Float",
+      stats: { min: -0.25, max: 5.5 },
+      null_ratio: 0,
+      distribution: { kind: "numeric", bins: [1] },
+    }),
+    "-0.2500 ~ 5.5000",
+  );
+  // Date-role columns render YYYYMM bounds as plain 6-digit integers.
+  assert.equal(
+    getColumnRowSummary(
+      {
+        type: "Float",
+        stats: { min: 201701, max: 202612 },
+        null_ratio: 0,
+        distribution: { kind: "numeric", bins: [1] },
+      },
+      { asDate: true },
+    ),
+    "201701 ~ 202612",
+  );
+  assert.equal(
+    getColumnRowSummary({
+      type: "DateTime",
+      stats: { min: "2017-01-01 00:00:00", max: "2026-05-31 00:00:00" },
+      null_ratio: 0,
+      distribution: { kind: "numeric", bins: [1] },
+    }),
+    "2017-01-01 00:00:00 ~ 2026-05-31 00:00:00",
+  );
+  // Date-role rows swap the displayed data type for `Date`.
+  assert.match(moduleSource, /getColumnRowSummary\(column, \{ asDate: !!role \}\)/);
+  assert.match(moduleSource, /const typeLabel = role \? "Date" : column\?\.type;/);
+  assert.match(summaryCss, /\.sd-type-Date\s*\{\s*--sd-type-color:/);
+  assert.equal(
+    getColumnRowSummary({
+      type: "String",
+      distinct_count: 8,
+      null_ratio: 0,
+      distribution: { kind: "categorical", items: [{ label: "Direct", share: 0.42 }] },
+    }),
+    "8 distinct · Direct 42.0%",
+  );
+  // Columns without stats or a usable distribution fall back to the values string.
+  assert.equal(
+    getColumnRowSummary({ values: "(unknown)", distribution: { kind: "none" }, null_ratio: 1 }),
+    "(unknown)",
+  );
 });
 
 test("the first column uses regular-weight row text", () => {
@@ -243,12 +348,36 @@ test("column previews show completeness and percentage-accurate frequency meters
   assert.match(summaryCss, /\.sd-bar-track\s*\{[\s\S]*border:\s*1px solid/);
 });
 
+test("histogram bars expose their bin range on hover", () => {
+  assert.match(moduleSource, /class="sd-hist-bar"/);
+  assert.match(moduleSource, /getHistBarRangeLabels\(dist\.edges, \{ asDate: !!role \}\)/);
+  assert.match(summaryCss, /\.sd-hist-bar\s*\{[\s\S]*?height:\s*100%;/);
+  assert.match(summaryCss, /\.sd-hist-bar:hover i\s*\{\s*opacity:\s*1;/);
+
+  assert.deepEqual(getHistBarRangeLabels([0, 12000, 24000]), ["0 ~ 12,000", "12,000 ~ 24,000"]);
+  // Decimals follow the same under-10 magnitude rule as the row summary.
+  assert.deepEqual(getHistBarRangeLabels([0, 2.5, 5]), ["0 ~ 2.5000", "2.5000 ~ 5"]);
+  assert.deepEqual(
+    getHistBarRangeLabels([201701, 202156.5, 202612], { asDate: true }),
+    ["201701 ~ 202157", "202157 ~ 202612"],
+  );
+  assert.deepEqual(getHistBarRangeLabels([1]), []);
+  assert.deepEqual(getHistBarRangeLabels(["bad", 2]), []);
+  assert.deepEqual(getHistBarRangeLabels(undefined), []);
+});
+
 test("table summary service publishes versioned distribution data", () => {
-  assert.match(summaryService, /SUMMARY_VERSION = 2/);
+  assert.match(summaryService, /SUMMARY_VERSION = 4/);
+  assert.match(summaryService, /"edges": \[float\(e\) for e in edges\]/);
   assert.match(summaryService, /def load_valid_cache\(/);
   assert.match(summaryService, /"distinct_count": distinct_count/);
   assert.match(summaryService, /"null_count": null_count/);
   assert.match(summaryService, /"null_ratio":/);
+  assert.match(summaryService, /"stats": stats/);
+  // Raw stats stay JSON-safe plain types because the router json.dumps the payload.
+  assert.match(summaryService, /stats = \{"min": min_val, "max": max_val\}/);
+  assert.match(summaryService, /min_val = float\(col_data\.min\(\)\)/);
+  assert.match(summaryService, /stats = \{"min": str\(min_val\), "max": str\(max_val\)\}/);
   assert.match(summaryService, /"distribution": distribution/);
   assert.match(summaryService, /"summary_version": SUMMARY_VERSION/);
   // A stale-version cache must be regenerated rather than served.

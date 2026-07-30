@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Polished scrollbars throughout Project Settings with one PI-aligned themed treatment.",
+  "details": [
+    "Trees, ribbons, tables, editors, pickers, dropdowns, dialogs, and formula areas now share PI-aligned 20px trays with quiet tracks and inset thumbs.",
+    "Scrollbar thumbs strengthen on activity or hover, and standard trays use one compact arrow at each end.",
+    "The left project tree now matches PI side panels with a transparent lane and no arrow buttons."
+  ]
+}

@@ -24,11 +24,11 @@ Use pale neutral scrollbar track and corner fills inside framed table wrappers, 
 
 ### T06 - Chromium scrollbar paint
 
-Use explicit `::-webkit-scrollbar` styling when thumb radius, inset thumbs, or arrow buttons matter. Avoid `scrollbar-color` because it can override WebKit thumb painting. Use a track-colored thumb border, `background-clip: content-box`, and a subtle thumb radius around `5px`.
+Use explicit `::-webkit-scrollbar` styling when thumb radius, inset thumbs, or arrow buttons matter. Avoid `scrollbar-color` because it can override WebKit thumb painting. Use a track-colored thumb border, `background-clip: content-box`, and a subtle thumb radius around `5px`. Standard operational pages and framed table scroll areas should use a `20px` scrollbar width and height, matching Project Instance, with `16px` arrow buttons inside that tray. Use a narrower scrollbar only for a compact popover or similarly constrained control where `20px` would crowd the content.
 
 ### T07 - Single tray arrows
 
-Show exactly one compact arrow at each scrollbar-tray end: left and right for horizontal trays, up and down for vertical trays. Use muted native-style triangles on the pale tray fill with restrained hover and active states, and collapse extra WebKit start or end companion buttons.
+Show exactly one compact arrow at each scrollbar-tray end: left and right for horizontal trays, up and down for vertical trays. Use muted native-style triangles on the pale tray fill with restrained hover and active states, and collapse extra WebKit start or end companion buttons. Tree-style navigation or object side panels are the exception: keep the standard `20px` lane, make the track, corner, and thumb inset transparent, hide all arrow buttons, and strengthen only the thumb while scrolling, hovering the lane, or hovering the thumb. Use this side-panel pattern consistently across future workspaces.
 
 ### T08 - Sticky-aware keyboard scroll
 

@@ -12,7 +12,7 @@ from app_server import config
 
 # Bump whenever the cached summary payload gains or changes fields so stale
 # caches are regenerated instead of served without the newer keys.
-SUMMARY_VERSION = 2
+SUMMARY_VERSION = 4
 
 DISTRIBUTION_BIN_COUNT = 16
 TOP_VALUE_COUNT = 6
@@ -43,15 +43,19 @@ def load_valid_cache(csv_path: str, cache_path: str) -> Optional[Dict[str, Any]]
 
 
 def _numeric_distribution(values: pd.Series) -> Dict[str, Any]:
-    """Normalized histogram heights in [0, 1] for a numeric or datetime column."""
+    """Normalized histogram heights in [0, 1] plus bin edges for a numeric or datetime column."""
     numeric = pd.to_numeric(values, errors="coerce").dropna()
     if numeric.empty:
-        return {"kind": "numeric", "bins": []}
-    counts, _edges = np.histogram(numeric.to_numpy(dtype="float64"), bins=DISTRIBUTION_BIN_COUNT)
+        return {"kind": "numeric", "bins": [], "edges": []}
+    counts, edges = np.histogram(numeric.to_numpy(dtype="float64"), bins=DISTRIBUTION_BIN_COUNT)
     peak = int(counts.max()) if counts.size else 0
     if peak <= 0:
-        return {"kind": "numeric", "bins": []}
-    return {"kind": "numeric", "bins": [round(float(c) / peak, 4) for c in counts]}
+        return {"kind": "numeric", "bins": [], "edges": []}
+    return {
+        "kind": "numeric",
+        "bins": [round(float(c) / peak, 4) for c in counts],
+        "edges": [float(e) for e in edges],
+    }
 
 
 def _categorical_distribution(values: pd.Series, distinct_count: int) -> Dict[str, Any]:
@@ -87,6 +91,9 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
         col_data = df[col].dropna()
         distinct_count: Optional[int] = None
         distribution: Dict[str, Any] = {"kind": "none"}
+        # Raw min/max for numeric and datetime columns (JSON-safe plain types)
+        # so consumers can format ranges without parsing the display string.
+        stats: Optional[Dict[str, Any]] = None
 
         if "int" in dtype:
             friendly_type = "Integer"
@@ -94,6 +101,7 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
             if len(col_data) > 0:
                 min_val = int(col_data.min())
                 max_val = int(col_data.max())
+                stats = {"min": min_val, "max": max_val}
                 values_str = f"Range: ({min_val:,}, {max_val:,})"
             else:
                 values_str = "(empty)"
@@ -101,8 +109,9 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
             friendly_type = "Float"
             distribution = _numeric_distribution(col_data)
             if len(col_data) > 0:
-                min_val = col_data.min()
-                max_val = col_data.max()
+                min_val = float(col_data.min())
+                max_val = float(col_data.max())
+                stats = {"min": min_val, "max": max_val}
                 if abs(max_val) >= 1000 or abs(min_val) >= 1000:
                     values_str = f"Range: ({min_val:,.2f}, {max_val:,.2f})"
                 else:
@@ -125,6 +134,7 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
             if len(col_data) > 0:
                 min_val = col_data.min()
                 max_val = col_data.max()
+                stats = {"min": str(min_val), "max": str(max_val)}
                 values_str = f"Range: {min_val} - {max_val}"
             else:
                 values_str = "(empty)"
@@ -146,6 +156,7 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
             "distinct_count": distinct_count,
             "null_count": null_count,
             "null_ratio": round(null_count / row_count, 6) if row_count else 0.0,
+            "stats": stats,
             "distribution": distribution,
         })
 

@@ -18,6 +18,7 @@ const projectSettingsStylesheetNames = [
   "project_settings_dataset_types.css",
   "project_settings_reserving_class_types.css",
   "project_settings_data_processing_rules.css",
+  "project_settings_scrollbars.css",
 ];
 const projectSettingsStylesheets = new Map(await Promise.all(
   projectSettingsStylesheetNames.map(async (name) => [
@@ -74,6 +75,7 @@ test("Project Settings stylesheet split keeps feature rules with their owners", 
     ["project_settings_dataset_types.css", /#datasetTypesTable \.dt-name-search-btn\s*\{/],
     ["project_settings_reserving_class_types.css", /\.rct-formula-frame\s*\{/],
     ["project_settings_data_processing_rules.css", /\.dpr-editor\s*\{/],
+    ["project_settings_scrollbars.css", /\/\* Project Settings owns one PI-aligned scrollbar treatment/],
   ]);
   for (const [name, marker] of ownershipMarkers) {
     assert.match(projectSettingsStylesheets.get(name), marker, name);
@@ -836,7 +838,36 @@ test("all Project Settings table wrappers use the refined frame and scroll activ
   assert.match(projectSettingsCoreCss, /\.field-mapping-grid,\s*\.dataset-types-grid\s*\{[^}]*border:\s*1px solid #cbd5e1;[^}]*scrollbar-gutter:\s*stable;/s);
   assert.match(projectSettingsCoreCss, /\.field-mapping-table,\s*\.dataset-types-table\s*\{[^}]*border-collapse:\s*separate;[^}]*border-spacing:\s*0;/s);
   assert.match(projectSettingsCoreCss, /:is\(\.field-mapping-table, \.dataset-types-table\) tbody tr\s*\{[^}]*height:\s*31px;/s);
-  assert.match(projectSettingsJs, /querySelectorAll\("\.sd-list, \.field-mapping-grid, \.dataset-types-grid"\)[\s\S]*forEach\(wireProjectSettingsTableScrollbarActivity\)/);
+  assert.match(projectSettingsJs, /querySelectorAll\("\.tree-content, \.sd-list, \.field-mapping-grid, \.dataset-types-grid"\)[\s\S]*forEach\(wireProjectSettingsTableScrollbarActivity\)/);
+});
+
+test("Project Settings uses one PI-aligned themed scrollbar treatment on every scroll surface", () => {
+  const scrollbarCss = projectSettingsStylesheets.get("project_settings_scrollbars.css");
+  assert.match(projectSettingsHtml, /<body class="project-settings-page">/);
+  assert.ok(
+    projectSettingsHtml.indexOf("/ui/shared/styles/themes/dark.css")
+      < projectSettingsHtml.indexOf("/ui/project_settings/project_settings_scrollbars.css"),
+  );
+  assert.match(scrollbarCss, /--ps-scrollbar-size:\s*20px;/);
+  assert.match(scrollbarCss, /--ps-scrollbar-button-size:\s*16px;/);
+  assert.match(scrollbarCss, /--ps-scrollbar-arrow-size:\s*12px;/);
+  assert.match(scrollbarCss, /\.project-settings-page \*::\-webkit-scrollbar\s*\{[^}]*width:\s*var\(--ps-scrollbar-size\);[^}]*height:\s*var\(--ps-scrollbar-size\);/s);
+  assert.match(scrollbarCss, /::\-webkit-scrollbar-button\s*\{[^}]*width:\s*var\(--ps-scrollbar-button-size\);[^}]*height:\s*var\(--ps-scrollbar-button-size\);/s);
+  assert.match(scrollbarCss, /::\-webkit-scrollbar-track,[\s\S]*::\-webkit-scrollbar-corner,[\s\S]*::\-webkit-resizer\s*\{[^}]*--ar-color-scrollbar-track/s);
+  assert.match(scrollbarCss, /::\-webkit-scrollbar-thumb\s*\{[^}]*border:\s*3px solid[^}]*border-radius:\s*5px;[^}]*background-clip:\s*content-box;/s);
+  assert.match(scrollbarCss, /\.isScrolling::\-webkit-scrollbar-thumb,[\s\S]*\.isScrollbarHover::\-webkit-scrollbar-thumb,[\s\S]*::\-webkit-scrollbar-thumb:hover/);
+  assert.match(scrollbarCss, /::\-webkit-scrollbar-button:horizontal:start:increment,[\s\S]*display:\s*none;/);
+  assert.match(scrollbarCss, /::\-webkit-scrollbar-button:horizontal:start:decrement\s*\{[^}]*background-image:/s);
+  assert.match(scrollbarCss, /::\-webkit-scrollbar-button:vertical:end:increment\s*\{[^}]*background-image:/s);
+  assert.doesNotMatch(scrollbarCss, /scrollbar-color:/);
+  assert.match(scrollbarCss, /\.tree-content::\-webkit-scrollbar-track,[\s\S]*\.tree-content::\-webkit-scrollbar-corner\s*\{[^}]*background-color:\s*transparent !important;/s);
+  assert.match(scrollbarCss, /\.tree-content::\-webkit-scrollbar-button\s*\{[^}]*display:\s*none;[^}]*width:\s*0;[^}]*height:\s*0;[^}]*background-image:\s*none !important;/s);
+  assert.match(scrollbarCss, /\.tree-content::\-webkit-scrollbar-thumb\s*\{[^}]*border-color:\s*transparent !important;/s);
+
+  for (const [name, stylesheet] of projectSettingsStylesheets) {
+    if (name === "project_settings_scrollbars.css") continue;
+    assert.doesNotMatch(stylesheet, /::\-webkit-scrollbar/, `${name} duplicates scrollbar paint`);
+  }
 });
 
 test("Project Settings column resizing follows the PI explicit-width model", () => {

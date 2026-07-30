@@ -179,16 +179,6 @@
   --ar-audit-scrollbar-button-active: var(--ar-color-surface-selected);
   --ar-audit-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
   --ar-audit-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
-  --dataset-grid-scrollbar-chrome: var(--ar-color-scrollbar-track);
-  --dataset-grid-scrollbar-button-hover: var(--ar-color-surface-hover);
-  --dataset-grid-scrollbar-button-active: var(--ar-color-surface-selected);
-  --dataset-grid-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
-  --dataset-grid-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
-  --dpr-scrollbar-chrome: var(--ar-color-scrollbar-track);
-  --dpr-scrollbar-button-hover: var(--ar-color-surface-hover);
-  --dpr-scrollbar-button-active: var(--ar-color-surface-selected);
-  --dpr-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
-  --dpr-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
   --dpr-blue: var(--ar-color-accent);
   --dpr-blue-soft: var(--ar-color-accent-soft);
   --dpr-blue-border: var(--ar-color-border-focus);
@@ -2592,11 +2582,6 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(.field-mapping-grid, .dataset-types-grid) {
-  --dataset-grid-scrollbar-chrome: inherit;
-  --dataset-grid-scrollbar-button-hover: inherit;
-  --dataset-grid-scrollbar-button-active: inherit;
-  --dataset-grid-scrollbar-thumb: inherit;
-  --dataset-grid-scrollbar-thumb-active: inherit;
   border-color: var(--ar-color-border);
   background: var(--ar-color-input);
 }
@@ -2773,14 +2758,6 @@
   --dpr-keep-soft: inherit;
   --dpr-warn: inherit;
   --dpr-warn-soft: inherit;
-}
-
-:root[data-arcrho-theme="dark"] .dpr-editor-body {
-  --dpr-scrollbar-chrome: inherit;
-  --dpr-scrollbar-button-hover: inherit;
-  --dpr-scrollbar-button-active: inherit;
-  --dpr-scrollbar-thumb: inherit;
-  --dpr-scrollbar-thumb-active: inherit;
 }
 
 :root[data-arcrho-theme="dark"] .dpr-row-drag-handle {

@@ -1465,7 +1465,7 @@ document.addEventListener("keydown", (e) => {
 // ============ Initialize ============
 (async function init() {
   document
-    .querySelectorAll(".sd-list, .field-mapping-grid, .dataset-types-grid")
+    .querySelectorAll(".tree-content, .sd-list, .field-mapping-grid, .dataset-types-grid")
     .forEach(wireProjectSettingsTableScrollbarActivity);
   sourceDataFeature.init();
   const restoredFromSession = await treeViewFeature.restoreExpandedFolders();

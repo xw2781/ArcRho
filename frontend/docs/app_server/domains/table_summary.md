@@ -3,7 +3,7 @@
 ## Purpose
 <!-- MANUAL:BEGIN -->
 Table summary generation/cache and refresh domain.
-Each column carries `name`, `dtype`, `type`, the preformatted `values` string, `distinct_count` (strings and booleans only), `null_count`, `null_ratio`, and a `distribution` block: `{kind: "categorical", items[{label, share}], other_share, other_count}` for strings, `{kind: "numeric", bins}` with 16 peak-normalized heights for numeric and datetime columns, and `{kind: "none"}` otherwise.
+Each column carries `name`, `dtype`, `type`, the preformatted `values` string, `distinct_count` (strings and booleans only), `null_count`, `null_ratio`, a `stats` block with raw JSON-safe `min`/`max` (numbers for integer and float columns, strings for datetime, `null` otherwise or when the column is empty), and a `distribution` block: `{kind: "categorical", items[{label, share}], other_share, other_count}` for strings, `{kind: "numeric", bins, edges}` with 16 peak-normalized heights plus the 17 raw histogram bin edges for numeric and datetime columns, and `{kind: "none"}` otherwise.
 <!-- MANUAL:END -->
 
 ## Entry Points

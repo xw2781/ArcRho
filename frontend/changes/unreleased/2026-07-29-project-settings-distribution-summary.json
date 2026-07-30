@@ -1,0 +1,14 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data distribution column now shows key value summaries inline.",
+  "details": [
+    "Numeric and date columns show their min-max range next to the density mark, comma-grouped without decimals unless values stay under 10.",
+    "Columns mapped as Origin Date or Development Date show data type Date and a plain 6-digit YYYYMM range.",
+    "Text and boolean columns show the distinct count and the most frequent value's share.",
+    "The floating column preview opens only from a click on a Distribution & Summary cell and keeps the full detail, including filled and null shares.",
+    "In the preview, hovering a histogram bar shows that bar's value range.",
+    "In a narrow window, the period band wraps whole label-and-input groups so labels stay with their inputs."
+  ]
+}

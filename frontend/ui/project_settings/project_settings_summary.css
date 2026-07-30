@@ -145,7 +145,8 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  row-gap: 8px;
+  column-gap: 24px;
   flex-wrap: wrap;
   padding: 7px 11px;
   border: 1px solid var(--ar-color-border, #d8dde3);
@@ -154,8 +155,14 @@
   font-size: 12px;
   color: var(--ar-color-text-subtle, #94a3b8);
 }
+/* Each label stays with its inputs; the band wraps only between groups. */
+.sd-band-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 .sd-key { color: var(--ar-color-text-muted, #64748b); }
-.sd-key-gap { margin-left: 24px; }
 .sd-dash { color: var(--ar-color-text-subtle, #94a3b8); }
 .sd-note { color: var(--ar-color-text-subtle, #94a3b8); white-space: nowrap; }
 .sd-note:empty { display: none; }
@@ -302,16 +309,6 @@
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
-.sd-month-picker-grid[data-view="years"]::-webkit-scrollbar { width: 10px; }
-.sd-month-picker-grid[data-view="years"]::-webkit-scrollbar-track {
-  background: var(--ar-color-scrollbar-track, #f1f3f5);
-}
-.sd-month-picker-grid[data-view="years"]::-webkit-scrollbar-thumb {
-  border: 3px solid var(--ar-color-scrollbar-track, #f1f3f5);
-  border-radius: 5px;
-  background: var(--ar-color-scrollbar-thumb-active, rgba(120, 120, 120, 0.267));
-  background-clip: content-box;
-}
 .sd-month-picker-month,
 .sd-month-picker-year-option {
   height: 28px;
@@ -402,7 +399,7 @@
 }
 .sd-c-name { flex: 0 0 var(--sd-col-name); }
 .sd-c-type { flex: 0 0 var(--sd-col-type); }
-.sd-c-dist { flex: 1 1 auto; min-width: 90px; border-right: 0; }
+.sd-c-dist { flex: 1 1 auto; min-width: 220px; border-right: 0; }
 
 .sd-head-row {
   flex: 0 0 auto;
@@ -452,19 +449,6 @@
   overflow: auto;
   scrollbar-gutter: stable;
 }
-.sd-list::-webkit-scrollbar { width: 12px; }
-.sd-list::-webkit-scrollbar-track { background: var(--ar-color-scrollbar-track, #f1f3f5); }
-.sd-list::-webkit-scrollbar-thumb {
-  border: 3px solid var(--ar-color-scrollbar-track, #f1f3f5);
-  border-radius: 5px;
-  background-color: var(--ar-color-scrollbar-thumb, rgba(182, 182, 182, 0.2));
-  background-clip: content-box;
-}
-.sd-list.isScrolling::-webkit-scrollbar-thumb,
-.sd-list::-webkit-scrollbar-thumb:hover {
-  background-color: var(--ar-color-scrollbar-thumb-active, rgba(120, 120, 120, 0.267));
-}
-
 .sd-row {
   display: flex;
   align-items: stretch;
@@ -476,7 +460,7 @@
 .sd-row:last-child { border-bottom: 0; }
 .sd-row:hover,
 .sd-row.active { background: var(--ar-color-table-row-hover, #f8fafc); }
-.sd-row .sd-c-dist { cursor: help; }
+.sd-row .sd-c-dist { cursor: pointer; }
 .sd-row-name {
   flex: 0 1 auto;
   min-width: 0;
@@ -512,6 +496,7 @@
 .sd-type-String { --sd-type-color: #0f766e; }
 .sd-type-Float { --sd-type-color: #2b6df6; }
 .sd-type-Integer { --sd-type-color: #7c3aed; }
+.sd-type-Date { --sd-type-color: #b45309; }
 .sd-type-DateTime { --sd-type-color: #b45309; }
 .sd-type-Boolean { --sd-type-color: #be123c; }
 
@@ -521,6 +506,25 @@
   font-style: italic;
   color: var(--ar-color-text-subtle, #94a3b8);
   text-align: center;
+}
+
+/* Distribution cell: fixed mark lane, then inline key values. */
+.sd-dist-mark {
+  flex: 0 0 196px;
+  width: 196px;
+  display: flex;
+  align-items: center;
+}
+.sd-dist-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--ar-color-text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Numeric and date columns: density area that stays smooth at any width. */
@@ -652,9 +656,7 @@
   border-radius: 5px;
   background: var(--ar-color-surface-raised, #fbfcfe);
   box-shadow: var(--ar-shadow-floating, 0 8px 20px rgba(15, 23, 42, 0.08));
-  pointer-events: none;
 }
-.sd-preview-card[data-pinned="true"] { pointer-events: auto; }
 .sd-preview-card[hidden] { display: none; }
 .sd-preview-head {
   display: flex;
@@ -757,13 +759,25 @@
   height: 46px;
   margin-bottom: 9px;
 }
-.sd-hist i {
+/* Each bar sits in a full-height cell so short bars stay hoverable for the range tooltip. */
+.sd-hist-bar {
   flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  min-width: 0;
+  cursor: help;
+}
+.sd-hist-bar i {
+  display: block;
+  width: 100%;
   background: var(--ar-color-accent, #2b6df6);
   opacity: 0.72;
   border-radius: 1px 1px 0 0;
   min-height: 1px;
+  transition: opacity 150ms ease;
 }
+.sd-hist-bar:hover i { opacity: 1; }
 .sd-preview-values {
   font-size: 11px;
   color: var(--ar-color-text-muted, #64748b);
