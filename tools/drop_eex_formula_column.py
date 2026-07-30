@@ -5,8 +5,11 @@ modify a paired ``reserving_class_types.xlsx`` workbook.
 
 Examples:
 
+    Edit PROJECT_NAME and APPLY_CHANGES below, then run this file directly
+    from VS Code without command-line arguments.
+
     py -3.10 tools/drop_eex_formula_column.py \
-        --file "E:\\ArcRho Server\\projects\\Example\\reserving_class_types.json" \
+        --project-name "Example" \
         --dry-run
 
     py -3.10 tools/drop_eex_formula_column.py \
@@ -29,6 +32,13 @@ from typing import Any, Dict, Mapping, Sequence, Tuple
 EEX_COLUMN = "EEX Formula"
 BACKUP_SUFFIX = ".before-eex-drop.bak"
 TEMP_MARKER = ".eex-drop."
+PROJECTS_ROOT = Path(r"E:\ArcRho Server\projects")
+# Used when neither --project-name nor --file is supplied.
+PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May Subchannel"
+# False previews the change; True creates a backup and updates the JSON file.
+APPLY_CHANGES = True
+RESERVING_CLASS_FILENAME = "reserving_class_types.json"
+_INVALID_PROJECT_NAME_CHARS = frozenset('<>:"/\\|?*\x00')
 
 
 class DropEexColumnError(RuntimeError):
@@ -198,13 +208,34 @@ def preview_drop(path: Path) -> Dict[str, Any]:
     return {
         "ok": True,
         "mode": "dry-run",
-        "changed": changed,
+        "changed": False,
+        "would_change": changed,
         "path": str(path),
         "rows": row_count,
         "columns_before": list(payload.get("columns", [])),
         "columns_after": list(output.get("columns", [])),
         "warning": "No paired XLSX workbook will be modified.",
     }
+
+
+def _project_file_path(project_name: str) -> Path:
+    clean_name = project_name.strip()
+    if (
+        not clean_name
+        or clean_name in {".", ".."}
+        or clean_name != project_name
+        or any(character in clean_name for character in _INVALID_PROJECT_NAME_CHARS)
+    ):
+        raise DropEexColumnError(
+            "Project name must be one valid ArcRho project directory name."
+        )
+    return (PROJECTS_ROOT / clean_name / RESERVING_CLASS_FILENAME).resolve()
+
+
+def _target_file(args: argparse.Namespace) -> Path:
+    if args.file:
+        return Path(args.file).expanduser().resolve()
+    return _project_file_path(args.project_name or PROJECT_NAME)
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -214,12 +245,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "from one reserving-class JSON file."
         )
     )
-    parser.add_argument(
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument(
         "--file",
-        required=True,
-        help="Path to the reserving_class_types.json file to inspect or update.",
+        help=(
+            "Explicit path to the reserving_class_types.json file. Overrides "
+            "the configured project selection."
+        ),
     )
-    mode = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument(
+        "--project-name",
+        help=(
+            "ArcRho project directory under E:\\ArcRho Server\\projects. "
+            "Defaults to PROJECT_NAME configured near the top of this script."
+        ),
+    )
+    mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--dry-run",
         action="store_true",
@@ -235,9 +276,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    path = Path(args.file).expanduser().resolve()
     try:
-        result = apply_drop(path) if args.apply else preview_drop(path)
+        path = _target_file(args)
+        should_apply = args.apply or (not args.dry_run and APPLY_CHANGES)
+        result = apply_drop(path) if should_apply else preview_drop(path)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
     except DropEexColumnError as error:

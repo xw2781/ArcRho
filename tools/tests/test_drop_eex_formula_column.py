@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -90,11 +91,107 @@ class DropEexFormulaColumnTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(original, path.read_bytes())
             report = json.loads(output.getvalue())
-            self.assertTrue(report["changed"])
+            self.assertFalse(report["changed"])
+            self.assertTrue(report["would_change"])
             self.assertEqual(
                 ["Name", "Level", "Formula", "Source"],
                 report["columns_after"],
             )
+
+    def test_dry_run_resolves_configured_project_name(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+            projects_root = Path(temp_dir)
+            project_dir = projects_root / "Selected Project"
+            project_dir.mkdir()
+            path = project_dir / dropper.RESERVING_CLASS_FILENAME
+            _write_json(path, _legacy_payload())
+            output = io.StringIO()
+
+            with (
+                patch.object(dropper, "PROJECTS_ROOT", projects_root),
+                patch.object(dropper, "PROJECT_NAME", "Selected Project"),
+                redirect_stdout(output),
+            ):
+                exit_code = dropper.main(["--dry-run"])
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(str(path.resolve()), json.loads(output.getvalue())["path"])
+
+    def test_project_name_argument_overrides_configured_project(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+            projects_root = Path(temp_dir)
+            project_dir = projects_root / "Runtime Project"
+            project_dir.mkdir()
+            path = project_dir / dropper.RESERVING_CLASS_FILENAME
+            _write_json(path, _legacy_payload())
+            output = io.StringIO()
+
+            with (
+                patch.object(dropper, "PROJECTS_ROOT", projects_root),
+                patch.object(dropper, "PROJECT_NAME", "Configured Project"),
+                redirect_stdout(output),
+            ):
+                exit_code = dropper.main(
+                    ["--project-name", "Runtime Project", "--dry-run"]
+                )
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(str(path.resolve()), json.loads(output.getvalue())["path"])
+
+    def test_no_arguments_uses_configured_dry_run_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+            projects_root = Path(temp_dir)
+            project_dir = projects_root / "Direct Run Project"
+            project_dir.mkdir()
+            path = project_dir / dropper.RESERVING_CLASS_FILENAME
+            _write_json(path, _legacy_payload())
+            original = path.read_bytes()
+            output = io.StringIO()
+
+            with (
+                patch.object(dropper, "PROJECTS_ROOT", projects_root),
+                patch.object(dropper, "PROJECT_NAME", "Direct Run Project"),
+                patch.object(dropper, "APPLY_CHANGES", False),
+                redirect_stdout(output),
+            ):
+                exit_code = dropper.main([])
+
+            self.assertEqual(0, exit_code)
+            report = json.loads(output.getvalue())
+            self.assertEqual("dry-run", report["mode"])
+            self.assertFalse(report["changed"])
+            self.assertTrue(report["would_change"])
+            self.assertEqual(original, path.read_bytes())
+
+    def test_no_arguments_can_use_configured_apply_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+            projects_root = Path(temp_dir)
+            project_dir = projects_root / "Direct Apply Project"
+            project_dir.mkdir()
+            path = project_dir / dropper.RESERVING_CLASS_FILENAME
+            _write_json(path, _legacy_payload())
+            output = io.StringIO()
+
+            with (
+                patch.object(dropper, "PROJECTS_ROOT", projects_root),
+                patch.object(dropper, "PROJECT_NAME", "Direct Apply Project"),
+                patch.object(dropper, "APPLY_CHANGES", True),
+                redirect_stdout(output),
+            ):
+                exit_code = dropper.main([])
+
+            report = json.loads(output.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual("applied", report["mode"])
+            self.assertTrue(Path(report["backup_path"]).exists())
+            self.assertNotIn(
+                dropper.EEX_COLUMN,
+                json.loads(path.read_text(encoding="utf-8"))["columns"],
+            )
+
+    def test_project_name_rejects_path_traversal(self) -> None:
+        with self.assertRaisesRegex(dropper.DropEexColumnError, "directory name"):
+            dropper._project_file_path("../Another Project")
 
     def test_apply_creates_backup_and_updates_json(self) -> None:
         with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
