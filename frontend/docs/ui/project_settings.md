@@ -4,27 +4,40 @@
 <!-- MANUAL:BEGIN -->
 Project settings workspace (folders, mappings, dataset types, reserving class types, and data-processing rules).
 Source Data tab derives origin/development date boundary inputs from table summary + field mapping.
+Source Data presents a quiet surface: file identity plus icon actions, one reserving-period band, and a column list whose detail lives in floating panels.
 <!-- MANUAL:END -->
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260722a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260730split2`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
+- `/audit_log`
+- `/audit_log?project_name=${encodeURIComponent(projectName)}&limit=2000`
+- `/data_processing_rules`
+- `/data_processing_rules/validate`
+- `/data_processing_rules?project_name=${encodeURIComponent(name)}`
+- `/dataset_types`
+- `/dataset_types/import_local_file`
+- `/field_mapping`
 - `/field_mapping?project_name=${encodeURIComponent(name)}`
+- `/field_mapping?project_name=${encodeURIComponent(projectName)}`
+- `/field_mapping?project_name=${encoded}`
 - `/general_settings`
 - `/general_settings?project_name=${encodeURIComponent(name)}`
-- `/project_settings/${DEFAULT_SOURCE}`
-- `/project_settings/${DEFAULT_SOURCE}/create_project_folder`
-- `/project_settings/${DEFAULT_SOURCE}/delete_project_folder`
-- `/project_settings/${DEFAULT_SOURCE}/duplicate_project_folder`
-- `/project_settings/${DEFAULT_SOURCE}/folders`
 - `/project_settings/${DEFAULT_SOURCE}/generated_dataset_cache/clear`
 - `/project_settings/${DEFAULT_SOURCE}/open_project_folder`
-- `/project_settings/${DEFAULT_SOURCE}/rename_project_folder`
+- `/project_settings/${defaultSource}`
+- `/project_settings/${defaultSource}/${endpoint}`
+- `/project_settings/${defaultSource}/folders`
 - `/project_settings/${sourceKey}`
 - `/project_settings/${sourceKey}/folders`
+- `/reserving_class_types`
+- `/reserving_class_types/import_local_file`
+- `/reserving_class_types?project_name=${encodeURIComponent(projectName)}`
+- `/reserving_class_types?project_name=${encoded}`
+- `/reserving_class_values/refresh`
 - `/table_summary/refresh`
 - `/table_summary?${q.toString()}`
 
@@ -48,6 +61,12 @@ Detected `arcrho:*` message types in key JS files:
 - [`ui/project_settings/project_settings_reserving_class_types.css`](../../ui/project_settings/project_settings_reserving_class_types.css) - Reserving Class Types styling.
 - [`ui/project_settings/project_settings_data_processing_rules.css`](../../ui/project_settings/project_settings_data_processing_rules.css) - Data Processing Rules styling.
 - [`ui/project_settings/project_settings.js`](../../ui/project_settings/project_settings.js) - Project settings coordinator and API calls.
+- [`ui/project_settings/project_settings_project_map.js`](../../ui/project_settings/project_settings_project_map.js) - Project map document, folder structure, and tree data store.
+- [`ui/project_settings/project_settings_tree_view.js`](../../ui/project_settings/project_settings_tree_view.js) - Project Explorer tree rendering, drag-and-drop, and view state.
+- [`ui/project_settings/project_settings_project_ops.js`](../../ui/project_settings/project_settings_project_ops.js) - Project and virtual-folder create/rename/duplicate/delete flows.
+- [`ui/project_settings/project_settings_general_settings.js`](../../ui/project_settings/project_settings_general_settings.js) - Boundary-month parsing and General Settings persistence.
+- [`ui/project_settings/project_settings_table_columns.js`](../../ui/project_settings/project_settings_table_columns.js) - Shared table column sizing, resizing, and scroll activity.
+- [`ui/project_settings/project_settings_source_data.js`](../../ui/project_settings/project_settings_source_data.js) - Source Data panel rendering and column distribution previews.
 - [`ui/project_settings/project_settings_field_mapping.js`](../../ui/project_settings/project_settings_field_mapping.js) - Field mapping feature module.
 - [`ui/project_settings/project_settings_dataset_types.js`](../../ui/project_settings/project_settings_dataset_types.js) - Dataset types feature module.
 - [`ui/project_settings/project_settings_reserving_class_types.js`](../../ui/project_settings/project_settings_reserving_class_types.js) - Reserving class types feature module.
@@ -104,17 +123,21 @@ Detected `arcrho:*` message types in key JS files:
 - Data-processing rule field selectors and summaries preserve the exact Field Mapping field names, including capitalization and underscores such as `CO_CD`, `STATE_CD`, and `IBNRCAT`. Dataset selectors, rule-table labels, warnings, and editor summaries preserve the exact case and punctuation of the corresponding Project Settings Dataset Types table name while the saved rule continues using its source-measure key. Editor selects use trigger-aligned ArcRho listboxes with compact rows, selected checkmarks, restrained hover/focus states, viewport-aware placement, and Arrow/Home/End/Enter/Escape keyboard control instead of browser-native opened menus. Token suggestion menus use the same viewport-level placement so the editor's scrolling body, summary, and action bar do not clip them.
 - Reserving Class Types table right-click menu includes `Copy` before `Edit`; `Copy` copies the exact displayed text from the clicked cell to the clipboard.
 - Project Settings page imports the shared 20px `ui/shared/styles/scrollbars.css` WebKit scrollbar treatment used by Dataset/DFM, shell, and scripting pages.
-- Project Settings table frames for Source Data columns, Field Mapping, Reserving Class Types, Dataset Types, Data Processing Rules, and Audit Log use square continuous borders, 31px rows, opaque sticky headers, restrained row hover, and quiet activity-aware scrollbar trays.
-- Project Settings column resizing follows the Project Instance table pattern: every column has an explicit pixel width, dragging changes only the target column while the total table width grows or shrinks, widths remain stable across table rerenders, and double-clicking a resize handle restores that column's default width. Resize-handle clicks are contained so resizing a sortable table (including Reserving Class Types) does not toggle its sort. Source Data columns participate in the same resizing behavior.
-- Default widths for the six resizable Project Settings tables are maintained in `app_server/default_preferences/project_settings_preferences.json`. Each table is keyed by its DOM table ID and each width by the visible column label; positive pixel values are applied when a project is selected and are also used by the resize handle's double-click reset. Reselect the project or reload Project Settings after editing the file. Missing tables, columns, invalid values, or a failed preference request fall back to the built-in table widths.
+- Project Settings table frames for Field Mapping, Reserving Class Types, Dataset Types, Data Processing Rules, and Audit Log use square continuous borders, 31px rows, opaque sticky headers, restrained row hover, and quiet activity-aware scrollbar trays. The Source Data column list uses the same frame, header row, row rules, and scrollbar tray without being a `<table>`.
+- Project Settings column resizing follows the Project Instance table pattern: every column has an explicit pixel width, dragging changes only the target column while the total table width grows or shrinks, widths remain stable across table rerenders, and double-clicking a resize handle restores that column's default width. Resize-handle clicks are contained so resizing a sortable table (including Reserving Class Types) does not toggle its sort. Source Data resizes `Column Name` and `Data Type` through CSS custom properties on its list frame; `Distribution` always absorbs the remaining width, so no dead space appears at any window size.
+- Default widths for the resizable Project Settings tables are maintained in `app_server/default_preferences/project_settings_preferences.json`. The `summaryColumnsTable` entry keeps supplying the Source Data `Column Name` and `Data Type` defaults. Each table is keyed by its DOM table ID and each width by the visible column label; positive pixel values are applied when a project is selected and are also used by the resize handle's double-click reset. Reselect the project or reload Project Settings after editing the file. Missing tables, columns, invalid values, or a failed preference request fall back to the built-in table widths.
 - Project Settings right-click menus share a single `--project-settings-context-menu-font-size` control so project, folder, tree, Dataset Types, Reserving Class Types, and formula component context menus stay visually consistent.
 - Dataset Types header auto-fit measures full header content (label plus sort/filter controls); all Dataset Types headers are kept single-line.
 - Source Data date inputs are editable and saved per-project to `general_settings.json`.
 - Source Data date inputs are normalized to plain integer strings (no commas, no trailing `.0`/`.00`) in UI and persisted JSON.
 - Source Data date inputs display as `MMM YYYY` in UI, while persisted values remain canonical `YYYYMM`.
-- Each Source Data date input has inline up/down month steppers to increment/decrement by one month.
-- Single-click on `MMM` or `YYYY` highlights that segment; steppers and mouse wheel only adjust the highlighted segment (`MMM` = +/- month, `YYYY` = +/- year).
-- Source Data date row uses compact label+input grouping so each label stays visually attached to its date control.
+- Each Source Data date input has a calendar action that opens one shared floating month picker aligned to the active input's left edge. Previous/next controls change the displayed year; clicking the year heading hides those arrows and opens a scrollable ascending year list from 50 years before the selected year through that selected year. Choosing a year restores the arrows and returns to the 12-month grid without committing until a month is selected. The picker remains open while the pointer is inside it. Selecting a month, clicking outside, or pressing Escape closes the picker.
+- Direct typing remains available. Single-click on `MMM` or `YYYY` highlights that segment, and the mouse wheel adjusts only the highlighted segment (`MMM` = +/- month, `YYYY` = +/- year).
+- Source Data date row uses compact label+input grouping with `Origin Period:` and `Development End:` labels. The normal derived month-span text is suppressed, the Development group has extra section spacing, and an invalid origin range still reports that its start is after its end.
+- Source Data shows the source file name without a decorative state dot, with a borderless circled-exclamation details icon immediately to its right. Loading and error feedback remains in the inline message area. Its responsive floating `Source Table` panel is up to 420px wide and shows the source folder with an inline copy action. The editable path input appears on click and commits on blur or Enter exactly as before. Reload, Browse, Copy path, and Open folder are grouped icon actions; the header Copy path action copies the full CSV path and Open folder uses the desktop host bridge.
+- Row counts, column counts, file size, modified time, and cache freshness are no longer printed on the surface. The info icon opens a floating `Source Table` panel on hover and pins it on click; Escape or an outside click closes it.
+- The Source Data column list shows `Column Name`, `Data Type`, and a `Distribution` mark per column, plus an inline filter over column names and values. First-column row values and date-role labels use regular font weight, while the column header retains its header emphasis. Categorical columns render a proportional composition strip and numeric or date columns render a density area.
+- Hovering a `Distribution` cell - and only that cell - opens a floating preview beside the pointer with the distinct count or range, separate filled and null shares, the ranked values or histogram, and the sample values. Clicking a Distribution cell pins that preview at its opened position; pointer movement, list mouseleave, scrolling, and focus changes do not dismiss it, while Escape or a click outside the preview and source cell closes it. Categorical previews render every ranked value as a bounded 0-100% meter whose blue fill and numeric label use the value's actual share of filled values. Keyboard focus opens the same unpinned preview anchored to the cell.
 - `general_settings.json` stores `auto_generated`; derived writes set it `true`, user edits set it `false`.
 - When `auto_generated` is `false`, table reload will not overwrite the 3 date values unless `project_name` in JSON mismatches the project folder name (stale duplicated settings).
 - Source Data date inputs auto-derive from table summary + field mapping when values are missing, stale mismatch is detected, or reload is requested while `auto_generated=true`.
@@ -125,10 +148,21 @@ Detected `arcrho:*` message types in key JS files:
 - Project creation creates `data`; project duplication shows a running progress indicator and copies the canonical `data` folder with all source project files.
 <!-- MANUAL:END -->
 
+## Module Boundaries
+<!-- MANUAL:BEGIN -->
+`project_settings.js` is the page coordinator only: DOM lookups, feature composition, project selection, the Source Data table-summary load, dialogs, context menus, and the ribbon. Domain logic has one owner each:
+- `project_settings_project_map.js` owns the project map document, its conflict-detection `mtime`, the derived folder/project tree, and every `/project_settings/{source}*` read and write. Conflict (`409`) and lock (`423`) handling lives here and nowhere else.
+- `project_settings_tree_view.js` owns Project Explorer rendering, drag-and-drop, and view state only (expanded folders in session storage plus `local_project_prefs.json`, and the remembered selection snapshot).
+- `project_settings_project_ops.js` owns project and virtual-folder create/rename/duplicate/delete, including the ordered write sequence (disk folder, then folder structure, then project map) and the reverse-order rollback when a later step fails.
+- `project_settings_general_settings.js` owns boundary-month parsing (`YYYYMM` canonical form, `MMM YYYY` display, segment-aware stepping) plus the per-project General Settings cache and its `/general_settings` reads and writes.
+- `project_settings_table_columns.js` owns the explicit-width column model shared by every Project Settings table: configured defaults, measurement, auto-fit, drag resizing, and the scroll-activity affordance.
+<!-- MANUAL:END -->
+
 ## Common Change Tasks
 <!-- MANUAL:BEGIN -->
 1. Add settings source behavior: update source key logic + endpoint calls.
 2. Update one feature pane: modify corresponding `project_settings_*` module.
+3. Change how the project map is read or written: change `project_settings_project_map.js`; callers must go through its store API rather than calling the endpoints directly.
 <!-- MANUAL:END -->
 
 ## Known Risks

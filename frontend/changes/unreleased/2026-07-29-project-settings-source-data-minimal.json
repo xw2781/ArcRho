@@ -1,0 +1,14 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Rebuilt the Source Data tab around a quiet surface with interactive column distribution previews.",
+  "details": [
+    "The header omits the decorative state dot and shows the source file name with a borderless circled-exclamation details icon; its wider floating Source Table panel shows the folder path with an inline copy action, while Reload, Browse, full-path Copy, and Open folder remain grouped icon actions.",
+    "Row count, column count, file size, modified time, and cache freshness moved into a floating panel behind the info icon.",
+    "The date band uses Origin Period and Development End labels with clearer spacing and borderless calendar icons that open a left-aligned shared picker; its clickable year heading hides the navigation arrows while showing the selected year and preceding 50 years, and the picker remains available while the pointer is inside it.",
+    "The column list adds a filter, regular-weight first-column row text, resizable Column Name and Data Type columns, and a Distribution mark that fills the remaining width.",
+    "Hovering a Distribution cell opens a preview beside the pointer with separate filled and null percentages, actual-share-of-filled meters for ranked values, a histogram for numeric values, and samples; clicking the cell pins the preview until Escape or an outside click.",
+    "Table summaries now include per-column distribution, distinct, and null-value statistics; existing summary caches regenerate once on first read."
+  ]
+}

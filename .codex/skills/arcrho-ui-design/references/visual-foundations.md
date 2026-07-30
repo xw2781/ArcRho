@@ -38,7 +38,11 @@ Use a main board title around 20px with bold weight and tight line height.
 
 ### V09 - Section labels
 
-Use 10px to 11px uppercase, bold, neutral-gray section labels.
+Use 11px bold, neutral-gray section labels. Do not set them in uppercase.
+
+### V18 - Title-case labels
+
+Capitalize the first letter of every word in interface labels, such as `Origin Span`, `File Size`, and `Column Name`, and never set a label in full uppercase. This should cover section labels, tile and stat labels, table column headers, form field labels, group titles, and inline tags. Action button text, helper sentences, and status text stay in sentence case.
 
 ### V10 - Tight hierarchy
 

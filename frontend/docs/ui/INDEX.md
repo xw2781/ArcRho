@@ -61,6 +61,7 @@ High-risk files that must follow contracts:
 <!-- MANUAL:BEGIN -->
 - [`ArcRho UI Design skill`](../../../.codex/skills/arcrho-ui-design/SKILL.md) - Atlas-based global UI design reference for future ArcRho interface work.
 - [`global_app_ui_demo.html`](global_app_ui_demo.html) - Standalone UI style demo with Workbench, Atlas, and Assistant Studio concepts.
+- [`project_settings_source_data_demo.html`](project_settings_source_data_demo.html) - Interactive proposal for the Project Settings Source Data tab, with minimal/proposed/current layout toggles, hover cards carrying column detail and distribution previews, light and dark themes, loaded/loading/error/empty states, and annotated rationale.
 <!-- MANUAL:END -->
 
 ## External Interfaces

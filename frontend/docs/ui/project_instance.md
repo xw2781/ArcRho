@@ -10,6 +10,7 @@ Project instance workspace for browsing one project's reserving-class paths and 
 - `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260724c`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
+- `${endpoint}?project_name=${encodeURIComponent(name)}`
 - `/arcrho/tri/refresh`
 - `/dataset/calculated/preview`
 - `/datasets/cached/delete`

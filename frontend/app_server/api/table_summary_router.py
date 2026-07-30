@@ -24,9 +24,8 @@ def get_table_summary(path: str, project_name: Optional[str] = None) -> Dict[str
     try:
         cache_path = config.get_cache_path(path, project_name=project_name)
 
-        if table_summary_service.is_cache_valid(path, cache_path):
-            with open(cache_path, "r", encoding="utf-8") as f:
-                cached_data = json.load(f)
+        cached_data = table_summary_service.load_valid_cache(path, cache_path)
+        if cached_data is not None:
             cached_data["from_cache"] = True
             return cached_data
 

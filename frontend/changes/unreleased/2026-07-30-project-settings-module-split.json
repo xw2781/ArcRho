@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "internal",
+  "summary": "Split the Project Settings coordinator into per-domain modules with a single owner for the project map.",
+  "details": [
+    "project_settings.js keeps only page composition, project selection, the Source Data summary load, dialogs, context menus, and the ribbon.",
+    "The project map document, its conflict mtime, the folder structure, and every /project_settings endpoint call now have one owner, so 409 conflict and 423 lock handling is no longer duplicated.",
+    "Project Explorer rendering and view state, project/folder create-rename-duplicate-delete flows, boundary-month parsing with General Settings persistence, and shared table column sizing each moved to their own module.",
+    "Behavior is unchanged: the same ordered folder-then-structure-then-map writes, the same reverse-order rollback on failure, and the same status and alert messages."
+  ]
+}

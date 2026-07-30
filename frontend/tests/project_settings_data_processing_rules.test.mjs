@@ -40,6 +40,10 @@ const reservingClassTypesJs = await readFile(
   new URL("../ui/project_settings/project_settings_reserving_class_types.js", import.meta.url),
   "utf8",
 );
+const tableColumnsJs = await readFile(
+  new URL("../ui/project_settings/project_settings_table_columns.js", import.meta.url),
+  "utf8",
+);
 const projectSettingsDefaultPreferences = JSON.parse(await readFile(
   new URL("../app_server/default_preferences/project_settings_preferences.json", import.meta.url),
   "utf8",
@@ -65,7 +69,7 @@ test("Project Settings loads its external stylesheets in cascade order", () => {
 test("Project Settings stylesheet split keeps feature rules with their owners", () => {
   const ownershipMarkers = new Map([
     ["project_settings.css", /\/\* Shared data-grid frames and tables \*\//],
-    ["project_settings_summary.css", /\.summary-table-path\s*\{/],
+    ["project_settings_summary.css", /\.sd-columns\s*\{/],
     ["project_settings_field_mapping.css", /\.fm-dataset-type-dropdown\s*\{/],
     ["project_settings_dataset_types.css", /#datasetTypesTable \.dt-name-search-btn\s*\{/],
     ["project_settings_reserving_class_types.css", /\.rct-formula-frame\s*\{/],
@@ -829,28 +833,32 @@ test("failed editor validation still refreshes live vocabulary", () => {
 });
 
 test("all Project Settings table wrappers use the refined frame and scroll activity", () => {
-  assert.match(projectSettingsCoreCss, /\.summary-columns,\s*\.field-mapping-grid,\s*\.dataset-types-grid\s*\{[^}]*border:\s*1px solid #cbd5e1;[^}]*scrollbar-gutter:\s*stable;/s);
-  assert.match(projectSettingsCoreCss, /\.columns-table,\s*\.field-mapping-table,\s*\.dataset-types-table\s*\{[^}]*border-collapse:\s*separate;[^}]*border-spacing:\s*0;/s);
-  assert.match(projectSettingsCoreCss, /:is\(\.columns-table, \.field-mapping-table, \.dataset-types-table\) tbody tr\s*\{[^}]*height:\s*31px;/s);
-  assert.match(projectSettingsJs, /querySelectorAll\("\.summary-columns, \.field-mapping-grid, \.dataset-types-grid"\)[\s\S]*forEach\(wireProjectSettingsTableScrollbarActivity\)/);
+  assert.match(projectSettingsCoreCss, /\.field-mapping-grid,\s*\.dataset-types-grid\s*\{[^}]*border:\s*1px solid #cbd5e1;[^}]*scrollbar-gutter:\s*stable;/s);
+  assert.match(projectSettingsCoreCss, /\.field-mapping-table,\s*\.dataset-types-table\s*\{[^}]*border-collapse:\s*separate;[^}]*border-spacing:\s*0;/s);
+  assert.match(projectSettingsCoreCss, /:is\(\.field-mapping-table, \.dataset-types-table\) tbody tr\s*\{[^}]*height:\s*31px;/s);
+  assert.match(projectSettingsJs, /querySelectorAll\("\.sd-list, \.field-mapping-grid, \.dataset-types-grid"\)[\s\S]*forEach\(wireProjectSettingsTableScrollbarActivity\)/);
 });
 
 test("Project Settings column resizing follows the PI explicit-width model", () => {
-  assert.match(projectSettingsJs, /table\.style\.width = `\$\{width\}px`/);
-  assert.match(projectSettingsJs, /table\.style\.minWidth = `\$\{width\}px`/);
-  assert.match(projectSettingsJs, /cols\[idx\]\.style\.width = `\$\{Math\.round\(newW\)\}px`/);
-  assert.match(projectSettingsJs, /tableColumnWidthsById\.set\(tableId, captureTableColumnWidths/);
-  assert.doesNotMatch(projectSettingsJs, /getColResizePreviewEl|colResizePreviewEl/);
+  assert.match(tableColumnsJs, /table\.style\.width = `\$\{width\}px`/);
+  assert.match(tableColumnsJs, /table\.style\.minWidth = `\$\{width\}px`/);
+  assert.match(tableColumnsJs, /cols\[idx\]\.style\.width = `\$\{Math\.round\(newW\)\}px`/);
+  assert.match(tableColumnsJs, /tableColumnWidthsById\.set\(tableId, captureTableColumnWidths/);
+  assert.doesNotMatch(tableColumnsJs, /getColResizePreviewEl|colResizePreviewEl/);
+  // The sizing model is owned by one module, not re-implemented by the coordinator.
+  assert.doesNotMatch(projectSettingsJs, /function initTableColumnResizing\(/);
 });
 
-test("Source Data columns table participates in shared column resizing", () => {
-  assert.match(projectSettingsJs, /id="summaryColumnsTable"/);
-  assert.match(projectSettingsJs, /initTableColumnResizing\("summaryColumnsTable", \[120, 80, 160\]\)/);
+test("Source Data column widths still come from the shared table preference JSON", () => {
+  // The Source Data list is no longer a <table>; it reads the same configured widths.
+  assert.match(tableColumnsJs, /configuredTableColumnWidthsById\.get\(tableId\)/);
+  assert.match(projectSettingsJs, /getConfiguredTableColumnWidthMap\("summaryColumnsTable"\)/);
+  assert.match(projectSettingsJs, /sourceDataFeature\.applyConfiguredColumnWidths\(\)/);
 });
 
 test("column resize handles do not bubble clicks into sortable headers", () => {
   assert.match(
-    projectSettingsJs,
+    tableColumnsJs,
     /resizer\.addEventListener\("click", \(e\) => \{\s*e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*\}\);/,
   );
   assert.match(
@@ -877,6 +885,6 @@ test("Project Settings table defaults come from the editable server preference J
     Effect: 420,
   });
   assert.match(projectSettingsJs, /loadProjectUserPreferences\(project\?\.name, \{ forceReload: true \}\)/);
-  assert.match(projectSettingsJs, /preferences\?\.projectSettings\?\.tables/);
-  assert.match(projectSettingsJs, /else if \(configuredWidths\) \{\s*applyTableColumnWidths/);
+  assert.match(tableColumnsJs, /preferences\?\.projectSettings\?\.tables/);
+  assert.match(tableColumnsJs, /else if \(configuredWidths\) \{\s*applyTableColumnWidths/);
 });

@@ -362,7 +362,8 @@ def parse_frontend_entrypoints() -> Dict[str, FrontendEntrypoint]:
     return out
 
 
-FETCH_RE = re.compile(r"""fetch\(\s*["'`]([^"'`]+)["'`]""")
+# Feature modules receive `fetch` as an injected `fetchImpl`, so match both spellings.
+FETCH_RE = re.compile(r"""(?:fetch|fetchImpl)\(\s*["'`]([^"'`]+)["'`]""")
 POST_MESSAGE_TYPE_RE = re.compile(r"""type\s*:\s*["']([^"']+)["']""")
 
 
@@ -582,6 +583,12 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/project_settings/project_settings_reserving_class_types.css", "Reserving Class Types styling."),
             ("ui/project_settings/project_settings_data_processing_rules.css", "Data Processing Rules styling."),
             ("ui/project_settings/project_settings.js", "Project settings coordinator and API calls."),
+            ("ui/project_settings/project_settings_project_map.js", "Project map document, folder structure, and tree data store."),
+            ("ui/project_settings/project_settings_tree_view.js", "Project Explorer tree rendering, drag-and-drop, and view state."),
+            ("ui/project_settings/project_settings_project_ops.js", "Project and virtual-folder create/rename/duplicate/delete flows."),
+            ("ui/project_settings/project_settings_general_settings.js", "Boundary-month parsing and General Settings persistence."),
+            ("ui/project_settings/project_settings_table_columns.js", "Shared table column sizing, resizing, and scroll activity."),
+            ("ui/project_settings/project_settings_source_data.js", "Source Data panel rendering and column distribution previews."),
             ("ui/project_settings/project_settings_field_mapping.js", "Field mapping feature module."),
             ("ui/project_settings/project_settings_dataset_types.js", "Dataset types feature module."),
             ("ui/project_settings/project_settings_reserving_class_types.js", "Reserving class types feature module."),

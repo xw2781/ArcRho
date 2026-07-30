@@ -53,8 +53,8 @@ test("every runtime frontend document bootstraps the shared theme before loading
     const html = read(path);
     const bootstrap = html.indexOf("/ui/shared/services/color_theme.js?v=20260724a");
     const firstStylesheet = html.indexOf("rel=\"stylesheet\"");
-    const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260722a");
-    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260724i");
+    const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260729a");
+    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260729a");
     const endHead = html.indexOf("</head>");
     assert.ok(bootstrap >= 0, `${path} loads the shared bootstrap`);
     assert.ok(firstStylesheet < 0 || bootstrap < firstStylesheet, `${path} applies theme state before visual CSS`);
@@ -183,7 +183,7 @@ test("Dark-mode table value cells use the shared lighter surface", () => {
     ".pi-table td",
     ".pi-number-formats-table td",
     ".pi-add-picker-table td",
-    ".columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) td",
+    ".field-mapping-table, .dataset-types-table, .dpr-rules-table) td",
     ".taskDesignerTable td",
     ".sfTable td",
   ];
@@ -275,9 +275,7 @@ test("Project Settings and Project Instance override light-only child paint in D
     [".pi-number-formats-header", /background-color:\s*var\(--ar-color-surface-muted\)/],
     [".tree-project", /color:\s*var\(--ar-color-text\)/],
     [".ribbon-label", /color:\s*var\(--ar-color-text-muted\)/],
-    [".summary-columns", /background:\s*var\(--ar-color-input\)/],
-    [".summary-derived-label", /color:\s*var\(--ar-color-text-muted\)/],
-    [".stat-value", /color:\s*var\(--ar-color-text-strong\)/],
+    [".summary-header", /color:\s*var\(--ar-color-text-strong\)/],
     ["#datasetTypesErrorTitle", /color:\s*var\(--ar-color-text\)/],
     [".rct-formula-calculated-icon", /color:\s*var\(--ar-color-accent-strong\)/],
     [".dpr-token-menu-tick", /color:\s*var\(--ar-color-accent-strong\)/],
@@ -296,7 +294,7 @@ test("Project Settings and Project Instance override light-only child paint in D
   const projectSettingsHtml = read("../ui/project_settings/project_settings.html");
   assert.match(datasetTypesCss, /\.datasetTypesRecalcOverlay\s*\{/);
   assert.doesNotMatch(datasetTypesJs, /datasetTypesRecalcDialogStyles|createElement\("style"\)/);
-  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260722a/);
+  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260730split1/);
 });
 
 test("theme runtime validates, persists per user, applies, notifies frames, and updates Monaco live", async () => {
@@ -585,8 +583,8 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.ok(bootstrap >= 0 && bootstrap < inlineStyles, "splash theme state is set before first paint styles");
   assert.match(splash, /requestedTheme === "dark" \? "dark" : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260722a/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260724i/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260729a/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260729a/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
   assert.match(dark, /\.logo-icon img\s*\{[^}]*width:\s*88px[^}]*height:\s*88px/s);
@@ -604,12 +602,12 @@ test("changed theme and chart owners are reached through current cache-version c
     ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
     ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260726a"],
     ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260726a"],
-    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260725a"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260722a"],
+    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260726a"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260730split2"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260722a"],
-    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260726a"],
+    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260726b"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260726a"],
-    ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260724a"],
+    ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260726a"],
   ];
   for (const [path, reference] of expectedReferences) {
     assert.ok(read(path).includes(reference), `${path} loads ${reference}`);

@@ -3,9 +3,8 @@
     "tables": {
       "summaryColumnsTable": {
         "widths": {
-          "Column Name": 260,
-          "Data Type": 120,
-          "Values": 520
+          "Column Name": 300,
+          "Data Type": 116
         }
       },
       "fieldMappingTable": {

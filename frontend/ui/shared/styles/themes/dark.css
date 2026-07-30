@@ -94,6 +94,7 @@
   /* Dense tables and scrollbar trays. */
   --ar-color-table-header: var(--ar-color-input);
   --ar-color-table-row-hover: #2c313a;
+  --ar-summary-divider-soft: rgba(255, 255, 255, 0.07);
   --ar-color-scrollbar-track: #21252b;
   --ar-color-scrollbar-thumb: #4e566680;
   --ar-color-scrollbar-thumb-active: #747d9180;
@@ -2327,7 +2328,7 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.tree-content, .detail-empty, .dataset-types-panel, .summary-header, .summary-stats) {
+:root[data-arcrho-theme="dark"] :is(.tree-content, .detail-empty, .dataset-types-panel, .summary-header) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
@@ -2393,8 +2394,6 @@
 
 :root[data-arcrho-theme="dark"] :is(
   .dialog-input,
-  .summary-table-path-input,
-  .summary-derived-input,
   .field-mapping-table input,
   .dataset-types-table textarea,
   .rct-row-editor textarea,
@@ -2408,32 +2407,32 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.summary-derived-frame, .stat-item, .rct-formula-frame, .rct-formula-review, .rct-formula-components-box, .dpr-section, .dpr-summary-bar) {
+:root[data-arcrho-theme="dark"] :is(.rct-formula-frame, .rct-formula-review, .rct-formula-components-box, .dpr-section, .dpr-summary-bar) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) {
+:root[data-arcrho-theme="dark"] :is(.field-mapping-table, .dataset-types-table, .dpr-rules-table) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) td {
+:root[data-arcrho-theme="dark"] :is(.field-mapping-table, .dataset-types-table, .dpr-rules-table) td {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) th,
+:root[data-arcrho-theme="dark"] :is(.field-mapping-table, .dataset-types-table, .dpr-rules-table) th,
 :root[data-arcrho-theme="dark"] :is(.dt-group-row, .rct-group-row) td {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-table-header);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table, .dpr-rules-table) tbody tr:hover td {
+:root[data-arcrho-theme="dark"] :is(.field-mapping-table, .dataset-types-table, .dpr-rules-table) tbody tr:hover td {
   background-color: var(--ar-color-table-row-hover);
 }
 
@@ -2592,7 +2591,7 @@
   color: var(--ar-color-text-strong);
 }
 
-:root[data-arcrho-theme="dark"] :is(.summary-columns, .field-mapping-grid, .dataset-types-grid) {
+:root[data-arcrho-theme="dark"] :is(.field-mapping-grid, .dataset-types-grid) {
   --dataset-grid-scrollbar-chrome: inherit;
   --dataset-grid-scrollbar-button-hover: inherit;
   --dataset-grid-scrollbar-button-active: inherit;
@@ -2602,47 +2601,12 @@
   background: var(--ar-color-input);
 }
 
-:root[data-arcrho-theme="dark"] :is(.columns-table, .field-mapping-table, .dataset-types-table) th::before {
+:root[data-arcrho-theme="dark"] :is(.field-mapping-table, .dataset-types-table) th::before {
   background: var(--ar-color-table-header);
 }
 
-:root[data-arcrho-theme="dark"] :is(
-  .summary-table-path-label,
-  .summary-derived-frame-label,
-  .summary-derived-label,
-  .stat-label,
-  .summary-loading,
-  .columns-table td.col-type,
-  .columns-table td.col-sample
-) {
-  color: var(--ar-color-text-muted);
-}
-
-:root[data-arcrho-theme="dark"] :is(.summary-header, .stat-value) {
+:root[data-arcrho-theme="dark"] .summary-header {
   color: var(--ar-color-text-strong);
-}
-
-:root[data-arcrho-theme="dark"] .summary-error {
-  color: var(--ar-color-danger);
-}
-
-:root[data-arcrho-theme="dark"] :is(.summary-table-path-browse, .summary-derived-step-btn) {
-  border-color: var(--ar-color-border-strong);
-  background: var(--ar-color-input);
-  color: var(--ar-color-text);
-}
-
-:root[data-arcrho-theme="dark"] :is(.summary-table-path-browse:hover:not(:disabled), .summary-derived-step-btn:hover) {
-  background: var(--ar-color-surface-hover);
-}
-
-:root[data-arcrho-theme="dark"] :is(.summary-table-path-browse:disabled, .summary-derived-step-btn:disabled) {
-  background: var(--ar-color-surface-muted);
-  color: var(--ar-color-text-disabled);
-}
-
-:root[data-arcrho-theme="dark"] :is(.summary-derived-stepper, .summary-derived-step-btn + .summary-derived-step-btn) {
-  border-color: var(--ar-color-border);
 }
 
 :root[data-arcrho-theme="dark"] .field-mapping-table td input:disabled {

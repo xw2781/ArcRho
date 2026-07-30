@@ -96,6 +96,7 @@
   /* Dense tables and scrollbar trays. */
   --ar-color-table-header: #f1f3f5;
   --ar-color-table-row-hover: #f8fafc;
+  --ar-summary-divider-soft: rgba(15, 23, 42, 0.07);
   --ar-color-scrollbar-track: #f1f3f5;
   --ar-color-scrollbar-thumb: rgba(182, 182, 182, 0.2);
   --ar-color-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
