@@ -14,7 +14,12 @@ from app_server.schemas.scripting import (
     ScriptMacroSourceRunRequest,
     ScriptRunRequest,
 )
-from app_server.services import scripting_service
+from app_server.services import (
+    scripting_macro_service,
+    scripting_notebook_service,
+    scripting_preferences_service,
+    scripting_service,
+)
 
 router = APIRouter()
 _SESSION_HEADER = "X-Scripting-Session-Id"
@@ -61,23 +66,23 @@ def scripting_reset(request: Request) -> Dict[str, Any]:
 
 @router.post("/scripting/save-notebook")
 def scripting_save_notebook(req: ScriptNotebookSaveRequest) -> Dict[str, Any]:
-    return scripting_service.save_notebook(req.filename, req.cells)
+    return scripting_notebook_service.save_notebook(req.filename, req.cells)
 
 
 @router.post("/scripting/load-notebook")
 def scripting_load_notebook(req: ScriptNotebookLoadRequest) -> Dict[str, Any]:
-    return scripting_service.load_notebook(req.filename)
+    return scripting_notebook_service.load_notebook(req.filename)
 
 
 @router.get("/scripting/notebooks")
 def scripting_list_notebooks() -> List[Dict[str, str]]:
-    return scripting_service.list_notebooks()
+    return scripting_notebook_service.list_notebooks()
 
 
 @router.post("/scripting/run-in-arcrho")
 def scripting_run_in_arcrho(req: ScriptMacroSourceRunRequest, request: Request) -> Dict[str, Any]:
     require_local_client(request, "Run in ArcRho")
-    return scripting_service.run_arcrho_macro_source(req.source, req.filename, req.source_path)
+    return scripting_macro_service.run_arcrho_macro_source(req.source, req.filename, req.source_path)
 
 
 @router.post("/scripting/inspect")
@@ -87,12 +92,12 @@ def scripting_inspect(req: ScriptInspectRequest, request: Request) -> Dict[str, 
 
 @router.get("/scripting/preferences")
 def scripting_get_preferences() -> Dict[str, Any]:
-    return scripting_service.get_preferences()
+    return scripting_preferences_service.get_preferences()
 
 
 @router.post("/scripting/preferences")
 def scripting_save_preferences(prefs: Dict[str, Any]) -> Dict[str, Any]:
-    return scripting_service.save_preferences(prefs)
+    return scripting_preferences_service.save_preferences(prefs)
 
 
 @router.get("/scripting/api-help")

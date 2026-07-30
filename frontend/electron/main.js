@@ -2,14 +2,29 @@ const { app, BrowserWindow, dialog, ipcMain, screen, shell } = require("electron
 const path = require("path");
 const { spawn, execFile } = require("child_process");
 const fs = require("fs");
-const http = require("http");
 const os = require("os");
 const crypto = require("crypto");
-const {
-  backendArtifactIdForBundle,
-  isCompatibleBackendHealth: isCompatibleBackendHealthResponse,
-} = require("./backend_health_compatibility");
 const { registerArcBotIpc } = require("./arcbot_host");
+const {
+  appendElectronLog,
+  getElectronLogPath,
+  formatJsonForSave,
+} = require("./host_support");
+const {
+  initUpdateChecker,
+  checkForUpdate,
+  checkForStartupUpdate,
+} = require("./update_checker");
+const {
+  initBackendLifecycle,
+  getBackendPort,
+  startBackendWithRetry,
+  requestBackendShutdown,
+  registerBackendClient,
+  unregisterBackendClient,
+  clearBackendControlFlags,
+  cleanupBackendEndpoint,
+} = require("./backend_lifecycle");
 
 // Detect Windows 11 (build number >= 22000)
 function isWindows11() {
@@ -36,8 +51,6 @@ if (APP_MODE === "arcode") {
   app.setAppUserModelId("com.arcrho.app");
 }
 const HOST = process.env.ARCRHO_HOST || "127.0.0.1";
-const DEFAULT_PORT = APP_MODE === "arcode" ? "28766" : "28765";
-const PORT = parseInt(process.env.ARCRHO_PORT || process.env.ARCODE_PORT || DEFAULT_PORT, 10);
 const UI_VERSION = process.env.ARCRHO_UI_VERSION || process.env.ARCODE_UI_VERSION || String(Date.now());
 const DISPLAY_VERSION_OVERRIDE = APP_MODE === "arcode"
   ? process.env.ARCODE_DISPLAY_VERSION
@@ -47,12 +60,21 @@ const APP_DISPLAY_VERSION = String(
   || process.env.ARCRHO_DISPLAY_VERSION
   || (app.isPackaged ? app.getVersion() : `${app.getVersion()}+`)
 ).trim() || app.getVersion();
-const BACKEND_HEALTH_URL = `http://${HOST}:${PORT}/app/health`;
 const BACKEND_TOKEN = crypto.randomBytes(16).toString("hex");
 const START_BACKEND = (APP_MODE === "arcode" ? process.env.ARCODE_START_BACKEND : process.env.ARCRHO_START_BACKEND) !== "0";
 const PYTHON_EXE = process.env.PYTHON_EXE || process.env.PYTHON || "python";
 const APP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(APP_ROOT, "..");
+
+initBackendLifecycle({
+  appMode: APP_MODE,
+  host: HOST,
+  backendToken: BACKEND_TOKEN,
+  appRoot: APP_ROOT,
+  pythonExe: PYTHON_EXE,
+});
+initUpdateChecker({ appMode: APP_MODE, getMainWindow: () => win });
+
 function getDfmRatioUndoRoot() {
   return path.join(app.getPath("temp"), "ArcRho", "dfm-ratio-undo");
 }
@@ -97,641 +119,26 @@ const ARCODE_LEGACY_USER_SETTINGS_FILE = "settings.json";
 const SCRIPTING_SHORTCUTS_FILE = "scripting_shortcuts.json";
 const SCRIPTING_NOTEBOOK_PREFS_FILE = "scripting_notebook_prefs.json";
 const WORKSPACE_PATHS_FILE = "workspace_paths.json";
-const BACKEND_CONTROL_FLAGS = [
-  ".restart_app",
-  ".shutdown_app",
-  ".restart_electron",
-  ".shutdown_electron",
-];
 const arcodeFolderWatchers = new Map();
 const arcodeFolderWatchCleanupWindowIds = new Set();
 const projectInstanceIndexWatchers = new Map();
 const projectInstanceIndexWatchCleanupWindowIds = new Set();
-const BACKEND_STARTUP_TIMEOUT_MS = Math.max(
-  5000,
-  parseInt(
-    (APP_MODE === "arcode" ? process.env.ARCODE_BACKEND_STARTUP_TIMEOUT_MS : process.env.ARCRHO_BACKEND_STARTUP_TIMEOUT_MS)
-      || "30000",
-    10
-  ) || 30000
-);
-const BACKEND_STARTUP_ATTEMPTS = Math.max(
-  1,
-  parseInt(
-    (APP_MODE === "arcode" ? process.env.ARCODE_BACKEND_STARTUP_ATTEMPTS : process.env.ARCRHO_BACKEND_STARTUP_ATTEMPTS)
-      || "2",
-    10
-  ) || 2
-);
-const UPDATE_FEED_DIR = APP_MODE === "arcode"
-  ? (process.env.ARCODE_UPDATE_DIR || "E:\\Arcode Server\\releases\\arcode-installers")
-  : (process.env.ARCRHO_UPDATE_DIR || "E:\\ArcRho Server\\releases\\installers");
-const UPDATE_MANIFEST_FILE = (APP_MODE === "arcode" ? process.env.ARCODE_UPDATE_MANIFEST_FILE : process.env.ARCRHO_UPDATE_MANIFEST_FILE) || "latest.json";
-const UPDATE_CHECK_TIMEOUT_MS = Math.max(
-  1000,
-  parseInt(
-    (APP_MODE === "arcode" ? process.env.ARCODE_UPDATE_CHECK_TIMEOUT_MS : process.env.ARCRHO_UPDATE_CHECK_TIMEOUT_MS)
-      || "3000",
-    10
-  ) || 3000
-);
-const UPDATE_INSTALLER_NAME_RE = APP_MODE === "arcode"
-  ? /^Arcode-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i
-  : /^ArcRho-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i;
-const SHA256_RE = /\b[a-fA-F0-9]{64}\b/;
-const DEV_UPDATE_CHECK_ENABLED = String(
-  APP_MODE === "arcode" ? process.env.ARCODE_ENABLE_DEV_UPDATE_CHECK : process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK
-).trim() === "1";
-
-function getBundledServerPath() {
-  // Check if running as packaged app
-  if (app.isPackaged) {
-    const serverName = APP_MODE === "arcode" ? "arcode_server" : "arcrho_server";
-    const resourcesPath = process.resourcesPath;
-    return path.join(resourcesPath, serverName, `${serverName}.exe`);
-  }
-  return null;
-}
 
 let win = null;
 let arcodeWin = null;
 let splashWin = null;
-let serverProc = null;
-let serverLogStream = null;
-let lastServerLogPath = "";
-let electronLogPath = "";
 let allowClose = false;
-let backendOwned = false;
 let pseudoMaximized = false;
 let lastBounds = null;
 let pendingClearCacheReloadRestore = null;
-let serverSpawnError = null;
-let backendShutdownPromise = null;
-let backendClientMarkerPath = "";
-let backendArtifactId = "";
-let backendArtifactIdPromise = null;
 function toggleDevPanelForWindow(target = BrowserWindow.getFocusedWindow() || win) {
   if (!target || target.isDestroyed()) return { ok: false, error: "Window unavailable." };
   target.webContents.toggleDevTools();
   return { ok: true, open: target.webContents.isDevToolsOpened() };
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
-function getTimestampForFileName() {
-  return new Date().toISOString().replace(/[:.]/g, "-");
-}
 
-function formatJsonForSave(data) {
-  const text = formatJsonWithCompactRowArrays(data);
-  return text.endsWith("\n") ? text : `${text}\n`;
-}
-
-function isRowArray(value) {
-  return Array.isArray(value) && value.every((row) => Array.isArray(row));
-}
-
-function formatJsonWithCompactRowArrays(value, indent = "") {
-  if (isRowArray(value)) {
-    if (!value.length) return "[]";
-    return `[\n${formatRowArrayLines(value, `${indent}  `)}\n${indent}]`;
-  }
-  if (Array.isArray(value)) {
-    if (!value.length) return "[]";
-    const childIndent = `${indent}  `;
-    const lines = value.map((item, index) => {
-      const rendered = `${childIndent}${formatJsonWithCompactRowArrays(item, childIndent)}`;
-      return index < value.length - 1 ? `${rendered},` : rendered;
-    });
-    return `[\n${lines.join("\n")}\n${indent}]`;
-  }
-  if (value && typeof value === "object") {
-    const keys = Object.keys(value);
-    if (!keys.length) return "{}";
-    const childIndent = `${indent}  `;
-    const lines = keys.map((key, index) => {
-      const rendered = `${childIndent}${JSON.stringify(key)}: ${formatJsonWithCompactRowArrays(value[key], childIndent)}`;
-      return index < keys.length - 1 ? `${rendered},` : rendered;
-    });
-    return `{\n${lines.join("\n")}\n${indent}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function formatRowArrayLines(rows, indent) {
-  return rows
-    .map((row) => {
-      const vals = row.map((value) => JSON.stringify(value)).join(", ");
-      return `${indent}[${vals}]`;
-    })
-    .join(",\n");
-}
-
-function createBackendLogStream() {
-  try {
-    const logDir = path.join(app.getPath("userData"), "logs");
-    fs.mkdirSync(logDir, { recursive: true });
-    const appLabel = APP_MODE === "arcode" ? "arcode" : "arcrho";
-    lastServerLogPath = path.join(logDir, `${appLabel}-server-${getTimestampForFileName()}.log`);
-    const stream = fs.createWriteStream(lastServerLogPath, { flags: "a" });
-    stream.write(`${APP_MODE === "arcode" ? "Arcode" : "ArcRho"} packaged app-server log\nStarted: ${new Date().toISOString()}\n\n`);
-    return stream;
-  } catch (err) {
-    console.warn(`Could not create app-server log file: ${err?.message || err}`);
-    lastServerLogPath = "";
-    return null;
-  }
-}
-
-function closeBackendLogStream() {
-  if (!serverLogStream) return;
-  const stream = serverLogStream;
-  serverLogStream = null;
-  try {
-    stream.end(`\nEnded: ${new Date().toISOString()}\n`);
-  } catch {}
-}
-
-function writeBackendLog(prefix, chunk) {
-  if (!serverLogStream || !chunk) return;
-  const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-  if (!text) return;
-  try {
-    serverLogStream.write(prefix ? `[${prefix}] ${text}` : text);
-  } catch {}
-}
-
-function attachBackendLogPipes(proc) {
-  if (!proc || !serverLogStream) return;
-  proc.stdout?.on("data", (chunk) => writeBackendLog("stdout", chunk));
-  proc.stderr?.on("data", (chunk) => writeBackendLog("stderr", chunk));
-}
-
-function getElectronLogPath() {
-  if (electronLogPath) return electronLogPath;
-  try {
-    const logDir = path.join(app.getPath("userData"), "logs");
-    fs.mkdirSync(logDir, { recursive: true });
-    electronLogPath = path.join(logDir, `electron-main-${getTimestampForFileName()}.log`);
-  } catch {
-    const fallbackDir = path.join(os.homedir(), "AppData", "Roaming", "arcrho-electron", "logs");
-    fs.mkdirSync(fallbackDir, { recursive: true });
-    electronLogPath = path.join(fallbackDir, `electron-main-${getTimestampForFileName()}.log`);
-  }
-  return electronLogPath;
-}
-
-function formatErrorForLog(err) {
-  if (!err) return "";
-  if (err instanceof Error) return err.stack || err.message || String(err);
-  return String(err);
-}
-
-function appendElectronLog(message, err = null) {
-  try {
-    const lines = [`[${new Date().toISOString()}] ${message}`];
-    if (err) lines.push(formatErrorForLog(err));
-    fs.appendFileSync(getElectronLogPath(), `${lines.join("\n")}\n`, "utf8");
-  } catch {}
-}
-
-process.on("uncaughtException", (err) => {
-  appendElectronLog("Uncaught exception", err);
-});
-
-process.on("unhandledRejection", (reason) => {
-  appendElectronLog("Unhandled promise rejection", reason);
-});
-
-function withTimeout(promise, timeoutMs, label) {
-  let timeoutId = null;
-  const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
-  });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timeoutId) clearTimeout(timeoutId);
-  });
-}
-
-function parseVersion(value) {
-  const text = String(value || "").trim().replace(/^v/i, "");
-  const withoutBuild = text.split("+")[0];
-  const [main, prerelease = ""] = withoutBuild.split("-", 2);
-  const parts = main.split(".").map((part) => Number.parseInt(part, 10));
-  if (parts.length < 3 || parts.some((part) => !Number.isInteger(part) || part < 0)) {
-    return null;
-  }
-  return { parts, prerelease };
-}
-
-function compareVersions(left, right) {
-  const leftVersion = parseVersion(left);
-  const rightVersion = parseVersion(right);
-  if (!leftVersion || !rightVersion) return 0;
-  for (let i = 0; i < 3; i += 1) {
-    const delta = leftVersion.parts[i] - rightVersion.parts[i];
-    if (delta !== 0) return delta > 0 ? 1 : -1;
-  }
-  if (leftVersion.prerelease === rightVersion.prerelease) return 0;
-  if (!leftVersion.prerelease) return 1;
-  if (!rightVersion.prerelease) return -1;
-  return leftVersion.prerelease.localeCompare(rightVersion.prerelease, undefined, { numeric: true });
-}
-
-function parseSha256Text(value) {
-  const match = String(value || "").match(SHA256_RE);
-  return match ? match[0].toLowerCase() : "";
-}
-
-function resolveUpdateInstallerPath(installerName) {
-  const feedRoot = path.resolve(UPDATE_FEED_DIR);
-  const rawName = String(installerName || "").trim();
-  if (!rawName || rawName.includes("\0")) return "";
-  const resolved = path.resolve(feedRoot, rawName);
-  if (resolved !== feedRoot && !resolved.startsWith(feedRoot + path.sep)) {
-    return "";
-  }
-  if (!UPDATE_INSTALLER_NAME_RE.test(path.basename(resolved))) {
-    return "";
-  }
-  return resolved;
-}
-
-async function readInstallerSha256(installerPath, manifestSha256 = "") {
-  const manifestHash = parseSha256Text(manifestSha256);
-  if (manifestHash) return manifestHash;
-
-  try {
-    const raw = await fs.promises.readFile(`${installerPath}.sha256`, "utf8");
-    return parseSha256Text(raw);
-  } catch {
-    return "";
-  }
-}
-
-function createUpdateInfo(version, installerPath, sha256, source, manifest = {}) {
-  return {
-    version,
-    installerPath,
-    sha256,
-    source,
-    releaseNotes: String(manifest.releaseNotes || manifest.notes || "").trim(),
-    mandatory: manifest.mandatory === true,
-    publishedAt: String(manifest.publishedAt || "").trim(),
-  };
-}
-
-function createUpdateIssue(status, version, installerPath, source, message, detail = "") {
-  return {
-    status,
-    version,
-    installerPath,
-    source,
-    message,
-    detail,
-  };
-}
-
-function isInstallableUpdate(updateInfo) {
-  return !!(updateInfo && !updateInfo.status && updateInfo.version && updateInfo.installerPath && updateInfo.sha256);
-}
-
-function areInstallerUpdateChecksEnabled() {
-  return app.isPackaged || DEV_UPDATE_CHECK_ENABLED;
-}
-
-async function updateInfoFromManifest(manifest, options = {}) {
-  const reportIssues = options.reportIssues === true;
-  const version = String(manifest?.version || "").trim();
-  if (!parseVersion(version) || compareVersions(version, app.getVersion()) <= 0) {
-    return null;
-  }
-
-  const installerName = manifest.installer || manifest.installerPath || `ArcRho-Setup-${version}.exe`;
-  const installerPath = resolveUpdateInstallerPath(installerName);
-  if (!installerPath) {
-    console.warn("ArcRho update manifest references an invalid installer path.");
-    if (reportIssues) {
-      return createUpdateIssue(
-        "invalid-update",
-        version,
-        "",
-        "manifest",
-        "ArcRho found a newer update manifest, but its installer path is invalid."
-      );
-    }
-    return null;
-  }
-
-  const stat = await fs.promises.stat(installerPath).catch(() => null);
-  if (!stat?.isFile()) {
-    console.warn(`ArcRho update installer was not found: ${installerPath}`);
-    if (reportIssues) {
-      return createUpdateIssue(
-        "missing-installer",
-        version,
-        installerPath,
-        "manifest",
-        "ArcRho found a newer update manifest, but the installer file is missing."
-      );
-    }
-    return null;
-  }
-
-  const sha256 = await readInstallerSha256(installerPath, manifest.sha256);
-  if (!sha256) {
-    console.warn(`ArcRho update installer is missing a SHA-256 checksum: ${installerPath}`);
-    if (reportIssues) {
-      return createUpdateIssue(
-        "missing-checksum",
-        version,
-        installerPath,
-        "manifest",
-        "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
-        `Add a checksum in ${path.basename(installerPath)}.sha256 or in ${UPDATE_MANIFEST_FILE}.`
-      );
-    }
-    return null;
-  }
-
-  return createUpdateInfo(version, installerPath, sha256, "manifest", manifest);
-}
-
-async function readManifestUpdate(options = {}) {
-  const manifestPath = path.join(UPDATE_FEED_DIR, UPDATE_MANIFEST_FILE);
-  let raw = "";
-  try {
-    raw = await fs.promises.readFile(manifestPath, "utf8");
-  } catch (err) {
-    if (err?.code !== "ENOENT") {
-      console.warn(`ArcRho update manifest could not be read: ${err?.message || err}`);
-    }
-    return null;
-  }
-
-  try {
-    return updateInfoFromManifest(JSON.parse(raw), options);
-  } catch (err) {
-    console.warn(`ArcRho update manifest is invalid: ${err?.message || err}`);
-    return null;
-  }
-}
-
-async function scanInstallerFolderUpdate(options = {}) {
-  const reportIssues = options.reportIssues === true;
-  let entries = [];
-  try {
-    entries = await fs.promises.readdir(UPDATE_FEED_DIR, { withFileTypes: true });
-  } catch (err) {
-    if (err?.code !== "ENOENT") {
-      console.warn(`ArcRho update folder could not be scanned: ${err?.message || err}`);
-    }
-    return null;
-  }
-
-  let newest = null;
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const match = entry.name.match(UPDATE_INSTALLER_NAME_RE);
-    if (!match) continue;
-    const version = match[1];
-    if (compareVersions(version, app.getVersion()) <= 0) continue;
-    if (!newest || compareVersions(version, newest.version) > 0) {
-      newest = { version, installerPath: path.join(UPDATE_FEED_DIR, entry.name) };
-    }
-  }
-
-  if (!newest) return null;
-  const sha256 = await readInstallerSha256(newest.installerPath);
-  if (!sha256) {
-    console.warn(`ArcRho update installer is missing a SHA-256 checksum: ${newest.installerPath}`);
-    if (reportIssues) {
-      return createUpdateIssue(
-        "missing-checksum",
-        newest.version,
-        newest.installerPath,
-        "folder",
-        "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
-        `Add ${path.basename(newest.installerPath)}.sha256 beside the installer.`
-      );
-    }
-    return null;
-  }
-  return createUpdateInfo(newest.version, newest.installerPath, sha256, "folder");
-}
-
-async function findAvailableUpdate(options = {}) {
-  const manifestUpdate = await readManifestUpdate(options);
-  if (isInstallableUpdate(manifestUpdate)) return manifestUpdate;
-  const folderUpdate = await scanInstallerFolderUpdate(options);
-  if (isInstallableUpdate(folderUpdate)) return folderUpdate;
-  return manifestUpdate || folderUpdate || null;
-}
-
-function calculateFileSha256(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash("sha256");
-    const stream = fs.createReadStream(filePath);
-    stream.on("error", reject);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => resolve(hash.digest("hex").toLowerCase()));
-  });
-}
-
-async function verifyUpdateInstaller(updateInfo) {
-  try {
-    const actual = await calculateFileSha256(updateInfo.installerPath);
-    return actual === String(updateInfo.sha256 || "").toLowerCase();
-  } catch (err) {
-    console.warn(`ArcRho update installer checksum failed: ${err?.message || err}`);
-    return false;
-  }
-}
-
-function showMainWindowMessageBox(options) {
-  if (win && !win.isDestroyed()) {
-    return dialog.showMessageBox(win, options);
-  }
-  return dialog.showMessageBox(options);
-}
-
-async function confirmUpdateShutdown() {
-  if (!win || win.isDestroyed()) return true;
-  try {
-    return !!(await win.webContents.executeJavaScript(
-      "window.__arcrho_confirm_app_shutdown ? window.__arcrho_confirm_app_shutdown() : true"
-    ));
-  } catch {
-    return true;
-  }
-}
-
-function launchUpdateInstaller(installerPath) {
-  const child = spawn(installerPath, [], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: false,
-  });
-  child.unref();
-}
-
-async function promptForUpdateInstall(updateInfo) {
-  if (!updateInfo || !win || win.isDestroyed()) return { status: "unavailable" };
-  const detailLines = [
-    `Current version: ${app.getVersion()}`,
-    `Available version: ${updateInfo.version}`,
-    `Installer: ${updateInfo.installerPath}`,
-  ];
-  if (updateInfo.publishedAt) detailLines.push(`Published: ${updateInfo.publishedAt}`);
-  if (updateInfo.releaseNotes) detailLines.push("", updateInfo.releaseNotes);
-  if (updateInfo.mandatory) detailLines.push("", "This update is marked as mandatory.");
-
-  const response = await showMainWindowMessageBox({
-    type: "info",
-    title: "ArcRho update available",
-    message: `ArcRho ${updateInfo.version} is available.`,
-    detail: detailLines.join("\n"),
-    buttons: ["Update now", "Later"],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-  });
-
-  if (response.response !== 0) return { status: "deferred", version: updateInfo.version };
-  const canShutdown = await confirmUpdateShutdown();
-  if (!canShutdown) return { status: "cancelled", version: updateInfo.version };
-
-  const verified = await verifyUpdateInstaller(updateInfo);
-  if (!verified) {
-    await showMainWindowMessageBox({
-      type: "error",
-      title: "Update could not be verified",
-      message: "ArcRho did not install the update.",
-      detail: "The installer checksum did not match the published SHA-256 value.",
-      buttons: ["OK"],
-      noLink: true,
-    });
-    return { status: "verification-failed", version: updateInfo.version };
-  }
-
-  try {
-    launchUpdateInstaller(updateInfo.installerPath);
-    app.quit();
-    return { status: "launching", version: updateInfo.version };
-  } catch (err) {
-    await showMainWindowMessageBox({
-      type: "error",
-      title: "Update could not be started",
-      message: "ArcRho could not launch the update installer.",
-      detail: String(err?.message || err),
-      buttons: ["OK"],
-      noLink: true,
-    });
-    return { status: "launch-failed", version: updateInfo.version };
-  }
-}
-
-async function checkForUpdate(options = {}) {
-  const showNoUpdate = options.showNoUpdate === true;
-  if (process.platform !== "win32") {
-    if (showNoUpdate) {
-      await showMainWindowMessageBox({
-        type: "info",
-        title: "Update check unavailable",
-        message: "ArcRho update checks are available in the Windows desktop app.",
-        buttons: ["OK"],
-        noLink: true,
-      });
-    }
-    return { status: "unsupported" };
-  }
-  if (!areInstallerUpdateChecksEnabled()) {
-    if (showNoUpdate) {
-      await showMainWindowMessageBox({
-        type: "info",
-        title: "Update check unavailable",
-        message: "ArcRho installer update checks are disabled in development mode.",
-        detail: [
-          "Development launches run from the local source tree instead of an installed package.",
-          "Set ARCRHO_ENABLE_DEV_UPDATE_CHECK=1 before launch to test installer update checks from a dev app.",
-        ].join("\n"),
-        buttons: ["OK"],
-        noLink: true,
-      });
-    }
-    return { status: "development" };
-  }
-
-  let updateInfo = null;
-  try {
-    updateInfo = await withTimeout(
-      findAvailableUpdate({ reportIssues: showNoUpdate }),
-      UPDATE_CHECK_TIMEOUT_MS,
-      "ArcRho update check"
-    );
-  } catch (err) {
-    console.warn(`ArcRho update check skipped: ${err?.message || err}`);
-    if (showNoUpdate) {
-      await showMainWindowMessageBox({
-        type: "info",
-        title: "Update location unavailable",
-        message: "ArcRho could not reach the update location.",
-        detail: [
-          `Update location: ${UPDATE_FEED_DIR}`,
-          String(err?.message || err),
-        ].join("\n"),
-        buttons: ["OK"],
-        noLink: true,
-      });
-    }
-    return { status: "unavailable" };
-  }
-
-  if (updateInfo?.status) {
-    if (showNoUpdate) {
-      await showMainWindowMessageBox({
-        type: updateInfo.status === "missing-checksum" ? "warning" : "info",
-        title: "Update installer is not ready",
-        message: updateInfo.message || "ArcRho found an update, but it cannot be installed yet.",
-        detail: [
-          `Current version: ${app.getVersion()}`,
-          updateInfo.version ? `Available version: ${updateInfo.version}` : "",
-          updateInfo.installerPath ? `Installer: ${updateInfo.installerPath}` : "",
-          updateInfo.detail || "",
-        ].filter(Boolean).join("\n"),
-        buttons: ["OK"],
-        noLink: true,
-      });
-    }
-    return {
-      status: updateInfo.status,
-      version: updateInfo.version || "",
-      installerPath: updateInfo.installerPath || "",
-    };
-  }
-
-  if (!updateInfo) {
-    if (showNoUpdate) {
-      await showMainWindowMessageBox({
-        type: "info",
-        title: "No update available",
-        message: "ArcRho is up to date.",
-        detail: `Current version: ${app.getVersion()}`,
-        buttons: ["OK"],
-        noLink: true,
-      });
-    }
-    return { status: "none" };
-  }
-
-  return promptForUpdateInstall(updateInfo);
-}
-
-async function checkForStartupUpdate() {
-  return checkForUpdate({ showNoUpdate: false });
-}
 
 function getMainWindowPrefsPath() {
   return path.join(getPrefsDir(), MAIN_WINDOW_PREFS_FILE);
@@ -1254,407 +661,6 @@ function closeSplash() {
   }
 }
 
-function httpPost(pathname) {
-  return new Promise((resolve) => {
-    const req = http.request(
-      {
-        method: "POST",
-        host: HOST,
-        port: PORT,
-        path: pathname,
-        timeout: 1500,
-      },
-      () => resolve(true)
-    );
-    req.on("error", () => resolve(false));
-    req.end();
-  });
-}
-
-function getBackendFlagRoots() {
-  const roots = new Set([APP_ROOT]);
-  const bundledServer = getBundledServerPath();
-  if (bundledServer) roots.add(path.dirname(bundledServer));
-  return Array.from(roots);
-}
-
-function clearBackendControlFlags() {
-  for (const root of getBackendFlagRoots()) {
-    for (const flagName of BACKEND_CONTROL_FLAGS) {
-      const flagPath = path.join(root, flagName);
-      try {
-        if (fs.existsSync(flagPath)) fs.unlinkSync(flagPath);
-      } catch {
-        // ignore stale-flag cleanup failures
-      }
-    }
-  }
-}
-
-function isBackendProcAlive(proc) {
-  return !!proc && !proc.killed && proc.exitCode == null;
-}
-
-function getBackendClientDir() {
-  return path.join(app.getPath("userData"), "backend_clients");
-}
-
-function getBackendClientMarkerPath() {
-  return path.join(getBackendClientDir(), `${process.pid}.json`);
-}
-
-function registerBackendClient() {
-  try {
-    const dir = getBackendClientDir();
-    fs.mkdirSync(dir, { recursive: true });
-    backendClientMarkerPath = getBackendClientMarkerPath();
-    fs.writeFileSync(backendClientMarkerPath, JSON.stringify({
-      pid: process.pid,
-      mode: APP_MODE,
-      port: PORT,
-      started_at: new Date().toISOString(),
-    }, null, 2), "utf8");
-  } catch {
-    backendClientMarkerPath = "";
-  }
-}
-
-function unregisterBackendClient() {
-  if (!backendClientMarkerPath) return;
-  try {
-    if (fs.existsSync(backendClientMarkerPath)) fs.unlinkSync(backendClientMarkerPath);
-  } catch {
-    // Stale markers are cleaned up by the next process.
-  }
-  backendClientMarkerPath = "";
-}
-
-function isProcessAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  if (pid === process.pid) return true;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function getOtherBackendClientCount() {
-  let count = 0;
-  try {
-    const dir = getBackendClientDir();
-    if (!fs.existsSync(dir)) return 0;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-      const filePath = path.join(dir, entry.name);
-      let pid = 0;
-      try {
-        const raw = fs.readFileSync(filePath, "utf8");
-        pid = Number(JSON.parse(raw)?.pid || 0);
-      } catch {
-        pid = Number(path.basename(entry.name, ".json")) || 0;
-      }
-      if (!isProcessAlive(pid)) {
-        try { fs.unlinkSync(filePath); } catch {}
-        continue;
-      }
-      if (pid !== process.pid) count += 1;
-    }
-  } catch {
-    return 0;
-  }
-  return count;
-}
-
-async function waitForProcExit(proc, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (isBackendProcAlive(proc) && Date.now() < deadline) {
-    await sleep(120);
-  }
-  return !isBackendProcAlive(proc);
-}
-
-function forceKillBackendProc(proc) {
-  if (!proc || !proc.pid || !isBackendProcAlive(proc)) return;
-  if (process.platform === "win32") {
-    spawn("taskkill", ["/PID", String(proc.pid), "/T", "/F"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    return;
-  }
-  proc.kill("SIGTERM");
-}
-
-function execFileAsync(file, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    execFile(file, args, options, (error, stdout, stderr) => {
-      if (error) {
-        error.stdout = stdout;
-        error.stderr = stderr;
-        reject(error);
-        return;
-      }
-      resolve({ stdout, stderr });
-    });
-  });
-}
-
-function requestBackendHealth(timeoutMs = 1000) {
-  return new Promise((resolve, reject) => {
-    const req = http.get(BACKEND_HEALTH_URL, (res) => {
-      let body = "";
-      res.setEncoding("utf8");
-      res.on("data", (chunk) => {
-        body += chunk;
-        if (body.length > 4096) req.destroy(new Error("health response too large"));
-      });
-      res.on("end", () => {
-        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`health status ${res.statusCode || "unknown"}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(body || "{}"));
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-    req.setTimeout(timeoutMs, () => {
-      req.destroy(new Error("timeout"));
-    });
-    req.on("error", reject);
-  });
-}
-
-async function getBackendPortListenerPids() {
-  if (process.platform !== "win32") return [];
-  try {
-    const { stdout } = await execFileAsync("netstat.exe", ["-ano", "-p", "tcp"], { windowsHide: true });
-    const pids = new Set();
-    for (const line of String(stdout || "").split(/\r?\n/)) {
-      if (!line.includes(`:${PORT}`) || !/\bLISTENING\b/i.test(line)) continue;
-      const parts = line.trim().split(/\s+/);
-      const pid = Number(parts[parts.length - 1]);
-      if (Number.isInteger(pid) && pid > 0) pids.add(pid);
-    }
-    return Array.from(pids);
-  } catch {
-    return [];
-  }
-}
-
-function isCompatibleBackendHealth(health) {
-  return isCompatibleBackendHealthResponse(health, {
-    appMode: APP_MODE,
-    backendToken: BACKEND_TOKEN,
-    appRoot: APP_ROOT,
-    backendArtifactId,
-    allowProjectRootFallback: !app.isPackaged,
-  });
-}
-
-async function ensureBackendArtifactId() {
-  if (!app.isPackaged) return "";
-  if (backendArtifactId) return backendArtifactId;
-  const bundledServer = getBundledServerPath();
-  if (!bundledServer || !fs.existsSync(bundledServer)) {
-    throw new Error("Bundled app server executable is missing.");
-  }
-  if (!backendArtifactIdPromise) {
-    backendArtifactIdPromise = backendArtifactIdForBundle(bundledServer)
-      .then((artifactId) => {
-        backendArtifactId = artifactId;
-        return artifactId;
-      })
-      .catch((error) => {
-        backendArtifactIdPromise = null;
-        throw error;
-      });
-  }
-  return backendArtifactIdPromise;
-}
-
-async function stopMismatchedBackendListener() {
-  let health = null;
-  try {
-    health = await requestBackendHealth(700);
-  } catch {}
-  if (isCompatibleBackendHealth(health)) return;
-  const pids = await getBackendPortListenerPids();
-  for (const pid of pids) {
-    if (serverProc && pid === serverProc.pid) continue;
-    try {
-      await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
-    } catch {}
-  }
-  if (pids.length) await sleep(700);
-}
-
-function startBackend() {
-  const env = { ...process.env };
-  env.TRI_DATA_DIR = env.TRI_DATA_DIR || APP_ROOT;
-  delete env.ARCODE_BACKEND_ARTIFACT_ID;
-  delete env.ARCRHO_BACKEND_ARTIFACT_ID;
-  if (APP_MODE === "arcode") {
-    env.ARCODE_DATA_DIR = env.ARCODE_DATA_DIR || path.join(os.homedir(), "Documents", "Arcode", "scripts");
-    env.ARCODE_BACKEND_TOKEN = BACKEND_TOKEN;
-    if (backendArtifactId) env.ARCODE_BACKEND_ARTIFACT_ID = backendArtifactId;
-    env.ARCRHO_APP_MODE = "arcode";
-  } else {
-    env.ARCRHO_WORKFLOW_DIR =
-      env.ARCRHO_WORKFLOW_DIR ||
-      path.join(os.homedir(), "Documents", "ArcRho", "workflows");
-  }
-  env.ARCRHO_BACKEND_TOKEN = BACKEND_TOKEN;
-  if (backendArtifactId) env.ARCRHO_BACKEND_ARTIFACT_ID = backendArtifactId;
-  serverSpawnError = null;
-  backendOwned = true;
-
-  const bundledServer = getBundledServerPath();
-
-  if (bundledServer && fs.existsSync(bundledServer)) {
-    // Use bundled server exe
-    const args = ["--host", HOST, "--port", String(PORT)];
-    closeBackendLogStream();
-    serverLogStream = createBackendLogStream();
-    serverProc = spawn(bundledServer, args, {
-      cwd: path.dirname(bundledServer),
-      env,
-      stdio: serverLogStream ? ["ignore", "pipe", "pipe"] : "ignore",
-      windowsHide: true,
-    });
-    attachBackendLogPipes(serverProc);
-    serverProc.once("exit", closeBackendLogStream);
-  } else {
-    // Development mode: use Python
-    const appShell = path.join(APP_ROOT, "app_shell.py");
-    const cmd = [appShell, "--host", HOST, "--port", String(PORT)];
-    const args = ["-u", cmd[0], ...cmd.slice(1)];
-    const backendConsoleMode = String(env.ARCRHO_BACKEND_CONSOLE || "").trim().toLowerCase();
-    const backendStdio = backendConsoleMode === "same" ? "inherit" : "ignore";
-    serverProc = spawn(PYTHON_EXE, args, {
-      cwd: APP_ROOT,
-      env,
-      stdio: backendStdio,
-      windowsHide: backendConsoleMode !== "same",
-    });
-  }
-
-  serverProc.once("error", (err) => {
-    serverSpawnError = err;
-  });
-}
-
-async function waitForServer(timeoutMs = BACKEND_STARTUP_TIMEOUT_MS) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (serverSpawnError) {
-      const msg = String(serverSpawnError?.message || serverSpawnError);
-      throw new Error(`App server spawn failed: ${msg}`);
-    }
-    if (serverProc && serverProc.exitCode != null) {
-      const signal = serverProc.signalCode || "none";
-      const logHint = lastServerLogPath ? ` See app-server log: ${lastServerLogPath}` : "";
-      throw new Error(
-        `App server process exited before readiness (code=${serverProc.exitCode}, signal=${signal}).${logHint}`
-      );
-    }
-    try {
-      const payload = await requestBackendHealth(1500);
-      if (!isCompatibleBackendHealth(payload)) {
-        throw new Error("health response is not compatible with this ArcRho frontend");
-      }
-      return;
-    } catch {
-      await sleep(400);
-    }
-  }
-  throw new Error("Server did not start in time");
-}
-
-async function startBackendWithRetry() {
-  await ensureBackendArtifactId();
-  let lastErr = null;
-  for (let attempt = 1; attempt <= BACKEND_STARTUP_ATTEMPTS; attempt++) {
-    clearBackendControlFlags();
-    try {
-      const existing = await requestBackendHealth(700);
-      if (isCompatibleBackendHealth(existing)) {
-        backendOwned = false;
-        serverProc = null;
-        appendElectronLog(`Reusing existing ArcRho backend on ${HOST}:${PORT}.`);
-        return;
-      }
-    } catch {
-      // No compatible backend is listening yet; start one below.
-    }
-    await stopMismatchedBackendListener();
-    startBackend();
-    try {
-      await waitForServer(BACKEND_STARTUP_TIMEOUT_MS);
-      return;
-    } catch (err) {
-      lastErr = err;
-      console.error(`App server startup attempt ${attempt}/${BACKEND_STARTUP_ATTEMPTS} failed:`, err);
-      await terminateBackend({ force: true });
-      if (attempt < BACKEND_STARTUP_ATTEMPTS) {
-        await sleep(700);
-      }
-    }
-  }
-  throw lastErr || new Error("Server did not start in time");
-}
-
-async function terminateBackend(options = {}) {
-  const { force = false, gracefulTimeoutMs = 1600 } = options;
-  const proc = serverProc;
-  if (!proc) return;
-
-  if (force) {
-    forceKillBackendProc(proc);
-    await waitForProcExit(proc, 900);
-    if (serverProc === proc) serverProc = null;
-    backendOwned = false;
-    closeBackendLogStream();
-    return;
-  }
-
-  const exitedGracefully = await waitForProcExit(proc, gracefulTimeoutMs);
-  if (!exitedGracefully) {
-    forceKillBackendProc(proc);
-    await waitForProcExit(proc, 900);
-  }
-  if (serverProc === proc) serverProc = null;
-  backendOwned = false;
-  closeBackendLogStream();
-}
-
-async function requestBackendShutdown() {
-  if (!backendOwned || !serverProc) {
-    return;
-  }
-  const otherClients = getOtherBackendClientCount();
-  if (otherClients > 0) {
-    appendElectronLog(`Leaving shared backend running for ${otherClients} other frontend client(s).`);
-    return;
-  }
-  if (backendShutdownPromise) {
-    await backendShutdownPromise;
-    return;
-  }
-  backendShutdownPromise = (async () => {
-    await httpPost("/app/shutdown");
-    await terminateBackend();
-  })();
-  try {
-    await backendShutdownPromise;
-  } finally {
-    backendShutdownPromise = null;
-  }
-}
 
 function wireAppWindowInput(targetWindow) {
   if (!targetWindow || targetWindow.isDestroyed()) return;
@@ -1777,7 +783,7 @@ function buildArcodeUrl(options = {}) {
   const openPath = String(options.path || options.openPath || "").trim();
   if (openPath) params.set("path", openPath);
   if (options.fresh) params.set("fresh", "1");
-  return `http://${HOST}:${PORT}/ui/arcode/main.html?${params.toString()}`;
+  return `http://${HOST}:${getBackendPort()}/ui/arcode/main.html?${params.toString()}`;
 }
 
 function buildArcRhoUrl(options = {}) {
@@ -1785,7 +791,7 @@ function buildArcRhoUrl(options = {}) {
   params.set("v", String(options.uiVersion || UI_VERSION));
   const theme = loadColorThemePreference();
   if (theme) params.set("theme", theme);
-  return `http://${HOST}:${PORT}/ui/?${params.toString()}`;
+  return `http://${HOST}:${getBackendPort()}/ui/?${params.toString()}`;
 }
 
 function createWindow() {
@@ -2926,6 +1932,7 @@ app.whenReady().then(async () => {
       updateSplashProgress(30, "Waiting for server...");
       appendElectronLog("Starting bundled/backend app server.");
       await startBackendWithRetry();
+      registerBackendClient();
 
       updateSplashProgress(60, "Server connected");
       appendElectronLog("App server connected.");
@@ -2980,4 +1987,5 @@ app.on("before-quit", async () => {
   arcBotHost?.stop();
   await requestBackendShutdown();
   unregisterBackendClient();
+  cleanupBackendEndpoint();
 });

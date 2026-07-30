@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "runtime",
+  "audience": "user",
+  "summary": "ArcRho now starts on an automatically chosen free local port when its default port is held by another user session on the same machine.",
+  "details": [
+    "Startup previously failed with 'App server process exited before readiness (code=3)' when another Windows user's ArcRho session already occupied local port 28765.",
+    "The desktop app publishes its effective local endpoint to a per-user AppData discovery file, and the Python API and standalone Arcode macro bridge resolve that file automatically when no explicit URL override is set."
+  ]
+}

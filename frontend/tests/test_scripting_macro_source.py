@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app_server.services import scripting_service
+from app_server.services import scripting_macro_service
 
 
 class _FakeDfm:
@@ -34,10 +34,10 @@ class MacroSourceExecutionTests(unittest.TestCase):
 
         source = "import threading\nprint(f'runner={threading.get_ident()}')"
         with (
-            patch.object(scripting_service, "_initialize_macro_com_apartment", side_effect=initialize),
-            patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+            patch.object(scripting_macro_service, "_initialize_macro_com_apartment", side_effect=initialize),
+            patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),
         ):
-            result = scripting_service.run_macro_source(source, "com_macro.py", {})
+            result = scripting_macro_service.run_macro_source(source, "com_macro.py", {})
 
         runner_thread = int(result["stdout"].strip().split("=", 1)[1])
         self.assertTrue(result["success"], result)
@@ -61,8 +61,8 @@ def run_macro(active_dfm, active_context=None):
     print(f"loaded {_REVIEW_QUARTER}")
     return {'message': 'apply_growth_adjustments loaded in source runner'}
 """
-        with patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()):
-            result = scripting_service.run_macro_source(
+        with patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()):
+            result = scripting_macro_service.run_macro_source(
                 smoke_source,
                 macro_path.name,
                 {},
@@ -81,10 +81,10 @@ def run_macro(active_dfm, active_context):
     return {'message': 'updated live DFM'}
 """
         with (
-            patch.object(scripting_service, "_build_active_dfm", return_value=dfm),
-            patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+            patch.object(scripting_macro_service, "_build_active_dfm", return_value=dfm),
+            patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),
         ):
-            result = scripting_service.run_macro_source(
+            result = scripting_macro_service.run_macro_source(
                 source,
                 "feature.py",
                 {"activeJson": {"details tab": {}}, "label": "live"},
@@ -102,8 +102,8 @@ def run_macro(active_dfm, active_context):
 def main():
     return {'payload': {'from_main': True}}
 """
-        with patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()):
-            result = scripting_service.run_macro_source(source, "scratch.py", {})
+        with patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()):
+            result = scripting_macro_service.run_macro_source(source, "scratch.py", {})
 
         self.assertTrue(result["success"])
         self.assertEqual(result["payload"], {"from_main": True})
@@ -111,10 +111,10 @@ def main():
     def test_run_macro_source_does_not_emit_payload_for_no_op_script(self) -> None:
         dfm = _FakeDfm()
         with (
-            patch.object(scripting_service, "_build_active_dfm", return_value=dfm),
-            patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+            patch.object(scripting_macro_service, "_build_active_dfm", return_value=dfm),
+            patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),
         ):
-            result = scripting_service.run_macro_source(
+            result = scripting_macro_service.run_macro_source(
                 "print('inspection only')",
                 "inspect_only.py",
                 {"activeJson": {"details tab": {}}},
@@ -126,10 +126,10 @@ def main():
 
     def test_run_macro_source_times_out_runaway_python(self) -> None:
         with (
-            patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()),
-            patch.object(scripting_service, "_MACRO_TIMEOUT_SEC", 0.05),
+            patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+            patch.object(scripting_macro_service, "_MACRO_TIMEOUT_SEC", 0.05),
         ):
-            result = scripting_service.run_macro_source("while True:\n    pass", "runaway.py", {})
+            result = scripting_macro_service.run_macro_source("while True:\n    pass", "runaway.py", {})
 
         self.assertFalse(result["success"])
         self.assertIn("timeout", result["message"])
@@ -142,10 +142,10 @@ for _ in range(4):
     time.sleep(0.03)
 """
         with (
-            patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()),
-            patch.object(scripting_service, "_MACRO_TIMEOUT_SEC", 0.05),
+            patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+            patch.object(scripting_macro_service, "_MACRO_TIMEOUT_SEC", 0.05),
         ):
-            result = scripting_service.run_macro_source(source, "active_import.py", {})
+            result = scripting_macro_service.run_macro_source(source, "active_import.py", {})
 
         self.assertTrue(result["success"], result)
 
@@ -168,8 +168,8 @@ except ValueError:
 print(f"suspended={trace_inside is None}")
 print(f"restored={sys.gettrace() is trace_before}")
 """
-        with patch.object(scripting_service, "_MacroTaskDesignerProxy", return_value=Mock()):
-            result = scripting_service.run_macro_source(source, "trusted_call.py", {})
+        with patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()):
+            result = scripting_macro_service.run_macro_source(source, "trusted_call.py", {})
 
         self.assertTrue(result["success"], result)
         self.assertIn("suspended=True", result["stdout"])
@@ -177,7 +177,7 @@ print(f"restored={sys.gettrace() is trace_before}")
 
     def test_cooperative_macro_cancel_checker_raises_when_signalled(self) -> None:
         cancel_event = threading.Event()
-        check_macro_cancelled = scripting_service._make_cooperative_cancel_checker(cancel_event)
+        check_macro_cancelled = scripting_macro_service._make_cooperative_cancel_checker(cancel_event)
 
         check_macro_cancelled()
         cancel_event.set()
@@ -187,12 +187,12 @@ print(f"restored={sys.gettrace() is trace_before}")
 
     def test_registered_macro_delegates_to_canonical_source_runner(self) -> None:
         with (
-            patch.object(scripting_service, "_safe_macro_path", return_value=r"E:\macros\registered.py"),
-            patch.object(scripting_service.os.path, "isfile", return_value=True),
+            patch.object(scripting_macro_service, "_safe_macro_path", return_value=r"E:\macros\registered.py"),
+            patch.object(scripting_macro_service.os.path, "isfile", return_value=True),
             patch.object(Path, "read_text", return_value="def main(): pass"),
-            patch.object(scripting_service, "run_macro_source", return_value={"success": True}) as runner,
+            patch.object(scripting_macro_service, "run_macro_source", return_value={"success": True}) as runner,
         ):
-            result = scripting_service.run_macro("registered.py", {"activeJson": {}})
+            result = scripting_macro_service.run_macro("registered.py", {"activeJson": {}})
 
         self.assertTrue(result["success"])
         runner.assert_called_once_with(
@@ -217,7 +217,7 @@ print(f"restored={sys.gettrace() is trace_before}")
         with (
             patch("app_server.services.ui_automation_service.submit_command", side_effect=[capture, review]) as submit,
             patch.object(
-                scripting_service,
+                scripting_macro_service,
                 "run_macro_source",
                 return_value={
                     "success": True,
@@ -227,7 +227,7 @@ print(f"restored={sys.gettrace() is trace_before}")
                 },
             ) as execute,
         ):
-            result = scripting_service.run_macro_source_in_arcrho(
+            result = scripting_macro_service.run_macro_source_in_arcrho(
                 "def run_macro(active_dfm, active_context): pass",
                 "feature.py",
                 r"E:\work\feature.py",
@@ -254,12 +254,12 @@ print(f"restored={sys.gettrace() is trace_before}")
         with (
             patch("app_server.services.ui_automation_service.submit_command", side_effect=[capture, review]),
             patch.object(
-                scripting_service,
+                scripting_macro_service,
                 "run_macro_source",
                 return_value={"success": True, "message": "Ran ui_only.py", "stdout": "shown\n"},
             ) as execute,
         ):
-            result = scripting_service.run_macro_source_in_arcrho("print('shown')", "ui_only.py")
+            result = scripting_macro_service.run_macro_source_in_arcrho("print('shown')", "ui_only.py")
 
         self.assertTrue(result["success"])
         self.assertFalse(result["applied"])

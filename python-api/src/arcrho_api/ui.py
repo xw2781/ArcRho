@@ -100,13 +100,45 @@ class ArcRhoWindowProperties:
         }
 
 
+def _discovered_app_url() -> str:
+    """Return the ArcRho desktop app URL published in the per-user endpoint file.
+
+    The Electron host writes ``%APPDATA%\\ArcRho\\app_endpoint.json`` after its app
+    server is ready. When the default local port is held by another user session on
+    the same machine, the app falls back to a free port and this file is the only
+    record of the actual endpoint.
+    """
+    appdata = str(os.environ.get("APPDATA") or "").strip()
+    if not appdata:
+        appdata = os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
+    endpoint_path = os.path.join(appdata, "ArcRho", "app_endpoint.json")
+    try:
+        with open(endpoint_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    if str(payload.get("app") or "").strip().lower() != "arcrho":
+        return ""
+    url = str(payload.get("url") or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return ""
+    return url.rstrip("/")
+
+
 def _base_url(app_url: str | None = None) -> str:
     configured = str(app_url or os.environ.get("ARCRHO_APP_URL") or "").strip()
     if configured:
         return configured.rstrip("/")
-    host = str(os.environ.get("ARCRHO_HOST") or "127.0.0.1").strip() or "127.0.0.1"
-    port = str(os.environ.get("ARCRHO_PORT") or "28765").strip() or "28765"
-    return f"http://{host}:{port}"
+    host = str(os.environ.get("ARCRHO_HOST") or "").strip()
+    port = str(os.environ.get("ARCRHO_PORT") or "").strip()
+    if host or port:
+        return f"http://{host or '127.0.0.1'}:{port or '28765'}"
+    discovered = _discovered_app_url()
+    if discovered:
+        return discovered
+    return "http://127.0.0.1:28765"
 
 
 def _request_json(

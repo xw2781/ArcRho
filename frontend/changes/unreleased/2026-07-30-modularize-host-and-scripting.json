@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Modularized the Electron host main process and the app-server scripting service into focused modules with no behavior change.",
+  "details": [
+    "electron/main.js now delegates backend lifecycle to electron/backend_lifecycle.js, installer update checks to electron/update_checker.js, and shared logging/utility helpers to electron/host_support.js.",
+    "app_server/services/scripting_service.py now owns only session/script execution; the macro engine, notebook persistence, and scripting preferences moved to scripting_macro_service.py, scripting_notebook_service.py, and scripting_preferences_service.py."
+  ]
+}

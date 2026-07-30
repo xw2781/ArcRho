@@ -549,5 +549,68 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertIn("[2.0]", saved_text)
 
 
+class AppUrlResolutionTests(unittest.TestCase):
+    """Cover arcrho_api.ui._base_url discovery of the desktop app endpoint."""
+
+    def setUp(self) -> None:
+        self._tempdir = tempfile.TemporaryDirectory(dir=str(Path(__file__).parent))
+        self.appdata = Path(self._tempdir.name)
+        self.addCleanup(self._tempdir.cleanup)
+
+    def _write_endpoint(self, payload) -> None:
+        endpoint_dir = self.appdata / "ArcRho"
+        endpoint_dir.mkdir(parents=True, exist_ok=True)
+        (endpoint_dir / "app_endpoint.json").write_text(
+            payload if isinstance(payload, str) else json.dumps(payload),
+            encoding="utf-8",
+        )
+
+    def _env(self, **extra: str) -> dict[str, str]:
+        return {"APPDATA": str(self.appdata), **extra}
+
+    def test_explicit_app_url_wins(self) -> None:
+        from arcrho_api import ui as ui_module
+
+        self._write_endpoint({"app": "arcrho", "url": "http://127.0.0.1:29123"})
+        with patch.dict(os.environ, self._env(), clear=True):
+            self.assertEqual(ui_module._base_url("http://127.0.0.1:29001/"), "http://127.0.0.1:29001")
+
+    def test_env_overrides_win_over_discovery_file(self) -> None:
+        from arcrho_api import ui as ui_module
+
+        self._write_endpoint({"app": "arcrho", "url": "http://127.0.0.1:29123"})
+        with patch.dict(os.environ, self._env(ARCRHO_APP_URL="http://127.0.0.1:29002/"), clear=True):
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:29002")
+        with patch.dict(os.environ, self._env(ARCRHO_PORT="29003"), clear=True):
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:29003")
+        with patch.dict(os.environ, self._env(ARCRHO_HOST="localhost"), clear=True):
+            self.assertEqual(ui_module._base_url(), "http://localhost:28765")
+
+    def test_discovery_file_used_when_no_overrides(self) -> None:
+        from arcrho_api import ui as ui_module
+
+        self._write_endpoint({"app": "arcrho", "url": "http://127.0.0.1:29123/"})
+        with patch.dict(os.environ, self._env(), clear=True):
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:29123")
+
+    def test_invalid_or_foreign_discovery_file_falls_back_to_default(self) -> None:
+        from arcrho_api import ui as ui_module
+
+        with patch.dict(os.environ, self._env(), clear=True):
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:28765")
+
+        self._write_endpoint({"app": "arcode", "url": "http://127.0.0.1:29124"})
+        with patch.dict(os.environ, self._env(), clear=True):
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:28765")
+
+        self._write_endpoint({"app": "arcrho", "url": "file://not-http"})
+        with patch.dict(os.environ, self._env(), clear=True):
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:28765")
+
+        self._write_endpoint("{not valid json")
+        with patch.dict(os.environ, self._env(), clear=True):
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:28765")
+
+
 if __name__ == "__main__":
     unittest.main()
