@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The Import Settings window now resizes from its top-left corner and its dropdowns no longer scroll sideways.",
+  "details": [
+    "Dragging the bottom-right corner used to widen the window on both sides at once; the left edge now stays put and the window grows toward the pointer.",
+    "The grip glyph in the bottom-right corner of the window was removed.",
+    "Dropdown lists no longer show a horizontal scrollbar: long table names are shortened with an ellipsis instead."
+  ]
+}

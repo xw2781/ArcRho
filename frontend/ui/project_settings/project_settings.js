@@ -11,11 +11,11 @@
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260223";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260315";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260730sqlsrc6";
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260722a";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260716resize2";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260721dpr12";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260729sd13";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260730sqlsrc6";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -23,15 +23,15 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260730split2";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260730sqlsrc6";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260730split2";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260730split2";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260730split2";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260730split2";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260730sqlsrc6";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260730sqlsrc6";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260730sqlsrc6";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260730sqlsrc6";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260716psprefs1";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -56,7 +56,6 @@ const folderContextMenu = document.getElementById("folderContextMenu");
 const treeContextMenu = document.getElementById("treeContextMenu");
 const summaryTablePathInput = document.getElementById("summaryTablePathInput");
 const summaryTablePathReloadBtn = document.getElementById("summaryTablePathReloadBtn");
-const summaryTablePathBrowseBtn = document.getElementById("summaryTablePathBrowseBtn");
 const summaryOriginStartInput = document.getElementById("summaryOriginStartInput");
 const summaryOriginEndInput = document.getElementById("summaryOriginEndInput");
 const summaryDevelopmentEndInput = document.getElementById("summaryDevelopmentEndInput");
@@ -383,6 +382,12 @@ const sourceDataFeature = createSourceDataFeature({
   normalizeMonth: normalizeBoundaryYmCanonical,
   formatMonth: formatBoundaryYmDisplay,
   getHostApi: () => window.ADAHost,
+  onProfileSave: (...args) => saveImportSettings(...args),
+  onListTables: (...args) => listSourceTables(...args),
+  onListConnections: () => listSourceConnections(),
+  onForgetConnection: (...args) => forgetSourceConnection(...args),
+  onCsvPathPick: (...args) => pickTablePathFromHost(...args),
+  onImportData: (...args) => importSourceData(...args),
   // Admin-editable defaults stay owned by the shared table preference JSON.
   getConfiguredColumnWidths: () => {
     const configured = getConfiguredTableColumnWidthMap("summaryColumnsTable");
@@ -641,8 +646,8 @@ function showProjectDetails(project) {
   bindSummaryTablePathEditor(project);
   generalSettingsFeature.bindEditor(project);
 
-  // Load table summary from current table path
-  loadTableSummary(project.tablePath, project.name);
+  // Load the summary of the table this project has imported.
+  loadTableSummary(project.name);
   datasetTypesFeature?.loadDatasetTypes(project.name);
   reservingClassTypesFeature?.loadReservingClassTypes(project.name);
   dataProcessingRulesFeature?.loadRules(project.name);
@@ -658,7 +663,8 @@ function getDirFromPath(filePath) {
   return s.slice(0, slash);
 }
 
-async function pickTablePathFromHost(startDir = "") {
+/** Open the desktop file picker, starting beside the currently entered path. */
+async function pickTablePathFromHost(currentPath = "") {
   const hostApi = window.ADAHost
     || window.parent?.ADAHost
     || window.top?.ADAHost;
@@ -666,6 +672,7 @@ async function pickTablePathFromHost(startDir = "") {
     setStatus("Browse is available in the desktop app only.");
     return "";
   }
+  const startDir = getDirFromPath(currentPath) || getDirFromPath(selectedProject?.tablePath);
   try {
     const selected = await hostApi.pickOpenTableFile(startDir || "");
     return String(selected || "");
@@ -706,99 +713,170 @@ async function saveTablePathField(project, nextTablePath) {
   treeViewFeature.render();
 }
 
+/**
+ * Bind the Source Data header to a project.
+ *
+ * The hidden path input stays the coordinator's record of the current CSV
+ * selection: the folder actions read it and the Import Settings panel commits
+ * through it. Reload re-imports from whichever source the project is set to.
+ */
 function bindSummaryTablePathEditor(project) {
-  if (!summaryTablePathInput || !summaryTablePathBrowseBtn || !summaryTablePathReloadBtn) return;
+  if (!summaryTablePathInput || !summaryTablePathReloadBtn) return;
 
   summaryTablePathInput.value = String(project.tablePath || "");
-  summaryTablePathInput.disabled = false;
   summaryTablePathReloadBtn.disabled = false;
-  summaryTablePathBrowseBtn.disabled = false;
   sourceDataFeature.syncPathDisplay(summaryTablePathInput.value);
 
-  let committing = false;
+  let reloading = false;
   const isCurrentProject = () => !!selectedProject && selectedProject.name === project.name;
-  const setControlsDisabled = (disabled) => {
-    summaryTablePathInput.disabled = disabled;
-    summaryTablePathReloadBtn.disabled = disabled;
-    summaryTablePathBrowseBtn.disabled = disabled;
-  };
-  const refreshFromSource = async ({ forceRefresh = false } = {}) => {
-    return loadTableSummary(project.tablePath, project.name, {
-      forceRefresh,
-      forceFieldMappingReload: true,
-      forceReservingClassTypesReload: true,
-    });
-  };
-  const commitCandidate = async (candidate) => {
-    if (committing) return;
-    if (!isCurrentProject()) return;
-
-    const latest = String(project.tablePath || "");
-    const nextValue = String(candidate || "").trim();
-    if (nextValue === latest) return;
-
-    committing = true;
-    let savedTablePath = false;
-    setControlsDisabled(true);
-    try {
-      await saveTablePathField(project, nextValue);
-      savedTablePath = true;
-      summaryTablePathInput.value = String(project.tablePath || "");
-      sourceDataFeature.syncPathDisplay(summaryTablePathInput.value);
-      setStatus("Updated Table Path.");
-      const refreshed = await refreshFromSource({ forceRefresh: true });
-      if (!refreshed) throw new Error("Unable to reload table summary.");
-    } catch (err) {
-      summaryTablePathInput.value = savedTablePath ? String(project.tablePath || "") : latest;
-      sourceDataFeature.syncPathDisplay(summaryTablePathInput.value);
-      alert(`Failed to update Table Path: ${err.message}`);
-      setStatus(`Failed to update Table Path: ${err.message}`);
-    } finally {
-      if (isCurrentProject()) setControlsDisabled(false);
-      committing = false;
-    }
-  };
-
-  summaryTablePathInput.onkeydown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      summaryTablePathInput.blur();
-    }
-  };
-
-  summaryTablePathInput.onblur = async () => {
-    await commitCandidate(summaryTablePathInput.value);
-  };
 
   summaryTablePathReloadBtn.onclick = async () => {
-    if (!isCurrentProject()) return;
-    if (committing) return;
-    committing = true;
-    setControlsDisabled(true);
+    if (!isCurrentProject() || reloading) return;
+    reloading = true;
+    summaryTablePathReloadBtn.disabled = true;
     try {
       setStatus("Reloading table summary...");
-      const refreshed = await refreshFromSource({ forceRefresh: true });
+      const refreshed = await loadTableSummary(project.name, {
+        forceRefresh: true,
+        forceFieldMappingReload: true,
+        forceReservingClassTypesReload: true,
+      });
       if (!refreshed) throw new Error("Unable to reload table summary.");
       setStatus("Reloaded table summary.");
     } catch (err) {
       alert(`Failed to reload table summary: ${err.message}`);
       setStatus(`Failed to reload table summary: ${err.message}`);
     } finally {
-      if (isCurrentProject()) setControlsDisabled(false);
-      committing = false;
+      if (isCurrentProject()) summaryTablePathReloadBtn.disabled = false;
+      reloading = false;
     }
   };
+}
 
-  summaryTablePathBrowseBtn.onclick = async () => {
-    if (!isCurrentProject()) return;
-    if (committing) return;
+// ============ Import Source (CSV file / SQL Server) ============
+/** Load the project's import-source record and hand it to the Source Data tab. */
+async function loadSourceTableState(projectName) {
+  const name = String(projectName || "").trim();
+  if (!name) return sourceDataFeature.applySourceState(null);
+  try {
+    const res = await fetch(`/source_table?project_name=${encodeURIComponent(name)}`);
+    if (!res.ok) throw new Error(await readResponseErrorDetail(res));
+    return sourceDataFeature.applySourceState(await res.json());
+  } catch (err) {
+    setStatus(`Could not read the import source: ${err.message}`);
+    return sourceDataFeature.applySourceState(null);
+  }
+}
 
-    const startDir = getDirFromPath(summaryTablePathInput.value) || getDirFromPath(project.tablePath);
-    const pickedPath = await pickTablePathFromHost(startDir);
-    if (!pickedPath) return;
-    summaryTablePathInput.value = pickedPath;
-    await commitCandidate(pickedPath);
-  };
+/**
+ * Persist the import settings chosen in the panel.
+ *
+ * The SQL Server profile lives in the project's own import record, while a CSV
+ * selection stays in the project-map `Table Path` column that field mapping
+ * already owns, so each value keeps its existing single writer.
+ */
+async function saveImportSettings(sourceType, mssql, csvPath) {
+  const project = selectedProject;
+  const name = String(project?.name || "").trim();
+  if (!name) return false;
+  try {
+    if (sourceType === "csv" && String(csvPath || "").trim() !== String(project.tablePath || "").trim()) {
+      await saveTablePathField(project, csvPath);
+    }
+    const res = await fetch("/source_table/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_name: name, source_type: sourceType, mssql }),
+    });
+    if (!res.ok) throw new Error(await readResponseErrorDetail(res));
+    sourceDataFeature.applySourceState(await res.json());
+    return true;
+  } catch (err) {
+    sourceDataFeature.setSourceStatus(err.message || "Could not save the import settings.", "error");
+    setStatus(`Failed to save the import settings: ${err.message}`);
+    return false;
+  }
+}
+
+/** Tables and views available in the database the panel is pointed at. */
+async function listSourceTables(profile) {
+  try {
+    const res = await fetch("/source_table/tables", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    });
+    if (!res.ok) return { ok: false, error: await readResponseErrorDetail(res), tables: [] };
+    return await res.json();
+  } catch (err) {
+    return { ok: false, error: err.message || "Could not reach the app server.", tables: [] };
+  }
+}
+
+/** Server-shared list of previously used SQL Server server/database pairs. */
+async function listSourceConnections() {
+  try {
+    const res = await fetch("/source_table/connections");
+    if (!res.ok) throw new Error(await readResponseErrorDetail(res));
+    return await res.json();
+  } catch (err) {
+    setStatus(`Could not read saved SQL Server connections: ${err.message}`);
+    return { connections: [] };
+  }
+}
+
+/** Drop one saved pair, or every pair for a server when no database is given. */
+async function forgetSourceConnection(server, database) {
+  try {
+    const res = await fetch("/source_table/connections/forget", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ server, database: database || null }),
+    });
+    if (!res.ok) throw new Error(await readResponseErrorDetail(res));
+    return await res.json();
+  } catch (err) {
+    sourceDataFeature.setSourceStatus(
+      err.message || "Could not remove the saved connection.",
+      "error",
+    );
+    return listSourceConnections();
+  }
+}
+
+/**
+ * Rebuild the project-owned master table from the saved import settings, then
+ * refresh everything derived from it.
+ */
+async function importSourceData(sourceType) {
+  const name = String(selectedProject?.name || "").trim();
+  if (!name) return { ok: false, error: "Select a project first." };
+
+  const isSql = sourceType === "mssql";
+  setStatus(`Importing the source table for "${name}"...`);
+  showProjectOperationProgress(isSql ? "Importing table from SQL Server..." : "Importing CSV file...");
+  try {
+    const res = await fetch(isSql ? "/source_table/import" : "/source_table/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(isSql ? { project_name: name } : { project_name: name, force: true }),
+    });
+    if (!res.ok) return { ok: false, error: await readResponseErrorDetail(res) };
+    const out = await res.json();
+    sourceDataFeature.applySourceState(out);
+    const rowCount = Number(out?.last_import?.row_count || 0);
+    setStatus(`Imported ${rowCount.toLocaleString("en-US")} row(s) into "${name}".`);
+    await loadTableSummary(name, {
+      forceRefresh: true,
+      forceFieldMappingReload: true,
+      forceReservingClassTypesReload: true,
+    });
+    return { ok: true, rowCount };
+  } catch (err) {
+    return { ok: false, error: err.message || "The import failed." };
+  } finally {
+    hideProjectOperationProgress();
+  }
 }
 
 // ============ Table Summary ============
@@ -928,7 +1006,7 @@ function applyStoredPeriodsToInputs(values) {
   });
 }
 
-async function loadTableSummary(tablePath, projectName = "", options = {}) {
+async function loadTableSummary(projectName = "", options = {}) {
   const forceRefresh = !!options?.forceRefresh;
   const forceFieldMappingReload = !!options?.forceFieldMappingReload;
   const forceReservingClassTypesReload = !!options?.forceReservingClassTypesReload;
@@ -936,14 +1014,27 @@ async function loadTableSummary(tablePath, projectName = "", options = {}) {
   const requestSeq = ++tableSummaryLoadSeq;
   const isStale = () => requestSeq !== tableSummaryLoadSeq;
 
-  if (!tablePath) {
-    summaryEl.style.display = "flex";
-    sourceDataFeature.showNoPath("No source file is configured for this project.");
+  summaryEl.style.display = "flex";
+  const sourceState = await loadSourceTableState(projectName);
+  if (isStale()) return true;
+
+  // Nothing to summarize until an import source is configured or a table has
+  // already been imported into the project folder.
+  const isSqlSource = sourceState.sourceType === "mssql";
+  const hasSource = isSqlSource
+    ? (sourceState.masterTableExists || !!sourceState.mssql.table)
+    : (!!sourceState.csvPath || sourceState.masterTableExists);
+  if (!hasSource) {
+    sourceDataFeature.showNoPath(
+      isSqlSource
+        ? "No SQL Server table is configured for this project."
+        : "No source file is configured for this project.",
+    );
     const existingGeneralSettings = await generalSettingsFeature.ensureLoaded(projectName, { applyToInputs: false });
     if (isStale()) return true;
     applyStoredPeriodsToInputs(existingGeneralSettings);
     currentFieldNames = [];
-    fieldMappingFeature?.renderFieldMappingEmpty("No Table Path is configured for this project.");
+    fieldMappingFeature?.renderFieldMappingEmpty("No source table is configured for this project.");
     fieldMappingFeature?.setFieldMappingStatus("");
     if (forceReservingClassTypesReload) {
       await reservingClassTypesFeature?.loadReservingClassTypes(projectName, { force: true });
@@ -951,8 +1042,6 @@ async function loadTableSummary(tablePath, projectName = "", options = {}) {
     return true;
   }
 
-  summaryEl.style.display = "flex";
-  sourceDataFeature.syncPathDisplay(tablePath);
   sourceDataFeature.showLoading();
 
   try {
@@ -971,16 +1060,12 @@ async function loadTableSummary(tablePath, projectName = "", options = {}) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          path: tablePath,
           project_name: projectName || "",
           refresh_reserving: true,
         }),
       });
     } else {
-      const q = new URLSearchParams({
-        path: tablePath,
-        project_name: projectName || ""
-      });
+      const q = new URLSearchParams({ project_name: projectName || "" });
       res = await fetch(`/table_summary?${q.toString()}`);
     }
     if (!res.ok) throw new Error(await readResponseErrorDetail(res));
@@ -988,6 +1073,11 @@ async function loadTableSummary(tablePath, projectName = "", options = {}) {
     const data = await res.json();
     if (isStale()) return true;
 
+    // A CSV refresh may have re-copied the master table; pick up its provenance.
+    if (forceRefresh) {
+      await loadSourceTableState(projectName);
+      if (isStale()) return true;
+    }
     sourceDataFeature.renderSummary(data);
 
     currentFieldNames = Array.isArray(data.columns)
@@ -1403,11 +1493,13 @@ reservingClassTypeEditorHeader?.addEventListener("mousedown", (e) => {
 document.addEventListener("mousemove", (e) => {
   reservingClassTypesFeature?.onEditorMouseMove(e);
   datasetTypesFeature?.onEditorMouseMove(e);
+  sourceDataFeature?.onEditorMouseMove(e);
 });
 
 document.addEventListener("mouseup", () => {
   reservingClassTypesFeature?.onEditorMouseUp();
   datasetTypesFeature?.onEditorMouseUp();
+  sourceDataFeature?.onEditorMouseUp();
 });
 
 document.addEventListener("keydown", (e) => {

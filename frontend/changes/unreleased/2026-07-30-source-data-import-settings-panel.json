@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data now configures both import methods in one Import Settings panel with an Import Data button.",
+  "details": [
+    "The second header icon opens the panel, which holds the CSV File / SQL Server method switch and only the selected method's fields.",
+    "SQL Server: enter the server and database, press Connect, then pick an existing table or view from a list read from that database.",
+    "CSV File: enter or browse for the source file in the same panel.",
+    "Import Data rebuilds the project-owned table from whichever method is selected, then refreshes the summary, field mapping, and reserving class types.",
+    "The Copy source table path icon was removed from the header."
+  ]
+}

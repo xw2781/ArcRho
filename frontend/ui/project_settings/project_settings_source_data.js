@@ -1,15 +1,84 @@
 /**
  * Source Data tab - quiet surface with detail in floating panels.
  *
- * Owns the header identity line, the reserving-period band notes, the column
- * list (filter, resize, distribution marks), the floating table-details panel,
- * floating per-column preview, and shared month picker. Path/date persistence
- * stays in the coordinator-composed General Settings feature.
+ * Owns the header identity line, the draggable Import Settings window (import
+ * method, CSV or SQL Server source, and the Import Data action), the
+ * reserving-period band notes, the column list (filter, resize, distribution
+ * marks), the floating table-details panel, floating per-column preview, and
+ * shared month picker.
+ *
+ * The Import Settings window reuses the page's `.rct-row-editor` chrome, so it
+ * behaves like the Dataset Type and Reserving Class Type editor windows: it is
+ * centered on open, draggable by its title bar, and closes only from its close
+ * button or Escape - never from an outside click.
+ *
+ * Path/date persistence stays in the coordinator-composed General Settings
+ * feature, and every app-server call for the imported table is injected by the
+ * coordinator.
  */
+
+import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js";
 
 const COLUMN_MIN_WIDTH = { name: 120, type: 74 };
 const DETAILS_CLOSE_DELAY_MS = 160;
 const AREA_VIEWBOX_HEIGHT = 20;
+
+export const SOURCE_TYPE_CSV = "csv";
+export const SOURCE_TYPE_MSSQL = "mssql";
+export const MSSQL_AUTH_WINDOWS = "windows";
+
+/** Normalize an app-server `/source_table` payload into the shape this tab renders. */
+export function normalizeSourceState(state) {
+  const data = state && typeof state === "object" ? state : {};
+  const mssql = data.mssql && typeof data.mssql === "object" ? data.mssql : {};
+  const lastImport = data.last_import && typeof data.last_import === "object" ? data.last_import : {};
+  const sourceType = String(data.source_type || "").trim().toLowerCase() === SOURCE_TYPE_MSSQL
+    ? SOURCE_TYPE_MSSQL
+    : SOURCE_TYPE_CSV;
+  return {
+    sourceType,
+    csvPath: String(data.csv_path || ""),
+    masterTablePath: String(data.master_table_path || ""),
+    masterTableExists: !!data.master_table_exists,
+    driverAvailable: data.driver_available !== false,
+    mssql: {
+      server: String(mssql.server || ""),
+      database: String(mssql.database || ""),
+      table: String(mssql.table || ""),
+      authentication: String(mssql.authentication || MSSQL_AUTH_WINDOWS),
+    },
+    lastImport: {
+      sourceType: String(lastImport.source_type || ""),
+      sourceLabel: String(lastImport.source_label || ""),
+      importedAt: String(lastImport.imported_at || ""),
+      importedBy: String(lastImport.imported_by || ""),
+      rowCount: lastImport.row_count,
+      columnCount: lastImport.column_count,
+    },
+  };
+}
+
+/** Header identity for the configured import source. */
+export function getSourceIdentity(sourceState) {
+  const state = sourceState || {};
+  if (state.sourceType === SOURCE_TYPE_MSSQL) {
+    const profile = state.mssql || {};
+    const scope = [profile.server, profile.database].filter(Boolean).join(" · ");
+    return {
+      name: String(profile.table || "").trim() || "No SQL Server table",
+      detail: scope,
+      configured: !!(profile.server && profile.database && profile.table),
+    };
+  }
+  const raw = String(state.csvPath || "").trim();
+  if (!raw) return { name: "No source file", detail: "", configured: false };
+  const idx = Math.max(raw.lastIndexOf("\\"), raw.lastIndexOf("/"));
+  return {
+    name: idx < 0 ? raw : raw.slice(idx + 1),
+    detail: idx < 0 ? "" : raw.slice(0, idx),
+    configured: true,
+  };
+}
 
 function clampRatio(ratio) {
   const value = Number(ratio);
@@ -97,8 +166,14 @@ export function createSourceDataFeature(deps = {}) {
     normalizeMonth = () => "",
     formatMonth = (value) => String(value || ""),
     getHostApi = () => (typeof window === "undefined" ? null : window.ADAHost),
-    onPathEditRequested = () => {},
     getConfiguredColumnWidths = () => null,
+    // Injected by the coordinator; the tab never calls the app server itself.
+    onProfileSave = async () => false,
+    onListTables = async () => ({ ok: false, error: "Not available.", tables: [] }),
+    onListConnections = async () => ({ connections: [] }),
+    onForgetConnection = async () => ({ connections: [] }),
+    onCsvPathPick = async () => "",
+    onImportData = async () => ({ ok: false, error: "Not available." }),
   } = deps;
 
   const el = (id) => document.getElementById(id);
@@ -111,11 +186,37 @@ export function createSourceDataFeature(deps = {}) {
     pathDirRow: el("summaryPathDirRow"),
     pathInput: el("summaryTablePathInput"),
     infoBtn: el("summaryInfoBtn"),
-    copyBtn: el("summaryCopyPathBtn"),
     copyFolderBtn: el("summaryCopyFolderBtn"),
     openFolderBtn: el("summaryOpenFolderBtn"),
     reloadBtn: el("summaryTablePathReloadBtn"),
-    browseBtn: el("summaryTablePathBrowseBtn"),
+    importSettingsBtn: el("summaryImportSettingsBtn"),
+    sourcePanel: el("summaryImportWindow"),
+    sourcePanelHeader: el("summaryImportWindowHeader"),
+    sourcePanelResizer: el("summaryImportWindowResizer"),
+    sourcePanelClose: el("summaryImportWindowClose"),
+    methodSelect: el("sdMethodSelect"),
+    methodTrigger: el("sdMethodTrigger"),
+    methodValue: el("sdMethodValue"),
+    methodList: el("sdMethodList"),
+    sourceMethods: Array.from(document.querySelectorAll(".sd-source-method")),
+    csvPath: el("sdCsvPath"),
+    csvBrowseBtn: el("sdCsvBrowseBtn"),
+    mssqlServer: el("sdMssqlServer"),
+    mssqlServerCombo: el("sdMssqlServerCombo"),
+    mssqlServerHistoryBtn: el("sdMssqlServerHistoryBtn"),
+    mssqlServerList: el("sdMssqlServerList"),
+    mssqlDatabase: el("sdMssqlDatabase"),
+    mssqlDatabaseCombo: el("sdMssqlDatabaseCombo"),
+    mssqlDatabaseHistoryBtn: el("sdMssqlDatabaseHistoryBtn"),
+    mssqlDatabaseList: el("sdMssqlDatabaseList"),
+    mssqlLoadTablesBtn: el("sdMssqlLoadTablesBtn"),
+    mssqlTableSelect: el("sdMssqlTableSelect"),
+    mssqlTableInput: el("sdMssqlTableInput"),
+    mssqlTableCaretBtn: el("sdMssqlTableCaretBtn"),
+    mssqlTableList: el("sdMssqlTableList"),
+    mssqlAuthGroup: el("sdMssqlAuthGroup"),
+    importDataBtn: el("sdImportDataBtn"),
+    mssqlStatus: el("sdMssqlStatus"),
     message: el("summaryMessage"),
     band: el("summaryPeriodsBand"),
     originSpanNote: el("summaryOriginSpanNote"),
@@ -137,6 +238,14 @@ export function createSourceDataFeature(deps = {}) {
   };
 
   let columns = [];
+  let sourceState = normalizeSourceState(null);
+  let sourcePanelOpen = false;
+  let sourceBusy = false;
+  // Method chosen inside the panel; only an import commits it to the project.
+  let panelMethod = SOURCE_TYPE_CSV;
+  let windowDragState = null;
+  let windowResizeState = null;
+  let connectionHistory = [];
   let dateRoles = { originField: "", developmentField: "" };
   let previewCard = null;
   let previewRow = null;
@@ -389,14 +498,34 @@ export function createSourceDataFeature(deps = {}) {
 
   /* ---------------- floating table details ---------------- */
 
+  function formatIsoTimestamp(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return raw;
+    return date.toLocaleString();
+  }
+
   function renderStats(data) {
     if (!dom.stats) return;
+    const lastImport = sourceState.lastImport || {};
+    const importedFrom = lastImport.sourceType === SOURCE_TYPE_MSSQL
+      ? `SQL Server · ${lastImport.sourceLabel || ""}`
+      : lastImport.sourceLabel;
     const rows = [
       { key: "Rows", value: Number(data?.row_count || 0).toLocaleString(), note: "data rows, header excluded" },
       { key: "Columns", value: String(data?.column_count ?? columns.length), note: "" },
       { key: "File Size", value: String(data?.file_size_str || ""), note: "CSV, comma delimited" },
       { key: "Modified", value: formatTimestamp(data?.csv_mtime), note: "" },
       { key: "Last Read", value: data?.from_cache ? "Cached summary" : "Just now", note: "" },
+      // The imported copy is what every ArcRho consumer actually reads.
+      { key: "Imported From", value: String(importedFrom || "").trim(), note: "" },
+      {
+        key: "Imported At",
+        value: formatIsoTimestamp(lastImport.importedAt),
+        note: lastImport.importedBy ? `by ${lastImport.importedBy}` : "",
+      },
+      { key: "Imported Table", value: sourceState.masterTablePath, note: "owned by this project folder" },
     ].filter((row) => row.value);
 
     dom.stats.innerHTML = rows.map((row) =>
@@ -481,32 +610,44 @@ export function createSourceDataFeature(deps = {}) {
   /* ---------------- path display ---------------- */
 
   function syncPathDisplay(path) {
-    const value = String(path ?? dom.pathInput?.value ?? "");
-    const parts = splitPath(value);
-    if (dom.pathName) dom.pathName.textContent = parts.name || "No source file";
+    const isSql = sourceState.sourceType === SOURCE_TYPE_MSSQL;
+    if (!isSql && path !== undefined) sourceState.csvPath = String(path ?? "");
+    const identity = getSourceIdentity(sourceState);
+    // Open folder acts on the external CSV selection; SQL Server has no path.
+    const value = isSql ? "" : String(path ?? dom.pathInput?.value ?? "");
+    const parts = isSql ? { name: identity.name, dir: identity.detail } : splitPath(value);
+
+    if (dom.pathName) dom.pathName.textContent = identity.name;
     if (dom.pathDir) dom.pathDir.textContent = parts.dir;
     if (dom.pathDirRow) dom.pathDirRow.hidden = !parts.dir;
-    if (dom.pathDisplay) dom.pathDisplay.title = value;
-    const hasPath = !!value.trim();
-    if (dom.copyBtn) dom.copyBtn.disabled = !hasPath;
-    if (dom.copyFolderBtn) dom.copyFolderBtn.disabled = !parts.dir;
+    if (dom.pathDisplay) {
+      dom.pathDisplay.title = isSql ? [identity.detail, identity.name].filter(Boolean).join(" · ") : value;
+      dom.pathDisplay.setAttribute(
+        "aria-label",
+        isSql ? "SQL Server source table" : "Edit source table path",
+      );
+    }
+    const hasPath = !isSql && !!value.trim();
+    if (dom.copyFolderBtn) dom.copyFolderBtn.disabled = !parts.dir || isSql;
     if (dom.openFolderBtn) dom.openFolderBtn.disabled = !hasPath;
-    if (dom.infoBtn) dom.infoBtn.disabled = !hasPath;
-    if (!hasPath) closeDetails();
+    if (dom.infoBtn) dom.infoBtn.disabled = !(hasPath || (isSql && identity.configured) || sourceState.masterTableExists);
+    if (dom.infoBtn?.disabled) closeDetails();
   }
 
+  /**
+   * Clicking the source identity opens the Import Settings panel.
+   *
+   * The panel is the one place that edits the source for either method, so the
+   * old inline path input is no longer an editor; the coordinator keeps it as
+   * the current CSV path it commits and the folder actions read.
+   */
   function beginPathEdit() {
-    if (!dom.pathInput || !dom.pathDisplay || !dom.pathIdentity) return;
-    if (dom.pathInput.disabled) return;
-    dom.pathIdentity.hidden = true;
-    dom.pathInput.hidden = false;
-    dom.pathInput.focus();
-    dom.pathInput.select();
-    onPathEditRequested();
+    if (sourcePanelOpen) closeSourcePanel();
+    else openSourcePanel();
   }
 
   function endPathEdit() {
-    if (!dom.pathInput || !dom.pathDisplay || !dom.pathIdentity) return;
+    if (!dom.pathInput || !dom.pathIdentity) return;
     dom.pathInput.hidden = true;
     dom.pathIdentity.hidden = false;
     syncPathDisplay(dom.pathInput.value);
@@ -691,11 +832,753 @@ export function createSourceDataFeature(deps = {}) {
     input.focus();
   }
 
+  /* ---------------- import settings window ---------------- */
+
+  /**
+   * App-styled listbox shared by the Import Method and Table Or View pickers.
+   *
+   * A native `select` popup cannot be themed, so both dropdowns are built from
+   * the same trigger/list pair and behave identically.
+   */
+  const REMOVE_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg>';
+
+  /** One markup shape for every dropdown row, selected state included. */
+  function renderOptionRows(rows, selectedValue, { removable = false } = {}) {
+    const selected = String(selectedValue || "");
+    return rows.map((option) => {
+      const value = String(option.value || "");
+      const label = String(option.label || value);
+      const kind = String(option.kind || "");
+      return `<div class="sd-select-opt" role="option" data-value="${escapeHtml(value)}" aria-selected="${value === selected ? "true" : "false"}">`
+        + `<span class="sd-select-opt-name" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`
+        + (kind ? `<span class="sd-select-opt-kind">${escapeHtml(kind)}</span>` : "")
+        + (removable
+            ? `<button class="sd-select-opt-remove" type="button" data-remove="${escapeHtml(value)}" aria-label="Remove ${escapeHtml(label)}">${REMOVE_ICON}</button>`
+            : "")
+        + "</div>";
+    }).join("");
+  }
+
+  /** Anchor a body-rendered list under its field, flipping up when needed. */
+  function positionListNear(list, anchor) {
+    if (!list || list.hidden || !anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const margin = 8;
+    const gap = 3;
+    list.style.width = `${Math.round(rect.width)}px`;
+    list.style.left = "-9999px";
+    list.style.top = "0px";
+    const listRect = list.getBoundingClientRect();
+    const left = Math.min(rect.left, window.innerWidth - listRect.width - margin);
+    let top = rect.bottom + gap;
+    if (top + listRect.height > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - listRect.height - gap);
+    }
+    list.style.left = `${Math.round(Math.max(margin, left))}px`;
+    list.style.top = `${Math.round(top)}px`;
+  }
+
+  /**
+   * App-styled listbox on a button trigger, for a short fixed option set.
+   *
+   * Used by Import Method. Pickers that need typing use `createSdCombo`.
+   */
+  function createSdSelect({ root, trigger, valueEl, list, emptyText, placeholder, onChange }) {
+    let options = [];
+
+    // Lists render into document.body: the window is resizable
+    // (`overflow: hidden`) and is centered with a transform, either of which
+    // would otherwise clip or mis-anchor them.
+    if (list && list.parentElement !== document.body) document.body.appendChild(list);
+
+    const getValue = () => String(trigger?.dataset?.value || "");
+
+    function render() {
+      if (!list) return;
+      if (!options.length) {
+        list.innerHTML = `<div class="sd-select-empty">${escapeHtml(emptyText)}</div>`;
+        return;
+      }
+      list.innerHTML = renderOptionRows(options, getValue());
+    }
+
+    function setValue(next, { notify = false } = {}) {
+      const value = String(next || "");
+      if (trigger) trigger.dataset.value = value;
+      if (valueEl) {
+        const match = options.find((option) => String(option.value || "") === value);
+        valueEl.textContent = match?.label || value || placeholder;
+      }
+      render();
+      if (notify) onChange?.(value);
+    }
+
+    function close() {
+      if (!list || list.hidden) return;
+      list.hidden = true;
+      trigger?.setAttribute("aria-expanded", "false");
+    }
+
+    function open() {
+      if (!list || !options.length || trigger?.disabled) return;
+      render();
+      list.hidden = false;
+      trigger?.setAttribute("aria-expanded", "true");
+      positionListNear(list, root);
+      list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    }
+
+    trigger?.addEventListener("click", () => {
+      if (list?.hidden) open();
+      else close();
+    });
+    list?.addEventListener("click", (event) => {
+      const option = event.target.closest(".sd-select-opt");
+      if (!option) return;
+      setValue(option.dataset.value, { notify: true });
+      close();
+      trigger?.focus();
+    });
+
+    return {
+      root,
+      getValue,
+      setValue,
+      open,
+      close,
+      positionList: () => positionListNear(list, root),
+      isOpen: () => !!list && !list.hidden,
+      hasOptions: () => options.length > 0,
+      owns: (node) => !!(root?.contains(node) || list?.contains(node)),
+      setOptions(next, { keepSelection = true } = {}) {
+        options = Array.isArray(next) ? next : [];
+        const previous = keepSelection ? getValue() : "";
+        const stillPresent = options.some((option) => String(option.value || "") === previous);
+        if (trigger) trigger.disabled = sourceBusy || !options.length;
+        setValue(stillPresent ? previous : "");
+      },
+      setDisabled(disabled) {
+        if (trigger) trigger.disabled = !!disabled || !options.length;
+      },
+    };
+  }
+
+  /**
+   * Editable combobox: the field itself is the search box.
+   *
+   * Typing filters the list in place. The input lives in the window markup and
+   * is never re-rendered, so the caret keeps its position across keystrokes -
+   * re-rendering the field on every keystroke is what used to send the caret
+   * back to the start.
+   *
+   * `freeText` fields (Server, Database) accept any value and use the list only
+   * as history. A non-`freeText` field (Table Or View) must end on a listed
+   * option, so the typed text is a filter and the committed value is kept
+   * separately; leaving the field restores the committed label.
+   */
+  function createSdCombo({
+    root,
+    input,
+    caret,
+    list,
+    emptyText,
+    freeText = false,
+    removable = false,
+    onRemove,
+  }) {
+    let options = [];
+    let committed = "";
+    let filter = "";
+
+    if (list && list.parentElement !== document.body) document.body.appendChild(list);
+
+    const labelFor = (value) =>
+      options.find((option) => String(option.value || "") === String(value || ""))?.label
+      || String(value || "");
+
+    function visibleOptions() {
+      const query = filter.trim().toLowerCase();
+      if (!query) return options;
+      return options.filter((option) =>
+        String(option.label || option.value || "").toLowerCase().includes(query));
+    }
+
+    function render() {
+      if (!list) return;
+      if (!options.length) {
+        list.innerHTML = `<div class="sd-select-empty">${escapeHtml(emptyText)}</div>`;
+        return;
+      }
+      const rows = visibleOptions();
+      if (!rows.length) {
+        list.innerHTML = `<div class="sd-select-empty">No match for "${escapeHtml(filter)}".</div>`;
+        return;
+      }
+      const count = rows.length === options.length
+        ? ""
+        : `<div class="sd-select-count">${rows.length} of ${options.length}</div>`;
+      list.innerHTML = count + renderOptionRows(rows, committed, { removable });
+    }
+
+    function close() {
+      if (!list || list.hidden) return;
+      list.hidden = true;
+      caret?.setAttribute("aria-expanded", "false");
+      input?.setAttribute("aria-expanded", "false");
+    }
+
+    /** Drop a half-typed filter and show what is actually committed. */
+    function restoreCommittedText() {
+      filter = "";
+      if (input && !freeText) input.value = labelFor(committed);
+    }
+
+    function open({ selectAll = false } = {}) {
+      if (!list || input?.disabled) return;
+      render();
+      list.hidden = false;
+      caret?.setAttribute("aria-expanded", "true");
+      input?.setAttribute("aria-expanded", "true");
+      positionListNear(list, root);
+      if (selectAll) input?.select();
+      list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    }
+
+    function commit(value, { notify = true } = {}) {
+      committed = String(value || "");
+      if (input) {
+        input.value = freeText ? committed : labelFor(committed);
+        if (freeText && notify) input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      filter = "";
+      close();
+    }
+
+    input?.addEventListener("input", () => {
+      filter = String(input.value || "");
+      if (freeText) committed = filter;
+      if (list?.hidden) open();
+      else {
+        render();
+        positionListNear(list, root);
+      }
+    });
+    input?.addEventListener("focus", () => {
+      if (!freeText) open({ selectAll: true });
+    });
+    input?.addEventListener("blur", () => {
+      // Deferred so a click on an option still lands before the revert.
+      setTimeout(() => {
+        if (list && !list.hidden) return;
+        restoreCommittedText();
+      }, 120);
+    });
+    input?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        restoreCommittedText();
+        close();
+        return;
+      }
+      if (event.key === "ArrowDown" && list?.hidden) {
+        event.preventDefault();
+        open();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      const rows = visibleOptions();
+      // A single remaining match commits without reaching for the mouse.
+      if (rows.length === 1) {
+        event.preventDefault();
+        commit(rows[0].value);
+        return;
+      }
+      if (!freeText) event.preventDefault();
+    });
+
+    caret?.addEventListener("click", () => {
+      if (list?.hidden) {
+        filter = "";
+        open();
+        input?.focus();
+      } else {
+        close();
+      }
+    });
+    list?.addEventListener("mousedown", (event) => {
+      // Keep focus in the field so blur does not fire before the click lands.
+      event.preventDefault();
+    });
+    list?.addEventListener("click", (event) => {
+      const remove = event.target.closest(".sd-select-opt-remove");
+      if (remove) {
+        event.stopPropagation();
+        onRemove?.(remove.dataset.remove);
+        return;
+      }
+      const option = event.target.closest(".sd-select-opt");
+      if (!option) return;
+      commit(option.dataset.value);
+      input?.focus();
+    });
+
+    return {
+      root,
+      getValue: () => committed,
+      open,
+      close,
+      positionList: () => positionListNear(list, root),
+      isOpen: () => !!list && !list.hidden,
+      hasOptions: () => options.length > 0,
+      owns: (node) => !!(root?.contains(node) || list?.contains(node)),
+      setValue(next) {
+        commit(next, { notify: false });
+      },
+      setOptions(next, { keepSelection = true } = {}) {
+        options = Array.isArray(next) ? next : [];
+        filter = "";
+        const stillPresent = options.some(
+          (option) => String(option.value || "") === committed,
+        );
+        if (input) input.disabled = sourceBusy || (!options.length && !freeText);
+        if (caret) caret.disabled = sourceBusy || !options.length;
+        if (!freeText && !(keepSelection && stillPresent)) commit("", { notify: false });
+        else if (input && !freeText) input.value = labelFor(committed);
+        if (!list?.hidden) render();
+      },
+      setDisabled(disabled) {
+        if (input) input.disabled = !!disabled || (!options.length && !freeText);
+        if (caret) caret.disabled = !!disabled || !options.length;
+      },
+    };
+  }
+
+  const methodSelect = createSdSelect({
+    root: dom.methodSelect,
+    trigger: dom.methodTrigger,
+    valueEl: dom.methodValue,
+    list: dom.methodList,
+    emptyText: "No import methods are available.",
+    placeholder: "CSV File",
+    onChange: (value) => {
+      panelMethod = value === SOURCE_TYPE_MSSQL ? SOURCE_TYPE_MSSQL : SOURCE_TYPE_CSV;
+      setSourceStatus("");
+      syncPanelMethod();
+    },
+  });
+
+  const tableSelect = createSdCombo({
+    root: dom.mssqlTableSelect,
+    input: dom.mssqlTableInput,
+    caret: dom.mssqlTableCaretBtn,
+    list: dom.mssqlTableList,
+    emptyText: "No tables or views were found.",
+  });
+
+  const serverCombo = createSdCombo({
+    root: dom.mssqlServerCombo,
+    input: dom.mssqlServer,
+    caret: dom.mssqlServerHistoryBtn,
+    list: dom.mssqlServerList,
+    emptyText: "No servers have been used yet.",
+    freeText: true,
+    removable: true,
+    onRemove: (server) => forgetConnection(server, null),
+  });
+
+  const databaseCombo = createSdCombo({
+    root: dom.mssqlDatabaseCombo,
+    input: dom.mssqlDatabase,
+    caret: dom.mssqlDatabaseHistoryBtn,
+    list: dom.mssqlDatabaseList,
+    emptyText: "No databases have been used for this server yet.",
+    freeText: true,
+    removable: true,
+    onRemove: (database) => forgetConnection(String(dom.mssqlServer?.value || "").trim(), database),
+  });
+
+  /** Databases recorded for the server currently typed in. */
+  function syncDatabaseHistory() {
+    const currentServer = String(dom.mssqlServer?.value || "").trim().toLowerCase();
+    databaseCombo.setOptions(
+      connectionHistory
+        .filter((entry) => entry.server.toLowerCase() === currentServer)
+        .map((entry) => ({ value: entry.database, label: entry.database })),
+    );
+  }
+
+  /**
+   * Refresh both history lists from the shared record.
+   *
+   * Only called when the record itself changes - re-seeding the server list on
+   * every keystroke would clear the filter the user is typing.
+   */
+  function syncConnectionHistory() {
+    const servers = [];
+    const seenServers = new Set();
+    for (const entry of connectionHistory) {
+      const key = entry.server.toLowerCase();
+      if (key && !seenServers.has(key)) {
+        seenServers.add(key);
+        servers.push({ value: entry.server, label: entry.server });
+      }
+    }
+    serverCombo.setOptions(servers);
+    syncDatabaseHistory();
+  }
+
+  function applyConnectionHistory(payload) {
+    const entries = Array.isArray(payload?.connections) ? payload.connections : [];
+    connectionHistory = entries.map((entry) => ({
+      server: String(entry?.server || ""),
+      database: String(entry?.database || ""),
+    })).filter((entry) => entry.server && entry.database);
+    syncConnectionHistory();
+    return connectionHistory;
+  }
+
+  async function loadConnectionHistory() {
+    applyConnectionHistory(await onListConnections());
+  }
+
+  async function forgetConnection(server, database) {
+    const name = String(server || "").trim();
+    if (!name) return;
+    applyConnectionHistory(await onForgetConnection(name, database));
+    setSourceStatus(
+      database
+        ? `Removed the saved connection ${name}.${database}.`
+        : `Removed every saved connection for ${name}.`,
+      "ok",
+    );
+  }
+
+  function readProfileFromPanel() {
+    return {
+      server: String(dom.mssqlServer?.value || "").trim(),
+      database: String(dom.mssqlDatabase?.value || "").trim(),
+      table: tableSelect.getValue().trim(),
+      authentication: MSSQL_AUTH_WINDOWS,
+    };
+  }
+
+  function readCsvPathFromPanel() {
+    return String(dom.csvPath?.value || "").trim();
+  }
+
+  function selectedMethod() {
+    return panelMethod === SOURCE_TYPE_MSSQL ? SOURCE_TYPE_MSSQL : SOURCE_TYPE_CSV;
+  }
+
+  function setSourceStatus(text, tone = "") {
+    if (!dom.mssqlStatus) return;
+    const value = String(text || "").trim();
+    dom.mssqlStatus.textContent = value;
+    dom.mssqlStatus.classList.toggle("error", tone === "error");
+    dom.mssqlStatus.classList.toggle("ok", tone === "ok");
+    dom.mssqlStatus.hidden = !value;
+  }
+
+  function setSourceBusy(busy) {
+    sourceBusy = !!busy;
+    [dom.importDataBtn, dom.mssqlLoadTablesBtn, dom.csvBrowseBtn].forEach((button) => {
+      if (button) button.disabled = sourceBusy;
+    });
+    methodSelect.setDisabled(sourceBusy);
+    tableSelect.setDisabled(sourceBusy);
+    serverCombo.setDisabled(sourceBusy);
+    databaseCombo.setDisabled(sourceBusy);
+  }
+
+  /** Show only the selected method's fields; the window owns that choice. */
+  function syncPanelMethod() {
+    const method = selectedMethod();
+    serverCombo.close();
+    databaseCombo.close();
+    dom.sourceMethods.forEach((section) => {
+      section.hidden = String(section.dataset.method || "") !== method;
+    });
+    tableSelect.close();
+  }
+
+  function syncSourcePanelFields() {
+    if (dom.csvPath) dom.csvPath.value = sourceState.csvPath;
+    if (dom.mssqlServer) dom.mssqlServer.value = sourceState.mssql.server;
+    if (dom.mssqlDatabase) dom.mssqlDatabase.value = sourceState.mssql.database;
+    tableSelect.setValue(sourceState.mssql.table);
+    dom.mssqlAuthGroup?.querySelectorAll(".sd-auth-opt").forEach((button) => {
+      const active = String(button.dataset.auth || "") === MSSQL_AUTH_WINDOWS;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-checked", String(active));
+    });
+    if (!sourceState.driverAvailable) {
+      setSourceStatus(
+        "SQL Server support is not installed in this ArcRho runtime. Install the Microsoft ODBC Driver for SQL Server.",
+        "error",
+      );
+    }
+  }
+
+  function openSourcePanel() {
+    if (!dom.sourcePanel) return;
+    // The window always opens on the project's saved method and saved values.
+    panelMethod = sourceState.sourceType;
+    methodSelect.setOptions(
+      [
+        { value: SOURCE_TYPE_CSV, label: "CSV File" },
+        { value: SOURCE_TYPE_MSSQL, label: "SQL Server" },
+      ],
+      { keepSelection: false },
+    );
+    methodSelect.setValue(panelMethod);
+    tableSelect.setOptions([], { keepSelection: false });
+    syncSourcePanelFields();
+    syncPanelMethod();
+    sourcePanelOpen = true;
+    // Re-center on every open so a dragged window never opens off-screen.
+    dom.sourcePanel.style.left = "50%";
+    dom.sourcePanel.style.top = "140px";
+    dom.sourcePanel.style.transform = "translateX(-50%)";
+    dom.sourcePanel.classList.add("show");
+    dom.importSettingsBtn?.setAttribute("aria-expanded", "true");
+    const firstField = selectedMethod() === SOURCE_TYPE_MSSQL ? dom.mssqlServer : dom.csvPath;
+    setTimeout(() => firstField?.focus({ preventScroll: true }), 0);
+    // Saved server/database pairs are shared by everyone on this ArcRho Server,
+    // so they are re-read each time the window opens.
+    loadConnectionHistory();
+  }
+
+  function closeSourcePanel({ restoreFocus = false } = {}) {
+    if (!dom.sourcePanel || !sourcePanelOpen) return;
+    methodSelect.close();
+    tableSelect.close();
+    serverCombo.close();
+    databaseCombo.close();
+    sourcePanelOpen = false;
+    windowDragState = null;
+    windowResizeState = null;
+    dom.sourcePanel.classList.remove("show");
+    dom.importSettingsBtn?.setAttribute("aria-expanded", "false");
+    if (restoreFocus) dom.importSettingsBtn?.focus();
+  }
+
+  /* ---- window dragging and resizing, matching the page's other editors ---- */
+
+  /**
+   * Turn the centered position into real pixels. The window opens with
+   * `left: 50%; transform: translateX(-50%)`, so until the transform is dropped
+   * `left` names the window's midpoint and any width change grows both edges.
+   */
+  function pinSourcePanelPosition(rect) {
+    dom.sourcePanel.style.left = `${rect.left}px`;
+    dom.sourcePanel.style.top = `${rect.top}px`;
+    dom.sourcePanel.style.transform = "none";
+  }
+
+  /** CSS owns the minimum window size; this only reads it back for clamping. */
+  function sourcePanelSizeLimits() {
+    const style = typeof getComputedStyle === "function" ? getComputedStyle(dom.sourcePanel) : null;
+    const num = (value, fallback) => {
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+    return {
+      minWidth: num(style?.minWidth, 320),
+      minHeight: num(style?.minHeight, 240),
+    };
+  }
+
+  function onWindowHeaderMouseDown(event) {
+    if (!dom.sourcePanel || event.button !== 0) return;
+    if (event.target.closest("button")) return;
+    pinSourcePanelPosition(dom.sourcePanel.getBoundingClientRect());
+    const rect = dom.sourcePanel.getBoundingClientRect();
+    windowDragState = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    event.preventDefault();
+  }
+
+  /** Bottom-right grip: the top-left corner stays put and the box follows the pointer. */
+  function onWindowResizerMouseDown(event) {
+    if (!dom.sourcePanel || event.button !== 0) return;
+    const rect = dom.sourcePanel.getBoundingClientRect();
+    pinSourcePanelPosition(rect);
+    windowResizeState = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: rect.width,
+      startHeight: rect.height,
+      ...sourcePanelSizeLimits(),
+    };
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function onWindowResizeMove(event) {
+    const state = windowResizeState;
+    const rect = dom.sourcePanel.getBoundingClientRect();
+    const maxWidth = Math.max(state.minWidth, window.innerWidth - rect.left - 8);
+    const maxHeight = Math.max(state.minHeight, window.innerHeight - rect.top - 8);
+    const width = state.startWidth + (event.clientX - state.startX);
+    const height = state.startHeight + (event.clientY - state.startY);
+    dom.sourcePanel.style.width = `${Math.max(state.minWidth, Math.min(maxWidth, width))}px`;
+    dom.sourcePanel.style.height = `${Math.max(state.minHeight, Math.min(maxHeight, height))}px`;
+    repositionSourceLists();
+  }
+
+  function onWindowMouseMove(event) {
+    if (!dom.sourcePanel) return;
+    if (windowResizeState) {
+      onWindowResizeMove(event);
+      return;
+    }
+    if (!windowDragState) return;
+    const maxLeft = window.innerWidth - dom.sourcePanel.offsetWidth - 8;
+    const maxTop = window.innerHeight - dom.sourcePanel.offsetHeight - 8;
+    dom.sourcePanel.style.left = `${Math.max(8, Math.min(maxLeft, event.clientX - windowDragState.offsetX))}px`;
+    dom.sourcePanel.style.top = `${Math.max(8, Math.min(maxTop, event.clientY - windowDragState.offsetY))}px`;
+    repositionSourceLists();
+  }
+
+  /** Keep a body-rendered dropdown anchored while the window moves or resizes. */
+  function repositionSourceLists() {
+    methodSelect.positionList();
+    tableSelect.positionList();
+    serverCombo.positionList();
+    databaseCombo.positionList();
+  }
+
+  function onWindowMouseUp() {
+    windowDragState = null;
+    windowResizeState = null;
+  }
+
+  async function browseForCsv() {
+    if (sourceBusy) return;
+    const picked = await onCsvPathPick(readCsvPathFromPanel());
+    const value = String(picked || "").trim();
+    if (!value) return;
+    if (dom.csvPath) dom.csvPath.value = value;
+    setSourceStatus("");
+  }
+
+  async function loadTableOptions() {
+    const profile = readProfileFromPanel();
+    if (!profile.server || !profile.database) {
+      setSourceStatus("Enter the server and database name first.", "error");
+      return;
+    }
+    setSourceBusy(true);
+    setSourceStatus("Reading tables and views...");
+    try {
+      const result = await onListTables(profile);
+      if (!result?.ok) {
+        tableSelect.setOptions([], { keepSelection: false });
+        setSourceStatus(result?.error || "Could not read tables from that database.", "error");
+        return;
+      }
+      const listed = Array.isArray(result.tables) ? result.tables : [];
+      tableSelect.setOptions(
+        listed.map((item) => ({
+          value: String(item.qualified_name || ""),
+          label: String(item.qualified_name || ""),
+          kind: item.kind === "view" ? "View" : "Table",
+        })),
+      );
+      setSourceStatus(
+        `Connected. ${Number(result.table_count ?? listed.length)} table(s) and view(s) available.`,
+        "ok",
+      );
+    } finally {
+      setSourceBusy(false);
+    }
+  }
+
+  /**
+   * Save the chosen method, then rebuild the project-owned master table from it.
+   * CSV re-copies the selected file; SQL Server streams the selected table.
+   */
+  async function importData() {
+    const method = selectedMethod();
+    const profile = readProfileFromPanel();
+    const csvPath = readCsvPathFromPanel();
+
+    if (method === SOURCE_TYPE_MSSQL) {
+      if (!profile.server || !profile.database) {
+        setSourceStatus("Enter the server and database name first.", "error");
+        return;
+      }
+      if (!profile.table) {
+        setSourceStatus("Select a table or view to import.", "error");
+        return;
+      }
+    } else if (!csvPath) {
+      setSourceStatus("Choose a CSV file to import.", "error");
+      return;
+    }
+
+    setSourceBusy(true);
+    setSourceStatus(method === SOURCE_TYPE_MSSQL
+      ? "Importing the table from SQL Server..."
+      : "Importing the CSV file into this project...");
+    try {
+      const saved = await onProfileSave(method, profile, csvPath);
+      if (!saved) {
+        setSourceStatus("Could not save the import settings.", "error");
+        return;
+      }
+      const result = await onImportData(method);
+      if (!result?.ok) {
+        setSourceStatus(result?.error || "The import failed.", "error");
+        return;
+      }
+      const rowCount = Number(result.rowCount || 0);
+      setSourceStatus(
+        rowCount > 0
+          ? `Imported ${rowCount.toLocaleString("en-US")} row(s) into this project.`
+          : "Imported the source table into this project.",
+        "ok",
+      );
+    } finally {
+      setSourceBusy(false);
+    }
+  }
+
+  /* ---------------- tooltips ---------------- */
+
+  /**
+   * Attach the shared ArcRho tooltip to the header controls.
+   *
+   * The label comes from each control's own `aria-label` so the accessible name
+   * stays the single source for its wording; only the switch options, whose
+   * visible text is already their name, carry a separate explanatory string.
+   *
+   * Only header controls are covered. The shared tooltip sits at z-index 5600,
+   * below this tab's floating panels, so a control inside one of those panels
+   * would get a tooltip hidden behind its own panel.
+   */
+  function wireTooltips() {
+    const fromAriaLabel = [
+      dom.infoBtn,
+      dom.reloadBtn,
+      dom.importSettingsBtn,
+      dom.openFolderBtn,
+    ];
+    fromAriaLabel.forEach((control) => {
+      attachArcrhoTooltip(control, control?.getAttribute("aria-label"));
+    });
+
+  }
+
   /* ---------------- wiring ---------------- */
 
   function wire() {
     if (wired) return;
     wired = true;
+
+    wireTooltips();
 
     dom.pathDisplay?.addEventListener("click", beginPathEdit);
     dom.pathInput?.addEventListener("blur", () => {
@@ -707,6 +1590,43 @@ export function createSourceDataFeature(deps = {}) {
         endPathEdit();
         dom.pathDisplay?.focus();
       }
+    });
+
+    dom.importSettingsBtn?.addEventListener("click", () => {
+      if (sourcePanelOpen) closeSourcePanel({ restoreFocus: true });
+      else openSourcePanel();
+    });
+    dom.sourcePanelClose?.addEventListener("click", () => closeSourcePanel({ restoreFocus: true }));
+    dom.sourcePanelHeader?.addEventListener("mousedown", onWindowHeaderMouseDown);
+    dom.sourcePanelResizer?.addEventListener("mousedown", onWindowResizerMouseDown);
+    dom.csvBrowseBtn?.addEventListener("click", () => browseForCsv());
+    dom.mssqlLoadTablesBtn?.addEventListener("click", () => loadTableOptions());
+    dom.importDataBtn?.addEventListener("click", () => importData());
+
+    dom.mssqlAuthGroup?.addEventListener("click", (event) => {
+      const button = event.target.closest(".sd-auth-opt");
+      if (!button || button.disabled) return;
+      // SQL Server login stays a disabled placeholder until it is implemented.
+      syncSourcePanelFields();
+    });
+    [dom.csvPath, dom.mssqlServer, dom.mssqlDatabase].forEach((input) => {
+      input?.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          closeSourcePanel({ restoreFocus: true });
+          return;
+        }
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        // Enter advances the step the field belongs to, never the import itself.
+        if (input === dom.mssqlDatabase || input === dom.mssqlServer) loadTableOptions();
+      });
+    });
+    // A changed connection invalidates the table list it produced.
+    [dom.mssqlServer, dom.mssqlDatabase].forEach((input) => {
+      input?.addEventListener("input", () => {
+        if (tableSelect.hasOptions()) tableSelect.setOptions([], { keepSelection: false });
+        if (input === dom.mssqlServer) syncDatabaseHistory();
+      });
     });
 
     dom.monthPickerButtons.forEach((button) => {
@@ -738,12 +1658,6 @@ export function createSourceDataFeature(deps = {}) {
       const monthButton = event.target.closest(".sd-month-picker-month");
       if (monthButton) applyPickerMonth(monthButton.dataset.month);
     });
-
-    dom.copyBtn?.addEventListener("click", () => copyToClipboard(
-      dom.pathInput?.value,
-      "Source table path copied to the clipboard.",
-      "Could not copy the source table path.",
-    ));
 
     dom.copyFolderBtn?.addEventListener("click", () => copyToClipboard(
       splitPath(dom.pathInput?.value).dir,
@@ -792,6 +1706,15 @@ export function createSourceDataFeature(deps = {}) {
       ) {
         closeMonthPicker();
       }
+      // The Import Settings window is a regular window: an outside click never
+      // closes it, only its own dropdowns dismiss. Each list lives in
+      // document.body, so ownership is asked of the select, not the markup.
+      if (sourcePanelOpen) {
+        if (!methodSelect.owns(event.target)) methodSelect.close();
+        if (!tableSelect.owns(event.target)) tableSelect.close();
+        if (!serverCombo.owns(event.target)) serverCombo.close();
+        if (!databaseCombo.owns(event.target)) databaseCombo.close();
+      }
       if (!detailsPinned) return;
       if (dom.statsCard?.contains(event.target) || dom.infoBtn?.contains(event.target)) return;
       closeDetails();
@@ -801,9 +1724,27 @@ export function createSourceDataFeature(deps = {}) {
         hidePreview();
         closeDetails();
         closeMonthPicker({ restoreFocus: true, force: true });
+        // Escape dismisses an open dropdown first, then the window itself.
+        const anyListOpen = methodSelect.isOpen() || tableSelect.isOpen()
+          || serverCombo.isOpen() || databaseCombo.isOpen();
+        if (sourcePanelOpen && anyListOpen) {
+          methodSelect.close();
+          tableSelect.close();
+          serverCombo.close();
+          databaseCombo.close();
+        } else {
+          closeSourcePanel({ restoreFocus: true });
+        }
       }
     });
-    window.addEventListener("resize", () => closeMonthPicker());
+    window.addEventListener("resize", () => {
+      closeMonthPicker();
+      repositionSourceLists();
+    });
+    // The window is user-resizable, so an open list has to track its trigger.
+    if (typeof ResizeObserver === "function" && dom.sourcePanel) {
+      new ResizeObserver(() => repositionSourceLists()).observe(dom.sourcePanel);
+    }
 
     dom.filter?.addEventListener("input", () => {
       hidePreview();
@@ -848,6 +1789,26 @@ export function createSourceDataFeature(deps = {}) {
     syncPathDisplay,
     endPathEdit,
     refreshOriginSpanNote,
+    /** Apply a `/source_table` payload; owns which import source the tab shows. */
+    applySourceState(state) {
+      sourceState = normalizeSourceState(state);
+      if (sourcePanelOpen) syncSourcePanelFields();
+      syncPathDisplay(sourceState.sourceType === SOURCE_TYPE_MSSQL ? "" : sourceState.csvPath);
+      if (sourceState.driverAvailable) setSourceStatus("");
+      return sourceState;
+    },
+    getSourceState() {
+      return sourceState;
+    },
+    getSourceType() {
+      return sourceState.sourceType;
+    },
+    setSourceStatus,
+    closeSourcePanel,
+    // Drag needs document-level listeners, which the coordinator already owns
+    // for the Dataset Type and Reserving Class Type editor windows.
+    onEditorMouseMove: onWindowMouseMove,
+    onEditorMouseUp: onWindowMouseUp,
     setDateRoles(roles = {}) {
       dateRoles = {
         originField: String(roles.originField || ""),

@@ -25,6 +25,7 @@ from app_server.api import (
     project_settings_router,
     project_book_router,
     table_summary_router,
+    source_table_router,
     field_mapping_router,
     dataset_types_router,
     reserving_class_router,
@@ -61,6 +62,7 @@ app.include_router(arcrho_router)
 app.include_router(project_settings_router)
 app.include_router(project_book_router)
 app.include_router(table_summary_router)
+app.include_router(source_table_router)
 app.include_router(field_mapping_router)
 app.include_router(dataset_types_router)
 app.include_router(reserving_class_router)

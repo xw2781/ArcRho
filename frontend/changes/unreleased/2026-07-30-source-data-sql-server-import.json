@@ -1,0 +1,14 @@
+{
+  "type": "feature",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data can now import a raw table from SQL Server, and every project owns the imported table inside its own project folder.",
+  "details": [
+    "Switch a project between a flat CSV file and a SQL Server table from the Source Data header, then enter the server, database, and table name in the SQL Server panel.",
+    "SQL Server connects with your Windows account and stores no credentials on the ArcRho Server; the SQL Server login option is a placeholder and is not available yet.",
+    "Test connection reports the target table's column count before you import.",
+    "Both import routes write the same project-owned table at <project>\\source\\master_table.csv, and ArcRho now reads that copy everywhere instead of the external CSV path or the SQL Server table.",
+    "Existing CSV projects keep working with no action: the copy is created automatically and re-copied whenever the external file changes.",
+    "The Source Data details panel shows what the imported table came from, when it was imported, and by whom."
+  ]
+}

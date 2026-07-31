@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The Source Data Import Settings window is resizable, opens larger, and its table list can be searched.",
+  "details": [
+    "The window now opens at 800px wide with the SQL Server fields in two columns, and can be resized by dragging its bottom-right corner.",
+    "The Table Or View list has a search box that filters as you type, shows how many of the total match, and picks a unique match on Enter.",
+    "Dropdown arrows now render as a proper filled triangle that flips while the list is open, instead of a flat bar."
+  ]
+}

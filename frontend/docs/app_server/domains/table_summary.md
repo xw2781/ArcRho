@@ -3,6 +3,9 @@
 ## Purpose
 <!-- MANUAL:BEGIN -->
 Table summary generation/cache and refresh domain.
+
+Both routes are addressed by `project_name` only and always summarize that project's imported master table at `<project>/source/master_table.csv`. There is no caller-supplied path: `_resolve_master_table` calls `source_table_service.ensure_master_table`, so a CSV-sourced project re-copies its external file first (`force=True` on refresh), and a SQL Server project without an imported copy answers `409` instead of reading anything external. See [`source_table`](source_table.md).
+
 Each column carries `name`, `dtype`, `type`, the preformatted `values` string, `distinct_count` (strings and booleans only), `null_count`, `null_ratio`, a `stats` block with raw JSON-safe `min`/`max` (numbers for integer and float columns, strings for datetime, `null` otherwise or when the column is empty), and a `distribution` block: `{kind: "categorical", items[{label, share}], other_share, other_count}` for strings, `{kind: "numeric", bins, edges}` with 16 peak-normalized heights plus the 17 raw histogram bin edges for numeric and datetime columns, and `{kind: "none"}` otherwise.
 <!-- MANUAL:END -->
 

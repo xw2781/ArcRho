@@ -113,7 +113,6 @@ def get_reserving_class_path_tree(project_name: str) -> Dict[str, Any]:
 def get_reserving_class_path_tree_children(
     project_name: str,
     prefix: str = "",
-    table_path: str = "",
     force: bool = False,
 ) -> Dict[str, Any]:
     project_name_clean = str(project_name or "").strip()
@@ -123,7 +122,6 @@ def get_reserving_class_path_tree_children(
         out = reserving_class_service.get_reserving_class_path_tree_children(
             project_name=project_name_clean,
             prefix=prefix,
-            table_path_override=(table_path or "").strip(),
             force=bool(force),
         )
         return {"ok": True, **out}
@@ -244,7 +242,6 @@ def refresh_reserving_class_values(req: RefreshReservingClassValuesRequest) -> D
     try:
         out = reserving_class_service.refresh_reserving_class_values(
             project_name=project_name,
-            table_path_override=(req.table_path or "").strip(),
             mapping_rows_override=None,
             force=bool(req.force),
         )

@@ -1,0 +1,49 @@
+from typing import Optional
+
+from pydantic import BaseModel
+
+from arcrho_api.source_table_contract import MSSQL_AUTH_WINDOWS
+
+
+class MssqlProfilePayload(BaseModel):
+    server: Optional[str] = ""
+    database: Optional[str] = ""
+    table: Optional[str] = ""
+    # Only Windows authentication is supported today; the SQL login mode is
+    # accepted by the shape and rejected by the service.
+    authentication: Optional[str] = MSSQL_AUTH_WINDOWS
+
+
+class SourceProfileSaveRequest(BaseModel):
+    project_name: str
+    source_type: str
+    mssql: Optional[MssqlProfilePayload] = None
+
+
+class MssqlConnectionTestRequest(BaseModel):
+    server: str
+    database: str
+    table: str
+    authentication: Optional[str] = MSSQL_AUTH_WINDOWS
+
+
+class MssqlTableListRequest(BaseModel):
+    # Table listing only needs the server/database half of the profile.
+    server: str
+    database: str
+    authentication: Optional[str] = MSSQL_AUTH_WINDOWS
+
+
+class MssqlConnectionForgetRequest(BaseModel):
+    # Omitting `database` drops every saved pair for the server.
+    server: str
+    database: Optional[str] = None
+
+
+class SourceTableImportRequest(BaseModel):
+    project_name: str
+
+
+class SourceTableRefreshRequest(BaseModel):
+    project_name: str
+    force: bool = False

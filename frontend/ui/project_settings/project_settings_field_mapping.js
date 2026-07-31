@@ -790,14 +790,12 @@ export function createFieldMappingFeature(deps = {}) {
     }
   }
 
-  async function refreshReservingClassValues(projectName, tablePath = "") {
+  /** Values come from the project-owned imported table, so only the project is sent. */
+  async function refreshReservingClassValues(projectName) {
     const res = await fetchImpl("/reserving_class_values/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_name: projectName,
-        table_path: tablePath || "",
-      }),
+      body: JSON.stringify({ project_name: projectName }),
     });
     if (!res.ok) {
       let detail = "";

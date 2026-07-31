@@ -3,6 +3,8 @@
 ## Purpose
 <!-- MANUAL:BEGIN -->
 Reserving class values/tree/preferences/types domain.
+
+Values are always collected from the project-owned imported master table resolved by `source_table_service.resolve_source_table_for_read`; see [`source_table`](source_table.md). `refresh_reserving_class_values` and `get_reserving_class_path_tree_children` no longer accept a `table_path` override, and `POST /reserving_class_values/refresh` no longer accepts a `table_path` field. `mapping_rows_override` remains, so a field-mapping save can refresh against rows it has not committed yet.
 <!-- MANUAL:END -->
 
 ## Entry Points

@@ -16,6 +16,8 @@
 }
 .sd-head-spacer { flex: 1 1 auto; }
 
+.sd-icon[hidden] { display: none; }
+
 .sd-file-identity {
   display: flex;
   align-items: center;
@@ -645,6 +647,409 @@
   color: var(--ar-color-text-subtle, #94a3b8);
   font-variant-numeric: normal;
 }
+
+/* ---------- Import Settings window ----------
+   Chrome comes from the page-wide .rct-row-editor window so this matches the
+   Dataset Type and Reserving Class Type editors; only the body is local. */
+.sd-import-window {
+  width: 800px;
+  min-width: 520px;
+  min-height: 360px;
+  max-height: calc(100vh - 32px);
+  /* Resizing is driven by .sd-import-resizer, not the native `resize` property:
+     the window is centered with a transform, so a native resize grows it from
+     both edges at once. The custom grip pins the left/top corner first. Using
+     no native resizer also means no page-wide ::-webkit-resizer glyph. */
+  overflow: hidden;
+}
+/* Header and footer stay put; only the form body scrolls, so the primary
+   action sits at the bottom edge at every window size. */
+.sd-import-window.show {
+  display: flex;
+  flex-direction: column;
+}
+.sd-import-window .rct-row-editor-header {
+  flex: 0 0 auto;
+  border-radius: 7px 7px 0 0;
+}
+.sd-import-window .rct-row-editor-actions { flex: 0 0 auto; }
+/* Invisible bottom-right drag target: the grip is felt through the cursor, not
+   drawn, so the window keeps a clean corner at every size. */
+.sd-import-resizer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+}
+.sd-import-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  overflow-y: auto;
+}
+.sd-source-method[data-method="mssql"] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  align-items: start;
+}
+.sd-source-method[data-method="mssql"] > .sd-source-note { grid-column: 1 / -1; }
+.sd-source-method[data-method="mssql"][hidden] { display: none; }
+
+/* Only the selected import method's fields are mounted. */
+.sd-source-method {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.sd-source-method[hidden] { display: none; }
+
+.sd-field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sd-field-row input { flex: 1 1 auto; min-width: 0; }
+.sd-field-row .sd-btn { flex: 0 0 auto; }
+.sd-field-row .sd-combo { flex: 1 1 auto; }
+
+/* Free-text input with a dropdown of previously used values. */
+.sd-combo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.sd-combo input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  background: var(--ar-color-input, #fff);
+  color: var(--ar-color-text, #1f2937);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.sd-combo input:hover:not(:disabled) { border-color: var(--ar-color-border-strong, #cbd5e1); }
+.sd-combo input:focus {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 3px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}
+.sd-combo input:disabled {
+  color: var(--ar-color-text-disabled, #9ca3af);
+  background: var(--ar-color-surface-muted, #eef2f6);
+}
+.sd-combo-caret:disabled { cursor: not-allowed; }
+.sd-combo-caret:disabled .sd-select-caret {
+  border-top-color: var(--ar-color-text-disabled, #9ca3af);
+}
+.sd-combo-caret {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  cursor: pointer;
+}
+.sd-combo-caret:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+.sd-combo-caret .sd-select-caret { right: 7px; }
+.sd-combo-caret:hover .sd-select-caret,
+.sd-combo-caret[aria-expanded="true"] .sd-select-caret {
+  border-top-color: var(--ar-color-accent, #2b6df6);
+}
+.sd-combo-caret[aria-expanded="true"] .sd-select-caret {
+  transform: translateY(-75%) rotate(180deg);
+}
+
+/* Saved-value rows carry a remove action on the right. */
+.sd-select-opt-remove {
+  flex: 0 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ar-color-text-subtle, #94a3b8);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.sd-select-opt-remove svg { width: 11px; height: 11px; }
+.sd-select-opt-remove:hover {
+  background: var(--ar-color-danger-soft, #ffe4e9);
+  color: var(--ar-color-danger, #be123c);
+}
+.sd-select-opt-remove:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+.sd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.sd-field-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ar-color-text-muted, #64748b);
+}
+.sd-field input {
+  height: 28px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  background: var(--ar-color-input, #fff);
+  color: var(--ar-color-text, #1f2937);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.sd-field input:hover:not(:disabled) { border-color: var(--ar-color-border-strong, #cbd5e1); }
+.sd-field input:focus {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 3px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}
+.sd-field input:disabled {
+  color: var(--ar-color-text-disabled, #9ca3af);
+  background: var(--ar-color-surface-muted, #eef2f6);
+}
+
+.sd-auth-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.sd-auth-opt {
+  flex: 1 1 auto;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ar-color-text-muted, #64748b);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.sd-auth-opt + .sd-auth-opt { border-left: 1px solid var(--ar-color-border, #d8dde3); }
+.sd-auth-opt.is-active {
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  color: var(--ar-color-accent, #2b6df6);
+}
+.sd-auth-opt:disabled { color: var(--ar-color-text-disabled, #9ca3af); cursor: not-allowed; }
+.sd-auth-opt:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+
+/* App-styled table/view picker; a native select popup cannot be themed. */
+.sd-select {
+  position: relative;
+  min-width: 0;
+}
+.sd-select-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  background: var(--ar-color-input, #fff);
+  color: var(--ar-color-text, #1f2937);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.sd-select-trigger:hover:not(:disabled) { border-color: var(--ar-color-border-strong, #cbd5e1); }
+.sd-select-trigger:focus-visible,
+.sd-select-trigger[aria-expanded="true"] {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 3px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+  outline: none;
+}
+.sd-select-trigger:disabled {
+  color: var(--ar-color-text-disabled, #9ca3af);
+  background: var(--ar-color-surface-muted, #eef2f6);
+  cursor: not-allowed;
+}
+.sd-select-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-select-count {
+  padding: 2px 6px 4px;
+  font-size: 10px;
+  color: var(--ar-color-text-subtle, #94a3b8);
+}
+/* Filled-triangle caret in a reserved right lane, matching .dpr-select-caret. */
+.sd-select-caret {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 0;
+  height: 0;
+  transform: translateY(-25%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--ar-color-text-subtle, #94a3b8);
+  pointer-events: none;
+  transition: border-top-color 150ms ease;
+}
+.sd-select-trigger:hover:not(:disabled) .sd-select-caret,
+.sd-select-trigger[aria-expanded="true"] .sd-select-caret {
+  border-top-color: var(--ar-color-accent, #2b6df6);
+}
+.sd-select-trigger[aria-expanded="true"] .sd-select-caret {
+  transform: translateY(-75%) rotate(180deg);
+}
+.sd-select-trigger:disabled .sd-select-caret { border-top-color: var(--ar-color-text-disabled, #9ca3af); }
+
+.sd-select-list {
+  position: fixed;
+  z-index: 9480;
+  box-sizing: border-box;
+  max-height: 260px;
+  overflow-y: auto;
+  /* Long table names ellipsize instead of scrolling sideways: a horizontal bar
+     would eat a row of the list and hide the option the user is aiming at. */
+  overflow-x: hidden;
+  padding: 3px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: var(--ar-color-surface-raised, #fbfcfe);
+  box-shadow: var(--ar-shadow-floating, 0 8px 20px rgba(15, 23, 42, 0.08));
+}
+.sd-select-list[hidden] { display: none; }
+.sd-select-opt {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  /* Without border-box the padding is added to the 100% width, so every row
+     overflowed the list by 12px. */
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ar-color-text, #1f2937);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.sd-select-opt:hover { background: var(--ar-color-surface-hover, #e8eef6); }
+.sd-select-opt[aria-selected="true"] {
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  color: var(--ar-color-accent, #2b6df6);
+  font-weight: 700;
+}
+.sd-select-opt:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+.sd-select-opt-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sd-select-opt-kind {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ar-color-text-subtle, #94a3b8);
+}
+.sd-select-empty {
+  padding: 6px;
+  font-size: 11px;
+  color: var(--ar-color-text-subtle, #94a3b8);
+}
+
+.sd-source-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ar-color-text-subtle, #94a3b8);
+}
+.sd-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  background: var(--ar-color-surface, #f8fafc);
+  color: var(--ar-color-text, #1f2937);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.sd-btn:hover:not(:disabled) {
+  background: var(--ar-color-surface-hover, #e8eef6);
+  border-color: var(--ar-color-border-strong, #cbd5e1);
+}
+.sd-btn:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: 1px;
+}
+.sd-btn:disabled {
+  color: var(--ar-color-text-disabled, #9ca3af);
+  cursor: not-allowed;
+}
+.sd-btn-primary {
+  border-color: var(--ar-color-accent-border, #bfd6ff);
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  color: var(--ar-color-accent, #2b6df6);
+  font-weight: 700;
+}
+.sd-btn-primary:hover:not(:disabled) {
+  background: var(--ar-color-accent-hover, #dbeafe);
+  border-color: var(--ar-color-accent, #2b6df6);
+}
+.sd-source-status {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ar-color-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+.sd-source-status[hidden] { display: none; }
+.sd-source-status.error { color: var(--ar-color-danger, #be123c); }
+.sd-source-status.ok { color: var(--ar-color-success, #15803d); }
 
 /* ---------- Floating column preview ---------- */
 .sd-preview-card {

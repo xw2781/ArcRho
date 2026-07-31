@@ -14,8 +14,8 @@ class ReservingClassTypesImportLocalFileRequest(BaseModel):
 
 
 class RefreshReservingClassValuesRequest(BaseModel):
+    # Values always come from the project-owned imported master table.
     project_name: str
-    table_path: Optional[str] = ""
     force: bool = False
 
 

@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Typing to search the Source Data table list no longer sends the caret back to the start of the box.",
+  "details": [
+    "The Table Or View field is now the search box itself; the separate search box inside the dropdown was removed.",
+    "Each keystroke used to rebuild the search box, which reset the caret to the first character; only the list is rebuilt now, so typing behaves normally.",
+    "Server Name and Database Name also filter their saved-value dropdowns as you type."
+  ]
+}

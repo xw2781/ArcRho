@@ -18,6 +18,7 @@ from app_server import config
 from app_server.schemas.data_processing_rules import DataProcessingRulesData
 from app_server.services.audit_service import safe_append_project_audit_log
 from app_server.services import data_processing_values_service
+from app_server.services import source_table_service
 
 
 _RULE_LOCKS_GUARD = threading.Lock()
@@ -434,9 +435,9 @@ def _source_table_options(
         for field_name, significance in significance_by_field.items()
     ]
     if not table_path:
-        return fallback_fields, "Project Field Mapping does not specify a source table path."
+        return fallback_fields, "No source table has been imported for this project."
     if not os.path.isfile(table_path):
-        return fallback_fields, f"Source table file was not found: {table_path}"
+        return fallback_fields, f"Imported source table was not found: {table_path}"
 
     try:
         frame = pd.read_csv(table_path, nrows=1000)
@@ -530,7 +531,7 @@ def _load_validation_context(project_name: str) -> Dict[str, Any]:
         row for row in mapping.get("rows", [])
         if isinstance(row, dict)
     ] if isinstance(mapping.get("rows"), list) else []
-    table_path = str(mapping.get("table_path") or "").strip()
+    table_path = source_table_service.resolve_source_table_for_read(project_name)
     source_fields, source_error = _source_table_options(table_path, mapping_rows)
     vocabulary_cache = data_processing_values_service.get_data_processing_values(project_name)
     source_vocabulary = data_processing_values_service.source_vocabulary_options(
@@ -1498,8 +1499,9 @@ def _strip_audit_metadata(value: Any) -> Any:
     return value
 
 
-def _normalized_source_table_signature(field_mapping: Dict[str, Any]) -> Dict[str, Any]:
-    table_path = str(field_mapping.get("table_path") or "").strip()
+def _normalized_source_table_signature(project_name: str) -> Dict[str, Any]:
+    """Identity of the project-owned imported table this config was built from."""
+    table_path = source_table_service.resolve_source_table_for_read(project_name)
     normalized_path = (
         os.path.normcase(os.path.normpath(os.path.abspath(table_path)))
         if table_path
@@ -1545,7 +1547,7 @@ def processing_config_payload(project_name: str) -> Dict[str, Any]:
             _read_processing_config_json(config.get_general_settings_path(project_name))
         ),
         "data_processing_rules": _canonical_rules_for_hash(document),
-        "source_table": _normalized_source_table_signature(field_mapping),
+        "source_table": _normalized_source_table_signature(project_name),
     }
 
 

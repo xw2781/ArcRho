@@ -188,6 +188,14 @@ def _enforce_data_dict_limit(max_tables=10):
             print(f"Removed oldest table from cache: {oldest_table}")
 
 
+# Mirror of arcrho_api.source_table_contract. The engine ships as its own
+# frozen bundle and cannot import that package, so these two names are
+# duplicated here and frontend/tests/test_source_table_contract.py fails if the
+# mirror ever drifts from the canonical owner.
+SOURCE_IMPORT_DIR = "source"
+MASTER_TABLE_FILE = "master_table.csv"
+
+
 def _project_json_paths(project_name):
     project_dir = get_project_root() / "projects" / project_name
     return {
@@ -211,37 +219,31 @@ def _read_json(json_path):
         return json.load(f)
 
 
-def _project_field_mapping_json(project_name):
-    path = _project_json_paths(project_name)["source_table"]
-    if not path.exists():
-        raise FileNotFoundError(f"Missing field_mapping.json for project: {project_name}")
-    return _read_json(path)
-
-
 def get_project_table_path(project_name):
-    field_mapping = _project_field_mapping_json(project_name)
-    table_path = str(field_mapping.get("table_path", "") if isinstance(field_mapping, dict) else "").strip()
-    if not table_path:
-        raise ProjectSettingsError(f"Missing table_path in field_mapping.json for project: {project_name}")
-    if not os.path.exists(table_path):
-        raise FileNotFoundError(f"Source table not found for project {project_name}: {table_path}")
-    return table_path
+    """Path of the project's imported master table.
+
+    The engine never reads the external CSV path or the SQL Server table shown
+    in Project Settings. Both import routes write the same fixed copy, so this
+    resolves purely from the project folder.
+    """
+    master_path = _project_dir(project_name) / SOURCE_IMPORT_DIR / MASTER_TABLE_FILE
+    if not master_path.exists():
+        raise FileNotFoundError(
+            f"No source table has been imported for project {project_name}: {master_path}. "
+            "Import the table in Project Settings > Source Data."
+        )
+    return str(master_path)
 
 
 def _data_table_cache_key(csv_path):
     return os.path.normcase(os.path.abspath(str(csv_path)))
 
 
-def _source_columns_for_project_config(source_table_json, project_name):
-    table_path = str(
-        source_table_json.get("table_path", "")
-        if isinstance(source_table_json, dict)
-        else ""
-    ).strip()
-    if not table_path:
-        raise DataProcessingConfigurationError(
-            f"Missing table_path in field_mapping.json for project [{project_name}]."
-        )
+def _source_columns_for_project_config(project_name):
+    try:
+        table_path = get_project_table_path(project_name)
+    except FileNotFoundError as exc:
+        raise DataProcessingConfigurationError(str(exc)) from exc
 
     try:
         return list(pd.read_csv(table_path, nrows=0).columns)
@@ -314,10 +316,7 @@ def _build_project_config(project_name, json_paths):
         catalog=reserving_class_catalog,
         field_mapping_payload=source_table_json,
         dataset_types_payload=dataset_types_json,
-        source_columns=_source_columns_for_project_config(
-            source_table_json,
-            project_name,
-        ),
+        source_columns=_source_columns_for_project_config(project_name),
     )
     project_config = {
         "Source Table": _source_table_df_from_json(source_table_json),

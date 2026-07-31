@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data remembers previously used SQL Server server and database names, and pins Import Data to the bottom of the window.",
+  "details": [
+    "Server and database names that connect successfully are saved on the ArcRho Server, so everyone using it can pick them again from a dropdown instead of retyping.",
+    "Each saved entry has a remove action in the dropdown: removing a database drops that server/database pair, removing a server drops all of its pairs.",
+    "The database dropdown only lists databases recorded for the server currently entered.",
+    "Only names and a last-used time are saved; no credentials are stored.",
+    "Import Data now stays at the bottom edge of the Import Settings window at any size, and the corner resize grip icon was removed while drag-to-resize still works."
+  ]
+}

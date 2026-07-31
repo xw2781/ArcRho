@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data import settings are now a regular draggable window with an import-method dropdown.",
+  "details": [
+    "The settings surface is a normal window like the Dataset Type and Reserving Class Type editors: drag it by its title bar, and it stays open until you close it or press Escape.",
+    "Clicking outside the window no longer dismisses it.",
+    "The CSV File / SQL Server choice is now a dropdown instead of a two-button switch."
+  ]
+}

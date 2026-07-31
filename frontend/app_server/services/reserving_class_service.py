@@ -51,6 +51,7 @@ from app_server.services.project_user_preferences_service import (
     get_preferences as get_project_user_preferences,
     update_preferences as update_project_user_preferences,
 )
+from app_server.services import source_table_service
 
 PROJECT_USER_RESERVING_CLASS_TREE_KEY = "reservingClassTree"
 
@@ -1106,7 +1107,7 @@ def _load_table_summary_cached_meta(project_name: str, table_path: str) -> Tuple
     if not tpath:
         return (None, [])
     try:
-        cache_path = get_cache_path(tpath, project_name=project_name)
+        cache_path = get_cache_path(project_name)
     except Exception:
         return (None, [])
     if not os.path.exists(cache_path):
@@ -1176,27 +1177,22 @@ def _extract_reserving_class_field_defs(rows: Any) -> List[Dict[str, Any]]:
     out.sort(key=lambda x: ((x.get("level") if isinstance(x.get("level"), int) else 10**9), str(x.get("field_name", "")).lower()))
     return out
 
-def _load_field_mapping_rows_and_table_path(project_name: str) -> Tuple[List[Dict[str, Any]], str]:
+def _load_field_mapping_rows(project_name: str) -> List[Dict[str, Any]]:
     try:
         filepath = get_field_mapping_path(project_name)
     except ValueError:
-        return ([], "")
+        return []
     if not os.path.exists(filepath):
-        return ([], "")
+        return []
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except Exception:
-        return ([], "")
+        return []
     rows = raw.get("rows", []) if isinstance(raw, dict) else []
-    table_path = str(raw.get("table_path", "") or "").strip() if isinstance(raw, dict) else ""
     if not isinstance(rows, list):
         rows = []
-    rows_norm: List[Dict[str, Any]] = []
-    for row in rows:
-        if isinstance(row, dict):
-            rows_norm.append(row)
-    return (rows_norm, table_path)
+    return [row for row in rows if isinstance(row, dict)]
 
 def _collect_distinct_values_from_csv(
     csv_path: str,
@@ -1385,7 +1381,6 @@ def _refresh_reserving_class_combinations_cache(
 
 def refresh_reserving_class_values(
     project_name: str,
-    table_path_override: Optional[str] = None,
     mapping_rows_override: Optional[List[Dict[str, Any]]] = None,
     force: bool = False,
 ) -> Dict[str, Any]:
@@ -1393,13 +1388,10 @@ def refresh_reserving_class_values(
     if not project_name:
         raise ValueError("project_name is required")
 
-    if mapping_rows_override is None:
-        rows, table_path_from_mapping = _load_field_mapping_rows_and_table_path(project_name)
-    else:
-        rows = mapping_rows_override
-        _, table_path_from_mapping = _load_field_mapping_rows_and_table_path(project_name)
+    rows = _load_field_mapping_rows(project_name) if mapping_rows_override is None else mapping_rows_override
 
-    table_path = str(table_path_override or "").strip() or str(table_path_from_mapping or "").strip()
+    # Reserving class values always come from the project-owned imported table.
+    table_path = source_table_service.resolve_source_table_for_read(project_name)
     field_defs = _extract_reserving_class_field_defs(rows)
     field_names = [str(x.get("field_name", "") or "").strip() for x in field_defs if str(x.get("field_name", "") or "").strip()]
 
@@ -2007,7 +1999,6 @@ def _build_reserving_child_nodes(
 def get_reserving_class_path_tree_children(
     project_name: str,
     prefix: str = "",
-    table_path_override: str = "",
     force: bool = False,
 ) -> Dict[str, Any]:
     project_name_clean = str(project_name or "").strip()
@@ -2016,7 +2007,6 @@ def get_reserving_class_path_tree_children(
 
     refresh_out = refresh_reserving_class_values(
         project_name=project_name_clean,
-        table_path_override=str(table_path_override or "").strip(),
         mapping_rows_override=None,
         force=bool(force),
     )

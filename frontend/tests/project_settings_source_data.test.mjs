@@ -6,15 +6,16 @@ const moduleSource = await readFile(
   new URL("../ui/project_settings/project_settings_source_data.js", import.meta.url),
   "utf8",
 );
+const sourceDataModule = await import(
+  new URL("../ui/project_settings/project_settings_source_data.js", import.meta.url)
+);
 const {
   getLastClosedMonthCanonical,
   getMonthPickerYearRange,
   formatSummaryNumber,
   getColumnRowSummary,
   getHistBarRangeLabels,
-} = await import(
-  new URL("../ui/project_settings/project_settings_source_data.js", import.meta.url)
-);
+} = sourceDataModule;
 const generalSettingsSource = await readFile(
   new URL("../ui/project_settings/project_settings_general_settings.js", import.meta.url),
   "utf8",
@@ -39,12 +40,27 @@ const summaryRouter = await readFile(
   new URL("../app_server/api/table_summary_router.py", import.meta.url),
   "utf8",
 );
+const sourceTableRouter = await readFile(
+  new URL("../app_server/api/source_table_router.py", import.meta.url),
+  "utf8",
+);
+const sourceTableService = await readFile(
+  new URL("../app_server/services/source_table_service.py", import.meta.url),
+  "utf8",
+);
+const sourceTableContract = await readFile(
+  new URL("../../python-api/src/arcrho_api/source_table_contract.py", import.meta.url),
+  "utf8",
+);
+const appServerConfig = await readFile(
+  new URL("../app_server/config.py", import.meta.url),
+  "utf8",
+);
 
 test("Source Data markup keeps the ids project_settings.js binds", () => {
   const boundIds = [
     "summaryTablePathInput",
     "summaryTablePathReloadBtn",
-    "summaryTablePathBrowseBtn",
     "summaryOriginStartInput",
     "summaryOriginEndInput",
     "summaryDevelopmentEndInput",
@@ -69,7 +85,6 @@ test("Source Data panel exposes the quiet surface elements", () => {
     "summaryPathDir",
     "summaryCopyFolderBtn",
     "summaryInfoBtn",
-    "summaryCopyPathBtn",
     "summaryOpenFolderBtn",
     "summaryMessage",
     "summaryColumnFilter",
@@ -101,8 +116,13 @@ test("source identity keeps the quiet info trigger beside the file name and the 
   assert.match(projectSettingsHtml, /<circle cx="8" cy="8" r="6\.4"\/><path d="M8 4\.4v4\.6"\/>/);
   assert.match(summaryCss, /\.sd-info-trigger\s*\{[\s\S]*border:\s*0;[\s\S]*background:\s*transparent;/);
   assert.match(summaryCss, /\.sd-stats-card\s*\{[\s\S]*width:\s*420px;[\s\S]*max-width:\s*calc\(100vw - 16px\)/);
-  assert.match(moduleSource, /dom\.pathIdentity\.hidden = true/);
-  assert.match(moduleSource, /dom\.pathIdentity\.hidden = false/);
+  // Clicking the identity now opens the Import Settings panel instead of an
+  // inline path editor; the panel is the only place a source is edited.
+  assert.match(moduleSource, /function beginPathEdit\(\)\s*\{[\s\S]*?openSourcePanel\(\)/);
+  assert.ok(
+    !/dom\.pathIdentity\.hidden = true/.test(moduleSource),
+    "the retired inline path editor remains",
+  );
   assert.match(moduleSource, /dom\.pathDirRow\.hidden = !parts\.dir/);
   assert.match(moduleSource, /dom\.copyFolderBtn\?\.addEventListener\("click"/);
   assert.match(moduleSource, /splitPath\(dom\.pathInput\?\.value\)\.dir/);
@@ -381,6 +401,419 @@ test("table summary service publishes versioned distribution data", () => {
   assert.match(summaryService, /"distribution": distribution/);
   assert.match(summaryService, /"summary_version": SUMMARY_VERSION/);
   // A stale-version cache must be regenerated rather than served.
-  assert.match(summaryRouter, /load_valid_cache\(path, cache_path\)/);
-  assert.ok(!summaryRouter.includes("is_cache_valid(path, cache_path)"), "router still trusts mtime alone");
+  assert.match(summaryRouter, /load_valid_cache\(master_path, cache_path\)/);
+  assert.ok(!summaryRouter.includes("is_cache_valid("), "router still trusts mtime alone");
+});
+
+test("table summary is addressed by project and reads the imported master table", () => {
+  // The route no longer accepts a caller-supplied path; the project owns the table.
+  assert.match(summaryRouter, /def get_table_summary\(project_name: str\)/);
+  assert.match(summaryRouter, /source_table_service\.ensure_master_table\(project_name, force=force\)/);
+  assert.match(summaryRouter, /generate_table_summary\(master_path\)/);
+  assert.ok(!summaryRouter.includes("req.path"), "refresh still reads a caller path");
+
+  assert.match(projectSettingsJs, /async function loadTableSummary\(projectName = "", options = \{\}\)/);
+  assert.match(projectSettingsJs, /new URLSearchParams\(\{ project_name: projectName \|\| "" \}\)/);
+  assert.ok(
+    !/JSON\.stringify\(\{\s*path: tablePath/.test(projectSettingsJs),
+    "coordinator still posts an external table path to /table_summary/refresh",
+  );
+});
+
+test("the Import Settings window is a regular draggable window", () => {
+  for (const id of [
+    "summaryImportSettingsBtn",
+    "summaryImportWindow",
+    "summaryImportWindowHeader",
+    "summaryImportWindowClose",
+    "sdMethodTrigger",
+    "sdMethodList",
+    "sdCsvPath",
+    "sdCsvBrowseBtn",
+    "sdMssqlServer",
+    "sdMssqlDatabase",
+    "sdMssqlLoadTablesBtn",
+    "sdMssqlTableInput",
+    "sdMssqlTableCaretBtn",
+    "sdMssqlTableList",
+    "sdMssqlAuthGroup",
+    "sdImportDataBtn",
+    "sdMssqlStatus",
+  ]) {
+    assert.ok(projectSettingsHtml.includes(`id="${id}"`), `missing markup id ${id}`);
+    assert.ok(moduleSource.includes(id), `feature module never binds ${id}`);
+  }
+
+  // It reuses the page's editor-window chrome rather than a page-local style.
+  assert.match(projectSettingsHtml, /class="rct-row-editor sd-import-window" id="summaryImportWindow"/);
+  assert.match(projectSettingsHtml, /class="rct-row-editor-header" id="summaryImportWindowHeader"/);
+  assert.match(summaryCss, /\.sd-import-window \{/);
+
+  // The window lives beside the other editor windows, not inside the tab body.
+  const windowIndex = projectSettingsHtml.indexOf('id="summaryImportWindow"');
+  const summaryEndIndex = projectSettingsHtml.indexOf('id="summaryStatsCard"');
+  assert.ok(windowIndex > summaryEndIndex, "the window is still nested in the Source Data tab");
+
+  // Dragged by its title bar, exactly like the sibling editors.
+  assert.match(moduleSource, /function onWindowHeaderMouseDown\(event\)/);
+  assert.match(moduleSource, /dom\.sourcePanelHeader\?\.addEventListener\("mousedown", onWindowHeaderMouseDown\)/);
+  assert.match(projectSettingsJs, /sourceDataFeature\?\.onEditorMouseMove\(e\)/);
+  assert.match(projectSettingsJs, /sourceDataFeature\?\.onEditorMouseUp\(\)/);
+
+  // A regular window is not dismissed by clicking outside it.
+  assert.match(moduleSource, /an outside click never/);
+  assert.ok(
+    !/closeSourcePanel\(\);\s*\} else if/.test(moduleSource),
+    "the window still closes on an outside click",
+  );
+
+  // Only the selected method's fields are shown, and Import Data commits either.
+  assert.match(moduleSource, /section\.hidden = String\(section\.dataset\.method \|\| ""\) !== method/);
+  assert.match(projectSettingsHtml, /data-method="csv"/);
+  assert.match(projectSettingsHtml, /data-method="mssql"/);
+  assert.match(projectSettingsHtml, /id="sdImportDataBtn"[^>]*>Import Data</);
+
+  // SQL Server login is present as a disabled placeholder only.
+  assert.match(projectSettingsHtml, /data-auth="sql_login"[^>]*disabled/);
+
+  // The header keeps three actions; the copy-path and per-method icons are gone.
+  for (const retired of [
+    "summaryCopyPathBtn",
+    "summaryTablePathBrowseBtn",
+    "summarySourceSettingsBtn",
+    "summaryImportBtn",
+  ]) {
+    assert.ok(!projectSettingsHtml.includes(`id="${retired}"`), `retired #${retired} remains in markup`);
+    assert.ok(!moduleSource.includes(retired), `retired #${retired} remains bound`);
+  }
+});
+
+test("the Import Settings window is resizable and opens at a workable size", () => {
+  // Header and footer stay pinned while only the body scrolls.
+  assert.match(summaryCss, /\.sd-import-window \{[\s\S]*?overflow: hidden;/);
+  assert.match(summaryCss, /\.sd-import-window\.show \{\s*display: flex;\s*flex-direction: column;/);
+  assert.match(summaryCss, /\.sd-import-window \.rct-row-editor-actions \{ flex: 0 0 auto; \}/);
+  assert.match(summaryCss, /\.sd-import-body \{[\s\S]*?flex: 1 1 auto;[\s\S]*?overflow-y: auto;/);
+  assert.match(summaryCss, /\.sd-import-window \{[\s\S]*?min-width: 520px;/);
+  assert.match(summaryCss, /\.sd-import-window \{[\s\S]*?min-height: 360px;/);
+  assert.match(summaryCss, /\.sd-import-window \{[\s\S]*?max-height: calc\(100vh - 32px\);/);
+
+  const width = Number(summaryCss.match(/\.sd-import-window \{[\s\S]*?width: (\d+)px;/)?.[1]);
+  assert.ok(width >= 720, `the window default width is still narrow: ${width}px`);
+
+  // A resizable window with overflow cannot clip its own dropdowns, so the
+  // lists render into document.body and are re-anchored as the window changes.
+  assert.match(moduleSource, /if \(list && list\.parentElement !== document\.body\) document\.body\.appendChild\(list\)/);
+  assert.match(summaryCss, /\.sd-select-list \{[\s\S]*?position: fixed;/);
+  assert.match(moduleSource, /function repositionSourceLists\(\)/);
+  assert.match(moduleSource, /new ResizeObserver\(\(\) => repositionSourceLists\(\)\)\.observe\(dom\.sourcePanel\)/);
+  // Ownership can no longer be asked of the window markup.
+  assert.match(moduleSource, /owns: \(node\) =>/);
+  assert.match(moduleSource, /!methodSelect\.owns\(event\.target\)/);
+  assert.match(moduleSource, /!tableSelect\.owns\(event\.target\)/);
+});
+
+test("the window resizes from its own grip, anchored at the top-left corner", () => {
+  // The native `resize` property would paint the page-wide ::-webkit-resizer
+  // glyph and, because the window is centered with a transform, would grow it
+  // from both edges at once. Neither is acceptable, so there is no native resize.
+  const windowBlock = summaryCss.match(/\.sd-import-window \{[\s\S]*?\}/)?.[0] || "";
+  assert.ok(windowBlock, "the .sd-import-window rule is missing");
+  assert.ok(!/\bresize:/.test(windowBlock), "the window still uses native CSS resize");
+  assert.ok(
+    !summaryCss.includes(".sd-import-window::-webkit-resizer"),
+    "the native resizer pseudo-element is still being styled",
+  );
+
+  // An invisible corner hit-area carries the resize affordance instead.
+  assert.match(projectSettingsHtml, /id="summaryImportWindowResizer"/);
+  assert.match(summaryCss, /\.sd-import-resizer \{[\s\S]*?position: absolute;[\s\S]*?cursor: nwse-resize;/);
+
+  // Pinning left/top before sizing is what keeps the left edge still: while the
+  // centering transform is in place, `left` names the window's midpoint.
+  assert.match(moduleSource, /function pinSourcePanelPosition\(rect\)/);
+  assert.match(moduleSource, /transform = "none"/);
+  const resizerDown = moduleSource.match(/function onWindowResizerMouseDown\([\s\S]*?\n  \}/)?.[0] || "";
+  assert.ok(resizerDown, "onWindowResizerMouseDown is missing");
+  assert.ok(
+    resizerDown.indexOf("pinSourcePanelPosition") < resizerDown.indexOf("windowResizeState ="),
+    "the resize drag starts before the window position is pinned",
+  );
+  assert.match(moduleSource, /dom\.sourcePanelResizer\?\.addEventListener\("mousedown", onWindowResizerMouseDown\)/);
+
+  // CSS stays the single owner of the minimum size; JS only reads it back.
+  assert.match(moduleSource, /function sourcePanelSizeLimits\(\)/);
+  assert.match(moduleSource, /getComputedStyle\(dom\.sourcePanel\)/);
+
+  // A stale resize state would hijack a later header drag.
+  assert.match(moduleSource, /function onWindowMouseUp\(\) \{\s*windowDragState = null;\s*windowResizeState = null;/);
+});
+
+test("dropdown lists never scroll sideways", () => {
+  // A horizontal bar sits on top of the last row and hides the option the user
+  // is reaching for, so long names ellipsize instead.
+  assert.match(summaryCss, /\.sd-select-list \{[\s\S]*?overflow-x: hidden;/);
+  // The rows were 12px wider than the list without border-box: `width: 100%`
+  // plus horizontal padding.
+  assert.match(summaryCss, /\.sd-select-opt \{[\s\S]*?box-sizing: border-box;[\s\S]*?width: 100%;/);
+  assert.match(summaryCss, /\.sd-select-opt-name \{[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/);
+});
+
+test("the dropdown caret is a filled triangle in a reserved arrow lane", () => {
+  // Matches the canonical .dpr-select-caret treatment.
+  assert.match(summaryCss, /\.sd-select-caret \{[\s\S]*?position: absolute;/);
+  assert.match(summaryCss, /\.sd-select-caret \{[\s\S]*?width: 0;[\s\S]*?height: 0;/);
+  assert.match(summaryCss, /\.sd-select-caret \{[\s\S]*?border-left: 4px solid transparent;/);
+  assert.match(summaryCss, /\.sd-select-caret \{[\s\S]*?border-top: 5px solid/);
+  // It flips when the list is open.
+  assert.match(
+    summaryCss,
+    /\.sd-select-trigger\[aria-expanded="true"\] \.sd-select-caret \{\s*transform: translateY\(-75%\) rotate\(180deg\);/,
+  );
+  // The trigger anchors the caret and reserves its lane.
+  assert.match(summaryCss, /\.sd-select-trigger \{[\s\S]*?position: relative;/);
+  assert.match(summaryCss, /\.sd-select-trigger \{[\s\S]*?padding: 0 24px 0 8px;/);
+  // The old flex-sized caret stretched into a bar and must not come back.
+  assert.ok(
+    !/\.sd-select-caret \{[\s\S]*?flex: 0 0 16px;/.test(summaryCss),
+    "the caret is still flex-sized and will render as a bar",
+  );
+});
+
+test("the table list is searched by typing in the field itself", () => {
+  // The field is the search box: no separate input is rendered inside the list.
+  assert.ok(!moduleSource.includes("sd-select-search"), "a separate search box remains");
+  assert.ok(!summaryCss.includes(".sd-select-search"), "the separate search box styles remain");
+  assert.match(projectSettingsHtml, /id="sdMssqlTableInput"[^>]*role="combobox"/);
+  assert.match(projectSettingsHtml, /id="sdMssqlTableInput"[^>]*aria-autocomplete="list"/);
+
+  // Typing filters; only the list is re-rendered, never the field, so the
+  // caret keeps its position across keystrokes.
+  assert.match(moduleSource, /function visibleOptions\(\)/);
+  assert.match(moduleSource, /\.toLowerCase\(\)\.includes\(query\)/);
+  const inputHandler = moduleSource
+    .split('input?.addEventListener("input", () => {')[1]
+    .split("});")[0];
+  assert.ok(inputHandler.includes("filter = String(input.value"), "typing does not drive the filter");
+  assert.ok(!inputHandler.includes("input.value ="), "the field is rewritten while typing");
+  assert.ok(!inputHandler.includes(".focus()"), "the field is re-focused while typing");
+
+  // The committed table stays separate from the typed filter text.
+  assert.match(moduleSource, /getValue: \(\) => committed/);
+  assert.match(moduleSource, /function restoreCommittedText\(\)/);
+  // A single remaining match commits on Enter.
+  assert.match(moduleSource, /if \(rows\.length === 1\) \{/);
+  assert.match(moduleSource, /\$\{rows\.length\} of \$\{options\.length\}/);
+});
+
+test("used server/database pairs are remembered in the server-shared config", () => {
+  // Server-shared scope: one canonical builder under <workspace_root>/config,
+  // never a hardcoded drive or server root.
+  assert.match(sourceTableContract, /MSSQL_CONNECTIONS_FILE = "mssql_connections\.json"/);
+  assert.match(appServerConfig, /def get_mssql_connections_path\(\) -> str:/);
+  assert.match(
+    appServerConfig,
+    /get_root_path\(\), "config", source_table_contract\.MSSQL_CONNECTIONS_FILE/,
+  );
+  assert.ok(
+    !/E:\\\\ArcRho Server/.test(appServerConfig.split("def get_mssql_connections_path")[1] || ""),
+    "the shared connections path hardcodes a server root",
+  );
+
+  // Identifiers only - the shared file must never carry credentials.
+  assert.match(sourceTableContract, /def normalize_mssql_connection\(/);
+  const entryShape = sourceTableContract
+    .split("def normalize_mssql_connection(")[1]
+    .split("def ")[0];
+  for (const forbidden of ["password", "user", "token"]) {
+    assert.ok(!entryShape.includes(forbidden), `the saved entry carries ${forbidden}`);
+  }
+
+  // Recorded on a successful connect and on a committed import.
+  assert.match(sourceTableService, /def remember_mssql_connection\(/);
+  assert.equal(
+    (sourceTableService.match(/remember_mssql_connection\(profile\["server"\], profile\["database"\]\)/g) || []).length,
+    2,
+    "the pair is not recorded on both connect and import",
+  );
+  // A read-only config folder must not fail an otherwise good operation.
+  assert.match(sourceTableService, /except HTTPException:\s*\n\s*# A read-only config folder/);
+
+  assert.match(sourceTableRouter, /@router\.get\("\/source_table\/connections"\)/);
+  assert.match(sourceTableRouter, /@router\.post\("\/source_table\/connections\/forget"\)/);
+});
+
+test("saved connections can be picked and deleted from the field dropdowns", () => {
+  for (const id of [
+    "sdMssqlServerCombo",
+    "sdMssqlServerHistoryBtn",
+    "sdMssqlServerList",
+    "sdMssqlDatabaseCombo",
+    "sdMssqlDatabaseHistoryBtn",
+    "sdMssqlDatabaseList",
+  ]) {
+    assert.ok(projectSettingsHtml.includes(`id="${id}"`), `missing markup id ${id}`);
+    assert.ok(moduleSource.includes(id), `feature module never binds ${id}`);
+  }
+
+  // Free text stays possible; the dropdown only offers prior values.
+  assert.match(projectSettingsHtml, /<input id="sdMssqlServer" type="text"/);
+  assert.match(projectSettingsHtml, /<input id="sdMssqlDatabase" type="text"/);
+  assert.match(moduleSource, /function createSdCombo\(/);
+
+  // Every row carries a remove action.
+  assert.match(moduleSource, /class="sd-select-opt-remove"/);
+  assert.match(moduleSource, /onRemove\?\.\(remove\.dataset\.remove\)/);
+  assert.match(summaryCss, /\.sd-select-opt-remove \{/);
+  // Removing a server drops all of its pairs; removing a database drops one.
+  assert.match(moduleSource, /onRemove: \(server\) => forgetConnection\(server, null\)/);
+  assert.match(moduleSource, /onRemove: \(database\) => forgetConnection\(/);
+
+  // The database list is scoped to the server currently typed in.
+  assert.match(moduleSource, /entry\.server\.toLowerCase\(\) === currentServer/);
+  assert.match(moduleSource, /if \(input === dom\.mssqlServer\) syncDatabaseHistory\(\)/);
+  // Re-seeding the server list on every keystroke would clear the filter being
+  // typed, so only the database list re-scopes as the server changes.
+  assert.match(moduleSource, /function syncDatabaseHistory\(\)/);
+  const serverInputSync = moduleSource
+    .split("function syncDatabaseHistory()")[1]
+    .split("\n  }")[0];
+  assert.ok(!serverInputSync.includes("serverCombo.setOptions"), "typing a server resets its own list");
+
+  assert.match(projectSettingsJs, /"\/source_table\/connections"/);
+  assert.match(projectSettingsJs, /"\/source_table\/connections\/forget"/);
+});
+
+test("import method is chosen from a dropdown built by the shared select", () => {
+  // The retired segmented switch is fully gone.
+  assert.ok(!projectSettingsHtml.includes("sd-source-switch"), "the retired method switch remains in markup");
+  assert.ok(!projectSettingsHtml.includes("sd-source-opt"), "the retired method switch options remain");
+  assert.ok(!summaryCss.includes(".sd-source-switch"), "the retired method switch styles remain");
+  assert.ok(!moduleSource.includes("sourceOptions"), "the retired method switch is still bound");
+
+  assert.match(projectSettingsHtml, /id="sdMethodTrigger"[^>]*aria-haspopup="listbox"/);
+  assert.match(projectSettingsHtml, /id="sdMethodList"[^>]*role="listbox"/);
+
+  // Both dropdowns come from one implementation.
+  assert.match(moduleSource, /function createSdSelect\(/);
+  assert.match(moduleSource, /const methodSelect = createSdSelect\(/);
+  assert.match(moduleSource, /const tableSelect = createSdCombo\(/);
+  assert.match(moduleSource, /\{ value: SOURCE_TYPE_CSV, label: "CSV File" \}/);
+  assert.match(moduleSource, /\{ value: SOURCE_TYPE_MSSQL, label: "SQL Server" \}/);
+});
+
+test("the table picker lists tables and views from the chosen database", () => {
+  // A themed listbox, not an unstyled native select popup.
+  const windowMarkup = projectSettingsHtml
+    .slice(projectSettingsHtml.indexOf('id="summaryImportWindow"'))
+    .split('id="reservingClassTypesRowContextMenu"')[0];
+  assert.ok(!windowMarkup.includes("<select"), "a native select was used in the import window");
+  assert.match(projectSettingsHtml, /id="sdMssqlTableInput"[^>]*role="combobox"/);
+  assert.match(projectSettingsHtml, /id="sdMssqlTableCaretBtn"[^>]*aria-haspopup="listbox"/);
+  assert.match(summaryCss, /\.sd-select-list \{/);
+  assert.match(summaryCss, /\.sd-select-caret \{/);
+
+  assert.match(moduleSource, /function loadTableOptions\(\)/);
+  assert.match(moduleSource, /await onListTables\(profile\)/);
+  assert.match(moduleSource, /item\.kind === "view" \? "View" : "Table"/);
+  // Editing the connection invalidates the list it produced.
+  assert.match(
+    moduleSource,
+    /if \(tableSelect\.hasOptions\(\)\) tableSelect\.setOptions\(\[\], \{ keepSelection: false \}\)/,
+  );
+
+  assert.match(projectSettingsJs, /"\/source_table\/tables"/);
+  assert.match(sourceTableRouter, /@router\.post\("\/source_table\/tables"\)/);
+  assert.match(sourceTableService, /INFORMATION_SCHEMA\.TABLES/);
+  assert.match(sourceTableService, /TABLE_TYPE IN \('BASE TABLE', 'VIEW'\)/);
+});
+
+test("Source Data reports the project-owned imported table, not the external source", () => {
+  assert.match(moduleSource, /export function normalizeSourceState/);
+  assert.match(moduleSource, /master_table_path/);
+  assert.match(moduleSource, /key: "Imported From"/);
+  assert.match(moduleSource, /key: "Imported At"/);
+  assert.match(moduleSource, /key: "Imported Table"/);
+
+  // Every app-server call stays in the coordinator.
+  assert.ok(!moduleSource.includes("fetch("), "feature module calls the app server directly");
+  assert.match(projectSettingsJs, /\/source_table\?project_name=/);
+  assert.match(projectSettingsJs, /"\/source_table\/profile"/);
+  assert.match(projectSettingsJs, /"\/source_table\/import"/);
+  assert.match(projectSettingsJs, /"\/source_table\/refresh"/);
+});
+
+test("Import Data rebuilds the master table from whichever method is selected", () => {
+  assert.match(moduleSource, /async function importData\(\)/);
+  // Both branches save the settings first, then run one import.
+  assert.match(moduleSource, /await onProfileSave\(method, profile, csvPath\)/);
+  assert.match(moduleSource, /await onImportData\(method\)/);
+  // Each method validates only what it needs before touching the server.
+  assert.match(moduleSource, /Select a table or view to import\./);
+  assert.match(moduleSource, /Choose a CSV file to import\./);
+
+  // SQL streams the table; CSV forces a re-copy of the external file.
+  assert.match(projectSettingsJs, /isSql \? "\/source_table\/import" : "\/source_table\/refresh"/);
+  assert.match(projectSettingsJs, /\{ project_name: name, force: true \}/);
+  // A finished import refreshes everything derived from the table.
+  assert.match(projectSettingsJs, /forceReservingClassTypesReload: true/);
+});
+
+test("SQL Server source identity replaces the file identity without a path", () => {
+  assert.match(moduleSource, /export function getSourceIdentity/);
+  const { getSourceIdentity, normalizeSourceState } = sourceDataModule;
+
+  const sql = normalizeSourceState({
+    source_type: "mssql",
+    mssql: { server: "SQLPRD01", database: "DW", table: "dbo.Claims" },
+  });
+  assert.deepEqual(getSourceIdentity(sql), {
+    name: "dbo.Claims",
+    detail: "SQLPRD01 · DW",
+    configured: true,
+  });
+
+  const emptySql = normalizeSourceState({ source_type: "mssql" });
+  assert.equal(getSourceIdentity(emptySql).configured, false);
+  assert.equal(getSourceIdentity(emptySql).name, "No SQL Server table");
+
+  const csv = normalizeSourceState({ source_type: "csv", csv_path: "E:\\raw\\claims_202605.csv" });
+  assert.deepEqual(getSourceIdentity(csv), {
+    name: "claims_202605.csv",
+    detail: "E:\\raw",
+    configured: true,
+  });
+  assert.equal(getSourceIdentity(normalizeSourceState(null)).configured, false);
+});
+
+test("Source Data header actions carry shared ArcRho tooltips", () => {
+  // aria-label alone renders no visible bubble, so each icon action must be
+  // attached to the shared tooltip surface (design rule C11).
+  assert.match(moduleSource, /import \{ attachArcrhoTooltip \} from "\.\.\/shared\/components\/tooltip\/tooltip\.js"/);
+  assert.match(moduleSource, /function wireTooltips\(\)/);
+  assert.match(moduleSource, /wireTooltips\(\);/);
+
+  const block = moduleSource.split("function wireTooltips()")[1].split("\n  }")[0];
+  for (const control of [
+    "dom.infoBtn",
+    "dom.reloadBtn",
+    "dom.importSettingsBtn",
+    "dom.openFolderBtn",
+  ]) {
+    assert.ok(block.includes(control), `${control} has no tooltip`);
+  }
+  // Tooltip wording is not duplicated; it reads each control's accessible name.
+  assert.match(block, /control\?\.getAttribute\("aria-label"\)/);
+  // Controls inside the floating panels would sit above the shared tooltip.
+  assert.ok(!block.includes("dom.copyFolderBtn"), "tooltip attached inside a floating panel");
+  assert.ok(!block.includes("dom.mssqlTestBtn"), "tooltip attached inside a floating panel");
+});
+
+test("unknown source types and auth modes fall back to the supported defaults", () => {
+  const { normalizeSourceState } = sourceDataModule;
+  const state = normalizeSourceState({ source_type: "oracle", mssql: { authentication: "kerberos" } });
+  assert.equal(state.sourceType, "csv");
+  // The UI only ever offers Windows authentication today.
+  assert.equal(state.mssql.authentication, "kerberos");
+  assert.match(moduleSource, /authentication: MSSQL_AUTH_WINDOWS,/);
 });

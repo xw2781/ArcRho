@@ -770,6 +770,18 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/schemas/table_summary.py", "Table summary refresh schema."),
         ],
     },
+    "source_table": {
+        "doc": "docs/app_server/domains/source_table.md",
+        "files": [
+            ("app_server/api/source_table_router.py", "Import source profile, connection test, and import routes."),
+            ("app_server/services/source_table_service.py", "Project-owned master table copy and SQL Server import."),
+            ("app_server/schemas/source_table.py", "Import source request schemas."),
+            (
+                "../python-api/src/arcrho_api/source_table_contract.py",
+                "Canonical master-table layout and source_import.json schema.",
+            ),
+        ],
+    },
     "field_mapping": {
         "doc": "docs/app_server/domains/field_mapping.md",
         "files": [
@@ -1179,6 +1191,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Can trigger reserving class value refresh as side effect.",
             "1. Change refresh contract: align request schema and downstream reserve refresh behavior.",
             "- Cache invalidation and side-effect refresh can impact performance.",
+        ),
+        "source_table": (
+            "Project-owned imported source table domain.",
+            "- Used by project settings Source Data, every app-server table reader, and the data engine.",
+            "- Owns <project>/source/master_table.csv and source/source_import.json.",
+            "1. Add an import source or profile field: extend arcrho_api/source_table_contract.py first.",
+            "- The imported copy is the only table downstream consumers read.",
         ),
         "field_mapping": (
             "Field mapping persistence domain for project settings.",

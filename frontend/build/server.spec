@@ -53,6 +53,10 @@ a = Analysis(
         'pydantic_core',
         'pandas',
         'numpy',
+        # SQL Server source-table import. Optional at runtime: source_table_service
+        # answers 503 with an explicit message when the module or the Microsoft
+        # ODBC driver is absent, so a build without it still starts.
+        'pyodbc',
         'openpyxl',
         'watchdog',
         'watchdog.observers',

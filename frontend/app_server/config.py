@@ -14,6 +14,8 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from arcrho_api import source_table_contract
+
 
 # ---------------------------------------------------------------------------
 # Project root resolution
@@ -346,14 +348,6 @@ def sanitize_reserving_class_folder(value: Any, fallback: str = "ReservingClass"
     return text or fallback
 
 
-def _infer_project_name_from_table_path(table_path: str) -> str:
-    """Infer project name from table file name like <project_name>_YYYYMM.csv."""
-    stem = Path(table_path).stem
-    m = re.match(r"^(?P<name>.+)_\d{6}$", stem)
-    project_name = (m.group("name") if m else stem).strip()
-    return _sanitize_folder_name(project_name) or _sanitize_folder_name(stem) or "project"
-
-
 def _find_existing_project_dir(project_name: str) -> Optional[str]:
     """Find an existing project folder under E:\\ArcRho Server\\projects by name (case-insensitive)."""
     target = _sanitize_folder_name(project_name or "").strip()
@@ -375,9 +369,9 @@ def _find_existing_project_dir(project_name: str) -> Optional[str]:
     return None
 
 
-def get_cache_path(csv_path: str, project_name: Optional[str] = None) -> str:
+def get_cache_path(project_name: str) -> str:
     """Get table-summary cache path under an existing project folder."""
-    chosen_name = (project_name or "").strip() or _infer_project_name_from_table_path(csv_path)
+    chosen_name = (project_name or "").strip()
     project_dir = _find_existing_project_dir(chosen_name)
     if not project_dir:
         raise ValueError(f"Project folder not found under projects: {chosen_name}")
@@ -476,6 +470,13 @@ def get_username_index_path() -> str:
     return os.path.join(get_root_path(), "config", USERNAME_INDEX_FILE)
 
 
+def get_mssql_connections_path() -> str:
+    """Server-shared list of previously used SQL Server server/database pairs."""
+    return os.path.join(
+        get_root_path(), "config", source_table_contract.MSSQL_CONNECTIONS_FILE
+    )
+
+
 def get_project_settings_workbook_path(project_name: str) -> str:
     project_dir = _find_existing_project_dir(project_name)
     if not project_dir:
@@ -502,6 +503,30 @@ def get_project_data_dir(project_name: str) -> str:
     if not project_dir:
         raise ValueError(f"Project folder not found under projects: {project_name}")
     return os.path.join(project_dir, PROJECT_DATA_DIR)
+
+
+def get_project_source_dir(project_name: str) -> str:
+    """Folder that owns this project's imported master table."""
+    project_dir = _find_existing_project_dir(project_name)
+    if not project_dir:
+        raise ValueError(f"Project folder not found under projects: {project_name}")
+    return source_table_contract.source_dir(project_dir)
+
+
+def get_project_master_table_path(project_name: str) -> str:
+    """The single imported table every ArcRho consumer reads for this project."""
+    project_dir = _find_existing_project_dir(project_name)
+    if not project_dir:
+        raise ValueError(f"Project folder not found under projects: {project_name}")
+    return source_table_contract.master_table_path(project_dir)
+
+
+def get_project_source_import_path(project_name: str) -> str:
+    """Import record describing how this project's master table was produced."""
+    project_dir = _find_existing_project_dir(project_name)
+    if not project_dir:
+        raise ValueError(f"Project folder not found under projects: {project_name}")
+    return source_table_contract.source_import_path(project_dir)
 
 
 def get_project_reserving_class_data_dir(project_name: str, reserving_class: str) -> str:

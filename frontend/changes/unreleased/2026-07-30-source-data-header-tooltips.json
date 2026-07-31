@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data header actions now show tooltips on hover.",
+  "details": [
+    "Reload, Browse, SQL Server settings, Import, Copy path, Open folder, and the table details icon previously had no visible tooltip.",
+    "The CSV File / SQL Server switch explains which import source each option selects."
+  ]
+}

@@ -99,7 +99,6 @@ def save_field_mapping(
         try:
             refresh_out = reserving_class_service.refresh_reserving_class_values(
                 project_name=project_name,
-                table_path_override=(table_path or "").strip(),
                 mapping_rows_override=normalized_rows,
             )
         except Exception as refresh_err:

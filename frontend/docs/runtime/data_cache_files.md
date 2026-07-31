@@ -21,6 +21,7 @@ Index cache/data files and refresh points used by app-server services.
 | `POST` | `/dfm/method/refresh` | `dfm_method` | `refresh_dfm_method` |
 | `POST` | `/project_settings/{source}/generated_dataset_cache/clear` | `project_settings` | `clear_generated_dataset_csv_caches` |
 | `POST` | `/reserving_class_values/refresh` | `reserving_class` | `refresh_reserving_class_values` |
+| `POST` | `/source_table/refresh` | `source_table` | `refresh_source_table` |
 | `GET` | `/table_summary` | `table_summary` | `get_table_summary` |
 | `POST` | `/table_summary/refresh` | `table_summary` | `refresh_table_summary` |
 <!-- AUTO-GEN:END -->

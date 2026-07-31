@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 
 from app_server import config
+from app_server.services import source_table_service
 
 
 _CACHE_LOCKS_GUARD = threading.Lock()
@@ -142,7 +143,8 @@ def _source_table_fingerprint(table_path: str) -> Dict[str, Any]:
 def _current_inputs(project_name: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     mapping = _read_json_object(config.get_field_mapping_path(project_name))
     contract = _mapping_contract(mapping)
-    contract["table_path"] = str(mapping.get("table_path") or "").strip()
+    # Values are always derived from the project-owned imported master table.
+    contract["table_path"] = source_table_service.resolve_source_table_for_read(project_name)
     fingerprint = _source_table_fingerprint(contract["table_path"])
     return contract, fingerprint
 
