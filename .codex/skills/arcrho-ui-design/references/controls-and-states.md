@@ -28,6 +28,10 @@ Use filled-triangle carets for dropdown and numeric-stepper arrows. Flip the sam
 
 For compact numeric inputs with stacked up/down buttons, reuse the shared Dataset-style stepper across pages: a 69px by 28px white input with 4px corners, centered value with balanced 28px side padding, a 28px right arrow lane, and the standard muted-rest plus blue hover/focus states. Do not recreate page-local variants of this control.
 
+### C16 - Vertical-only dropdown lists
+
+An opened dropdown, combobox, or menu list should scroll vertically only. Truncate long option text with an ellipsis inside its row and keep any trailing tag or count visible, because a horizontal bar covers the last row and hides the option the user is reaching for. Set `overflow-x: hidden` explicitly: a list scrolling on one axis promotes the other to `auto` on its own. Give full-width rows `box-sizing: border-box` so their padding cannot push them wider than the list that holds them.
+
 ### C07 - Compact switches
 
 Use 42px by 20px switches with a green enabled state.

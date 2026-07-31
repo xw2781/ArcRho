@@ -26,6 +26,10 @@ On mobile or narrow layouts, collapse to a single column and hide the icon rail 
 
 On dense Details tabs, size every label column from the longest rendered label across all groups, format labels as `Label : `, keep a 1px label-to-control column gap, render group frames without borders or fills, and separate adjacent group frames by 1px.
 
+### L15 - Corner-anchored window resizing
+
+A resizable floating window should grow and shrink from one corner while its opposite edges stay put. Give it a small invisible corner hit-area with a resize cursor rather than the native CSS `resize` property, which cannot anchor an edge and paints the platform grip glyph over the app's quiet chrome. A window centered with `left: 50%` plus a translate transform must first convert to real pixel `left`/`top` and drop the transform: while the transform applies, `left` names the window's midpoint, so any width change moves both edges outward. Keep CSS the owner of the minimum size and read it back when clamping the drag.
+
 ## Atlas Components
 
 ### L06 - Title bar

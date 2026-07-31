@@ -29,7 +29,7 @@ Always read [visual-foundations.md](references/visual-foundations.md) for visual
 
 ### R02 - Layout and shell
 
-Read [layout-and-shell.md](references/layout-and-shell.md) for page composition, shell regions, panels, tiles, sidebars, command strips, responsive layout, or Atlas component work.
+Read [layout-and-shell.md](references/layout-and-shell.md) for page composition, shell regions, panels, tiles, sidebars, command strips, floating windows, dragging and resizing, responsive layout, or Atlas component work.
 
 ### R03 - Controls and states
 
