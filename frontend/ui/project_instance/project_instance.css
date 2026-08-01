@@ -135,6 +135,19 @@ body.pi-resizing-table-column * {
   color: #334155;
   transform: translateX(-7px);
 }
+.pi-toolbar-path.has-path.is-context-selected {
+  border-radius: 5px;
+  background: #dbeafe;
+  box-shadow: inset 0 0 0 1px #8fb0f4;
+}
+.pi-toolbar-path.has-path.is-context-selected .pi-toolbar-path-segment,
+.pi-toolbar-path.has-path.is-context-selected .pi-toolbar-path-segment:hover,
+.pi-toolbar-path.has-path.is-context-selected .pi-toolbar-path-segment:focus-visible {
+  border-color: transparent;
+  background: transparent;
+  color: #1f4fbf;
+  box-shadow: none;
+}
 .pi-toolbar-path-segment {
   flex: 0 1 auto;
   min-width: 0;
@@ -192,15 +205,41 @@ body.pi-resizing-table-column * {
   font-size: 11px;
   font-weight: 700;
   line-height: 14px;
-  text-transform: uppercase;
+}
+.pi-path-segment-search-wrap {
+  padding: 6px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fbfcfe;
+}
+.pi-path-segment-search {
+  width: 100%;
+  height: 30px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #263244;
+  padding: 0 8px;
+  font: 12px Arial, "Segoe UI", sans-serif;
+  outline: none;
+}
+.pi-path-segment-search:focus {
+  border-color: #8fb0f4;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+}
+.pi-path-segment-search::placeholder {
+  color: #8a96a8;
 }
 .pi-path-segment-list {
   max-height: 260px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 4px;
 }
 .pi-path-segment-option {
   width: 100%;
+  box-sizing: border-box;
+  display: block;
   min-height: 26px;
   padding: 5px 7px;
   border: 1px solid transparent;
@@ -209,7 +248,13 @@ body.pi-resizing-table-column * {
   color: #334155;
   font: 12px Arial, "Segoe UI", sans-serif;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
+}
+.pi-path-segment-option[hidden] {
+  display: none;
 }
 .pi-path-segment-option:hover,
 .pi-path-segment-option:focus-visible {
@@ -222,6 +267,13 @@ body.pi-resizing-table-column * {
   border-color: #8fb0f4;
   color: #1f4fbf;
   font-weight: 700;
+}
+.pi-path-segment-empty {
+  padding: 9px 8px;
+  color: #7c8ca3;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
 }
 .pi-hidden-tabs-wrap {
   position: relative;
@@ -1800,6 +1852,13 @@ body.pi-resizing-table-column * {
   min-width: 190px;
   padding: 4px;
   overflow: visible;
+}
+.pi-path-context-menu {
+  min-width: 112px;
+}
+.pi-path-context-menu .pi-context-menu-item:focus-visible {
+  background: #eef4ff;
+  outline: none;
 }
 .pi-context-menu-item {
   width: 100%;

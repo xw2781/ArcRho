@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added Copy and Paste actions to the selected reserving-class path, with pasted paths revealed in the tree."
+}

@@ -55,6 +55,7 @@ export function createProjectInstanceContext(deps = {}) {
     leftPanelResizer: document.getElementById("leftPanelResizer"),
     pathTree: document.getElementById("pathTree"),
     selectedPathText: document.getElementById("selectedPathText"),
+    pathContextMenu: document.getElementById("pathContextMenu"),
     hiddenTabsWrap: document.getElementById("hiddenTabsWrap"),
     hiddenTabsList: document.getElementById("hiddenTabsList"),
     hiddenTabsButton: document.getElementById("hiddenTabsButton"),
@@ -143,6 +144,7 @@ export function createProjectInstanceContext(deps = {}) {
   const state = {
     selectedPath: "",
     pathPickerController: null,
+    pathPickerModel: null,
     datasetRows: [],
     nextWindowZ: 1,
     windowSeq: 1,

@@ -7,14 +7,18 @@
   <title>Project Instance</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance_number_formats.css?v=20260720a"/>
-  <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260722a"/>
+  <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260731b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260729a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260729a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260731b"/>
 </head>
 <body>
   <div class="pi-root" id="projectInstanceRoot">
     <div class="pi-toolbar">
       <div class="pi-toolbar-path" id="selectedPathText">Select a reserving class path.</div>
+      <div class="pi-table-context-menu pi-path-context-menu" id="pathContextMenu" role="menu" aria-hidden="true">
+        <button class="pi-context-menu-item" type="button" role="menuitem" data-path-action="copy">Copy</button>
+        <button class="pi-context-menu-item" type="button" role="menuitem" data-path-action="paste">Paste</button>
+      </div>
       <div class="pi-hidden-tabs-wrap" id="hiddenTabsWrap">
         <div class="pi-minimized-tabs" id="hiddenTabsList" aria-label="Minimized dataset windows"></div>
         <button class="pi-hidden-tabs-button" id="hiddenTabsButton" type="button" aria-haspopup="menu" aria-expanded="false">
@@ -253,6 +257,6 @@
       </section>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260724c"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260731b"></script>
 </body>
 </html>

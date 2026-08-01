@@ -1,3 +1,12 @@
+function normalizePathSegmentSearchText(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export function matchesPathSegmentSearch(optionName, query) {
+  const searchText = normalizePathSegmentSearchText(query);
+  return !searchText || normalizePathSegmentSearchText(optionName).includes(searchText);
+}
+
 export function installProjectInstancePathPanel(ctx) {
   const { api, els, projectName, state } = ctx;
   const {
@@ -76,12 +85,155 @@ function getPathParts(path = state.selectedPath) {
 }
 
 function getPathPartKey(value) {
-  return toText(value).replace(/\s+/g, " ").toLowerCase();
+  return normalizePathSegmentSearchText(value);
 }
 
 function getPathLevelLabel(levelIndex) {
   const labels = Array.isArray(state.pathPickerModel?.levelLabels) ? state.pathPickerModel.levelLabels : [];
   return toText(labels[levelIndex]) || `Level ${Number(levelIndex) + 1}`;
+}
+
+function clearSelectedPathTextRange() {
+  const selection = window.getSelection?.();
+  if (!selection || !els.selectedPathText?.contains?.(selection.anchorNode)) return;
+  selection.removeAllRanges();
+}
+
+function closePathContextMenu() {
+  const menu = els.pathContextMenu;
+  if (!menu) return;
+  menu.classList.remove("open");
+  menu.setAttribute("aria-hidden", "true");
+  els.selectedPathText?.classList?.remove("is-context-selected");
+  clearSelectedPathTextRange();
+}
+
+function selectEntirePathText() {
+  const target = els.selectedPathText;
+  if (!target || !state.selectedPath) return;
+  target.classList.add("is-context-selected");
+  const selection = window.getSelection?.();
+  if (!selection || typeof document.createRange !== "function") return;
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function positionPathContextMenu(clientX, clientY) {
+  const menu = els.pathContextMenu;
+  if (!menu) return;
+  const margin = 8;
+  const rect = menu.getBoundingClientRect();
+  const left = Math.max(margin, Math.min(Number(clientX) || margin, window.innerWidth - rect.width - margin));
+  const top = Math.max(margin, Math.min(Number(clientY) || margin, window.innerHeight - rect.height - margin));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+}
+
+async function copySelectedPath() {
+  const path = normalizePath(state.selectedPath);
+  if (!path) return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(path);
+      return true;
+    }
+  } catch {
+    // Fall through to the hidden textarea fallback.
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = path;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = typeof document.execCommand === "function" && document.execCommand("copy");
+    textarea.remove();
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
+function resolvePastedLeafPath(rawPath) {
+  const requestedPath = normalizePath(toText(rawPath).replace(/^['"]+|['"]+$/g, ""));
+  if (!requestedPath || typeof state.pathPickerModel?.getPathNode !== "function") return "";
+  const node = state.pathPickerModel.getPathNode(requestedPath);
+  if (!node || node.has_children || node.hasChildren) return "";
+  return normalizePath(node.path);
+}
+
+async function pasteSelectedPath() {
+  if (!navigator.clipboard?.readText) {
+    setStatus("Clipboard paste is not available in this browser.", true);
+    return false;
+  }
+  let pastedText = "";
+  try {
+    pastedText = await navigator.clipboard.readText();
+  } catch {
+    setStatus("ArcRho could not read the clipboard.", true);
+    return false;
+  }
+  const nextPath = resolvePastedLeafPath(pastedText);
+  if (!nextPath) {
+    setStatus("The clipboard does not contain a valid reserving class path.", true);
+    return false;
+  }
+  const previousPath = state.selectedPath;
+  setSelectedPath(nextPath);
+  await revealPathTreeSelection(nextPath, previousPath);
+  setStatus(`Selected reserving class path ${nextPath}.`);
+  return true;
+}
+
+function initPathContextMenu() {
+  const target = els.selectedPathText;
+  const menu = els.pathContextMenu;
+  if (!target || !menu || menu.dataset.wired === "1") return;
+  menu.dataset.wired = "1";
+  target.addEventListener("contextmenu", (event) => {
+    if (!state.selectedPath) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closePathSegmentMenu();
+    menu.classList.add("open");
+    menu.setAttribute("aria-hidden", "false");
+    selectEntirePathText();
+    const targetRect = target.getBoundingClientRect();
+    positionPathContextMenu(event.clientX || targetRect.left, event.clientY || targetRect.bottom);
+    menu.querySelector?.("[data-path-action]")?.focus?.({ preventScroll: true });
+  });
+  menu.addEventListener("click", async (event) => {
+    const action = event.target?.closest?.("[data-path-action]")?.dataset?.pathAction;
+    if (!action) return;
+    if (action === "copy") {
+      const copied = await copySelectedPath();
+      setStatus(copied ? "Copied reserving class path." : "ArcRho could not copy the reserving class path.", !copied);
+    } else if (action === "paste") {
+      await pasteSelectedPath();
+    }
+    closePathContextMenu();
+  });
+  document.addEventListener("mousedown", (event) => {
+    if (menu.contains(event.target)) return;
+    if (target.contains(event.target)) {
+      if (event.button === 0) closePathContextMenu();
+      return;
+    }
+    closePathContextMenu();
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !menu.classList.contains("open")) return;
+    event.preventDefault();
+    closePathContextMenu();
+    target.focus?.({ preventScroll: true });
+  }, true);
+  window.addEventListener("resize", closePathContextMenu, true);
+  window.addEventListener("scroll", closePathContextMenu, true);
 }
 
 function closePathSegmentMenu() {
@@ -160,16 +312,35 @@ function showPathSegmentMenu(levelIndex, anchor) {
 
   const menu = document.createElement("div");
   menu.className = "pi-path-segment-menu";
-  menu.setAttribute("role", "listbox");
-  menu.setAttribute("aria-label", `Change ${getPathLevelLabel(numericLevel)}`);
+  menu.setAttribute("role", "dialog");
+  menu.setAttribute("aria-modal", "false");
 
   const title = document.createElement("div");
   title.className = "pi-path-segment-title";
+  title.id = "piPathSegmentMenuTitle";
   title.textContent = getPathLevelLabel(numericLevel);
+  menu.setAttribute("aria-labelledby", title.id);
   menu.appendChild(title);
+
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "pi-path-segment-search-wrap";
+  const searchInput = document.createElement("input");
+  searchInput.type = "search";
+  searchInput.className = "pi-path-segment-search";
+  searchInput.placeholder = "Type to search";
+  searchInput.autocomplete = "off";
+  searchInput.spellcheck = false;
+  searchInput.setAttribute("aria-label", `Search ${getPathLevelLabel(numericLevel)}`);
+  searchInput.setAttribute("aria-controls", "piPathSegmentOptions");
+  searchWrap.appendChild(searchInput);
+  menu.appendChild(searchWrap);
 
   const list = document.createElement("div");
   list.className = "pi-path-segment-list";
+  list.id = "piPathSegmentOptions";
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", `${getPathLevelLabel(numericLevel)} options`);
+  const optionEntries = [];
   for (const option of options) {
     const button = document.createElement("button");
     button.type = "button";
@@ -188,11 +359,62 @@ function showPathSegmentMenu(levelIndex, anchor) {
       void revealPathTreeSelection(nextPath, previousPath);
       setStatus(`Selected reserving class path ${nextPath}.`);
     });
+    optionEntries.push({ button, option });
     list.appendChild(button);
+  }
+
+  const empty = document.createElement("div");
+  empty.className = "pi-path-segment-empty";
+  empty.setAttribute("role", "status");
+  empty.textContent = "No matching values.";
+  empty.hidden = true;
+  list.appendChild(empty);
+
+  const getVisibleButtons = () => optionEntries
+    .map((entry) => entry.button)
+    .filter((button) => !button.hidden);
+  const applySearchFilter = () => {
+    let visibleCount = 0;
+    for (const entry of optionEntries) {
+      const visible = matchesPathSegmentSearch(entry.option?.name, searchInput.value);
+      entry.button.hidden = !visible;
+      if (visible) visibleCount += 1;
+    }
+    empty.hidden = visibleCount > 0;
+    list.scrollTop = 0;
+  };
+  searchInput.addEventListener("input", applySearchFilter);
+  searchInput.addEventListener("keydown", (event) => {
+    const visibleButtons = getVisibleButtons();
+    if (event.key === "ArrowDown" && visibleButtons.length) {
+      event.preventDefault();
+      visibleButtons[0].focus();
+    } else if (event.key === "Enter" && visibleButtons.length === 1) {
+      event.preventDefault();
+      visibleButtons[0].click();
+    }
+  });
+  for (const { button } of optionEntries) {
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      const visibleButtons = getVisibleButtons();
+      const currentIndex = visibleButtons.indexOf(button);
+      if (currentIndex < 0) return;
+      event.preventDefault();
+      if (event.key === "ArrowUp" && currentIndex === 0) {
+        searchInput.focus();
+        return;
+      }
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      visibleButtons[Math.max(0, Math.min(visibleButtons.length - 1, currentIndex + direction))]?.focus();
+    });
   }
   menu.appendChild(list);
   document.body.appendChild(menu);
   positionPathSegmentMenu(anchor, menu);
+  window.requestAnimationFrame(() => {
+    if (menu.isConnected) searchInput.focus({ preventScroll: true });
+  });
 
   const onClose = () => closePathSegmentMenu();
   const onOutside = (event) => {
@@ -240,7 +462,7 @@ function renderSelectedPathDisplay() {
     button.className = "pi-toolbar-path-segment";
     button.textContent = part;
     button.title = `${getPathLevelLabel(index)}: ${part}`;
-    button.setAttribute("aria-haspopup", "listbox");
+    button.setAttribute("aria-haspopup", "dialog");
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -256,6 +478,7 @@ function setSelectedPath(path, options = {}) {
   datasetTableSelection.selectedKeys.clear();
   datasetTableSelection.anchorKey = "";
   closePathSegmentMenu();
+  closePathContextMenu();
   renderSelectedPathDisplay();
   markPathTreeActive(state.selectedPath);
   syncDatasetWindowChrome();
@@ -453,7 +676,9 @@ function initLeftPanelResizer() {
 
 async function loadPathTree() {
   if (!els.pathTree) return;
+  initPathContextMenu();
   state.pathPickerController = null;
+  state.pathPickerModel = null;
   if (els.pathTree.dataset.focusWired !== "1") {
     els.pathTree.dataset.focusWired = "1";
     els.pathTree.addEventListener("mousedown", () => focusProjectInstancePage(), true);
