@@ -15,7 +15,7 @@ import { createFieldMappingFeature } from "/ui/project_settings/project_settings
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260722a";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260716resize2";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260721dpr12";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260730sqlsrc6";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260731loading1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -1078,8 +1078,6 @@ async function loadTableSummary(projectName = "", options = {}) {
       await loadSourceTableState(projectName);
       if (isStale()) return true;
     }
-    sourceDataFeature.renderSummary(data);
-
     currentFieldNames = Array.isArray(data.columns)
       ? data.columns.map(col => String(col?.name || "").trim()).filter(Boolean)
       : [];
@@ -1112,6 +1110,7 @@ async function loadTableSummary(projectName = "", options = {}) {
       applyStoredPeriodsToInputs(existingGeneralSettings);
     }
     if (isStale()) return true;
+    sourceDataFeature.renderSummary(data);
     await fieldMappingFeature?.ensureFieldMappingLoaded(projectName, {
       force: forceRefresh || forceFieldMappingReload,
     });

@@ -222,6 +222,7 @@ export function createSourceDataFeature(deps = {}) {
     originSpanNote: el("summaryOriginSpanNote"),
     originStart: el("summaryOriginStartInput"),
     originEnd: el("summaryOriginEndInput"),
+    developmentEnd: el("summaryDevelopmentEndInput"),
     monthPickerButtons: Array.from(document.querySelectorAll(".sd-month-picker-btn")),
     monthPicker: el("summaryMonthPicker"),
     monthPickerYear: el("summaryMonthPickerYear"),
@@ -257,6 +258,7 @@ export function createSourceDataFeature(deps = {}) {
   let monthPickerYear = null;
   let monthPickerView = "months";
   let monthPickerPointerInside = false;
+  let summaryLoading = false;
   let wired = false;
 
   /* ---------------- helpers ---------------- */
@@ -667,6 +669,47 @@ export function createSourceDataFeature(deps = {}) {
     if (dom.band) dom.band.hidden = !visible;
     if (dom.columnsPanel) dom.columnsPanel.hidden = !visible;
     if (!visible) closeMonthPicker({ force: true });
+  }
+
+  function loadingRowsHtml() {
+    return '<div class="sd-loading-rows" aria-hidden="true">'
+      + Array.from({ length: 7 }, (_unused, index) => (
+        `<div class="sd-row sd-loading-row" data-loading-row="${index}">`
+        + '<span class="sd-c-name"><i class="sd-loading-bar"></i></span>'
+        + '<span class="sd-c-type"><i class="sd-loading-bar"></i></span>'
+        + '<span class="sd-c-dist"><i class="sd-loading-bar sd-loading-bar-mark"></i>'
+        + '<i class="sd-loading-bar sd-loading-bar-summary"></i></span>'
+        + "</div>"
+      )).join("")
+      + "</div>";
+  }
+
+  /** Keep the working surface stable while the imported table is copied/read. */
+  function setSummaryLoading(loading, message = "") {
+    summaryLoading = !!loading;
+    dom.root?.classList.toggle("is-loading", summaryLoading);
+    dom.root?.setAttribute("aria-busy", String(summaryLoading));
+    [dom.originStart, dom.originEnd, dom.developmentEnd, ...dom.monthPickerButtons, dom.filter]
+      .forEach((control) => {
+        if (control) control.disabled = summaryLoading;
+      });
+
+    if (summaryLoading) {
+      closeMonthPicker({ force: true });
+      if (dom.list) {
+        dom.list.classList.add("is-loading");
+        dom.list.querySelector(".sd-loading-rows")?.remove();
+        dom.list.insertAdjacentHTML("afterbegin", loadingRowsHtml());
+      }
+      if (dom.count) dom.count.textContent = "";
+      showMessage(message || "Reading the source table...", false);
+      return;
+    }
+
+    if (dom.list) {
+      dom.list.classList.remove("is-loading");
+      dom.list.querySelector(".sd-loading-rows")?.remove();
+    }
   }
 
   async function copyToClipboard(value, successMessage, errorMessage) {
@@ -1529,8 +1572,17 @@ export function createSourceDataFeature(deps = {}) {
         setSourceStatus("Could not save the import settings.", "error");
         return;
       }
+      setBodyVisible(true);
+      setSummaryLoading(
+        true,
+        method === SOURCE_TYPE_MSSQL
+          ? "Importing and reading the source table..."
+          : "Copying and reading the source table...",
+      );
       const result = await onImportData(method);
       if (!result?.ok) {
+        setSummaryLoading(false);
+        showMessage("", false);
         setSourceStatus(result?.error || "The import failed.", "error");
         return;
       }
@@ -1814,20 +1866,20 @@ export function createSourceDataFeature(deps = {}) {
         originField: String(roles.originField || ""),
         developmentField: String(roles.developmentField || ""),
       };
-      if (columns.length) renderColumns();
+      if (columns.length && !summaryLoading) renderColumns();
     },
     showLoading(message = "Reading the source table...") {
       setBodyVisible(true);
-      showMessage(message, false);
       hidePreview();
-      if (dom.list) dom.list.innerHTML = "";
-      if (dom.count) dom.count.textContent = "";
+      setSummaryLoading(true, message);
     },
     showError(message) {
+      setSummaryLoading(false);
       showMessage(message, true);
       hidePreview();
     },
     showNoPath(message = "No source file is configured for this project.") {
+      setSummaryLoading(false);
       setBodyVisible(false);
       showMessage(message, false);
       columns = [];
@@ -1839,6 +1891,7 @@ export function createSourceDataFeature(deps = {}) {
       syncPathDisplay();
     },
     renderSummary(data) {
+      setSummaryLoading(false);
       hidePreview();
       columns = Array.isArray(data?.columns) ? data.columns : [];
       setBodyVisible(true);

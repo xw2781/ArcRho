@@ -238,6 +238,41 @@ test("project_settings.js delegates Source Data rendering to the feature module"
   );
 });
 
+test("Source Data shows flowing placeholders while the table is copied or read", () => {
+  // The working surface stays in place and exposes a real busy state.
+  assert.match(moduleSource, /function setSummaryLoading\(loading, message = ""\)/);
+  assert.match(moduleSource, /setAttribute\("aria-busy", String\(summaryLoading\)\)/);
+  assert.match(moduleSource, /Array\.from\(\{ length: 7 \}/);
+  assert.match(moduleSource, /class="sd-row sd-loading-row"/);
+  assert.match(moduleSource, /class="sd-loading-bar sd-loading-bar-mark"/);
+  assert.match(moduleSource, /class="sd-loading-bar sd-loading-bar-summary"/);
+
+  // The three period fields and their picker actions stay inert and shimmer
+  // until their values have been resolved from summary + saved settings.
+  for (const binding of ["dom.originStart", "dom.originEnd", "dom.developmentEnd"]) {
+    assert.ok(moduleSource.includes(binding), `${binding} is not part of the loading state`);
+  }
+  assert.match(moduleSource, /\.\.\.dom\.monthPickerButtons, dom\.filter/);
+  assert.match(summaryCss, /\.table-summary\.is-loading \.sd-month input \{[\s\S]*?background-image: var\(--sd-loading-fill\);/);
+  assert.match(summaryCss, /\.sd-loading-bar \{[\s\S]*?animation: sd-loading-sweep 1\.15s ease-in-out infinite;/);
+  assert.match(summaryCss, /@media \(prefers-reduced-motion: reduce\)/);
+
+  // Import Data starts the same state before the potentially long copy call.
+  const importBlock = moduleSource.split("async function importData()")[1].split("/* ---------------- tooltips")[0];
+  assert.ok(
+    importBlock.indexOf("setSummaryLoading(") < importBlock.indexOf("await onImportData(method)"),
+    "the loading surface starts only after the source copy finishes",
+  );
+
+  // Rendering waits until the date inputs are ready, avoiding a stale-value flash.
+  const loadBlock = projectSettingsJs.split("async function loadTableSummary")[1].split("// ============ Open in New Tab")[0];
+  assert.ok(
+    loadBlock.indexOf("sourceDataFeature.renderSummary(data)")
+      > loadBlock.indexOf("applyStoredPeriodsToInputs(existingGeneralSettings)"),
+    "the summary stops loading before the period inputs are resolved",
+  );
+});
+
 test("the column preview opens only from a Distribution-cell click", () => {
   assert.match(moduleSource, /closest\("\.sd-c-dist"\)/);
   assert.match(moduleSource, /placeAtPointer\(/);

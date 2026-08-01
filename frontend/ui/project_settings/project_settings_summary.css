@@ -1,6 +1,14 @@
 /* Source Data - quiet surface, detail in floating panels. */
 
 .table-summary {
+  --sd-loading-base: var(--ar-color-surface-muted, #e9eef4);
+  --sd-loading-sheen: var(--ar-color-surface-raised, #f6f9fc);
+  --sd-loading-fill: linear-gradient(
+    90deg,
+    var(--sd-loading-base) 25%,
+    var(--sd-loading-sheen) 37%,
+    var(--sd-loading-base) 63%
+  );
   gap: 12px;
 }
 
@@ -197,6 +205,21 @@
 .sd-month input:disabled {
   color: var(--ar-color-text-disabled, #9ca3af);
   background: var(--ar-color-surface-muted, #eef2f6);
+}
+.table-summary.is-loading .sd-month input {
+  border-color: var(--ar-color-border, #d8dde3);
+  background-color: var(--sd-loading-base);
+  background-image: var(--sd-loading-fill);
+  background-size: 400% 100%;
+  color: transparent;
+  caret-color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: sd-loading-sweep 1.15s ease-in-out infinite;
+}
+.table-summary.is-loading .sd-month input::placeholder { color: transparent; }
+.table-summary.is-loading .sd-month-picker-btn {
+  opacity: 0;
+  pointer-events: none;
 }
 .sd-month-picker-btn {
   position: absolute;
@@ -446,6 +469,7 @@
 .sd-resizer.dragging::after { opacity: 1; }
 
 .sd-list {
+  position: relative;
   flex: 1 1 0;
   min-height: 0;
   overflow: auto;
@@ -463,6 +487,48 @@
 .sd-row:hover,
 .sd-row.active { background: var(--ar-color-table-row-hover, #f8fafc); }
 .sd-row .sd-c-dist { cursor: pointer; }
+.sd-list.is-loading > :not(.sd-loading-rows) { visibility: hidden; }
+.sd-loading-rows {
+  position: absolute;
+  inset: 0 0 auto;
+  min-width: 100%;
+  background: var(--ar-color-surface, #fff);
+}
+.sd-loading-row {
+  pointer-events: none;
+}
+.sd-loading-row .sd-c-dist { cursor: default; }
+.sd-loading-bar {
+  display: block;
+  width: 62%;
+  height: 9px;
+  border-radius: 3px;
+  background-color: var(--sd-loading-base);
+  background-image: var(--sd-loading-fill);
+  background-size: 400% 100%;
+  animation: sd-loading-sweep 1.15s ease-in-out infinite;
+}
+.sd-loading-row:nth-child(2n) .sd-c-name .sd-loading-bar { width: 76%; }
+.sd-loading-row:nth-child(3n) .sd-c-name .sd-loading-bar { width: 48%; }
+.sd-loading-row .sd-c-type .sd-loading-bar { width: 58%; }
+.sd-loading-row:nth-child(2n) .sd-c-type .sd-loading-bar { width: 42%; }
+.sd-loading-bar-mark { flex: 0 0 196px; width: 196px; }
+.sd-loading-bar-summary { flex: 0 1 132px; width: 132px; margin-left: 8px; }
+.sd-loading-row:nth-child(2n) .sd-loading-bar-summary { flex-basis: 96px; width: 96px; }
+.sd-loading-row:nth-child(3n) .sd-loading-bar-summary { flex-basis: 154px; width: 154px; }
+
+@keyframes sd-loading-sweep {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-loading-bar,
+  .table-summary.is-loading .sd-month input {
+    animation: none;
+    background-position: 50% 50%;
+  }
+}
 .sd-row-name {
   flex: 0 1 auto;
   min-width: 0;
