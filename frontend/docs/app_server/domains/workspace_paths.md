@@ -30,7 +30,9 @@ Runtime workspace path read/update domain.
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Persists config in `%APPDATA%\ArcRho\workspace_paths.json`.
-- Uses built-in defaults until Server Connection is saved.
+- Uses built-in defaults until Server Connection is saved. Only `POST /workspace_paths` creates that file, so a fresh client install runs entirely on the defaults.
+- Resolution order is owned by `arcrho_api/config.py` and shared with the Python API and macros: `ARCRHO_SERVER_ROOT`/`ARCRHO_RUNTIME_SERVER_ROOT`, then the config file, then the packaged default root. `app_server/config.py` adds only the Arcode-mode AppData branch and `paths` normalization.
+- `GET /workspace_paths` is also how a macro process outside the app discovers the workspace root when no config file exists.
 - Clears the in-memory dataset registry after updates so stale dataset IDs do not keep writing to the previous workspace root.
 <!-- MANUAL:END -->
 
@@ -43,4 +45,5 @@ Runtime workspace path read/update domain.
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Invalid path config writes can impact all path-dependent domains.
+- Adding a resolution step here without adding it to `arcrho_api/config.py` reintroduces the split where the app resolves a root but macros raise `InvalidArcRhoServerError`.
 <!-- MANUAL:END -->

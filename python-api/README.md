@@ -17,7 +17,7 @@ dfm.set_selected_average_cell_note(1, "Selected before adjustments.", clear_colu
 dfm.save()
 ```
 
-On import, the package reads the same server root used by the ArcRho host app from `%APPDATA%\ArcRho\workspace_paths.json`. You can still pass a root explicitly, or update the shared host config from Python:
+The package resolves the same server root the ArcRho host app uses, in this order: the `ARCRHO_SERVER_ROOT`/`ARCRHO_RUNTIME_SERVER_ROOT` environment overrides, the host config file `%APPDATA%\ArcRho\workspace_paths.json`, the workspace root reported by the running ArcRho desktop app, and finally the packaged default `E:\ArcRho Server` when it exists and holds a `projects` folder. The last two steps are tried once per process; call `reload_server_root()` to retry them. Because the host config file is only written when a user saves ArcRho Server Connection, a fresh client install resolves through the running app instead of failing. You can still pass a root explicitly, or update the shared host config from Python:
 
 ```python
 from arcrho_api import ArcRhoClient, get_server_root, set_server_root

@@ -21,10 +21,12 @@ from arcrho_api import (
     ArcRhoClient,
     ArcRhoUI,
     DfmDataError,
+    InvalidArcRhoServerError,
     ReadOnlyError,
     get_config_path,
     get_server_root,
     reload_project_instance_dataset_table,
+    reload_server_root,
     set_server_root,
 )
 from arcrho_api.paths import dfm_filename, parse_dfm_filename
@@ -219,23 +221,28 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertEqual(dfm.ratio(1, 1), 1.1)
 
     def test_default_server_root_uses_host_workspace_config(self) -> None:
+        original_explicit = api_config._explicit_server_root
         original_root = api_config._server_root
-        with tempfile.TemporaryDirectory(dir=r"C:\tmp") as appdata, patch.dict(os.environ, {"APPDATA": appdata}, clear=False):
+        with tempfile.TemporaryDirectory(dir=str(_TMP_ROOT)) as appdata, patch.dict(os.environ, {"APPDATA": appdata}, clear=False):
             try:
                 config_path = Path(appdata) / "ArcRho" / "workspace_paths.json"
                 config_path.parent.mkdir(parents=True)
                 config_path.write_text(json.dumps({"workspace_root": str(self.root)}), encoding="utf-8")
+                api_config._explicit_server_root = None
                 api_config._server_root = None
                 self.assertEqual(get_server_root(), self.root.resolve())
                 self.assertEqual(ArcRhoClient().server_root, self.root.resolve())
                 self.assertEqual(get_config_path(), config_path)
             finally:
+                api_config._explicit_server_root = original_explicit
                 api_config._server_root = original_root
 
     def test_set_server_root_writes_host_workspace_config(self) -> None:
+        original_explicit = api_config._explicit_server_root
         original_root = api_config._server_root
-        with tempfile.TemporaryDirectory(dir=r"C:\tmp") as appdata, patch.dict(os.environ, {"APPDATA": appdata}, clear=False):
+        with tempfile.TemporaryDirectory(dir=str(_TMP_ROOT)) as appdata, patch.dict(os.environ, {"APPDATA": appdata}, clear=False):
             try:
+                api_config._explicit_server_root = None
                 api_config._server_root = None
                 config_path = Path(appdata) / "ArcRho" / "workspace_paths.json"
                 configured = set_server_root(self.root)
@@ -244,6 +251,7 @@ class ArcRhoApiTests(unittest.TestCase):
                 self.assertEqual(saved["workspace_root"], str(self.root.resolve()))
                 self.assertEqual(saved["paths"], {"projects_dir": "projects", "requests_dir": "requests"})
             finally:
+                api_config._explicit_server_root = original_explicit
                 api_config._server_root = original_root
 
     def test_dfm_helpers_upgrade_to_canonical_v2(self) -> None:
@@ -610,6 +618,135 @@ class AppUrlResolutionTests(unittest.TestCase):
         self._write_endpoint("{not valid json")
         with patch.dict(os.environ, self._env(), clear=True):
             self.assertEqual(ui_module._base_url(), "http://127.0.0.1:28765")
+
+
+class ServerRootResolutionTests(unittest.TestCase):
+    """Cover the ArcRho Server root resolution chain used by macros and clients.
+
+    A fresh client PC has no ``workspace_paths.json`` because that file is only
+    written when a user saves ArcRho Server Connection, so resolution must still
+    reach the running desktop app and the packaged default.
+    """
+
+    def setUp(self) -> None:
+        _TMP_ROOT.mkdir(parents=True, exist_ok=True)
+        self._tempdir = tempfile.TemporaryDirectory(dir=str(_TMP_ROOT))
+        self.addCleanup(self._tempdir.cleanup)
+        base = Path(self._tempdir.name)
+        self.appdata = base / "appdata"
+        (self.appdata / "ArcRho").mkdir(parents=True)
+        self.file_root = self._make_root(base / "file server")
+        self.env_root = self._make_root(base / "env server")
+        self.app_root = self._make_root(base / "app server")
+        self.default_root = self._make_root(base / "default server")
+        self.missing_root = base / "no server"
+
+        original_explicit = api_config._explicit_server_root
+        original_root = api_config._server_root
+        original_attempted = api_config._discovery_attempted
+
+        def restore() -> None:
+            api_config._explicit_server_root = original_explicit
+            api_config._server_root = original_root
+            api_config._discovery_attempted = original_attempted
+
+        self.addCleanup(restore)
+
+    @staticmethod
+    def _make_root(path: Path) -> Path:
+        (path / "projects").mkdir(parents=True)
+        return path.resolve()
+
+    def _reset(self) -> None:
+        api_config._explicit_server_root = None
+        api_config._server_root = None
+        api_config._discovery_attempted = False
+
+    def _write_host_config(self, root: Path) -> None:
+        (self.appdata / "ArcRho" / "workspace_paths.json").write_text(
+            json.dumps({"workspace_root": str(root)}), encoding="utf-8"
+        )
+
+    def _env(self, **extra: str) -> dict[str, str]:
+        return {"APPDATA": str(self.appdata), **extra}
+
+    def test_env_override_wins_over_host_config(self) -> None:
+        self._write_host_config(self.file_root)
+        for name in api_config.SERVER_ROOT_ENV_VARS:
+            with self.subTest(env=name):
+                with patch.dict(os.environ, self._env(**{name: str(self.env_root)}), clear=True):
+                    self._reset()
+                    self.assertEqual(get_server_root(), self.env_root)
+
+    def test_env_override_applies_after_a_root_is_already_cached(self) -> None:
+        """The ArcRho Bridge exports its runtime root into a running process."""
+
+        self._write_host_config(self.file_root)
+        with patch.dict(os.environ, self._env(), clear=True):
+            self._reset()
+            self.assertEqual(get_server_root(), self.file_root)
+            os.environ[api_config.RUNTIME_SERVER_ROOT_ENV] = str(self.env_root)
+            self.assertEqual(get_server_root(), self.env_root)
+
+    def test_explicit_set_server_root_outranks_env_override(self) -> None:
+        with patch.dict(
+            os.environ, self._env(**{api_config.SERVER_ROOT_ENV: str(self.env_root)}), clear=True
+        ):
+            self._reset()
+            set_server_root(self.file_root, persist=False)
+            self.assertEqual(get_server_root(), self.file_root)
+
+    def test_host_config_wins_over_running_app(self) -> None:
+        self._write_host_config(self.file_root)
+        with patch.dict(os.environ, self._env(), clear=True), patch(
+            "arcrho_api.ui._request_json"
+        ) as request_json:
+            self._reset()
+            self.assertEqual(get_server_root(), self.file_root)
+            request_json.assert_not_called()
+
+    def test_running_app_supplies_root_when_host_config_missing(self) -> None:
+        with patch.dict(os.environ, self._env(), clear=True), patch(
+            "arcrho_api.ui._request_json",
+            return_value={"ok": True, "config": {"workspace_root": str(self.app_root)}},
+        ) as request_json:
+            self._reset()
+            self.assertEqual(get_server_root(), self.app_root)
+            request_json.assert_called_once()
+            self.assertEqual(request_json.call_args.args[0], "/workspace_paths")
+
+    def test_packaged_default_used_when_app_is_not_running(self) -> None:
+        with patch.dict(os.environ, self._env(), clear=True), patch(
+            "arcrho_api.ui._request_json", side_effect=ArcRhoApiError("not reachable")
+        ), patch.object(api_config, "DEFAULT_WORKSPACE_ROOT", str(self.default_root)):
+            self._reset()
+            self.assertEqual(get_server_root(), self.default_root)
+
+    def test_unusable_packaged_default_is_rejected(self) -> None:
+        with patch.dict(os.environ, self._env(), clear=True), patch(
+            "arcrho_api.ui._request_json", side_effect=ArcRhoApiError("not reachable")
+        ), patch.object(api_config, "DEFAULT_WORKSPACE_ROOT", str(self.missing_root)):
+            self._reset()
+            self.assertIsNone(get_server_root())
+            with self.assertRaises(InvalidArcRhoServerError) as caught:
+                get_server_root(required=True)
+        self.assertIn(api_config.SERVER_ROOT_ENV, str(caught.exception))
+
+    def test_discovery_runs_once_until_reloaded(self) -> None:
+        with patch.dict(os.environ, self._env(), clear=True), patch(
+            "arcrho_api.ui._request_json", side_effect=ArcRhoApiError("not reachable")
+        ) as request_json, patch.object(
+            api_config, "DEFAULT_WORKSPACE_ROOT", str(self.missing_root)
+        ):
+            self._reset()
+            self.assertIsNone(get_server_root())
+            self.assertIsNone(get_server_root())
+            self.assertEqual(request_json.call_count, 1)
+
+            request_json.side_effect = None
+            request_json.return_value = {"config": {"workspace_root": str(self.app_root)}}
+            self.assertEqual(reload_server_root(), self.app_root)
+            self.assertEqual(request_json.call_count, 2)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ This contract applies when changing app-server routes, schemas, services, runtim
 ## Core Rules
 1. Keep domain logic layered: routers handle transport/validation, schemas define request shapes, and services own persistence and business logic.
 2. Change route paths, request/response shapes, saved file schemas, and cache semantics only as coordinated refactors. Update all known producers, consumers, docs, and generated indexes in the same change.
-3. Keep `workspace_paths.json` and `app_server/config.py` as the single source for workspace paths. Do not duplicate path derivation in services.
+3. Keep `workspace_paths.json` and `app_server/config.py` as the single source for workspace paths. Do not duplicate path derivation in services. `arcrho_api/config.py` owns ArcRho Server root resolution itself -- the config file name, the `%APPDATA%\ArcRho` folder, the `ARCRHO_SERVER_ROOT`/`ARCRHO_RUNTIME_SERVER_ROOT` overrides, and the packaged default root -- so the app server, the Python API, and macros always resolve the same workspace; `app_server/config.py` reads those constants and helpers instead of redefining them, and adds only the Arcode-mode AppData branch and the `paths` normalization it owns.
 4. Preserve data integrity for filesystem-backed operations. Project settings, workflow files, caches, and audit logs should fail clearly rather than silently diverging or corrupting state.
 5. Keep API validation and status behavior explicit. Input problems should not become generic `500` responses, and lock/contention cases should remain distinguishable.
 6. Keep refresh/cache side effects visible in route behavior and docs when they matter to users or downstream features.

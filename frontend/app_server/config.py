@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from arcrho_api import source_table_contract
+from arcrho_api import config as api_config
 
 
 # ---------------------------------------------------------------------------
@@ -41,12 +42,15 @@ PROJECT_ROOT = _resolve_project_root()
 # Config - load workspace path settings
 # ---------------------------------------------------------------------------
 
-DEFAULT_WORKSPACE_ROOT = r"E:\ArcRho Server"
-RUNTIME_SERVER_ROOT_ENV = "ARCRHO_RUNTIME_SERVER_ROOT"
-DEFAULT_WORKSPACE_PATHS = {
-    "projects_dir": "projects",
-    "requests_dir": "requests",
-}
+# Workspace root resolution is owned by ``arcrho_api.config`` so the app server,
+# the Python API, and macros can never disagree about the ArcRho Server root.
+DEFAULT_WORKSPACE_ROOT = api_config.DEFAULT_WORKSPACE_ROOT
+RUNTIME_SERVER_ROOT_ENV = api_config.RUNTIME_SERVER_ROOT_ENV
+DEFAULT_WORKSPACE_PATHS = dict(api_config.DEFAULT_WORKSPACE_PATHS)
+# Canonical wait budget for one data-engine file-exchange round trip
+# (ArcRhoTri/ArcRhoVec/ArcRhoHeaders). Callers and request schemas must not
+# hardcode their own engine timeout.
+ENGINE_REQUEST_TIMEOUT_SEC = 15.0
 PROJECT_USER_PREFERENCES_FILE = "preferences.json"
 PROJECT_INSTANCE_DEFAULT_PREFS_ENV = "ARCRHO_PROJECT_INSTANCE_DEFAULT_PREFS_PATH"
 DEFAULT_PROJECT_INSTANCE_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_preferences" / "project_instance_preferences.json"
@@ -61,13 +65,17 @@ def _is_arcode_mode() -> bool:
 
 
 def _get_user_appdata_dir() -> str:
+    if not _is_arcode_mode():
+        return str(api_config.config_dir())
     appdata = str(os.environ.get("APPDATA") or "").strip()
     if not appdata:
         appdata = os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
-    return os.path.join(appdata, "Arcode" if _is_arcode_mode() else "ArcRho")
+    return os.path.join(appdata, "Arcode")
 
 
-WORKSPACE_PATHS_PATH = os.path.join(_get_user_appdata_dir(), "workspace_paths.json")
+WORKSPACE_PATHS_PATH = os.path.join(
+    _get_user_appdata_dir(), api_config.WORKSPACE_PATHS_FILE_NAME
+)
 SNOWFLAKE_CONNECTIONS_PATH = os.path.join(_get_user_appdata_dir(), "snowflake_connections.json")
 
 
@@ -97,7 +105,7 @@ def load_workspace_paths() -> Dict[str, Any]:
     """Load runtime workspace path configuration."""
     raw = _read_json_file(WORKSPACE_PATHS_PATH)
 
-    runtime_root = str(os.environ.get(RUNTIME_SERVER_ROOT_ENV) or "").strip()
+    runtime_root = api_config.env_server_root()
     if runtime_root:
         workspace_root = runtime_root
     else:

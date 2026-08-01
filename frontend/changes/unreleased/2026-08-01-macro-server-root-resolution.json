@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Macros and the Python API now find the ArcRho Server root on a client PC that never saved ArcRho Server Connection.",
+  "details": [
+    "Import ResQ Reserving Class no longer fails with \"ArcRho Server root was not found in the ArcRho host config file\" when %APPDATA%\\ArcRho\\workspace_paths.json does not exist.",
+    "The server root now resolves from ARCRHO_SERVER_ROOT/ARCRHO_RUNTIME_SERVER_ROOT, then the host config file, then the running ArcRho desktop app, then the packaged default root.",
+    "arcrho_api/config.py owns that resolution and the app server reads it, so the desktop app and macros can no longer disagree about the workspace."
+  ]
+}
