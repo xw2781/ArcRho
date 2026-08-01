@@ -45,6 +45,13 @@ When more than one ArcRho component can create the same persisted JSON file, all
 - Coordinate any `index.json` contract or build-logic change across the bundled frontend app server, the public Python API, `python-api/migration/resq_data_migration.py`, its migration modules, and the mirrored macro under `python-api/macros`.
 - Every such change must include an exact full-payload cross-producer parity test, including path-alias independence, and a test proving that a valid current index is served without a sidecar scan or rewrite.
 
+## Generated Dataset Import Parity (MUST)
+When ResQ migration encounters a single-instance Dataset Type with `Generated=true`, the migration must reproduce the frontend generation path rather than copy the ResQ object's values or presentation metadata.
+- Submit the same ArcRho Engine request contract used by the frontend and publish only the completed Engine CSV.
+- Build the persisted engine sidecar through the same canonical contract as the frontend runtime. Do not copy ResQ origin/development labels, counts, formulas, users, or timestamps into an engine-owned sidecar.
+- Keep Dataset Type formulas and project header labels in their canonical project configuration/header sources. Cached dataset reads must hydrate them before the first grid render; do not synthesize generic `12, 24, ...` labels for an engine dataset.
+- Add an exact full-payload cross-producer test for the frontend and migration engine-sidecar writers, including path-alias independence, plus a cached-load test proving formula and development-label hydration matches a force rebuild.
+
 ## Network-Drive Project Data I/O (MUST)
 When designing or maintaining a frontend feature, including its bundled app-server code, assume ArcRho project JSON and related metadata may live on a mapped or UNC network drive.
 - Do not read or write multiple independent small files sequentially in a per-file awaited loop. Every network filesystem operation can add a full round trip.

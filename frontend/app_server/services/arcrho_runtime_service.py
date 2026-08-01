@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List
 
 import pandas as pd
 from fastapi import HTTPException
+from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 
 from app_server import config
 from app_server.helpers import (
@@ -1110,34 +1111,33 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
         created = _utc_timestamp_from_stat(os.stat(data_path).st_ctime)
     except OSError:
         pass
-    payload = {
-        "dataset_name": instance_name,
-        "dataset_type": dataset_type,
-        "reserving_class": reserving_class,
-        "project_name": project_name,
-        "source_kind": "engine",
-        "data_format": data_format,
-        "data_format_code": 1 if is_vector else 0,
-        "csv_file": os.path.basename(data_path),
-        "user": user_name,
-        "created": created,
-        "modified_by": user_name,
-        "updated_at": updated_at,
-        "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
-        "status": dataset_sidecar_status_service.STATUS_CURRENT,
-        **dataset_number_format_service.dataset_type_number_format_settings(dataset_type),
-    }
-    _set_processing_provenance(payload, project_name, data_path)
-    _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)
+    display_settings = dataset_number_format_service.dataset_type_number_format_settings(dataset_type)
+    payload = build_engine_dataset_sidecar(
+        project_name=project_name,
+        reserving_class=reserving_class,
+        dataset_name=instance_name,
+        dataset_type=dataset_type,
+        data_format=data_format,
+        csv_file=os.path.basename(data_path),
+        user=user_name,
+        created=created,
+        updated_at=updated_at,
+        number_format=display_settings["number_format"],
+        decimal_places=display_settings["decimal_places"],
+        origin_length=_pair_int_value(pairs, "OriginLength", 12),
+        development_length=_pair_int_value(pairs, "DevelopmentLength", 12),
+        period_length=_pair_int_value(pairs, "OriginLength", 12) if is_vector else None,
+        cumulative=_pair_bool_value(pairs, "Cumulative", True),
+        calendar=_pair_bool_value(pairs, "Calendar", False),
+        processing=get_processing_provenance(project_name),
+    )
     from app_server.services import calculated_dataset_service
-    from app_server.services.dataset_service import _append_dataset_audit_entry
 
     calculated_dataset_service.apply_sidecar_graph_fields(
         payload,
         _pair_value(pairs, "ProjectName"),
         dataset_type,
     )
-    _append_dataset_audit_entry(payload, "Insert", event_date=updated_at, user_name=user_name)
     dataset_sidecar_status_service.write_sidecar(sidecar_path, payload)
     dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
         project_name,

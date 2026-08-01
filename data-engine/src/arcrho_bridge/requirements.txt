@@ -4,3 +4,4 @@ pywin32
 pygetwindow
 pandas==2.2.2
 pydantic>=1.10,<3
+fastapi>=0.115,<1

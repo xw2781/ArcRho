@@ -140,22 +140,25 @@ def _origin_labels_error(ds_id: str, project_name: str, reason: str) -> HTTPExce
     return HTTPException(422, detail)
 
 
-def _resolve_origin_labels(
+def _load_project_header_labels(
     ds_id: str,
     path: str,
     project_name: str,
-    origin_length: int,
-    expected_count: int,
+    period_length: int,
+    *,
+    period_type: int = 0,
+    transposed: bool = False,
+    calendar: bool = False,
 ) -> List[str]:
     project = str(project_name or "").strip()
     if not project:
         raise _origin_labels_error(ds_id, project, "project name is missing")
     try:
-        length = int(origin_length)
+        length = int(period_length)
     except (TypeError, ValueError):
         raise _origin_labels_error(ds_id, project, "origin period length is invalid")
-    if length not in _ORIGIN_KIND_BY_LENGTH:
-        raise _origin_labels_error(ds_id, project, f"origin period length '{origin_length}' is unsupported")
+    if period_type == 0 and length not in _ORIGIN_KIND_BY_LENGTH:
+        raise _origin_labels_error(ds_id, project, f"origin period length '{period_length}' is unsupported")
 
     try:
         project_data_dir = os.path.normcase(os.path.realpath(config.get_project_data_dir(project)))
@@ -175,7 +178,21 @@ def _resolve_origin_labels(
     try:
         from app_server.services import arcrho_runtime_service
 
-        header_result = arcrho_runtime_service.get_project_headers(project, length, timeout_sec=6.0)
+        if period_type == 0 and not transposed and not calendar:
+            header_result = arcrho_runtime_service.get_project_headers(
+                project,
+                length,
+                timeout_sec=6.0,
+            )
+        else:
+            header_result = arcrho_runtime_service.get_project_headers(
+                project,
+                length,
+                timeout_sec=6.0,
+                period_type=period_type,
+                transposed=transposed,
+                calendar=calendar,
+            )
     except HTTPException as err:
         detail = str(err.detail or "ArcRho project headers could not be loaded")
         raise HTTPException(err.status_code, f"Cannot load dataset '{ds_id}': {detail}")
@@ -195,10 +212,58 @@ def _resolve_origin_labels(
             503,
             f"Cannot load dataset '{ds_id}' for project '{project}': ArcRho project headers are {status}.",
         )
-    labels, header_reason = _validate_origin_labels(header_result.get("labels"), expected_count, length)
+    labels = header_result.get("labels")
+    return [str(item if item is not None else "").strip() for item in labels] if isinstance(labels, list) else []
+
+
+def _resolve_origin_labels(
+    ds_id: str,
+    path: str,
+    project_name: str,
+    origin_length: int,
+    expected_count: int,
+) -> List[str]:
+    labels, header_reason = _validate_origin_labels(
+        _load_project_header_labels(ds_id, path, project_name, origin_length),
+        expected_count,
+        origin_length,
+    )
     if labels:
         return labels
-    raise _origin_labels_error(ds_id, project, header_reason)
+    raise _origin_labels_error(ds_id, project_name, header_reason)
+
+
+def _resolve_development_labels(
+    ds_id: str,
+    path: str,
+    project_name: str,
+    development_length: int,
+    expected_count: int,
+    *,
+    calendar: bool = False,
+) -> List[str]:
+    labels = _load_project_header_labels(
+        ds_id,
+        path,
+        project_name,
+        development_length,
+        period_type=1,
+        transposed=True,
+        calendar=calendar,
+    )
+    if len(labels) == expected_count and labels and all(labels):
+        return labels
+    reason = (
+        f"development label count {len(labels)} does not match dataset column count {expected_count}"
+        if labels
+        else "no development labels were returned"
+    )
+    project = str(project_name or "").strip() or "(unknown)"
+    raise HTTPException(
+        422,
+        f"Cannot load dataset '{ds_id}': valid development labels could not be resolved "
+        f"for project '{project}' ({reason}). Refresh the dataset after verifying Project Settings.",
+    )
 
 
 def infer_shape(path: str) -> Tuple[int, int]:
@@ -1486,7 +1551,23 @@ def load_cached_dataset_values(
     column_count = max((len(row) for row in values), default=0)
     development_labels = _normalize_origin_labels(sidecar.get("development_labels"))
     if len(development_labels) != column_count:
-        development_labels = ["Ultimate"] if is_vector and column_count == 1 else [str(12 * (index + 1)) for index in range(column_count)]
+        if is_vector and column_count == 1:
+            development_labels = ["Ultimate"]
+        elif str(sidecar.get("source_kind") or "").strip().casefold() == "engine":
+            development_labels = _resolve_development_labels(
+                dataset_id,
+                csv_path,
+                p,
+                resolved_development_length,
+                column_count,
+                calendar=bool(sidecar.get("calendar")),
+            )
+        else:
+            development_labels = [str(12 * (index + 1)) for index in range(column_count)]
+    _, dataset_type_formula = _is_app_calculated_dataset_type(
+        p,
+        str(sidecar.get("dataset_type") or ds),
+    )
     try:
         file_mtime = os.stat(csv_path).st_mtime
     except OSError:
@@ -1516,7 +1597,7 @@ def load_cached_dataset_values(
         "calendar": sidecar.get("calendar"),
         "number_format": _normalize_number_format(sidecar.get("number_format") or "0,000"),
         "decimal_places": _normalize_decimal_places(sidecar.get("decimal_places")),
-        "formula": str(sidecar.get("formula") or ""),
+        "formula": dataset_type_formula or str(sidecar.get("formula") or ""),
         "calculated": sidecar.get("calculated"),
         "external_links": _normalize_dataset_external_links(sidecar.get("external_links")),
         "Precedents": sidecar.get("Precedents") if isinstance(sidecar.get("Precedents"), list) else [],

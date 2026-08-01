@@ -89,6 +89,21 @@ def install_requirements():
     run([VENV_PYTHON, "-m", "pip", "install", "-r", REQ_FILE])
 
 
+def validate_resq_import_environment():
+    """Fail the build if the canonical migration/provenance imports are incomplete."""
+
+    import_paths = (RESQ_MIGRATION_SOURCE, RESQ_PYTHON_API_SOURCE, REPO_ROOT / "frontend")
+    probe = (
+        "import sys; "
+        f"sys.path[:0] = {repr([str(path) for path in import_paths])}; "
+        "from resq_migration.engine import get_engine_processing_provenance; "
+        "from app_server.services.data_processing_rules_service import "
+        "get_processing_provenance"
+    )
+    print("\n>>> Validating canonical ResQ import dependencies")
+    run([VENV_PYTHON, "-c", probe])
+
+
 def build_exe():
     for source in (
         RESQ_MIGRATION_SOURCE,
@@ -245,6 +260,7 @@ def main():
     ensure_venv()
     ensure_venv_python()
     install_requirements()
+    validate_resq_import_environment()
     build_exe()
     with bridge_stopped():
         deploy_exe()

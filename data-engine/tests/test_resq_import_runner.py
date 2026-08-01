@@ -49,6 +49,7 @@ class ResQImportRunnerTests(unittest.TestCase):
         (migration_dir / "resq_migration" / "core.py").write_text("", encoding="utf-8")
         (migration_dir / "resq_migration" / "catalog.py").write_text("", encoding="utf-8")
         (api_src / "arcrho_api" / "dataset_index_contract.py").write_text("", encoding="utf-8")
+        (api_src / "arcrho_api" / "engine_dataset_sidecar_contract.py").write_text("", encoding="utf-8")
 
         bundle = runner.locate_resq_migration_bundle(
             frozen=True,

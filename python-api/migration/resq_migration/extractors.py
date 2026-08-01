@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import getpass
 import io
 import math
 import os
@@ -21,6 +22,7 @@ from arcrho_api.bornhuetter_ferguson_contract import (
     recalculate_bornhuetter_ferguson_method,
 )
 from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variants
+from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
 from .core import (
@@ -900,53 +902,30 @@ def write_engine_generated_export(
     """
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
-    user = payload.get("user", "")
-    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
-    created = _engine_cache_created_at(csv_path, payload.get("created", ""))
-
-    meta = {
-        "dataset_name": name,
-        "dataset_type": dataset_type,
-        "dataset_category": _normalize_import_name(payload.get("category")),
-        "reserving_class": rc_path,
-        "project_name": PROJECT_NAME,
-        "source_kind": "engine",
-        "calculated": False,
-        "formula": "",
-        "data_format": "Vector" if is_vector else "Triangle",
-        "data_format_code": payload.get("data_format", 1 if is_vector else 0),
-        "method_type": "None",
-        "method_type_code": METHOD_TYPE_NONE_CODE,
-        "status": 0,
-        "number_format": dataset_type_number_format(rc_path, dataset_type),
-        "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
-        "csv_file": csv_name,
-        "user": user,
-        "created": created,
-        "modified_by": user,
-        "updated_at": updated_at,
-    }
-    # Shape fields mirror the runtime's engine sidecar: period_length for vectors,
-    # origin/development length + cumulative/calendar for triangles. Origin/development
-    # labels and counts are intentionally omitted; the engine determines the shape and
-    # the app derives labels from headers, so copying ResQ labels could disagree.
-    if is_vector:
-        meta["period_length"] = _vector_payload_period_length(payload)
-    else:
-        meta["origin_length"] = int(payload["origin_length"])
-        meta["development_length"] = int(payload["development_length"])
-        meta["cumulative"] = DEFAULT_CUMULATIVE
-        meta["calendar"] = DEFAULT_CALENDAR
-
-    if isinstance(provenance, dict) and provenance:
-        meta["processing"] = dict(provenance)
-        meta["processing_by_csv"] = {csv_name: dict(provenance)}
+    user = getpass.getuser()
+    updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    created = _engine_cache_created_at(csv_path, "")
+    meta = build_engine_dataset_sidecar(
+        project_name=PROJECT_NAME,
+        reserving_class=rc_path,
+        dataset_name=name,
+        dataset_type=dataset_type,
+        data_format="Vector" if is_vector else "Triangle",
+        csv_file=csv_name,
+        user=user,
+        created=created,
+        updated_at=updated_at,
+        number_format=dataset_type_number_format(rc_path, dataset_type),
+        decimal_places=dataset_type_decimal_places(rc_path, dataset_type),
+        origin_length=int(payload.get("origin_length") or 0),
+        development_length=int(payload.get("development_length") or 0),
+        period_length=_vector_payload_period_length(payload) if is_vector else None,
+        cumulative=DEFAULT_CUMULATIVE,
+        calendar=DEFAULT_CALENDAR,
+        processing=provenance,
+    )
 
     _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
-    meta["audit_log"] = [
-        {"event_date": updated_at, "action": "Insert", "change_info": "", "user": user}
-    ]
-
     meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     _write_json(meta_path, meta)
     return csv_path

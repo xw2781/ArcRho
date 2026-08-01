@@ -111,6 +111,8 @@ function normalizeDatasetTypeKey(value) {
 }
 
 function getCurrentDatasetTypeFormula() {
+  const modelFormula = String(state.model?.formula || "").trim();
+  if (modelFormula) return modelFormula;
   const tri = String(document.getElementById("triInput")?.value || "").trim();
   if (!tri) return "";
   const key = normalizeDatasetTypeKey(tri);

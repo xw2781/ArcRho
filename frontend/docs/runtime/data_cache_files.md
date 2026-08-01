@@ -67,6 +67,7 @@ Cache/lock constants detected:
 - Reserving-class tree filter specs are stored in each project-user preference file under `projects/<project>/users/<windows-login>/preferences.json`; `%APPDATA%\ArcRho\cache\reserving_class_filter_spec.json` is obsolete and is no longer read or written.
 - Refresh endpoints can clear and rebuild cache files.
 - ResQ method imports persist the output object's review status in the dataset sidecar: vector-backed methods use `OutputVector.Status`, while Berquist-Sherman methods use `OutputTriangle.Status`. Status `2` remains Needs Review through graph refresh even when precedent timestamps are current; status `0` can still become Needs Review when ArcRho detects a newer precedent.
+- ResQ migration treats `Generated=true` single-instance datasets as ArcRho Engine outputs. The migration and frontend runtime use the same canonical engine-sidecar builder; those sidecars intentionally omit ResQ labels/formulas, and `/dataset/cache/load` hydrates canonical project development headers plus the Dataset Type formula before returning the grid model.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

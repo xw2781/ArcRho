@@ -378,6 +378,7 @@ def _validate_bundle(bundle: ResQMigrationBundle) -> None:
         bundle.migration_dir / "resq_migration" / "core.py",
         bundle.migration_dir / "resq_migration" / "catalog.py",
         bundle.python_api_src / "arcrho_api" / "dataset_index_contract.py",
+        bundle.python_api_src / "arcrho_api" / "engine_dataset_sidecar_contract.py",
     )
     missing = [str(path) for path in required if not path.is_file()]
     if missing:

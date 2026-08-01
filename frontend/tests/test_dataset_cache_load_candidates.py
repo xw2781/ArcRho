@@ -113,6 +113,55 @@ class DatasetCacheLoadCandidateTests(unittest.TestCase):
         self.assertEqual(len(result["origin_labels"]), len(result["values"]))
         resolve_labels.assert_called_once()
 
+    def test_engine_triangle_hydrates_canonical_development_labels_and_formula(self) -> None:
+        csv_path = self.cache_dir / "Ratio@12@12@cum@dev.csv"
+        csv_path.write_text("1,2\n3,\n", encoding="utf-8")
+        sidecar = {
+            "dataset_name": "Ratio",
+            "dataset_type": "Ratio",
+            "data_format": "Triangle",
+            "origin_length": 12,
+            "development_length": 12,
+            "csv_file": csv_path.name,
+            "source_kind": "engine",
+            "calendar": False,
+            "formula": "",
+        }
+        with (
+            patch.object(config, "get_project_dataset_cache_dir", return_value=str(self.cache_dir)),
+            patch.object(dataset_service, "_get_dataset_sidecar_path", return_value="sidecar.json"),
+            patch.object(dataset_service, "_read_dataset_sidecar", return_value=sidecar),
+            patch.object(dataset_service, "_resolve_origin_labels", return_value=["2025", "2026"]),
+            patch.object(
+                dataset_service,
+                "_resolve_development_labels",
+                return_value=["5m", "17m"],
+            ) as resolve_development,
+            patch.object(
+                dataset_service,
+                "_is_app_calculated_dataset_type",
+                return_value=(False, '"Paid" / "Reported"'),
+            ),
+        ):
+            result = dataset_service.load_cached_dataset_values(
+                "Example Project",
+                "Example RC",
+                "Ratio",
+                origin_length=12,
+                development_length=12,
+            )
+
+        self.assertEqual(result["dev_labels"], ["5m", "17m"])
+        self.assertEqual(result["formula"], '"Paid" / "Reported"')
+        resolve_development.assert_called_once_with(
+            result["id"],
+            str(csv_path),
+            "Example Project",
+            12,
+            2,
+            calendar=False,
+        )
+
     def test_notes_are_updated_in_the_dataset_sidecar_only(self) -> None:
         sidecar_path = Path(self.temp_dir.name) / "sidecars" / "Paid.json"
         sidecar_path.parent.mkdir()

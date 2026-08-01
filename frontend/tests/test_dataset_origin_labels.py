@@ -88,6 +88,27 @@ class DatasetOriginLabelResolutionTests(unittest.TestCase):
         self.assertEqual(labels, ["2017 Q4", "2018 Q1"])
         get_headers.assert_called_once_with("Example Project", 3, timeout_sec=6.0)
 
+    def test_development_labels_use_the_transposed_project_header_contract(self) -> None:
+        patches = self._resolver_patches({"ok": True, "labels": ["5m", "17m"]})
+        with patches[0], patches[1] as get_headers:
+            labels = dataset_service._resolve_development_labels(
+                "dataset-dev",
+                self.dataset_path,
+                "Example Project",
+                12,
+                2,
+                calendar=False,
+            )
+        self.assertEqual(labels, ["5m", "17m"])
+        get_headers.assert_called_once_with(
+            "Example Project",
+            12,
+            timeout_sec=6.0,
+            period_type=1,
+            transposed=True,
+            calendar=False,
+        )
+
     def test_rejects_a_registered_dataset_outside_the_requested_project(self) -> None:
         patches = self._resolver_patches({"ok": True, "labels": ["2020", "2021"]})
         outside_path = str(FRONTEND_ROOT / "different-project" / "datasets" / "dataset.csv")

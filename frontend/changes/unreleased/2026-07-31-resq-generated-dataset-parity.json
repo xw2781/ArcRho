@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "ResQ reserving-class imports now display generated datasets with the same labels and Total-row rules as a frontend rebuild.",
+  "details": [
+    "Cached generated datasets resolve development labels from project headers instead of generic month multiples.",
+    "Division formulas suppress the Total row on the first load after import.",
+    "Bridge builds now validate that the canonical frontend processing-provenance service and all of its runtime dependencies can be imported before packaging."
+  ]
+}

@@ -45,6 +45,7 @@ test("Dataset Viewer hides totals only for calculated division formulas", () => 
 test("the grid applies the total policy using its configured host", () => {
   assert.match(gridViewSource, /isDfmHost:\s*isDfmDataTabHost\(\)/u);
   assert.match(gridViewSource, /formula:\s*getCurrentDatasetTypeFormula\(\)/u);
+  assert.match(gridViewSource, /state\.model\?\.formula/u);
 });
 
 test("the grid auto-fits the row-label column to its corner header", () => {
