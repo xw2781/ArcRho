@@ -84,6 +84,8 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, Any]:
     description_parts: List[str] = []
     generated = ""
     scope_text = ""
+    version = ""
+    release_note = ""
     active_key = ""
     in_block = False
     for raw_line in str(text or "").splitlines():
@@ -117,6 +119,14 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, Any]:
                 scope_text = value
                 active_key = "scope"
                 continue
+            if key == "version":
+                version = value
+                active_key = "version"
+                continue
+            if key == "release note":
+                release_note = value
+                active_key = "release note"
+                continue
         if active_key == "description" and line:
             description_parts.append(line)
             continue
@@ -129,6 +139,8 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, Any]:
         "generated": generated,
         "scope": scopes[0],
         "scopes": scopes,
+        "version": version,
+        "release_note": release_note,
     }
 
 
@@ -204,6 +216,7 @@ def list_macros() -> List[Dict[str, Any]]:
                 "description": meta["description"],
                 "scope": meta["scope"],
                 "scopes": meta["scopes"],
+                "version": meta["version"],
                 "path": path,
                 "modified": str(int(stat.st_mtime)),
                 "builtin": False,

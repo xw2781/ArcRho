@@ -378,6 +378,100 @@ body.macroSplitResizeActive * {
   color: #92400e;
 }
 
+#macroLibraryWindow {
+  position: fixed;
+  right: 64px;
+  top: 96px;
+  width: min(430px, calc(100vw - 24px));
+  height: min(480px, calc(100vh - var(--statusbar-h) - 112px));
+  min-width: 360px;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  background: #f4f5f6;
+  border: 1px solid #c9ced6;
+  border-radius: var(--shell-floating-radius);
+  box-shadow: 0 14px 34px rgba(17, 24, 39, 0.16);
+  z-index: 12000;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(12px) scale(0.98);
+  transform-origin: top right;
+  transition:
+    opacity 170ms ease,
+    transform 170ms ease,
+    visibility 0s linear 170ms;
+}
+
+#macroLibraryWindow.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 170ms ease,
+    transform 170ms ease,
+    visibility 0s linear 0s;
+}
+
+.macroLibraryContent {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(100px, 1fr) minmax(76px, 0.72fr);
+  gap: 6px;
+}
+
+.macroListItemVersion {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.macroLibraryStatusTag {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 17px;
+  padding: 0 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.macroLibraryStatusTag.not-installed {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.macroLibraryStatusTag.update-available {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.macroLibraryStatusTag.up-to-date {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.macroLibraryStatusTag.local-differs {
+  border-color: #e2c4c9;
+  background: #fdf2f4;
+  color: #9f1239;
+}
+
 .macroListItem:hover { background: #eef6ff; }
 
 .macroListItem:focus-visible {

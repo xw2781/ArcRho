@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Removed the macro panel's scope filter toggle; the panel now always lists all local macros.",
+  "details": [
+    "Scope tags on each macro row are unchanged and still show where a macro applies."
+  ]
+}

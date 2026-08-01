@@ -15,10 +15,12 @@ from app_server.schemas.scripting import (
     ScriptMacroRunRequest,
     ScriptMacroSourceRunRequest,
     ScriptMacroDeleteRequest,
+    ScriptMacroLibraryInstallRequest,
     ScriptMacroRenameRequest,
     ScriptTaskWrapperSaveRequest,
 )
 from app_server.services import (
+    macro_library_service,
     scripting_macro_service,
     scripting_notebook_service,
     scripting_preferences_service,
@@ -86,6 +88,16 @@ def scripting_list_notebooks() -> List[Dict[str, str]]:
 @router.get("/scripting/macros")
 def scripting_list_macros() -> List[Dict[str, Any]]:
     return scripting_macro_service.list_macros()
+
+
+@router.get("/scripting/macro-library")
+def scripting_list_macro_library() -> Dict[str, Any]:
+    return macro_library_service.list_library_macros()
+
+
+@router.post("/scripting/macro-library/install")
+def scripting_install_library_macro(req: ScriptMacroLibraryInstallRequest) -> Dict[str, Any]:
+    return macro_library_service.install_library_macro(req.macro_id, overwrite=req.overwrite)
 
 
 @router.post("/scripting/run-macro")

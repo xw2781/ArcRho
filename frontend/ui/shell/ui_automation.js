@@ -2,7 +2,7 @@ import { shell } from "./shell_context.js?v=20260510a";
 import {
   captureActiveDfmContextForMacro,
   reviewAndApplyCapturedMacroResult,
-} from "../macro/macro_window.js?v=20260722a";
+} from "../macro/macro_window.js?v=20260731d";
 
 const API_BASE = window.location.origin;
 const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;

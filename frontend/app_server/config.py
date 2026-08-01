@@ -177,6 +177,22 @@ def _get_macro_dir() -> str:
     return os.path.join(os.path.expanduser("~"), "Documents", "ArcRho", "macros")
 
 
+MACRO_LIBRARY_DIR_ENV = "ARCRHO_MACRO_LIBRARY_DIR"
+MACRO_LIBRARY_SUBPATH = os.path.join("shared", "macros")
+
+
+def _get_macro_library_dir() -> str:
+    """Shared read-only macro library on the ArcRho Server workspace root.
+
+    The directory is deployer-managed; users only read from it, so this
+    resolver never creates it.
+    """
+    configured = str(os.environ.get(MACRO_LIBRARY_DIR_ENV) or "").strip()
+    if configured:
+        return configured
+    return get_path(MACRO_LIBRARY_SUBPATH)
+
+
 PROJECT_INDEX_FILE = "index.json"
 
 # Project settings JSON files (on shared network drive)
@@ -197,6 +213,7 @@ PROJECT_BOOK: str = ""
 WORKFLOW_DIR: str = ""
 SCRIPTING_DIR: str = ""
 MACRO_DIR: str = ""
+MACRO_LIBRARY_DIR: str = ""
 ALLOWED_BOOK_DIRS: List[Path] = []
 REQUEST_DIR: str = ""
 
@@ -204,7 +221,7 @@ REQUEST_DIR: str = ""
 def refresh_runtime_paths() -> None:
     """Refresh runtime directories from workspace path config."""
     global DATA_DIR, PROJECT_SETTINGS_DIR, PROJECT_BOOK, WORKFLOW_DIR, SCRIPTING_DIR, MACRO_DIR
-    global ALLOWED_BOOK_DIRS, REQUEST_DIR
+    global MACRO_LIBRARY_DIR, ALLOWED_BOOK_DIRS, REQUEST_DIR
     PROJECT_SETTINGS_DIR = _get_project_map_dir()
     PROJECT_BOOK = os.path.join(
         PROJECT_SETTINGS_DIR,
@@ -213,6 +230,7 @@ def refresh_runtime_paths() -> None:
     WORKFLOW_DIR = _get_workflow_dir()
     SCRIPTING_DIR = _get_scripting_dir()
     MACRO_DIR = _get_macro_dir()
+    MACRO_LIBRARY_DIR = _get_macro_library_dir()
     DATA_DIR = SCRIPTING_DIR
     ALLOWED_BOOK_DIRS = [
         Path(PROJECT_SETTINGS_DIR).resolve(),

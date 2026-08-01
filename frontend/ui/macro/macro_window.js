@@ -1,14 +1,14 @@
 import { shell } from "../shell/shell_context.js?v=20260510a";
 import { macroContextFingerprint } from "./macro_context_fingerprint.js?v=20260722a";
+import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260731c";
 
 const API_BASE = window.location.origin;
-const MACRO_WINDOW_FRAGMENT_URL = "/ui/macro/macro_window.html?v=20260625a";
+const MACRO_WINDOW_FRAGMENT_URL = "/ui/macro/macro_window.html?v=20260731b";
 const TASK_DESIGNER_COMMAND_MESSAGE = "arcrho:task-designer-automation-command";
 const MACRO_WINDOW_POSITION_KEY = "arcrho_macro_window_position";
 const MACRO_SPLIT_HEIGHT_KEY = "arcrho_macro_window_split_height";
 const MACRO_ORDER_KEY = "arcrho_macro_order";
 const MACRO_PINNED_KEY = "arcrho_macro_window_pinned";
-const MACRO_SCOPE_FILTER_KEY = "arcrho_macro_scope_filter";
 const MACRO_MIN_LIST_HEIGHT = 100;
 const MACRO_MIN_DESCRIPTION_HEIGHT = 76;
 const EXTERNAL_MACRO_CAPTURE_TTL_MS = 5 * 60 * 1000;
@@ -24,7 +24,7 @@ const MACRO_SCOPE_LABELS = {
 let macroWindow = null;
 let macroCloseBtn = null;
 let macroRefreshBtn = null;
-let macroScopeFilterBtn = null;
+let macroLibraryBtn = null;
 let macroPinBtn = null;
 let macroRunBtn = null;
 let macroEditBtn = null;
@@ -41,14 +41,13 @@ let macroWindowLoadPromise = null;
 let macroSplitCustomized = false;
 let macroSplitContextMenu = null;
 let macroItemContextMenu = null;
-let macroScopeFilterEnabled = readMacroScopeFilter();
 const capturedExternalMacroTargets = new Map();
 
 function refreshMacroElements() {
   macroWindow = document.getElementById("macroWindow");
   macroCloseBtn = document.getElementById("macroCloseBtn");
   macroRefreshBtn = document.getElementById("macroRefreshBtn");
-  macroScopeFilterBtn = document.getElementById("macroScopeFilterBtn");
+  macroLibraryBtn = document.getElementById("macroLibraryBtn");
   macroPinBtn = document.getElementById("macroPinBtn");
   macroRunBtn = document.getElementById("macroRunBtn");
   macroEditBtn = document.getElementById("macroEditBtn");
@@ -139,20 +138,6 @@ function toggleMacroPinned() {
   saveMacroPinned(next);
 }
 
-function readMacroScopeFilter() {
-  try {
-    return localStorage.getItem(MACRO_SCOPE_FILTER_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function saveMacroScopeFilter(enabled) {
-  try {
-    localStorage.setItem(MACRO_SCOPE_FILTER_KEY, enabled ? "1" : "0");
-  } catch {}
-}
-
 function normalizeMacroScope(value) {
   const key = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
   return MACRO_SCOPE_LABELS[key] || "";
@@ -173,81 +158,6 @@ function macroScopes(macro) {
 
 function scopeClassName(scope) {
   return String(scope || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
-
-function getActiveTab() {
-  return (shell.state?.tabs || []).find((tab) => tab.id === shell.state?.activeId) || null;
-}
-
-function getActiveProjectInstanceWindow(tab) {
-  const state = tab?.projectInstanceState && typeof tab.projectInstanceState === "object" ? tab.projectInstanceState : null;
-  const windows = Array.isArray(state?.windows) ? state.windows : [];
-  return windows.find((item) => item?.active) || state?.activeWindow || null;
-}
-
-function getActiveMacroScopes() {
-  const tab = getActiveTab();
-  const scopes = new Set();
-  if (!tab) return scopes;
-  if (tab.type === "dfm" || (tab.type === "project_instance" && tab.piDfmActive)) {
-    scopes.add("DFM");
-  }
-  if (tab.type === "result_selection") {
-    scopes.add("Result Selection");
-  }
-  if (tab.type === "project_instance") {
-    const state = tab.projectInstanceState && typeof tab.projectInstanceState === "object" ? tab.projectInstanceState : null;
-    if (String(state?.selectedPath || "").trim()) scopes.add("Reserving Class");
-    const activeWindow = getActiveProjectInstanceWindow(tab);
-    const kind = String(activeWindow?.kind || "").trim().toLowerCase();
-    const methodType = String(activeWindow?.methodType || activeWindow?.method_type || "").trim().toLowerCase();
-    if (kind === "dfm" || methodType === "dfm") scopes.add("DFM");
-    if (kind === "result_selection" || methodType === "result selection") scopes.add("Result Selection");
-  }
-  return scopes;
-}
-
-function macroMatchesActiveScope(macro, activeScopes = getActiveMacroScopes()) {
-  if (!macroScopeFilterEnabled) return true;
-  if (!activeScopes.size) return false;
-  return macroScopes(macro).some((scope) => activeScopes.has(scope));
-}
-
-function visibleMacros() {
-  const activeScopes = getActiveMacroScopes();
-  return macros.filter((macro) => macroMatchesActiveScope(macro, activeScopes));
-}
-
-function activeScopeLabel(activeScopes = getActiveMacroScopes()) {
-  return Array.from(activeScopes).join(", ") || "No active macro scope";
-}
-
-function applyMacroScopeFilterButton() {
-  if (!macroScopeFilterBtn) return;
-  macroScopeFilterBtn.classList.toggle("active", macroScopeFilterEnabled);
-  macroScopeFilterBtn.setAttribute("aria-pressed", macroScopeFilterEnabled ? "true" : "false");
-  const context = activeScopeLabel();
-  const label = macroScopeFilterEnabled
-    ? `Filtering macros by active tab: ${context}`
-    : `Filter macros by active tab: ${context}`;
-  macroScopeFilterBtn.title = label;
-  macroScopeFilterBtn.setAttribute("aria-label", label);
-}
-
-function toggleMacroScopeFilter() {
-  macroScopeFilterEnabled = !macroScopeFilterEnabled;
-  saveMacroScopeFilter(macroScopeFilterEnabled);
-  renderMacroList();
-  renderMacroDescription();
-}
-
-export function refreshMacroScopeContext() {
-  refreshMacroElements();
-  if (!macroWindow?.classList.contains("open")) return;
-  applyMacroScopeFilterButton();
-  if (!macroScopeFilterEnabled) return;
-  renderMacroList();
-  renderMacroDescription();
 }
 
 function getSelectedMacro() {
@@ -326,19 +236,13 @@ function buildMacroDisplayList(loadedMacros) {
 
 function renderMacroList() {
   if (!macroList) return;
-  applyMacroScopeFilterButton();
-  const items = visibleMacros();
+  const items = macros;
   macroList.textContent = "";
-  if (!macros.length || !items.length) {
+  if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "macroEmpty";
-    empty.textContent = macros.length
-      ? `No macros match the active scope (${activeScopeLabel()}).`
-      : "No macros found.";
+    empty.textContent = "No macros found.";
     macroList.appendChild(empty);
-    if (macroScopeFilterEnabled && selectedMacroId && !items.some((macro) => macro.id === selectedMacroId)) {
-      selectedMacroId = "";
-    }
     return;
   }
   if (!selectedMacroId || !items.some((macro) => macro.id === selectedMacroId)) {
@@ -408,10 +312,7 @@ async function loadMacros() {
     macros = buildMacroDisplayList(liveMacros);
     renderMacroList();
     renderMacroDescription();
-    const hidden = liveMacros.length - visibleMacros().length;
-    setMacroStatus(hidden > 0 && macroScopeFilterEnabled
-      ? `${liveMacros.length} macro(s) available; ${hidden} hidden by scope filter.`
-      : `${liveMacros.length} macro(s) available.`);
+    setMacroStatus(`${liveMacros.length} macro(s) available.`);
   } catch (err) {
     macros = buildMacroDisplayList([]);
     renderMacroList();
@@ -419,6 +320,10 @@ async function loadMacros() {
     const message = String(err?.message || err || "Failed to load macros.");
     setMacroStatus(`Failed to load macros. ${message}`, "error");
   }
+}
+
+function openSharedMacroLibrary() {
+  void openMacroLibraryWindow();
 }
 
 function getActiveDfmTab(preferredTabId = "") {
@@ -1764,7 +1669,6 @@ function initMacroWindowDrag() {
 export async function openMacroWindow() {
   if (!(await initMacroWindow())) return;
   applyMacroPinned(readMacroPinned());
-  applyMacroScopeFilterButton();
   restoreMacroWindowPosition();
   macroWindow?.classList.add("open");
   restoreMacroSplitHeight();
@@ -1784,7 +1688,7 @@ export async function initMacroWindow() {
   macroWindowWired = true;
   macroCloseBtn?.addEventListener("click", closeMacroWindow);
   macroRefreshBtn?.addEventListener("click", () => loadMacros());
-  macroScopeFilterBtn?.addEventListener("click", toggleMacroScopeFilter);
+  macroLibraryBtn?.addEventListener("click", openSharedMacroLibrary);
   macroPinBtn?.addEventListener("click", toggleMacroPinned);
   macroRunBtn?.addEventListener("click", runSelectedMacro);
   macroEditBtn?.addEventListener("click", editSelectedMacro);
@@ -1804,19 +1708,9 @@ export async function initMacroWindow() {
     }
     if (macroWindow?.classList.contains("open")) closeMacroWindow();
   }, true);
-  window.addEventListener("message", (event) => {
-    const type = event.data?.type || "";
-    if (
-      type !== "arcrho:project-instance-state"
-      && type !== "arcrho:project-instance-dfm-active-state"
-      && type !== "arcrho:tab-activated"
-    ) {
-      return;
-    }
+  window.addEventListener("arcrho:local-macros-changed", () => {
     if (!macroWindow?.classList.contains("open")) return;
-    window.setTimeout(() => {
-      refreshMacroScopeContext();
-    }, 0);
+    void loadMacros();
   });
   return true;
 }

@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Added a Macro Library pop-up window for browsing and loading shared team macros from the ArcRho Server.",
+  "details": [
+    "The macro panel header has a Library button that opens a separate floating Macro Library window listing shared macros from the server's shared\\macros folder with version, release note, and install status (New, Update, Loaded, Differs).",
+    "Load copies the selected macro into your local macros folder; a differing local copy asks before it is replaced.",
+    "Macros continue to run only from your local macros folder, so an unreachable library never blocks existing macros."
+  ]
+}

@@ -67,6 +67,11 @@ class ScriptMacroDeleteRequest(BaseModel):
     macro_id: str
 
 
+class ScriptMacroLibraryInstallRequest(BaseModel):
+    macro_id: str
+    overwrite: bool = False
+
+
 class ScriptMacroRenameRequest(BaseModel):
     macro_id: str
     new_name: str

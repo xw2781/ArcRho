@@ -15,6 +15,8 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 - **RS (Result Selection):** the frontend workspace for result selection methods under `frontend/ui/method_pages/result_selection`.
 - **PI (Project Instance):** the frontend workspace for browsing and working within a project instance under `frontend/ui/project_instance`.
 - **PS (Project Settings):** the frontend workspace for configuring project settings under `frontend/ui/project_settings`.
+- **Dev PC:** the development machine that hosts this repository, builds the app, and publishes macros to the shared macro library.
+- **Client PC:** a user machine that runs the installed ArcRho desktop app and reaches the ArcRho Server workspace (`E:\ArcRho Server`) as a mapped or UNC network drive; it loads shared macros from the library into its own local `Documents\ArcRho\macros`.
 
 ## Mandatory Read Before Editing
 Before changing files under `frontend/`, read `frontend/FRONTEND_AGENT_GUIDELINES.md`.
@@ -70,6 +72,7 @@ Use `$arcrho-json-contract` when refining dataset JSON sidecars/sidercars, reser
 Treat `python-api/macros` as the source of truth for ArcRho macro files maintained in this repository.
 Follow the macro metadata, versioning, release-note, and backup rules in `python-api/macros/README.md` whenever adding or changing a macro.
 When adding or editing a macro, update the file in `python-api/macros` first, then copy all active macro files from that folder to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros`.
+After adding or editing any active macro, also publish the active macros to the official shared macro library (`E:\ArcRho Server\shared\macros`) by running `python publish_macro_library.py` from `python-api/macros`.
 
 ## Python Runtime Preference
 Always prefer Python 3.10 for this repository. When validating Python code, running scripts, installing dependencies, or creating virtual environments, use a Python 3.10 interpreter unless the user explicitly asks for another version or a toolchain requires a different runtime.

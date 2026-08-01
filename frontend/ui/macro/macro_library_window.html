@@ -1,0 +1,38 @@
+<section id="macroLibraryWindow" class="host-nodrag" role="dialog" aria-label="Macro Library">
+  <div class="macroResizeHandle macroResizeNw" data-resize-edge="nw" aria-hidden="true"></div>
+  <div class="macroResizeHandle macroResizeN" data-resize-edge="n" aria-hidden="true"></div>
+  <div class="macroResizeHandle macroResizeNe" data-resize-edge="ne" aria-hidden="true"></div>
+  <div class="macroResizeHandle macroResizeE" data-resize-edge="e" aria-hidden="true"></div>
+  <div class="macroResizeHandle macroResizeSe" data-resize-edge="se" aria-hidden="true"></div>
+  <div class="macroResizeHandle macroResizeS" data-resize-edge="s" aria-hidden="true"></div>
+  <div class="macroResizeHandle macroResizeSw" data-resize-edge="sw" aria-hidden="true"></div>
+  <div class="macroResizeHandle macroResizeW" data-resize-edge="w" aria-hidden="true"></div>
+  <div id="macroLibraryHeader" class="macroHeader">
+    <span class="macroHeaderTitle">Macro Library</span>
+    <span class="macroHeaderSpacer" aria-hidden="true"></span>
+    <button id="macroLibraryRefreshBtn" class="macroIconBtn" type="button" title="Refresh macro library" aria-label="Refresh macro library">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20 6v5h-5"></path>
+        <path d="M4 18v-5h5"></path>
+        <path d="M18 9a7 7 0 0 0-11-3"></path>
+        <path d="M6 15a7 7 0 0 0 11 3"></path>
+      </svg>
+    </button>
+    <button id="macroLibraryCloseBtn" class="macroIconBtn" type="button" title="Close" aria-label="Close macro library">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 7l10 10"></path>
+        <path d="M17 7L7 17"></path>
+      </svg>
+    </button>
+  </div>
+  <div class="macroBody">
+    <div class="macroLibraryContent">
+      <div id="macroLibraryList" class="macroList" role="listbox" aria-label="Shared macros"></div>
+      <div id="macroLibraryDescription" class="macroDescription">Select a shared macro to view its details.</div>
+    </div>
+    <div class="macroFooter">
+      <div id="macroLibraryStatus" class="macroStatus" aria-live="polite"></div>
+      <button id="macroLibraryLoadBtn" class="macroRunButton" type="button" disabled>Load</button>
+    </div>
+  </div>
+</section>

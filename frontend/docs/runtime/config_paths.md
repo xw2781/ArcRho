@@ -11,6 +11,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `_clean_path_segment`
   - `_find_existing_project_dir`
   - `_get_macro_dir`
+  - `_get_macro_library_dir`
   - `_get_project_map_dir`
   - `_get_requests_dir`
   - `_get_scripting_dir`
