@@ -41,7 +41,7 @@
         ]
       }
     ],
-    "icon": "icons/icon.png",
+    "icon": "build/generated/arcode-icons/icon.ico",
     "signAndEditExecutable": false
   },
   "nsis": {
@@ -54,7 +54,10 @@
     "shortcutName": "Arcode",
     "artifactName": "Arcode-Setup-${version}.exe",
     "deleteAppDataOnUninstall": false,
-    "include": "build/arcode_installer.nsh"
+    "include": "build/arcode_installer.nsh",
+    "installerIcon": "build/generated/arcode-icons/icon.ico",
+    "uninstallerIcon": "build/generated/arcode-icons/icon.ico",
+    "installerHeaderIcon": "build/generated/arcode-icons/icon.ico"
   },
   "asar": true
 }

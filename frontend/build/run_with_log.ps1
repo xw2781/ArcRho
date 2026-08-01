@@ -30,8 +30,10 @@ $commandLine = $commandLine -join " "
 $env:ARCRHO_BUILD_LOG_ACTIVE = "1"
 $env:ARCRHO_BUILD_LOG_FILE = $resolvedLogPath
 
+$productName = if ($env:ARCRHO_BUILD_PRODUCT -eq "arcode") { "Arcode" } else { "ArcRho" }
+
 @(
-    "ArcRho build log",
+    "$productName build log",
     "Started: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))",
     "Command: $commandLine",
     "Working directory: $((Get-Location).Path)",

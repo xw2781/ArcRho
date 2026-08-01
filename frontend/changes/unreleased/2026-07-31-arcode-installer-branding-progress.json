@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Corrected standalone Arcode installer progress, application icons, and startup branding.",
+  "details": [
+    "Installer progress now follows the native file-copy progress instead of remaining at 10%.",
+    "The installer and application icons are generated from Arcode's current v8 SVG.",
+    "Packaged Arcode now opens its existing Arcode splash instead of the ArcRho splash."
+  ]
+}

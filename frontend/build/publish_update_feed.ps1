@@ -8,6 +8,9 @@ param(
 
     [string]$ReleaseNotesPath = "",
 
+    [ValidateSet("ArcRho", "Arcode")]
+    [string]$ProductName = "ArcRho",
+
     [switch]$Mandatory
 )
 
@@ -15,11 +18,12 @@ $ErrorActionPreference = "Stop"
 
 $resolvedInstaller = Resolve-Path -LiteralPath $InstallerPath
 $installerFile = Get-Item -LiteralPath $resolvedInstaller.Path
-if (-not $installerFile.Name.StartsWith("ArcRho-Setup-") -or -not $installerFile.Name.EndsWith(".exe")) {
-    throw "Installer must be named like ArcRho-Setup-<version>.exe."
+if (-not $installerFile.Name.StartsWith("$ProductName-Setup-") -or -not $installerFile.Name.EndsWith(".exe")) {
+    throw "Installer must be named like $ProductName-Setup-<version>.exe."
 }
 
-$versionMatch = [regex]::Match($installerFile.Name, '^ArcRho-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$')
+$escapedProductName = [regex]::Escape($ProductName)
+$versionMatch = [regex]::Match($installerFile.Name, "^$escapedProductName-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$")
 if (-not $versionMatch.Success) {
     throw "Could not infer a semantic version from $($installerFile.Name)."
 }
@@ -51,7 +55,7 @@ $manifest = [ordered]@{
 $manifestPath = Join-Path $FeedDir "latest.json"
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
-Write-Host "Published ArcRho $version update feed:"
+Write-Host "Published $ProductName $version update feed:"
 Write-Host "  $targetInstaller"
 Write-Host "  $hashFile"
 Write-Host "  $manifestPath"

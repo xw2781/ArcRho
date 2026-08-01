@@ -2,10 +2,42 @@
 setlocal EnableExtensions
 
 set "SCRIPT_DIR=%~dp0"
+if not defined ARCRHO_BUILD_PRODUCT set "ARCRHO_BUILD_PRODUCT=arcrho"
+if /i "%ARCRHO_BUILD_PRODUCT%"=="arcrho" goto product_arcrho
+if /i "%ARCRHO_BUILD_PRODUCT%"=="arcode" goto product_arcode
+echo ERROR: Unsupported ARCRHO_BUILD_PRODUCT: %ARCRHO_BUILD_PRODUCT%
+echo Expected arcrho or arcode.
+exit /b 1
+
+:product_arcrho
+set "PRODUCT_NAME=ArcRho"
+set "INSTALLER_PREFIX=ArcRho"
+set "DEFAULT_LOCAL_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
+set "RELEASE_FEED_DIR=E:\ArcRho Server\releases\installers"
+set "PYTHON_SERVER_BUILD_SCRIPT=build\build_python_server.bat"
+set "PYTHON_SERVER_DIR=arcrho_server"
+set "PYTHON_SERVER_EXE=arcrho_server.exe"
+set "ELECTRON_BUILDER_CONFIG_ARGS="
+set "PUBLISH_PYTHON_API=1"
+goto product_ready
+
+:product_arcode
+set "PRODUCT_NAME=Arcode"
+set "INSTALLER_PREFIX=Arcode"
+set "DEFAULT_LOCAL_ROOT=%USERPROFILE%\Documents\build_arcode_app"
+set "RELEASE_FEED_DIR=E:\Arcode Server\releases\arcode-installers"
+set "PYTHON_SERVER_BUILD_SCRIPT=build\build_arcode_python_server.bat"
+set "PYTHON_SERVER_DIR=arcode_server"
+set "PYTHON_SERVER_EXE=arcode_server.exe"
+set "ELECTRON_BUILDER_CONFIG_ARGS=--config electron-builder.arcode.json"
+set "PUBLISH_PYTHON_API=0"
+set "ARCRHO_APP_MODE=arcode"
+
+:product_ready
 if defined ARCRHO_LOCAL_WORKSPACE_LOG_ACTIVE goto after_wrapper_log_setup
 for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"`) do set "ARCRHO_LOCAL_WORKSPACE_LOG_STAMP=%%I"
 set "ARCRHO_LOCAL_WORKSPACE_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
-set "ARCRHO_LOCAL_WORKSPACE_LOG_FILE=%ARCRHO_LOCAL_WORKSPACE_LOG_DIR%\build_app_via_local_workspace_%ARCRHO_LOCAL_WORKSPACE_LOG_STAMP%.log"
+set "ARCRHO_LOCAL_WORKSPACE_LOG_FILE=%ARCRHO_LOCAL_WORKSPACE_LOG_DIR%\build_%ARCRHO_BUILD_PRODUCT%_via_local_workspace_%ARCRHO_LOCAL_WORKSPACE_LOG_STAMP%.log"
 echo Writing local-workspace build log to: %ARCRHO_LOCAL_WORKSPACE_LOG_FILE%
 set "ARCRHO_LOCAL_WORKSPACE_LOG_ACTIVE=1"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%run_with_log.ps1" -LogPath "%ARCRHO_LOCAL_WORKSPACE_LOG_FILE%" -CommandPath "%~f0" %*
@@ -14,7 +46,7 @@ exit /b %ERRORLEVEL%
 :after_wrapper_log_setup
 
 REM Copies the network/source archive to a local Documents build workspace,
-REM waits for its completion flag, then runs the ArcRho app build from that
+REM waits for its completion flag, then runs the selected app build from that
 REM local workspace and opens the published installer.
 REM Optional:
 REM   set ARCRHO_LOCAL_BUILD_ROOT=C:\Local\Path\build_arcrho_app
@@ -23,19 +55,19 @@ REM Optional arguments are forwarded to the local application build stage.
 
 set "SOURCE_ZIP=E:\XWSpace\Build ArcRho App\ArcRho.zip"
 if defined ARCRHO_LOCAL_BUILD_SOURCE_ZIP set "SOURCE_ZIP=%ARCRHO_LOCAL_BUILD_SOURCE_ZIP%"
-set "LOCAL_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
+set "LOCAL_ROOT=%DEFAULT_LOCAL_ROOT%"
 if defined ARCRHO_LOCAL_BUILD_ROOT set "LOCAL_ROOT=%ARCRHO_LOCAL_BUILD_ROOT%"
 set "LOCAL_FRONTEND=%LOCAL_ROOT%\frontend"
 set "SOURCE_ZIP_READY_FLAG=%SOURCE_ZIP%.ready"
 set "SOURCE_ZIP_HASH=%SOURCE_ZIP%.sha256"
 set "READY_SIGNAL_FILE=%LOCAL_ROOT%.source_zip_ready_signal"
-set "RELEASE_FEED_DIR=E:\ArcRho Server\releases\installers"
 set "ARCRHO_BUILD_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
 set "ARCRHO_LOCAL_BUILD_START_SECONDS="
 for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()" 2^>nul`) do set "ARCRHO_LOCAL_BUILD_START_SECONDS=%%I"
 
 if /i "%~1"=="--check" (
     echo Network/source build script: %SCRIPT_DIR%
+    echo Product:                     %PRODUCT_NAME%
     echo Source archive:              %SOURCE_ZIP%
     echo Source completion flag:      %SOURCE_ZIP_READY_FLAG%
     echo Local workspace:           %LOCAL_ROOT%
@@ -51,7 +83,7 @@ if /i "%~1"=="--check" (
 )
 
 echo ========================================
-echo Preparing local ArcRho build workspace
+echo Preparing local %PRODUCT_NAME% build workspace
 echo ========================================
 echo Source build script: %SCRIPT_DIR%
 echo Source archive:      %SOURCE_ZIP%
@@ -86,7 +118,7 @@ if not exist "%LOCAL_FRONTEND%\build\build_app_via_local_workspace.bat" (
 
 echo.
 echo ========================================
-echo Building ArcRho from local workspace
+echo Building %PRODUCT_NAME% from local workspace
 echo ========================================
 echo.
 
@@ -106,7 +138,7 @@ popd
 
 if not "%BUILD_EXIT_CODE%"=="0" (
     echo.
-    echo ERROR: Local ArcRho build failed with exit code %BUILD_EXIT_CODE%.
+    echo ERROR: Local %PRODUCT_NAME% build failed with exit code %BUILD_EXIT_CODE%.
     echo Build log directory: %ARCRHO_BUILD_LOG_DIR%
     call :print_total_time
     pause
@@ -115,7 +147,7 @@ if not "%BUILD_EXIT_CODE%"=="0" (
 
 echo.
 echo ========================================
-echo Local ArcRho build completed successfully
+echo Local %PRODUCT_NAME% build completed successfully
 echo ========================================
 echo Local output directory: %LOCAL_FRONTEND%\dist
 echo.
@@ -165,7 +197,7 @@ if errorlevel 1 exit /b 1
 exit /b 0
 
 :open_released_installer
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$manifestPath = Join-Path $env:RELEASE_FEED_DIR 'latest.json'; if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw ('Published installer manifest not found: ' + $manifestPath) }; $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json; $installerName = [string]$manifest.installer; if ([string]::IsNullOrWhiteSpace($installerName) -or [System.IO.Path]::GetFileName($installerName) -ne $installerName -or $installerName -notmatch '^ArcRho-Setup-.+\.exe$') { throw 'Published installer manifest contains an invalid installer name.' }; $installerPath = Join-Path $env:RELEASE_FEED_DIR $installerName; if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) { throw ('Published installer not found: ' + $installerPath) }; Write-Host ('Opening published installer: ' + $installerPath); Start-Process -FilePath $installerPath"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$manifestPath = Join-Path $env:RELEASE_FEED_DIR 'latest.json'; if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw ('Published installer manifest not found: ' + $manifestPath) }; $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json; $installerName = [string]$manifest.installer; $expectedPattern = '^' + [regex]::Escape($env:INSTALLER_PREFIX) + '-Setup-.+\.exe$'; if ([string]::IsNullOrWhiteSpace($installerName) -or [System.IO.Path]::GetFileName($installerName) -ne $installerName -or $installerName -notmatch $expectedPattern) { throw 'Published installer manifest contains an invalid installer name.' }; $installerPath = Join-Path $env:RELEASE_FEED_DIR $installerName; if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) { throw ('Published installer not found: ' + $installerPath) }; Write-Host ('Opening published installer: ' + $installerPath); Start-Process -FilePath $installerPath"
 exit /b %ERRORLEVEL%
 
 :print_total_time
@@ -179,7 +211,7 @@ set "APP_ROOT=%CD%"
 if not defined ARCRHO_BUILD_LOG_FILE set "ARCRHO_BUILD_LOG_FILE=%ARCRHO_LOCAL_WORKSPACE_LOG_FILE%"
 
 echo ========================================
-echo Building ArcRho Standalone Application
+echo Building %PRODUCT_NAME% Standalone Application
 echo ========================================
 echo.
 if defined ARCRHO_BUILD_LOG_FILE (
@@ -227,9 +259,9 @@ echo ----------------------------------------
 set "APP_VERSION_FILE=build\app_version.txt"
 if exist "%APP_VERSION_FILE%" del /q "%APP_VERSION_FILE%" >nul 2>nul
 if "%~1"=="" (
-    "%PYTHON_EXE%" build\version_manager.py --release-feed-dir "%UPDATE_FEED_DIR%" --version-file "%APP_VERSION_FILE%"
+    "%PYTHON_EXE%" build\version_manager.py --release-feed-dir "%UPDATE_FEED_DIR%" --installer-prefix "%INSTALLER_PREFIX%" --version-file "%APP_VERSION_FILE%"
 ) else (
-    "%PYTHON_EXE%" build\version_manager.py "%~1" --version-file "%APP_VERSION_FILE%"
+    "%PYTHON_EXE%" build\version_manager.py "%~1" --installer-prefix "%INSTALLER_PREFIX%" --version-file "%APP_VERSION_FILE%"
 )
 if errorlevel 1 (
     echo ERROR: Failed to update application version metadata.
@@ -250,16 +282,21 @@ if not defined APP_VERSION (
 echo Building version %APP_VERSION%
 echo.
 
-echo Step 2: Building Python API wheel...
-echo ----------------------------------------
-call :build_python_api_wheel
-if errorlevel 1 (
+if "%PUBLISH_PYTHON_API%"=="1" (
+    echo Step 2: Building Python API wheel...
+    echo ----------------------------------------
+    call :build_python_api_wheel
+    if errorlevel 1 (
+        echo.
+        pause
+        exit /b 1
+    )
+    echo Python API wheel built: %PYTHON_API_WHEEL%
     echo.
-    pause
-    exit /b 1
+) else (
+    echo Step 2: Python API wheel publication is not part of the %PRODUCT_NAME% build.
+    echo.
 )
-echo Python API wheel built: %PYTHON_API_WHEEL%
-echo.
 
 echo Step 3: Building Python app server with PyInstaller...
 echo ----------------------------------------
@@ -274,8 +311,8 @@ echo.
 
 echo Step 4: Building Electron app with electron-builder...
 echo ----------------------------------------
-if not exist "python_dist\arcrho_server\arcrho_server.exe" (
-    echo ERROR: Missing app-server bundle: python_dist\arcrho_server\arcrho_server.exe
+if not exist "python_dist\%PYTHON_SERVER_DIR%\%PYTHON_SERVER_EXE%" (
+    echo ERROR: Missing app-server bundle: python_dist\%PYTHON_SERVER_DIR%\%PYTHON_SERVER_EXE%
     echo HINT: PyInstaller step did not produce the server executable.
     echo       Do not continue, otherwise installer may build fast but fail at launch.
     echo.
@@ -290,7 +327,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist "dist\ArcRho-Setup-*.exe" (
+if not exist "dist\%INSTALLER_PREFIX%-Setup-*.exe" (
     echo ERROR: Installer was not generated in dist\.
     echo.
     pause
@@ -324,7 +361,7 @@ echo.
 
 echo Step 6: Publishing installer update feed...
 echo ----------------------------------------
-powershell -NoProfile -ExecutionPolicy Bypass -File "build\publish_update_feed.ps1" -InstallerPath "dist\ArcRho-Setup-%APP_VERSION%.exe" -FeedDir "%UPDATE_FEED_DIR%" -ReleaseNotesPath "%RELEASE_NOTE_PATH%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "build\publish_update_feed.ps1" -InstallerPath "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" -FeedDir "%UPDATE_FEED_DIR%" -ReleaseNotesPath "%RELEASE_NOTE_PATH%" -ProductName "%PRODUCT_NAME%"
 if errorlevel 1 (
     echo ERROR: Failed to publish installer update feed.
     echo.
@@ -334,16 +371,21 @@ if errorlevel 1 (
 echo Installer update feed published: %UPDATE_FEED_DIR%
 echo.
 
-echo Step 7: Publishing Python API package...
-echo ----------------------------------------
-call :publish_python_api_package
-if errorlevel 1 (
+if "%PUBLISH_PYTHON_API%"=="1" (
+    echo Step 7: Publishing Python API package...
+    echo ----------------------------------------
+    call :publish_python_api_package
+    if errorlevel 1 (
+        echo.
+        pause
+        exit /b 1
+    )
+    echo Python API package published: %PYTHON_API_PACKAGE_DIR%
     echo.
-    pause
-    exit /b 1
+) else (
+    echo Step 7: Shared Python API package publication is not part of the %PRODUCT_NAME% build.
+    echo.
 )
-echo Python API package published: %PYTHON_API_PACKAGE_DIR%
-echo.
 
 echo Step 8: Cleaning Python build artifacts...
 echo ----------------------------------------
@@ -369,10 +411,10 @@ echo.
 echo Output location: dist\
 echo Update feed: %UPDATE_FEED_DIR%
 echo.
-echo - ArcRho-Setup-%APP_VERSION%.exe  (Installer)
-echo - %UPDATE_FEED_DIR%\ArcRho-Setup-%APP_VERSION%.exe  (Published Installer)
+echo - %INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe  (Installer)
+echo - %UPDATE_FEED_DIR%\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe  (Published Installer)
 echo - %UPDATE_FEED_DIR%\latest.json  (Update Manifest)
-echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
+if "%PUBLISH_PYTHON_API%"=="1" echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
 echo - %RELEASE_NOTE_PATH%  (Release Notes)
 echo.
 if not defined ARCRHO_SKIP_SUCCESS_PAUSE pause
@@ -436,14 +478,14 @@ if errorlevel 1 (
 )
 "%PYTHON_EXE%" -c "import sys; raise SystemExit(0 if (3, 10, 6) <= sys.version_info[:3] < (3, 11) else 1)" >nul 2>nul
 if errorlevel 1 (
-    echo ERROR: ArcRho packaging requires Python 3.10.6 or newer within the Python 3.10 line.
+    echo ERROR: %PRODUCT_NAME% packaging requires Python 3.10.6 or newer within the Python 3.10 line.
     echo HINT: Install Python 3.10.6+ or set PYTHON_EXE to a compatible Python 3.10 executable before running the one-click build.
     exit /b 1
 )
 exit /b 0
 
 :run_pyinstaller
-call build\build_python_server.bat
+call %PYTHON_SERVER_BUILD_SCRIPT%
 if not errorlevel 1 exit /b 0
 
 echo.
@@ -455,13 +497,13 @@ if exist "python_dist" (
 if exist "python_build" (
     rmdir /s /q "python_build"
 )
-call build\build_python_server.bat --clean
+call %PYTHON_SERVER_BUILD_SCRIPT% --clean
 if not errorlevel 1 exit /b 0
 
 echo ERROR: PyInstaller build failed after retry.
 echo HINT: Re-run manually to capture full traceback:
 echo       set PYTHON_EXE=%PYTHON_EXE%
-echo       build\build_python_server.bat --clean
+echo       %PYTHON_SERVER_BUILD_SCRIPT% --clean
 exit /b 1
 
 :prepare_app_builder
@@ -471,12 +513,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Item -Path '%APP_BUI
 exit /b 0
 
 :run_electron
+if /i "%ARCRHO_BUILD_PRODUCT%"=="arcode" (
+    call "%NODE_HOME%\node.exe" build\convert_icon.js icons\icon_wing_geo_v8.svg build\generated\arcode-icons
+    if errorlevel 1 (
+        echo ERROR: Failed to generate Arcode icons from icons\icon_wing_geo_v8.svg.
+        exit /b 1
+    )
+)
 call "%NODE_HOME%\node.exe" build\patch_nsis_installer_progress.js
 if errorlevel 1 (
     echo ERROR: Failed to prepare NSIS installer progress patch.
     exit /b 1
 )
-call "%NODE_HOME%\node.exe" node_modules\electron-builder\cli.js --win
+call "%NODE_HOME%\node.exe" node_modules\electron-builder\cli.js %ELECTRON_BUILDER_CONFIG_ARGS% --win
 if not errorlevel 1 exit /b 0
 
 echo.
@@ -489,7 +538,7 @@ if errorlevel 1 (
     exit /b 1
 )
 timeout /t 2 /nobreak >nul
-call "%NODE_HOME%\node.exe" node_modules\electron-builder\cli.js --win
+call "%NODE_HOME%\node.exe" node_modules\electron-builder\cli.js %ELECTRON_BUILDER_CONFIG_ARGS% --win
 if not errorlevel 1 exit /b 0
 
 echo ERROR: Electron build failed after retry.

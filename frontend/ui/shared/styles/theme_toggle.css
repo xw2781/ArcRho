@@ -41,14 +41,18 @@
   stroke-linejoin: round;
 }
 
-.arThemeToggleIcon--moon {
+.arThemeToggleIcon--lightbulb {
   display: none;
+}
+
+.arThemeToggleIcon--moon {
+  display: block;
 }
 
 :root[data-arcrho-theme="dark"] .arThemeToggleIcon--lightbulb {
-  display: none;
+  display: block;
 }
 
 :root[data-arcrho-theme="dark"] .arThemeToggleIcon--moon {
-  display: block;
+  display: none;
 }

@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Added a one-click standalone Arcode packaging and update-feed workflow that shares the ArcRho source listener.",
+  "details": [
+    "The build now installs missing package-mapped Python dependencies through the selected Python 3.10 interpreter."
+  ]
+}

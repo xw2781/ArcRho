@@ -4,8 +4,6 @@
 !include "nsDialogs.nsh"
 
 !ifndef BUILD_UNINSTALLER
-  Var ArcodeInstallProgressLastText
-
   !macro Arcode_PrintInstallDetail MSG
     SetDetailsPrint both
     SetDetailsView show
@@ -23,6 +21,12 @@ ShowUninstDetails show
 !macro customInit
   SetDetailsPrint both
   SetDetailsView show
+  ${IfNot} ${Silent}
+    ; Run progress observation outside the NSIS interpreter so file-copy work
+    ; cannot block percentage updates on the installer page.
+    InitPluginsDir
+    File /oname=$PLUGINSDIR\ArcRhoInstallerProgress.exe "${PROJECT_DIR}\build\generated\ArcRhoInstallerProgress.exe"
+  ${EndIf}
   DetailPrint "===== Installing Arcode ====="
   DetailPrint "Preparing installation..."
 !macroend
@@ -33,44 +37,27 @@ ShowUninstDetails show
   !macroend
 
   Function Arcode_InstFiles_Show
-    StrCpy $ArcodeInstallProgressLastText ""
     !insertmacro Arcode_PrintInstallDetail "Installer progress monitoring started."
     !insertmacro Arcode_PrintInstallDetail "Preparing destination and installing Arcode files..."
-    Call Arcode_InstFiles_UpdateProgressText
-    nsDialogs::CreateTimer Arcode_InstFiles_UpdateProgressText 500
-  FunctionEnd
-
-  Function Arcode_InstFiles_UpdateProgressText
     FindWindow $0 "#32770" "" $HWNDPARENT
     GetDlgItem $1 $0 1004
     GetDlgItem $2 $0 1006
+    GetDlgItem $4 $0 1016
+    GetDlgItem $5 $0 1027
     ${If} $1 == 0
     ${OrIf} $2 == 0
+    ${OrIf} $4 == 0
+    ${OrIf} $5 == 0
     ${OrIf} $0 == 0
       Return
     ${EndIf}
 
-    SendMessage $1 0x0408 0 0 $3
-    SendMessage $1 0x0407 0 0 $4
-    SendMessage $1 0x0407 1 0 $5
-    IntOp $8 $4 - $5
-    ${If} $8 <= 0
-      Return
-    ${EndIf}
-
-    IntOp $6 $3 - $5
-    IntOp $6 $6 * 100
-    IntOp $6 $6 / $8
-    ${If} $6 < 10
-      StrCpy $6 10
-    ${ElseIf} $6 > 99
-      StrCpy $6 99
-    ${EndIf}
-
-    StrCpy $7 "[$6%] Installing Arcode files..."
-    ${If} $7 != $ArcodeInstallProgressLastText
-      StrCpy $ArcodeInstallProgressLastText $7
-      SendMessage $2 0x000C 0 "STR:$7"
+    SendMessage $2 0x000C 0 "STR:0% complete - Estimating time left..."
+    System::Call "kernel32::GetCurrentProcessId() i.r3"
+    ClearErrors
+    Exec '"$PLUGINSDIR\ArcRhoInstallerProgress.exe" "$HWNDPARENT" "$0" "$1" "$2" "$4" "$5" "$3"'
+    ${If} ${Errors}
+      !insertmacro Arcode_PrintInstallDetail "Progress text observer could not be started."
     ${EndIf}
   FunctionEnd
 
@@ -104,7 +91,6 @@ ShowUninstDetails show
   !macroend
 
   !macro customInstall
-    nsDialogs::KillTimer Arcode_InstFiles_UpdateProgressText
     Call Arcode_InstFiles_CompleteProgressText
     !insertmacro Arcode_PrintInstallDetail "[100%] Installation complete."
   !macroend

@@ -245,7 +245,7 @@
   <div class="splash-container">
     <div class="logo-container">
       <div class="logo-icon" aria-label="Arcode logo">
-        <img src="/icons/icon_wing_geo_v8.svg" alt="Arcode logo" />
+        <img src="../../icons/icon_wing_geo_v8.svg" alt="Arcode logo" />
       </div>
     </div>
 
@@ -273,6 +273,20 @@
     // Progress and status management
     const progressBar = document.getElementById('progressBar');
     const statusText = document.getElementById('statusText');
+    const versionText = document.getElementById('version');
+
+    function setDisplayVersion(version) {
+      const text = String(version || '').trim();
+      if (versionText && text) versionText.textContent = text.startsWith('v') ? text : `v${text}`;
+    }
+
+    setDisplayVersion(new URLSearchParams(window.location.search).get('version'));
+
+    if (window.ADAHost?.getAppInfo) {
+      window.ADAHost.getAppInfo()
+        .then((info) => setDisplayVersion(info?.displayVersion || info?.version))
+        .catch(() => {});
+    }
 
     const stages = [
       { progress: 10, text: 'Initializing...' },

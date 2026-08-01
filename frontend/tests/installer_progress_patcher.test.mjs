@@ -21,8 +21,16 @@ const installerSource = fs.readFileSync(
   new URL("../build/installer.nsh", import.meta.url),
   "utf8"
 );
+const arcodeInstallerSource = fs.readFileSync(
+  new URL("../build/arcode_installer.nsh", import.meta.url),
+  "utf8"
+);
 const helperSource = fs.readFileSync(
   new URL("../build/installer_progress_helper.cs", import.meta.url),
+  "utf8"
+);
+const patcherSource = fs.readFileSync(
+  new URL("../build/patch_nsis_installer_progress.js", import.meta.url),
   "utf8"
 );
 const electronBuilderTargetSource = fs.readFileSync(
@@ -66,6 +74,26 @@ test("installer preserves native file progress and launches an isolated observer
     installerSource,
     /Function ArcRho_InstFiles_UpdateProgressText/
   );
+});
+
+test("Arcode uses the same isolated native progress observer", () => {
+  assert.match(
+    arcodeInstallerSource,
+    /File \/oname=\$PLUGINSDIR\\ArcRhoInstallerProgress\.exe/
+  );
+  assert.match(
+    arcodeInstallerSource,
+    /Exec '\"\$PLUGINSDIR\\ArcRhoInstallerProgress\.exe\" \"\$HWNDPARENT\" \"\$0\" \"\$1\" \"\$2\" \"\$4\" \"\$5\" \"\$3\"'/
+  );
+  assert.match(arcodeInstallerSource, /GetDlgItem \$4 \$0 1016/);
+  assert.match(arcodeInstallerSource, /GetDlgItem \$5 \$0 1027/);
+  assert.match(arcodeInstallerSource, /GetCurrentProcessId\(\) i\.r3/);
+  assert.doesNotMatch(arcodeInstallerSource, /nsDialogs::(?:Create|Kill)Timer/);
+  assert.doesNotMatch(
+    arcodeInstallerSource,
+    /Function Arcode_InstFiles_UpdateProgressText/
+  );
+  assert.doesNotMatch(arcodeInstallerSource, /StrCpy \$6 10/);
 });
 
 test("observer reads the native bar without re-entering the NSIS interpreter", () => {
@@ -225,4 +253,9 @@ test("the incomplete legacy extraction experiment is removed", () => {
 test("observer compiler integration is available without running on import", () => {
   assert.equal(typeof findCSharpCompiler, "function");
   assert.equal(typeof compileProgressHelper, "function");
+  assert.match(patcherSource, /const helperPath = compileProgressHelper\(\)/);
+  assert.doesNotMatch(
+    patcherSource,
+    /ARCRHO_APP_MODE !== "arcode"[\s\S]*compileProgressHelper/
+  );
 });

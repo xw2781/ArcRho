@@ -1,18 +1,17 @@
-# ArcRho Automated Two-PC ZIP Build Workflow
+# ArcRho and Arcode Automated Two-PC ZIP Build Workflow
 
 ## Purpose
 
-Use this workflow when the ArcRho repository is maintained on one Windows PC, but application packaging must run on another Windows PC because the source PC cannot execute the complete build toolchain with the required permissions.
+Use this workflow when the ArcRho repository is maintained on one Windows PC, but ArcRho or standalone Arcode packaging must run on another Windows PC because the source PC cannot execute the complete build toolchain with the required permissions.
 
 The ZIP is a transport artifact. A listener on the source PC creates it only when the build PC requests one. The build PC then copies the requested ZIP to a local workspace, extracts it locally, and runs the complete build from that local workspace.
 
 ```text
 Source PC repository
-    -> build_app_listener
+    -> shared build_app_listener
     -> curated ArcRho.zip
-    -> permanent E: mapping on build PC
-    -> build_app_one_click request and response
-    -> build PC local Documents workspace
+    -> build_app_one_click or build_arcode_one_click request and response
+    -> product-specific build PC local Documents workspace
     -> Python + Electron + NSIS build
     -> installer and published update feed
 ```
@@ -26,9 +25,12 @@ Source PC repository
 | Network view from build PC | `E:\XWSpace\Build ArcRho App\ArcRho.zip` | The build PC's permanent `E:` mapping to the source PC. |
 | Source-PC listener | `E:\XWSpace\Build ArcRho App\build_app_listener.bat` | Visible long-running process that receives requests and creates a fresh ZIP. |
 | Build-PC launcher | `E:\XWSpace\Build ArcRho App\build_app_one_click.bat` | Requests a fresh ZIP, waits for it, then runs the local build. |
+| Arcode build-PC launcher | `E:\XWSpace\Build ArcRho App\build_arcode_one_click.bat` | Uses the same listener and source ZIP, then selects the standalone Arcode build. |
 | Local build workspace | `%USERPROFILE%\Documents\build_arcrho_app` on the build PC | Disposable local extraction and build directory. |
+| Arcode local build workspace | `%USERPROFILE%\Documents\build_arcode_app` on the build PC | Separate disposable extraction and build directory for Arcode. |
 | Local installer output | `%USERPROFILE%\Documents\build_arcrho_app\frontend\dist` | Installer produced by the local build. |
 | Published installer feed | `E:\ArcRho Server\releases\installers` on the build PC | Installer, checksum, and `latest.json` published after a successful build. |
+| Published Arcode installer feed | `E:\Arcode Server\releases\arcode-installers` on the build PC | Arcode installer, checksum, and `latest.json` published after a successful build. |
 | Shared build logs | `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>` | Timestamped ZIP-creation and application-build logs from both PCs. |
 
 This workflow assumes that `E:` on the build PC is permanently mapped to `E:` on the source PC. The default ZIP and wrapper paths already use that mapping, so `ARCRHO_LOCAL_BUILD_SOURCE_ZIP` does not need to be set.
@@ -55,7 +57,7 @@ On the source PC, run this once and leave its visible terminal window open while
 call "E:\XWSpace\Build ArcRho App\build_app_listener.bat"
 ```
 
-The listener checks `build_requests`, processes requests one at a time, creates a fresh curated ZIP, and writes a success or failure response in `build_responses`. Press Ctrl+C in its terminal to stop it.
+The shared listener checks `build_requests`, processes ArcRho and Arcode requests one at a time, creates a fresh curated ZIP, and writes a success or failure response in `build_responses`. Press Ctrl+C in its terminal to stop it. Only one listener process is needed for both products.
 
 To check the listener prerequisites without starting it:
 
@@ -158,6 +160,20 @@ To use a specific semantic version instead of auto-incrementing the patch versio
 ```bat
 call "E:\XWSpace\Build ArcRho App\build_app_one_click.bat" 1.2.0
 ```
+
+For standalone Arcode, use the separate launcher in the same shared folder:
+
+```bat
+call "E:\XWSpace\Build ArcRho App\build_arcode_one_click.bat"
+```
+
+An explicit Arcode version can be supplied in the same way:
+
+```bat
+call "E:\XWSpace\Build ArcRho App\build_arcode_one_click.bat" 1.2.0
+```
+
+The Arcode launcher sets the common local-workspace wrapper to Arcode mode. It installs missing package-mapped build dependencies into the selected Python 3.10 interpreter, generates Windows icons from `icons\icon_wing_geo_v8.svg`, builds `arcode_server`, packages with `electron-builder.arcode.json`, publishes `Arcode-Setup-<version>.exe` and its update manifest to `E:\Arcode Server\releases\arcode-installers`, and opens the published installer. The Arcode NSIS include observes native file-copy progress out of process so its percentage continues updating while NSIS installs files. It does not publish the external Python API wheel; that remains owned by the ArcRho application release workflow.
 
 The launcher and its delegated local-workspace wrapper perform these steps:
 

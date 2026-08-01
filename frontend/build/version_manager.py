@@ -14,7 +14,6 @@ ABOUT_VERSION_RE = re.compile(
 SPLASH_VERSION_RE = re.compile(
     r'(<div class="version" id="version">)v\d+\.\d+\.\d+(</div>)'
 )
-INSTALLER_VERSION_RE = re.compile(r"^ArcRho-Setup-(\d+\.\d+\.\d+)\.exe$")
 
 
 def load_json(path: Path) -> dict:
@@ -52,7 +51,10 @@ def max_version(versions: list[str]) -> str:
     return max(versions, key=parse_version)
 
 
-def collect_release_feed_versions(feed_dir: Path | None) -> list[str]:
+def collect_release_feed_versions(
+    feed_dir: Path | None,
+    installer_prefix: str = "ArcRho",
+) -> list[str]:
     if feed_dir is None or not feed_dir.exists() or not feed_dir.is_dir():
         return []
 
@@ -75,8 +77,11 @@ def collect_release_feed_versions(feed_dir: Path | None) -> list[str]:
                     file=sys.stderr,
                 )
 
-    for installer_path in feed_dir.glob("ArcRho-Setup-*.exe"):
-        match = INSTALLER_VERSION_RE.fullmatch(installer_path.name)
+    installer_version_re = re.compile(
+        rf"^{re.escape(installer_prefix)}-Setup-(\d+\.\d+\.\d+)\.exe$"
+    )
+    for installer_path in feed_dir.glob(f"{installer_prefix}-Setup-*.exe"):
+        match = installer_version_re.fullmatch(installer_path.name)
         if match:
             versions.append(match.group(1))
 
@@ -163,6 +168,11 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--installer-prefix",
+        default="ArcRho",
+        help="Installer filename prefix used when scanning the release feed.",
+    )
+    parser.add_argument(
         "--require-increase",
         action="store_true",
         help="Require an explicit version to be higher than the current package version.",
@@ -187,7 +197,8 @@ def main() -> int:
         current_version,
         args.version,
         release_feed_versions=collect_release_feed_versions(
-            Path(args.release_feed_dir) if args.release_feed_dir else None
+            Path(args.release_feed_dir) if args.release_feed_dir else None,
+            args.installer_prefix,
         ),
         require_increase=args.require_increase,
     )

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Corrected the theme toggle to show a moon in Light mode and a bulb in Dark mode."
+}

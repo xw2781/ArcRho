@@ -639,7 +639,10 @@ function createSplashWindow() {
     },
   });
 
-  splashWin.loadFile(path.join(APP_ROOT, "ui", "splash.html"), {
+  const splashPath = APP_MODE === "arcode"
+    ? path.join(APP_ROOT, "ui", "arcode", "splash.html")
+    : path.join(APP_ROOT, "ui", "splash.html");
+  splashWin.loadFile(splashPath, {
     query: {
       version: APP_DISPLAY_VERSION,
       theme: isDarkWindowBackgroundColor(startupBackgroundColor) ? "dark" : "light",

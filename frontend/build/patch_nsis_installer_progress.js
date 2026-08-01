@@ -337,10 +337,7 @@ function compileProgressHelper(outputPath = progressHelperOutputPath) {
 }
 
 function main() {
-  let helperPath = null;
-  if (process.env.ARCRHO_APP_MODE !== "arcode") {
-    helperPath = compileProgressHelper();
-  }
+  const helperPath = compileProgressHelper();
 
   const compressorPatched = patchFile(nsisTargetPath, patchCompressorSource);
   const detailsPatched = patchFile(installSectionPath, patchDetailsSource);

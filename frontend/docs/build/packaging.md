@@ -11,8 +11,9 @@ Document Electron + Python packaging inputs and scripts.
 | --- | --- |
 | `npm run arcode` | `set ARCRHO_APP_MODE=arcode&& electron .` |
 | `npm run build` | `npm run build:python-api && npm run build:python && npm run build:electron && npm run clean:python-artifacts` |
-| `npm run build:arcode` | `build\build_arcode_python_server.bat && set ARCRHO_APP_MODE=arcode&& node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win && node-portable\node.exe -e "const fs=require('fs'); ['python_dist/arcode_server','python_build'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));"` |
-| `npm run build:arcode:electron` | `set ARCRHO_APP_MODE=arcode&& node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win` |
+| `npm run build:arcode` | `build\build_arcode_python_server.bat && set ARCRHO_APP_MODE=arcode&& node-portable\node.exe build/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons && node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win && node-portable\node.exe -e "const fs=require('fs'); ['python_dist/arcode_server','python_build'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));"` |
+| `npm run build:arcode:electron` | `set ARCRHO_APP_MODE=arcode&& node-portable\node.exe build/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons && node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win` |
+| `npm run build:arcode:icons` | `node-portable\node.exe build/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons` |
 | `npm run build:arcode:python` | `build\build_arcode_python_server.bat` |
 | `npm run build:electron` | `node-portable\node.exe build/patch_nsis_installer_progress.js && node-portable\node.exe node_modules/electron-builder/cli.js --win` |
 | `npm run build:python` | `build\build_python_server.bat` |

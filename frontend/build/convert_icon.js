@@ -1,9 +1,11 @@
 const { Resvg } = require('@resvg/resvg-js');
 const fs = require('fs');
 const path = require('path');
-const { imagesToIco } = require('png-to-ico');
+const pngToIcoModule = require('png-to-ico');
+const pngToIco = pngToIcoModule.default || pngToIcoModule;
 
 async function convertSvgToIco(svgPath, outputDir) {
+    fs.mkdirSync(outputDir, { recursive: true });
     const svgContent = fs.readFileSync(svgPath, 'utf8');
 
     const sizes = [16, 32, 48, 64, 128, 256];
@@ -34,8 +36,7 @@ async function convertSvgToIco(svgPath, outputDir) {
 
     // Create ICO file from PNGs
     const icoPath = path.join(outputDir, 'icon.ico');
-    const pngBuffers = pngPaths.map(p => fs.readFileSync(p));
-    const icoBuffer = await imagesToIco(pngBuffers);
+    const icoBuffer = await pngToIco(pngPaths);
     fs.writeFileSync(icoPath, icoBuffer);
     console.log(`Created: ${icoPath}`);
 
@@ -43,6 +44,13 @@ async function convertSvgToIco(svgPath, outputDir) {
 }
 
 const repoRoot = path.join(__dirname, '..');
-const svgPath = process.argv[2] || path.join(repoRoot, 'icons', 'icon_arc_wing4b.svg');
-const iconsDir = path.join(repoRoot, 'icons');
-convertSvgToIco(svgPath, iconsDir);
+const svgPath = process.argv[2]
+    ? path.resolve(process.cwd(), process.argv[2])
+    : path.join(repoRoot, 'icons', 'icon_arc_wing4b.svg');
+const iconsDir = process.argv[3]
+    ? path.resolve(process.cwd(), process.argv[3])
+    : path.join(repoRoot, 'icons');
+convertSvgToIco(svgPath, iconsDir).catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

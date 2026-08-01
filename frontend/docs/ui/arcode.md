@@ -39,6 +39,7 @@ Detected `fetch(...)` targets in key JS files:
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - Loads as `/ui/arcode/main.html` in Electron app mode `ARCRHO_APP_MODE=arcode` or in a secondary Arcode window launched from ArcRho.
+- Packaged standalone mode uses `ui/arcode/splash.html` for startup branding. Its Windows executable, installer, uninstaller, and installer-header icons are generated during packaging from the canonical `icons/icon_wing_geo_v8.svg` asset.
 - Uses the same custom app-frame structure as ArcRho, including `win10-borders` and `win11-frame` body classes from the Electron Windows-version bridge.
 - Hosts each open notebook as an isolated `ui/arcode/notebook-editor/` iframe with a tab-scoped scripting instance id.
 - Hosts plain code/text files such as `.py`, `.r`, `.sql`, `.js`, `.ts`, `.json`, `.md`, `.txt`, `.css`, and `.html` as isolated `ui/arcode/code-editor/` iframes with Monaco syntax highlighting inside the shared Arcode workspace explorer layout.
@@ -60,7 +61,7 @@ Detected `fetch(...)` targets in key JS files:
 - Clear Cache & Reload stores a one-shot Arcode restore payload in the Electron host, clears Electron cache/storage, reloads the requesting Arcode window with a fresh timestamped UI URL, and restores the previously open Arcode tabs and active tab after boot.
 - The Arcode shell uses the same 10px left/right workspace gutter, flush compact menu bar, flush unclipped status bar with native resize indicator, bordered main frame, and status-bar zoom slider styling as the ArcRho main shell.
 - In Dark mode, Arcode shares ArcRho's raised titlebar-control surfaces, restrained accent hover for minimize/maximize, danger hover for close, and foreground-following SVG icon strokes.
-- Settings > Color Theme and the right-aligned topbar icon expose the same Light and Dark choices as ArcRho. The shared theme service applies the selected palette immediately, relays it to existing notebook/code/Snowflake iframes, updates Monaco globally with `vs` or `vs-dark`, and synchronizes other same-origin ArcRho/Arcode windows without reloading editor state. Electron mirrors the renderer-computed background only as a startup paint hint so the next splash and hidden window pre-paint match the selected palette.
+- Settings > Color Theme and the right-aligned topbar icon expose the same Light and Dark choices as ArcRho. The icon shows a moon while Light is active and a bulb while Dark is active, indicating the theme the button will switch to. The shared theme service applies the selected palette immediately, relays it to existing notebook/code/Snowflake iframes, updates Monaco globally with `vs` or `vs-dark`, and synchronizes other same-origin ArcRho/Arcode windows without reloading editor state. Electron mirrors the renderer-computed background only as a startup paint hint so the next splash and hidden window pre-paint match the selected palette.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
