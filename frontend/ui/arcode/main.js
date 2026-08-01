@@ -1814,35 +1814,12 @@ function updateMenuState() {
     document.querySelector(`.menuItem[data-action="color-theme-${theme}"]`)
       ?.setAttribute("aria-checked", theme === colorTheme ? "true" : "false");
   }
-  updateColorThemeToggleUI(colorTheme);
   ["save", "save-as", "close-tab", "close-others", "close-all", "render-markdown", "toggle-line-numbers", "toggle-exec-time", "refresh-tab", "hard-refresh", "rename"].forEach((action) => {
     setMenuItemDisabled(action, !hasTab);
   });
   setMenuItemDisabled("open-file-location", !hasPath);
   setMenuItemDisabled("copy-file-path", !hasPath);
   renderRecentFilesMenu();
-}
-
-function updateColorThemeToggleUI(theme = window.ArcRhoColorTheme?.getTheme?.() || "light") {
-  const button = $("arcodeColorThemeToggle");
-  if (!button) return;
-  const dark = theme === "dark";
-  button.setAttribute("aria-pressed", dark ? "true" : "false");
-  button.setAttribute("aria-label", dark ? "Switch to Light theme" : "Switch to Dark theme");
-}
-
-function initColorThemeToggle() {
-  const button = $("arcodeColorThemeToggle");
-  if (!button || button.dataset.themeToggleWired === "1") return;
-  button.dataset.themeToggleWired = "1";
-  updateColorThemeToggleUI();
-  button.addEventListener("click", () => {
-    const current = window.ArcRhoColorTheme?.getTheme?.() || "light";
-    const nextTheme = current === "dark" ? "light" : "dark";
-    window.ArcRhoColorTheme?.setTheme?.(nextTheme, { source: "arcode-topbar" });
-    updateMenuState();
-    updateStatus(`Color theme changed to ${nextTheme === "dark" ? "Dark" : "Light"}.`);
-  });
 }
 
 function closeTabsExcept(keepId) {
@@ -2322,7 +2299,6 @@ async function boot() {
   initAppFrameStyle();
   initWindowControls();
   initShellMenus();
-  initColorThemeToggle();
   window.addEventListener("arcrho:color-theme-changed", updateMenuState);
   initTabContextMenu();
   initZoomControls();

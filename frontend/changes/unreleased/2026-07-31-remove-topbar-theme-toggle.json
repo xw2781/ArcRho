@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Removed the theme toggle icon from the ArcRho and Arcode topbars."
+}

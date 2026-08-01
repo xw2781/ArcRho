@@ -8,7 +8,7 @@ ArcRho embeds the Arcode launch path, and the same source can be packaged as the
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.arcode.entry_points -->
-- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260726b`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260731a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 - `ui/arcode/notebook-editor/index.html`: external scripts `/ui/arcode/notebook-editor/cells.js?v=20260726a`, `/ui/arcode/notebook-editor/core.js?v=20260726a`, `/ui/arcode/notebook-editor/execution.js?v=20260620a`, `/ui/arcode/notebook-editor/index.js?v=20260726a`, `/ui/arcode/notebook-editor/notebook-io.js?v=20260726a`, `/ui/arcode/notebook-editor/panels.js?v=20260620a`, `/ui/arcode/notebook-editor/shortcuts.js?v=20260620a`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 - `ui/arcode/code-editor/index.html`: external scripts `/ui/arcode/code-editor/index.js?v=20260726b`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
@@ -61,7 +61,7 @@ Detected `fetch(...)` targets in key JS files:
 - Clear Cache & Reload stores a one-shot Arcode restore payload in the Electron host, clears Electron cache/storage, reloads the requesting Arcode window with a fresh timestamped UI URL, and restores the previously open Arcode tabs and active tab after boot.
 - The Arcode shell uses the same 10px left/right workspace gutter, flush compact menu bar, flush unclipped status bar with native resize indicator, bordered main frame, and status-bar zoom slider styling as the ArcRho main shell.
 - In Dark mode, Arcode shares ArcRho's raised titlebar-control surfaces, restrained accent hover for minimize/maximize, danger hover for close, and foreground-following SVG icon strokes.
-- Settings > Color Theme and the right-aligned topbar icon expose the same Light and Dark choices as ArcRho. The icon shows a moon while Light is active and a bulb while Dark is active, indicating the theme the button will switch to. The shared theme service applies the selected palette immediately, relays it to existing notebook/code/Snowflake iframes, updates Monaco globally with `vs` or `vs-dark`, and synchronizes other same-origin ArcRho/Arcode windows without reloading editor state. Electron mirrors the renderer-computed background only as a startup paint hint so the next splash and hidden window pre-paint match the selected palette.
+- Settings > Color Theme exposes the same Light and Dark choices as ArcRho; the Arcode topbar has no separate theme-toggle icon. The shared theme service applies the selected palette immediately, relays it to existing notebook/code/Snowflake iframes, updates Monaco globally with `vs` or `vs-dark`, and synchronizes other same-origin ArcRho/Arcode windows without reloading editor state. Electron mirrors the renderer-computed background only as a startup paint hint so the next splash and hidden window pre-paint match the selected palette.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

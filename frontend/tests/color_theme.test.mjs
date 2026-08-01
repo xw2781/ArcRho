@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -475,15 +475,13 @@ test("theme runtime restores the Electron user preference after renderer storage
   assert.equal(storage.get("arcrho_color_theme"), "dark", "renderer cache is rebuilt from the host preference");
 });
 
-test("ArcRho and standalone Arcode expose accessible live theme choices", () => {
+test("ArcRho and standalone Arcode keep accessible theme menus without topbar toggles", () => {
   const shellHtml = read("../ui/index.html");
   const shellPreferences = read("../ui/shell/shell_preferences.js");
   const shellMenus = read("../ui/shell/shell_menus.js");
   const iframeHost = read("../ui/shell/iframe_host.js");
   const arcodeHtml = read("../ui/arcode/main.html");
   const arcodeMain = read("../ui/arcode/main.js");
-  const themeToggleCss = read("../ui/shared/styles/theme_toggle.css");
-  const themeToggleIcon = read("../ui/shared/icons/color-theme.svg");
 
   for (const html of [shellHtml, arcodeHtml]) {
     assert.match(html, /data-action="color-theme-light"[^>]*role="menuitemradio"/);
@@ -491,32 +489,18 @@ test("ArcRho and standalone Arcode expose accessible live theme choices", () => 
     assert.match(html, /data-color-theme-trigger[^>]*tabindex="0"/);
     assert.match(html, /data-color-theme-menu[^>]*aria-haspopup="menu"/);
     assert.match(html, /data-color-theme-value="light"[^>]*tabindex="-1"/);
-    assert.ok(html.indexOf("/ui/shared/styles/themes/dark.css") < html.indexOf("/ui/shared/styles/theme_toggle.css"));
+    assert.doesNotMatch(html, /arThemeToggle|theme_toggle\.css|color-theme\.svg/);
   }
   assert.match(shellPreferences, /api\?\.setTheme\?\./);
   assert.match(shellPreferences, /type:\s*messageType,\s*theme:\s*normalized/);
-  assert.match(shellPreferences, /function initColorThemeToggle\(\)/);
-  assert.match(shellHtml, /id="colorThemeToggle"[^>]*aria-label="Switch to Dark theme"/);
+  assert.doesNotMatch(shellPreferences, /initColorThemeToggle|colorThemeToggle/);
   assert.match(shellMenus, /action === "color-theme-light" \|\| action === "color-theme-dark"/);
   assert.match(iframeHost, /postMessage\(\{ type: messageType, theme \}/);
   assert.match(arcodeMain, /ArcRhoColorTheme\?\.setTheme/);
-  assert.match(arcodeMain, /function initColorThemeToggle\(\)/);
-  assert.match(arcodeHtml, /id="arcodeColorThemeToggle"[^>]*aria-label="Switch to Dark theme"/);
+  assert.doesNotMatch(arcodeMain, /initColorThemeToggle|updateColorThemeToggleUI|arcodeColorThemeToggle/);
   assert.match(arcodeMain, /\.menu\[aria-expanded="true"\][^\n]*setAttribute\("aria-expanded", "false"\)/);
-  assert.match(themeToggleCss, /\.arThemeToggleIcon--lightbulb\s*\{\s*display: none;/);
-  assert.match(themeToggleCss, /\.arThemeToggleIcon--moon\s*\{\s*display: block;/);
-  assert.match(
-    themeToggleCss,
-    /:root\[data-arcrho-theme="dark"\] \.arThemeToggleIcon--lightbulb\s*\{\s*display: block;/,
-  );
-  assert.match(
-    themeToggleCss,
-    /:root\[data-arcrho-theme="dark"\] \.arThemeToggleIcon--moon\s*\{\s*display: none;/,
-  );
-  assert.match(themeToggleCss, /:root\[data-arcrho-theme="dark"\] \.arThemeToggle\s*\{\s*border-color: transparent;\s*background-color: transparent;/);
-  assert.match(themeToggleCss, /\.arThemeToggle\s*\{[\s\S]*?background-color: transparent;/);
-  assert.match(themeToggleIcon, /<symbol id="lightbulb"/);
-  assert.match(themeToggleIcon, /<symbol id="moon"/);
+  assert.equal(existsSync(new URL("../ui/shared/styles/theme_toggle.css", import.meta.url)), false);
+  assert.equal(existsSync(new URL("../ui/shared/icons/color-theme.svg", import.meta.url)), false);
 
   const runtime = read("../ui/shared/services/color_theme.js");
   assert.match(runtime, /wireThemeMenus/);
@@ -605,8 +589,8 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
   const expectedReferences = [
-    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260725b"],
-    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260724b"],
+    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260731b"],
+    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260731a"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260724a"],
     ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
     ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260726a"],

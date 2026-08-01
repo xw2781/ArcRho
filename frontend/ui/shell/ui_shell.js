@@ -1,6 +1,6 @@
 import { getHostApi, registerShellApi } from "./shell_context.js?v=20260510a";
 import { buildShellStateSnapshot, ensureActiveTabInvariant, getFirstDockedTabId, loadState, persistShellStateSnapshot, saveState, state } from "./shell_state.js?v=20260723b";
-import { applyAppFont, applyZoom, adjustZoomByDelta, broadcastAppFont, broadcastColorTheme, broadcastZoomToIframes, closeFontSettingsModal, closeForceRebuildSettingsModal, getColorTheme, getForceRebuildEnabled, getZoomPercent, hideGlobalTooltip, hostZoomAvailable, initColorThemeToggle, initFontSettingsModal, initForceRebuildSettingsModal, initShellPreferences, initZoomControls, loadAppFont, loadColorTheme, openFontSettingsModal, openForceRebuildSettingsModal, setColorTheme, setForceRebuildEnabled, setZoomPercent, showGlobalTooltip, updateColorThemeMenuState, ZOOM_STEP } from "./shell_preferences.js?v=20260726b";
+import { applyAppFont, applyZoom, adjustZoomByDelta, broadcastAppFont, broadcastColorTheme, broadcastZoomToIframes, closeFontSettingsModal, closeForceRebuildSettingsModal, getColorTheme, getForceRebuildEnabled, getZoomPercent, hideGlobalTooltip, hostZoomAvailable, initFontSettingsModal, initForceRebuildSettingsModal, initShellPreferences, initZoomControls, loadAppFont, loadColorTheme, openFontSettingsModal, openForceRebuildSettingsModal, setColorTheme, setForceRebuildEnabled, setZoomPercent, showGlobalTooltip, updateColorThemeMenuState, ZOOM_STEP } from "./shell_preferences.js?v=20260731a";
 import { clearSavedStatusOnDirty, formatStatusTimestamp, getStatusBarHeight, initClock, updateStatusBar } from "./status_bar.js?v=20260510a";
 import { closeRootPathSettingsModal, initRootPathSettingsModal, openRootPathSettingsModal } from "./root_path_settings.js?v=20260510a";
 import { clearCacheAndReload, customHardRefresh, initAppLifecycle, refreshActiveTab, restartApplication, sendShutdownSignal, showAppConfirm, shutdownApplication } from "./app_lifecycle.js?v=20260726a";
@@ -33,7 +33,6 @@ function render() {
 
 function wire() {
   initZoomControls();
-  initColorThemeToggle();
   initFontSettingsModal();
   initRootPathSettingsModal();
   initForceRebuildSettingsModal();

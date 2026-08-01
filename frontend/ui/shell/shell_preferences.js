@@ -88,14 +88,6 @@ export function updateColorThemeMenuState() {
   }
 }
 
-function updateColorThemeToggleUI() {
-  const button = $("colorThemeToggle");
-  if (!button) return;
-  const dark = colorTheme === "dark";
-  button.setAttribute("aria-pressed", dark ? "true" : "false");
-  button.setAttribute("aria-label", dark ? "Switch to Light theme" : "Switch to Dark theme");
-}
-
 export function broadcastColorTheme(theme = colorTheme) {
   const normalized = window.ArcRhoColorTheme?.normalizeTheme?.(theme) || "light";
   const messageType = window.ArcRhoColorTheme?.MESSAGE_TYPE || "arcrho:set-color-theme";
@@ -118,7 +110,6 @@ export function setColorTheme(theme, { persist = true, notify = true } = {}) {
     api?.applyTheme?.(colorTheme, { notifyChildren: false, persist: false, source: "shell" });
   }
   updateColorThemeMenuState();
-  updateColorThemeToggleUI();
   if (notify) broadcastColorTheme(colorTheme);
   return colorTheme;
 }
@@ -131,7 +122,6 @@ export function initColorThemePreference() {
     source: "shell-bootstrap",
   });
   updateColorThemeMenuState();
-  updateColorThemeToggleUI();
   if (colorThemeEventsWired) return;
   colorThemeEventsWired = true;
   window.addEventListener("arcrho:color-theme-changed", (event) => {
@@ -139,19 +129,6 @@ export function initColorThemePreference() {
     if (nextTheme === colorTheme) return;
     colorTheme = nextTheme;
     updateColorThemeMenuState();
-    updateColorThemeToggleUI();
-  });
-}
-
-export function initColorThemeToggle() {
-  const button = $("colorThemeToggle");
-  if (!button || button.dataset.themeToggleWired === "1") return;
-  button.dataset.themeToggleWired = "1";
-  updateColorThemeToggleUI();
-  button.addEventListener("click", () => {
-    const nextTheme = colorTheme === "dark" ? "light" : "dark";
-    setColorTheme(nextTheme);
-    shell.updateStatusBar?.(`Color theme changed to ${nextTheme === "dark" ? "Dark" : "Light"}.`);
   });
 }
 
