@@ -1,4 +1,4 @@
-import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260724b";
+import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260731a";
 import { configureDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 import { configureDataTabChart } from "/ui/shared/tabs/data/data_tab_chart_port.js";
 import { configureDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
@@ -85,7 +85,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260726a"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260731b"
 );
 
 const datasetLinksTab = createExternalLinksTab({

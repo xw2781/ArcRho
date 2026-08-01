@@ -136,6 +136,38 @@ test("DSV and DFM place reusable Links tabs immediately after Notes", async () =
   assert.match(dataController, /external_links:\s*runtime\.datasetExternalLinks\.serialize\(\)/u);
 });
 
+test("DSV exposes cache refresh as an accessible SVG action in the Data top row", async () => {
+  const [datasetView, dataControls] = await Promise.all([
+    source("ui/dataset_viewer/dataset_viewer_view.js"),
+    source("ui/shared/tabs/data/data_tab_controls.js"),
+  ]);
+
+  assert.match(
+    datasetView,
+    /class="topRow"[\s\S]*id="datasetTopBar"[\s\S]*id="clearCacheReloadBtn"[\s\S]*<svg[\s\S]*<\/svg>[\s\S]*<\/button>/u,
+  );
+  assert.match(datasetView, /aria-label="Clear cache and reload current dataset"/u);
+  assert.match(datasetView, /attachArcrhoTooltip\([\s\S]*#clearCacheReloadBtn[\s\S]*Clear cache and reload current dataset/u);
+  assert.match(dataControls, /clearCacheReloadBtn[\s\S]*runArcRhoTri\(\{ clearCache: true/u);
+});
+
+test("DSV and DFM reach the current shared Data validation runtime", async () => {
+  const [datasetHtml, datasetMain, dfmHtml, dfmAdapter, dataController] = await Promise.all([
+    source("ui/dataset_viewer/dataset_viewer.html"),
+    source("ui/dataset_viewer/dataset_viewer_main.js"),
+    source("ui/method_pages/dfm/dfm.html"),
+    source("ui/method_pages/dfm/dfm_data_tab_adapter.js"),
+    source("ui/shared/tabs/data/data_tab_controller.js"),
+  ]);
+
+  assert.match(datasetHtml, /dataset_viewer_main\.js\?v=20260731b/u);
+  assert.match(datasetMain, /data_tab_controller\.js\?v=20260731b/u);
+  assert.match(dfmHtml, /dfm_data_tab_adapter\.js\?v=20260731b/u);
+  assert.match(dfmAdapter, /data_tab_controller\.js\?v=20260731b/u);
+  assert.match(dataController, /data_tab_inputs_controller\.js\?v=20260731b/u);
+  assert.match(dataController, /data_tab_request_controller\.js\?v=20260731b/u);
+});
+
 test("method pages and shared runtime do not depend on Dataset feature assets", async () => {
   const [
     bornhuetterFergusonSources,

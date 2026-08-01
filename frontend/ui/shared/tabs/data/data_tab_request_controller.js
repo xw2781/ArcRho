@@ -442,7 +442,7 @@ export function registerDataTabRequestController(runtime) {
   async function loadProjectsDropdown() {
     const input = document.getElementById("projectSelect");
     const list = document.getElementById("projectDropdown");
-    if (!input || !list) return;
+    if (!input || !list) return { ok: false, projects: [] };
 
     try {
       runtime.allProjects = await loadProjectValidValueList();
@@ -450,6 +450,9 @@ export function registerDataTabRequestController(runtime) {
       console.error("Failed to load project names:", err);
       setStatus("Failed to load project names.");
       runtime.allProjects = [];
+      renderProjectOptions(runtime.allProjects);
+      showProjectDropdown(false);
+      return { ok: false, projects: [] };
     }
     renderProjectOptions(runtime.allProjects);
     showProjectDropdown(false);
@@ -462,6 +465,7 @@ export function registerDataTabRequestController(runtime) {
     }
     if (!isDfmDataTabHost() && triInput && !triInput.value) triInput.value = "Net Loss--Incurred";
 
+    return { ok: true, projects: runtime.allProjects.slice() };
   }
 
   function showDatasetLoadingPopup(message = "") {

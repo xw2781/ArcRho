@@ -1,16 +1,11 @@
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
 
 export function mountDatasetViewer(container) {
   if (!container) return null;
   if (container.querySelector("#topFrame")) return container;
   const wrapper = document.createElement("div");
-  wrapper.innerHTML = `<button
-    id="clearCacheReloadBtn"
-    type="button"
-    title="Clear Cache and Reload"
-    aria-label="Clear Cache and Reload"
-  >&#x21bb;</button>
-  <!-- Tab bar -->
+  wrapper.innerHTML = `<!-- Tab bar -->
   <div class="dsTabBar tabbedPageTabBar">
     <button class="dsTab tabbedPageTab" data-page="details" type="button">Details</button>
     <button class="dsTab tabbedPageTab active" data-page="data" type="button">Data</button>
@@ -202,6 +197,16 @@ export function mountDatasetViewer(container) {
 
         </div>
       </div>
+      <button
+        id="clearCacheReloadBtn"
+        type="button"
+        aria-label="Clear cache and reload current dataset"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M20 6v5h-5"></path>
+          <path d="M18.6 9A7 7 0 1 0 19 15"></path>
+        </svg>
+      </button>
     </div>
 
     <!-- Triangle -->
@@ -302,6 +307,10 @@ export function mountDatasetViewer(container) {
   while (wrapper.firstElementChild) {
     container.appendChild(wrapper.firstElementChild);
   }
+  attachArcrhoTooltip(
+    container.querySelector("#clearCacheReloadBtn"),
+    "Clear cache and reload current dataset",
+  );
   syncDatasetDetailsLabelWidth(container);
   wireTableScrollbarActivity(container);
   return container;

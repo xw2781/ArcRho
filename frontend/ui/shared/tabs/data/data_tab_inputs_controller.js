@@ -3,7 +3,7 @@
 export function registerDataTabInputsController(runtime) {
   const { state, workflowId, DEFAULT_TOKEN } = runtime;
   const defer = (name) => (...args) => runtime[name](...args);
-  const { normalizeDatasetNumberFormat, clampDatasetDecimalPlaces, applyDecimalPlacesToDatasetNumberFormat, loadWorkflowDefaults, buildDefaultDisplayValue, isDefaultTokenValue, setInputDefaultBound, isInputDefaultBound, renderDetailFormula, refreshDatasetInstanceNameConflict, setStatus, buildReservingClassPathPartLookup, normalizeReservingClassPath, normalizeReservingClassPathByPartLookup, normalizeReservingClassPathKey, loadDatasetValidValueList, loadReservingClassValidValueList, getResolvedProjectValue, getResolvedReservingClassValue, getTriInputs, isDfmDataTabHost, syncSidecarForCurrentDataset, enforceDevLenRule, ensureHeadersForProject, ensureDevHeadersForProject, loadDatasetProjectPrefs, saveLastDatasetViewerProjectToAppData, saveTriInputsToStorage, scheduleAutoRun, isRunInFlight, showDatasetLoadingPopup, hideDatasetLoadingPopup, validateReservingClassPathByTypeNames } = new Proxy({}, { get: (_target, name) => defer(name) });
+  const { normalizeDatasetNumberFormat, clampDatasetDecimalPlaces, applyDecimalPlacesToDatasetNumberFormat, loadWorkflowDefaults, buildDefaultDisplayValue, isDefaultTokenValue, setInputDefaultBound, isInputDefaultBound, renderDetailFormula, refreshDatasetInstanceNameConflict, setStatus, buildReservingClassPathPartLookup, normalizeReservingClassPath, normalizeReservingClassPathByPartLookup, normalizeReservingClassPathKey, loadDatasetValidValueList, loadReservingClassValidValueList, getResolvedProjectValue, getResolvedReservingClassValue, getTriInputs, isDfmDataTabHost, syncSidecarForCurrentDataset, enforceDevLenRule, ensureHeadersForProject, ensureDevHeadersForProject, loadDatasetProjectPrefs, saveLastDatasetViewerProjectToAppData, saveTriInputsToStorage, scheduleAutoRun, isRunInFlight, showDatasetLoadingPopup, hideDatasetLoadingPopup, validateReservingClassPathByTypeNames, loadProjectsDropdown } = new Proxy({}, { get: (_target, name) => defer(name) });
   const applyResolvedProjectDefaults = defer("applyResolvedProjectDefaults");
   const LEN_DROPDOWN_CONFIG = {
     originLenSelect: {
@@ -588,6 +588,13 @@ export function registerDataTabInputsController(runtime) {
     return { ok: true, value: matched };
   }
 
+  async function ensureProjectValidationOptions() {
+    const project = String(getResolvedProjectValue() || "").trim();
+    if (!project || runtime.allProjects.length) return true;
+    const result = await loadProjectsDropdown();
+    return result?.ok !== false;
+  }
+
   function validateAndNormalizeDatasetInput(options = {}) {
     const strict = !!options?.strict;
     const showMessage = !!options?.showMessage;
@@ -698,6 +705,7 @@ export function registerDataTabInputsController(runtime) {
       setStatus(runtime.datasetInstanceNameConflictMessage || "Dataset instance name already exists.");
       return { ok: false };
     }
+    if (!await ensureProjectValidationOptions()) return { ok: false };
     const projectResult = validateAndNormalizeProjectInput({ strict: true, showMessage });
     if (!projectResult.ok || !projectResult.value) return { ok: false };
 
@@ -918,6 +926,7 @@ export function registerDataTabInputsController(runtime) {
     refreshReservingClassPathsForProject,
     handleDatasetSelection,
     validateAndNormalizeProjectInput,
+    ensureProjectValidationOptions,
     validateAndNormalizeDatasetInput,
     validateAndNormalizeReservingClassInput,
     validateTriInputsBeforeRun,

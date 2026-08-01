@@ -81,9 +81,9 @@ import "/ui/shared/integrations/zoom_bridge.js?v=20260715a";
 
 import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260726a";
 import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260726a";
-import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260726a";
+import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
-import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260726a";
+import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260731b";
 import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260726a";
 
 const LS_DS_KEY = "arcrho_last_ds_id";

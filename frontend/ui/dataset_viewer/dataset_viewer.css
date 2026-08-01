@@ -138,9 +138,11 @@ body {
 .topRow {
   display: flex;
   gap: 12px;
-  align-items: stretch;
+  align-items: flex-start;
   overflow: visible;
   flex: 0 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 #dsDataPage.datasetTopBarCollapsed .topRow {
@@ -414,42 +416,55 @@ body {
   Triangle + Chart Panels
 ========================= */
 #clearCacheReloadBtn {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #c8c8c8;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
   box-shadow: none;
-  border-radius: var(--tabbed-page-control-radius, 4px);
-  background: #f7f7f7;
-  background-clip: padding-box;
-  color: #444;
-  font-size: 12px;
-  line-height: 1;
+  border-radius: 4px;
+  background: transparent;
+  color: #667085;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   padding: 0;
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 10;
+  margin: 10px 8px 0 auto;
+  flex: 0 0 24px;
   box-sizing: border-box;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+#clearCacheReloadBtn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
 #clearCacheReloadBtn:hover {
-  background: #ececec;
-  border-color: #b8b8b8;
+  border-color: #c9d7ef;
+  background: #f1f6ff;
+  color: #2458b8;
 }
 
-#clearCacheReloadBtn:focus {
+#clearCacheReloadBtn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
-  border-color: #8aa8ff;
+  box-shadow: 0 0 0 2px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+  border-color: #7ea6ef;
+  background: #e9f2ff;
+  color: #1f4e99;
 }
 
 #clearCacheReloadBtn:disabled {
+  color: #b1bac8;
   cursor: default;
-  opacity: 0.55;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 #chartPanel {

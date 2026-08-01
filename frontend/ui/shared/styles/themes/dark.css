@@ -1289,10 +1289,28 @@
   background-color: var(--ar-color-input);
 }
 
-:root[data-arcrho-theme="dark"] :is(.datasetSecondaryBtn, .datasetPrimaryBtn, #clearCacheReloadBtn) {
+:root[data-arcrho-theme="dark"] :is(.datasetSecondaryBtn, .datasetPrimaryBtn) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-muted);
   color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] #clearCacheReloadBtn {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] #clearCacheReloadBtn:is(:hover, :focus-visible) {
+  border-color: var(--ar-color-border-focus);
+  background-color: var(--ar-color-accent-hover);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] #clearCacheReloadBtn:disabled {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--ar-color-text-disabled);
 }
 
 /* Dataset Viewer Details keeps dense groups unframed while making fields and formula tokens readable. */
