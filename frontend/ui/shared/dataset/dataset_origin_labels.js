@@ -112,7 +112,6 @@ export async function fetchDatasetOriginLabels(projectName, originLen, options =
     body: JSON.stringify({
       ProjectName: project,
       PeriodLength: periodLength,
-      timeout_sec: Number(options.timeoutSec) || 6.0,
       periodType: 0,
       Transposed: false,
       Calendar: false,

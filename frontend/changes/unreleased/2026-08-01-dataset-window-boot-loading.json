@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset windows show the loading animation immediately and temporary views open faster.",
+  "details": [
+    "The Loading Dataset popup now appears as soon as a dataset window opens, instead of a blank \"No dataset loaded\" page while the data loads.",
+    "Temporary-view windows skip the redundant dropdown, preference, and sidecar boot loads, removing a multi-second blank delay on network-drive installs.",
+    "Dataset Type and reserving-class lists load concurrently during window boot and run validation."
+  ]
+}

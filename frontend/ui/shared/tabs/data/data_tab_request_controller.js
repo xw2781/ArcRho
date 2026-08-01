@@ -538,7 +538,6 @@ export function registerDataTabRequestController(runtime) {
       AllowDerived: true,
       WriteSidecar: false,
       ...(isTemporaryDatasetView ? { TemporarySessionId: temporaryDatasetSessionId } : {}),
-      timeout_sec: 6.0,
     };
   }
 
@@ -583,7 +582,6 @@ export function registerDataTabRequestController(runtime) {
       AllowDerived: true,
       WriteSidecar: false,
       ...(isTemporaryDatasetView ? { TemporarySessionId: temporaryDatasetSessionId } : {}),
-      timeout_sec: 6.0,
     };
   }
 

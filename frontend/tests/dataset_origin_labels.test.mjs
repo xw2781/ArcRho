@@ -836,3 +836,124 @@ test("dataset sources contain no hard-coded start-year fallback", async () => {
   assert.doesNotMatch(sources[5], /values\.map\(\(_, index\) => String\(index \+ 1\)\)/);
   assert.match(sources[5], /Cannot apply live source preview/);
 });
+
+test("a clear-cache run overlaps the rebuild request with both header refreshes", async () => {
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const elements = {
+    runArcRhoTriBtn: { disabled: false },
+    clearCacheReloadBtn: { disabled: false },
+    arcrhoTriStatus: { textContent: "" },
+  };
+  globalThis.document = {
+    getElementById: (id) => elements[id] || { value: "" },
+  };
+  const inputs = {
+    project: "Example Project",
+    path: "Class",
+    tri: "Dataset",
+    instanceName: "Dataset",
+    cumulative: true,
+    calendar: false,
+    originLen: 12,
+    devLen: 12,
+  };
+  const events = [];
+  let releaseRefresh;
+  const refreshReleased = new Promise((resolve) => { releaseRefresh = resolve; });
+  let releaseOriginHeaders;
+  const originHeadersReleased = new Promise((resolve) => { releaseOriginHeaders = resolve; });
+  globalThis.fetch = async (url) => {
+    events.push(`request:${url}`);
+    await refreshReleased;
+    events.push("refresh-response");
+    return { ok: true, status: 200, json: async () => ({ ok: true, ds_id: "ds-1" }) };
+  };
+  const controller = runControllerModule.createDatasetRunController({
+    config: { API_BASE: "", DS_ID: "" },
+    state: { dirty: new Map(), model: null },
+    $: () => ({ textContent: "", innerHTML: "", replaceChildren() {} }),
+    logLine: () => {},
+    getDataset: async () => {
+      events.push("dataset-load");
+      return {
+        ok: true,
+        status: 200,
+        data: { id: "ds-1", mtime: 1, origin_labels: ["2020"], dev_labels: ["12"], values: [[1]], mask: [[true]] },
+      };
+    },
+    patchDataset: async () => ({}),
+    renderTable: () => {},
+    renderChart: () => {},
+    notifyDatasetUpdated: () => {},
+    isForceRebuildEnabled: () => true,
+    validateTriInputsBeforeRun: async () => ({ ok: true, project: inputs.project, path: inputs.path, tri: inputs.tri }),
+    getTriInputs: () => ({ ...inputs }),
+    buildTriRequestPayload: (raw) => ({ ...raw }),
+    buildVecRequestPayload: (raw) => ({ ...raw }),
+    clearHeadersCacheForProject: async () => { events.push("headers-clear"); },
+    ensureHeadersForProject: async () => {
+      events.push("origin-headers-start");
+      await originHeadersReleased;
+      events.push("origin-headers-done");
+      return ["2020"];
+    },
+    ensureDevHeadersForProject: async () => {
+      events.push("dev-headers-start");
+      return ["12"];
+    },
+    saveLastDsId: () => {},
+    recordDatasetBrowsingHistory: () => {},
+    syncNotesForCurrentDataset: async () => true,
+    syncSidecarForCurrentDataset: async () => true,
+    updateCurrentTabTitle: () => "",
+    setStatus: () => {},
+    applyGridSelectionFromState: () => {},
+    suppressLoadingPopup: true,
+  });
+
+  try {
+    const run = controller.runArcRhoTri();
+    const deadline = Date.now() + 500;
+    while (!events.includes("dev-headers-start") && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    // Both header refreshes started while the /refresh response was still
+    // pending, and the development refresh did not wait for the origin one.
+    assert.ok(events.includes("headers-clear"));
+    assert.ok(events.includes("origin-headers-start"));
+    assert.ok(events.includes("dev-headers-start"));
+    assert.ok(!events.includes("refresh-response"));
+    assert.ok(!events.includes("origin-headers-done"));
+
+    releaseRefresh();
+    releaseOriginHeaders();
+    const result = await run;
+    assert.equal(result.ok, true);
+    // The dataset reload only starts after the header pipeline settles.
+    assert.ok(events.indexOf("dataset-load") > events.indexOf("origin-headers-done"));
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("dataset windows show the loading popup from boot and the run adopts it", () => {
+  // Boot shows the popup before any awaited server work when the URL names a
+  // dataset target, instead of leaving a blank "No dataset loaded" grid.
+  assert.match(
+    dataTabControllerSource,
+    /runtime\.showDatasetLoadingPopup\(`Loading dataset "\$\{bootLoadTarget\}" \.\.\.`\);/u,
+  );
+  // Temporary views take the fast boot path with inputs from query params.
+  assert.match(
+    dataTabControllerSource,
+    /if \(persistedDfmBootstrap \|\| isProjectInstanceCachedDatasetOpen \|\| isTemporaryDatasetView\) \{/u,
+  );
+  // The run controller adopts an already-visible popup so it stays up through
+  // validation and is hidden when the run settles, and a reused popup keeps
+  // its running elapsed counter.
+  assert.match(runControllerSource, /let loadingPopupVisible = isDatasetLoadingPopupVisible\(\);/u);
+  assert.match(runControllerSource, /if \(clearCache \|\| loadingPopupVisible\) \{/u);
+  assert.match(runControllerSource, /if \(reuseExisting && datasetLoadingPopupTimer\) return;/u);
+});

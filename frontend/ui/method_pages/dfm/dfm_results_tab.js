@@ -521,7 +521,6 @@ async function loadRatioBasisColumnForContext(ctx) {
     Cumulative: ctx.cumulative,
     OriginLength: ctx.originLen,
     DevelopmentLength: ctx.devLen,
-    timeout_sec: 6.0,
   };
 
   const arcrhoResp = await fetch("/arcrho/tri", {

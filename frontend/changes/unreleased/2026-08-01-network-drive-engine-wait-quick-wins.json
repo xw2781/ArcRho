@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Made dataset loads and Clear Cache rebuilds much faster on network-drive installs.",
+  "details": [
+    "Engine result waits now defeat the Windows network file-not-found cache and poll with a fast adaptive interval, so results appear in well under a second instead of about five seconds per engine request.",
+    "Clear Cache & Reload runs the dataset rebuild and both header refreshes concurrently instead of one after another.",
+    "The engine request wait budget is now a single server-owned setting raised from 6 to 15 seconds, preventing spurious timeouts on slower shares."
+  ]
+}

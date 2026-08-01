@@ -100,7 +100,7 @@ test("v2 open hydrates aggregate snapshots without dependency or workbook reads"
   assert.match(load, /scheduleDfmExcelFreshnessCheck/u);
   assert.doesNotMatch(load, /readJsonFile|refreshAllExcelLinks|ADA_DFM_REFRESH_DATASET|loadDatasetSidecar/u);
 
-  assert.match(dataControllerSource, /if \(persistedDfmBootstrap \|\| isProjectInstanceCachedDatasetOpen\) \{\s*runtime\.applyTriInputsFromQueryParams\(\);/u);
+  assert.match(dataControllerSource, /if \(persistedDfmBootstrap \|\| isProjectInstanceCachedDatasetOpen \|\| isTemporaryDatasetView\) \{[^}]*runtime\.applyTriInputsFromQueryParams\(\);/u);
   assert.match(dataControllerSource, /if \(persistedDfmBootstrap\) \{\s*runtime\.setStatus\("Loading DFM method\.\.\."\);/u);
   assert.match(resultsSource, /applyPersistedResultsSnapshot/u);
   assert.match(resultsSource, /getRatioBasisInputEl\(\) && !ratioBasisEmbeddedSnapshot/u);

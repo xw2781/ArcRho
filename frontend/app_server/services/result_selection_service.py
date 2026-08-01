@@ -732,7 +732,7 @@ def _materialize_engine_source(
     result = arcrho_runtime_service.run_arcrho_tri(
         pairs,
         path,
-        timeout_sec=6.0,
+        timeout_sec=config.ENGINE_REQUEST_TIMEOUT_SEC,
         local_only=False,
         allow_derived=True,
         write_sidecar=False,

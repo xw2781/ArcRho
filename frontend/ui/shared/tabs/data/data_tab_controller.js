@@ -395,59 +395,94 @@ async function bootDatasetDataTabOnce() {
   runtime.fillLenDropdowns();
 
   const persistedDfmBootstrap = isPersistedDfmMethodBootstrap();
-  if (persistedDfmBootstrap || isProjectInstanceCachedDatasetOpen) {
-    runtime.applyTriInputsFromQueryParams();
-  } else {
-    await runtime.loadProjectsDropdown();
-    runtime.applyWorkflowDefaultsIfNew();
-    await runtime.restoreTriInputsFromStorage();
-    runtime.applyTriInputsFromQueryParams();
-    const projectResult = runtime.validateAndNormalizeProjectInput({ strict: true, showMessage: false });
-    if (projectResult.ok) {
-      runtime.lastProjectSelection = projectResult.value;
-      if (!isDfmDataTabHost()) runtime.saveLastDatasetViewerProjectToAppData(projectResult.value);
-      await runtime.refreshDatasetTypesForProject(projectResult.value);
-      await runtime.refreshReservingClassPathsForProject(projectResult.value);
-    } else {
-      await runtime.refreshDatasetTypesForProject("");
-      await runtime.refreshReservingClassPathsForProject("");
-    }
-    await runtime.validateAndNormalizeReservingClassInput(
-      runtime.getResolvedProjectValue(),
-      { strict: true, showMessage: false },
-    );
-    runtime.validateAndNormalizeDatasetInput({ strict: true, showMessage: false });
-    await runtime.syncSidecarForCurrentDataset({ applyLengths: !isProjectInstanceDraft });
-    await runtime.refreshDatasetInstanceNameConflict();
+  const bootQueryInputs = readDatasetInputQueryValues(qs);
+  const bootLoadTarget = !isDfmDataTabHost() && !persistedDfmBootstrap
+    && bootQueryInputs.project && bootQueryInputs.path
+    ? (bootQueryInputs.instanceName || bootQueryInputs.tri)
+    : "";
+  // Windows opened onto a known dataset show the loading animation from boot,
+  // before any awaited server work, instead of a blank "No dataset loaded" grid.
+  if (bootLoadTarget) {
+    runtime.showDatasetLoadingPopup(`Loading dataset "${bootLoadTarget}" ...`);
   }
-  runtime.enforceDevLenRule({ source: "origin" });
-
-  mountDataTabPageHost({
-    initialTab: runtime.getDatasetInitialTab(),
-    onDetailsActivated: () => requestAnimationFrame(runtime.resizeDetailFormulaInput),
-    onChartActivated: () => {
-      requestAnimationFrame(() => requestAnimationFrame(redrawChartSafely));
-    },
-    wireDataTabTopBarToggle: runtime.wireDatasetDataTabTopBarToggle,
-  });
-
-  wireEvents();
-
-  const { project, path, tri } = runtime.getTriInputs();
-  if (persistedDfmBootstrap) {
-    runtime.setStatus("Loading DFM method...");
-  } else if (project && path && tri) {
-    if (isProjectInstanceCachedDatasetOpen) {
-      await runtime.loadProjectInstanceCachedDataset();
-    } else if (isProjectInstanceDraft) {
-      await runtime.refreshProjectInstanceDraftModel();
+  try {
+    if (persistedDfmBootstrap || isProjectInstanceCachedDatasetOpen || isTemporaryDatasetView) {
+      // Temporary views carry complete inputs in the URL and cannot save, so
+      // they skip the dropdown/preference/sidecar boot chain like cached
+      // Project Instance opens; the authoritative run validation reloads the
+      // lists it needs on demand.
+      runtime.applyTriInputsFromQueryParams();
     } else {
-      runtime.scheduleAutoRun(0);
+      await runtime.loadProjectsDropdown();
+      runtime.applyWorkflowDefaultsIfNew();
+      await runtime.restoreTriInputsFromStorage();
+      runtime.applyTriInputsFromQueryParams();
+      const projectResult = runtime.validateAndNormalizeProjectInput({ strict: true, showMessage: false });
+      if (projectResult.ok) {
+        runtime.lastProjectSelection = projectResult.value;
+        if (!isDfmDataTabHost()) runtime.saveLastDatasetViewerProjectToAppData(projectResult.value);
+        await Promise.all([
+          runtime.refreshDatasetTypesForProject(projectResult.value),
+          runtime.refreshReservingClassPathsForProject(projectResult.value),
+        ]);
+      } else {
+        await Promise.all([
+          runtime.refreshDatasetTypesForProject(""),
+          runtime.refreshReservingClassPathsForProject(""),
+        ]);
+      }
+      await runtime.validateAndNormalizeReservingClassInput(
+        runtime.getResolvedProjectValue(),
+        { strict: true, showMessage: false },
+      );
+      runtime.validateAndNormalizeDatasetInput({ strict: true, showMessage: false });
+      await runtime.syncSidecarForCurrentDataset({ applyLengths: !isProjectInstanceDraft });
+      await runtime.refreshDatasetInstanceNameConflict();
     }
-  } else if (isDfmDataTabHost()) {
-    runtime.setStatus("Waiting for DFM inputs...");
-  } else {
-    await runtime.loadDataset();
+    runtime.enforceDevLenRule({ source: "origin" });
+
+    mountDataTabPageHost({
+      initialTab: runtime.getDatasetInitialTab(),
+      onDetailsActivated: () => requestAnimationFrame(runtime.resizeDetailFormulaInput),
+      onChartActivated: () => {
+        requestAnimationFrame(() => requestAnimationFrame(redrawChartSafely));
+      },
+      wireDataTabTopBarToggle: runtime.wireDatasetDataTabTopBarToggle,
+    });
+
+    wireEvents();
+
+    const { project, path, tri, instanceName } = runtime.getTriInputs();
+    if (persistedDfmBootstrap) {
+      runtime.setStatus("Loading DFM method...");
+    } else if (project && path && tri) {
+      runtime.showDatasetLoadingPopup(`Loading dataset "${instanceName || tri}" ...`);
+      if (isProjectInstanceCachedDatasetOpen) {
+        try {
+          await runtime.loadProjectInstanceCachedDataset();
+        } finally {
+          runtime.hideDatasetLoadingPopup();
+        }
+      } else if (isProjectInstanceDraft) {
+        try {
+          await runtime.refreshProjectInstanceDraftModel();
+        } finally {
+          runtime.hideDatasetLoadingPopup();
+        }
+      } else {
+        // The run controller adopts the visible popup and hides it when the
+        // scheduled run settles.
+        runtime.scheduleAutoRun(0);
+      }
+    } else if (isDfmDataTabHost()) {
+      runtime.setStatus("Waiting for DFM inputs...");
+    } else {
+      runtime.hideDatasetLoadingPopup();
+      await runtime.loadDataset();
+    }
+  } catch (err) {
+    runtime.hideDatasetLoadingPopup();
+    throw err;
   }
 }
 

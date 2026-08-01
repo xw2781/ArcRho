@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app_server import config
+
 
 class ArcRhoTriRequest(BaseModel):
     Path: str
@@ -18,7 +20,7 @@ class ArcRhoTriRequest(BaseModel):
     AllowDerived: bool = True
     WriteSidecar: bool = True
     TemporarySessionId: Optional[UUID] = None
-    timeout_sec: float = 6.0
+    timeout_sec: float = config.ENGINE_REQUEST_TIMEOUT_SEC
 
 
 class ArcRhoVecRequest(BaseModel):
@@ -35,7 +37,7 @@ class ArcRhoVecRequest(BaseModel):
     AllowDerived: bool = True
     WriteSidecar: bool = True
     TemporarySessionId: Optional[UUID] = None
-    timeout_sec: float = 6.0
+    timeout_sec: float = config.ENGINE_REQUEST_TIMEOUT_SEC
 
 
 class ArcRhoHeadersRequest(BaseModel):
@@ -45,7 +47,7 @@ class ArcRhoHeadersRequest(BaseModel):
     PeriodLength: int = 12
     ProjectName: str
     StoredPeriodLength: int = -1
-    timeout_sec: float = 6.0
+    timeout_sec: float = config.ENGINE_REQUEST_TIMEOUT_SEC
 
 
 class ArcRhoHeadersCacheClearRequest(BaseModel):

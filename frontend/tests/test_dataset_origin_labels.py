@@ -72,7 +72,11 @@ class DatasetOriginLabelResolutionTests(unittest.TestCase):
                 2,
             )
         self.assertEqual(labels, ["2020", "2021"])
-        get_headers.assert_called_once_with("Example Project", 12, timeout_sec=6.0)
+        get_headers.assert_called_once_with(
+            "Example Project",
+            12,
+            timeout_sec=dataset_service.config.ENGINE_REQUEST_TIMEOUT_SEC,
+        )
 
     def test_uses_valid_project_headers_not_a_scalar_year(self) -> None:
         headers = {"ok": True, "labels": ["2017 Q4", "2018 Q1"]}
@@ -86,7 +90,11 @@ class DatasetOriginLabelResolutionTests(unittest.TestCase):
                 2,
             )
         self.assertEqual(labels, ["2017 Q4", "2018 Q1"])
-        get_headers.assert_called_once_with("Example Project", 3, timeout_sec=6.0)
+        get_headers.assert_called_once_with(
+            "Example Project",
+            3,
+            timeout_sec=dataset_service.config.ENGINE_REQUEST_TIMEOUT_SEC,
+        )
 
     def test_development_labels_use_the_transposed_project_header_contract(self) -> None:
         patches = self._resolver_patches({"ok": True, "labels": ["5m", "17m"]})
@@ -103,7 +111,7 @@ class DatasetOriginLabelResolutionTests(unittest.TestCase):
         get_headers.assert_called_once_with(
             "Example Project",
             12,
-            timeout_sec=6.0,
+            timeout_sec=dataset_service.config.ENGINE_REQUEST_TIMEOUT_SEC,
             period_type=1,
             transposed=True,
             calendar=False,

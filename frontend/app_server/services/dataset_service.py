@@ -182,13 +182,13 @@ def _load_project_header_labels(
             header_result = arcrho_runtime_service.get_project_headers(
                 project,
                 length,
-                timeout_sec=6.0,
+                timeout_sec=config.ENGINE_REQUEST_TIMEOUT_SEC,
             )
         else:
             header_result = arcrho_runtime_service.get_project_headers(
                 project,
                 length,
-                timeout_sec=6.0,
+                timeout_sec=config.ENGINE_REQUEST_TIMEOUT_SEC,
                 period_type=period_type,
                 transposed=transposed,
                 calendar=calendar,

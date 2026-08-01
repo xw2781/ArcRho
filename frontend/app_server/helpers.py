@@ -8,6 +8,7 @@ import os
 import re
 import json
 import time
+import uuid
 import getpass
 from datetime import datetime
 from pathlib import Path
@@ -261,6 +262,34 @@ def _native_request_value(key: str, value: str) -> Any:
     return value
 
 
+_WAIT_POLL_INITIAL_SEC = 0.1
+_WAIT_POLL_MAX_SEC = 0.5
+_WAIT_POLL_BACKOFF = 1.5
+
+
+def _bust_network_lookup_cache(directory: str) -> bool:
+    """Invalidate the SMB redirector's cached lookups for *directory*.
+
+    The Windows SMB client caches negative lookups for several seconds
+    (``FileNotFoundCacheLifetime``, default 5s), so polling ``os.path.exists``
+    for an engine response file keeps seeing a stale miss long after the file
+    was written on the server. A client-side write in the same directory drops
+    that cached state, so the next existence check reaches the server. Returns
+    False when the probe cannot be written so callers can stop paying for it.
+    """
+    probe = os.path.join(directory, f".arcrho-visibility-probe-{uuid.uuid4().hex}.tmp")
+    try:
+        with open(probe, "w", encoding="ascii"):
+            pass
+    except OSError:
+        return False
+    try:
+        os.remove(probe)
+    except OSError:
+        pass
+    return True
+
+
 def wait_for_file(path: str, timeout_sec: float, settle_ms: float = 50.0) -> bool:
     timeout = max(0.0, float(timeout_sec))
     deadline = time.monotonic() + timeout
@@ -302,14 +331,20 @@ def wait_for_file(path: str, timeout_sec: float, settle_ms: float = 50.0) -> boo
             pass
 
     if not found:
+        poke_dir = os.path.dirname(path) or "."
+        poke_enabled = _is_network_path(path)
+        interval = _WAIT_POLL_INITIAL_SEC
         while time.monotonic() <= deadline:
+            if poke_enabled:
+                poke_enabled = _bust_network_lookup_cache(poke_dir)
             if os.path.exists(path):
                 found = True
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            time.sleep(min(0.5, remaining))
+            time.sleep(min(interval, remaining))
+            interval = min(interval * _WAIT_POLL_BACKOFF, _WAIT_POLL_MAX_SEC)
 
     if found and settle_ms > 0:
         time.sleep(settle_ms / 1000.0)

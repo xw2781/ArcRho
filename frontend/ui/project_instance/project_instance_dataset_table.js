@@ -2278,7 +2278,6 @@ function buildAddDatasetTriPayload(record, lengths) {
     Calendar: false,
     OriginLength: originLen,
     DevelopmentLength: devLen,
-    timeout_sec: 6.0,
   };
 }
 

@@ -80,18 +80,18 @@ export function createDatasetHeadersService(deps) {
   async function fetchHeadersViaGetDataset(
     projectName,
     periodLength,
-    timeoutSec = 6.0,
     periodType = 0,
     transposed = false,
     calendar = false,
   ) {
+    // The engine-wait timeout is owned by the app-server request schema
+    // default; the client does not override it.
     const resp = await fetch("/arcrho/headers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ProjectName: projectName,
         PeriodLength: periodLength,
-        timeout_sec: timeoutSec,
         periodType,
         Transposed: !!transposed,
         Calendar: !!calendar,
@@ -256,7 +256,7 @@ export function createDatasetHeadersService(deps) {
     let lastError = null;
     for (let i = 0; i < 2; i++) {
       try {
-        const labels = await fetchHeadersViaGetDataset(p, originLen, 6.0, 0, false);
+        const labels = await fetchHeadersViaGetDataset(p, originLen, 0, false);
         if (!requestIsCurrent()) return [];
         state.headerLabels = labels;
         saveHeadersCache(p, originLen, labels);
@@ -317,7 +317,7 @@ export function createDatasetHeadersService(deps) {
       try {
         // periodType=1, Transposed=true (csv is still one line)
         // For dev headers, PeriodLength follows the UI "Development Length" selector.
-        const labels = await fetchHeadersViaGetDataset(p, devLen, 6.0, 1, true, calendar);
+        const labels = await fetchHeadersViaGetDataset(p, devLen, 1, true, calendar);
         if (!requestIsCurrent()) return [];
         if (Array.isArray(labels)) {
           state.devHeaderLabels = labels;

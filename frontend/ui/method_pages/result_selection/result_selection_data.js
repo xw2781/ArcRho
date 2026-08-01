@@ -145,7 +145,6 @@
           LocalOnly: false,
           AllowDerived: true,
           WriteSidecar: false,
-          timeout_sec: 6.0,
         };
       }
 

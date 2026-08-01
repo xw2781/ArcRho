@@ -146,11 +146,16 @@ export function createDatasetRunController(deps) {
     (doc.head || doc.documentElement).appendChild(style);
   }
 
+  function isDatasetLoadingPopupVisible() {
+    return !!(datasetLoadingPopupEl && datasetLoadingPopupEl.isConnected);
+  }
+
   function showDatasetLoadingPopup(message = "") {
     if (suppressLoadingPopup) return;
     const doc = document;
     ensureDatasetLoadingPopupStyles(doc);
-    if (!datasetLoadingPopupEl || !datasetLoadingPopupEl.isConnected) {
+    const reuseExisting = isDatasetLoadingPopupVisible();
+    if (!reuseExisting) {
       const overlay = doc.createElement("div");
       overlay.className = "arcrho-load-popup-overlay";
       overlay.innerHTML = `
@@ -166,6 +171,10 @@ export function createDatasetRunController(deps) {
     }
     const msgEl = datasetLoadingPopupEl.querySelector(".arcrho-load-popup-msg");
     if (msgEl) msgEl.textContent = String(message || "Loading...");
+
+    // A popup shown at window boot keeps its running elapsed counter when a
+    // later load step re-announces it; only a fresh popup restarts the clock.
+    if (reuseExisting && datasetLoadingPopupTimer) return;
 
     datasetLoadingPopupStart = performance.now();
     if (datasetLoadingPopupTimer) cancelAnimationFrame(datasetLoadingPopupTimer);
@@ -276,7 +285,9 @@ export function createDatasetRunController(deps) {
     const validationInputs = getTriInputs();
     const validationIsCurrent = () => datasetInputContextIsCurrent(validationInputs);
     const loadingTarget = String(validationInputs?.tri || config.DS_ID || "").trim() || "dataset";
-    let loadingPopupVisible = false;
+    // A popup already shown at window boot is adopted by this run, so it stays
+    // continuously visible through validation and is hidden when the run settles.
+    let loadingPopupVisible = isDatasetLoadingPopupVisible();
     let loadingPopupDelayTimer = null;
     let popupContextIsCurrent = validationIsCurrent;
     const showLoadingPopup = () => {
@@ -308,7 +319,7 @@ export function createDatasetRunController(deps) {
     }
     if (btn) btn.disabled = true;
     if (clearBtn) clearBtn.disabled = true;
-    if (clearCache) {
+    if (clearCache || loadingPopupVisible) {
       showLoadingPopup();
     } else {
       // Avoid a second cache/provenance scan just to decide whether to show the
@@ -366,6 +377,29 @@ export function createDatasetRunController(deps) {
           : "Sending request...";
       }
       const endpoint = clearCache ? `${routeRoot}/refresh` : routeRoot;
+      // The cache-clear rebuild and the origin/development header refreshes
+      // are independent engine round trips. Starting them together keeps a
+      // network-drive rebuild at one round-trip wait instead of three
+      // sequential ones; the pipeline is awaited before the dataset reload so
+      // the reload never races the header cache rebuild.
+      const headerRefreshPromise = (clearCache && project)
+        ? (async () => {
+          try {
+            await clearHeadersCacheForProject(project, { remote: true, originLen, devLen });
+          } catch (err) {
+            console.warn("Failed to clear ArcRhoHeaders cache:", err);
+            return;
+          }
+          try {
+            await Promise.all([
+              ensureHeadersForProject(project, { forceRefresh: true, isCurrent: runIsCurrent }),
+              ensureDevHeadersForProject(project, { forceRefresh: true, isCurrent: runIsCurrent }),
+            ]);
+          } catch (err) {
+            console.warn("Failed to refresh header labels after cache clear:", err);
+          }
+        })()
+        : null;
       const resp = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -405,20 +439,8 @@ export function createDatasetRunController(deps) {
       logLine(`${clearCache ? `${runLabel} refresh` : runLabel} OK. ds_id=${data.ds_id}`);
       if (status) status.textContent = `OK: ${data.ds_id}`;
 
-      if (clearCache && project) {
-        try {
-          await clearHeadersCacheForProject(project, { remote: true, originLen, devLen });
-        } catch (err) {
-          console.warn("Failed to clear ArcRhoHeaders cache:", err);
-        }
-        try {
-          await ensureHeadersForProject(project, { forceRefresh: true, isCurrent: runIsCurrent });
-          if (runIsCurrent()) {
-            await ensureDevHeadersForProject(project, { forceRefresh: true, isCurrent: runIsCurrent });
-          }
-        } catch (err) {
-          console.warn("Failed to refresh header labels after cache clear:", err);
-        }
+      if (headerRefreshPromise) {
+        await headerRefreshPromise;
       }
       if (!runIsCurrent()) {
         queueLatestRun({ showValidationMessage: false });
@@ -648,6 +670,7 @@ export function createDatasetRunController(deps) {
   return {
     bindAutoRunOnEnter,
     hideDatasetLoadingPopup,
+    isDatasetLoadingPopupVisible,
     isRunInFlight: () => runInFlight,
     loadDataset,
     runArcRhoTri,

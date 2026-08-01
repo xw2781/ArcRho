@@ -710,8 +710,10 @@ export function registerDataTabInputsController(runtime) {
     if (!projectResult.ok || !projectResult.value) return { ok: false };
 
     const project = projectResult.value;
-    await refreshDatasetTypesForProject(project);
-    await refreshReservingClassPathsForProject(project);
+    await Promise.all([
+      refreshDatasetTypesForProject(project),
+      refreshReservingClassPathsForProject(project),
+    ]);
 
     const reservingResult = await validateAndNormalizeReservingClassInput(project, { strict: true, showMessage });
     if (!reservingResult.ok || !reservingResult.value) return { ok: false };
