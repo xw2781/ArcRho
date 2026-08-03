@@ -24,7 +24,10 @@ _No entrypoints configured._
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - Hosts configure the widget through `ui/ai-assistant/arcrho.js` or `ui/ai-assistant/arcode.js`.
-- Uses Electron preload `codexAssistant*` APIs without changing IPC names.
+- Uses the Electron preload `codexAssistant*` APIs, including `codexAssistantModels` for runtime catalog discovery.
+- Discovers picker-visible OpenAI models from the bundled Codex app server's `model/list` response. The runtime catalog owns each model's display name and supported reasoning efforts; ArcBot promotes an advertised GPT-5.6-or-newer default while preserving a newer detected default automatically.
+- Keeps an explicit saved model selection when that model remains available, including legacy GPT-5.5 and GPT-5.4 selections. New chats and legacy `codex` default selections resolve to a verified discovered default. If an older CLI does not advertise any GPT-5.6 model, ArcBot requires Repair instead of fabricating or saving an unavailable choice; if discovery itself is temporarily unavailable, ArcBot blocks sends and offers retry/Repair rather than delegating to an unverified CLI default.
+- Runs bundled Codex child processes from the current user's writable `Documents\ArcRho` folder rather than the packaged ASAR path. The Repair action installs the CLI into an ArcRho-owned per-user npm prefix, so it does not require writing to protected application or machine-global folders.
 - Exchanges assistant context/update messages with active iframes using host-specific namespaces.
 - Right-clicking the ArcBot launcher opens a compact launcher menu with a Hide action; the View menu remains the restore path when the launcher is hidden.
 - The settings popover's Current Chat login row shows the local user name, the Codex login email when available, and the current auth status/provider.
@@ -38,6 +41,7 @@ _No entrypoints configured._
 <!-- MANUAL:BEGIN -->
 - Uses host-specific storage prefixes so ArcRho keeps `arcrho_ai_assistant_*` keys and Arcode keeps `arcode_ai_assistant_*` keys.
 - Persists chat/session data through the existing Electron assistant host APIs.
+- Keeps the discovered OpenAI model catalog in memory and refreshes it after a CLI repair. If discovery fails, ArcBot marks the catalog unverified and can refresh from `model/list` on a later status check; a successfully discovered stale catalog triggers Repair rather than exposing or persisting a model the CLI did not advertise.
 - Persists launcher visibility per host prefix in the local ArcBot UI settings JSON, with localStorage kept as a browser fallback.
 - Creates the assistant DOM once per host page at runtime.
 - Keeps SQL skill diff/review state in memory only; applying the proposed SQL relies on the active editor's normal dirty/save behavior.
@@ -55,4 +59,5 @@ _No entrypoints configured._
 - The widget is shared by two app shells, so hardcoded app names, storage keys, or message namespaces can regress one host.
 - ArcRho DFM edit approval must stay disabled in Arcode and enabled only through the ArcRho adapter.
 - ArcRho-only project instance labels should remain in the ArcRho adapter rather than the shared widget fallback.
+- The tracked ArcBot runtime contract owns the minimum bundled CLI version and default model. Packaging must verify both against the installer runtime, while an account-visible newer detected default takes precedence.
 <!-- MANUAL:END -->

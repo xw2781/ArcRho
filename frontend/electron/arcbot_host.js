@@ -4,6 +4,12 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { StringDecoder } = require("string_decoder");
+const {
+  buildCodexModelCatalog,
+  getFallbackCodexModelCatalog,
+  normalizeModelId,
+  normalizeReasoningEffort,
+} = require("./arcbot_model_catalog");
 
 let ipcMain = null;
 let app = null;
@@ -16,6 +22,7 @@ let getPrefsDir = () => "";
 let getWorkspacePathsPath = () => "";
 let findExecutableOnPath = () => "";
 let runHostCommandBase = null;
+let spawnProcessBase = spawn;
 
 const ARCBOT_PROMPT_TEMPLATE_PATH = path.join(__dirname, "prompts", "arcbot_prompt.md");
 const ARCBOT_SERVER_PROMPT_RELATIVE_PATH = path.join("config", "arcbot", "arcbot_prompt.md");
@@ -48,13 +55,31 @@ const mappedDriveRemoteCache = new Map();
 const activeCodexAssistantRequests = new Map();
 const arcBotRequestLoggers = new Map();
 let codexAppServerClient = null;
+let codexModelCatalogCache = null;
+let codexModelCatalogRequest = null;
+let codexModelCatalogGeneration = 0;
 
   const runHostCommand = (command, args = [], options = {}) => {
     if (typeof runHostCommandBase !== "function") {
       return Promise.resolve({ ok: false, code: null, stdout: "", stderr: "Host command runner is unavailable" });
     }
+    let commandOptions;
+    try {
+      commandOptions = withArcBotHostCwd(options);
+    } catch (err) {
+      return Promise.resolve({
+        ok: false,
+        code: -1,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        canceled: false,
+        error: `ArcBot working directory is unavailable: ${String(err?.message || err || "unknown error")}`,
+      });
+    }
     return runHostCommandBase(command, args, {
-      ...options,
+      ...commandOptions,
       cancelRegistry: activeCodexAssistantRequests,
     });
   };
@@ -157,18 +182,11 @@ function normalizeArcBotDebugLogs(logs) {
 }
 
 function normalizeArcBotModel(model) {
-  const value = String(model || "codex").trim().toLowerCase();
-  const supported = new Set([
-    "codex", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
-    "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
-  ]);
-  return supported.has(value) ? value : "codex";
+  return normalizeModelId(model, "codex");
 }
 
 function normalizeArcBotReasoningEffort(effort) {
-  const value = String(effort || "high").trim().toLowerCase();
-  const supported = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
-  return supported.has(value) ? value : "high";
+  return normalizeReasoningEffort(effort, "high");
 }
 
 function isClaudeArcBotModel(model) {
@@ -415,7 +433,23 @@ function runClaudeArcBotRequest({ event, requestId, requestState, model, reasoni
 
 function getArcBotRuntimeModel(model) {
   const normalized = normalizeArcBotModel(model);
-  return normalized === "codex" ? null : normalized;
+  if (normalized !== "codex") return normalized;
+  const detectedDefault = String(codexModelCatalogCache?.defaultModel || "").trim();
+  return detectedDefault && detectedDefault !== "codex" ? detectedDefault : null;
+}
+
+function reconcileArcBotReasoningEffort(model, effort) {
+  const normalizedEffort = normalizeArcBotReasoningEffort(effort);
+  const runtimeModel = getArcBotRuntimeModel(model);
+  const option = runtimeModel
+    ? codexModelCatalogCache?.models?.find((entry) => entry.value === runtimeModel)
+    : null;
+  const supported = Array.isArray(option?.supportedReasoningEfforts)
+    ? option.supportedReasoningEfforts.map((entry) => String(entry?.value || "").trim()).filter(Boolean)
+    : [];
+  if (!supported.length || supported.includes(normalizedEffort)) return normalizedEffort;
+  const catalogDefault = String(option?.defaultReasoningEffort || "").trim();
+  return supported.includes(catalogDefault) ? catalogDefault : supported[0];
 }
 
 function deriveArcBotSessionTitle(messages, fallback = "New ArcBot Chat") {
@@ -527,7 +561,7 @@ function getConfiguredWorkspaceRoot() {
 function getCodexAssistantProjectRoot() {
   const configuredRoot = getConfiguredWorkspaceRoot();
   if (configuredRoot) return configuredRoot;
-  return APP_ROOT;
+  return app?.isPackaged ? getArcBotHostCwd() : APP_ROOT;
 }
 
 function isUncPath(filePath) {
@@ -535,15 +569,77 @@ function isUncPath(filePath) {
 }
 
 function getLocalArcRhoAssistantRoot() {
-  const userHome = process.env.USERPROFILE || os.homedir();
-  const basePath = path.join(userHome, "Documents");
-  return path.join(basePath, "ArcRho");
+  let documentsPath = "";
+  try {
+    documentsPath = String(app?.getPath?.("documents") || "").trim();
+  } catch {
+    // Fall back to the conventional user-local Documents folder.
+  }
+  if (!documentsPath) {
+    const userHome = process.env.USERPROFILE || os.homedir();
+    documentsPath = path.join(userHome, "Documents");
+  }
+  return path.join(documentsPath, "ArcRho");
 }
 
 function ensureLocalArcRhoAssistantRoot() {
   const localRoot = getLocalArcRhoAssistantRoot();
   fs.mkdirSync(localRoot, { recursive: true });
   return localRoot;
+}
+
+function getArcBotHostCwd() {
+  const hostCwd = ensureLocalArcRhoAssistantRoot();
+  if (/(?:^|[\\/])[^\\/]+\.asar(?:[\\/]|$)/iu.test(hostCwd)) {
+    throw new Error(`ArcBot cannot launch a process from an ASAR path: ${hostCwd}`);
+  }
+  fs.accessSync(hostCwd, fs.constants.W_OK);
+  return hostCwd;
+}
+
+function withArcBotHostCwd(options = {}, resolveHostCwd = getArcBotHostCwd) {
+  const requestedCwd = String(options?.cwd || "").trim();
+  return {
+    ...options,
+    cwd: requestedCwd || resolveHostCwd(),
+  };
+}
+
+function launchDetachedArcBotProcess(command, args = [], options = {}) {
+  const {
+    spawnProcess = spawnProcessBase,
+    resolveHostCwd = getArcBotHostCwd,
+    ...requestedOptions
+  } = options;
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawnProcess(command, args, withArcBotHostCwd({
+        detached: true,
+        stdio: "ignore",
+        windowsHide: false,
+        shell: false,
+        ...requestedOptions,
+      }, resolveHostCwd));
+    } catch (err) {
+      resolve({ ok: false, error: String(err?.message || err || "ArcBot could not launch the sign-in window.") });
+      return;
+    }
+
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    child.once("error", (err) => {
+      finish({ ok: false, error: String(err?.message || err || "ArcBot could not launch the sign-in window.") });
+    });
+    child.once("spawn", () => {
+      child.unref();
+      finish({ ok: true });
+    });
+  });
 }
 
 function parseNetUseRemoteName(output) {
@@ -640,6 +736,23 @@ function getNpmCommand() {
   return getBundledNpmCommand() || "npm";
 }
 
+function getUserCodexInstallPrefix() {
+  let userDataRoot = "";
+  try {
+    userDataRoot = String(app?.getPath?.("userData") || "").trim();
+  } catch {
+    // Fall through to the existing ArcRho preferences root.
+  }
+  return path.join(userDataRoot || getPrefsDir() || getLocalArcRhoAssistantRoot(), "codex-cli");
+}
+
+function getUserInstalledCodexCommand() {
+  const prefix = getUserCodexInstallPrefix();
+  return process.platform === "win32"
+    ? path.join(prefix, "codex.cmd")
+    : path.join(prefix, "bin", "codex");
+}
+
 function isWindowsAppsPath(filePath) {
   return /\\WindowsApps\\/iu.test(String(filePath || ""));
 }
@@ -650,6 +763,7 @@ function getCodexCommand() {
 
   if (process.platform === "win32") {
     const candidates = [
+      getUserInstalledCodexCommand(),
       path.join(getBundledNodePortableRoot(), "codex.cmd"),
       readArcBotCodexCommandHint(),
       process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "codex.cmd") : "",
@@ -706,6 +820,25 @@ function runWindowsCmdCommand(command, args = [], options = {}) {
   });
 }
 
+function getNodeBackedCodexSpec(command, args = []) {
+  if (process.platform !== "win32" || !/\.cmd$/iu.test(String(command || ""))) return null;
+  const bundledNode = path.join(getBundledNodePortableRoot(), "node.exe");
+  const codexJs = path.join(
+    path.dirname(command),
+    "node_modules",
+    "@openai",
+    "codex",
+    "bin",
+    "codex.js",
+  );
+  if (!fs.existsSync(bundledNode) || !fs.existsSync(codexJs)) return null;
+  return {
+    command: bundledNode,
+    args: [codexJs, ...args.map((arg) => String(arg))],
+    shell: false,
+  };
+}
+
 function runCodexCommand(args = [], options = {}) {
   const command = getCodexCommand();
   if (!command) {
@@ -720,18 +853,13 @@ function runCodexCommand(args = [], options = {}) {
     });
   }
   if (process.platform === "win32") {
-    const bundledNodePortableRoot = getBundledNodePortableRoot();
-    const bundledCodexCmd = path.join(bundledNodePortableRoot, "codex.cmd");
-    if (command.toLowerCase() === bundledCodexCmd.toLowerCase()) {
-      const bundledNode = path.join(bundledNodePortableRoot, "node.exe");
-      const bundledCodexJs = path.join(bundledNodePortableRoot, "node_modules", "@openai", "codex", "bin", "codex.js");
-      if (fs.existsSync(bundledNode) && fs.existsSync(bundledCodexJs)) {
-        return runHostCommand(bundledNode, [bundledCodexJs, ...args], {
-          ...options,
-          env: getArcBotCodexEnv(options.env || process.env),
-          shell: false,
-        });
-      }
+    const nodeSpec = getNodeBackedCodexSpec(command, args);
+    if (nodeSpec) {
+      return runHostCommand(nodeSpec.command, nodeSpec.args, {
+        ...options,
+        env: getArcBotCodexEnv(options.env || process.env),
+        shell: false,
+      });
     }
     if (/\.(cmd|bat)$/iu.test(command)) {
       return runWindowsCmdCommand(command, args, {
@@ -757,15 +885,8 @@ function getCodexSpawnSpec(args = []) {
   if (!command) return null;
   const nextArgs = args.map((arg) => String(arg));
   if (process.platform === "win32") {
-    const bundledNodePortableRoot = getBundledNodePortableRoot();
-    const bundledCodexCmd = path.join(bundledNodePortableRoot, "codex.cmd");
-    if (command.toLowerCase() === bundledCodexCmd.toLowerCase()) {
-      const bundledNode = path.join(bundledNodePortableRoot, "node.exe");
-      const bundledCodexJs = path.join(bundledNodePortableRoot, "node_modules", "@openai", "codex", "bin", "codex.js");
-      if (fs.existsSync(bundledNode) && fs.existsSync(bundledCodexJs)) {
-        return { command: bundledNode, args: [bundledCodexJs, ...nextArgs], shell: false };
-      }
-    }
+    const nodeSpec = getNodeBackedCodexSpec(command, nextArgs);
+    if (nodeSpec) return nodeSpec;
     if (/\.(cmd|bat)$/iu.test(command)) {
       const commandLine = [command, ...nextArgs].map(quoteWindowsCmdArg).join(" ");
       return { command: "cmd.exe", args: ["/d", "/c", "call", commandLine], shell: false };
@@ -938,10 +1059,13 @@ function getCodexInterruptParams(threadId, turnId) {
 
 class CodexAppServerClient {
   constructor(options = {}) {
-    this.spawnProcess = typeof options.spawnProcess === "function" ? options.spawnProcess : spawn;
+    this.spawnProcess = typeof options.spawnProcess === "function" ? options.spawnProcess : spawnProcessBase;
     this.resolveSpawnSpec = typeof options.resolveSpawnSpec === "function"
       ? options.resolveSpawnSpec
       : getCodexSpawnSpec;
+    this.resolveHostCwd = typeof options.resolveHostCwd === "function"
+      ? options.resolveHostCwd
+      : getArcBotHostCwd;
     this.proc = null;
     this.started = false;
     this.starting = null;
@@ -961,7 +1085,10 @@ class CodexAppServerClient {
 
   async start() {
     if (this.started && this.isAlive()) return this;
-    if (this.starting) return this.starting;
+    if (this.starting) {
+      await this.starting;
+      return this;
+    }
     this.starting = this.startFresh();
     try {
       await this.starting;
@@ -975,13 +1102,12 @@ class CodexAppServerClient {
     this.stop();
     const spec = this.resolveSpawnSpec(["app-server", "--listen", "stdio://"]);
     if (!spec) throw new Error("Codex CLI was not found. Install Codex CLI before using ArcBot.");
-    const proc = this.spawnProcess(spec.command, spec.args, {
-      cwd: APP_ROOT,
+    const proc = this.spawnProcess(spec.command, spec.args, withArcBotHostCwd({
       env: getArcBotCodexEnv(process.env),
       shell: spec.shell,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
-    });
+    }, this.resolveHostCwd));
     this.proc = proc;
     this.started = false;
     this.stdoutBuffer = "";
@@ -1198,6 +1324,29 @@ class CodexAppServerClient {
     return () => this.disconnectHandlers.delete(handler);
   }
 
+  async listModels(options = {}) {
+    const pageLimit = Math.min(100, Math.max(1, Number(options.limit) || 100));
+    const maxPages = Math.min(5, Math.max(1, Number(options.maxPages) || 3));
+    const timeoutMs = Math.min(15000, Math.max(1000, Number(options.timeoutMs) || 5000));
+    const models = [];
+    const seenCursors = new Set();
+    let cursor = "";
+
+    for (let page = 0; page < maxPages; page += 1) {
+      const result = await this.request("model/list", {
+        limit: pageLimit,
+        includeHidden: false,
+        ...(cursor ? { cursor } : {}),
+      }, timeoutMs);
+      if (Array.isArray(result?.data)) models.push(...result.data);
+      const nextCursor = String(result?.nextCursor || "").trim();
+      if (!nextCursor || seenCursors.has(nextCursor)) break;
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+    return models;
+  }
+
   async startThread(mode, codexCwd, model) {
     const result = await this.request("thread/start", {
       model: getArcBotRuntimeModel(model),
@@ -1216,6 +1365,54 @@ async function ensureCodexAppServerStarted() {
   if (!CODEX_APP_SERVER_ENABLED) throw new Error("Codex app-server is disabled.");
   if (!codexAppServerClient) codexAppServerClient = new CodexAppServerClient();
   return codexAppServerClient.start();
+}
+
+function resetCodexAppServerClient() {
+  codexAppServerClient?.stop();
+  codexAppServerClient = null;
+  codexModelCatalogCache = null;
+  codexModelCatalogRequest = null;
+  codexModelCatalogGeneration += 1;
+}
+
+async function discoverCodexModelCatalog() {
+  if (codexModelCatalogCache) return codexModelCatalogCache;
+  if (!codexModelCatalogRequest) {
+    const requestGeneration = codexModelCatalogGeneration;
+    const request = (async () => {
+      const client = await ensureCodexAppServerStarted();
+      const entries = await client.listModels();
+      const catalog = buildCodexModelCatalog(entries);
+      if (catalog.source !== "codex-app-server") {
+        throw new Error("Codex app-server returned no visible models.");
+      }
+      if (requestGeneration === codexModelCatalogGeneration) codexModelCatalogCache = catalog;
+      return catalog;
+    })();
+    codexModelCatalogRequest = request;
+    const clearRequest = () => {
+      if (codexModelCatalogRequest === request) codexModelCatalogRequest = null;
+    };
+    void request.then(clearRequest, clearRequest);
+  }
+  return codexModelCatalogRequest;
+}
+
+async function getCodexModelCatalog(options = {}) {
+  if (options.refresh === true) {
+    if (activeCodexAssistantRequests.size === 0) resetCodexAppServerClient();
+    else codexModelCatalogCache = null;
+  }
+  try {
+    const catalog = await discoverCodexModelCatalog();
+    return { ok: true, ...catalog, warning: "" };
+  } catch (err) {
+    return {
+      ok: true,
+      ...getFallbackCodexModelCatalog(),
+      warning: String(err?.message || err || "Codex model discovery failed."),
+    };
+  }
 }
 
 async function startCodexWarmThread({ isCanceled, mode, codexCwd, model, ensureClient = ensureCodexAppServerStarted }) {
@@ -2126,9 +2323,9 @@ function writeCodexInstallScript() {
   const scriptPath = getCodexInstallScriptPath();
   fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
   const script = [
-    "param([string]$NpmCommand = 'npm')",
+    "param([string]$NpmCommand = 'npm', [Parameter(Mandatory = $true)][string]$InstallPrefix)",
     "$ErrorActionPreference = 'Stop'",
-    "Write-Output 'ArcRho is installing Codex CLI with: npm install -g @openai/codex'",
+    "Write-Output \"ArcRho is installing a per-user Codex CLI under: $InstallPrefix\"",
     "$resolvedNpm = $null",
     "if (Test-Path -LiteralPath $NpmCommand) {",
     "  $resolvedNpm = Resolve-Path -LiteralPath $NpmCommand",
@@ -2139,10 +2336,10 @@ function writeCodexInstallScript() {
     "$npmPath = if ($resolvedNpm.Path) { $resolvedNpm.Path } else { [string]$resolvedNpm }",
     "$npmDir = Split-Path -Parent $npmPath",
     "if ($npmDir) { $env:Path = \"$npmDir;$env:Path\" }",
-    "& $NpmCommand install -g @openai/codex",
+    "New-Item -ItemType Directory -Path $InstallPrefix -Force | Out-Null",
+    "& $NpmCommand install --global --prefix $InstallPrefix @openai/codex",
     "Write-Output 'Codex CLI install completed.'",
-    "$prefix = (& $NpmCommand prefix -g | Select-Object -First 1)",
-    "if (-not $prefix) { $prefix = $npmDir }",
+    "$prefix = $InstallPrefix",
     "$codexCandidates = @(",
     "  (Join-Path $prefix 'codex.cmd'),",
     "  (Join-Path $prefix 'bin\\codex.cmd'),",
@@ -2505,33 +2702,40 @@ function registerArcBotIpc(deps = {}) {
   if (!ipcMain || !app) {
     throw new Error("registerArcBotIpc requires ipcMain and app dependencies");
   }
+  spawnProcessBase = typeof deps.spawnProcess === "function" ? deps.spawnProcess : spawn;
+  resetCodexAppServerClient();
   PYTHON_API_SRC = path.join(REPO_ROOT, "python-api", "src");
   PYTHON_API_WHEEL_DIR = app.isPackaged
     ? path.join(process.resourcesPath, "python_packages")
     : path.join(APP_ROOT, "build", "python_packages");
 
 ipcMain.handle("codex-assistant-status", async () => {
+  const codexCommand = getCodexCommand();
   const version = await runCodexCommand(["--version"], {
     timeoutMs: 8000,
   });
   if (!version.ok) {
+    const error = normalizeHostError(version, "Codex CLI was not found.");
+    const setupAction = /^ArcBot working directory is unavailable:/iu.test(error)
+      ? "none"
+      : codexCommand ? "repair" : "install";
     return {
       installed: false,
       authenticated: false,
       claudeAuthenticated: !!loadClaudeAuthToken(),
       version: "",
       loginEmail: "",
-      error: normalizeHostError(version, "Codex CLI was not found."),
+      setupAction,
+      error,
     };
   }
 
   const auth = await runCodexCommand(["login", "status"], {
     timeoutMs: 8000,
   });
-  if (auth.ok && CODEX_APP_SERVER_ENABLED) {
-    ensureCodexAppServerStarted().catch(() => {
-      // The send path falls back to one-shot codex exec if the warm server is unavailable.
-    });
+  let modelCatalogStatus = null;
+  if (CODEX_APP_SERVER_ENABLED) {
+    modelCatalogStatus = await getCodexModelCatalog();
   }
   const authOutput = combinedCommandOutput(auth);
   return {
@@ -2541,9 +2745,17 @@ ipcMain.handle("codex-assistant-status", async () => {
     version: combinedCommandOutput(version).split(/\r?\n/)[0] || "codex",
     loginEmail: auth.ok ? readCodexLoginEmail(authOutput) : extractEmailFromText(authOutput),
     authStatus: authOutput,
+    modelUpgradeRequired: modelCatalogStatus?.upgradeRequired === true,
+    modelCatalogVerified: !CODEX_APP_SERVER_ENABLED || modelCatalogStatus?.verified === true,
+    minimumDefaultModel: String(modelCatalogStatus?.minimumDefaultModel || ""),
+    modelCatalogWarning: String(modelCatalogStatus?.warning || ""),
     error: auth.ok ? "" : normalizeHostError(auth, "Codex CLI is not signed in."),
   };
 });
+
+ipcMain.handle("codex-assistant-models", async (_event, payload) => (
+  getCodexModelCatalog({ refresh: payload?.refresh === true })
+));
 
 ipcMain.handle("codex-assistant-readable-roots-load", async () => {
   try {
@@ -2606,6 +2818,8 @@ ipcMain.handle("codex-assistant-install", async () => {
       scriptPath,
       "-NpmCommand",
       getNpmCommand(),
+      "-InstallPrefix",
+      getUserCodexInstallPrefix(),
     ], {
       timeoutMs: 10 * 60 * 1000,
       windowsHide: false,
@@ -2614,6 +2828,7 @@ ipcMain.handle("codex-assistant-install", async () => {
     const output = combinedCommandOutput(result);
     if (result.ok) {
       writeArcBotCodexCommandHint(extractCodexCommandFromInstallOutput(output) || getCodexCommand());
+      resetCodexAppServerClient();
     }
     return {
       ok: result.ok,
@@ -2622,11 +2837,17 @@ ipcMain.handle("codex-assistant-install", async () => {
     };
   }
 
-  const result = await runHostCommand(getNpmCommand(), ["install", "-g", "@openai/codex"], {
+  const installPrefix = getUserCodexInstallPrefix();
+  const result = await runHostCommand(getNpmCommand(), [
+    "install", "--global", "--prefix", installPrefix, "@openai/codex",
+  ], {
     timeoutMs: 10 * 60 * 1000,
     windowsHide: false,
   });
-  if (result.ok) writeArcBotCodexCommandHint(getCodexCommand());
+  if (result.ok) {
+    writeArcBotCodexCommandHint(getUserInstalledCodexCommand());
+    resetCodexAppServerClient();
+  }
   return {
     ok: result.ok,
     output: combinedCommandOutput(result),
@@ -2637,53 +2858,27 @@ ipcMain.handle("codex-assistant-install", async () => {
 ipcMain.handle("codex-assistant-login", async (_event, payload) => {
   const provider = String(payload?.provider || "openai").trim().toLowerCase();
   if (provider === "anthropic") {
-    try {
-      const claudeCmd = getClaudeCommand();
-      if (!claudeCmd) return { ok: false, error: "Claude CLI (claude) was not found. Install it to sign in." };
-      if (process.platform === "win32") {
-        const child = spawn("cmd.exe", ["/d", "/k", `${quoteWindowsCmdArg(claudeCmd)} login`], {
-          cwd: APP_ROOT, detached: true, stdio: "ignore", windowsHide: false, shell: false,
-        });
-        child.unref();
-        return { ok: true };
-      }
-      const child = spawn(claudeCmd, ["login"], {
-        cwd: APP_ROOT, detached: true, stdio: "ignore", windowsHide: false, shell: false,
-      });
-      child.unref();
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: String(err?.message || err) };
-    }
-  }
-  try {
-    const codexCommand = getCodexCommand();
-    if (!codexCommand) {
-      return { ok: false, error: "Codex CLI was not found. Install Codex CLI before signing in." };
-    }
+    const claudeCmd = getClaudeCommand();
+    if (!claudeCmd) return { ok: false, error: "Claude CLI (claude) was not found. Install it to sign in." };
     if (process.platform === "win32") {
-      const child = spawn("cmd.exe", ["/d", "/k", `${quoteWindowsCmdArg(codexCommand)} login`], {
-        cwd: APP_ROOT,
-        detached: true,
-        stdio: "ignore",
-        windowsHide: false,
-        shell: false,
-      });
-      child.unref();
-      return { ok: true };
+      return launchDetachedArcBotProcess(
+        "cmd.exe",
+        ["/d", "/k", `${quoteWindowsCmdArg(claudeCmd)} login`],
+      );
     }
-    const child = spawn(codexCommand, ["login"], {
-      cwd: APP_ROOT,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: false,
-      shell: false,
-    });
-    child.unref();
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: String(err?.message || err) };
+    return launchDetachedArcBotProcess(claudeCmd, ["login"]);
   }
+  const codexSpec = getCodexSpawnSpec(["login"]);
+  if (!codexSpec) {
+    return { ok: false, error: "Codex CLI was not found. Install Codex CLI before signing in." };
+  }
+  if (process.platform === "win32") {
+    return launchDetachedArcBotProcess(
+      "cmd.exe",
+      ["/d", "/k", [codexSpec.command, ...codexSpec.args].map(quoteWindowsCmdArg).join(" ")],
+    );
+  }
+  return launchDetachedArcBotProcess(codexSpec.command, codexSpec.args, { shell: codexSpec.shell });
 });
 
 ipcMain.handle("codex-assistant-sessions-list", async (_event, payload) => {
@@ -2752,7 +2947,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
   const mode = requestedMode === "approve" ? "approve" : requestedMode;
   const promptMode = mode === "approve" ? "edit" : mode;
   const model = normalizeArcBotModel(payload?.model);
-  const reasoningEffort = normalizeArcBotReasoningEffort(payload?.reasoningEffort);
+  let reasoningEffort = normalizeArcBotReasoningEffort(payload?.reasoningEffort);
   const requestLog = createArcBotRequestLogger({ requestId, payload, mode, model, reasoningEffort });
   if (requestId) arcBotRequestLoggers.set(requestId, requestLog);
   requestLog.mark("request_received", {
@@ -2788,6 +2983,34 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     return finishArcBotRequest(reverted.ok
       ? { ok: true, text: reverted.reply || "Reverted the latest ArcBot edit." }
       : { ok: false, needsAuth: false, error: reverted.error || "ArcBot revert failed." });
+  }
+  if (!isClaudeArcBotModel(model)) {
+    const modelCatalog = await getCodexModelCatalog();
+    if (modelCatalog.upgradeRequired === true) {
+      return finishArcBotRequest({
+        ok: false,
+        needsAuth: false,
+        needsRepair: true,
+        error: `Codex CLI must be updated before ArcBot can use ${modelCatalog.minimumDefaultModel}. Run Repair, then refresh ArcBot status.`,
+      }, "failed");
+    }
+    if (CODEX_APP_SERVER_ENABLED && modelCatalog.verified !== true) {
+      return finishArcBotRequest({
+        ok: false,
+        needsAuth: false,
+        needsRepair: true,
+        error: `ArcBot could not verify the available Codex models. Refresh status to retry, or run Repair to update the per-user CLI. ${modelCatalog.warning || ""}`.trim(),
+      }, "failed");
+    }
+    const reconciledEffort = reconcileArcBotReasoningEffort(model, reasoningEffort);
+    if (reconciledEffort !== reasoningEffort) {
+      requestLog.mark("reasoning_effort_reconciled", {
+        requested: reasoningEffort,
+        selected: reconciledEffort,
+        runtimeModel: getArcBotRuntimeModel(model) || "codex",
+      });
+      reasoningEffort = reconciledEffort;
+    }
   }
   const requestState = requestId ? { canceled: false, cancelProcess: null } : null;
   if (requestId) activeCodexAssistantRequests.set(requestId, requestState);
@@ -3204,8 +3427,7 @@ ipcMain.handle("codex-assistant-cancel", async (_event, payload) => {
 
 return {
   stop() {
-    codexAppServerClient?.stop();
-    codexAppServerClient = null;
+    resetCodexAppServerClient();
   },
 };
 
@@ -3218,7 +3440,17 @@ module.exports = {
     getCodexSandboxPolicy,
     getCodexInterruptParams,
     getCodexNotificationIdentity,
+    buildCodexModelCatalog,
+    getCodexModelCatalog,
+    getFallbackCodexModelCatalog,
     isCodexNotificationForTurn,
+    getArcBotHostCwd,
+    getCodexAssistantProjectRoot,
+    getNodeBackedCodexSpec,
+    launchDetachedArcBotProcess,
+    reconcileArcBotReasoningEffort,
+    runCodexCommand,
     startCodexWarmThread,
+    withArcBotHostCwd,
   },
 };

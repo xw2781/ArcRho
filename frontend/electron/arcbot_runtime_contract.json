@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "minimumCodexCliVersion": "0.146.0",
+  "minimumDefaultModel": "gpt-5.6-sol"
+}

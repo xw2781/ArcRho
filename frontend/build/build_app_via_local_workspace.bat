@@ -228,6 +228,17 @@ set "UPDATE_FEED_DIR=%RELEASE_FEED_DIR%"
 if not defined PYTHON_API_PACKAGE_DIR set "PYTHON_API_PACKAGE_DIR=E:\ArcRho Server\packages"
 set "PYTHON_API_WHEEL="
 
+echo Validating bundled Node, npm, and Codex runtime...
+call :validate_bundled_codex_runtime "%NODE_HOME%" "%APP_ROOT%"
+if errorlevel 1 (
+    echo ERROR: Bundled Node, npm, and Codex runtime validation failed.
+    echo.
+    pause
+    exit /b 1
+)
+echo Bundled CLI runtime validated.
+echo.
+
 if not defined PYTHON_EXE (
     for /f "usebackq delims=" %%I in (`py -3.10 -c "import sys; print(sys.executable)" 2^>nul`) do set "PYTHON_EXE=%%I"
 )
@@ -326,6 +337,19 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
+set "PACKAGED_NODE_HOME=%APP_ROOT%\dist\win-unpacked\resources\node-portable"
+echo Validating packaged ArcBot CLI runtime...
+call :validate_bundled_codex_runtime "%PACKAGED_NODE_HOME%" "%APP_ROOT%"
+if errorlevel 1 (
+    echo ERROR: Packaged Node, npm, and Codex runtime validation failed.
+    echo HINT: The installer was not published because its bundled CLI payload is incomplete or cannot run.
+    echo.
+    pause
+    exit /b 1
+)
+echo Packaged ArcBot CLI runtime validated.
+echo.
 
 if not exist "dist\%INSTALLER_PREFIX%-Setup-*.exe" (
     echo ERROR: Installer was not generated in dist\.
@@ -482,6 +506,19 @@ if errorlevel 1 (
     echo HINT: Install Python 3.10.6+ or set PYTHON_EXE to a compatible Python 3.10 executable before running the one-click build.
     exit /b 1
 )
+exit /b 0
+
+:validate_bundled_codex_runtime
+if not exist "%~1\node.exe" (
+    echo ERROR: Missing portable Node executable: %~1\node.exe
+    exit /b 1
+)
+if not exist "%APP_ROOT%\build\validate_bundled_codex_runtime.js" (
+    echo ERROR: Missing bundled CLI runtime validator: %APP_ROOT%\build\validate_bundled_codex_runtime.js
+    exit /b 1
+)
+call "%~1\node.exe" "%APP_ROOT%\build\validate_bundled_codex_runtime.js" --runtime-root "%~1" --cwd "%~2" --timeout-ms 8000
+if errorlevel 1 exit /b 1
 exit /b 0
 
 :run_pyinstaller

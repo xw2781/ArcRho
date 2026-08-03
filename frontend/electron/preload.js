@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
   openTerminal: (payload) => invoke("open-terminal", payload),
   codexAssistantStatus: () => invoke("codex-assistant-status"),
+  codexAssistantModels: (payload) => invoke("codex-assistant-models", payload),
   codexAssistantInstall: () => invoke("codex-assistant-install"),
   codexAssistantLogin: (payload) => invoke("codex-assistant-login", payload),
   codexAssistantLoadPromptGuide: () => invoke("codex-assistant-prompt-guide-load"),

@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "ArcBot now launches from a writable user folder, discovers available Codex models, and defaults to GPT-5.6 Sol.",
+  "details": [
+    "Builds require Codex CLI 0.146.0 or newer with GPT-5.6 Sol in its bundled catalog, then validate the complete Node, npm, and Codex runtime before packaging and again in the unpacked application.",
+    "The Repair action installs Codex into an ArcRho-owned per-user npm prefix without requiring a machine-global Node installation.",
+    "Saved legacy model selections remain available when supported, reasoning choices follow each discovered model's capabilities, and stale catalogs prompt Repair instead of exposing an unadvertised model."
+  ]
+}

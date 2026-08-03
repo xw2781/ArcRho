@@ -7,6 +7,17 @@ export function ensureAiAssistantDom(config = {}) {
   if (!document.getElementById("aiAssistantLauncher")) {
     document.body.insertAdjacentHTML("beforeend", ASSISTANT_MARKUP);
   }
+  const modelSelect = document.getElementById("aiAssistantSettingsModelSelect");
+  if (modelSelect) {
+    modelSelect.textContent = "";
+    const group = document.createElement("optgroup");
+    group.label = "OpenAI";
+    const option = document.createElement("option");
+    option.value = "codex";
+    option.textContent = "Detecting Codex models...";
+    group.appendChild(option);
+    modelSelect.appendChild(group);
+  }
   const launcher = document.getElementById("aiAssistantLauncher");
   const panel = document.getElementById("aiAssistantPanel");
   if (launcher) {

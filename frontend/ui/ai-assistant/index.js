@@ -9,14 +9,17 @@ import {
   WORK_TYPING_FRAME_MS as ASSISTANT_WORK_TYPING_FRAME_MS,
 } from "./state.js";
 import {
-  MODEL_OPTIONS as ASSISTANT_MODEL_OPTIONS,
-  REASONING_OPTIONS as ASSISTANT_REASONING_OPTIONS,
+  applyAssistantModelCatalog,
   assistantModelSupportsReasoning,
+  getAssistantModelOptions,
+  getAssistantReasoningOptionsForModel,
+  getDefaultAssistantModel,
   getAssistantModelLabelFor,
   getAssistantReasoningLabelFor,
   isClaudeAssistantModel,
   normalizeAssistantModel,
   normalizeAssistantReasoningEffort,
+  reconcileAssistantReasoningEffort,
   shouldShowTokenAlertFor,
 } from "./models.js";
 import {
@@ -107,6 +110,9 @@ let assistantCancelRequested = false;
 let assistantHostRequestSubmitted = false;
 let assistantAppContextEnabled = true;
 let assistantStatusChecked = false;
+let assistantModelCatalogChecked = false;
+let assistantModelDefaultVerified = false;
+let assistantModelCatalogRequest = null;
 let assistantInstallJustSucceeded = false;
 let suppressLauncherClick = false;
 let assistantLauncherVisible = true;
@@ -210,6 +216,49 @@ function shouldShowAssistantTokenAlert() {
   return shouldShowTokenAlertFor(assistantModel, assistantReasoningEffort);
 }
 
+function renderAssistantModelOptions() {
+  const select = $("aiAssistantSettingsModelSelect");
+  if (!select) return;
+  const defaultModel = getDefaultAssistantModel();
+  const options = getAssistantModelOptions(assistantModel);
+  const providerGroups = [
+    ["openai", "OpenAI"],
+    ["anthropic", "Anthropic"],
+  ];
+  select.textContent = "";
+  for (const [provider, label] of providerGroups) {
+    const providerOptions = options.filter((option) => option.provider === provider);
+    if (!providerOptions.length) continue;
+    const group = document.createElement("optgroup");
+    group.label = label;
+    for (const modelOption of providerOptions) {
+      const option = document.createElement("option");
+      option.value = modelOption.value;
+      option.textContent = modelOption.value === defaultModel && modelOption.available !== false
+        ? `${modelOption.label} (Default)`
+        : modelOption.label;
+      option.disabled = modelOption.available === false;
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  }
+  select.value = assistantModel;
+}
+
+function renderAssistantReasoningOptions() {
+  const select = $("aiAssistantSettingsReasoningSelect");
+  if (!select) return;
+  const options = getAssistantReasoningOptionsForModel(assistantModel);
+  select.textContent = "";
+  for (const reasoningOption of options) {
+    const option = document.createElement("option");
+    option.value = reasoningOption.value;
+    option.textContent = reasoningOption.label;
+    select.appendChild(option);
+  }
+  select.value = assistantReasoningEffort;
+}
+
 function extractAssistantLoginEmail(value) {
   const match = String(value || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu);
   return match ? match[0] : "";
@@ -226,14 +275,17 @@ function formatAssistantLoginDetail() {
   return `${userWithEmail} - ${auth}`;
 }
 
-function setSetup({ open = false, text = "", install = false, login = false } = {}) {
+function setSetup({ open = false, text = "", install = false, installLabel = "Install", login = false } = {}) {
   const setup = $("aiAssistantSetup");
   const setupText = $("aiAssistantSetupText");
   const installBtn = $("aiAssistantSetupBtn");
   const loginBtn = $("aiAssistantLoginBtn");
   setup?.classList.toggle("open", !!open);
   setText(setupText, text);
-  if (installBtn) installBtn.style.display = install ? "inline-block" : "none";
+  if (installBtn) {
+    installBtn.style.display = install ? "inline-block" : "none";
+    installBtn.textContent = installLabel;
+  }
   if (loginBtn) loginBtn.style.display = login ? "inline-block" : "none";
 }
 
@@ -889,14 +941,60 @@ function updateContextPanel() {
   panel.appendChild(grid);
 }
 
+async function refreshAssistantModels(options = {}) {
+  const host = getHostApi();
+  if (!host?.codexAssistantModels) return false;
+  if (assistantModelCatalogRequest && options.refresh !== true) return assistantModelCatalogRequest;
+  const request = (async () => {
+    try {
+      const result = await host.codexAssistantModels({ refresh: options.refresh === true });
+      if (!result?.ok || !Array.isArray(result.models)) {
+        throw new Error(result?.error || "Codex did not return a model catalog.");
+      }
+      const previousModel = assistantModel;
+      applyAssistantModelCatalog(result);
+      assistantModelCatalogChecked = true;
+      assistantModelDefaultVerified = (
+        result.verified === true
+        && result.upgradeRequired !== true
+        && result.meetsMinimum === true
+      );
+      const shouldPromoteEmptyDefault = (
+        options.promoteEmptyDefault === true
+        && assistantModelDefaultVerified
+        && previousModel === "codex"
+        && assistantMessages.length === 0
+      );
+      const nextModel = shouldPromoteEmptyDefault ? getDefaultAssistantModel() : previousModel;
+      setAssistantModel(nextModel, {
+        save: shouldPromoteEmptyDefault && !!currentSessionId,
+        refreshStatus: false,
+      });
+      if (result.warning) appendDebugLog(`Model discovery fallback: ${result.warning}`, "debug");
+      return true;
+    } catch (err) {
+      assistantModelDefaultVerified = false;
+      appendDebugLog(`Model discovery failed: ${String(err?.message || err)}`, "debug");
+      return false;
+    }
+  })();
+  assistantModelCatalogRequest = request;
+  try {
+    return await request;
+  } finally {
+    if (assistantModelCatalogRequest === request) assistantModelCatalogRequest = null;
+  }
+}
+
 function setAssistantModel(model, options = {}) {
   const prevClaude = isClaudeModel();
   assistantModel = normalizeAssistantModel(model);
-  const select = $("aiAssistantSettingsModelSelect");
-  if (select) select.value = assistantModel;
+  assistantReasoningEffort = reconcileAssistantReasoningEffort(assistantModel, assistantReasoningEffort);
+  renderAssistantModelOptions();
+  renderAssistantReasoningOptions();
   updateAssistantSettingsPanel();
   if (options.save !== false) saveCurrentSession();
-  if (prevClaude !== isClaudeModel() && assistantStatusChecked) {
+  if (options.refreshStatus !== false && prevClaude !== isClaudeModel() && assistantStatusChecked) {
     refreshAssistantStatus();
   } else if (assistantReady) {
     setStatus(`${isClaudeModel() ? getAssistantModelLabel() : "Codex"} ready. ${getModeLabel()}.`);
@@ -904,7 +1002,10 @@ function setAssistantModel(model, options = {}) {
 }
 
 function setAssistantReasoningEffort(effort, options = {}) {
-  assistantReasoningEffort = normalizeAssistantReasoningEffort(effort);
+  assistantReasoningEffort = reconcileAssistantReasoningEffort(
+    assistantModel,
+    normalizeAssistantReasoningEffort(effort),
+  );
   const select = $("aiAssistantSettingsReasoningSelect");
   if (select) select.value = assistantReasoningEffort;
   updateAssistantSettingsPanel();
@@ -1328,7 +1429,10 @@ async function loadAssistantSession(sessionId) {
   currentSessionTitle = session.title || "ArcBot Chat";
   assistantMode = normalizeAssistantMode(session.mode);
   assistantModel = normalizeAssistantModel(session.model);
-  assistantReasoningEffort = normalizeAssistantReasoningEffort(session.reasoningEffort);
+  assistantReasoningEffort = reconcileAssistantReasoningEffort(
+    assistantModel,
+    normalizeAssistantReasoningEffort(session.reasoningEffort),
+  );
   assistantMessages = normalizeMessages(session.messages);
   assistantActivities = normalizeActivities(session.activities);
   resetAssistantActivityTyping();
@@ -1336,6 +1440,8 @@ async function loadAssistantSession(sessionId) {
   currentContext = session.context || null;
   currentUsage = session.usage || null;
   setAssistantMode(assistantMode, { save: false });
+  renderAssistantModelOptions();
+  renderAssistantReasoningOptions();
   renderMessages();
   renderActivities();
   updateAssistantSettingsPanel();
@@ -1357,7 +1463,10 @@ async function createAssistantSession() {
   currentSessionId = result.session.id;
   currentSessionTitle = result.session.title || "New ArcBot Chat";
   assistantModel = normalizeAssistantModel(result.session.model);
-  assistantReasoningEffort = normalizeAssistantReasoningEffort(result.session.reasoningEffort);
+  assistantReasoningEffort = reconcileAssistantReasoningEffort(
+    assistantModel,
+    normalizeAssistantReasoningEffort(result.session.reasoningEffort),
+  );
   assistantMessages = [];
   assistantActivities = [];
   resetAssistantActivityTyping();
@@ -1365,6 +1474,8 @@ async function createAssistantSession() {
   currentContext = null;
   currentUsage = null;
   refreshAppContextTooltip();
+  renderAssistantModelOptions();
+  renderAssistantReasoningOptions();
   renderMessages();
   renderActivities();
   updateAssistantSettingsPanel();
@@ -2761,17 +2872,38 @@ function applyStatus(status) {
       setComposerEnabled(false);
       return;
     }
-    setStatus("Codex CLI is not installed.", "error");
+    const setupAction = String(status?.setupAction || "install");
+    const repair = setupAction === "repair";
+    const canInstall = setupAction === "install" || repair;
+    const launchError = String(status?.error || "").trim();
+    setStatus(repair ? "Codex CLI could not start." : "Codex CLI is not installed.", "error");
     setSetup({
       open: true,
-      install: true,
+      install: canInstall,
+      installLabel: repair ? "Repair" : "Install",
       login: false,
-      text: "Install will run: npm install -g @openai/codex.",
+      text: launchError && canInstall
+        ? `${launchError} ${repair ? "Repair installs a fresh per-user Codex CLI copy." : "Install creates a per-user Codex CLI copy."}`
+        : launchError || "Install creates a per-user Codex CLI copy.",
     });
     setComposerEnabled(false);
     return;
   }
   assistantInstallJustSucceeded = false;
+  if (status?.modelUpgradeRequired) {
+    assistantReady = false;
+    const minimumModel = String(status?.minimumDefaultModel || "the current default model");
+    setStatus("Codex CLI update required.", "error");
+    setSetup({
+      open: true,
+      install: true,
+      installLabel: "Repair",
+      login: false,
+      text: `This Codex CLI does not advertise ${minimumModel}. Repair installs the current per-user CLI, then ArcBot will detect the available model catalog again.`,
+    });
+    setComposerEnabled(false);
+    return;
+  }
   if (!status?.authenticated) {
     setStatus("Codex CLI is installed but not signed in.", "error");
     setSetup({
@@ -2779,6 +2911,20 @@ function applyStatus(status) {
       install: false,
       login: true,
       text: "Sign in to link this computer to your Codex account.",
+    });
+    setComposerEnabled(false);
+    return;
+  }
+  if (status?.modelCatalogVerified === false) {
+    assistantReady = false;
+    const warning = String(status?.modelCatalogWarning || "").trim();
+    setStatus("Codex model detection unavailable.", "error");
+    setSetup({
+      open: true,
+      install: true,
+      installLabel: "Repair",
+      login: false,
+      text: `Refresh ArcBot status to retry model detection, or Repair the per-user Codex CLI.${warning ? ` ${warning}` : ""}`,
     });
     setComposerEnabled(false);
     return;
@@ -2889,6 +3035,12 @@ async function refreshAssistantStatus() {
     setSetup({ open: false });
     setComposerEnabled(false);
     return;
+  }
+  if (!isClaudeModel()) {
+    await refreshAssistantModels({
+      refresh: assistantModelCatalogChecked,
+      promoteEmptyDefault: true,
+    });
   }
   assistantStatusChecked = true;
   setStatus(isClaudeModel() ? "Checking Claude credentials..." : "Checking Codex CLI...");
@@ -3335,7 +3487,7 @@ async function installCodexCli() {
   if (!host?.codexAssistantInstall) return;
   assistantInstallJustSucceeded = false;
   const confirmed = window.confirm(
-    `Install Codex CLI now?\n\n${assistantConfig.appName} will run: npm install -g @openai/codex`
+    `Install or repair Codex CLI now?\n\n${assistantConfig.appName} will install a per-user copy without changing system-wide npm settings.`
   );
   if (!confirmed) return;
   assistantBusy = true;
@@ -3349,8 +3501,9 @@ async function installCodexCli() {
       setSetup({
         open: true,
         install: true,
+        installLabel: "Retry",
         login: false,
-        text: "Install will run: npm install -g @openai/codex.",
+        text: result?.error || "The per-user Codex CLI install failed.",
       });
       return;
     }
@@ -3538,6 +3691,18 @@ async function sendAssistantMessage() {
           login: true,
           text: `Sign in to link this computer to your ${isClaudeProvider ? "Claude" : "Codex"} account.`,
         });
+      } else if (result?.needsRepair) {
+        assistantReady = false;
+        setStatus("Codex CLI update required.", "error");
+        appendActivity("Codex CLI update required", "error");
+        failAssistantProgress(message);
+        setSetup({
+          open: true,
+          install: true,
+          installLabel: "Repair",
+          login: false,
+          text: message,
+        });
       } else {
         setStatus(message, "error");
         appendActivity("Request failed", "error");
@@ -3667,7 +3832,21 @@ export function initAiAssistant() {
   ensureAssistantSkillDom();
   setAiAssistantLauncherVisible(isAiAssistantLauncherVisible(), { save: false });
   void loadAssistantUiSettings();
-  ensureAssistantSession();
+  const modelBootstrap = refreshAssistantModels({ promoteEmptyDefault: true });
+  const sessionBootstrap = ensureAssistantSession();
+  void Promise.allSettled([modelBootstrap, sessionBootstrap]).then(() => {
+    if (
+      assistantModelCatalogChecked
+      && assistantModelDefaultVerified
+      && assistantModel === "codex"
+      && assistantMessages.length === 0
+    ) {
+      setAssistantModel(getDefaultAssistantModel(), {
+        save: !!currentSessionId,
+        refreshStatus: false,
+      });
+    }
+  });
   host.onCodexAssistantEvent?.(handleAssistantEvent);
 
   launcher.addEventListener("contextmenu", (event) => {
@@ -3866,6 +4045,10 @@ export function initAiAssistant() {
   initAssistantResize(panel);
   initAssistantLauncherDrag(launcher);
   setAssistantAppContextEnabled(true);
+  const tokenAlert = $("aiAssistantTokenAlert");
+  if (tokenAlert) {
+    tokenAlert.textContent = "Higher reasoning or thinking effort can use significantly more tokens per request.";
+  }
   setAssistantModel(assistantModel, { save: false });
   setAssistantReasoningEffort(assistantReasoningEffort, { save: false });
   renderAssistantAttachments();

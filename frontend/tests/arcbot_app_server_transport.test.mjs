@@ -47,6 +47,9 @@ function fakeAppServerClient() {
     resolveSpawnSpec() {
       return { command: "fake-codex", args: [], shell: false };
     },
+    resolveHostCwd() {
+      return process.cwd();
+    },
     spawnProcess() {
       const proc = fakeAppServerProcess();
       processes.push(proc);
@@ -55,6 +58,117 @@ function fakeAppServerClient() {
   });
   return { client, processes };
 }
+
+test("concurrent ArcBot app-server startup callers receive the shared client", async () => {
+  const { client, processes } = fakeAppServerClient();
+  const [first, second] = await Promise.all([client.start(), client.start()]);
+  assert.equal(first, client);
+  assert.equal(second, client);
+  assert.equal(processes.length, 1);
+  client.stop();
+});
+
+test("ArcBot discovers paged Codex models after the app-server handshake", async () => {
+  const { client, processes } = fakeAppServerClient();
+  await client.startFresh();
+  const proc = processes[0];
+  assert.equal(proc.writes[0].method, "initialize");
+
+  const listing = client.listModels({ limit: 2, maxPages: 3, timeoutMs: 1000 });
+  const firstRequest = proc.writes.at(-1);
+  assert.equal(firstRequest.method, "model/list");
+  assert.deepEqual(firstRequest.params, { limit: 2, includeHidden: false });
+  proc.stdout.emit("data", Buffer.from(`${JSON.stringify({
+    id: firstRequest.id,
+    result: { data: [{ model: "gpt-5.6-sol" }], nextCursor: "page-2" },
+  })}\n`, "utf8"));
+  await Promise.resolve();
+
+  const secondRequest = proc.writes.at(-1);
+  assert.equal(secondRequest.method, "model/list");
+  assert.equal(secondRequest.params.cursor, "page-2");
+  proc.stdout.emit("data", Buffer.from(`${JSON.stringify({
+    id: secondRequest.id,
+    result: { data: [{ model: "gpt-5.6-terra" }], nextCursor: null },
+  })}\n`, "utf8"));
+
+  assert.deepEqual(await listing, [
+    { model: "gpt-5.6-sol" },
+    { model: "gpt-5.6-terra" },
+  ]);
+  client.stop();
+});
+
+test("ArcBot promotes only advertised GPT-5.6-or-newer models and flags stale catalogs", () => {
+  const detected = testHooks.buildCodexModelCatalog([
+    {
+      id: "gpt-5.6-sol",
+      model: "gpt-5.6-sol",
+      displayName: "GPT-5.6 Sol",
+      isDefault: true,
+      supportedReasoningEfforts: [
+        { reasoningEffort: "medium", description: "Balanced" },
+        { reasoningEffort: "max", description: "Maximum" },
+      ],
+      defaultReasoningEffort: "medium",
+    },
+    { model: "gpt-hidden", displayName: "Hidden", hidden: true, isDefault: false },
+    { model: "gpt-5.6-sol", displayName: "Duplicate", isDefault: false },
+    { model: "bad model id", displayName: "Malformed", isDefault: false },
+  ]);
+  assert.equal(detected.source, "codex-app-server");
+  assert.equal(detected.defaultModel, "gpt-5.6-sol");
+  assert.equal(detected.models.length, 1);
+  assert.deepEqual(
+    detected.models[0].supportedReasoningEfforts.map((option) => option.value),
+    ["medium", "max"],
+  );
+
+  const fallback = testHooks.getFallbackCodexModelCatalog();
+  assert.equal(fallback.source, "fallback");
+  assert.equal(fallback.defaultModel, "codex");
+  assert.deepEqual(fallback.models, []);
+  assert.equal(fallback.upgradeRequired, false);
+  assert.equal(fallback.verified, false);
+
+  const staleRuntime = testHooks.buildCodexModelCatalog([
+    { model: "gpt-5.5", displayName: "GPT-5.5", isDefault: true },
+    { model: "gpt-5.4", displayName: "GPT-5.4", isDefault: false },
+  ]);
+  assert.equal(staleRuntime.source, "codex-app-server");
+  assert.equal(staleRuntime.defaultModel, "gpt-5.5");
+  assert.equal(staleRuntime.upgradeRequired, true);
+  assert.equal(staleRuntime.verified, true);
+  assert.deepEqual(
+    staleRuntime.models.slice(0, 2).map((model) => [model.value, model.isDefault]),
+    [["gpt-5.5", true], ["gpt-5.4", false]],
+  );
+
+  const staleDefaultWithAdvertisedMinimum = testHooks.buildCodexModelCatalog([
+    { model: "gpt-5.5", displayName: "GPT-5.5", isDefault: true },
+    { model: "gpt-5.6-sol", displayName: "GPT-5.6 Sol", isDefault: false },
+  ]);
+  assert.equal(staleDefaultWithAdvertisedMinimum.defaultModel, "gpt-5.6-sol");
+  assert.equal(staleDefaultWithAdvertisedMinimum.upgradeRequired, false);
+  assert.deepEqual(
+    staleDefaultWithAdvertisedMinimum.models.map((model) => [model.value, model.isDefault]),
+    [["gpt-5.5", false], ["gpt-5.6-sol", true]],
+  );
+
+  const futurePreview = testHooks.buildCodexModelCatalog([
+    { model: "gpt-5.5", displayName: "GPT-5.5", isDefault: true },
+    { model: "gpt-5.7-preview", displayName: "GPT-5.7 Preview", isDefault: false },
+  ]);
+  assert.equal(futurePreview.defaultModel, "gpt-5.5");
+  assert.equal(futurePreview.upgradeRequired, true);
+
+  const futureRuntime = testHooks.buildCodexModelCatalog([
+    { model: "gpt-5.7-sol", displayName: "GPT-5.7 Sol", isDefault: true },
+  ]);
+  assert.equal(futureRuntime.defaultModel, "gpt-5.7-sol");
+  assert.equal(futureRuntime.upgradeRequired, false);
+  assert.deepEqual(futureRuntime.models.map((model) => model.value), ["gpt-5.7-sol"]);
+});
 
 test("ArcBot run gate permits one owner and rejects overlapping runs", () => {
   const gate = createAssistantRunGate();
@@ -241,12 +355,14 @@ test("ArcBot starts a fresh ephemeral thread for each bounded transcript", async
   };
 
   assert.equal(await client.startThread("review", "E:\\workspace", "codex"), "thread-1");
-  assert.equal(await client.startThread("review", "E:\\workspace", "codex"), "thread-2");
+  assert.equal(await client.startThread("review", "E:\\workspace", "gpt-5.6-sol"), "thread-2");
   assert.equal(requests.length, 2);
   for (const request of requests) {
     assert.equal(request.method, "thread/start");
     assert.equal(request.params.ephemeral, true);
   }
+  assert.equal(requests[0].params.model, null);
+  assert.equal(requests[1].params.model, "gpt-5.6-sol");
 });
 
 test("ArcBot cancellation during warm startup never starts a model turn", async () => {

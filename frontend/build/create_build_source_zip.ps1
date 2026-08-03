@@ -150,6 +150,9 @@ function Assert-BuildArchive {
         "frontend/build/arcode_server.spec",
         "frontend/build/arcode_server_entry.py",
         "frontend/build/patch_nsis_installer_progress.js",
+        "frontend/build/refresh_bundled_codex_runtime.ps1",
+        "frontend/build/validate_bundled_codex_runtime.js",
+        "frontend/electron/arcbot_runtime_contract.json",
         "frontend/build/installer_progress_helper.cs",
         "frontend/build/installer.nsh",
         "frontend/build/arcode_installer.nsh",
@@ -158,6 +161,13 @@ function Assert-BuildArchive {
         "frontend/build/install_arcrho_excel_addin.ps1",
         "frontend/build/publish_update_feed.ps1",
         "frontend/node-portable/node.exe",
+        "frontend/node-portable/npm.cmd",
+        "frontend/node-portable/node_modules/npm/bin/npm-cli.js",
+        "frontend/node-portable/node_modules/npm/package.json",
+        "frontend/node-portable/codex.cmd",
+        "frontend/node-portable/node_modules/@openai/codex/bin/codex.js",
+        "frontend/node-portable/node_modules/@openai/codex/package.json",
+        "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
         "frontend/node_modules/electron-builder/cli.js",
         "frontend/node_modules/app-builder-bin/win/x64/app-builder.exe",
         "python-api/pyproject.toml",
@@ -290,6 +300,9 @@ $requiredSourcePaths = @(
     "frontend\build\arcode_server.spec",
     "frontend\build\arcode_server_entry.py",
     "frontend\build\patch_nsis_installer_progress.js",
+    "frontend\build\refresh_bundled_codex_runtime.ps1",
+    "frontend\build\validate_bundled_codex_runtime.js",
+    "frontend\electron\arcbot_runtime_contract.json",
     "frontend\build\installer_progress_helper.cs",
     "frontend\build\installer.nsh",
     "frontend\build\arcode_installer.nsh",
@@ -298,6 +311,12 @@ $requiredSourcePaths = @(
     "frontend\build\install_arcrho_excel_addin.ps1",
     "frontend\build\publish_update_feed.ps1",
     "frontend\node-portable\node.exe",
+    "frontend\node-portable\npm.cmd",
+    "frontend\node-portable\node_modules\npm\bin\npm-cli.js",
+    "frontend\node-portable\node_modules\npm\package.json",
+    "frontend\node-portable\codex.cmd",
+    "frontend\node-portable\node_modules\@openai\codex\bin\codex.js",
+    "frontend\node-portable\node_modules\@openai\codex\package.json",
     "frontend\node_modules\electron-builder\cli.js",
     "frontend\node_modules\app-builder-bin\win\x64\app-builder.exe",
     "python-api\pyproject.toml",
@@ -313,6 +332,14 @@ foreach ($relativePath in $requiredSourcePaths) {
     if (-not (Test-Path -LiteralPath $fullPath)) {
         throw "Source repository is missing required build input: $relativePath"
     }
+}
+
+$bundledRuntimeRoot = Join-Path $SourceRoot "frontend\node-portable"
+$bundledRuntimeValidator = Join-Path $SourceRoot "frontend\build\validate_bundled_codex_runtime.js"
+$bundledNode = Join-Path $bundledRuntimeRoot "node.exe"
+& $bundledNode $bundledRuntimeValidator --runtime-root $bundledRuntimeRoot --inventory-only
+if ($LASTEXITCODE -ne 0) {
+    throw "Bundled Node/npm/Codex runtime inventory validation failed."
 }
 
 $readyFlagPath = "$OutputZip.ready"

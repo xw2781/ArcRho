@@ -104,7 +104,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -OutputZip 'E:\XWSpace\Build ArcRho App\ArcRho.zip'
 ```
 
-The creator always includes `frontend\node-portable` and `frontend\node_modules`. They are required when the restricted build PC cannot restore Node dependencies itself.
+The creator always includes `frontend\node-portable` and `frontend\node_modules`. They are required when the restricted build PC cannot restore Node dependencies itself. Before publication, the ZIP creator validates the complete ArcBot runtime chain: portable Node, npm, the Codex JavaScript entry point, the bundled Windows Codex executable, and the minimum CLI/model values in `frontend\electron\arcbot_runtime_contract.json`. If the local payload is stale, run `frontend\build\refresh_bundled_codex_runtime.ps1` on the connected source PC before creating the ZIP.
 
 ### Required ZIP Content
 
@@ -112,8 +112,12 @@ The ZIP may contain one top-level `ArcRho` folder or the repository contents dir
 
 - `frontend\build\build_app_via_local_workspace.bat`
 - `frontend\build\prepare_local_build_workspace_from_zip.ps1`
+- `frontend\build\refresh_bundled_codex_runtime.ps1`
 - `frontend\package.json`
 - `frontend\node-portable\node.exe`
+- `frontend\node-portable\npm.cmd`
+- `frontend\node-portable\node_modules\@openai\codex\bin\codex.js`
+- The platform-specific Codex Windows executable under `frontend\node-portable\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor`.
 - `frontend\node_modules\electron-builder\cli.js`
 - `frontend\node_modules\app-builder-bin\win\x64\app-builder.exe`
 - The frontend application source, Electron host, icons, build resources, release fragments, and documentation.
@@ -182,7 +186,8 @@ The launcher and its delegated local-workspace wrapper perform these steps:
 3. Waits for the fresh readiness token, then deletes and recreates the local build workspace.
 4. Copies and extracts the ZIP locally while rejecting unsafe paths and skipping repository/agent metadata.
 5. Builds the Python API wheel, PyInstaller app server, Electron application, and NSIS installer.
-6. Publishes release artifacts, records the consumed readiness token after success, and opens the installer named by `E:\ArcRho Server\releases\installers\latest.json`.
+6. Verifies that the `win-unpacked` application still contains the portable Node, npm, Codex JavaScript entry point, and native Codex executable required by ArcBot.
+7. Publishes release artifacts, records the consumed readiness token after success, and opens the installer named by `E:\ArcRho Server\releases\installers\latest.json`.
 
 Do not run build tooling directly from the mapped repository. The one-click workflow ensures that dependency execution, PyInstaller, Electron Builder, and NSIS all run from a local filesystem on the build PC.
 
@@ -247,6 +252,10 @@ Install Python 3.10.6 or newer within the Python 3.10 line, or set `PYTHON_EXE` 
 
 Verify that the build PC can write through its mapped `E:` drive to `E:\ArcRho Server\releases\installers` and the configured Python package destination on the source PC.
 
+### ArcBot reports that Codex cannot launch after installation
+
+Confirm that the build log's ArcBot runtime validation passed and that the installed application contains the same portable Node/npm/Codex files verified in `win-unpacked`. ArcBot launches those child processes from the user's writable `Documents\ArcRho` folder rather than from `app.asar`. Its Repair action uses an ArcRho-owned per-user npm prefix and should not require administrator access or a machine-global Node installation.
+
 ## Completion Checklist
 
 - The source-PC listener was running before the build request was sent.
@@ -255,4 +264,5 @@ Verify that the build PC can write through its mapped `E:` drive to `E:\ArcRho S
 - The build ran from `%USERPROFILE%\Documents\build_arcrho_app`, not the network share.
 - The build exited with code `0`.
 - The installer, checksum, update manifest, release notes, and Python API package were published.
+- The pre-build and `win-unpacked` ArcBot runtime checks found portable Node, npm, the Codex JavaScript entry point, and the native Windows Codex executable.
 - The timestamped build log was retained when troubleshooting was required.
