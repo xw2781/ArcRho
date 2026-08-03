@@ -6,10 +6,17 @@ const cacheSource = await readFile(
   new URL("../ui/project_instance/project_instance_dataset_cache.js", import.meta.url),
   "utf8",
 );
-const testableSource = cacheSource.replace(
-  /^import \{ attachArcrhoTooltip \} from .*;\s*/u,
-  "const attachArcrhoTooltip = () => {};\n",
-);
+// The module is imported from a data: URL, which cannot resolve the app's
+// absolute "/ui/..." specifiers, so every browser-only import is stubbed here.
+const testableSource = cacheSource
+  .replace(
+    /^import \{ attachArcrhoTooltip \} from .*;\s*/u,
+    "const attachArcrhoTooltip = () => {};\n",
+  )
+  .replace(
+    /^import \{ publishProjectInstanceDatasetSnapshot \} from .*;\s*/mu,
+    "const publishProjectInstanceDatasetSnapshot = () => true;\n",
+  );
 const { installProjectInstanceDatasetCache } = await import(
   `data:text/javascript;base64,${Buffer.from(testableSource).toString("base64")}`
 );

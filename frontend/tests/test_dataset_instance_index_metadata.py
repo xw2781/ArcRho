@@ -16,7 +16,10 @@ if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
 from app_server.services import dataset_instance_index_service
-from arcrho_api.dataset_index_contract import canonicalize_index_row
+from arcrho_api.dataset_index_contract import (
+    canonicalize_index_row,
+    scan_folder_signature,
+)
 
 
 class DatasetInstanceIndexMetadataTests(unittest.TestCase):
@@ -257,53 +260,137 @@ class DatasetInstanceIndexMetadataTests(unittest.TestCase):
         rebuild.assert_called_once()
 
     def test_current_index_reports_persisted_without_changing_saved_payload(self) -> None:
-        saved_payload = {
-            "ok": True,
-            "version": dataset_instance_index_service.INDEX_VERSION,
-            "exists": True,
-            "project_name": "Example",
-            "reserving_class": "Paid",
-            "folder_signature": "sha256:" + ("0" * 64),
-            "files": [
-                {
-                    "name": "Paid Loss",
-                    "dataset_type": "Paid Loss",
-                    "method_type": "None",
-                    "status": 0,
-                    "last_modified": "",
-                    "last_modified_timestamp": 0.0,
-                    "created": "",
-                    "created_timestamp": 0.0,
-                    "user": "",
-                },
-            ],
-        }
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            data_root = Path(temp_dir)
+            (data_root / "datasets").mkdir()
+            (data_root / "methods").mkdir()
+            sidecar_dir = data_root / "sidecars"
+            sidecar_dir.mkdir()
+            (sidecar_dir / "Paid Loss.json").write_text(
+                '{"dataset_name": "Paid Loss"}',
+                encoding="utf-8",
+            )
 
-        with (
-            mock.patch.object(
-                dataset_instance_index_service,
-                "_folder_paths",
-                return_value={
-                    "data": "data",
-                    "datasets": "datasets",
-                    "methods": "methods",
-                    "sidecars": "sidecars",
-                },
-            ),
-            mock.patch.object(
-                dataset_instance_index_service,
-                "_read_index_file",
-                return_value=saved_payload,
-            ),
-        ):
-            result = dataset_instance_index_service.get_index("Example", "Paid")
+            saved_payload = {
+                "ok": True,
+                "version": dataset_instance_index_service.INDEX_VERSION,
+                "exists": True,
+                "project_name": "Example",
+                "reserving_class": "Paid",
+                # The signature must describe the folder as it is on disk, or the
+                # read treats the index as stale and rebuilds it.
+                "folder_signature": scan_folder_signature(data_root).signature,
+                "files": [
+                    {
+                        "name": "Paid Loss",
+                        "dataset_type": "Paid Loss",
+                        "method_type": "None",
+                        "status": 0,
+                        "last_modified": "",
+                        "last_modified_timestamp": 0.0,
+                        "created": "",
+                        "created_timestamp": 0.0,
+                        "user": "",
+                    },
+                ],
+            }
+            folder_paths = {
+                "data": str(data_root),
+                "datasets": str(data_root / "datasets"),
+                "methods": str(data_root / "methods"),
+                "sidecars": str(sidecar_dir),
+            }
 
-        self.assertTrue(result["index_persisted"])
-        self.assertEqual(result["index_warning"], "")
-        self.assertEqual(result["folder_paths"]["data"], "data")
-        self.assertNotIn("folder_paths", saved_payload)
-        self.assertNotIn("index_persisted", saved_payload)
-        self.assertNotIn("index_warning", saved_payload)
+            with (
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "_folder_paths",
+                    return_value=folder_paths,
+                ),
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "_read_index_file",
+                    return_value=saved_payload,
+                ),
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "rebuild_index",
+                    side_effect=AssertionError("a matching signature must not rebuild"),
+                ),
+            ):
+                result = dataset_instance_index_service.get_index("Example", "Paid")
+
+            self.assertTrue(result["index_persisted"])
+            self.assertEqual(result["index_warning"], "")
+            self.assertEqual(result["folder_paths"]["data"], str(data_root))
+            self.assertNotIn("folder_paths", saved_payload)
+            self.assertNotIn("index_persisted", saved_payload)
+            self.assertNotIn("index_warning", saved_payload)
+
+    def test_a_changed_folder_makes_a_saved_index_stale(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            data_root = Path(temp_dir)
+            (data_root / "datasets").mkdir()
+            (data_root / "methods").mkdir()
+            sidecar_dir = data_root / "sidecars"
+            sidecar_dir.mkdir()
+            (sidecar_dir / "Paid Loss.json").write_text(
+                '{"dataset_name": "Paid Loss"}',
+                encoding="utf-8",
+            )
+            stale_signature = scan_folder_signature(data_root).signature
+
+            (sidecar_dir / "Reported Loss.json").write_text(
+                '{"dataset_name": "Reported Loss"}',
+                encoding="utf-8",
+            )
+
+            saved_payload = {
+                "ok": True,
+                "version": dataset_instance_index_service.INDEX_VERSION,
+                "exists": True,
+                "project_name": "Example",
+                "reserving_class": "Paid",
+                "folder_signature": stale_signature,
+                "files": [
+                    {
+                        "name": "Paid Loss",
+                        "dataset_type": "Paid Loss",
+                        "method_type": "None",
+                        "status": 0,
+                        "last_modified": "",
+                        "last_modified_timestamp": 0.0,
+                        "created": "",
+                        "created_timestamp": 0.0,
+                        "user": "",
+                    },
+                ],
+            }
+            folder_paths = {
+                "data": str(data_root),
+                "datasets": str(data_root / "datasets"),
+                "methods": str(data_root / "methods"),
+                "sidecars": str(sidecar_dir),
+            }
+
+            with (
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "_folder_paths",
+                    return_value=folder_paths,
+                ),
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "_read_index_file",
+                    return_value=saved_payload,
+                ),
+            ):
+                result = dataset_instance_index_service.get_index("Example", "Paid")
+
+            self.assertEqual(
+                [row["name"] for row in result["files"]],
+                ["Paid Loss", "Reported Loss"],
+            )
 
 
 if __name__ == "__main__":

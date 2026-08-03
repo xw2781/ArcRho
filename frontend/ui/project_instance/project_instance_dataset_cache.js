@@ -398,8 +398,13 @@ function normalizeCachedDatasetSnapshot(payload) {
 
 async function fetchCachedDatasetSnapshot(path, options = {}) {
   const normalizedPath = normalizePath(path);
-  const refresh = !!options?.refresh;
-  const requestKey = `${normalizeLookupKey(projectName)}\u0001${normalizedPath.toLowerCase()}\u0001${refresh ? "refresh" : "cached"}`;
+  // A reload the user asked for gets its own request key so it never joins a
+  // background read that started before their change landed. It does not ask the
+  // server to force a rebuild: /datasets/cached compares the reserving-class
+  // folder signature and rebuilds only when the folder actually changed, which
+  // keeps an unchanged reload to three directory listings on a network drive.
+  const userInitiated = !!options?.userInitiated;
+  const requestKey = `${normalizeLookupKey(projectName)}\u0001${normalizedPath.toLowerCase()}\u0001${userInitiated ? "user" : "background"}`;
   const existing = cachedDatasetSnapshotRequests.get(requestKey);
   if (existing) return existing;
 
@@ -407,7 +412,6 @@ async function fetchCachedDatasetSnapshot(path, options = {}) {
     const url = new URL("/datasets/cached", window.location.origin);
     url.searchParams.set("project_name", projectName);
     url.searchParams.set("reserving_class", normalizedPath);
-    if (refresh) url.searchParams.set("refresh", "true");
     const resp = await fetch(url.toString(), { cache: "no-store" });
     const payload = await resp.json().catch(() => ({}));
     if (!resp.ok || payload?.ok === false) {
@@ -469,7 +473,7 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   renderDatasetTable();
 
   try {
-    const payload = await fetchCachedDatasetSnapshot(path, { refresh: !!options?.refresh });
+    const payload = await fetchCachedDatasetSnapshot(path, { userInitiated: !!options?.userInitiated });
     if (seq !== cachedDatasetFilter.requestSeq) return;
     applyCachedDatasetSnapshot(payload, path);
   } catch (err) {
@@ -504,7 +508,7 @@ async function refreshCachedDatasetTableFromDisk() {
   setStatus(isTemporaryDatasetView()
     ? "Refreshing dataset index status..."
     : "Refreshing dataset table...");
-  await loadCachedDatasetFilterForSelectedPath({ refresh: true });
+  await loadCachedDatasetFilterForSelectedPath({ userInitiated: true });
   restoreDatasetTableSelection(selectionState);
   restoreDatasetTableScroll(scrollState);
   if (!cachedDatasetFilter.error) {

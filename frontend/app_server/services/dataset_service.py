@@ -76,6 +76,11 @@ _SIDECAR_READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=_SIDECAR_READ_MAX_WORKERS,
     thread_name_prefix="arcrho-sidecar-read",
 )
+_CACHED_LOAD_HYDRATION_MAX_WORKERS = 6
+_CACHED_LOAD_HYDRATION_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_CACHED_LOAD_HYDRATION_MAX_WORKERS,
+    thread_name_prefix="arcrho-cache-hydrate",
+)
 def _dataset_sidecar_write_lock(path: str) -> threading.RLock:
     return dataset_sidecar_status_service.sidecar_write_lock(path)
 
@@ -1540,21 +1545,28 @@ def load_cached_dataset_values(
         len(values),
         resolved_origin_length,
     )
+    column_count = max((len(row) for row in values), default=0)
+    development_labels = _normalize_origin_labels(sidecar.get("development_labels"))
+    # The origin-header, development-header, and Dataset Type reads are
+    # independent network I/O; the bounded pool prices a mapped-drive open at
+    # one hydration chain of latency instead of three sequential chains.
+    origin_future = None
     if not origin_labels:
-        origin_labels = _resolve_origin_labels(
+        origin_future = _CACHED_LOAD_HYDRATION_EXECUTOR.submit(
+            _resolve_origin_labels,
             dataset_id,
             csv_path,
             p,
             resolved_origin_length,
             len(values),
         )
-    column_count = max((len(row) for row in values), default=0)
-    development_labels = _normalize_origin_labels(sidecar.get("development_labels"))
+    development_future = None
     if len(development_labels) != column_count:
         if is_vector and column_count == 1:
             development_labels = ["Ultimate"]
         elif str(sidecar.get("source_kind") or "").strip().casefold() == "engine":
-            development_labels = _resolve_development_labels(
+            development_future = _CACHED_LOAD_HYDRATION_EXECUTOR.submit(
+                _resolve_development_labels,
                 dataset_id,
                 csv_path,
                 p,
@@ -1564,10 +1576,18 @@ def load_cached_dataset_values(
             )
         else:
             development_labels = [str(12 * (index + 1)) for index in range(column_count)]
-    _, dataset_type_formula = _is_app_calculated_dataset_type(
+    formula_future = _CACHED_LOAD_HYDRATION_EXECUTOR.submit(
+        _is_app_calculated_dataset_type,
         p,
         str(sidecar.get("dataset_type") or ds),
     )
+    # Collect in the original sequential order so an origin-label failure
+    # keeps precedence over development-label and formula failures.
+    if origin_future is not None:
+        origin_labels = origin_future.result()
+    if development_future is not None:
+        development_labels = development_future.result()
+    _, dataset_type_formula = formula_future.result()
     try:
         file_mtime = os.stat(csv_path).st_mtime
     except OSError:

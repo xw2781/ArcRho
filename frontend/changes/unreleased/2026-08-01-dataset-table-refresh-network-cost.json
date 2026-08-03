@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Refreshing the Project Instance dataset table is far faster on network-drive installs, and the table no longer goes stale until you refresh it.",
+  "details": [
+    "Reloading the dataset table now lists the reserving-class folders and rebuilds index.json only when something actually changed on disk, instead of re-reading every sidecar and method file every time.",
+    "An unchanged reserving class reloads with three directory listings instead of roughly 450 filesystem operations, which is where the multi-second wait after the refresh button and after Import ResQ Reserving Class came from.",
+    "A rebuild that is still needed costs about a third of what it used to: the folder listing's file sizes and timestamps are reused instead of re-read one file at a time, and the project and reserving-class folders are no longer enumerated twice per request.",
+    "Dataset files written by the ArcRho Bridge, migration, or another user now appear on the next dataset table read rather than only after a manual refresh."
+  ]
+}

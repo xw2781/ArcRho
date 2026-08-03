@@ -26,6 +26,7 @@ from app_server.services import (
     dataset_instance_index_service,
     dataset_number_format_service,
     dataset_sidecar_status_service,
+    file_read_cache,
     project_settings_service,
     runtime_cache_provenance_service,
 )
@@ -1297,8 +1298,7 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
                 "data_path": data_path,
             }
 
-    with open(data_path, "r", encoding="utf-8") as f:
-        raw = f.read().strip()
+    raw = file_read_cache.read_text_file_cached(data_path).strip()
 
     parts = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()]
 

@@ -938,22 +938,20 @@ test("a clear-cache run overlaps the rebuild request with both header refreshes"
   }
 });
 
-test("dataset windows show the loading popup from boot and the run adopts it", () => {
-  // Boot shows the popup before any awaited server work when the URL names a
-  // dataset target, instead of leaving a blank "No dataset loaded" grid.
-  assert.match(
-    dataTabControllerSource,
-    /runtime\.showDatasetLoadingPopup\(`Loading dataset "\$\{bootLoadTarget\}" \.\.\.`\);/u,
-  );
+test("the loading popup is reserved for rebuilds and slow cache-miss loads", () => {
+  // Boot never pre-shows the popup: cached Project Instance opens render the
+  // grid without a spinner while the status line reports progress.
+  assert.doesNotMatch(dataTabControllerSource, /runtime\.showDatasetLoadingPopup\(/u);
   // Temporary views take the fast boot path with inputs from query params.
   assert.match(
     dataTabControllerSource,
     /if \(persistedDfmBootstrap \|\| isProjectInstanceCachedDatasetOpen \|\| isTemporaryDatasetView\) \{/u,
   );
-  // The run controller adopts an already-visible popup so it stays up through
-  // validation and is hidden when the run settles, and a reused popup keeps
-  // its running elapsed counter.
+  // Clear-cache rebuilds show the popup immediately; any other run shows it
+  // only after the scheduling delay, so quick cache hits stay quiet and the
+  // popup surfaces exactly when a cache miss forces an engine round trip.
   assert.match(runControllerSource, /let loadingPopupVisible = isDatasetLoadingPopupVisible\(\);/u);
   assert.match(runControllerSource, /if \(clearCache \|\| loadingPopupVisible\) \{/u);
+  assert.match(runControllerSource, /scheduleDelayedLoadingPopup\(\);/u);
   assert.match(runControllerSource, /if \(reuseExisting && datasetLoadingPopupTimer\) return;/u);
 });

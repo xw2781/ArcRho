@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from app_server import config
 from app_server.helpers import _canon_dataset_name, _parse_calculated_flag
+from app_server.services import file_read_cache
 
 
 def normalize_dataset_types_data(data: Any) -> Dict[str, Any]:
@@ -125,8 +126,7 @@ def load_dataset_types_data(
         return normalize_dataset_types_data({})
 
     try:
-        with open(filepath, "r", encoding="utf-8") as handle:
-            raw = json.load(handle)
+        raw = file_read_cache.read_json_file_cached(filepath)
     except FileNotFoundError as error:
         if not strict or os.path.isdir(os.path.dirname(filepath)):
             return normalize_dataset_types_data({})

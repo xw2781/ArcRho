@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 import json
+
+from fastapi import HTTPException
 
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
@@ -161,6 +164,92 @@ class DatasetCacheLoadCandidateTests(unittest.TestCase):
             2,
             calendar=False,
         )
+
+    def test_label_and_formula_hydration_runs_concurrently(self) -> None:
+        csv_path = self.cache_dir / "Ratio@12@12@cum@dev.csv"
+        csv_path.write_text("1,2\n3,\n", encoding="utf-8")
+        sidecar = {
+            "dataset_name": "Ratio",
+            "dataset_type": "Ratio",
+            "data_format": "Triangle",
+            "origin_length": 12,
+            "development_length": 12,
+            "csv_file": csv_path.name,
+            "source_kind": "engine",
+            "calendar": False,
+        }
+        # Each hydration path blocks until every other path has started; a
+        # sequential implementation would deadlock the barrier and fail fast.
+        barrier = threading.Barrier(3, timeout=5)
+
+        def origin_labels(*_args, **_kwargs):
+            barrier.wait()
+            return ["2025", "2026"]
+
+        def development_labels(*_args, **_kwargs):
+            barrier.wait()
+            return ["12", "24"]
+
+        def formula_lookup(*_args, **_kwargs):
+            barrier.wait()
+            return (False, "")
+
+        with (
+            patch.object(config, "get_project_dataset_cache_dir", return_value=str(self.cache_dir)),
+            patch.object(dataset_service, "_get_dataset_sidecar_path", return_value="sidecar.json"),
+            patch.object(dataset_service, "_read_dataset_sidecar", return_value=sidecar),
+            patch.object(dataset_service, "_resolve_origin_labels", side_effect=origin_labels),
+            patch.object(dataset_service, "_resolve_development_labels", side_effect=development_labels),
+            patch.object(dataset_service, "_is_app_calculated_dataset_type", side_effect=formula_lookup),
+        ):
+            result = dataset_service.load_cached_dataset_values(
+                "Example Project",
+                "Example RC",
+                "Ratio",
+                origin_length=12,
+                development_length=12,
+            )
+
+        self.assertEqual(result["origin_labels"], ["2025", "2026"])
+        self.assertEqual(result["dev_labels"], ["12", "24"])
+
+    def test_origin_label_failures_keep_precedence_over_development_failures(self) -> None:
+        csv_path = self.cache_dir / "Ratio@12@12@cum@dev.csv"
+        csv_path.write_text("1,2\n3,\n", encoding="utf-8")
+        sidecar = {
+            "dataset_name": "Ratio",
+            "dataset_type": "Ratio",
+            "data_format": "Triangle",
+            "origin_length": 12,
+            "development_length": 12,
+            "csv_file": csv_path.name,
+            "source_kind": "engine",
+        }
+
+        def raise_origin(*_args, **_kwargs):
+            raise HTTPException(422, "origin failure detail")
+
+        def raise_development(*_args, **_kwargs):
+            raise HTTPException(422, "development failure detail")
+
+        with (
+            patch.object(config, "get_project_dataset_cache_dir", return_value=str(self.cache_dir)),
+            patch.object(dataset_service, "_get_dataset_sidecar_path", return_value="sidecar.json"),
+            patch.object(dataset_service, "_read_dataset_sidecar", return_value=sidecar),
+            patch.object(dataset_service, "_resolve_origin_labels", side_effect=raise_origin),
+            patch.object(dataset_service, "_resolve_development_labels", side_effect=raise_development),
+            patch.object(dataset_service, "_is_app_calculated_dataset_type", return_value=(False, "")),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                dataset_service.load_cached_dataset_values(
+                    "Example Project",
+                    "Example RC",
+                    "Ratio",
+                    origin_length=12,
+                    development_length=12,
+                )
+
+        self.assertEqual(raised.exception.detail, "origin failure detail")
 
     def test_notes_are_updated_in_the_dataset_sidecar_only(self) -> None:
         sidecar_path = Path(self.temp_dir.name) / "sidecars" / "Paid.json"

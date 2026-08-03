@@ -385,13 +385,6 @@ def _safe_read_json(path: Path) -> Any:
 
 
 @dataclass(frozen=True)
-class _Entry:
-    folder: str
-    name: str
-    path: Path
-
-
-@dataclass(frozen=True)
 class _FileStat:
     folder: str
     name: str
@@ -402,35 +395,33 @@ class _FileStat:
 
 
 @dataclass(frozen=True)
-class _ScanResult:
+class FolderScan:
+    """One enumeration of a reserving-class folder and the signature it hashes to.
+
+    Enumerating costs one directory listing per folder; reading the sidecar and
+    method payloads costs one open/read/close per file. Callers that only need
+    to know whether the folder changed take the first cost and skip the second.
+    """
+
     files: tuple[_FileStat, ...]
-    payloads: Mapping[str, Any]
     folder_exists: Mapping[str, bool]
-
-
-def _stat_entry(entry: _Entry) -> _FileStat | None:
-    try:
-        info = entry.path.stat()
-    except FileNotFoundError:
-        return None
-    if not stat_module.S_ISREG(info.st_mode):
-        return None
-    return _FileStat(
-        folder=entry.folder,
-        name=entry.name,
-        path=entry.path,
-        size=int(info.st_size),
-        mtime=float(info.st_mtime),
-        mtime_ns=int(info.st_mtime_ns),
-    )
+    signature: str
+    has_legacy_notes: bool
 
 
 def _enumerate_folder(
     rc_dir: Path,
     folder_name: str,
-) -> tuple[bool, list[_Entry]]:
+) -> tuple[bool, list[_FileStat], bool]:
+    """List one folder, keeping the stat data the directory listing already returned.
+
+    ``DirEntry.stat()`` needs no extra system call on Windows, so re-statting the
+    path would add one network round trip per file for data already in hand.
+    """
+
     directory = rc_dir / folder_name
-    entries: list[_Entry] = []
+    files: list[_FileStat] = []
+    has_legacy_notes = False
     try:
         with os.scandir(directory) as iterator:
             for item in iterator:
@@ -440,77 +431,87 @@ def _enumerate_folder(
                 if item.name.casefold() == INDEX_FILE_NAME:
                     continue
                 if folder_name == SIDECAR_DIR_NAME and item.name.casefold().startswith(LEGACY_NOTES_FILE_PREFIX.casefold()):
+                    has_legacy_notes = True
                     continue
-                entries.append(_Entry(folder_name, item.name, Path(item.path)))
+                try:
+                    info = item.stat()
+                except FileNotFoundError:
+                    continue
+                if not stat_module.S_ISREG(info.st_mode):
+                    continue
+                files.append(
+                    _FileStat(
+                        folder=folder_name,
+                        name=item.name,
+                        path=Path(item.path),
+                        size=int(info.st_size),
+                        mtime=float(info.st_mtime),
+                        mtime_ns=int(info.st_mtime_ns),
+                    )
+                )
     except (FileNotFoundError, NotADirectoryError):
-        return False, []
-    return True, entries
+        return False, [], False
+    return True, files, has_legacy_notes
 
 
 def _enumerate_entries(
     rc_dir: Path,
     executor: ThreadPoolExecutor,
-) -> tuple[list[_Entry], dict[str, bool]]:
+) -> tuple[list[_FileStat], dict[str, bool], bool]:
     root_future = executor.submit(rc_dir.is_dir)
     folder_futures = {
         folder_name: executor.submit(_enumerate_folder, rc_dir, folder_name)
         for folder_name in (DATASET_DIR_NAME, METHOD_DIR_NAME, SIDECAR_DIR_NAME)
     }
     exists = {"data": root_future.result()}
-    entries: list[_Entry] = []
+    files: list[_FileStat] = []
+    has_legacy_notes = False
     for folder_name, future in folder_futures.items():
-        folder_exists, folder_entries = future.result()
+        folder_exists, folder_files, folder_has_legacy_notes = future.result()
         exists[folder_name] = folder_exists
-        entries.extend(folder_entries)
-    entries.sort(key=lambda item: (item.folder.casefold(), item.name.casefold(), item.name))
-    return entries, exists
+        has_legacy_notes = has_legacy_notes or folder_has_legacy_notes
+        files.extend(folder_files)
+    files.sort(key=lambda item: (item.folder.casefold(), item.name.casefold(), item.name))
+    return files, exists, has_legacy_notes
 
 
-def _scan_inputs(
-    rc_dir: Path,
+def scan_folder_signature(
+    rc_dir: str | os.PathLike[str],
     *,
-    max_workers: int,
-) -> _ScanResult:
+    max_workers: int = 12,
+) -> FolderScan:
+    """Enumerate the reserving-class folders and hash them without reading payloads."""
+
     worker_count = max(1, min(int(max_workers or 1), 32))
     with ThreadPoolExecutor(
         max_workers=worker_count,
-        thread_name_prefix="arcrho-index-contract",
+        thread_name_prefix="arcrho-index-signature",
     ) as executor:
-        entries, folder_exists = _enumerate_entries(rc_dir, executor)
-        existing_json_paths = {
-            _path_key(entry.path): entry.path
-            for entry in entries
-            if entry.path.suffix.casefold() == ".json"
-        }
-        payload_paths = dict(existing_json_paths)
-        for entry in entries:
-            if entry.path.suffix.casefold() != ".csv":
-                continue
-            sidecar_path = dataset_sidecar_path_for_cached_csv(entry.path)
-            sidecar_key = _path_key(sidecar_path)
-            if sidecar_key in existing_json_paths:
-                payload_paths[sidecar_key] = existing_json_paths[sidecar_key]
-        stat_futures: list[Future[_FileStat | None]] = [
-            executor.submit(_stat_entry, entry) for entry in entries
-        ]
-        payload_futures: dict[str, Future[Any]] = {
-            key: executor.submit(_safe_read_json, path)
-            for key, path in payload_paths.items()
-        }
-        files = tuple(
-            file_stat
-            for future in stat_futures
-            if (file_stat := future.result()) is not None
-        )
-        payloads = {
-            key: future.result()
-            for key, future in payload_futures.items()
-        }
-    return _ScanResult(files, payloads, folder_exists)
+        files, folder_exists, has_legacy_notes = _enumerate_entries(Path(rc_dir), executor)
+    return FolderScan(
+        files=tuple(files),
+        folder_exists=folder_exists,
+        signature=make_folder_signature(files, folder_exists),
+        has_legacy_notes=has_legacy_notes,
+    )
 
 
-def _payload_for_path(scan: _ScanResult, path: Path) -> Any:
-    return scan.payloads.get(_path_key(path), {})
+def _read_payloads(
+    files: Sequence[_FileStat],
+    executor: ThreadPoolExecutor,
+) -> dict[str, Any]:
+    """Read every enumerated JSON file once, keyed by canonical path.
+
+    Cached CSVs resolve to a sidecar that lives in ``sidecars`` and is therefore
+    already part of this enumeration, so no CSV needs its own lookup pass.
+    """
+
+    payload_futures: dict[str, Future[Any]] = {
+        _path_key(item.path): executor.submit(_safe_read_json, item.path)
+        for item in files
+        if item.path.suffix.casefold() == ".json"
+    }
+    return {key: future.result() for key, future in payload_futures.items()}
 
 
 def _method_contract(
@@ -908,23 +909,36 @@ def build_dataset_index_payload(
     *,
     max_workers: int = 12,
 ) -> dict[str, Any]:
-    """Build the one canonical persisted ``index.json`` payload."""
+    """Build the one canonical persisted ``index.json`` payload.
+
+    The enumeration happens here, inside whatever lock the caller holds, so the
+    payload and its signature always describe the same observation of the folder.
+    """
 
     root = Path(rc_dir)
-    migrate_legacy_notes_files(root)
-    scan = _scan_inputs(
-        root,
-        max_workers=max_workers,
-    )
+    scan = scan_folder_signature(root, max_workers=max_workers)
+    if scan.has_legacy_notes:
+        # Migrating rewrites sidecars and removes the legacy files, so the
+        # enumeration that saw them no longer describes the folder.
+        migrate_legacy_notes_files(root)
+        scan = scan_folder_signature(root, max_workers=max_workers)
+
+    worker_count = max(1, min(int(max_workers or 1), 32))
+    with ThreadPoolExecutor(
+        max_workers=worker_count,
+        thread_name_prefix="arcrho-index-contract",
+    ) as executor:
+        payloads = _read_payloads(scan.files, executor)
+
     physical_rows: list[dict[str, Any]] = []
     for file_stat in scan.files:
         if file_stat.path.suffix.casefold() == ".csv":
             metadata_path = dataset_sidecar_path_for_cached_csv(file_stat.path)
-            metadata = _payload_for_path(scan, metadata_path)
+            metadata = payloads.get(_path_key(metadata_path), {})
             metadata = metadata if isinstance(metadata, Mapping) else {}
             metadata_is_sidecar = bool(metadata)
         else:
-            metadata = _payload_for_path(scan, file_stat.path)
+            metadata = payloads.get(_path_key(file_stat.path), {})
             metadata = metadata if isinstance(metadata, Mapping) else {}
             metadata_is_sidecar = file_stat.folder == SIDECAR_DIR_NAME
         row = _metadata_row(
@@ -941,7 +955,7 @@ def build_dataset_index_payload(
         "exists": bool(scan.folder_exists.get("data")),
         "project_name": _clean_text(project_name),
         "reserving_class": _clean_text(reserving_class),
-        "folder_signature": make_folder_signature(scan.files, scan.folder_exists),
+        "folder_signature": scan.signature,
         "files": _merge_rows(physical_rows),
     }
 

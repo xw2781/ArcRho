@@ -605,6 +605,242 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         )
         self.assertEqual(persisted_response, migration_payload)
 
+    def test_unchanged_folder_is_served_without_reading_any_payload(self) -> None:
+        """A matching signature must not cost one open/read per sidecar and method."""
+
+        self._migration_rebuild()
+
+        with (
+            self._frontend_workspace(),
+            mock.patch.object(
+                dataset_index_contract,
+                "_safe_read_json",
+                side_effect=AssertionError("an unchanged folder must not read payloads"),
+            ) as read_payload,
+            mock.patch.object(
+                dataset_instance_index_service,
+                "_write_index_file",
+                side_effect=AssertionError("an unchanged folder must not rewrite the index"),
+            ) as write,
+        ):
+            response = dataset_instance_index_service.get_index(
+                self.project_name,
+                self.reserving_class,
+            )
+
+        read_payload.assert_not_called()
+        write.assert_not_called()
+        self._assert_minimal_rows(response)
+
+    def test_folder_listing_is_not_restatted_per_file(self) -> None:
+        """The directory listing already carries size and mtime on Windows."""
+
+        original_stat = Path.stat
+        statted: list[str] = []
+
+        def counting_stat(path_self, *args, **kwargs):
+            statted.append(os.path.normcase(os.path.abspath(path_self)))
+            return original_stat(path_self, *args, **kwargs)
+
+        with mock.patch.object(Path, "stat", counting_stat):
+            payload = dataset_index_contract.build_dataset_index_payload(
+                self.project_name,
+                self.reserving_class,
+                self.rc_dir,
+            )
+
+        enumerated = {
+            os.path.normcase(os.path.abspath(item.path))
+            for item in dataset_index_contract.scan_folder_signature(self.rc_dir).files
+        }
+        self.assertTrue(enumerated)
+        self.assertEqual(enumerated.intersection(statted), set())
+        self._assert_minimal_rows(payload)
+
+    def test_durable_mutation_without_an_index_update_self_heals_on_a_plain_read(
+        self,
+    ) -> None:
+        """Another producer's write must not leave the table silently stale."""
+
+        migration_payload, _migration_text = self._migration_rebuild()
+        self.assertNotIn(
+            "Late Reported Loss",
+            {row["name"] for row in migration_payload["files"]},
+        )
+
+        self._write_json(
+            self.sidecars_dir / "Late Reported Loss.json",
+            {
+                "dataset_name": "Late Reported Loss",
+                "dataset_type": "Reported Loss",
+                "dataset_category": "Loss",
+                "data_format": "Triangle",
+                "source_kind": "engine",
+                "user": "another.producer",
+                "last_modified": "2026-02-01T00:00:00Z",
+                "created_at": "2026-02-01T00:00:00Z",
+                "origin_labels": ["2024", "2025"],
+            },
+        )
+
+        with self._frontend_workspace():
+            response = dataset_instance_index_service.get_index(
+                self.project_name,
+                self.reserving_class,
+            )
+
+        self.assertIn(
+            "Late Reported Loss",
+            {row["name"] for row in response["files"]},
+        )
+        self.assertTrue(response["index_persisted"])
+        persisted = json.loads(self.index_path.read_text(encoding="utf-8"))
+        self.assertEqual(persisted["files"], response["files"])
+        self.assertNotEqual(
+            persisted["folder_signature"],
+            migration_payload["folder_signature"],
+        )
+
+    def test_self_healing_rebuild_enumerates_inside_the_index_lock(self) -> None:
+        """The staleness check runs unlocked, so the rebuild must observe the folder again.
+
+        Reusing the pre-lock enumeration would let a concurrent producer's write
+        be dropped from the payload this rebuild persists.
+        """
+
+        self._migration_rebuild()
+        self._write_json(
+            self.sidecars_dir / "Late Reported Loss.json",
+            {
+                "dataset_name": "Late Reported Loss",
+                "dataset_type": "Reported Loss",
+                "data_format": "Triangle",
+            },
+        )
+
+        original_enumerate = dataset_index_contract._enumerate_folder
+        original_lock = dataset_instance_index_service.index_update_lock
+        events: list[str] = []
+
+        def recording_enumerate(rc_dir, folder_name):
+            events.append("enumerate")
+            return original_enumerate(rc_dir, folder_name)
+
+        @contextmanager
+        def recording_lock(*args, **kwargs):
+            events.append("lock-acquired")
+            with original_lock(*args, **kwargs):
+                yield
+            events.append("lock-released")
+
+        with (
+            self._frontend_workspace(),
+            mock.patch.object(
+                dataset_index_contract,
+                "_enumerate_folder",
+                side_effect=recording_enumerate,
+            ),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "index_update_lock",
+                recording_lock,
+            ),
+        ):
+            dataset_instance_index_service.get_index(
+                self.project_name,
+                self.reserving_class,
+            )
+
+        self.assertIn("lock-acquired", events)
+        locked = events[events.index("lock-acquired") : events.index("lock-released")]
+        self.assertEqual(locked.count("enumerate"), 3)
+
+    def test_get_index_resolves_canonical_identity_at_most_once_per_parent(self) -> None:
+        """Each canonical name costs a parent-folder listing, so resolve it once."""
+
+        self._migration_rebuild()
+        self.index_path.unlink()
+
+        original_canonical = dataset_instance_index_service.canonical_existing_directory
+        resolved: list[str] = []
+
+        def counting_canonical(path):
+            resolved.append(os.path.normcase(os.path.abspath(path)))
+            return original_canonical(path)
+
+        with (
+            self._frontend_workspace(),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "canonical_existing_directory",
+                side_effect=counting_canonical,
+            ),
+        ):
+            dataset_instance_index_service.get_index(
+                self.project_name,
+                self.reserving_class,
+            )
+
+        self.assertEqual(len(resolved), len(set(resolved)))
+        self.assertEqual(len(resolved), 2)
+
+    def test_refresh_still_forces_a_rebuild_when_the_folder_is_unchanged(self) -> None:
+        """The forced rebuild stays available for callers that want the index rewritten."""
+
+        self._migration_rebuild()
+
+        with (
+            self._frontend_workspace(),
+            mock.patch.object(
+                dataset_instance_index_service,
+                "build_dataset_index_payload",
+                wraps=dataset_index_contract.build_dataset_index_payload,
+            ) as build,
+        ):
+            response = dataset_instance_index_service.get_index(
+                self.project_name,
+                self.reserving_class,
+                refresh=True,
+            )
+
+        build.assert_called_once()
+        self._assert_minimal_rows(response)
+
+    def test_legacy_notes_migration_runs_only_when_a_legacy_file_is_present(self) -> None:
+        """A one-time migration must not glob the sidecar folder on every rebuild."""
+
+        with mock.patch.object(
+            dataset_index_contract,
+            "migrate_legacy_notes_files",
+            side_effect=AssertionError("no legacy notes file exists in this folder"),
+        ) as migrate:
+            dataset_index_contract.build_dataset_index_payload(
+                self.project_name,
+                self.reserving_class,
+                self.rc_dir,
+            )
+        migrate.assert_not_called()
+
+        legacy_path = self.sidecars_dir / "ArcRhoTriNotes@Paid Loss.json"
+        self._write_json(legacy_path, {"notes": "carried over"})
+
+        payload = dataset_index_contract.build_dataset_index_payload(
+            self.project_name,
+            self.reserving_class,
+            self.rc_dir,
+        )
+
+        self.assertFalse(legacy_path.exists())
+        self.assertEqual(
+            json.loads((self.sidecars_dir / "Paid Loss.json").read_text(encoding="utf-8"))["notes"],
+            "carried over",
+        )
+        self._assert_minimal_rows(payload)
+        self.assertEqual(
+            payload["folder_signature"],
+            dataset_index_contract.scan_folder_signature(self.rc_dir).signature,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

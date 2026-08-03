@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Reserved the Dataset Viewer loading popup for cache rebuilds and slow cache-miss loads.",
+  "details": [
+    "Cached Project Instance opens and quick cache hits now render the grid without a spinner while the status line reports progress.",
+    "Clear cache and rebuild still shows the popup immediately, and other runs show it only when a missing CSV cache forces an engine round trip."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Sped up cached dataset opens on network drives with concurrent hydration and cached metadata reads.",
+  "details": [
+    "Origin-header, development-header, and Dataset Type formula reads now run concurrently during a cached dataset load instead of one after another.",
+    "Unchanged general settings, dataset types, and header label files are served from a timestamp-validated in-memory cache, so repeat opens cost a stat call instead of a full network read."
+  ]
+}

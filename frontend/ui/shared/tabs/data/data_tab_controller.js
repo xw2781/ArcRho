@@ -395,16 +395,6 @@ async function bootDatasetDataTabOnce() {
   runtime.fillLenDropdowns();
 
   const persistedDfmBootstrap = isPersistedDfmMethodBootstrap();
-  const bootQueryInputs = readDatasetInputQueryValues(qs);
-  const bootLoadTarget = !isDfmDataTabHost() && !persistedDfmBootstrap
-    && bootQueryInputs.project && bootQueryInputs.path
-    ? (bootQueryInputs.instanceName || bootQueryInputs.tri)
-    : "";
-  // Windows opened onto a known dataset show the loading animation from boot,
-  // before any awaited server work, instead of a blank "No dataset loaded" grid.
-  if (bootLoadTarget) {
-    runtime.showDatasetLoadingPopup(`Loading dataset "${bootLoadTarget}" ...`);
-  }
   try {
     if (persistedDfmBootstrap || isProjectInstanceCachedDatasetOpen || isTemporaryDatasetView) {
       // Temporary views carry complete inputs in the URL and cannot save, so
@@ -452,32 +442,24 @@ async function bootDatasetDataTabOnce() {
 
     wireEvents();
 
-    const { project, path, tri, instanceName } = runtime.getTriInputs();
+    const { project, path, tri } = runtime.getTriInputs();
     if (persistedDfmBootstrap) {
       runtime.setStatus("Loading DFM method...");
     } else if (project && path && tri) {
-      runtime.showDatasetLoadingPopup(`Loading dataset "${instanceName || tri}" ...`);
+      // The loading popup is reserved for clear-cache rebuilds, which show it
+      // immediately, and for runs still pending after the run controller's
+      // short delay (the cache-miss engine path). Cached opens render the
+      // grid without a spinner; the status line still reports progress.
       if (isProjectInstanceCachedDatasetOpen) {
-        try {
-          await runtime.loadProjectInstanceCachedDataset();
-        } finally {
-          runtime.hideDatasetLoadingPopup();
-        }
+        await runtime.loadProjectInstanceCachedDataset();
       } else if (isProjectInstanceDraft) {
-        try {
-          await runtime.refreshProjectInstanceDraftModel();
-        } finally {
-          runtime.hideDatasetLoadingPopup();
-        }
+        await runtime.refreshProjectInstanceDraftModel();
       } else {
-        // The run controller adopts the visible popup and hides it when the
-        // scheduled run settles.
         runtime.scheduleAutoRun(0);
       }
     } else if (isDfmDataTabHost()) {
       runtime.setStatus("Waiting for DFM inputs...");
     } else {
-      runtime.hideDatasetLoadingPopup();
       await runtime.loadDataset();
     }
   } catch (err) {

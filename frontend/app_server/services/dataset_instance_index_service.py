@@ -18,6 +18,7 @@ from arcrho_api.dataset_index_contract import (
     decode_filename_segment,
     index_update_lock,
     index_rebuild_reason,
+    scan_folder_signature,
     write_index_json_unlocked,
 )
 from fastapi import HTTPException
@@ -611,20 +612,37 @@ def _unpersisted_index_warning(err: OSError) -> str:
     )
 
 
+def _canonical_identity(
+    folder_paths: Dict[str, str],
+    project_name: str,
+    reserving_class: str,
+) -> Tuple[str, str]:
+    """Resolve the filesystem-preserved project and reserving-class names.
+
+    Each half enumerates a parent folder, so callers resolve identity once and
+    hand the result down instead of letting every layer repeat the listing.
+    """
+
+    return (
+        _canonical_project_name(folder_paths, project_name),
+        _canonical_reserving_class(folder_paths, reserving_class),
+    )
+
+
 def rebuild_index(
     project_name: str,
     reserving_class: str,
     *,
     allow_unpersisted: bool = False,
     _resolved_folder_paths: Dict[str, str] | None = None,
+    _resolved_identity: Tuple[str, str] | None = None,
 ) -> Dict[str, Any]:
     requested_project = _clean_text(project_name)
     rc = _clean_text(reserving_class)
     if not rc:
         raise HTTPException(400, "reserving_class is required.")
     folder_paths = _resolved_folder_paths or _folder_paths(requested_project, rc)
-    project = _canonical_project_name(folder_paths, requested_project)
-    rc = _canonical_reserving_class(folder_paths, rc)
+    project, rc = _resolved_identity or _canonical_identity(folder_paths, requested_project, rc)
     if not os.path.isdir(folder_paths["data"]):
         return _index_response(
             build_dataset_index_payload(
@@ -680,31 +698,35 @@ def rebuild_index(
 
 
 def get_index(project_name: str, reserving_class: str, refresh: bool = False) -> Dict[str, Any]:
+    """Serve the reserving-class index, rebuilding only when the folder moved on.
+
+    A normal read enumerates the three instance folders and compares the result
+    against the persisted ``folder_signature``. That costs one directory listing
+    per folder and reads no sidecar or method payload, so an unchanged folder is
+    served straight from ``index.json``, and any durable mutation another
+    producer made is picked up without waiting for a manual refresh.
+
+    ``refresh=True`` still forces an unconditional rebuild for callers that want
+    the index rewritten regardless of what the folder listing says.
+    """
+
     requested_project = _clean_text(project_name)
     rc = _clean_text(reserving_class)
     if not rc:
         raise HTTPException(400, "reserving_class is required.")
     folder_paths = _folder_paths(requested_project, rc)
     path = os.path.join(folder_paths["data"], INDEX_FILE_NAME)
-    if refresh:
-        project = _canonical_project_name(folder_paths, requested_project)
-        rc = _canonical_reserving_class(folder_paths, rc)
-        return rebuild_index(
-            project,
-            rc,
-            allow_unpersisted=True,
-            _resolved_folder_paths=folder_paths,
-        )
-    data = _read_index_file(path)
+
+    data = None if refresh else _read_index_file(path)
     if data is None:
-        project = _canonical_project_name(folder_paths, requested_project)
-        rc = _canonical_reserving_class(folder_paths, rc)
+        identity = _canonical_identity(folder_paths, requested_project, rc)
         return rebuild_index(
-            project,
-            rc,
+            *identity,
             allow_unpersisted=True,
             _resolved_folder_paths=folder_paths,
+            _resolved_identity=identity,
         )
+
     saved_project = _clean_text(data.get("project_name"))
     project = (
         saved_project
@@ -717,10 +739,15 @@ def get_index(project_name: str, reserving_class: str, refresh: bool = False) ->
         if saved_rc.casefold() == rc.casefold()
         else _canonical_reserving_class(folder_paths, rc)
     )
+    folder_scan = scan_folder_signature(
+        folder_paths["data"],
+        max_workers=_INDEX_SCAN_MAX_WORKERS,
+    )
     rebuild_reason = index_rebuild_reason(
         data,
         expected_project_name=project,
         expected_reserving_class=rc,
+        expected_folder_signature=folder_scan.signature,
     )
     if rebuild_reason:
         return rebuild_index(
@@ -728,6 +755,7 @@ def get_index(project_name: str, reserving_class: str, refresh: bool = False) ->
             rc,
             allow_unpersisted=True,
             _resolved_folder_paths=folder_paths,
+            _resolved_identity=(project, rc),
         )
     return _index_response(
         data,
