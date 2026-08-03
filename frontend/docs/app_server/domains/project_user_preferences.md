@@ -35,7 +35,7 @@ Routes:
 - `projectInstance` stores Project Instance UI defaults such as the right-panel dataset table layout. If a current project/user preference file is missing `projectInstance`, `GET /project-user-preferences` returns the `projectInstance` block from the default preferences JSON at `ARCRHO_PROJECT_INSTANCE_DEFAULT_PREFS_PATH` when set, otherwise from the repo-owned `app_server/default_preferences/project_instance_preferences.json` snapshot.
 - `projectSettings` stores Project Settings table defaults. If a current project/user preference file is missing `projectSettings`, `GET /project-user-preferences` returns the `projectSettings` block from `ARCRHO_PROJECT_SETTINGS_DEFAULT_PREFS_PATH` when set, otherwise from `app_server/default_preferences/project_settings_preferences.json`. The repo-owned file maps PS table IDs and visible column labels to default pixel widths.
 - On read/write, legacy `datasetViewer.reservingClass`, `datasetViewer.path`, and `dfmObject.reservingClass` values are normalized into `lastReservingClassPath`, and those old per-feature keys are removed on the next preference write.
-- Project duplication copies the project folder except the root `data` folder, so these `users/<windows-login>/preferences.json` values copy with the duplicated project.
+- Server-hosted project duplication copies the project-level `users/<windows-login>/preferences.json` tree into the duplicated project. ArcRho Engine also copies the materialized reserving-class folders under `data`; only canonical transient data-root folders are excluded.
 <!-- MANUAL:END -->
 
 ## Known Risks

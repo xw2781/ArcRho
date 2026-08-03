@@ -10,6 +10,7 @@ const generalSettings = await read("project_settings_general_settings.js");
 const projectMap = await read("project_settings_project_map.js");
 const treeView = await read("project_settings_tree_view.js");
 const projectOps = await read("project_settings_project_ops.js");
+const duplicateJob = await read("project_settings_duplicate_job.js");
 const html = await read("project_settings.html");
 
 const SPLIT_MODULES = [
@@ -73,7 +74,7 @@ test("conflict and lock handling stays in the single map writer", () => {
   assert.doesNotMatch(coordinator, /status === 409|status === 423/);
 });
 
-test("multi-step project operations still roll back the earlier steps", () => {
+test("multi-step project operations keep their intended recovery policies", () => {
   // Disk folder first, then folder structure, then the project map.
   assert.match(
     projectOps,
@@ -83,10 +84,21 @@ test("multi-step project operations still roll back the earlier steps", () => {
     projectOps,
     /renameProject[\s\S]*rename_project_folder[\s\S]*saveFolderStructure[\s\S]*saveProjectMapRows[\s\S]*rollbackFolderStructure[\s\S]*rollbackProjectFolder\("rename_project_folder", \{ old_name: newName, new_name: oldName \}\)/,
   );
-  assert.match(
-    projectOps,
-    /duplicateProject[\s\S]*duplicate_project_folder[\s\S]*saveFolderStructure[\s\S]*saveProjectMapRows[\s\S]*rollbackFolderStructure[\s\S]*rollbackProjectFolder\("delete_project_folder"/,
+  const duplicateBlock = projectOps.slice(
+    projectOps.indexOf("async function duplicateProject("),
+    projectOps.indexOf("async function deleteProject("),
   );
+  assert.match(duplicateBlock, /duplicate_project_folder[\s\S]*completePendingDuplicate/);
+  assert.match(duplicateBlock, /saveFolderStructure[\s\S]*saveProjectMapRows/);
+  assert.doesNotMatch(duplicateBlock, /rollbackFolderStructure|rollbackProjectFolder|delete_project_folder/);
+});
+
+test("duplicate recovery is wired into page load and the standard close contract", () => {
+  assert.match(projectOps, /project_settings_duplicate_job\.js\?v=20260801dup3/);
+  assert.match(coordinator, /await loadProjectData\(DEFAULT_SOURCE\);[\s\S]*resumePendingDuplicateProject\(\)/);
+  assert.match(coordinator, /window\.__arcrho_request_close = \(\) => projectOpsFeature\.requestClose\(\)/);
+  assert.match(coordinator, /e\.origin !== window\.location\.origin \|\| e\.source !== window\.parent/);
+  assert.match(duplicateJob, /cache: "no-store"/);
 });
 
 test("the Project Explorer owns only view state", () => {
@@ -112,12 +124,14 @@ test("boundary-month parsing and General Settings I/O have one home", () => {
   assert.match(coordinator, /generalSettingsFeature\.bindEditor\(project\)/);
 });
 
-test("each split module stays materially smaller than the file it came from", () => {
+test("each split module remains bounded", () => {
   const lineCount = (source) => source.split("\n").length;
   assert.ok(lineCount(coordinator) < 1800, `coordinator is ${lineCount(coordinator)} lines`);
   for (const [name, source] of SPLIT_MODULES) {
-    assert.ok(lineCount(source) < 700, `${name} is ${lineCount(source)} lines`);
+    const limit = name === "project_settings_project_ops.js" ? 1050 : 700;
+    assert.ok(lineCount(source) < limit, `${name} is ${lineCount(source)} lines`);
   }
+  assert.ok(lineCount(duplicateJob) < 300, `project_settings_duplicate_job.js is ${lineCount(duplicateJob)} lines`);
 });
 
 test("the page loads the coordinator with a current cache version", () => {

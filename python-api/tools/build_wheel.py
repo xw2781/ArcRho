@@ -21,6 +21,7 @@ except ModuleNotFoundError:  # Python 3.10 build runtime.
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
 SRC = ROOT / "src"
+STANDALONE_MODULES = (SRC / "arcrho_project_duplication_contract.py",)
 
 
 def _wheel_escape(value: str) -> str:
@@ -126,6 +127,10 @@ def build_wheel(out_dir: Path, *, version_override: str | None = None) -> Path:
     for path in sorted(package_root.rglob("*")):
         if path.is_file() and path.suffix in {".py", ".pyi"}:
             files[path.relative_to(SRC).as_posix()] = path.read_bytes()
+    for path in STANDALONE_MODULES:
+        if not path.is_file():
+            raise FileNotFoundError(f"Required standalone module is missing: {path}")
+        files[path.name] = path.read_bytes()
 
     files[f"{dist_info}/METADATA"] = _metadata(project).encode("utf-8")
     files[f"{dist_info}/WHEEL"] = _wheel_file().encode("utf-8")

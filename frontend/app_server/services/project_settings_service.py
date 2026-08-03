@@ -1,17 +1,39 @@
 """Project settings and project index CRUD."""
 from __future__ import annotations
 
+import getpass
+import json
 import os
 import re
-import json
 import shutil
 import subprocess
 import sys
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import HTTPException
+from arcrho_project_duplication_contract import (
+    ProjectDuplicationContractError,
+    build_project_duplication_request,
+    build_project_duplication_submission_receipt,
+    encode_project_directory_segment,
+    path_is_link_or_reparse,
+    project_duplication_projects_directory_identity,
+    project_duplication_projects_path,
+    project_duplication_request_path,
+    project_duplication_status_path,
+    project_duplication_submission_receipt_path,
+    validate_project_duplication_request,
+    validate_project_duplication_status,
+    validate_project_duplication_submission_receipt,
+    validate_projects_directory,
+    validate_request_id,
+    write_json_atomic,
+    write_project_duplication_status,
+)
 from arcrho_api.dataset_index_contract import (
     INDEX_FILE_NAME as DATASET_INDEX_FILE_NAME,
     build_dataset_index_payload,
@@ -31,7 +53,7 @@ from app_server.helpers import (
     _normalize_folder_structure_entry,
     sanitize_dataset_file_name,
 )
-from app_server.services import runtime_cache_provenance_service
+from app_server.services import file_read_cache, runtime_cache_provenance_service
 from app_server.services.audit_service import safe_append_project_audit_log
 
 
@@ -374,71 +396,471 @@ def rename_project_folder(source: str, old_name: str, new_name: str) -> Dict[str
         raise HTTPException(500, f"Failed to rename folder: {str(e)}")
 
 
-def duplicate_project_folder(source: str, old_name: str, new_name: str) -> Dict[str, Any]:
+def duplicate_project_folder(
+    source: str,
+    old_name: str,
+    new_name: str,
+    *,
+    request_id: str | None = None,
+) -> Dict[str, Any]:
     if source not in config.PROJECT_SETTINGS_SOURCES:
         raise HTTPException(404, f"Unknown source: {source}")
 
-    old_folder = _sanitize_project_dir_name(old_name)
-    new_folder = _sanitize_project_dir_name(new_name)
-    if not old_folder or not new_folder:
-        raise HTTPException(400, "Old name and new name must not be empty.")
-    if old_folder.lower() == new_folder.lower():
-        raise HTTPException(400, "Old name and new name must be different.")
+    server_root, projects_directory = _project_duplication_workspace_layout()
+    requested_id = request_id if request_id is not None else uuid.uuid4().hex
+    try:
+        request = build_project_duplication_request(
+            request_id=requested_id,
+            source_project_name=old_name,
+            target_project_name=new_name,
+            projects_directory=projects_directory,
+            user_name=getpass.getuser(),
+        )
+        receipt = build_project_duplication_submission_receipt(
+            source_key=source,
+            request=request,
+        )
+    except ProjectDuplicationContractError as error:
+        raise HTTPException(400, str(error)) from error
 
-    old_path = os.path.join(config.PROJECT_SETTINGS_DIR, old_folder)
-    new_path = os.path.join(config.PROJECT_SETTINGS_DIR, new_folder)
+    normalized_request_id = request["RequestId"]
+    receipt_path = project_duplication_submission_receipt_path(
+        server_root,
+        normalized_request_id,
+    )
+    try:
+        with index_update_lock(
+            receipt_path,
+            project_name=f"project-duplication:{normalized_request_id}",
+        ):
+            return _submit_project_duplication_locked(
+                server_root=server_root,
+                source=source,
+                request=request,
+                receipt=receipt,
+            )
+    except TimeoutError as error:
+        raise HTTPException(
+            423,
+            "Another submission attempt for this project duplication job is still in progress.",
+        ) from error
+    except PermissionError as error:
+        raise HTTPException(
+            423,
+            "The project duplication submission receipt is locked or inaccessible.",
+        ) from error
 
-    if not os.path.isdir(old_path):
-        return {"ok": True, "message": f"Source folder does not exist: {old_folder}. Nothing to copy."}
-    if os.path.exists(new_path):
-        raise HTTPException(409, f"Target folder already exists: {new_folder}")
 
-    root_norm = os.path.normcase(os.path.normpath(old_path))
+def _submit_project_duplication_locked(
+    *,
+    server_root: Path,
+    source: str,
+    request: Dict[str, Any],
+    receipt: Dict[str, Any],
+) -> Dict[str, Any]:
+    request_id = request["RequestId"]
+    receipt_path = project_duplication_submission_receipt_path(
+        server_root,
+        request_id,
+    )
+    existing_receipt = _read_project_duplication_receipt(receipt_path, request_id)
+    if existing_receipt is not None:
+        existing_request = existing_receipt["request"]
+        same_logical_request = (
+            existing_receipt["source_key"] == source
+            and existing_request["SourceProjectName"] == request["SourceProjectName"]
+            and existing_request["TargetProjectName"] == request["TargetProjectName"]
+            and project_duplication_projects_directory_identity(
+                existing_request["ProjectsDirectory"]
+            )
+            == project_duplication_projects_directory_identity(
+                request["ProjectsDirectory"]
+            )
+        )
+        if not same_logical_request:
+            raise HTTPException(
+                409,
+                "request_id is already bound to a different project duplication request.",
+            )
+        return _resume_project_duplication_submission(
+            server_root,
+            existing_request,
+        )
 
-    def ignore_data_in_root(current_dir: str, names: List[str]) -> List[str]:
-        current_norm = os.path.normcase(os.path.normpath(current_dir))
-        if current_norm != root_norm:
-            return []
-        return [name for name in names if name.strip().lower() == "data"]
+    source_folder = encode_project_directory_segment(
+        request["SourceProjectName"]
+    )
+    target_folder = encode_project_directory_segment(
+        request["TargetProjectName"]
+    )
+    projects_path = project_duplication_projects_path(
+        server_root,
+        request["ProjectsDirectory"],
+    )
+    source_path = projects_path / source_folder
+    target_path = projects_path / target_folder
+    if not source_path.is_dir():
+        raise HTTPException(
+            404,
+            f"Source project folder does not exist: {source_folder}",
+        )
+    if target_path.exists():
+        raise HTTPException(
+            409,
+            f"Target project folder already exists: {target_folder}",
+        )
+
+    request_path = project_duplication_request_path(server_root, request_id)
+    canonical_status_path = project_duplication_status_path(server_root, request_id)
+    if request_path.exists() or canonical_status_path.exists():
+        raise HTTPException(
+            409,
+            "request_id already has project duplication state without a canonical submission receipt.",
+        )
+
+    receipt_written = False
+    published_status_path: Path | None = None
+    try:
+        write_json_atomic(receipt_path, receipt)
+        receipt_written = True
+        published_status_path = write_project_duplication_status(
+            server_root,
+            request,
+            "queued",
+            progress={
+                "stage": "queued",
+                "completed": 0,
+                "total": 0,
+                "label": "Queued for ArcRho Engine",
+            },
+        )
+        write_json_atomic(request_path, request)
+    except PermissionError as error:
+        _remove_unpublished_duplication_files(
+            request_path,
+            published_status_path,
+            receipt_path if receipt_written else None,
+        )
+        raise HTTPException(
+            423,
+            "The project duplication request queue is locked or inaccessible.",
+        ) from error
+    except OSError as error:
+        _remove_unpublished_duplication_files(
+            request_path,
+            published_status_path,
+            receipt_path if receipt_written else None,
+        )
+        raise HTTPException(
+            500,
+            "Failed to submit the project duplication job.",
+        ) from error
+
+    return {"ok": True, "job_id": request_id, "status": "queued"}
+
+
+def _read_project_duplication_receipt(
+    receipt_path: Path,
+    request_id: str,
+) -> Dict[str, Any] | None:
+    try:
+        with receipt_path.open("r", encoding="utf-8-sig") as stream:
+            payload = json.load(stream)
+    except FileNotFoundError:
+        return None
+    except PermissionError as error:
+        raise HTTPException(
+            423,
+            "The project duplication submission receipt is locked or inaccessible.",
+        ) from error
+    except (json.JSONDecodeError, OSError) as error:
+        raise HTTPException(
+            500,
+            "The project duplication submission receipt is invalid or inaccessible.",
+        ) from error
+    try:
+        return validate_project_duplication_submission_receipt(
+            payload,
+            expected_request_id=request_id,
+        )
+    except ProjectDuplicationContractError as error:
+        raise HTTPException(
+            500,
+            "The project duplication submission receipt is invalid.",
+        ) from error
+
+
+def _resume_project_duplication_submission(
+    server_root: Path,
+    request: Dict[str, Any],
+) -> Dict[str, Any]:
+    request_id = request["RequestId"]
+    request_path = project_duplication_request_path(server_root, request_id)
+    status_value = _read_project_duplication_status_value(server_root, request_id)
+    if status_value in {"processing", "success", "error"}:
+        return {"ok": True, "job_id": request_id, "status": status_value}
+
+    published_request = _read_published_project_duplication_request(
+        request_path,
+        request_id,
+    )
+    if published_request is not None and published_request != request:
+        raise HTTPException(
+            500,
+            "The published project duplication request does not match its submission receipt.",
+        )
+
+    if status_value == "queued" and published_request is None:
+        latest_status = _read_project_duplication_status_value(server_root, request_id)
+        if latest_status in {"processing", "success", "error"}:
+            return {"ok": True, "job_id": request_id, "status": latest_status}
+        status_value = latest_status
 
     try:
-        shutil.copytree(old_path, new_path, ignore=ignore_data_in_root)
-        new_data_path = os.path.join(new_path, config.PROJECT_DATA_DIR)
-        old_data_path = os.path.join(old_path, config.PROJECT_DATA_DIR)
-        if os.path.isdir(old_data_path):
-            shutil.copytree(old_data_path, new_data_path, dirs_exist_ok=True)
-            data_action = "copied"
-        else:
-            os.makedirs(new_data_path, exist_ok=True)
-            data_action = "created"
-        safe_append_project_audit_log(
-            project_name=new_folder,
-            action=f"Duplicated project folder from '{old_folder}'",
+        if status_value is None and published_request is None:
+            write_project_duplication_status(
+                server_root,
+                request,
+                "queued",
+                progress={
+                    "stage": "queued",
+                    "completed": 0,
+                    "total": 0,
+                    "label": "Queued for ArcRho Engine",
+                },
+            )
+        if published_request is None:
+            write_json_atomic(request_path, request)
+    except PermissionError as error:
+        raise HTTPException(
+            423,
+            "The project duplication request queue is locked or inaccessible.",
+        ) from error
+    except OSError as error:
+        raise HTTPException(
+            500,
+            "Failed to complete project duplication request publication.",
+        ) from error
+    return {"ok": True, "job_id": request_id, "status": "queued"}
+
+
+def _read_published_project_duplication_request(
+    request_path: Path,
+    request_id: str,
+) -> Dict[str, Any] | None:
+    try:
+        with request_path.open("r", encoding="utf-8-sig") as stream:
+            payload = json.load(stream)
+    except FileNotFoundError:
+        return None
+    except PermissionError as error:
+        raise HTTPException(
+            423,
+            "The published project duplication request is locked or inaccessible.",
+        ) from error
+    except (json.JSONDecodeError, OSError) as error:
+        raise HTTPException(
+            500,
+            "The published project duplication request is invalid or inaccessible.",
+        ) from error
+    try:
+        normalized = validate_project_duplication_request(payload)
+    except ProjectDuplicationContractError as error:
+        raise HTTPException(
+            500,
+            "The published project duplication request is invalid.",
+        ) from error
+    if normalized["RequestId"] != request_id:
+        raise HTTPException(
+            500,
+            "The published project duplication RequestId is invalid.",
         )
-        return {
-            "ok": True,
-            "old_folder": old_folder,
-            "new_folder": new_folder,
-            "skipped": [],
-            "created": [config.PROJECT_DATA_DIR] if data_action == "created" else [],
-            "copied": [config.PROJECT_DATA_DIR] if data_action == "copied" else [],
-        }
-    except FileExistsError:
-        raise HTTPException(409, f"Target folder already exists: {new_folder}")
-    except PermissionError:
-        if os.path.isdir(new_path):
-            try:
-                shutil.rmtree(new_path)
-            except Exception:
-                pass
-        raise HTTPException(423, "Folder is locked or in use. Cannot duplicate.")
-    except Exception as e:
-        if os.path.isdir(new_path):
-            try:
-                shutil.rmtree(new_path)
-            except Exception:
-                pass
-        raise HTTPException(500, f"Failed to duplicate folder: {str(e)}")
+    return normalized
+
+
+def _read_project_duplication_status_value(
+    server_root: Path,
+    request_id: str,
+) -> str | None:
+    status_path = project_duplication_status_path(server_root, request_id)
+    try:
+        with status_path.open("r", encoding="utf-8-sig") as stream:
+            payload = json.load(stream)
+    except FileNotFoundError:
+        return None
+    except PermissionError as error:
+        raise HTTPException(
+            423,
+            "Project duplication status is locked or inaccessible.",
+        ) from error
+    except (json.JSONDecodeError, OSError) as error:
+        raise HTTPException(
+            500,
+            "Project duplication status is invalid or inaccessible.",
+        ) from error
+    try:
+        status = validate_project_duplication_status(
+            payload,
+            expected_request_id=request_id,
+        )
+    except ProjectDuplicationContractError as error:
+        raise HTTPException(
+            500,
+            "Project duplication status is invalid.",
+        ) from error
+    return str(status["status"])
+
+
+def _project_duplication_workspace_layout() -> tuple[Path, str]:
+    workspace = config.load_workspace_paths()
+    server_root_value = str(workspace.get("workspace_root") or "").strip()
+    paths = workspace.get("paths")
+    if not server_root_value or not isinstance(paths, dict):
+        raise HTTPException(500, "The ArcRho Server workspace is not configured.")
+    try:
+        projects_directory = validate_projects_directory(
+            paths.get("projects_dir") or "projects"
+        )
+    except ProjectDuplicationContractError as error:
+        raise HTTPException(
+            500,
+            "The configured ArcRho projects directory is unsafe.",
+        ) from error
+
+    server_root = Path(server_root_value).expanduser()
+    if not server_root.is_absolute():
+        raise HTTPException(500, "The ArcRho Server workspace root must be absolute.")
+    try:
+        root_available = server_root.is_dir()
+    except OSError as error:
+        raise HTTPException(
+            500,
+            "The ArcRho Server workspace root is inaccessible.",
+        ) from error
+    if not root_available:
+        raise HTTPException(500, "The ArcRho Server workspace root is unavailable.")
+    _validate_project_duplication_protocol_paths(server_root)
+    configured_projects_key = _project_duplication_path_identity(
+        config.PROJECT_SETTINGS_DIR
+    )
+    canonical_projects_key = _project_duplication_path_identity(
+        project_duplication_projects_path(server_root, projects_directory)
+    )
+    if configured_projects_key != canonical_projects_key:
+        raise HTTPException(
+            500,
+            "The ArcRho Engine projects-folder configuration is invalid.",
+        )
+    return server_root, projects_directory
+
+
+def _project_duplication_path_identity(path: str | os.PathLike[str]) -> str:
+    """Return a host-independent Windows identity for one configured path."""
+
+    return os.path.abspath(os.fspath(path)).replace("/", "\\").rstrip("\\").casefold()
+
+
+def _validate_project_duplication_protocol_paths(server_root: Path) -> None:
+    current = server_root
+    for part in (
+        "requests",
+        "project_duplication",
+        "submissions",
+    ):
+        current /= part
+        try:
+            unsafe = path_is_link_or_reparse(current)
+        except OSError as error:
+            raise HTTPException(
+                500,
+                "The project duplication protocol path is inaccessible.",
+            ) from error
+        if unsafe:
+            raise HTTPException(
+                500,
+                "The project duplication protocol path is unsafe.",
+            )
+
+    status_path = server_root / "requests" / "project_duplication" / "status"
+    try:
+        unsafe_status = path_is_link_or_reparse(status_path)
+    except OSError as error:
+        raise HTTPException(
+            500,
+            "The project duplication status path is inaccessible.",
+        ) from error
+    if unsafe_status:
+        raise HTTPException(500, "The project duplication status path is unsafe.")
+
+
+def _project_duplication_server_root() -> Path:
+    server_root, _projects_directory = _project_duplication_workspace_layout()
+    return server_root
+
+
+def _remove_unpublished_duplication_files(*paths: Path | None) -> None:
+    for path in paths:
+        if path is None:
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def get_duplicate_project_folder_status(
+    source: str,
+    request_id: str,
+) -> Dict[str, Any]:
+    if source not in config.PROJECT_SETTINGS_SOURCES:
+        raise HTTPException(404, f"Unknown source: {source}")
+
+    try:
+        normalized_request_id = validate_request_id(request_id)
+    except ProjectDuplicationContractError as error:
+        raise HTTPException(400, str(error)) from error
+
+    status_path = project_duplication_status_path(
+        _project_duplication_server_root(),
+        normalized_request_id,
+    )
+    try:
+        with status_path.open("r", encoding="utf-8-sig") as stream:
+            payload = json.load(stream)
+    except FileNotFoundError as error:
+        raise HTTPException(404, "Project duplication job was not found.") from error
+    except PermissionError as error:
+        raise HTTPException(
+            423,
+            "Project duplication status is locked or inaccessible.",
+        ) from error
+    except json.JSONDecodeError as error:
+        raise HTTPException(
+            502,
+            "ArcRho Engine published an invalid project duplication status.",
+        ) from error
+    except OSError as error:
+        raise HTTPException(
+            500,
+            "Failed to read the project duplication status.",
+        ) from error
+
+    try:
+        status = validate_project_duplication_status(
+            payload,
+            expected_request_id=normalized_request_id,
+        )
+    except ProjectDuplicationContractError as error:
+        raise HTTPException(
+            502,
+            "ArcRho Engine published an invalid project duplication status.",
+        ) from error
+
+    return {
+        "ok": True,
+        "job_id": normalized_request_id,
+        **status,
+    }
 
 
 def _csv_stem_base(file_name: str) -> str:
@@ -864,8 +1286,7 @@ def get_general_settings(project_name: str) -> Dict[str, Any]:
         }
 
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            raw = json.load(f)
+        raw = file_read_cache.read_json_file_cached(filepath)
         data = _normalize_general_settings_payload(raw, project_folder_name, default_auto_generated=False)
         data["project_folder_name"] = project_folder_name
         data["project_name_mismatch"] = _normalize_ci(data.get("project_name")) != _normalize_ci(project_folder_name)

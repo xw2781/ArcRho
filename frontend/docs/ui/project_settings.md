@@ -10,7 +10,7 @@ Source Data offers two import sources for the same project-owned table: a flat C
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260731loading1`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260801dup3`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
@@ -46,6 +46,7 @@ Detected `fetch(...)` targets in key JS files:
 - `/source_table?project_name=${encodeURIComponent(name)}`
 - `/table_summary/refresh`
 - `/table_summary?${q.toString()}`
+- `/workspace_paths`
 
 Detected `arcrho:*` message types in key JS files:
 - `arcrho:close-active-tab`
@@ -53,6 +54,7 @@ Detected `arcrho:*` message types in key JS files:
 - `arcrho:hotkey`
 - `arcrho:open-project`
 - `arcrho:open-project-instance`
+- `arcrho:project-settings-progress`
 - `arcrho:project-settings-ribbon-changed`
 - `arcrho:status`
 <!-- AUTO-GEN:END -->
@@ -70,6 +72,7 @@ Detected `arcrho:*` message types in key JS files:
 - [`ui/project_settings/project_settings_project_map.js`](../../ui/project_settings/project_settings_project_map.js) - Project map document, folder structure, and tree data store.
 - [`ui/project_settings/project_settings_tree_view.js`](../../ui/project_settings/project_settings_tree_view.js) - Project Explorer tree rendering, drag-and-drop, and view state.
 - [`ui/project_settings/project_settings_project_ops.js`](../../ui/project_settings/project_settings_project_ops.js) - Project and virtual-folder create/rename/duplicate/delete flows.
+- [`ui/project_settings/project_settings_duplicate_job.js`](../../ui/project_settings/project_settings_duplicate_job.js) - Project-duplication status polling, transient retries, and terminal-state handling.
 - [`ui/project_settings/project_settings_general_settings.js`](../../ui/project_settings/project_settings_general_settings.js) - Boundary-month parsing and General Settings persistence.
 - [`ui/project_settings/project_settings_table_columns.js`](../../ui/project_settings/project_settings_table_columns.js) - Shared table column sizing, resizing, and scroll activity.
 - [`ui/project_settings/project_settings_source_data.js`](../../ui/project_settings/project_settings_source_data.js) - Source Data panel rendering and column distribution previews.
@@ -169,7 +172,7 @@ Detected `arcrho:*` message types in key JS files:
 - Source Data table reload also clears generated dataset CSV caches under reserving-class `datasets` folders, preserving only CSVs whose canonical scalar `index.json` entry has `source_kind: input`; sidecars remain unchanged and each affected reserving-class index is rebuilt before the refresh completes.
 - Folder-node context menu supports `Create New Project`, prompts for a project name, creates an empty project folder with a `data` subfolder via the app server, then persists folder-tree mapping + blank project row with rollback on intermediate failures.
 - Project creation, rename, and duplication keep the current project-index `mtime` in sync after intermediate folder-tree saves so the final project-row save does not trip the stale-file warning.
-- Project creation creates `data`; project duplication shows a running progress indicator and copies the canonical `data` folder with all source project files.
+- Project creation creates `data`. Project duplication submits a versioned asynchronous job to ArcRho Engine, which performs the physical copy on the ArcRho Server host instead of through the client network drive. The page polls the job's location-independent status, relays preparation and finalization as indeterminate shell progress, and shows completed/total materialized reserving-class folders during the data-copy phase. Only after Engine publishes success does the page idempotently save the folder-tree mapping and duplicated project row. Before POST, the page saves a client-generated request ID plus a path-free fingerprint of the ordered Project Map headers and source row; an uncertain response or reload replays that same logical submission instead of creating another job. Recovery storage is scoped by the normalized workspace root and configured projects/request subpaths. Same-page finalization uses its ephemeral submission snapshot, while reload finalization requires the current headers and source row to match the saved fingerprint; a pre-existing target row must reconstruct to that same source fingerprint or finalization pauses. Uncertain, stale, source-metadata-changed, or recovery-required outcomes preserve both the workspace-scoped pending record and any server target for reconciliation instead of deleting a possibly completed copy.
 <!-- MANUAL:END -->
 
 ## Module Boundaries
@@ -177,7 +180,7 @@ Detected `arcrho:*` message types in key JS files:
 `project_settings.js` is the page coordinator only: DOM lookups, feature composition, project selection, the Source Data table-summary load, dialogs, context menus, and the ribbon. Domain logic has one owner each:
 - `project_settings_project_map.js` owns the project map document, its conflict-detection `mtime`, the derived folder/project tree, and every `/project_settings/{source}*` read and write. Conflict (`409`) and lock (`423`) handling lives here and nowhere else.
 - `project_settings_tree_view.js` owns Project Explorer rendering, drag-and-drop, and view state only (expanded folders in session storage plus `local_project_prefs.json`, and the remembered selection snapshot).
-- `project_settings_project_ops.js` owns project and virtual-folder create/rename/duplicate/delete, including the ordered write sequence (disk folder, then folder structure, then project map) and the reverse-order rollback when a later step fails.
+- `project_settings_project_ops.js` owns project and virtual-folder create/rename/duplicate/delete, including the duplicate write sequence (idempotent Engine submission/copy, then idempotent folder-structure and project-map finalization). Duplicate finalization never rolls back by deleting an Engine-published target. `project_settings_duplicate_job.js` owns workspace-scoped prepared-request persistence, source-metadata fingerprinting, 750 ms status polling, bounded transient retries, stale-job detection, and terminal-state handling.
 - `project_settings_general_settings.js` owns boundary-month parsing (`YYYYMM` canonical form, `MMM YYYY` display, segment-aware stepping) plus the per-project General Settings cache and its `/general_settings` reads and writes.
 - `project_settings_table_columns.js` owns the explicit-width column model shared by every Project Settings table: configured defaults, measurement, auto-fit, drag resizing, and the scroll-activity affordance.
 <!-- MANUAL:END -->
@@ -191,7 +194,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
-- Folder rename/duplicate/delete/create-project flows have rollback branches.
+- Folder rename/delete/create-project flows have rollback branches. Duplicate metadata finalization is resumable and deliberately preserves the server copy on uncertain failures.
 - Large settings payload edits can impact response timing.
 - Reserving class type formula auto-formatting preserves quoted text verbatim; only operators outside quotes are normalized, so quoted names can safely contain `/`, `+`, `-`, `*`, `/`, and repeated spaces. Validation is strict for quoted components: the text inside `"..."` must match an existing reserving class type name exactly, including repeated spaces.
 <!-- MANUAL:END -->

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, status
 
 from app_server.schemas.project_settings import (
     ProjectSettingsUpdateRequest,
     FolderStructureUpdateRequest,
     RenameProjectFolderRequest,
     DuplicateProjectFolderRequest,
+    DuplicateProjectFolderJobResponse,
+    ProjectDuplicationJobStatusResponse,
     CreateProjectFolderRequest,
     DeleteProjectFolderRequest,
     OpenProjectFolderRequest,
@@ -35,9 +37,36 @@ def rename_project_folder(source: str, req: RenameProjectFolderRequest) -> Dict[
     return project_settings_service.rename_project_folder(source, req.old_name, req.new_name)
 
 
-@router.post("/project_settings/{source}/duplicate_project_folder")
-def duplicate_project_folder(source: str, req: DuplicateProjectFolderRequest) -> Dict[str, Any]:
-    return project_settings_service.duplicate_project_folder(source, req.old_name, req.new_name)
+@router.post(
+    "/project_settings/{source}/duplicate_project_folder",
+    response_model=DuplicateProjectFolderJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def duplicate_project_folder(
+    source: str,
+    req: DuplicateProjectFolderRequest,
+) -> DuplicateProjectFolderJobResponse:
+    return project_settings_service.duplicate_project_folder(
+        source,
+        req.old_name,
+        req.new_name,
+        request_id=req.request_id,
+    )
+
+
+@router.get(
+    "/project_settings/{source}/duplicate_project_folder/status/{request_id}",
+    response_model=ProjectDuplicationJobStatusResponse,
+    response_model_exclude_none=True,
+)
+def get_duplicate_project_folder_status(
+    source: str,
+    request_id: str,
+) -> ProjectDuplicationJobStatusResponse:
+    return project_settings_service.get_duplicate_project_folder_status(
+        source,
+        request_id,
+    )
 
 
 @router.post("/project_settings/{source}/create_project_folder")

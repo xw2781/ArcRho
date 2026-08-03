@@ -3,8 +3,9 @@
  *
  * Create / rename / duplicate / delete for projects, plus virtual folder
  * create / rename / delete / move. Every multi-step operation writes the
- * on-disk folder first, then the folder structure, then the project map, and
- * rolls the earlier steps back in reverse order when a later one fails.
+ * on-disk folder first, then the folder structure, then the project map.
+ * Duplicate jobs retain their server target and durable recovery state when
+ * frontend metadata finalization cannot finish immediately.
  */
 import {
   buildEmptyProjectRow,
@@ -14,6 +15,28 @@ import {
   pathEqualsCI,
   splitProjectTreePath,
 } from "/ui/project_settings/project_settings_project_map.js?v=20260730split1";
+import {
+  clearPendingDuplicateJob,
+  createDuplicateRequestId,
+  createDuplicateSourceSnapshotHash,
+  createDuplicateWorkspaceScope,
+  loadPendingDuplicateJob,
+  readDuplicateResponseError,
+  savePendingDuplicateJob,
+  waitForDuplicateProjectJob,
+} from "/ui/project_settings/project_settings_duplicate_job.js?v=20260801dup3";
+
+function getLocalStorageSafely() {
+  try {
+    return globalThis.localStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+const DEFINITIVE_DUPLICATE_SUBMISSION_STATUSES = new Set([
+  400, 401, 403, 404, 405, 409, 410, 422,
+]);
 
 /**
  * @param {object} deps
@@ -24,8 +47,12 @@ import {
  * @param {Function} deps.setStatus
  * @param {Function} deps.showDialog
  * @param {Function} deps.showConfirm
- * @param {Function} deps.showProgress
- * @param {Function} deps.hideProgress
+ * @param {Function} deps.publishShellProgress
+ * @param {Function} [deps.waitForDuplicatePoll]
+ * @param {Storage} [deps.pendingJobStorage]
+ * @param {Function} [deps.duplicateNow]
+ * @param {Function} [deps.duplicateRequestIdFactory]
+ * @param {number} [deps.duplicateStaleStatusMs]
  * @param {Function} deps.appendAuditLogAction
  * @param {Function} deps.getSelectedProject
  * @param {Function} deps.setSelectedProject
@@ -43,8 +70,12 @@ export function createProjectOpsFeature(deps) {
     setStatus,
     showDialog,
     showConfirm,
-    showProgress,
-    hideProgress,
+    publishShellProgress,
+    waitForDuplicatePoll = (delayMs) => new Promise((resolve) => window.setTimeout(resolve, delayMs)),
+    pendingJobStorage: configuredPendingJobStorage,
+    duplicateNow = () => Date.now(),
+    duplicateRequestIdFactory = createDuplicateRequestId,
+    duplicateStaleStatusMs,
     appendAuditLogAction,
     getSelectedProject,
     setSelectedProject,
@@ -53,12 +84,98 @@ export function createProjectOpsFeature(deps) {
     clearProjectSelection,
     reloadProjectData,
   } = deps;
+  const pendingJobStorage = configuredPendingJobStorage === undefined
+    ? getLocalStorageSafely()
+    : configuredPendingJobStorage;
 
   const postJson = (endpoint, body) => fetchImpl(`/project_settings/${defaultSource}/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+
+  const publishDuplicateProgress = (action, progressId, details = {}) => publishShellProgress?.({
+    type: "arcrho:project-settings-progress",
+    action,
+    progressId,
+    ...details,
+  });
+
+  let duplicateProjectInFlight = false;
+  let workspaceScope = "";
+  const inMemoryPendingDuplicates = new Map();
+  const inMemorySourceSnapshots = new Map();
+  const settledDuplicateJobs = new Map();
+
+  const pendingMemoryKey = (sourceKey, scope) => `${sourceKey}\u0000${scope}`;
+  const sourceSnapshotKey = (record) => `${pendingMemoryKey(record.sourceKey, record.workspaceScope)}\u0000${record.requestId}`;
+
+  function cloneSourceSnapshot(headers, row) {
+    return JSON.parse(JSON.stringify({ headers, row }));
+  }
+
+  function rememberPendingDuplicate(record, sourceSnapshot = null) {
+    if (!record?.workspaceScope || !record?.requestId) return record;
+    const key = pendingMemoryKey(record.sourceKey, record.workspaceScope);
+    inMemoryPendingDuplicates.set(key, record);
+    settledDuplicateJobs.delete(key);
+    if (sourceSnapshot) {
+      inMemorySourceSnapshots.set(
+        sourceSnapshotKey(record),
+        cloneSourceSnapshot(sourceSnapshot.headers, sourceSnapshot.row),
+      );
+    }
+    return record;
+  }
+
+  function settlePendingDuplicate(record) {
+    if (!record?.workspaceScope || !record?.requestId) return;
+    const key = pendingMemoryKey(record.sourceKey, record.workspaceScope);
+    if (inMemoryPendingDuplicates.get(key)?.requestId === record.requestId) {
+      inMemoryPendingDuplicates.delete(key);
+    }
+    inMemorySourceSnapshots.delete(sourceSnapshotKey(record));
+    settledDuplicateJobs.set(key, record.requestId);
+    clearPendingDuplicateJob(
+      pendingJobStorage,
+      record.sourceKey,
+      record.workspaceScope,
+      record.requestId,
+    );
+  }
+
+  function loadPendingDuplicateFor(sourceKey, scope) {
+    const key = pendingMemoryKey(sourceKey, scope);
+    const stored = loadPendingDuplicateJob(pendingJobStorage, sourceKey, scope);
+    if (stored && settledDuplicateJobs.get(key) !== stored.requestId) {
+      inMemoryPendingDuplicates.set(key, stored);
+      return stored;
+    }
+    const inMemory = inMemoryPendingDuplicates.get(key);
+    return inMemory && settledDuplicateJobs.get(key) !== inMemory.requestId ? inMemory : null;
+  }
+
+  const loadPendingDuplicate = () => loadPendingDuplicateFor(defaultSource, workspaceScope);
+
+  function assertCurrentWorkspace(record) {
+    if (record?.workspaceScope === workspaceScope && workspaceScope) return;
+    const error = new Error("The ArcRho Server connection changed. The recovery record remains with its original workspace.");
+    error.code = "DUPLICATE_WORKSPACE_CHANGED";
+    throw error;
+  }
+
+  async function pollDuplicateProjectJob(record, progressId) {
+    return waitForDuplicateProjectJob({
+      fetchImpl,
+      statusUrl: `/project_settings/${defaultSource}/duplicate_project_folder/status/${encodeURIComponent(record.requestId)}`,
+      jobId: record.requestId,
+      waitForPoll: waitForDuplicatePoll,
+      now: duplicateNow,
+      staleStatusMs: duplicateStaleStatusMs,
+      isCurrentWorkspace: () => record.workspaceScope === workspaceScope,
+      onProgress: (progress) => publishDuplicateProgress("update", progressId, progress),
+    });
+  }
 
   function refreshTree() {
     store.buildTreeData();
@@ -69,6 +186,12 @@ export function createProjectOpsFeature(deps) {
   function failOperation(message) {
     setStatus(message);
     alert(message);
+  }
+
+  function duplicateLifecycleError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
   }
 
   /** Restore the previously saved folder structure after a failed step. */
@@ -306,14 +429,34 @@ export function createProjectOpsFeature(deps) {
   }
 
   async function duplicateProject(project) {
+    if (duplicateProjectInFlight) {
+      setStatus("A project duplication is already in progress.");
+      return;
+    }
+    if (!workspaceScope) {
+      failOperation("Project duplication is unavailable until the ArcRho Server connection is resolved.");
+      return;
+    }
+    const existingPending = loadPendingDuplicate();
+    if (existingPending) {
+      await resumePendingDuplicateProject();
+      return;
+    }
+    duplicateProjectInFlight = true;
+    try {
+      await runDuplicateProject(project);
+    } finally {
+      duplicateProjectInFlight = false;
+    }
+  }
+
+  async function runDuplicateProject(project) {
     const suggestedName = getNextDuplicateName(project.name);
     const newName = await showDialog("Enter name for duplicate:", suggestedName);
     if (!newName) return;
     const newProjectName = newName.trim();
     if (!newProjectName) return;
 
-    const projectData = store.getProjectData();
-    const sheetName = store.getSheetName();
     const sheet = store.getSheet();
     const { nameIdx } = findNameColumn(sheet);
     if (nameIdx === -1) {
@@ -326,62 +469,297 @@ export function createProjectOpsFeature(deps) {
     }
 
     setStatus(`Duplicating as "${newProjectName}"...`);
-    const newRow = [...project._row];
-    newRow[nameIdx] = newProjectName;
-
-    let folderCopied = false;
-    let folderStructureSaved = false;
-    const foldersBefore = Array.isArray(projectData.customFolders) ? [...projectData.customFolders] : [];
-    const projectPathsBefore = Array.isArray(projectData.projectPaths) ? [...projectData.projectPaths] : [];
+    let pendingRecord = null;
+    let progressId = "project-duplicate-preparing";
     try {
-      // 1) Copy folder first.
-      showProgress(`Duplicating "${project.name}" to "${newProjectName}"...`);
-      const copyRes = await postJson("duplicate_project_folder", { old_name: project.name, new_name: newProjectName });
-      if (!copyRes.ok) {
-        throw new Error(`Folder copy failed: ${await copyRes.text()}`);
-      }
-      const copyResult = await copyRes.json();
-      if (copyResult && copyResult.message) {
-        throw new Error(`Folder copy failed: ${copyResult.message}`);
-      }
-      folderCopied = true;
-      showProgress(`Finalizing "${newProjectName}"...`);
-
-      // 2) Save folder structure with the new project path.
-      const sourceFolderPath = store.getProjectFolderFromStructure(project.name);
-      const foldersNext = [...foldersBefore];
-      const projectPathsNext = [...projectPathsBefore];
-      const newFullPath = joinProjectTreePath(sourceFolderPath || "Uncategorized", newProjectName);
-      if (!projectPathsNext.some((p) => pathEqualsCI(p, newFullPath))) {
-        projectPathsNext.push(newFullPath);
-      }
-      await store.saveFolderStructure(foldersNext, projectPathsNext);
-      folderStructureSaved = true;
-
-      // 3) Save duplicated project row to settings JSON.
-      await store.saveProjectMapRows(sheetName, (rowsCopy) => rowsCopy.push(newRow));
-
-      // 4) Commit to in-memory/UI only after app-server steps succeed.
-      sheet.rows.push(newRow);
-      projectData.projectPaths = projectPathsNext;
-      refreshTree();
-      hideProgress();
-      setStatus(`Duplicated "${newProjectName}"`);
-      await appendAuditLogAction(newProjectName, `Duplicated from project "${project.name}"`);
-    } catch (e) {
-      hideProgress();
-      let rollbackError = "";
-      if (folderStructureSaved) {
-        rollbackError += await rollbackFolderStructure(foldersBefore, projectPathsBefore);
-      }
-      if (folderCopied) {
-        rollbackError += await rollbackProjectFolder("delete_project_folder", { name: newProjectName });
-      }
-      failOperation(`Duplicate failed: ${e.message}${rollbackError}`);
+      const sourceRow = sheet.rows.find((row) => row === project._row)
+        || sheet.rows.find((row) => String(row?.[nameIdx] || "").trim().toLowerCase() === project.name.toLowerCase());
+      if (!sourceRow) throw duplicateLifecycleError(
+        "DUPLICATE_SUBMISSION_REJECTED",
+        `Source project "${project.name}" is no longer present in Project Settings.`,
+      );
+      const sourceSnapshot = cloneSourceSnapshot(sheet.headers, sourceRow);
+      const requestId = duplicateRequestIdFactory();
+      progressId = `project-duplicate-${requestId}`;
+      pendingRecord = {
+        version: 2,
+        sourceKey: defaultSource,
+        workspaceScope,
+        requestId,
+        sourceName: project.name,
+        targetName: newProjectName,
+        sourceFolderPath: store.getProjectFolderFromStructure(project.name) || "Uncategorized",
+        sourceSnapshotHash: createDuplicateSourceSnapshotHash(
+          sourceSnapshot.headers,
+          sourceSnapshot.row,
+        ),
+        submittedAt: duplicateNow(),
+        submissionAcknowledged: false,
+        metadataFinalized: false,
+      };
+      rememberPendingDuplicate(pendingRecord, sourceSnapshot);
       try {
-        await reloadProjectData(defaultSource);
-      } catch {}
+        pendingRecord = rememberPendingDuplicate(savePendingDuplicateJob(pendingJobStorage, pendingRecord));
+      } catch (error) {
+        console.warn("Duplicate recovery state could not be persisted; continuing in this page:", error);
+        setStatus("Duplicate is prepared in this page, but durable local recovery storage is unavailable. Keep Project Settings open.");
+      }
+
+      // Persist the client request ID and submission snapshot before any POST.
+      publishDuplicateProgress("open", progressId, {
+        title: "Duplicate Project",
+        label: `Starting copy of "${project.name}"...`,
+        completed: 0,
+        total: 0,
+        countText: "Working...",
+      });
+      await completePendingDuplicate(pendingRecord, progressId);
+    } catch (e) {
+      await handlePendingDuplicateFailure(e, pendingRecord, progressId, "Duplicate failed");
     }
+  }
+
+  async function submitPendingDuplicate(record, progressId) {
+    assertCurrentWorkspace(record);
+    publishDuplicateProgress("update", progressId, {
+      label: `Submitting copy to "${record.targetName}"...`, completed: 0, total: 0, countText: "Working...",
+    });
+    let response;
+    try {
+      response = await postJson("duplicate_project_folder", {
+        old_name: record.sourceName,
+        new_name: record.targetName,
+        request_id: record.requestId,
+      });
+    } catch (error) {
+      throw duplicateLifecycleError(
+        "DUPLICATE_SUBMISSION_UNCERTAIN",
+        `The copy request response was unavailable (${error?.message || error}). The same request will be retried.`,
+      );
+    }
+    assertCurrentWorkspace(record);
+    if (!response.ok) {
+      const detail = await readDuplicateResponseError(response);
+      const status = Number(response.status) || 0;
+      const definitive = DEFINITIVE_DUPLICATE_SUBMISSION_STATUSES.has(status);
+      throw duplicateLifecycleError(
+        definitive ? "DUPLICATE_SUBMISSION_REJECTED" : "DUPLICATE_SUBMISSION_UNCERTAIN",
+        definitive
+          ? `The copy request was rejected: ${detail}`
+          : `The copy request may still have been accepted: ${detail}. The same request will be retried.`,
+      );
+    }
+
+    let submission;
+    try {
+      submission = await response.json();
+    } catch {
+      throw duplicateLifecycleError(
+        "DUPLICATE_SUBMISSION_UNCERTAIN",
+        "The copy request returned an invalid response. The same request will be retried.",
+      );
+    }
+    const responseRequestId = String(submission?.job_id || "").trim();
+    if (submission?.ok !== true || responseRequestId !== record.requestId) {
+      throw duplicateLifecycleError(
+        "DUPLICATE_SUBMISSION_UNCERTAIN",
+        "The copy request response did not confirm the prepared request ID. The same request will be retried.",
+      );
+    }
+
+    let acknowledgedRecord = rememberPendingDuplicate({
+      ...record,
+      submissionAcknowledged: true,
+    });
+    try {
+      acknowledgedRecord = rememberPendingDuplicate(
+        savePendingDuplicateJob(pendingJobStorage, acknowledgedRecord),
+      );
+    } catch (error) {
+      console.warn("Acknowledged duplicate state could not be persisted:", error);
+      setStatus("Duplicate submitted, but durable local recovery storage is unavailable. Keep Project Settings open.");
+    }
+    return acknowledgedRecord;
+  }
+
+  async function finalizeDuplicateMetadata(record, progressId, copyResult) {
+    assertCurrentWorkspace(record);
+    const projectData = store.getProjectData();
+    const sheetName = store.getSheetName();
+    const sheet = store.getSheet();
+    const { nameIdx } = findNameColumn(sheet);
+    if (nameIdx === -1) throw new Error("Project Name column not found during duplicate finalization.");
+    const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    const nameMatches = (row, name) => String(row?.[nameIdx] || "").trim().toLowerCase() === name.toLowerCase();
+    let targetRow = rows.find((row) => nameMatches(row, record.targetName));
+    if (targetRow) {
+      const reconstructedSourceRow = [...targetRow];
+      reconstructedSourceRow[nameIdx] = record.sourceName;
+      const existingTargetHash = createDuplicateSourceSnapshotHash(
+        sheet.headers,
+        reconstructedSourceRow,
+      );
+      if (existingTargetHash !== record.sourceSnapshotHash) {
+        throw duplicateLifecycleError(
+          "DUPLICATE_SOURCE_METADATA_CHANGED",
+          `Project "${record.targetName}" already has metadata that does not belong to this duplicate request; metadata finalization was paused.`,
+        );
+      }
+    }
+    if (!targetRow) {
+      const ephemeralSnapshot = inMemorySourceSnapshots.get(sourceSnapshotKey(record));
+      if (ephemeralSnapshot) {
+        const headersUnchanged = JSON.stringify(ephemeralSnapshot.headers) === JSON.stringify(sheet.headers);
+        const hashUnchanged = createDuplicateSourceSnapshotHash(
+          ephemeralSnapshot.headers,
+          ephemeralSnapshot.row,
+        ) === record.sourceSnapshotHash;
+        if (!headersUnchanged || !hashUnchanged) {
+          throw duplicateLifecycleError(
+            "DUPLICATE_SOURCE_METADATA_CHANGED",
+            "Project Settings columns changed after duplicate submission; metadata finalization was paused.",
+          );
+        }
+        targetRow = [...ephemeralSnapshot.row];
+      } else {
+        const sourceRow = rows.find((row) => nameMatches(row, record.sourceName));
+        const currentHash = sourceRow
+          ? createDuplicateSourceSnapshotHash(sheet.headers, sourceRow)
+          : "";
+        if (!sourceRow || currentHash !== record.sourceSnapshotHash) {
+          throw duplicateLifecycleError(
+            "DUPLICATE_SOURCE_METADATA_CHANGED",
+            `Source project "${record.sourceName}" was changed or deleted after duplicate submission; metadata finalization was paused.`,
+          );
+        }
+        targetRow = [...sourceRow];
+      }
+      targetRow[nameIdx] = record.targetName;
+    }
+
+    const foldersNext = Array.isArray(projectData.customFolders) ? [...projectData.customFolders] : [];
+    const projectPathsNext = Array.isArray(projectData.projectPaths) ? [...projectData.projectPaths] : [];
+    const newFullPath = joinProjectTreePath(record.sourceFolderPath || "Uncategorized", record.targetName);
+    if (!projectPathsNext.some((path) => pathEqualsCI(path, newFullPath))) {
+      projectPathsNext.push(newFullPath);
+      await store.saveFolderStructure(foldersNext, projectPathsNext);
+      assertCurrentWorkspace(record);
+      projectData.projectPaths = projectPathsNext;
+    }
+    if (!rows.some((row) => nameMatches(row, record.targetName))) {
+      await store.saveProjectMapRows(sheetName, (rowsCopy) => {
+        if (!rowsCopy.some((row) => nameMatches(row, record.targetName))) rowsCopy.push(targetRow);
+      });
+      assertCurrentWorkspace(record);
+    }
+
+    if (!sheet.rows.some((row) => nameMatches(row, record.targetName))) sheet.rows.push(targetRow);
+    projectData.projectPaths = projectPathsNext;
+    treeView.expandFolder(record.sourceFolderPath || "Uncategorized");
+    refreshTree();
+    let finalizedRecord = { ...record, metadataFinalized: true };
+    rememberPendingDuplicate(finalizedRecord);
+    try {
+      finalizedRecord = rememberPendingDuplicate(savePendingDuplicateJob(pendingJobStorage, finalizedRecord));
+    } catch (error) {
+      console.warn("Finalized duplicate state could not be persisted:", error);
+    }
+    if (!record.metadataFinalized) {
+      try {
+        await appendAuditLogAction(record.targetName, `Duplicated from project "${record.sourceName}"`);
+      } catch (error) {
+        console.warn("Duplicate audit-log update failed:", error);
+      }
+    }
+    settlePendingDuplicate(finalizedRecord);
+    setStatus(`Duplicated "${record.targetName}"`);
+    const completed = Math.max(0, Number(copyResult?.progress?.completed) || 0);
+    const total = Math.max(0, Number(copyResult?.progress?.total) || 0);
+    publishDuplicateProgress("update", progressId, {
+      label: `Duplicated "${record.targetName}"`, completed, total, countText: total > 0 ? "" : "Complete",
+    });
+    publishDuplicateProgress("close", progressId, { autoCloseMs: 850 });
+  }
+
+  async function completePendingDuplicate(record, progressId) {
+    const activeRecord = record.submissionAcknowledged
+      ? record
+      : await submitPendingDuplicate(record, progressId);
+    const copyResult = activeRecord.metadataFinalized
+      ? { progress: { completed: 0, total: 0 } }
+      : await pollDuplicateProjectJob(activeRecord, progressId);
+    publishDuplicateProgress("update", progressId, {
+      label: `Finalizing "${activeRecord.targetName}"...`, completed: 0, total: 0, countText: "Working...",
+    });
+    await finalizeDuplicateMetadata(activeRecord, progressId, copyResult);
+  }
+
+  async function handlePendingDuplicateFailure(error, record, progressId, prefix) {
+    publishDuplicateProgress("close", progressId);
+    if (record && error?.code === "DUPLICATE_STATUS_NOT_FOUND") {
+      const current = loadPendingDuplicateFor(record.sourceKey, record.workspaceScope) || record;
+      const retryRecord = rememberPendingDuplicate({
+        ...current,
+        submissionAcknowledged: false,
+      });
+      try {
+        rememberPendingDuplicate(savePendingDuplicateJob(pendingJobStorage, retryRecord));
+      } catch (storageError) {
+        console.warn("Duplicate replay state could not be persisted:", storageError);
+      }
+    }
+    const definitive = error?.code === "DUPLICATE_JOB_ERROR"
+      || error?.code === "DUPLICATE_SUBMISSION_REJECTED";
+    if (record && definitive) {
+      settlePendingDuplicate(record);
+    }
+    const retained = record && loadPendingDuplicateFor(
+      record.sourceKey,
+      record.workspaceScope,
+    )?.requestId === record.requestId;
+    const preserved = record && !definitive;
+    const retentionDetail = retained
+      ? " The recovery record and server-side copy state were both preserved."
+      : (preserved ? " The server-side copy state was preserved, but local recovery storage is unavailable." : "");
+    failOperation(`${prefix}: ${error.message}${retentionDetail}`);
+    try { await reloadProjectData(defaultSource); } catch {}
+  }
+
+  async function resumePendingDuplicateProject() {
+    if (duplicateProjectInFlight || !workspaceScope) return false;
+    const record = loadPendingDuplicate();
+    if (!record) return false;
+    duplicateProjectInFlight = true;
+    const progressId = `project-duplicate-resume-${record.requestId}`;
+    publishDuplicateProgress("open", progressId, {
+      title: "Duplicate Project",
+      label: `Resuming copy to "${record.targetName}"...`,
+      completed: 0,
+      total: 0,
+      countText: "Working...",
+    });
+    setStatus(`Resuming duplicate request "${record.requestId}"...`);
+    try {
+      await completePendingDuplicate(record, progressId);
+    } catch (error) {
+      await handlePendingDuplicateFailure(error, record, progressId, "Duplicate recovery paused");
+    } finally {
+      duplicateProjectInFlight = false;
+    }
+    return true;
+  }
+
+  function setWorkspaceRoot(workspaceRoot) {
+    workspaceScope = createDuplicateWorkspaceScope(workspaceRoot);
+    return workspaceScope;
+  }
+
+  function requestClose() {
+    if (!duplicateProjectInFlight) return false;
+    const message = "Project duplication is still running or finalizing. Wait for it to finish before closing Project Settings.";
+    setStatus(message);
+    alert(message);
+    return true;
   }
 
   async function deleteProject(project) {
@@ -619,5 +997,8 @@ export function createProjectOpsFeature(deps) {
     moveProjectToFolder,
     renameFolder,
     renameProject,
+    requestClose,
+    resumePendingDuplicateProject,
+    setWorkspaceRoot,
   };
 }

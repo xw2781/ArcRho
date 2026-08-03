@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +21,31 @@ class RenameProjectFolderRequest(BaseModel):
 class DuplicateProjectFolderRequest(BaseModel):
     old_name: str
     new_name: str
+    request_id: Optional[str] = None
+
+
+class DuplicateProjectFolderJobResponse(BaseModel):
+    ok: Literal[True]
+    job_id: str
+    status: Literal["queued", "processing", "success", "error"]
+
+
+class ProjectDuplicationProgress(BaseModel):
+    stage: str
+    completed: int = Field(ge=0)
+    total: int = Field(ge=0)
+    label: str
+
+
+class ProjectDuplicationJobStatusResponse(BaseModel):
+    ok: Literal[True]
+    job_id: str
+    contract_version: int
+    status: Literal["queued", "processing", "success", "error"]
+    updated_at: str
+    request_id: str
+    progress: ProjectDuplicationProgress
+    message: Optional[str] = None
 
 
 class CreateProjectFolderRequest(BaseModel):

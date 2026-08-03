@@ -1,6 +1,11 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { normalizeBrowsingHistoryEntry } from "/ui/shell/browsing_history.js";
 import { normalizeProjectInstanceState, normalizeShellActivityEntry } from "/ui/shell/shell_activity_history.js";
+import {
+  closeAutomationProgress,
+  openAutomationProgress,
+  updateAutomationProgress,
+} from "./ui_automation.js?v=20260801dup1";
 
 let shellMessagesWired = false;
 
@@ -90,12 +95,47 @@ function handleTaskDesignerContextRequest(source, msg) {
   window.setTimeout(() => finish({ available: false, error: "Timed out reading active DFM context." }), 2500);
 }
 
+export function handleProjectSettingsProgressMessage(
+  source,
+  msg,
+  origin = globalThis.location?.origin || "",
+) {
+  if (msg?.type !== "arcrho:project-settings-progress") return false;
+  const expectedOrigin = String(globalThis.location?.origin || "");
+  if (expectedOrigin && origin !== expectedOrigin) return false;
+  const sourceTab = shell.state?.tabs?.find?.((tab) => (
+    tab.type === "project_settings" && tab.iframe?.contentWindow === source
+  ));
+  if (!sourceTab) return false;
+  const messageProgressId = String(msg.progressId || "").trim();
+  if (!messageProgressId) return true;
+  const progressId = `${sourceTab.id || "project-settings"}:${messageProgressId}`;
+  const args = {
+    progressId,
+    title: msg.title,
+    label: msg.label,
+    completed: msg.completed,
+    total: msg.total,
+    countText: msg.countText,
+    autoCloseMs: msg.autoCloseMs,
+  };
+  const action = String(msg.action || "").trim().toLowerCase();
+  if (action === "open") openAutomationProgress(args);
+  else if (action === "update") updateAutomationProgress(args);
+  else if (action === "close") closeAutomationProgress(args);
+  return true;
+}
+
 export function initShellMessages() {
   if (shellMessagesWired) return;
   shellMessagesWired = true;
   window.addEventListener("message", (e) => {
     const msg = e.data;
     if (!msg) return;
+    if (msg.type === "arcrho:project-settings-progress") {
+      handleProjectSettingsProgressMessage(e.source, msg, e.origin);
+      return;
+    }
     if (msg.type === "arcrho:close-shell-menus") return shell.closeAllShellMenus?.();
     if (msg.type === "arcrho:open-task-designer") {
       const sourceTab = shell.state.tabs.find((tab) => tab.iframe?.contentWindow === e.source);

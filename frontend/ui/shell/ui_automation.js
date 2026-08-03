@@ -232,6 +232,25 @@ function installAutomationStyles() {
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
       transition: width 180ms ease, min-width 180ms ease;
     }
+    .uiAutomationProgressTrack.indeterminate .uiAutomationProgressFill {
+      width: 32%;
+      min-width: 48px;
+      opacity: 0.72;
+      animation: uiAutomationProgressSweep 1.35s ease-in-out infinite;
+    }
+    @keyframes uiAutomationProgressSweep {
+      from { transform: translateX(-115%); }
+      to { transform: translateX(315%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .uiAutomationProgressFill { transition: none; }
+      .uiAutomationProgressTrack.indeterminate .uiAutomationProgressFill {
+        width: 42%;
+        animation: none;
+        transform: none;
+        opacity: 0.5;
+      }
+    }
     .uiAutomationDialogResizeHandle {
       position: absolute;
       right: 0;
@@ -504,17 +523,24 @@ function applyProgressWindowState(entry, args = {}) {
   const titleEl = entry.overlay.querySelector(".uiAutomationDialogTitle");
   const labelEl = entry.overlay.querySelector(".uiAutomationProgressLabel");
   const countEl = entry.overlay.querySelector(".uiAutomationProgressCount");
+  const trackEl = entry.overlay.querySelector(".uiAutomationProgressTrack");
   const fillEl = entry.overlay.querySelector(".uiAutomationProgressFill");
   if (titleEl && args.title !== undefined) titleEl.textContent = toText(args.title) || "ArcRho";
   if (labelEl) labelEl.textContent = label;
   if (countEl) countEl.textContent = countText;
+  trackEl?.classList.toggle("indeterminate", total <= 0);
   if (fillEl) {
-    fillEl.style.width = `${percent}%`;
-    fillEl.style.minWidth = percent > 0 ? "3px" : "0";
+    if (total <= 0) {
+      fillEl.style.removeProperty("width");
+      fillEl.style.removeProperty("min-width");
+    } else {
+      fillEl.style.width = `${percent}%`;
+      fillEl.style.minWidth = percent > 0 ? "3px" : "0";
+    }
   }
 }
 
-function openAutomationProgress(args = {}) {
+export function openAutomationProgress(args = {}) {
   installAutomationStyles();
   const progressId = progressIdFromArgs(args);
   dismissedProgressWindows.delete(progressId);
@@ -581,7 +607,7 @@ function openAutomationProgress(args = {}) {
   return { progressId };
 }
 
-function updateAutomationProgress(args = {}) {
+export function updateAutomationProgress(args = {}) {
   const progressId = progressIdFromArgs(args);
   const entry = progressWindows.get(progressId);
   if (!entry?.overlay?.isConnected && dismissedProgressWindows.has(progressId)) {
@@ -592,7 +618,7 @@ function updateAutomationProgress(args = {}) {
   return { progressId };
 }
 
-function closeAutomationProgress(args = {}) {
+export function closeAutomationProgress(args = {}) {
   const progressId = progressIdFromArgs(args);
   const entry = progressWindows.get(progressId);
   if (args.dismiss || args.dismissed || args.userDismissed || args.user_dismissed) {

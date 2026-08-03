@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
@@ -66,8 +67,14 @@ class EngineRequestHandlerTests(unittest.TestCase):
         self.assertEqual(
             handler.process_file.call_args_list,
             [
-                call(r"E:\requests\request-created.json"),
-                call(r"E:\requests\request-moved.json"),
+                call(
+                    r"E:\requests\request-created.json",
+                    dispatch_duplication=True,
+                ),
+                call(
+                    r"E:\requests\request-moved.json",
+                    dispatch_duplication=True,
+                ),
             ],
         )
 
@@ -155,6 +162,306 @@ class EngineRequestHandlerTests(unittest.TestCase):
             handler.process_file(r"E:\requests\request.json")
 
         self.assertEqual(events, ["claim", "processing", "validate", "success"])
+
+    def test_project_duplication_dispatches_before_legacy_project_validation(self):
+        handler = engine_main.RequestHandler()
+        request = {
+            "Function": "ArcRhoDuplicateProject",
+            "ContractVersion": 1,
+            "RequestId": "duplicate-123",
+            "SourceProjectName": "Source",
+            "TargetProjectName": "Target",
+            "UserName": "tester",
+        }
+        server_root = Path(self.temp_dir.name) / "ArcRho Server"
+
+        with (
+            patch.object(engine_main, "read_json", return_value=request),
+            patch.object(engine_main, "get_project_root", return_value=server_root),
+            patch.object(
+                engine_main,
+                "process_durable_project_duplication_request",
+            ) as execute,
+            patch.object(engine_main, "safe_remove") as legacy_claim,
+            patch.object(engine_main, "project_exists") as project_exists,
+            patch.object(engine_main, "get_project_table_path") as table_path,
+            patch.object(engine_main, "write_json") as legacy_status,
+        ):
+            handler.process_file(r"E:\requests\duplicate-123.json")
+
+        execute.assert_called_once_with(
+            server_root,
+            r"E:\requests\duplicate-123.json",
+            request,
+        )
+        legacy_claim.assert_not_called()
+        project_exists.assert_not_called()
+        table_path.assert_not_called()
+        legacy_status.assert_not_called()
+
+    def test_long_duplication_does_not_block_serialized_legacy_request(self):
+        handler = engine_main.RequestHandler()
+        duplication_started = Event()
+        release_duplication = Event()
+        duplicate_request = {
+            "Function": "ArcRhoDuplicateProject",
+            "ContractVersion": 1,
+            "RequestId": "duplicate-long",
+            "SourceProjectName": "Source",
+            "TargetProjectName": "Target",
+            "UserName": "tester",
+        }
+        legacy_request = _request(RequestId="legacy-during-copy", StatusPath="")
+
+        def read_request(path):
+            if str(path).endswith("duplicate.json"):
+                return duplicate_request
+            return legacy_request
+
+        def hold_duplication(_root, _path, _request_payload):
+            duplication_started.set()
+            self.assertTrue(release_duplication.wait(timeout=2.0))
+
+        try:
+            with (
+                patch.object(engine_main, "read_json", side_effect=read_request),
+                patch.object(
+                    engine_main,
+                    "process_durable_project_duplication_request",
+                    side_effect=hold_duplication,
+                ),
+                patch.object(engine_main, "safe_remove", return_value=True),
+                patch.object(engine_main, "project_exists", return_value=True),
+                patch.object(
+                    engine_main,
+                    "get_project_table_path",
+                    return_value="source.csv",
+                ),
+                patch.object(engine_main, "UDF_ADASTri") as legacy_udf,
+                patch.object(engine_main, "debug_mode", 0),
+                patch.dict(engine_main.PROJECT_CONFIG, {}, clear=True),
+            ):
+                handler.process_file_debug(r"E:\requests\duplicate.json")
+                self.assertTrue(duplication_started.wait(timeout=1.0))
+
+                handler.process_file_debug(r"E:\requests\legacy.json")
+
+                legacy_udf.assert_called_once_with(legacy_request)
+        finally:
+            release_duplication.set()
+            self.assertTrue(handler.shutdown(wait=True, timeout=2.0))
+
+    def test_repeated_duplicate_events_schedule_one_worker_job(self):
+        handler = engine_main.RequestHandler()
+        duplication_started = Event()
+        release_duplication = Event()
+        request = {
+            "Function": "ArcRhoDuplicateProject",
+            "ContractVersion": 1,
+            "RequestId": "duplicate-repeat",
+            "SourceProjectName": "Source",
+            "TargetProjectName": "Target",
+            "UserName": "tester",
+        }
+
+        def hold_duplication(_root, _path, _request_payload):
+            duplication_started.set()
+            self.assertTrue(release_duplication.wait(timeout=2.0))
+
+        try:
+            with (
+                patch.object(engine_main, "read_json", return_value=request),
+                patch.object(
+                    engine_main,
+                    "process_durable_project_duplication_request",
+                    side_effect=hold_duplication,
+                ) as execute,
+                patch.object(engine_main, "debug_mode", 0),
+            ):
+                handler.process_file_debug(r"E:\requests\duplicate-repeat.json")
+                self.assertTrue(duplication_started.wait(timeout=1.0))
+                handler.process_file_debug(r"E:\requests\duplicate-repeat-moved.json")
+                handler.process_file_debug(r"E:\requests\duplicate-repeat-rescan.json")
+
+                self.assertEqual(execute.call_count, 1)
+        finally:
+            release_duplication.set()
+            self.assertTrue(handler.shutdown(wait=True, timeout=2.0))
+
+    def test_duplication_worker_queue_is_bounded_and_shutdown_rejects_new_work(self):
+        handler = engine_main.RequestHandler(duplication_queue_capacity=1)
+        first_started = Event()
+        release_first = Event()
+        second_completed = Event()
+
+        def duplicate_request(request_id):
+            return {
+                "Function": "ArcRhoDuplicateProject",
+                "ContractVersion": 1,
+                "RequestId": request_id,
+                "SourceProjectName": "Source",
+                "TargetProjectName": request_id,
+                "UserName": "tester",
+            }
+
+        first = duplicate_request("duplicate-first")
+        second = duplicate_request("duplicate-second")
+        third = duplicate_request("duplicate-third")
+
+        def execute(_root, _path, request_payload):
+            if request_payload["RequestId"] == "duplicate-first":
+                first_started.set()
+                self.assertTrue(release_first.wait(timeout=2.0))
+            else:
+                second_completed.set()
+
+        try:
+            with patch.object(
+                engine_main,
+                "process_durable_project_duplication_request",
+                side_effect=execute,
+            ) as worker:
+                self.assertTrue(
+                    handler._schedule_project_duplication("first.json", first)
+                )
+                self.assertTrue(first_started.wait(timeout=1.0))
+                self.assertTrue(
+                    handler._schedule_project_duplication("second.json", second)
+                )
+                self.assertFalse(
+                    handler._schedule_project_duplication("third.json", third)
+                )
+                release_first.set()
+                self.assertTrue(second_completed.wait(timeout=1.0))
+                self.assertTrue(handler.shutdown(wait=True, timeout=2.0))
+                self.assertFalse(
+                    handler._schedule_project_duplication("third.json", third)
+                )
+
+            self.assertEqual(
+                [item.args[2]["RequestId"] for item in worker.call_args_list],
+                ["duplicate-first", "duplicate-second"],
+            )
+        finally:
+            release_first.set()
+            handler.shutdown(wait=True, timeout=2.0)
+
+    def test_failed_duplication_worker_releases_dedupe_for_retry(self):
+        handler = engine_main.RequestHandler()
+        request = {
+            "Function": "ArcRhoDuplicateProject",
+            "ContractVersion": 1,
+            "RequestId": "duplicate-retry",
+            "SourceProjectName": "Source",
+            "TargetProjectName": "Target",
+            "UserName": "tester",
+        }
+
+        with patch.object(
+            engine_main,
+            "process_durable_project_duplication_request",
+            side_effect=RuntimeError("worker failed"),
+        ) as worker:
+            self.assertTrue(handler._schedule_project_duplication("first.json", request))
+            handler._duplication_queue.join()
+            self.assertTrue(handler._schedule_project_duplication("retry.json", request))
+            handler._duplication_queue.join()
+
+        self.assertTrue(handler.shutdown(wait=True, timeout=2.0))
+        self.assertEqual(worker.call_count, 2)
+
+    def test_direct_legacy_requests_remain_serialized(self):
+        handler = engine_main.RequestHandler()
+        first_started = Event()
+        second_started = Event()
+        release_first = Event()
+        udf_calls = 0
+
+        def run_legacy(_request_payload):
+            nonlocal udf_calls
+            udf_calls += 1
+            if udf_calls == 1:
+                first_started.set()
+                release_first.wait(timeout=2.0)
+            else:
+                second_started.set()
+
+        def read_request(path):
+            return _request(
+                RequestId=Path(path).stem,
+                StatusPath="",
+            )
+
+        with (
+            patch.object(engine_main, "read_json", side_effect=read_request),
+            patch.object(engine_main, "safe_remove", return_value=True),
+            patch.object(engine_main, "project_exists", return_value=True),
+            patch.object(
+                engine_main,
+                "get_project_table_path",
+                return_value="source.csv",
+            ),
+            patch.object(engine_main, "UDF_ADASTri", side_effect=run_legacy),
+            patch.object(engine_main, "debug_mode", 0),
+            patch.dict(engine_main.PROJECT_CONFIG, {}, clear=True),
+        ):
+            first = Thread(target=handler.process_file, args=("first.json",))
+            second = Thread(target=handler.process_file, args=("second.json",))
+            first.start()
+            self.assertTrue(first_started.wait(timeout=1.0))
+            second.start()
+            self.assertFalse(second_started.wait(timeout=0.1))
+            release_first.set()
+            first.join(timeout=1.0)
+            second.join(timeout=1.0)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertTrue(second_started.is_set())
+
+    def test_existing_requests_are_processed_after_offline_queueing(self):
+        request_dir = Path(self.temp_dir.name) / "requests"
+        request_dir.mkdir()
+        (request_dir / "b.json").write_text("{}", encoding="utf-8")
+        (request_dir / "a.JSON").write_text("{}", encoding="utf-8")
+        (request_dir / "ignore.tmp").write_text("{}", encoding="utf-8")
+        handler = SimpleNamespace(process_file_debug=Mock())
+
+        engine_main.process_existing_requests(request_dir, handler)
+
+        self.assertEqual(
+            [Path(call.args[0]).name for call in handler.process_file_debug.call_args_list],
+            ["a.JSON", "b.json"],
+        )
+
+    def test_existing_request_recovery_retries_after_scan_failure(self):
+        handler = engine_main.RequestHandler()
+
+        class StopAfterTwoScans:
+            def __init__(self):
+                self.wait_calls = 0
+
+            def is_set(self):
+                return False
+
+            def wait(self, _interval):
+                self.wait_calls += 1
+                return self.wait_calls >= 2
+
+        stop_event = StopAfterTwoScans()
+        with patch.object(
+            engine_main,
+            "process_existing_requests",
+            side_effect=(PermissionError("offline"), None),
+        ) as scan:
+            engine_main.recover_existing_requests(
+                Path(self.temp_dir.name) / "requests",
+                handler,
+                stop_event,
+                interval_seconds=0.1,
+            )
+
+        self.assertEqual(scan.call_count, 2)
 
     def test_status_aware_request_stops_when_processing_marker_cannot_be_written(self):
         handler = engine_main.RequestHandler()
@@ -324,9 +631,11 @@ class EngineRequestHandlerTests(unittest.TestCase):
     def test_monitor_removes_heartbeat_when_observer_thread_dies(self):
         observer = Mock()
         observer.is_alive.return_value = False
+        handler = Mock()
 
         with (
             patch.object(engine_main, "Observer", return_value=observer),
+            patch.object(engine_main, "RequestHandler", return_value=handler),
             patch.object(engine_main, "remove_old_instances"),
             patch.object(engine_main, "write_json", return_value=True),
             patch.object(engine_main, "_remove_instance_heartbeat") as remove_heartbeat,
@@ -337,6 +646,7 @@ class EngineRequestHandlerTests(unittest.TestCase):
         observer.start.assert_called_once_with()
         remove_heartbeat.assert_called_once_with()
         observer.join.assert_called_once_with()
+        handler.shutdown.assert_called_once_with(wait=True, timeout=None)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,9 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
+REPOSITORY_ROOT = PROJECT_ROOT.parent
 SOURCE_ROOT = BASE_DIR.parent
+CANONICAL_SOURCE_ROOT = REPOSITORY_ROOT / "python-api" / "src"
 for path in (SOURCE_ROOT,):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -68,6 +70,12 @@ def install_requirements():
 
 
 def build_exe():
+    contract_module = CANONICAL_SOURCE_ROOT / "arcrho_project_duplication_contract.py"
+    if not contract_module.is_file():
+        raise FileNotFoundError(
+            f"Canonical project duplication contract not found: {contract_module}"
+        )
+
     cmd = [
         VENV_PYTHON,
         "-m", "PyInstaller",
@@ -75,7 +83,9 @@ def build_exe():
         "--noconfirm",   
         "--onedir",
         "--paths", SOURCE_ROOT,
+        "--paths", CANONICAL_SOURCE_ROOT,
         "--hidden-import", "utils",
+        "--hidden-import", "arcrho_project_duplication_contract",
         f"--icon={ICON}",
         "--add-data", f"{ICON};.",
         "--noconsole",

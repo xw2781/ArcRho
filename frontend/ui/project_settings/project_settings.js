@@ -23,15 +23,15 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260730sqlsrc6";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260801dup3";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260730sqlsrc6";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260730sqlsrc6";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260730sqlsrc6";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260730sqlsrc6";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260801dup3";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260801dup3";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260801dup3";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260801dup3";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260716psprefs1";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -199,6 +199,7 @@ function notifyProjectSettingsRibbonChanged() {
 
 // ============ Shell integration ============
 window.addEventListener("message", (e) => {
+  if (e.origin !== window.location.origin || e.source !== window.parent) return;
   const msgType = String(e?.data?.type || "");
   if (msgType === "arcrho:project-settings-reserving-class-types-save-local") {
     handleShellReservingClassTypesLocalSave();
@@ -217,7 +218,7 @@ window.addEventListener("message", (e) => {
     return;
   }
   if (msgType === "arcrho:server-connection-updated") {
-    loadProjectData(DEFAULT_SOURCE);
+    void reloadProjectSettingsForWorkspace(e?.data?.config);
   }
 });
 
@@ -435,8 +436,7 @@ const projectOpsFeature = createProjectOpsFeature({
   setStatus,
   showDialog,
   showConfirm,
-  showProgress: showProjectOperationProgress,
-  hideProgress: hideProjectOperationProgress,
+  publishShellProgress: (message) => window.parent.postMessage(message, window.location.origin),
   appendAuditLogAction,
   getSelectedProject: () => selectedProject,
   setSelectedProject: (project) => { selectedProject = project; },
@@ -445,6 +445,29 @@ const projectOpsFeature = createProjectOpsFeature({
   clearProjectSelection,
   reloadProjectData: (...args) => loadProjectData(...args),
 });
+
+window.__arcrho_request_close = () => projectOpsFeature.requestClose();
+
+async function resolveWorkspaceConfig(config = null) {
+  const suppliedRoot = String(config?.workspace_root || "").trim();
+  if (suppliedRoot) return config;
+  try {
+    const response = await fetch("/workspace_paths", { cache: "no-store" });
+    if (!response.ok) return {};
+    const payload = await response.json();
+    return payload?.config && typeof payload.config === "object" ? payload.config : {};
+  } catch {
+    return {};
+  }
+}
+
+async function reloadProjectSettingsForWorkspace(config = null) {
+  const workspaceConfig = await resolveWorkspaceConfig(config);
+  const workspaceRoot = String(workspaceConfig?.workspace_root || "").trim();
+  projectOpsFeature.setWorkspaceRoot(workspaceConfig);
+  await loadProjectData(DEFAULT_SOURCE);
+  if (workspaceRoot) await projectOpsFeature.resumePendingDuplicateProject();
+}
 
 datasetTypesFeature = createDatasetTypesFeature({
   datasetTypesBody,
@@ -1566,5 +1589,5 @@ document.addEventListener("keydown", (e) => {
     treeViewFeature.persistExpandedFolders({ immediate: true });
   }
 
-  await loadProjectData(DEFAULT_SOURCE);
+  await reloadProjectSettingsForWorkspace();
 })();

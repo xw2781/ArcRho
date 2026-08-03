@@ -16,6 +16,9 @@ from typing import Any, Dict, List, Optional
 
 from arcrho_api import source_table_contract
 from arcrho_api import config as api_config
+from arcrho_project_duplication_contract import (
+    encode_filename_segment as _canonical_encode_filename_segment,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -325,26 +328,9 @@ ELECTRON_SHUTDOWN_FLAG = BASE_DIR / ".shutdown_electron"
 # ---------------------------------------------------------------------------
 
 def encode_filename_segment(name: str) -> str:
-    replacements = {
-        "\\": "_%5C_",
-        "/": "_%2F_",
-        ":": "_%3A_",
-        "*": "_%2A_",
-        "?": "_%3F_",
-        '"': "_%22_",
-        "<": "_%3C_",
-        ">": "_%3E_",
-        "|": "_%7C_",
-    }
-    out = []
-    for ch in name or "":
-        if ch in replacements:
-            out.append(replacements[ch])
-        elif ord(ch) < 32:
-            out.append(f"_%{ord(ch):02X}_")
-        else:
-            out.append(ch)
-    return "".join(out)
+    """Delegate filename encoding to the shared cross-process contract owner."""
+
+    return _canonical_encode_filename_segment(name)
 
 
 def decode_filename_segment(name: str) -> str:

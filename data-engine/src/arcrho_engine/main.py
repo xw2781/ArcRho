@@ -3,10 +3,13 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from queue import Empty, Full, Queue
+from threading import Event, Lock, Thread
 
 # Resolve packaged, deployed src layout, and repo src layout.
 _MODULE_ROOT = Path(__file__).resolve().parent
 _SOURCE_ROOT = _MODULE_ROOT.parent
+_REPO_CANONICAL_ROOT = _SOURCE_ROOT.parent.parent / "python-api" / "src"
 _BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", _MODULE_ROOT)).resolve()
 _EXE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
 _DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
@@ -19,13 +22,16 @@ if "ARCRHO_ROOT" not in os.environ:
     elif not getattr(sys, "frozen", False):
         os.environ["ARCRHO_ROOT"] = str(_DEPLOY_ROOT)
 
-for _path in (_SOURCE_ROOT, _BUNDLE_ROOT):
+for _path in (_SOURCE_ROOT, _REPO_CANONICAL_ROOT, _BUNDLE_ROOT):
+    if not _path.exists():
+        continue
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from arcrho_project_duplication_contract import PROJECT_DUPLICATION_FUNCTION
 from utils import get_config_value, get_project_root, normalize_function_name
 from arcrho_engine.data_processing import (
     PROJECT_CONFIG,
@@ -54,9 +60,109 @@ from arcrho_engine.general_utils import (
     write_json,
     write_lists_to_csv,
 )
+from arcrho_engine.project_duplication import (
+    process_durable_project_duplication_request,
+)
 
 
 class RequestHandler(FileSystemEventHandler):
+
+    def __init__(self, *, duplication_queue_capacity: int = 1):
+        super().__init__()
+        self._processing_lock = Lock()
+        self._duplication_state_lock = Lock()
+        self._duplication_pending: set[tuple[str, str]] = set()
+        self._duplication_queue: Queue[tuple[tuple[str, str], str, dict]] = Queue(
+            maxsize=max(1, int(duplication_queue_capacity))
+        )
+        self._duplication_stop = Event()
+        self._duplication_thread: Thread | None = None
+
+    @staticmethod
+    def _duplication_key(file_path, arg) -> tuple[str, str]:
+        request_id = str(arg.get("RequestId") or "").strip()
+        if request_id:
+            return ("request_id", request_id)
+        return (
+            "request_path",
+            os.path.normcase(os.path.abspath(os.fspath(file_path))),
+        )
+
+    def _ensure_duplication_worker(self) -> None:
+        if self._duplication_thread is not None:
+            return
+        thread = Thread(
+            target=self._run_duplication_worker,
+            name="arcrho-project-duplication-worker",
+            daemon=True,
+        )
+        self._duplication_thread = thread
+        thread.start()
+
+    def _schedule_project_duplication(self, file_path, arg) -> bool:
+        """Schedule one durable request without blocking legacy calculations."""
+
+        key = self._duplication_key(file_path, arg)
+        with self._duplication_state_lock:
+            if self._duplication_stop.is_set():
+                return False
+            if key in self._duplication_pending:
+                return True
+            if self._duplication_queue.full():
+                return False
+            self._duplication_pending.add(key)
+            self._ensure_duplication_worker()
+            try:
+                self._duplication_queue.put_nowait(
+                    (key, os.fspath(file_path), dict(arg))
+                )
+            except Full:
+                self._duplication_pending.discard(key)
+                return False
+        return True
+
+    def _execute_project_duplication(self, file_path, arg) -> None:
+        try:
+            process_durable_project_duplication_request(
+                get_project_root(),
+                file_path,
+                arg,
+            )
+        except Exception as exc:
+            print(f"(project duplication request error: {exc})")
+
+    def _run_duplication_worker(self) -> None:
+        while not self._duplication_stop.is_set():
+            try:
+                key, file_path, arg = self._duplication_queue.get(timeout=0.1)
+            except Empty:
+                continue
+            try:
+                if not self._duplication_stop.is_set():
+                    self._execute_project_duplication(file_path, arg)
+            finally:
+                with self._duplication_state_lock:
+                    self._duplication_pending.discard(key)
+                self._duplication_queue.task_done()
+
+    def shutdown(self, *, wait: bool = True, timeout: float | None = None) -> bool:
+        """Stop accepting duplicate jobs and optionally wait for the active copy."""
+
+        with self._duplication_state_lock:
+            self._duplication_stop.set()
+        while True:
+            try:
+                key, _file_path, _arg = self._duplication_queue.get_nowait()
+            except Empty:
+                break
+            with self._duplication_state_lock:
+                self._duplication_pending.discard(key)
+            self._duplication_queue.task_done()
+
+        thread = self._duplication_thread
+        if wait and thread is not None:
+            thread.join(timeout=timeout)
+        return thread is None or not thread.is_alive()
 
     def _process_event_path(self, event, file_path):
         if event.is_directory:
@@ -65,7 +171,7 @@ class RequestHandler(FileSystemEventHandler):
             return
 
         # Process request immediately in the watchdog event thread.
-        self.process_file(file_path)
+        self.process_file_debug(file_path)
 
     def on_created(self, event):
         # Excel normally publishes with an atomic move, but its compatibility
@@ -78,18 +184,36 @@ class RequestHandler(FileSystemEventHandler):
     def process_file_debug(self, file_path):
         if debug_mode == 0:
             try:
-                self.process_file(file_path)
+                self.process_file(file_path, dispatch_duplication=True)
             except Exception as e:
                 print(e)
         else:
-            self.process_file(file_path)
+            self.process_file(file_path, dispatch_duplication=True)
 
-    def process_file(self, file_path):
+    def process_file(self, file_path, *, dispatch_duplication: bool = False):
         try:
             arg = read_json(file_path)
         except Exception:
             # print(f'\n* request sent to another agent')
             return
+
+        # Project duplication retains its top-level queue file until a
+        # validated terminal status exists. Its renewable request lease owns
+        # cross-Engine claiming and crash recovery; legacy requests continue
+        # to use delete-to-claim below.
+        if str(arg.get("Function") or "").strip() == PROJECT_DUPLICATION_FUNCTION:
+            if dispatch_duplication:
+                self._schedule_project_duplication(file_path, arg)
+            else:
+                # Direct callers remain synchronous for deterministic tests
+                # and administrative one-shot processing.
+                self._execute_project_duplication(file_path, arg)
+            return
+
+        with self._processing_lock:
+            self._process_legacy_request(file_path, arg)
+
+    def _process_legacy_request(self, file_path, arg):
 
         # Every engine sees the same filesystem event.  Reading is safe, but
         # exactly one engine must atomically remove (claim) the request before
@@ -214,6 +338,49 @@ class RequestHandler(FileSystemEventHandler):
         print(f"> request completed @ {get_current_time().split(' ')[1]}")
 
 
+def process_existing_requests(
+    path: str | os.PathLike[str],
+    handler: RequestHandler,
+) -> None:
+    """Process requests that were queued while this Engine was offline."""
+
+    request_dir = Path(path)
+    try:
+        queued_paths = sorted(
+            (item for item in request_dir.iterdir() if item.is_file()),
+            key=lambda item: (item.name.casefold(), item.name),
+        )
+    except (FileNotFoundError, NotADirectoryError):
+        return
+    except OSError as exc:
+        print(f"(existing request scan error: {exc})")
+        return
+    for queued_path in queued_paths:
+        if queued_path.suffix.casefold() == ".json":
+            try:
+                handler.process_file_debug(str(queued_path))
+            except Exception as exc:
+                print(f"(existing request recovery error: {exc})")
+
+
+def recover_existing_requests(
+    path: str | os.PathLike[str],
+    handler: RequestHandler,
+    stop_event: Event,
+    *,
+    interval_seconds: float = 5.0,
+) -> None:
+    """Rescan until shutdown so transient startup failures cannot strand jobs."""
+
+    while not stop_event.is_set():
+        try:
+            process_existing_requests(path, handler)
+        except Exception as exc:
+            print(f"(existing request recovery error: {exc})")
+        if stop_event.wait(max(0.1, float(interval_seconds))):
+            return
+
+
 def _write_request_status(arg, status, message=""):
     """Atomically publish optional request status without affecting legacy callers."""
 
@@ -274,6 +441,15 @@ def start_monitoring(path):
 
     write_json(id_path, {'Server': robot_id, 'Last seen': current_time})
 
+    recovery_stop = Event()
+    recovery_thread = Thread(
+        target=recover_existing_requests,
+        args=(path, event_handler, recovery_stop),
+        name="arcrho-existing-request-recovery",
+        daemon=True,
+    )
+    recovery_thread.start()
+
     try:
         while True:
 
@@ -299,8 +475,12 @@ def start_monitoring(path):
 
     except KeyboardInterrupt:
         observer.stop()
-
-    observer.join()
+    finally:
+        recovery_stop.set()
+        observer.stop()
+        observer.join()
+        recovery_thread.join()
+        event_handler.shutdown(wait=True, timeout=None)
 
 
 if __name__ == "__main__":

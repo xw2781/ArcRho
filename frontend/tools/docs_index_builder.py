@@ -586,6 +586,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/project_settings/project_settings_project_map.js", "Project map document, folder structure, and tree data store."),
             ("ui/project_settings/project_settings_tree_view.js", "Project Explorer tree rendering, drag-and-drop, and view state."),
             ("ui/project_settings/project_settings_project_ops.js", "Project and virtual-folder create/rename/duplicate/delete flows."),
+            ("ui/project_settings/project_settings_duplicate_job.js", "Project-duplication status polling, transient retries, and terminal-state handling."),
             ("ui/project_settings/project_settings_general_settings.js", "Boundary-month parsing and General Settings persistence."),
             ("ui/project_settings/project_settings_table_columns.js", "Shared table column sizing, resizing, and scroll activity."),
             ("ui/project_settings/project_settings_source_data.js", "Source Data panel rendering and column distribution previews."),

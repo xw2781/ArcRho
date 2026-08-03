@@ -596,7 +596,7 @@ test("changed theme and chart owners are reached through current cache-version c
     ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260726a"],
     ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260726a"],
     ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260726a"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260731loading1"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260801dup3"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260722a"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260726b"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260726a"],

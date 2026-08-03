@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Project duplication now runs on the ArcRho Server host with live reserving-class progress.",
+  "details": [
+    "The desktop app submits an asynchronous copy job instead of copying the project across the client network drive.",
+    "ArcRho Engine runs the copy on a bounded background worker so ordinary calculation requests can continue while a large project is duplicated.",
+    "A shell-owned progress window shows preparation, reserving-class copy counts, and finalization while the job runs.",
+    "Project Settings saves a client request ID before submission, safely replays uncertain submissions after reload, and preserves the server copy without starting a second job.",
+    "Reload finalization verifies the submission-time Project Map row and ordered headers, so later source metadata edits cannot silently change the duplicate."
+  ]
+}
