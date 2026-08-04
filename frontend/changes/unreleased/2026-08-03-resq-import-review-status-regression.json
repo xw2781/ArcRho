@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "ResQ import",
+  "audience": "user",
+  "summary": "Importing a ResQ reserving class no longer flips every method dataset to Needs Review.",
+  "details": [
+    "Engine-generated dataset sidecars now record the ResQ data-change time as source_modified alongside the cache-write updated_at.",
+    "The import's precedent-freshness check compares the ResQ data-change time, so freshly written caches of unchanged data keep dependent method statuses as imported.",
+    "Methods whose input data genuinely changed in ResQ after the method was last run still become Needs Review."
+  ]
+}
