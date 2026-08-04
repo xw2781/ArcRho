@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Hovering a row in the B&S Method grids no longer washes out the highlighted selection cells.",
+  "details": [
+    "On Proportion Settled, the highlighted source cell for a development period keeps its fill while the pointer moves across the row.",
+    "The Selected band and the spacer row above it also keep their own fills on hover, as does the result column.",
+    "Plain value cells still show the row hover tint."
+  ]
+}

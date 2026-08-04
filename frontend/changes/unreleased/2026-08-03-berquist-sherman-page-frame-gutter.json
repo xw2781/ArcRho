@@ -1,0 +1,14 @@
+{
+  "type": "fix",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Aligned the B&S page frame, tab strips, and save bar to the DFM window layout so the tab strip meets the frame and the bottom of the page is no longer cut off.",
+  "details": [
+    "The bordered page frame now shares the tab strip's left and right gutter, so the strip's bottom rule meets the frame corners and the active tab sits flush on it.",
+    "The page frame is sized as a row of the window instead of a full-height block, so the last rows of the Details form and the Method table are no longer clipped behind the save bar.",
+    "The Method tab's calculation tabs now enclose their own framed area like the inner tab control in ResQ, so the caption and grid sit inside a closed box under the active calculation tab.",
+    "The calculation grid now fills that area instead of stopping at the last row, which previously left a large empty gap under the table on views with no summary strip.",
+    "Removed the \"Calculated from annual source data.\" line under the caption; the message row now appears only to report a calculation failure, so the caption sits directly on the grid as in ResQ.",
+    "The save bar sits on the window canvas like DFM and Bornhuetter Ferguson instead of drawing a second frame, and the Notes tab scrolls inside the frame."
+  ]
+}

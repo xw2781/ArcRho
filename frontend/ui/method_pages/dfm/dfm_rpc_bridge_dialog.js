@@ -553,7 +553,7 @@ function getOrderedVersions(data) {
   };
   const remoteVersion = {
     key: "remote",
-    source: labels.remote || "RPC - Remote",
+    source: labels.remote || "ResQ Server",
     meta: remote,
     snapshot: data?.snapshots?.remote || {},
     action: actions.remote || "update-local",
@@ -1118,7 +1118,7 @@ export function createDfmRpcBridgeDialog(options = {}) {
             </div>
           </div>
           <div class="dfmRpcVersionCard">
-            <div class="dfmRpcVersionTitle"><span class="dfmRpcSourceLabel">RPC - Remote</span></div>
+            <div class="dfmRpcVersionTitle"><span class="dfmRpcSourceLabel">ResQ Server</span></div>
             <div class="dfmRpcMeta">
               <div><strong>Last Modified:</strong> ${escapeHtml(formatTime(remote))}</div>
             </div>

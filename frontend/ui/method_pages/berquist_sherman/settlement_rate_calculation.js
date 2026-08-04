@@ -7,6 +7,15 @@ import {
 } from "./calculation_helpers.js";
 
 const ADJUSTMENT_TYPES = new Set(["unadjusted", "pairs", "all", "loess"]);
+export const DEFAULT_LOESS_SPAN = 7;
+const MIN_LOESS_SPAN = 2;
+const MAX_LOESS_SPAN = 99;
+
+export function normalizeLoessSpan(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return DEFAULT_LOESS_SPAN;
+  return Math.min(MAX_LOESS_SPAN, Math.max(MIN_LOESS_SPAN, Math.trunc(number)));
+}
 
 function normalizeNumberVector(value, count, name) {
   const source = Array.isArray(value) ? value : [];
@@ -72,6 +81,40 @@ function allPointsEstimate(points, selectedClosedClaims) {
   return Math.exp(intercept + slope * selectedClosedClaims);
 }
 
+function loessEstimate(points, selectedClosedClaims, span) {
+  if (!Number.isFinite(selectedClosedClaims)) return null;
+  if (points.length < 2) return 0;
+
+  // ResQ "Loess (n)": weighted straight-line fit over the span+1 nearest
+  // neighbours; the furthest neighbour's tri-cube weight is exactly zero.
+  const distances = points
+    .map((point) => Math.abs(point.x - selectedClosedClaims))
+    .sort((a, b) => a - b);
+  const bandwidth = distances[Math.min(span, points.length - 1)];
+  const weighted = [];
+  for (const point of points) {
+    const distance = Math.abs(point.x - selectedClosedClaims);
+    if (!(bandwidth > 0) || distance >= bandwidth) continue;
+    const scaled = distance / bandwidth;
+    weighted.push({ x: point.x, y: point.logPaid, weight: (1 - scaled ** 3) ** 3 });
+  }
+  if (weighted.length < 2) return null;
+
+  const weightSum = weighted.reduce((sum, point) => sum + point.weight, 0);
+  const meanX = weighted.reduce((sum, point) => sum + point.weight * point.x, 0) / weightSum;
+  const meanY = weighted.reduce((sum, point) => sum + point.weight * point.y, 0) / weightSum;
+  const sxx = weighted.reduce(
+    (sum, point) => sum + point.weight * (point.x - meanX) ** 2,
+    0,
+  );
+  if (!(sxx > 0)) return null;
+  const slope = weighted.reduce(
+    (sum, point) => sum + point.weight * (point.x - meanX) * (point.y - meanY),
+    0,
+  ) / sxx;
+  return Math.exp(meanY + slope * (selectedClosedClaims - meanX));
+}
+
 function defaultAdjustmentForRow(points) {
   return points.length < 2 ? "unadjusted" : "pairs";
 }
@@ -83,9 +126,6 @@ function selectedAdjustmentAt(selection, rowIndex, columnIndex, fallback) {
     : String(raw).trim().toLowerCase();
   if (!ADJUSTMENT_TYPES.has(value)) {
     throw new RangeError(`Unsupported settlement-rate adjustment: ${raw}`);
-  }
-  if (value === "loess") {
-    throw new RangeError("Loess settlement-rate adjustment is not supported in the annual MVP.");
   }
   return value;
 }
@@ -154,7 +194,21 @@ export function calculateSettlementRate(input = {}) {
       selectedClaimNumbers[rowIndex][columnIndex],
     ),
   );
-  const loessAdjustment = matrixLike(paidClaims, () => null);
+  const loessSpan = normalizeLoessSpan(input.loessSpan);
+  const loessAdjustment = matrixLike(paidClaims, (rowIndex, columnIndex) => {
+    const estimate = loessEstimate(
+      pointsByRow[rowIndex],
+      selectedClaimNumbers[rowIndex][columnIndex],
+      loessSpan,
+    );
+    // ResQ reverts to pair-wise interpolation when the Loess fit fails.
+    return estimate === null
+      ? pairwiseEstimate(
+          pointsByRow[rowIndex],
+          selectedClaimNumbers[rowIndex][columnIndex],
+        )
+      : estimate;
+  });
   const effectiveSelectedAdjustment = matrixLike(
     paidClaims,
     (rowIndex, columnIndex) => selectedAdjustmentAt(
@@ -168,10 +222,12 @@ export function calculateSettlementRate(input = {}) {
     const selection = effectiveSelectedAdjustment[rowIndex][columnIndex];
     if (selection === "unadjusted") return paidClaims[rowIndex][columnIndex];
     if (selection === "all") return allAdjustment[rowIndex][columnIndex];
+    if (selection === "loess") return loessAdjustment[rowIndex][columnIndex];
     return pairsAdjustment[rowIndex][columnIndex];
   });
 
   return {
+    loessSpan,
     proportionSettled,
     selectedProportionSettled,
     selectedClaimNumbers,

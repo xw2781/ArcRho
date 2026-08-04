@@ -62,8 +62,42 @@ test("settlement-rate calculation reproduces the annual COL ResQ object", () => 
     "selectedClaimNumbers",
     "pairsAdjustment",
     "allAdjustment",
+    "loessAdjustment",
     "adjustedPaidClaims",
   ].forEach((name) => assertClose(result[name], source.expected[name], name));
+});
+
+test("settlement-rate loess selections reproduce the COL loess estimates per cell", () => {
+  const source = fixture.settlementRate;
+  const result = settlementRate.calculateSettlementRate({
+    ...source.input,
+    selectedAdjustment: source.input.selectedAdjustment.map((row) => row.map(() => "loess")),
+  });
+
+  assert.equal(result.loessSpan, source.input.loessSpan);
+  assertClose(result.adjustedPaidClaims, source.expected.loessAdjustment, "loess output");
+});
+
+test("settlement-rate loess uses the default span and reverts to pairs when the fit fails", () => {
+  const source = fixture.settlementRate;
+  const defaultSpanResult = settlementRate.calculateSettlementRate({
+    ...source.input,
+    loessSpan: undefined,
+  });
+  assert.equal(defaultSpanResult.loessSpan, 7);
+  assertClose(
+    defaultSpanResult.loessAdjustment,
+    source.expected.loessAdjustment,
+    "default span loess",
+  );
+
+  // Two populated points leave a single non-zero tri-cube weight, so the
+  // degenerate loess fit must fall back to the pair-wise interpolation.
+  assertClose(
+    defaultSpanResult.loessAdjustment[8],
+    source.expected.pairsAdjustment[8],
+    "loess pairs fallback",
+  );
 });
 
 test("settlement-rate defaults use the leading diagonal and preserve a one-point row", () => {

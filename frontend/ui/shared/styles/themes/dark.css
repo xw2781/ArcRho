@@ -147,7 +147,7 @@
   --bs-blue: var(--ar-color-accent);
   --bs-blue-soft: var(--ar-color-accent-soft);
   --bs-result: #514719;
-  --bs-result-hover: #65581c;
+  --bs-selected-band: #163a40;
   --bs-input: var(--ar-color-input);
   --bs-row-hover: var(--ar-color-table-row-hover);
   --rs-border: var(--ar-color-border);
@@ -1446,15 +1446,23 @@
 }
 
 :root[data-arcrho-theme="dark"] .dfmTabBar .dfmRpcSyncBtn {
-  border-color: var(--ar-color-border-strong) !important;
-  background-color: var(--ar-color-input) !important;
-  color: var(--ar-color-text) !important;
+  background-color: transparent !important;
+  color: var(--ar-color-text-muted) !important;
 }
 
 :root[data-arcrho-theme="dark"] .dfmTabBar .dfmRpcSyncBtn:hover:not(:disabled) {
-  border-color: var(--ar-color-border-focus) !important;
   background-color: var(--ar-color-accent-soft) !important;
   color: var(--ar-color-text-strong) !important;
+}
+
+:root[data-arcrho-theme="dark"] .dfmTabBar .dfmRpcSyncBtn::after {
+  background: var(--ar-color-surface-raised);
+  color: var(--ar-color-text-strong);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+:root[data-arcrho-theme="dark"] .dfmTabBar .dfmRpcSyncBtn::before {
+  border-bottom-color: var(--ar-color-surface-raised);
 }
 
 :root[data-arcrho-theme="dark"] #ratioWrap :is(table, td, th):not(.dfmTableActive):not(.dfmTableHighlight) {
@@ -1608,6 +1616,15 @@
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-table-header);
   color: var(--ar-color-text);
+}
+
+/* Berquist Sherman method table scrollbar chrome. */
+:root[data-arcrho-theme="dark"] .bsTableWrap {
+  --bs-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --bs-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --bs-scrollbar-button-active: var(--ar-color-surface-selected);
+  --bs-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --bs-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
 }
 
 :root[data-arcrho-theme="dark"] :is(.rsChartHeader, .rsChartBody, .rsChartPlot) {

@@ -1,0 +1,14 @@
+{
+  "type": "feature",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Rebuilt the B&S Settlement Rate Adjusted Paid Claims view as a ResQ-style selection grid with per-cell estimator choices, Loess smoothing with an adjustable span, and the shared method-table styling.",
+  "details": [
+    "The Method views follow the ResQ sub-tab order: Paid Claims, Numbers Closed with the Ultimate column, Proportion Settled, Selected Numbers Closed, and Adjusted Paid Claims, each with its ResQ caption line.",
+    "Each origin period now shows Unadjusted, Pairs, All, Loess (n), and Selected rows; click a value to select one cell, click a row label for the origin period, or Ctrl+Click a row label for the whole triangle.",
+    "The accident year and estimator labels are centered in the label column, matching the other calculation views.",
+    "The Proportion Settled tab matches ResQ: click a triangle percentage to select it per development period, type custom values into the Selected row, and right-click for Select Leading Diagonal.",
+    "Added the Loess estimator with a Loess Span stepper; the span is saved with the method and imported from ResQ.",
+    "The Method tab calculation views now use the shared nested tab styling, and the B&S table follows the DFM/BF/RS spreadsheet look with sticky headers and shared scrollbars."
+  ]
+}

@@ -10,9 +10,11 @@
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/tabs/audit_log/audit_log.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a">
-  <link rel="stylesheet" href="/ui/method_pages/berquist_sherman/berquist_sherman.css?v=20260724a">
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260802a">
+  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260802a">
+  <link rel="stylesheet" href="/ui/method_pages/berquist_sherman/berquist_sherman.css?v=20260803a">
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260729a">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260729a">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260802a">
 </head>
 <body>
   <main class="bsShell">
@@ -108,16 +110,34 @@
         </section>
 
         <section class="bsPage" id="bsMethodPage" role="tabpanel">
-          <div class="bsMethodToolbar">
-            <div class="bsViewButtons" id="bsViewButtons" role="group" aria-label="Calculation view"></div>
+          <div class="bsMethodTabBar tabbedPageTabBar">
+            <div class="bsViewButtons" id="bsViewButtons" role="tablist" aria-label="Calculation view"></div>
           </div>
-          <div class="bsSelectionSummary" id="bsSelectionSummary"></div>
-          <div class="bsMethodMessage" id="bsMethodMessage" role="status"></div>
-          <div class="bsTableWrap">
-            <table class="bsMethodTable arSpreadsheetTable" aria-label="Berquist Sherman calculation table">
-              <thead id="bsMethodHead"></thead>
-              <tbody id="bsMethodBody"></tbody>
-            </table>
+          <!-- The nested tab strip encloses its own client area, matching the
+               inner tab control in ResQ. -->
+          <div class="bsMethodFrame">
+            <div class="bsMethodCaption" id="bsMethodCaption" hidden>
+              <span class="bsMethodCaptionText" id="bsMethodCaptionText"></span>
+              <span class="bsMethodCaptionSpacer"></span>
+              <div class="bsLoessSpanField" id="bsLoessSpanField" hidden>
+                <span class="bsLoessSpanLabel" id="bsLoessSpanLabel">Loess Span :</span>
+                <span class="decimalPlacesWrap bsLoessSpanWrap">
+                  <input class="bsLoessSpanInput" id="bsLoessSpanInput" type="number" min="2" max="99" step="1" inputmode="numeric" aria-labelledby="bsLoessSpanLabel">
+                  <span class="decimalPlacesStepper">
+                    <button class="decimalPlacesStepBtn" id="bsLoessSpanUp" type="button" aria-label="Increase loess span"><span class="datasetStepperCaret datasetStepperCaretUp"></span></button>
+                    <button class="decimalPlacesStepBtn" id="bsLoessSpanDown" type="button" aria-label="Decrease loess span"><span class="datasetStepperCaret"></span></button>
+                  </span>
+                </span>
+              </div>
+            </div>
+            <div class="bsSelectionSummary" id="bsSelectionSummary"></div>
+            <div class="bsMethodMessage" id="bsMethodMessage" role="status"></div>
+            <div class="bsTableWrap">
+              <table class="bsMethodTable arSpreadsheetTable" aria-label="Berquist Sherman calculation table">
+                <thead id="bsMethodHead"></thead>
+                <tbody id="bsMethodBody"></tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -139,6 +159,6 @@
     </footer>
   </main>
 
-  <script type="module" src="/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260724b"></script>
+  <script type="module" src="/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260802a"></script>
 </body>
 </html>

@@ -1,5 +1,7 @@
 :root {
-  --bs-bg: #eef2f6;
+  /* Canvas matches the shared tab-strip band so the strip, the gutters beside
+     the page frame, and the save bar read as one surface. */
+  --bs-bg: #f5f7fa;
   --bs-surface: #ffffff;
   --bs-surface-muted: #f8fafc;
   --bs-border: #cfd6df;
@@ -8,10 +10,10 @@
   --bs-muted: #64748b;
   --bs-blue: #2b6df6;
   --bs-blue-soft: #eff6ff;
-  --bs-result: #fff7bf;
-  --bs-result-hover: #fff3a0;
+  --bs-result: #fdf5a9;
+  --bs-selected-band: #dff8f8;
   --bs-input: #eef9cf;
-  --bs-row-hover: #f8fbff;
+  --bs-row-hover: #f8fafc;
   --bs-radius: 4px;
 }
 
@@ -36,25 +38,30 @@ input {
 }
 
 .bsShell {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   min-width: 620px;
-  padding: 6px;
 }
 
 .bsTabbed {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-height: 0;
-  overflow: hidden;
 }
 
+/* Frame the active page like DFM/BF: the host keeps the same left/right gutter
+   as the shared tab strip, so the strip's bottom rule meets the frame corners
+   and the active tab sits flush on the frame. */
 .bsPageHost {
   position: relative;
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
+  margin: 0 var(--tabbed-page-gutter, 8px);
   overflow: hidden;
-  border: 1px solid var(--bs-border);
+  border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
   border-top: 0;
   background: var(--bs-surface);
 }
@@ -72,12 +79,23 @@ input {
   display: block;
 }
 
+/* Notes scrolls inside the page frame; the audit log view manages its own
+   scrolling, so it only needs the frame inset. */
+#bsNotesPage {
+  padding: 10px;
+  overflow: auto;
+}
+
+#bsAuditPage {
+  padding: 3px;
+}
+
 .bsDetailsStack {
   display: grid;
   align-content: start;
   gap: 1px;
   height: 100%;
-  padding: 18px 22px;
+  padding: 12px 10px 10px;
   overflow: auto;
 }
 
@@ -134,8 +152,7 @@ input {
 }
 
 .bsIconButton,
-.bsButton,
-.bsViewButton {
+.bsButton {
   height: 30px;
   border: 1px solid var(--bs-border);
   border-radius: var(--bs-radius);
@@ -145,15 +162,13 @@ input {
 }
 
 .bsIconButton:hover,
-.bsButton:hover,
-.bsViewButton:hover {
+.bsButton:hover {
   border-color: #9fb8e8;
   background: var(--bs-blue-soft);
 }
 
 .bsIconButton:focus-visible,
-.bsButton:focus-visible,
-.bsViewButton:focus-visible {
+.bsButton:focus-visible {
   outline: 2px solid rgba(43, 109, 246, 0.35);
   outline-offset: 1px;
 }
@@ -163,8 +178,13 @@ input {
   padding: 0;
 }
 
+/* The Method tab is the nested tab strip plus its own framed client area, so
+   the strip is inset by the tabbed-page gutter and the frame's content rows are
+   inset by their own padding. */
 #bsMethodPage {
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  --bs-method-inset: var(--tabbed-page-gutter, 8px);
+  --bs-method-pad: 6px;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 #bsMethodPage.active {
@@ -175,40 +195,83 @@ input {
   display: grid !important;
 }
 
-.bsMethodToolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  min-height: 42px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--bs-border);
-  background: var(--bs-surface-muted);
-}
-
+/* The calculation views reuse the shared nested tab-strip chrome defined in
+   ui/shared/tabbed_page/tabbed_page.css, matching the outer Method tab style.
+   It inherits --tabbed-page-gutter from the tabbed-page container. */
 .bsViewButtons {
+  display: contents;
+}
+
+/* Client area of the nested tab strip. Like the outer page frame it takes the
+   strip's bottom rule as its top edge, so the active calculation tab sits on a
+   closed box the way the inner tab control does in ResQ.
+   The rows are a flex column, not fixed grid tracks: the caption and the summary
+   strip are hidden per view, so a column keeps the grid filling the rest of the
+   client area whichever rows are present. */
+.bsMethodFrame {
   display: flex;
-  gap: 4px;
-  min-width: 0;
-  overflow-x: auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 var(--bs-method-inset) var(--bs-method-inset);
+  overflow: hidden;
+  border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
+  border-top: 0;
+  background: var(--bs-surface);
 }
 
-.bsViewButton {
+/* Per-view caption row matching the ResQ tab headers, e.g. "Proportion
+   Settled:" or "Paid Claims Adjusted to Constant Proportions Settled". */
+.bsMethodCaption {
+  display: flex;
   flex: 0 0 auto;
-  padding: 0 10px;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  padding: 6px var(--bs-method-pad) 2px;
+  color: var(--bs-text);
 }
 
-.bsViewButton[aria-pressed="true"] {
-  color: #1d4ed8;
-  border-color: #93b4f4;
-  background: var(--bs-blue-soft);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+.bsMethodCaptionText {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bsMethodCaptionSpacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.bsLoessSpanField {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--bs-text);
+  white-space: nowrap;
+}
+
+.bsLoessSpanInput {
+  width: 100%;
+  padding-right: 28px;
+  padding-left: 8px;
+  color: var(--bs-text);
+  text-align: left;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.bsLoessSpanInput::-webkit-outer-spin-button,
+.bsLoessSpanInput::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 .bsSelectionSummary {
+  flex: 0 0 auto;
   min-height: 38px;
   max-height: 178px;
-  padding: 6px 8px;
+  padding: 6px var(--bs-method-pad);
   overflow: auto;
   color: var(--bs-muted);
   border-bottom: 1px solid var(--bs-border);
@@ -251,13 +314,6 @@ input {
   background: var(--bs-surface);
 }
 
-.bsSelectionEditor.compact {
-  grid-template-areas:
-    "label label"
-    "number number";
-  min-width: 126px;
-}
-
 .bsSelectionEditor.wide {
   display: flex;
   align-items: center;
@@ -298,14 +354,6 @@ input {
   background: var(--bs-surface-muted);
 }
 
-.bsSelectionCheck {
-  grid-area: check;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  white-space: nowrap;
-}
-
 .bsSelectionField {
   display: grid;
   grid-template-columns: 50px 112px 78px;
@@ -319,90 +367,260 @@ input {
 }
 
 .bsMethodMessage {
+  flex: 0 0 auto;
   min-height: 25px;
-  padding: 5px 8px;
+  padding: 5px var(--bs-method-pad);
   color: var(--bs-muted);
+}
+
+/* Nothing to report means no row, so the caption sits straight on the grid. */
+.bsMethodMessage:empty {
+  display: none;
 }
 
 .bsMethodMessage.error {
   color: var(--ar-color-danger, #be123c);
 }
 
+/* Table frame and sticky chrome follow the shared DFM/BF/RS spreadsheet pattern. */
 .bsTableWrap {
+  position: relative;
+  flex: 1 1 auto;
   min-height: 0;
-  margin: 0 8px 8px;
+  margin: 0 var(--bs-method-pad) var(--bs-method-pad);
   overflow: auto;
-  border: 1px solid var(--bs-border);
-  scrollbar-gutter: stable both-edges;
+  border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
   background: var(--bs-surface);
+  --bs-scrollbar-chrome: #f1f3f5;
+  --bs-scrollbar-button-hover: #e5e9ef;
+  --bs-scrollbar-button-active: #d9dee7;
+  --bs-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+  --bs-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+  scrollbar-gutter: stable;
+  padding-right: 1px;
+  padding-bottom: 1px;
+}
+
+.bsTableWrap::-webkit-scrollbar {
+  width: 20px;
+  height: 20px;
+}
+
+.bsTableWrap::-webkit-scrollbar-track,
+.bsTableWrap::-webkit-scrollbar-corner {
+  background: var(--bs-scrollbar-chrome);
+}
+
+.bsTableWrap::-webkit-scrollbar-thumb {
+  background-color: var(--bs-scrollbar-thumb);
+  border: 3px solid var(--bs-scrollbar-chrome);
+  border-radius: 5px;
+  background-clip: content-box;
+}
+
+.bsTableWrap::-webkit-scrollbar-button {
+  width: 16px;
+  height: 16px;
+  display: block;
+  background-color: var(--bs-scrollbar-chrome);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+}
+
+.bsTableWrap::-webkit-scrollbar-button:hover {
+  background-color: var(--bs-scrollbar-button-hover);
+}
+
+.bsTableWrap::-webkit-scrollbar-button:active {
+  background-color: var(--bs-scrollbar-button-active);
+}
+
+.bsTableWrap::-webkit-scrollbar-button:horizontal:start:increment,
+.bsTableWrap::-webkit-scrollbar-button:horizontal:end:decrement,
+.bsTableWrap::-webkit-scrollbar-button:vertical:start:increment,
+.bsTableWrap::-webkit-scrollbar-button:vertical:end:decrement {
+  width: 0;
+  height: 0;
+  display: none;
+  background-image: none;
+}
+
+.bsTableWrap::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+}
+
+.bsTableWrap::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+}
+
+.bsTableWrap::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+}
+
+.bsTableWrap::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+}
+
+.bsTableWrap.isScrolling::-webkit-scrollbar-thumb,
+.bsTableWrap.isScrollbarHover::-webkit-scrollbar-thumb,
+.bsTableWrap::-webkit-scrollbar-thumb:hover {
+  background-color: var(--bs-scrollbar-thumb-active);
 }
 
 .bsMethodTable {
-  width: max-content;
   min-width: 100%;
-  table-layout: fixed;
-  border-collapse: separate;
-  border-spacing: 0;
 }
 
-.bsMethodTable th,
 .bsMethodTable td {
-  min-width: 104px;
-  height: 31px;
-  padding: 4px 7px;
   text-align: right;
-  border-right: 1px solid var(--bs-border);
-  border-bottom: 1px solid var(--bs-border);
-  white-space: nowrap;
 }
 
-.bsMethodTable th {
+.bsMethodTable thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
-  color: var(--bs-text);
-  background: var(--bs-surface-muted);
+  z-index: 4;
+  text-align: center;
+  vertical-align: middle;
+  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  background-clip: padding-box;
+}
+
+.bsMethodTable thead th::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: var(--ar-spreadsheet-grid-border);
+  pointer-events: none;
 }
 
 .bsMethodTable th:first-child,
 .bsMethodTable td:first-child {
   position: sticky;
   left: 0;
-  z-index: 1;
-  min-width: 118px;
-  text-align: left;
-  color: var(--bs-text);
-  background: var(--bs-surface-muted);
+  z-index: 3;
+  width: 128px;
+  min-width: 128px;
+  max-width: 128px;
+  text-align: center;
+  background: var(--ar-spreadsheet-label-fill);
+  color: var(--ar-spreadsheet-label-text);
+  border-left: 1px solid var(--ar-spreadsheet-grid-border);
+  border-right: 0;
+  box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
+  background-clip: padding-box;
 }
 
-.bsMethodTable th:first-child {
-  z-index: 3;
+.bsMethodTable thead th:first-child {
+  z-index: 5;
 }
 
 .bsMethodTable td.bsResultCell {
   background: var(--bs-result);
 }
 
-.bsMethodTable tr:hover td:not(:first-child) {
+/* Row hover must never repaint a fill that carries meaning: the result column,
+   a selected estimator or proportion source, the Proportion Settled band, or
+   the spacer row that separates it from the triangle. */
+.bsMethodTable tbody tr:not(:is(.bsAdjYearRow, .bsPropSelectedRow, .bsPropSpacerRow)):hover
+  td:not(:first-child):not(:is(.bsResultCell, .bsAdjSelectedSource, .bsPropSelectedSource)) {
   background: var(--bs-row-hover);
 }
 
-.bsMethodTable tr:hover td.bsResultCell {
-  background: var(--bs-result-hover);
+/* ResQ-style Adjusted Paid Claims selection grid. The origin and estimator
+   labels take the centered alignment of the shared label column rather than
+   re-aligning it per row. */
+.bsMethodTable tr.bsAdjYearRow td {
+  background: var(--ar-spreadsheet-label-fill);
+  color: var(--ar-spreadsheet-label-text);
+  font-weight: 700;
 }
 
+.bsMethodTable td.bsAdjPick {
+  cursor: pointer;
+}
+
+.bsMethodTable td.bsAdjPick:focus-visible {
+  outline: 2px solid rgba(43, 109, 246, 0.36);
+  outline-offset: -2px;
+}
+
+.bsMethodTable td.bsAdjCell.bsAdjSelectedSource {
+  background: var(--ar-spreadsheet-weighted-selection-fill);
+}
+
+.bsMethodTable td.bsAdjSelectedValue,
+.bsMethodTable td.bsAdjSelectedRowLabel {
+  color: var(--bs-blue);
+}
+
+/* ResQ-style Proportion Settled tab: clickable triangle values, a spacer row,
+   and an editable Selected row rendered as a pale-cyan band with red values. */
+.bsMethodTable td.bsPropCell {
+  cursor: pointer;
+}
+
+.bsMethodTable td.bsPropCell:focus-visible {
+  outline: 2px solid rgba(43, 109, 246, 0.36);
+  outline-offset: -2px;
+}
+
+.bsMethodTable td.bsPropCell.bsPropSelectedSource {
+  background: var(--ar-spreadsheet-weighted-selection-fill);
+}
+
+.bsMethodTable tr.bsPropSpacerRow td {
+  height: 8px;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  box-shadow: none;
+  background: var(--bs-surface);
+}
+
+.bsMethodTable tr.bsPropSelectedRow td {
+  background: var(--bs-selected-band);
+}
+
+.bsMethodTable tr.bsPropSelectedRow td:first-child {
+  color: var(--ar-spreadsheet-label-text);
+}
+
+.bsPropSelectedInput {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  color: var(--ar-color-danger, #be123c);
+  text-align: right;
+  font: inherit;
+  background: transparent;
+}
+
+.bsPropSelectedInput:focus {
+  outline: 1px solid var(--bs-blue);
+  outline-offset: -1px;
+  background: var(--bs-surface);
+  color: var(--bs-text);
+}
+
+/* The save bar sits on the shell canvas outside the page frame, as on DFM/BF,
+   and shares the frame gutter so the actions line up with the frame edge. */
 .bsSaveBar {
-  min-height: 43px;
-  border: 1px solid var(--bs-border);
-  border-top: 0;
-  background: var(--bs-surface-muted);
+  flex: 0 0 auto;
+  padding: 6px var(--tabbed-page-gutter, 8px) 4px;
+  border: 0;
+  background: var(--bs-bg);
 }
 
 .bsSaveActions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 7px 10px;
+  margin-left: auto;
 }
 
 .bsButton {
@@ -423,14 +641,5 @@ input {
 @media (max-width: 760px) {
   .bsShell {
     min-width: 520px;
-  }
-
-  .bsDetailsStack {
-    padding: 12px;
-  }
-
-  .bsMethodToolbar {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }

@@ -16,12 +16,17 @@ import {
   normalizeSidecarAuditEntries,
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
+import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
 import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
 } from "/ui/shared/dataset/berquist_sherman_contract.js";
-import { calculateSettlementRate } from "./settlement_rate_calculation.js";
+import {
+  DEFAULT_LOESS_SPAN,
+  calculateSettlementRate,
+  normalizeLoessSpan,
+} from "./settlement_rate_calculation.js";
 import { calculateCaseReserveAdequacy } from "./case_reserve_adequacy_calculation.js";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 
@@ -53,12 +58,20 @@ const ROLE_DEFINITIONS = Object.freeze({
 });
 
 const VIEW_DEFINITIONS = Object.freeze({
+  // Settlement Rate mirrors the ResQ Method sub-tab order and captions. The
+  // Pairs, All, and Loess estimates are shown per origin period inside the
+  // Adjusted Paid Claims selection grid.
   sr: Object.freeze([
-    { key: "output", label: "Adjusted Paid Claims", decimals: 2 },
-    { key: "proportionSettled", label: "Proportion Settled", decimals: 6 },
-    { key: "selectedClaimNumbers", label: "Selected Claim Counts", decimals: 2 },
-    { key: "pairsAdjustment", label: "Pairs Adjustment", decimals: 2 },
-    { key: "allAdjustment", label: "All Adjustment", decimals: 2 },
+    { key: "paidClaims", label: "Paid Claims", caption: "Paid Claims:", decimals: 2 },
+    { key: "numbersClosed", label: "Numbers Closed", caption: "Numbers Closed:", decimals: 2 },
+    { key: "proportionSettled", label: "Proportion Settled", caption: "Proportion Settled:", decimals: 6 },
+    { key: "selectedClaimNumbers", label: "Selected Numbers Closed", caption: "Selected Numbers Closed:", decimals: 2 },
+    {
+      key: "output",
+      label: "Adjusted Paid Claims",
+      caption: "Paid Claims Adjusted to Constant Proportions Settled",
+      decimals: 2,
+    },
   ]),
   cra: Object.freeze([
     { key: "output", label: "Adjusted Incurred Claims", decimals: 2 },
@@ -83,10 +96,11 @@ const state = {
   numberFormat: "0,000",
   decimalPlaces: 0,
   result: null,
-  currentView: "output",
+  currentView: variant === "sr" ? "paidClaims" : "output",
   selectedProportionSettled: [],
   selectedProportionIsDefault: [],
   selectedAdjustment: [],
+  loessSpan: DEFAULT_LOESS_SPAN,
   inflationSelection: [],
   userInflation: [],
   averageCaseReserveSelection: [],
@@ -122,6 +136,12 @@ const els = {
   srInputs: document.getElementById("bsSrInputs"),
   craInputs: document.getElementById("bsCraInputs"),
   viewButtons: document.getElementById("bsViewButtons"),
+  methodCaption: document.getElementById("bsMethodCaption"),
+  methodCaptionText: document.getElementById("bsMethodCaptionText"),
+  loessSpanField: document.getElementById("bsLoessSpanField"),
+  loessSpanInput: document.getElementById("bsLoessSpanInput"),
+  loessSpanUp: document.getElementById("bsLoessSpanUp"),
+  loessSpanDown: document.getElementById("bsLoessSpanDown"),
   selectionSummary: document.getElementById("bsSelectionSummary"),
   methodMessage: document.getElementById("bsMethodMessage"),
   methodHead: document.getElementById("bsMethodHead"),
@@ -238,6 +258,7 @@ function configSnapshot() {
         selectedProportionSettled: state.selectedProportionSettled,
         selectedProportionIsDefault: state.selectedProportionIsDefault,
         selectedAdjustment: state.selectedAdjustment,
+        loessSpan: state.loessSpan,
       }
     : {
         inflationSelection: state.inflationSelection,
@@ -598,6 +619,7 @@ function calculateCurrent({ renderSelections = true } = {}) {
           selectedProportionSettled: state.selectedProportionSettled,
           selectedProportionIsDefault: state.selectedProportionIsDefault,
           selectedAdjustment: state.selectedAdjustment,
+          loessSpan: state.loessSpan,
         })
       : calculateCaseReserveAdequacy({
           reportedClaimNumbers: state.sourceValues.reported_claim_numbers,
@@ -612,7 +634,9 @@ function calculateCurrent({ renderSelections = true } = {}) {
           averageCaseReserveSelection: state.averageCaseReserveSelection,
           userAverageCaseReserves: state.userAverageCaseReserves,
         });
-    setMethodMessage("Calculated from annual source data.");
+    // A good calculation reports nothing, as in ResQ: the message row only
+    // carries failures, and clearing it drops any error from a prior attempt.
+    setMethodMessage("");
   } catch (error) {
     state.result = null;
     if (lastOutputPreviewMessage) clearOutputDependencyPreview("invalid");
@@ -624,8 +648,32 @@ function calculateCurrent({ renderSelections = true } = {}) {
 }
 
 function matrixForCurrentView() {
+  if (variant === "sr" && state.currentView === "paidClaims") {
+    return state.sourceValues.paid_claims || [];
+  }
+  if (variant === "sr" && state.currentView === "numbersClosed") {
+    return state.sourceValues.closed_claim_numbers || [];
+  }
   const value = state.result?.[state.currentView];
   return Array.isArray(value) ? value : [];
+}
+
+function currentViewDefinition() {
+  return viewDefinitions().find((item) => item.key === state.currentView) || viewDefinitions()[0];
+}
+
+function formatPercentValue(value) {
+  const number = numberOrNull(value);
+  if (number === null) return "";
+  return `${(number * 100).toLocaleString(undefined, {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  })}%`;
+}
+
+function parsePercentInput(rawText) {
+  const numeric = Number.parseFloat(text(rawText).replace(/%/gu, "").replace(/,/gu, ""));
+  return Number.isFinite(numeric) ? numeric / 100 : null;
 }
 
 function formatCellValue(value, decimals) {
@@ -637,39 +685,63 @@ function formatCellValue(value, decimals) {
   });
 }
 
+function syncLoessSpanControls() {
+  if (els.loessSpanInput && document.activeElement !== els.loessSpanInput) {
+    els.loessSpanInput.value = String(state.loessSpan);
+  }
+}
+
+// The caption row mirrors the ResQ tab headers, including the Loess Span
+// spinner beside the Adjusted Paid Claims caption.
+function syncMethodChrome() {
+  const caption = variant === "sr" ? text(currentViewDefinition()?.caption) : "";
+  const showLoessSpan = variant === "sr" && state.currentView === "output";
+  if (els.methodCaptionText) els.methodCaptionText.textContent = caption;
+  if (els.loessSpanField) els.loessSpanField.hidden = !showLoessSpan;
+  if (els.methodCaption) els.methodCaption.hidden = !caption && !showLoessSpan;
+  syncLoessSpanControls();
+}
+
+function applyLoessSpan(value) {
+  const span = normalizeLoessSpan(value);
+  if (span === state.loessSpan) {
+    syncLoessSpanControls();
+    return;
+  }
+  state.loessSpan = span;
+  syncLoessSpanControls();
+  recalculateAfterSelectionEdit();
+}
+
 function renderViewButtons() {
   if (!els.viewButtons) return;
   els.viewButtons.replaceChildren();
   for (const view of viewDefinitions()) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "bsViewButton";
+    const active = view.key === state.currentView;
+    button.className = `bsViewTab tabbedPageTab${active ? " active" : ""}`;
     button.dataset.view = view.key;
     button.textContent = view.label;
-    button.setAttribute("aria-pressed", view.key === state.currentView ? "true" : "false");
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
     button.addEventListener("click", () => {
       state.currentView = view.key;
       renderViewButtons();
       renderMethodTable();
+      renderSelectionSummary();
     });
     els.viewButtons.appendChild(button);
   }
+  syncMethodChrome();
 }
 
-function renderMethodTable() {
-  if (!els.methodHead || !els.methodBody) return;
-  const matrix = matrixForCurrentView();
-  const developmentCount = Math.max(
-    matrixDevelopmentCount(),
-    ...matrix.map((row) => Array.isArray(row) ? row.length : 0),
-    0,
-  );
-  const view = viewDefinitions().find((item) => item.key === state.currentView) || viewDefinitions()[0];
-
+function buildMethodHeaderRow(cornerLabel, developmentCount) {
   const headerRow = document.createElement("tr");
   const corner = document.createElement("th");
   corner.scope = "col";
-  corner.textContent = "Origin";
+  corner.textContent = cornerLabel;
   headerRow.appendChild(corner);
   for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
     const header = document.createElement("th");
@@ -677,10 +749,336 @@ function renderMethodTable() {
     header.textContent = getDevelopmentLabel(devIndex);
     headerRow.appendChild(header);
   }
+  return headerRow;
+}
+
+function adjustmentGridRows() {
+  const span = state.result?.loessSpan ?? state.loessSpan;
+  return [
+    { method: "unadjusted", label: "Unadjusted :", matrix: state.sourceValues.paid_claims || [] },
+    { method: "pairs", label: "Pairs :", matrix: state.result?.pairsAdjustment || [] },
+    { method: "all", label: "All :", matrix: state.result?.allAdjustment || [] },
+    { method: "loess", label: `Loess (${span}) :`, matrix: state.result?.loessAdjustment || [] },
+    { method: "selected", label: "Selected :", matrix: state.result?.adjustedPaidClaims || [] },
+  ];
+}
+
+function selectedAdjustmentFor(rowIndex, devIndex) {
+  const effective = state.result?.selectedAdjustment;
+  return norm(effective?.[rowIndex]?.[devIndex] ?? state.selectedAdjustment?.[rowIndex]?.[devIndex]);
+}
+
+// ResQ-style Adjusted Paid Claims grid: five estimator rows per origin period.
+// Click a value to select that cell, click a row label for the whole origin,
+// Ctrl+click a row label for every origin and development period.
+function renderAdjustedPaidGrid(view) {
+  const paid = state.sourceValues.paid_claims || [];
+  const developmentCount = matrixDevelopmentCount();
+  els.methodHead.replaceChildren(buildMethodHeaderRow("Accident Year", developmentCount));
+
+  const body = document.createDocumentFragment();
+  const gridRows = adjustmentGridRows();
+  for (let rowIndex = 0; rowIndex < paid.length; rowIndex += 1) {
+    const populatedCount = Array.isArray(paid[rowIndex]) ? paid[rowIndex].length : 0;
+    const yearRow = document.createElement("tr");
+    yearRow.className = "bsAdjYearRow";
+    const yearLabel = document.createElement("td");
+    yearLabel.textContent = getOriginLabel(rowIndex);
+    yearRow.appendChild(yearLabel);
+    const yearFill = document.createElement("td");
+    yearFill.colSpan = Math.max(developmentCount, 1);
+    yearRow.appendChild(yearFill);
+    body.appendChild(yearRow);
+
+    for (const gridRow of gridRows) {
+      const isSelectedRow = gridRow.method === "selected";
+      const rowElement = document.createElement("tr");
+      const label = document.createElement("td");
+      label.className = `bsAdjRowLabel${isSelectedRow ? " bsAdjSelectedRowLabel" : ""}`;
+      label.textContent = gridRow.label;
+      if (!isSelectedRow) {
+        label.classList.add("bsAdjPick");
+        label.dataset.adjustMethod = gridRow.method;
+        label.dataset.adjustOrigin = String(rowIndex);
+        label.tabIndex = 0;
+        label.title = "Click selects this estimator for the origin period. Ctrl+Click selects it everywhere.";
+      }
+      rowElement.appendChild(label);
+      for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
+        const cell = document.createElement("td");
+        if (devIndex >= populatedCount) {
+          cell.className = "bsAdjBlankCell";
+          rowElement.appendChild(cell);
+          continue;
+        }
+        const rawValue = gridRow.matrix[rowIndex]?.[devIndex];
+        cell.textContent = formatCellValue(rawValue, view.decimals);
+        cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
+        if (isSelectedRow) {
+          cell.className = "bsAdjSelectedValue";
+        } else {
+          cell.className = "bsAdjCell bsAdjPick";
+          cell.dataset.adjustMethod = gridRow.method;
+          cell.dataset.adjustOrigin = String(rowIndex);
+          cell.dataset.adjustDev = String(devIndex);
+          cell.tabIndex = 0;
+          if (selectedAdjustmentFor(rowIndex, devIndex) === gridRow.method) {
+            cell.classList.add("bsAdjSelectedSource");
+          }
+        }
+        rowElement.appendChild(cell);
+      }
+      body.appendChild(rowElement);
+    }
+  }
+  els.methodBody.replaceChildren(body);
+}
+
+function applyAdjustmentSelection(method, originIndex, devIndex, applyToAllOrigins) {
+  const paid = state.sourceValues.paid_claims || [];
+  if (applyToAllOrigins) {
+    state.selectedAdjustment = paid.map((row) => (Array.isArray(row) ? row : []).map(() => method));
+  } else if (devIndex === null) {
+    state.selectedAdjustment[originIndex] = (paid[originIndex] || []).map(() => method);
+  } else {
+    const row = paid[originIndex] || [];
+    const previous = Array.isArray(state.selectedAdjustment[originIndex])
+      ? state.selectedAdjustment[originIndex]
+      : [];
+    if (previous.length < row.length) {
+      state.selectedAdjustment[originIndex] = row.map((_, index) => previous[index] ?? null);
+    }
+    state.selectedAdjustment[originIndex][devIndex] = method;
+  }
+  recalculateAfterSelectionEdit();
+}
+
+function handleAdjustmentGridEvent(event) {
+  if (variant !== "sr" || state.currentView !== "output") return;
+  const target = event.target instanceof Element
+    ? event.target.closest("[data-adjust-method]")
+    : null;
+  if (!target) return;
+  if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  const method = text(target.dataset.adjustMethod);
+  const originIndex = Number.parseInt(target.dataset.adjustOrigin || "", 10);
+  if (!method || !Number.isInteger(originIndex)) return;
+  const devRaw = Number.parseInt(target.dataset.adjustDev || "", 10);
+  applyAdjustmentSelection(
+    method,
+    originIndex,
+    Number.isInteger(devRaw) ? devRaw : null,
+    (event.ctrlKey || event.metaKey) && !Number.isInteger(devRaw),
+  );
+}
+
+// The green highlight marks the proportion cell currently feeding each
+// development period: the leading diagonal by default, or the clicked value.
+function proportionHighlightRowIndex(proportionMatrix, devIndex) {
+  const isDefault = state.selectedProportionIsDefault[devIndex] === true;
+  const selected = numberOrNull(state.result?.selectedProportionSettled?.[devIndex]);
+  for (let rowIndex = proportionMatrix.length - 1; rowIndex >= 0; rowIndex -= 1) {
+    const value = numberOrNull(proportionMatrix[rowIndex]?.[devIndex]);
+    if (value === null) continue;
+    if (isDefault) return rowIndex;
+    if (selected !== null && Math.abs(value - selected) <= Math.max(1e-12, Math.abs(selected) * 1e-9)) {
+      return rowIndex;
+    }
+  }
+  return -1;
+}
+
+// ResQ-style Proportion Settled tab: click a triangle value to select it for
+// that development period, type into the Selected row for custom values, and
+// right-click for Select Leading Diagonal.
+function renderProportionSettledGrid() {
+  const proportionMatrix = Array.isArray(state.result?.proportionSettled)
+    ? state.result.proportionSettled
+    : [];
+  const developmentCount = matrixDevelopmentCount();
+  els.methodHead.replaceChildren(buildMethodHeaderRow("Accident Year", developmentCount));
+
+  const body = document.createDocumentFragment();
+  const highlightByColumn = Array.from(
+    { length: developmentCount },
+    (_, devIndex) => proportionHighlightRowIndex(proportionMatrix, devIndex),
+  );
+  for (let rowIndex = 0; rowIndex < proportionMatrix.length; rowIndex += 1) {
+    const rowElement = document.createElement("tr");
+    const origin = document.createElement("td");
+    origin.textContent = getOriginLabel(rowIndex);
+    rowElement.appendChild(origin);
+    for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
+      const cell = document.createElement("td");
+      const rawValue = numberOrNull(proportionMatrix[rowIndex]?.[devIndex]);
+      if (rawValue === null) {
+        rowElement.appendChild(cell);
+        continue;
+      }
+      cell.className = "bsPropCell";
+      cell.textContent = formatPercentValue(rawValue);
+      cell.title = String(rawValue);
+      cell.dataset.propDev = String(devIndex);
+      cell.dataset.propValue = String(rawValue);
+      cell.tabIndex = 0;
+      if (highlightByColumn[devIndex] === rowIndex) cell.classList.add("bsPropSelectedSource");
+      rowElement.appendChild(cell);
+    }
+    body.appendChild(rowElement);
+  }
+
+  const spacerRow = document.createElement("tr");
+  spacerRow.className = "bsPropSpacerRow";
+  for (let index = 0; index <= developmentCount; index += 1) {
+    spacerRow.appendChild(document.createElement("td"));
+  }
+  body.appendChild(spacerRow);
+
+  const selectedRow = document.createElement("tr");
+  selectedRow.className = "bsPropSelectedRow";
+  const selectedLabel = document.createElement("td");
+  selectedLabel.textContent = "Selected";
+  selectedRow.appendChild(selectedLabel);
+  const selectedValues = Array.isArray(state.result?.selectedProportionSettled)
+    ? state.result.selectedProportionSettled
+    : state.selectedProportionSettled;
+  for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
+    const cell = document.createElement("td");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "bsPropSelectedInput";
+    input.value = formatPercentValue(selectedValues[devIndex]);
+    input.setAttribute(
+      "aria-label",
+      `${getDevelopmentLabel(devIndex)} selected proportion settled`,
+    );
+    input.dataset.propDev = String(devIndex);
+    cell.appendChild(input);
+    selectedRow.appendChild(cell);
+  }
+  body.appendChild(selectedRow);
+  els.methodBody.replaceChildren(body);
+}
+
+function applyProportionSelection(devIndex, value) {
+  const parsed = numberOrNull(value);
+  if (parsed === null || !Number.isInteger(devIndex) || devIndex < 0) return;
+  ensureSelectionConfig();
+  state.selectedProportionSettled[devIndex] = parsed;
+  state.selectedProportionIsDefault[devIndex] = false;
+  recalculateAfterSelectionEdit();
+}
+
+function selectLeadingDiagonal() {
+  state.selectedProportionIsDefault = Array(matrixDevelopmentCount()).fill(true);
+  recalculateAfterSelectionEdit();
+}
+
+let proportionContextMenu = null;
+
+function hideProportionContextMenu() {
+  if (proportionContextMenu) proportionContextMenu.style.display = "none";
+}
+
+function ensureProportionContextMenu() {
+  if (proportionContextMenu) return proportionContextMenu;
+  proportionContextMenu = document.createElement("div");
+  proportionContextMenu.className = "ctx-menu";
+  proportionContextMenu.style.display = "none";
+  const inner = document.createElement("div");
+  inner.className = "ctx-menu-inner";
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "ctx-item";
+  item.textContent = "Select Leading Diagonal";
+  item.addEventListener("click", () => {
+    hideProportionContextMenu();
+    selectLeadingDiagonal();
+  });
+  inner.appendChild(item);
+  proportionContextMenu.appendChild(inner);
+  document.body.appendChild(proportionContextMenu);
+  document.addEventListener("pointerdown", (event) => {
+    if (!(event.target instanceof Element) || !proportionContextMenu.contains(event.target)) {
+      hideProportionContextMenu();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideProportionContextMenu();
+  });
+  return proportionContextMenu;
+}
+
+function handleProportionGridEvent(event) {
+  if (variant !== "sr" || state.currentView !== "proportionSettled") return;
+  if (event.type === "contextmenu") {
+    event.preventDefault();
+    const menu = ensureProportionContextMenu();
+    menu.style.display = "block";
+    openContextMenu(menu, { clientX: event.clientX, clientY: event.clientY });
+    return;
+  }
+  if (event.target instanceof HTMLInputElement && event.target.classList.contains("bsPropSelectedInput")) {
+    const input = event.target;
+    const commit = () => {
+      const devIndex = Number.parseInt(input.dataset.propDev || "", 10);
+      const parsed = parsePercentInput(input.value);
+      if (parsed === null) {
+        input.value = formatPercentValue(state.result?.selectedProportionSettled?.[devIndex]);
+        return;
+      }
+      applyProportionSelection(devIndex, parsed);
+    };
+    if (event.type === "change") commit();
+    if (event.type === "keydown" && event.key === "Enter") input.blur();
+    return;
+  }
+  if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+  const cell = event.target instanceof Element ? event.target.closest("td.bsPropCell") : null;
+  if (!cell) return;
+  event.preventDefault();
+  applyProportionSelection(
+    Number.parseInt(cell.dataset.propDev || "", 10),
+    numberOrNull(cell.dataset.propValue),
+  );
+}
+
+function renderMethodTable() {
+  if (!els.methodHead || !els.methodBody) return;
+  const view = currentViewDefinition();
+  syncMethodChrome();
+  if (variant === "sr" && state.currentView === "output" && state.result) {
+    renderAdjustedPaidGrid(view);
+    return;
+  }
+  if (variant === "sr" && state.currentView === "proportionSettled" && state.result) {
+    renderProportionSettledGrid();
+    return;
+  }
+  const matrix = matrixForCurrentView();
+  const developmentCount = Math.max(
+    matrixDevelopmentCount(),
+    ...matrix.map((row) => Array.isArray(row) ? row.length : 0),
+    0,
+  );
+  const showUltimateColumn = variant === "sr" && state.currentView === "numbersClosed";
+
+  const headerRow = buildMethodHeaderRow(
+    variant === "sr" ? "Accident Year" : "Origin",
+    developmentCount,
+  );
+  if (showUltimateColumn) {
+    const ultimateHeader = document.createElement("th");
+    ultimateHeader.scope = "col";
+    ultimateHeader.textContent = "Ultimate";
+    headerRow.appendChild(ultimateHeader);
+  }
   els.methodHead.replaceChildren(headerRow);
 
   const body = document.createDocumentFragment();
   const rowCount = Math.max(matrixRowCount(), matrix.length);
+  const ultimateValues = state.sourceValues.ultimate_claim_numbers || [];
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
     const rowElement = document.createElement("tr");
     const origin = document.createElement("td");
@@ -692,8 +1090,17 @@ function renderMethodTable() {
       const display = formatCellValue(rawValue, view.decimals);
       cell.textContent = display;
       cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
-      cell.className = "bsResultCell";
+      // ResQ renders the Settlement Rate triangles as plain cells; the CRA
+      // views keep the calculated-result fill.
+      if (variant !== "sr") cell.className = "bsResultCell";
       rowElement.appendChild(cell);
+    }
+    if (showUltimateColumn) {
+      const ultimateCell = document.createElement("td");
+      const rawValue = ultimateValues[rowIndex];
+      ultimateCell.textContent = formatCellValue(rawValue, view.decimals);
+      ultimateCell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
+      rowElement.appendChild(ultimateCell);
     }
     body.appendChild(rowElement);
   }
@@ -702,10 +1109,6 @@ function renderMethodTable() {
 
 function selectionDisplayLabel(value) {
   const labels = {
-    unadjusted: "Unadjusted",
-    pairs: "Pairs",
-    all: "All",
-    loess: "Loess",
     case_column: "Case Column",
     case_all: "Case All",
     paid_column: "Paid Column",
@@ -753,75 +1156,6 @@ function appendSelectionTitle(container, title) {
 function recalculateAfterSelectionEdit({ renderSelections = true } = {}) {
   calculateCurrent({ renderSelections });
   markDirty();
-}
-
-function renderSettlementRateSelections() {
-  const developmentCount = matrixDevelopmentCount();
-  const selectedValues = Array.isArray(state.result?.selectedProportionSettled)
-    ? state.result.selectedProportionSettled
-    : state.selectedProportionSettled;
-  const proportionRow = document.createElement("div");
-  proportionRow.className = "bsSelectionEditorRow";
-  appendSelectionTitle(proportionRow, "Proportion settled");
-  for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
-    const card = document.createElement("div");
-    card.className = "bsSelectionEditor";
-    const label = document.createElement("span");
-    label.className = "bsSelectionEditorLabel";
-    label.textContent = getDevelopmentLabel(devIndex);
-    const input = createSelectionNumber(
-      selectedValues[devIndex],
-      `${getDevelopmentLabel(devIndex)} selected proportion settled`,
-      (value) => {
-        state.selectedProportionSettled[devIndex] = value;
-        recalculateAfterSelectionEdit({ renderSelections: false });
-      },
-    );
-    const defaultLabel = document.createElement("label");
-    defaultLabel.className = "bsSelectionCheck";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = state.selectedProportionIsDefault[devIndex] === true;
-    input.disabled = checkbox.checked;
-    checkbox.addEventListener("change", () => {
-      state.selectedProportionIsDefault[devIndex] = checkbox.checked;
-      if (!checkbox.checked) {
-        state.selectedProportionSettled[devIndex] = numberOrNull(selectedValues[devIndex]);
-      }
-      recalculateAfterSelectionEdit();
-    });
-    defaultLabel.append(checkbox, "Default");
-    card.append(label, input, defaultLabel);
-    proportionRow.appendChild(card);
-  }
-
-  const adjustmentRow = document.createElement("div");
-  adjustmentRow.className = "bsSelectionEditorRow";
-  appendSelectionTitle(adjustmentRow, "Adjustment by origin");
-  const paid = state.sourceValues.paid_claims || [];
-  for (let rowIndex = 0; rowIndex < paid.length; rowIndex += 1) {
-    const card = document.createElement("div");
-    card.className = "bsSelectionEditor compact";
-    const label = document.createElement("span");
-    label.className = "bsSelectionEditorLabel";
-    label.textContent = getOriginLabel(rowIndex);
-    const populated = (state.selectedAdjustment[rowIndex] || [])
-      .slice(0, paid[rowIndex]?.length || 0)
-      .filter(Boolean);
-    const selected = populated[0] || (paid[rowIndex]?.length > 1 ? "pairs" : "unadjusted");
-    const select = createSelectionSelect(
-      selected,
-      ["unadjusted", "pairs", "all"],
-      `${getOriginLabel(rowIndex)} adjustment`,
-      (value) => {
-        state.selectedAdjustment[rowIndex] = (paid[rowIndex] || []).map(() => value);
-        recalculateAfterSelectionEdit();
-      },
-    );
-    card.append(label, select);
-    adjustmentRow.appendChild(card);
-  }
-  els.selectionSummary.append(proportionRow, adjustmentRow);
 }
 
 function renderCaseReserveSelections() {
@@ -893,12 +1227,18 @@ function renderCaseReserveSelections() {
 function renderSelectionSummary() {
   if (!els.selectionSummary) return;
   els.selectionSummary.replaceChildren();
+  if (variant === "sr") {
+    // Settlement Rate selections live inside the Method grids themselves: the
+    // Proportion Settled tab's Selected row and the Adjusted Paid Claims grid.
+    els.selectionSummary.hidden = true;
+    return;
+  }
+  els.selectionSummary.hidden = false;
   if (!matrixDevelopmentCount()) {
     appendSelectionTitle(els.selectionSummary, "Waiting for source data.");
     return;
   }
-  if (variant === "sr") renderSettlementRateSelections();
-  else renderCaseReserveSelections();
+  renderCaseReserveSelections();
 }
 
 function normalizeCachedRow(row) {
@@ -1356,6 +1696,7 @@ function buildMethodPayload() {
     methodTab.selected_proportion_settled = state.selectedProportionSettled.slice();
     methodTab.selected_proportion_is_default = state.selectedProportionIsDefault.slice();
     methodTab.selected_adjustment = cloneMatrix(state.selectedAdjustment);
+    methodTab.loess_span = state.loessSpan;
   } else {
     methodTab.inflation_selection = state.inflationSelection.slice();
     methodTab.user_inflation = state.userInflation.slice();
@@ -1399,6 +1740,7 @@ function applyMethodPayload(payload) {
   state.selectedProportionSettled = normalizeNumberVector(method.selected_proportion_settled);
   state.selectedProportionIsDefault = normalizeBooleanVector(method.selected_proportion_is_default);
   state.selectedAdjustment = normalizeSelectionMatrix(method.selected_adjustment);
+  if (variant === "sr") state.loessSpan = normalizeLoessSpan(method.loess_span);
   state.inflationSelection = normalizeStringVector(method.inflation_selection);
   state.userInflation = normalizeNumberVector(method.user_inflation);
   state.averageCaseReserveSelection = normalizeStringVector(method.average_case_reserve_selection);
@@ -1406,6 +1748,7 @@ function applyMethodPayload(payload) {
   syncSourceInputs();
   syncTitle();
   renderSelectionSummary();
+  syncLoessSpanControls();
 }
 
 async function tryLoadExistingMethod() {
@@ -1631,6 +1974,46 @@ function initTabbedPage() {
   applyTabbedPageSaveBar(document.getElementById("bsSaveBar"));
 }
 
+function wireMethodGridControls() {
+  els.methodBody?.addEventListener("click", handleAdjustmentGridEvent);
+  els.methodBody?.addEventListener("keydown", handleAdjustmentGridEvent);
+  els.methodBody?.addEventListener("click", handleProportionGridEvent);
+  els.methodBody?.addEventListener("keydown", handleProportionGridEvent);
+  els.methodBody?.addEventListener("change", handleProportionGridEvent);
+  els.methodBody?.addEventListener("contextmenu", handleProportionGridEvent);
+  els.loessSpanInput?.addEventListener("change", () => applyLoessSpan(els.loessSpanInput.value));
+  els.loessSpanInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") applyLoessSpan(els.loessSpanInput.value);
+  });
+  els.loessSpanUp?.addEventListener("click", () => applyLoessSpan(state.loessSpan + 1));
+  els.loessSpanDown?.addEventListener("click", () => applyLoessSpan(state.loessSpan - 1));
+}
+
+function wireTableScrollbarActivity() {
+  const host = document.querySelector(".bsTableWrap");
+  if (!host) return;
+  let idleTimer = null;
+  const syncScrollbarHover = (event) => {
+    const rect = host.getBoundingClientRect();
+    const verticalScrollbarWidth = Math.max(0, host.offsetWidth - host.clientWidth);
+    const horizontalScrollbarHeight = Math.max(0, host.offsetHeight - host.clientHeight);
+    const nearVerticalScrollbar = host.scrollHeight > host.clientHeight
+      && verticalScrollbarWidth > 0
+      && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+    const nearHorizontalScrollbar = host.scrollWidth > host.clientWidth
+      && horizontalScrollbarHeight > 0
+      && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+    host.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+  };
+  host.addEventListener("scroll", () => {
+    host.classList.add("isScrolling");
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => host.classList.remove("isScrolling"), 550);
+  }, { passive: true });
+  host.addEventListener("pointermove", syncScrollbarHover, { passive: true });
+  host.addEventListener("pointerleave", () => host.classList.remove("isScrollbarHover"), { passive: true });
+}
+
 function wireInputs() {
   for (const input of [els.nameInput, els.outputTypeInput]) {
     input?.addEventListener("input", () => {
@@ -1638,6 +2021,8 @@ function wireInputs() {
       markDirty();
     });
   }
+  wireMethodGridControls();
+  wireTableScrollbarActivity();
   els.outputTypeBtn?.addEventListener("click", () => void openPicker("output", els.outputTypeBtn));
   for (const button of document.querySelectorAll("button[data-picker-role]")) {
     button.addEventListener("click", () => void openPicker(button.dataset.pickerRole, button));
