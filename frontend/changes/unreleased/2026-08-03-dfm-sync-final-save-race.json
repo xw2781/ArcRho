@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed DFM Sync reporting a failed final save when a background preview interrupted it after applying the remote version.",
+  "details": [
+    "The save-time preview now retries through benign interruptions from debounced dirty-state and dataset-update previews instead of reporting the save as failed.",
+    "When the final save genuinely fails, the sync dialog and status bar now include the underlying error message instead of a generic warning."
+  ]
+}

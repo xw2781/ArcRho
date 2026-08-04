@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Sync review dialog now aligns matching sections side by side so both versions' previews start at the same height.",
+  "details": [
+    "Ratio Selection Snapshot, Average Formulas, Cell Notes, and Method Notes share row tracks across the two version cards, and paired preview boxes render with equal heights.",
+    "Narrow single-column layouts keep the previous stacked card flow."
+  ]
+}

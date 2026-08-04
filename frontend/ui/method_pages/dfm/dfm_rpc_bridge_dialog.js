@@ -136,14 +136,20 @@ function ensureStyles() {
     .dfmRpcGrid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
+      /* Row tracks are shared by both version cards through subgrid, so
+         vertical spacing comes from item margins, not a row gap. */
+      gap: 0 12px;
       flex: 0 0 auto;
       min-height: 0;
       align-items: stretch;
     }
     .dfmRpcVersionCard {
-      display: flex;
-      flex-direction: column;
+      /* Subgrid keeps every snapshot section on the same shared row track,
+         so matching sections start at the same height on both cards. */
+      display: grid;
+      grid-template-rows: subgrid;
+      grid-row: span 6;
+      align-content: start;
       border: 1px solid #d9e0ea;
       border-radius: 7px;
       background: #fbfcff;
@@ -246,15 +252,28 @@ function ensureStyles() {
       color: #4b5563;
     }
     .dfmRpcSnapshot {
+      /* Contents box lets each snapshot section join the card's shared
+         subgrid rows; its old separator styles move to the first section. */
+      display: contents;
+    }
+    .dfmRpcSnapshotSection {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      flex: 0 0 auto;
-      min-height: auto;
+      min-width: 0;
+      overflow: visible;
+    }
+    .dfmRpcSnapshot > .dfmRpcSnapshotSection:first-child {
       margin-top: 10px;
       padding-top: 10px;
       border-top: 1px solid #e2e7ef;
-      overflow: visible;
+    }
+    .dfmRpcSnapshot > .dfmRpcSnapshotSection + .dfmRpcSnapshotSection {
+      margin-top: 8px;
+    }
+    .dfmRpcSnapshotSection > :last-child {
+      /* Fill the shared row so paired preview boxes render equal heights. */
+      flex: 1 0 auto;
     }
     .dfmRpcSnapshotTitle {
       margin: 0;
@@ -266,6 +285,7 @@ function ensureStyles() {
       display: grid;
       gap: var(--dfmRpcPatternGap, 3px);
       align-items: start;
+      align-content: start;
       justify-content: start;
       max-width: 100%;
       overflow: auto;
@@ -310,6 +330,7 @@ function ensureStyles() {
       display: grid;
       gap: var(--dfmRpcFormulaGap, 3px);
       align-items: start;
+      align-content: start;
       justify-content: start;
       max-width: 100%;
       overflow: auto;
@@ -432,7 +453,33 @@ function ensureStyles() {
       .dfmRpcWindow {
         min-width: min(360px, calc(100vw - 16px));
       }
-      .dfmRpcGrid { grid-template-columns: 1fr; }
+      /* Single column stacks the cards, so cross-card row alignment no longer
+         applies; restore the plain column flow and the 12px card gap. */
+      .dfmRpcGrid { grid-template-columns: 1fr; gap: 12px; }
+      .dfmRpcVersionCard {
+        display: flex;
+        flex-direction: column;
+        grid-row: auto;
+      }
+      .dfmRpcSnapshot {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #e2e7ef;
+      }
+      .dfmRpcSnapshot > .dfmRpcSnapshotSection:first-child {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+      }
+      .dfmRpcSnapshot > .dfmRpcSnapshotSection + .dfmRpcSnapshotSection {
+        margin-top: 0;
+      }
+      .dfmRpcSnapshotSection > :last-child {
+        flex: 0 0 auto;
+      }
     }
   `;
   document.head.appendChild(style);
@@ -883,13 +930,29 @@ function renderHighlightedTokens(tokens, flags, className) {
 }
 
 function renderCellNotesPreview(version, otherVersion) {
-  const notes = getSnapshotCellNotesText(version.snapshot);
-  if (!notes) return escapeHtml("No cell notes");
+  return renderNotesDiffPreview(version, otherVersion, getSnapshotCellNotesText, "No cell notes");
+}
+
+function snapshotSupportsMethodNotes(snapshot) {
+  return !!snapshot?.method_notes?.exists;
+}
+
+function getSnapshotMethodNotesText(snapshot) {
+  return String(snapshot?.method_notes?.text || "").trim();
+}
+
+function renderMethodNotesPreview(version, otherVersion) {
+  return renderNotesDiffPreview(version, otherVersion, getSnapshotMethodNotesText, "No method notes");
+}
+
+function renderNotesDiffPreview(version, otherVersion, getText, emptyLabel) {
+  const notes = getText(version.snapshot);
+  if (!notes) return escapeHtml(emptyLabel);
   if (!otherVersion || (version.age !== "old" && version.age !== "new")) {
     return escapeHtml(notes);
   }
 
-  const otherNotes = getSnapshotCellNotesText(otherVersion.snapshot);
+  const otherNotes = getText(otherVersion.snapshot);
   const oldNotes = version.age === "old" ? notes : otherNotes;
   const newNotes = version.age === "new" ? notes : otherNotes;
   const diff = buildNoteDiff(oldNotes, newNotes);
@@ -969,6 +1032,8 @@ function renderVersionCard(version, selectedKey, versions, labelFallbacks = {}) 
     : null;
   const otherPattern = otherVersion?.snapshot?.ratio_pattern || {};
   const otherFormulaPattern = otherVersion?.snapshot?.average_formula_pattern || {};
+  const showMethodNotes = snapshotSupportsMethodNotes(snapshot)
+    || snapshotSupportsMethodNotes(otherVersion?.snapshot);
   return `
     <div
       class="dfmRpcVersionCard selectable ${version.age === "new" ? "newest" : ""} ${selectedKey === version.key ? "selected" : ""}"
@@ -985,12 +1050,24 @@ function renderVersionCard(version, selectedKey, versions, labelFallbacks = {}) 
         <div><strong>Last Modified:</strong> <span class="dfmRpcTimestampBadge ${version.age === "new" ? "new" : "old"}">${escapeHtml(formatTime(version.meta))}</span></div>
       </div>
       <div class="dfmRpcSnapshot">
-        <p class="dfmRpcSnapshotTitle">Ratio Selection Snapshot</p>
-        ${renderPatternPreview(snapshot.ratio_pattern || {}, otherPattern, version.age, labelFallbacks)}
-        <p class="dfmRpcSnapshotTitle">Average Formulas</p>
-        ${renderFormulaPatternPreview(snapshot.average_formula_pattern || {}, otherFormulaPattern, version.age, labelFallbacks)}
-        <p class="dfmRpcSnapshotTitle">Cell Notes</p>
-        <pre class="dfmRpcNotesPreview">${renderCellNotesPreview(version, otherVersion)}</pre>
+        <div class="dfmRpcSnapshotSection">
+          <p class="dfmRpcSnapshotTitle">Ratio Selection Snapshot</p>
+          ${renderPatternPreview(snapshot.ratio_pattern || {}, otherPattern, version.age, labelFallbacks)}
+        </div>
+        <div class="dfmRpcSnapshotSection">
+          <p class="dfmRpcSnapshotTitle">Average Formulas</p>
+          ${renderFormulaPatternPreview(snapshot.average_formula_pattern || {}, otherFormulaPattern, version.age, labelFallbacks)}
+        </div>
+        <div class="dfmRpcSnapshotSection">
+          <p class="dfmRpcSnapshotTitle">Cell Notes</p>
+          <pre class="dfmRpcNotesPreview">${renderCellNotesPreview(version, otherVersion)}</pre>
+        </div>
+        ${showMethodNotes ? `
+        <div class="dfmRpcSnapshotSection">
+          <p class="dfmRpcSnapshotTitle">Method Notes</p>
+          <pre class="dfmRpcNotesPreview">${renderMethodNotesPreview(version, otherVersion)}</pre>
+        </div>
+        ` : ""}
       </div>
     </div>
   `;

@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Sync now reads ResQ method-level Notes and shows a Method Notes comparison in the sync review dialog.",
+  "details": [
+    "The RPC bridge DFM read response carries ResQ method Notes as transient metadata, compared against the local output-sidecar notes with word-level diff highlighting.",
+    "Confirming a version applies its Method Notes state to the other side: choosing remote writes the ResQ note into the output dataset sidecar (still the only persisted ArcRho notes owner), and a confirmed remote update writes the local sidecar note into ResQ method Notes with ResQ-compatible line breaks.",
+    "An empty note on the confirmed version clears the other side's note; only a sync payload without the notes field (older bridge or unreadable sidecar) leaves notes unchanged.",
+    "ArcBot method comparisons are unchanged and do not include Method Notes."
+  ]
+}

@@ -145,6 +145,7 @@ class ResQClient:
                 },
                 "method metadata": {
                     "last modified": self._dfm_last_modified(dfm),
+                    "method notes": self._method_notes(dfm),
                 },
             }
             write_json_with_compact_rows(request["DataPath"], payload)
@@ -161,6 +162,7 @@ class ResQClient:
             user_entry_count = self._sync_user_entry_values(dfm, payload)
             selected_count = self._sync_selected_ratios(dfm, payload)
             cell_notes_changed = self._sync_cell_notes(dfm, payload)
+            method_notes_changed = self._sync_method_notes(dfm, request)
             dfm.Save()
             payload = {
                 "ok": True,
@@ -171,6 +173,7 @@ class ResQClient:
                     "selected ratios": selected_count,
                     "user entry values": user_entry_count,
                     "cell notes": cell_notes_changed,
+                    "method notes": method_notes_changed,
                 },
             }
             write_json(request["DataPath"], payload)
@@ -856,6 +859,26 @@ class ResQClient:
             ],
             "values": self._user_entry_average_formula_values(dfm, formula_rows, column_count),
         }
+
+    def _method_notes(self, dfm):
+        # ResQ method-level Notes; the ArcRho output sidecar `notes` field is its
+        # only persisted ArcRho owner, so this value stays in transient metadata.
+        return str(self._optional_value(dfm, "Notes", "") or "")
+
+    def _sync_method_notes(self, dfm, request):
+        if "MethodNotes" not in request:
+            # An omitted field means the local notes owner was unavailable;
+            # leave ResQ method Notes unchanged.
+            return 0
+        notes = str(request.get("MethodNotes") or "")
+        if not notes.strip():
+            notes = ""
+        # ResQ Notes require \r\n line breaks; a \n-only value renders as one line.
+        normalized = re.sub(r"\r?\n", "\r\n", notes)
+        if self._method_notes(dfm) == normalized:
+            return 0
+        dfm.Notes = normalized
+        return 1
 
     def _cell_notes_data(self, dfm, origin_labels, ratio_development_labels, average_labels):
         lines = str(self._optional_value(dfm, "CellNotes", "") or "").splitlines()

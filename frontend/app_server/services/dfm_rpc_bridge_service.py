@@ -372,7 +372,47 @@ def _extract_cell_notes_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _build_json_snapshot(path: str) -> Dict[str, Any]:
+def _extract_method_notes_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = _json_tab(payload, "method metadata")
+    if "method notes" not in metadata:
+        return {"exists": False, "text": ""}
+    raw = metadata.get("method notes")
+    return {"exists": True, "text": str(raw if raw is not None else "")}
+
+
+def _sidecar_method_notes_snapshot(req: DfmRpcBridgeRequest, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Read local Method Notes from their persisted owner, the output sidecar."""
+    from app_server.services import dataset_sidecar_status_service
+
+    details = _json_tab(payload, "details tab")
+    output_dataset = (
+        _clean_text(details.get("output dataset"))
+        or _clean_text(details.get("name"))
+        or _clean_text(req.method_name)
+    )
+    if not output_dataset:
+        return {"exists": False, "text": ""}
+    path = dataset_sidecar_status_service.sidecar_path(req.project_name, req.reserving_class, output_dataset)
+    if not os.path.exists(path):
+        return {"exists": False, "text": ""}
+    try:
+        sidecar = _read_json(path)
+    except HTTPException:
+        return {"exists": False, "text": ""}
+    return {"exists": True, "text": str(sidecar.get("notes") or "")}
+
+
+def _local_method_notes(req: DfmRpcBridgeRequest, paths: Dict[str, str]) -> Dict[str, Any]:
+    if not os.path.exists(paths["local_path"]):
+        return {"exists": False, "text": ""}
+    try:
+        payload = _read_json(paths["local_path"])
+    except HTTPException:
+        return {"exists": False, "text": ""}
+    return _sidecar_method_notes_snapshot(req, payload)
+
+
+def _build_json_snapshot(path: str, *, method_notes_resolver=None) -> Dict[str, Any]:
     if not os.path.exists(path):
         return {
             "available": False,
@@ -380,6 +420,7 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
             "ratio_pattern": _extract_pattern_snapshot({}),
             "average_formula_pattern": _extract_average_formula_snapshot({}),
             "cell_notes": _extract_cell_notes_snapshot({}),
+            "method_notes": _extract_method_notes_snapshot({}),
             "average_formulas": [],
             "last_modified": "",
         }
@@ -392,6 +433,7 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
             "ratio_pattern": _extract_pattern_snapshot({}),
             "average_formula_pattern": _extract_average_formula_snapshot({}),
             "cell_notes": _extract_cell_notes_snapshot({}),
+            "method_notes": _extract_method_notes_snapshot({}),
             "average_formulas": [],
             "last_modified": "",
         }
@@ -399,12 +441,16 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
     formulas = formula_payload.get("label", []) if isinstance(formula_payload, dict) else []
     if not isinstance(formulas, list):
         formulas = []
+    method_notes = _extract_method_notes_snapshot(payload)
+    if not method_notes["exists"] and callable(method_notes_resolver):
+        method_notes = method_notes_resolver(payload)
     return {
         "available": True,
         "error": "",
         "ratio_pattern": _extract_pattern_snapshot(payload),
         "average_formula_pattern": _extract_average_formula_snapshot(payload),
         "cell_notes": _extract_cell_notes_snapshot(payload),
+        "method_notes": method_notes,
         "average_formulas": [str(item) for item in formulas],
         "last_modified": _clean_text(_json_tab(payload, "method metadata").get("last modified")),
     }
@@ -437,7 +483,10 @@ def compare(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
         "local": local_meta,
         "remote": remote_meta,
         "snapshots": {
-            "local": _build_json_snapshot(paths["local_path"]),
+            "local": _build_json_snapshot(
+                paths["local_path"],
+                method_notes_resolver=lambda payload: _sidecar_method_notes_snapshot(req, payload),
+            ),
             "remote": _build_json_snapshot(paths["remote_path"]),
         },
         "paths": paths,
@@ -513,10 +562,20 @@ def apply_remote_to_local(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
         preview = apply_owned_patch(local_payload, remote_payload)
     except DfmContractError as exc:
         raise HTTPException(422, str(exc)) from exc
+    # Method Notes live only in the output sidecar. A present remote value the
+    # user reviewed replaces the sidecar notes — an empty ResQ note clears them.
+    # Only an absent field (an older bridge payload that never read ResQ Notes)
+    # keeps the local notes.
+    remote_method_notes = _extract_method_notes_snapshot(remote_payload)
+    if remote_method_notes["exists"]:
+        notes = remote_method_notes["text"] if remote_method_notes["text"].strip() else ""
+    else:
+        notes = None
     saved = dfm_service.save_dfm_method(
         req.project_name,
         req.reserving_class,
         preview,
+        notes=notes,
         expected_owned_revision=loaded.get("owned_revision"),
         expected_derived_revision=loaded.get("derived_revision"),
     )
@@ -525,6 +584,7 @@ def apply_remote_to_local(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
         "payload_format": DFM_OWNED_PATCH_FORMAT,
         "missing_components": [],
         "component_count": _patch_component_count(remote_payload),
+        "method_notes_applied": notes is not None,
         "owned_revision": saved.get("owned_revision"),
         "derived_revision": saved.get("derived_revision"),
         "publication_revision": saved.get("publication_revision"),
@@ -573,15 +633,23 @@ def update_remote(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
     paths = build_paths(req)
     os.makedirs(paths["rpc_methods_dir"], exist_ok=True)
     _try_remove(paths["sync_status_path"])
+    extra_fields: Dict[str, Any] = {
+        "MethodJsonPath": paths["local_path"],
+        "RPCServerWriteConfirmed": True,
+    }
+    # Method Notes live in the output sidecar, not the method JSON the bridge
+    # reads, so a confirmed remote update ships them in the request. A readable
+    # sidecar always contributes the field — an empty value clears ResQ method
+    # Notes; the field is omitted only when the notes owner is unavailable.
+    method_notes = _local_method_notes(req, paths)
+    if method_notes["exists"]:
+        extra_fields["MethodNotes"] = method_notes["text"]
     request_file = _write_request_file(
         req,
         SYNC_DFM_FUNCTION_NAME,
         paths["sync_status_path"],
         paths["request_dir"],
-        {
-            "MethodJsonPath": paths["local_path"],
-            "RPCServerWriteConfirmed": True,
-        },
+        extra_fields,
     )
     status_found = wait_for_file(paths["sync_status_path"], timeout_sec=max(0.1, float(req.timeout_sec)))
     remote_deleted = _try_remove(paths["remote_path"])

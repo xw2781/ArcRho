@@ -1563,11 +1563,19 @@ export function scheduleDfmMethodPreview() {
 }
 
 export async function flushDfmMethodPreview() {
-  if (dfmPreviewTimer) {
-    clearTimeout(dfmPreviewTimer);
-    dfmPreviewTimer = null;
+  // Dirty-state and owned-state events schedule debounced previews that abort
+  // an in-flight run by bumping the generation. An explicit flush must not
+  // report a save-blocking failure because of that benign race, so it retries
+  // until one run finishes without being superseded.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (dfmPreviewTimer) {
+      clearTimeout(dfmPreviewTimer);
+      dfmPreviewTimer = null;
+    }
+    const result = await runDfmMethodPreview();
+    if (!result?.aborted) return result;
   }
-  return runDfmMethodPreview();
+  return { ok: false, error: "DFM preview kept restarting while saving. Try saving again." };
 }
 
 export function cancelDfmMethodAsyncTasks() {

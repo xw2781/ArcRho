@@ -247,6 +247,14 @@ function extractCellNotesSnapshot(payload) {
   };
 }
 
+function extractMethodNotesSnapshot(payload) {
+  const metadata = jsonTab(payload, "method metadata");
+  if (!Object.prototype.hasOwnProperty.call(metadata, "method notes")) {
+    return { exists: false, text: "" };
+  }
+  return { exists: true, text: String(metadata["method notes"] ?? "") };
+}
+
 function buildJsonSnapshot(payload) {
   const safePayload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const formulaPayload = jsonTab(jsonTab(safePayload, "ratios tab"), "average formulas");
@@ -257,6 +265,7 @@ function buildJsonSnapshot(payload) {
     ratio_pattern: extractPatternSnapshot(safePayload),
     average_formula_pattern: extractAverageFormulaSnapshot(safePayload),
     cell_notes: extractCellNotesSnapshot(safePayload),
+    method_notes: extractMethodNotesSnapshot(safePayload),
     average_formulas: formulas.map((item) => String(item)),
     last_modified: cleanText(jsonTab(safePayload, "method metadata")["last modified"]),
   };
@@ -341,8 +350,19 @@ export function reviewArcBotDfmEditApproval(options = {}) {
           const saved = await saveRatioSelectionPattern(false, { showReviewWarning: false });
           if (!saved?.ok) {
             markDfmDirty();
-            statusDialog.setMessage("Applied in the app, but final JSON save failed. Save the DFM before closing.", "warn");
-            finish({ ok: false, error: "Approved DFM edit applied in the app, but final JSON save failed." });
+            const saveError = String(saved?.error || "").trim();
+            statusDialog.setMessage(
+              saveError
+                ? `Applied in the app, but final JSON save failed: ${saveError} Save the DFM before closing.`
+                : "Applied in the app, but final JSON save failed. Save the DFM before closing.",
+              "warn",
+            );
+            finish({
+              ok: false,
+              error: saveError
+                ? `Approved DFM edit applied in the app, but final JSON save failed: ${saveError}`
+                : "Approved DFM edit applied in the app, but final JSON save failed.",
+            });
             return;
           }
           const message = options?.reply || "Applied the approved DFM edit.";
@@ -421,8 +441,19 @@ async function runPrimaryAction(dialog, payload, action) {
       statusDialog.setWaiting("Saving recalculated local DFM JSON...");
       const saved = await saveRatioSelectionPattern(false, { showReviewWarning: false });
       if (!saved?.ok) {
-        statusDialog.setMessage("Local updated in app, but final JSON save failed. Save the DFM before closing.", "warn");
-        postStatus("DFM sync: local app data updated, but final JSON save failed.", "warn");
+        const saveError = String(saved?.error || "").trim();
+        statusDialog.setMessage(
+          saveError
+            ? `Local updated in app, but final JSON save failed: ${saveError} Save the DFM before closing.`
+            : "Local updated in app, but final JSON save failed. Save the DFM before closing.",
+          "warn",
+        );
+        postStatus(
+          saveError
+            ? `DFM sync: local app data updated, but final JSON save failed: ${saveError}`
+            : "DFM sync: local app data updated, but final JSON save failed.",
+          "warn",
+        );
         return;
       }
       const resultMessage = formatApplyResultMessage(data);
