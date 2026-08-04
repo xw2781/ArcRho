@@ -11,6 +11,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from fastapi import HTTPException
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import _canon_dataset_name, _parse_calculated_flag
 from app_server.services import file_read_cache
@@ -336,8 +337,8 @@ def save_dataset_types_payload(filepath: str, payload: Dict[str, Any]) -> Dict[s
         os.replace(xlsx_tmp_path, xlsx_path)
         xlsx_replaced = True
 
-        with open(json_tmp_path, "w", encoding="utf-8") as f_json:
-            json.dump(payload, f_json, indent=2, ensure_ascii=False)
+        with open(json_tmp_path, "w", encoding="utf-8", newline="\n") as f_json:
+            f_json.write(persisted_json_text(payload))
         os.replace(json_tmp_path, json_path)
 
         return {"json_path": json_path, "xlsx_path": xlsx_path}

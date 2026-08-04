@@ -35,7 +35,18 @@ def _format_row_array_lines(rows: list[list[Any]], indent: str) -> str:
 
 
 def format_json_for_save(data: Any, indent: str = "") -> str:
-    """Format JSON like the ArcRho host, with compact child rows for 2D arrays."""
+    """Canonical on-disk text for persisted ArcRho JSON.
+
+    Two-dimensional arrays -- triangles, vectors of vectors, table rows -- render
+    one row per line instead of one scalar per line. A reviewer reads a triangle
+    as a triangle, and the file loses roughly half its bytes, which is what a
+    network-drive read actually pays for. Every other node keeps the familiar
+    two-space layout.
+
+    This is the single owner of that layout. Producers must call it rather than
+    ``json.dumps(..., indent=2)`` so the same payload cannot land on disk in two
+    different shapes depending on which component saved it.
+    """
     if _is_row_array(data):
         if not data:
             return "[]"
@@ -64,6 +75,11 @@ def format_json_for_save(data: Any, indent: str = "") -> str:
             lines.append(f"{rendered}," if index < len(keys) - 1 else rendered)
         return f"{{\n{chr(10).join(lines)}\n{indent}}}"
     return json.dumps(data, ensure_ascii=False)
+
+
+def persisted_json_text(data: Any) -> str:
+    """The complete on-disk text of a persisted ArcRho JSON document."""
+    return format_json_for_save(data) + "\n"
 
 
 def write_json_atomic(path: Path, data: dict[str, Any], *, read_only: bool = False) -> Path:

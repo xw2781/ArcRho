@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.services import source_table_service
 
@@ -347,8 +348,7 @@ def _atomic_write_cache(path: str, payload: Dict[str, Any]) -> None:
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(temporary_path, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(payload, handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
+            handle.write(persisted_json_text(payload))
         os.replace(temporary_path, path)
     except PermissionError as error:
         raise DataProcessingValuesLockedError(

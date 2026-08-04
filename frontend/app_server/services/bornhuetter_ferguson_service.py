@@ -25,6 +25,7 @@ from arcrho_api.bornhuetter_ferguson_contract import (
     normalize_bornhuetter_ferguson_method,
     recalculate_bornhuetter_ferguson_method,
 )
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import dataset_sidecar_status_service
@@ -78,7 +79,7 @@ def _read_json(path: str) -> Dict[str, Any]:
 
 
 def _json_text(payload: Mapping[str, Any]) -> str:
-    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    return persisted_json_text(payload)
 
 
 def _read_bytes_if_file(path: str) -> bytes | None:

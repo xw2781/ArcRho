@@ -722,6 +722,42 @@ def publication_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def persisted_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the on-disk form of a canonical DFM method.
+
+    The input triangle is stored in a reduced form because every part of it that
+    is dropped is exactly recoverable when the file is read back:
+
+    * ``input data triangle mask`` is omitted. A cell is inside the triangle if
+      and only if it holds a value -- an invariant ``normalize_dfm_method``
+      enforces -- so the mask can only ever restate the values beside it.
+    * Trailing nulls are trimmed from each input row, matching how
+      ``ratio values`` and ``excluded`` are already stored. A null *inside* a row
+      still marks a missing value inside the triangle.
+
+    ``normalize_dfm_method`` derives the mask and refits every row, so this
+    projection loses nothing; it exists to keep the persisted file readable.
+    Applying it to an already-persisted payload is a no-op.
+
+    This is a serialization projection only. The canonical in-memory payload
+    keeps its rectangular geometry and its mask, so revisions, validation, and
+    every calculation are unaffected.
+    """
+
+    persisted = deepcopy(dict(payload))
+    data = persisted.get("data tab")
+    if not isinstance(data, dict):
+        return persisted
+    data.pop("input data triangle mask", None)
+    values = data.get("input data triangle values")
+    if isinstance(values, list):
+        data["input data triangle values"] = [
+            _trim_trailing_nulls(row) if isinstance(row, list) else row
+            for row in values
+        ]
+    return persisted
+
+
 def method_revisions(payload: Mapping[str, Any]) -> dict[str, str]:
     return {
         "owned revision": _hash_projection(owned_projection(payload)),
@@ -1446,6 +1482,7 @@ __all__ = [
     "method_revisions",
     "normalize_dfm_method",
     "owned_projection",
+    "persisted_projection",
     "preview_dfm_method",
     "publication_projection",
     "recalculate_dfm_method",

@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 from fastapi import HTTPException
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import (
     atomic_write_csv,
@@ -638,8 +639,7 @@ def _write_dataset_sidecar_payload(path: str, payload: Dict[str, Any]) -> None:
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-                json.dump(payload, fh, indent=2, ensure_ascii=False)
-                fh.write("\n")
+                fh.write(persisted_json_text(payload))
             os.replace(tmp_path, path)
         except PermissionError:
             try:

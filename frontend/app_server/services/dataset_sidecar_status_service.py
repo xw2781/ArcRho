@@ -10,6 +10,7 @@ from contextlib import ExitStack
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Set
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import _canon_dataset_name, sanitize_dataset_file_name
 
@@ -175,8 +176,7 @@ def write_sidecar(path: str, payload: Dict[str, Any]) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         try:
             with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-                json.dump(payload, fh, indent=2, ensure_ascii=False)
-                fh.write("\n")
+                fh.write(persisted_json_text(payload))
             os.replace(tmp_path, path)
         finally:
             try:
@@ -347,8 +347,7 @@ def update_precedent_dependents(
                     backups[path] = fh.read()
                 temporary = f"{path}.{uuid.uuid4()}.tmp"
                 with open(temporary, "w", encoding="utf-8", newline="\n") as fh:
-                    json.dump(payload, fh, indent=2, ensure_ascii=False)
-                    fh.write("\n")
+                    fh.write(persisted_json_text(payload))
                 staged[path] = temporary
             for path in sorted(updates, key=os.path.normcase):
                 os.replace(staged.pop(path), path)

@@ -35,16 +35,15 @@ def write_json(path, payload, retries=5, delay=0.1):
     return False
 
 
-def write_json_with_compact_rows(path, payload, compact_row_keys, retries=5, delay=0.1):
+def write_json_with_compact_rows(path, payload, retries=5, delay=0.1):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
     for _ in range(retries):
         tmp_path = target.with_name(f"{target.name}.{uuid.uuid4()}.tmp")
         try:
-            with tmp_path.open(mode="w", encoding="utf-8") as file:
-                file.write(_format_json_with_compact_rows(payload, set(compact_row_keys)))
-                file.write("\n")
+            with tmp_path.open(mode="w", encoding="utf-8", newline="\n") as file:
+                file.write(persisted_json_text(payload))
             os.replace(tmp_path, target)
             return True
         except PermissionError:
@@ -56,49 +55,51 @@ def write_json_with_compact_rows(path, payload, compact_row_keys, retries=5, del
     return False
 
 
-def _format_json_with_compact_rows(payload, compact_row_keys):
-    return _format_json_value(payload, set(compact_row_keys), indent=0)
+def persisted_json_text(payload):
+    """Mirror of ``arcrho_api.io.persisted_json_text`` for the frozen Bridge.
+
+    The Bridge loads ``arcrho_api`` from its data bundle rather than its import
+    graph, so it cannot import the owner at module scope. ``bridge_json_parity``
+    in the Bridge tests pins this copy to the canonical text byte for byte.
+    """
+    return _format_json(payload) + "\n"
 
 
-def _format_json_value(value, compact_row_keys, indent, key=None):
-    if isinstance(value, dict):
-        return _format_json_object(value, compact_row_keys, indent)
-    if _is_2d_array(value):
-        return _format_compact_rows(value, indent)
-
-    rendered = json.dumps(value, indent=2)
-    return rendered.replace("\n", "\n" + " " * indent)
+def _is_row_array(value):
+    return isinstance(value, list) and all(isinstance(row, list) for row in value)
 
 
-def _format_json_object(payload, compact_row_keys, indent):
-    if not payload:
-        return "{}"
-
-    lines = ["{"]
-    items = list(payload.items())
-    for item_index, (key, value) in enumerate(items):
-        item_comma = "," if item_index < len(items) - 1 else ""
-        key_text = json.dumps(key)
-        rendered = _format_json_value(value, compact_row_keys, indent + 2, key=key)
-        rendered_lines = rendered.splitlines()
-        lines.append(f"{' ' * (indent + 2)}{key_text}: {rendered_lines[0]}")
-        lines.extend(rendered_lines[1:])
-        lines[-1] = f"{lines[-1]}{item_comma}"
-    lines.append(f"{' ' * indent}}}")
-    return "\n".join(lines)
-
-
-def _is_2d_array(value):
-    return isinstance(value, list) and bool(value) and all(isinstance(row, list) for row in value)
-
-
-def _format_compact_rows(value, indent):
-    lines = ["["]
-    for row_index, row in enumerate(value):
-        row_comma = "," if row_index < len(value) - 1 else ""
-        lines.append(f"{' ' * (indent + 2)}{json.dumps(row)}{row_comma}")
-    lines.append(f"{' ' * indent}]")
-    return "\n".join(lines)
+def _format_json(data, indent=""):
+    if _is_row_array(data):
+        if not data:
+            return "[]"
+        child = f"{indent}  "
+        rows = ",\n".join(
+            f"{child}[{', '.join(json.dumps(v, ensure_ascii=False) for v in row)}]"
+            for row in data
+        )
+        return f"[\n{rows}\n{indent}]"
+    if isinstance(data, list):
+        if not data:
+            return "[]"
+        child = f"{indent}  "
+        lines = [
+            f"{child}{_format_json(item, child)}{',' if i < len(data) - 1 else ''}"
+            for i, item in enumerate(data)
+        ]
+        return "[\n" + "\n".join(lines) + f"\n{indent}]"
+    if isinstance(data, dict):
+        if not data:
+            return "{}"
+        child = f"{indent}  "
+        keys = list(data.keys())
+        lines = [
+            f"{child}{json.dumps(str(k), ensure_ascii=False)}: {_format_json(data[k], child)}"
+            f"{',' if i < len(keys) - 1 else ''}"
+            for i, k in enumerate(keys)
+        ]
+        return "{\n" + "\n".join(lines) + f"\n{indent}}}"
+    return json.dumps(data, ensure_ascii=False)
 
 
 def read_json(path, retries=50, delay=0.02):

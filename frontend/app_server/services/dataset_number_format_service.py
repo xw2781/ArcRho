@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 from fastapi import HTTPException
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 
 
@@ -197,8 +198,7 @@ def save_preferences(
         try:
             os.makedirs(directory, exist_ok=True)
             with open(temp_path, "w", encoding="utf-8", newline="\n") as handle:
-                json.dump(candidate, handle, indent=2, ensure_ascii=False)
-                handle.write("\n")
+                handle.write(persisted_json_text(candidate))
             os.replace(temp_path, path)
         except Exception as error:
             try:

@@ -68,6 +68,7 @@ Cache/lock constants detected:
 - Refresh endpoints can clear and rebuild cache files.
 - ResQ method imports persist the output object's review status in the dataset sidecar: vector-backed methods use `OutputVector.Status`, while Berquist-Sherman methods use `OutputTriangle.Status`. Status `2` remains Needs Review through graph refresh even when precedent timestamps are current; status `0` can still become Needs Review when ArcRho detects a newer precedent.
 - ResQ migration treats `Generated=true` single-instance datasets as ArcRho Engine outputs. The migration and frontend runtime use the same canonical engine-sidecar builder; those sidecars intentionally omit ResQ labels/formulas, and `/dataset/cache/load` hydrates canonical project development headers plus the Dataset Type formula before returning the grid model.
+- On an engine sidecar, `updated_at` is when the cache file was produced, while migration-written sidecars also carry `source_modified` — when the data last changed in ResQ. The import's precedent-freshness check compares `source_modified` (falling back to `updated_at`), so rewriting an unchanged dataset's cache at import time does not flip its dependent methods to Needs Review. A frontend engine regeneration removes `source_modified` because the content no longer comes from ResQ.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

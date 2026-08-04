@@ -23,9 +23,11 @@ from arcrho_api.dfm_contract import (
     dfm_output_variants,
     method_revisions,
     normalize_dfm_method,
+    persisted_projection,
     preview_dfm_method as canonical_preview_dfm_method,
     recalculate_dfm_method,
 )
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import dataset_sidecar_status_service
@@ -94,7 +96,16 @@ def _read_json(path: str) -> Dict[str, Any]:
 
 
 def _json_text(payload: Mapping[str, Any]) -> str:
-    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    return persisted_json_text(payload)
+
+
+def _method_json_text(payload: Mapping[str, Any]) -> str:
+    """Serialize a DFM method through the canonical on-disk projection.
+
+    Every method-file write and every unchanged-file comparison must go through
+    here, so a file is only rewritten when its persisted content really differs.
+    """
+    return _json_text(persisted_projection(payload))
 
 
 def _read_bytes_if_file(path: str) -> bytes | None:
@@ -644,7 +655,7 @@ def _publish(
                 require_new_precedents=True,
             )
             graph_updated = True
-        files = {method_path: _json_text(payload)}
+        files = {method_path: _method_json_text(payload)}
         if write_outputs:
             files.update(_output_files(project_name, reserving_class, payload))
         files[sidecar_path] = _json_text(sidecar)
@@ -1004,8 +1015,8 @@ def _refresh_one(
         before_revisions["publication_revision"]
         != after_revisions["publication_revision"]
     )
-    before_text = _json_text(method)
-    after_text = _json_text(refreshed)
+    before_text = _method_json_text(method)
+    after_text = _method_json_text(refreshed)
     sidecar, changed_paths = _publish(
         project_name,
         reserving_class,

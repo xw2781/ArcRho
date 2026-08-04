@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "internal",
+  "summary": "DFM method files now store the input triangle without its redundant mask and without trailing null padding, so the saved JSON is easier to read.",
+  "details": [
+    "A cell is inside the triangle if and only if it holds a value, so the mask is derived on load instead of stored.",
+    "Each input row now ends at its last populated development period, matching how ratio values and excluded cells are already stored.",
+    "Nulls inside a row still mark values missing inside the triangle.",
+    "Method revisions, calculations, and API payloads are unchanged, and files written before this change still load."
+  ]
+}

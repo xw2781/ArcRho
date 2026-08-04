@@ -1089,6 +1089,9 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
         payload["method_type"] = dataset_sidecar_status_service.METHOD_TYPE_NONE
         payload["status"] = dataset_sidecar_status_service.STATUS_CURRENT
         payload["updated_at"] = updated_at
+        # The engine just regenerated this dataset from source tables, so a
+        # ResQ-import source_modified stamp no longer describes its content.
+        payload.pop("source_modified", None)
         payload["modified_by"] = user_name
         payload["user"] = user_name
         payload["data_format"] = data_format

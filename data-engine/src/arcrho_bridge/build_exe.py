@@ -14,6 +14,7 @@ for path in (PROJECT_ROOT, SOURCE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from arcrho_bridge.bundled_sources import BUNDLED_SOURCES
 from utils import (
     component_app_name,
     get_config_value,
@@ -30,12 +31,7 @@ REQ_FILE = BASE_DIR / "requirements.txt"
 ENTRY_PY = BASE_DIR / "main.py"
 APP_NAME = component_app_name("bridge")
 ICON = PROJECT_ROOT.parent / "assets" / "icons" / "ArcRho Engine.ico"
-RESQ_MIGRATION_SOURCE = REPO_ROOT / "python-api" / "migration"
-RESQ_PYTHON_API_SOURCE = REPO_ROOT / "python-api" / "src"
-RESQ_FRONTEND_APP_SERVER_SOURCE = REPO_ROOT / "frontend" / "app_server"
 RESQ_IMPORT_CONTRACT_FILE = BASE_DIR / "resq_reserving_class_import_contract.json"
-RESQ_MIGRATION_BUNDLE_TARGET = r"resq_importer\python-api\migration"
-RESQ_PYTHON_API_BUNDLE_TARGET = r"resq_importer\python-api\src"
 RESQ_IMPORT_CONTRACT_BUNDLE_TARGET = "arcrho_bridge"
 
 BUILD_DIR = BUILD_ROOT / "build"
@@ -92,7 +88,9 @@ def install_requirements():
 def validate_resq_import_environment():
     """Fail the build if the canonical migration/provenance imports are incomplete."""
 
-    import_paths = (RESQ_MIGRATION_SOURCE, RESQ_PYTHON_API_SOURCE, REPO_ROOT / "frontend")
+    import_paths = tuple(
+        dict.fromkeys(bundled.import_root for bundled in BUNDLED_SOURCES)
+    )
     probe = (
         "import sys; "
         f"sys.path[:0] = {repr([str(path) for path in import_paths])}; "
@@ -105,14 +103,10 @@ def validate_resq_import_environment():
 
 
 def build_exe():
-    for source in (
-        RESQ_MIGRATION_SOURCE,
-        RESQ_PYTHON_API_SOURCE,
-        RESQ_FRONTEND_APP_SERVER_SOURCE,
-    ):
-        if not source.is_dir():
+    for bundled in BUNDLED_SOURCES:
+        if not bundled.source.is_dir():
             raise FileNotFoundError(
-                f"Canonical ResQ import bundle source was not found: {source}"
+                f"Canonical ResQ import bundle source was not found: {bundled.source}"
             )
     if not RESQ_IMPORT_CONTRACT_FILE.is_file():
         raise FileNotFoundError(
@@ -145,12 +139,11 @@ def build_exe():
         f"--icon={ICON}",
         "--add-data",
         f"{ICON};.",
-        "--add-data",
-        f"{RESQ_MIGRATION_SOURCE};{RESQ_MIGRATION_BUNDLE_TARGET}",
-        "--add-data",
-        f"{RESQ_PYTHON_API_SOURCE};{RESQ_PYTHON_API_BUNDLE_TARGET}",
-        "--add-data",
-        f"{RESQ_FRONTEND_APP_SERVER_SOURCE};resq_importer/frontend/app_server",
+        *[
+            argument
+            for bundled in BUNDLED_SOURCES
+            for argument in ("--add-data", f"{bundled.source};{bundled.target}")
+        ],
         "--add-data",
         f"{RESQ_IMPORT_CONTRACT_FILE};{RESQ_IMPORT_CONTRACT_BUNDLE_TARGET}",
         "--noconsole",

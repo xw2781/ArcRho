@@ -14,6 +14,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from fastapi import HTTPException
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.config import (
     RESERVING_CLASS_TYPES_SHEET_NAME,
@@ -317,8 +318,8 @@ def save_reserving_class_types_payload(filepath: str, payload: Dict[str, Any]) -
         os.replace(xlsx_tmp_path, xlsx_path)
         xlsx_replaced = True
 
-        with open(json_tmp_path, "w", encoding="utf-8") as f_json:
-            json.dump(payload, f_json, indent=2, ensure_ascii=False)
+        with open(json_tmp_path, "w", encoding="utf-8", newline="\n") as f_json:
+            f_json.write(persisted_json_text(payload))
         os.replace(json_tmp_path, json_path)
 
         return {"json_path": json_path, "xlsx_path": xlsx_path}
@@ -1368,8 +1369,8 @@ def _refresh_reserving_class_combinations_cache(
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     tmp_path = output_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+    with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(persisted_json_text(payload))
     os.replace(tmp_path, output_path)
 
     return {
@@ -1563,8 +1564,8 @@ def refresh_reserving_class_values(
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     tmp_path = output_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+    with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(persisted_json_text(payload))
     os.replace(tmp_path, output_path)
 
     combo_out = _refresh_reserving_class_combinations_cache(
@@ -1973,8 +1974,8 @@ def _load_reserving_path_tree_cache_payload(cache_path: str) -> Dict[str, Any]:
 def _write_reserving_path_tree_cache_payload(cache_path: str, payload: Dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
     tmp_path = cache_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+    with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(persisted_json_text(payload))
     os.replace(tmp_path, cache_path)
 
 def _build_reserving_child_nodes(

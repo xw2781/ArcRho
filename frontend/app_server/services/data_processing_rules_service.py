@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import pandas as pd
 from pydantic import ValidationError
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.schemas.data_processing_rules import DataProcessingRulesData
 from app_server.services.audit_service import safe_append_project_audit_log
@@ -1203,8 +1204,7 @@ def _atomic_write_document(path: str, document: Dict[str, Any]) -> None:
     temporary_path = f"{path}.{uuid.uuid4().hex}.tmp"
     try:
         with open(temporary_path, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(document, handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
+            handle.write(persisted_json_text(document))
         os.replace(temporary_path, path)
     finally:
         try:

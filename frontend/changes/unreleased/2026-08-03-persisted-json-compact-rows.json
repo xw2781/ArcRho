@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "internal",
+  "summary": "Saved ArcRho JSON files now keep triangles and other row arrays on one line per row, so a DFM method file stays readable after a Save instead of reverting to one value per line.",
+  "details": [
+    "One writer in arcrho_api/io.py now owns the on-disk layout for method, sidecar, index, dataset type, reserving class, and project-data JSON.",
+    "The app server, public Python API, ResQ migration, and bridge previously formatted the same file three different ways; they now emit identical bytes.",
+    "A 40-origin DFM method drops from about 1,900 lines and 30 KB to 170 lines and 13 KB, and reads back slightly faster.",
+    "Files without a two-dimensional array are unchanged on disk, and method revisions are unaffected."
+  ]
+}

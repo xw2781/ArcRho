@@ -32,6 +32,7 @@ def build_engine_dataset_sidecar(
     precedents: Sequence[Any] = (),
     dependents: Sequence[Any] = (),
     audit_action: str = "Insert",
+    source_modified: str = "",
 ) -> dict[str, Any]:
     """Return the complete location-independent engine sidecar payload.
 
@@ -39,6 +40,12 @@ def build_engine_dataset_sidecar(
     derived from the canonical project-header contract when the CSV is loaded.
     Dataset Type formulas are likewise hydrated from ``dataset_types.json`` and
     are not copied into an engine-owned sidecar.
+
+    ``updated_at`` records when this cache file was produced, so freshness
+    checks treat the cache as current. ``source_modified`` records when the
+    dataset's content last changed at its source system (e.g. ResQ); review
+    status comparisons must use it instead of ``updated_at``, because a newly
+    written cache of unchanged data is not a data change.
     """
 
     vector = str(data_format or "").strip().casefold() == "vector"
@@ -62,6 +69,8 @@ def build_engine_dataset_sidecar(
         "modified_by": str(user or "").strip(),
         "updated_at": str(updated_at or "").strip(),
     }
+    if str(source_modified or "").strip():
+        payload["source_modified"] = str(source_modified).strip()
     if vector:
         payload["period_length"] = int(period_length or origin_length or 0)
     else:

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .bornhuetter_ferguson_contract import BF_JSON_FORMAT
+from .io import persisted_json_text
 
 
 DATASET_INDEX_VERSION = 22
@@ -890,7 +891,7 @@ def migrate_legacy_notes_files(rc_dir: str | os.PathLike[str]) -> int:
             updated["notes"] = str(legacy_payload.get("notes") or "")
             tmp_path = target_path.with_name(f"{target_path.name}.{uuid.uuid4().hex}.tmp")
             try:
-                tmp_path.write_text(json.dumps(updated, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                tmp_path.write_text(persisted_json_text(updated), encoding="utf-8", newline="\n")
                 os.replace(tmp_path, target_path)
             finally:
                 try:
@@ -1060,7 +1061,7 @@ def is_current_index(
 def serialize_index_json(payload: Mapping[str, Any]) -> str:
     """Return deterministic UTF-8 JSON text for a canonical index payload."""
 
-    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    return persisted_json_text(payload)
 
 
 def _is_lock_error(error: OSError) -> bool:

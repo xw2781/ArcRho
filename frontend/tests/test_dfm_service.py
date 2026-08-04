@@ -17,7 +17,12 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from arcrho_api.dfm_contract import dfm_output_variants, method_revisions, recalculate_dfm_method
+from arcrho_api.dfm_contract import (
+    dfm_output_variants,
+    method_revisions,
+    normalize_dfm_method,
+    recalculate_dfm_method,
+)
 from app_server.services import calculated_dataset_service, dataset_sidecar_status_service, dfm_service
 
 
@@ -357,7 +362,13 @@ class DfmServiceTests(unittest.TestCase):
             saved["data tab"]["development labels"],
             method["data tab"]["development labels"],
         )
-        self.assertEqual(saved["data tab"]["input data triangle values"], [[100, 175], [200, None]])
+        # Persisted rows drop the trailing nulls that sit outside the triangle.
+        self.assertEqual(saved["data tab"]["input data triangle values"], [[100, 175], [200]])
+        self.assertNotIn("input data triangle mask", saved["data tab"])
+        self.assertEqual(
+            normalize_dfm_method(saved)["data tab"]["input data triangle values"],
+            [[100, 175], [200, None]],
+        )
 
     def test_basis_refresh_ignores_numeric_sidecar_labels_and_review_status(self) -> None:
         method = self.write_method_pair()

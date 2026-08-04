@@ -9,6 +9,9 @@ from arcrho_api.dataset_index_contract import (
     DATASET_INDEX_VERSION,
     INDEX_FILE_NAME as DATASET_INDEX_FILE_NAME,
 )
+# The one owner of persisted JSON layout, shared with the app server and the
+# Python API so a migrated file and a re-saved file are byte-identical.
+from arcrho_api.io import persisted_json_text
 
 
 METHOD_TYPE_NONE_CODE = 0
@@ -139,44 +142,6 @@ def _try_call_member(obj, name: str, call_shapes: list[tuple[tuple, dict]]):
 
 
 
-def _is_row_array(value: object) -> bool:
-    return isinstance(value, list) and all(isinstance(row, list) for row in value)
-
-
-def _format_json(data: object, indent: str = "") -> str:
-    """Pretty-print JSON with compact single-line rows for 2D arrays."""
-    if _is_row_array(data):
-        if not data:
-            return "[]"
-        child = f"{indent}  "
-        rows = ",\n".join(
-            f"{child}[{', '.join(json.dumps(v, ensure_ascii=False) for v in row)}]"
-            for row in data  # type: ignore[union-attr]
-        )
-        return f"[\n{rows}\n{indent}]"
-    if isinstance(data, list):
-        if not data:
-            return "[]"
-        child = f"{indent}  "
-        lines = [
-            f"{child}{_format_json(item, child)}{',' if i < len(data) - 1 else ''}"
-            for i, item in enumerate(data)
-        ]
-        return f"[\n{chr(10).join(lines)}\n{indent}]"
-    if isinstance(data, dict):
-        if not data:
-            return "{}"
-        child = f"{indent}  "
-        keys = list(data.keys())
-        lines = [
-            f"{child}{json.dumps(str(k), ensure_ascii=False)}: {_format_json(data[k], child)}"
-            f"{',' if i < len(keys) - 1 else ''}"
-            for i, k in enumerate(keys)
-        ]
-        return f"{{\n{chr(10).join(lines)}\n{indent}}}"
-    return json.dumps(data, ensure_ascii=False)
-
-
 def _safe_read_json(path: Path) -> dict:
     try:
         if not path.is_file():
@@ -190,8 +155,7 @@ def _safe_read_json(path: Path) -> dict:
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as fh:
-        fh.write(_format_json(payload))
-        fh.write("\n")
+        fh.write(persisted_json_text(payload))
 
 
 def _csv_cell(value) -> str:

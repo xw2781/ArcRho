@@ -44,6 +44,7 @@ from arcrho_api.dataset_index_contract import (
     write_index_json_unlocked,
 )
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import (
     _sanitize_project_dir_name,
@@ -83,7 +84,7 @@ def _write_project_index(data: Dict[str, Any]) -> str:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(_normalize_project_index(data), f, indent=2, ensure_ascii=False)
+        f.write(persisted_json_text(_normalize_project_index(data)))
     os.replace(tmp_path, path)
     return path
 
@@ -176,7 +177,7 @@ def _save_project_table_path(project_name: str, table_path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+        f.write(persisted_json_text(payload))
     os.replace(tmp_path, path)
 
 
@@ -1333,7 +1334,7 @@ def update_general_settings(
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         tmp_path = filepath + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.write(persisted_json_text(payload))
         os.replace(tmp_path, filepath)
         safe_append_project_audit_log(
             project_name=project_name_clean,

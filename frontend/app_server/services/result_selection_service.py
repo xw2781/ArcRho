@@ -17,6 +17,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 import pandas as pd
 from fastapi import HTTPException
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import (
     build_dataset_cache_file_name,
@@ -87,7 +88,7 @@ def _read_json(path: str) -> Dict[str, Any]:
 
 
 def _json_text(payload: Dict[str, Any]) -> str:
-    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    return persisted_json_text(payload)
 
 
 def _method_revision(payload: Dict[str, Any]) -> str:

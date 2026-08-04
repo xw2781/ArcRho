@@ -46,6 +46,14 @@ When more than one ArcRho component can create the same persisted JSON file, all
 - Coordinate any `index.json` contract or build-logic change across the bundled frontend app server, the public Python API, `python-api/migration/resq_data_migration.py`, its migration modules, and the mirrored macro under `python-api/macros`.
 - Every such change must include an exact full-payload cross-producer parity test, including path-alias independence, and a test proving that a valid current index is served without a sidecar scan or rewrite.
 
+## Persisted JSON Text Format (MUST)
+`arcrho_api/io.py` owns the on-disk text of every persisted ArcRho JSON file. `format_json_for_save` produces the layout and `persisted_json_text` produces the complete document, including its single trailing newline.
+- A two-dimensional array — a triangle, a vector of vectors, a table of rows — must be written one row per line. `json.dumps(..., indent=2)` puts one scalar per line, which turns a 40x40 triangle into roughly 1,900 lines a human cannot review and doubles the bytes a network-drive read pays for. This applies to every 2D array, not to a named list of keys; a writer must not decide per field which arrays are compact.
+- Every producer of persisted project, reserving-class, method, sidecar, index, or project-data cache JSON must call `persisted_json_text` rather than `json.dump`/`json.dumps` with an `indent`. That includes the bundled app server, the public Python API, `python-api/migration/`, macros, and the bridge. A payload with no 2D array renders byte-identical to the previous `indent=2` text, so there is no reason for a persisted-JSON writer to opt out.
+- Only a component that genuinely cannot import `arcrho_api` — currently the frozen Bridge, which loads it from its data bundle rather than its import graph — may keep a copy, and only behind a test that pins the copy to the canonical text byte for byte.
+- Revisions, digests, and unchanged-file comparisons must not depend on this layout. Hash the canonical projection with `separators=(",", ":")` as `dfm_contract` does, so reformatting a file can never shift a stored revision.
+- Transient runtime files that are not ArcRho project data — bridge heartbeats, engine request envelopes, editor scratch state — are outside this rule.
+
 ## Generated Dataset Import Parity (MUST)
 When ResQ migration encounters a single-instance Dataset Type with `Generated=true`, the migration must reproduce the frontend generation path rather than copy the ResQ object's values or presentation metadata.
 - Submit the same ArcRho Engine request contract used by the frontend and publish only the completed Engine CSV.
@@ -86,7 +94,15 @@ After adding or editing any active macro, also publish the active macros to the 
 Always prefer Python 3.10 for this repository. When validating Python code, running scripts, installing dependencies, or creating virtual environments, use a Python 3.10 interpreter unless the user explicitly asks for another version or a toolchain requires a different runtime.
 
 ## ArcRho Bridge Deployment Authorization
-The user pre-authorizes agents to stop and restart only the live ArcRho Bridge supervisor and its child worker when deploying a verified ArcRho Bridge update. Do not stop ResQ, ArcRho Engine, or other services under this authorization. Continue to request any platform-required sandbox escalation, but do not request separate conversational confirmation for this specific Bridge restart.
+The user pre-authorizes agents to rebuild, redeploy, and restart the ArcRho Bridge whenever a task changes code the Bridge bundles. Do not stop ResQ, ArcRho Engine, or other services under this authorization. Continue to request any platform-required sandbox escalation, but do not request separate conversational confirmation for the Bridge rebuild, deploy, or restart.
+
+The Bridge ships a frozen copy of its bundled sources, so a change to those sources has no effect on the running Bridge until it is rebuilt. `data-engine/src/arcrho_bridge/build_exe.py` owns the bundle list; read its `RESQ_*_SOURCE` constants rather than trusting a copy of that list. At the time of writing it bundles `data-engine/src/arcrho_bridge/`, `python-api/migration/`, `python-api/src/`, and `frontend/app_server/`, so many changes that look unrelated to the Bridge still require a rebuild.
+
+Rebuild once per task, after the change is verified and before reporting the task complete; do not rebuild after each individual edit. Skip the rebuild when a task changed only tests, docs, or files outside the bundle, and say so.
+
+Run `python data-engine/src/arcrho_bridge/build_exe.py` with a Python 3.10 interpreter. That single command builds, stops the live Bridge through `apps.bridge.kill_all`, swaps the deployed app folder atomically with rollback, and releases the orchestrator to relaunch, so no separate stop or restart step is needed. This command is exempt from the Validation Runtime Limit and may run to completion without asking.
+
+Never deploy a change that has not passed its checks; a broken Bridge blocks every ResQ import. If the build fails, or the live Bridge does not stop within the script's timeout, the script aborts and leaves the deployed Bridge untouched. Report that outcome plainly and do not retry blindly. State in the final response whether the Bridge was rebuilt and redeployed, or why it was not.
 
 ## Node Runtime Preference
 The frontend includes a bundled portable Node runtime. When validating or running Node/npm commands for this repository, prefer `frontend\node-portable\node.exe` and `frontend\node-portable\npm.cmd` instead of plain `node` or `npm`, because Node is not expected to be installed globally or available on `PATH` in the agent environment. Do not report "Node is not installed in this environment" unless the bundled portable runtime is also missing or fails.

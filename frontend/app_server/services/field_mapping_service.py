@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import os
-import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import _canon_dataset_name
 from app_server.services.audit_service import safe_append_project_audit_log
@@ -93,7 +93,7 @@ def save_field_mapping(
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         tmp_path = filepath + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.write(persisted_json_text(payload))
         os.replace(tmp_path, filepath)
 
         try:

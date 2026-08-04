@@ -43,6 +43,7 @@ from arcrho_api.source_table_contract import (
     same_csv_identity,
 )
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.services.audit_service import safe_append_project_audit_log
 from app_server.services.user_identity_service import get_windows_login_name
@@ -117,7 +118,7 @@ def _write_json_atomic(path: str, payload: Dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = f"{path}.tmp"
     with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write(persisted_json_text(payload))
     os.replace(tmp_path, path)
 
 

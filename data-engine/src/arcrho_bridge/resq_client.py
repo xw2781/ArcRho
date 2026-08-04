@@ -14,13 +14,6 @@ from arcrho_bridge.bridge_utils import read_json, write_json, write_json_with_co
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 DFM_OWNED_PATCH_FORMAT = "arcrho-dfm-owned-patch-v1"
 RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
-DFM_COMPACT_ROW_KEYS = (
-    "input data triangle values",
-    "ratio values",
-    "excluded",
-    "selected",
-    "values",
-)
 
 
 class ResQClient:
@@ -154,7 +147,7 @@ class ResQClient:
                     "last modified": self._dfm_last_modified(dfm),
                 },
             }
-            write_json_with_compact_rows(request["DataPath"], payload, compact_row_keys=DFM_COMPACT_ROW_KEYS)
+            write_json_with_compact_rows(request["DataPath"], payload)
             return payload
         finally:
             self._disconnect()

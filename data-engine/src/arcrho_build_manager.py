@@ -12,6 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+# The Bridge owns the list of repository trees it freezes; read it rather than
+# restating it, so a change to what the Bridge bundles cannot silently stop
+# being reported as stale here.
+from arcrho_bridge.bundled_sources import BUNDLED_SOURCE_ROOTS
+
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_ENGINE_ROOT = BASE_DIR.parent
@@ -21,7 +26,9 @@ INSTANCES_DIR = DEPLOY_ROOT / "runtime" / "instances"
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 SOURCE_EXTENSIONS = {".html", ".ico", ".json", ".py", ".txt"}
-SOURCE_SKIP_DIRS = {"__pycache__", "build", "dist", "spec"}
+# "logs" holds run output, not source; counting it reports a component as stale
+# every time it runs.
+SOURCE_SKIP_DIRS = {"__pycache__", "build", "dist", "logs", "spec"}
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,10 @@ class Component:
     source_dir: Path
     exe_name: str
     instance_roles: tuple[str, ...]
+    # Repository trees outside source_dir that the component freezes into its
+    # executable. Editing one of these leaves the deployed app stale even though
+    # source_dir is untouched, so freshness has to consider them too.
+    bundled_source_roots: tuple[Path, ...] = ()
 
     @property
     def build_script(self) -> Path:
@@ -40,10 +51,21 @@ class Component:
     def deploy_exe(self) -> Path:
         return APPS_DIR / Path(self.exe_name).stem / self.exe_name
 
+    @property
+    def freshness_source_dirs(self) -> tuple[Path, ...]:
+        return (self.source_dir, *self.bundled_source_roots)
+
 
 COMPONENTS = (
     Component("admin", "Admin Control", BASE_DIR / "arcrho_admin", "ArcRho Admin Control.exe", ("arcrho_admin",)),
-    Component("bridge", "Bridge", BASE_DIR / "arcrho_bridge", "ArcRho Bridge.exe", ("arcrho_bridge", "arcrho_bridge_worker")),
+    Component(
+        "bridge",
+        "Bridge",
+        BASE_DIR / "arcrho_bridge",
+        "ArcRho Bridge.exe",
+        ("arcrho_bridge", "arcrho_bridge_worker"),
+        bundled_source_roots=BUNDLED_SOURCE_ROOTS,
+    ),
     Component("engine", "Engine", BASE_DIR / "arcrho_engine", "ArcRho Engine.exe", ("arcrho_engine",)),
     Component("launcher", "Launcher", BASE_DIR / "arcrho_launcher", "ArcRho Launcher.exe", ()),
     Component(
@@ -93,21 +115,21 @@ def list_instance_files(component: Component) -> list[dict[str, object]]:
 
 def latest_source_timestamp(component: Component) -> float | None:
     latest: float | None = None
-    if not component.source_dir.exists():
-        return latest
-
-    for path in component.source_dir.rglob("*"):
-        if not path.is_file():
+    for root in component.freshness_source_dirs:
+        if not root.exists():
             continue
-        if any(part in SOURCE_SKIP_DIRS for part in path.relative_to(component.source_dir).parts[:-1]):
-            continue
-        if path.suffix.lower() not in SOURCE_EXTENSIONS:
-            continue
-        try:
-            timestamp = path.stat().st_mtime
-        except OSError:
-            continue
-        latest = timestamp if latest is None else max(latest, timestamp)
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            if any(part in SOURCE_SKIP_DIRS for part in path.relative_to(root).parts[:-1]):
+                continue
+            if path.suffix.lower() not in SOURCE_EXTENSIONS:
+                continue
+            try:
+                timestamp = path.stat().st_mtime
+            except OSError:
+                continue
+            latest = timestamp if latest is None else max(latest, timestamp)
     return latest
 
 

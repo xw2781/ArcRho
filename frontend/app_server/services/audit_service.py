@@ -7,6 +7,7 @@ import getpass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
 
 
@@ -84,7 +85,7 @@ def append_project_audit_log(
         }
         tmp_path = filepath + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.write(persisted_json_text(payload))
         os.replace(tmp_path, filepath)
 
     return {"path": filepath, "entry": entry, "count": len(entries)}

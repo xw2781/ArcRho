@@ -38,9 +38,10 @@ The output sidecar registers both the Input Triangle and configured Ratio Basis 
 `data tab` stores:
 
 - exact `origin labels` and `development labels`
-- `input data triangle values`
-- the structural `input data triangle mask`
+- `input data triangle values`, with trailing nulls trimmed from each row so a row ends at its last populated development period
 - data format, number format, decimal places, and `source revision`
+
+The persisted file does not store `input data triangle mask`. A cell is inside the triangle if and only if it holds a value, so the mask can only restate the values beside it; loading derives it and refits every row back to the full development geometry. A null *inside* a row still marks a value missing inside the triangle, exactly as `ratio values` and `excluded` already store their rows. The in-memory canonical payload keeps the mask and its rectangular geometry, so revisions and calculations are unaffected, and a file written before this change still loads unchanged.
 
 `ratios tab.ratio triangle` stores aligned origin/development labels, calculated `ratio values`, and DFM-owned `excluded` cells. `ratios tab.average formulas` remains the columnar object with `label`, `custom average formula settings`, `selected`, `values`, and aligned User Entry `inputs`. `ratios tab.cell notes` remains keyed by visible row label and visible development-column label.
 
@@ -64,6 +65,14 @@ The output sidecar registers both the Input Triangle and configured Ratio Basis 
 Revisions are deterministic hashes over their canonical projections. They are separate so a dirty window can rebase an owned patch over a newer derived-only disk refresh, while a concurrent owned change produces a conflict.
 
 V2 never stores absolute input or output CSV paths.
+
+## On-Disk Text Format
+
+`arcrho_api/io.py::persisted_json_text` owns the file's text, so every producer writes the same bytes for the same payload.
+
+Two-dimensional arrays are stored one row per line: `input data triangle values`, `ratio values`, `excluded`, and the `average formulas` row arrays each read as a triangle rather than one scalar per line. A 40-origin method drops from roughly 1,900 lines to 170, and from about 30 KB to 13 KB, which is what a network-drive read pays for. Every other node keeps the two-space layout.
+
+Layout never reaches a revision: `owned`, `derived`, and `publication` hash a `separators=(",", ":")` encoding of the canonical projection, so reformatting a file cannot shift a stored revision or mark a method Review Needed.
 
 ## Calculation and Numeric Rules
 

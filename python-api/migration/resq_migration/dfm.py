@@ -9,6 +9,7 @@ from arcrho_api.dfm_contract import (
     DFM_JSON_FORMAT,
     apply_owned_patch,
     canonical_number,
+    persisted_projection,
     recalculate_dfm_method,
 )
 
@@ -16,9 +17,9 @@ from .catalog import _is_known_dataset_type, _unknown_dataset_type_skip_detail
 from .core import (
     _clean_name,
     _encode_name_part,
-    _format_json,
     _iso_or_text,
     _normalize_import_name,
+    persisted_json_text,
     _safe_attr,
     _safe_read_json,
 )
@@ -325,6 +326,21 @@ def _parse_cell_notes(raw: str, origin_labels: list[str], avg_labels: list[str])
 
     return result
 
+RESQ_RATIO_INCLUDED = 0
+RESQ_RATIO_EXCLUDED = 1
+RESQ_RATIO_EMPTY_CELL = 2
+
+
+def _excluded_ratio_flag(value: object) -> int:
+    """Map a ResQ ``ExcludedRatios`` code to ArcRho's 0/1 exclusion flag.
+
+    ResQ reports 0=included, 1=excluded, 2=empty cell. Only 1 records an
+    actuary's exclusion; an empty cell carries no judgement and must not import
+    as excluded.
+    """
+    return 1 if int(value) == RESQ_RATIO_EXCLUDED else 0
+
+
 def _get_ratio_value(dfm, i: int, j: int) -> float | None:
     try:
         v = dfm.Ratios(OriginIndex=i, DevIndex=j)
@@ -427,7 +443,7 @@ def export_dfm(
             val = _get_ratio_value(dfm, i, j)
             rv_row.append(round(val, decimal_places) if val is not None else 0)
             try:
-                ex_row.append(int(dfm.ExcludedRatios(i, j)))
+                ex_row.append(_excluded_ratio_flag(dfm.ExcludedRatios(i, j)))
             except Exception:
                 ex_row.append(0)
         ratio_values.append(rv_row)
@@ -699,7 +715,7 @@ def export_dfm_output_dataset(
         rc_path,
         rc_dir,
     )
-    publication_files[out_path] = f"{_format_json(payload)}\n".encode("utf-8")
+    publication_files[out_path] = persisted_json_text(persisted_projection(payload)).encode("utf-8")
     publish_dfm_artifacts(publication_files, sidecar_path=sidecar_path)
 
     suffix = f" (preserved {', '.join(sorted(preserved))})" if preserved else ""
