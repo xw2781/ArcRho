@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 import csv
 import getpass
 import io
@@ -49,7 +50,6 @@ from .core import (
     _clean_name,
     _dataset_cache_csv_file_name,
     _encode_name_part,
-    _format_json,
     _is_result_selection_method_type,
     _iso_or_text,
     _json_sidecar_name,
@@ -57,6 +57,7 @@ from .core import (
     _method_type_name,
     _normalize_import_name,
     normalize_method_status,
+    persisted_json_text,
     _safe_attr,
     _safe_int_attr,
     _safe_read_json,
@@ -80,6 +81,12 @@ BS_SR_ADJUSTMENT_TYPES = {
     2: "all",
     3: "loess",
 }
+# Mirrors normalizeLoessSpan in
+# frontend/ui/method_pages/berquist_sherman/settlement_rate_calculation.js so both
+# producers persist the same loess_span for the same logical inputs.
+BS_SR_DEFAULT_LOESS_SPAN = 7
+BS_SR_MIN_LOESS_SPAN = 2
+BS_SR_MAX_LOESS_SPAN = 99
 BS_CRA_INFLATION_TYPES = {
     0: "case_column",
     1: "case_all",
@@ -133,19 +140,78 @@ def configure_extractors(*, project_name: str, rs_json_format: str, method_data_
     METHOD_DATA_DIR = str(method_data_dir)
 
 
-def _origin_date_from_label(label: str) -> datetime | None:
-    text = _normalize_import_name(label)
-    try:
-        year = int(text)
-    except ValueError:
-        match = re.search(r"\d{4}", text)
-        if not match:
-            return None
-        year = int(match.group(0))
-    return datetime(year, 12, 31)
+_MONTH_NAME_NUMBERS = {
+    name.lower(): number
+    for number, name in enumerate(calendar.month_abbr)
+    if number
+}
 
-def _triangle_development_count(triangle, origin_index: int) -> int:
-    origin_date = _origin_date_from_label(_triangle_origin_label(triangle, origin_index))
+
+def _period_end_date(year: int, month: int) -> datetime:
+    return datetime(year, month, calendar.monthrange(year, month)[1])
+
+
+def _origin_date_from_label(label: str) -> datetime | None:
+    """Return a date that falls inside the origin period a ResQ label names.
+
+    ResQ resolves an ``OriginDate`` to the origin period containing that date, so
+    a sub-annual label must map inside its own period.  Returning the period's
+    last day keeps an annual label on 31 December exactly as before, while
+    ``2025 Q1`` now resolves to 31 March 2025 instead of collapsing onto Q4.
+    """
+    text = _normalize_import_name(label)
+    year_match = re.search(r"(?<!\d)(\d{4})(?!\d)", text)
+    if not year_match:
+        # Bare indices such as "1" are ResQ label fallbacks, not calendar years.
+        return None
+    year = int(year_match.group(1))
+    remainder = f"{text[: year_match.start()]} {text[year_match.end():]}".strip().lower()
+    if not remainder:
+        return _period_end_date(year, 12)
+    quarter = re.search(r"(?<![a-z0-9])q\s*([1-4])(?![0-9])", remainder)
+    if quarter:
+        return _period_end_date(year, int(quarter.group(1)) * 3)
+    half = re.search(r"(?<![a-z0-9])h\s*([1-2])(?![0-9])", remainder)
+    if half:
+        return _period_end_date(year, int(half.group(1)) * 6)
+    for name, number in _MONTH_NAME_NUMBERS.items():
+        if re.search(rf"(?<![a-z]){name}(?![a-z])", remainder):
+            return _period_end_date(year, number)
+    month = re.search(r"(?<![a-z0-9])m\s*(1[0-2]|[1-9])(?![0-9])", remainder)
+    if month:
+        return _period_end_date(year, int(month.group(1)))
+    return _period_end_date(year, 12)
+
+
+def _resolve_origin_date(source, origin_index: int, label: str) -> datetime | None:
+    """Prefer ResQ's own origin date for a row; fall back to parsing its label."""
+    try:
+        value = _try_call_member(
+            source,
+            "GetOriginDate",
+            [((origin_index,), {}), ((), {"OriginIndex": origin_index})],
+        )
+    except Exception:
+        value = None
+    if value is not None:
+        try:
+            return datetime(int(value.year), int(value.month), int(value.day))
+        except Exception:
+            pass
+    return _origin_date_from_label(label)
+
+def _triangle_development_count(triangle, origin_index: int) -> int | None:
+    """Return how many development periods one origin row has populated.
+
+    ``None`` means ResQ could not answer at all.  Callers must keep that distinct
+    from ``0``: a zero count is ResQ stating that an origin period beyond the
+    valuation date holds no data yet, and its row must stay empty.
+    """
+    origin_date = _resolve_origin_date(
+        triangle,
+        origin_index,
+        _triangle_origin_label(triangle, origin_index),
+    )
     call_shapes = [
         ((), {"OriginDate": origin_date}) if origin_date is not None else None,
         ((origin_index,), {}),
@@ -159,7 +225,10 @@ def _triangle_development_count(triangle, origin_index: int) -> int:
             return int(_try_call_member(triangle, name, call_shapes))
         except Exception:
             continue
-    return _safe_int_attr(triangle, "DevelopmentCount", 0)
+    try:
+        return int(_safe_attr(triangle, "DevelopmentCount", None))
+    except Exception:
+        return None
 
 def _triangle_origin_label(triangle, origin_index: int) -> str:
     for name in ("OriginLabel", "OriginLabels"):
@@ -215,7 +284,11 @@ def _vector_origin_label(vector, origin_index: int) -> str:
     return str(origin_index)
 
 def _vector_value(vector, origin_index: int):
-    origin_date = _origin_date_from_label(_vector_origin_label(vector, origin_index))
+    origin_date = _resolve_origin_date(
+        vector,
+        origin_index,
+        _vector_origin_label(vector, origin_index),
+    )
     call_shapes = [
         ((origin_index,), {}),
         ((), {"OriginIndex": origin_index}),
@@ -255,13 +328,16 @@ def export_triangle(triangle, *, method_type_code: int | None = None) -> dict:
     if origin_count <= 0:
         raise ValueError(f"Triangle {name!r} does not expose a positive OriginCount.")
 
-    max_dev_count = _triangle_development_count(triangle, 1)
+    first_row_dev_count = _triangle_development_count(triangle, 1)
+    max_dev_count = first_row_dev_count if first_row_dev_count is not None else 0
     if max_dev_count <= 0:
         max_dev_count = _safe_int_attr(triangle, "DevelopmentCount", 0)
     if max_dev_count <= 0:
         raise ValueError(f"Triangle {name!r} does not expose a positive DevelopmentCount.")
     row_dev_counts = [_triangle_development_count(triangle, i) for i in range(1, origin_count + 1)]
-    max_dev_count = max(row_dev_counts) if row_dev_counts else max_dev_count
+    known_row_dev_counts = [count for count in row_dev_counts if count is not None]
+    if known_row_dev_counts:
+        max_dev_count = max(max_dev_count, max(known_row_dev_counts))
 
     values: list[list] = []
     attempted_cells = 0
@@ -269,7 +345,10 @@ def export_triangle(triangle, *, method_type_code: int | None = None) -> dict:
     for i, row_dev_count in enumerate(row_dev_counts, start=1):
         row: list = []
         for j in range(1, max_dev_count + 1):
-            if row_dev_count and j > row_dev_count:
+            # A known count of 0 means the origin period holds no data yet, so the
+            # row stays empty.  Only an unknown (None) count falls back to reading
+            # every column, because ResQ pads past the diagonal with 0.0.
+            if row_dev_count is not None and j > row_dev_count:
                 row.append(None)
                 continue
             attempted_cells += 1
@@ -408,6 +487,15 @@ def _bs_source_name(method, attr_name: str) -> str:
     return _normalize_import_name(_safe_attr(source, "Name", ""))
 
 
+def _bs_loess_span(method) -> int:
+    raw = _safe_attr(method, "LoessSpan", None)
+    try:
+        span = int(raw)
+    except (TypeError, ValueError):
+        return BS_SR_DEFAULT_LOESS_SPAN
+    return min(BS_SR_MAX_LOESS_SPAN, max(BS_SR_MIN_LOESS_SPAN, span))
+
+
 def _bs_selection_label(value: object, labels: dict[int, str], field_name: str) -> str:
     try:
         code = int(value)
@@ -511,6 +599,7 @@ def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
                 row.append(_bs_selection_label(raw, BS_SR_ADJUSTMENT_TYPES, "SelectedAdjustment"))
             selected_adjustment.append(row)
         method_tab["selected_adjustment"] = selected_adjustment
+        method_tab["loess_span"] = _bs_loess_span(method)
         json_format = BS_SR_JSON_FORMAT
     else:
         method_type = BS_CRA_METHOD_TYPE
@@ -923,6 +1012,7 @@ def write_engine_generated_export(
         cumulative=DEFAULT_CUMULATIVE,
         calendar=DEFAULT_CALENDAR,
         processing=provenance,
+        source_modified=str(payload.get("modified") or "").strip(),
     )
 
     _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
@@ -1269,7 +1359,7 @@ def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool) -> di
                 values.append(value)
                 continue
             development_count = _triangle_development_count(source, origin_index)
-            if development_count <= 0:
+            if development_count is None or development_count <= 0:
                 value = _vector_value(source, origin_index)
                 successful_reads += 1
                 values.append(value)
@@ -1714,7 +1804,7 @@ def build_dfm_ultimate_publication(
         append_audit=not existing or output_changed,
         status=normalize_method_status(payload.get("status")),
     )
-    files[meta_path] = f"{_format_json(sidecar)}\n".encode("utf-8")
+    files[meta_path] = persisted_json_text(sidecar).encode("utf-8")
     return primary_path, files, meta_path
 
 def publish_dfm_artifacts(files: dict[Path, bytes], *, sidecar_path: Path) -> list[Path]:

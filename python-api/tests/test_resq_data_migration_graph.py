@@ -455,6 +455,59 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(payload["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
         self.assertEqual(payload["status"], 2)
 
+    def test_fresh_engine_cache_of_unchanged_data_keeps_method_status_ok(self) -> None:
+        # An import rewrites every engine cache at import time, so updated_at is
+        # always newer than the imported method's ResQ timestamp. Only
+        # source_modified (when the data changed in ResQ) may flip an OK method.
+        (self.sidecars_dir / "Paid Loss.json").write_text(json.dumps({
+            "dataset_name": "Paid Loss",
+            "dataset_type": "Paid Loss",
+            "source_kind": "engine",
+            "source_modified": "2026-06-15T00:00:00Z",
+            "updated_at": "2026-08-03T20:52:00Z",
+        }), encoding="utf-8")
+        path = self.sidecars_dir / "Net Ultimate.json"
+        path.write_text(json.dumps({
+            "dataset_name": "Net Ultimate",
+            "dataset_type": "Net Ultimate",
+            "source_kind": "bornhuetter_ferguson",
+            "method_type": "Bornhuetter Ferguson",
+            "updated_at": "2026-07-01T00:00:00Z",
+            "status": 0,
+            "Precedents": [{"dataset_type_name": "Paid Loss"}],
+            "Dependents": [],
+        }), encoding="utf-8")
+
+        self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["status"], 0)
+
+    def test_engine_cache_with_newer_source_data_flips_method_status(self) -> None:
+        (self.sidecars_dir / "Paid Loss.json").write_text(json.dumps({
+            "dataset_name": "Paid Loss",
+            "dataset_type": "Paid Loss",
+            "source_kind": "engine",
+            "source_modified": "2026-07-02T00:00:00Z",
+            "updated_at": "2026-08-03T20:52:00Z",
+        }), encoding="utf-8")
+        path = self.sidecars_dir / "Net Ultimate.json"
+        path.write_text(json.dumps({
+            "dataset_name": "Net Ultimate",
+            "dataset_type": "Net Ultimate",
+            "source_kind": "bornhuetter_ferguson",
+            "method_type": "Bornhuetter Ferguson",
+            "updated_at": "2026-07-01T00:00:00Z",
+            "status": 0,
+            "Precedents": [{"dataset_type_name": "Paid Loss"}],
+            "Dependents": [],
+        }), encoding="utf-8")
+
+        self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["status"], 2)
+
     def test_refresh_preserves_imported_needs_review_status_when_precedents_are_current(self) -> None:
         (self.sidecars_dir / "Paid Loss.json").write_text(json.dumps({
             "dataset_name": "Paid Loss",

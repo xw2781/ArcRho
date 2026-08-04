@@ -516,7 +516,9 @@ def _reconcile_sidecar_dependents(
 
 
 def _sidecar_status_timestamp(path: Path, meta: dict) -> float:
-    for key in ("updated_at", "updated", "modified_at", "modified", "last_modified"):
+    # source_modified is when the data last changed at its source system;
+    # updated_at on an engine cache is merely when the cache file was produced.
+    for key in ("source_modified", "updated_at", "updated", "modified_at", "modified", "last_modified"):
         parsed = _parse_metadata_datetime(meta.get(key))
         if parsed is not None:
             try:

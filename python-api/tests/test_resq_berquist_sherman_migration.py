@@ -69,6 +69,7 @@ class _Triangle:
 
 class _SettlementRateMethod:
     Notes = "Settlement rate migration note"
+    LoessSpan = 5
 
     def __init__(self, output):
         self.Name = output.Name
@@ -250,6 +251,7 @@ class ResqBerquistShermanMigrationTests(unittest.TestCase):
                 ["unadjusted", None, None],
             ],
         )
+        self.assertEqual(method_tab["loess_span"], 5)
         self.assertNotIn("adjusted_paid_claims", method_tab)
 
         sidecar = json.loads(
