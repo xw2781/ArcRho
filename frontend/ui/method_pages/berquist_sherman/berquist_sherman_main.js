@@ -23,10 +23,16 @@ import {
   normalizeBerquistShermanVariant,
 } from "/ui/shared/dataset/berquist_sherman_contract.js";
 import {
-  DEFAULT_LOESS_SPAN,
-  calculateSettlementRate,
-  normalizeLoessSpan,
-} from "./settlement_rate_calculation.js";
+  DATASET_NUMBER_FORMAT_PRESETS,
+  DEFAULT_DATASET_NUMBER_FORMAT,
+  applyDecimalPlacesToDatasetNumberFormat,
+  clampDatasetDecimalPlaces,
+  formatDatasetNumberValue,
+  getDatasetNumberFormatDecimalPlaces,
+  normalizeDatasetNumberFormat,
+} from "/ui/shared/dataset/dataset_number_format.js";
+import { DEFAULT_LOESS_SPAN, normalizeLoessSpan } from "./calculation_helpers.js";
+import { calculateSettlementRate } from "./settlement_rate_calculation.js";
 import { calculateCaseReserveAdequacy } from "./case_reserve_adequacy_calculation.js";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 
@@ -49,11 +55,12 @@ const ROLE_DEFINITIONS = Object.freeze({
     { key: "closed_claim_numbers", label: "Closed Claim Counts", format: "Triangle", inputId: "bsSrClosedInput" },
     { key: "ultimate_claim_numbers", label: "Ultimate Claim Counts", format: "Vector", inputId: "bsSrUltimateInput" },
   ]),
+  // ResQ lists the CRA sources as Paid, Incurred, Reported, Closed.
   cra: Object.freeze([
+    { key: "paid_claims", label: "Paid Claims", format: "Triangle", inputId: "bsCraPaidInput" },
+    { key: "incurred_claims", label: "Incurred Claims", format: "Triangle", inputId: "bsCraIncurredInput" },
     { key: "reported_claim_numbers", label: "Reported Claim Counts", format: "Triangle", inputId: "bsCraReportedInput" },
     { key: "closed_claim_numbers", label: "Closed Claim Counts", format: "Triangle", inputId: "bsCraClosedInput" },
-    { key: "incurred_claims", label: "Incurred Claims", format: "Triangle", inputId: "bsCraIncurredInput" },
-    { key: "paid_claims", label: "Paid Claims", format: "Triangle", inputId: "bsCraPaidInput" },
   ]),
 });
 
@@ -62,26 +69,112 @@ const VIEW_DEFINITIONS = Object.freeze({
   // Pairs, All, and Loess estimates are shown per origin period inside the
   // Adjusted Paid Claims selection grid.
   sr: Object.freeze([
-    { key: "paidClaims", label: "Paid Claims", caption: "Paid Claims:", decimals: 2 },
-    { key: "numbersClosed", label: "Numbers Closed", caption: "Numbers Closed:", decimals: 2 },
-    { key: "proportionSettled", label: "Proportion Settled", caption: "Proportion Settled:", decimals: 6 },
-    { key: "selectedClaimNumbers", label: "Selected Numbers Closed", caption: "Selected Numbers Closed:", decimals: 2 },
+    { key: "paidClaims", label: "Paid Claims", caption: "Paid Claims:" },
+    { key: "numbersClosed", label: "Numbers Closed", caption: "Numbers Closed:" },
+    { key: "proportionSettled", label: "Proportion Settled", caption: "Proportion Settled:" },
+    { key: "selectedClaimNumbers", label: "Selected Numbers Closed", caption: "Selected Numbers Closed:" },
     {
       key: "output",
       label: "Adjusted Paid Claims",
       caption: "Paid Claims Adjusted to Constant Proportions Settled",
-      decimals: 2,
     },
   ]),
+  // Case Reserve Adequacy mirrors the same ResQ Method sub-tab order and
+  // captions. "Avg. Selections" stacks the two ResQ selection grids.
   cra: Object.freeze([
-    { key: "output", label: "Adjusted Incurred Claims", decimals: 2 },
-    { key: "openClaimNumbers", label: "Open Claim Counts", decimals: 2 },
-    { key: "caseReserves", label: "Case Reserves", decimals: 2 },
-    { key: "averageCaseReserves", label: "Average Case Reserves", decimals: 2 },
-    { key: "averagePaidClaims", label: "Average Paid Claims", decimals: 2 },
-    { key: "adjustedAverageCaseReserves", label: "Adjusted Average Case Reserves", decimals: 2 },
+    { key: "reportedClaimNumbers", label: "Reported", caption: "Reported Claim Counts:" },
+    { key: "closedClaimNumbers", label: "Closed", caption: "Closed Claim Counts:" },
+    { key: "openClaimNumbers", label: "Open", caption: "Number of Open Claims (Reported - Closed):" },
+    { key: "paidClaims", label: "Paid Claims", caption: "Paid Claims:" },
+    { key: "incurredClaims", label: "Incurred Claims", caption: "Incurred Claims:" },
+    { key: "caseReserves", label: "Case Reserves", caption: "Case Reserves (Incurred - Paid):" },
+    {
+      key: "averageCaseReserves",
+      label: "Avg. Case Reserves",
+      caption: "Average Case Reserves (Case Reserves / Open):",
+    },
+    {
+      key: "averagePaidClaims",
+      label: "Avg. Paid",
+      caption: "Average Paid Claims (Incremental Paid / Incremental Closed):",
+    },
+    {
+      key: "avgSelections",
+      label: "Avg. Selections",
+      caption: "Average Inflation:",
+      secondaryCaption: "Current Average Case Reserves:",
+    },
+    {
+      key: "adjustedAverageCaseReserves",
+      label: "Adj. Avg. Case Reserves",
+      caption: "Adjusted Average Case Reserves:",
+    },
+    {
+      key: "output",
+      label: "Adj. Incurred",
+      caption: "Adjusted Incurred (Paid + Adjusted Average Case Reserve x Open):",
+    },
   ]),
 });
+
+// Views that show a source triangle rather than a calculated result.
+const SOURCE_VIEW_ROLES = Object.freeze({
+  paidClaims: "paid_claims",
+  numbersClosed: "closed_claim_numbers",
+  incurredClaims: "incurred_claims",
+  reportedClaimNumbers: "reported_claim_numbers",
+  closedClaimNumbers: "closed_claim_numbers",
+});
+
+// ResQ "Average Inflation" rows. The two group captions carry no values, so the
+// grid reads as two estimator pairs above the user and selected bands.
+const INFLATION_GRID_ROWS = Object.freeze([
+  { group: "Case Reserves" },
+  { method: "case_column", label: "Column", key: "caseInflationByColumn" },
+  { method: "case_all", label: "All", key: "caseInflationOverall", constant: true },
+  { group: "Paid" },
+  { method: "paid_column", label: "Column", key: "paidInflationByColumn" },
+  { method: "paid_all", label: "All", key: "paidInflationOverall", constant: true },
+  { method: "user", label: "User Value", user: true },
+  { selected: true, label: "Selected", key: "selectedInflation" },
+]);
+
+// ResQ "Current Average Case Reserves" rows.
+const AVERAGE_GRID_ROWS = Object.freeze([
+  { method: "latest", label: "Latest", key: "latestAverageCaseReserves" },
+  { method: "monotone", label: "Monotone", key: "monotoneAverageCaseReserves" },
+  { method: "loess", label: "Loess", key: "loessAverageCaseReserves", loess: true },
+  { method: "user", label: "User Value", user: true },
+  { selected: true, label: "Selected", key: "selectedAverageCaseReserves" },
+]);
+
+function defaultNumberFormat() {
+  return {
+    number_format: DEFAULT_DATASET_NUMBER_FORMAT,
+    decimal_places: getDatasetNumberFormatDecimalPlaces(DEFAULT_DATASET_NUMBER_FORMAT),
+  };
+}
+
+// One shape for every recorded format, so the method JSON, the output sidecar,
+// and the Details controls cannot disagree about how a format is written down.
+function normalizeNumberFormatEntry(value, fallback = defaultNumberFormat()) {
+  const source = value && typeof value === "object" ? value : {};
+  const raw = source.number_format ?? source.numberFormat;
+  const pattern = normalizeDatasetNumberFormat(raw, fallback.number_format);
+  const places = clampDatasetDecimalPlaces(
+    source.decimal_places ?? source.decimalPlaces,
+    getDatasetNumberFormatDecimalPlaces(pattern),
+  );
+  return {
+    number_format: applyDecimalPlacesToDatasetNumberFormat(pattern, places),
+    decimal_places: places,
+  };
+}
+
+function sameNumberFormat(left, right) {
+  return left?.number_format === right?.number_format
+    && left?.decimal_places === right?.decimal_places;
+}
 
 const state = {
   project: text(params.get("project")),
@@ -93,10 +186,14 @@ const state = {
   originLabels: [],
   developmentLabels: [],
   sidecarOriginLabels: [],
-  numberFormat: "0,000",
-  decimalPlaces: 0,
+  // `derived` is the Details-tab format for every calculated triangle and is
+  // also the output dataset's own format. `sources` mirrors each input
+  // dataset instance's format so the input views display exactly as the
+  // Dataset Viewer does; it is a recorded copy, refreshed from the live
+  // sidecars whenever the sources load.
+  numberFormats: { derived: defaultNumberFormat(), sources: {} },
   result: null,
-  currentView: variant === "sr" ? "paidClaims" : "output",
+  currentView: VIEW_DEFINITIONS[variant][0].key,
   selectedProportionSettled: [],
   selectedProportionIsDefault: [],
   selectedAdjustment: [],
@@ -114,8 +211,9 @@ let tabbedPage = null;
 let sidecarLoadSequence = 0;
 let outputPreviewTimer = 0;
 let lastOutputPreviewMessage = null;
+let derivedNumberFormatSeeded = false;
 const activeDependencyPreviews = new Map();
-const closeConfirm = createPageCloseConfirm({ subject: contract.methodType });
+const closeConfirm = createPageCloseConfirm({ subject: contract.displayLabel });
 const headerState = { headerLabels: [], devHeaderLabels: [] };
 const headersService = createDatasetHeadersService({
   state: headerState,
@@ -133,6 +231,11 @@ const els = {
   outputTypeBtn: document.getElementById("bsOutputTypeBtn"),
   originLengthInput: document.getElementById("bsOriginLengthInput"),
   developmentLengthInput: document.getElementById("bsDevelopmentLengthInput"),
+  numberFormatInput: document.getElementById("bsNumberFormatInput"),
+  numberFormatBtn: document.getElementById("bsNumberFormatBtn"),
+  decimalPlacesInput: document.getElementById("bsDecimalPlacesInput"),
+  decimalPlacesUp: document.getElementById("bsDecimalPlacesUp"),
+  decimalPlacesDown: document.getElementById("bsDecimalPlacesDown"),
   srInputs: document.getElementById("bsSrInputs"),
   craInputs: document.getElementById("bsCraInputs"),
   viewButtons: document.getElementById("bsViewButtons"),
@@ -142,10 +245,14 @@ const els = {
   loessSpanInput: document.getElementById("bsLoessSpanInput"),
   loessSpanUp: document.getElementById("bsLoessSpanUp"),
   loessSpanDown: document.getElementById("bsLoessSpanDown"),
-  selectionSummary: document.getElementById("bsSelectionSummary"),
   methodMessage: document.getElementById("bsMethodMessage"),
   methodHead: document.getElementById("bsMethodHead"),
   methodBody: document.getElementById("bsMethodBody"),
+  secondaryPane: document.getElementById("bsSecondaryPane"),
+  secondaryCaption: document.getElementById("bsSecondaryCaption"),
+  secondaryCaptionText: document.getElementById("bsSecondaryCaptionText"),
+  secondaryHead: document.getElementById("bsSecondaryHead"),
+  secondaryBody: document.getElementById("bsSecondaryBody"),
   auditLogMount: document.getElementById("bsAuditLogMount"),
   saveBtn: document.getElementById("bsSaveBtn"),
   cancelBtn: document.getElementById("bsCancelBtn"),
@@ -153,14 +260,14 @@ const els = {
 
 const notesController = mountNotesTab({
   container: document.getElementById("bsNotesMount"),
-  ariaLabel: `${contract.methodType} notes`,
+  ariaLabel: `${contract.displayLabel} notes`,
   onChange: () => markDirty(),
   onStatus: postStatus,
 });
 
 const auditLogView = createAuditLogView({
   container: els.auditLogMount,
-  ariaLabel: `${contract.methodType} audit log`,
+  ariaLabel: `${contract.displayLabel} audit log`,
   emptyDescription: "Method saves will appear here after the first save.",
   normalizeEntries: normalizeSidecarAuditEntries,
   formatEventDate: formatSidecarAuditEventDate,
@@ -265,12 +372,16 @@ function configSnapshot() {
         userInflation: state.userInflation,
         averageCaseReserveSelection: state.averageCaseReserveSelection,
         userAverageCaseReserves: state.userAverageCaseReserves,
+        loessSpan: state.loessSpan,
       };
   return JSON.stringify({
     name: details.name,
     outputType: details.outputType,
     sourceNames: roleDefinitions().map((role) => [role.key, text(state.sourceNames[role.key])]),
     selection,
+    // Only the format the user owns counts as an edit; the recorded source
+    // formats follow their datasets and sync without making the page dirty.
+    derivedNumberFormat: derivedNumberFormat(),
     notes: notesController.getValue(),
   });
 }
@@ -290,7 +401,7 @@ function markClean() {
 
 function syncTitle() {
   const name = getDetails().name;
-  document.title = name ? `${name} - ${contract.methodType}` : contract.methodType;
+  document.title = name ? `${name} - ${contract.displayLabel}` : contract.displayLabel;
 }
 
 function setMethodMessage(message, tone = "") {
@@ -607,7 +718,7 @@ function validateSourceShape() {
   }
 }
 
-function calculateCurrent({ renderSelections = true } = {}) {
+function calculateCurrent() {
   try {
     validateSourceShape();
     ensureSelectionConfig();
@@ -633,6 +744,7 @@ function calculateCurrent({ renderSelections = true } = {}) {
           userInflation: state.userInflation,
           averageCaseReserveSelection: state.averageCaseReserveSelection,
           userAverageCaseReserves: state.userAverageCaseReserves,
+          loessSpan: state.loessSpan,
         });
     // A good calculation reports nothing, as in ResQ: the message row only
     // carries failures, and clearing it drops any error from a prior attempt.
@@ -643,17 +755,12 @@ function calculateCurrent({ renderSelections = true } = {}) {
     setMethodMessage(text(error?.message || error), "error");
   }
   renderMethodTable();
-  if (renderSelections) renderSelectionSummary();
   if (isDirty) scheduleOutputDependencyPreview("dirty");
 }
 
 function matrixForCurrentView() {
-  if (variant === "sr" && state.currentView === "paidClaims") {
-    return state.sourceValues.paid_claims || [];
-  }
-  if (variant === "sr" && state.currentView === "numbersClosed") {
-    return state.sourceValues.closed_claim_numbers || [];
-  }
+  const roleKey = SOURCE_VIEW_ROLES[state.currentView];
+  if (roleKey) return state.sourceValues[roleKey] || [];
   const value = state.result?.[state.currentView];
   return Array.isArray(value) ? value : [];
 }
@@ -662,12 +769,17 @@ function currentViewDefinition() {
   return viewDefinitions().find((item) => item.key === state.currentView) || viewDefinitions()[0];
 }
 
+// A rate is not currency: at the Details format's zero or two decimals an
+// inflation estimate or a proportion settled would collapse to the same figure
+// in every column, so those two grids keep ResQ's four-decimal presentation.
+const RATE_DECIMAL_PLACES = 4;
+
 function formatPercentValue(value) {
   const number = numberOrNull(value);
   if (number === null) return "";
   return `${(number * 100).toLocaleString(undefined, {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
+    minimumFractionDigits: RATE_DECIMAL_PLACES,
+    maximumFractionDigits: RATE_DECIMAL_PLACES,
   })}%`;
 }
 
@@ -676,12 +788,102 @@ function parsePercentInput(rawText) {
   return Number.isFinite(numeric) ? numeric / 100 : null;
 }
 
-function formatCellValue(value, decimals) {
+function derivedNumberFormat() {
+  return state.numberFormats.derived;
+}
+
+// An input view shows its own dataset instance exactly as the Dataset Viewer
+// does; everything the method calculates uses the Details-tab format.
+function roleNumberFormat(roleKey) {
+  return state.numberFormats.sources[roleKey] || derivedNumberFormat();
+}
+
+function viewNumberFormat(viewKey = state.currentView) {
+  const roleKey = SOURCE_VIEW_ROLES[viewKey];
+  return roleKey ? roleNumberFormat(roleKey) : derivedNumberFormat();
+}
+
+function formatCellValue(value, format) {
+  return formatDatasetNumberValue(
+    numberOrNull(value),
+    format.number_format,
+    format.decimal_places,
+  );
+}
+
+function formatRateValue(value) {
   const number = numberOrNull(value);
   if (number === null) return "";
   return number.toLocaleString(undefined, {
-    maximumFractionDigits: decimals,
-    minimumFractionDigits: 0,
+    minimumFractionDigits: RATE_DECIMAL_PLACES,
+    maximumFractionDigits: RATE_DECIMAL_PLACES,
+  });
+}
+
+function syncNumberFormatControls() {
+  const derived = derivedNumberFormat();
+  if (els.numberFormatInput && document.activeElement !== els.numberFormatInput) {
+    els.numberFormatInput.value = derived.number_format;
+  }
+  if (els.decimalPlacesInput && document.activeElement !== els.decimalPlacesInput) {
+    els.decimalPlacesInput.value = String(derived.decimal_places);
+  }
+}
+
+// The Details pair behaves like the Dataset Viewer's: typing a pattern re-reads
+// its decimal places, and stepping the places rewrites the pattern.
+function applyDerivedNumberFormat(entry, { fromDecimalPlaces = false } = {}) {
+  const current = derivedNumberFormat();
+  const pattern = normalizeDatasetNumberFormat(
+    entry.number_format ?? current.number_format,
+    current.number_format,
+  );
+  const places = fromDecimalPlaces
+    ? clampDatasetDecimalPlaces(entry.decimal_places, current.decimal_places)
+    : getDatasetNumberFormatDecimalPlaces(pattern);
+  const next = normalizeNumberFormatEntry({ number_format: pattern, decimal_places: places });
+  if (sameNumberFormat(next, current)) {
+    syncNumberFormatControls();
+    return;
+  }
+  derivedNumberFormatSeeded = true;
+  state.numberFormats.derived = next;
+  syncNumberFormatControls();
+  renderMethodTable();
+  markDirty();
+}
+
+function openNumberFormatPresetMenu(anchor) {
+  const menu = document.createElement("div");
+  menu.className = "ctx-menu";
+  const inner = document.createElement("div");
+  inner.className = "ctx-menu-inner";
+  for (const preset of DATASET_NUMBER_FORMAT_PRESETS) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "ctx-item";
+    item.textContent = preset;
+    item.addEventListener("click", () => {
+      menu.remove();
+      applyDerivedNumberFormat({ number_format: preset });
+    });
+    inner.appendChild(item);
+  }
+  menu.appendChild(inner);
+  document.body.appendChild(menu);
+  const dismiss = (event) => {
+    if (event.type === "keydown" && event.key !== "Escape") return;
+    if (event.type === "pointerdown" && event.target instanceof Element && menu.contains(event.target)) return;
+    menu.remove();
+    document.removeEventListener("pointerdown", dismiss);
+    document.removeEventListener("keydown", dismiss);
+  };
+  document.addEventListener("pointerdown", dismiss);
+  document.addEventListener("keydown", dismiss);
+  const rect = anchor?.getBoundingClientRect?.();
+  openContextMenu(menu, {
+    clientX: rect ? rect.left : 0,
+    clientY: rect ? rect.bottom : 0,
   });
 }
 
@@ -691,14 +893,27 @@ function syncLoessSpanControls() {
   }
 }
 
-// The caption row mirrors the ResQ tab headers, including the Loess Span
-// spinner beside the Adjusted Paid Claims caption.
+// The caption rows mirror the ResQ tab headers, including the Loess Span
+// spinner beside the caption of whichever grid owns the loess estimator.
 function syncMethodChrome() {
-  const caption = variant === "sr" ? text(currentViewDefinition()?.caption) : "";
-  const showLoessSpan = variant === "sr" && state.currentView === "output";
+  const view = currentViewDefinition();
+  const caption = text(view?.caption);
+  const secondaryCaption = text(view?.secondaryCaption);
+  const loessCaption = variant === "sr"
+    ? (state.currentView === "output" ? els.methodCaption : null)
+    : (state.currentView === "avgSelections" ? els.secondaryCaption : null);
   if (els.methodCaptionText) els.methodCaptionText.textContent = caption;
-  if (els.loessSpanField) els.loessSpanField.hidden = !showLoessSpan;
-  if (els.methodCaption) els.methodCaption.hidden = !caption && !showLoessSpan;
+  if (els.secondaryCaptionText) els.secondaryCaptionText.textContent = secondaryCaption;
+  if (els.secondaryPane) els.secondaryPane.hidden = !secondaryCaption;
+  if (els.loessSpanField) {
+    els.loessSpanField.hidden = !loessCaption;
+    if (loessCaption && els.loessSpanField.parentElement !== loessCaption) {
+      loessCaption.appendChild(els.loessSpanField);
+    }
+  }
+  if (els.methodCaption) {
+    els.methodCaption.hidden = !caption && loessCaption !== els.methodCaption;
+  }
   syncLoessSpanControls();
 }
 
@@ -730,7 +945,6 @@ function renderViewButtons() {
       state.currentView = view.key;
       renderViewButtons();
       renderMethodTable();
-      renderSelectionSummary();
     });
     els.viewButtons.appendChild(button);
   }
@@ -771,7 +985,8 @@ function selectedAdjustmentFor(rowIndex, devIndex) {
 // ResQ-style Adjusted Paid Claims grid: five estimator rows per origin period.
 // Click a value to select that cell, click a row label for the whole origin,
 // Ctrl+click a row label for every origin and development period.
-function renderAdjustedPaidGrid(view) {
+function renderAdjustedPaidGrid() {
+  const format = derivedNumberFormat();
   const paid = state.sourceValues.paid_claims || [];
   const developmentCount = matrixDevelopmentCount();
   els.methodHead.replaceChildren(buildMethodHeaderRow("Accident Year", developmentCount));
@@ -812,7 +1027,7 @@ function renderAdjustedPaidGrid(view) {
           continue;
         }
         const rawValue = gridRow.matrix[rowIndex]?.[devIndex];
-        cell.textContent = formatCellValue(rawValue, view.decimals);
+        cell.textContent = formatCellValue(rawValue, format);
         cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
         if (isSelectedRow) {
           cell.className = "bsAdjSelectedValue";
@@ -1044,19 +1259,202 @@ function handleProportionGridEvent(event) {
   );
 }
 
+const SELECTION_SCOPES = Object.freeze({
+  inflation: Object.freeze({
+    rows: INFLATION_GRID_ROWS,
+    selectionKey: "inflationSelection",
+    userKey: "userInflation",
+    ariaSuffix: "inflation",
+  }),
+  average: Object.freeze({
+    rows: AVERAGE_GRID_ROWS,
+    selectionKey: "averageCaseReserveSelection",
+    userKey: "userAverageCaseReserves",
+    ariaSuffix: "average case reserve",
+  }),
+});
+
+function selectionRowValue(row, devIndex, userValues) {
+  if (row.user) return userValues[devIndex];
+  const source = state.result?.[row.key];
+  if (row.constant) return numberOrNull(source);
+  return Array.isArray(source) ? source[devIndex] : null;
+}
+
+// ResQ-style CRA selection grid: one estimator per row, one development period
+// per column. Click a value to select that estimator for the development
+// period, click a row label to select it for every development period, and type
+// into the User Value row to enter and select your own figure.
+function renderColumnSelectionGrid(scope, head, body, formatValue) {
+  const config = SELECTION_SCOPES[scope];
+  const developmentCount = matrixDevelopmentCount();
+  // The calculation normalizes both vectors, so the grid echoes what actually
+  // fed the result rather than the raw state it was built from.
+  const selection = state.result?.[config.selectionKey] || state[config.selectionKey];
+  const userValues = state.result?.[config.userKey] || state[config.userKey];
+  head.replaceChildren(buildMethodHeaderRow("", developmentCount));
+
+  const fragment = document.createDocumentFragment();
+  for (const row of config.rows) {
+    const rowElement = document.createElement("tr");
+    if (row.group) {
+      rowElement.className = "bsSelGroupRow";
+      const groupLabel = document.createElement("td");
+      groupLabel.textContent = row.group;
+      rowElement.appendChild(groupLabel);
+      const fill = document.createElement("td");
+      fill.colSpan = Math.max(developmentCount, 1);
+      rowElement.appendChild(fill);
+      fragment.appendChild(rowElement);
+      continue;
+    }
+
+    const label = document.createElement("td");
+    label.textContent = row.loess
+      ? `${row.label} (${state.result?.loessSpan ?? state.loessSpan})`
+      : row.label;
+    if (row.selected) {
+      label.className = "bsSelSelectedRowLabel";
+    } else {
+      label.className = "bsSelPick";
+      label.dataset.selectScope = scope;
+      label.dataset.selectMethod = row.method;
+      label.tabIndex = 0;
+      label.title = "Click selects this estimator for every development period.";
+    }
+    rowElement.appendChild(label);
+
+    for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
+      const age = getDevelopmentLabel(devIndex);
+      const cell = document.createElement("td");
+      const rawValue = selectionRowValue(row, devIndex, userValues);
+      cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
+      if (row.selected) {
+        cell.className = "bsSelSelectedValue";
+        cell.textContent = formatValue(rawValue);
+        rowElement.appendChild(cell);
+        continue;
+      }
+      cell.className = row.user ? "bsSelUserCell bsSelPick" : "bsSelCell bsSelPick";
+      cell.dataset.selectScope = scope;
+      cell.dataset.selectMethod = row.method;
+      cell.dataset.selectDev = String(devIndex);
+      if (norm(selection[devIndex]) === row.method) {
+        cell.classList.add("bsSelSelectedSource");
+      }
+      if (row.user) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "bsSelUserInput";
+        input.value = formatValue(rawValue ?? 0);
+        input.dataset.selectScope = scope;
+        input.dataset.selectDev = String(devIndex);
+        input.setAttribute("aria-label", `${age} user ${config.ariaSuffix}`);
+        cell.appendChild(input);
+      } else {
+        cell.tabIndex = 0;
+        cell.textContent = formatValue(rawValue);
+      }
+      rowElement.appendChild(cell);
+    }
+    fragment.appendChild(rowElement);
+  }
+  body.replaceChildren(fragment);
+}
+
+function renderSelectionGrids() {
+  if (!state.result) return;
+  const derived = derivedNumberFormat();
+  renderColumnSelectionGrid("inflation", els.methodHead, els.methodBody, formatRateValue);
+  if (els.secondaryHead && els.secondaryBody) {
+    renderColumnSelectionGrid(
+      "average",
+      els.secondaryHead,
+      els.secondaryBody,
+      (value) => formatCellValue(value, derived),
+    );
+  }
+}
+
+function focusSelectionUserInput(scope, devIndex) {
+  const host = scope === "inflation" ? els.methodBody : els.secondaryBody;
+  const input = host?.querySelector(`input.bsSelUserInput[data-select-dev="${devIndex}"]`);
+  if (!input) return;
+  input.focus();
+  input.select();
+}
+
+function applySelectionChoice(scope, method, devIndex) {
+  const config = SELECTION_SCOPES[scope];
+  if (!config || !method) return;
+  ensureSelectionConfig();
+  const selection = state[config.selectionKey];
+  if (devIndex === null) {
+    for (let index = 0; index < matrixDevelopmentCount(); index += 1) selection[index] = method;
+  } else {
+    selection[devIndex] = method;
+  }
+  recalculateAfterSelectionEdit();
+}
+
+function applySelectionUserValue(scope, devIndex, value) {
+  const config = SELECTION_SCOPES[scope];
+  if (!config || !Number.isInteger(devIndex) || devIndex < 0) return;
+  ensureSelectionConfig();
+  state[config.userKey][devIndex] = value ?? 0;
+  state[config.selectionKey][devIndex] = "user";
+  recalculateAfterSelectionEdit();
+}
+
+function handleSelectionGridEvent(event) {
+  if (variant !== "cra" || state.currentView !== "avgSelections") return;
+  const target = event.target instanceof Element ? event.target : null;
+  const input = target?.closest("input.bsSelUserInput") || null;
+  if (input && event.type !== "click") {
+    if (event.type === "change") {
+      applySelectionUserValue(
+        text(input.dataset.selectScope),
+        Number.parseInt(input.dataset.selectDev || "", 10),
+        numberOrNull(text(input.value).replace(/,/gu, "")),
+      );
+    }
+    if (event.type === "keydown" && event.key === "Enter") input.blur();
+    return;
+  }
+  const pick = target?.closest("[data-select-method]") || null;
+  if (!pick || event.type === "change") return;
+  if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+  // Clicking a User Value cell must keep the caret in its input, so only the
+  // keyboard path and the read-only estimator cells suppress the default.
+  if (!input) event.preventDefault();
+  const scope = text(pick.dataset.selectScope);
+  const devRaw = Number.parseInt(pick.dataset.selectDev || "", 10);
+  const devIndex = Number.isInteger(devRaw) ? devRaw : null;
+  applySelectionChoice(scope, text(pick.dataset.selectMethod), devIndex);
+  if (input && devIndex !== null) focusSelectionUserInput(scope, devIndex);
+}
+
 function renderMethodTable() {
   if (!els.methodHead || !els.methodBody) return;
-  const view = currentViewDefinition();
   syncMethodChrome();
+  els.secondaryHead?.replaceChildren();
+  els.secondaryBody?.replaceChildren();
   if (variant === "sr" && state.currentView === "output" && state.result) {
-    renderAdjustedPaidGrid(view);
+    renderAdjustedPaidGrid();
     return;
   }
   if (variant === "sr" && state.currentView === "proportionSettled" && state.result) {
     renderProportionSettledGrid();
     return;
   }
+  if (variant === "cra" && state.currentView === "avgSelections") {
+    els.methodHead.replaceChildren();
+    els.methodBody.replaceChildren();
+    renderSelectionGrids();
+    return;
+  }
   const matrix = matrixForCurrentView();
+  const format = viewNumberFormat();
   const developmentCount = Math.max(
     matrixDevelopmentCount(),
     ...matrix.map((row) => Array.isArray(row) ? row.length : 0),
@@ -1064,10 +1462,7 @@ function renderMethodTable() {
   );
   const showUltimateColumn = variant === "sr" && state.currentView === "numbersClosed";
 
-  const headerRow = buildMethodHeaderRow(
-    variant === "sr" ? "Accident Year" : "Origin",
-    developmentCount,
-  );
+  const headerRow = buildMethodHeaderRow("Accident Year", developmentCount);
   if (showUltimateColumn) {
     const ultimateHeader = document.createElement("th");
     ultimateHeader.scope = "col";
@@ -1087,18 +1482,15 @@ function renderMethodTable() {
     for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
       const cell = document.createElement("td");
       const rawValue = matrix[rowIndex]?.[devIndex];
-      const display = formatCellValue(rawValue, view.decimals);
+      const display = formatCellValue(rawValue, format);
       cell.textContent = display;
       cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
-      // ResQ renders the Settlement Rate triangles as plain cells; the CRA
-      // views keep the calculated-result fill.
-      if (variant !== "sr") cell.className = "bsResultCell";
       rowElement.appendChild(cell);
     }
     if (showUltimateColumn) {
       const ultimateCell = document.createElement("td");
       const rawValue = ultimateValues[rowIndex];
-      ultimateCell.textContent = formatCellValue(rawValue, view.decimals);
+      ultimateCell.textContent = formatCellValue(rawValue, roleNumberFormat("ultimate_claim_numbers"));
       ultimateCell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
       rowElement.appendChild(ultimateCell);
     }
@@ -1107,138 +1499,9 @@ function renderMethodTable() {
   els.methodBody.replaceChildren(body);
 }
 
-function selectionDisplayLabel(value) {
-  const labels = {
-    case_column: "Case Column",
-    case_all: "Case All",
-    paid_column: "Paid Column",
-    paid_all: "Paid All",
-    user: "User",
-    latest: "Latest",
-    monotone: "Monotone",
-  };
-  return labels[norm(value).replace(/\s+/g, "_")] || text(value);
-}
-
-function createSelectionSelect(value, options, ariaLabel, onChange) {
-  const select = document.createElement("select");
-  select.className = "bsSelectionSelect";
-  select.setAttribute("aria-label", ariaLabel);
-  for (const optionValue of options) {
-    const option = document.createElement("option");
-    option.value = optionValue;
-    option.textContent = selectionDisplayLabel(optionValue);
-    select.appendChild(option);
-  }
-  select.value = value;
-  select.addEventListener("change", () => onChange(select.value));
-  return select;
-}
-
-function createSelectionNumber(value, ariaLabel, onChange) {
-  const input = document.createElement("input");
-  input.className = "bsSelectionNumber";
-  input.type = "number";
-  input.step = "any";
-  input.value = numberOrNull(value) === null ? "" : String(value);
-  input.setAttribute("aria-label", ariaLabel);
-  input.addEventListener("input", () => onChange(numberOrNull(input.value)));
-  return input;
-}
-
-function appendSelectionTitle(container, title) {
-  const heading = document.createElement("strong");
-  heading.className = "bsSelectionHeading";
-  heading.textContent = title;
-  container.appendChild(heading);
-}
-
-function recalculateAfterSelectionEdit({ renderSelections = true } = {}) {
-  calculateCurrent({ renderSelections });
+function recalculateAfterSelectionEdit() {
+  calculateCurrent();
   markDirty();
-}
-
-function renderCaseReserveSelections() {
-  const developmentCount = matrixDevelopmentCount();
-  const editorRow = document.createElement("div");
-  editorRow.className = "bsSelectionEditorRow";
-  appendSelectionTitle(editorRow, "Development selections");
-  for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
-    const age = getDevelopmentLabel(devIndex);
-    const card = document.createElement("div");
-    card.className = "bsSelectionEditor wide";
-    const label = document.createElement("span");
-    label.className = "bsSelectionEditorLabel";
-    label.textContent = age;
-    const inflationSelect = createSelectionSelect(
-      state.inflationSelection[devIndex] || "paid_all",
-      ["case_column", "case_all", "paid_column", "paid_all", "user"],
-      `${age} inflation selection`,
-      (value) => {
-        state.inflationSelection[devIndex] = value;
-        recalculateAfterSelectionEdit();
-      },
-    );
-    const inflationInput = createSelectionNumber(
-      state.userInflation[devIndex],
-      `${age} user inflation`,
-      (value) => {
-        state.userInflation[devIndex] = value ?? 0;
-        recalculateAfterSelectionEdit({ renderSelections: false });
-      },
-    );
-    inflationInput.disabled = inflationSelect.value !== "user";
-    inflationSelect.addEventListener("change", () => {
-      inflationInput.disabled = inflationSelect.value !== "user";
-    });
-    const averageSelect = createSelectionSelect(
-      state.averageCaseReserveSelection[devIndex] || "latest",
-      ["latest", "monotone", "user"],
-      `${age} average case reserve selection`,
-      (value) => {
-        state.averageCaseReserveSelection[devIndex] = value;
-        recalculateAfterSelectionEdit();
-      },
-    );
-    const averageInput = createSelectionNumber(
-      state.userAverageCaseReserves[devIndex],
-      `${age} user average case reserve`,
-      (value) => {
-        state.userAverageCaseReserves[devIndex] = value ?? 0;
-        recalculateAfterSelectionEdit({ renderSelections: false });
-      },
-    );
-    averageInput.disabled = averageSelect.value !== "user";
-    averageSelect.addEventListener("change", () => {
-      averageInput.disabled = averageSelect.value !== "user";
-    });
-    const inflationField = document.createElement("label");
-    inflationField.className = "bsSelectionField";
-    inflationField.append("Inflation", inflationSelect, inflationInput);
-    const averageField = document.createElement("label");
-    averageField.className = "bsSelectionField";
-    averageField.append("Average", averageSelect, averageInput);
-    card.append(label, inflationField, averageField);
-    editorRow.appendChild(card);
-  }
-  els.selectionSummary.appendChild(editorRow);
-}
-
-function renderSelectionSummary() {
-  if (!els.selectionSummary) return;
-  els.selectionSummary.replaceChildren();
-  if (variant === "sr") {
-    // Settlement Rate selections live inside the Method grids themselves: the
-    // Proportion Settled tab's Selected row and the Adjusted Paid Claims grid.
-    els.selectionSummary.hidden = true;
-    return;
-  }
-  els.selectionSummary.hidden = false;
-  if (!matrixDevelopmentCount()) {
-    appendSelectionTitle(els.selectionSummary, "Waiting for source data.");
-    return;
-  }
-  renderCaseReserveSelections();
 }
 
 function normalizeCachedRow(row) {
@@ -1407,6 +1670,53 @@ async function refreshSourceRoles(roles = roleDefinitions(), { refreshCache = fa
   await refreshOriginLabels();
   await refreshDevelopmentLabels();
   calculateCurrent();
+  await syncRecordedSourceNumberFormats();
+}
+
+// A source's number format is display state, not a result input: when the user
+// restyles a source dataset the method's recorded copy catches up on its own,
+// without making the page dirty, bumping the method's last-modified stamp, or
+// touching the output's review status.
+async function syncRecordedSourceNumberFormats() {
+  let changed = false;
+  for (const role of roleDefinitions()) {
+    const payload = state.sourcePayloads[role.key];
+    if (!payload || !text(payload.number_format)) continue;
+    const live = normalizeNumberFormatEntry(payload);
+    if (sameNumberFormat(state.numberFormats.sources[role.key], live)) continue;
+    state.numberFormats.sources[role.key] = live;
+    changed = true;
+  }
+  if (!changed) return;
+  renderMethodTable();
+  await rewriteRecordedNumberFormats();
+}
+
+async function rewriteRecordedNumberFormats() {
+  const hostApi = getHostApi();
+  if (!hostApi?.readJsonFile || !hostApi?.saveJsonFile) return;
+  let path = "";
+  try {
+    path = await getMethodPath();
+  } catch {
+    return;
+  }
+  try {
+    const existing = await hostApi.readJsonFile({ path });
+    if (!existing?.exists || !existing.data || typeof existing.data !== "object") return;
+    const methodTab = existing.data.method_tab;
+    if (!methodTab || typeof methodTab !== "object") return;
+    const record = buildNumberFormatsRecord();
+    if (JSON.stringify(methodTab.number_formats ?? null) === JSON.stringify(record)) return;
+    // The stored payload is rewritten in place, so `method_metadata.last_modified`
+    // and every other saved field stay exactly as the last real save left them.
+    await hostApi.saveJsonFile({
+      path,
+      data: { ...existing.data, method_tab: { ...methodTab, number_formats: record } },
+    });
+  } catch (error) {
+    postStatus(`Could not sync the recorded number formats: ${text(error?.message || error)}`, "warn");
+  }
 }
 
 function normalizedReservingClassPath(value) {
@@ -1682,6 +1992,30 @@ function cloneMatrix(values) {
     : [];
 }
 
+// Every source role is present in the record, so a reader never has to guess
+// which input a missing entry belonged to.
+function buildNumberFormatsRecord() {
+  const sources = {};
+  for (const role of roleDefinitions()) {
+    sources[role.key] = { ...roleNumberFormat(role.key) };
+  }
+  return { derived: { ...derivedNumberFormat() }, sources };
+}
+
+function applyNumberFormatsRecord(value) {
+  const record = value && typeof value === "object" ? value : {};
+  if (record.derived) derivedNumberFormatSeeded = true;
+  state.numberFormats.derived = normalizeNumberFormatEntry(
+    record.derived,
+    derivedNumberFormat(),
+  );
+  const sources = record.sources && typeof record.sources === "object" ? record.sources : {};
+  for (const role of roleDefinitions()) {
+    if (sources[role.key] === undefined) continue;
+    state.numberFormats.sources[role.key] = normalizeNumberFormatEntry(sources[role.key]);
+  }
+}
+
 function buildMethodPayload() {
   const details = getDetails();
   const methodTab = {
@@ -1702,7 +2036,9 @@ function buildMethodPayload() {
     methodTab.user_inflation = state.userInflation.slice();
     methodTab.average_case_reserve_selection = state.averageCaseReserveSelection.slice();
     methodTab.user_average_case_reserves = state.userAverageCaseReserves.slice();
+    methodTab.loess_span = state.loessSpan;
   }
+  methodTab.number_formats = buildNumberFormatsRecord();
   return {
     json_format: contract.jsonFormat,
     details_tab: {
@@ -1740,15 +2076,16 @@ function applyMethodPayload(payload) {
   state.selectedProportionSettled = normalizeNumberVector(method.selected_proportion_settled);
   state.selectedProportionIsDefault = normalizeBooleanVector(method.selected_proportion_is_default);
   state.selectedAdjustment = normalizeSelectionMatrix(method.selected_adjustment);
-  if (variant === "sr") state.loessSpan = normalizeLoessSpan(method.loess_span);
+  state.loessSpan = normalizeLoessSpan(method.loess_span);
   state.inflationSelection = normalizeStringVector(method.inflation_selection);
   state.userInflation = normalizeNumberVector(method.user_inflation);
   state.averageCaseReserveSelection = normalizeStringVector(method.average_case_reserve_selection);
   state.userAverageCaseReserves = normalizeNumberVector(method.user_average_case_reserves);
+  applyNumberFormatsRecord(method.number_formats);
   syncSourceInputs();
   syncTitle();
-  renderSelectionSummary();
   syncLoessSpanControls();
+  syncNumberFormatControls();
 }
 
 async function tryLoadExistingMethod() {
@@ -1758,7 +2095,7 @@ async function tryLoadExistingMethod() {
   const result = await hostApi.readJsonFile({ path: await getMethodPath() });
   if (!result?.exists || !result.data) return false;
   applyMethodPayload(result.data);
-  postStatus(`Loaded ${contract.methodType}: ${getDetails().name}`);
+  postStatus(`Loaded ${contract.displayLabel}: ${getDetails().name}`);
   return true;
 }
 
@@ -1802,12 +2139,15 @@ async function loadSidecar() {
     state.sidecarOriginLabels = Array.isArray(sidecar?.origin_labels)
       ? sidecar.origin_labels.map(String)
       : [];
-    state.numberFormat = text(sidecar?.number_format) || state.numberFormat;
-    notesController.setValue(text(sidecar?.notes), { markClean: true });
-    const decimalPlaces = Number.parseInt(String(sidecar?.decimal_places ?? ""), 10);
-    if (Number.isInteger(decimalPlaces) && decimalPlaces >= 0 && decimalPlaces <= 6) {
-      state.decimalPlaces = decimalPlaces;
+    // The output dataset's own format seeds the Details controls once; after
+    // that the method JSON and the user's edits own it, so reloading the
+    // sidecar for the Audit tab cannot revert an unsaved format change.
+    if (!derivedNumberFormatSeeded && text(sidecar?.number_format)) {
+      derivedNumberFormatSeeded = true;
+      state.numberFormats.derived = normalizeNumberFormatEntry(sidecar);
+      syncNumberFormatControls();
     }
+    notesController.setValue(text(sidecar?.notes), { markClean: true });
     auditLogView.render(sidecar?.audit_log);
     return sidecar;
   } catch (error) {
@@ -1837,8 +2177,8 @@ async function saveSidecar(csvPath) {
       cumulative: true,
       transposed: false,
       calendar: false,
-      number_format: state.numberFormat,
-      decimal_places: state.decimalPlaces,
+      number_format: derivedNumberFormat().number_format,
+      decimal_places: derivedNumberFormat().decimal_places,
       origin_labels: state.originLabels.map(String),
       csv_file: csvBaseName(csvPath),
       notes: notesController.getValue(),
@@ -1868,7 +2208,7 @@ function matrixCsv(values) {
 function blockSaveForActiveSourcePreviews() {
   if (activeDependencyPreviews.size === 0) return false;
   postStatus(
-    `${contract.methodType} cannot save while a source has unsaved preview changes. Save or discard the source first.`,
+    `${contract.displayLabel} cannot save while a source has unsaved preview changes. Save or discard the source first.`,
     "error",
   );
   return true;
@@ -1877,12 +2217,12 @@ function blockSaveForActiveSourcePreviews() {
 async function saveMethod() {
   const details = getDetails();
   if (!details.name || !details.outputType) {
-    postStatus(`${contract.methodType} save requires Name and Output Type.`, "error");
+    postStatus(`${contract.displayLabel} save requires Name and Output Type.`, "error");
     return { ok: false };
   }
   const missing = roleDefinitions().filter((role) => !text(state.sourceNames[role.key]));
   if (missing.length) {
-    postStatus(`${contract.methodType} save requires ${missing.map((role) => role.label).join(", ")}.`, "error");
+    postStatus(`${contract.displayLabel} save requires ${missing.map((role) => role.label).join(", ")}.`, "error");
     return { ok: false };
   }
   if (blockSaveForActiveSourcePreviews()) return { ok: false };
@@ -1890,12 +2230,12 @@ async function saveMethod() {
   if (blockSaveForActiveSourcePreviews()) return { ok: false };
   const output = state.result?.output;
   if (!Array.isArray(output) || !output.some((row) => row.some((value) => numberOrNull(value) !== null))) {
-    postStatus(`${contract.methodType} output is blank. Check the selected sources.`, "error");
+    postStatus(`${contract.displayLabel} output is blank. Check the selected sources.`, "error");
     return { ok: false };
   }
   const hostApi = getHostApi();
   if (!hostApi?.saveJsonFile || !hostApi?.saveTextFile) {
-    postStatus(`${contract.methodType} save requires the desktop app.`, "error");
+    postStatus(`${contract.displayLabel} save requires the desktop app.`, "error");
     return { ok: false };
   }
   const methodPath = await getMethodPath();
@@ -1928,7 +2268,7 @@ async function saveMethod() {
       variant,
     }, "*");
   } catch {}
-  postStatus(`${contract.methodType} saved: ${details.name}`);
+  postStatus(`${contract.displayLabel} saved: ${details.name}`);
   await showMethodSaveReviewWarning(sidecar, {
     instanceId: inst,
     projectName: state.project,
@@ -1981,6 +2321,11 @@ function wireMethodGridControls() {
   els.methodBody?.addEventListener("keydown", handleProportionGridEvent);
   els.methodBody?.addEventListener("change", handleProportionGridEvent);
   els.methodBody?.addEventListener("contextmenu", handleProportionGridEvent);
+  for (const body of [els.methodBody, els.secondaryBody]) {
+    body?.addEventListener("click", handleSelectionGridEvent);
+    body?.addEventListener("keydown", handleSelectionGridEvent);
+    body?.addEventListener("change", handleSelectionGridEvent);
+  }
   els.loessSpanInput?.addEventListener("change", () => applyLoessSpan(els.loessSpanInput.value));
   els.loessSpanInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") applyLoessSpan(els.loessSpanInput.value);
@@ -1989,9 +2334,39 @@ function wireMethodGridControls() {
   els.loessSpanDown?.addEventListener("click", () => applyLoessSpan(state.loessSpan - 1));
 }
 
+function wireNumberFormatControls() {
+  const commitFormat = () => applyDerivedNumberFormat({
+    number_format: els.numberFormatInput?.value,
+  });
+  els.numberFormatInput?.addEventListener("change", commitFormat);
+  els.numberFormatInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") els.numberFormatInput.blur();
+  });
+  els.numberFormatBtn?.addEventListener("click", () => openNumberFormatPresetMenu(els.numberFormatBtn));
+  const stepDecimalPlaces = (step) => applyDerivedNumberFormat(
+    { decimal_places: derivedNumberFormat().decimal_places + step },
+    { fromDecimalPlaces: true },
+  );
+  els.decimalPlacesInput?.addEventListener("change", () => applyDerivedNumberFormat(
+    { decimal_places: els.decimalPlacesInput.value },
+    { fromDecimalPlaces: true },
+  ));
+  els.decimalPlacesInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") els.decimalPlacesInput.blur();
+  });
+  els.decimalPlacesUp?.addEventListener("click", () => stepDecimalPlaces(1));
+  els.decimalPlacesDown?.addEventListener("click", () => stepDecimalPlaces(-1));
+}
+
+// Every grid pane owns a scroll wrapper, so each one gets its own activity
+// state rather than sharing the first wrapper's.
 function wireTableScrollbarActivity() {
-  const host = document.querySelector(".bsTableWrap");
-  if (!host) return;
+  for (const host of document.querySelectorAll(".bsTableWrap")) {
+    wireScrollbarActivityFor(host);
+  }
+}
+
+function wireScrollbarActivityFor(host) {
   let idleTimer = null;
   const syncScrollbarHover = (event) => {
     const rect = host.getBoundingClientRect();
@@ -2022,6 +2397,7 @@ function wireInputs() {
     });
   }
   wireMethodGridControls();
+  wireNumberFormatControls();
   wireTableScrollbarActivity();
   els.outputTypeBtn?.addEventListener("click", () => void openPicker("output", els.outputTypeBtn));
   for (const button of document.querySelectorAll("button[data-picker-role]")) {
@@ -2089,7 +2465,7 @@ async function init() {
     els.projectInput.value = state.project;
     els.classInput.value = state.reservingClass;
     els.nameInput.value = text(params.get("name") || params.get("dataset"));
-    els.methodTypeInput.value = contract.methodType;
+    els.methodTypeInput.value = contract.displayLabel;
     els.outputTypeInput.value = text(
       params.get("output_type") || params.get("dataset_type") || params.get("datasetType"),
     );
@@ -2104,7 +2480,6 @@ async function init() {
   syncTitle();
   initTabbedPage();
   renderViewButtons();
-  renderSelectionSummary();
   wireInputs();
   wireMessages();
 
@@ -2115,7 +2490,7 @@ async function init() {
   }
   await loadSidecar().catch(() => null);
   const loaded = await tryLoadExistingMethod().catch((error) => {
-    postStatus(`Could not load existing ${contract.methodType}: ${text(error?.message || error)}`, "warn");
+    postStatus(`Could not load existing ${contract.displayLabel}: ${text(error?.message || error)}`, "warn");
     return false;
   });
   try {

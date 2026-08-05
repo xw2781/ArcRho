@@ -2,20 +2,13 @@ import {
   assertSameTriangleShape,
   columnCount,
   latestByColumn,
+  loessFit,
   matrixLike,
+  normalizeLoessSpan,
   normalizeTriangle,
 } from "./calculation_helpers.js";
 
 const ADJUSTMENT_TYPES = new Set(["unadjusted", "pairs", "all", "loess"]);
-export const DEFAULT_LOESS_SPAN = 7;
-const MIN_LOESS_SPAN = 2;
-const MAX_LOESS_SPAN = 99;
-
-export function normalizeLoessSpan(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return DEFAULT_LOESS_SPAN;
-  return Math.min(MAX_LOESS_SPAN, Math.max(MIN_LOESS_SPAN, Math.trunc(number)));
-}
 
 function normalizeNumberVector(value, count, name) {
   const source = Array.isArray(value) ? value : [];
@@ -35,7 +28,7 @@ function rowPoints(closedClaimNumbers, paidClaims) {
   paidClaims.forEach((paid, index) => {
     const closed = closedClaimNumbers[index];
     if (Number.isFinite(closed) && Number.isFinite(paid) && paid > 0) {
-      points.push({ x: closed, logPaid: Math.log(paid) });
+      points.push({ x: closed, y: Math.log(paid) });
     }
   });
   return points;
@@ -58,20 +51,20 @@ function pairwiseEstimate(points, selectedClosedClaims) {
   const lower = points[pairIndex];
   const upper = points[pairIndex + 1];
   if (lower.x === upper.x) {
-    return Math.exp((lower.logPaid + upper.logPaid) / 2);
+    return Math.exp((lower.y + upper.y) / 2);
   }
   const weight = (selectedClosedClaims - lower.x) / (upper.x - lower.x);
-  return Math.exp(lower.logPaid + weight * (upper.logPaid - lower.logPaid));
+  return Math.exp(lower.y + weight * (upper.y - lower.y));
 }
 
 function allPointsEstimate(points, selectedClosedClaims) {
   if (!Number.isFinite(selectedClosedClaims) || points.length < 2) return 0;
   const count = points.length;
   const sumX = points.reduce((sum, point) => sum + point.x, 0);
-  const sumY = points.reduce((sum, point) => sum + point.logPaid, 0);
+  const sumY = points.reduce((sum, point) => sum + point.y, 0);
   const sumXX = points.reduce((sum, point) => sum + point.x * point.x, 0);
   const sumXY = points.reduce(
-    (sum, point) => sum + point.x * point.logPaid,
+    (sum, point) => sum + point.x * point.y,
     0,
   );
   const denominator = count * sumXX - sumX * sumX;
@@ -82,37 +75,8 @@ function allPointsEstimate(points, selectedClosedClaims) {
 }
 
 function loessEstimate(points, selectedClosedClaims, span) {
-  if (!Number.isFinite(selectedClosedClaims)) return null;
-  if (points.length < 2) return 0;
-
-  // ResQ "Loess (n)": weighted straight-line fit over the span+1 nearest
-  // neighbours; the furthest neighbour's tri-cube weight is exactly zero.
-  const distances = points
-    .map((point) => Math.abs(point.x - selectedClosedClaims))
-    .sort((a, b) => a - b);
-  const bandwidth = distances[Math.min(span, points.length - 1)];
-  const weighted = [];
-  for (const point of points) {
-    const distance = Math.abs(point.x - selectedClosedClaims);
-    if (!(bandwidth > 0) || distance >= bandwidth) continue;
-    const scaled = distance / bandwidth;
-    weighted.push({ x: point.x, y: point.logPaid, weight: (1 - scaled ** 3) ** 3 });
-  }
-  if (weighted.length < 2) return null;
-
-  const weightSum = weighted.reduce((sum, point) => sum + point.weight, 0);
-  const meanX = weighted.reduce((sum, point) => sum + point.weight * point.x, 0) / weightSum;
-  const meanY = weighted.reduce((sum, point) => sum + point.weight * point.y, 0) / weightSum;
-  const sxx = weighted.reduce(
-    (sum, point) => sum + point.weight * (point.x - meanX) ** 2,
-    0,
-  );
-  if (!(sxx > 0)) return null;
-  const slope = weighted.reduce(
-    (sum, point) => sum + point.weight * (point.x - meanX) * (point.y - meanY),
-    0,
-  ) / sxx;
-  return Math.exp(meanY + slope * (selectedClosedClaims - meanX));
+  const fitted = loessFit(points, selectedClosedClaims, span);
+  return fitted === null ? null : Math.exp(fitted);
 }
 
 function defaultAdjustmentForRow(points) {

@@ -73,6 +73,7 @@ test("shared tab surfaces live in feature-neutral logical groups", async () => {
     "ui/method_pages/dfm/dfm_external_links_model.js",
     "ui/method_pages/dfm/dfm_links_tab.js",
     "ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html",
+    "ui/method_pages/cape_cod/cape_cod.html",
     "ui/method_pages/result_selection/result_selection.html",
   ];
 
@@ -80,16 +81,18 @@ test("shared tab surfaces live in feature-neutral logical groups", async () => {
 });
 
 test("Dataset Viewer and method pages consume feature-neutral shared styling", async () => {
-  const [datasetHtml, dfmHtml, bornhuetterFergusonHtml, resultSelectionHtml] = await Promise.all([
+  const [datasetHtml, dfmHtml, bornhuetterFergusonHtml, capeCodHtml, resultSelectionHtml] = await Promise.all([
     source("ui/dataset_viewer/dataset_viewer.html"),
     source("ui/method_pages/dfm/dfm.html"),
     source("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html"),
+    source("ui/method_pages/cape_cod/cape_cod.html"),
     source("ui/method_pages/result_selection/result_selection.html"),
   ]);
 
-  for (const html of [datasetHtml, dfmHtml, bornhuetterFergusonHtml, resultSelectionHtml]) {
+  for (const html of [datasetHtml, dfmHtml, bornhuetterFergusonHtml, capeCodHtml, resultSelectionHtml]) {
     assert.match(html, /\/ui\/shared\/tabbed_page\/tabbed_page\.css/u);
   }
+  assert.match(capeCodHtml, /\/ui\/shared\/components\/spreadsheet\/spreadsheet_table\.css/u);
   for (const html of [datasetHtml, dfmHtml]) {
     assert.match(html, /\/ui\/shared\/components\/workspace\/workspace\.css/u);
     assert.match(html, /\/ui\/shared\/components\/spreadsheet\/spreadsheet_table\.css/u);
@@ -171,12 +174,14 @@ test("DSV and DFM reach the current shared Data validation runtime", async () =>
 test("method pages and shared runtime do not depend on Dataset feature assets", async () => {
   const [
     bornhuetterFergusonSources,
+    capeCodSources,
     dfmSources,
     resultSelectionSources,
     sharedDatasetSources,
     sharedDataTabSources,
   ] = await Promise.all([
     runtimeSources("ui/method_pages/bornhuetter_ferguson/"),
+    runtimeSources("ui/method_pages/cape_cod/"),
     runtimeSources("ui/method_pages/dfm/"),
     runtimeSources("ui/method_pages/result_selection/"),
     runtimeSources("ui/shared/dataset/"),
@@ -184,6 +189,7 @@ test("method pages and shared runtime do not depend on Dataset feature assets", 
   ]);
 
   assert.doesNotMatch(bornhuetterFergusonSources, /\/ui\/dataset_viewer\//u);
+  assert.doesNotMatch(capeCodSources, /\/ui\/dataset_viewer\//u);
   assert.doesNotMatch(dfmSources, /\/ui\/dataset_viewer\//u);
   assert.doesNotMatch(resultSelectionSources, /\/ui\/dataset_viewer\//u);
   assert.doesNotMatch(sharedDatasetSources, /\/ui\/dataset_viewer\//u);
@@ -201,6 +207,7 @@ test("DSV and every method page consume the shared Notes and Details surfaces", 
       source("ui/method_pages/dfm/dfm_notes_tab.js"),
     ]),
     Promise.all([source("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js")]),
+    Promise.all([source("ui/method_pages/cape_cod/cape_cod_main.js")]),
     Promise.all([source("ui/method_pages/result_selection/result_selection_main.js")]),
   ]);
 

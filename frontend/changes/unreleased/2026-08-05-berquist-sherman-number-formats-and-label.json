@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "B&S method grids now use each input dataset's own number format, add a Details control for the calculated triangles, and show the ResQ method labels.",
+  "details": [
+    "Each input triangle in the Method tab displays exactly as its dataset instance does in the Dataset Viewer, and the method keeps up on its own when a source dataset's number format is changed, without marking the method modified or changing its review status.",
+    "The Details tab adds a Number Format field with presets and a Decimal Places stepper for the calculated triangles such as Average Case Reserves; it is also the output dataset's own format.",
+    "Project Instance, window titles, Add menus, and the method page now read Berquist Sherman SR and Berquist Sherman CRA, matching ResQ."
+  ]
+}

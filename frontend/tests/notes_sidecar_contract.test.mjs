@@ -20,6 +20,7 @@ test("dataset sidecars are the only persisted notes owner", async () => {
     "frontend/ui/method_pages/dfm/dfm_persistence.js",
     "frontend/ui/method_pages/result_selection/result_selection_model.js",
     "frontend/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js",
+    "frontend/ui/method_pages/cape_cod/cape_cod_main.js",
     "frontend/ui/method_pages/berquist_sherman/berquist_sherman_main.js",
     "data-engine/src/arcrho_bridge/resq_client.py",
     "python-api/migration/resq_migration/dfm.py",
@@ -53,16 +54,17 @@ test("Project Instance DSV open uses the aggregate sidecar and CSV cache route",
 });
 
 test("Project Instance method opens reuse the parent dataset-index snapshot", async () => {
-  const [cache, shared, resultSelection, bf, bs] = await Promise.all([
+  const [cache, shared, resultSelection, bf, cc, bs] = await Promise.all([
     read("frontend/ui/project_instance/project_instance_dataset_cache.js"),
     read("frontend/ui/shared/dataset/project_instance_dataset_snapshot.js"),
     read("frontend/ui/method_pages/result_selection/result_selection_data.js"),
     read("frontend/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js"),
+    read("frontend/ui/method_pages/cape_cod/cape_cod_main.js"),
     read("frontend/ui/method_pages/berquist_sherman/berquist_sherman_main.js"),
   ]);
   assert.match(cache, /publishProjectInstanceDatasetSnapshot\(projectName, normalizedPath, payload\)/u);
   assert.match(shared, /window\.sessionStorage/u);
-  for (const methodSource of [resultSelection, bf, bs]) {
+  for (const methodSource of [resultSelection, bf, cc, bs]) {
     assert.match(methodSource, /readProjectInstanceDatasetSnapshot/u);
     assert.match(methodSource, /project_instance/u);
   }

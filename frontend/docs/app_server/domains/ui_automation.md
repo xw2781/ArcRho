@@ -10,8 +10,11 @@ Local UI automation command bridge for Python macros and scripts that need to as
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/ui_automation/commands` | `submit_ui_automation_command` | `UiAutomationCommandRequest` | [`app_server/schemas/ui_automation.py`](../../../app_server/schemas/ui_automation.py) | `ui_automation_service.submit_command` |
+| `POST` | `/ui_automation/commands/drain` | `drain_ui_automation_commands` | `Request` | - | `ui_automation_service.drain_pending` |
 | `POST` | `/ui_automation/commands/poll` | `poll_ui_automation_command` | `UiAutomationPollRequest` | [`app_server/schemas/ui_automation.py`](../../../app_server/schemas/ui_automation.py) | `ui_automation_service.poll_command` |
+| `POST` | `/ui_automation/commands/{command_id}/cancel` | `cancel_ui_automation_command` | `Request` | - | `ui_automation_service.cancel_command` |
 | `POST` | `/ui_automation/commands/{command_id}/complete` | `complete_ui_automation_command` | `UiAutomationCommandResult` | [`app_server/schemas/ui_automation.py`](../../../app_server/schemas/ui_automation.py) | `ui_automation_service.complete_command` |
+| `GET` | `/ui_automation/queue` | `get_ui_automation_queue` | `Request` | - | `ui_automation_service.queue_status` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

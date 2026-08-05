@@ -96,6 +96,72 @@ def poll_command(timeout_sec: float = 20.0) -> Dict[str, Any]:
             _LOCK.wait(timeout=remaining)
 
 
+def cancel_command(command_id: str) -> Dict[str, Any]:
+    """Drop a queued or in-flight command.
+
+    A harness that abandons a command client-side would otherwise leave it queued, and the next
+    poll would execute it against the *following* scenario's UI state.
+    """
+    normalized_id = str(command_id or "").strip()
+    if not normalized_id:
+        raise HTTPException(400, "Command id is required.")
+
+    with _LOCK:
+        item = _PENDING.pop(normalized_id, None)
+        try:
+            _QUEUE.remove(normalized_id)
+        except ValueError:
+            pass
+        if item is None:
+            return {"ok": False, "cancelled": False, "error": "Command is no longer pending."}
+        # Release the blocked submitter with an explicit outcome rather than letting it sit until
+        # its own deadline.
+        item.result = {
+            "ok": False,
+            "result": {},
+            "error": "Command was cancelled.",
+            "command_id": normalized_id,
+            "cancelled": True,
+        }
+        _LOCK.notify_all()
+    return {"ok": True, "cancelled": True, "command_id": normalized_id}
+
+
+def drain_pending() -> Dict[str, Any]:
+    """Cancel everything outstanding. Used at suite teardown so one run cannot bleed into the next."""
+    with _LOCK:
+        ids = list(_PENDING.keys())
+        for command_id in ids:
+            item = _PENDING.pop(command_id, None)
+            if item is None:
+                continue
+            item.result = {
+                "ok": False,
+                "result": {},
+                "error": "Command was cancelled.",
+                "command_id": command_id,
+                "cancelled": True,
+            }
+        _QUEUE.clear()
+        if ids:
+            _LOCK.notify_all()
+    return {"ok": True, "cancelled": len(ids)}
+
+
+def queue_status() -> Dict[str, Any]:
+    """Diagnostic view of the queue. Read-only."""
+    with _LOCK:
+        return {
+            "ok": True,
+            "queued": len(_QUEUE),
+            "pending": len(_PENDING),
+            "commands": [
+                {"id": item.id, "command": item.command, "created_at": item.created_at}
+                for item in _PENDING.values()
+            ],
+        }
+
+
 def complete_command(command_id: str, ok: bool, result: Dict[str, Any], error: str) -> Dict[str, Any]:
     normalized_id = str(command_id or "").strip()
     if not normalized_id:

@@ -146,9 +146,7 @@
   --bs-muted: var(--ar-color-text-muted);
   --bs-blue: var(--ar-color-accent);
   --bs-blue-soft: var(--ar-color-accent-soft);
-  --bs-result: #514719;
   --bs-selected-band: #163a40;
-  --bs-input: var(--ar-color-input);
   --bs-row-hover: var(--ar-color-table-row-hover);
   --rs-border: var(--ar-color-border);
   --rs-grid-border: #3a3f4b;

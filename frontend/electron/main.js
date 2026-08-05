@@ -5,6 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const { registerArcBotIpc } = require("./arcbot_host");
+const { registerUiAutomationIpc } = require("./ui_automation_host");
 const {
   appendElectronLog,
   getElectronLogPath,
@@ -65,6 +66,26 @@ const START_BACKEND = (APP_MODE === "arcode" ? process.env.ARCODE_START_BACKEND 
 const PYTHON_EXE = process.env.PYTHON_EXE || process.env.PYTHON || "python";
 const APP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(APP_ROOT, "..");
+
+// Deterministic launch profile for the UI regression harness.
+//
+// Baseline screenshot comparison needs byte-stable geometry and theme, and a test run must not
+// leave the user's persisted window prefs changed. `ARCRHO_UI_TEST_PROFILE=1` freezes both: window
+// size and theme come from env instead of the prefs file, and pref writes become no-ops.
+const UI_TEST_PROFILE = String(process.env.ARCRHO_UI_TEST_PROFILE || "").trim() === "1";
+const UI_TEST_WINDOW_SIZE = (() => {
+  if (!UI_TEST_PROFILE) return null;
+  const raw = String(process.env.ARCRHO_UI_TEST_WINDOW_SIZE || "1600x1000").trim();
+  const match = /^(\d{3,5})\s*[xX*]\s*(\d{3,5})$/.exec(raw);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (width < 820 || height < 620) return null;
+  return { width, height };
+})();
+const UI_TEST_COLOR_THEME = UI_TEST_PROFILE
+  ? String(process.env.ARCRHO_UI_TEST_COLOR_THEME || "").trim().toLowerCase()
+  : "";
 
 initBackendLifecycle({
   appMode: APP_MODE,
@@ -146,6 +167,49 @@ function getMainWindowPrefsPath() {
 
 function getPrefsDir() {
   return path.join(app.getPath("appData"), "ArcRho", "prefs");
+}
+
+// Sibling of app_endpoint.json, but written only once the main window is actually visible.
+// An automation harness polls for this before its first screenshot.
+function getUiReadyMarkerPath() {
+  return path.join(
+    app.getPath("appData"),
+    APP_MODE === "arcode" ? "Arcode" : "ArcRho",
+    "app_ui_ready.json"
+  );
+}
+
+function writeUiReadyMarker() {
+  const markerPath = getUiReadyMarkerPath();
+  try {
+    const payload = {
+      format: "arcrho.app_ui_ready.v1",
+      app: APP_MODE,
+      pid: process.pid,
+      port: getBackendPort(),
+      window_id: win && !win.isDestroyed() ? win.id : null,
+      test_profile: UI_TEST_PROFILE,
+      shown_at: new Date().toISOString(),
+    };
+    fs.mkdirSync(path.dirname(markerPath), { recursive: true });
+    const tempPath = `${markerPath}.${process.pid}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf8");
+    fs.renameSync(tempPath, markerPath);
+  } catch (err) {
+    appendElectronLog("Failed to write UI ready marker", err);
+  }
+}
+
+function removeUiReadyMarker() {
+  try {
+    const markerPath = getUiReadyMarkerPath();
+    const payload = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    // Only clear our own marker, so a second instance's file survives.
+    if (Number(payload?.pid) !== Number(process.pid)) return;
+    fs.unlinkSync(markerPath);
+  } catch {
+    // Missing or unreadable marker is not an error on shutdown.
+  }
 }
 
 function getScriptingShortcutsPath() {
@@ -565,6 +629,7 @@ function writeMainWindowPrefsData(value) {
 }
 
 function loadMainWindowPrefs() {
+  if (UI_TEST_WINDOW_SIZE) return { ...UI_TEST_WINDOW_SIZE };
   try {
     const parsed = readMainWindowPrefsData();
     const width = Math.round(Number(parsed?.width || 0));
@@ -578,6 +643,8 @@ function loadMainWindowPrefs() {
 }
 
 function saveMainWindowPrefs(sizeLike) {
+  // A test run must not mutate the user's persisted geometry.
+  if (UI_TEST_PROFILE) return;
   const width = Math.round(Number(sizeLike?.width || 0));
   const height = Math.round(Number(sizeLike?.height || 0));
   if (!Number.isFinite(width) || !Number.isFinite(height)) return;
@@ -608,6 +675,10 @@ function normalizeColorThemePreference(value, fallback = "") {
 }
 
 function loadColorThemePreference() {
+  if (UI_TEST_COLOR_THEME) {
+    const forced = normalizeColorThemePreference(UI_TEST_COLOR_THEME);
+    if (forced) return forced;
+  }
   return normalizeColorThemePreference(readMainWindowPrefsData()?.color_theme);
 }
 
@@ -1798,6 +1869,14 @@ const arcBotHost = registerArcBotIpc({
   findExecutableOnPath,
   runHostCommand,
 });
+registerUiAutomationIpc({
+  ipcMain,
+  BrowserWindow,
+  getMainWindow: () => win,
+  getArcodeWindow: () => arcodeWin,
+  getSplashWindow: () => splashWin,
+});
+
 function getIpcWindow(event) {
   return BrowserWindow.fromWebContents(event?.sender) || BrowserWindow.getFocusedWindow() || win;
 }
@@ -1953,6 +2032,9 @@ app.whenReady().then(async () => {
         closeSplash();
         win.show();
         win.focus();
+        // app_endpoint.json appears when the BACKEND is ready, well before the window paints, so a
+        // harness that waits on it screenshots the splash. This marker means the UI is visible.
+        writeUiReadyMarker();
         if (APP_MODE !== "arcode") {
           setTimeout(() => {
             checkForStartupUpdate().catch((err) => {
@@ -1988,6 +2070,7 @@ app.on("before-quit", async () => {
     closeProjectInstanceIndexWatch(watchId);
   }
   arcBotHost?.stop();
+  removeUiReadyMarker();
   await requestBackendShutdown();
   unregisterBackendClient();
   cleanupBackendEndpoint();

@@ -8,6 +8,7 @@ const contractSource = await readFile(
 );
 const {
   BERQUIST_SHERMAN_VARIANTS,
+  berquistShermanDisplayLabel,
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
 } = await import(`data:text/javascript;base64,${Buffer.from(contractSource).toString("base64")}`);
@@ -41,6 +42,7 @@ test("Berquist Sherman variants share one canonical frontend contract", () => {
   assert.deepEqual(getBerquistShermanContract("sr"), {
     variant: "sr",
     methodType: "B&S Settlement Rate Adjustment",
+    displayLabel: "Berquist Sherman SR",
     sourceKind: "berquist_sherman_sr",
     filenamePrefix: "BSSR@",
     jsonFormat: "arcrho-berquist-sherman-sr-method-by-tab-v1",
@@ -48,17 +50,36 @@ test("Berquist Sherman variants share one canonical frontend contract", () => {
   assert.deepEqual(getBerquistShermanContract("cra"), {
     variant: "cra",
     methodType: "B&S Case Reserve Adequacy Adjustment",
+    displayLabel: "Berquist Sherman CRA",
     sourceKind: "berquist_sherman_cra",
     filenamePrefix: "BSCRA@",
     jsonFormat: "arcrho-berquist-sherman-cra-method-by-tab-v1",
   });
   assert.equal(normalizeBerquistShermanVariant("B&S Settlement Rate Adjustment"), "sr");
   assert.equal(normalizeBerquistShermanVariant("berquist_sherman_cra"), "cra");
+  // The label a user sees resolves back to the same variant, so a display
+  // string can never break window routing or an Add command.
+  assert.equal(normalizeBerquistShermanVariant("Berquist Sherman CRA"), "cra");
+  assert.equal(berquistShermanDisplayLabel("B&S Settlement Rate Adjustment"), "Berquist Sherman SR");
+  assert.equal(berquistShermanDisplayLabel("DFM"), "DFM");
+});
+
+test("every B&S surface shows the ResQ label and persists the canonical identity", () => {
+  // The Project Instance table, the Add menu, the floating window title, and
+  // the method page all read the display label...
+  assert.match(tableSource, /case "methodType":\s*\n\s*return berquistShermanDisplayLabel\(getMethodType\(row\)\)/u);
+  assert.match(windowsSource, /const title = `\$\{targetPath\}\\\\\$\{contract\.displayLabel\}\\\\\$\{name\}`/u);
+  assert.match(methodPageSource, /els\.methodTypeInput\.value = contract\.displayLabel/u);
+  assert.match(methodPageSource, /document\.title = name \? `\$\{name\} - \$\{contract\.displayLabel\}`/u);
+  // ...while every persisted field keeps the canonical method type.
+  assert.match(windowsSource, /frame\.dataset\.windowMethodType = contract\.methodType/u);
+  assert.match(methodPageSource, /method_type: contract\.methodType/u);
+  assert.doesNotMatch(methodPageSource, /method_type: contract\.displayLabel/u);
 });
 
 test("Project Instance exposes two direct annual-triangle Add commands", () => {
-  assert.match(htmlSource, /data-row-action="add-berquist-sherman-sr">B&amp;S Settlement Rate Adjustment</u);
-  assert.match(htmlSource, /data-row-action="add-berquist-sherman-cra">B&amp;S Case Reserve Adequacy Adjustment</u);
+  assert.match(htmlSource, /data-row-action="add-berquist-sherman-sr">Berquist Sherman SR</u);
+  assert.match(htmlSource, /data-row-action="add-berquist-sherman-cra">Berquist Sherman CRA</u);
   assert.doesNotMatch(htmlSource, /data-row-action="add-bsm"/u);
   assert.match(tableSource, /getDatasetRecordValue\(record, "dataFormat"\)\) === "triangle"/u);
   assert.match(tableSource, /\["", "none"\]\.includes\(normalizeLookupKey\(getDatasetRecordValue\(record, "methodType"\)\)\)/u);

@@ -90,6 +90,7 @@ class _SettlementRateMethod:
 
 class _CaseReserveMethod:
     Notes = "Case reserve migration note"
+    LoessSpan = 9
 
     def __init__(self, output):
         self.Name = output.Name
@@ -311,6 +312,46 @@ class ResqBerquistShermanMigrationTests(unittest.TestCase):
         self.assertEqual(paid["origin_labels"], ["2023", "2024", "2025"])
         self.assertEqual(closed["origin_labels"], ["existing"])
 
+    def test_export_records_the_number_format_of_every_source_and_the_output(self):
+        # A restyled source must be recorded from its sidecar, not from the
+        # shared dataset-type preference, because that is what the method page
+        # renders the input view with.
+        sidecar_dir = self.rc_dir / "sidecars"
+        sidecar_dir.mkdir(parents=True, exist_ok=True)
+        (sidecar_dir / "Gross Loss--Paid.json").write_text(
+            json.dumps(
+                {
+                    "name": "Gross Loss--Paid",
+                    "data_format": "Triangle",
+                    "number_format": "0,000.00",
+                    "decimal_places": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        self._export(self.reserving_class.sr_triangle)
+        method_path = (
+            self.rc_dir
+            / "methods"
+            / "BSSR@Gross Loss--Paid - B&S Settlement Rate Adjustment.json"
+        )
+        formats = json.loads(method_path.read_text(encoding="utf-8"))["method_tab"]["number_formats"]
+        self.assertEqual(
+            sorted(formats["sources"]),
+            ["closed_claim_numbers", "paid_claims", "ultimate_claim_numbers"],
+        )
+        self.assertEqual(
+            formats["sources"]["paid_claims"],
+            {"number_format": "0,000.00", "decimal_places": 2},
+        )
+        # A source with no sidecar of its own falls back to the shared default.
+        self.assertEqual(
+            formats["sources"]["closed_claim_numbers"],
+            {"number_format": "0,000", "decimal_places": 0},
+        )
+        self.assertEqual(formats["derived"], {"number_format": "0,000", "decimal_places": 0})
+
     def test_case_reserve_export_and_index_use_canonical_identity(self):
         counts = self._export(self.reserving_class.cra_triangle)
         self.assertEqual(counts, {"bssr_written": 0, "bscra_written": 1})
@@ -334,6 +375,7 @@ class ResqBerquistShermanMigrationTests(unittest.TestCase):
             method_tab["average_case_reserve_selection"],
             ["latest", "latest", "latest"],
         )
+        self.assertEqual(method_tab["loess_span"], 9)
         self.assertNotIn("avg_case_reserve_exclusions", method_tab)
         self.assertNotIn("avg_paid_claims_exclusions", method_tab)
         self.assertNotIn("adjusted_incurred_claims", method_tab)

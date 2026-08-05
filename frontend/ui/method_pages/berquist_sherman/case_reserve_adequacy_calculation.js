@@ -3,7 +3,9 @@ import {
   booleanAt,
   columnCount,
   latestByColumn,
+  loessFit,
   matrixLike,
+  normalizeLoessSpan,
   normalizeTriangle,
   unweightedLogInflation,
   weightedFixedEffectsLogInflation,
@@ -140,6 +142,21 @@ function monotoneLatestAverages(latest) {
   });
 }
 
+// ResQ smooths the latest averages themselves, on the value scale rather than
+// the log scale the Settlement Rate loess uses, against development period.
+// Only the positive latest averages are observations. A local straight line
+// needs three weighted neighbours here: with two, ResQ reports 0.000 instead of
+// interpolating, so `minimumPoints` is 3 rather than the Settlement Rate's 2.
+function loessLatestAverages(latest, span) {
+  const points = latest
+    .map((value, index) => ({ x: index, y: value }))
+    .filter((point) => point.y > 0);
+  return latest.map((_, index) => {
+    const fitted = loessFit(points, index, span, 3);
+    return fitted === null ? 0 : fitted;
+  });
+}
+
 function selectInflation({
   selection,
   columnIndex,
@@ -161,12 +178,13 @@ function selectAverage({
   columnIndex,
   latest,
   monotone,
+  loess,
   user,
 }) {
   if (selection === "latest") return latest[columnIndex];
   if (selection === "monotone") return monotone[columnIndex];
-  if (selection === "user") return user[columnIndex];
-  throw new RangeError("Loess average case reserves are not supported in the annual MVP.");
+  if (selection === "loess") return loess[columnIndex];
+  return user[columnIndex];
 }
 
 export function calculateCaseReserveAdequacy(input = {}) {
@@ -285,7 +303,11 @@ export function calculateCaseReserveAdequacy(input = {}) {
   const monotoneAverageCaseReserves = monotoneLatestAverages(
     latestAverageCaseReserves,
   );
-  const loessAverageCaseReserves = Array(developmentCount).fill(null);
+  const loessSpan = normalizeLoessSpan(input.loessSpan);
+  const loessAverageCaseReserves = loessLatestAverages(
+    latestAverageCaseReserves,
+    loessSpan,
+  );
   const averageCaseReserveSelection = normalizeSelectionVector(
     input.averageCaseReserveSelection,
     developmentCount,
@@ -304,6 +326,7 @@ export function calculateCaseReserveAdequacy(input = {}) {
       columnIndex,
       latest: latestAverageCaseReserves,
       monotone: monotoneAverageCaseReserves,
+      loess: loessAverageCaseReserves,
       user: userAverageCaseReserves,
     }),
   );
@@ -337,6 +360,7 @@ export function calculateCaseReserveAdequacy(input = {}) {
   );
 
   return {
+    loessSpan,
     openClaimNumbers,
     caseReserves,
     averageCaseReserves,

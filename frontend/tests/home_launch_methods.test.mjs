@@ -14,6 +14,7 @@ test("Home groups every dataset and method launch under a title-case label", asy
     "cardOpenDataset",
     "cardOpenDfm",
     "cardOpenBornhuetterFerguson",
+    "cardOpenCapeCod",
     "cardOpenResultSelection",
   ]) {
     assert.match(view, new RegExp(`id="${cardId}"`, "u"));
@@ -54,7 +55,7 @@ test("Home uses larger group labels and quiet separators without a duplicate hea
   assert.match(styles, /border-top:\s*1px solid color-mix\(in srgb,[^;]*45%, transparent\)/u);
 });
 
-test("BF and Result Selection Home cards open restorable shell method tabs", async () => {
+test("BF, Cape Cod, and Result Selection Home cards open restorable shell method tabs", async () => {
   const view = await read("../ui/shell/home_view.js");
   const actions = await read("../ui/shell/tab_actions.js");
   const host = await read("../ui/shell/iframe_host.js");
@@ -62,13 +63,18 @@ test("BF and Result Selection Home cards open restorable shell method tabs", asy
   const state = await read("../ui/shell/shell_state.js");
 
   assert.match(view, /shell\.openBornhuetterFergusonTab/u);
+  assert.match(view, /shell\.openCapeCodTab/u);
   assert.match(view, /shell\.openResultSelectionTab/u);
   assert.match(actions, /export function openBornhuetterFergusonTab\(\)/u);
+  assert.match(actions, /export function openCapeCodTab\(\)/u);
   assert.match(actions, /export function openResultSelectionTab\(\)/u);
   assert.match(host, /method_pages\/bornhuetter_ferguson\/bornhuetter_ferguson\.html/u);
+  assert.match(host, /method_pages\/cape_cod\/cape_cod\.html/u);
   assert.match(host, /method_pages\/result_selection\/result_selection\.html/u);
   assert.match(shell, /openBornhuetterFergusonTab/u);
+  assert.match(shell, /openCapeCodTab/u);
   assert.match(shell, /openResultSelectionTab/u);
   assert.match(state, /bfTab: t\.type === "bornhuetter_ferguson"/u);
+  assert.match(state, /ccTab: t\.type === "cape_cod"/u);
   assert.match(state, /rsTab: t\.type === "result_selection"/u);
 });

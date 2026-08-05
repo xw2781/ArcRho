@@ -119,6 +119,10 @@ contextBridge.exposeInMainWorld("ADAHost", {
   clearCacheAndReload: (payload) => invoke("app-clear-cache-reload", payload),
   consumeClearCacheReloadRestore: () => invoke("app-consume-clear-cache-reload-restore"),
   focusWindow: () => invoke("focus-window"),
+  automationListWindows: () => invoke("automation-window-list"),
+  automationCapturePage: (payload) => invoke("automation-capture-page", payload),
+  automationSendInput: (payload) => invoke("automation-send-input", payload),
+  automationFocusWindow: (payload) => invoke("automation-window-focus", payload),
 });
 
 window.addEventListener("DOMContentLoaded", () => {

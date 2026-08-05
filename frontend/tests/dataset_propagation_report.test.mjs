@@ -9,7 +9,7 @@ import {
 } from "../ui/shared/tabs/data/data_tab_propagation_report.js";
 
 
-test("dataset propagation failures include calculated, DFM, Result Selection, and BF details", () => {
+test("dataset propagation failures include calculated, DFM, Result Selection, BF, and Cape Cod details", () => {
   const report = {
     ok: false,
     steps: [{
@@ -37,6 +37,10 @@ test("dataset propagation failures include calculated, DFM, Result Selection, an
         },
       }],
     },
+    cape_cod_updates: {
+      ok: false,
+      errors: [{ dataset_name: "CC Reported", reason: "Exposure vector refresh failed" }],
+    },
   };
 
   const failures = collectDatasetPropagationFailures(report);
@@ -48,6 +52,7 @@ test("dataset propagation failures include calculated, DFM, Result Selection, an
       ["Result Selection", "Selected Ultimate", "Ratio Basis is unreadable"],
       ["Bornhuetter Ferguson", "BF Reported", "Prior vector refresh failed"],
       ["Bornhuetter Ferguson downstream", "BF Downstream", "Dependent refresh failed"],
+      ["Cape Cod", "CC Reported", "Exposure vector refresh failed"],
     ],
   );
   assert.deepEqual(datasetPropagationFailureStep(failures[3]), {

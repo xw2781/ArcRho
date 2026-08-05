@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Rebuilt the B&S Case Reserve Adequacy Adjustment Method tab to match the Settlement Rate design, with ResQ's calculation views and in-grid selections.",
+  "details": [
+    "The Method tab now shows the ResQ sub-tabs in order: Reported, Closed, Open, Paid Claims, Incurred Claims, Case Reserves, Avg. Case Reserves, Avg. Paid, Avg. Selections, Adj. Avg. Case Reserves, and Adj. Incurred, each with its ResQ caption line.",
+    "Avg. Selections replaces the dropdown strip with the two ResQ selection grids: click a value to select an estimator for a development period, click a row label to select it everywhere, and type into the User Value row.",
+    "Current Average Case Reserves adds the Loess (n) estimator and its Loess Span stepper, and the span is saved with the method and imported from ResQ.",
+    "The Details tab lists the sources in the ResQ order: Paid Claims, Incurred Claims, Reported Claim Counts, Closed Claim Counts."
+  ]
+}

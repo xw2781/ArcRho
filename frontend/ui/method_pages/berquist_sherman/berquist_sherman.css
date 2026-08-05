@@ -10,9 +10,7 @@
   --bs-muted: #64748b;
   --bs-blue: #2b6df6;
   --bs-blue-soft: #eff6ff;
-  --bs-result: #fdf5a9;
   --bs-selected-band: #dff8f8;
-  --bs-input: #eef9cf;
   --bs-row-hover: #f8fafc;
   --bs-radius: 4px;
 }
@@ -151,6 +149,29 @@ input {
   width: 70px;
 }
 
+/* The Details decimal-places spinner matches the read-only length fields, so
+   the short numeric controls line up down the column. */
+.bsDecimalPlacesWrap {
+  width: 70px;
+}
+
+.bsDecimalPlacesInput {
+  width: 100%;
+  height: 30px;
+  padding-right: 28px;
+  padding-left: 8px;
+  color: var(--bs-text);
+  text-align: left;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.bsDecimalPlacesInput::-webkit-outer-spin-button,
+.bsDecimalPlacesInput::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
 .bsIconButton,
 .bsButton {
   height: 30px;
@@ -202,11 +223,21 @@ input {
   display: contents;
 }
 
+/* Eleven Case Reserve Adequacy sub-tabs do not fit a narrow window on one line,
+   so the nested strip wraps onto a second row the way the inner tab control
+   does in ResQ. */
+.bsMethodTabBar {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: calc(35px + var(--tabbed-tabbar-extra-y, 0px));
+  row-gap: 4px;
+}
+
 /* Client area of the nested tab strip. Like the outer page frame it takes the
    strip's bottom rule as its top edge, so the active calculation tab sits on a
    closed box the way the inner tab control does in ResQ.
-   The rows are a flex column, not fixed grid tracks: the caption and the summary
-   strip are hidden per view, so a column keeps the grid filling the rest of the
+   The rows are a flex column, not fixed grid tracks: the caption and the message
+   row are hidden per view, so a column keeps the grid filling the rest of the
    client area whichever rows are present. */
 .bsMethodFrame {
   display: flex;
@@ -217,6 +248,21 @@ input {
   border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
   border-top: 0;
   background: var(--bs-surface);
+}
+
+/* A view is one captioned grid, except the Case Reserve Adequacy "Avg.
+   Selections" view, which stacks two. Equal flex bases split the client area
+   between them the way ResQ splits that tab. */
+.bsGridPane {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* A stacked second grid needs air between its caption and the grid above it. */
+.bsGridPane + .bsGridPane > .bsMethodCaption {
+  padding-top: 10px;
 }
 
 /* Per-view caption row matching the ResQ tab headers, e.g. "Proportion
@@ -265,105 +311,6 @@ input {
 .bsLoessSpanInput::-webkit-inner-spin-button {
   margin: 0;
   -webkit-appearance: none;
-}
-
-.bsSelectionSummary {
-  flex: 0 0 auto;
-  min-height: 38px;
-  max-height: 178px;
-  padding: 6px var(--bs-method-pad);
-  overflow: auto;
-  color: var(--bs-muted);
-  border-bottom: 1px solid var(--bs-border);
-  background: var(--bs-surface-muted);
-}
-
-.bsSelectionHeading {
-  flex: 0 0 126px;
-  align-self: center;
-  color: var(--bs-text);
-  white-space: nowrap;
-}
-
-.bsSelectionEditorRow {
-  display: flex;
-  align-items: stretch;
-  gap: 5px;
-  width: max-content;
-  min-width: 100%;
-  margin-bottom: 5px;
-}
-
-.bsSelectionEditorRow:last-child {
-  margin-bottom: 0;
-}
-
-.bsSelectionEditor {
-  display: grid;
-  grid-template-columns: minmax(82px, 1fr) auto;
-  grid-template-areas:
-    "label label"
-    "number check";
-  align-items: center;
-  gap: 4px 6px;
-  min-width: 154px;
-  padding: 5px 6px;
-  border: 1px solid var(--bs-border);
-  border-radius: 3px;
-  color: var(--bs-text);
-  background: var(--bs-surface);
-}
-
-.bsSelectionEditor.wide {
-  display: flex;
-  align-items: center;
-  min-width: 396px;
-}
-
-.bsSelectionEditorLabel {
-  grid-area: label;
-  font-weight: 600;
-  color: var(--bs-text);
-  white-space: nowrap;
-}
-
-.bsSelectionSelect,
-.bsSelectionNumber {
-  height: 27px;
-  min-width: 0;
-  color: var(--bs-text);
-  border: 1px solid var(--bs-border);
-  border-radius: 3px;
-  outline: none;
-  background: var(--bs-input);
-}
-
-.bsSelectionSelect {
-  grid-area: number;
-  padding: 0 22px 0 6px;
-}
-
-.bsSelectionNumber {
-  grid-area: number;
-  width: 84px;
-  padding: 0 6px;
-}
-
-.bsSelectionNumber:disabled {
-  color: var(--bs-muted);
-  background: var(--bs-surface-muted);
-}
-
-.bsSelectionField {
-  display: grid;
-  grid-template-columns: 50px 112px 78px;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.bsSelectionField .bsSelectionNumber {
-  width: 78px;
 }
 
 .bsMethodMessage {
@@ -516,15 +463,11 @@ input {
   z-index: 5;
 }
 
-.bsMethodTable td.bsResultCell {
-  background: var(--bs-result);
-}
-
-/* Row hover must never repaint a fill that carries meaning: the result column,
-   a selected estimator or proportion source, the Proportion Settled band, or
-   the spacer row that separates it from the triangle. */
-.bsMethodTable tbody tr:not(:is(.bsAdjYearRow, .bsPropSelectedRow, .bsPropSpacerRow)):hover
-  td:not(:first-child):not(:is(.bsResultCell, .bsAdjSelectedSource, .bsPropSelectedSource)) {
+/* Row hover must never repaint a fill that carries meaning: a selected
+   estimator, proportion, or inflation source, the Proportion Settled and User
+   Value bands, or the rows that group or separate them. */
+.bsMethodTable tbody tr:not(:is(.bsAdjYearRow, .bsPropSelectedRow, .bsPropSpacerRow, .bsSelGroupRow)):hover
+  td:not(:first-child):not(:is(.bsAdjSelectedSource, .bsPropSelectedSource, .bsSelSelectedSource, .bsSelUserCell)) {
   background: var(--bs-row-hover);
 }
 
@@ -605,6 +548,58 @@ input {
   outline-offset: -1px;
   background: var(--bs-surface);
   color: var(--bs-text);
+}
+
+/* ResQ-style Case Reserve Adequacy selection grids on the "Avg. Selections"
+   view. They reuse the Adjusted Paid Claims grammar: a grouping row over its
+   estimators, the chosen source cell highlighted, and the Selected row echoing
+   it in accent colour. The User Value row is the editable pale band. */
+/* Only the label cell of a group row carries the caption; ResQ leaves the rest
+   of the row empty rather than banding it. */
+.bsMethodTable tr.bsSelGroupRow td:first-child {
+  font-weight: 700;
+}
+
+.bsMethodTable td.bsSelPick {
+  cursor: pointer;
+}
+
+.bsMethodTable td.bsSelPick:focus-visible {
+  outline: 2px solid rgba(43, 109, 246, 0.36);
+  outline-offset: -2px;
+}
+
+.bsMethodTable td.bsSelCell.bsSelSelectedSource,
+.bsMethodTable td.bsSelUserCell.bsSelSelectedSource {
+  background: var(--ar-spreadsheet-weighted-selection-fill);
+}
+
+.bsMethodTable td.bsSelUserCell {
+  background: var(--bs-selected-band);
+}
+
+.bsMethodTable td.bsSelSelectedValue,
+.bsMethodTable td.bsSelSelectedRowLabel {
+  color: var(--bs-blue);
+}
+
+.bsSelUserInput {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  color: inherit;
+  text-align: right;
+  font: inherit;
+  background: transparent;
+}
+
+.bsSelUserInput:focus {
+  outline: 1px solid var(--bs-blue);
+  outline-offset: -1px;
+  background: var(--bs-surface);
 }
 
 /* The save bar sits on the shell canvas outside the page frame, as on DFM/BF,

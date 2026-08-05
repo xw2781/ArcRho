@@ -57,15 +57,17 @@ test("review warning links request the related method window in the hosting Proj
 });
 
 test("all method pages show the shared warning only after successful save", async () => {
-  const [dfm, bf, rsMain, rsModel, bs] = await Promise.all([
+  const [dfm, bf, cc, rsMain, rsModel, bs] = await Promise.all([
     source("ui/method_pages/dfm/dfm_persistence.js"),
     source("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js"),
+    source("ui/method_pages/cape_cod/cape_cod_main.js"),
     source("ui/method_pages/result_selection/result_selection_main.js"),
     source("ui/method_pages/result_selection/result_selection_model.js"),
     source("ui/method_pages/berquist_sherman/berquist_sherman_main.js"),
   ]);
   assert.match(dfm, /await showMethodSaveReviewWarning\(response,\s*\{/u);
   assert.match(bf, /await showMethodSaveReviewWarning\(result,\s*\{/u);
+  assert.match(cc, /await showMethodSaveReviewWarning\(result,\s*\{/u);
   assert.match(rsMain, /showMethodSaveReviewWarning/u);
   assert.match(rsModel, /await showMethodSaveReviewWarning\(payload,\s*\{/u);
   assert.match(bs, /await showMethodSaveReviewWarning\(sidecar,\s*\{/u);
@@ -87,6 +89,7 @@ test("Project Instance resolves linked method metadata and falls back to Dataset
   assert.match(messages, /if \(openMethod && methodType === "dfm"\)/u);
   assert.match(messages, /else if \(openMethod && methodType === "result selection"\)/u);
   assert.match(messages, /else if \(openMethod && methodType === "bornhuetter ferguson"\)/u);
+  assert.match(messages, /else if \(openMethod && methodType === "cape cod"\)/u);
   assert.match(messages, /else if \(openMethod && bsVariant\)/u);
   assert.match(
     messages,

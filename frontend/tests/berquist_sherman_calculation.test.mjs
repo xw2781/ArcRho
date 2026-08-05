@@ -185,6 +185,73 @@ test("COL CRA exclusion flags are safely deferred because they do not change the
   }
 });
 
+// Two independent ResQ "Avg. Selections" tabs pin the loess average case
+// reserves. The values are read off a triangle whose latest average case
+// reserves are the `latest` vector below, so the test drives the estimator
+// through a triangle that reproduces exactly that diagonal.
+function triangleWithLatestAverageCaseReserves(latest) {
+  // Average case reserve = (incurred - paid) / (reported - closed), and one
+  // open claim per cell makes the latest diagonal the requested vector.
+  const count = latest.length;
+  const rows = Array.from({ length: count }, (_, rowIndex) => count - rowIndex);
+  return {
+    reportedClaimNumbers: rows.map((width) => Array(width).fill(2)),
+    closedClaimNumbers: rows.map((width) => Array(width).fill(1)),
+    paidClaims: rows.map((width) => Array(width).fill(0)),
+    incurredClaims: rows.map((width, rowIndex) => (
+      Array.from({ length: width }, (_, columnIndex) => (
+        // The latest diagonal of a column is its last populated row.
+        rowIndex === count - columnIndex - 1 ? latest[columnIndex] : 1
+      ))
+    )),
+  };
+}
+
+test("case-reserve adequacy loess reproduces the ResQ current average case reserves", () => {
+  const documented = caseReserveAdequacy.calculateCaseReserveAdequacy({
+    ...triangleWithLatestAverageCaseReserves([838.36, 454.033, 557.75, 622, 0, 0]),
+    loessSpan: 7,
+  });
+  assert.equal(documented.loessSpan, 7);
+  assert.deepEqual(
+    documented.latestAverageCaseReserves,
+    [838.36, 454.033, 557.75, 622, 0, 0],
+  );
+  assert.deepEqual(
+    documented.loessAverageCaseReserves.map((value) => Number(value.toFixed(3))),
+    [779.906, 593.765, 546.45, 626.727, 702.698, 776.541],
+  );
+
+  // The COL "Gross Loss--Paid" method leaves only three positive averages, and
+  // ResQ reports 0.000 across the row rather than interpolating between two.
+  const sparse = caseReserveAdequacy.calculateCaseReserveAdequacy({
+    ...triangleWithLatestAverageCaseReserves([2.315, 0, 0, 120.966, 0, 0, 0, 0, 0, 1.143]),
+    loessSpan: 7,
+  });
+  assert.deepEqual(sparse.loessAverageCaseReserves, Array(10).fill(0));
+  // Monotone regression still carries its blocks forward, as ResQ shows.
+  assert.deepEqual(
+    sparse.monotoneAverageCaseReserves.map((value) => Number(value.toFixed(3))),
+    [2.315, 2.315, 2.315, 61.054, 61.054, 61.054, 61.054, 61.054, 61.054, 61.054],
+  );
+});
+
+test("case-reserve adequacy selects the loess average case reserves", () => {
+  const developmentCount = 6;
+  const result = caseReserveAdequacy.calculateCaseReserveAdequacy({
+    ...triangleWithLatestAverageCaseReserves([838.36, 454.033, 557.75, 622, 0, 0]),
+    loessSpan: 7,
+    averageCaseReserveSelection: Array(developmentCount).fill("loess"),
+    inflationSelection: Array(developmentCount).fill("user"),
+    userInflation: Array(developmentCount).fill(0),
+  });
+
+  assert.deepEqual(
+    result.selectedAverageCaseReserves,
+    result.loessAverageCaseReserves,
+  );
+});
+
 test("case-reserve adequacy supports semantic estimator selections", () => {
   const common = {
     reportedClaimNumbers: [[20, 40], [30]],

@@ -35,3 +35,21 @@ def complete_ui_automation_command(
 ) -> Dict[str, Any]:
     require_local_client(request, "UI automation")
     return ui_automation_service.complete_command(command_id, req.ok, req.result, req.error)
+
+
+@router.post("/ui_automation/commands/{command_id}/cancel")
+def cancel_ui_automation_command(command_id: str, request: Request) -> Dict[str, Any]:
+    require_local_client(request, "UI automation")
+    return ui_automation_service.cancel_command(command_id)
+
+
+@router.post("/ui_automation/commands/drain")
+def drain_ui_automation_commands(request: Request) -> Dict[str, Any]:
+    require_local_client(request, "UI automation")
+    return ui_automation_service.drain_pending()
+
+
+@router.get("/ui_automation/queue")
+def get_ui_automation_queue(request: Request) -> Dict[str, Any]:
+    require_local_client(request, "UI automation")
+    return ui_automation_service.queue_status()

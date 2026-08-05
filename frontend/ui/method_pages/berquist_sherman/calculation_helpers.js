@@ -1,3 +1,51 @@
+export const DEFAULT_LOESS_SPAN = 7;
+const MIN_LOESS_SPAN = 2;
+const MAX_LOESS_SPAN = 99;
+
+export function normalizeLoessSpan(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return DEFAULT_LOESS_SPAN;
+  return Math.min(MAX_LOESS_SPAN, Math.max(MIN_LOESS_SPAN, Math.trunc(number)));
+}
+
+// ResQ "Loess (n)": a tri-cube weighted straight-line fit over the span + 1
+// nearest neighbours, evaluated at `target`. The furthest neighbour's weight is
+// exactly zero, so it drops out of the fit. Returns null when too few
+// neighbours carry weight; each method decides what a degenerate fit means.
+// Settlement Rate fits log paid claims against closed counts and reverts to its
+// pair-wise interpolation, while Case Reserve Adequacy fits the latest average
+// case reserves against development period and reports zero.
+export function loessFit(points, target, span, minimumPoints = 2) {
+  if (!Number.isFinite(target) || points.length < minimumPoints) return null;
+
+  const distances = points
+    .map((point) => Math.abs(point.x - target))
+    .sort((a, b) => a - b);
+  const bandwidth = distances[Math.min(span, points.length - 1)];
+  const weighted = [];
+  for (const point of points) {
+    const distance = Math.abs(point.x - target);
+    if (!(bandwidth > 0) || distance >= bandwidth) continue;
+    const scaled = distance / bandwidth;
+    weighted.push({ x: point.x, y: point.y, weight: (1 - scaled ** 3) ** 3 });
+  }
+  if (weighted.length < minimumPoints) return null;
+
+  const weightSum = weighted.reduce((sum, point) => sum + point.weight, 0);
+  const meanX = weighted.reduce((sum, point) => sum + point.weight * point.x, 0) / weightSum;
+  const meanY = weighted.reduce((sum, point) => sum + point.weight * point.y, 0) / weightSum;
+  const sxx = weighted.reduce(
+    (sum, point) => sum + point.weight * (point.x - meanX) ** 2,
+    0,
+  );
+  if (!(sxx > 0)) return null;
+  const slope = weighted.reduce(
+    (sum, point) => sum + point.weight * (point.x - meanX) * (point.y - meanY),
+    0,
+  ) / sxx;
+  return meanY + slope * (target - meanX);
+}
+
 export function normalizeTriangle(value, name) {
   if (!Array.isArray(value) || value.length === 0) {
     throw new TypeError(`${name} must be a non-empty triangle.`);

@@ -22,14 +22,15 @@ test("every B&S source picker uses a calculation role key", () => {
     html.matchAll(/data-picker-role="([^"]+)"/gu),
     (match) => match[1],
   );
+  // Both variants list their sources in the ResQ Details tab order.
   assert.deepEqual(roles, [
     "paid_claims",
     "closed_claim_numbers",
     "ultimate_claim_numbers",
+    "paid_claims",
+    "incurred_claims",
     "reported_claim_numbers",
     "closed_claim_numbers",
-    "incurred_claims",
-    "paid_claims",
   ]);
   assert.doesNotMatch(html, /data-picker-role="(?:sr|cra)_/u);
 });
@@ -65,18 +66,35 @@ test("B&S keeps previews reproducible across invalid, clear, picker, and save pa
     /blockSaveForActiveSourcePreviews\(\)[\s\S]+await refreshSourceRoles\(\);[\s\S]+blockSaveForActiveSourcePreviews\(\)/u,
   );
   assert.match(main, /state\.sourceNames\[role\.key\] = priorName/u);
-  assert.match(main, /input\.addEventListener\("input"/u);
+  assert.match(main, /input\?\.addEventListener\("input"/u);
 });
 
 test("result-affecting MVP selections remain editable and persisted", () => {
-  assert.match(main, /\["case_column", "case_all", "paid_column", "paid_all", "user"\]/u);
-  assert.match(main, /\["latest", "monotone", "user"\]/u);
+  const gridRows = main.slice(
+    main.indexOf("const INFLATION_GRID_ROWS"),
+    main.indexOf("const state = {"),
+  );
+  const estimators = Array.from(
+    gridRows.matchAll(/method: "([a-z_]+)"/gu),
+    (match) => match[1],
+  );
+  assert.deepEqual(estimators, [
+    "case_column",
+    "case_all",
+    "paid_column",
+    "paid_all",
+    "user",
+    "latest",
+    "monotone",
+    "loess",
+    "user",
+  ]);
   assert.match(main, /methodTab\.selected_adjustment = cloneMatrix/u);
   assert.match(main, /methodTab\.loess_span = state\.loessSpan/u);
   assert.match(main, /methodTab\.inflation_selection = state\.inflationSelection\.slice/u);
 });
 
-test("SR method views follow the ResQ sub-tab order with in-grid selection UX", () => {
+test("both variants follow the ResQ sub-tab order with in-grid selection UX", () => {
   const labels = Array.from(
     main.matchAll(/label: "([^"]+)",\s*\n?\s*caption:/gu),
     (match) => match[1],
@@ -87,12 +105,45 @@ test("SR method views follow the ResQ sub-tab order with in-grid selection UX", 
     "Proportion Settled",
     "Selected Numbers Closed",
     "Adjusted Paid Claims",
+    "Reported",
+    "Closed",
+    "Open",
+    "Paid Claims",
+    "Incurred Claims",
+    "Case Reserves",
+    "Avg. Case Reserves",
+    "Avg. Paid",
+    "Avg. Selections",
+    "Adj. Avg. Case Reserves",
+    "Adj. Incurred",
   ]);
-  assert.match(main, /currentView: variant === "sr" \? "paidClaims" : "output"/u);
+  // Each variant opens on the first ResQ sub-tab.
+  assert.match(main, /currentView: VIEW_DEFINITIONS\[variant\]\[0\]\.key/u);
   assert.match(main, /Select Leading Diagonal/u);
   assert.match(main, /bsPropSelectedInput/u);
   assert.match(main, /state\.selectedProportionIsDefault\[devIndex\] = false/u);
   assert.match(main, /Paid Claims Adjusted to Constant Proportions Settled/u);
+});
+
+test("CRA Avg. Selections stacks two ResQ selection grids in the Method frame", () => {
+  assert.match(main, /secondaryCaption: "Current Average Case Reserves:"/u);
+  assert.match(html, /<div class="bsGridPane" id="bsSecondaryPane" hidden>/u);
+  assert.match(html, /bsSecondaryHead/u);
+  assert.match(html, /bsSecondaryBody/u);
+  // The single Loess Span control moves to the caption that owns the estimator.
+  assert.match(main, /loessCaption\.appendChild\(els\.loessSpanField\)/u);
+  assert.match(main, /state\.currentView === "avgSelections" \? els\.secondaryCaption : null/u);
+  assert.doesNotMatch(html, /bsSelectionSummary/u);
+  assert.doesNotMatch(css, /bsSelectionSummary/u);
+});
+
+test("CRA selection grids support per-column, whole-row, and user-value edits", () => {
+  assert.match(main, /dataset\.selectMethod = row\.method/u);
+  assert.match(main, /dataset\.selectDev = String\(devIndex\)/u);
+  assert.match(main, /if \(devIndex === null\) \{\s*\n\s*for \(let index = 0/u);
+  assert.match(main, /state\[config\.selectionKey\]\[devIndex\] = "user"/u);
+  assert.match(main, /focusSelectionUserInput\(scope, devIndex\)/u);
+  assert.match(css, /\.bsMethodTable td\.bsSelUserCell \{[^}]*background: var\(--bs-selected-band\);/u);
 });
 
 test("SR adjusted paid grid supports per-cell, per-origin, and all-origin selection", () => {
@@ -104,6 +155,46 @@ test("SR adjusted paid grid supports per-cell, per-origin, and all-origin select
   assert.match(main, /state\.loessSpan = normalizeLoessSpan\(method\.loess_span\)/u);
   assert.match(html, /bsLoessSpanInput/u);
   assert.match(html, /tabbedPageTabBar/u);
+});
+
+test("input views keep their dataset instance's number format", () => {
+  // One canonical formatter, and the resolver routes a source view to its own
+  // dataset instance while everything calculated uses the Details format.
+  assert.match(main, /from "\/ui\/shared\/dataset\/dataset_number_format\.js"/u);
+  assert.doesNotMatch(main, /toLocaleString\(undefined, \{\s*\n\s*maximumFractionDigits/u);
+  assert.match(
+    main,
+    /function viewNumberFormat\(viewKey = state\.currentView\) \{[\s\S]*?SOURCE_VIEW_ROLES\[viewKey\][\s\S]*?roleNumberFormat\(roleKey\) : derivedNumberFormat\(\)/u,
+  );
+  assert.match(main, /roleNumberFormat\("ultimate_claim_numbers"\)/u);
+  // Every source role is recorded, and the record round-trips through the
+  // method JSON rather than the output sidecar alone.
+  assert.match(main, /methodTab\.number_formats = buildNumberFormatsRecord\(\)/u);
+  assert.match(main, /applyNumberFormatsRecord\(method\.number_formats\)/u);
+});
+
+test("the Details format governs the calculated triangles and syncs silently", () => {
+  assert.match(html, /id="bsNumberFormatInput"/u);
+  assert.match(html, /id="bsDecimalPlacesInput"/u);
+  assert.match(main, /DATASET_NUMBER_FORMAT_PRESETS/u);
+  // Editing the Details pair is a real edit; a source restyle is not.
+  assert.match(main, /function applyDerivedNumberFormat\([\s\S]*?markDirty\(\);/u);
+  assert.match(main, /derivedNumberFormat: derivedNumberFormat\(\)/u);
+  assert.doesNotMatch(main, /sourceNumberFormats:[\s\S]{0,40}configSnapshot/u);
+  // The silent rewrite preserves every other saved field, including the
+  // method's last-modified stamp and the output's review status.
+  const rewriteStart = main.indexOf("async function rewriteRecordedNumberFormats()");
+  assert.ok(rewriteStart >= 0, "rewriteRecordedNumberFormats not found");
+  const rewriteBody = main
+    .slice(rewriteStart, main.indexOf("\n}\n", rewriteStart))
+    .replace(/^\s*\/\/.*$/gmu, "");
+  assert.match(
+    rewriteBody,
+    /data: \{ \.\.\.existing\.data, method_tab: \{ \.\.\.methodTab, number_formats: record \} \}/u,
+  );
+  for (const forbidden of ["markDirty", "last_modified", "saveSidecar", "status"]) {
+    assert.doesNotMatch(rewriteBody, new RegExp(forbidden, "u"), forbidden);
+  }
 });
 
 test("B&S frames its pages on the shared tabbed-page gutter like DFM", () => {
@@ -139,27 +230,31 @@ test("row hover never repaints a meaningful cell fill", () => {
     ".bsAdjYearRow",
     ".bsPropSelectedRow",
     ".bsPropSpacerRow",
-    ".bsResultCell",
+    ".bsSelGroupRow",
     ".bsAdjSelectedSource",
     ".bsPropSelectedSource",
+    ".bsSelSelectedSource",
+    ".bsSelUserCell",
   ]) {
     assert.ok(excluded.has(selector), `row hover must leave ${selector} alone`);
   }
 });
 
 test("the nested calculation strip encloses its client area like ResQ", () => {
-  // The caption, summary, message, and table live inside the nested strip's own
-  // frame, not directly on the Method page.
+  // The message row and every captioned grid pane live inside the nested
+  // strip's own frame, not directly on the Method page.
   assert.match(
     html,
-    /<div class="bsMethodFrame">[\s\S]*bsMethodCaption[\s\S]*bsSelectionSummary[\s\S]*bsMethodMessage[\s\S]*bsTableWrap[\s\S]*<\/div>\s*<\/section>/u,
+    /<div class="bsMethodFrame">[\s\S]*bsMethodMessage[\s\S]*bsMethodCaption[\s\S]*bsTableWrap[\s\S]*bsSecondaryCaption[\s\S]*bsTableWrap[\s\S]*<\/div>\s*<\/section>/u,
   );
   // The frame takes the strip's bottom rule as its top edge and shares the
   // strip's gutter, so the active calculation tab sits on a closed box.
   assert.match(css, /\.bsMethodFrame \{[^}]*margin: 0 var\(--bs-method-inset\) var\(--bs-method-inset\);/u);
   assert.match(css, /\.bsMethodFrame \{[^}]*border-top: 0;/u);
   // Rows inside the frame are inset by the frame's own padding, not the gutter.
-  for (const rule of ["bsMethodCaption", "bsSelectionSummary", "bsMethodMessage", "bsTableWrap"]) {
+  for (const rule of ["bsMethodCaption", "bsMethodMessage", "bsTableWrap"]) {
     assert.match(css, new RegExp(String.raw`\.${rule} \{[^}]*var\(--bs-method-pad\)`, "u"), rule);
   }
+  // Two stacked grids share the client area evenly, as the ResQ tab does.
+  assert.match(css, /\.bsGridPane \{[^}]*flex: 1 1 0;/u);
 });
