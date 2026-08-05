@@ -95,6 +95,12 @@ class DatasetSidecarStatusServiceTests(unittest.TestCase):
             "BF Output",
             method_type=status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON,
             source_kind="bornhuetter_ferguson",
+            dependents=["CC Output"],
+        )
+        self.write_sidecar(
+            "CC Output",
+            method_type=status_service.METHOD_TYPE_CAPE_COD,
+            source_kind="cape_cod",
             dependents=["RS Output"],
         )
         self.write_sidecar(
@@ -117,6 +123,7 @@ class DatasetSidecarStatusServiceTests(unittest.TestCase):
             "B&S CRA Output",
             "B&S SR Output",
             "BF Output",
+            "CC Output",
             "RS Output",
         ):
             self.assertEqual(self.status(name), status_service.STATUS_REVIEW_NEEDED)
@@ -127,6 +134,7 @@ class DatasetSidecarStatusServiceTests(unittest.TestCase):
                 "B&S CRA Output",
                 "B&S SR Output",
                 "BF Output",
+                "CC Output",
                 "RS Output",
             ],
         )

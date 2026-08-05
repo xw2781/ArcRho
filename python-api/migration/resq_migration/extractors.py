@@ -22,6 +22,16 @@ from arcrho_api.bornhuetter_ferguson_contract import (
     build_bornhuetter_ferguson_output_sidecar,
     recalculate_bornhuetter_ferguson_method,
 )
+from arcrho_api.cape_cod_contract import (
+    CC_JSON_FORMAT,
+    CC_METHOD_TYPE,
+    CC_PRIOR_ULTIMATE_MODES,
+    CC_SCALING_TYPES,
+    CC_SOURCE_KIND,
+    build_cape_cod_output_sidecar,
+    cape_cod_precedent_names,
+    recalculate_cape_cod_method,
+)
 from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variants
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 
@@ -42,6 +52,7 @@ from .core import (
     METHOD_TYPE_BF_CODE,
     METHOD_TYPE_BS_CRA_CODE,
     METHOD_TYPE_BS_SR_CODE,
+    METHOD_TYPE_CAPE_COD_CODE,
     METHOD_TYPE_NONE_CODE,
     METHOD_TYPE_DFM_CODE,
     METHOD_TYPE_RESULT_SELECTION_CODE,
@@ -67,7 +78,11 @@ from .core import (
     _write_csv_matrix,
     _write_json,
 )
-from .number_formats import dataset_type_decimal_places, dataset_type_number_format
+from .number_formats import (
+    dataset_type_decimal_places,
+    dataset_type_number_format,
+    number_format_entry,
+)
 
 
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
@@ -82,11 +97,13 @@ BS_SR_ADJUSTMENT_TYPES = {
     3: "loess",
 }
 # Mirrors normalizeLoessSpan in
-# frontend/ui/method_pages/berquist_sherman/settlement_rate_calculation.js so both
-# producers persist the same loess_span for the same logical inputs.
-BS_SR_DEFAULT_LOESS_SPAN = 7
-BS_SR_MIN_LOESS_SPAN = 2
-BS_SR_MAX_LOESS_SPAN = 99
+# frontend/ui/method_pages/berquist_sherman/calculation_helpers.js so both
+# producers persist the same loess_span for the same logical inputs. Both B&S
+# variants carry one, for the Settlement Rate adjusted paid claims and for the
+# Case Reserve Adequacy current average case reserves.
+BS_DEFAULT_LOESS_SPAN = 7
+BS_MIN_LOESS_SPAN = 2
+BS_MAX_LOESS_SPAN = 99
 BS_CRA_INFLATION_TYPES = {
     0: "case_column",
     1: "case_all",
@@ -99,6 +116,13 @@ BS_CRA_AVERAGE_CASE_RESERVE_TYPES = {
     1: "monotone",
     2: "loess",
     3: "user",
+}
+# Mirrors ROLE_DEFINITIONS in
+# frontend/ui/method_pages/berquist_sherman/berquist_sherman_main.js: both
+# producers record one number format per source role, in the same order.
+BS_SOURCE_ROLES = {
+    "sr": ("paid_claims", "closed_claim_numbers", "ultimate_claim_numbers"),
+    "cra": ("paid_claims", "incurred_claims", "reported_claim_numbers", "closed_claim_numbers"),
 }
 
 _DEFER_GRAPH_ENRICHMENT_DEPTH: ContextVar[int] = ContextVar(
@@ -128,7 +152,14 @@ def _apply_graph_meta_best_effort(meta: dict, dataset_type: str, rc_dir: Path, *
         meta["graph_metadata_error"] = str(exc)
 
 
-def configure_extractors(*, project_name: str, rs_json_format: str, method_data_dir: str, bf_json_format: str | None = None) -> None:
+def configure_extractors(
+    *,
+    project_name: str,
+    rs_json_format: str,
+    method_data_dir: str,
+    bf_json_format: str | None = None,
+    cc_json_format: str | None = None,
+) -> None:
     global PROJECT_NAME, RS_JSON_FORMAT, METHOD_DATA_DIR
 
     PROJECT_NAME = str(project_name)
@@ -136,6 +167,10 @@ def configure_extractors(*, project_name: str, rs_json_format: str, method_data_
     if bf_json_format and str(bf_json_format) != BF_JSON_FORMAT:
         raise ValueError(
             f"The ResQ producer only supports canonical BF format {BF_JSON_FORMAT!r}."
+        )
+    if cc_json_format and str(cc_json_format) != CC_JSON_FORMAT:
+        raise ValueError(
+            f"The ResQ producer only supports canonical Cape Cod format {CC_JSON_FORMAT!r}."
         )
     METHOD_DATA_DIR = str(method_data_dir)
 
@@ -492,8 +527,8 @@ def _bs_loess_span(method) -> int:
     try:
         span = int(raw)
     except (TypeError, ValueError):
-        return BS_SR_DEFAULT_LOESS_SPAN
-    return min(BS_SR_MAX_LOESS_SPAN, max(BS_SR_MIN_LOESS_SPAN, span))
+        return BS_DEFAULT_LOESS_SPAN
+    return min(BS_MAX_LOESS_SPAN, max(BS_MIN_LOESS_SPAN, span))
 
 
 def _bs_selection_label(value: object, labels: dict[int, str], field_name: str) -> str:
@@ -635,6 +670,7 @@ def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
                 float(_bs_indexed_value(method, "UserAvgCaseReserves", dev_index))
                 for dev_index in range(1, development_count + 1)
             ],
+            "loess_span": _bs_loess_span(method),
         }
         json_format = BS_CRA_JSON_FORMAT
 
@@ -712,6 +748,45 @@ def _backfill_berquist_sherman_precedent_origin_labels(
         _write_json(sidecar_path, sidecar)
 
 
+def _dataset_number_format_entry(rc_dir: Path, dataset_name: object) -> dict:
+    """The format a dataset instance displays with, as the frontend reads it.
+
+    The sidecar is the source of truth because the user can restyle a dataset
+    after import; the shared dataset-type preference only seeds a new one.
+    """
+    name = _normalize_import_name(dataset_name)
+    if not name:
+        return number_format_entry(None)
+    sidecar = _safe_read_json(rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name))
+    if isinstance(sidecar, dict) and str(sidecar.get("number_format") or "").strip():
+        return number_format_entry(sidecar.get("number_format"), sidecar.get("decimal_places"))
+    dataset_type = _normalize_import_name(
+        sidecar.get("dataset_type") if isinstance(sidecar, dict) else ""
+    ) or name
+    return number_format_entry(dataset_type_number_format(rc_dir, dataset_type))
+
+
+def _berquist_sherman_number_formats(payload: dict, variant: str, rc_dir: Path) -> dict:
+    """The recorded formats a B&S method page renders its grids with.
+
+    ``derived`` is the output dataset's own format, used for every calculated
+    triangle; each source entry mirrors that input dataset instance.
+    """
+    method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
+    details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    output_type = _normalize_import_name(details_tab.get("output_type")) or _normalize_import_name(
+        details_tab.get("name")
+    )
+    role_keys = BS_SOURCE_ROLES[variant]
+    return {
+        "derived": number_format_entry(dataset_type_number_format(rc_dir, output_type)),
+        "sources": {
+            role: _dataset_number_format_entry(rc_dir, method_tab.get(role))
+            for role in role_keys
+        },
+    }
+
+
 def write_berquist_sherman_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     del rc_path
     variant = _bs_variant_from_payload(payload)
@@ -729,6 +804,14 @@ def write_berquist_sherman_export(payload: dict, rc_path: str, rc_dir: Path) -> 
     method_payload = dict(payload)
     method_payload.pop("_sidecar_notes", None)
     method_payload.pop("_sidecar_status", None)
+    # The recorded formats need the reserving class on disk, so they are filled
+    # in here rather than during the COM extraction.
+    method_tab = method_payload.get("method_tab")
+    if isinstance(method_tab, dict):
+        method_payload["method_tab"] = {
+            **method_tab,
+            "number_formats": _berquist_sherman_number_formats(method_payload, variant, rc_dir),
+        }
     _write_json(out_path, method_payload)
     _backfill_berquist_sherman_precedent_origin_labels(method_payload, variant, rc_dir)
     return out_path
@@ -849,6 +932,7 @@ def write_vector_export(
     rc_dir: Path,
     *,
     bf_method_payload: dict | None = None,
+    cc_method_payload: dict | None = None,
 ) -> Path:
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
@@ -863,15 +947,30 @@ def write_vector_export(
     is_result_selection = _is_result_selection_method_type(method_type)
     raw_method_type_code = _method_type_code(method_type, -1)
     is_bornhuetter_ferguson = _clean_name(payload.get("source_kind")) == BF_SOURCE_KIND
-    meta_method_type = BF_METHOD_TYPE if is_bornhuetter_ferguson else ("None" if raw_method_type_code == METHOD_TYPE_BF_CODE else method_type)
-    meta_method_type_code = METHOD_TYPE_BF_CODE if is_bornhuetter_ferguson else (METHOD_TYPE_NONE_CODE if raw_method_type_code == METHOD_TYPE_BF_CODE else payload.get("method_type_code", _method_type_code(method_type, 0)))
-    is_engine_generated = (not is_result_selection) and (not is_bornhuetter_ferguson) and _is_generated_dataset_type(dataset_type)
-    formula = "" if is_engine_generated or is_bornhuetter_ferguson else raw_formula
+    is_cape_cod = _clean_name(payload.get("source_kind")) == CC_SOURCE_KIND
+    if is_bornhuetter_ferguson:
+        meta_method_type = BF_METHOD_TYPE
+        meta_method_type_code = METHOD_TYPE_BF_CODE
+    elif is_cape_cod:
+        meta_method_type = CC_METHOD_TYPE
+        meta_method_type_code = METHOD_TYPE_CAPE_COD_CODE
+    elif raw_method_type_code in {METHOD_TYPE_BF_CODE, METHOD_TYPE_CAPE_COD_CODE}:
+        # A method-coded vector without its exported method imports as a plain dataset.
+        meta_method_type = "None"
+        meta_method_type_code = METHOD_TYPE_NONE_CODE
+    else:
+        meta_method_type = method_type
+        meta_method_type_code = payload.get("method_type_code", _method_type_code(method_type, 0))
+    is_method_output = is_bornhuetter_ferguson or is_cape_cod
+    is_engine_generated = (not is_result_selection) and (not is_method_output) and _is_generated_dataset_type(dataset_type)
+    formula = "" if is_engine_generated or is_method_output else raw_formula
     updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
     if is_result_selection:
         source_kind = "result_selection"
     elif is_bornhuetter_ferguson:
         source_kind = BF_SOURCE_KIND
+    elif is_cape_cod:
+        source_kind = CC_SOURCE_KIND
     elif is_engine_generated:
         source_kind = "engine"
     elif formula:
@@ -885,13 +984,15 @@ def write_vector_export(
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
-        "calculated": bool((formula and not is_engine_generated) or is_result_selection or is_bornhuetter_ferguson),
+        "calculated": bool((formula and not is_engine_generated) or is_result_selection or is_method_output),
         "formula": formula,
         "source": (
             "resq_result_selection_vector"
             if is_result_selection
             else "resq_bornhuetter_ferguson_vector"
             if is_bornhuetter_ferguson
+            else "resq_cape_cod_vector"
+            if is_cape_cod
             else "resq_vector"
         ),
         "method_type": meta_method_type,
@@ -933,10 +1034,32 @@ def write_vector_export(
             append_audit=not existing or output_changed,
             status=normalize_method_status(payload.get("status")),
         )
-    elif is_bornhuetter_ferguson:
-        # A BF-coded vector without a matching exported method is an ordinary
-        # imported dataset, not a BF publication. Preserve the legacy fallback
-        # rather than manufacturing an incomplete canonical BF sidecar.
+    elif is_cape_cod and isinstance(cc_method_payload, dict):
+        existing = _safe_read_json(meta_path)
+        publication_revision = _clean_name(
+            cc_method_payload.get("method_metadata", {}).get("publication_revision")
+            if isinstance(cc_method_payload.get("method_metadata"), dict)
+            else ""
+        )
+        output_changed = _clean_name(existing.get("publication_revision")) != publication_revision
+        meta = build_cape_cod_output_sidecar(
+            cc_method_payload,
+            project_name=PROJECT_NAME,
+            reserving_class=rc_path,
+            csv_file=csv_name,
+            existing=existing,
+            notes=str(payload.get("notes") or ""),
+            timestamp=updated_at,
+            user=payload.get("user", ""),
+            output_changed=output_changed,
+            append_audit=not existing or output_changed,
+            status=normalize_method_status(payload.get("status")),
+        )
+    elif is_method_output:
+        # A BF/Cape Cod-coded vector without a matching exported method is an
+        # ordinary imported dataset, not a method publication. Preserve the
+        # legacy fallback rather than manufacturing an incomplete canonical
+        # method sidecar.
         meta.pop("formula", None)
         meta["status"] = normalize_method_status(payload.get("status"))
         source_names = [
@@ -1342,12 +1465,12 @@ def _bf_origin_labels(method, output_vector, fallback_count: int = 0) -> list[st
     return labels
 
 
-def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool) -> dict:
-    """Extract the exact source vector BF consumes, without filesystem I/O."""
+def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool, context: str = "BF") -> dict:
+    """Extract the exact source vector a method consumes, without filesystem I/O."""
 
     name = _normalize_import_name(_safe_attr(source, "Name", ""))
     if not name:
-        raise ValueError("A ResQ BF precedent does not expose a dataset name.")
+        raise ValueError(f"A ResQ {context} precedent does not expose a dataset name.")
     values: list = []
     successful_reads = 0
     errors: list[Exception] = []
@@ -1384,7 +1507,7 @@ def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool) -> di
             values.append(None)
     if origin_labels and successful_reads <= 0:
         detail = f": {errors[0]}" if errors else ""
-        raise ValueError(f"Failed to read BF source {name!r}{detail}")
+        raise ValueError(f"Failed to read {context} source {name!r}{detail}")
     return {
         "name": name,
         "origin_labels": list(origin_labels),
@@ -1516,6 +1639,175 @@ def _find_bornhuetter_ferguson_for_vector(reserving_class, vector_name: str):
     target = _normalize_import_name(vector_name).lower()
     try:
         collection = _call_member(reserving_class, "BFMethods")
+        try:
+            item = collection.Item(vector_name)
+            if item is not None:
+                return item
+        except Exception:
+            pass
+        for item in collection:
+            output_vector = _safe_attr(item, "OutputVector", None)
+            output_name = _normalize_import_name(_safe_attr(output_vector, "Name", "")).lower()
+            method_name = _normalize_import_name(_safe_attr(item, "Name", "")).lower()
+            if target and (output_name == target or method_name == target):
+                return item
+    except Exception:
+        return None
+    return None
+
+
+def _cc_indexed_value(method, member_name: str, origin_index: int):
+    return _try_call_member(
+        method,
+        member_name,
+        [((origin_index,), {}), ((), {"OriginIndex": origin_index})],
+    )
+
+
+def _cc_code_label(value: object, labels: tuple[str, ...], field_name: str) -> str:
+    try:
+        code = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid ResQ {field_name} value: {value!r}.") from exc
+    if not 0 <= code < len(labels):
+        raise ValueError(f"Unsupported ResQ {field_name} code: {code}.")
+    return labels[code]
+
+
+def export_cape_cod(method) -> dict:
+    """Extract a complete, self-contained canonical Cape Cod v1 payload from ResQ."""
+
+    output_vector = _safe_attr(method, "OutputVector", None)
+    name = _normalize_import_name(_safe_attr(output_vector, "Name", "")) or _normalize_import_name(_safe_attr(method, "Name", ""))
+    dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
+    output_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
+    dataset_category = _normalize_import_name(
+        _safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")
+    )
+    origin_length = _safe_int_attr(method, "OriginLength", _safe_int_attr(output_vector, "PeriodLength", 12))
+    origin_labels = _bf_origin_labels(method, output_vector)
+    if not origin_labels or any(not label for label in origin_labels):
+        raise ValueError(f"Cape Cod method {name!r} does not expose complete origin labels.")
+    latest_source = _safe_attr(method, "Latest", None)
+    exposure_source = _safe_attr(method, "Exposure", None)
+    prior_source = _safe_attr(method, "PercentageDeveloped", None)
+    latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True, context="Cape Cod")
+    exposure_snapshot = _bf_source_snapshot(exposure_source, origin_labels, latest=False, context="Cape Cod")
+    prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False, context="Cape Cod")
+    prior_ultimate_mode = _cc_code_label(
+        _safe_attr(method, "PercentageDevelopedType", 0),
+        CC_PRIOR_ULTIMATE_MODES,
+        "PercentageDevelopedType",
+    )
+    scaling_type = _cc_code_label(
+        _safe_attr(method, "ScalingType", 0),
+        CC_SCALING_TYPES,
+        "ScalingType",
+    )
+    trend_factor_overrides: list = []
+    for origin_index in range(1, len(origin_labels) + 1):
+        if _bool_value(_cc_indexed_value(method, "ManualTrendFactor", origin_index)):
+            trend_factor_overrides.append(float(_cc_indexed_value(method, "TrendFactorValues", origin_index)))
+        else:
+            trend_factor_overrides.append(None)
+    try:
+        notes = _clean_name(method.Notes)
+    except Exception:
+        notes = ""
+    try:
+        modified = _iso_or_text(output_vector.Modified)
+    except Exception:
+        modified = datetime.now(timezone.utc).astimezone().isoformat()
+
+    owned = {
+        "json_format": CC_JSON_FORMAT,
+        "details_tab": {
+            "name": name,
+            "method_type": CC_METHOD_TYPE,
+            "output_type": output_type,
+            "dataset_category": dataset_category,
+            "origin_length": origin_length,
+            "statistic_decimal_places": _safe_int_attr(method, "DecimalPlaces", 2),
+        },
+        "method_tab": {
+            "latest_dataset": latest_snapshot["name"],
+            "exposure_dataset": exposure_snapshot["name"],
+            "prior_ultimate_dataset": prior_snapshot["name"],
+            "prior_ultimate_mode": prior_ultimate_mode,
+            "trend_rate": _safe_attr(method, "TrendRate", 0),
+            "auto_trend_fit": _bool_value(_safe_attr(method, "AutoTrendFit", False)),
+            "decay_factor": _safe_attr(method, "DecayFactor", 0),
+            "scaling_type": scaling_type,
+            "alternative_ultimate_calculation": _bool_value(_safe_attr(method, "AltUltimateCalc", False)),
+            "trend_factor_overrides": trend_factor_overrides,
+            "origin_labels": origin_labels,
+        },
+        "ultimates_tab": {},
+        "ratios_tab": {},
+        "audit_log_tab": {},
+        "method_metadata": {
+            "method_type": CC_METHOD_TYPE,
+            "source_kind": CC_SOURCE_KIND,
+            "last_modified": modified,
+            "data_refreshed": modified,
+        },
+    }
+    payload = recalculate_cape_cod_method(
+        owned,
+        source_snapshots={
+            "latest": latest_snapshot,
+            "exposure": exposure_snapshot,
+            "prior_ultimate": prior_snapshot,
+        },
+        timestamp=modified,
+    )
+    payload["_sidecar_notes"] = notes
+    payload["_sidecar_status"] = normalize_method_status(_safe_attr(output_vector, "Status", 0))
+    return payload
+
+
+def _apply_cape_cod_vector_metadata(payload: dict, cc_payload: dict) -> None:
+    payload["notes"] = str(cc_payload.pop("_sidecar_notes", "") or "")
+    payload["status"] = normalize_method_status(
+        cc_payload.pop("_sidecar_status", payload.get("status"))
+    )
+    payload["source_kind"] = CC_SOURCE_KIND
+    payload["method_type"] = CC_METHOD_TYPE
+    payload["method_type_code"] = METHOD_TYPE_CAPE_COD_CODE
+    payload["precedents"] = cape_cod_precedent_names(cc_payload)
+    details_tab = cc_payload.get("details_tab") if isinstance(cc_payload.get("details_tab"), dict) else {}
+    metadata = cc_payload.get("method_metadata") if isinstance(cc_payload.get("method_metadata"), dict) else {}
+    payload["method_name"] = _normalize_import_name(details_tab.get("name"))
+    payload["publication_revision"] = _clean_name(metadata.get("publication_revision"))
+    method_tab = cc_payload.get("method_tab") if isinstance(cc_payload.get("method_tab"), dict) else {}
+    origin_labels = method_tab.get("origin_labels") if isinstance(method_tab.get("origin_labels"), list) else []
+    if origin_labels:
+        payload["origin_labels"] = [_normalize_import_name(label) for label in origin_labels]
+        payload["origin_count"] = len(origin_labels)
+        payload["values"] = [[value] for value in method_tab.get("cape_cod_ultimate", [])]
+    payload["origin_length"] = int(
+        details_tab.get("origin_length") or payload.get("origin_length") or 12
+    )
+    payload["period_length"] = payload["origin_length"]
+
+
+def write_cape_cod_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
+    del rc_path
+    details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    name = _normalize_import_name(details_tab.get("name")) or CC_METHOD_TYPE
+    file_name = f"CC@{_encode_name_part(name)}.json"
+    out_path = rc_dir / METHOD_DATA_DIR / file_name
+    method_payload = dict(payload)
+    method_payload.pop("_sidecar_notes", None)
+    method_payload.pop("_sidecar_status", None)
+    _write_json(out_path, method_payload)
+    return out_path
+
+
+def _find_cape_cod_for_vector(reserving_class, vector_name: str):
+    target = _normalize_import_name(vector_name).lower()
+    try:
+        collection = _call_member(reserving_class, "CapeCodMethods")
         try:
             item = collection.Item(vector_name)
             if item is not None:

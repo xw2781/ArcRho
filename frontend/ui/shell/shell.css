@@ -1019,6 +1019,7 @@ iframe.floatingTabIframe {
 .homeIconBox.dataset { color: #2563eb; }
 .homeIconBox.dfm { color: #0f766e; }
 .homeIconBox.bf { color: #b45309; }
+.homeIconBox.capeCod { color: #0f766e; }
 .homeIconBox.resultSelection { color: #2563eb; }
 .homeIconBox.workflow { color: #15803d; }
 .homeIconBox.scripting { color: #b45309; }

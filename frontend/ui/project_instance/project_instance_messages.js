@@ -24,6 +24,7 @@ export function installProjectInstanceMessages(ctx) {
   const isDfmWindow = (...args) => api.isDfmWindow(...args);
   const isBerquistShermanWindow = (...args) => api.isBerquistShermanWindow(...args);
   const isBornhuetterFergusonWindow = (...args) => api.isBornhuetterFergusonWindow(...args);
+  const isCapeCodWindow = (...args) => api.isCapeCodWindow(...args);
   const isResultSelectionWindow = (...args) => api.isResultSelectionWindow(...args);
   const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
@@ -33,6 +34,7 @@ export function installProjectInstanceMessages(ctx) {
   const openDfmWindow = (...args) => api.openDfmWindow(...args);
   const openBerquistShermanWindow = (...args) => api.openBerquistShermanWindow(...args);
   const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
+  const openCapeCodWindow = (...args) => api.openCapeCodWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
   const refreshCachedDatasetTableFromDisk = (...args) => api.refreshCachedDatasetTableFromDisk(...args);
@@ -263,6 +265,7 @@ function getActiveWindowJsonKind(frame) {
   if (isDfmWindow(frame) || methodType === "dfm") return "dfm";
   if (isResultSelectionWindow(frame) || methodType === "result selection") return "result_selection";
   if (isBornhuetterFergusonWindow(frame) || methodType === "bornhuetter ferguson") return "bornhuetter_ferguson";
+  if (isCapeCodWindow(frame) || methodType === "cape cod") return "cape_cod";
   if (isBerquistShermanWindow(frame) || normalizeBerquistShermanVariant(methodType)) return "berquist_sherman";
   return "";
 }
@@ -307,6 +310,8 @@ async function openActiveDatasetRelatedFile(fileKind) {
       filename = `DFM@${namePart}.json`;
     } else if (jsonKind === "bornhuetter_ferguson") {
       filename = `BF@${namePart}.json`;
+    } else if (jsonKind === "cape_cod") {
+      filename = `CC@${namePart}.json`;
     } else if (jsonKind === "berquist_sherman") {
       const contract = getBerquistShermanContract(activeFrame.dataset.bsVariant || getWindowMethodType(activeFrame));
       if (!contract) {
@@ -553,18 +558,24 @@ function handleAutomationOpenDataset(message, sourceWindow) {
           initialTab: "method",
           methodType: "Bornhuetter Ferguson",
         })
-        : openMethod && bsVariant
-          ? openBerquistShermanWindow(datasetName, {
+        : openMethod && methodType === "cape cod"
+          ? openCapeCodWindow(datasetName, {
             path: state.selectedPath,
             initialTab: "method",
-            variant: bsVariant,
-            methodType: getBerquistShermanContract(bsVariant)?.methodType,
+            methodType: "Cape Cod",
           })
-          : openDatasetWindow(datasetName, {
-            datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
-            readOnly: args.readOnly,
-            methodType: requestedMethodType,
-          });
+          : openMethod && bsVariant
+            ? openBerquistShermanWindow(datasetName, {
+              path: state.selectedPath,
+              initialTab: "method",
+              variant: bsVariant,
+              methodType: getBerquistShermanContract(bsVariant)?.methodType,
+            })
+            : openDatasetWindow(datasetName, {
+              datasetTypeName: toText(args.datasetTypeName || args.dataset_type_name) || datasetName,
+              readOnly: args.readOnly,
+              methodType: requestedMethodType,
+            });
   if (!frame) {
     reply({ ok: false, error: `Could not open dataset: ${datasetName}` });
     return true;
@@ -612,6 +623,54 @@ function handleAutomationProjectInstanceContext(message, sourceWindow) {
       selected_path: selectedPath,
       path: selectedPath,
     },
+  });
+  return true;
+}
+
+// Put the page into a deterministic starting state. Without this, every other projectInstance.*
+// command fails from a cold start because no reserving-class path is selected yet.
+async function handleAutomationProjectInstanceSelectPath(message, sourceWindow) {
+  const requestId = toText(message?.requestId);
+  const reply = (payload) => replyAutomationResult(sourceWindow, requestId, payload);
+  if (!requestId) return true;
+
+  const args = message?.args || {};
+  const requestedPath = toText(args.path || args.selectedPath || args.selected_path);
+  if (!requestedPath) {
+    reply({ ok: false, error: "projectInstance.selectPath requires a reserving class path." });
+    return true;
+  }
+  if (!projectName) {
+    reply({ ok: false, error: "The Project Instance page has no project name." });
+    return true;
+  }
+
+  try {
+    await api.setSelectedPath(requestedPath, { persist: args.persist === true });
+    if (args.reveal !== false) {
+      await api.revealPathTreeSelection(requestedPath);
+    }
+    await api.waitForPathTreeRender();
+  } catch (err) {
+    reply({ ok: false, error: toText(err?.message) || "Failed to select the reserving class path." });
+    return true;
+  }
+
+  const selectedPath = toText(state.selectedPath);
+  const matched = selectedPath.toLowerCase() === requestedPath.toLowerCase();
+  reply({
+    ok: matched,
+    result: {
+      projectName,
+      project_name: projectName,
+      requestedPath,
+      selectedPath,
+      selected_path: selectedPath,
+      path: selectedPath,
+    },
+    error: matched
+      ? ""
+      : `Requested path was not selected. Requested "${requestedPath}", page reports "${selectedPath}".`,
   });
   return true;
 }
@@ -719,6 +778,12 @@ function handleOpenDependentDataset(message, sourceWindow) {
       initialTab: "method",
       methodType: "Bornhuetter Ferguson",
     });
+  } else if (openMethod && methodType === "cape cod") {
+    frame = openCapeCodWindow(datasetName, {
+      path: targetPath,
+      initialTab: "method",
+      methodType: "Cape Cod",
+    });
   } else if (openMethod && bsVariant) {
     frame = openBerquistShermanWindow(datasetName, {
       path: targetPath,
@@ -738,9 +803,11 @@ function handleOpenDependentDataset(message, sourceWindow) {
       ? "DFM"
       : methodType === "bornhuetter ferguson"
         ? "Bornhuetter Ferguson"
-        : bsVariant
-          ? getBerquistShermanContract(bsVariant)?.methodType || "Berquist Sherman"
-          : "Result Selection";
+        : methodType === "cape cod"
+          ? "Cape Cod"
+          : bsVariant
+            ? getBerquistShermanContract(bsVariant)?.methodType || "Berquist Sherman"
+            : "Result Selection";
     setStatus(openMethod && (methodType || bsVariant)
       ? `Opened ${methodLabel} method ${datasetName}.`
       : `Opened dependent dataset ${datasetName}.`);
@@ -1199,6 +1266,10 @@ window.addEventListener("message", (event) => {
     void handleAutomationProjectInstanceRefreshDatasets(msg, event.source);
     return;
   }
+  if (msg.type === "arcrho:automation-project-instance-select-path") {
+    void handleAutomationProjectInstanceSelectPath(msg, event.source);
+    return;
+  }
   if (msg.type === "arcrho:project-instance-open-dependent-dataset") {
     handleOpenDependentDataset(msg, event.source);
     return;
@@ -1331,6 +1402,14 @@ window.addEventListener("message", (event) => {
     const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
     if (frame && isBornhuetterFergusonWindow(frame)) {
       frame.dataset.bfTab = toText(msg.tab || "");
+      notifyProjectInstanceStateChanged();
+    }
+    return;
+  }
+  if (msg.type === "arcrho:cc-tab-changed") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isCapeCodWindow(frame)) {
+      frame.dataset.ccTab = toText(msg.tab || "");
       notifyProjectInstanceStateChanged();
     }
     return;

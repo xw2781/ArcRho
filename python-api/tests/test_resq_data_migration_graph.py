@@ -611,6 +611,26 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertNotIn("_sidecar_notes", method_payload)
         self.assertEqual(payload["precedents"], ["Paid Loss", "Paid Ultimate", "Prior Ultimate"])
 
+    def test_cape_cod_notes_move_to_output_sidecar_metadata(self) -> None:
+        payload = {}
+        method_payload = {
+            "_sidecar_notes": "Cape Cod note",
+            "method_tab": {
+                "latest_dataset": "Paid Loss",
+                "exposure_dataset": "Earned Premium",
+                "prior_ultimate_dataset": "Prior Ultimate",
+            },
+        }
+
+        self.module._apply_cape_cod_vector_metadata(payload, method_payload)
+
+        self.assertEqual(payload["notes"], "Cape Cod note")
+        self.assertNotIn("_sidecar_notes", method_payload)
+        self.assertEqual(payload["source_kind"], "cape_cod")
+        self.assertEqual(payload["method_type"], "Cape Cod")
+        self.assertEqual(payload["method_type_code"], self.module.METHOD_TYPE_CAPE_COD_CODE)
+        self.assertEqual(payload["precedents"], ["Paid Loss", "Earned Premium", "Prior Ultimate"])
+
     def test_result_selection_source_payload_includes_native_origin_length(self) -> None:
         class DatasetType:
             Name = "Paid Loss"

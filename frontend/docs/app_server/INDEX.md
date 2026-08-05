@@ -14,6 +14,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `audit_log` | [`app_server/api/audit_log_router.py`](../../app_server/api/audit_log_router.py) | 2 | [`audit_log.md`](domains/audit_log.md) |
 | `book` | [`app_server/api/book_router.py`](../../app_server/api/book_router.py) | 3 | [`book.md`](domains/book.md) |
 | `bornhuetter_ferguson` | [`app_server/api/bornhuetter_ferguson_router.py`](../../app_server/api/bornhuetter_ferguson_router.py) | 3 | [`bornhuetter_ferguson.md`](domains/bornhuetter_ferguson.md) |
+| `cape_cod` | [`app_server/api/cape_cod_router.py`](../../app_server/api/cape_cod_router.py) | 3 | [`cape_cod.md`](domains/cape_cod.md) |
 | `data_processing_rules` | [`app_server/api/data_processing_rules_router.py`](../../app_server/api/data_processing_rules_router.py) | 3 | [`data_processing_rules.md`](domains/data_processing_rules.md) |
 | `dataset` | [`app_server/api/dataset_router.py`](../../app_server/api/dataset_router.py) | 14 | [`dataset.md`](domains/dataset.md) |
 | `dataset_types` | [`app_server/api/dataset_types_router.py`](../../app_server/api/dataset_types_router.py) | 3 | [`dataset_types.md`](domains/dataset_types.md) |
@@ -27,7 +28,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `source_table` | [`app_server/api/source_table_router.py`](../../app_server/api/source_table_router.py) | 8 | [`source_table.md`](domains/source_table.md) |
 | `sql_formatting` | [`app_server/api/sql_formatting_router.py`](../../app_server/api/sql_formatting_router.py) | 1 | [`sql_formatting.md`](domains/sql_formatting.md) |
 | `table_summary` | [`app_server/api/table_summary_router.py`](../../app_server/api/table_summary_router.py) | 2 | [`table_summary.md`](domains/table_summary.md) |
-| `ui_automation` | [`app_server/api/ui_automation_router.py`](../../app_server/api/ui_automation_router.py) | 3 | [`ui_automation.md`](domains/ui_automation.md) |
+| `ui_automation` | [`app_server/api/ui_automation_router.py`](../../app_server/api/ui_automation_router.py) | 6 | [`ui_automation.md`](domains/ui_automation.md) |
 | `workflow` | [`app_server/api/workflow_router.py`](../../app_server/api/workflow_router.py) | 5 | [`workflow.md`](domains/workflow.md) |
 | `workspace_paths` | [`app_server/api/workspace_paths_router.py`](../../app_server/api/workspace_paths_router.py) | 2 | [`workspace_paths.md`](domains/workspace_paths.md) |
 <!-- AUTO-GEN:END -->

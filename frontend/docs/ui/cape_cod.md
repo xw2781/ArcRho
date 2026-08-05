@@ -1,0 +1,64 @@
+## Purpose
+<!-- MANUAL:BEGIN -->
+Cape Cod method page replicating the ResQ Generalised Cape Cod method: an ultimate vector produced from a latest actual triangle, an exposure vector, and a prior ultimate vector, with trend adjustment and decay-weighted expected ultimate ratios.
+<!-- MANUAL:END -->
+
+## Entry Points
+<!-- AUTO-GEN:BEGIN frontend.cape_cod.entry_points -->
+- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260804a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+
+Detected `fetch(...)` targets in key JS files:
+- `/dataset/cache/load`
+- `/datasets/cached?${qs.toString()}`
+
+Detected `arcrho:*` message types in key JS files:
+- `arcrho:calculated-datasets-updated`
+- `arcrho:cc-tab-changed`
+- `arcrho:dataset-dirty`
+- `arcrho:project-instance-refresh-datasets`
+- `arcrho:status`
+<!-- AUTO-GEN:END -->
+
+## Key Files
+<!-- AUTO-GEN:BEGIN frontend.cape_cod.key_files -->
+- [`ui/method_pages/cape_cod/cape_cod.html`](../../ui/method_pages/cape_cod/cape_cod.html) - Cape Cod iframe page.
+- [`ui/method_pages/cape_cod/cape_cod_main.js`](../../ui/method_pages/cape_cod/cape_cod_main.js) - Cape Cod state, persistence, calculation, and tab coordination.
+- [`ui/method_pages/cape_cod/cape_cod_ratios_chart.js`](../../ui/method_pages/cape_cod/cape_cod_ratios_chart.js) - Cape Cod Ratios-tab renderer.
+<!-- AUTO-GEN:END -->
+
+## External Interfaces
+<!-- MANUAL:BEGIN -->
+- Opens either from its Home `Datasets & Methods` launch card as a standalone shell tab or inside Project Instance as a floating iframe method window at `/ui/method_pages/cape_cod/cape_cod.html`.
+- Uses `ui/shared/tabbed_page/` for reusable tab chrome and pop-out behavior, and the shared Details/Notes/Audit tab presentation modules; tab order is `Details`, `Method`, `Ultimates`, `Ratios`, `Notes`, `Audit Log`, matching the ResQ Cape Cod editor.
+- Loads a saved method through `/cape-cod/load`, which reads only `methods/CC@<Name>.json` and the output sidecar; the response also carries the derived as-if `ultimates_triangle` for the Ultimates tab.
+- Saves through `/cape-cod/save`, which publishes `methods/CC@<Name>.json`, the native `datasets/<Name>@<OriginLength>.csv`, supported coarser CSV variants, and the output sidecar as one server-owned transaction with the sidecar written last.
+- The output sidecar keeps `source_kind: "cape_cod"`, `method_type: "Cape Cod"`, Notes, Audit, status, and dependency graph fields.
+- Uses Project Instance `arcrho:dataset-dirty`, `arcrho:dataset-save`, `arcrho:dependency-source-preview`, `arcrho:dependency-source-cleared`, `arcrho:project-instance-refresh-datasets`, `arcrho:project-instance-open-dependent-dataset`, and `arcrho:cc-tab-changed` messages.
+<!-- MANUAL:END -->
+
+## Data/State/Caches
+<!-- MANUAL:BEGIN -->
+- The canonical method type label is exactly `Cape Cod` in UI, method JSON, and sidecar metadata.
+- V1 inputs are one latest triangle, one exposure vector, and one prior ultimate vector (`latest_ultimates` mode derives Percentage Developed as `Latest / Prior Ultimate`; `pattern` mode reads percentages directly from the selected vector).
+- Owned parameters mirror ResQ one-to-one: Trend Rate (decimal, displayed as a six-decimal percentage), Fit and Auto Fit, Decay Factor, Scaling (`percentage`/`unscaled`/`auto_scaled`), Decimal Places, Alternative Ultimate Calculation, and per-origin manual Trend Factor overrides. Fitting or changing the trend rate clears the overrides, and Auto Fit keeps trend factor cells read-only, matching ResQ.
+- The Method grid columns and totals follow the ResQ Cape Cod Method tab: Origin, Latest, Exposure, Trend Factor, Trended [Latest], Percentage Developed, Development Factor, Developed [Exposure], Future [Exposure], Trended Developed Ratio, Expected Ultimate Ratio, Detrended Expected Ratio, Future [Latest], Cape Cod Ultimate, and Cape Cod Ultimate Ratio, with dataset names embedded in the bracketed captions.
+- Every calculation is owned by `python-api/src/arcrho_api/cape_cod_contract.py` and mirrored exactly by `cape_cod_json_contract.js`; the formulas were verified against the ResQ COM output of a production Cape Cod method (see `frontend/docs/plans/cape_cod_method_plan.md`).
+- The Ultimates tab shows the as-if diagnostic triangle: each historical cell re-estimated on its own calendar diagonal with the current parameters. ArcRho computes it at the dataset's stored development points only (cell-exact with ResQ there); ResQ's spline-interpolated in-between display columns are intentionally not reproduced.
+- The Ratios tab plots Latest/Exposure, Trended Latest/Exposure, Trended Developed Ratio, Expected Ultimate Ratio, Detrended Expected Ratio, and Cape Cod Ultimate Ratio by origin.
+- ResQ/RPC sync, vector-latest input, Single/All Origin graphs, and manual Exposure/Percentage-Developed cell overrides are deferred.
+<!-- MANUAL:END -->
+
+## Common Change Tasks
+<!-- MANUAL:BEGIN -->
+1. Change Cape Cod calculation behavior: update `python-api/src/arcrho_api/cape_cod_contract.py` first, mirror `ui/method_pages/cape_cod/cape_cod_json_contract.js`, and keep `frontend/docs/plans/cape_cod_method_plan.md` in sync.
+2. Change Cape Cod persistence or refresh behavior: update the canonical Python contract, app-server service, frontend payload adapter, migration producer, exact parity tests, and app-server domain documentation together.
+3. Change Cape Cod routing: update Project Instance dataset table, window, and message modules together.
+<!-- MANUAL:END -->
+
+## Known Risks
+<!-- MANUAL:BEGIN -->
+- The JS calculation mirror must remain identical to the Python contract; a drifted mirror makes the server reject saves because derived columns no longer match the embedded snapshots.
+- The persisted method label must remain `Cape Cod` so Project Instance and dataset dependency chips route to the Cape Cod page.
+- Percentage Developed near 1.0 makes Future Exposure a small difference of large numbers; ArcRho's canonical six-decimal rounding bounds its absolute error at the exposure scale, which is visible only when decimals are increased.
+- Out-of-band source-file edits bypass the managed dependency event and require an ArcRho save or explicit repair before a Cape Cod can be refreshed automatically.
+<!-- MANUAL:END -->

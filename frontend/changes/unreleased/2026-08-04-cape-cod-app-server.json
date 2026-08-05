@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "cape cod",
+  "audience": "internal",
+  "summary": "Add the Cape Cod method app-server layer with load/save/refresh endpoints mirroring the Bornhuetter Ferguson architecture.",
+  "details": [
+    "New /cape-cod/load, /cape-cod/save, and /cape-cod/refresh routes delegate to cape_cod_service, which delegates all calculation, revision, and sidecar projection logic to the canonical arcrho_api.cape_cod_contract.",
+    "Load, save, and refresh responses include the derived as-if ultimates_triangle diagnostic computed from the Latest triangle source, degrading to null when the triangle is unavailable or irregular.",
+    "Cape Cod methods (CC@ files, source_kind cape_cod) are registered in the dataset instance index, sidecar status, and calculated-output services, and a cape_cod_updates refresh wave runs after the Bornhuetter Ferguson wave in dependency propagation with recursion guards in both directions."
+  ]
+}

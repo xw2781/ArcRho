@@ -69,6 +69,7 @@ _METHOD_CALCULATED_TYPES = frozenset((
     dataset_sidecar_status_service.METHOD_TYPE_DFM,
     dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION,
     dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON,
+    dataset_sidecar_status_service.METHOD_TYPE_CAPE_COD,
     dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_SR,
     dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_CRA,
 ))

@@ -162,6 +162,8 @@ export function registerDataTabDetailsController(runtime) {
     return !!String(entry?.formula || getDatasetTypeFormulaByName(datasetTypeName) || "").trim();
   }
 
+  // Routing keeps the canonical method type; only the labels a user hears or
+  // reads use the ResQ wording.
   function normalizeDatasetMethodType(value) {
     const text = String(value || "").trim().toLowerCase();
     if (text === "dfm") return "DFM";
@@ -170,6 +172,11 @@ export function registerDataTabDetailsController(runtime) {
     const berquistShermanContract = getBerquistShermanContract(text);
     if (berquistShermanContract) return berquistShermanContract.methodType;
     return "";
+  }
+
+  function datasetMethodTypeLabel(value) {
+    const methodType = normalizeDatasetMethodType(value);
+    return getBerquistShermanContract(methodType)?.displayLabel || methodType;
   }
 
   function appendDatasetChipLabel(parent, text) {
@@ -221,7 +228,7 @@ export function registerDataTabDetailsController(runtime) {
     appendDatasetChipLabel(chip, label);
     if (interactive) {
       chip.setAttribute("aria-label", openMethod && methodType
-        ? `Open ${methodType} method ${entry.datasetName || label}`
+        ? `Open ${datasetMethodTypeLabel(entry?.methodType)} method ${entry.datasetName || label}`
         : `Open ${entry.datasetName || label}`);
       chip.addEventListener("click", () => openRelatedDataset(entry, { openMethod }));
     }
@@ -432,7 +439,7 @@ export function registerDataTabDetailsController(runtime) {
       appendDatasetChipLabel(button, precedent.datasetName);
       const methodType = normalizeDatasetMethodType(precedent.methodType);
       button.setAttribute("aria-label", methodType
-        ? `Open ${methodType} method ${precedent.datasetName}`
+        ? `Open ${datasetMethodTypeLabel(precedent.methodType)} method ${precedent.datasetName}`
         : `Open related item ${precedent.datasetName}`);
       button.addEventListener("mouseenter", (event) => showDependentFormulaTooltip(precedent, event));
       button.addEventListener("mousemove", (event) => {

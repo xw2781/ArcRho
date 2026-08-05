@@ -163,6 +163,12 @@ export function createIframeHost(deps) {
       params.set("v", uiVersionParam);
       if (tab.bfTab) params.set("tab", tab.bfTab);
       iframe.src = `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html?${params.toString()}`;
+    } else if (tab.type === "cape_cod") {
+      const params = new URLSearchParams();
+      params.set("inst", tab.dsInst || tab.id || `cc_${Date.now()}`);
+      params.set("v", uiVersionParam);
+      if (tab.ccTab) params.set("tab", tab.ccTab);
+      iframe.src = `/ui/method_pages/cape_cod/cape_cod.html?${params.toString()}`;
     } else if (tab.type === "result_selection") {
       const params = new URLSearchParams();
       params.set("inst", tab.dsInst || tab.id || `rs_${Date.now()}`);

@@ -67,6 +67,7 @@ class DatasetMethodCalculatedSidecarTests(unittest.TestCase):
             ("DFM", "dfm"),
             ("Result Selection", "result_selection"),
             ("Bornhuetter Ferguson", "bornhuetter_ferguson"),
+            ("Cape Cod", "cape_cod"),
             ("B&S Settlement Rate Adjustment", "berquist_sherman_sr"),
             ("B&S Case Reserve Adequacy Adjustment", "berquist_sherman_cra"),
             ("", "berquist_sherman_sr"),

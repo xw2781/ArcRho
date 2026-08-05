@@ -12,6 +12,7 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 - **DSV (Dataset Viewer):** the frontend workspace for viewing and editing datasets under `frontend/ui/dataset_viewer`.
 - **DFM (Development Factor Method):** the frontend workspace for creating and reviewing development factor methods under `frontend/ui/method_pages/dfm`.
 - **BF (Bornhuetter Ferguson):** the frontend workspace for Bornhuetter Ferguson methods under `frontend/ui/method_pages/bornhuetter_ferguson`.
+- **CC (Cape Cod):** the frontend workspace for Cape Cod methods under `frontend/ui/method_pages/cape_cod`.
 - **RS (Result Selection):** the frontend workspace for result selection methods under `frontend/ui/method_pages/result_selection`.
 - **PI (Project Instance):** the frontend workspace for browsing and working within a project instance under `frontend/ui/project_instance`.
 - **PS (Project Settings):** the frontend workspace for configuring project settings under `frontend/ui/project_settings`.

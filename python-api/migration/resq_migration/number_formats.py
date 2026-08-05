@@ -77,6 +77,37 @@ def dataset_type_decimal_places(rc_path: object, dataset_type_name: object) -> i
     return number_format_decimal_places(dataset_type_number_format(rc_path, dataset_type_name))
 
 
+def number_format_entry(number_format: object, decimal_places: object = None) -> dict:
+    """One recorded number format, written the same way by every producer.
+
+    Mirrors ``normalizeNumberFormatEntry`` in
+    ``frontend/ui/method_pages/berquist_sherman/berquist_sherman_main.js`` so a
+    method JSON the migration writes and one the frontend saves cannot differ.
+    """
+    pattern = _normalize_number_format(number_format)
+    try:
+        places = int(decimal_places)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        places = number_format_decimal_places(pattern)
+    places = max(0, min(6, places))
+    return {
+        "number_format": apply_decimal_places_to_number_format(pattern, places),
+        "decimal_places": places,
+    }
+
+
+def apply_decimal_places_to_number_format(value: object, decimal_places: int) -> str:
+    pattern = _normalize_number_format(value)
+    numeric = _numeric_pattern(pattern)
+    integer_pattern = numeric.split(".", 1)[0] or "0"
+    index = pattern.find(numeric)
+    prefix = pattern[:index] if index >= 0 else ""
+    suffix = pattern[index + len(numeric):] if index >= 0 else ""
+    places = max(0, min(6, int(decimal_places)))
+    rebuilt = f"{integer_pattern}.{'0' * places}" if places > 0 else integer_pattern
+    return _normalize_number_format(f"{prefix}{rebuilt}{suffix}")
+
+
 def number_format_decimal_places(value: object) -> int:
     text = _normalize_number_format(value)
     numeric = _numeric_pattern(text)

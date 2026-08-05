@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "cape cod",
+  "audience": "user",
+  "summary": "New Cape Cod method page replicates the ResQ Generalised Cape Cod method with Details, Method, Ultimates, Ratios, Notes, and Audit Log tabs.",
+  "details": [
+    "Inputs mirror ResQ one-to-one: Latest triangle, Exposure vector, Prior Ultimate vector (Latest/Ultimates or Pattern mode), Trend Rate with Fit and Auto Fit, Decay Factor, Scaling, Decimal Places, Alternative Ultimate Calculation, and per-origin Trend Factor overrides.",
+    "Every Method-tab column, the fitted trend rate, and the diagnostic Ultimates triangle were validated against the ResQ COM output of an existing Cape Cod method; formulas agree to floating-point precision before ArcRho's canonical six-decimal persistence rounding.",
+    "The method publishes its ultimate vector with aggregated 3/6/12 variants, participates in dependency refresh (Review Needed propagation), and its output is selectable in Result Selection.",
+    "ResQ migration imports Cape Cod methods (method type code 3) as CC@ method JSON through the same canonical calculation contract used by the app."
+  ]
+}

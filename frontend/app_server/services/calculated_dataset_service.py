@@ -1404,6 +1404,7 @@ def _recalculate_dependents_impl(
     include_dfm: bool = True,
     include_result_selection: bool = True,
     include_bornhuetter_ferguson: bool = True,
+    include_cape_cod: bool = True,
     finalize_method_review_status: bool = True,
     rebuild_index: bool = True,
 ) -> Dict[str, Any]:
@@ -1679,6 +1680,91 @@ def _recalculate_dependents_impl(
                 "updated": [],
             }
 
+    cape_cod_updates = None
+    if include_cape_cod:
+        try:
+            from app_server.services import cape_cod_service
+
+            dfm_fresh_names = [
+                _clean_text(value)
+                for item in (dfm_updates or {}).get("updated", [])
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            ]
+            dfm_fresh_names.extend(
+                _clean_text(item.get("dataset_name"))
+                for item in (dfm_updates or {}).get("status_refreshed", [])
+                if _clean_text(item.get("dataset_name"))
+            )
+            calculated_fresh_names = [
+                _clean_text(item.get("dataset_type_name"))
+                for item in results
+                if item.get("ok") and _clean_text(item.get("dataset_type_name"))
+            ]
+            result_selection_fresh_names = [
+                _clean_text(item.get("dataset_name"))
+                for field in ("updated", "status_refreshed")
+                for item in (result_selection_updates or {}).get(field, [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            result_selection_fresh_names.extend(
+                _clean_text(name)
+                for name in (result_selection_updates or {}).get("downstream_fresh_names", [])
+                if _clean_text(name)
+            )
+            failed_result_selection_names = [
+                _clean_text(item.get("dataset_name"))
+                for item in (result_selection_updates or {}).get("errors", [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            failed_result_selection_names.extend(
+                _clean_text(name)
+                for name in (result_selection_updates or {}).get("downstream_blocked_names", [])
+                if _clean_text(name)
+            )
+            bornhuetter_ferguson_fresh_names = [
+                _clean_text(item.get("dataset_name"))
+                for field in ("updated", "status_refreshed")
+                for item in (bornhuetter_ferguson_updates or {}).get(field, [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            failed_bornhuetter_ferguson_names = [
+                _clean_text(item.get("dataset_name"))
+                for item in (bornhuetter_ferguson_updates or {}).get("errors", [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            cape_cod_roots = [
+                changed_dataset_name,
+                changed_dataset_type_name,
+                *dfm_fresh_names,
+                *failed_dfm_names,
+                *calculated_fresh_names,
+                *failed_dataset_names,
+                *result_selection_fresh_names,
+                *failed_result_selection_names,
+                *bornhuetter_ferguson_fresh_names,
+                *failed_bornhuetter_ferguson_names,
+            ]
+            cape_cod_updates = cape_cod_service.refresh_dependents(
+                project_name,
+                reserving_class,
+                cape_cod_roots,
+                rebuild_index=False,
+                blocked_precedent_names=[
+                    *failed_dfm_names,
+                    *failed_dataset_names,
+                    *failed_result_selection_names,
+                    *failed_bornhuetter_ferguson_names,
+                ],
+                finalize_method_review_status=False,
+            )
+        except Exception as err:
+            cape_cod_updates = {
+                "ok": False,
+                "errors": [{"reason": str(err)}],
+                "updated": [],
+            }
+
     index_error = ""
     if finalize_method_review_status:
         dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
@@ -1700,6 +1786,8 @@ def _recalculate_dependents_impl(
         overall_ok = overall_ok and bool(result_selection_updates.get("ok"))
     if bornhuetter_ferguson_updates is not None:
         overall_ok = overall_ok and bool(bornhuetter_ferguson_updates.get("ok"))
+    if cape_cod_updates is not None:
+        overall_ok = overall_ok and bool(cape_cod_updates.get("ok"))
     return {
         "ok": overall_ok,
         "project_name": project_name,
@@ -1717,6 +1805,7 @@ def _recalculate_dependents_impl(
         "dfm_updates": dfm_updates,
         "result_selection_updates": result_selection_updates,
         "bornhuetter_ferguson_updates": bornhuetter_ferguson_updates,
+        "cape_cod_updates": cape_cod_updates,
         "index_ok": not index_error,
         "index_error": index_error,
     }
@@ -1731,6 +1820,7 @@ def recalculate_dependents(
     include_dfm: bool = True,
     include_result_selection: bool = True,
     include_bornhuetter_ferguson: bool = True,
+    include_cape_cod: bool = True,
     finalize_method_review_status: bool = True,
     rebuild_index: bool = True,
 ) -> Dict[str, Any]:
@@ -1743,6 +1833,7 @@ def recalculate_dependents(
             include_dfm=include_dfm,
             include_result_selection=include_result_selection,
             include_bornhuetter_ferguson=include_bornhuetter_ferguson,
+            include_cape_cod=include_cape_cod,
             finalize_method_review_status=finalize_method_review_status,
             rebuild_index=rebuild_index,
         )

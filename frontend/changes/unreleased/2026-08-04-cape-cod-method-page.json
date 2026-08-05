@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "cape cod",
+  "audience": "user",
+  "summary": "New Cape Cod method page mirrors the ResQ Generalised Cape Cod editor with Details, Method, Ultimates, Ratios, Notes, and Audit Log tabs.",
+  "details": [
+    "Method tab selects a Latest triangle, Exposure vector, and Prior Ultimate vector (Latest / Ultimates or Pattern mode) and computes every ResQ-verified derived column with a Total row, trend rate fit/auto-fit, decay factor, scaling, decimal places, and per-origin trend factor overrides.",
+    "Ultimates tab shows the as-if diagnostic ultimates triangle and the Ratios tab plots the six Cape Cod ratio series.",
+    "Cape Cod opens from the Home launch cards and from Project Instance rows (Add -> Cape Cod on eligible vector rows), with floating-window state, active tab, dirty-close handshake, and CC@ method JSON resolution wired like Bornhuetter Ferguson."
+  ]
+}

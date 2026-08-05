@@ -10,6 +10,10 @@ from arcrho_api.bornhuetter_ferguson_contract import (
     BF_METHOD_TYPE,
     BF_SOURCE_KIND,
 )
+from arcrho_api.cape_cod_contract import (
+    CC_METHOD_TYPE,
+    CC_SOURCE_KIND,
+)
 from arcrho_api.dataset_index_contract import (
     build_dataset_index_payload,
     index_update_lock,
@@ -537,6 +541,7 @@ def _sidecar_is_method(meta: dict) -> bool:
         "dfm",
         "result_selection",
         BF_SOURCE_KIND,
+        CC_SOURCE_KIND,
         BS_SR_SOURCE_KIND,
         BS_CRA_SOURCE_KIND,
     }:
@@ -546,6 +551,7 @@ def _sidecar_is_method(meta: dict) -> bool:
         "dfm",
         "result selection",
         BF_METHOD_TYPE.lower(),
+        CC_METHOD_TYPE.lower(),
         BS_SR_METHOD_TYPE.lower(),
         BS_CRA_METHOD_TYPE.lower(),
     }

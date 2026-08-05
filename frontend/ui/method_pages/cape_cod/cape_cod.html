@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/ui/shared/services/color_theme.js?v=20260724a"></script>
+  <title>Cape Cod</title>
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260720b">
+  <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a">
+  <link rel="stylesheet" href="/ui/method_pages/cape_cod/cape_cod.css?v=20260804a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260729a">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260729a">
+</head>
+<body>
+  <main class="ccShell">
+    <section class="ccTabbed" id="ccTabbedPage">
+      <div class="ccPageHost">
+        <section class="ccPage arDetailsRoot" id="ccDetailsPage" role="tabpanel">
+          <div class="ccDetailsStack">
+            <section class="ccPanel arDetailsGroup">
+              <div class="ccPanelBody">
+                <div class="ccFieldGrid arDetailsGrid">
+                  <label class="ccLabel arDetailsLabel" for="ccProjectInput">Project : </label>
+                  <div class="ccFieldControl arDetailsField">
+                    <input class="ccInput arDetailsControl" id="ccProjectInput" type="text" readonly>
+                  </div>
+                  <label class="ccLabel arDetailsLabel" for="ccClassInput">Reserving Class : </label>
+                  <div class="ccFieldControl arDetailsField">
+                    <input class="ccInput arDetailsControl" id="ccClassInput" type="text" readonly>
+                  </div>
+                  <label class="ccLabel arDetailsLabel" for="ccNameInput">Name : </label>
+                  <div class="ccFieldControl arDetailsField">
+                    <input class="ccInput arDetailsControl" id="ccNameInput" type="text">
+                  </div>
+                  <label class="ccLabel arDetailsLabel" for="ccOutputTypeInput">Output Type : </label>
+                  <div class="ccFieldControl arDetailsField withPicker">
+                    <input class="ccInput arDetailsControl" id="ccOutputTypeInput" type="text">
+                    <button class="ccIconButton" id="ccOutputTypeBtn" type="button" title="Select output vector" aria-label="Select output vector">...</button>
+                  </div>
+                  <label class="ccLabel arDetailsLabel" for="ccOriginLengthButton">Origin Length : </label>
+                  <div class="ccFieldControl arDetailsField">
+                    <div class="ccOriginLengthDropdown" id="ccOriginLengthDropdown">
+                      <input id="ccOriginLengthInput" type="hidden" value="12">
+                      <button class="ccDropdownButton ccOriginLengthButton" id="ccOriginLengthButton" type="button" aria-haspopup="listbox" aria-controls="ccOriginLengthMenu" aria-expanded="false">
+                        <span id="ccOriginLengthLabel">12</span>
+                        <span class="ccDropdownCaret" aria-hidden="true"></span>
+                      </button>
+                      <div class="ccDropdownMenu" id="ccOriginLengthMenu" role="listbox" aria-label="Origin Length">
+                        <button class="ccDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
+                        <button class="ccDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
+                        <button class="ccDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
+                        <button class="ccDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="ccPage" id="ccMethodPage" role="tabpanel">
+          <div class="ccMethodSources">
+            <label class="ccLabel ccSourceLabel" for="ccLatestInput">Latest : </label>
+            <div class="ccFieldControl withPicker">
+              <input class="ccInput" id="ccLatestInput" type="text" readonly>
+              <button class="ccIconButton" id="ccLatestBtn" type="button" title="Select latest triangle" aria-label="Select latest triangle">...</button>
+            </div>
+            <span class="ccSourceTypeNote">Type : Triangle</span>
+            <label class="ccLabel ccSourceLabel" for="ccExposureInput">Exposure : </label>
+            <div class="ccFieldControl withPicker">
+              <input class="ccInput" id="ccExposureInput" type="text" readonly>
+              <button class="ccIconButton" id="ccExposureBtn" type="button" title="Select exposure vector" aria-label="Select exposure vector">...</button>
+            </div>
+            <span class="ccSourceTypeNote"></span>
+            <label class="ccLabel ccSourceLabel" for="ccPriorUltimateInput">Prior Ultimate : </label>
+            <div class="ccFieldControl withPicker">
+              <input class="ccInput" id="ccPriorUltimateInput" type="text" readonly>
+              <button class="ccIconButton" id="ccPriorUltimateBtn" type="button" title="Select prior ultimate vector" aria-label="Select prior ultimate vector">...</button>
+            </div>
+            <span class="ccSourceTypeControl">
+              <label class="ccToolControlLabel" for="ccPriorModeButton">Type : </label>
+              <div class="ccPriorModeDropdown" id="ccPriorModeDropdown">
+                <button class="ccDropdownButton" id="ccPriorModeButton" type="button" aria-haspopup="listbox" aria-controls="ccPriorModeMenu" aria-expanded="false" aria-label="Prior ultimate mode">
+                  <span id="ccPriorModeLabel">Latest / Ultimates</span>
+                  <span class="ccDropdownCaret" aria-hidden="true"></span>
+                </button>
+                <div class="ccDropdownMenu" id="ccPriorModeMenu" role="listbox" aria-label="Prior ultimate mode">
+                  <button class="ccDropdownOption" type="button" role="option" data-value="latest_ultimates" aria-selected="true">Latest / Ultimates</button>
+                  <button class="ccDropdownOption" type="button" role="option" data-value="pattern" aria-selected="false">Pattern</button>
+                </div>
+              </div>
+            </span>
+          </div>
+          <div class="ccMethodToolbar">
+            <div class="ccToolGroup">
+              <span class="ccToolTitle">Trend</span>
+              <div class="ccToolControls">
+                <span class="ccToolField">
+                  <label class="ccToolControlLabel" for="ccTrendRateInput">Trend Rate % : </label>
+                  <input class="ccTrendRateInput" id="ccTrendRateInput" type="text" inputmode="decimal" autocomplete="off">
+                </span>
+                <button class="ccButton ccFitBtn" id="ccFitBtn" type="button">Fit</button>
+                <label class="ccToolCheck"><input id="ccAutoFitInput" type="checkbox"> Auto Fit</label>
+                <span class="ccToolField">
+                  <label class="ccToolControlLabel" for="ccDecayInput">Decay Factor : </label>
+                  <span class="ccNumberStepper">
+                    <input id="ccDecayInput" class="ccStepperInput" type="number" min="0" max="1" step="0.05" value="0">
+                    <span class="ccStepperButtons">
+                      <button id="ccDecayUp" class="ccStepperBtn" type="button" aria-label="Increase decay factor"><span class="ccStepperCaret ccStepperCaretUp" aria-hidden="true"></span></button>
+                      <button id="ccDecayDown" class="ccStepperBtn" type="button" aria-label="Decrease decay factor"><span class="ccStepperCaret" aria-hidden="true"></span></button>
+                    </span>
+                  </span>
+                </span>
+              </div>
+            </div>
+            <div class="ccToolGroup">
+              <span class="ccToolTitle">Display</span>
+              <div class="ccToolControls">
+                <span class="ccToolField">
+                  <label class="ccToolControlLabel" for="ccScalingButton">Scaling : </label>
+                  <div class="ccScalingDropdown" id="ccScalingDropdown">
+                    <button class="ccDropdownButton" id="ccScalingButton" type="button" aria-haspopup="listbox" aria-controls="ccScalingMenu" aria-expanded="false" aria-label="Ratio scaling">
+                      <span id="ccScalingLabel">Percentage</span>
+                      <span class="ccDropdownCaret" aria-hidden="true"></span>
+                    </button>
+                    <div class="ccDropdownMenu" id="ccScalingMenu" role="listbox" aria-label="Ratio scaling">
+                      <button class="ccDropdownOption" type="button" role="option" data-value="percentage" aria-selected="true">Percentage</button>
+                      <button class="ccDropdownOption" type="button" role="option" data-value="unscaled" aria-selected="false">Unscaled</button>
+                      <button class="ccDropdownOption" type="button" role="option" data-value="auto_scaled" aria-selected="false">Auto-scaled</button>
+                    </div>
+                  </div>
+                </span>
+                <span class="ccToolField">
+                  <label class="ccToolControlLabel" for="ccMethodDecimalsInput">Decimal Places : </label>
+                  <span class="ccNumberStepper">
+                    <input id="ccMethodDecimalsInput" class="ccStepperInput" type="number" min="0" max="8" step="1" value="2">
+                    <span class="ccStepperButtons">
+                      <button id="ccMethodDecimalsUp" class="ccStepperBtn" type="button" aria-label="Increase decimal places"><span class="ccStepperCaret ccStepperCaretUp" aria-hidden="true"></span></button>
+                      <button id="ccMethodDecimalsDown" class="ccStepperBtn" type="button" aria-label="Decrease decimal places"><span class="ccStepperCaret" aria-hidden="true"></span></button>
+                    </span>
+                  </span>
+                </span>
+                <label class="ccToolCheck"><input id="ccAltUltimateInput" type="checkbox" disabled> Alternative Ultimate Calculation</label>
+              </div>
+            </div>
+          </div>
+          <div class="ccTableWrap">
+            <table class="ccMethodTable arSpreadsheetTable" aria-label="Cape Cod method table" tabindex="0">
+              <colgroup id="ccMethodCols"></colgroup>
+              <thead id="ccMethodHead"></thead>
+              <tbody id="ccMethodGrid"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="ccPage" id="ccUltimatesPage" role="tabpanel">
+          <div class="ccTableWrap ccUltimatesWrap">
+            <table class="ccUltimatesTable arSpreadsheetTable" aria-label="Cape Cod ultimates triangle" tabindex="0">
+              <colgroup id="ccUltimatesCols"></colgroup>
+              <thead id="ccUltimatesHead"></thead>
+              <tbody id="ccUltimatesGrid"></tbody>
+            </table>
+            <div class="ccUltimatesEmpty" id="ccUltimatesEmpty">Select source data to view the as-if ultimates triangle.</div>
+          </div>
+        </section>
+
+        <section class="ccPage" id="ccRatiosPage" role="tabpanel">
+          <section class="ccChartPanel" aria-labelledby="ccChartTitle">
+            <header class="ccChartHeader">
+              <div class="ccChartHeading">
+                <h2 class="ccChartTitle" id="ccChartTitle">Ratios</h2>
+                <p class="ccChartSubtitle">Cape Cod ratio series by origin period</p>
+              </div>
+              <div class="ccChartLegend" id="ccChartLegend" aria-label="Chart legend"></div>
+            </header>
+            <div class="ccChartPlot">
+              <canvas class="ccChartCanvas" id="ccChartCanvas" role="img"></canvas>
+              <div class="ccChartEmpty" id="ccChartEmpty">Select source data to plot ratio series.</div>
+              <div class="ccChartTooltip" id="ccChartTooltip" role="status" hidden></div>
+            </div>
+          </section>
+        </section>
+
+        <section class="ccPage" id="ccNotesPage" role="tabpanel">
+          <div id="ccNotesMount"></div>
+        </section>
+
+        <section class="ccPage" id="ccAuditPage" role="tabpanel">
+          <div id="ccAuditLogMount"></div>
+        </section>
+      </div>
+    </section>
+
+    <footer class="ccSaveBar" id="ccSaveBar">
+      <div class="ccSaveActions">
+        <button class="ccButton primary" id="ccSaveBtn" type="button">Save</button>
+        <button class="ccButton" id="ccCancelBtn" type="button">Cancel</button>
+      </div>
+    </footer>
+  </main>
+
+  <div class="ccCellContextMenu" id="ccCellContextMenu" role="menu" aria-hidden="true">
+    <button type="button" role="menuitem" data-cc-cell-action="copy">Copy values</button>
+    <button type="button" role="menuitem" data-cc-cell-action="paste">Paste values</button>
+    <button type="button" role="menuitem" data-cc-cell-action="clear-override">Clear Trend Factor Override</button>
+    <button type="button" role="menuitem" data-cc-cell-action="remove-highlights">Remove Highlights</button>
+  </div>
+
+  <script type="module" src="/ui/method_pages/cape_cod/cape_cod_main.js?v=20260804a"></script>
+</body>
+</html>

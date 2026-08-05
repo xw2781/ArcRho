@@ -1,7 +1,7 @@
 """
 resq_data_migration.py
 
-Migrate ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, and DFM methods to ArcRho dataset files.
+Migrate ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, Cape Cod methods, and DFM methods to ArcRho dataset files.
 Scope: ProjectName = '{PROJECT_NAME}'
 Output: E:\\ArcRho Server\\projects\\{PROJECT_NAME}\\data\\<ReservingClassFolder>\\
 
@@ -59,6 +59,7 @@ if str(_MIGRATION_DIR) not in sys.path:
     sys.path.insert(0, str(_MIGRATION_DIR))
 
 from arcrho_api.bornhuetter_ferguson_contract import BF_JSON_FORMAT  # noqa: E402
+from arcrho_api.cape_cod_contract import CC_JSON_FORMAT  # noqa: E402
 from arcrho_api.dfm_contract import DFM_JSON_FORMAT  # noqa: E402
 from arcrho_api.client import ArcRhoClient  # noqa: E402
 from arcrho_api.dfm_propagation import (  # noqa: E402
@@ -92,6 +93,7 @@ from resq_migration.core import (  # noqa: E402
     METHOD_TYPE_BF_CODE,
     METHOD_TYPE_BS_CRA_CODE,
     METHOD_TYPE_BS_SR_CODE,
+    METHOD_TYPE_CAPE_COD_CODE,
     METHOD_TYPE_DFM_CODE,
     METHOD_TYPE_NONE_CODE,
     METHOD_TYPE_RESULT_SELECTION_CODE,
@@ -116,20 +118,24 @@ from resq_migration.dfm import (  # noqa: E402
 from resq_migration.extractors import (  # noqa: E402
     _apply_berquist_sherman_triangle_metadata,
     _apply_bornhuetter_ferguson_vector_metadata,
+    _apply_cape_cod_vector_metadata,
     _apply_result_selection_vector_metadata,
     _find_berquist_sherman_for_triangle,
     _find_bornhuetter_ferguson_for_vector,
+    _find_cape_cod_for_vector,
     _find_result_selection_for_vector,
     _result_selection_source_payload,
     configure_extractors,
     defer_sidecar_graph_enrichment,
     export_bornhuetter_ferguson,
     export_berquist_sherman,
+    export_cape_cod,
     export_result_selection,
     export_triangle,
     export_vector,
     write_bornhuetter_ferguson_export,
     write_berquist_sherman_export,
+    write_cape_cod_export,
     write_engine_generated_export,
     write_result_selection_export,
     write_triangle_export,
@@ -213,6 +219,7 @@ def _configure_migration_modules() -> None:
         project_name=PROJECT_NAME,
         rs_json_format=RS_JSON_FORMAT,
         bf_json_format=BF_JSON_FORMAT,
+        cc_json_format=CC_JSON_FORMAT,
         method_data_dir=METHOD_DATA_DIR,
     )
     configure_dfm(dfm_json_format=DFM_JSON_FORMAT)
@@ -301,7 +308,7 @@ def _matches_cleanup_names(values: object, target_keys: set[str]) -> bool:
 
 def _method_file_names(path: Path) -> set[str]:
     stem = path.stem
-    for prefix in ("DFM@", "RS@", "BF@", BS_SR_FILE_PREFIX, BS_CRA_FILE_PREFIX):
+    for prefix in ("DFM@", "RS@", "BF@", "CC@", BS_SR_FILE_PREFIX, BS_CRA_FILE_PREFIX):
         if stem.startswith(prefix):
             name = _normalize_cached_dataset_name(stem[len(prefix):])
             return {name} if name else set()
@@ -349,6 +356,17 @@ def _method_payload_dataset_names(path: Path) -> set[str]:
             legacy_prior_name = _normalize_import_name(method.get("prior_dataset"))
             if legacy_prior_name:
                 names.add(legacy_prior_name)
+    elif path.name.startswith("CC@"):
+        details = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+        method = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
+        for key in ("name", "output_type"):
+            name = _normalize_import_name(details.get(key))
+            if name:
+                names.add(name)
+        for key in ("latest_dataset", "exposure_dataset", "prior_ultimate_dataset"):
+            name = _normalize_import_name(method.get(key))
+            if name:
+                names.add(name)
     elif path.name.startswith((BS_SR_FILE_PREFIX, BS_CRA_FILE_PREFIX)):
         details = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
         for key in ("name", "output_type"):
@@ -568,6 +586,30 @@ def _bf_export_names(
     return names
 
 
+def _cc_export_names(
+    reserving_class,
+    progress_callback: ProgressCallback | None = None,
+) -> list[str]:
+    try:
+        cc_collection = reserving_class.CapeCodMethods()
+    except Exception:
+        return []
+    names: list[str] = []
+    for item in cc_collection:
+        name = _clean_name(_safe_attr(item, "Name", ""))
+        if not name:
+            continue
+        names.append(name)
+        _report_inventory_item(
+            progress_callback,
+            kind="cc_inventory",
+            noun="Cape Cod methods",
+            name=name,
+            discovered=len(names),
+        )
+    return names
+
+
 def _berquist_sherman_export_names(
     triangle_names: list[str],
     triangle_method_types: dict[str, int],
@@ -607,6 +649,7 @@ def resq_export_dataset_counts(
     vector_names = _vector_export_names(reserving_class, progress_callback) if run_vectors else []
     dfm_names = _dfm_export_names(reserving_class, progress_callback) if run_dfms else []
     bf_names = _bf_export_names(reserving_class, progress_callback) if run_dfms else []
+    cc_names = _cc_export_names(reserving_class, progress_callback) if run_dfms else []
     bssr_names, bscra_names = (
         _berquist_sherman_export_names(triangle_names, triangle_method_types)
         if run_triangles
@@ -617,9 +660,10 @@ def resq_export_dataset_counts(
         "vectors": len(vector_names),
         "dfms": len(dfm_names),
         "bfs": len(bf_names),
+        "ccs": len(cc_names),
         "bssrs": len(bssr_names),
         "bscras": len(bscra_names),
-        "methods": len(dfm_names) + len(bf_names) + len(bssr_names) + len(bscra_names),
+        "methods": len(dfm_names) + len(bf_names) + len(cc_names) + len(bssr_names) + len(bscra_names),
         "total": len(triangle_names) + len(vector_names),
         "triangle_names": triangle_names,
         "triangle_items": triangle_items,
@@ -627,6 +671,7 @@ def resq_export_dataset_counts(
         "vector_names": vector_names,
         "dfm_names": dfm_names,
         "bf_names": bf_names,
+        "cc_names": cc_names,
         "bssr_names": bssr_names,
         "bscra_names": bscra_names,
     }
@@ -1157,6 +1202,7 @@ def export_vectors_for_rc(
     vector_names: list[str] | None = None,
     include_dfm_methods: bool = False,
     include_bf_methods: bool = False,
+    include_cc_methods: bool = False,
     dfm_names: list[str] | None = None,
     method_counts: dict | None = None,
     engine_provenance: dict | None = None,
@@ -1263,6 +1309,13 @@ def export_vectors_for_rc(
                     _log(verbose, f"    WARN Bornhuetter Ferguson method not found for vector {vector_name}; exporting vector only")
                 else:
                     bf_payload = export_bornhuetter_ferguson(bf_method)
+            cc_payload = None
+            if method_type == METHOD_TYPE_CAPE_COD_CODE and include_cc_methods:
+                cc_method = _find_cape_cod_for_vector(reserving_class, vector_name)
+                if cc_method is None:
+                    _log(verbose, f"    WARN Cape Cod method not found for vector {vector_name}; exporting vector only")
+                else:
+                    cc_payload = export_cape_cod(cc_method)
             result_selection_payload = None
             if method_type == METHOD_TYPE_RESULT_SELECTION_CODE:
                 result_selection = _find_result_selection_for_vector(reserving_class, vector_name)
@@ -1273,6 +1326,7 @@ def export_vectors_for_rc(
             if (
                 not result_selection_payload
                 and not bf_payload
+                and not cc_payload
                 and _is_engine_generated_instance({
                     "name": vector_name,
                     "dataset_type": dataset_type,
@@ -1314,11 +1368,14 @@ def export_vectors_for_rc(
                 _apply_result_selection_vector_metadata(payload, result_selection_payload)
             if bf_payload:
                 _apply_bornhuetter_ferguson_vector_metadata(payload, bf_payload)
+            if cc_payload:
+                _apply_cape_cod_vector_metadata(payload, cc_payload)
             write_vector_export(
                 payload,
                 rc_path,
                 rc_dir,
                 bf_method_payload=bf_payload,
+                cc_method_payload=cc_payload,
             )
             detail = (
                 f"    OK  {_method_type_name(method_type)} vector "
@@ -1333,6 +1390,11 @@ def export_vectors_for_rc(
                 _log(verbose, f"    OK  {method_path.name}")
                 if isinstance(method_counts, dict):
                     method_counts["bfs_written"] = int(method_counts.get("bfs_written") or 0) + 1
+            if cc_payload:
+                method_path = write_cape_cod_export(cc_payload, rc_path, rc_dir)
+                _log(verbose, f"    OK  {method_path.name}")
+                if isinstance(method_counts, dict):
+                    method_counts["ccs_written"] = int(method_counts.get("ccs_written") or 0) + 1
             written += 1
             progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
             _report_progress(
@@ -1467,7 +1529,7 @@ def export_dfms_for_rc(
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, and/or DFM methods to ArcRho dataset files.")
+    parser = argparse.ArgumentParser(description="Export ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, Cape Cod methods, and/or DFM methods to ArcRho dataset files.")
     parser.add_argument(
         "--export",
         choices=("configured", "all", "triangles", "vectors", "vector", "dfm", "dfms"),
@@ -1643,6 +1705,7 @@ def import_reserving_class_from_resq(
             "vectors_written": 0,
             "dfms_written": 0,
             "bfs_written": 0,
+            "ccs_written": 0,
             "bssr_written": 0,
             "bscra_written": 0,
             "engine_skipped": 0,
@@ -1748,6 +1811,7 @@ def import_reserving_class_from_resq(
                         vector_names=dataset_counts.get("vector_names") if isinstance(dataset_counts.get("vector_names"), list) else None,
                         include_dfm_methods=run_dfms,
                         include_bf_methods=run_dfms,
+                        include_cc_methods=run_dfms,
                         dfm_names=dataset_counts.get("dfm_names") if isinstance(dataset_counts.get("dfm_names"), list) else None,
                         method_counts=counts,
                         engine_provenance=engine_provenance,
@@ -1829,6 +1893,7 @@ def import_reserving_class_from_resq(
                 datasets_written
                 + counts["dfms_written"]
                 + counts.get("bfs_written", 0)
+                + counts.get("ccs_written", 0)
                 + counts.get("bssr_written", 0)
                 + counts.get("bscra_written", 0)
             )
@@ -1849,6 +1914,7 @@ def import_reserving_class_from_resq(
                 "vectors_total": dataset_counts.get("vectors", 0),
                 "dfms_total": dataset_counts.get("dfms", 0),
                 "bfs_total": dataset_counts.get("bfs", 0),
+                "ccs_total": dataset_counts.get("ccs", 0),
                 "bssrs_total": dataset_counts.get("bssrs", 0),
                 "bscras_total": dataset_counts.get("bscras", 0),
                 "methods_total": dataset_counts.get("methods", 0),
@@ -1945,6 +2011,7 @@ def main(argv: list[str] | None = None) -> None:
             method_counts = {
                 "dfms_written": 0,
                 "bfs_written": 0,
+                "ccs_written": 0,
                 "bssr_written": 0,
                 "bscra_written": 0,
             }
@@ -1973,6 +2040,7 @@ def main(argv: list[str] | None = None) -> None:
                         rc_dir,
                         include_dfm_methods=run_dfms,
                         include_bf_methods=run_dfms,
+                        include_cc_methods=run_dfms,
                         method_counts=method_counts,
                         engine_provenance=engine_provenance,
                     )
@@ -1981,6 +2049,7 @@ def main(argv: list[str] | None = None) -> None:
                         written
                         + int(method_counts.get("dfms_written") or 0)
                         + int(method_counts.get("bfs_written") or 0)
+                        + int(method_counts.get("ccs_written") or 0)
                     )
                     total_errors += errors
 

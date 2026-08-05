@@ -60,6 +60,7 @@ FRONTEND_ENTRY_HTMLS = [
     "ui/dataset_viewer/dataset_viewer.html",
     "ui/method_pages/dfm/dfm.html",
     "ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html",
+    "ui/method_pages/cape_cod/cape_cod.html",
     "ui/method_pages/berquist_sherman/berquist_sherman.html",
     "ui/method_pages/result_selection/result_selection.html",
     "ui/workflow/workflow.html",
@@ -550,6 +551,15 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js", "BF Chart-tab renderer."),
         ],
     },
+    "cape_cod": {
+        "doc": "docs/ui/cape_cod.md",
+        "html": ["ui/method_pages/cape_cod/cape_cod.html"],
+        "files": [
+            ("ui/method_pages/cape_cod/cape_cod.html", "Cape Cod iframe page."),
+            ("ui/method_pages/cape_cod/cape_cod_main.js", "Cape Cod state, persistence, calculation, and tab coordination."),
+            ("ui/method_pages/cape_cod/cape_cod_ratios_chart.js", "Cape Cod Ratios-tab renderer."),
+        ],
+    },
     "berquist_sherman": {
         "doc": "docs/ui/berquist_sherman.md",
         "html": ["ui/method_pages/berquist_sherman/berquist_sherman.html"],
@@ -718,6 +728,17 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js", "BF page state and aggregate persistence flow."),
             ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_json_contract.js", "Canonical browser-side v3 payload builder."),
             ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_method_api.js", "Aggregate BF transport adapter."),
+        ],
+    },
+    "cape_cod": {
+        "doc": "docs/app_server/domains/cape_cod.md",
+        "files": [
+            ("app_server/api/cape_cod_router.py", "Aggregate Cape Cod load/save/refresh routes."),
+            ("app_server/services/cape_cod_service.py", "V1 contract persistence, transactional publication, and eager dependency refresh."),
+            ("app_server/schemas/cape_cod.py", "Cape Cod identity and revision-aware save request models."),
+            ("ui/method_pages/cape_cod/cape_cod_main.js", "Cape Cod page state and aggregate persistence flow."),
+            ("ui/method_pages/cape_cod/cape_cod_json_contract.js", "Canonical browser-side v1 payload builder."),
+            ("ui/method_pages/cape_cod/cape_cod_method_api.js", "Aggregate Cape Cod transport adapter."),
         ],
     },
     "book": {
@@ -1039,6 +1060,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "tasks": "1. Change BF calculations or persistence: update `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js`.\n2. Change BF chart behavior: update `bornhuetter_ferguson_chart.js` in the same feature directory.",
             "risks": "- Source period alignment affects calculated ultimates.\n- Dirty-state and close messages must remain coordinated with Project Instance.",
         },
+        "cape_cod": {
+            "purpose": "Cape Cod method page replicating the ResQ Generalised Cape Cod method from latest, exposure, and prior-ultimate inputs.",
+            "external": "- Opens inside Project Instance as a nested method iframe.\n- Exchanges explicit `arcrho:*` messages with its host.",
+            "data": "- Persists Cape Cod method JSON and generated vector outputs.\n- Tracks feature-local source, trend/decay parameter, dirty, and tab state.",
+            "tasks": "1. Change Cape Cod calculations or persistence: update the canonical python contract first, then mirror `ui/method_pages/cape_cod/cape_cod_json_contract.js`.\n2. Change Ratios chart behavior: update `cape_cod_ratios_chart.js` in the same feature directory.",
+            "risks": "- The JS calculation mirror must stay identical to `arcrho_api/cape_cod_contract.py` or saves are rejected.\n- Trend-rate auto-fit clears manual trend-factor overrides; changing that ordering breaks ResQ parity.",
+        },
         "berquist_sherman": {
             "purpose": "Annual Berquist Sherman method page for settlement-rate and case-reserve-adequacy adjustments.",
             "external": "- Opens inside Project Instance as a nested method iframe.\n- Loads named annual datasets and exchanges dependency preview messages with its host.",
@@ -1149,6 +1177,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Used by the BF method page.\n- Current loads aggregate one method JSON and its raw output sidecar; earlier BF formats are rejected without dependency reads.",
             "- Persists the complete BF method snapshot, native/coarser output vector CSVs, and its output sidecar with dependency edges and a matching publication revision.",
             "1. Change the v3 payload only across every producer and exact parity test.\n2. Preserve the two-file current load and failure-safe, bounded eager refresh behavior.",
+            "- Out-of-band source edits bypass managed propagation; failed refresh branches retain their last valid publication and remain Review Needed.",
+        ),
+        "cape_cod": (
+            "Self-contained Cape Cod v1 load, save, and eager dependency-refresh domain.",
+            "- Used by the Cape Cod method page.\n- Current loads aggregate one method JSON and its raw output sidecar, plus the derived as-if ultimates triangle.",
+            "- Persists the complete Cape Cod method snapshot, native/coarser output vector CSVs, and its output sidecar with dependency edges and a matching publication revision.",
+            "1. Change the v1 payload only across every producer and exact parity test.\n2. Preserve the two-file current load and failure-safe, bounded eager refresh behavior.",
             "- Out-of-band source edits bypass managed propagation; failed refresh branches retain their last valid publication and remain Review Needed.",
         ),
         "book": (
@@ -1523,6 +1558,7 @@ def render_frontend_index_key_files(doc_path: str) -> str:
         ("docs/ui/dataset.md", "Dataset feature index."),
         ("docs/ui/dfm.md", "DFM feature index."),
         ("docs/ui/bornhuetter_ferguson.md", "Bornhuetter Ferguson method-page index."),
+        ("docs/ui/cape_cod.md", "Cape Cod method-page index."),
         ("docs/ui/berquist_sherman.md", "Berquist Sherman method-page index."),
         ("docs/ui/result_selection.md", "Result Selection method-page index."),
         ("docs/ui/workflow.md", "Workflow feature index."),

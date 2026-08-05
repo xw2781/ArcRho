@@ -1046,6 +1046,7 @@ def _refresh_downstream_domains(
         output_name,
         output_type,
         include_bornhuetter_ferguson=False,
+        include_cape_cod=False,
         finalize_method_review_status=finalize_method_review_status,
         rebuild_index=False,
     )

@@ -17,6 +17,7 @@ from arcrho_api.io import persisted_json_text
 METHOD_TYPE_NONE_CODE = 0
 METHOD_TYPE_DFM_CODE = 1
 METHOD_TYPE_BF_CODE = 2
+METHOD_TYPE_CAPE_COD_CODE = 3
 METHOD_TYPE_RESULT_SELECTION_CODE = 4
 METHOD_TYPE_BS_SR_CODE = 8
 METHOD_TYPE_BS_CRA_CODE = 9
@@ -34,7 +35,7 @@ METHOD_TYPE_NAMES = {
     METHOD_TYPE_NONE_CODE: "None",
     METHOD_TYPE_DFM_CODE: "DFM",
     METHOD_TYPE_BF_CODE: "Bornhuetter Ferguson",
-    3: "Cape Cod",
+    METHOD_TYPE_CAPE_COD_CODE: "Cape Cod",
     METHOD_TYPE_RESULT_SELECTION_CODE: "Result Selection",
     6: "Bootstrap",
     7: "Stochastic Consolidation",

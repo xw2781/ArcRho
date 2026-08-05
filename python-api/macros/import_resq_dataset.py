@@ -1,9 +1,9 @@
 ﻿# <arcrho-macro>
 # Title: Import Active Dataset from ResQ
-# Version: 1.1.3
-# Release Note: Avoid creating reserving-class folders before the ResQ target is resolved.
+# Version: 1.2.0
+# Release Note: Import Cape Cod method outputs with their CC@ method JSON.
 # Description: Import the active Project Instance dataset or supported method output from ResQ.
-# Scope: Dataset, DFM, Result Selection, Bornhuetter Ferguson, Berquist Sherman
+# Scope: Dataset, DFM, Result Selection, Bornhuetter Ferguson, Cape Cod, Berquist Sherman
 # </arcrho-macro>
 
 from __future__ import annotations
@@ -196,6 +196,7 @@ def _resolve_single_export(migration, reserving_class, properties):
                 "names": [vector_name],
                 "include_dfm_methods": False,
                 "include_bf_methods": False,
+                "include_cc_methods": False,
                 "display_kind": "Result Selection output",
             }
         raise ValueError(f"Active Result Selection output was not found in ResQ vectors: {candidates[0]}")
@@ -207,9 +208,22 @@ def _resolve_single_export(migration, reserving_class, properties):
                 "names": [vector_name],
                 "include_dfm_methods": False,
                 "include_bf_methods": True,
+                "include_cc_methods": False,
                 "display_kind": "Bornhuetter Ferguson output",
             }
         raise ValueError(f"Active Bornhuetter Ferguson output was not found in ResQ vectors: {candidates[0]}")
+
+    if kind == "cape_cod" or method_type in {"cape cod", "cape_cod"}:
+        if vector_name:
+            return {
+                "export_kind": "vector",
+                "names": [vector_name],
+                "include_dfm_methods": False,
+                "include_bf_methods": False,
+                "include_cc_methods": True,
+                "display_kind": "Cape Cod output",
+            }
+        raise ValueError(f"Active Cape Cod output was not found in ResQ vectors: {candidates[0]}")
 
     matches = []
     if triangle_name:
@@ -235,6 +249,7 @@ def _resolve_single_export(migration, reserving_class, properties):
         "names": [name],
         "include_dfm_methods": export_kind == "vector",
         "include_bf_methods": export_kind == "vector",
+        "include_cc_methods": export_kind == "vector",
         "display_kind": export_kind,
     }
 
@@ -303,6 +318,17 @@ def _cleanup_active_target_artifacts(migration, reserving_class, rc_dir, target)
                     if output_name:
                         dataset_names.add(output_name)
                         method_names.add(output_name)
+            elif method_type == migration.METHOD_TYPE_CAPE_COD_CODE and target.get("include_cc_methods"):
+                method_names.add(vector_name)
+                cc_method = migration._find_cape_cod_for_vector(reserving_class, vector_name)
+                if cc_method is not None:
+                    method_name = migration._normalize_import_name(migration._safe_attr(cc_method, "Name", ""))
+                    output_name = _output_vector_name(migration, cc_method)
+                    if method_name:
+                        method_names.add(method_name)
+                    if output_name:
+                        dataset_names.add(output_name)
+                        method_names.add(output_name)
 
     return migration.cleanup_target_dataset_artifacts(
         rc_dir,
@@ -350,6 +376,7 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
             "vectors_written": 0,
             "dfms_written": 0,
             "bfs_written": 0,
+            "ccs_written": 0,
             "bssr_written": 0,
             "bscra_written": 0,
             "errors": 0,
@@ -377,6 +404,7 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
                 vector_names=names,
                 include_dfm_methods=bool(target.get("include_dfm_methods")),
                 include_bf_methods=bool(target.get("include_bf_methods")),
+                include_cc_methods=bool(target.get("include_cc_methods")),
                 dfm_names=None,
                 method_counts=counts,
                 verbose=False,
@@ -403,6 +431,7 @@ def _import_active_dataset_from_resq(migration, project_name, rc_path, propertie
             + counts["vectors_written"]
             + counts["dfms_written"]
             + counts["bfs_written"]
+            + counts["ccs_written"]
             + counts["bssr_written"]
             + counts["bscra_written"]
         )
@@ -458,6 +487,8 @@ def _method_type_for_reopen(properties):
         return "Result Selection"
     if kind == "bornhuetter_ferguson":
         return "Bornhuetter Ferguson"
+    if kind == "cape_cod":
+        return "Cape Cod"
     if kind in {"berquist_sherman_sr", "berquistshermansr"}:
         return "B&S Settlement Rate Adjustment"
     if kind in {"berquist_sherman_cra", "berquistshermancra"}:
@@ -475,6 +506,7 @@ def _reopen_active_target_window(ui, window, properties, target_name):
         "dfm",
         "result selection",
         "bornhuetter ferguson",
+        "cape cod",
         "b&s settlement rate adjustment",
         "b&s case reserve adequacy adjustment",
     }

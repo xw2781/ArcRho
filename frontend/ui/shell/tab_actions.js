@@ -244,6 +244,23 @@ export function openBornhuetterFergusonTab() {
   shell.saveState?.();
 }
 
+export function openCapeCodTab() {
+  const id = `cc_${shell.state.nextId++}`;
+  shell.state.tabs.push({
+    id,
+    title: "Cape Cod",
+    type: "cape_cod",
+    iframe: null,
+    layout: "docked",
+    dsInst: `cc_${id}_${Date.now()}`,
+    ccTab: "details",
+    isDirty: false,
+  });
+  setDockedActive(id);
+  shell.render?.();
+  shell.saveState?.();
+}
+
 export function openResultSelectionTab() {
   const id = `rs_${shell.state.nextId++}`;
   shell.state.tabs.push({

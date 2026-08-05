@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Set, Tuple
 
 from arcrho_api.dataset_index_contract import (
     BF_JSON_FORMAT,
+    CC_JSON_FORMAT,
     DATASET_INDEX_VERSION,
     INDEX_FILE_NAME as DATASET_INDEX_FILE_NAME,
     build_dataset_index_payload,
@@ -40,6 +41,8 @@ RESULT_SELECTION_JSON_FORMATS = {
 }
 BF_METHOD_TYPE = dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON
 BF_JSON_FORMATS = {BF_JSON_FORMAT}
+CAPE_COD_METHOD_TYPE = dataset_sidecar_status_service.METHOD_TYPE_CAPE_COD
+CAPE_COD_JSON_FORMATS = {CC_JSON_FORMAT}
 BERQUIST_SHERMAN_METHOD_CONTRACTS = {
     "arcrho-berquist-sherman-sr-method-by-tab-v1": {
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_SR,
@@ -56,6 +59,7 @@ METHOD_JSON_FILENAME_PREFIXES = (
     "DFM@",
     "RS@",
     "BF@",
+    "CC@",
     *(contract["filename_prefix"] for contract in BERQUIST_SHERMAN_METHOD_CONTRACTS.values()),
 )
 CACHED_JSON_FILENAME_PREFIXES = METHOD_JSON_FILENAME_PREFIXES
@@ -260,7 +264,9 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
         details_tab = _json_tab(payload, "details_tab")
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
-    if json_format in BF_JSON_FORMATS or json_format in BERQUIST_SHERMAN_METHOD_CONTRACTS:
+    if json_format in BF_JSON_FORMATS \
+            or json_format in CAPE_COD_JSON_FORMATS \
+            or json_format in BERQUIST_SHERMAN_METHOD_CONTRACTS:
         details_tab = _json_tab(payload, "details_tab")
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
@@ -324,6 +330,22 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
             "method_type": BF_METHOD_TYPE,
             "data_format": "Vector",
             "source_kind": "bornhuetter_ferguson",
+            "status": dataset_sidecar_status_service.STATUS_CURRENT,
+        }
+    if json_format in CAPE_COD_JSON_FORMATS:
+        details_tab = _json_tab(payload, "details_tab")
+        dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
+        dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type"))
+        dataset_category = _clean_text(details_tab.get("dataset_category") or details_tab.get("output_category"))
+        if not dataset_name:
+            return None
+        return {
+            "dataset_name": dataset_name,
+            "dataset_type": dataset_type or dataset_name,
+            "dataset_category": dataset_category,
+            "method_type": CAPE_COD_METHOD_TYPE,
+            "data_format": "Vector",
+            "source_kind": "cape_cod",
             "status": dataset_sidecar_status_service.STATUS_CURRENT,
         }
     berquist_sherman_contract = BERQUIST_SHERMAN_METHOD_CONTRACTS.get(json_format)

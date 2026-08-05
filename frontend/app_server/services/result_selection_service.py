@@ -1503,6 +1503,7 @@ def refresh_dependents(
                             _clean(sidecar.get("dataset_type")) or dependent_name,
                             include_result_selection=False,
                             include_bornhuetter_ferguson=False,
+                            include_cape_cod=False,
                             finalize_method_review_status=False,
                             rebuild_index=False,
                         )

@@ -57,6 +57,11 @@ test("canonical index consumers preserve numeric at-sign suffixes in logical nam
     const normalizeBerquistShermanRow = await loadCachedRowNormalizer(
       "../ui/method_pages/berquist_sherman/berquist_sherman_main.js",
     );
+    const normalizeCapeCodRow = await loadCachedRowNormalizer(
+      "../ui/method_pages/cape_cod/cape_cod_main.js",
+      ["validOriginLength"],
+      [(value) => Number(value) || 0],
+    );
     const canonicalRow = {
       name: "Legacy Name@12@24",
       dataset_type: "Legacy Type",
@@ -66,6 +71,7 @@ test("canonical index consumers preserve numeric at-sign suffixes in logical nam
     assert.equal(resultSelectionRow.name, "Legacy Name@12@24");
     assert.equal(normalizeBornhuetterFergusonRow(canonicalRow).name, "Legacy Name@12@24");
     assert.equal(normalizeBerquistShermanRow(canonicalRow).name, "Legacy Name@12@24");
+    assert.equal(normalizeCapeCodRow(canonicalRow).name, "Legacy Name@12@24");
   } finally {
     globalThis.window = previousWindow;
   }
