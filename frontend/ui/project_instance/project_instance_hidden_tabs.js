@@ -74,9 +74,15 @@ function hideMinimizedTabTooltip() {
   state.minimizedTabTooltip.setAttribute("aria-hidden", "true");
 }
 
+function syncHiddenTabsVisibility(count) {
+  if (els.hiddenTabsWrap) els.hiddenTabsWrap.classList.toggle("empty", !count);
+  if (!count) setHiddenTabsMenuOpen(false, { pinned: false });
+}
+
 function updateHiddenTabsArea() {
   const count = hiddenWindows.size;
   hideMinimizedTabTooltip();
+  syncHiddenTabsVisibility(count);
   if (els.hiddenTabsLabel) {
     els.hiddenTabsLabel.textContent = `${count} hidden`;
   }
@@ -116,6 +122,7 @@ function updateHiddenTabsArea() {
   }
   if (!els.hiddenTabsMenu) return;
   els.hiddenTabsMenu.innerHTML = "";
+  if (!count) return;
   const actions = document.createElement("div");
   actions.className = "pi-hidden-tabs-actions";
   const resumeAllBtn = document.createElement("button");
@@ -132,15 +139,18 @@ function updateHiddenTabsArea() {
   closeAllBtn.addEventListener("click", () => {
     closeAllHiddenWindows();
   });
-  actions.append(resumeAllBtn, closeAllBtn);
+  const dismissBtn = document.createElement("button");
+  dismissBtn.type = "button";
+  dismissBtn.className = "pi-hidden-tabs-dismiss";
+  dismissBtn.setAttribute("aria-label", "Close hidden tabs menu");
+  dismissBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
+  dismissBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setHiddenTabsMenuOpen(false, { pinned: false });
+  });
+  actions.append(resumeAllBtn, closeAllBtn, dismissBtn);
   els.hiddenTabsMenu.appendChild(actions);
-  if (!count) {
-    const empty = document.createElement("div");
-    empty.className = "pi-hidden-tabs-empty";
-    empty.textContent = "No hidden tabs.";
-    els.hiddenTabsMenu.appendChild(empty);
-    return;
-  }
   for (const [id, item] of hiddenWindows) {
     const row = document.createElement("div");
     row.className = "pi-hidden-tab-row";
@@ -338,7 +348,6 @@ function closeHiddenWindow(id) {
   if (!item?.frame) return;
   const title = item.title || item.frame.dataset.windowTitle || "dataset window";
   closeDatasetWindow(item.frame, { status: false });
-  if (!hiddenWindows.size) setHiddenTabsMenuOpen(false, { pinned: false });
   setStatus(`Closed ${title}`);
 }
 
@@ -366,7 +375,6 @@ function closeAllHiddenWindows() {
   }
   syncDatasetWindowChrome();
   updateHiddenTabsArea();
-  setHiddenTabsMenuOpen(false, { pinned: false });
   notifyProjectInstanceDirtyState();
   notifyActiveDfmWindowState();
   notifyProjectInstanceStateChanged();
@@ -379,7 +387,6 @@ async function restoreAllHiddenWindows() {
   for (const id of ids) {
     await restoreHiddenWindow(id);
   }
-  setHiddenTabsMenuOpen(false, { pinned: false });
 }
 
 async function activateDatasetWindow(frame) {

@@ -125,6 +125,11 @@
   --ar-spreadsheet-header-fill: var(--ar-color-input);
   --ar-spreadsheet-label-fill: var(--ar-color-input);
   --ar-spreadsheet-label-text: var(--ar-color-text);
+  --ds-grid-skeleton-bar: rgba(171, 178, 191, 0.16);
+  --ds-grid-skeleton-sweep: rgba(171, 178, 191, 0.1);
+  --ds-grid-placeholder-title: var(--ar-color-text);
+  --ds-grid-placeholder-text: var(--ar-color-text-muted);
+  --ds-grid-placeholder-error: var(--ar-color-danger);
 
   /* Feature-local variable contracts. */
   --bf-border: var(--ar-color-border);
@@ -1940,11 +1945,11 @@
   box-shadow: var(--ar-shadow-subtle);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-minimized-tab-restore, .pi-minimized-tab-close, .pi-hidden-tab-item, .pi-hidden-tab-delete) {
+:root[data-arcrho-theme="dark"] :is(.pi-minimized-tab-restore, .pi-minimized-tab-close, .pi-hidden-tab-item, .pi-hidden-tab-delete, .pi-hidden-tabs-dismiss) {
   background: transparent;
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-minimized-tab-close, .pi-hidden-tab-delete, .pi-hidden-tab-icon, .pi-hidden-tabs-empty) {
+:root[data-arcrho-theme="dark"] :is(.pi-minimized-tab-close, .pi-hidden-tab-delete, .pi-hidden-tab-icon, .pi-hidden-tabs-dismiss) {
   color: var(--ar-color-text-muted);
 }
 
@@ -1967,6 +1972,11 @@
   border-color: #8f3f4f;
   background: var(--ar-color-danger-soft);
   color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] :is(.pi-hidden-tabs-dismiss:hover, .pi-hidden-tabs-dismiss:focus-visible) {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .pi-hidden-tab-item {

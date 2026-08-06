@@ -1,5 +1,6 @@
 // Owns sidecar, settings, notes, external-link, dirty, save, and close lifecycles.
 import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
+import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
   const defer = (name) => (...args) => runtime[name](...args);
@@ -7,7 +8,27 @@ export function registerDataTabPersistenceController(runtime) {
   const normalizeProjectText = defer("normalizeProjectText");
   const renderChart = defer("renderChart");
   const isDatasetReadOnly = defer("isDatasetReadOnly");
-  let notesContextKey = "", notesContextPayload = null, notesDirty = false, lastSavedNotesText = "", datasetNotesController = null, datasetSettingsDirty = false, sidecarContextKey = "", sidecarContextPayload = null, lastSavedDatasetSettings = null, temporaryNumberFormatSettingsPromise = null, temporaryNumberFormatSettingsKey = "", sidecarSyncNonce = 0, datasetExternalLinksLoaded = false, datasetCloseConfirm = null, hostInputsPublished = false;
+  let notesContextKey = "", notesContextPayload = null, notesDirty = false, lastSavedNotesText = "", datasetNotesController = null, datasetSettingsDirty = false, sidecarContextKey = "", sidecarContextPayload = null, lastSavedDatasetSettings = null, sidecarSyncNonce = 0, datasetExternalLinksLoaded = false, datasetCloseConfirm = null, hostInputsPublished = false;
+  const {
+    loadTemporaryNumberFormatSettings,
+    resolveTemporaryDatasetSettings,
+    applyTemporaryNumberFormatDefaults,
+    applyTemporaryNumberFormatSettings,
+  } = createTemporaryDatasetFormat({
+    isTemporaryDatasetView,
+    state,
+    getDatasetNumberFormatDefaults,
+    getCurrentDatasetSettings: (...args) => getCurrentDatasetSettings(...args),
+    normalizeDatasetSettings: (...args) => normalizeDatasetSettings(...args),
+    buildDatasetSidecarContextPayload: (...args) => buildDatasetSidecarContextPayload(...args),
+    hasDatasetSidecarContext: (...args) => hasDatasetSidecarContext(...args),
+    getDatasetSyncedNumberFormatValue,
+    setDatasetDecimalPlacesValue,
+    setDatasetNumberFormatValue,
+    renderTable,
+    notifyDatasetUpdated,
+    applyGridSelectionFromState,
+  });
   runtime.datasetExternalLinks = createDatasetExternalLinksController({
     state,
     isReadOnly: () => isDatasetReadOnly() || isDfmDataTabHost() || !currentDatasetIsManualTriangleOrVector(),
@@ -321,26 +342,6 @@ export function registerDataTabPersistenceController(runtime) {
     refreshLenDropdowns();
   }
 
-  async function loadTemporaryNumberFormatSettings(context) {
-    const key = String(context?.dataset_type || "").trim();
-    if (!key) return null;
-    if (temporaryNumberFormatSettingsKey !== key) {
-      temporaryNumberFormatSettingsKey = key;
-      temporaryNumberFormatSettingsPromise = getDatasetNumberFormatDefaults({
-        datasetTypeName: context.dataset_type,
-      }).then((response) => {
-        if (!response.ok || response.data?.ok === false) return null;
-        const numberFormat = String(response.data?.resolved_number_format || "").trim();
-        if (!numberFormat) return null;
-        return {
-          number_format: numberFormat,
-          decimal_places: response.data?.resolved_decimal_places,
-        };
-      }).catch(() => null);
-    }
-    return temporaryNumberFormatSettingsPromise;
-  }
-
   function invalidateDatasetContextLoads() {
     sidecarSyncNonce += 1;
     runtime.datasetExternalLinks.abort();
@@ -477,12 +478,8 @@ export function registerDataTabPersistenceController(runtime) {
     if (data.exists) {
       settings = normalizeDatasetSettings(data);
     } else if (isTemporaryDatasetView) {
-      const temporarySettings = await loadTemporaryNumberFormatSettings(context);
+      settings = await resolveTemporaryDatasetSettings(context);
       if (!isCurrent()) return false;
-      settings = normalizeDatasetSettings({
-        ...getCurrentDatasetSettings(),
-        ...(temporarySettings || {}),
-      });
     } else {
       settings = normalizeDatasetSettings(getCurrentDatasetSettings());
     }
@@ -501,10 +498,7 @@ export function registerDataTabPersistenceController(runtime) {
       updateDatasetSaveUi();
       return true;
     }
-    if (isTemporaryDatasetView && !data.exists) {
-      setDatasetDecimalPlacesValue(settings.decimal_places);
-      setDatasetNumberFormatValue(settings.number_format);
-    }
+    applyTemporaryNumberFormatSettings(settings);
     refreshDatasetSettingsDirty();
     return true;
   }
@@ -967,6 +961,8 @@ export function registerDataTabPersistenceController(runtime) {
     updateDatasetSaveUi,
     refreshDatasetSettingsDirty,
     applyDatasetSettingsToControls,
+    applyTemporaryNumberFormatDefaults,
+    resolveTemporaryDatasetSettings,
     loadTemporaryNumberFormatSettings,
     invalidateDatasetContextLoads,
     refreshDatasetExternalLinks,

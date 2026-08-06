@@ -18,7 +18,13 @@ import {
   renderTable,
   setDatasetRenderNumberFormatSettings,
   setDatasetRenderVectorColumnLabel,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260721a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260805a";
+import {
+  beginDatasetGridLoading,
+  endDatasetGridLoading,
+  renderDatasetGridPlaceholder,
+  setDatasetGridEmpty,
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
 import {
   redrawDataTabChartSafely as redrawChartSafely,
   renderDataTabChart as renderChart,
@@ -30,7 +36,7 @@ import {
 import { createDatasetDependencyGuard } from "/ui/shared/dataset/dataset_dependency_service.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { validateDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
-import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260721a";
+import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260805a";
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
@@ -79,11 +85,11 @@ import {
 } from "/ui/shell/browsing_history.js";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260715a";
 
-import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260726a";
+import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260805a";
 import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260726a";
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
-import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260731b";
+import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260805a";
 import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260726a";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
@@ -386,6 +392,22 @@ function wireEvents() {
 }
 
 async function bootDatasetDataTabOnce() {
+  // Boot owns the grid placeholder until a load, a run, or an explicit empty
+  // state takes over, so the first paint of a Client PC window shows the grid
+  // that is on its way rather than an empty-looking one.
+  const gridPlaceholderToken = beginDatasetGridLoading();
+  const gridHost = document.getElementById("tableWrap");
+  // The grid host is mounted before boot runs, so the skeleton is the window's
+  // first paint of that area instead of a blank panel or a stale empty state.
+  if (gridHost && !state.model) renderDatasetGridPlaceholder(gridHost);
+  try {
+    await bootDatasetDataTabSteps();
+  } finally {
+    endDatasetGridLoading(gridPlaceholderToken);
+  }
+}
+
+async function bootDatasetDataTabSteps() {
   runtime.wireDataTabHostLifecycle();
   runtime.wireDataTabInputLifecycle();
   runtime.wireDataTabPersistenceLifecycle();
@@ -402,6 +424,11 @@ async function bootDatasetDataTabOnce() {
       // Project Instance opens; the authoritative run validation reloads the
       // lists it needs on demand.
       runtime.applyTriInputsFromQueryParams();
+      // Skipping that chain also skips the only step that resolves a number
+      // format, and the grid formats from the toolbar controls when the run
+      // paints it. Resolve the Dataset Type default first so the first paint is
+      // already formatted instead of waiting for the next input change.
+      if (isTemporaryDatasetView) await runtime.applyTemporaryNumberFormatDefaults();
     } else {
       await runtime.loadProjectsDropdown();
       runtime.applyWorkflowDefaultsIfNew();
@@ -458,6 +485,10 @@ async function bootDatasetDataTabOnce() {
         runtime.scheduleAutoRun(0);
       }
     } else if (isDfmDataTabHost()) {
+      setDatasetGridEmpty({
+        title: "Waiting For DFM Inputs",
+        hint: "This table fills in once the method has a project, reserving class, and dataset.",
+      });
       runtime.setStatus("Waiting for DFM inputs...");
     } else {
       await runtime.loadDataset();

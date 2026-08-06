@@ -13,6 +13,7 @@ const [projectInstanceHtml, projectInstanceCss, contextSource, cacheSource, tabl
     readFile(new URL("../ui/shared/tabs/data/data_tab_controller.js", import.meta.url), "utf8"),
     readFile(new URL("../ui/shared/tabs/data/data_tab_persistence_controller.js", import.meta.url), "utf8"),
     readFile(new URL("../ui/shared/tabs/data/data_tab_request_controller.js", import.meta.url), "utf8"),
+    readFile(new URL("../ui/shared/tabs/data/data_tab_temporary_format.js", import.meta.url), "utf8"),
   ]).then((sources) => sources.join("\n")),
   readFile(new URL("../ui/shared/dataset/dataset_api.js", import.meta.url), "utf8"),
 ]);
@@ -80,6 +81,17 @@ test("the Dataset Viewer sends the temporary-mode signal and blocks writes", () 
   assert.match(dataTabSource, /if \(isTemporaryDatasetView\) return false;/);
   assert.match(dataTabSource, /loadTemporaryNumberFormatSettings/);
   assert.match(dataTabSource, /resolved_number_format/);
+  // The temporary-view boot skips the sidecar chain, so it has to resolve the
+  // Dataset Type default number format before the first run paints the grid,
+  // and one module owns that resolution for boot and the post-run sync alike.
+  assert.match(dataTabSource, /if \(isTemporaryDatasetView\) await runtime\.applyTemporaryNumberFormatDefaults\(\);/);
+  assert.match(dataTabSource, /export function createTemporaryDatasetFormat\(deps\)/);
+  assert.match(dataTabSource, /applyTemporaryNumberFormatSettings\(settings\);/);
+  // The sync runs after the first paint, so a newly resolved format has to repaint.
+  assert.match(
+    dataTabSource,
+    /if \(!state\.model \|\| getDatasetSyncedNumberFormatValue\(\) === renderedNumberFormat\) return false;\s*renderTable\(\);/,
+  );
   assert.match(datasetApiSource, /dataset\/number-format-defaults/);
   assert.match(datasetApiSource, /dataset_type_name/);
   assert.doesNotMatch(datasetApiSource, /reserving_class/);

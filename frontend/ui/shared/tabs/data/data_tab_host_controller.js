@@ -4,6 +4,11 @@ import {
   collectDatasetPropagationFailures,
   datasetPropagationFailureStep,
 } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
+import {
+  beginDatasetGridLoading,
+  endDatasetGridLoading,
+  setDatasetGridError,
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
 
 export function registerDataTabHostController(runtime) {
   const { state, config, $, instanceId, stepId, workflowId, WF_GLOBAL_CTRL_PREFIX, decodeFileNameSegment } = runtime;
@@ -583,6 +588,18 @@ export function registerDataTabHostController(runtime) {
     const { project, path, tri, instanceName, originLen, devLen, cumulative, calendar } = getTriInputs();
     const datasetName = instanceName || tri;
     if (!project || !path || !datasetName) return { ok: false, skipped: true };
+    const gridPlaceholderToken = beginDatasetGridLoading({ message: `Loading "${datasetName}"` });
+    try {
+      return await readProjectInstanceCachedDataset({
+        project, path, datasetName, originLen, devLen, cumulative, calendar,
+      });
+    } finally {
+      endDatasetGridLoading(gridPlaceholderToken);
+    }
+  }
+
+  async function readProjectInstanceCachedDataset(context) {
+    const { project, path, datasetName, originLen, devLen, cumulative, calendar } = context;
     setStatus(`Loading ${datasetName}...`);
     const response = await loadCachedDataset({
       project_name: project,
@@ -595,6 +612,7 @@ export function registerDataTabHostController(runtime) {
     });
     if (!response.ok || response.data?.ok === false) {
       const message = String(response.data?.detail || response.data?.error || `Dataset cache load failed (${response.status}).`);
+      setDatasetGridError(message);
       setStatus(message);
       return { ok: false, status: response.status, data: response.data, message };
     }

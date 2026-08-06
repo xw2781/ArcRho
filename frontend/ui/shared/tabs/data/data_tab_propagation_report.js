@@ -5,6 +5,7 @@ const METHOD_REPORTS = [
   ["Result Selection", "result_selection_updates"],
   ["Bornhuetter Ferguson", "bornhuetter_ferguson_updates"],
   ["Cape Cod", "cape_cod_updates"],
+  ["Bootstrap", "bootstrap_updates"],
 ];
 
 function cleanText(value) {

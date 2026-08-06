@@ -15,7 +15,7 @@ import { installProjectInstanceDatasetTable } from "./project_instance_dataset_t
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260731b";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260805a";
-import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260607d";
+import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
 import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260804a";
 
 export async function bootProjectInstance() {

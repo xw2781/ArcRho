@@ -31,10 +31,21 @@ const runControllerSource = await readFile(
   new URL("../ui/shared/dataset/dataset_run_controller.js", import.meta.url),
   "utf8",
 );
-const testableRunControllerSource = runControllerSource.replace(
-  /import \{ isDfmDataTabHost \} from "\/ui\/shared\/tabs\/data\/data_tab_context\.js";/,
-  "const isDfmDataTabHost = () => false;",
-);
+const testableRunControllerSource = runControllerSource
+  .replace(
+    /import \{ isDfmDataTabHost \} from "\/ui\/shared\/tabs\/data\/data_tab_context\.js";/,
+    "const isDfmDataTabHost = () => false;",
+  )
+  .replace(
+    /import \{[\s\S]*?\} from "\/ui\/shared\/tabs\/data\/dataset_grid_placeholder\.js\?v=[0-9a-z]+";/,
+    [
+      "const beginDatasetGridLoading = () => 0;",
+      "const endDatasetGridLoading = () => {};",
+      "const renderDatasetGridPlaceholder = () => null;",
+      "const setDatasetGridEmpty = () => {};",
+      "const setDatasetGridError = (message) => { globalThis.__arTestGridError = message; };",
+    ].join("\n"),
+  );
 const runControllerModule = await import(
   `data:text/javascript;base64,${Buffer.from(testableRunControllerSource).toString("base64")}`
 );
@@ -492,6 +503,7 @@ test("Dataset Viewer renders backend label errors and invalidates stale data", a
     fileMtime: 1,
     headerLabels: ["2019"],
   };
+  globalThis.__arTestGridError = "";
   let statusText = "";
   let chartRenderCount = 0;
   let updateOptions = null;
@@ -540,7 +552,9 @@ test("Dataset Viewer renders backend label errors and invalidates stale data", a
   assert.equal(state.dirty.size, 1);
   assert.equal(chartRenderCount, 1);
   assert.deepEqual(updateOptions, { publishPreview: false });
-  assert.equal(tableWrap.children[0].children[1].textContent, detail);
+  // The grid surface itself belongs to the shared placeholder, so a failed load
+  // is asserted through the message it hands over rather than through markup.
+  assert.equal(globalThis.__arTestGridError, detail);
 });
 
 test("an older dataset response cannot restore data after a newer load fails", async () => {

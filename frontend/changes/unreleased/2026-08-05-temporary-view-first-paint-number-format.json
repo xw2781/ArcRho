@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Temporary-view datasets now open with their default number format already applied.",
+  "details": [
+    "The Dataset Type default format is resolved before the first grid paint instead of only after changing a parameter such as Origin Length.",
+    "A temporary view of a dataset that already has a sidecar now shows that sidecar's saved format."
+  ]
+}

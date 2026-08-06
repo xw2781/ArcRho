@@ -46,7 +46,7 @@ interactionSource = interactionSource
     JSON.stringify(spreadsheetStubUrl),
   )
   .replace(
-    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260721a"',
+    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260805a"',
     JSON.stringify(viewStubUrl),
   )
   .replace(

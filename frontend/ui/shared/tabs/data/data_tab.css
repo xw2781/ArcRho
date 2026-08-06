@@ -319,3 +319,137 @@
   color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
 }
+
+/*
+Grid placeholder: loading skeleton, empty, and error surfaces.
+
+Project data can live on a network drive, so a grid host is empty for as long as
+that read takes. The skeleton keeps the shape of the arriving grid on screen for
+that window; the caption only names the wait once it outlasts a local read.
+*/
+:root {
+  --ds-grid-skeleton-bar: rgba(15, 23, 42, 0.11);
+  --ds-grid-skeleton-sweep: rgba(255, 255, 255, 0.5);
+  --ds-grid-placeholder-title: #334155;
+  --ds-grid-placeholder-text: #64748b;
+  --ds-grid-placeholder-error: #be123c;
+  --ds-grid-skeleton-caption-delay: 800ms;
+  --ds-grid-skeleton-elapsed-delay: 3000ms;
+}
+
+.dsGridPlaceholder {
+  width: max-content;
+  max-width: 100%;
+}
+
+.dsGridSkeleton {
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.dsGridSkeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 32%,
+    var(--ds-grid-skeleton-sweep) 50%,
+    transparent 68%
+  );
+  animation: dsGridSkeletonSweep 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.dsGridSkeletonTable {
+  cursor: default;
+}
+
+.dsGridSkeletonTable th {
+  text-align: center;
+}
+
+.dsGridSkeletonTable tbody td {
+  text-align: right;
+}
+
+.dsGridSkeletonBar {
+  display: inline-block;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ds-grid-skeleton-bar);
+  vertical-align: middle;
+}
+
+/* Header and label bars ride the cell's own centering, so they stay on the same
+   baseline the real labels will occupy. */
+.dsGridSkeletonBarCentered {
+  margin: 0 auto;
+}
+
+.dsGridSkeletonCellBlank {
+  border: none !important;
+  background: transparent !important;
+}
+
+.dsGridPlaceholderNote {
+  padding: 10px 2px 0;
+  color: var(--ds-grid-placeholder-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dsGridPlaceholderNoteLoading {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  opacity: 0;
+  animation: dsGridPlaceholderFadeIn 160ms ease var(--ds-grid-skeleton-caption-delay) both;
+}
+
+.dsGridPlaceholderElapsed {
+  opacity: 0;
+  animation: dsGridPlaceholderFadeIn 160ms ease var(--ds-grid-skeleton-elapsed-delay) both;
+  font-variant-numeric: tabular-nums;
+}
+
+.dsGridPlaceholderTitle {
+  color: var(--ds-grid-placeholder-title);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dsGridPlaceholderNoteError .dsGridPlaceholderTitle {
+  color: var(--ds-grid-placeholder-error);
+}
+
+.dsGridPlaceholderHint {
+  margin-top: 2px;
+  max-width: 62ch;
+  white-space: normal;
+}
+
+@keyframes dsGridSkeletonSweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes dsGridPlaceholderFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsGridSkeleton::after {
+    animation: none;
+    background: none;
+  }
+
+  .dsGridPlaceholderNoteLoading,
+  .dsGridPlaceholderElapsed {
+    animation: none;
+    opacity: 1;
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset grids now preview the arriving table while it loads instead of showing \"No dataset loaded.\"",
+  "details": [
+    "While a dataset is being read, the grid area shows a skeleton of the table with a slow sweep, so a slow network-drive read no longer looks like an empty dataset.",
+    "A caption naming the dataset appears only if the read takes longer than about a second, followed by an elapsed counter, leaving fast local reads silent.",
+    "The genuine empty state now reads as a short title plus a hint about what to select, and a failed load shows the failure in the grid area.",
+    "The DFM Data, Ratios, and Results grids use the same states, including while a saved method loads."
+  ]
+}

@@ -506,6 +506,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/shared/tabs/data/data_tab_persistence_controller.js", "Data-tab sidecar, dirty, save, close, Notes, and Links controller."),
             ("ui/shared/tabs/data/dataset_grid_view.js", "Reusable Dataset/DFM grid rendering."),
             ("ui/shared/tabs/data/dataset_grid_interactions.js", "Reusable Dataset/DFM grid interactions."),
+            ("ui/shared/tabs/data/dataset_grid_placeholder.js", "Reusable Dataset/DFM grid loading, empty, and error states."),
             ("ui/shared/tabs/data/data_tab.css", "Reusable Data-tab presentation."),
             ("ui/shared/components/pickers/dataset_name_picker.js", "Shared dataset-name picker."),
             ("ui/shared/dataset/dataset_origin_labels.js", "Shared dataset origin-label utilities."),
@@ -739,6 +740,14 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("ui/method_pages/cape_cod/cape_cod_main.js", "Cape Cod page state and aggregate persistence flow."),
             ("ui/method_pages/cape_cod/cape_cod_json_contract.js", "Canonical browser-side v1 payload builder."),
             ("ui/method_pages/cape_cod/cape_cod_method_api.js", "Aggregate Cape Cod transport adapter."),
+        ],
+    },
+    "bootstrap": {
+        "doc": "docs/app_server/domains/bootstrap.md",
+        "files": [
+            ("app_server/api/bootstrap_router.py", "Aggregate Bootstrap load/save/refresh routes."),
+            ("app_server/services/bootstrap_service.py", "V1 contract persistence, transactional publication, and eager dependency refresh."),
+            ("app_server/schemas/bootstrap.py", "Bootstrap identity and revision-aware save request models."),
         ],
     },
     "book": {
@@ -1184,6 +1193,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Used by the Cape Cod method page.\n- Current loads aggregate one method JSON and its raw output sidecar, plus the derived as-if ultimates triangle.",
             "- Persists the complete Cape Cod method snapshot, native/coarser output vector CSVs, and its output sidecar with dependency edges and a matching publication revision.",
             "1. Change the v1 payload only across every producer and exact parity test.\n2. Preserve the two-file current load and failure-safe, bounded eager refresh behavior.",
+            "- Out-of-band source edits bypass managed propagation; failed refresh branches retain their last valid publication and remain Review Needed.",
+        ),
+        "bootstrap": (
+            "Self-contained Bootstrap v1 load, save, and eager dependency-refresh domain.",
+            "- Used by the Bootstrap method page.\n- Current loads aggregate one method JSON and its raw output sidecar; the precedent DFM is read as a method rather than a dataset.",
+            "- Persists the complete Bootstrap method snapshot, native/coarser output vector CSVs, and its output sidecar with dependency edges and a matching publication revision. Simulated reserves are never persisted: only the seed, the simulation count, and a summary.",
+            "1. Change the v1 payload only across every producer and exact parity test.\n2. Resolve the DFM method to the dataset it publishes before touching the dependency graph.",
             "- Out-of-band source edits bypass managed propagation; failed refresh branches retain their last valid publication and remain Review Needed.",
         ),
         "book": (

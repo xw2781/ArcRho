@@ -8,7 +8,7 @@ DFM Notes reuses `ui/shared/tabs/notes/` for path highlighting, `Tab`/`Shift+Tab
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.dfm.entry_points -->
-- `ui/method_pages/dfm/dfm.html`: external scripts `/ui/shared/services/color_theme.js?v=20260724a`; inline imports `/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260731b`, `/ui/method_pages/dfm/dfm_main.js?v=20260726a`.
+- `ui/method_pages/dfm/dfm.html`: external scripts `/ui/shared/services/color_theme.js?v=20260724a`; inline imports `/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260805a`, `/ui/method_pages/dfm/dfm_main.js?v=20260726a`.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/tri`
@@ -128,6 +128,7 @@ Detected `arcrho:*` message types in key JS files:
 - Details `Output Vector` and `Input Triangle` use the shared picker name search, sorting, column filters, and picker preferences.
 - During async project-scoped `Output Vector` option refresh/load (for example immediately after page refresh with prefilled Project), the picker does not clear the field while the `Output Vector` input is actively focused/being typed in.
 - Reuses the host-neutral coordinator at `ui/shared/tabs/data/data_tab_controller.js` through `ui/method_pages/dfm/dfm_data_tab_adapter.js`, plus server project user preferences for project-specific shared `lastReservingClassPath` / Dataset defaults when no query/workflow values override the inputs.
+- The Data, Ratios, and Results grids share the Dataset grid placeholder (`ui/shared/tabs/data/dataset_grid_placeholder.js`) for their non-data states. Loading a saved method registers that load, so all three show the shared skeleton while the method JSON and its embedded input snapshot come off the network drive, instead of claiming no dataset is loaded. With nothing loading, Ratios and Results show their own empty hint pointing at the Data tab, and a DFM page still waiting for inputs shows `Waiting For DFM Inputs`.
 - For new DFM pages, `Name`, `Output Vector`, and `Input Triangle` start empty instead of prefilled defaults.
 - DFM method JSON naming uses `<project>/data/<ReservingClassFolder>/methods/DFM@<Name>.json`; within a project/reserving-class pair, `details tab.name` is the unique method identity. `details tab.output dataset` is a separate output CSV/sidecar identity and defaults to Name for a new GUI method. Migrated methods may preserve distinct identities, and Save As must choose an output identity that is not already owned by another method.
 - DFM no longer creates, reads, updates, or deletes `dfm_method_names.json` or the browser-local cached DFM Name key; local method lookup uses only the current Details fields and the standard local DFM JSON path.

@@ -19,7 +19,7 @@ import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.j
 import {
   redrawDatasetChartSafely,
   renderDatasetChart,
-} from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260724a";
+} from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260805a";
 import { wireDatasetNotesEditor } from "/ui/dataset_viewer/tabs/dataset_notes_tab.js?v=20260715a";
 import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260715b";
 import { configureDataTabLinks } from "/ui/shared/tabs/data/data_tab_links_port.js";
@@ -85,7 +85,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260731b"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260805a"
 );
 
 const datasetLinksTab = createExternalLinksTab({

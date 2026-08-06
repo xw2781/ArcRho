@@ -4,6 +4,10 @@ DFM Persistence - load/save ratio selections to disk via host API
 ===============================================================================
 */
 import {
+  beginDatasetGridLoading,
+  endDatasetGridLoading,
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
+import {
   state,
   ratioStrikeSet,
   selectedSummaryByCol,
@@ -53,7 +57,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260726b";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260805a";
 import {
   applyPersistedResultsSnapshot,
   renderResultsTable,
@@ -64,7 +68,7 @@ import {
   getResultsUltimateRatioDecimalPlacesSelection,
   setResultsRatioBasisSelection,
   setResultsUltimateRatioDecimalPlacesSelection,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260805a";
 import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
 import {
   buildDfmAverageFormulaObject,
@@ -1228,6 +1232,18 @@ function scheduleDfmExcelFreshnessCheck(method) {
 }
 
 export async function loadRatioSelectionIfExists(reason) {
+  // The method JSON and its input snapshot come from the same network drive as
+  // dataset data, so the DFM grids stay in the shared loading state until this
+  // read settles either way.
+  const gridPlaceholderToken = beginDatasetGridLoading({ message: "Loading DFM method" });
+  try {
+    return await loadRatioSelectionIfExistsOnce(reason);
+  } finally {
+    endDatasetGridLoading(gridPlaceholderToken);
+  }
+}
+
+async function loadRatioSelectionIfExistsOnce(reason) {
   postDfmLookupDebugStatus("triggered", { reason });
   if (!hasRequiredDfmLookupInputs()) {
     postDfmLookupDebugStatus("skipped (waiting for required fields)", { reason });

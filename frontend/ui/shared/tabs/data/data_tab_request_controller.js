@@ -1,5 +1,12 @@
 // Owns draft models, period controls, run request construction, and header rules.
 
+import {
+  beginDatasetGridLoading,
+  endDatasetGridLoading,
+  renderDatasetGridPlaceholder,
+  setDatasetGridError,
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
+
 export function registerDataTabRequestController(runtime) {
   const { state, config, isTemporaryDatasetView, qs, temporaryDatasetSessionId } = runtime;
   const defer = (name) => (...args) => runtime[name](...args);
@@ -103,6 +110,15 @@ export function registerDataTabRequestController(runtime) {
   }
 
   async function refreshProjectInstanceDraftModel() {
+    const gridPlaceholderToken = beginDatasetGridLoading({ message: "Preparing dataset draft" });
+    try {
+      return await refreshProjectInstanceDraftModelOnce();
+    } finally {
+      endDatasetGridLoading(gridPlaceholderToken);
+    }
+  }
+
+  async function refreshProjectInstanceDraftModelOnce() {
     const refreshSeq = ++projectInstanceDraftRefreshSeq;
     const project = getResolvedProjectValue();
     const { originLen, devLen } = getTriInputs();
@@ -135,11 +151,8 @@ export function registerDataTabRequestController(runtime) {
       state.model = null;
       state.fileMtime = null;
       state.headerLabels = [];
-      const error = document.createElement("div");
-      error.className = "small";
-      error.style.color = "#b00";
-      error.textContent = message;
-      document.getElementById("tableWrap")?.replaceChildren(error);
+      setDatasetGridError(message);
+      renderDatasetGridPlaceholder(document.getElementById("tableWrap"));
       const meta = document.getElementById("dsMeta");
       if (meta) meta.textContent = "";
       renderChart();

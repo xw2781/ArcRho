@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The Project Instance hidden-tabs control now hides itself when nothing is minimized and its dropdown has a close icon.",
+  "details": [
+    "The toolbar no longer shows a '0 hidden' button or an empty 'No hidden tabs.' menu when no window is minimized.",
+    "The hidden-tabs dropdown has a close icon that dismisses the menu without moving the pointer away."
+  ]
+}

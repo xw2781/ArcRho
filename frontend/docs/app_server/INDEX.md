@@ -13,6 +13,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `arcrho` | [`app_server/api/arcrho_router.py`](../../app_server/api/arcrho_router.py) | 9 | [`arcrho.md`](domains/arcrho.md) |
 | `audit_log` | [`app_server/api/audit_log_router.py`](../../app_server/api/audit_log_router.py) | 2 | [`audit_log.md`](domains/audit_log.md) |
 | `book` | [`app_server/api/book_router.py`](../../app_server/api/book_router.py) | 3 | [`book.md`](domains/book.md) |
+| `bootstrap` | [`app_server/api/bootstrap_router.py`](../../app_server/api/bootstrap_router.py) | 3 | [`bootstrap.md`](domains/bootstrap.md) |
 | `bornhuetter_ferguson` | [`app_server/api/bornhuetter_ferguson_router.py`](../../app_server/api/bornhuetter_ferguson_router.py) | 3 | [`bornhuetter_ferguson.md`](domains/bornhuetter_ferguson.md) |
 | `cape_cod` | [`app_server/api/cape_cod_router.py`](../../app_server/api/cape_cod_router.py) | 3 | [`cape_cod.md`](domains/cape_cod.md) |
 | `data_processing_rules` | [`app_server/api/data_processing_rules_router.py`](../../app_server/api/data_processing_rules_router.py) | 3 | [`data_processing_rules.md`](domains/data_processing_rules.md) |

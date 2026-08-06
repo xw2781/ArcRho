@@ -22,8 +22,9 @@ import {
 import {
   invalidatePersistedResultsDerivations,
   renderResultsTable,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260726a";
-import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260721a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260805a";
+import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260805a";
+import { renderDatasetGridPlaceholder } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import {
   moveActiveSelectableTableSelection,
@@ -717,7 +718,9 @@ export function renderRatioTable() {
 
   const model = state.model;
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) {
-    wrap.innerHTML = `<div class="small">No dataset loaded.</div>`;
+    renderDatasetGridPlaceholder(wrap, {
+      emptyHint: "Load a dataset in the Data tab to compute ratios.",
+    });
     return;
   }
 

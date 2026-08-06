@@ -1,4 +1,11 @@
 import { isDfmDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
+import {
+  beginDatasetGridLoading,
+  endDatasetGridLoading,
+  renderDatasetGridPlaceholder,
+  setDatasetGridEmpty,
+  setDatasetGridError,
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
 
 const DEFAULT_LOADING_POPUP_DELAY_MS = 300;
 
@@ -40,6 +47,7 @@ export function createDatasetRunController(deps) {
     : DEFAULT_LOADING_POPUP_DELAY_MS;
 
   let autoRunTimer = null;
+  let autoRunPlaceholderToken = null;
   let lastAutoKey = "";
   let runInFlight = false;
   let queuedRunOptions = null;
@@ -202,8 +210,20 @@ export function createDatasetRunController(deps) {
   }
 
   function scheduleAutoRun(delayMs = 150) {
-    if (autoRunTimer) clearTimeout(autoRunTimer);
-    autoRunTimer = setTimeout(() => autoRun(), delayMs);
+    if (autoRunTimer) {
+      clearTimeout(autoRunTimer);
+    } else {
+      // A scheduled run owns the grid placeholder from the moment it is queued.
+      // Without that the boot sequence would settle to an empty grid in the gap
+      // before the timer fires, flashing "no dataset" at a dataset that is coming.
+      autoRunPlaceholderToken = beginDatasetGridLoading();
+    }
+    autoRunTimer = setTimeout(() => {
+      autoRunTimer = null;
+      const token = autoRunPlaceholderToken;
+      autoRunPlaceholderToken = null;
+      void autoRun().finally(() => endDatasetGridLoading(token));
+    }, delayMs);
   }
 
   function queueLatestRun(options = {}) {
@@ -225,6 +245,11 @@ export function createDatasetRunController(deps) {
       el.blur();
       scheduleAutoRun(0);
     });
+  }
+
+  function datasetGridLoadingMessage() {
+    const name = String(getTriInputs()?.tri || config.DS_ID || "").trim();
+    return name ? `Loading "${name}"` : "Loading dataset";
   }
 
   function datasetInputContextIsCurrent(expected) {
@@ -278,6 +303,9 @@ export function createDatasetRunController(deps) {
       return { ok: false, queued: true };
     }
     runInFlight = true;
+    const gridPlaceholderToken = beginDatasetGridLoading({
+      message: datasetGridLoadingMessage(),
+    });
 
     const btn = document.getElementById("runArcRhoTriBtn");
     const clearBtn = document.getElementById("clearCacheReloadBtn");
@@ -466,20 +494,40 @@ export function createDatasetRunController(deps) {
       const nextRunOptions = queuedRunOptions;
       queuedRunOptions = null;
       if (nextRunOptions) {
+        // This run's placeholder registration is held until the queued run has
+        // taken its own, so a still-loading grid never blinks to empty between
+        // two runs of the same dataset.
         setTimeout(() => {
-          void runArcRhoTri(nextRunOptions);
+          void runArcRhoTri(nextRunOptions).finally(() => endDatasetGridLoading(gridPlaceholderToken));
         }, 0);
+      } else {
+        endDatasetGridLoading(gridPlaceholderToken);
       }
     }
   }
 
   async function loadDataset() {
+    const gridPlaceholderToken = beginDatasetGridLoading({
+      message: datasetGridLoadingMessage(),
+    });
+    try {
+      return await loadDatasetOnce();
+    } finally {
+      endDatasetGridLoading(gridPlaceholderToken);
+    }
+  }
+
+  async function loadDatasetOnce() {
     const loadSequence = ++datasetLoadSequence;
     invalidateDatasetContextLoads();
     const datasetId = String(config.DS_ID || "").trim();
     if (!datasetId) {
       logLine("Dataset load skipped: no dataset selected");
-      $("tableWrap").innerHTML = '<div class="small">Select a project, reserving class, and dataset to load data.</div>';
+      setDatasetGridEmpty({
+        title: "No Dataset Selected",
+        hint: "Select a project, reserving class, and dataset to load data.",
+      });
+      renderDatasetGridPlaceholder($("tableWrap"));
       setStatus("No dataset selected");
       return { ok: false, skipped: true, message: "No dataset selected" };
     }
@@ -521,12 +569,8 @@ export function createDatasetRunController(deps) {
     if (!ok) {
       const message = String(data?.detail || data?.error || data?.message || `Dataset request failed (${status || "network error"}).`).trim();
       logLine(`ERROR loading dataset: ${message}`);
-      const error = document.createElement("div");
-      error.style.color = "#b00";
-      const label = document.createElement("b");
-      label.textContent = "Load failed: ";
-      error.append(label, document.createTextNode(message));
-      $("tableWrap").replaceChildren(error);
+      setDatasetGridError(message);
+      renderDatasetGridPlaceholder($("tableWrap"));
       state.model = null;
       state.fileMtime = null;
       state.headerLabels = [];
