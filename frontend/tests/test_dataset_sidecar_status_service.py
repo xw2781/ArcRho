@@ -101,6 +101,12 @@ class DatasetSidecarStatusServiceTests(unittest.TestCase):
             "CC Output",
             method_type=status_service.METHOD_TYPE_CAPE_COD,
             source_kind="cape_cod",
+            dependents=["BST Output"],
+        )
+        self.write_sidecar(
+            "BST Output",
+            method_type=status_service.METHOD_TYPE_BOOTSTRAP,
+            source_kind="bootstrap",
             dependents=["RS Output"],
         )
         self.write_sidecar(
@@ -124,6 +130,7 @@ class DatasetSidecarStatusServiceTests(unittest.TestCase):
             "B&S SR Output",
             "BF Output",
             "CC Output",
+            "BST Output",
             "RS Output",
         ):
             self.assertEqual(self.status(name), status_service.STATUS_REVIEW_NEEDED)
@@ -135,6 +142,7 @@ class DatasetSidecarStatusServiceTests(unittest.TestCase):
                 "B&S SR Output",
                 "BF Output",
                 "CC Output",
+                "BST Output",
                 "RS Output",
             ],
         )

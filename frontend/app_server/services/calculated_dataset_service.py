@@ -6,9 +6,10 @@ import hashlib
 import json
 import os
 import re
+import stat
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, Iterable, List, NamedTuple, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,11 @@ from app_server.services import (
 _METHOD_DEPENDENT_READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=6,
     thread_name_prefix="arcrho-method-dependent-read",
+)
+_FOLDER_SCAN_MAX_WORKERS = 12
+_FOLDER_SCAN_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_FOLDER_SCAN_MAX_WORKERS,
+    thread_name_prefix="arcrho-calc-folder-scan",
 )
 
 
@@ -423,11 +429,94 @@ def _cached_csv_data_format(path: str, sidecar: Dict[str, Any]) -> str:
     return _clean_text(sidecar.get("data_format"))
 
 
-def _sidecar_for_csv(path: str) -> Dict[str, Any]:
+def _read_json_files_bulk(paths: Iterable[str]) -> Dict[str, Dict[str, Any]]:
+    """Read many small JSON payloads with bounded parallelism.
+
+    Reserving-class data can live on a mapped or UNC network drive, where each
+    file read is a full round trip, so a per-file awaited loop over a folder is
+    the slowest possible shape. Paths are deduplicated first because every cache
+    variant of one dataset resolves to the same sidecar.
+    """
+
+    unique = list(dict.fromkeys(paths))
+    futures = {path: _FOLDER_SCAN_EXECUTOR.submit(_read_sidecar, path) for path in unique}
+    return {path: futures[path].result() for path in unique}
+
+
+class _DatasetCacheScan(NamedTuple):
+    """One observation of a reserving class's cached CSV folder and sidecars.
+
+    Dependency resolution asks the same folder about several dependencies in a
+    row, so callers enumerate once and hand this snapshot down instead of
+    re-reading every sidecar per dependency. ``mtime`` comes from the directory
+    listing that found the file, so no path is stat-ed twice.
+    """
+
+    exists: bool
+    csv_files: Tuple[Tuple[str, float], ...]
+    sidecars: Dict[str, Dict[str, Any]]
+
+
+class _MethodFolderScan(NamedTuple):
+    """One observation of a reserving class's method JSON folder."""
+
+    exists: bool
+    method_files: Tuple[Tuple[str, float], ...]
+    payloads: Dict[str, Dict[str, Any]]
+
+
+def _scandir_files(folder: str, suffix: str, name_prefix: str = "") -> Tuple[bool, List[Tuple[str, float]]]:
+    """List one folder, keeping the modification time the listing already returned."""
+
+    files: List[Tuple[str, float]] = []
+    try:
+        with os.scandir(folder) as iterator:
+            for entry in iterator:
+                if not entry.name.lower().endswith(suffix):
+                    continue
+                if name_prefix and not entry.name.startswith(name_prefix):
+                    continue
+                try:
+                    info = entry.stat()
+                except OSError:
+                    continue
+                if not stat.S_ISREG(info.st_mode):
+                    continue
+                files.append((entry.path, float(info.st_mtime)))
+    except (FileNotFoundError, NotADirectoryError):
+        return False, []
+    except OSError:
+        return False, []
+    return True, files
+
+
+def _scan_dataset_cache_folder(project_name: str, reserving_class: str) -> _DatasetCacheScan:
+    folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
+    exists, csv_files = _scandir_files(folder, ".csv")
+    if not exists:
+        return _DatasetCacheScan(exists=False, csv_files=(), sidecars={})
+    sidecars = _read_json_files_bulk(
+        dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
+        for path, _mtime in csv_files
+    )
+    return _DatasetCacheScan(exists=True, csv_files=tuple(csv_files), sidecars=sidecars)
+
+
+def _scan_dfm_method_folder(project_name: str, reserving_class: str) -> _MethodFolderScan:
+    folder = config.get_project_method_data_dir(project_name, reserving_class)
+    exists, method_files = _scandir_files(folder, ".json", name_prefix="DFM@")
+    if not exists:
+        return _MethodFolderScan(exists=False, method_files=(), payloads={})
+    payloads = _read_json_files_bulk(path for path, _mtime in method_files)
+    return _MethodFolderScan(exists=True, method_files=tuple(method_files), payloads=payloads)
+
+
+def _sidecar_for_csv(path: str, scan: _DatasetCacheScan | None = None) -> Dict[str, Any]:
     sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
-    payload = _read_sidecar(sidecar_path)
-    payload["_sidecar_path"] = sidecar_path
-    return payload
+    payload = scan.sidecars.get(sidecar_path) if scan is not None else None
+    if payload is None:
+        payload = _read_sidecar(sidecar_path)
+    return {**payload, "_sidecar_path": sidecar_path}
 
 
 def _json_tab(source: Dict[str, Any], key: str) -> Dict[str, Any]:
@@ -454,21 +543,27 @@ def _candidate_dfm_methods(
     project_name: str,
     reserving_class: str,
     dataset_type_name: str,
+    scan: _MethodFolderScan | None = None,
 ) -> List[Dict[str, Any]]:
     folder = config.get_project_method_data_dir(project_name, reserving_class)
     dep_key = _canon_dataset_name(dataset_type_name)
-    if not dep_key or not os.path.isdir(folder):
+    if not dep_key:
+        return []
+    scan = scan if scan is not None else _scan_dfm_method_folder(project_name, reserving_class)
+    if not scan.exists:
         return []
 
     out: List[Dict[str, Any]] = []
     seen: Set[str] = set()
 
-    def add_candidate(path: str) -> None:
+    def add_candidate(path: str, mtime: float) -> None:
         norm = os.path.abspath(path)
-        if norm in seen or not os.path.isfile(path):
+        if norm in seen:
+            return
+        payload = scan.payloads.get(path)
+        if payload is None:
             return
         seen.add(norm)
-        payload = _read_sidecar(path)
         names = _method_output_names(payload, path)
         if dep_key not in {_canon_dataset_name(name) for name in names}:
             return
@@ -484,15 +579,16 @@ def _candidate_dfm_methods(
             "path": path,
             "payload": payload,
             "score": score,
-            "mtime": os.stat(path).st_mtime,
+            "mtime": mtime,
         })
 
+    # The exact-name file keeps its historical priority among equal scores.
     direct_path = os.path.join(folder, f"DFM@{sanitize_dataset_file_name(dataset_type_name)}.json")
-    add_candidate(direct_path)
-    for name in os.listdir(folder):
-        if not name.startswith("DFM@") or not name.lower().endswith(".json"):
-            continue
-        add_candidate(os.path.join(folder, name))
+    mtime_by_path = dict(scan.method_files)
+    if direct_path in mtime_by_path:
+        add_candidate(direct_path, mtime_by_path[direct_path])
+    for path, mtime in scan.method_files:
+        add_candidate(path, mtime)
 
     out.sort(key=lambda item: (int(item.get("score") or 0), float(item.get("mtime") or 0)), reverse=True)
     best_score = int(out[0].get("score") or 0) if out else 0
@@ -544,6 +640,7 @@ def _read_dfm_input_triangle(
     payload: Dict[str, Any],
     target_settings: Dict[str, Any],
     exact_input_path: str = "",
+    scan: _DatasetCacheScan | None = None,
 ) -> Tuple[np.ndarray | None, str, str]:
     data_tab = _json_tab(payload, "data tab")
     details = _json_tab(payload, "details tab")
@@ -569,7 +666,7 @@ def _read_dfm_input_triangle(
     input_name = _clean_text(details.get("input triangle"))
     if not input_name:
         return None, "", "DFM method is missing an input triangle name."
-    candidates = _candidate_csvs(project_name, reserving_class, input_name, target_settings)
+    candidates = _candidate_csvs(project_name, reserving_class, input_name, target_settings, scan=scan)
     if not candidates:
         return None, "", f"Missing DFM input triangle: {input_name}"
     if len(candidates) > 1:
@@ -633,6 +730,7 @@ def _build_dfm_method_vector(
     payload: Dict[str, Any],
     target_settings: Dict[str, Any],
     exact_input_path: str = "",
+    scan: _DatasetCacheScan | None = None,
 ) -> Tuple[np.ndarray | None, str, str]:
     data_tab = _json_tab(payload, "data tab")
     input_values, input_path, error = _read_dfm_input_triangle(
@@ -641,6 +739,7 @@ def _build_dfm_method_vector(
         payload,
         target_settings,
         exact_input_path=exact_input_path,
+        scan=scan,
     )
     if error:
         return None, input_path, error
@@ -678,17 +777,15 @@ def _candidate_csvs(
     dataset_type_name: str,
     target_settings: Dict[str, Any],
     expected_data_format: str = "",
+    scan: _DatasetCacheScan | None = None,
 ) -> List[Dict[str, Any]]:
-    folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
     dep_key = _canon_dataset_name(dataset_type_name)
     out: List[Dict[str, Any]] = []
-    if not os.path.isdir(folder):
+    scan = scan if scan is not None else _scan_dataset_cache_folder(project_name, reserving_class)
+    if not scan.exists:
         return []
-    for name in os.listdir(folder):
-        if not name.lower().endswith(".csv"):
-            continue
-        path = os.path.join(folder, name)
-        sidecar = _sidecar_for_csv(path)
+    for path, mtime in scan.csv_files:
+        sidecar = _sidecar_for_csv(path, scan)
         candidate_data_format = _cached_csv_data_format(path, sidecar)
         if (
             _clean_text(expected_data_format)
@@ -716,7 +813,7 @@ def _candidate_csvs(
             "sidecar": sidecar,
             "data_format": candidate_data_format,
             "score": score,
-            "mtime": os.stat(path).st_mtime,
+            "mtime": mtime,
         })
     out.sort(key=lambda item: (int(item.get("score") or 0), float(item.get("mtime") or 0)), reverse=True)
     best_score = int(out[0].get("score") or 0) if out else 0
@@ -779,6 +876,25 @@ def _load_components(
     exact_paths = component_paths or {}
     expected_formats = component_formats or {}
     exact_method_sources = component_method_sources or {}
+    # Every component resolves against the same two folders and this loop only
+    # reads, so each folder is enumerated at most once per call instead of once
+    # per component. On a network drive that removes one full sidecar sweep per
+    # extra dependency.
+    dataset_scan: _DatasetCacheScan | None = None
+    method_scan: _MethodFolderScan | None = None
+
+    def cached_dataset_scan() -> _DatasetCacheScan:
+        nonlocal dataset_scan
+        if dataset_scan is None:
+            dataset_scan = _scan_dataset_cache_folder(project_name, reserving_class)
+        return dataset_scan
+
+    def cached_method_scan() -> _MethodFolderScan:
+        nonlocal method_scan
+        if method_scan is None:
+            method_scan = _scan_dfm_method_folder(project_name, reserving_class)
+        return method_scan
+
     for index, component in enumerate(components):
         component_key = _canon_dataset_name(component)
         expected_format = _clean_text(expected_formats.get(component_key))
@@ -858,7 +974,7 @@ def _load_components(
                         validated_method_input_path = resolved_current_input
                     elif resolved_recorded_input and not current_input_path:
                         input_name = _clean_text(details.get("input triangle"))
-                        input_sidecar = _sidecar_for_csv(resolved_recorded_input)
+                        input_sidecar = _sidecar_for_csv(resolved_recorded_input, dataset_scan)
                         exact_input_names = {
                             _canon_dataset_name(input_sidecar.get("dataset_name")),
                             _canon_dataset_name(input_sidecar.get("dataset_type")),
@@ -882,9 +998,12 @@ def _load_components(
                     component,
                     target_settings,
                     expected_data_format=expected_format,
+                    scan=cached_dataset_scan(),
                 )
         elif exact_path:
-            sidecar = _sidecar_for_csv(exact_path)
+            # An exact path needs one sidecar, so reuse a folder observation only
+            # when an earlier component already paid for it.
+            sidecar = _sidecar_for_csv(exact_path, dataset_scan)
             exact_data_format = _cached_csv_data_format(exact_path, sidecar)
             exact_names = {
                 _canon_dataset_name(sidecar.get("dataset_name")),
@@ -916,6 +1035,7 @@ def _load_components(
                 component,
                 target_settings,
                 expected_data_format=expected_format,
+                scan=cached_dataset_scan(),
             )
         if not candidates:
             if method_candidates is None:
@@ -923,6 +1043,7 @@ def _load_components(
                     project_name,
                     reserving_class,
                     component,
+                    scan=cached_method_scan(),
                 )
             if not method_candidates:
                 errors.append(f"Missing dependency: {component}")
@@ -938,6 +1059,7 @@ def _load_components(
                 method_item.get("payload") if isinstance(method_item.get("payload"), dict) else {},
                 target_settings,
                 exact_input_path=validated_method_input_path,
+                scan=dataset_scan,
             )
             if error or arr is None:
                 errors.append(f"Failed to rebuild DFM dependency {component}: {error or 'unknown error'}")
@@ -1405,6 +1527,7 @@ def _recalculate_dependents_impl(
     include_result_selection: bool = True,
     include_bornhuetter_ferguson: bool = True,
     include_cape_cod: bool = True,
+    include_bootstrap: bool = True,
     finalize_method_review_status: bool = True,
     rebuild_index: bool = True,
 ) -> Dict[str, Any]:
@@ -1765,6 +1888,108 @@ def _recalculate_dependents_impl(
                 "updated": [],
             }
 
+    bootstrap_updates = None
+    if include_bootstrap:
+        try:
+            from app_server.services import bootstrap_service
+
+            # A Bootstrap embeds its DFM's observed triangle and selected
+            # ratios, so it must see every refreshed DFM — not only the ones
+            # whose published ultimate vector changed.
+            dfm_fresh_names = [
+                _clean_text(value)
+                for item in (dfm_updates or {}).get("updated", [])
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            ]
+            dfm_fresh_names.extend(
+                _clean_text(item.get("dataset_name"))
+                for item in (dfm_updates or {}).get("status_refreshed", [])
+                if _clean_text(item.get("dataset_name"))
+            )
+            calculated_fresh_names = [
+                _clean_text(item.get("dataset_type_name"))
+                for item in results
+                if item.get("ok") and _clean_text(item.get("dataset_type_name"))
+            ]
+            result_selection_fresh_names = [
+                _clean_text(item.get("dataset_name"))
+                for field in ("updated", "status_refreshed")
+                for item in (result_selection_updates or {}).get(field, [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            result_selection_fresh_names.extend(
+                _clean_text(name)
+                for name in (result_selection_updates or {}).get("downstream_fresh_names", [])
+                if _clean_text(name)
+            )
+            failed_result_selection_names = [
+                _clean_text(item.get("dataset_name"))
+                for item in (result_selection_updates or {}).get("errors", [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            failed_result_selection_names.extend(
+                _clean_text(name)
+                for name in (result_selection_updates or {}).get("downstream_blocked_names", [])
+                if _clean_text(name)
+            )
+            bornhuetter_ferguson_fresh_names = [
+                _clean_text(item.get("dataset_name"))
+                for field in ("updated", "status_refreshed")
+                for item in (bornhuetter_ferguson_updates or {}).get(field, [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            failed_bornhuetter_ferguson_names = [
+                _clean_text(item.get("dataset_name"))
+                for item in (bornhuetter_ferguson_updates or {}).get("errors", [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            cape_cod_fresh_names = [
+                _clean_text(item.get("dataset_name"))
+                for field in ("updated", "status_refreshed")
+                for item in (cape_cod_updates or {}).get(field, [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            failed_cape_cod_names = [
+                _clean_text(item.get("dataset_name"))
+                for item in (cape_cod_updates or {}).get("errors", [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            bootstrap_roots = [
+                changed_dataset_name,
+                changed_dataset_type_name,
+                *dfm_fresh_names,
+                *failed_dfm_names,
+                *calculated_fresh_names,
+                *failed_dataset_names,
+                *result_selection_fresh_names,
+                *failed_result_selection_names,
+                *bornhuetter_ferguson_fresh_names,
+                *failed_bornhuetter_ferguson_names,
+                *cape_cod_fresh_names,
+                *failed_cape_cod_names,
+            ]
+            bootstrap_updates = bootstrap_service.refresh_dependents(
+                project_name,
+                reserving_class,
+                bootstrap_roots,
+                rebuild_index=False,
+                blocked_precedent_names=[
+                    *failed_dfm_names,
+                    *failed_dataset_names,
+                    *failed_result_selection_names,
+                    *failed_bornhuetter_ferguson_names,
+                    *failed_cape_cod_names,
+                ],
+                finalize_method_review_status=False,
+            )
+        except Exception as err:
+            bootstrap_updates = {
+                "ok": False,
+                "errors": [{"reason": str(err)}],
+                "updated": [],
+            }
+
     index_error = ""
     if finalize_method_review_status:
         dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
@@ -1788,6 +2013,8 @@ def _recalculate_dependents_impl(
         overall_ok = overall_ok and bool(bornhuetter_ferguson_updates.get("ok"))
     if cape_cod_updates is not None:
         overall_ok = overall_ok and bool(cape_cod_updates.get("ok"))
+    if bootstrap_updates is not None:
+        overall_ok = overall_ok and bool(bootstrap_updates.get("ok"))
     return {
         "ok": overall_ok,
         "project_name": project_name,
@@ -1806,6 +2033,7 @@ def _recalculate_dependents_impl(
         "result_selection_updates": result_selection_updates,
         "bornhuetter_ferguson_updates": bornhuetter_ferguson_updates,
         "cape_cod_updates": cape_cod_updates,
+        "bootstrap_updates": bootstrap_updates,
         "index_ok": not index_error,
         "index_error": index_error,
     }
@@ -1821,6 +2049,7 @@ def recalculate_dependents(
     include_result_selection: bool = True,
     include_bornhuetter_ferguson: bool = True,
     include_cape_cod: bool = True,
+    include_bootstrap: bool = True,
     finalize_method_review_status: bool = True,
     rebuild_index: bool = True,
 ) -> Dict[str, Any]:
@@ -1834,6 +2063,7 @@ def recalculate_dependents(
             include_result_selection=include_result_selection,
             include_bornhuetter_ferguson=include_bornhuetter_ferguson,
             include_cape_cod=include_cape_cod,
+            include_bootstrap=include_bootstrap,
             finalize_method_review_status=finalize_method_review_status,
             rebuild_index=rebuild_index,
         )

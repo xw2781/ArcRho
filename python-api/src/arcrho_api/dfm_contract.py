@@ -1257,6 +1257,64 @@ def _calculate_formula_values(payload: dict[str, Any]) -> list[list[Any]]:
     return computed
 
 
+def selected_ratio_values(payload: Mapping[str, Any]) -> list[float]:
+    """Return the selected development ratio per column at full precision.
+
+    ``average formulas.values`` is stored through :func:`canonical_number`, which
+    rounds to six decimals so a DFM file stays reviewable. That is the right
+    precision to *display* a ratio and the wrong precision to *chain* one: a
+    consumer that multiplies ten stored ratios together, as the Bootstrap method
+    does when it back-fits a triangle, amplifies the rounding into a visible
+    error. Re-deriving the computed averages from the stored triangle costs one
+    pass and keeps a chained result exact.
+
+    A ratio the user owns -- User Entry, or a benchmark row -- is returned as
+    stored, because there the six-decimal value *is* the authoritative input
+    rather than a rounded projection of one.
+    """
+
+    method = normalize_dfm_method(payload, require_complete=False)
+    data = method["data tab"]
+    ratio = method["ratios tab"]["ratio triangle"]
+    formulas = method["ratios tab"]["average formulas"]
+    settings = formulas["custom average formula settings"]
+    selected = formulas["selected"]
+    stored = formulas["values"]
+    col_count = len(ratio["development labels"])
+    last_computed_col = len(data["development labels"]) - 1
+
+    ratios: list[float] = []
+    for col in range(col_count):
+        row = next(
+            (
+                index
+                for index, flags in enumerate(selected)
+                if col < len(flags) and flags[col] == 1
+            ),
+            0,
+        )
+        average_type = settings["averageType"][row] if row < len(settings["averageType"]) else "custom"
+        base = settings["base"][row] if row < len(settings["base"]) else "volume"
+        if average_type == "user_entry" or base == "benchmark" or col >= last_computed_col:
+            value = canonical_number(stored[row][col] if row < len(stored) and col < len(stored[row]) else None)
+            ratios.append(float(value) if value is not None else 1.0)
+            continue
+        ratios.append(
+            float(
+                _calculate_average(
+                    data["input data triangle values"],
+                    data["input data triangle mask"],
+                    ratio["excluded"],
+                    col,
+                    base=base,
+                    periods=settings["periods"][row],
+                    extra_exclude=settings["exclude"][row],
+                )
+            )
+        )
+    return ratios
+
+
 def _calculate_ultimate(payload: dict[str, Any]) -> list[Any]:
     data = payload["data tab"]
     formulas = payload["ratios tab"]["average formulas"]

@@ -1080,6 +1080,7 @@ def _refresh_downstream_domains(
         output_name,
         output_type,
         include_cape_cod=False,
+        include_bootstrap=False,
         finalize_method_review_status=finalize_method_review_status,
         rebuild_index=False,
     )

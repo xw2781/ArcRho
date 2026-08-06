@@ -1,4 +1,11 @@
-"""Load, save, and eagerly refresh self-contained Bornhuetter Ferguson methods."""
+"""Load, save, and eagerly refresh self-contained Bootstrap methods.
+
+A Bootstrap is the first ArcRho method whose data precedent is another *method*:
+it re-fits a DFM to simulated pseudo triangles.  The reserving-class dependency
+graph is keyed by dataset name, so the DFM method is resolved to the dataset it
+publishes for every graph operation, while the numbers themselves are read from
+the DFM method JSON through ``bootstrap_contract.dfm_snapshot_from_method``.
+"""
 from __future__ import annotations
 
 import getpass
@@ -14,16 +21,17 @@ from typing import Any, Dict, Iterable, List, Mapping, Tuple
 import pandas as pd
 from fastapi import HTTPException
 
-from arcrho_api.bornhuetter_ferguson_contract import (
-    BF_JSON_FORMAT,
-    BornhuetterFergusonContractError,
+from arcrho_api.bootstrap_contract import (
+    BST_JSON_FORMAT,
+    BootstrapContractError,
     apply_owned_patch,
-    bornhuetter_ferguson_output_variants,
-    bornhuetter_ferguson_precedent_names,
-    build_bornhuetter_ferguson_output_sidecar,
+    bootstrap_output_variants,
+    build_bootstrap_output_sidecar,
+    dfm_snapshot_from_method,
     method_revisions,
-    normalize_bornhuetter_ferguson_method,
-    recalculate_bornhuetter_ferguson_method,
+    normalize_bootstrap_method,
+    recalculate_bootstrap_method,
+    snapshot_revision,
 )
 from arcrho_api.io import persisted_json_text
 from app_server import config
@@ -33,10 +41,19 @@ from app_server.services import dataset_sidecar_status_service
 
 READ_MAX_WORKERS = 4
 MAX_REFRESH_VISITS_PER_DATASET = 4
+SOURCE_ROLES = ("dfm", "target_ultimate")
+_ROLE_LABELS = {
+    "dfm": "DFM",
+    "target_ultimate": "Target Ultimate",
+}
+DFM_JSON_FORMATS = (
+    "arcrho-dfm-method-by-tab-v2",
+    "arcrho-dfm-method-by-tab-v1",
+)
 SnapshotCacheKey = Tuple[str, str, int, Tuple[str, ...]]
 _READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=READ_MAX_WORKERS,
-    thread_name_prefix="arcrho-bf-read",
+    thread_name_prefix="arcrho-bst-read",
 )
 
 
@@ -57,7 +74,12 @@ def _lock(project_name: str, reserving_class: str) -> threading.RLock:
 
 
 def _method_path(project_name: str, reserving_class: str, method_name: str) -> str:
-    filename = f"BF@{sanitize_dataset_file_name(method_name, 'Name')}.json"
+    filename = f"BST@{sanitize_dataset_file_name(method_name, 'Name')}.json"
+    return os.path.join(config.get_project_method_data_dir(project_name, reserving_class), filename)
+
+
+def _dfm_method_path(project_name: str, reserving_class: str, dfm_method_name: str) -> str:
+    filename = f"DFM@{sanitize_dataset_file_name(dfm_method_name, 'Name')}.json"
     return os.path.join(config.get_project_method_data_dir(project_name, reserving_class), filename)
 
 
@@ -72,9 +94,9 @@ def _read_json(path: str) -> Dict[str, Any]:
     except FileNotFoundError:
         return {}
     except PermissionError as exc:
-        raise HTTPException(423, f"BF file is locked or inaccessible: {os.path.basename(path)}") from exc
+        raise HTTPException(423, f"Bootstrap file is locked or inaccessible: {os.path.basename(path)}") from exc
     except (OSError, json.JSONDecodeError) as exc:
-        raise HTTPException(500, f"Invalid BF JSON: {os.path.basename(path)}: {exc}") from exc
+        raise HTTPException(500, f"Invalid Bootstrap JSON: {os.path.basename(path)}: {exc}") from exc
     return payload if isinstance(payload, dict) else {}
 
 
@@ -90,7 +112,7 @@ def _read_bytes_if_file(path: str) -> bytes | None:
 
 
 def _commit_text_files(files: Mapping[str, str], *, last_paths: Iterable[str] = ()) -> List[str]:
-    """Replace one BF publication atomically and restore all prior bytes on failure."""
+    """Replace one Bootstrap publication atomically and restore all prior bytes on failure."""
 
     last_keys = {os.path.normcase(os.path.abspath(path)) for path in last_paths}
     paths = list(files)
@@ -138,7 +160,7 @@ def _commit_text_files(files: Mapping[str, str], *, last_paths: Iterable[str] = 
             except OSError as rollback_exc:
                 rollback_errors.append(f"{os.path.basename(path)}: {rollback_exc}")
         if rollback_errors:
-            raise RuntimeError(f"{exc}; BF rollback failed: {'; '.join(rollback_errors)}") from exc
+            raise RuntimeError(f"{exc}; Bootstrap rollback failed: {'; '.join(rollback_errors)}") from exc
         raise
     finally:
         for temporary in staged.values():
@@ -152,10 +174,10 @@ def _commit_text_files(files: Mapping[str, str], *, last_paths: Iterable[str] = 
 def _contract_call(func, *args: Any, **kwargs: Any) -> Dict[str, Any]:
     try:
         result = func(*args, **kwargs)
-    except BornhuetterFergusonContractError as exc:
+    except BootstrapContractError as exc:
         raise HTTPException(422, str(exc)) from exc
     if not isinstance(result, dict):
-        raise HTTPException(500, "Canonical BF calculation returned an invalid payload.")
+        raise HTTPException(500, "Canonical Bootstrap calculation returned an invalid payload.")
     return result
 
 
@@ -164,8 +186,8 @@ def _details(payload: Mapping[str, Any]) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _method_tab(payload: Mapping[str, Any]) -> Dict[str, Any]:
-    value = payload.get("method_tab") if isinstance(payload, Mapping) else None
+def _results_tab(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    value = payload.get("results_tab") if isinstance(payload, Mapping) else None
     return value if isinstance(value, dict) else {}
 
 
@@ -174,8 +196,21 @@ def _identity(payload: Mapping[str, Any]) -> Tuple[str, str]:
     method_name = _clean(details.get("name"))
     output_dataset = method_name
     if not method_name:
-        raise HTTPException(422, "BF method name is required.")
+        raise HTTPException(422, "Bootstrap method name is required.")
     return method_name, output_dataset
+
+
+def _role_names(payload: Mapping[str, Any]) -> List[Tuple[str, str]]:
+    """Return the configured (role, name) pairs, blanks removed, in role order."""
+
+    return [
+        (role, name)
+        for role, name in (
+            ("dfm", _clean(_details(payload).get("dfm_method"))),
+            ("target_ultimate", _clean(_results_tab(payload).get("target_ultimate"))),
+        )
+        if name
+    ]
 
 
 def _unique_names(values: Iterable[Any]) -> List[str]:
@@ -220,19 +255,86 @@ def _source_period(sidecar: Mapping[str, Any]) -> int:
     return 0
 
 
-def _read_source_snapshot_from_sidecar(
+# ---------------------------------------------------------------------------
+# The method-to-method edge
+# ---------------------------------------------------------------------------
+
+
+def _read_dfm_payload(project_name: str, reserving_class: str, dfm_method_name: str) -> Dict[str, Any]:
+    payload = _read_json(_dfm_method_path(project_name, reserving_class, dfm_method_name))
+    if not payload:
+        raise HTTPException(404, f"Bootstrap DFM precedent is missing: {dfm_method_name}")
+    json_format = _clean(payload.get("json format") or payload.get("json_format")).lower()
+    if json_format not in DFM_JSON_FORMATS:
+        raise HTTPException(
+            422,
+            f"Bootstrap DFM precedent '{dfm_method_name}' uses an unsupported DFM JSON format: "
+            f"{json_format or '(missing)'}.",
+        )
+    return payload
+
+
+def _dfm_output_dataset(dfm_payload: Mapping[str, Any]) -> str:
+    details = dfm_payload.get("details tab") if isinstance(dfm_payload, Mapping) else None
+    details = details if isinstance(details, Mapping) else {}
+    return _clean(details.get("output dataset")) or _clean(details.get("name"))
+
+
+def _resolve_dfm_output_dataset(
     project_name: str,
     reserving_class: str,
+    dfm_method_name: str,
+    *,
+    dfm_cache: Dict[str, Dict[str, Any]] | None = None,
+) -> str:
+    """Resolve a DFM method name to the dataset name the graph knows it by.
+
+    The Bootstrap stores a *method* name, but every reverse `Dependents` edge,
+    cycle check, and Review Needed lookup in the reserving class is keyed by
+    dataset name.  A DFM that publishes under its own name resolves to itself.
+    """
+
+    name = _clean(dfm_method_name)
+    if not name:
+        return ""
+    cache = dfm_cache if dfm_cache is not None else {}
+    cached = cache.get(_key(name))
+    if cached is None:
+        cached = _read_dfm_payload(project_name, reserving_class, name)
+        cache[_key(name)] = cached
+    return _dfm_output_dataset(cached) or name
+
+
+def _precedent_dataset_names(
+    project_name: str,
+    reserving_class: str,
+    method: Mapping[str, Any],
+    *,
+    dfm_cache: Dict[str, Dict[str, Any]] | None = None,
+) -> List[str]:
+    """Return the Bootstrap precedents as the dependency graph names them."""
+
+    names: List[str] = []
+    for role, name in _role_names(method):
+        if role == "dfm":
+            names.append(
+                _resolve_dfm_output_dataset(
+                    project_name, reserving_class, name, dfm_cache=dfm_cache
+                )
+            )
+        else:
+            names.append(name)
+    return _unique_names(names)
+
+
+def _assert_precedent_available(
     requested_name: str,
     sidecar: Mapping[str, Any],
     *,
-    role: str,
-    origin_length: int,
-    origin_labels: Iterable[Any],
-    allow_review_needed: bool = False,
-) -> Dict[str, Any]:
+    allow_review_needed: bool,
+) -> None:
     if not sidecar:
-        raise HTTPException(404, f"BF precedent sidecar is missing: {requested_name}")
+        raise HTTPException(404, f"Bootstrap precedent sidecar is missing: {requested_name}")
     status = dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
     method_type = dataset_sidecar_status_service.normalize_method_type(
         sidecar.get("method_type"), sidecar.get("source_kind")
@@ -240,23 +342,74 @@ def _read_source_snapshot_from_sidecar(
     if not allow_review_needed \
             and method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE \
             and status == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED:
-        raise HTTPException(409, f"BF precedent requires review: {requested_name}")
-    data_format = _clean(sidecar.get("data_format")).lower()
-    if role == "latest" and data_format != "triangle":
-        raise HTTPException(422, f"BF Latest source '{requested_name}' must be a Triangle dataset.")
-    if role != "latest" and data_format != "vector":
-        raise HTTPException(422, f"BF {role.title()} source '{requested_name}' must be a Vector dataset.")
-    if role == "dfm" and method_type != dataset_sidecar_status_service.METHOD_TYPE_DFM:
-        raise HTTPException(422, f"BF Development Pattern source '{requested_name}' must be a DFM output.")
-    period = _source_period(sidecar)
-    if period and period != origin_length:
+        raise HTTPException(409, f"Bootstrap precedent requires review: {requested_name}")
+
+
+def _read_dfm_snapshot(
+    project_name: str,
+    reserving_class: str,
+    dfm_method_name: str,
+    dfm_dataset_name: str,
+    sidecar: Mapping[str, Any],
+    *,
+    allow_review_needed: bool = False,
+    dfm_cache: Dict[str, Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    """Project the precedent DFM method JSON onto the embedded Bootstrap snapshot."""
+
+    _assert_precedent_available(
+        dfm_dataset_name, sidecar, allow_review_needed=allow_review_needed
+    )
+    method_type = dataset_sidecar_status_service.normalize_method_type(
+        sidecar.get("method_type"), sidecar.get("source_kind")
+    )
+    if method_type != dataset_sidecar_status_service.METHOD_TYPE_DFM:
         raise HTTPException(
             422,
-            f"BF precedent '{requested_name}' uses {period}-month origins; expected {origin_length}.",
+            f"Bootstrap DFM source '{dfm_method_name}' must be a DFM method.",
+        )
+    cache = dfm_cache if dfm_cache is not None else {}
+    payload = cache.get(_key(dfm_method_name))
+    if payload is None:
+        payload = _read_dfm_payload(project_name, reserving_class, dfm_method_name)
+        cache[_key(dfm_method_name)] = payload
+    return _contract_call(dfm_snapshot_from_method, payload)
+
+
+def _read_target_snapshot(
+    project_name: str,
+    reserving_class: str,
+    requested_name: str,
+    sidecar: Mapping[str, Any],
+    *,
+    origin_length: int,
+    origin_labels: Iterable[Any],
+    allow_review_needed: bool = False,
+) -> Dict[str, Any]:
+    """Read the target ultimate Vector dataset the simulated reserves scale onto.
+
+    ``origin_labels`` is the axis the Bootstrap inherits from its DFM.  The
+    canonical contract remaps the target onto that axis by label, so this
+    returns the target's own labels whenever it declares them.
+    """
+
+    _assert_precedent_available(
+        requested_name, sidecar, allow_review_needed=allow_review_needed
+    )
+    if _clean(sidecar.get("data_format")).lower() != "vector":
+        raise HTTPException(
+            422,
+            f"Bootstrap Target Ultimate source '{requested_name}' must be a Vector dataset.",
+        )
+    period = _source_period(sidecar)
+    if period and origin_length and period != origin_length:
+        raise HTTPException(
+            422,
+            f"Bootstrap precedent '{requested_name}' uses {period}-month origins; expected {origin_length}.",
         )
     csv_file = os.path.basename(_clean(sidecar.get("csv_file")))
     if not csv_file:
-        raise HTTPException(422, f"BF precedent '{requested_name}' does not identify its cache CSV.")
+        raise HTTPException(422, f"Bootstrap precedent '{requested_name}' does not identify its cache CSV.")
     csv_path = os.path.join(
         config.get_project_dataset_cache_dir(project_name, reserving_class),
         csv_file,
@@ -264,27 +417,33 @@ def _read_source_snapshot_from_sidecar(
     try:
         frame = pd.read_csv(csv_path, header=None).astype(object)
     except FileNotFoundError as exc:
-        raise HTTPException(404, f"BF precedent CSV is missing: {requested_name}") from exc
+        raise HTTPException(404, f"Bootstrap precedent CSV is missing: {requested_name}") from exc
     except PermissionError as exc:
-        raise HTTPException(423, f"BF precedent CSV is locked: {requested_name}") from exc
+        raise HTTPException(423, f"Bootstrap precedent CSV is locked: {requested_name}") from exc
     except Exception as exc:
-        raise HTTPException(422, f"BF precedent CSV is invalid: {requested_name}: {exc}") from exc
+        raise HTTPException(422, f"Bootstrap precedent CSV is invalid: {requested_name}: {exc}") from exc
     frame = frame.where(pd.notnull(frame), None)
     raw_values = frame.values.tolist()
-    method_origin_labels = [str(item if item is not None else "") for item in origin_labels]
-    if not method_origin_labels:
-        raise HTTPException(422, "BF method origin labels are required before loading precedents.")
-    if len(raw_values) != len(method_origin_labels):
+    expected_labels = [str(item if item is not None else "") for item in origin_labels]
+    if expected_labels and len(raw_values) != len(expected_labels):
         raise HTTPException(
             422,
-            f"BF precedent '{requested_name}' has {len(raw_values)} rows; "
-            f"expected {len(method_origin_labels)}.",
+            f"Bootstrap precedent '{requested_name}' has {len(raw_values)} rows; "
+            f"expected {len(expected_labels)}.",
+        )
+    declared = sidecar.get("origin_labels")
+    declared = [str(item if item is not None else "") for item in declared] if isinstance(declared, list) else []
+    target_labels = declared if len(declared) == len(raw_values) else expected_labels
+    if len(target_labels) != len(raw_values):
+        raise HTTPException(
+            422,
+            f"Bootstrap precedent '{requested_name}' does not identify one origin label per row.",
         )
     return {
         "name": _clean(sidecar.get("dataset_name")) or requested_name,
-        "origin_labels": method_origin_labels,
-        "values": raw_values,
-        "mask": [[value is not None for value in row] for row in raw_values],
+        "origin_labels": target_labels,
+        # The canonical contract reads a flat vector, one value per origin.
+        "values": [row[0] if isinstance(row, list) and row else None for row in raw_values],
     }
 
 
@@ -312,73 +471,82 @@ def _source_snapshots(
     method: Mapping[str, Any],
     roles: Iterable[str],
     *,
-    prior_names: Iterable[str] | None = None,
     allow_review_needed: bool = False,
     sidecar_cache: Dict[str, Dict[str, Any]] | None = None,
     snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] | None = None,
+    dfm_cache: Dict[str, Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
-    tab = _method_tab(method)
     details = _details(method)
+    results = _results_tab(method)
     origin_length = int(details.get("origin_length") or 12)
     origin_labels = [
         str(item if item is not None else "")
-        for item in tab.get("origin_labels", [])
+        for item in results.get("origin_labels", [])
     ]
     requested_roles = set(roles)
-    role_names: List[Tuple[str, str]] = []
-    if "latest" in requested_roles:
-        role_names.append(("latest", _clean(tab.get("latest_dataset"))))
-    if "dfm" in requested_roles:
-        role_names.append(("dfm", _clean(tab.get("dfm_dataset"))))
-    if "priors" in requested_roles:
-        selected_prior_keys = (
-            {_key(name) for name in prior_names if _key(name)}
-            if prior_names is not None
-            else None
+    role_names = [
+        (role, name) for role, name in _role_names(method) if role in requested_roles
+    ]
+    graph_names = {
+        role: (
+            _resolve_dfm_output_dataset(project_name, reserving_class, name, dfm_cache=dfm_cache)
+            if role == "dfm"
+            else name
         )
-        role_names.extend(
-            ("priors", _clean(item.get("name")))
-            for item in tab.get("prior_datasets", [])
-            if isinstance(item, Mapping)
-            and (selected_prior_keys is None or _key(item.get("name")) in selected_prior_keys)
-        )
-    role_names = [(role, name) for role, name in role_names if name]
+        for role, name in role_names
+    }
+    # One batched sidecar read for every role; only the target CSV read below
+    # has a true data dependency on the DFM, so it is the only sequential step.
     sidecars = _read_sidecars(
         project_name,
         reserving_class,
-        [name for _role, name in role_names],
+        list(graph_names.values()),
         sidecar_cache,
     )
     snapshots = snapshot_cache if snapshot_cache is not None else {}
     origin_axis = tuple(origin_labels)
-    futures: Dict[SnapshotCacheKey, Any] = {}
+    resolved: Dict[str, Dict[str, Any]] = {}
     for role, name in role_names:
+        if role != "dfm":
+            continue
         cache_key = (_key(name), role, origin_length, origin_axis)
-        if cache_key not in snapshots and cache_key not in futures:
-            futures[cache_key] = _READ_EXECUTOR.submit(
-                _read_source_snapshot_from_sidecar,
+        if cache_key not in snapshots:
+            snapshots[cache_key] = _read_dfm_snapshot(
                 project_name,
                 reserving_class,
                 name,
-                sidecars.get(name) or {},
-                role=role,
+                graph_names[role],
+                sidecars.get(graph_names[role]) or {},
+                allow_review_needed=allow_review_needed,
+                dfm_cache=dfm_cache,
+            )
+        resolved[role] = snapshots[cache_key]
+
+    # A Bootstrap inherits its origin axis and origin length from its DFM, so a
+    # freshly read DFM snapshot — not the method's own stale copy — defines the
+    # axis the target ultimate must line up with.  On a first save the method
+    # has no axis at all until this point.
+    dfm_snapshot = resolved.get("dfm")
+    if dfm_snapshot:
+        origin_labels = [str(item) for item in dfm_snapshot.get("origin_labels") or []]
+        origin_length = int(dfm_snapshot.get("origin_length") or origin_length)
+
+    for role, name in role_names:
+        if role == "dfm":
+            continue
+        cache_key = (_key(name), role, origin_length, tuple(origin_labels))
+        if cache_key not in snapshots:
+            snapshots[cache_key] = _read_target_snapshot(
+                project_name,
+                reserving_class,
+                graph_names[role],
+                sidecars.get(graph_names[role]) or {},
                 origin_length=origin_length,
                 origin_labels=origin_labels,
                 allow_review_needed=allow_review_needed,
             )
-    for cache_key, future in futures.items():
-        snapshots[cache_key] = future.result()
-    result: Dict[str, Any] = {}
-    prior_snapshots: Dict[str, Dict[str, Any]] = {}
-    for role, name in role_names:
-        snapshot = snapshots[(_key(name), role, origin_length, origin_axis)]
-        if role == "priors":
-            prior_snapshots[name] = snapshot
-        else:
-            result[role] = snapshot
-    if prior_snapshots:
-        result["priors"] = prior_snapshots
-    return result
+        resolved[role] = snapshots[cache_key]
+    return resolved
 
 
 def _recalculate_with_sources(
@@ -388,25 +556,26 @@ def _recalculate_with_sources(
     roles: Iterable[str],
     *,
     changed_precedents: Iterable[str],
-    prior_names: Iterable[str] | None = None,
     allow_review_needed: bool = False,
     sidecar_cache: Dict[str, Dict[str, Any]] | None = None,
     snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] | None = None,
+    dfm_cache: Dict[str, Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     snapshots = _source_snapshots(
         project_name,
         reserving_class,
         payload,
         roles,
-        prior_names=prior_names,
         allow_review_needed=allow_review_needed,
         sidecar_cache=sidecar_cache,
         snapshot_cache=snapshot_cache,
+        dfm_cache=dfm_cache,
     )
     return _contract_call(
-        recalculate_bornhuetter_ferguson_method,
+        recalculate_bootstrap_method,
         payload,
-        source_snapshots=snapshots,
+        dfm_snapshot=snapshots.get("dfm"),
+        target_snapshot=snapshots.get("target_ultimate"),
         changed_precedents=changed_precedents,
         timestamp=_now(),
     )
@@ -432,13 +601,12 @@ def _output_files(
     reserving_class: str,
     payload: Mapping[str, Any],
 ) -> Dict[str, str]:
-    method_name, output_dataset = _identity(payload)
-    del method_name
+    _method_name, output_dataset = _identity(payload)
     data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
     safe_name = sanitize_dataset_file_name(output_dataset)
     return {
         os.path.join(data_dir, f"{safe_name}@{period_length}.csv"): _csv_text(values)
-        for period_length, values in bornhuetter_ferguson_output_variants(payload).items()
+        for period_length, values in bootstrap_output_variants(payload).items()
     }
 
 
@@ -468,6 +636,7 @@ def _build_sidecar(
     payload: Mapping[str, Any],
     existing: Mapping[str, Any],
     *,
+    precedents: Iterable[str],
     notes: str | None,
     output_changed: bool,
     automatic: bool,
@@ -480,6 +649,7 @@ def _build_sidecar(
     primary = next(
         path for path in output_files if path.endswith(f"@{origin_length}.csv")
     )
+    graph_precedents = list(precedents)
     canonical_existing: Dict[str, Any] = dict(existing)
     if not existing:
         graph_seed = {
@@ -487,11 +657,9 @@ def _build_sidecar(
             "dataset_type": _clean(_details(payload).get("output_type")) or output_dataset,
             "project_name": project_name,
             "reserving_class": reserving_class,
-            "source_kind": "bornhuetter_ferguson",
-            "method_type": dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON,
-            "Precedents": dataset_sidecar_status_service.name_entries(
-                bornhuetter_ferguson_precedent_names(payload)
-            ),
+            "source_kind": "bootstrap",
+            "method_type": dataset_sidecar_status_service.METHOD_TYPE_BOOTSTRAP,
+            "Precedents": dataset_sidecar_status_service.name_entries(graph_precedents),
             "Dependents": [],
         }
         calculated_dataset_service.apply_sidecar_graph_fields(
@@ -501,11 +669,12 @@ def _build_sidecar(
         )
         canonical_existing = graph_seed
     return _contract_call(
-        build_bornhuetter_ferguson_output_sidecar,
+        build_bootstrap_output_sidecar,
         payload,
         project_name=project_name,
         reserving_class=reserving_class,
         csv_file=os.path.basename(primary),
+        precedents=graph_precedents,
         existing=canonical_existing,
         existing_record=bool(existing),
         dependents=canonical_existing.get("Dependents"),
@@ -532,21 +701,24 @@ def _publish(
     output_changed: bool,
     automatic: bool,
     write_outputs: bool,
+    dfm_cache: Dict[str, Dict[str, Any]] | None = None,
 ) -> Tuple[Dict[str, Any], List[str]]:
     method_name, output_dataset = _identity(payload)
-    method_path = _method_path(project_name, reserving_class, method_name)
     sidecar_path = _sidecar_path(project_name, reserving_class, output_dataset)
+    new_precedents = _precedent_dataset_names(
+        project_name, reserving_class, payload, dfm_cache=dfm_cache
+    )
     sidecar = _build_sidecar(
         project_name,
         reserving_class,
         payload,
         existing_sidecar,
+        precedents=new_precedents,
         notes=notes,
         output_changed=output_changed,
         automatic=automatic,
     )
     old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("Precedents"))
-    new_precedents = bornhuetter_ferguson_precedent_names(payload)
     graph_changed = {_key(item) for item in old_precedents} != {_key(item) for item in new_precedents}
     graph_updated = False
     try:
@@ -563,7 +735,7 @@ def _publish(
             except HTTPException as exc:
                 raise HTTPException(
                     exc.status_code,
-                    str(exc.detail).replace("Result Selection", "BF"),
+                    str(exc.detail).replace("Result Selection", "Bootstrap"),
                 ) from exc
             dataset_sidecar_status_service.update_precedent_dependents(
                 project_name,
@@ -594,47 +766,56 @@ def _publish(
 
 
 def _validate_pair(
+    project_name: str,
+    reserving_class: str,
     requested_method_name: str,
     method: Mapping[str, Any],
     sidecar: Mapping[str, Any],
+    *,
+    dfm_cache: Dict[str, Dict[str, Any]] | None = None,
 ) -> None:
     method_name, output_dataset = _identity(method)
     if _key(method_name) != _key(requested_method_name):
-        raise HTTPException(409, "BF method identity does not match the requested method.")
+        raise HTTPException(409, "Bootstrap method identity does not match the requested method.")
     if _key(sidecar.get("dataset_name")) != _key(output_dataset):
-        raise HTTPException(409, "BF sidecar identity does not match the method JSON.")
+        raise HTTPException(409, "Bootstrap sidecar identity does not match the method JSON.")
     sidecar_method = _clean(sidecar.get("method_name")) or output_dataset
     if _key(sidecar_method) != _key(method_name):
-        raise HTTPException(409, "BF sidecar is owned by a different method.")
+        raise HTTPException(409, "Bootstrap sidecar is owned by a different method.")
     if dataset_sidecar_status_service.normalize_method_type(
         sidecar.get("method_type"), sidecar.get("source_kind")
-    ) != dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON:
-        raise HTTPException(409, "BF output sidecar does not identify a BF output.")
+    ) != dataset_sidecar_status_service.METHOD_TYPE_BOOTSTRAP:
+        raise HTTPException(409, "Bootstrap output sidecar does not identify a Bootstrap output.")
     if _clean(sidecar.get("data_format")).lower() != "vector":
-        raise HTTPException(409, "BF output sidecar must identify a Vector dataset.")
+        raise HTTPException(409, "Bootstrap output sidecar must identify a Vector dataset.")
     try:
         sidecar_period = int(sidecar.get("period_length"))
     except (TypeError, ValueError):
         sidecar_period = 0
     method_period = int(_details(method).get("origin_length") or 0)
     if sidecar_period != method_period:
-        raise HTTPException(409, "BF method and output sidecar origin lengths do not match.")
-    method_origins = [str(item) for item in _method_tab(method).get("origin_labels", [])]
+        raise HTTPException(409, "Bootstrap method and output sidecar origin lengths do not match.")
+    method_origins = [str(item) for item in _results_tab(method).get("origin_labels", [])]
     sidecar_origins = (
         [str(item) for item in sidecar.get("origin_labels", [])]
         if isinstance(sidecar.get("origin_labels"), list)
         else []
     )
     if sidecar_origins != method_origins:
-        raise HTTPException(409, "BF method and output sidecar origin labels do not match.")
-    method_precedents = {_key(item) for item in bornhuetter_ferguson_precedent_names(method)}
+        raise HTTPException(409, "Bootstrap method and output sidecar origin labels do not match.")
+    method_precedents = {
+        _key(item)
+        for item in _precedent_dataset_names(
+            project_name, reserving_class, method, dfm_cache=dfm_cache
+        )
+    }
     sidecar_precedents = {
         _key(item) for item in dataset_sidecar_status_service.entry_names(sidecar.get("Precedents"))
     }
     if method_precedents != sidecar_precedents:
-        raise HTTPException(409, "BF method and output sidecar precedents do not match.")
+        raise HTTPException(409, "Bootstrap method and output sidecar precedents do not match.")
     if _clean(sidecar.get("publication_revision")) != _revision_response(method)["publication_revision"]:
-        raise HTTPException(409, "BF method and output sidecar publication revisions do not match.")
+        raise HTTPException(409, "Bootstrap method and output sidecar publication revisions do not match.")
 
 
 def _method_response(
@@ -664,7 +845,7 @@ def _method_response(
     }
 
 
-def load_bornhuetter_ferguson_method(
+def load_bootstrap_method(
     project_name: str,
     reserving_class: str,
     method_name: str,
@@ -682,54 +863,37 @@ def load_bornhuetter_ferguson_method(
         method = method_future.result()
         sidecar = sidecar_future.result()
         if not method:
-            raise HTTPException(404, f"BF method not found: {name}")
+            raise HTTPException(404, f"Bootstrap method not found: {name}")
         if not sidecar:
-            raise HTTPException(409, "BF requires both its method JSON and output sidecar.")
+            raise HTTPException(409, "Bootstrap requires both its method JSON and output sidecar.")
         json_format = _clean(method.get("json_format"))
-        if json_format != BF_JSON_FORMAT:
-            raise HTTPException(422, f"Unsupported BF JSON format: {json_format or '(missing)'}.")
+        if json_format != BST_JSON_FORMAT:
+            raise HTTPException(422, f"Unsupported Bootstrap JSON format: {json_format or '(missing)'}.")
         normalized = _contract_call(
-            normalize_bornhuetter_ferguson_method,
+            normalize_bootstrap_method,
             method,
             require_complete=True,
         )
-        _validate_pair(name, normalized, sidecar)
+        _validate_pair(project, reserving, name, normalized, sidecar)
         return _method_response(project, reserving, normalized, sidecar)
 
 
 def _roles_for_save(
     current: Mapping[str, Any] | None,
     merged: Mapping[str, Any],
-) -> Tuple[set[str], List[str] | None]:
+) -> set[str]:
     if not current:
-        return {"latest", "dfm", "priors"}, None
-    current_details = _details(current)
-    next_details = _details(merged)
-    current_tab = _method_tab(current)
-    next_tab = _method_tab(merged)
-    latest_changed = _key(current_tab.get("latest_dataset")) != _key(next_tab.get("latest_dataset"))
-    geometry_changed = int(current_details.get("origin_length") or 12) != int(
-        next_details.get("origin_length") or 12
-    )
-    if latest_changed or geometry_changed:
-        return {"latest", "dfm", "priors"}, None
-    roles: set[str] = set()
-    if _key(current_tab.get("dfm_dataset")) != _key(next_tab.get("dfm_dataset")):
-        roles.add("dfm")
-    current_priors = {_key(item.get("name")) for item in current_tab.get("prior_datasets", [])}
-    next_priors = {_key(item.get("name")) for item in next_tab.get("prior_datasets", [])}
-    new_prior_keys = next_priors - current_priors
-    if new_prior_keys:
-        roles.add("priors")
-    new_prior_names = [
-        _clean(item.get("name"))
-        for item in next_tab.get("prior_datasets", [])
-        if isinstance(item, Mapping) and _key(item.get("name")) in new_prior_keys
-    ]
-    return roles, new_prior_names
+        return set(SOURCE_ROLES)
+    current_names = dict(_role_names(current))
+    next_names = dict(_role_names(merged))
+    return {
+        role
+        for role in SOURCE_ROLES
+        if _key(current_names.get(role)) != _key(next_names.get(role))
+    }
 
 
-def save_bornhuetter_ferguson_method(
+def save_bootstrap_method(
     project_name: str,
     reserving_class: str,
     method: Dict[str, Any],
@@ -743,37 +907,40 @@ def save_bornhuetter_ferguson_method(
     if not project or not reserving:
         raise HTTPException(400, "project_name and reserving_class are required.")
     incoming = _contract_call(
-        normalize_bornhuetter_ferguson_method,
+        normalize_bootstrap_method,
         method,
         require_complete=False,
     )
     method_name, output_dataset = _identity(incoming)
     method_path = _method_path(project, reserving, method_name)
     sidecar_path = _sidecar_path(project, reserving, output_dataset)
+    sidecar_cache: Dict[str, Dict[str, Any]] = {}
+    snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] = {}
+    dfm_cache: Dict[str, Dict[str, Any]] = {}
     with _lock(project, reserving), dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
         current_future = _READ_EXECUTOR.submit(_read_json, method_path)
         sidecar_future = _READ_EXECUTOR.submit(_read_json, sidecar_path)
         current = current_future.result()
         existing_sidecar = sidecar_future.result()
         if current:
-            if _clean(current.get("json_format")) != BF_JSON_FORMAT:
-                raise HTTPException(409, "BF changed on disk; reload it before saving.")
+            if _clean(current.get("json_format")) != BST_JSON_FORMAT:
+                raise HTTPException(409, "Bootstrap changed on disk; reload it before saving.")
             current = _contract_call(
-                normalize_bornhuetter_ferguson_method,
+                normalize_bootstrap_method,
                 current,
                 require_complete=True,
             )
             current_name, current_output = _identity(current)
             if _key(current_name) != _key(method_name) or _key(current_output) != _key(output_dataset):
-                raise HTTPException(409, "An existing BF cannot change its method or output identity during Save.")
+                raise HTTPException(409, "An existing Bootstrap cannot change its method or output identity during Save.")
             current_revisions = _revision_response(current)
             if expected_owned_revision is not None \
                     and _clean(expected_owned_revision) != current_revisions["owned_revision"]:
-                raise HTTPException(409, "BF owned settings changed on disk; reload before saving.")
+                raise HTTPException(409, "Bootstrap owned settings changed on disk; reload before saving.")
             merged = _contract_call(apply_owned_patch, current, method, timestamp=_now())
         else:
             if expected_owned_revision is not None and _clean(expected_owned_revision):
-                raise HTTPException(409, "BF was removed on disk; reload before saving.")
+                raise HTTPException(409, "Bootstrap was removed on disk; reload before saving.")
             merged = incoming
         if existing_sidecar:
             owner = _clean(existing_sidecar.get("method_name")) or _clean(
@@ -783,25 +950,29 @@ def save_bornhuetter_ferguson_method(
                 existing_sidecar.get("method_type"), existing_sidecar.get("source_kind")
             )
             if _key(owner) != _key(method_name) \
-                    or owner_type != dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON:
+                    or owner_type != dataset_sidecar_status_service.METHOD_TYPE_BOOTSTRAP:
                 raise HTTPException(
                     409,
-                    f"Output dataset '{output_dataset}' is already owned by '{owner}'. Choose a unique BF name.",
+                    f"Output dataset '{output_dataset}' is already owned by '{owner}'. Choose a unique Bootstrap name.",
                 )
-        roles, prior_names = _roles_for_save(current or None, merged)
+        roles = _roles_for_save(current or None, merged)
         if roles:
             refreshed = _recalculate_with_sources(
                 project,
                 reserving,
                 merged,
                 roles,
-                changed_precedents=bornhuetter_ferguson_precedent_names(merged),
-                prior_names=prior_names,
+                changed_precedents=_precedent_dataset_names(
+                    project, reserving, merged, dfm_cache=dfm_cache
+                ),
                 allow_review_needed=True,
+                sidecar_cache=sidecar_cache,
+                snapshot_cache=snapshot_cache,
+                dfm_cache=dfm_cache,
             )
         else:
             refreshed = _contract_call(
-                recalculate_bornhuetter_ferguson_method,
+                recalculate_bootstrap_method,
                 merged,
                 timestamp=_now(),
                 update_refresh_timestamp=False,
@@ -818,14 +989,18 @@ def save_bornhuetter_ferguson_method(
             output_changed=publication_changed,
             automatic=False,
             write_outputs=True,
+            dfm_cache=dfm_cache,
         )
-    response = _method_response(
-        project,
-        reserving,
-        refreshed,
-        published_sidecar,
-        changed_paths=changed_paths,
-    )
+        response = _method_response(
+            project,
+            reserving,
+            refreshed,
+            published_sidecar,
+            changed_paths=changed_paths,
+        )
+        graph_precedents = _precedent_dataset_names(
+            project, reserving, refreshed, dfm_cache=dfm_cache
+        )
     response["derived_rebased"] = bool(
         current
         and expected_derived_revision is not None
@@ -834,7 +1009,7 @@ def save_bornhuetter_ferguson_method(
     response["unreviewed_precedents"] = dataset_sidecar_status_service.review_needed_precedent_names(
         project,
         reserving,
-        bornhuetter_ferguson_precedent_names(refreshed),
+        graph_precedents,
     )
     response["unreviewed_precedent_count"] = len(response["unreviewed_precedents"])
     try:
@@ -891,27 +1066,29 @@ def _refresh_one(
         _method_path(project_name, reserving_class, method_name)
     )
     if not method:
-        raise RuntimeError("BF method JSON is missing.")
-    if _clean(method.get("json_format")) != BF_JSON_FORMAT:
-        raise RuntimeError("BF automatic refresh requires canonical v3 JSON.")
+        raise RuntimeError("Bootstrap method JSON is missing.")
+    if _clean(method.get("json_format")) != BST_JSON_FORMAT:
+        raise RuntimeError("Bootstrap automatic refresh requires canonical v1 JSON.")
     method = _contract_call(
-        normalize_bornhuetter_ferguson_method,
+        normalize_bootstrap_method,
         method,
         require_complete=True,
     )
-    tab = _method_tab(method)
-    precedent_names = bornhuetter_ferguson_precedent_names(method)
+    dfm_cache: Dict[str, Dict[str, Any]] = {}
+    role_names = _role_names(method)
+    graph_names = {
+        role: (
+            _resolve_dfm_output_dataset(project_name, reserving_class, name, dfm_cache=dfm_cache)
+            if role == "dfm"
+            else name
+        )
+        for role, name in role_names
+    }
+    precedent_names = _unique_names(graph_names.values())
     blocked = [name for name in precedent_names if _key(name) in blocked_precedent_keys]
     if blocked:
-        raise RuntimeError("Required BF precedent needs review: " + ", ".join(blocked))
+        raise RuntimeError("Required Bootstrap precedent needs review: " + ", ".join(blocked))
     changed_keys = {_key(name) for name in changed_names if _key(name)}
-    latest_name = _clean(tab.get("latest_dataset"))
-    dfm_name = _clean(tab.get("dfm_dataset"))
-    prior_names = [
-        _clean(item.get("name"))
-        for item in tab.get("prior_datasets", [])
-        if isinstance(item, Mapping) and _clean(item.get("name"))
-    ]
     matched = [name for name in precedent_names if _key(name) in changed_keys]
     if not matched:
         return {
@@ -920,16 +1097,7 @@ def _refresh_one(
             "skipped": True,
             "reason": "stale_reverse_dependency_edge",
         }
-    if _key(latest_name) in changed_keys:
-        roles = {"latest", "dfm", "priors"}
-        selected_priors = None
-    else:
-        roles: set[str] = set()
-        if _key(dfm_name) in changed_keys:
-            roles.add("dfm")
-        selected_priors = [name for name in prior_names if _key(name) in changed_keys]
-        if selected_priors:
-            roles.add("priors")
+    roles = {role for role, _name in role_names if _key(graph_names[role]) in changed_keys}
     if not roles:
         return {
             "ok": True,
@@ -937,16 +1105,38 @@ def _refresh_one(
             "skipped": True,
             "reason": "stale_reverse_dependency_edge",
         }
+    if roles == {"dfm"}:
+        # A 10,000-simulation run costs about 1.4 s under the reserving-class
+        # lock, so a DFM save that left the observed triangle and the selected
+        # ratios untouched must not trigger one.
+        snapshots = _source_snapshots(
+            project_name,
+            reserving_class,
+            method,
+            roles,
+            allow_review_needed=True,
+            sidecar_cache=sidecar_cache,
+            snapshot_cache=snapshot_cache,
+            dfm_cache=dfm_cache,
+        )
+        incoming = snapshots.get("dfm") or {}
+        if snapshot_revision(incoming) == _clean(_details(method).get("dfm_source_revision")):
+            return {
+                "ok": True,
+                "dataset_name": output_dataset,
+                "skipped": True,
+                "reason": "dfm_snapshot_unchanged",
+            }
     refreshed = _recalculate_with_sources(
         project_name,
         reserving_class,
         method,
         roles,
         changed_precedents=matched,
-        prior_names=selected_priors,
         allow_review_needed=True,
         sidecar_cache=sidecar_cache,
         snapshot_cache=snapshot_cache,
+        dfm_cache=dfm_cache,
     )
     before_revisions = _revision_response(method)
     after_revisions = _revision_response(refreshed)
@@ -969,6 +1159,7 @@ def _refresh_one(
         output_changed=output_changed,
         automatic=True,
         write_outputs=output_changed,
+        dfm_cache=dfm_cache,
     )
     return {
         "ok": True,
@@ -1001,7 +1192,12 @@ def _cascade_names(report: Mapping[str, Any]) -> Tuple[List[str], List[str]]:
         for item in report.get("skipped", [])
         if isinstance(item, Mapping) and _clean(item.get("dataset_type_name"))
     )
-    for field in ("dfm_updates", "result_selection_updates"):
+    for field in (
+        "dfm_updates",
+        "result_selection_updates",
+        "bornhuetter_ferguson_updates",
+        "cape_cod_updates",
+    ):
         domain = report.get(field) if isinstance(report.get(field), Mapping) else {}
         for result_field in ("updated", "status_refreshed"):
             fresh.extend(
@@ -1045,15 +1241,13 @@ def _refresh_downstream_domains(
         reserving_class,
         output_name,
         output_type,
-        include_bornhuetter_ferguson=False,
-        include_cape_cod=False,
         include_bootstrap=False,
         finalize_method_review_status=finalize_method_review_status,
         rebuild_index=False,
     )
 
 
-def refresh_bornhuetter_ferguson_method(
+def refresh_bootstrap_method(
     project_name: str,
     reserving_class: str,
     method_name: str,
@@ -1065,6 +1259,8 @@ def refresh_bornhuetter_ferguson_method(
         raise HTTPException(400, "project_name, reserving_class, and method_name are required.")
     output_name = name
     sidecar_path = _sidecar_path(project, reserving, output_name)
+    sidecar_cache: Dict[str, Dict[str, Any]] = {}
+    snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] = {}
     with _lock(project, reserving), dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
         method_future = _READ_EXECUTOR.submit(
             _read_json,
@@ -1074,25 +1270,30 @@ def refresh_bornhuetter_ferguson_method(
         method = method_future.result()
         sidecar = sidecar_future.result()
         if not method:
-            raise HTTPException(404, f"BF method not found: {name}")
+            raise HTTPException(404, f"Bootstrap method not found: {name}")
         if not sidecar:
-            raise HTTPException(409, "BF output sidecar is missing.")
-        if _clean(method.get("json_format")) != BF_JSON_FORMAT:
-            raise HTTPException(422, "BF refresh requires canonical v3 JSON.")
+            raise HTTPException(409, "Bootstrap output sidecar is missing.")
+        if _clean(method.get("json_format")) != BST_JSON_FORMAT:
+            raise HTTPException(422, "Bootstrap refresh requires canonical v1 JSON.")
         was_review_needed = (
             dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
             == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED
         )
         try:
+            normalized = _contract_call(
+                normalize_bootstrap_method,
+                method,
+                require_complete=True,
+            )
             result = _refresh_one(
                 project,
                 reserving,
                 output_name,
                 sidecar,
-                bornhuetter_ferguson_precedent_names(method),
+                _precedent_dataset_names(project, reserving, normalized),
                 blocked_precedent_keys=set(),
-                sidecar_cache={},
-                snapshot_cache={},
+                sidecar_cache=sidecar_cache,
+                snapshot_cache=snapshot_cache,
                 method_payload=method,
             )
             if was_review_needed:
@@ -1160,7 +1361,7 @@ def refresh_dependents(
     blocked_precedent_names: Iterable[Any] = (),
     finalize_method_review_status: bool = True,
 ) -> Dict[str, Any]:
-    """Refresh BF reverse-edge branches and feed changed BF outputs through other domains."""
+    """Refresh Bootstrap reverse-edge branches and feed changed outputs through other domains."""
 
     project = _clean(project_name)
     reserving = _clean(reserving_class)
@@ -1186,7 +1387,7 @@ def refresh_dependents(
                 if visit_counts[normalized] > MAX_REFRESH_VISITS_PER_DATASET:
                     errors.append({
                         "dataset_name": name,
-                        "reason": "BF dependency refresh did not converge.",
+                        "reason": "Bootstrap dependency refresh did not converge.",
                     })
                     continue
                 allowed_frontier.append(name)
@@ -1217,7 +1418,7 @@ def refresh_dependents(
             for dependent_name, sidecar in dependent_sidecars.items():
                 if dataset_sidecar_status_service.normalize_method_type(
                     sidecar.get("method_type"), sidecar.get("source_kind")
-                ) != dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON:
+                ) != dataset_sidecar_status_service.METHOD_TYPE_BOOTSTRAP:
                     continue
                 method_name = _clean(sidecar.get("method_name")) or dependent_name
                 method_paths_by_dependent[dependent_name] = _method_path(
@@ -1245,10 +1446,10 @@ def refresh_dependents(
                 method_type = dataset_sidecar_status_service.normalize_method_type(
                     sidecar.get("method_type"), sidecar.get("source_kind")
                 )
-                if method_type != dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON:
+                if method_type != dataset_sidecar_status_service.METHOD_TYPE_BOOTSTRAP:
                     skipped.append({
                         "dataset_name": dependent_name,
-                        "reason": "non_bf_dependent_handled_by_central_cascade",
+                        "reason": "non_bootstrap_dependent_handled_by_central_cascade",
                     })
                     continue
                 try:
@@ -1327,7 +1528,7 @@ def refresh_dependents(
                     if not cascade.get("ok", True):
                         errors.append({
                             "dataset_name": dependent_name,
-                            "reason": "Downstream refresh failed after BF publication.",
+                            "reason": "Downstream refresh failed after Bootstrap publication.",
                             "cascade": cascade,
                         })
                 except Exception as exc:
@@ -1335,7 +1536,7 @@ def refresh_dependents(
                     snapshot_cache.clear()
                     errors.append({
                         "dataset_name": dependent_name,
-                        "reason": f"Downstream refresh failed after BF publication: {exc}",
+                        "reason": f"Downstream refresh failed after Bootstrap publication: {exc}",
                     })
         review_status_updates = (
             dataset_sidecar_status_service.refresh_method_statuses_for_dependents(

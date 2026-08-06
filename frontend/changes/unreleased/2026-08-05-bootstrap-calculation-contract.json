@@ -1,0 +1,13 @@
+{
+  "type": "feature",
+  "scope": "bootstrap",
+  "audience": "internal",
+  "summary": "Add the canonical Bootstrap calculation contract reproducing the ResQ Over-dispersed Poisson bootstrap.",
+  "details": [
+    "New arcrho_api.bootstrap_simulation owns the DFM projection, the ODP residual grids and scale parameters, the simulation itself, and target scaling; new arcrho_api.bootstrap_contract owns the arcrho-bootstrap-method-by-tab-v1 payload, its revisions, output variants, and output sidecar.",
+    "Verified against the live ResQ COM API for F 72 A - Bootstrap Net incurred with PV: the fitted triangle, all five residual types, both the single and varying scale-parameter models, the bias adjustment, and the zero-average shift agree to floating-point precision before ArcRho's canonical six-decimal persistence rounding.",
+    "The simulated distribution is validated against a full ResQ Simulate() run rather than a spec: the total expected reserve and every 5%-95% percentile land within ResQ's own sampling error at 10,000 simulations.",
+    "Simulated reserves are not persisted. A method stores its seed, its simulation count, and a summary; the run is bit-reproducible from the seed, so reopening a method rebuilds identical results without adding megabytes to a network-drive JSON file.",
+    "dfm_contract.selected_ratio_values re-derives selected development ratios at full precision, because chaining ten ratios stored at six decimals shifts the bootstrap scale parameter by around 1%."
+  ]
+}

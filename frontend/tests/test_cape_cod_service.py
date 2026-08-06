@@ -726,7 +726,10 @@ class CapeCodServiceTests(unittest.TestCase):
         )
         self.assertCountEqual(failed, ["Failed After RS", "BF Failed"])
 
-    def test_cape_cod_downstream_cascade_excludes_its_own_wave(self) -> None:
+    def test_cape_cod_downstream_cascade_excludes_its_own_and_later_waves(self) -> None:
+        # Each wave's nested cascade suppresses itself and every wave that runs
+        # after it; the outer cascade feeds those later waves from this wave's
+        # fresh names instead, so nothing is refreshed twice.
         with mock.patch.object(
             calculated_dataset_service,
             "recalculate_dependents",
@@ -742,11 +745,12 @@ class CapeCodServiceTests(unittest.TestCase):
             "CC Method",
             "CC Ultimate",
             include_cape_cod=False,
+            include_bootstrap=False,
             finalize_method_review_status=True,
             rebuild_index=False,
         )
 
-    def test_bf_downstream_cascade_excludes_cape_cod_wave(self) -> None:
+    def test_bf_downstream_cascade_excludes_cape_cod_and_bootstrap_waves(self) -> None:
         with mock.patch.object(
             calculated_dataset_service,
             "recalculate_dependents",
@@ -763,6 +767,7 @@ class CapeCodServiceTests(unittest.TestCase):
             "BF Ultimate",
             include_bornhuetter_ferguson=False,
             include_cape_cod=False,
+            include_bootstrap=False,
             finalize_method_review_status=True,
             rebuild_index=False,
         )

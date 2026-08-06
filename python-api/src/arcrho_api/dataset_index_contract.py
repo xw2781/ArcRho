@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from .bootstrap_contract import BST_JSON_FORMAT
 from .bornhuetter_ferguson_contract import BF_JSON_FORMAT
 from .cape_cod_contract import CC_JSON_FORMAT
 from .io import persisted_json_text
@@ -86,6 +87,7 @@ METHOD_TYPE_DFM = "DFM"
 METHOD_TYPE_RESULT_SELECTION = "Result Selection"
 METHOD_TYPE_BF = "Bornhuetter Ferguson"
 METHOD_TYPE_CAPE_COD = "Cape Cod"
+METHOD_TYPE_BOOTSTRAP = "Bootstrap"
 METHOD_TYPE_BS_SR = "B&S Settlement Rate Adjustment"
 METHOD_TYPE_BS_CRA = "B&S Case Reserve Adequacy Adjustment"
 STATUS_CURRENT = 0
@@ -101,6 +103,7 @@ _METHOD_CONTRACTS = {
     LEGACY_RS_JSON_FORMAT: (METHOD_TYPE_RESULT_SELECTION, "result_selection", "Vector"),
     BF_JSON_FORMAT: (METHOD_TYPE_BF, "bornhuetter_ferguson", "Vector"),
     CC_JSON_FORMAT: (METHOD_TYPE_CAPE_COD, "cape_cod", "Vector"),
+    BST_JSON_FORMAT: (METHOD_TYPE_BOOTSTRAP, "bootstrap", "Vector"),
     BS_SR_JSON_FORMAT: (METHOD_TYPE_BS_SR, "berquist_sherman_sr", "Triangle"),
     BS_CRA_JSON_FORMAT: (METHOD_TYPE_BS_CRA, "berquist_sherman_cra", "Triangle"),
 }
@@ -109,6 +112,7 @@ _METHOD_PREFIX_CONTRACTS = {
     "RS@": _METHOD_CONTRACTS[RS_JSON_FORMAT],
     "BF@": _METHOD_CONTRACTS[BF_JSON_FORMAT],
     "CC@": _METHOD_CONTRACTS[CC_JSON_FORMAT],
+    "BST@": _METHOD_CONTRACTS[BST_JSON_FORMAT],
     "BSSR@": _METHOD_CONTRACTS[BS_SR_JSON_FORMAT],
     "BSCRA@": _METHOD_CONTRACTS[BS_CRA_JSON_FORMAT],
 }
@@ -118,6 +122,7 @@ _METHOD_TYPE_BY_SOURCE_KIND = {
     "result_selection": METHOD_TYPE_RESULT_SELECTION,
     "bornhuetter_ferguson": METHOD_TYPE_BF,
     "cape_cod": METHOD_TYPE_CAPE_COD,
+    "bootstrap": METHOD_TYPE_BOOTSTRAP,
     "berquist_sherman_sr": METHOD_TYPE_BS_SR,
     "berquist_sherman_cra": METHOD_TYPE_BS_CRA,
 }
@@ -128,6 +133,7 @@ _CANONICAL_METHOD_TYPES = {
         METHOD_TYPE_RESULT_SELECTION,
         METHOD_TYPE_BF,
         METHOD_TYPE_CAPE_COD,
+        METHOD_TYPE_BOOTSTRAP,
         METHOD_TYPE_BS_SR,
         METHOD_TYPE_BS_CRA,
     )

@@ -1,0 +1,14 @@
+{
+  "type": "feature",
+  "scope": "bootstrap",
+  "audience": "internal",
+  "summary": "Add the Bootstrap method app-server layer with load, save, and refresh endpoints mirroring the Cape Cod architecture.",
+  "details": [
+    "POST /bootstrap/load, /bootstrap/save, and /bootstrap/refresh delegate to a new bootstrap_service that persists methods/BST@<Name>.json, the native and aggregated output vector CSVs, and the output sidecar in one atomic, rollback-safe publication.",
+    "Bootstrap is registered end to end as source_kind \"bootstrap\", method_type \"Bootstrap\", method_type_code 6, data_format \"Vector\" across the dataset index contract, the sidecar status service, the dataset service, and the reserving-class index builder.",
+    "A new bootstrap_updates propagation wave runs after the Cape Cod wave, so a Bootstrap can take a DFM, calculated, Result Selection, Bornhuetter Ferguson, or Cape Cod output as its target ultimate.",
+    "Because a Bootstrap's first precedent is a method rather than a dataset, the service reads the DFM method JSON for its embedded snapshot but resolves that DFM to the dataset it publishes before touching the dependency graph, the cycle guard, or Review Needed status.",
+    "An automatic refresh triggered only by a DFM whose snapshot revision is unchanged is skipped instead of re-running a simulation under the reserving-class lock.",
+    "build_bootstrap_output_sidecar now emits the canonical persisted sidecar shape every other method writes, so a Bootstrap output is readable by the index, status, and dependency services."
+  ]
+}

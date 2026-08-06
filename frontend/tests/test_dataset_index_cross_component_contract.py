@@ -127,6 +127,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
                 ["Selected Ultimate", "Vector", "Ultimate", False, "", "", False],
                 ["BF Ultimate", "Vector", "Ultimate", False, "", "", False],
                 ["CC Ultimate", "Vector", "Ultimate", False, "", "", False],
+                ["BST Ultimate", "Vector", "Ultimate", False, "", "", False],
                 ["Adjusted Paid", "Triangle", "Loss", False, "", "", False],
             ],
         }
@@ -281,6 +282,20 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
             },
         )
         self._write_json(
+            self.methods_dir / "BST@BST Ultimate.json",
+            {
+                "json_format": "arcrho-bootstrap-method-by-tab-v1",
+                "details_tab": {
+                    "name": "BST Ultimate",
+                    "output_type": "BST Ultimate",
+                    "dataset_category": "Ultimate",
+                },
+                "results_tab": {
+                    "origin_labels": ["2024", "2025"],
+                },
+            },
+        )
+        self._write_json(
             self.methods_dir / "BSSR@Adjusted Paid.json",
             {
                 "json_format": "arcrho-berquist-sherman-sr-method-by-tab-v1",
@@ -322,6 +337,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
             {
                 "Adjusted Paid",
                 "BF Ultimate",
+                "BST Ultimate",
                 "CC Ultimate",
                 "Frontend DFM A",
                 "Frontend DFM B",

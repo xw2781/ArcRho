@@ -12,6 +12,7 @@ Index cache/data files and refresh points used by app-server services.
 | `POST` | `/arcrho/headers/cache/clear` | `arcrho` | `clear_arcrho_headers_cache` |
 | `POST` | `/arcrho/tri/refresh` | `arcrho` | `arcrho_tri_refresh` |
 | `POST` | `/arcrho/vec/refresh` | `arcrho` | `arcrho_vec_refresh` |
+| `POST` | `/bootstrap/refresh` | `bootstrap` | `refresh_bootstrap` |
 | `POST` | `/bornhuetter-ferguson/refresh` | `bornhuetter_ferguson` | `refresh_bornhuetter_ferguson` |
 | `POST` | `/cape-cod/refresh` | `cape_cod` | `refresh_cape_cod` |
 | `POST` | `/dataset/cache/load` | `dataset` | `load_dataset_cache` |

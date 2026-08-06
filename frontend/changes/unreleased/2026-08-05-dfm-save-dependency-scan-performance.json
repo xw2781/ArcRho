@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Saving a DFM is much faster on network-drive projects.",
+  "details": [
+    "Dependency discovery now enumerates a reserving-class folder once per pass and reads its sidecars with bounded parallelism instead of one sidecar per cached CSV in sequence.",
+    "Measured on a 119-dataset reserving class, a save issued 316 file reads before and 195 after; simulating an 8 ms network round trip, one save fell from about 3.3 s to about 1.4 s.",
+    "Saved files, chosen dependencies, and propagation results are unchanged."
+  ]
+}

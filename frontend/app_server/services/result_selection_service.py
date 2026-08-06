@@ -1504,6 +1504,7 @@ def refresh_dependents(
                             include_result_selection=False,
                             include_bornhuetter_ferguson=False,
                             include_cape_cod=False,
+                            include_bootstrap=False,
                             finalize_method_review_status=False,
                             rebuild_index=False,
                         )
