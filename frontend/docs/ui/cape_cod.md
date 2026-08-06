@@ -12,7 +12,6 @@ Detected `fetch(...)` targets in key JS files:
 - `/datasets/cached?${qs.toString()}`
 
 Detected `arcrho:*` message types in key JS files:
-- `arcrho:calculated-datasets-updated`
 - `arcrho:cc-tab-changed`
 - `arcrho:dataset-dirty`
 - `arcrho:project-instance-refresh-datasets`

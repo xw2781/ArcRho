@@ -9,7 +9,7 @@ import re
 import stat
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, NamedTuple, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -1476,47 +1476,6 @@ def recalculate_dataset(
         )
 
 
-def recalculate_dataset_chain(
-    project_name: str,
-    reserving_class: str,
-    dataset_type_name: str,
-    *,
-    rebuild_index: bool = True,
-) -> Dict[str, Any]:
-    first = recalculate_dataset(project_name, reserving_class, dataset_type_name)
-    first_step = {
-        **first,
-        "status": "updated" if first.get("ok") else "skipped",
-    }
-    downstream = recalculate_dependents(
-        project_name,
-        reserving_class,
-        dataset_type_name,
-        dataset_type_name,
-        rebuild_index=rebuild_index,
-    ) \
-        if first.get("ok") else {
-            "ok": False,
-            "steps": [],
-            "updated": [],
-            "skipped": [],
-        }
-    steps = [first_step] + list(downstream.get("steps") or [])
-    updated = [item for item in steps if item.get("ok")]
-    skipped = [item for item in steps if not item.get("ok")]
-    return {
-        "ok": bool(first.get("ok")) and bool(downstream.get("ok")),
-        "project_name": project_name,
-        "reserving_class": reserving_class,
-        "changed_dataset_name": dataset_type_name,
-        "changed_dataset_type_name": dataset_type_name,
-        "targets": [item.get("dataset_type_name") for item in steps if _clean_text(item.get("dataset_type_name"))],
-        "steps": steps,
-        "updated": updated,
-        "skipped": skipped,
-    }
-
-
 def _recalculate_dependents_impl(
     project_name: str,
     reserving_class: str,
@@ -1530,12 +1489,36 @@ def _recalculate_dependents_impl(
     include_bootstrap: bool = True,
     finalize_method_review_status: bool = True,
     rebuild_index: bool = True,
+    additional_roots: Sequence[Tuple[str, str]] | None = None,
+    progress_callback: Callable[[str, int, int, str], None] | None = None,
 ) -> Dict[str, Any]:
-    changed = [changed_dataset_name, changed_dataset_type_name]
+    # Extra roots let one Engine-hosted walk cover several coalesced saves.
+    # A progress callback exception (for example a lost reserving-class
+    # lease) intentionally aborts the walk; the follow-up walk self-heals.
+    changed_root_names = [changed_dataset_name, changed_dataset_type_name]
+    seen_root_keys = {
+        _canon_dataset_name(name)
+        for name in changed_root_names
+        if _canon_dataset_name(name)
+    }
+    for extra_root in additional_roots or []:
+        for value in extra_root:
+            cleaned = _clean_text(value)
+            key = _canon_dataset_name(cleaned)
+            if cleaned and key and key not in seen_root_keys:
+                seen_root_keys.add(key)
+                changed_root_names.append(cleaned)
+
+    def _notify(stage: str, completed: int, total: int, label: str) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, completed, total, label)
+
+    changed = list(changed_root_names)
     dfm_updates = None
     dfm_output_names: List[str] = []
     failed_dfm_names: List[str] = []
     if include_dfm:
+        _notify("dfm", 0, 0, "Refreshing DFM methods")
         try:
             from app_server.services import dfm_service
 
@@ -1593,6 +1576,12 @@ def _recalculate_dependents_impl(
         row = rows_by_key.get(key)
         if not row:
             continue
+        _notify(
+            "calculated_datasets",
+            len(results),
+            len([target for target in targets if target in rows_by_key]),
+            str(row.get("name") or ""),
+        )
         blocked_by = sorted(dependencies_by_key.get(key, set()) & failed_or_blocked)
         if blocked_by:
             result = {
@@ -1702,12 +1691,12 @@ def _recalculate_dependents_impl(
 
     result_selection_updates = None
     if include_result_selection:
+        _notify("result_selection", 0, 0, "Refreshing Result Selection methods")
         try:
             from app_server.services import result_selection_service
 
             fresh_names = [
-                changed_dataset_name,
-                changed_dataset_type_name,
+                *changed_root_names,
                 *dfm_output_names,
                 *failed_dfm_names,
             ]
@@ -1734,6 +1723,9 @@ def _recalculate_dependents_impl(
 
     bornhuetter_ferguson_updates = None
     if include_bornhuetter_ferguson:
+        _notify(
+            "bornhuetter_ferguson", 0, 0, "Refreshing Bornhuetter Ferguson methods"
+        )
         try:
             from app_server.services import bornhuetter_ferguson_service
 
@@ -1775,8 +1767,7 @@ def _recalculate_dependents_impl(
                 if _clean_text(name)
             )
             bf_roots = [
-                changed_dataset_name,
-                changed_dataset_type_name,
+                *changed_root_names,
                 *dfm_fresh_names,
                 *failed_dfm_names,
                 *calculated_fresh_names,
@@ -1805,6 +1796,7 @@ def _recalculate_dependents_impl(
 
     cape_cod_updates = None
     if include_cape_cod:
+        _notify("cape_cod", 0, 0, "Refreshing Cape Cod methods")
         try:
             from app_server.services import cape_cod_service
 
@@ -1857,8 +1849,7 @@ def _recalculate_dependents_impl(
                 if _clean_text(item.get("dataset_name"))
             ]
             cape_cod_roots = [
-                changed_dataset_name,
-                changed_dataset_type_name,
+                *changed_root_names,
                 *dfm_fresh_names,
                 *failed_dfm_names,
                 *calculated_fresh_names,
@@ -1890,6 +1881,7 @@ def _recalculate_dependents_impl(
 
     bootstrap_updates = None
     if include_bootstrap:
+        _notify("bootstrap", 0, 0, "Refreshing Bootstrap methods")
         try:
             from app_server.services import bootstrap_service
 
@@ -1956,8 +1948,7 @@ def _recalculate_dependents_impl(
                 if _clean_text(item.get("dataset_name"))
             ]
             bootstrap_roots = [
-                changed_dataset_name,
-                changed_dataset_type_name,
+                *changed_root_names,
                 *dfm_fresh_names,
                 *failed_dfm_names,
                 *calculated_fresh_names,
@@ -1992,13 +1983,15 @@ def _recalculate_dependents_impl(
 
     index_error = ""
     if finalize_method_review_status:
+        _notify("finalize", 0, 0, "Finalizing review statuses")
         dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
             project_name,
             reserving_class,
-            [changed_dataset_name, changed_dataset_type_name],
+            changed_root_names,
         )
 
     if rebuild_index:
+        _notify("index", 0, 0, "Rebuilding the dataset index")
         try:
             dataset_instance_index_service.rebuild_index(project_name, reserving_class)
         except Exception as err:
@@ -2052,6 +2045,8 @@ def recalculate_dependents(
     include_bootstrap: bool = True,
     finalize_method_review_status: bool = True,
     rebuild_index: bool = True,
+    additional_roots: Sequence[Tuple[str, str]] | None = None,
+    progress_callback: Callable[[str, int, int, str], None] | None = None,
 ) -> Dict[str, Any]:
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _recalculate_dependents_impl(
@@ -2066,21 +2061,9 @@ def recalculate_dependents(
             include_bootstrap=include_bootstrap,
             finalize_method_review_status=finalize_method_review_status,
             rebuild_index=rebuild_index,
+            additional_roots=additional_roots,
+            progress_callback=progress_callback,
         )
-
-
-def recalculate_dependents_for_csv(csv_path: str) -> Dict[str, Any]:
-    path = str(csv_path or "").strip()
-    if not path or not os.path.exists(path):
-        return {"ok": False, "skipped": True, "reason": "csv_not_found"}
-    payload = _sidecar_for_csv(path)
-    project_name = _clean_text(payload.get("project_name"))
-    reserving_class = _clean_text(payload.get("reserving_class"))
-    dataset_name = _clean_text(payload.get("dataset_name") or _csv_base_name(path))
-    dataset_type = _clean_text(payload.get("dataset_type") or dataset_name)
-    if not project_name or not reserving_class or not dataset_name:
-        return {"ok": False, "skipped": True, "reason": "missing_sidecar_context"}
-    return recalculate_dependents(project_name, reserving_class, dataset_name, dataset_type)
 
 
 def preview_dependents(
@@ -2324,24 +2307,56 @@ def refresh_sidecar_graphs_and_recalculate(
         if changed_keys and dataset_key in changed_keys and dataset_key in rows_by_key and reserving_class:
             recalc_seeds.add((reserving_class, rows_by_key[dataset_key]["name"]))
 
-    chains: List[Dict[str, Any]] = []
+    # Recalculate each changed-formula dataset itself (the saved objects),
+    # then enqueue one Engine propagation job per reserving class covering all
+    # of that class's changed roots; the job walks the dependents and rebuilds
+    # the index on the server host.
+    from app_server.services import dependent_propagation_service
+
+    seeds_by_reserving_class: Dict[str, List[str]] = {}
     for reserving_class, dataset_type in sorted(recalc_seeds):
+        seeds_by_reserving_class.setdefault(reserving_class, []).append(dataset_type)
+
+    chains: List[Dict[str, Any]] = []
+    for reserving_class, dataset_types in seeds_by_reserving_class.items():
+        steps: List[Dict[str, Any]] = []
+        for dataset_type in dataset_types:
+            try:
+                first = recalculate_dataset(project_name, reserving_class, dataset_type)
+            except Exception as exc:
+                first = {
+                    "ok": False,
+                    "dataset_type_name": dataset_type,
+                    "reason": str(exc),
+                }
+            steps.append(
+                {**first, "status": "updated" if first.get("ok") else "skipped"}
+            )
         try:
-            chains.append(recalculate_dataset_chain(
+            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
                 project_name,
                 reserving_class,
-                dataset_type,
-                rebuild_index=False,
-            ))
+                dataset_types,
+            )
         except Exception as exc:
-            chains.append({
-                "ok": False,
-                "reserving_class": reserving_class,
-                "changed_dataset_type_name": dataset_type,
-                "steps": [],
-                "updated": [],
-                "skipped": [{"ok": False, "dataset_type_name": dataset_type, "reason": str(exc)}],
-            })
+            errors.append(f"{reserving_class} review marking: {exc}")
+        propagation = dependent_propagation_service.enqueue_save_propagation(
+            project_name,
+            reserving_class,
+            [
+                dependent_propagation_service.changed_root(dataset_type, dataset_type)
+                for dataset_type in dataset_types
+            ],
+        )
+        chains.append({
+            "ok": all(step.get("ok") for step in steps) and bool(propagation.get("ok")),
+            "reserving_class": reserving_class,
+            "changed_dataset_type_name": ", ".join(dataset_types),
+            "steps": steps,
+            "updated": [step for step in steps if step.get("ok")],
+            "skipped": [step for step in steps if not step.get("ok")],
+            "propagation": propagation,
+        })
 
     touched_rcs = {
         _clean_text(chain.get("reserving_class"))

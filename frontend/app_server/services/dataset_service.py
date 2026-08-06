@@ -27,6 +27,7 @@ from app_server.helpers import (
 from app_server.services import (
     dataset_instance_index_service,
     dataset_sidecar_status_service,
+    dependent_propagation_service,
 )
 
 
@@ -903,16 +904,12 @@ def _create_empty_cached_dataset_impl(
         if csv_path:
             ds_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
             config.DATASETS[ds_id] = csv_path
-            try:
-                calculated_updates = calculated_dataset_service.recalculate_dependents(
-                    p,
-                    rc,
-                    ds_type,
-                    ds_type,
-                    rebuild_index=False,
-                )
-            except Exception as err:
-                calculated_updates = {"ok": False, "reason": str(err)}
+            calculated_updates = dependent_propagation_service.enqueue_marked_save_propagation(
+                p,
+                rc,
+                ds_type,
+                ds_type,
+            )
             index_error = ""
             try:
                 dataset_instance_index_service.rebuild_index(p, rc)
@@ -1009,19 +1006,11 @@ def _create_empty_cached_dataset_impl(
         raise HTTPException(500, f"Failed to create empty dataset cache: {str(err)}")
 
     dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [instance])
-    calculated_updates = None
-    try:
-        from app_server.services import calculated_dataset_service
-
-        calculated_updates = calculated_dataset_service.recalculate_dependents(
-            p,
-            rc,
-            instance,
-            ds_type,
-            rebuild_index=False,
-        )
-    except Exception as err:
-        calculated_updates = {"ok": False, "reason": str(err)}
+    calculated_updates = dependent_propagation_service.enqueue_save_propagation(
+        p,
+        rc,
+        [dependent_propagation_service.changed_root(instance, ds_type)],
+    )
     index_error = ""
     try:
         dataset_instance_index_service.rebuild_index(p, rc)
@@ -1058,6 +1047,9 @@ def create_empty_cached_dataset(
     dataset_type: str,
     **kwargs: Any,
 ) -> Dict[str, Any]:
+    # Dependent propagation runs on ArcRho Engine; block the create before any
+    # write when no live Engine instance can pick the job up.
+    dependent_propagation_service.require_engine_available()
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _create_empty_cached_dataset_impl(
             project_name,
@@ -1806,17 +1798,11 @@ def _save_dataset_sidecar_impl(
     ) if method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE else []
     status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [ds])
 
-    calculated_updates = None
-    try:
-        calculated_updates = calculated_dataset_service.recalculate_dependents(
-            p,
-            rc,
-            ds,
-            dataset_type_value,
-            rebuild_index=False,
-        )
-    except Exception as err:
-        calculated_updates = {"ok": False, "skipped": True, "reason": str(err)}
+    calculated_updates = dependent_propagation_service.enqueue_save_propagation(
+        p,
+        rc,
+        [dependent_propagation_service.changed_root(ds, dataset_type_value)],
+    )
     index_error = ""
     try:
         dataset_instance_index_service.rebuild_index(p, rc)
@@ -1869,6 +1855,9 @@ def save_dataset_sidecar(
     dataset_name: str,
     **kwargs: Any,
 ) -> Dict[str, Any]:
+    # Dependent propagation runs on ArcRho Engine; block the save before any
+    # write when no live Engine instance can pick the job up.
+    dependent_propagation_service.require_engine_available()
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _save_dataset_sidecar_impl(
             project_name,
@@ -1978,13 +1967,38 @@ def _patch_dataset_impl(ds_id: str, items: list, file_mtime: float = None) -> Di
             )
         except Exception:
             pass
-    calculated_updates = None
-    try:
-        from app_server.services import calculated_dataset_service
-
-        calculated_updates = calculated_dataset_service.recalculate_dependents_for_csv(path)
-    except Exception as err:
-        calculated_updates = {"ok": False, "skipped": True, "reason": str(err)}
+    calculated_updates: Dict[str, Any] | None = None
+    if sidecar_payload:
+        project_value = str(sidecar_payload.get("project_name") or "").strip()
+        reserving_value = str(sidecar_payload.get("reserving_class") or "").strip()
+        dataset_value = str(
+            sidecar_payload.get("dataset_name")
+            or sidecar_payload.get("dataset_type")
+            or ""
+        ).strip()
+        if project_value and reserving_value and dataset_value:
+            calculated_updates = dependent_propagation_service.enqueue_save_propagation(
+                project_value,
+                reserving_value,
+                [
+                    dependent_propagation_service.changed_root(
+                        dataset_value,
+                        str(sidecar_payload.get("dataset_type") or ""),
+                    )
+                ],
+            )
+        else:
+            calculated_updates = {
+                "ok": False,
+                "skipped": True,
+                "reason": "missing_sidecar_context",
+            }
+    else:
+        calculated_updates = {
+            "ok": False,
+            "skipped": True,
+            "reason": "missing_sidecar_context",
+        }
 
     return {
         "ok": True,
@@ -2000,6 +2014,9 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return _patch_dataset_impl(ds_id, items, file_mtime)
+    # Dependent propagation runs on ArcRho Engine; block the grid save before
+    # any write when no live Engine instance can pick the job up.
+    dependent_propagation_service.require_engine_available()
     sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
     sidecar = _read_dataset_sidecar(sidecar_path)
     project_name = str(sidecar.get("project_name") or "").strip()

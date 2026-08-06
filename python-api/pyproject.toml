@@ -22,3 +22,5 @@ packages = ["src/arcrho_api"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/arcrho_project_duplication_contract.py" = "arcrho_project_duplication_contract.py"
+"src/arcrho_engine_job_lease.py" = "arcrho_engine_job_lease.py"
+"src/arcrho_dependent_propagation_contract.py" = "arcrho_dependent_propagation_contract.py"

@@ -250,10 +250,15 @@ class DfmServiceTests(unittest.TestCase):
         owned_revision = method_revisions(self.method_payload())["owned revision"]
         with (
             mock.patch.object(dfm_service, "_load_source_snapshot", side_effect=AssertionError("source read")),
-            mock.patch(
-                "app_server.services.calculated_dataset_service.recalculate_dependents",
-                return_value={"ok": True, "updated": []},
-            ) as cascade,
+            mock.patch.object(
+                dfm_service.dependent_propagation_service,
+                "enqueue_marked_save_propagation",
+                return_value={"ok": True, "job_id": "job-1", "status": "queued"},
+            ) as enqueue,
+            mock.patch.object(
+                dfm_service.dependent_propagation_service,
+                "require_engine_available",
+            ),
         ):
             result = dfm_service.save_dfm_method(
                 "Project",
@@ -263,14 +268,10 @@ class DfmServiceTests(unittest.TestCase):
             )
 
         self.assertTrue(result["ok"])
-        cascade.assert_called_once_with(
-            "Project",
-            "Class",
-            "Development Output",
-            "Selected Ultimate",
-            include_dfm=True,
-            rebuild_index=True,
-        )
+        # An owned-only rebase leaves the publication revision unchanged, so a
+        # no-op save submits no Engine propagation job.
+        enqueue.assert_not_called()
+        self.assertEqual(result["propagation"], {"ok": True, "status": "unchanged"})
         self.assertTrue(result["propagation_ok"])
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
         self.assertEqual(

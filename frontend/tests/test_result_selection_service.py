@@ -448,6 +448,15 @@ class ResultSelectionServiceTests(unittest.TestCase):
                 return_value={"Precedents": [], "Dependents": []},
             ),
             mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+            mock.patch.object(
+                dataset_service.dependent_propagation_service,
+                "require_engine_available",
+            ),
+            mock.patch.object(
+                dataset_service.dependent_propagation_service,
+                "enqueue_save_propagation",
+                return_value={"ok": True, "job_id": "job-1", "status": "queued"},
+            ) as enqueue,
         ):
             result = dataset_service.save_dataset_sidecar(
                 "Project",
@@ -462,10 +471,24 @@ class ResultSelectionServiceTests(unittest.TestCase):
                 origin_labels=["2025", "2026"],
                 values=[[30], [40]],
             )
+            # The save only enqueues the Engine job; run the same canonical
+            # walk the Engine executes for the enqueued root.
+            walk = calculated_dataset_service.recalculate_dependents(
+                "Project", "Class", "Paid", "Paid"
+            )
 
         self.assertTrue(result["propagation_ok"], result)
+        enqueue.assert_called_once_with(
+            "Project",
+            "Class",
+            [{"dataset_name": "Paid", "dataset_type": "Paid"}],
+        )
         self.assertEqual(
-            result["calculated_updates"]["result_selection_updates"]["updated"],
+            result["calculated_updates"],
+            {"ok": True, "job_id": "job-1", "status": "queued"},
+        )
+        self.assertEqual(
+            walk["result_selection_updates"]["updated"],
             [{"dataset_name": "Selection"}, {"dataset_name": "Selection Two"}],
         )
         saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))

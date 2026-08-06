@@ -42,6 +42,11 @@ import {
   buildExcludedSetForColumn,
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260728a";
+import {
+  isEngineUnavailableSaveError,
+  trackSavePropagation,
+} from "/ui/shared/services/dependent_propagation_job.js?v=20260806a";
 import {
   getSummaryConfigKey,
   saveCustomSummaryRows,
@@ -91,7 +96,6 @@ import {
   refreshDfmAuditLog,
   renderDfmAuditLog,
 } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260726a";
-import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
 import {
   DFM_METHOD_JSON_FORMAT_V2,
   isDfmV2Method,
@@ -132,7 +136,6 @@ const DFM_ANALYSIS_DECIMALS = 6;
 const DFM_AVERAGE_FORMULA_DECIMALS = 6;
 const DFM_METHOD_JSON_FORMAT = DFM_METHOD_JSON_FORMAT_V2;
 const DFM_METHOD_FILE_WATCH_INTERVAL_MS = 2000;
-const CALCULATED_DATASETS_UPDATED_MESSAGE = "arcrho:calculated-datasets-updated";
 
 function stripDatasetCacheVariantSuffix(value) {
   const text = String(value || "").trim().replace(/\.csv$/iu, "");
@@ -158,23 +161,6 @@ function getDfmMethodNameFromPath(path) {
   const stem = filename.replace(/\.json$/i, "");
   const rawName = stem.startsWith("DFM@") ? stem.slice(4) : stem;
   return decodeFileNameSegment(rawName).trim();
-}
-
-function publishCalculatedDatasetUpdates(report, source = "DFM save") {
-  const updatedCount = Array.isArray(report?.updated) ? report.updated.length : 0;
-  const stepUpdated = Array.isArray(report?.steps)
-    ? report.steps.some((step) => step?.ok || String(step?.status || "").toLowerCase() === "updated")
-    : false;
-  if (!updatedCount && !stepUpdated && !hasResultSelectionUpdates(report)) return;
-  try {
-    window.parent.postMessage({
-      type: CALCULATED_DATASETS_UPDATED_MESSAGE,
-      report,
-      source,
-    }, "*");
-  } catch {
-    // ignore
-  }
 }
 
 async function saveDatasetSidecar(_hostApi, csvPath, datasetName) {
@@ -1658,11 +1644,11 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
     markDfmClean({ force: true });
     emitDfmInstancePresence("found");
     requestProjectInstanceDatasetTableRefresh();
-    const updates = response?.calculated_updates
-      || response?.propagation
-      || response?.sidecar?.calculated_updates;
-    publishCalculatedDatasetUpdates(updates, "DFM save");
     postDfmStatus(`Method saved at ${new Date().toLocaleTimeString()}.`);
+    void trackSavePropagation(response?.propagation, {
+      onStatus: (text, statusOptions) => postDfmStatus(text, statusOptions),
+      onComplete: () => requestProjectInstanceDatasetTableRefresh(),
+    });
     scheduleDfmExcelFreshnessCheck(canonicalMethod);
     if (options.showReviewWarning !== false) {
       await showMethodSaveReviewWarning(response, {
@@ -1674,6 +1660,11 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
     return { ok: true, method: canonicalMethod, sidecar: response?.sidecar };
   } catch (error) {
     const message = String(error?.message || error || "DFM save failed.");
+    if (isEngineUnavailableSaveError(error)) {
+      // The save was refused before anything was written; unsaved work stays
+      // in this window.
+      void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
+    }
     postDfmStatus(`Save failed: ${message}`, { tone: "error" });
     return { ok: false, error: message, status: error?.status };
   }

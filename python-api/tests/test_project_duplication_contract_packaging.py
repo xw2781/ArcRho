@@ -34,16 +34,22 @@ class ProjectDuplicationContractPackagingTests(unittest.TestCase):
                 names = set(wheel.namelist())
 
         self.assertIn("arcrho_project_duplication_contract.py", names)
+        self.assertIn("arcrho_engine_job_lease.py", names)
+        self.assertIn("arcrho_dependent_propagation_contract.py", names)
 
     def test_hatch_wheel_force_includes_the_canonical_contract(self) -> None:
         pyproject_text = (PYTHON_API_ROOT / "pyproject.toml").read_text(
             encoding="utf-8"
         )
-        self.assertIn(
-            '"src/arcrho_project_duplication_contract.py" = '
-            '"arcrho_project_duplication_contract.py"',
-            pyproject_text,
-        )
+        for module_name in (
+            "arcrho_project_duplication_contract",
+            "arcrho_engine_job_lease",
+            "arcrho_dependent_propagation_contract",
+        ):
+            self.assertIn(
+                f'"src/{module_name}.py" = "{module_name}.py"',
+                pyproject_text,
+            )
 
 
 if __name__ == "__main__":

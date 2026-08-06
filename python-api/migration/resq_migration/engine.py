@@ -32,12 +32,20 @@ _REPO_ROOT = _MIGRATION_PKG_DIR.parents[2]
 _FRONTEND_ROOT = Path(
     os.environ.get("ARCRHO_FRONTEND_ROOT") or (_REPO_ROOT / "frontend")
 ).expanduser()
+_CANONICAL_SRC_ROOT = _REPO_ROOT / "python-api" / "src"
+if _CANONICAL_SRC_ROOT.is_dir() and str(_CANONICAL_SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(_CANONICAL_SRC_ROOT))
+
+from arcrho_dependent_propagation_contract import (  # noqa: E402
+    ENGINE_HEARTBEAT_MAX_AGE_SECONDS as _CANONICAL_HEARTBEAT_MAX_AGE_SEC,
+    discover_fresh_engine_heartbeats as _canonical_discover_fresh_engine_heartbeats,
+    engine_instances_directory as _canonical_engine_instances_directory,
+)
 
 _DEFAULT_SERVER_ROOT = r"E:\ArcRho Server"
-ENGINE_HEARTBEAT_MAX_AGE_SEC = 60.0
+ENGINE_HEARTBEAT_MAX_AGE_SEC = _CANONICAL_HEARTBEAT_MAX_AGE_SEC
 ENGINE_REQUEST_TIMEOUT_SEC = 60.0
 ENGINE_REQUEST_POLL_INTERVAL_SEC = 0.05
-_ENGINE_INSTANCE_RELATIVE_DIR = Path("runtime") / "instances" / "arcrho_engine"
 _ENGINE_JOB_DIR_NAME = ".arcrho-engine-jobs"
 
 
@@ -91,28 +99,17 @@ def discover_fresh_engine_heartbeats(
     max_age_sec: float = ENGINE_HEARTBEAT_MAX_AGE_SEC,
     now: float | None = None,
 ) -> tuple[Path, ...]:
-    """Return engine heartbeat files modified within ``max_age_sec``."""
+    """Return engine heartbeat files modified within ``max_age_sec``.
 
-    if max_age_sec < 0:
-        raise ValueError("max_age_sec must be non-negative.")
-    instance_dir = _resolve_server_root(server_root) / _ENGINE_INSTANCE_RELATIVE_DIR
-    try:
-        candidates = tuple(instance_dir.glob("*.json"))
-    except OSError:
-        return ()
+    The discovery rule is owned by ``arcrho_dependent_propagation_contract``;
+    this wrapper only adds the migration's server-root resolution.
+    """
 
-    observed_at = time.time() if now is None else float(now)
-    fresh: list[Path] = []
-    for path in candidates:
-        try:
-            if not path.is_file():
-                continue
-            age = observed_at - path.stat().st_mtime
-        except OSError:
-            continue
-        if age <= max_age_sec:
-            fresh.append(path)
-    return tuple(sorted(fresh, key=lambda item: item.name.casefold()))
+    return _canonical_discover_fresh_engine_heartbeats(
+        _resolve_server_root(server_root),
+        max_age_sec=max_age_sec,
+        now=now,
+    )
 
 
 def require_engine_workers(
@@ -126,7 +123,7 @@ def require_engine_workers(
     heartbeats = discover_fresh_engine_heartbeats(root, max_age_sec=max_age_sec)
     if heartbeats:
         return heartbeats
-    instance_dir = root / _ENGINE_INSTANCE_RELATIVE_DIR
+    instance_dir = _canonical_engine_instances_directory(root)
     raise EngineUnavailableError(
         "No active ArcRho Engine worker was found. "
         f"Expected a heartbeat newer than {max_age_sec:g} seconds under [{instance_dir}]."

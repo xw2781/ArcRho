@@ -24,7 +24,10 @@ from app_server.helpers import (
     sanitize_dataset_file_name,
     set_data_path_like_vba,
 )
-from app_server.services import dataset_sidecar_status_service
+from app_server.services import (
+    dataset_sidecar_status_service,
+    dependent_propagation_service,
+)
 
 
 RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
@@ -578,6 +581,9 @@ def save_result_selection(
     reserving = _clean(reserving_class)
     if not project or not reserving:
         raise HTTPException(400, "project_name and reserving_class are required.")
+    # Dependent propagation runs on ArcRho Engine; block the save before any
+    # write when no live Engine instance can pick the job up.
+    dependent_propagation_service.require_engine_available()
     payload = normalize_method_payload(method, require_complete_basis=True)
     _recalculate_method(payload)
     details = payload["details_tab"]

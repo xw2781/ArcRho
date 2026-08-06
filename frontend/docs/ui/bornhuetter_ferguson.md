@@ -13,7 +13,6 @@ Detected `fetch(...)` targets in key JS files:
 
 Detected `arcrho:*` message types in key JS files:
 - `arcrho:bf-tab-changed`
-- `arcrho:calculated-datasets-updated`
 - `arcrho:dataset-dirty`
 - `arcrho:project-instance-open-dependent-dataset`
 - `arcrho:project-instance-refresh-datasets`

@@ -203,16 +203,15 @@
         }
       }
 
-      function publishPropagationReport(payload, source = "Result Selection save") {
-        const report = payload?.propagation;
-        if (!report || typeof report !== "object") return;
-        try {
-          window.parent?.postMessage({
-            type: "arcrho:calculated-datasets-updated",
-            report,
-            source,
-          }, "*");
-        } catch {}
+      function trackPersistedPropagation(payload) {
+        void trackSavePropagation(payload?.propagation, {
+          onStatus: (message, statusOptions) => postStatus(message, statusOptions?.tone === "warn" ? "warn" : ""),
+          onComplete: () => {
+            try {
+              window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+            } catch {}
+          },
+        });
       }
 
       async function saveResultSelection() {
@@ -239,7 +238,13 @@
           });
           const payload = await resp.json().catch(() => ({}));
           if (!resp.ok || payload?.ok === false) {
-            throw new Error(payload?.detail || payload?.error || `Result Selection save failed (${resp.status}).`);
+            const message = String(payload?.detail || payload?.error || `Result Selection save failed (${resp.status}).`);
+            if (isEngineUnavailableSaveError({ status: resp.status, message })) {
+              // The save was refused before anything was written; unsaved
+              // work stays in this window.
+              void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
+            }
+            throw new Error(message);
           }
           invalidateOutputSidecarLoad();
           auditLogView.render(payload?.sidecar?.audit_log);
@@ -248,18 +253,18 @@
           state.needsReview = false;
           markClean();
           reconcilePersistedMutation(mutation, "dependency update during Result Selection save");
-          publishPropagationReport(payload);
           try {
             window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
           } catch {}
           const aggregateCount = Array.isArray(payload.aggregated_csv_paths) ? payload.aggregated_csv_paths.length : 0;
           if (payload.propagation_ok === false) {
-            postStatus(`Result Selection saved, but one or more downstream dependents still need review: ${details.name}`, "warn");
+            postStatus(`Result Selection saved, but its dependent updates could not be scheduled: ${details.name}`, "warn");
           } else if (payload.index_ok === false) {
             postStatus(`Result Selection saved, but the dataset index could not be refreshed: ${payload.index_error || details.name}`, "warn");
           } else {
             postStatus(`Result Selection saved: ${details.name}${aggregateCount ? ` (+${aggregateCount} aggregated)` : ""}`);
           }
+          trackPersistedPropagation(payload);
           await showMethodSaveReviewWarning(payload, {
             instanceId: inst,
             projectName: state.project,
@@ -281,10 +286,10 @@
         state.loadBlocked = false;
         markClean();
         reconcilePersistedMutation(mutation, "dependency update during Result Selection RPC sync");
-        publishPropagationReport(payload, "Result Selection RPC sync");
         try {
           window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
         } catch {}
+        trackPersistedPropagation(payload);
       }
 
       function setNotesText(value) {

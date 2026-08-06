@@ -8,14 +8,19 @@ import os
 import re
 import shutil
 import stat as stat_module
-import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any, Callable, Mapping
 
+from arcrho_engine_job_lease import (
+    acquire_engine_job_lease,
+    engine_job_lease_owner,
+    refresh_engine_job_lease,
+    start_engine_job_lease_heartbeat,
+    stop_engine_job_lease_heartbeat,
+)
 from arcrho_project_duplication_contract import (
     PROJECT_DUPLICATION_TRANSIENT_DATA_DIR_NAMES,
     ProjectDuplicationContractError,
@@ -255,53 +260,23 @@ def _acquire_request_lease(
     """Claim a durable request, recovering only a genuinely stale lease."""
 
     claim_path = _request_claim_path(server_root, request_id)
-    owner_token = uuid.uuid4().hex
-    payload = {
-        "request_id": request_id,
-        "owner_token": owner_token,
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
-    for attempt in range(2):
-        try:
-            with claim_path.open("x", encoding="utf-8", newline="\n") as stream:
-                json.dump(payload, stream, ensure_ascii=False, separators=(",", ":"))
-                stream.write("\n")
-            return _RequestLease(claim_path, request_id, owner_token, Event())
-        except FileExistsError:
-            try:
-                age_seconds = max(0.0, time.time() - claim_path.stat().st_mtime)
-            except FileNotFoundError:
-                if attempt == 0:
-                    continue
-                return None
-            if age_seconds <= PROJECT_DUPLICATION_CLAIM_STALE_SECONDS:
-                return None
-
-            stale_path = claim_path.with_name(
-                f".{claim_path.name}.{uuid.uuid4().hex}.stale"
-            )
-            try:
-                os.rename(claim_path, stale_path)
-            except FileNotFoundError:
-                if attempt == 0:
-                    continue
-                return None
-            except OSError:
-                return None
-            try:
-                stale_path.unlink()
-            except FileNotFoundError:
-                pass
-    return None
+    lease = acquire_engine_job_lease(
+        claim_path,
+        stale_seconds=PROJECT_DUPLICATION_CLAIM_STALE_SECONDS,
+        payload_fields={"request_id": request_id},
+    )
+    if lease is None:
+        return None
+    return _RequestLease(
+        lease.path,
+        request_id,
+        lease.owner_token,
+        lease.heartbeat_failed,
+    )
 
 
 def _request_lease_owner(lease: _RequestLease) -> str | None:
-    try:
-        payload = _read_json_object(lease.path)
-    except (OSError, ValueError, TypeError, ProjectDuplicationError):
-        return None
-    owner = payload.get("owner_token")
-    return owner if isinstance(owner, str) else None
+    return engine_job_lease_owner(lease.path)
 
 
 def _request_lease_is_owned(lease: _RequestLease) -> bool:
@@ -316,20 +291,12 @@ def _require_request_lease(lease: _RequestLease) -> None:
 
 
 def _refresh_request_lease(lease: _RequestLease) -> bool:
-    if not _request_lease_is_owned(lease):
-        return False
-    try:
-        os.utime(lease.path, None)
-    except OSError:
-        return False
-    return True
+    return refresh_engine_job_lease(lease)
 
 
 def _release_request_lease(lease: _RequestLease | None) -> None:
-    # The owner-token read and unlink are not one filesystem primitive. A
-    # worker whose renewal failed must therefore leave the path for the stale
-    # takeover owner; strict fencing would require an OS-backed lock or an
-    # owner-specific immutable claim artifact.
+    # Ownership is re-read through the module-level predicate so cooperating
+    # tests (and the shared-lease comment on unfenced release) stay honest.
     if (
         lease is None
         or lease.heartbeat_failed.is_set()
@@ -344,28 +311,21 @@ def _release_request_lease(lease: _RequestLease | None) -> None:
         pass
 
 
-def _run_request_lease_heartbeat(lease: _RequestLease, stop_event: Event) -> None:
-    while not stop_event.wait(PROJECT_DUPLICATION_CLAIM_HEARTBEAT_SECONDS):
-        if not _refresh_request_lease(lease):
-            lease.heartbeat_failed.set()
-            return
-
-
 def _start_request_lease_heartbeat(lease: _RequestLease) -> tuple[Event, Thread]:
-    stop_event = Event()
-    thread = Thread(
-        target=_run_request_lease_heartbeat,
-        args=(lease, stop_event),
-        name=f"arcrho-project-duplication-lease-{lease.request_id}",
-        daemon=True,
+    return start_engine_job_lease_heartbeat(
+        lease,
+        interval_seconds=PROJECT_DUPLICATION_CLAIM_HEARTBEAT_SECONDS,
+        refresh=lambda: _refresh_request_lease(lease),
+        thread_name=f"arcrho-project-duplication-lease-{lease.request_id}",
     )
-    thread.start()
-    return stop_event, thread
 
 
 def _stop_request_lease_heartbeat(stop_event: Event, thread: Thread) -> None:
-    stop_event.set()
-    thread.join(timeout=PROJECT_DUPLICATION_CLAIM_HEARTBEAT_SECONDS + 1.0)
+    stop_engine_job_lease_heartbeat(
+        stop_event,
+        thread,
+        interval_seconds=PROJECT_DUPLICATION_CLAIM_HEARTBEAT_SECONDS,
+    )
 
 
 def _build_recovery_journal(
@@ -554,62 +514,20 @@ def _acquire_target_lock(
     request_id: str,
 ) -> _TargetLock:
     lock_path = _target_lock_path(server_root, target_segment)
-    owner_token = uuid.uuid4().hex
-    payload = {
-        "request_id": request_id,
-        "owner_token": owner_token,
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
-    for attempt in range(2):
-        try:
-            with lock_path.open("x", encoding="utf-8", newline="\n") as stream:
-                json.dump(payload, stream, ensure_ascii=False, separators=(",", ":"))
-                stream.write("\n")
-            return _TargetLock(lock_path, owner_token)
-        except FileExistsError as exc:
-            try:
-                age_seconds = max(0.0, time.time() - lock_path.stat().st_mtime)
-            except FileNotFoundError:
-                if attempt == 0:
-                    continue
-                raise ProjectDuplicationError(
-                    "Another project duplication is already creating the target project."
-                ) from exc
-            if age_seconds <= PROJECT_DUPLICATION_LOCK_STALE_SECONDS:
-                raise ProjectDuplicationError(
-                    "Another project duplication is already creating the target project."
-                ) from exc
-
-            stale_path = lock_path.with_name(
-                f".{lock_path.name}.{uuid.uuid4().hex}.stale"
-            )
-            try:
-                os.rename(lock_path, stale_path)
-            except FileNotFoundError:
-                if attempt == 0:
-                    continue
-                raise ProjectDuplicationError(
-                    "Another project duplication is already creating the target project."
-                ) from exc
-            except OSError as rename_exc:
-                raise ProjectDuplicationError(
-                    "Another project duplication is already creating the target project."
-                ) from rename_exc
-            try:
-                stale_path.unlink()
-            except FileNotFoundError:
-                pass
-    raise ProjectDuplicationError(
-        "Another project duplication is already creating the target project."
+    lease = acquire_engine_job_lease(
+        lock_path,
+        stale_seconds=PROJECT_DUPLICATION_LOCK_STALE_SECONDS,
+        payload_fields={"request_id": request_id},
     )
+    if lease is None:
+        raise ProjectDuplicationError(
+            "Another project duplication is already creating the target project."
+        )
+    return _TargetLock(lease.path, lease.owner_token)
 
 
 def _lock_is_owned(lock: _TargetLock) -> bool:
-    try:
-        payload = json.loads(lock.path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return False
-    return payload.get("owner_token") == lock.owner_token
+    return engine_job_lease_owner(lock.path) == lock.owner_token
 
 
 def _refresh_target_lock(lock: _TargetLock | None) -> None:

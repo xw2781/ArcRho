@@ -20,11 +20,19 @@ from arcrho_api.reserving_class import ReservingClass as ApiReservingClass  # no
 _TMP_ROOT = Path(__file__).resolve().parent / "logs" / "tmp"
 
 
+class _Client:
+    """Server-root anchor for the reserving-class propagation lease."""
+
+    def __init__(self, root: Path) -> None:
+        self.server_root = root
+
+
 class _Project:
     def __init__(self, root: Path) -> None:
         self.name = "Demo"
         self.read_only = False
         self.path = root
+        self.client = _Client(root)
         self.data_dir = root / "data"
         self.rc_data = self.data_dir / "Auto_%5C_PP"
         for folder in ("datasets", "methods", "sidecars"):

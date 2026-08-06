@@ -1478,9 +1478,9 @@ def _recalculate_dependents_after_cache_write(pairs: list) -> Dict[str, Any] | N
         return None
 
     try:
-        from app_server.services import calculated_dataset_service
+        from app_server.services import dependent_propagation_service
 
-        return calculated_dataset_service.recalculate_dependents(
+        return dependent_propagation_service.enqueue_marked_save_propagation(
             project_name,
             reserving_class,
             dataset_name,

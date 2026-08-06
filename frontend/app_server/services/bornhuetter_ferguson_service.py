@@ -28,7 +28,10 @@ from arcrho_api.bornhuetter_ferguson_contract import (
 from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
-from app_server.services import dataset_sidecar_status_service
+from app_server.services import (
+    dataset_sidecar_status_service,
+    dependent_propagation_service,
+)
 
 
 READ_MAX_WORKERS = 4
@@ -742,6 +745,9 @@ def save_bornhuetter_ferguson_method(
     reserving = _clean(reserving_class)
     if not project or not reserving:
         raise HTTPException(400, "project_name and reserving_class are required.")
+    # Dependent propagation runs on ArcRho Engine; block the save before any
+    # write when no live Engine instance can pick the job up.
+    dependent_propagation_service.require_engine_available()
     incoming = _contract_call(
         normalize_bornhuetter_ferguson_method,
         method,
@@ -837,18 +843,15 @@ def save_bornhuetter_ferguson_method(
         bornhuetter_ferguson_precedent_names(refreshed),
     )
     response["unreviewed_precedent_count"] = len(response["unreviewed_precedents"])
-    try:
-        from app_server.services import calculated_dataset_service
-
-        response["propagation"] = calculated_dataset_service.recalculate_dependents(
+    if publication_changed:
+        response["propagation"] = dependent_propagation_service.enqueue_marked_save_propagation(
             project,
             reserving,
             output_dataset,
             _clean(_details(refreshed).get("output_type")) or output_dataset,
-            rebuild_index=True,
         )
-    except Exception as exc:
-        response["propagation"] = {"ok": False, "errors": [{"reason": str(exc)}]}
+    else:
+        response["propagation"] = dependent_propagation_service.unchanged_propagation()
     response["propagation_ok"] = bool(response["propagation"].get("ok"))
     response["calculated_updates"] = response["propagation"]
     response["index_ok"] = bool(response["propagation"].get("index_ok", True))
@@ -1063,6 +1066,7 @@ def refresh_bornhuetter_ferguson_method(
     name = _clean(method_name)
     if not project or not reserving or not name:
         raise HTTPException(400, "project_name, reserving_class, and method_name are required.")
+    dependent_propagation_service.require_engine_available()
     output_name = name
     sidecar_path = _sidecar_path(project, reserving, output_name)
     with _lock(project, reserving), dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
@@ -1120,24 +1124,12 @@ def refresh_bornhuetter_ferguson_method(
         "status_refreshed": bool(result.get("status_refreshed")),
     })
     if response["output_changed"] or response["status_refreshed"]:
-        try:
-            response["propagation"] = _refresh_downstream_domains(
-                project,
-                reserving,
-                output_name,
-                _clean(result.get("dataset_type")) or output_name,
-            )
-            from app_server.services import dataset_instance_index_service
-
-            try:
-                dataset_instance_index_service.rebuild_index(project, reserving)
-                response["propagation"]["index_ok"] = True
-                response["propagation"]["index_error"] = ""
-            except Exception as exc:
-                response["propagation"]["index_ok"] = False
-                response["propagation"]["index_error"] = str(exc)
-        except Exception as exc:
-            response["propagation"] = {"ok": False, "errors": [{"reason": str(exc)}]}
+        response["propagation"] = dependent_propagation_service.enqueue_marked_save_propagation(
+            project,
+            reserving,
+            output_name,
+            _clean(result.get("dataset_type")) or output_name,
+        )
     else:
         response["propagation"] = {
             "ok": True,

@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dependent updates after a dataset or method save now run on ArcRho Engine, so saves finish in seconds instead of waiting for the whole cascade.",
+  "details": [
+    "The save writes only the saved object and shows an \"Updating dependents...\" progress status while the Engine refreshes downstream datasets, methods, and the dataset index.",
+    "Downstream methods are marked Needs Review immediately, and the Project Instance dataset table refreshes when the update job completes.",
+    "Saving is blocked with a clear message when the ArcRho Engine service is not available; unsaved work stays in the window."
+  ]
+}

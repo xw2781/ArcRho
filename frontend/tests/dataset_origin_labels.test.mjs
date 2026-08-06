@@ -45,6 +45,14 @@ const testableRunControllerSource = runControllerSource
       "const setDatasetGridEmpty = () => {};",
       "const setDatasetGridError = (message) => { globalThis.__arTestGridError = message; };",
     ].join("\n"),
+  )
+  .replace(
+    /import \{ showPageMessageBox \} from "\/ui\/shared\/components\/message_box\/message_box\.js\?v=[0-9a-z]+";/,
+    "const showPageMessageBox = () => Promise.resolve();",
+  )
+  .replace(
+    /import \{ trackSavePropagation \} from "\/ui\/shared\/services\/dependent_propagation_job\.js\?v=[0-9a-z]+";/,
+    "const trackSavePropagation = () => Promise.resolve(null);",
   );
 const runControllerModule = await import(
   `data:text/javascript;base64,${Buffer.from(testableRunControllerSource).toString("base64")}`

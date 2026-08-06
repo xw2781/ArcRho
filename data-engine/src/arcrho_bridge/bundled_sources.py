@@ -24,21 +24,24 @@ BUNDLE_DIR_NAME = "resq_importer"
 
 @dataclass(frozen=True)
 class BundledSource:
-    """One repository tree copied into the frozen Bridge.
+    """One repository tree copied into a frozen ArcRho executable.
 
     ``is_package`` distinguishes a directory that *is* an importable package from
     one that merely *contains* packages. It decides which directory has to be on
-    ``sys.path`` for the tree's modules to import.
+    ``sys.path`` for the tree's modules to import. ``bundle_dir`` is the frozen
+    bundle's top-level folder; the Bridge default is shared by consumers that
+    reuse this recipe (the Engine passes its own).
     """
 
     source: Path
     relative_target: Path
     is_package: bool = False
+    bundle_dir: str = BUNDLE_DIR_NAME
 
     @property
     def target(self) -> str:
         """The PyInstaller ``--add-data`` destination inside the bundle."""
-        return str(Path(BUNDLE_DIR_NAME) / self.relative_target)
+        return str(Path(self.bundle_dir) / self.relative_target)
 
     @property
     def import_root(self) -> Path:

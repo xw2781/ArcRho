@@ -12,6 +12,7 @@ from .table_summary_router import router as table_summary_router
 from .source_table_router import router as source_table_router
 from .field_mapping_router import router as field_mapping_router
 from .dataset_types_router import router as dataset_types_router
+from .dependent_propagation_router import router as dependent_propagation_router
 from .reserving_class_router import router as reserving_class_router
 from .scripting_router import router as scripting_router
 from .dfm_rpc_bridge_router import router as dfm_rpc_bridge_router
@@ -44,6 +45,7 @@ __all__ = [
     "source_table_router",
     "field_mapping_router",
     "dataset_types_router",
+    "dependent_propagation_router",
     "reserving_class_router",
     "scripting_router",
     "dfm_rpc_bridge_router",

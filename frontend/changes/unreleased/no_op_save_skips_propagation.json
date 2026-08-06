@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Saves that do not change a method's published output no longer trigger any dependent recalculation.",
+  "details": [
+    "A save whose publication revision is unchanged reports its dependents as unchanged and leaves downstream review statuses untouched."
+  ]
+}

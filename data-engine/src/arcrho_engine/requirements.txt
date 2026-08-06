@@ -4,3 +4,5 @@ watchdog==4.0.1
 pyinstaller>=6.15,<7
 openpyxl
 pywin32
+pydantic>=1.10,<3
+fastapi>=0.115,<1

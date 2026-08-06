@@ -28,6 +28,7 @@ from app_server.api import (
     source_table_router,
     field_mapping_router,
     dataset_types_router,
+    dependent_propagation_router,
     reserving_class_router,
     scripting_router,
     dfm_rpc_bridge_router,
@@ -67,6 +68,7 @@ app.include_router(table_summary_router)
 app.include_router(source_table_router)
 app.include_router(field_mapping_router)
 app.include_router(dataset_types_router)
+app.include_router(dependent_propagation_router)
 app.include_router(reserving_class_router)
 app.include_router(scripting_router)
 app.include_router(dfm_rpc_bridge_router)

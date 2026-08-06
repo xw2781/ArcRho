@@ -21,6 +21,11 @@ import {
 import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js?v=20260722a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260728a";
+import {
+  isEngineUnavailableSaveError,
+  trackSavePropagation,
+} from "/ui/shared/services/dependent_propagation_job.js?v=20260806a";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 import {
@@ -1438,38 +1443,50 @@ async function saveBornhuetterFerguson() {
     return { ok: false };
   }
   const method = buildPayload({ lastModified: new Date().toISOString() });
-  const result = await saveBornhuetterFergusonMethod({
-    project_name: state.project,
-    reserving_class: state.reservingClass,
-    method,
-    notes: els.notesInput?.value || "",
-    expected_owned_revision: state.ownedRevision,
-    expected_derived_revision: state.derivedRevision,
-  });
+  let result;
+  try {
+    result = await saveBornhuetterFergusonMethod({
+      project_name: state.project,
+      reserving_class: state.reservingClass,
+      method,
+      notes: els.notesInput?.value || "",
+      expected_owned_revision: state.ownedRevision,
+      expected_derived_revision: state.derivedRevision,
+    });
+  } catch (err) {
+    if (isEngineUnavailableSaveError(err)) {
+      // The save was refused before anything was written; unsaved work stays
+      // in this window.
+      void showPageMessageBox({
+        title: "ArcRho Engine Unavailable",
+        message: String(err?.message || err),
+        tone: "warn",
+      });
+    }
+    throw err;
+  }
   await applyPersistedAggregate(result);
   markClean();
   try {
     window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
-    const propagation = result?.propagation || result?.calculated_updates;
-    if (propagation) {
-      window.parent?.postMessage({
-        type: "arcrho:calculated-datasets-updated",
-        report: propagation,
-        source: `${BF_METHOD_TYPE} save`,
-      }, "*");
-    }
   } catch {}
   const aggregatedCsvPaths = Array.isArray(result?.aggregated_csv_paths)
     ? result.aggregated_csv_paths
     : [];
   postStatus(
     result?.propagation_ok === false
-      ? `${BF_METHOD_TYPE} saved, but one or more downstream dependents still need review: ${details.name}`
-      : result?.index_ok === false
-        ? `${BF_METHOD_TYPE} saved, but the dataset index could not be refreshed: ${result.index_error || details.name}`
+      ? `${BF_METHOD_TYPE} saved, but its dependent updates could not be scheduled: ${details.name}`
       : `${BF_METHOD_TYPE} saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`,
-    result?.propagation_ok === false || result?.index_ok === false ? "warn" : "",
+    result?.propagation_ok === false ? "warn" : "",
   );
+  void trackSavePropagation(result?.propagation, {
+    onStatus: (text, statusOptions) => postStatus(text, statusOptions?.tone === "warn" ? "warn" : ""),
+    onComplete: () => {
+      try {
+        window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+      } catch {}
+    },
+  });
   await showMethodSaveReviewWarning(result, {
     instanceId: inst,
     projectName: state.project,

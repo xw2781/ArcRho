@@ -1,0 +1,451 @@
+"""Durable, server-local ArcRho dependent propagation.
+
+The Engine runs the canonical dependent cascade
+(``app_server.services.calculated_dataset_service.recalculate_dependents``)
+where ``E:\\ArcRho Server`` is a local drive. Requests queue under
+``requests/dependent_propagation/requests`` and are retained until a validated
+terminal status exists; the reserving-class lease serializes Engine instances
+per class; concurrent queued requests for the same class are drained and
+merged into one walk at claim time.
+
+Failed walks are not auto-retried (policy confirmed 2026-08-06): a terminal
+``error`` status is published, downstream objects stay review-needed, and the
+next save or manual refresh enqueues a fresh walk. Crash recovery is distinct
+from retry — a request whose worker died before publishing a terminal status
+is re-claimed after the lease goes stale.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any, Callable, Mapping
+
+from arcrho_dependent_propagation_contract import (
+    DependentPropagationContractError,
+    acquire_reserving_class_lease,
+    dependent_propagation_request_path,
+    dependent_propagation_requests_directory,
+    dependent_propagation_status_path,
+    release_reserving_class_lease,
+    reserving_class_identity,
+    start_reserving_class_lease_heartbeat,
+    stop_reserving_class_lease_heartbeat,
+    validate_dependent_propagation_request,
+    validate_dependent_propagation_status,
+    validate_request_id,
+    write_dependent_propagation_status,
+)
+from arcrho_engine_job_lease import EngineJobLease, engine_job_lease_is_owned
+
+# Path-redaction for shared status text is owned by the sibling durable-job
+# module; propagation reuses it rather than growing a second redactor.
+from arcrho_engine.project_duplication import _redact_machine_paths
+from arcrho_engine.bundled_sources import ENGINE_BUNDLED_SOURCES, BUNDLE_DIR_NAME
+
+
+Progress = dict[str, Any]
+
+
+class DependentPropagationJobError(RuntimeError):
+    """Raised when a dependent-propagation job cannot run safely."""
+
+
+class DependentPropagationLeaseLost(DependentPropagationJobError):
+    """Raised when another Engine has taken ownership of the reserving class."""
+
+
+def _progress(stage: str, completed: int, total: int, label: str) -> Progress:
+    return {
+        "stage": str(stage or "working"),
+        "completed": max(0, int(completed)),
+        "total": max(0, int(total), int(completed)),
+        "label": str(label or stage or "Working"),
+    }
+
+
+def _safe_status_message(exc: Exception) -> str:
+    if isinstance(
+        exc, (DependentPropagationJobError, DependentPropagationContractError)
+    ):
+        return _redact_machine_paths(exc) or "Dependent propagation failed."
+    if isinstance(exc, OSError):
+        return (
+            "The ArcRho Server filesystem could not complete dependent propagation."
+        )
+    return "Dependent propagation failed."
+
+
+def canonical_runtime_import_roots() -> tuple[Path, ...]:
+    """Return the ``sys.path`` roots holding the bundled canonical sources."""
+
+    if getattr(sys, "frozen", False):
+        bundle_root = Path(getattr(sys, "_MEIPASS", ".")) / BUNDLE_DIR_NAME
+        return tuple(
+            bundle_root / bundled.relative_target.parent
+            if bundled.is_package
+            else bundle_root / bundled.relative_target
+            for bundled in ENGINE_BUNDLED_SOURCES
+        )
+    return tuple(bundled.import_root for bundled in ENGINE_BUNDLED_SOURCES)
+
+
+def configure_canonical_runtime(server_root: str | os.PathLike[str]) -> None:
+    """Point the bundled canonical ``app_server`` at the Engine's server root.
+
+    Mirrors ``resq_import_runner.configure_canonical_runtime``: the runtime
+    server-root override must be set before the app-server config is
+    (re)loaded, and the bundled source roots must precede any developer
+    checkout on ``sys.path`` in a frozen Engine.
+    """
+
+    root = Path(os.fspath(server_root)).expanduser().resolve(strict=False)
+    os.environ["ARCRHO_RUNTIME_SERVER_ROOT"] = str(root)
+    for import_root in reversed(canonical_runtime_import_roots()):
+        text = str(import_root)
+        if import_root.is_dir() and text not in sys.path:
+            sys.path.insert(0, text)
+    from app_server import config as app_server_config
+
+    app_server_config.refresh_runtime_paths()
+    app_server_config.clear_runtime_path_caches()
+
+
+def _require_lease(lease: EngineJobLease) -> None:
+    if lease.heartbeat_failed.is_set() or not engine_job_lease_is_owned(lease):
+        raise DependentPropagationLeaseLost(
+            "Dependent propagation reserving-class ownership was lost."
+        )
+
+
+def _read_validated_status(
+    server_root: Path, request_id: str
+) -> dict[str, Any] | None:
+    path = dependent_propagation_status_path(server_root, request_id)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, TypeError) as exc:
+        raise DependentPropagationJobError(
+            "Existing dependent propagation status could not be validated."
+        ) from exc
+    try:
+        return validate_dependent_propagation_status(
+            payload, expected_request_id=request_id
+        )
+    except DependentPropagationContractError as exc:
+        raise DependentPropagationJobError(
+            "Existing dependent propagation status could not be validated."
+        ) from exc
+
+
+def _terminal_status(server_root: Path, request_id: str) -> dict[str, Any] | None:
+    status = _read_validated_status(server_root, request_id)
+    if status is not None and status["status"] in {"success", "error"}:
+        return status
+    return None
+
+
+def _terminal_status_or_none(server_root: Path, request_id: str) -> dict[str, Any] | None:
+    """Terminal-status check that treats validation trouble as "not terminal"."""
+
+    try:
+        return _terminal_status(server_root, request_id)
+    except DependentPropagationJobError:
+        return None
+
+
+def _remove_request_file(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        print(f"(dependent propagation queue cleanup error: {exc})")
+
+
+def _drain_coalescible_requests(
+    server_root: Path,
+    primary_path: Path,
+    primary: Mapping[str, Any],
+) -> list[tuple[Path, dict[str, Any]]]:
+    """Collect queued sibling requests for the same reserving class.
+
+    Requests arriving after this scan simply run next; the lease serializes
+    them, so the drain does not need to be exhaustive — only never wrong.
+    """
+
+    identity = reserving_class_identity(primary["ProjectName"], primary["Path"])
+    requests_dir = dependent_propagation_requests_directory(server_root)
+    try:
+        candidates = sorted(
+            (item for item in requests_dir.iterdir() if item.is_file()),
+            key=lambda item: (item.name.casefold(), item.name),
+        )
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    except OSError:
+        return []
+
+    primary_identity = os.path.normcase(os.path.abspath(os.fspath(primary_path)))
+    drained: list[tuple[Path, dict[str, Any]]] = []
+    for candidate in candidates:
+        if os.path.normcase(os.path.abspath(str(candidate))) == primary_identity:
+            continue
+        if candidate.suffix.casefold() != ".json":
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            request = validate_dependent_propagation_request(payload)
+        except (OSError, ValueError, TypeError, DependentPropagationContractError):
+            continue
+        if (
+            reserving_class_identity(request["ProjectName"], request["Path"])
+            != identity
+        ):
+            continue
+        try:
+            if _terminal_status(server_root, request["RequestId"]) is not None:
+                continue
+        except DependentPropagationJobError:
+            continue
+        drained.append((candidate, request))
+    return drained
+
+
+def execute_dependent_propagation(
+    server_root: str | os.PathLike[str],
+    request: Mapping[str, Any],
+    *,
+    additional_roots: list[Mapping[str, Any]] | None = None,
+    progress_callback: Callable[[Progress], None] | None = None,
+) -> dict[str, Any]:
+    """Run one merged canonical walk for a validated request and return it."""
+
+    normalized = validate_dependent_propagation_request(request)
+    configure_canonical_runtime(server_root)
+    from app_server.services import calculated_dataset_service
+
+    roots = list(normalized["ChangedRoots"])
+    for extra in additional_roots or []:
+        roots.append(
+            {
+                "dataset_name": str(extra.get("dataset_name") or "").strip(),
+                "dataset_type": str(extra.get("dataset_type") or "").strip(),
+            }
+        )
+    first, *rest = [root for root in roots if root.get("dataset_name")]
+
+    def on_tier(stage: str, completed: int, total: int, label: str) -> None:
+        if progress_callback is not None:
+            progress_callback(_progress(stage, completed, total, label))
+
+    return calculated_dataset_service.recalculate_dependents(
+        normalized["ProjectName"],
+        normalized["Path"],
+        first["dataset_name"],
+        first["dataset_type"],
+        additional_roots=[
+            (root["dataset_name"], root["dataset_type"]) for root in rest
+        ],
+        progress_callback=on_tier,
+        rebuild_index=True,
+    )
+
+
+def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
+    failed = [
+        str(item.get("dataset_type_name") or item.get("dataset_name") or "").strip()
+        for item in result.get("skipped", [])
+    ]
+    failed = [name for name in failed if name]
+    parts = []
+    if failed:
+        parts.append(
+            "Dependent update(s) did not refresh: " + ", ".join(sorted(failed))
+        )
+    if result.get("index_error"):
+        parts.append("The reserving-class index rebuild failed.")
+    if not parts:
+        parts.append("One or more dependent updates failed.")
+    parts.append(
+        "Downstream objects remain review-needed; save again or refresh to retry."
+    )
+    return _redact_machine_paths(" ".join(parts))
+
+
+def process_durable_dependent_propagation_request(
+    server_root: str | os.PathLike[str],
+    request_file: str | os.PathLike[str],
+    request: Mapping[str, Any],
+) -> bool:
+    """Process one retained queue file under the reserving-class lease."""
+
+    root = Path(os.fspath(server_root)).expanduser().resolve(strict=False)
+    raw_request_id = (
+        request.get("RequestId") if isinstance(request, Mapping) else None
+    )
+    request_path = Path(os.fspath(request_file))
+    try:
+        request_id = validate_request_id(raw_request_id)
+    except DependentPropagationContractError as exc:
+        # A request without a safe id can never publish status; drop it so the
+        # queue rescan does not reprocess it forever.
+        print(f"(dependent propagation request error: {_safe_status_message(exc)})")
+        _remove_request_file(request_path)
+        return False
+
+    expected_path = dependent_propagation_request_path(root, request_id)
+    try:
+        if request_path.resolve(strict=False) != expected_path.resolve(strict=False):
+            print("(dependent propagation request filename does not match RequestId)")
+            return False
+    except OSError:
+        return False
+
+    try:
+        terminal = _terminal_status(root, request_id)
+    except DependentPropagationJobError as exc:
+        print(f"(dependent propagation status validation will retry: {exc})")
+        return False
+    if terminal is not None:
+        _remove_request_file(request_path)
+        return terminal["status"] == "success"
+
+    try:
+        normalized = validate_dependent_propagation_request(request)
+    except DependentPropagationContractError as exc:
+        message = _safe_status_message(exc)
+        try:
+            write_dependent_propagation_status(
+                root,
+                request_id,
+                "error",
+                progress=_progress(
+                    "rejected", 0, 0, "Dependent propagation request rejected"
+                ),
+                message=message,
+            )
+        except Exception as status_exc:
+            print(
+                "(error: could not publish rejected dependent propagation status: "
+                f"{_redact_machine_paths(status_exc)})"
+            )
+            return False
+        print(f"(dependent propagation request error: {message})")
+        _remove_request_file(request_path)
+        return False
+
+    lease = acquire_reserving_class_lease(
+        root, normalized["ProjectName"], normalized["Path"]
+    )
+    if lease is None:
+        return False
+    heartbeat_stop, heartbeat_thread = start_reserving_class_lease_heartbeat(lease)
+    try:
+        drained = _drain_coalescible_requests(root, request_path, normalized)
+        merged_ids = [item[1]["RequestId"] for item in drained]
+        additional_roots: list[dict[str, Any]] = []
+        for _path, merged_request in drained:
+            additional_roots.extend(merged_request["ChangedRoots"])
+
+        def publish(
+            target_request_id: str,
+            status: str,
+            progress: Progress,
+            *,
+            message: str = "",
+            merged_into: str | None = None,
+        ) -> None:
+            _require_lease(lease)
+            write_dependent_propagation_status(
+                root,
+                target_request_id,
+                status,
+                progress=progress,
+                message=message,
+                merged_into=merged_into,
+            )
+
+        current_progress = _progress(
+            "starting", 0, 0, "Preparing dependent propagation"
+        )
+
+        def publish_progress(progress: Progress) -> None:
+            nonlocal current_progress
+            current_progress = progress
+            publish(request_id, "processing", progress)
+
+        try:
+            publish(request_id, "processing", current_progress)
+            for merged_id in merged_ids:
+                publish(
+                    merged_id,
+                    "processing",
+                    current_progress,
+                    merged_into=request_id,
+                )
+
+            result = execute_dependent_propagation(
+                root,
+                normalized,
+                additional_roots=additional_roots,
+                progress_callback=publish_progress,
+            )
+            if result.get("ok"):
+                terminal_state = "success"
+                terminal_message = ""
+                terminal_progress = _progress(
+                    "complete", 1, 1, "Dependent updates complete"
+                )
+            else:
+                terminal_state = "error"
+                terminal_message = _summarize_walk_failure(result)
+                terminal_progress = current_progress
+        except DependentPropagationLeaseLost:
+            print("(dependent propagation reserving-class ownership was lost)")
+            return False
+        except Exception as exc:
+            terminal_state = "error"
+            terminal_message = _safe_status_message(exc)
+            terminal_progress = current_progress
+            print(f"(dependent propagation error: {terminal_message})")
+
+        try:
+            publish(request_id, terminal_state, terminal_progress, message=terminal_message)
+        except Exception as status_exc:
+            print(
+                "(error: could not publish dependent propagation status: "
+                f"{_redact_machine_paths(status_exc)})"
+            )
+            return False
+        if _terminal_status_or_none(root, request_id) is not None:
+            _remove_request_file(request_path)
+
+        for merged_path, merged_request in drained:
+            merged_id = merged_request["RequestId"]
+            try:
+                publish(
+                    merged_id,
+                    terminal_state,
+                    terminal_progress,
+                    message=terminal_message,
+                    merged_into=request_id,
+                )
+            except Exception as status_exc:
+                print(
+                    "(error: could not publish merged dependent propagation status: "
+                    f"{_redact_machine_paths(status_exc)})"
+                )
+                continue
+            if _terminal_status_or_none(root, merged_id) is not None:
+                _remove_request_file(merged_path)
+        return terminal_state == "success"
+    except DependentPropagationLeaseLost:
+        return False
+    finally:
+        stop_reserving_class_lease_heartbeat(heartbeat_stop, heartbeat_thread)
+        release_reserving_class_lease(lease)

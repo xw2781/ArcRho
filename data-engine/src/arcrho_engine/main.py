@@ -31,6 +31,7 @@ for _path in (_SOURCE_ROOT, _REPO_CANONICAL_ROOT, _BUNDLE_ROOT):
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from arcrho_dependent_propagation_contract import DEPENDENT_PROPAGATION_FUNCTION
 from arcrho_project_duplication_contract import PROJECT_DUPLICATION_FUNCTION
 from utils import get_config_value, get_project_root, normalize_function_name
 from arcrho_engine.data_processing import (
@@ -60,23 +61,118 @@ from arcrho_engine.general_utils import (
     write_json,
     write_lists_to_csv,
 )
+from arcrho_engine.dependent_propagation import (
+    process_durable_dependent_propagation_request,
+)
 from arcrho_engine.project_duplication import (
     process_durable_project_duplication_request,
 )
 
 
+class _DurableJobDispatcher:
+    """One bounded background worker for a durable, retained-queue job type.
+
+    Long jobs must never block the legacy calculation queue, so each durable
+    job type (project duplication, dependent propagation) gets its own daemon
+    thread. Requests that cannot be admitted are simply dropped here — the
+    retained queue file is re-offered by the 5 s rescan cycle.
+    """
+
+    def __init__(self, *, thread_name: str, execute, queue_capacity: int = 1):
+        self._thread_name = thread_name
+        self._execute = execute
+        self._state_lock = Lock()
+        self._pending: set[tuple[str, str]] = set()
+        self.queue: Queue[tuple[tuple[str, str], str, dict]] = Queue(
+            maxsize=max(1, int(queue_capacity))
+        )
+        self._stop = Event()
+        self._thread: Thread | None = None
+
+    def _ensure_worker(self) -> None:
+        if self._thread is not None:
+            return
+        thread = Thread(target=self._run, name=self._thread_name, daemon=True)
+        self._thread = thread
+        thread.start()
+
+    def schedule(self, key: tuple[str, str], file_path, arg) -> bool:
+        with self._state_lock:
+            if self._stop.is_set():
+                return False
+            if key in self._pending:
+                return True
+            if self.queue.full():
+                return False
+            self._pending.add(key)
+            self._ensure_worker()
+            try:
+                self.queue.put_nowait((key, os.fspath(file_path), dict(arg)))
+            except Full:
+                self._pending.discard(key)
+                return False
+        return True
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                key, file_path, arg = self.queue.get(timeout=0.1)
+            except Empty:
+                continue
+            try:
+                if not self._stop.is_set():
+                    self._execute(file_path, arg)
+            finally:
+                with self._state_lock:
+                    self._pending.discard(key)
+                self.queue.task_done()
+
+    def shutdown(self, *, wait: bool = True, timeout: float | None = None) -> bool:
+        with self._state_lock:
+            self._stop.set()
+        while True:
+            try:
+                key, _file_path, _arg = self.queue.get_nowait()
+            except Empty:
+                break
+            with self._state_lock:
+                self._pending.discard(key)
+            self.queue.task_done()
+
+        thread = self._thread
+        if wait and thread is not None:
+            thread.join(timeout=timeout)
+        return thread is None or not thread.is_alive()
+
+
 class RequestHandler(FileSystemEventHandler):
 
-    def __init__(self, *, duplication_queue_capacity: int = 1):
+    def __init__(
+        self,
+        *,
+        duplication_queue_capacity: int = 1,
+        propagation_queue_capacity: int = 1,
+    ):
         super().__init__()
         self._processing_lock = Lock()
-        self._duplication_state_lock = Lock()
-        self._duplication_pending: set[tuple[str, str]] = set()
-        self._duplication_queue: Queue[tuple[tuple[str, str], str, dict]] = Queue(
-            maxsize=max(1, int(duplication_queue_capacity))
+        self._duplication = _DurableJobDispatcher(
+            thread_name="arcrho-project-duplication-worker",
+            execute=self._execute_project_duplication,
+            queue_capacity=duplication_queue_capacity,
         )
-        self._duplication_stop = Event()
-        self._duplication_thread: Thread | None = None
+        self._propagation = _DurableJobDispatcher(
+            thread_name="arcrho-dependent-propagation-worker",
+            execute=self._execute_dependent_propagation,
+            queue_capacity=propagation_queue_capacity,
+        )
+
+    @property
+    def _duplication_queue(self) -> Queue:
+        return self._duplication.queue
+
+    @property
+    def _propagation_queue(self) -> Queue:
+        return self._propagation.queue
 
     @staticmethod
     def _duplication_key(file_path, arg) -> tuple[str, str]:
@@ -88,38 +184,17 @@ class RequestHandler(FileSystemEventHandler):
             os.path.normcase(os.path.abspath(os.fspath(file_path))),
         )
 
-    def _ensure_duplication_worker(self) -> None:
-        if self._duplication_thread is not None:
-            return
-        thread = Thread(
-            target=self._run_duplication_worker,
-            name="arcrho-project-duplication-worker",
-            daemon=True,
-        )
-        self._duplication_thread = thread
-        thread.start()
-
     def _schedule_project_duplication(self, file_path, arg) -> bool:
         """Schedule one durable request without blocking legacy calculations."""
 
-        key = self._duplication_key(file_path, arg)
-        with self._duplication_state_lock:
-            if self._duplication_stop.is_set():
-                return False
-            if key in self._duplication_pending:
-                return True
-            if self._duplication_queue.full():
-                return False
-            self._duplication_pending.add(key)
-            self._ensure_duplication_worker()
-            try:
-                self._duplication_queue.put_nowait(
-                    (key, os.fspath(file_path), dict(arg))
-                )
-            except Full:
-                self._duplication_pending.discard(key)
-                return False
-        return True
+        return self._duplication.schedule(
+            self._duplication_key(file_path, arg), file_path, arg
+        )
+
+    def _schedule_dependent_propagation(self, file_path, arg) -> bool:
+        return self._propagation.schedule(
+            self._duplication_key(file_path, arg), file_path, arg
+        )
 
     def _execute_project_duplication(self, file_path, arg) -> None:
         try:
@@ -131,38 +206,22 @@ class RequestHandler(FileSystemEventHandler):
         except Exception as exc:
             print(f"(project duplication request error: {exc})")
 
-    def _run_duplication_worker(self) -> None:
-        while not self._duplication_stop.is_set():
-            try:
-                key, file_path, arg = self._duplication_queue.get(timeout=0.1)
-            except Empty:
-                continue
-            try:
-                if not self._duplication_stop.is_set():
-                    self._execute_project_duplication(file_path, arg)
-            finally:
-                with self._duplication_state_lock:
-                    self._duplication_pending.discard(key)
-                self._duplication_queue.task_done()
+    def _execute_dependent_propagation(self, file_path, arg) -> None:
+        try:
+            process_durable_dependent_propagation_request(
+                get_project_root(),
+                file_path,
+                arg,
+            )
+        except Exception as exc:
+            print(f"(dependent propagation request error: {exc})")
 
     def shutdown(self, *, wait: bool = True, timeout: float | None = None) -> bool:
-        """Stop accepting duplicate jobs and optionally wait for the active copy."""
+        """Stop accepting durable jobs and optionally wait for active work."""
 
-        with self._duplication_state_lock:
-            self._duplication_stop.set()
-        while True:
-            try:
-                key, _file_path, _arg = self._duplication_queue.get_nowait()
-            except Empty:
-                break
-            with self._duplication_state_lock:
-                self._duplication_pending.discard(key)
-            self._duplication_queue.task_done()
-
-        thread = self._duplication_thread
-        if wait and thread is not None:
-            thread.join(timeout=timeout)
-        return thread is None or not thread.is_alive()
+        duplication_stopped = self._duplication.shutdown(wait=wait, timeout=timeout)
+        propagation_stopped = self._propagation.shutdown(wait=wait, timeout=timeout)
+        return duplication_stopped and propagation_stopped
 
     def _process_event_path(self, event, file_path):
         if event.is_directory:
@@ -197,17 +256,24 @@ class RequestHandler(FileSystemEventHandler):
             # print(f'\n* request sent to another agent')
             return
 
-        # Project duplication retains its top-level queue file until a
-        # validated terminal status exists. Its renewable request lease owns
-        # cross-Engine claiming and crash recovery; legacy requests continue
-        # to use delete-to-claim below.
-        if str(arg.get("Function") or "").strip() == PROJECT_DUPLICATION_FUNCTION:
+        # Durable jobs retain their queue file until a validated terminal
+        # status exists. Their renewable leases own cross-Engine claiming and
+        # crash recovery; legacy requests continue to use delete-to-claim
+        # below. The ``dispatch_duplication`` flag selects async dispatch for
+        # every durable job type; direct callers remain synchronous for
+        # deterministic tests and administrative one-shot processing.
+        function_name_raw = str(arg.get("Function") or "").strip()
+        if function_name_raw == PROJECT_DUPLICATION_FUNCTION:
             if dispatch_duplication:
                 self._schedule_project_duplication(file_path, arg)
             else:
-                # Direct callers remain synchronous for deterministic tests
-                # and administrative one-shot processing.
                 self._execute_project_duplication(file_path, arg)
+            return
+        if function_name_raw == DEPENDENT_PROPAGATION_FUNCTION:
+            if dispatch_duplication:
+                self._schedule_dependent_propagation(file_path, arg)
+            else:
+                self._execute_dependent_propagation(file_path, arg)
             return
 
         with self._processing_lock:
@@ -338,23 +404,36 @@ class RequestHandler(FileSystemEventHandler):
         print(f"> request completed @ {get_current_time().split(' ')[1]}")
 
 
+def _queued_request_files(directory: Path) -> list[Path]:
+    try:
+        return sorted(
+            (item for item in directory.iterdir() if item.is_file()),
+            key=lambda item: (item.name.casefold(), item.name),
+        )
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    except OSError as exc:
+        print(f"(existing request scan error: {exc})")
+        return []
+
+
 def process_existing_requests(
     path: str | os.PathLike[str],
     handler: RequestHandler,
 ) -> None:
-    """Process requests that were queued while this Engine was offline."""
+    """Process requests that were queued while this Engine was offline.
+
+    The dependent-propagation queue lives in a subfolder (so the
+    orchestrator's loose-file garbage collection cannot touch it) that the
+    non-recursive watchdog observer never reports; this rescan is its only
+    intake, on the same 5 s cycle that re-drives retained duplication files.
+    """
 
     request_dir = Path(path)
-    try:
-        queued_paths = sorted(
-            (item for item in request_dir.iterdir() if item.is_file()),
-            key=lambda item: (item.name.casefold(), item.name),
-        )
-    except (FileNotFoundError, NotADirectoryError):
-        return
-    except OSError as exc:
-        print(f"(existing request scan error: {exc})")
-        return
+    queued_paths = _queued_request_files(request_dir)
+    queued_paths.extend(
+        _queued_request_files(request_dir / "dependent_propagation" / "requests")
+    )
     for queued_path in queued_paths:
         if queued_path.suffix.casefold() == ".json":
             try:

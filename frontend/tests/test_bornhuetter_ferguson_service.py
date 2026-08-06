@@ -298,7 +298,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
         self.assertEqual(saved["method_tab"]["latest_values"], current["method_tab"]["latest_values"])
         self.assertEqual(saved["method_tab"]["prior_datasets"][0]["weights"], [0.5, 1])
 
-    def test_no_op_save_still_invalidates_downstream_methods(self) -> None:
+    def test_no_op_save_submits_no_engine_propagation_job(self) -> None:
         method = self.write_method_pair()
 
         with (
@@ -308,10 +308,13 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
                 side_effect=AssertionError("source read"),
             ),
             mock.patch.object(
-                calculated_dataset_service,
-                "recalculate_dependents",
-                return_value={"ok": True, "updated": [], "index_ok": True},
-            ) as cascade,
+                bornhuetter_ferguson_service.dependent_propagation_service,
+                "require_engine_available",
+            ),
+            mock.patch.object(
+                bornhuetter_ferguson_service.dependent_propagation_service,
+                "enqueue_marked_save_propagation",
+            ) as enqueue,
         ):
             result = bornhuetter_ferguson_service.save_bornhuetter_ferguson_method(
                 "Project",
@@ -322,13 +325,8 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
 
         self.assertEqual(result["sidecar"]["status"], 0)
         self.assertTrue(result["propagation_ok"])
-        cascade.assert_called_once_with(
-            "Project",
-            "Class",
-            "BF Method",
-            "BF Ultimate",
-            rebuild_index=True,
-        )
+        self.assertEqual(result["propagation"], {"ok": True, "status": "unchanged"})
+        enqueue.assert_not_called()
 
     def test_review_needed_save_uses_embedded_snapshots_before_restoring_current(self) -> None:
         method = self.write_method_pair(status=2)

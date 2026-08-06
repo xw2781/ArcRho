@@ -70,8 +70,30 @@ def refresh_dfm_dependents_for_sources(
     reserving_class: "ReservingClass",
     updated_datasets: Iterable[Any],
 ) -> DfmPropagationResult:
-    """Refresh direct/transitive DFM branches; isolate failures and preserve publications."""
+    """Refresh direct/transitive DFM branches; isolate failures and preserve publications.
 
+    This in-process walk runs on the server host (migration, Bridge import,
+    public API scripts), so it must hold the same reserving-class lease that
+    Engine dependent-propagation jobs use; a walk and an Engine job never
+    interleave on one class. Client processes enqueue an Engine job instead.
+    """
+
+    from arcrho_dependent_propagation_contract import held_reserving_class_lease
+
+    with held_reserving_class_lease(
+        reserving_class.project.client.server_root,
+        reserving_class.project.name,
+        reserving_class.path,
+    ):
+        return _refresh_dfm_dependents_for_sources_locked(
+            reserving_class, updated_datasets
+        )
+
+
+def _refresh_dfm_dependents_for_sources_locked(
+    reserving_class: "ReservingClass",
+    updated_datasets: Iterable[Any],
+) -> DfmPropagationResult:
     sidecar_dir = reserving_class.data_dir / "sidecars"
     frontier: list[tuple[str, bool, str]] = []
     queued_roots: set[str] = set()

@@ -413,14 +413,19 @@ class CapeCodServiceTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 409)
         self.assertIn("already owned by 'Another Method'", str(raised.exception.detail))
 
-    def test_no_op_save_still_invalidates_downstream_methods(self) -> None:
+    def test_no_op_save_submits_no_engine_propagation_job(self) -> None:
         method = self.write_method_pair()
 
-        with mock.patch.object(
-            calculated_dataset_service,
-            "recalculate_dependents",
-            return_value={"ok": True, "updated": [], "index_ok": True},
-        ) as cascade:
+        with (
+            mock.patch.object(
+                cape_cod_service.dependent_propagation_service,
+                "require_engine_available",
+            ),
+            mock.patch.object(
+                cape_cod_service.dependent_propagation_service,
+                "enqueue_marked_save_propagation",
+            ) as enqueue,
+        ):
             result = cape_cod_service.save_cape_cod_method(
                 "Project",
                 "Class",
@@ -430,13 +435,8 @@ class CapeCodServiceTests(unittest.TestCase):
 
         self.assertEqual(result["sidecar"]["status"], 0)
         self.assertTrue(result["propagation_ok"])
-        cascade.assert_called_once_with(
-            "Project",
-            "Class",
-            "CC Method",
-            "CC Ultimate",
-            rebuild_index=True,
-        )
+        self.assertEqual(result["propagation"], {"ok": True, "status": "unchanged"})
+        enqueue.assert_not_called()
 
     def test_review_needed_save_uses_embedded_snapshots_and_reports_precedents(self) -> None:
         method = self.write_method_pair(status=2)

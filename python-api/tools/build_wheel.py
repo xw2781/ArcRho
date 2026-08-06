@@ -21,7 +21,11 @@ except ModuleNotFoundError:  # Python 3.10 build runtime.
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
 SRC = ROOT / "src"
-STANDALONE_MODULES = (SRC / "arcrho_project_duplication_contract.py",)
+STANDALONE_MODULES = (
+    SRC / "arcrho_project_duplication_contract.py",
+    SRC / "arcrho_engine_job_lease.py",
+    SRC / "arcrho_dependent_propagation_contract.py",
+)
 
 
 def _wheel_escape(value: str) -> str:

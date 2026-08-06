@@ -9,7 +9,11 @@ from fastapi import APIRouter, HTTPException
 
 from app_server import config
 from app_server.schemas.dataset_types import DatasetTypesSaveRequest, DatasetTypesImportLocalFileRequest
-from app_server.services import calculated_dataset_service, dataset_types_service
+from app_server.services import (
+    calculated_dataset_service,
+    dataset_types_service,
+    dependent_propagation_service,
+)
 from app_server.services.audit_service import safe_append_project_audit_log
 from app_server.helpers import _canon_dataset_name, _parse_calculated_flag
 
@@ -157,12 +161,17 @@ def save_dataset_types(req: DatasetTypesSaveRequest) -> Dict[str, Any]:
         "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
     }
 
+    changed_formula_types = calculated_dataset_service.changed_formula_dataset_type_names(
+        previous_rows,
+        normalized_rows,
+    )
+    if changed_formula_types:
+        # Formula changes cascade through ArcRho Engine; refuse the save
+        # before writing anything when no live Engine instance exists.
+        dependent_propagation_service.require_engine_available()
+
     try:
         dataset_types_service.save_dataset_types_payload(filepath, payload)
-        changed_formula_types = calculated_dataset_service.changed_formula_dataset_type_names(
-            previous_rows,
-            normalized_rows,
-        )
         calculation_updates = calculated_dataset_service.refresh_sidecar_graphs_and_recalculate(
             project_name,
             changed_formula_types,

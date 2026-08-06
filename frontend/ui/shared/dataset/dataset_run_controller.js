@@ -6,6 +6,8 @@ import {
   setDatasetGridEmpty,
   setDatasetGridError,
 } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260728a";
+import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260806a";
 
 const DEFAULT_LOADING_POPUP_DELAY_MS = 300;
 
@@ -694,6 +696,18 @@ export function createDatasetRunController(deps) {
       logLine("Conflict: file changed on disk. Reload first.");
       return;
     }
+    if (status === 503) {
+      // Dependent propagation runs on ArcRho Engine; the save was refused
+      // before anything was written and unsaved edits stay in the grid.
+      const message = String(
+        data?.detail
+        || "The ArcRho Engine service is not available. Please try again later or contact the administrator.",
+      );
+      void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
+      setStatus(message);
+      logLine(`Save refused: ${message}`);
+      return;
+    }
 
     logLine(`Saved patch: applied=${data.applied}, rejected=${(data.rejected || []).length}, new_mtime=${data.mtime}`);
     const loadResult = await loadDataset();
@@ -701,6 +715,14 @@ export function createDatasetRunController(deps) {
     if (typeof onCalculatedUpdates === "function") {
       onCalculatedUpdates(data?.calculated_updates, "Dataset grid save");
     }
+    void trackSavePropagation(data?.calculated_updates, {
+      onStatus: (message) => setStatus(message),
+      onComplete: () => {
+        try {
+          window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+        } catch {}
+      },
+    });
   }
 
   function toggleBlanks() {

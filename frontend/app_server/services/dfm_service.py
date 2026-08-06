@@ -30,7 +30,10 @@ from arcrho_api.dfm_contract import (
 from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
-from app_server.services import dataset_sidecar_status_service
+from app_server.services import (
+    dataset_sidecar_status_service,
+    dependent_propagation_service,
+)
 
 
 READ_MAX_WORKERS = 4
@@ -836,6 +839,9 @@ def save_dfm_method(
     reserving = _clean(reserving_class)
     if not project or not reserving:
         raise HTTPException(400, "project_name and reserving_class are required.")
+    # Dependent propagation runs on ArcRho Engine; block the save before any
+    # write when no live Engine instance can pick the job up.
+    dependent_propagation_service.require_engine_available()
     incoming = _contract_call(normalize_dfm_method, method, require_complete=False)
     method_name, output_dataset = _identity(incoming)
     method_path = _method_path(project, reserving, method_name)
@@ -926,22 +932,29 @@ def save_dfm_method(
         _precedent_names(refreshed),
     )
     response["unreviewed_precedent_count"] = len(response["unreviewed_precedents"])
-    try:
-        from app_server.services import calculated_dataset_service
-
-        response["propagation"] = calculated_dataset_service.recalculate_dependents(
-            project,
-            reserving,
-            output_dataset,
-            _clean(_details(refreshed).get("output type")) or output_dataset,
-            include_dfm=True,
-            rebuild_index=True,
+    output_type = _clean(_details(refreshed).get("output type")) or output_dataset
+    if publication_changed:
+        response["propagation"] = _enqueue_propagation_job(
+            project, reserving, output_dataset, output_type
         )
-    except Exception as exc:
-        response["propagation"] = {"ok": False, "errors": [{"reason": str(exc)}]}
+    else:
+        # A save whose publication revision is unchanged cannot alter any
+        # dependent, so no Engine job is submitted.
+        response["propagation"] = dependent_propagation_service.unchanged_propagation()
     response["propagation_ok"] = bool(response["propagation"].get("ok"))
     response["calculated_updates"] = response["propagation"]
     return response
+
+
+def _enqueue_propagation_job(
+    project: str,
+    reserving: str,
+    output_dataset: str,
+    output_type: str,
+) -> Dict[str, Any]:
+    return dependent_propagation_service.enqueue_marked_save_propagation(
+        project, reserving, output_dataset, output_type
+    )
 
 
 def _mark_review_needed(project_name: str, reserving_class: str, output_dataset: str) -> None:
@@ -1055,6 +1068,7 @@ def refresh_dfm_method(
     name = _clean(method_name)
     if not project or not reserving or not name:
         raise HTTPException(400, "project_name, reserving_class, and method_name are required.")
+    dependent_propagation_service.require_engine_available()
     with _lock(project, reserving):
         method = _read_json(_method_path(project, reserving, name))
         if not method:
@@ -1100,19 +1114,12 @@ def refresh_dfm_method(
         "status_refreshed": bool(result.get("status_refreshed")),
     })
     if result.get("output_changed") or result.get("status_refreshed"):
-        try:
-            from app_server.services import calculated_dataset_service
-
-            response["propagation"] = calculated_dataset_service.recalculate_dependents(
-                project,
-                reserving,
-                stored_output,
-                _clean(_details(result.get("method") or method).get("output type")) or stored_output,
-                include_dfm=True,
-                rebuild_index=True,
-            )
-        except Exception as exc:
-            response["propagation"] = {"ok": False, "errors": [{"reason": str(exc)}]}
+        response["propagation"] = _enqueue_propagation_job(
+            project,
+            reserving,
+            stored_output,
+            _clean(_details(result.get("method") or method).get("output type")) or stored_output,
+        )
         response["propagation_ok"] = bool(response["propagation"].get("ok"))
         response["calculated_updates"] = response["propagation"]
     else:
