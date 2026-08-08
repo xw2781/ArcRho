@@ -1,0 +1,15 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The Source Data header and its table-details card are simpler, and the card's values can now be selected and copied.",
+  "details": [
+    "The Open Folder action moved off the Source Data header and onto the details card's Folder row, where it opens the source folder in the file explorer with the file selected. Reload and Import settings remain in the header.",
+    "The Import settings action now uses a gear icon so it reads as settings rather than as a second folder button.",
+    "The Folder row's copy-path button was replaced by that open-folder action; the folder path can now be selected and copied directly instead.",
+    "Every value in the Source Table card can be selected with the mouse and copied, and dragging a selection past the card edge no longer closes the card.",
+    "The card's 'Modified' row now shows the source CSV's own modified time instead of the imported copy's, which had made it a duplicate of 'Imported At'.",
+    "Card rows now read at normal weight instead of bold, the 'Last Read' row is gone, and the row count drops its 'data rows, header excluded' caption.",
+    "The card no longer repeats the project-owned imported-table path, sizes itself to its content between 260px and 460px, and wraps long paths inside the card instead of letting them run past its edge."
+  ]
+}

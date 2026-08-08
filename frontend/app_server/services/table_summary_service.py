@@ -12,9 +12,24 @@ from app_server import config
 
 # Bump whenever the cached summary payload gains or changes fields so stale
 # caches are regenerated instead of served without the newer keys.
-SUMMARY_VERSION = 4
+SUMMARY_VERSION = 5
 
-DISTRIBUTION_BIN_COUNT = 16
+DISTRIBUTION_BIN_COUNT = 40
+DISTRIBUTION_MIN_BIN_COUNT = 8
+# Counts are accumulated this many times finer than they are published, Gaussian
+# smoothed, then averaged back down. That is a binned kernel density estimate:
+# the published shape reads as a continuous curve without paying the
+# O(rows x grid) cost of evaluating a kernel against every row.
+DISTRIBUTION_OVERSAMPLE = 8
+DISTRIBUTION_SMOOTH_SIGMA_BINS = 1.0
+# A highly concentrated column with long tails puts its whole body in one bin
+# when the domain is the raw min/max. The histogram spans this central quantile
+# window instead and clips the tails into the end bins; `stats` still carries
+# the true min/max, and the preview prints it below the chart. Below the row
+# threshold the window cannot hold a whole observation, so a short column is
+# always drawn across its full range.
+DISTRIBUTION_TAIL_QUANTILE = 0.005
+DISTRIBUTION_CLIP_MIN_ROWS = int(1 / DISTRIBUTION_TAIL_QUANTILE)
 TOP_VALUE_COUNT = 6
 
 
@@ -42,19 +57,93 @@ def load_valid_cache(csv_path: str, cache_path: str) -> Optional[Dict[str, Any]]
     return cached
 
 
-def _numeric_distribution(values: pd.Series) -> Dict[str, Any]:
-    """Normalized histogram heights in [0, 1] plus bin edges for a numeric or datetime column."""
-    numeric = pd.to_numeric(values, errors="coerce").dropna()
-    if numeric.empty:
-        return {"kind": "numeric", "bins": [], "edges": []}
-    counts, edges = np.histogram(numeric.to_numpy(dtype="float64"), bins=DISTRIBUTION_BIN_COUNT)
-    peak = int(counts.max()) if counts.size else 0
-    if peak <= 0:
-        return {"kind": "numeric", "bins": [], "edges": []}
+def _empty_numeric_distribution() -> Dict[str, Any]:
     return {
         "kind": "numeric",
-        "bins": [round(float(c) / peak, 4) for c in counts],
-        "edges": [float(e) for e in edges],
+        "bins": [],
+        "edges": [],
+        "clipped_low": False,
+        "clipped_high": False,
+    }
+
+
+def _gaussian_kernel(sigma: float) -> np.ndarray:
+    """Unit-area Gaussian sampled on whole bins, truncated at three sigma."""
+    radius = int(max(1, round(sigma * 3)))
+    offsets = np.arange(-radius, radius + 1, dtype="float64")
+    kernel = np.exp(-0.5 * (offsets / sigma) ** 2)
+    return kernel / kernel.sum()
+
+
+def _distribution_domain(values: np.ndarray) -> tuple:
+    """Central quantile window for the drawn histogram, plus which ends it clips."""
+    data_min = float(values.min())
+    data_max = float(values.max())
+    lo = hi = float("nan")
+    if values.size >= DISTRIBUTION_CLIP_MIN_ROWS:
+        # One call, so the window costs a single partition pass rather than two.
+        lo, hi = (float(q) for q in np.quantile(
+            values, [DISTRIBUTION_TAIL_QUANTILE, 1.0 - DISTRIBUTION_TAIL_QUANTILE]))
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        lo, hi = data_min, data_max
+    if hi <= lo:
+        # Constant column: draw the single value inside a symmetric unit window.
+        return lo - 0.5, hi + 0.5, False, False
+    # Reported per end: a zero-floored column clips only its right tail, and the
+    # preview must not label a bin open-ended when nothing folded into it.
+    return lo, hi, bool(lo > data_min), bool(hi < data_max)
+
+
+def _numeric_distribution(values: pd.Series) -> Dict[str, Any]:
+    """Smoothed, quantile-framed histogram heights in [0, 1] plus bin edges."""
+    arr = pd.to_numeric(values, errors="coerce").to_numpy(dtype="float64")
+    # One mask drops nulls and infinities together. Infinities survive `dropna`
+    # and would otherwise collapse the whole domain onto a single bin.
+    arr = arr[np.isfinite(arr)]
+    if not arr.size:
+        return _empty_numeric_distribution()
+
+    lo, hi, clipped_low, clipped_high = _distribution_domain(arr)
+    framed = np.clip(arr, lo, hi)
+    counts, _ = np.histogram(
+        framed,
+        bins=DISTRIBUTION_BIN_COUNT * DISTRIBUTION_OVERSAMPLE,
+        range=(lo, hi),
+    )
+    # Occupied fine bins bound how much structure the column can actually
+    # resolve. Drawing more output bins than that combs a low-cardinality column
+    # into alternating full and empty bars that read as structure it does not
+    # have. Counting them is free here; a distinct-value pass over the rows is
+    # not, and this also catches a column whose values all crowd into one place.
+    bin_count = int(np.count_nonzero(counts))
+    if bin_count < DISTRIBUTION_BIN_COUNT:
+        bin_count = max(DISTRIBUTION_MIN_BIN_COUNT, bin_count)
+        counts, _ = np.histogram(
+            framed, bins=bin_count * DISTRIBUTION_OVERSAMPLE, range=(lo, hi))
+    else:
+        bin_count = DISTRIBUTION_BIN_COUNT
+    smoothed = np.convolve(
+        counts.astype("float64"),
+        _gaussian_kernel(DISTRIBUTION_SMOOTH_SIGMA_BINS * DISTRIBUTION_OVERSAMPLE),
+        mode="same",
+    )
+    density = smoothed.reshape(bin_count, DISTRIBUTION_OVERSAMPLE).mean(axis=1)
+    peak = float(density.max())
+    if peak <= 0:
+        return _empty_numeric_distribution()
+    # Square-root heights. Under linear scaling a column whose mass sits in one
+    # bin leaves every other bar at 1-2% of the peak, so the tails render as a
+    # flat line beside a bare spike instead of as a distribution.
+    heights = np.sqrt(density / peak)
+    edges = np.linspace(lo, hi, bin_count + 1)
+    return {
+        "kind": "numeric",
+        "bins": [round(float(h), 4) for h in heights],
+        # Significant digits, not decimal places: a column of 1e-9 values rounds
+        # every edge to 0.0 and every hover label to "0 ~ 0".
+        "edges": [float(f"{e:.12g}") for e in edges],
+        "clipped_low": clipped_low,
+        "clipped_high": clipped_high,
     }
 
 

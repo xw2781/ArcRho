@@ -47,8 +47,33 @@
   min-width: 520px;
   min-height: 320px;
   max-height: calc(100vh - 32px);
-  resize: both;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+}
+#reservingClassTypeEditor.show {
+  display: flex;
+  flex-direction: column;
+}
+#reservingClassTypeEditor .rct-row-editor-header,
+#reservingClassTypeEditor .rct-row-editor-actions {
+  flex: 0 0 auto;
+}
+#reservingClassTypeEditor .rct-row-editor-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
+}
+.rct-row-editor-resizer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  user-select: none;
+  touch-action: none;
+  z-index: 2;
 }
 
 .rct-row-editor-body textarea.rct-formula-drop-target,

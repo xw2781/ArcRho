@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Removed the visible resize grip from Project Settings row editors while preserving window resizing."
+}

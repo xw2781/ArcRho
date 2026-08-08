@@ -42,6 +42,7 @@ export function createReservingClassTypesFeature(deps = {}) {
   let rctEditorMode = "edit";
   let rctEditorInsertAfterIndex = -1;
   let rctEditorDragState = null;
+  let rctEditorResizeState = null;
   let reservingClassTypesLoadSeq = 0;
   let reservingClassTypesSortState = loadReservingClassTypesSortState();
   let reservingClassTypesValidationTooltip = null;
@@ -1637,6 +1638,7 @@ export function createReservingClassTypesFeature(deps = {}) {
     rctEditorMode = "edit";
     rctEditorInsertAfterIndex = -1;
     rctEditorDragState = null;
+    rctEditorResizeState = null;
     rctFormulaMode = "review";
     rctFormulaPendingOperator = "+";
   }
@@ -2343,8 +2345,55 @@ export function createReservingClassTypesFeature(deps = {}) {
     e.preventDefault();
   }
 
+  function pinReservingClassTypeEditorPosition(rect) {
+    reservingClassTypeEditor.style.left = `${rect.left}px`;
+    reservingClassTypeEditor.style.top = `${rect.top}px`;
+    reservingClassTypeEditor.style.transform = "none";
+  }
+
+  function reservingClassTypeEditorSizeLimits() {
+    const style = typeof getComputedStyle === "function"
+      ? getComputedStyle(reservingClassTypeEditor)
+      : null;
+    const positiveNumber = (value, fallback) => {
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+    return {
+      minWidth: positiveNumber(style?.minWidth, 520),
+      minHeight: positiveNumber(style?.minHeight, 320),
+    };
+  }
+
+  function onEditorResizerMouseDown(e) {
+    if (!reservingClassTypeEditor || e.button !== 0) return;
+    const rect = reservingClassTypeEditor.getBoundingClientRect();
+    pinReservingClassTypeEditorPosition(rect);
+    rctEditorResizeState = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: rect.width,
+      startHeight: rect.height,
+      ...reservingClassTypeEditorSizeLimits(),
+    };
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   function onEditorMouseMove(e) {
-    if (!reservingClassTypeEditor || !rctEditorDragState) return;
+    if (!reservingClassTypeEditor) return;
+    if (rctEditorResizeState) {
+      const state = rctEditorResizeState;
+      const rect = reservingClassTypeEditor.getBoundingClientRect();
+      const maxWidth = Math.max(state.minWidth, window.innerWidth - rect.left - 8);
+      const maxHeight = Math.max(state.minHeight, window.innerHeight - rect.top - 8);
+      const width = state.startWidth + (e.clientX - state.startX);
+      const height = state.startHeight + (e.clientY - state.startY);
+      reservingClassTypeEditor.style.width = `${Math.max(state.minWidth, Math.min(maxWidth, width))}px`;
+      reservingClassTypeEditor.style.height = `${Math.max(state.minHeight, Math.min(maxHeight, height))}px`;
+      return;
+    }
+    if (!rctEditorDragState) return;
     const left = Math.max(8, Math.min(window.innerWidth - reservingClassTypeEditor.offsetWidth - 8, e.clientX - rctEditorDragState.offsetX));
     const top = Math.max(8, Math.min(window.innerHeight - reservingClassTypeEditor.offsetHeight - 8, e.clientY - rctEditorDragState.offsetY));
     reservingClassTypeEditor.style.left = `${left}px`;
@@ -2353,6 +2402,7 @@ export function createReservingClassTypesFeature(deps = {}) {
 
   function onEditorMouseUp() {
     rctEditorDragState = null;
+    rctEditorResizeState = null;
   }
 
   return {
@@ -2370,6 +2420,7 @@ export function createReservingClassTypesFeature(deps = {}) {
     loadReservingClassTypesFromLocalFile,
     handleReservingClassTypesRowContextAction,
     onEditorHeaderMouseDown,
+    onEditorResizerMouseDown,
     onEditorMouseMove,
     onEditorMouseUp,
   };

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Field Mapping Save is enabled only when the table has unsaved changes."
+}

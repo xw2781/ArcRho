@@ -27,6 +27,9 @@ const projectSettingsStylesheets = new Map(await Promise.all(
   ]),
 ));
 const projectSettingsCoreCss = projectSettingsStylesheets.get("project_settings.css");
+const reservingClassTypesCss = projectSettingsStylesheets.get(
+  "project_settings_reserving_class_types.css",
+);
 const dataProcessingRulesCss = projectSettingsStylesheets.get(
   "project_settings_data_processing_rules.css",
 );
@@ -72,7 +75,7 @@ test("Project Settings stylesheet split keeps feature rules with their owners", 
     ["project_settings.css", /\/\* Shared data-grid frames and tables \*\//],
     ["project_settings_summary.css", /\.sd-columns\s*\{/],
     ["project_settings_field_mapping.css", /\.fm-dataset-type-dropdown\s*\{/],
-    ["project_settings_dataset_types.css", /#datasetTypesTable \.dt-name-search-btn\s*\{/],
+    ["project_settings_dataset_types.css", /#datasetTypesTable \.dt-filter-btn\s*\{/],
     ["project_settings_reserving_class_types.css", /\.rct-formula-frame\s*\{/],
     ["project_settings_data_processing_rules.css", /\.dpr-editor\s*\{/],
     ["project_settings_scrollbars.css", /\/\* Project Settings owns one PI-aligned scrollbar treatment/],
@@ -868,6 +871,39 @@ test("Project Settings uses one PI-aligned themed scrollbar treatment on every s
     if (name === "project_settings_scrollbars.css") continue;
     assert.doesNotMatch(stylesheet, /::\-webkit-scrollbar/, `${name} duplicates scrollbar paint`);
   }
+});
+
+test("reserving-class editor resizes from an invisible bottom-right corner", () => {
+  assert.match(projectSettingsHtml, /id="reservingClassTypeEditorResizer"/);
+  assert.match(
+    reservingClassTypesCss,
+    /#reservingClassTypeEditor\s*\{[\s\S]*?box-sizing:\s*border-box;[\s\S]*?resize:\s*none;[\s\S]*?overflow:\s*hidden;/s,
+  );
+  assert.match(
+    reservingClassTypesCss,
+    /#reservingClassTypeEditor\.show\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex-direction:\s*column;/s,
+  );
+  assert.match(
+    reservingClassTypesCss,
+    /#reservingClassTypeEditor \.rct-row-editor-body\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*auto;/s,
+  );
+  assert.match(
+    reservingClassTypesCss,
+    /\.rct-row-editor-resizer\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?cursor:\s*nwse-resize;/s,
+  );
+  assert.match(reservingClassTypesJs, /function onEditorResizerMouseDown\(e\)/);
+  const resizeStart = reservingClassTypesJs.match(
+    /function onEditorResizerMouseDown\(e\)\s*\{[\s\S]*?\n  \}/,
+  )?.[0] || "";
+  assert.ok(
+    resizeStart.indexOf("pinReservingClassTypeEditorPosition")
+      < resizeStart.indexOf("rctEditorResizeState ="),
+    "the resize drag must pin the top-left corner before sizing",
+  );
+  assert.match(reservingClassTypesJs, /if \(rctEditorResizeState\) \{/);
+  assert.match(reservingClassTypesJs, /style\.width = `\$\{Math\.max\(state\.minWidth/);
+  assert.match(reservingClassTypesJs, /style\.height = `\$\{Math\.max\(state\.minHeight/);
+  assert.match(projectSettingsJs, /reservingClassTypeEditorResizer\?\.addEventListener\("mousedown",/);
 });
 
 test("Project Settings column resizing follows the PI explicit-width model", () => {

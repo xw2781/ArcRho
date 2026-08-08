@@ -11,11 +11,11 @@
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260223";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260807idx1";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260808rctresize1";
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260722a";
-import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260716resize2";
+import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260808rctresize1";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260721dpr12";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260807idx1";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260808sddist1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -116,6 +116,7 @@ const auditLogBody = document.getElementById("auditLogBody");
 const auditLogStatus = document.getElementById("auditLogStatus");
 const reservingClassTypeEditor = document.getElementById("reservingClassTypeEditor");
 const reservingClassTypeEditorHeader = document.getElementById("reservingClassTypeEditorHeader");
+const reservingClassTypeEditorResizer = document.getElementById("reservingClassTypeEditorResizer");
 const reservingClassTypeEditorTitle = document.getElementById("reservingClassTypeEditorTitle");
 const reservingClassTypeEditorClose = document.getElementById("reservingClassTypeEditorClose");
 const rctEditName = document.getElementById("rctEditName");
@@ -382,7 +383,9 @@ const sourceDataFeature = createSourceDataFeature({
   setStatus,
   normalizeMonth: normalizeBoundaryYmCanonical,
   formatMonth: formatBoundaryYmDisplay,
-  getHostApi: () => window.ADAHost,
+  // Project Settings runs in the shell's iframe, so the bridge lives on the
+  // host window; `window.ADAHost` alone is undefined here.
+  getHostApi: () => window.ADAHost || window.parent?.ADAHost || window.top?.ADAHost,
   onProfileSave: (...args) => saveImportSettings(...args),
   onListTables: (...args) => listSourceTables(...args),
   onListConnections: () => listSourceConnections(),
@@ -507,6 +510,7 @@ datasetTypesFeature = createDatasetTypesFeature({
 fieldMappingFeature = createFieldMappingFeature({
   fieldMappingBody,
   fieldMappingStatus,
+  saveFieldMappingBtn,
   initTableColumnResizing,
   normalizeProjectKey,
   fetchImpl: fetch.bind(window),
@@ -1478,6 +1482,10 @@ rctEditorSaveBtn?.addEventListener("click", () => {
 
 reservingClassTypeEditorHeader?.addEventListener("mousedown", (e) => {
   reservingClassTypesFeature?.onEditorHeaderMouseDown(e);
+});
+
+reservingClassTypeEditorResizer?.addEventListener("mousedown", (e) => {
+  reservingClassTypesFeature?.onEditorResizerMouseDown(e);
 });
 
 document.addEventListener("mousemove", (e) => {

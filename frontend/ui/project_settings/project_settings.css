@@ -589,7 +589,6 @@ input, textarea, select, option, [contenteditable="true"] { user-select: text; }
   color: #666;
   flex: 1 1 auto;
 }
-.field-mapping-toolbar button,
 .dataset-types-toolbar button {
   padding: 6px 12px;
   border: 1px solid #0d6efd;
@@ -600,9 +599,29 @@ input, textarea, select, option, [contenteditable="true"] { user-select: text; }
   font-size: 12px;
   font-weight: 600;
 }
-.field-mapping-toolbar button:hover,
 .dataset-types-toolbar button:hover {
   background: #0b5ed7;
+}
+.field-mapping-toolbar button {
+  min-height: 30px;
+  padding: 6px 12px;
+  border: 1px solid #2b6df6;
+  border-radius: 4px;
+  background: #eaf2ff;
+  color: #1854c7;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.field-mapping-toolbar button:hover:not(:disabled) {
+  background: #dceaff;
+}
+.field-mapping-toolbar button:disabled {
+  border-color: #d8dde3;
+  background: #f4f7fa;
+  color: #8a94a3;
+  cursor: not-allowed;
 }
 .field-mapping-status,
 .dataset-types-status {

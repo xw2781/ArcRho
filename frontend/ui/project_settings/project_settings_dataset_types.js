@@ -5,8 +5,6 @@ import {
   getDatasetTypeCategoryLabel,
   getDatasetTypeColumnFilterValueKeyFromRow,
   isDatasetTypeSelectionFilterActive,
-  matchesDatasetTypeNameSearch,
-  tokenizeDatasetTypeNameSearch,
 } from "/ui/shared/dataset/dataset_types_view_model.js";
 import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 
@@ -56,7 +54,7 @@ export function createDatasetTypesFeature(deps = {}) {
 
   const DATASET_TYPES_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula"];
   const DATASET_TYPES_SORTABLE_COLS = new Set([...DATASET_TYPES_COLUMNS]);
-  const DATASET_TYPES_FILTERABLE_COLS = new Set(["Data Format", "Category", "Calculated"]);
+  const DATASET_TYPES_FILTERABLE_COLS = new Set(["Name", "Data Format", "Category", "Calculated"]);
   const DATASET_TYPES_BLANK_CATEGORY_KEY = "__blank__";
   const datasetTypesByProject = new Map();
   const loadedDatasetTypesByProject = new Set();
@@ -68,8 +66,8 @@ export function createDatasetTypesFeature(deps = {}) {
   const datasetTypesCategoryOptionsByProject = new Map();
   const datasetTypesCalculatedFilterStateByProject = new Map();
   const datasetTypesCalculatedOptionsByProject = new Map();
-  const datasetTypesNameSearchTextByProject = new Map();
-  const datasetTypesNameSearchOpenByProject = new Map();
+  const datasetTypesNameFilterStateByProject = new Map();
+  const datasetTypesNameOptionsByProject = new Map();
   const datasetTypesCollapsedGroupsByProject = new Map();
   let datasetTypesContextProject = "";
   let datasetTypesContextRowIndex = -1;
@@ -85,6 +83,7 @@ export function createDatasetTypesFeature(deps = {}) {
   let datasetTypesFilterPopoverProject = "";
   let datasetTypesFilterPopoverColLabel = "";
   let datasetTypesFilterPopoverAnchor = null;
+  let datasetTypesFilterPopoverSearchText = "";
   let datasetTypesFilterPopoverWired = false;
   let datasetTypesErrorUiWired = false;
   let datasetTypesLoadModeDialog = null;
@@ -500,37 +499,14 @@ export function createDatasetTypesFeature(deps = {}) {
     return state;
   }
 
-  function getDatasetTypesNameSearchText(projectName) {
-    const key = normalizeProjectKey(projectName);
-    return String(datasetTypesNameSearchTextByProject.get(key) || "");
+  function buildDatasetTypeNameOptions(projectName) {
+    const state = getProjectDatasetTypesState(projectName);
+    const options = buildDatasetTypeColumnFilterOptionsFromRows(state.rows || [], "Name", {
+      blankKey: DATASET_TYPES_BLANK_CATEGORY_KEY,
+    });
+    datasetTypesNameOptionsByProject.set(normalizeProjectKey(projectName), options);
+    return options;
   }
-
-  function setDatasetTypesNameSearchText(projectName, text) {
-    const key = normalizeProjectKey(projectName);
-    datasetTypesNameSearchTextByProject.set(key, String(text || ""));
-  }
-
-  function isDatasetTypesNameSearchOpen(projectName) {
-    const key = normalizeProjectKey(projectName);
-    return datasetTypesNameSearchOpenByProject.get(key) === true;
-  }
-
-  function setDatasetTypesNameSearchOpen(projectName, open) {
-    const key = normalizeProjectKey(projectName);
-    datasetTypesNameSearchOpenByProject.set(key, !!open);
-  }
-
-  function getDatasetTypesNameSearchTokens(projectName) {
-    const raw = getDatasetTypesNameSearchText(projectName);
-    return tokenizeDatasetTypeNameSearch(raw);
-  }
-
-  function rowMatchesDatasetTypesNameSearch(projectName, row) {
-    const tokens = getDatasetTypesNameSearchTokens(projectName);
-    if (tokens.length === 0) return true;
-    return matchesDatasetTypeNameSearch({ name: String(row?.[0] ?? "") }, tokens);
-  }
-
   function buildDatasetTypeDataFormatOptions(projectName) {
     const state = getProjectDatasetTypesState(projectName);
     const options = buildDatasetTypeColumnFilterOptionsFromRows(state.rows || [], "Data Format", {
@@ -562,6 +538,10 @@ export function createDatasetTypesFeature(deps = {}) {
     return getDatasetTypesFilterState(datasetTypesDataFormatFilterStateByProject, projectName, options);
   }
 
+  function getDatasetTypeNameFilterState(projectName, options = []) {
+    return getDatasetTypesFilterState(datasetTypesNameFilterStateByProject, projectName, options);
+  }
+
   function getDatasetTypeCategoryFilterState(projectName, options = []) {
     return getDatasetTypesFilterState(datasetTypesCategoryFilterStateByProject, projectName, options);
   }
@@ -576,6 +556,11 @@ export function createDatasetTypesFeature(deps = {}) {
     if (!project || !col) return null;
     const key = normalizeProjectKey(project);
 
+    if (col === "Name") {
+      const options = datasetTypesNameOptionsByProject.get(key) || buildDatasetTypeNameOptions(project);
+      const filterState = getDatasetTypeNameFilterState(project, options);
+      return { col, options, filterState, title: "Name Filter", emptyText: "No dataset type names" };
+    }
     if (col === "Category") {
       const options = datasetTypesCategoryOptionsByProject.get(key) || buildDatasetTypeCategoryOptions(project);
       const filterState = getDatasetTypeCategoryFilterState(project, options);
@@ -620,7 +605,7 @@ export function createDatasetTypesFeature(deps = {}) {
     const headers = table.querySelectorAll("thead th");
     for (const th of headers) {
       if (String(th?.dataset?.dtColLabel || "").trim() !== wanted) continue;
-      const btn = th.querySelector(".dt-category-filter-btn");
+      const btn = th.querySelector(".dt-filter-btn");
       if (btn) return btn;
     }
     return null;
@@ -637,6 +622,7 @@ export function createDatasetTypesFeature(deps = {}) {
     datasetTypesFilterPopoverProject = "";
     datasetTypesFilterPopoverColLabel = "";
     datasetTypesFilterPopoverAnchor = null;
+    datasetTypesFilterPopoverSearchText = "";
   }
 
   function closeDatasetTypesCategoryFilterPopover() {
@@ -702,7 +688,7 @@ export function createDatasetTypesFeature(deps = {}) {
     ensureDatasetTypesFilterPopoverWired();
     if (datasetTypesFilterPopover) return datasetTypesFilterPopover;
     datasetTypesFilterPopover = document.createElement("div");
-    datasetTypesFilterPopover.className = "dt-category-filter-popover";
+    datasetTypesFilterPopover.className = "dt-filter-popover";
     datasetTypesFilterPopover.style.display = "none";
     document.body.appendChild(datasetTypesFilterPopover);
     return datasetTypesFilterPopover;
@@ -722,38 +708,84 @@ export function createDatasetTypesFeature(deps = {}) {
     pop.innerHTML = "";
 
     const title = document.createElement("div");
-    title.className = "dt-category-filter-title";
+    title.className = "dt-filter-title";
     title.textContent = filterTitle;
     pop.appendChild(title);
 
+    const search = document.createElement("input");
+    search.className = "dt-filter-search";
+    search.type = "search";
+    search.autocomplete = "off";
+    search.placeholder = "Type to search";
+    search.setAttribute("aria-label", `Search ${col} filter values`);
+    search.value = datasetTypesFilterPopoverProject === project && datasetTypesFilterPopoverColLabel === col
+      ? datasetTypesFilterPopoverSearchText
+      : "";
+    pop.appendChild(search);
+
     const list = document.createElement("div");
-    list.className = "dt-category-filter-list";
+    list.className = "dt-filter-list";
     pop.appendChild(list);
 
-    for (const opt of options) {
-      const row = document.createElement("label");
-      row.className = "dt-category-filter-option";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = selectedSet.has(opt.key);
-      cb.addEventListener("change", () => {
-        if (cb.checked) selectedSet.add(opt.key);
-        else selectedSet.delete(opt.key);
+    const renderOptions = () => {
+      list.replaceChildren();
+      const searchText = String(search.value || "").trim().toLocaleLowerCase();
+      const visibleOptions = searchText
+        ? options.filter((opt) => String(opt.label || "").toLocaleLowerCase().includes(searchText))
+        : options;
+
+      const allRow = document.createElement("label");
+      allRow.className = "dt-filter-option";
+      const allCb = document.createElement("input");
+      allCb.type = "checkbox";
+      allCb.checked = selectedSet.size === 0 || !isDatasetTypeSelectionFilterActive(options, selectedSet);
+      allCb.addEventListener("change", () => {
+        selectedSet.clear();
         renderDatasetTypesTable(project, { preserveColumnWidths: true });
       });
-      const text = document.createElement("span");
-      text.textContent = opt.label;
-      row.appendChild(cb);
-      row.appendChild(text);
-      list.appendChild(row);
-    }
+      const allText = document.createElement("span");
+      allText.textContent = "All";
+      allRow.append(allCb, allText);
+      list.appendChild(allRow);
 
-    if (options.length === 0) {
-      const none = document.createElement("div");
-      none.className = "dt-category-filter-empty";
-      none.textContent = emptyText;
-      list.appendChild(none);
-    }
+      for (const opt of visibleOptions) {
+        const row = document.createElement("label");
+        row.className = "dt-filter-option";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = selectedSet.has(opt.key);
+        cb.addEventListener("change", () => {
+          if (cb.checked) selectedSet.add(opt.key);
+          else selectedSet.delete(opt.key);
+          renderDatasetTypesTable(project, { preserveColumnWidths: true });
+        });
+        row.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          selectedSet.clear();
+          for (const item of options) {
+            if (item.key !== opt.key) selectedSet.add(item.key);
+          }
+          renderDatasetTypesTable(project, { preserveColumnWidths: true });
+        });
+        const text = document.createElement("span");
+        text.textContent = opt.label;
+        row.append(cb, text);
+        list.appendChild(row);
+      }
+
+      if (!visibleOptions.length) {
+        const none = document.createElement("div");
+        none.className = "dt-filter-empty";
+        none.textContent = options.length ? "No matching values" : emptyText;
+        list.appendChild(none);
+      }
+    };
+    search.addEventListener("input", () => {
+      datasetTypesFilterPopoverSearchText = search.value;
+      renderOptions();
+    });
+    renderOptions();
 
     datasetTypesFilterPopoverProject = project;
     datasetTypesFilterPopoverColLabel = col;
@@ -761,6 +793,7 @@ export function createDatasetTypesFeature(deps = {}) {
     pop.style.display = "block";
     pop.classList.add("open");
     positionDatasetTypesFilterPopover();
+    search.focus({ preventScroll: true });
   }
 
   function openDatasetTypesCategoryFilterPopover(projectName, anchorEl = null) {
@@ -785,9 +818,7 @@ export function createDatasetTypesFeature(deps = {}) {
         th.addEventListener("click", (e) => {
           const target = e.target;
           if (target?.closest?.(".table-col-resizer")) return;
-          if (target?.closest?.(".dt-category-filter-btn")) return;
-          if (target?.closest?.(".dt-name-search-btn")) return;
-          if (target?.closest?.(".dt-name-search-input")) return;
+          if (target?.closest?.(".dt-filter-btn")) return;
           const header = e.currentTarget;
           const col = String(header?.dataset?.dtColLabel || "").trim();
           const project = String(header?.dataset?.dtProjectName || "").trim();
@@ -824,54 +855,6 @@ export function createDatasetTypesFeature(deps = {}) {
       nextLabelEl.appendChild(indicator);
       th.classList.toggle("dt-col-sorted", isActiveSort);
 
-      if (colLabel === "Name") {
-        const searchTokens = getDatasetTypesNameSearchTokens(projectName);
-        const nameSearchOpen = isDatasetTypesNameSearchOpen(projectName);
-        const searchBtn = document.createElement("button");
-        searchBtn.type = "button";
-        searchBtn.className = "dt-name-search-btn";
-        searchBtn.title = "Name Search";
-        searchBtn.innerHTML = `
-          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path d="M7 2.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 0 0 0-9Zm0-1.5a6 6 0 1 1 0 12a6 6 0 0 1 0-12Z"></path>
-            <path d="M10.9 10.2l3.2 3.2l-1.1 1.1l-3.2-3.2z"></path>
-          </svg>
-        `;
-        searchBtn.classList.toggle("active", searchTokens.length > 0 || nameSearchOpen);
-        searchBtn.addEventListener("click", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          const currentlyOpen = isDatasetTypesNameSearchOpen(projectName);
-          setDatasetTypesNameSearchOpen(projectName, !currentlyOpen);
-          renderDatasetTypesTable(projectName);
-        });
-        nextLabelEl.appendChild(searchBtn);
-
-        if (nameSearchOpen) {
-          const nameSearchInput = document.createElement("input");
-          nameSearchInput.type = "text";
-          nameSearchInput.className = "dt-name-search-input";
-          nameSearchInput.placeholder = "keyword(s)";
-          nameSearchInput.value = getDatasetTypesNameSearchText(projectName);
-          nameSearchInput.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-          });
-          nameSearchInput.addEventListener("keydown", (ev) => {
-            ev.stopPropagation();
-            if (ev.key === "Escape") {
-              ev.preventDefault();
-              setDatasetTypesNameSearchOpen(projectName, false);
-              renderDatasetTypesTable(projectName);
-            }
-          });
-          nameSearchInput.addEventListener("input", () => {
-            setDatasetTypesNameSearchText(projectName, nameSearchInput.value);
-            renderDatasetTypesTable(projectName, { preserveColumnWidths: true, focusNameSearch: true });
-          });
-          nextLabelEl.appendChild(nameSearchInput);
-        }
-      }
-
       if (DATASET_TYPES_FILTERABLE_COLS.has(colLabel)) {
         const filterMeta = getDatasetTypesColumnFilterMeta(projectName, colLabel);
         const options = filterMeta?.options || [];
@@ -881,7 +864,7 @@ export function createDatasetTypesFeature(deps = {}) {
 
         const filterBtn = document.createElement("button");
         filterBtn.type = "button";
-        filterBtn.className = "dt-category-filter-btn";
+        filterBtn.className = "dt-filter-btn";
         filterBtn.title = `${colLabel} Filter`;
         filterBtn.innerHTML = `
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -1268,11 +1251,14 @@ export function createDatasetTypesFeature(deps = {}) {
 
     const dataFormatOptions = buildDatasetTypeDataFormatOptions(projectName);
     const dataFormatFilter = getDatasetTypeDataFormatFilterState(projectName, dataFormatOptions);
+    const nameOptions = buildDatasetTypeNameOptions(projectName);
+    const nameFilter = getDatasetTypeNameFilterState(projectName, nameOptions);
     const categoryOptions = buildDatasetTypeCategoryOptions(projectName);
     const categoryFilter = getDatasetTypeCategoryFilterState(projectName, categoryOptions);
     const calculatedOptions = buildDatasetTypeCalculatedOptions(projectName);
     const calculatedFilter = getDatasetTypeCalculatedFilterState(projectName, calculatedOptions);
     const dataFormatSelected = dataFormatFilter.selected;
+    const nameSelected = nameFilter.selected;
     const categorySelected = categoryFilter.selected;
     const calculatedSelected = calculatedFilter.selected;
     const collapsedGroups = getDatasetTypesCollapsedGroupSet(projectName, categoryOptions);
@@ -1282,7 +1268,7 @@ export function createDatasetTypesFeature(deps = {}) {
 
     const groups = new Map();
     state.rows.forEach((row, rowIndex) => {
-      if (!rowMatchesDatasetTypesNameSearch(projectName, row)) return;
+      if (nameSelected.size > 0 && !nameSelected.has(getDatasetTypesColumnFilterValueKey("Name", row))) return;
       if (dataFormatSelected.size > 0 && !dataFormatSelected.has(getDatasetTypesColumnFilterValueKey("Data Format", row))) return;
       if (calculatedSelected.size > 0 && !calculatedSelected.has(getDatasetTypesColumnFilterValueKey("Calculated", row))) return;
       const categoryLabel = getDatasetTypeCategoryLabel(row?.[2]);
@@ -1420,16 +1406,6 @@ export function createDatasetTypesFeature(deps = {}) {
     syncDatasetTypesHeaderUi(projectName);
     if (!options || !options.preserveColumnWidths) {
       initTableColumnResizing("datasetTypesTable", [150, 120, 130, 110, 140]);
-    }
-    if (options && options.focusNameSearch) {
-      requestAnimationFrame(() => {
-        const table = document.getElementById("datasetTypesTable");
-        const input = table?.querySelector('th[data-dt-col-label="Name"] .dt-name-search-input');
-        if (!input) return;
-        input.focus();
-        const len = input.value.length;
-        input.setSelectionRange(len, len);
-      });
     }
   }
 

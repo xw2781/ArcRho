@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Dataset Type filters now match Project Instance with focused type-to-search menus."
+}

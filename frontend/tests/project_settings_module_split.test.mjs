@@ -11,6 +11,9 @@ const projectMap = await read("project_settings_project_map.js");
 const treeView = await read("project_settings_tree_view.js");
 const projectOps = await read("project_settings_project_ops.js");
 const duplicateJob = await read("project_settings_duplicate_job.js");
+const fieldMapping = await read("project_settings_field_mapping.js");
+const fieldMappingCss = await read("project_settings.css");
+const fieldMappingFeatureCss = await read("project_settings_field_mapping.css");
 const html = await read("project_settings.html");
 
 const SPLIT_MODULES = [
@@ -122,6 +125,33 @@ test("boundary-month parsing and General Settings I/O have one home", () => {
   assert.doesNotMatch(coordinator, /\/general_settings/);
   assert.match(coordinator, /generalSettingsFeature\.ensureLoaded\(/);
   assert.match(coordinator, /generalSettingsFeature\.bindEditor\(project\)/);
+});
+
+test("Field Mapping Save reflects only unsaved table changes", () => {
+  assert.match(fieldMapping, /const savedFieldMappingByProject = new Map\(\);/);
+  assert.match(fieldMapping, /function hasUnsavedFieldMappingChanges\(projectName\)/);
+  assert.match(fieldMapping, /saveFieldMappingBtn\.disabled = isSaving \|\| !hasChanges;/);
+  assert.match(fieldMapping, /captureSavedFieldMapping\(project\.name, rows\);/);
+  assert.match(html, /id="saveFieldMappingBtn" type="button" disabled/);
+  assert.match(fieldMappingCss, /\.field-mapping-toolbar button:disabled[\s\S]*background: #f4f7fa;/);
+});
+
+test("Field Mapping Level uses the shared stepper without wheel edits", () => {
+  assert.match(html, /shared\/components\/spreadsheet\/numeric_stepper\.css\?v=/);
+  assert.match(fieldMapping, /field-mapping-level-stepper/);
+  assert.match(fieldMapping, /levelUpButton\.addEventListener\("click", \(\) => adjustLevel\(1\)\)/);
+  assert.match(fieldMapping, /levelDownButton\.addEventListener\("click", \(\) => adjustLevel\(-1\)\)/);
+  assert.match(fieldMapping, /levelInput\.addEventListener\("wheel", \(e\) => e\.preventDefault\(\), \{ passive: false \}\)/);
+  assert.doesNotMatch(fieldMapping, /adjustLevelByWheel|levelTd\.addEventListener\("wheel"/);
+  assert.match(fieldMappingFeatureCss, /\.field-mapping-level-stepper > input\[type="number"\][\s\S]*border: 0;[\s\S]*border-radius: 0;/);
+  assert.match(fieldMappingFeatureCss, /\.field-mapping-level-stepper \.decimalPlacesStepper[\s\S]*width: 22px;[\s\S]*border-radius: 0;/);
+});
+
+test("Field Mapping Significance cells indicate their dropdown behavior", () => {
+  assert.match(
+    fieldMappingFeatureCss,
+    /td:has\(input\[data-role="significance"\]\)[\s\S]*cursor: pointer;/,
+  );
 });
 
 test("each split module remains bounded", () => {

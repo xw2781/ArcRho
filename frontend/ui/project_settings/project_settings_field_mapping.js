@@ -2,6 +2,7 @@ export function createFieldMappingFeature(deps = {}) {
   const {
     fieldMappingBody = null,
     fieldMappingStatus = null,
+    saveFieldMappingBtn = null,
     initTableColumnResizing = () => {},
     normalizeProjectKey = (name) => String(name || "").trim().toLowerCase(),
     fetchImpl = fetch,
@@ -22,6 +23,8 @@ export function createFieldMappingFeature(deps = {}) {
   const DATASET_TYPE_PROMPT = "-- Select Dataset Type --";
   const DATASET_TYPE_NA = "-- N/A --";
   const fieldMappingByProject = new Map();
+  const savedFieldMappingByProject = new Map();
+  const savingFieldMappingProjects = new Set();
   const loadedFieldMappingByProject = new Set();
   let fieldMappingDatasetTypeDropdown = null;
   let fieldMappingDatasetTypeDropdownList = null;
@@ -62,6 +65,63 @@ export function createFieldMappingFeature(deps = {}) {
       fieldMappingByProject.set(key, new Map());
     }
     return fieldMappingByProject.get(key);
+  }
+
+  function normalizeFieldMappingRow(row = {}) {
+    const significance = getSignificanceOptionMatchName(row.significance) || "Not Used";
+    return {
+      significance,
+      datasetType: significance === "Dataset" ? String(row.datasetType || "").trim() : "",
+      level: significance === "Reserving Class" ? sanitizeLevel(row.level) : null,
+    };
+  }
+
+  function fieldMappingRowsMatch(left, right) {
+    return (
+      left.significance === right.significance
+      && left.datasetType === right.datasetType
+      && left.level === right.level
+    );
+  }
+
+  function hasUnsavedFieldMappingChanges(projectName) {
+    const key = normalizeProjectKey(projectName);
+    if (!key) return false;
+    const current = getProjectFieldMappingState(projectName);
+    const saved = savedFieldMappingByProject.get(key) || new Map();
+    const fieldNames = Array.isArray(getCurrentFieldNames()) ? getCurrentFieldNames() : [];
+    return fieldNames.some((fieldName) => !fieldMappingRowsMatch(
+      normalizeFieldMappingRow(current.get(fieldName)),
+      normalizeFieldMappingRow(saved.get(fieldName)),
+    ));
+  }
+
+  function updateSaveFieldMappingButton(projectName) {
+    if (!saveFieldMappingBtn) return;
+    const key = normalizeProjectKey(projectName);
+    const isSaving = !!key && savingFieldMappingProjects.has(key);
+    const hasChanges = hasUnsavedFieldMappingChanges(projectName);
+    saveFieldMappingBtn.disabled = isSaving || !hasChanges;
+    saveFieldMappingBtn.setAttribute(
+      "aria-label",
+      isSaving ? "Saving Field Mapping" : hasChanges ? "Save Field Mapping" : "No Field Mapping changes to save",
+    );
+  }
+
+  function captureSavedFieldMapping(projectName, rows) {
+    const key = normalizeProjectKey(projectName);
+    if (!key) return;
+    const saved = new Map();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const fieldName = String(row?.field_name || "").trim();
+      if (!fieldName) continue;
+      saved.set(fieldName, normalizeFieldMappingRow({
+        significance: row.significance,
+        datasetType: row.dataset_type,
+        level: row.level,
+      }));
+    }
+    savedFieldMappingByProject.set(key, saved);
   }
 
   function sanitizeLevel(levelValue) {
@@ -370,10 +430,12 @@ export function createFieldMappingFeature(deps = {}) {
         const level = sanitizeLevel(row?.level);
         state.set(fieldName, { significance, datasetType, level });
       }
+      captureSavedFieldMapping(projectName, rows);
     } catch {
       // ignore load errors; user can still edit/save
     }
     loadedFieldMappingByProject.add(key);
+    updateSaveFieldMappingButton(projectName);
   }
 
   function renderFieldMappingTable(fieldNames, projectName) {
@@ -381,10 +443,12 @@ export function createFieldMappingFeature(deps = {}) {
     closeFieldMappingDatasetTypeDropdown();
     if (!projectName) {
       renderFieldMappingEmpty("Select a project to edit field mapping.");
+      updateSaveFieldMappingButton(projectName);
       return;
     }
     if (!Array.isArray(fieldNames) || fieldNames.length === 0) {
       renderFieldMappingEmpty("No fields found. Load Table Summary first.");
+      updateSaveFieldMappingButton(projectName);
       return;
     }
 
@@ -451,13 +515,31 @@ export function createFieldMappingFeature(deps = {}) {
       datasetTypeTd.appendChild(datasetTypeWrap);
 
       const levelTd = document.createElement("td");
+      const levelStepper = document.createElement("div");
+      levelStepper.className = "decimalPlacesWrap field-mapping-level-stepper";
       const levelInput = document.createElement("input");
       levelInput.type = "number";
       levelInput.min = "1";
       levelInput.step = "1";
+      levelInput.inputMode = "numeric";
+      levelInput.setAttribute("aria-label", `Level for ${fieldName}`);
       levelInput.value = saved.level != null ? String(saved.level) : "";
       levelInput.disabled = getSignificanceOptionMatchName(sigInput.value) !== "Reserving Class";
-      levelTd.appendChild(levelInput);
+      const levelStepperControls = document.createElement("div");
+      levelStepperControls.className = "decimalPlacesStepper";
+      const levelUpButton = document.createElement("button");
+      levelUpButton.type = "button";
+      levelUpButton.className = "decimalPlacesStepBtn";
+      levelUpButton.setAttribute("aria-label", `Increase Level for ${fieldName}`);
+      levelUpButton.innerHTML = '<span class="datasetStepperCaret datasetStepperCaretUp" aria-hidden="true"></span>';
+      const levelDownButton = document.createElement("button");
+      levelDownButton.type = "button";
+      levelDownButton.className = "decimalPlacesStepBtn";
+      levelDownButton.setAttribute("aria-label", `Decrease Level for ${fieldName}`);
+      levelDownButton.innerHTML = '<span class="datasetStepperCaret" aria-hidden="true"></span>';
+      levelStepperControls.append(levelUpButton, levelDownButton);
+      levelStepper.append(levelInput, levelStepperControls);
+      levelTd.appendChild(levelStepper);
 
       const getCurrentSignificance = () => {
         const matched = getSignificanceOptionMatchName(sigInput.value);
@@ -472,8 +554,12 @@ export function createFieldMappingFeature(deps = {}) {
         if (significanceValue !== "Reserving Class") {
           levelInput.value = "";
           levelInput.disabled = true;
+          levelUpButton.disabled = true;
+          levelDownButton.disabled = true;
         } else {
           levelInput.disabled = false;
+          levelUpButton.disabled = false;
+          levelDownButton.disabled = false;
           if (becameReservingClass) {
             levelInput.value = String(getNextReservingClassLevel(projectName, fieldName));
           }
@@ -492,6 +578,7 @@ export function createFieldMappingFeature(deps = {}) {
         }
         lastSignificanceValue = significanceValue;
         upsertFieldMappingRow(projectName, fieldName, significanceValue, levelInput.value, datasetTypeInput.value);
+        updateSaveFieldMappingButton(projectName);
       };
 
       const commitSignificanceInput = () => {
@@ -619,17 +706,15 @@ export function createFieldMappingFeature(deps = {}) {
           closeFieldMappingDatasetTypeDropdown();
         }, 0);
       });
-      const adjustLevelByWheel = (delta) => {
+      const adjustLevel = (delta) => {
         if (levelInput.disabled) return;
         const current = sanitizeLevel(levelInput.value) ?? 1;
         levelInput.value = String(Math.max(1, current + delta));
         persistRowState();
       };
-      levelTd.addEventListener("wheel", (e) => {
-        if (levelInput.disabled || e.deltaY === 0) return;
-        e.preventDefault();
-        adjustLevelByWheel(e.deltaY < 0 ? 1 : -1);
-      }, { passive: false });
+      levelUpButton.addEventListener("click", () => adjustLevel(1));
+      levelDownButton.addEventListener("click", () => adjustLevel(-1));
+      levelInput.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
       levelInput.addEventListener("input", persistRowState);
       levelInput.addEventListener("change", persistRowState);
       handleSignificanceChange();
@@ -643,6 +728,7 @@ export function createFieldMappingFeature(deps = {}) {
       persistRowState();
     }
     initTableColumnResizing("fieldMappingTable", [90, 100, 120, 70]);
+    updateSaveFieldMappingButton(projectName);
   }
 
   function collectFieldMappingRows(projectName, fieldNames) {
@@ -711,12 +797,19 @@ export function createFieldMappingFeature(deps = {}) {
 
   async function saveFieldMapping(project) {
     if (!project || !project.name) return;
+    if (!hasUnsavedFieldMappingChanges(project.name)) {
+      updateSaveFieldMappingButton(project.name);
+      return;
+    }
     const currentFieldNames = Array.isArray(getCurrentFieldNames()) ? getCurrentFieldNames() : [];
     if (!currentFieldNames.length) {
       setFieldMappingStatus("No table fields available to save.", true);
       return;
     }
 
+    const key = normalizeProjectKey(project.name);
+    savingFieldMappingProjects.add(key);
+    updateSaveFieldMappingButton(project.name);
     try {
       const rows = collectFieldMappingRows(project.name, currentFieldNames);
       setFieldMappingStatus("Saving field mapping...");
@@ -785,9 +878,13 @@ export function createFieldMappingFeature(deps = {}) {
       }
 
       await loadAuditLog(project.name, true);
+      captureSavedFieldMapping(project.name, rows);
     } catch (err) {
       setFieldMappingStatus(err.message || "Save failed.", true);
       setStatus(`Field mapping save error: ${err.message}`);
+    } finally {
+      savingFieldMappingProjects.delete(key);
+      updateSaveFieldMappingButton(project.name);
     }
   }
 
@@ -820,6 +917,7 @@ export function createFieldMappingFeature(deps = {}) {
     getMappedDatasetTypeNames,
     renderFieldMappingTable,
     saveFieldMapping,
+    hasUnsavedFieldMappingChanges,
     refreshReservingClassValues,
   };
 }

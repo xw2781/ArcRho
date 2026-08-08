@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data column distributions now show the shape of concentrated columns instead of a single spike beside a flat line.",
+  "details": [
+    "Histograms are drawn across the central 0.5%-99.5% range, so a few far outliers no longer squash the whole column into one bar; the true minimum and maximum still print below the chart.",
+    "Bar heights use a square-root scale and the counts are smoothed, so long tails stay visible and the shape reads as a continuous distribution.",
+    "Numeric columns get up to 40 bars instead of 16, capped so a low-cardinality column cannot comb into alternating full and empty bars.",
+    "The row distribution mark is now a smooth curve, and empty bins render as empty instead of a dashed baseline that looked like data.",
+    "Hovering an end bar of a clipped range shows it as open-ended rather than claiming a range it does not cover."
+  ]
+}

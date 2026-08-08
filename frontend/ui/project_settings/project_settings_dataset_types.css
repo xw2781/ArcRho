@@ -205,57 +205,7 @@
   line-height: 1;
   margin-left: 1px;
 }
-#datasetTypesTable .dt-name-search-btn {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #c6ccd4;
-  border-radius: 4px;
-  background: #fff;
-  color: #66758b;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  margin-left: 2px;
-  cursor: pointer;
-  flex: 0 0 auto;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-#datasetTypesTable .dt-name-search-btn:hover {
-  border-color: #8ea5c8;
-  color: #33455f;
-  background: #f7faff;
-}
-#datasetTypesTable .dt-name-search-btn.active {
-  border-color: #0d6efd;
-  color: #0d6efd;
-  background: #eaf2ff;
-}
-#datasetTypesTable .dt-name-search-btn svg {
-  width: 11px;
-  height: 11px;
-  fill: currentColor;
-  pointer-events: none;
-}
-#datasetTypesTable .dt-name-search-input {
-  width: 120px;
-  height: 20px;
-  border: 1px solid #c6ccd4;
-  border-radius: 4px;
-  font-size: 11px;
-  line-height: 1.2;
-  padding: 1px 6px;
-  color: #243145;
-  background: #fff;
-  margin-left: 4px;
-  flex: 0 0 auto;
-}
-#datasetTypesTable .dt-name-search-input:focus {
-  outline: 1px solid #78a8ff;
-  outline-offset: 0;
-  border-color: #78a8ff;
-}
-#datasetTypesTable .dt-category-filter-btn {
+#datasetTypesTable .dt-filter-btn {
   width: 18px;
   height: 18px;
   border: 1px solid #c6ccd4;
@@ -271,23 +221,23 @@
   flex: 0 0 auto;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-#datasetTypesTable .dt-category-filter-btn:hover {
+#datasetTypesTable .dt-filter-btn:hover {
   border-color: #8ea5c8;
   color: #33455f;
   background: #f7faff;
 }
-#datasetTypesTable .dt-category-filter-btn.active {
+#datasetTypesTable .dt-filter-btn.active {
   border-color: #0d6efd;
   color: #0d6efd;
   background: #eaf2ff;
 }
-#datasetTypesTable .dt-category-filter-btn svg {
+#datasetTypesTable .dt-filter-btn svg {
   width: 11px;
   height: 11px;
   fill: currentColor;
   pointer-events: none;
 }
-.dt-category-filter-popover {
+.dt-filter-popover {
   position: fixed;
   z-index: 4200;
   min-width: 210px;
@@ -300,7 +250,7 @@
   padding: 8px;
   overflow: hidden;
 }
-.dt-category-filter-title {
+.dt-filter-title {
   font-size: 12px;
   font-weight: 600;
   color: #2f3a4a;
@@ -308,7 +258,24 @@
   padding-bottom: 4px;
   border-bottom: 1px solid #eceff3;
 }
-.dt-category-filter-list {
+.dt-filter-search {
+  width: 100%;
+  height: 30px;
+  box-sizing: border-box;
+  margin: 0 0 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #2f3a4a;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 8px;
+}
+.dt-filter-search:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.16);
+  border-color: #7da5f7;
+}
+.dt-filter-list {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -316,7 +283,7 @@
   max-height: 300px;
   padding-right: 2px;
 }
-.dt-category-filter-option {
+.dt-filter-option {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -326,13 +293,13 @@
   cursor: pointer;
   user-select: none;
 }
-.dt-category-filter-option input[type="checkbox"] {
+.dt-filter-option input[type="checkbox"] {
   width: 13px;
   height: 13px;
   margin: 0;
   accent-color: #2a63d4;
 }
-.dt-category-filter-empty {
+.dt-filter-empty {
   font-size: 12px;
   color: #9099a7;
   padding: 6px 2px 2px;

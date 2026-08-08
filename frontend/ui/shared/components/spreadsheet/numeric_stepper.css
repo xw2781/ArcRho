@@ -23,7 +23,7 @@
   box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
 }
 
-#decimalPlaces {
+.decimalPlacesWrap > input[type="number"] {
   width: 100%;
   padding-right: 28px !important;
   padding-left: 28px !important;
@@ -32,8 +32,8 @@
   text-align: center;
 }
 
-#decimalPlaces::-webkit-outer-spin-button,
-#decimalPlaces::-webkit-inner-spin-button {
+.decimalPlacesWrap > input[type="number"]::-webkit-outer-spin-button,
+.decimalPlacesWrap > input[type="number"]::-webkit-inner-spin-button {
   margin: 0;
   -webkit-appearance: none;
 }

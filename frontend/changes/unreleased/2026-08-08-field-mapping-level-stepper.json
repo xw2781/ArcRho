@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Field Mapping Level now uses flat in-cell up/down caret controls without mouse-wheel edits."
+}

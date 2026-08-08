@@ -54,6 +54,9 @@ export function normalizeSourceState(state) {
       importedBy: String(lastImport.imported_by || ""),
       rowCount: lastImport.row_count,
       columnCount: lastImport.column_count,
+      // Modified time of the external CSV that produced the current master
+      // copy, recorded by the import contract in nanoseconds.
+      csvMtimeNs: lastImport.csv_mtime_ns,
     },
   };
 }
@@ -102,16 +105,79 @@ export function formatSummaryNumber(value, decimals = 0) {
   });
 }
 
-export function getHistBarRangeLabels(edges, { asDate = false } = {}) {
+export function getHistBarRangeLabels(
+  edges,
+  { asDate = false, clippedLow = false, clippedHigh = false } = {},
+) {
   const values = Array.isArray(edges) ? edges.map(Number) : [];
   if (values.length < 2 || values.some((value) => !Number.isFinite(value))) return [];
-  if (asDate) {
-    return values.slice(1).map((hi, index) => `${Math.round(values[index])} ~ ${Math.round(hi)}`);
-  }
   const magnitude = Math.max(Math.abs(values[0]), Math.abs(values[values.length - 1]));
   const decimals = magnitude < 10 ? 4 : 0;
-  return values.slice(1).map((hi, index) =>
-    `${formatSummaryNumber(values[index], decimals)} ~ ${formatSummaryNumber(hi, decimals)}`);
+  const label = (value) =>
+    (asDate ? String(Math.round(value)) : formatSummaryNumber(value, decimals));
+  const lastIndex = values.length - 2;
+  return values.slice(1).map((hi, index) => {
+    // A clipped end bin also holds the outlying tail the drawn domain cut away,
+    // so it covers everything past that edge rather than just its own span.
+    if (clippedLow && index === 0) return `≤ ${label(hi)}`;
+    if (clippedHigh && index === lastIndex) return `≥ ${label(values[index])}`;
+    return `${label(values[index])} ~ ${label(hi)}`;
+  });
+}
+
+/**
+ * Fritsch-Carlson monotone cubic tangents.
+ *
+ * A plain Catmull-Rom fit overshoots around a sharp mode, and because the curve
+ * is filled the overshoot shows as the area dipping under its own baseline.
+ * Monotone tangents keep every segment inside its two endpoint values.
+ */
+function monotoneTangents(ys, step) {
+  const n = ys.length;
+  const slopes = [];
+  for (let i = 0; i < n - 1; i += 1) slopes.push((ys[i + 1] - ys[i]) / step);
+  const tangents = new Array(n);
+  tangents[0] = slopes[0];
+  tangents[n - 1] = slopes[n - 2];
+  for (let i = 1; i < n - 1; i += 1) {
+    tangents[i] = slopes[i - 1] * slopes[i] <= 0 ? 0 : (slopes[i - 1] + slopes[i]) / 2;
+  }
+  for (let i = 0; i < n - 1; i += 1) {
+    if (slopes[i] === 0) {
+      tangents[i] = 0;
+      tangents[i + 1] = 0;
+      continue;
+    }
+    const a = tangents[i] / slopes[i];
+    const b = tangents[i + 1] / slopes[i];
+    const magnitude = a * a + b * b;
+    if (magnitude > 9) {
+      const scale = 3 / Math.sqrt(magnitude);
+      tangents[i] = scale * a * slopes[i];
+      tangents[i + 1] = scale * b * slopes[i];
+    }
+  }
+  return tangents;
+}
+
+/** Closed, smoothly interpolated area silhouette for the row distribution mark. */
+export function getDistributionAreaPath(bins) {
+  const heights = Array.isArray(bins) ? bins : [];
+  const last = heights.length - 1;
+  if (last <= 0) return "";
+  const step = 100 / last;
+  const ys = heights.map((value) =>
+    AREA_VIEWBOX_HEIGHT - clampRatio(value) * (AREA_VIEWBOX_HEIGHT - 2));
+  const tangents = monotoneTangents(ys, step);
+  let path = `M0,${AREA_VIEWBOX_HEIGHT} L0,${ys[0].toFixed(2)}`;
+  for (let i = 0; i < last; i += 1) {
+    const x0 = i * step;
+    const x1 = (i + 1) * step;
+    path += ` C${(x0 + step / 3).toFixed(2)},${(ys[i] + (tangents[i] * step) / 3).toFixed(2)}`
+      + ` ${(x1 - step / 3).toFixed(2)},${(ys[i + 1] - (tangents[i + 1] * step) / 3).toFixed(2)}`
+      + ` ${x1.toFixed(2)},${ys[i + 1].toFixed(2)}`;
+  }
+  return `${path} L100,${AREA_VIEWBOX_HEIGHT} Z`;
 }
 
 export function getColumnRowSummary(column, { asDate = false } = {}) {
@@ -165,7 +231,9 @@ export function createSourceDataFeature(deps = {}) {
     setStatus = () => {},
     normalizeMonth = () => "",
     formatMonth = (value) => String(value || ""),
-    getHostApi = () => (typeof window === "undefined" ? null : window.ADAHost),
+    getHostApi = () => (typeof window === "undefined"
+      ? null
+      : window.ADAHost || window.parent?.ADAHost || window.top?.ADAHost),
     getConfiguredColumnWidths = () => null,
     // Injected by the coordinator; the tab never calls the app server itself.
     onProfileSave = async () => false,
@@ -186,7 +254,6 @@ export function createSourceDataFeature(deps = {}) {
     pathDirRow: el("summaryPathDirRow"),
     pathInput: el("summaryTablePathInput"),
     infoBtn: el("summaryInfoBtn"),
-    copyFolderBtn: el("summaryCopyFolderBtn"),
     openFolderBtn: el("summaryOpenFolderBtn"),
     reloadBtn: el("summaryTablePathReloadBtn"),
     importSettingsBtn: el("summaryImportSettingsBtn"),
@@ -329,22 +396,11 @@ export function createSourceDataFeature(deps = {}) {
 
   /* ---------------- distribution marks ---------------- */
 
-  function areaPath(bins) {
-    const last = bins.length - 1;
-    if (last <= 0) return "";
-    const points = bins.map((value, index) => {
-      const x = ((index / last) * 100).toFixed(2);
-      const y = (AREA_VIEWBOX_HEIGHT - (Number(value) || 0) * (AREA_VIEWBOX_HEIGHT - 2)).toFixed(2);
-      return `${x},${y}`;
-    });
-    return `M0,${AREA_VIEWBOX_HEIGHT} L${points.join(" L")} L100,${AREA_VIEWBOX_HEIGHT} Z`;
-  }
-
   function distributionMark(column) {
     const dist = column?.distribution || {};
     if (dist.kind === "numeric") {
       const bins = Array.isArray(dist.bins) ? dist.bins : [];
-      const path = areaPath(bins);
+      const path = getDistributionAreaPath(bins);
       if (!path) return "";
       return `<svg class="sd-area" viewBox="0 0 100 ${AREA_VIEWBOX_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">`
         + `<path d="${path}"></path></svg>`;
@@ -394,12 +450,18 @@ export function createSourceDataFeature(deps = {}) {
             : "");
     } else if (dist.kind === "numeric" && Array.isArray(dist.bins) && dist.bins.length) {
       // Full-height bar cells keep short bars hoverable; the title carries the bin range.
-      const rangeLabels = getHistBarRangeLabels(dist.edges, { asDate: !!role });
+      const rangeLabels = getHistBarRangeLabels(dist.edges, {
+        asDate: !!role,
+        clippedLow: !!dist.clipped_low,
+        clippedHigh: !!dist.clipped_high,
+      });
       body = '<p class="sd-preview-section">Distribution</p><div class="sd-hist">'
         + dist.bins.map((value, index) => {
             const title = rangeLabels[index] ? ` title="${escapeHtml(rangeLabels[index])}"` : "";
+            // No minimum height: a floor turns empty bins into a dashed baseline
+            // that reads as data. Empty stays empty; the cell keeps the tooltip.
             return `<span class="sd-hist-bar"${title}>`
-              + `<i style="height:${Math.max(2, Math.round((Number(value) || 0) * 100))}%"></i></span>`;
+              + `<i style="height:${(clampRatio(value) * 100).toFixed(1)}%"></i></span>`;
           }).join("")
         + "</div>"
         + `<p class="sd-preview-values">${escapeHtml(String(column?.values || ""))}</p>`;
@@ -508,6 +570,13 @@ export function createSourceDataFeature(deps = {}) {
     return date.toLocaleString();
   }
 
+  /** Source CSV mtime in epoch seconds, or 0 for a SQL Server source. */
+  function sourceCsvMtimeSeconds() {
+    const nanoseconds = Number(sourceState.lastImport?.csvMtimeNs);
+    if (!Number.isFinite(nanoseconds) || nanoseconds <= 0) return 0;
+    return nanoseconds / 1e9;
+  }
+
   function renderStats(data) {
     if (!dom.stats) return;
     const lastImport = sourceState.lastImport || {};
@@ -515,11 +584,12 @@ export function createSourceDataFeature(deps = {}) {
       ? `SQL Server · ${lastImport.sourceLabel || ""}`
       : lastImport.sourceLabel;
     const rows = [
-      { key: "Rows", value: Number(data?.row_count || 0).toLocaleString(), note: "data rows, header excluded" },
+      { key: "Rows", value: Number(data?.row_count || 0).toLocaleString(), note: "" },
       { key: "Columns", value: String(data?.column_count ?? columns.length), note: "" },
       { key: "File Size", value: String(data?.file_size_str || ""), note: "CSV, comma delimited" },
-      { key: "Modified", value: formatTimestamp(data?.csv_mtime), note: "" },
-      { key: "Last Read", value: data?.from_cache ? "Cached summary" : "Just now", note: "" },
+      // The source CSV's own modified time, not the master copy's - the copy is
+      // rewritten on import, so its mtime only ever repeats "Imported At".
+      { key: "Modified", value: formatTimestamp(sourceCsvMtimeSeconds()), note: "" },
       // The imported copy is what every ArcRho consumer actually reads.
       { key: "Imported From", value: String(importedFrom || "").trim(), note: "" },
       {
@@ -527,7 +597,6 @@ export function createSourceDataFeature(deps = {}) {
         value: formatIsoTimestamp(lastImport.importedAt),
         note: lastImport.importedBy ? `by ${lastImport.importedBy}` : "",
       },
-      { key: "Imported Table", value: sourceState.masterTablePath, note: "owned by this project folder" },
     ].filter((row) => row.value);
 
     dom.stats.innerHTML = rows.map((row) =>
@@ -630,8 +699,7 @@ export function createSourceDataFeature(deps = {}) {
       );
     }
     const hasPath = !isSql && !!value.trim();
-    if (dom.copyFolderBtn) dom.copyFolderBtn.disabled = !parts.dir || isSql;
-    if (dom.openFolderBtn) dom.openFolderBtn.disabled = !hasPath;
+    if (dom.openFolderBtn) dom.openFolderBtn.disabled = !parts.dir || isSql;
     if (dom.infoBtn) dom.infoBtn.disabled = !(hasPath || (isSql && identity.configured) || sourceState.masterTableExists);
     if (dom.infoBtn?.disabled) closeDetails();
   }
@@ -709,17 +777,6 @@ export function createSourceDataFeature(deps = {}) {
     if (dom.list) {
       dom.list.classList.remove("is-loading");
       dom.list.querySelector(".sd-loading-rows")?.remove();
-    }
-  }
-
-  async function copyToClipboard(value, successMessage, errorMessage) {
-    const text = String(value || "").trim();
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setStatus(successMessage);
-    } catch {
-      setStatus(errorMessage);
     }
   }
 
@@ -1616,7 +1673,6 @@ export function createSourceDataFeature(deps = {}) {
       dom.infoBtn,
       dom.reloadBtn,
       dom.importSettingsBtn,
-      dom.openFolderBtn,
     ];
     fromAriaLabel.forEach((control) => {
       attachArcrhoTooltip(control, control?.getAttribute("aria-label"));
@@ -1711,13 +1767,9 @@ export function createSourceDataFeature(deps = {}) {
       if (monthButton) applyPickerMonth(monthButton.dataset.month);
     });
 
-    dom.copyFolderBtn?.addEventListener("click", () => copyToClipboard(
-      splitPath(dom.pathInput?.value).dir,
-      "Source folder path copied to the clipboard.",
-      "Could not copy the source folder path.",
-    ));
-
     dom.openFolderBtn?.addEventListener("click", async () => {
+      // The full file path is passed so the explorer opens the source folder
+      // with the file itself selected.
       const value = String(dom.pathInput?.value || "").trim();
       if (!value) return;
       const host = getHostApi();
@@ -1741,7 +1793,17 @@ export function createSourceDataFeature(deps = {}) {
       else closeDetails();
     });
     dom.statsCard?.addEventListener("mouseenter", () => clearTimeout(detailsTimer));
-    dom.statsCard?.addEventListener("mouseleave", scheduleCloseDetails);
+    dom.statsCard?.addEventListener("mouseleave", (event) => {
+      // Dragging a selection past the card edge must not close it out from
+      // under the text the user is selecting; the mouseup below closes it.
+      if (event.buttons) return;
+      scheduleCloseDetails();
+    });
+    document.addEventListener("mouseup", () => {
+      if (!dom.statsCard || dom.statsCard.hidden) return;
+      if (dom.statsCard.matches(":hover") || dom.infoBtn?.matches(":hover")) return;
+      scheduleCloseDetails();
+    });
     document.addEventListener("mousedown", (event) => {
       if (
         previewCard

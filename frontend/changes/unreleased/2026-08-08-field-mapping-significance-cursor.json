@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Field Mapping Significance cells now use a hand cursor to signal their dropdown control."
+}

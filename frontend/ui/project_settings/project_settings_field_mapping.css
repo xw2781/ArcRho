@@ -1,6 +1,5 @@
 /* Field Mapping */
 
-.field-mapping-table td input[type="number"],
 .field-mapping-table td input[type="text"][data-role="dataset-type"],
 .field-mapping-table td input[type="text"][data-role="significance"] {
   width: 100%;
@@ -12,6 +11,11 @@
   background: transparent;
   outline: none;
 }
+.field-mapping-table td:has(input[data-role="significance"]),
+.field-mapping-table td .fm-inline-dropdown-wrap:has(> input[data-role="significance"]),
+.field-mapping-table td input[type="text"][data-role="significance"] {
+  cursor: pointer;
+}
 .field-mapping-table td .fm-inline-dropdown-wrap {
   position: relative;
   width: 100%;
@@ -20,10 +24,54 @@
 .field-mapping-table td input[type="text"][data-role="significance"] {
   padding-right: 22px;
 }
-.field-mapping-table td input[type="number"]:disabled,
 .field-mapping-table td input[type="text"][data-role="dataset-type"]:disabled {
   background: #f3f3f3;
   color: #999;
+}
+.field-mapping-table td .field-mapping-level-stepper {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+.field-mapping-table td .field-mapping-level-stepper > input[type="number"] {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-right: 22px !important;
+  padding-left: 4px !important;
+  text-align: left;
+}
+.field-mapping-table td .field-mapping-level-stepper > input[type="number"]:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+.field-mapping-table td .field-mapping-level-stepper > input[type="number"]:disabled {
+  border-color: transparent;
+  background: #f3f3f3;
+  color: #999;
+}
+.field-mapping-table td .field-mapping-level-stepper .decimalPlacesStepper {
+  top: 0;
+  right: 0;
+  width: 22px;
+  height: 100%;
+  border-radius: 0;
+  color: #6f7f92;
+}
+.field-mapping-table td .field-mapping-level-stepper .decimalPlacesStepBtn {
+  width: 22px;
+  height: 50%;
+}
+.field-mapping-table td .field-mapping-level-stepper .decimalPlacesStepBtn:disabled {
+  cursor: default;
+  color: #b7c2cf;
+}
+.field-mapping-table td .field-mapping-level-stepper .decimalPlacesStepBtn:disabled:hover {
+  background: transparent;
 }
 .field-mapping-table td .fm-inline-dropdown-arrow {
   position: absolute;

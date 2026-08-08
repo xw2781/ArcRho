@@ -15,6 +15,7 @@ const {
   formatSummaryNumber,
   getColumnRowSummary,
   getHistBarRangeLabels,
+  getDistributionAreaPath,
 } = sourceDataModule;
 const generalSettingsSource = await readFile(
   new URL("../ui/project_settings/project_settings_general_settings.js", import.meta.url),
@@ -30,6 +31,10 @@ const projectSettingsHtml = await readFile(
 );
 const summaryCss = await readFile(
   new URL("../ui/project_settings/project_settings_summary.css", import.meta.url),
+  "utf8",
+);
+const projectSettingsCss = await readFile(
+  new URL("../ui/project_settings/project_settings.css", import.meta.url),
   "utf8",
 );
 const summaryService = await readFile(
@@ -83,9 +88,8 @@ test("Source Data panel exposes the quiet surface elements", () => {
     "summaryPathDisplay",
     "summaryPathName",
     "summaryPathDir",
-    "summaryCopyFolderBtn",
-    "summaryInfoBtn",
     "summaryOpenFolderBtn",
+    "summaryInfoBtn",
     "summaryMessage",
     "summaryColumnFilter",
     "summaryColumnCount",
@@ -115,7 +119,11 @@ test("source identity keeps the quiet info trigger beside the file name and the 
   assert.match(projectSettingsHtml, /class="sd-info-trigger" id="summaryInfoBtn"/);
   assert.match(projectSettingsHtml, /<circle cx="8" cy="8" r="6\.4"\/><path d="M8 4\.4v4\.6"\/>/);
   assert.match(summaryCss, /\.sd-info-trigger\s*\{[\s\S]*border:\s*0;[\s\S]*background:\s*transparent;/);
-  assert.match(summaryCss, /\.sd-stats-card\s*\{[\s\S]*width:\s*420px;[\s\S]*max-width:\s*calc\(100vw - 16px\)/);
+  // The card is sized by its own rows and never spills its content past the edge.
+  assert.match(summaryCss, /\.sd-stats-card\s*\{[\s\S]*width:\s*max-content;[\s\S]*max-width:\s*min\(460px, calc\(100vw - 16px\)\)/);
+  assert.match(summaryCss, /\.sd-stat-val\s*\{[\s\S]*overflow-wrap:\s*anywhere;/);
+  // Card rows are plain text; the title is the only bold thing in the card.
+  assert.match(summaryCss, /\.sd-stat-val\s*\{[\s\S]*font-weight:\s*400;/);
   // Clicking the identity now opens the Import Settings panel instead of an
   // inline path editor; the panel is the only place a source is edited.
   assert.match(moduleSource, /function beginPathEdit\(\)\s*\{[\s\S]*?openSourcePanel\(\)/);
@@ -124,8 +132,26 @@ test("source identity keeps the quiet info trigger beside the file name and the 
     "the retired inline path editor remains",
   );
   assert.match(moduleSource, /dom\.pathDirRow\.hidden = !parts\.dir/);
-  assert.match(moduleSource, /dom\.copyFolderBtn\?\.addEventListener\("click"/);
-  assert.match(moduleSource, /splitPath\(dom\.pathInput\?\.value\)\.dir/);
+  // The folder row carries the one folder action, and it opens the OS explorer
+  // through the desktop host bridge rather than copying the path.
+  assert.match(moduleSource, /dom\.openFolderBtn\?\.addEventListener\("click"/);
+  assert.match(moduleSource, /host\.showItemInFolder\(\{ path: value \}\)/);
+  // The page is an iframe inside the shell, so the desktop bridge has to be
+  // reached through the host window or the action reports "desktop app only".
+  assert.match(projectSettingsJs, /getHostApi: \(\) => window\.ADAHost \|\| window\.parent\?\.ADAHost \|\| window\.top\?\.ADAHost/);
+  assert.match(moduleSource, /window\.ADAHost \|\| window\.parent\?\.ADAHost \|\| window\.top\?\.ADAHost/);
+  assert.ok(!moduleSource.includes("copyToClipboard"), "the retired copy-path action remains");
+  assert.match(projectSettingsHtml, /id="summaryOpenFolderBtn"[^>]*aria-label="Open folder in file explorer"/);
+});
+
+test("the details card value column can be selected and copied", () => {
+  // project_settings.css turns selection off for the whole body, so the value
+  // column has to opt back in or the card's paths cannot be copied at all.
+  assert.match(projectSettingsCss, /body\s*\{[\s\S]*?user-select:\s*none;/);
+  assert.match(summaryCss, /\.sd-stat-val\s*\{[\s\S]*user-select:\s*text;/);
+  assert.match(summaryCss, /\.sd-stat-val\s*\{[\s\S]*cursor:\s*text;/);
+  // A selection dragged past the card edge must not dismiss the card.
+  assert.match(moduleSource, /if \(event\.buttons\) return;/);
 });
 
 test("period band uses the requested labels and omits the normal origin span", () => {
@@ -405,7 +431,7 @@ test("column previews show completeness and percentage-accurate frequency meters
 
 test("histogram bars expose their bin range on hover", () => {
   assert.match(moduleSource, /class="sd-hist-bar"/);
-  assert.match(moduleSource, /getHistBarRangeLabels\(dist\.edges, \{ asDate: !!role \}\)/);
+  assert.match(moduleSource, /getHistBarRangeLabels\(dist\.edges, \{\s*asDate: !!role,\s*clippedLow: !!dist\.clipped_low,\s*clippedHigh: !!dist\.clipped_high,\s*\}\)/);
   assert.match(summaryCss, /\.sd-hist-bar\s*\{[\s\S]*?height:\s*100%;/);
   assert.match(summaryCss, /\.sd-hist-bar:hover i\s*\{\s*opacity:\s*1;/);
 
@@ -421,9 +447,71 @@ test("histogram bars expose their bin range on hover", () => {
   assert.deepEqual(getHistBarRangeLabels(undefined), []);
 });
 
+test("a clipped histogram domain labels its end bins as open-ended", () => {
+  // A clipped end bin also holds every value the quantile window cut away, so
+  // it must not claim to cover only its own drawn span.
+  assert.deepEqual(
+    getHistBarRangeLabels([0, 100, 200, 300], { clippedLow: true, clippedHigh: true }),
+    ["≤ 100", "100 ~ 200", "≥ 200"],
+  );
+  // Each end is reported independently: a zero-floored column clips only its
+  // right tail, so its first bin keeps a closed range.
+  assert.deepEqual(
+    getHistBarRangeLabels([0, 100, 200, 300], { clippedHigh: true }),
+    ["0 ~ 100", "100 ~ 200", "≥ 200"],
+  );
+  // An unclipped domain keeps closed ranges on every bin.
+  assert.deepEqual(
+    getHistBarRangeLabels([0, 100, 200, 300]),
+    ["0 ~ 100", "100 ~ 200", "200 ~ 300"],
+  );
+});
+
+test("empty histogram bins render at zero height instead of a floor", () => {
+  // A minimum bar height draws a dashed baseline across empty bins that users
+  // read as data; the full-height cell keeps the range tooltip regardless.
+  assert.ok(
+    !/Math\.max\(2, Math\.round\(\(Number\(value\) \|\| 0\) \* 100\)\)/.test(moduleSource),
+    "histogram bars still floor their height",
+  );
+  assert.match(moduleSource, /height:\$\{\(clampRatio\(value\) \* 100\)\.toFixed\(1\)\}%/);
+  assert.ok(
+    !/\.sd-hist-bar i \{[\s\S]*?min-height:/.test(summaryCss),
+    "the histogram bar floor survives in CSS",
+  );
+});
+
+test("the row distribution mark is a monotone cubic area that never dips below its baseline", () => {
+  const path = getDistributionAreaPath([0, 0.2, 1, 0.15, 0.05]);
+  assert.match(path, /^M0,20 L0,20\.00 C/, "the area still opens on the baseline");
+  assert.match(path, / L100,20 Z$/, "the area still closes on the baseline");
+
+  // Every emitted coordinate, control points included, must stay inside the
+  // viewBox: a filled overshoot would paint under the baseline or above the peak.
+  const ys = [...path.matchAll(/[ML C](?:-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)]
+    .map((match) => Number(match[1]));
+  assert.ok(ys.length > 0);
+  for (const y of ys) {
+    assert.ok(y >= 0 && y <= 20, `control point ${y} escaped the viewBox`);
+  }
+
+  // A flat distribution stays flat rather than rippling between equal points.
+  const flat = getDistributionAreaPath([0.5, 0.5, 0.5]);
+  const flatYs = [...flat.matchAll(/,(-?\d+(?:\.\d+)?)/g)]
+    .map((match) => Number(match[1]))
+    .filter((y) => y !== 20);
+  for (const y of flatYs) assert.equal(y, 11);
+
+  assert.equal(getDistributionAreaPath([1]), "");
+  assert.equal(getDistributionAreaPath([]), "");
+  assert.equal(getDistributionAreaPath(undefined), "");
+});
+
 test("table summary service publishes versioned distribution data", () => {
-  assert.match(summaryService, /SUMMARY_VERSION = 4/);
-  assert.match(summaryService, /"edges": \[float\(e\) for e in edges\]/);
+  assert.match(summaryService, /SUMMARY_VERSION = 5/);
+  // Significant digits, not decimal places: rounding a 1e-9 column's edges to a
+  // fixed number of places collapses every hover label to "0 ~ 0".
+  assert.match(summaryService, /"edges": \[float\(f"\{e:\.12g\}"\) for e in edges\]/);
   assert.match(summaryService, /def load_valid_cache\(/);
   assert.match(summaryService, /"distinct_count": distinct_count/);
   assert.match(summaryService, /"null_count": null_count/);
@@ -438,6 +526,49 @@ test("table summary service publishes versioned distribution data", () => {
   // A stale-version cache must be regenerated rather than served.
   assert.match(summaryRouter, /load_valid_cache\(master_path, cache_path\)/);
   assert.ok(!summaryRouter.includes("is_cache_valid("), "router still trusts mtime alone");
+});
+
+test("numeric distributions are quantile-framed, smoothed, and root-scaled", () => {
+  // Concentrated columns with long tails are the shape this pipeline exists for:
+  // the raw min/max domain plus linear heights renders them as a bare spike.
+  assert.match(summaryService, /DISTRIBUTION_TAIL_QUANTILE = 0\.005/);
+  assert.match(summaryService, /np\.clip\(arr, lo, hi\)/);
+  assert.match(summaryService, /heights = np\.sqrt\(density \/ peak\)/);
+
+  // Binned KDE: oversample, convolve one Gaussian, average back down.
+  assert.match(summaryService, /DISTRIBUTION_OVERSAMPLE = 8/);
+  assert.match(summaryService, /bins=bin_count \* DISTRIBUTION_OVERSAMPLE/);
+  assert.match(summaryService, /np\.convolve\(/);
+  assert.match(summaryService, /\.reshape\(bin_count, DISTRIBUTION_OVERSAMPLE\)\.mean\(axis=1\)/);
+
+  // Never more output bins than the fine histogram found occupied, or a
+  // low-cardinality column combs into alternating full and empty bins. Reading
+  // occupancy off the counts keeps this free; a distinct-value pass over the
+  // rows would roughly double the per-column cost on a large table.
+  assert.match(summaryService, /DISTRIBUTION_BIN_COUNT = 40/);
+  assert.match(summaryService, /bin_count = int\(np\.count_nonzero\(counts\)\)/);
+  assert.match(summaryService, /bin_count = max\(DISTRIBUTION_MIN_BIN_COUNT, bin_count\)/);
+  const numericDistribution = summaryService.slice(
+    summaryService.indexOf("def _numeric_distribution("),
+    summaryService.indexOf("def _categorical_distribution("),
+  );
+  assert.ok(numericDistribution.length > 0);
+  assert.ok(
+    !numericDistribution.includes("nunique"),
+    "the numeric distribution still pays for a distinct-value pass over the rows",
+  );
+
+  // Both clip ends ship so the preview can label only the bins that truly clip.
+  assert.match(summaryService, /"clipped_low": clipped_low/);
+  assert.match(summaryService, /"clipped_high": clipped_high/);
+  assert.match(summaryService, /bool\(lo > data_min\), bool\(hi < data_max\)/);
+
+  // A column too short for the tail window to hold one observation is drawn
+  // across its full range instead of having its only two rows clipped away.
+  assert.match(summaryService, /DISTRIBUTION_CLIP_MIN_ROWS = int\(1 \/ DISTRIBUTION_TAIL_QUANTILE\)/);
+  assert.match(summaryService, /if values\.size >= DISTRIBUTION_CLIP_MIN_ROWS:/);
+  // Infinities survive dropna and would collapse the domain onto a single bin.
+  assert.match(summaryService, /arr = arr\[np\.isfinite\(arr\)\]/);
 });
 
 test("table summary is addressed by project and reads the imported master table", () => {
@@ -768,7 +899,15 @@ test("Source Data reports the project-owned imported table, not the external sou
   assert.match(moduleSource, /master_table_path/);
   assert.match(moduleSource, /key: "Imported From"/);
   assert.match(moduleSource, /key: "Imported At"/);
-  assert.match(moduleSource, /key: "Imported Table"/);
+  // "Modified" is the external CSV's own mtime. The master copy is rewritten on
+  // every import, so its mtime would only ever repeat "Imported At".
+  assert.match(moduleSource, /key: "Modified", value: formatTimestamp\(sourceCsvMtimeSeconds\(\)\)/);
+  assert.match(moduleSource, /csvMtimeNs: lastImport\.csv_mtime_ns/);
+  assert.match(sourceTableContract, /out\["csv_mtime_ns"\] = _int_or_none\(data\.get\("csv_mtime_ns"\)\)/);
+  assert.ok(!moduleSource.includes("data?.csv_mtime"), "the master-copy mtime is still rendered");
+  // The imported-copy path and the row-count caption were dropped from the card.
+  assert.ok(!moduleSource.includes('key: "Imported Table"'), "the imported-table row remains");
+  assert.ok(!moduleSource.includes("data rows, header excluded"), "the row-count caption remains");
 
   // Every app-server call stays in the coordinator.
   assert.ok(!moduleSource.includes("fetch("), "feature module calls the app server directly");
@@ -833,14 +972,13 @@ test("Source Data header actions carry shared ArcRho tooltips", () => {
     "dom.infoBtn",
     "dom.reloadBtn",
     "dom.importSettingsBtn",
-    "dom.openFolderBtn",
   ]) {
     assert.ok(block.includes(control), `${control} has no tooltip`);
   }
   // Tooltip wording is not duplicated; it reads each control's accessible name.
   assert.match(block, /control\?\.getAttribute\("aria-label"\)/);
   // Controls inside the floating panels would sit above the shared tooltip.
-  assert.ok(!block.includes("dom.copyFolderBtn"), "tooltip attached inside a floating panel");
+  assert.ok(!block.includes("dom.openFolderBtn"), "tooltip attached inside a floating panel");
   assert.ok(!block.includes("dom.mssqlTestBtn"), "tooltip attached inside a floating panel");
 });
 

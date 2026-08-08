@@ -630,8 +630,11 @@
   position: fixed;
   z-index: 9450;
   box-sizing: border-box;
-  width: 420px;
-  max-width: calc(100vw - 16px);
+  /* Sized by its rows, so a short-path project gets a narrow card; the max keeps
+     a long imported path wrapping inside the card instead of widening past it. */
+  width: max-content;
+  min-width: 260px;
+  max-width: min(460px, calc(100vw - 16px));
   padding: 10px 12px 11px;
   border: 1px solid var(--ar-color-border-strong, #cbd5e1);
   border-radius: 5px;
@@ -661,9 +664,17 @@
   flex: 1 1 auto;
   min-width: 0;
   color: var(--ar-color-text-strong, #111827);
-  font-weight: 700;
+  /* Only the card title is bold; the rows read as plain text. */
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  /* The page sets `user-select: none` on the body, so the value column opts
+     back in - paths and counts here are meant to be selected and copied. */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
+.sd-stat-val button { cursor: pointer; }
 .sd-path-stat-value {
   display: flex;
   align-items: flex-start;
@@ -678,7 +689,7 @@
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
-.sd-stat-copy {
+.sd-stat-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -694,16 +705,16 @@
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
 }
-.sd-stat-copy svg { width: 14px; height: 14px; }
-.sd-stat-copy:hover:not(:disabled) {
+.sd-stat-action svg { width: 14px; height: 14px; }
+.sd-stat-action:hover:not(:disabled) {
   background: var(--ar-color-accent-soft, #eaf2ff);
   color: var(--ar-color-accent, #2b6df6);
 }
-.sd-stat-copy:focus-visible {
+.sd-stat-action:focus-visible {
   outline: 2px solid var(--ar-color-border-focus, #93c5fd);
   outline-offset: 1px;
 }
-.sd-stat-copy:disabled {
+.sd-stat-action:disabled {
   color: var(--ar-color-text-disabled, #9ca3af);
   cursor: default;
 }
@@ -1226,7 +1237,7 @@
 .sd-hist {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
+  gap: 1px;
   height: 46px;
   margin-bottom: 9px;
 }
@@ -1245,7 +1256,6 @@
   background: var(--ar-color-accent, #2b6df6);
   opacity: 0.72;
   border-radius: 1px 1px 0 0;
-  min-height: 1px;
   transition: opacity 150ms ease;
 }
 .sd-hist-bar:hover i { opacity: 1; }

@@ -6,15 +6,16 @@
   <script src="/ui/shared/services/color_theme.js?v=20260724a"></script>
   <title>Project Explorer</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings.css?v=20260730sqlsrc6"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_summary.css?v=20260731loading1"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_field_mapping.css?v=20260730sqlsrc6"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_dataset_types.css?v=20260730sqlsrc6"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_reserving_class_types.css?v=20260730sqlsrc6"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_data_processing_rules.css?v=20260730sqlsrc6"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260729a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260807b"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_scrollbars.css?v=20260730sqlsrc6"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_summary.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260808fieldmap1"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_field_mapping.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_dataset_types.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_reserving_class_types.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_data_processing_rules.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260808b"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260808b"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_scrollbars.css?v=20260808sddist1"/>
 </head>
 <body class="project-settings-page">
   <div class="main" style="height: 100%;">
@@ -153,10 +154,7 @@
                       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 4v3.2h-3.2"/><path d="M2.5 12V8.8h3.2"/><path d="M12.4 6.2A5 5 0 0 0 4 4.6L2.6 6"/><path d="M3.6 9.8a5 5 0 0 0 8.4 1.6L13.4 10"/></svg>
                     </button>
                     <button class="sd-icon" id="summaryImportSettingsBtn" type="button" aria-expanded="false" aria-controls="summarySourcePanel" aria-label="Import settings">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 4.2h4.1l1.2 1.5h7.1v7.6H1.8z"/></svg>
-                    </button>
-                    <button class="sd-icon" id="summaryOpenFolderBtn" type="button" aria-label="Open containing folder">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 4.2h4.1l1.2 1.5h7.1v7.6H1.8z"/><path d="M6 9.4h4.6M8.9 7.6l1.7 1.8-1.7 1.8"/></svg>
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.4 6.87v2.26l-1.98.48-.82 1.41.58 1.96-1.96 1.13-1.4-1.48H7.18l-1.4 1.48-1.96-1.13.58-1.96-.82-1.41-1.98-.48V6.87l1.98-.48.82-1.41-.58-1.96 1.96-1.13 1.4 1.48h1.64l1.4-1.48 1.96 1.13-.58 1.96.82 1.41z"/><circle cx="8" cy="8" r="1.9"/></svg>
                     </button>
                   </div>
                 </header>
@@ -233,8 +231,8 @@
                     <span class="sd-stat-key">Folder</span>
                     <span class="sd-stat-val sd-path-stat-value">
                       <span class="sd-file-dir" id="summaryPathDir"></span>
-                      <button class="sd-stat-copy" id="summaryCopyFolderBtn" type="button" aria-label="Copy folder path">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.2"/><path d="M10.5 5.5v-2a1.2 1.2 0 0 0-1.2-1.2H3.7a1.2 1.2 0 0 0-1.2 1.2v5.6a1.2 1.2 0 0 0 1.2 1.2h1.8"/></svg>
+                      <button class="sd-stat-action" id="summaryOpenFolderBtn" type="button" aria-label="Open folder in file explorer">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 4.2h4.1l1.2 1.5h7.1v7.6H1.8z"/><path d="M6 9.4h4.6M8.9 7.6l1.7 1.8-1.7 1.8"/></svg>
                       </button>
                     </span>
                   </div>
@@ -247,7 +245,7 @@
                 <div class="summary-header">Field Mapping</div>
                 <div class="field-mapping-toolbar">
                   <div class="field-mapping-help">Select significance for each field. New dataset types can be created in "Dataset Types" Page. </div>
-                  <button id="saveFieldMappingBtn" type="button">Save Field Mapping</button>
+                  <button id="saveFieldMappingBtn" type="button" disabled>Save Field Mapping</button>
                 </div>
                 <div class="field-mapping-status" id="fieldMappingStatus"></div>
                 <div class="field-mapping-grid">
@@ -629,6 +627,7 @@
       <button class="dialog-btn" id="rctEditorCancelBtn" type="button">Cancel</button>
       <button class="dialog-btn primary" id="rctEditorSaveBtn" type="button">Apply</button>
     </div>
+    <div class="rct-row-editor-resizer" id="reservingClassTypeEditorResizer" aria-hidden="true"></div>
   </div>
 
   <!-- Data Processing Rules Row Context Menu -->
@@ -771,6 +770,6 @@
     </div>
   </div>
 
-<script type="module" src="/ui/project_settings/project_settings.js?v=20260807idx1"></script>
+<script type="module" src="/ui/project_settings/project_settings.js?v=20260808rctresize1"></script>
 </body>
 </html>

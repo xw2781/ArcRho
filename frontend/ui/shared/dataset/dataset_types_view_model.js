@@ -209,6 +209,7 @@ export function getDatasetTypeCalculatedLabel(value) {
 export function getDatasetTypeColumnFilterValueKeyFromRow(colLabel, row, options = {}) {
   const col = toText(colLabel);
   if (!col) return "";
+  if (col === "Name") return normalizeProjectSettingsFilterKey(row?.[0], options);
   if (col === "Category") return getDatasetTypeCategoryKey(row?.[2], options);
   if (col === "Data Format") return getDatasetTypeDataFormatKey(row?.[1], options);
   if (col === "Calculated") return getDatasetTypeCalculatedKey(row?.[3]);
@@ -235,13 +236,17 @@ export function buildDatasetTypeColumnFilterOptionsFromRows(rows, colLabel, opti
 
   const byKey = new Map();
   for (const row of list) {
-    const sourceValue = col === "Category" ? row?.[2] : row?.[1];
-    const key = col === "Category"
-      ? getDatasetTypeCategoryKey(sourceValue, options)
-      : getDatasetTypeDataFormatKey(sourceValue, options);
-    const label = col === "Category"
-      ? getDatasetTypeCategoryLabel(sourceValue)
-      : getDatasetTypeDataFormatLabel(sourceValue);
+    const sourceValue = col === "Name" ? row?.[0] : (col === "Category" ? row?.[2] : row?.[1]);
+    const key = col === "Name"
+      ? normalizeProjectSettingsFilterKey(sourceValue, options)
+      : (col === "Category"
+        ? getDatasetTypeCategoryKey(sourceValue, options)
+        : getDatasetTypeDataFormatKey(sourceValue, options));
+    const label = col === "Name"
+      ? normalizeProjectSettingsFilterLabel(sourceValue)
+      : (col === "Category"
+        ? getDatasetTypeCategoryLabel(sourceValue)
+        : getDatasetTypeDataFormatLabel(sourceValue));
     if (!byKey.has(key)) byKey.set(key, { key, label });
   }
   const out = Array.from(byKey.values());
