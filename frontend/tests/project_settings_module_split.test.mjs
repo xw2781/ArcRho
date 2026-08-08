@@ -58,9 +58,9 @@ test("the project map document has exactly one owner", () => {
     assert.doesNotMatch(source, /^let projectData/m, `${name} keeps its own project map copy`);
     assert.doesNotMatch(source, /^let currentMtime/m, `${name} keeps its own mtime copy`);
   }
-  // Project ops reaches the map only through the store's guarded writers.
-  assert.match(projectOps, /store\.saveProjectMapRows\(/);
+  // Project ops reaches the registry only through the store's guarded writers.
   assert.match(projectOps, /store\.saveFolderStructure\(/);
+  assert.match(projectOps, /store\.save\(/);
   assert.doesNotMatch(projectOps, /file_mtime/);
 });
 
@@ -75,26 +75,26 @@ test("conflict and lock handling stays in the single map writer", () => {
 });
 
 test("multi-step project operations keep their intended recovery policies", () => {
-  // Disk folder first, then folder structure, then the project map.
+  // Disk folder first, then one authoritative project registry save.
   assert.match(
     projectOps,
-    /createProjectInFolder[\s\S]*create_project_folder[\s\S]*saveFolderStructure[\s\S]*saveProjectMapRows[\s\S]*rollbackFolderStructure[\s\S]*rollbackProjectFolder\("delete_project_folder"/,
+    /createProjectInFolder[\s\S]*create_project_folder[\s\S]*saveFolderStructure[\s\S]*rollbackProjectFolder\("delete_project_folder"/,
   );
   assert.match(
     projectOps,
-    /renameProject[\s\S]*rename_project_folder[\s\S]*saveFolderStructure[\s\S]*saveProjectMapRows[\s\S]*rollbackFolderStructure[\s\S]*rollbackProjectFolder\("rename_project_folder", \{ old_name: newName, new_name: oldName \}\)/,
+    /renameProject[\s\S]*rename_project_folder[\s\S]*saveFolderStructure[\s\S]*rollbackProjectFolder\("rename_project_folder", \{ old_name: newName, new_name: oldName \}\)/,
   );
   const duplicateBlock = projectOps.slice(
     projectOps.indexOf("async function duplicateProject("),
     projectOps.indexOf("async function deleteProject("),
   );
   assert.match(duplicateBlock, /duplicate_project_folder[\s\S]*completePendingDuplicate/);
-  assert.match(duplicateBlock, /saveFolderStructure[\s\S]*saveProjectMapRows/);
-  assert.doesNotMatch(duplicateBlock, /rollbackFolderStructure|rollbackProjectFolder|delete_project_folder/);
+  assert.match(duplicateBlock, /saveFolderStructure/);
+  assert.doesNotMatch(duplicateBlock, /rollbackProjectFolder|delete_project_folder/);
 });
 
 test("duplicate recovery is wired into page load and the standard close contract", () => {
-  assert.match(projectOps, /project_settings_duplicate_job\.js\?v=20260801dup3/);
+  assert.match(projectOps, /project_settings_duplicate_job\.js\?v=20260807idx1/);
   assert.match(coordinator, /await loadProjectData\(DEFAULT_SOURCE\);[\s\S]*resumePendingDuplicateProject\(\)/);
   assert.match(coordinator, /window\.__arcrho_request_close = \(\) => projectOpsFeature\.requestClose\(\)/);
   assert.match(coordinator, /e\.origin !== window\.location\.origin \|\| e\.source !== window\.parent/);

@@ -17,16 +17,17 @@ const { waitForDuplicateProjectJob } = duplicateJobHelpers;
 const projectOpsTestSource = projectOpsSource.replace(
   /import \{[\s\S]*?from "\/ui\/project_settings\/project_settings_duplicate_job\.js\?v=[^"]+";\s*/u,
   `
-const buildEmptyProjectRow = (headers, name) => headers.map((header) => header === "Project Name" ? name : "");
 const ensureFolderPathInList = () => {};
 const joinProjectTreePath = (folder, name) => [folder, name].filter(Boolean).join("/");
 const normalizeTreePath = (value) => String(value || "");
 const pathEqualsCI = (left, right) => String(left).toLowerCase() === String(right).toLowerCase();
-const splitProjectTreePath = () => ({ folderPath: "", projectName: "" });
+const splitProjectTreePath = (full) => {
+  const parts = String(full || "").split("/").filter(Boolean);
+  return { folderPath: parts.slice(0, -1).join("/"), projectName: parts[parts.length - 1] || "" };
+};
 const {
   clearPendingDuplicateJob,
   createDuplicateRequestId,
-  createDuplicateSourceSnapshotHash,
   createDuplicateWorkspaceScope,
   loadPendingDuplicateJob,
   readDuplicateResponseError,
@@ -61,17 +62,14 @@ function response(body, status = 200) {
 }
 
 function pendingRecord(workspaceRoot = "E:\\ArcRho Server", overrides = {}) {
-  const headers = ["Project Name", "Owner"];
-  const row = ["Source Project", "owner"];
   return {
-    version: 2,
+    version: 3,
     sourceKey: "project_map",
     workspaceScope: duplicateJobHelpers.createDuplicateWorkspaceScope(workspaceRoot),
     requestId: "job-resume",
     sourceName: "Source Project",
     targetName: "Source Project (2)",
     sourceFolderPath: "Pricing",
-    sourceSnapshotHash: duplicateJobHelpers.createDuplicateSourceSnapshotHash(headers, row),
     submittedAt: 100,
     submissionAcknowledged: true,
     metadataFinalized: false,
@@ -84,17 +82,12 @@ function makeFeature({
   storage = new MemoryStorage(),
   workspaceRoot = "E:\\ArcRho Server",
   requestId = "job-123",
-  headers = ["Project Name", "Owner"],
-  rows,
   projectPaths,
   saveFolderStructure,
-  saveProjectMapRows,
   publishShellProgress = () => {},
   setStatus = () => {},
   showDialog = async () => "Source Project (2)",
 }) {
-  const sourceRow = ["Source Project", "owner"];
-  const sheet = { headers, rows: rows ?? [sourceRow] };
   const projectData = {
     customFolders: ["Pricing"],
     projectPaths: projectPaths || ["Pricing/Source Project"],
@@ -107,15 +100,11 @@ function makeFeature({
     duplicateRequestIdFactory: () => requestId,
     store: {
       getProjectData: () => projectData,
-      getSheetName: () => "Projects",
-      getSheet: () => sheet,
       getProjectFolderFromStructure: () => "Pricing",
+      listProjectNames: () => projectData.projectPaths.map(
+        (path) => String(path).split("/").filter(Boolean).pop() || "",
+      ),
       saveFolderStructure: saveFolderStructure || (async () => sequence.push("save-structure")),
-      saveProjectMapRows: saveProjectMapRows || (async (_name, mutate) => {
-        sequence.push("save-project-map");
-        const copy = sheet.rows.map((row) => [...row]);
-        mutate(copy);
-      }),
       buildTreeData: () => sequence.push("build-tree"),
       findProjectBySnapshot: () => null,
     },
@@ -140,17 +129,20 @@ function makeFeature({
     reloadProjectData: async () => sequence.push("reload"),
   });
   feature.setWorkspaceRoot(workspaceRoot);
+  const targetPathCount = () => projectData.projectPaths.filter(
+    (path) => String(path).toLowerCase() === "pricing/source project (2)",
+  ).length;
   return {
     feature,
-    project: { name: "Source Project", _row: sheet.rows[0] },
+    project: { name: "Source Project", folder: "Pricing" },
     projectData,
     sequence,
-    sheet,
     storage,
+    targetPathCount,
   };
 }
 
-test("fresh duplicate persists before polling and finalizes metadata after Engine success", async () => {
+test("fresh duplicate persists before polling and finalizes registry metadata after Engine success", async () => {
   const progressMessages = [];
   const statusPayloads = [
     { ok: true, status: "queued", updated_at: "1", progress: { stage: "queued", completed: 0, total: 0, label: "Queued..." } },
@@ -186,11 +178,8 @@ test("fresh duplicate persists before polling and finalizes metadata after Engin
   });
   assert.equal(preparedAtPost.requestId, "job-123");
   assert.equal(preparedAtPost.submissionAcknowledged, false);
-  assert.match(preparedAtPost.sourceSnapshotHash, /^row_[0-9a-f]{16}$/u);
-  assert.equal(JSON.stringify(preparedAtPost).includes("owner"), false);
-  assert.equal(context.sheet.rows.filter((row) => row[0] === "Source Project (2)").length, 1);
+  assert.equal(context.targetPathCount(), 1);
   assert.ok(context.sequence.indexOf("wait-750") < context.sequence.indexOf("save-structure"));
-  assert.ok(context.sequence.indexOf("save-structure") < context.sequence.indexOf("save-project-map"));
   assert.ok(statusOptions.every((options) => options.cache === "no-store"));
   assert.equal(context.storage.values.size, 0);
   assert.equal(progressMessages.at(-1).autoCloseMs, 850);
@@ -227,7 +216,7 @@ test("a lost POST response is recovered by replaying the same prepared request a
   assert.equal(await reloaded.feature.resumePendingDuplicateProject(), true);
   assert.equal(postAttempts, 2);
   assert.deepEqual(postBodies[1], postBodies[0]);
-  assert.equal(reloaded.sheet.rows.filter((row) => row[0] === "Source Project (2)").length, 1);
+  assert.equal(reloaded.targetPathCount(), 1);
   assert.equal(storage.values.size, 0);
 });
 
@@ -287,74 +276,10 @@ test("definitive submission rejection clears prepared state while uncertain fail
   }
 });
 
-test("same-page finalization uses the submission-time row snapshot", async () => {
-  let context;
-  const fetchImpl = async (url, options = {}) => {
-    if (url.endsWith("/duplicate_project_folder") && options.method === "POST") {
-      return response({ ok: true, job_id: "job-row-snapshot", status: "queued" }, 202);
-    }
-    if (url.endsWith("/status/job-row-snapshot")) {
-      context.sheet.rows[0][1] = "changed after submission";
-      return response({ ok: true, status: "success", progress: { completed: 1, total: 1, label: "Complete" } });
-    }
-    throw new Error(`Unexpected request: ${url}`);
-  };
-  context = makeFeature({ fetchImpl, requestId: "job-row-snapshot" });
-
-  await context.feature.duplicateProject(context.project);
-
-  const target = context.sheet.rows.find((row) => row[0] === "Source Project (2)");
-  assert.deepEqual(target, ["Source Project (2)", "owner"]);
-});
-
-test("reload blocks finalization when source row or ordered headers changed or disappeared", async () => {
-  globalThis.alert = () => {};
-  const variants = [
-    { label: "changed row", headers: ["Project Name", "Owner"], rows: [["Source Project", "changed"]] },
-    { label: "deleted row", headers: ["Project Name", "Owner"], rows: [] },
-    { label: "changed headers", headers: ["Owner", "Project Name"], rows: [["owner", "Source Project"]] },
-  ];
-  for (const variant of variants) {
-    const storage = new MemoryStorage();
-    duplicateJobHelpers.savePendingDuplicateJob(storage, pendingRecord());
-    const context = makeFeature({
-      storage,
-      headers: variant.headers,
-      rows: variant.rows,
-      fetchImpl: async (url) => {
-        assert.ok(url.endsWith("/status/job-resume"));
-        return response({ ok: true, status: "success", progress: { completed: 1, total: 1, label: "Complete" } });
-      },
-    });
-
-    assert.equal(await context.feature.resumePendingDuplicateProject(), true, variant.label);
-    assert.equal(context.sequence.includes("save-project-map"), false, variant.label);
-    assert.equal(storage.values.size, 1, variant.label);
-  }
-});
-
-test("request IDs and source fingerprints are safe and deterministic", () => {
+test("request IDs and workspace scopes are safe and deterministic", () => {
   assert.equal(
     duplicateJobHelpers.createDuplicateRequestId({ randomUUID: () => "01234567-89ab-cdef-0123-456789abcdef" }),
     "psdup_01234567-89ab-cdef-0123-456789abcdef",
-  );
-  const first = duplicateJobHelpers.createDuplicateSourceSnapshotHash(
-    ["Project Name", "Owner"],
-    ["Source Project", "owner"],
-  );
-  assert.equal(
-    first,
-    duplicateJobHelpers.createDuplicateSourceSnapshotHash(
-      ["Project Name", "Owner"],
-      ["Source Project", "owner"],
-    ),
-  );
-  assert.notEqual(
-    first,
-    duplicateJobHelpers.createDuplicateSourceSnapshotHash(
-      ["Owner", "Project Name"],
-      ["owner", "Source Project"],
-    ),
   );
   const defaultScope = duplicateJobHelpers.createDuplicateWorkspaceScope("E:\\ArcRho Server");
   assert.equal(
@@ -380,37 +305,7 @@ test("request IDs and source fingerprints are safe and deterministic", () => {
   );
 });
 
-test("reload does not adopt an unrelated pre-existing target row", async () => {
-  const storage = new MemoryStorage();
-  const alerts = [];
-  globalThis.alert = (message) => alerts.push(String(message));
-  duplicateJobHelpers.savePendingDuplicateJob(storage, pendingRecord());
-  const context = makeFeature({
-    storage,
-    rows: [
-      ["Source Project", "owner"],
-      ["Source Project (2)", "different owner"],
-    ],
-    fetchImpl: async (url) => {
-      if (url.endsWith("/status/job-resume")) {
-        return response({
-          ok: true,
-          status: "success",
-          progress: { stage: "complete", completed: 1, total: 1, label: "Complete" },
-        });
-      }
-      throw new Error(`Unexpected request: ${url}`);
-    },
-  });
-
-  assert.equal(await context.feature.resumePendingDuplicateProject(), true);
-
-  assert.equal(storage.values.size, 1);
-  assert.equal(context.sequence.includes("save-project-map"), false);
-  assert.match(alerts.at(-1), /does not belong to this duplicate request/iu);
-});
-
-test("map finalization failure preserves target and pending record, then reload resumes idempotently", async () => {
+test("registry finalization failure preserves target and pending record, then reload resumes idempotently", async () => {
   const storage = new MemoryStorage();
   const alerts = [];
   globalThis.alert = (message) => alerts.push(message);
@@ -428,9 +323,9 @@ test("map finalization failure preserves target and pending record, then reload 
     fetchImpl,
     storage,
     requestId: "job-resume",
-    saveProjectMapRows: async () => {
-      firstSequence.push("save-project-map");
-      throw new Error("map write failed");
+    saveFolderStructure: async () => {
+      firstSequence.push("save-structure");
+      throw new Error("registry write failed");
     },
   });
   firstSequence = first.sequence;
@@ -440,6 +335,7 @@ test("map finalization failure preserves target and pending record, then reload 
   assert.ok(first.sequence.includes("save-structure"));
   assert.doesNotMatch(first.sequence.join(" "), /rollback|delete-folder/u);
   assert.match(alerts[0], /server-side copy state were both preserved/u);
+  assert.equal(first.targetPathCount(), 0);
   assert.equal(storage.values.size, 1);
 
   const resumed = makeFeature({
@@ -449,28 +345,24 @@ test("map finalization failure preserves target and pending record, then reload 
   });
   assert.equal(await resumed.feature.resumePendingDuplicateProject(), true);
   assert.equal(resumed.sequence.filter((value) => value === "save-structure").length, 0);
-  assert.equal(resumed.sequence.filter((value) => value === "save-project-map").length, 1);
-  assert.equal(resumed.sheet.rows.filter((row) => row[0] === "Source Project (2)").length, 1);
+  assert.equal(resumed.targetPathCount(), 1);
   assert.equal(await resumed.feature.resumePendingDuplicateProject(), false);
   assert.equal(storage.values.size, 0);
 });
 
-test("metadata-finalized recovery skips polling and all duplicate metadata writes", async () => {
+test("metadata-finalized recovery skips polling and all duplicate registry writes", async () => {
   const storage = new MemoryStorage();
   duplicateJobHelpers.savePendingDuplicateJob(storage, pendingRecord(undefined, { metadataFinalized: true }));
-  const rows = [["Source Project", "owner"], ["Source Project (2)", "owner"]];
   const context = makeFeature({
     storage,
-    rows,
     projectPaths: ["Pricing/Source Project", "Pricing/Source Project (2)"],
     fetchImpl: async () => { throw new Error("Finalized recovery must not poll."); },
   });
 
   assert.equal(await context.feature.resumePendingDuplicateProject(), true);
   assert.equal(context.sequence.filter((value) => value === "save-structure").length, 0);
-  assert.equal(context.sequence.filter((value) => value === "save-project-map").length, 0);
-  assert.equal(context.sheet.rows.filter((row) => row[0] === "Source Project (2)").length, 1);
-  assert.equal(storage.values.size, 0);
+  assert.equal(context.targetPathCount(), 1);
+  assert.equal(context.storage.values.size, 0);
 });
 
 test("a workspace switch cannot resume or clean another workspace record", async () => {
@@ -528,11 +420,11 @@ test("an active workspace switch preserves the original job for later recovery",
   await running;
 
   assert.equal(storage.values.size, 1);
-  assert.equal(context.sequence.includes("save-project-map"), false);
+  assert.equal(context.targetPathCount(), 0);
   assert.equal(await context.feature.resumePendingDuplicateProject(), false);
   context.feature.setWorkspaceRoot("E:\\Server A");
   assert.equal(await context.feature.resumePendingDuplicateProject(), true);
-  assert.equal(context.sheet.rows.filter((row) => row[0] === "Source Project (2)").length, 1);
+  assert.equal(context.targetPathCount(), 1);
   assert.equal(storage.values.size, 0);
 });
 
@@ -553,15 +445,15 @@ test("localStorage write failure continues the submitted job in memory", async (
 
   await context.feature.duplicateProject(context.project);
 
-  assert.equal(context.sheet.rows.filter((row) => row[0] === "Source Project (2)").length, 1);
-  assert.ok(context.sequence.includes("save-project-map"));
+  assert.equal(context.targetPathCount(), 1);
+  assert.ok(context.sequence.includes("save-structure"));
 });
 
-test("in-memory recovery retries finalization when localStorage and the first metadata write fail", async (t) => {
+test("in-memory recovery retries finalization when localStorage and the first registry write fail", async (t) => {
   t.mock.method(console, "warn", () => {});
   const storage = new MemoryStorage();
   storage.setItem = () => { throw new Error("storage disabled"); };
-  let mapAttempts = 0;
+  let structureAttempts = 0;
   let submissions = 0;
   const fetchImpl = async (url, options = {}) => {
     if (url.endsWith("/duplicate_project_folder") && options.method === "POST") {
@@ -577,22 +469,19 @@ test("in-memory recovery retries finalization when localStorage and the first me
     fetchImpl,
     storage,
     requestId: "job-memory-retry",
-    saveProjectMapRows: async (_name, mutate) => {
-      mapAttempts += 1;
-      if (mapAttempts === 1) throw new Error("first map write failed");
-      const copy = context.sheet.rows.map((row) => [...row]);
-      mutate(copy);
+    saveFolderStructure: async () => {
+      structureAttempts += 1;
+      if (structureAttempts === 1) throw new Error("first registry write failed");
     },
   });
 
   await context.feature.duplicateProject(context.project);
-  assert.equal(context.sheet.rows.some((row) => row[0] === "Source Project (2)"), false);
+  assert.equal(context.targetPathCount(), 0);
   await context.feature.duplicateProject(context.project);
 
   assert.equal(submissions, 1);
-  assert.equal(mapAttempts, 2);
-  assert.equal(context.sequence.filter((value) => value === "save-structure").length, 1);
-  assert.equal(context.sheet.rows.filter((row) => row[0] === "Source Project (2)").length, 1);
+  assert.equal(structureAttempts, 2);
+  assert.equal(context.targetPathCount(), 1);
 });
 
 test("storage cleanup failure cannot turn committed metadata into a duplicate failure", async () => {
@@ -619,7 +508,7 @@ test("storage cleanup failure cannot turn committed metadata into a duplicate fa
 
   await context.feature.duplicateProject(context.project);
 
-  assert.equal(context.sheet.rows.filter((row) => row[0] === "Source Project (2)").length, 1);
+  assert.equal(context.targetPathCount(), 1);
   assert.match(statuses.at(-1), /^Duplicated /u);
   assert.deepEqual(alerts, []);
   assert.equal(await context.feature.resumePendingDuplicateProject(), false);

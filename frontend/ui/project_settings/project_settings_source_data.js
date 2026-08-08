@@ -1844,6 +1844,11 @@ export function createSourceDataFeature(deps = {}) {
     /** Apply a `/source_table` payload; owns which import source the tab shows. */
     applySourceState(state) {
       sourceState = normalizeSourceState(state);
+      // The hidden path input is the page's record of the CSV selection; the
+      // `/source_table` payload is its single source of truth.
+      if (dom.pathInput) {
+        dom.pathInput.value = sourceState.sourceType === SOURCE_TYPE_MSSQL ? "" : sourceState.csvPath;
+      }
       if (sourcePanelOpen) syncSourcePanelFields();
       syncPathDisplay(sourceState.sourceType === SOURCE_TYPE_MSSQL ? "" : sourceState.csvPath);
       if (sourceState.driverAvailable) setSourceStatus("");

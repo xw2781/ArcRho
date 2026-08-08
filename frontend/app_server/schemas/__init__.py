@@ -5,7 +5,6 @@ from .excel import ExcelCellReadRequest, ExcelBatchReadRequest, ExcelOpenRequest
 from .dataset import PatchItem, PatchRequest
 from .project_settings import (
     ProjectSettingsUpdateRequest,
-    FolderStructureUpdateRequest,
     RenameProjectFolderRequest,
     DuplicateProjectFolderRequest,
     DuplicateProjectFolderJobResponse,
@@ -55,7 +54,7 @@ __all__ = [
     "XlsmCellPatch", "XlsmPatchRequest", "AnyBookSheetRequest", "AnyBookPatchRequest",
     "ExcelCellReadRequest", "ExcelBatchReadRequest", "ExcelOpenRequest",
     "PatchItem", "PatchRequest",
-    "ProjectSettingsUpdateRequest", "FolderStructureUpdateRequest",
+    "ProjectSettingsUpdateRequest",
     "RenameProjectFolderRequest", "DuplicateProjectFolderRequest",
     "DuplicateProjectFolderJobResponse", "ProjectDuplicationProgress",
     "ProjectDuplicationJobStatusResponse", "DeleteProjectFolderRequest",

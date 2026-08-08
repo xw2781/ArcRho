@@ -1,13 +1,13 @@
 /**
  * Project Settings - Project map store
  *
- * Single owner of the project map document (`projectData`), its conflict-
+ * Single owner of the project registry document (`projectData`), its conflict-
  * detection mtime, the derived folder/project tree, and every read/write
- * against `/project_settings/<source>`. Tree rendering and project CRUD are
- * layered on top of this store and never talk to those endpoints directly.
+ * against `/project_settings/<source>`. The registry is virtual folders plus
+ * project paths (`Folder\Sub\Project`); each path's leaf segment is the
+ * project name. Tree rendering and project CRUD are layered on top of this
+ * store and never talk to those endpoints directly.
  */
-
-const OBSOLETE_PROJECT_MAP_COLUMNS = new Set(["Folder", "Preload", "Project Settings", "Settings Profile"]);
 
 export function toWinPath(pathValue) {
   return String(pathValue || "").trim().replace(/\//g, "\\");
@@ -53,45 +53,6 @@ export function ensureFolderPathInList(foldersList, folderPath) {
   }
 }
 
-export function buildEmptyProjectRow(headers, projectName) {
-  const cols = Array.isArray(headers) ? headers.length : 0;
-  const row = new Array(cols).fill("");
-  const nameIdx = Array.isArray(headers) ? headers.indexOf("Project Name") : -1;
-  if (nameIdx >= 0) {
-    row[nameIdx] = String(projectName || "").trim();
-  }
-  return row;
-}
-
-export function removeObsoleteProjectMapColumns(data) {
-  if (!data || typeof data !== "object") return data;
-
-  for (const sheetName of Object.keys(data)) {
-    if (sheetName === "customFolders" || sheetName === "projectPaths") continue;
-    const sheet = data[sheetName];
-    if (!sheet || typeof sheet !== "object" || !Array.isArray(sheet.headers)) continue;
-
-    const keepIndexes = [];
-    const nextHeaders = [];
-    sheet.headers.forEach((header, index) => {
-      if (OBSOLETE_PROJECT_MAP_COLUMNS.has(String(header || ""))) return;
-      keepIndexes.push(index);
-      nextHeaders.push(header);
-    });
-
-    if (keepIndexes.length === sheet.headers.length) continue;
-    sheet.headers = nextHeaders;
-    if (Array.isArray(sheet.rows)) {
-      sheet.rows = sheet.rows.map((row) => {
-        const sourceRow = Array.isArray(row) ? row : [];
-        return keepIndexes.map((index) => sourceRow[index]);
-      });
-    }
-  }
-
-  return data;
-}
-
 /**
  * @param {object} deps
  * @param {string} deps.defaultSource   Project map source key.
@@ -102,7 +63,7 @@ export function removeObsoleteProjectMapColumns(data) {
 export function createProjectMapStore(deps) {
   const { defaultSource, fetchImpl, setStatus, reloadProjectData } = deps;
 
-  let projectData = null;   // Raw JSON data
+  let projectData = null;   // { customFolders: [], projectPaths: [] }
   let treeData = null;      // Parsed folder -> projects structure
   let currentMtime = null;  // Track file modification time for conflict detection
 
@@ -111,7 +72,9 @@ export function createProjectMapStore(deps) {
   const getMtime = () => currentMtime;
 
   function ensureFolderStructureState() {
-    if (!projectData || typeof projectData !== "object") return;
+    if (!projectData || typeof projectData !== "object") {
+      projectData = { customFolders: [], projectPaths: [] };
+    }
     if (!Array.isArray(projectData.customFolders)) projectData.customFolders = [];
     if (!Array.isArray(projectData.projectPaths)) projectData.projectPaths = [];
   }
@@ -175,18 +138,19 @@ export function createProjectMapStore(deps) {
     if (idx >= 0) projectData.projectPaths.splice(idx, 1);
   }
 
-  /** First sheet holding a headers/rows table (excludes folder-structure keys). */
-  function getSheetName() {
-    return projectData && Object.keys(projectData).find((k) => {
-      if (k === "customFolders" || k === "projectPaths") return false;
-      const v = projectData[k];
-      return v && typeof v === "object" && Array.isArray(v.headers) && Array.isArray(v.rows);
-    });
-  }
-
-  function getSheet() {
-    const sheetName = getSheetName();
-    return sheetName ? projectData?.[sheetName] : null;
+  /** Every project name in the registry, in path order. */
+  function listProjectNames() {
+    ensureFolderStructureState();
+    const names = [];
+    const seen = new Set();
+    for (const fullPath of projectData.projectPaths) {
+      const name = String(splitProjectTreePath(fullPath).projectName || "").trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
+    }
+    return names;
   }
 
   function countProjects() {
@@ -202,38 +166,15 @@ export function createProjectMapStore(deps) {
     treeData = {};
     ensureFolderStructureState();
 
-    const sheetName = getSheetName();
-    if (!sheetName) return;
-
-    const sheet = projectData[sheetName];
-    if (!sheet || !Array.isArray(sheet.rows)) return;
-    const headers = sheet.headers || [];
-    const rows = sheet.rows || [];
-
-    // Find column indices.
-    const colIdx = {};
-    headers.forEach((h, i) => {
-      colIdx[h] = i;
-    });
-
-    const projectFolderMap = new Map();
-    for (const fullPath of projectData.projectPaths || []) {
+    // Build folder -> projects map; each project path's leaf is the project.
+    const seenProjects = new Set();
+    for (const fullPath of projectData.projectPaths) {
       const parsed = splitProjectTreePath(fullPath);
-      const pName = String(parsed.projectName || "").trim();
-      if (!pName) continue;
-      const key = pName.toLowerCase();
-      if (!projectFolderMap.has(key)) {
-        projectFolderMap.set(key, parsed.folderPath || "Uncategorized");
-      }
-    }
-
-    // Build folder -> projects map
-    for (const row of rows) {
-      const projectName = row[colIdx["Project Name"]] || "";
-      const folder = projectFolderMap.get(String(projectName || "").trim().toLowerCase()) || "Uncategorized";
-      const tablePath = row[colIdx["Table Path"]] || "";
-
-      if (!projectName) continue;
+      const projectName = String(parsed.projectName || "").trim();
+      const projectKey = projectName.toLowerCase();
+      if (!projectName || seenProjects.has(projectKey)) continue;
+      seenProjects.add(projectKey);
+      const folder = parsed.folderPath || "Uncategorized";
 
       if (!treeData[folder]) {
         treeData[folder] = {
@@ -244,15 +185,12 @@ export function createProjectMapStore(deps) {
 
       treeData[folder].projects.push({
         name: projectName,
-        tablePath: tablePath,
-        folder: folder,
-        _row: row
+        folder: folder
       });
     }
 
     // Merge custom (empty) folders so they appear in the tree
-    const customFolders = projectData.customFolders || [];
-    for (const folderPath of customFolders) {
+    for (const folderPath of projectData.customFolders) {
       if (folderPath && !treeData[folderPath]) {
         treeData[folderPath] = { name: folderPath.split("\\").pop(), projects: [] };
       }
@@ -266,14 +204,13 @@ export function createProjectMapStore(deps) {
     treeData = sortedFolders;
   }
 
-  /** Resolve a stored `{name, folder, tablePath}` snapshot back to a live node. */
+  /** Resolve a stored `{name, folder}` snapshot back to a live node. */
   function findProjectBySnapshot(snapshot) {
     if (!snapshot || !treeData || typeof treeData !== "object") return null;
 
     const nameKey = String(snapshot.name || "").trim().toLowerCase();
     if (!nameKey) return null;
     const folderKey = normalizeTreePath(snapshot.folder || "").toLowerCase();
-    const tablePathKey = toWinPath(snapshot.tablePath || "").toLowerCase();
 
     const candidates = [];
     for (const folderData of Object.values(treeData)) {
@@ -285,13 +222,6 @@ export function createProjectMapStore(deps) {
     }
     if (!candidates.length) return null;
 
-    const byFolderAndTablePath = candidates.find((project) => {
-      const projectFolder = normalizeTreePath(project.folder || "").toLowerCase();
-      const projectTablePath = toWinPath(project.tablePath || "").toLowerCase();
-      return !!folderKey && !!tablePathKey && projectFolder === folderKey && projectTablePath === tablePathKey;
-    });
-    if (byFolderAndTablePath) return byFolderAndTablePath;
-
     const byFolder = candidates.find((project) => {
       const projectFolder = normalizeTreePath(project.folder || "").toLowerCase();
       return !!folderKey && projectFolder === folderKey;
@@ -301,7 +231,7 @@ export function createProjectMapStore(deps) {
     return candidates[0];
   }
 
-  /** Read the project map and its virtual folder structure, then rebuild the tree. */
+  /** Read the project registry, then rebuild the tree. */
   async function load(sourceKey = defaultSource) {
     const res = await fetchImpl(`/project_settings/${sourceKey}`);
     if (!res.ok) {
@@ -309,28 +239,11 @@ export function createProjectMapStore(deps) {
       throw new Error(`HTTP ${res.status}: ${text}`);
     }
     const result = await res.json();
-    projectData = result.data;
+    projectData = {
+      customFolders: Array.isArray(result.folders) ? result.folders : [],
+      projectPaths: Array.isArray(result.project_paths) ? result.project_paths : [],
+    };
     currentMtime = result.mtime;
-    removeObsoleteProjectMapColumns(projectData);
-
-    // Load virtual folder structure from projects/index.json.
-    try {
-      let folders = [];
-      let projectPaths = [];
-
-      const foldersRes = await fetchImpl(`/project_settings/${sourceKey}/folders`);
-      if (foldersRes.ok) {
-        const foldersResult = await foldersRes.json();
-        folders = Array.isArray(foldersResult.folders) ? foldersResult.folders : [];
-        projectPaths = Array.isArray(foldersResult.project_paths) ? foldersResult.project_paths : [];
-      }
-
-      projectData.customFolders = Array.isArray(folders) ? folders : [];
-      projectData.projectPaths = Array.isArray(projectPaths) ? projectPaths : [];
-    } catch {
-      projectData.customFolders = [];
-      projectData.projectPaths = [];
-    }
 
     buildTreeData();
     return { path: result.path };
@@ -349,13 +262,31 @@ export function createProjectMapStore(deps) {
     }
   }
 
-  /** POST the virtual folder structure; throws with a step-labelled message. */
-  async function saveFolderStructure(folders, projectPaths, { label = "Folder structure save" } = {}) {
-    const res = await fetchImpl(`/project_settings/${defaultSource}/folders`, {
+  /** POST one registry document; shared by `save` and `saveFolderStructure`. */
+  async function postRegistry(sourceKey, folders, projectPaths) {
+    return fetchImpl(`/project_settings/${sourceKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ folders, project_paths: projectPaths }),
+      body: JSON.stringify({
+        folders,
+        project_paths: projectPaths,
+        file_mtime: currentMtime,
+      }),
     });
+  }
+
+  /**
+   * Persist an explicit folder/path structure without touching the in-memory
+   * document. Throws with a step-labelled message on conflict, lock, or error.
+   */
+  async function saveFolderStructure(folders, projectPaths, { label = "Folder structure save" } = {}) {
+    const res = await postRegistry(defaultSource, folders, projectPaths);
+    if (res.status === 409) {
+      throw new Error(`${label} failed: the project registry was modified by another user. Please refresh and try again.`);
+    }
+    if (res.status === 423) {
+      throw new Error(`${label} failed: the project registry is locked. Another user may have it open.`);
+    }
     if (!res.ok) {
       const errText = await res.text();
       throw new Error(`${label} failed: ${errText}`);
@@ -363,48 +294,7 @@ export function createProjectMapStore(deps) {
     await updateCurrentMtimeFromResponse(res);
   }
 
-  /**
-   * Persist a copy of the project map with `mutateRows(rows)` applied, without
-   * touching the in-memory document. Throws on conflict, lock, or HTTP error.
-   */
-  async function saveProjectMapRows(sheetName, mutateRows) {
-    const dataToSave = { ...projectData };
-    const currentSheet = dataToSave[sheetName] || {};
-    const currentRows = Array.isArray(currentSheet.rows)
-      ? currentSheet.rows.map((row) => (Array.isArray(row) ? [...row] : row))
-      : [];
-    mutateRows(currentRows);
-    dataToSave[sheetName] = { ...currentSheet, rows: currentRows };
-    delete dataToSave.customFolders;
-    delete dataToSave.projectPaths;
-    removeObsoleteProjectMapColumns(dataToSave);
-
-    const res = await fetchImpl(`/project_settings/${defaultSource}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        data: dataToSave,
-        file_mtime: currentMtime,
-      }),
-    });
-
-    if (res.status === 409) {
-      throw new Error("File was modified by another user. Please refresh and try again.");
-    }
-    if (res.status === 423) {
-      throw new Error("File is locked. Another user may have it open.");
-    }
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Save failed: HTTP ${res.status}: ${errText}`);
-    }
-
-    const saveResult = await res.json();
-    currentMtime = saveResult.mtime;
-    return saveResult;
-  }
-
-  /** Save the in-memory project map plus its folder structure. */
+  /** Save the in-memory registry document. */
   async function save(sourceKey = defaultSource) {
     if (!projectData) {
       alert("No data to save.");
@@ -413,20 +303,12 @@ export function createProjectMapStore(deps) {
 
     setStatus("Saving...");
     try {
-      // Save project data (exclude folder structure fields - stored in projects/index.json folders)
-      const dataToSave = { ...projectData };
-      delete dataToSave.customFolders;
-      delete dataToSave.projectPaths;
-      removeObsoleteProjectMapColumns(dataToSave);
-
-      const res = await fetchImpl(`/project_settings/${sourceKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: dataToSave,
-          file_mtime: currentMtime
-        })
-      });
+      ensureFolderStructureState();
+      const res = await postRegistry(
+        sourceKey,
+        projectData.customFolders,
+        projectData.projectPaths,
+      );
 
       if (res.status === 409) {
         alert("File was modified by another user. Refreshing to get latest data.");
@@ -442,22 +324,7 @@ export function createProjectMapStore(deps) {
         throw new Error(`HTTP ${res.status}: ${text}`);
       }
 
-      const result = await res.json();
-      currentMtime = result.mtime;
-
-      // Save virtual folder structure to projects/index.json
-      const folders = Array.isArray(projectData.customFolders) ? projectData.customFolders : [];
-      const project_paths = Array.isArray(projectData.projectPaths) ? projectData.projectPaths : [];
-      const foldersRes = await fetchImpl(`/project_settings/${sourceKey}/folders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folders, project_paths })
-      });
-      if (!foldersRes.ok) {
-        setStatus(`Saved projects, but project index folder save failed: ${foldersRes.status}`);
-        return false;
-      }
-      await updateCurrentMtimeFromResponse(foldersRes);
+      await updateCurrentMtimeFromResponse(res);
       setStatus("Saved successfully.");
       return true;
     } catch (err) {
@@ -477,14 +344,12 @@ export function createProjectMapStore(deps) {
     getMtime,
     getProjectData,
     getProjectFolderFromStructure,
-    getSheet,
-    getSheetName,
     getTreeData,
+    listProjectNames,
     load,
     removeProjectPathFromStructure,
     save,
     saveFolderStructure,
-    saveProjectMapRows,
     setProjectFolderInStructure,
     updateCurrentMtimeFromResponse,
   };

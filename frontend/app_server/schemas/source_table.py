@@ -18,6 +18,8 @@ class SourceProfileSaveRequest(BaseModel):
     project_name: str
     source_type: str
     mssql: Optional[MssqlProfilePayload] = None
+    # CSV source selection; omitted (None) leaves the stored path unchanged.
+    csv_path: Optional[str] = None
 
 
 class MssqlConnectionTestRequest(BaseModel):

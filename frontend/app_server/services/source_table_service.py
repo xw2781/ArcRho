@@ -132,6 +132,29 @@ def _configured_csv_path(project_name: str) -> str:
     return str(mapping.get("table_path") or "").strip()
 
 
+def _save_configured_csv_path(project_name: str, csv_path: str) -> None:
+    """Persist the external CSV selection into `field_mapping.json::table_path`.
+
+    `field_mapping.json` stays the storage location because the data engine and
+    Python API read the path from there; the import profile save is its writer.
+    """
+    try:
+        mapping_path = config.get_field_mapping_path(project_name)
+    except ValueError as error:
+        raise HTTPException(404, str(error))
+    payload = _read_json_object(mapping_path)
+    payload["project_name"] = project_name
+    payload["table_path"] = str(csv_path or "").strip()
+    payload.setdefault("rows", [])
+    payload["updated_at"] = _utc_now_text()
+    try:
+        _write_json_atomic(mapping_path, payload)
+    except PermissionError:
+        raise HTTPException(423, "Field mapping file is locked. Another user may have it open.")
+    except OSError as error:
+        raise HTTPException(500, f"Failed to save the CSV source path: {str(error)}")
+
+
 # --- Import record --------------------------------------------------------
 
 def read_source_import(project_name: str) -> Dict[str, Any]:
@@ -160,6 +183,7 @@ def save_source_profile(
     project_name: str,
     source_type: str,
     mssql: Optional[Dict[str, Any]] = None,
+    csv_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Persist the project-shared import source selection and SQL Server profile."""
     name = _require_project_name(project_name)
@@ -178,6 +202,8 @@ def save_source_profile(
         _require_complete_mssql_profile(profile)
 
     with _project_lock(name):
+        if requested_type == SOURCE_TYPE_CSV and csv_path is not None:
+            _save_configured_csv_path(name, csv_path)
         saved = _write_source_import(
             name,
             {**current, "project_name": name, "source_type": requested_type, "mssql": profile},

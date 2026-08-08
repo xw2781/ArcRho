@@ -6,7 +6,6 @@ from fastapi import APIRouter, status
 
 from app_server.schemas.project_settings import (
     ProjectSettingsUpdateRequest,
-    FolderStructureUpdateRequest,
     RenameProjectFolderRequest,
     DuplicateProjectFolderRequest,
     DuplicateProjectFolderJobResponse,
@@ -22,14 +21,14 @@ from app_server.services import project_settings_service
 router = APIRouter()
 
 
+@router.get("/project_settings")
+def list_project_settings_sources() -> Dict[str, Any]:
+    return project_settings_service.list_project_settings_sources()
+
+
 @router.get("/project_settings/{source}/folders")
 def get_project_folders(source: str) -> Dict[str, Any]:
     return project_settings_service.get_project_folders(source)
-
-
-@router.post("/project_settings/{source}/folders")
-def update_project_folders(source: str, req: FolderStructureUpdateRequest) -> Dict[str, Any]:
-    return project_settings_service.update_project_folders(source, req.folders, req.project_paths)
 
 
 @router.post("/project_settings/{source}/rename_project_folder")
@@ -96,7 +95,12 @@ def get_project_settings(source: str) -> Dict[str, Any]:
 
 @router.post("/project_settings/{source}")
 def update_project_settings(source: str, req: ProjectSettingsUpdateRequest) -> Dict[str, Any]:
-    return project_settings_service.update_project_settings(source, req.data, file_mtime=req.file_mtime)
+    return project_settings_service.update_project_settings(
+        source,
+        req.folders,
+        req.project_paths,
+        file_mtime=req.file_mtime,
+    )
 
 
 @router.get("/general_settings")

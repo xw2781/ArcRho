@@ -11,11 +11,11 @@
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260223";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260730sqlsrc6";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260807idx1";
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260722a";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260716resize2";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260721dpr12";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260731loading1";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260807idx1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -23,15 +23,15 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260801dup3";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260807idx1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260801dup3";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260801dup3";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260801dup3";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260801dup3";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260807idx1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260807idx1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260807idx1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260807idx1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260716psprefs1";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -695,7 +695,7 @@ async function pickTablePathFromHost(currentPath = "") {
     setStatus("Browse is available in the desktop app only.");
     return "";
   }
-  const startDir = getDirFromPath(currentPath) || getDirFromPath(selectedProject?.tablePath);
+  const startDir = getDirFromPath(currentPath) || getDirFromPath(summaryTablePathInput?.value);
   try {
     const selected = await hostApi.pickOpenTableFile(startDir || "");
     return String(selected || "");
@@ -704,49 +704,18 @@ async function pickTablePathFromHost(currentPath = "") {
   }
 }
 
-async function saveTablePathField(project, nextTablePath) {
-  if (!project || !Array.isArray(project._row)) {
-    throw new Error("Project row is unavailable.");
-  }
-  const sheet = projectMapStore.getSheet();
-  if (!sheet) {
-    throw new Error("Project data is unavailable.");
-  }
-  const headers = Array.isArray(sheet.headers) ? sheet.headers : [];
-  const tablePathCol = headers.indexOf("Table Path");
-  if (tablePathCol < 0) {
-    throw new Error('Column "Table Path" was not found.');
-  }
-
-  const prevTablePath = String(project._row[tablePathCol] || "");
-  const prevProjectTablePath = String(project.tablePath || "");
-  const nextValue = String(nextTablePath || "").trim();
-
-  project._row[tablePathCol] = nextValue;
-  project.tablePath = nextValue;
-
-  const saved = await projectMapStore.save(DEFAULT_SOURCE);
-  if (!saved) {
-    project._row[tablePathCol] = prevTablePath;
-    project.tablePath = prevProjectTablePath;
-    throw new Error("Save failed.");
-  }
-
-  projectMapStore.buildTreeData();
-  treeViewFeature.render();
-}
-
 /**
  * Bind the Source Data header to a project.
  *
- * The hidden path input stays the coordinator's record of the current CSV
- * selection: the folder actions read it and the Import Settings panel commits
- * through it. Reload re-imports from whichever source the project is set to.
+ * The hidden path input stays the page's record of the current CSV selection:
+ * the folder actions read it and `/source_table` responses fill it through
+ * `applySourceState`. Reload re-imports from whichever source the project is
+ * set to.
  */
 function bindSummaryTablePathEditor(project) {
   if (!summaryTablePathInput || !summaryTablePathReloadBtn) return;
 
-  summaryTablePathInput.value = String(project.tablePath || "");
+  summaryTablePathInput.value = "";
   summaryTablePathReloadBtn.disabled = false;
   sourceDataFeature.syncPathDisplay(summaryTablePathInput.value);
 
@@ -794,22 +763,23 @@ async function loadSourceTableState(projectName) {
 /**
  * Persist the import settings chosen in the panel.
  *
- * The SQL Server profile lives in the project's own import record, while a CSV
- * selection stays in the project-map `Table Path` column that field mapping
- * already owns, so each value keeps its existing single writer.
+ * The whole import source description goes through `/source_table/profile`:
+ * the SQL Server profile lives in the project's own import record, and a CSV
+ * selection is written into `field_mapping.json::table_path` by that same
+ * endpoint, so each value keeps a single writer.
  */
 async function saveImportSettings(sourceType, mssql, csvPath) {
-  const project = selectedProject;
-  const name = String(project?.name || "").trim();
+  const name = String(selectedProject?.name || "").trim();
   if (!name) return false;
   try {
-    if (sourceType === "csv" && String(csvPath || "").trim() !== String(project.tablePath || "").trim()) {
-      await saveTablePathField(project, csvPath);
+    const body = { project_name: name, source_type: sourceType, mssql };
+    if (sourceType === "csv") {
+      body.csv_path = String(csvPath || "").trim();
     }
     const res = await fetch("/source_table/profile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_name: name, source_type: sourceType, mssql }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(await readResponseErrorDetail(res));
     sourceDataFeature.applySourceState(await res.json());
@@ -1165,7 +1135,6 @@ function openProjectInNewTab(project) {
     type: "arcrho:open-project",
     project: {
       name: project.name,
-      tablePath: project.tablePath,
       folder: project.folder
     }
   }, "*");
@@ -1178,7 +1147,6 @@ function openProjectInstanceTab(project) {
     type: "arcrho:open-project-instance",
     project: {
       name: project.name,
-      tablePath: project.tablePath,
       folder: project.folder,
     },
   }, "*");

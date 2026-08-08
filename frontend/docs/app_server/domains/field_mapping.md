@@ -4,7 +4,7 @@
 <!-- MANUAL:BEGIN -->
 Field mapping persistence domain for project settings.
 
-`table_path` in `field_mapping.json` is the *external CSV selection* a user picked in Project Settings, not the table anything reads. It is the copy source for a `csv`-sourced project's imported master table; see [`source_table`](source_table.md). Saving a mapping refreshes reserving class values from the imported copy, so no path override is passed.
+`table_path` in `field_mapping.json` is the *external CSV selection* a user picked in Project Settings, not the table anything reads. It is the copy source for a `csv`-sourced project's imported master table; see [`source_table`](source_table.md). Its writer is the import-profile save (`POST /source_table/profile` with `csv_path`); a field-mapping save that omits `table_path` preserves the stored value. Saving a mapping refreshes reserving class values from the imported copy, so no path override is passed.
 <!-- MANUAL:END -->
 
 ## Entry Points

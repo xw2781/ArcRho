@@ -724,9 +724,10 @@ export function createFieldMappingFeature(deps = {}) {
       const res = await fetchImpl("/field_mapping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // table_path is omitted on purpose: the stored CSV selection is owned
+        // by the import-profile save and is preserved by the app server.
         body: JSON.stringify({
           project_name: project.name,
-          table_path: project.tablePath || "",
           rows,
         }),
       });

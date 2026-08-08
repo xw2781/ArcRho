@@ -1,16 +1,14 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
 class ProjectSettingsUpdateRequest(BaseModel):
-    data: Dict[str, Any]
-    file_mtime: Optional[float] = None
+    """Authoritative project registry write: virtual folders plus project paths."""
 
-
-class FolderStructureUpdateRequest(BaseModel):
     folders: List[str] = Field(default_factory=list)
     project_paths: List[str] = Field(default_factory=list)
+    file_mtime: Optional[float] = None
 
 
 class RenameProjectFolderRequest(BaseModel):

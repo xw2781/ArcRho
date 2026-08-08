@@ -1,5 +1,5 @@
-const PENDING_JOB_VERSION = 2;
-const PENDING_JOB_KEY_PREFIX = "arcrho_project_settings_pending_duplicate_v2";
+const PENDING_JOB_VERSION = 3;
+const PENDING_JOB_KEY_PREFIX = "arcrho_project_settings_pending_duplicate_v3";
 const POLL_INTERVAL_MS = 750;
 const MAX_STATUS_RETRIES = 8;
 const STALE_STATUS_MS = 15 * 60 * 1000;
@@ -36,13 +36,6 @@ export function createDuplicateRequestId(cryptoImpl) {
     return `psdup_${[...bytes].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
   }
   throw new Error("Secure browser request-ID generation is unavailable.");
-}
-
-export function createDuplicateSourceSnapshotHash(headers, row) {
-  if (!Array.isArray(headers) || !Array.isArray(row)) {
-    throw new Error("Project headers and source row are required for duplicate recovery.");
-  }
-  return `row_${fnv64Hex(JSON.stringify([headers, row]))}`;
 }
 
 function normalizeWorkspaceScopePart(value, fallback = "") {
@@ -82,7 +75,6 @@ function normalizePendingDuplicateJob(record, sourceKey, workspaceScope) {
     sourceName: String(record.sourceName || "").trim(),
     targetName: String(record.targetName || "").trim(),
     sourceFolderPath: String(record.sourceFolderPath || "Uncategorized").trim() || "Uncategorized",
-    sourceSnapshotHash: String(record.sourceSnapshotHash || "").trim().toLowerCase(),
     submittedAt: Number(record.submittedAt) || 0,
     submissionAcknowledged: !!record.submissionAcknowledged,
     metadataFinalized: !!record.metadataFinalized,
@@ -91,7 +83,6 @@ function normalizePendingDuplicateJob(record, sourceKey, workspaceScope) {
     !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u.test(normalized.requestId)
     || !normalized.sourceName
     || !normalized.targetName
-    || !/^row_[0-9a-f]{16}$/u.test(normalized.sourceSnapshotHash)
     || normalized.sourceKey !== String(sourceKey || "").trim()
     || normalized.workspaceScope !== String(workspaceScope || "").trim()
   ) return null;

@@ -8,8 +8,7 @@
  */
 import {
   normalizeTreePath,
-  toWinPath,
-} from "/ui/project_settings/project_settings_project_map.js?v=20260730split1";
+} from "/ui/project_settings/project_settings_project_map.js?v=20260807idx1";
 
 const EXPANDED_FOLDERS_SESSION_KEY = "arcrho_project_settings_expanded_folders_v1";
 const SELECTED_PROJECT_SESSION_KEY = "arcrho_project_settings_selected_project_v1";
@@ -252,7 +251,6 @@ export function createTreeViewFeature(deps) {
     return {
       name,
       folder: normalizeTreePath(project.folder || ""),
-      tablePath: toWinPath(project.tablePath || ""),
     };
   }
 

@@ -220,7 +220,6 @@ WORKFLOW_EXT = ".arcwf"
 
 DATA_DIR: str = ""
 PROJECT_SETTINGS_DIR: str = ""
-PROJECT_BOOK: str = ""
 WORKFLOW_DIR: str = ""
 SCRIPTING_DIR: str = ""
 MACRO_DIR: str = ""
@@ -231,13 +230,9 @@ REQUEST_DIR: str = ""
 
 def refresh_runtime_paths() -> None:
     """Refresh runtime directories from workspace path config."""
-    global DATA_DIR, PROJECT_SETTINGS_DIR, PROJECT_BOOK, WORKFLOW_DIR, SCRIPTING_DIR, MACRO_DIR
+    global DATA_DIR, PROJECT_SETTINGS_DIR, WORKFLOW_DIR, SCRIPTING_DIR, MACRO_DIR
     global MACRO_LIBRARY_DIR, ALLOWED_BOOK_DIRS, REQUEST_DIR
     PROJECT_SETTINGS_DIR = _get_project_map_dir()
-    PROJECT_BOOK = os.path.join(
-        PROJECT_SETTINGS_DIR,
-        PROJECT_SETTINGS_SOURCES.get("project_map", PROJECT_INDEX_FILE),
-    )
     WORKFLOW_DIR = _get_workflow_dir()
     SCRIPTING_DIR = _get_scripting_dir()
     MACRO_DIR = _get_macro_dir()

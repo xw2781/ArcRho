@@ -20,6 +20,8 @@ The external CSV path and the SQL Server table are *import sources*. Nothing dow
 
 The SQL Server profile lives with the project and is shared by every user of that project. It stores `server`, `database`, `table`, and `authentication` only - never credentials. `windows` is the only supported authentication mode; `sql_login` exists in the shape as a reserved placeholder and every service path rejects it until it is implemented.
 
+`POST /source_table/profile` also accepts an optional `csv_path` for `csv`-sourced projects and writes it into the project's `field_mapping.json::table_path`, making the profile save the single writer of the external CSV selection; an omitted `csv_path` leaves the stored path unchanged.
+
 `POST /source_table/tables` lists the tables and views the caller can see in one database, so the Source Data picker never has to assemble a name itself. It validates only the server/database half of the profile, because choosing the table is exactly what it is for.
 
 Server/database pairs that connect successfully are recorded in a **server-shared** preference at `<workspace_root>/config/mssql_connections.json`, resolved by `config.get_mssql_connections_path()` - never a hardcoded server root. Every user of that ArcRho Server sees and can prune the same list through `GET /source_table/connections` and `POST /source_table/connections/forget`. The file holds `server`, `database`, and `last_used_at` only: no credentials, and no table name, since the table is a per-project choice. Recording is best-effort - a read-only config folder must not fail a good connect or a committed import.

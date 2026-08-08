@@ -12,5 +12,7 @@ class FieldMappingRow(BaseModel):
 
 class FieldMappingSaveRequest(BaseModel):
     project_name: str
-    table_path: Optional[str] = ""
+    # Omitted (None) preserves the stored table_path; the CSV selection is
+    # owned by the import-profile save, not the field mapping editor.
+    table_path: Optional[str] = None
     rows: List[FieldMappingRow] = Field(default_factory=list)

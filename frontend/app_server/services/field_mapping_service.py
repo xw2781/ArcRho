@@ -1,6 +1,7 @@
 """Field mapping save logic with reserving class refresh orchestration."""
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -17,7 +18,7 @@ from app_server.services import reserving_class_service
 
 def save_field_mapping(
     project_name: str,
-    table_path: str,
+    table_path: Optional[str],
     rows: list,
 ) -> Dict[str, Any]:
     project_name = (project_name or "").strip()
@@ -28,6 +29,19 @@ def save_field_mapping(
         filepath = config.get_field_mapping_path(project_name)
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+    if table_path is None:
+        # The CSV selection is owned by the import-profile save; a rows-only
+        # save keeps whatever path is already stored.
+        table_path = ""
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "r", encoding="utf-8-sig") as f_prev:
+                    existing = json.load(f_prev)
+                if isinstance(existing, dict):
+                    table_path = str(existing.get("table_path") or "").strip()
+            except Exception:
+                table_path = ""
 
     allowed_dataset_types = set(get_dataset_type_names(project_name))
     used_dataset_types: Dict[str, str] = {}

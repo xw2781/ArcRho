@@ -36,6 +36,7 @@ def save_source_table_profile(req: SourceProfileSaveRequest) -> Dict[str, Any]:
             project_name=req.project_name,
             source_type=req.source_type,
             mssql=mssql,
+            csv_path=req.csv_path,
         )
         return {"ok": True, **source_table_service.get_source_table_state(req.project_name)}
     except HTTPException:

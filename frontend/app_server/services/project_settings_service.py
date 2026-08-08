@@ -135,66 +135,6 @@ def _normalize_project_index(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _project_table_path(project_name: str) -> str:
-    name = str(project_name or "").strip()
-    if not name:
-        return ""
-    try:
-        path = config.get_field_mapping_path(name)
-    except ValueError:
-        return ""
-    if not os.path.exists(path):
-        return ""
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-    except Exception:
-        return ""
-    return str(payload.get("table_path", "") if isinstance(payload, dict) else "").strip()
-
-
-def _save_project_table_path(project_name: str, table_path: str) -> None:
-    name = str(project_name or "").strip()
-    if not name:
-        return
-    try:
-        path = config.get_field_mapping_path(name)
-    except ValueError:
-        return
-    payload: Dict[str, Any] = {}
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-            if isinstance(raw, dict):
-                payload = raw
-        except Exception:
-            payload = {}
-    payload["project_name"] = name
-    payload["table_path"] = str(table_path or "").strip()
-    payload.setdefault("rows", [])
-    payload["updated_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        f.write(persisted_json_text(payload))
-    os.replace(tmp_path, path)
-
-
-def project_index_to_sheet_data(index_data: Dict[str, Any]) -> Dict[str, Any]:
-    data = _normalize_project_index(index_data)
-    rows = [
-        [item["name"], _project_table_path(item["name"])]
-        for item in data["projects"]
-    ]
-    return {
-        "Virtual Projects": {
-            "headers": ["Project Name", "Table Path"],
-            "rows": rows,
-        }
-    }
-
-
 def project_index_folder_payload(index_data: Dict[str, Any]) -> Dict[str, List[str]]:
     data = _normalize_project_index(index_data)
     folders = [str(item.get("path", "") or "").strip() for item in data["folders"] if str(item.get("path", "") or "").strip()]
@@ -206,39 +146,6 @@ def project_index_folder_payload(index_data: Dict[str, Any]) -> Dict[str, List[s
             continue
         project_paths.append(f"{folder}\\{name}" if folder else name)
     return {"folders": folders, "project_paths": project_paths}
-
-
-def update_project_index_from_sheet_data(data: Dict[str, Any]) -> Dict[str, Any]:
-    existing = _read_project_index()
-    folder_by_name = {item["name"].lower(): item.get("folder", "") for item in existing["projects"]}
-    projects: List[Dict[str, str]] = []
-    seen: set[str] = set()
-    if not isinstance(data, dict):
-        data = {}
-    for sheet in data.values():
-        if not isinstance(sheet, dict):
-            continue
-        headers = list(sheet.get("headers") or [])
-        rows = sheet.get("rows") or []
-        name_idx = headers.index("Project Name") if "Project Name" in headers else -1
-        table_idx = headers.index("Table Path") if "Table Path" in headers else -1
-        if name_idx < 0:
-            continue
-        for row in rows:
-            source = list(row) if isinstance(row, list) else []
-            name = str(source[name_idx] if name_idx < len(source) and source[name_idx] is not None else "").strip()
-            if not name:
-                continue
-            key = name.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            folder = folder_by_name.get(key, "")
-            projects.append({"name": name, "folder": folder})
-            if table_idx >= 0:
-                table_path = str(source[table_idx] if table_idx < len(source) and source[table_idx] is not None else "").strip()
-                _save_project_table_path(name, table_path)
-    return _normalize_project_index({"version": existing.get("version", 1), "projects": projects, "folders": existing.get("folders", [])})
 
 
 def _normalize_integer_like_text(value: Any) -> str:
@@ -311,32 +218,34 @@ def get_project_folders(source: str) -> Dict[str, Any]:
     }
 
 
-def update_project_folders(source: str, folders_input: List[str], project_paths_input: List[str]) -> Dict[str, Any]:
+def update_project_settings(
+    source: str,
+    folders_input: List[str],
+    project_paths_input: List[str],
+    file_mtime: float = None,
+) -> Dict[str, Any]:
+    """Authoritative write of the project registry.
+
+    ``project_paths`` is the complete project list (each path's leaf segment is
+    the project name); ``folders`` adds empty virtual folders. Projects absent
+    from ``project_paths`` are removed from the registry.
+    """
     if source not in config.PROJECT_SETTINGS_SOURCES:
         raise HTTPException(404, f"Unknown source: {source}")
+
+    filepath = _project_index_path()
+    version = 1
+    if os.path.exists(filepath):
+        st = os.stat(filepath)
+        if file_mtime is not None and abs(st.st_mtime - file_mtime) > 0.001:
+            raise HTTPException(409, "File was modified by another user. Please refresh and try again.")
+        version = int(_read_project_index().get("version") or 1)
 
     folders, _ = _normalize_folder_structure_entry({"folders": list(folders_input) if folders_input else []})
     _, project_paths = _normalize_folder_structure_entry({"project_paths": list(project_paths_input) if project_paths_input else []})
     folder_set: set = set(folders)
-    for full in project_paths:
-        folder, _proj = _split_project_tree_path(full)
-        _add_folder_with_parents(folder_set, folder)
-    folders_final = sorted(folder_set)
-
-    folder_by_project = {}
-    for full in project_paths:
-        folder, project = _split_project_tree_path(full)
-        if project:
-            folder_by_project[project.lower()] = folder
-    index_data = _read_project_index()
-    projects = []
+    projects: List[Dict[str, str]] = []
     seen_project_keys: set[str] = set()
-    for item in index_data["projects"]:
-        name = str(item.get("name", "") or "").strip()
-        if not name:
-            continue
-        seen_project_keys.add(name.lower())
-        projects.append({"name": name, "folder": folder_by_project.get(name.lower(), item.get("folder", ""))})
     for full in project_paths:
         folder, project = _split_project_tree_path(full)
         project_name = str(project or "").strip()
@@ -344,24 +253,25 @@ def update_project_folders(source: str, folders_input: List[str], project_paths_
         if not project_name or project_key in seen_project_keys:
             continue
         seen_project_keys.add(project_key)
+        _add_folder_with_parents(folder_set, folder)
         projects.append({"name": project_name, "folder": folder})
-    folder_entries = [_folder_entry_from_path(path) for path in folders_final]
+    folder_entries = [_folder_entry_from_path(path) for path in sorted(folder_set)]
 
     try:
-        path = _write_project_index({"version": index_data.get("version", 1), "projects": projects, "folders": folder_entries})
-        st = os.stat(path)
+        path = _write_project_index({"version": version, "projects": projects, "folders": folder_entries})
+        st2 = os.stat(path)
         return {
             "ok": True,
             "source": source,
-            "folders_count": len(folders_final),
-            "project_paths_count": len(project_paths),
+            "folders_count": len(folder_entries),
+            "project_paths_count": len(projects),
             "path": path,
-            "mtime": st.st_mtime,
+            "mtime": st2.st_mtime,
         }
     except PermissionError:
         raise HTTPException(423, "File is locked. Another user may have it open.")
     except Exception as e:
-        raise HTTPException(500, f"Failed to save project index folders: {str(e)}")
+        raise HTTPException(500, f"Failed to save: {str(e)}")
 
 
 def rename_project_folder(source: str, old_name: str, new_name: str) -> Dict[str, Any]:
@@ -1216,6 +1126,7 @@ def open_project_folder(source: str, project_name: str) -> Dict[str, Any]:
 
 
 def get_project_settings(source: str) -> Dict[str, Any]:
+    """Project registry as the tree needs it: virtual folders plus project paths."""
     if source not in config.PROJECT_SETTINGS_SOURCES:
         raise HTTPException(404, f"Unknown source: {source}")
 
@@ -1225,43 +1136,16 @@ def get_project_settings(source: str) -> Dict[str, Any]:
         raise HTTPException(404, f"Project index file not found: {filepath}")
 
     st = os.stat(filepath)
-    data = project_index_to_sheet_data(_read_project_index())
+    payload = project_index_folder_payload(_read_project_index())
 
     return {
         "ok": True,
         "source": source,
         "path": filepath,
         "mtime": st.st_mtime,
-        "data": data,
+        "folders": payload["folders"],
+        "project_paths": payload["project_paths"],
     }
-
-
-def update_project_settings(source: str, data: Dict[str, Any], file_mtime: float = None) -> Dict[str, Any]:
-    if source not in config.PROJECT_SETTINGS_SOURCES:
-        raise HTTPException(404, f"Unknown source: {source}")
-
-    filepath = _project_index_path()
-
-    if os.path.exists(filepath):
-        st = os.stat(filepath)
-        if file_mtime is not None and abs(st.st_mtime - file_mtime) > 0.001:
-            raise HTTPException(409, "File was modified by another user. Please refresh and try again.")
-
-    try:
-        index_data = update_project_index_from_sheet_data(data)
-        _write_project_index(index_data)
-
-        st2 = os.stat(filepath)
-        return {
-            "ok": True,
-            "source": source,
-            "path": filepath,
-            "mtime": st2.st_mtime,
-        }
-    except PermissionError:
-        raise HTTPException(423, "File is locked. Another user may have it open.")
-    except Exception as e:
-        raise HTTPException(500, f"Failed to save: {str(e)}")
 
 
 def get_general_settings(project_name: str) -> Dict[str, Any]:

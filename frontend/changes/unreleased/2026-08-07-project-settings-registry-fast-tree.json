@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The Project Settings project tree now loads from a single project-registry read instead of opening every project's field-mapping file, so it opens quickly on client PCs over the network drive.",
+  "details": [
+    "Removed the legacy spreadsheet-shaped project map payload and the dead /project_book compatibility endpoints; the registry API now serves folders plus project paths directly from projects/index.json.",
+    "The CSV import path is committed through the import-profile save and read per selected project, and field-mapping saves preserve the stored path.",
+    "Project duplication recovery records no longer carry a project-row fingerprint; finalization idempotently ensures the duplicated project's registry path."
+  ]
+}
