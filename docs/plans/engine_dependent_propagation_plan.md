@@ -233,8 +233,15 @@ starts its own cascade.
 
 1. **Phase 1** — contract module + Engine job type + app server submit/status +
    all save call sites migrated + client-side driver removed + engine-unavailable
-   block + job progress UI.
+   block + job progress UI. *(Implemented and deployed 2026-08-06.)*
 2. **Phase 2** — change alert in open windows; read-path trust optimization.
+   *(Implemented 2026-08-06: `/object_change/fingerprint` stat endpoint +
+   `ui/shared/services/object_change_watch.js` poller wired into the Dataset
+   Viewer, DFM, BF, Cape Cod, and Result Selection windows; trusted open fast
+   path in `arcrho_runtime_service._calculated_dependencies_match` gated on
+   sidecar status + index folder signature. Berquist-Sherman pages, which save
+   only through the dataset sidecar endpoints, and Bootstrap, which has no UI
+   page, are not watched.)*
 3. Each phase ends with the standard docs/index/release-fragment updates. Note
    the Bridge bundles `frontend/app_server`, so phase 1's app-server changes
    require a Bridge rebuild (`data-engine/src/arcrho_bridge/build_exe.py`) even

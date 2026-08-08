@@ -5,7 +5,7 @@ Bornhuetter Ferguson method page for producing a final ultimate vector from late
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.bornhuetter_ferguson.entry_points -->
-- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260726a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260807b`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
@@ -41,6 +41,7 @@ Detected `arcrho:*` message types in key JS files:
 - Saves through `/bornhuetter-ferguson/save`, which publishes `methods/BF@<Name>.json`, the native `datasets/<Name>@<OriginLength>.csv`, any supported coarser CSV variants, and the output sidecar as one server-owned transaction with the sidecar written last.
 - The output sidecar keeps `source_kind: "bornhuetter_ferguson"`, `method_type: "Bornhuetter Ferguson"`, Notes, Audit, status, and dependency graph fields. Audit renders newest first with the shared Dataset/BF/RS/DFM table and is not part of BF dirty-state tracking; the method JSON keeps only an empty structural `audit_log_tab` group.
 - Uses Project Instance `arcrho:dataset-dirty`, `arcrho:dataset-save`, `arcrho:dependency-source-preview`, `arcrho:dependency-source-cleared`, `arcrho:project-instance-refresh-datasets`, `arcrho:project-instance-open-dependent-dataset`, and `arcrho:bf-tab-changed` messages.
+- Open-window change alert: after a successful method load or save, the page watches its `BF@<name>.json` and output sidecar through `/object_change/fingerprint` (`ui/shared/services/object_change_watch.js`) and shows a one-time "close and reopen" message box when another user or the Engine dependent-propagation job rewrites the method; the save flow pauses and rebases the watch so its own writes never alert. The alert offers a Refresh Now action that reloads the window in place when it has no unsaved changes. Dependent-propagation jobs started by this app instance never raise the alert: Project Instance broadcasts `arcrho:dependent-propagation-started`/`-finished` scope messages that pause the watch for the job's project and reserving class and rebase it at the terminal status.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

@@ -742,6 +742,87 @@ function setEmptyTable(message, options = {}) {
   els.datasetTableSurface.appendChild(table);
 }
 
+/*
+Cached dataset lists come off a network drive, so the table surface stays empty
+for as long as that read takes. The skeleton keeps the arriving table's shape
+(real headers, real column widths) on screen for that window instead of a bare
+"loading" line.
+*/
+const DATASET_TABLE_SKELETON_ROWS = 8;
+const DATASET_TABLE_SKELETON_BAR_WIDTHS = [82, 54, 70, 46, 76, 60, 88, 52];
+
+function createDatasetTableSkeletonBar(rowIndex, colIndex) {
+  const bar = document.createElement("span");
+  bar.className = "pi-table-skeleton-bar";
+  const widths = DATASET_TABLE_SKELETON_BAR_WIDTHS;
+  bar.style.width = `${widths[(rowIndex + colIndex * 3) % widths.length]}%`;
+  return bar;
+}
+
+function setSkeletonTable() {
+  if (!els.datasetTableSurface) return;
+  els.datasetTableSurface.innerHTML = "";
+  delete els.datasetTableSurface.dataset.emptyAddDataset;
+  syncDatasetGroupByToolbar();
+  syncDatasetActiveFiltersToolbar();
+
+  const columns = getVisibleDatasetColumns();
+  const group = document.createElement("div");
+  group.className = "pi-table-group pi-table-skeleton";
+  group.setAttribute("aria-busy", "true");
+  group.setAttribute("aria-label", "Loading cached dataset list");
+
+  const table = document.createElement("table");
+  table.className = "pi-table";
+  const tableWidth = Math.max(1, Math.round(getDatasetTableTotalWidth()));
+  table.style.width = `${tableWidth}px`;
+  table.style.minWidth = `${tableWidth}px`;
+
+  const colgroup = document.createElement("colgroup");
+  columns.forEach((col) => {
+    const colEl = document.createElement("col");
+    colEl.dataset.colKey = col.key;
+    colEl.style.width = `${getDatasetTableWidth(col.key)}px`;
+    colgroup.appendChild(colEl);
+  });
+  table.appendChild(colgroup);
+
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  columns.forEach((col) => {
+    const th = document.createElement("th");
+    th.dataset.colKey = col.key;
+    const cell = document.createElement("div");
+    cell.className = "pi-table-header-cell";
+    const label = document.createElement("span");
+    label.className = "pi-table-col-label";
+    const labelText = document.createElement("span");
+    labelText.className = "pi-table-col-label-text";
+    labelText.textContent = col.label;
+    label.appendChild(labelText);
+    cell.appendChild(label);
+    th.appendChild(cell);
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (let rowIndex = 0; rowIndex < DATASET_TABLE_SKELETON_ROWS; rowIndex += 1) {
+    const tr = document.createElement("tr");
+    columns.forEach((col, colIndex) => {
+      const td = document.createElement("td");
+      td.appendChild(createDatasetTableSkeletonBar(rowIndex, colIndex));
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  group.appendChild(table);
+  els.datasetTableSurface.appendChild(group);
+}
+
 function getDatasetName(row) {
   return toText(row?.[0]);
 }
@@ -2013,7 +2094,7 @@ function renderDatasetTable() {
       syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
       pruneDatasetTableSelection();
-      setEmptyTable("Loading cached dataset list...");
+      setSkeletonTable();
       return;
     }
     if (cachedDatasetFilter.error) {
@@ -2030,7 +2111,7 @@ function renderDatasetTable() {
       syncCachedDatasetToolbar();
       els.datasetTableSurface.innerHTML = "";
       pruneDatasetTableSelection();
-      setEmptyTable("Loading cached dataset list...");
+      setSkeletonTable();
       return;
     }
     if (!isTemporaryViewActive() && cachedDatasetFilter.names.size === 0) {
@@ -3218,6 +3299,7 @@ async function loadDatasets() {
     setDatasetRecordSelected,
     setDatasetTableColumnWidth,
     setEmptyTable,
+    setSkeletonTable,
     showDatasetDeleteConfirm,
     showDatasetGroupContextMenu,
     showDatasetRowContextMenu,

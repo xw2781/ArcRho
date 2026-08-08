@@ -1,4 +1,5 @@
 // Owns sidecar, settings, notes, external-link, dirty, save, and close lifecycles.
+import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
 import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 export function registerDataTabPersistenceController(runtime) {
@@ -527,13 +528,13 @@ export function registerDataTabPersistenceController(runtime) {
       return { ok: false, error: "Project, Reserving Class, and Dataset Type are required." };
     }
     const settings = getCurrentDatasetSettings();
-    const resp = await saveDatasetSidecar({
+    const resp = await withDataTabDatasetMutation({ source: "sidecar-save" }, () => saveDatasetSidecar({
       ...context,
       ...settings,
       notes: String(getNotesEditorElements().input?.value ?? ""),
       ...getManualInputDatasetValuePayload(),
       ...getDatasetExternalLinksPayload(),
-    });
+    }));
     if (!resp.ok) {
       return { ok: false, error: resp?.data?.detail || "Failed to save dataset settings." };
     }
@@ -579,6 +580,7 @@ export function registerDataTabPersistenceController(runtime) {
     updateDatasetSaveUi();
     clearDatasetDependencyPreview("save");
     handleCalculationUpdates(resp.data?.calculated_updates, "Dataset settings save");
+    notifyDataTabDurableDatasetState({ source: "sidecar-save" });
     return { ok: true, data: resp.data };
   }
   async function saveDatasetChanges(options = {}) {

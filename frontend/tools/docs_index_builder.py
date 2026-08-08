@@ -707,6 +707,7 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
         "files": [
             ("app_server/api/dataset_router.py", "Dataset query/patch routes."),
             ("app_server/services/dataset_service.py", "Dataset in-memory operations."),
+            ("app_server/services/class_folder_scan_cache.py", "Scandir-validated caches for reserving-class sidecar/CSV reads."),
             ("app_server/schemas/dataset.py", "Dataset patch request model."),
             ("ui/shared/dataset/dataset_api.js", "Frontend client wrapper for dataset API."),
         ],
@@ -783,15 +784,6 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("ui/project_settings/project_settings.js", "Frontend caller for project settings endpoints."),
         ],
     },
-    "project_book": {
-        "doc": "docs/app_server/domains/project_book.md",
-        "files": [
-            ("app_server/api/project_book_router.py", "Project workbook metadata/sheet/patch routes."),
-            ("app_server/services/book_service.py", "Workbook patching implementation."),
-            ("app_server/services/project_settings_service.py", "Project-folder path resolution."),
-            ("app_server/schemas/book.py", "Project workbook patch schema."),
-        ],
-    },
     "table_summary": {
         "doc": "docs/app_server/domains/table_summary.md",
         "files": [
@@ -836,6 +828,16 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/services/dependent_propagation_service.py", "Job submission, heartbeat preflight, status validation."),
             ("app_server/schemas/dependent_propagation.py", "Typed propagation job submit/status models."),
             ("ui/shared/services/dependent_propagation_job.js", "Shared UI poller for propagation job progress."),
+        ],
+    },
+    "object_change_watch": {
+        "doc": "docs/app_server/domains/object_change_watch.md",
+        "files": [
+            ("app_server/api/object_change_watch_router.py", "Stat-only object fingerprint route."),
+            ("app_server/services/object_change_watch_service.py", "Dataset/method fingerprint resolution and tokens."),
+            ("app_server/schemas/object_change_watch.py", "Typed fingerprint request/response models."),
+            ("ui/shared/services/object_change_watch.js", "Shared open-window change-watch poller."),
+            ("ui/shared/tabs/data/data_tab_change_watch_port.js", "Data-tab host port for save/run boundaries."),
         ],
     },
     "data_processing_rules": {
@@ -1239,13 +1241,6 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "1. Add source key support: update router path params + service source resolution.",
             "- Folder operation rollbacks can leave partial state when interrupted.",
         ),
-        "project_book": (
-            "Project workbook domain resolved by project name and source folders.",
-            "- Used by project settings/dataset flows for project-specific workbook operations.",
-            "- Depends on project settings path resolution.",
-            "1. Change project-book lookup rules: update router checks and service path resolvers.",
-            "- Mismatched source/folder mappings can route to wrong files.",
-        ),
         "table_summary": (
             "Table summary generation/cache and refresh domain.",
             "- Used by project settings and reserving class refresh workflows.",
@@ -1280,6 +1275,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Transient runtime files under `<server-root>/requests/dependent_propagation/{requests,statuses,locks}`; statuses follow the project-duplication retention policy (retained, no automatic pruning).\n- Save responses carry `propagation: {job_id, status: \"queued\"}`, or `{status: \"unchanged\"}` for no-op saves whose publication revision did not change.",
             "1. Change the job contract: update the canonical contract module first, then the Engine worker, app-server service, UI poller, and tests together.\n2. Add a propagation-triggering save flow: preflight the Engine, mark reachable downstream review-needed, then `enqueue_save_propagation`; never run the walk inline on a client.",
             "- Failed jobs are not auto-retried: downstream methods stay Review Needed until the next save or manual refresh re-enqueues a walk.\n- A plain filesystem cannot atomically fence the stale-lease takeover race; the generous thresholds make it acceptable (same residual gap as project duplication).",
+        ),
+        "object_change_watch": (
+            "Open-window change-watch domain: a dataset window or method page polls a stat-only fingerprint of the object it opened and shows a one-time advisory alert when another user or an automation process (including the Engine dependent-propagation job) rewrites it.",
+            "- `POST /object_change/fingerprint` stats the watched files only and returns `{files, token}`; it never reads a payload.\n- `dataset_sidecar_status_service.method_json_path` is the single owner of the method-type-to-filename-prefix rule.\n- The shared UI poller `ui/shared/services/object_change_watch.js` compares tokens on an interval, fires `onChange` once, and exposes `pause`/`resume`/`rebase` so self-saves are never reported.",
+            "- Stateless: each request is one or two `os.stat` calls; the baseline token lives in the open window.",
+            "1. Watch a new object kind: extend the service's kind dispatch and give the page a poller via `createObjectChangeWatch`/`createMethodObjectChangeWatchController`, pausing around its save flow.",
+            "- The alert is advisory: detection latency is the poll interval plus SMB attribute-cache lag, and a change landing between open and the first poll baseline is not reported.",
         ),
         "data_processing_rules": (
             "Project-scoped custom row-filter rule validation and persistence domain.",

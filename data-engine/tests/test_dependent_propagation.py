@@ -52,6 +52,33 @@ class DependentPropagationEngineTests(unittest.TestCase):
         path.write_text(json.dumps(request), encoding="utf-8")
         return path, request
 
+    def test_walk_failure_summary_names_dataset_and_method_failures(self) -> None:
+        message = dependent_propagation._summarize_walk_failure(
+            {
+                "skipped": [{"dataset_type_name": "C 61 Reported - CWOP"}],
+                "result_selection_updates": {
+                    "ok": False,
+                    "errors": [
+                        {
+                            "dataset_name": "C 91 - Current Qtr Indicated",
+                            "reason": "Required precedent needs review: C 41 - BF Reported ex CWOP",
+                        }
+                    ],
+                },
+                "bootstrap_updates": {"ok": True, "errors": []},
+            }
+        )
+        self.assertIn("C 61 Reported - CWOP", message)
+        self.assertIn(
+            "C 91 - Current Qtr Indicated: Required precedent needs review: "
+            "C 41 - BF Reported ex CWOP",
+            message,
+        )
+        self.assertIn("save again or refresh to retry", message)
+
+        generic = dependent_propagation._summarize_walk_failure({"skipped": []})
+        self.assertIn("One or more dependent updates failed.", generic)
+
     def test_request_filename_must_match_request_id(self) -> None:
         path, request = self._publish_request()
         renamed = path.with_name("other-name.json")

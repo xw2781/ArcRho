@@ -120,7 +120,7 @@ test("dataset dependency previews clear only after the awaited save response", a
   const end = source.indexOf("async function saveDatasetChanges", start);
   const saveFlow = source.slice(start, end);
 
-  const request = saveFlow.indexOf("const resp = await saveDatasetSidecar(");
+  const request = saveFlow.indexOf("const resp = await withDataTabDatasetMutation({ source: \"sidecar-save\" }, () => saveDatasetSidecar(");
   const responseCheck = saveFlow.indexOf("if (!resp.ok)", request);
   const clear = saveFlow.indexOf('clearDatasetDependencyPreview("save")', responseCheck);
   assert.ok(request >= 0, "save request is awaited");

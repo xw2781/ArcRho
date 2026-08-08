@@ -6,10 +6,9 @@ import hashlib
 import json
 import os
 import re
-import stat
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -21,10 +20,12 @@ from app_server.helpers import (
     sanitize_dataset_file_name,
 )
 from app_server.services import (
+    class_folder_scan_cache,
     dataset_instance_index_service,
     dataset_number_format_service,
     dataset_sidecar_status_service,
     dataset_types_service,
+    file_read_cache,
     runtime_cache_provenance_service,
 )
 
@@ -32,12 +33,6 @@ _METHOD_DEPENDENT_READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=6,
     thread_name_prefix="arcrho-method-dependent-read",
 )
-_FOLDER_SCAN_MAX_WORKERS = 12
-_FOLDER_SCAN_EXECUTOR = ThreadPoolExecutor(
-    max_workers=_FOLDER_SCAN_MAX_WORKERS,
-    thread_name_prefix="arcrho-calc-folder-scan",
-)
-
 
 def _clean_text(value: Any) -> str:
     return str(value if value is not None else "").strip()
@@ -429,32 +424,22 @@ def _cached_csv_data_format(path: str, sidecar: Dict[str, Any]) -> str:
     return _clean_text(sidecar.get("data_format"))
 
 
-def _read_json_files_bulk(paths: Iterable[str]) -> Dict[str, Dict[str, Any]]:
-    """Read many small JSON payloads with bounded parallelism.
-
-    Reserving-class data can live on a mapped or UNC network drive, where each
-    file read is a full round trip, so a per-file awaited loop over a folder is
-    the slowest possible shape. Paths are deduplicated first because every cache
-    variant of one dataset resolves to the same sidecar.
-    """
-
-    unique = list(dict.fromkeys(paths))
-    futures = {path: _FOLDER_SCAN_EXECUTOR.submit(_read_sidecar, path) for path in unique}
-    return {path: futures[path].result() for path in unique}
-
-
 class _DatasetCacheScan(NamedTuple):
     """One observation of a reserving class's cached CSV folder and sidecars.
 
     Dependency resolution asks the same folder about several dependencies in a
     row, so callers enumerate once and hand this snapshot down instead of
     re-reading every sidecar per dependency. ``mtime`` comes from the directory
-    listing that found the file, so no path is stat-ed twice.
+    listing that found the file, so no path is stat-ed twice. ``csv_stats``
+    keeps the listing's ``(mtime_ns, size)`` identity per normalized CSV path
+    so component value reads can validate the in-memory matrix cache without
+    another stat.
     """
 
     exists: bool
     csv_files: Tuple[Tuple[str, float], ...]
     sidecars: Dict[str, Dict[str, Any]]
+    csv_stats: Dict[str, Tuple[int, int]] = {}
 
 
 class _MethodFolderScan(NamedTuple):
@@ -465,50 +450,54 @@ class _MethodFolderScan(NamedTuple):
     payloads: Dict[str, Dict[str, Any]]
 
 
-def _scandir_files(folder: str, suffix: str, name_prefix: str = "") -> Tuple[bool, List[Tuple[str, float]]]:
-    """List one folder, keeping the modification time the listing already returned."""
-
-    files: List[Tuple[str, float]] = []
-    try:
-        with os.scandir(folder) as iterator:
-            for entry in iterator:
-                if not entry.name.lower().endswith(suffix):
-                    continue
-                if name_prefix and not entry.name.startswith(name_prefix):
-                    continue
-                try:
-                    info = entry.stat()
-                except OSError:
-                    continue
-                if not stat.S_ISREG(info.st_mode):
-                    continue
-                files.append((entry.path, float(info.st_mtime)))
-    except (FileNotFoundError, NotADirectoryError):
-        return False, []
-    except OSError:
-        return False, []
-    return True, files
-
-
 def _scan_dataset_cache_folder(project_name: str, reserving_class: str) -> _DatasetCacheScan:
     folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
-    exists, csv_files = _scandir_files(folder, ".csv")
+    exists, csv_entries = class_folder_scan_cache.scan_files_with_stats(folder, ".csv")
     if not exists:
-        return _DatasetCacheScan(exists=False, csv_files=(), sidecars={})
-    sidecars = _read_json_files_bulk(
-        dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
-        for path, _mtime in csv_files
+        return _DatasetCacheScan(exists=False, csv_files=(), sidecars={}, csv_stats={})
+    # Sidecars are validated against their own folder's listing, so repeat
+    # scans cost two directory enumerations instead of one read per file. The
+    # folder is derived from the cache folder exactly like the per-CSV mapping
+    # in _dataset_sidecar_path_for_cached_csv resolves it.
+    if os.path.basename(folder).lower() == config.DATASET_CACHE_DIR.lower():
+        sidecar_folder = os.path.join(os.path.dirname(folder), config.DATASET_SIDECAR_DIR)
+    else:
+        sidecar_folder = os.path.join(folder, config.DATASET_SIDECAR_DIR)
+    _sidecar_folder_exists, sidecar_entries = class_folder_scan_cache.scan_files_with_stats(
+        sidecar_folder,
+        ".json",
     )
-    return _DatasetCacheScan(exists=True, csv_files=tuple(csv_files), sidecars=sidecars)
+    sidecars = class_folder_scan_cache.read_json_files_cached(
+        (
+            dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(entry.path)
+            for entry in csv_entries
+        ),
+        class_folder_scan_cache.stats_by_normcase_path(sidecar_entries),
+    )
+    return _DatasetCacheScan(
+        exists=True,
+        csv_files=tuple((entry.path, entry.mtime) for entry in csv_entries),
+        sidecars=sidecars,
+        csv_stats=class_folder_scan_cache.stats_by_normcase_path(csv_entries),
+    )
 
 
 def _scan_dfm_method_folder(project_name: str, reserving_class: str) -> _MethodFolderScan:
     folder = config.get_project_method_data_dir(project_name, reserving_class)
-    exists, method_files = _scandir_files(folder, ".json", name_prefix="DFM@")
+    exists, method_entries = class_folder_scan_cache.scan_files_with_stats(
+        folder, ".json", name_prefix="DFM@"
+    )
     if not exists:
         return _MethodFolderScan(exists=False, method_files=(), payloads={})
-    payloads = _read_json_files_bulk(path for path, _mtime in method_files)
-    return _MethodFolderScan(exists=True, method_files=tuple(method_files), payloads=payloads)
+    payloads = class_folder_scan_cache.read_json_files_cached(
+        (entry.path for entry in method_entries),
+        class_folder_scan_cache.stats_by_normcase_path(method_entries),
+    )
+    return _MethodFolderScan(
+        exists=True,
+        method_files=tuple((entry.path, entry.mtime) for entry in method_entries),
+        payloads=payloads,
+    )
 
 
 def _sidecar_for_csv(path: str, scan: _DatasetCacheScan | None = None) -> Dict[str, Any]:
@@ -844,12 +833,25 @@ def _target_paths(
     return csv_path, sidecar_path
 
 
+def _load_component_matrix(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """Read one component CSV and its content fingerprint (cache-miss loader)."""
+
+    df = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True)
+    return df.to_numpy(dtype="float64"), runtime_cache_provenance_service.file_fingerprint(path)
+
+
 def _existing_target_settings(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
     sidecar_path = os.path.join(
         config.get_project_dataset_sidecar_dir(project_name, reserving_class),
         f"{sanitize_dataset_file_name(dataset_name)}.json",
     )
-    payload = _read_sidecar(sidecar_path)
+    # The mtime-validated cache turns the repeat read into one stat round trip.
+    try:
+        payload = file_read_cache.read_json_file_cached(sidecar_path)
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
     return {
         "origin_length": int(payload.get("origin_length") or 12),
         "development_length": int(payload.get("development_length") or 12),
@@ -1090,13 +1092,20 @@ def _load_components(
         item = candidates[0]
         path = str(item["path"])
         try:
-            df = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True)
+            arr, fingerprint = class_folder_scan_cache.read_matrix_cached(
+                path,
+                _load_component_matrix,
+                stat_hint=(
+                    dataset_scan.csv_stats.get(os.path.normcase(path))
+                    if dataset_scan is not None
+                    else None
+                ),
+            )
         except Exception as exc:
             errors.append(f"Failed to read dependency {component}: {exc}")
             continue
         var = f"_d{index}"
-        values[var] = df.to_numpy(dtype="float64")
-        fingerprint = runtime_cache_provenance_service.file_fingerprint(path)
+        values[var] = arr
         sidecar = item.get("sidecar") if isinstance(item.get("sidecar"), dict) else {}
         dependency_info.append({
             "dataset_type_name": component,

@@ -11,6 +11,7 @@ const {
   isEngineUnavailableSaveError,
   trackSavePropagation,
   waitForDependentPropagationJob,
+  waitForDependentPropagationOutcome,
 } = await import(
   `data:text/javascript;base64,${Buffer.from(pollerSource).toString("base64")}`
 );
@@ -39,6 +40,23 @@ function statusPayload(status, overrides = {}) {
 }
 
 const immediatePoll = () => Promise.resolve();
+
+test("outcome waiter resolves terminally for success, error, and missing jobs without throwing", async () => {
+  const success = await waitForDependentPropagationOutcome("job-1", {
+    fetchImpl: async () => response(statusPayload("success")),
+    waitForPoll: immediatePoll,
+  });
+  assert.deepEqual({ ok: success.ok, terminal: success.terminal }, { ok: true, terminal: true });
+
+  const failed = await waitForDependentPropagationOutcome("job-1", {
+    fetchImpl: async () => response(statusPayload("error", { message: "walk failed" })),
+    waitForPoll: immediatePoll,
+  });
+  assert.deepEqual({ ok: failed.ok, terminal: failed.terminal }, { ok: false, terminal: true });
+
+  const missing = await waitForDependentPropagationOutcome("   ");
+  assert.deepEqual(missing, { ok: false, terminal: false });
+});
 
 test("status URL encodes the job id", () => {
   assert.equal(
@@ -178,22 +196,25 @@ test("trackSavePropagation completes a queued job and fires onComplete", async (
   assert.ok(seen.every(([, tone]) => tone !== "warn"));
 });
 
-test("trackSavePropagation surfaces a failed job as a warning, never a throw", async () => {
+test("trackSavePropagation finishes a failed job quietly and still fires onComplete", async () => {
+  // Owner decision (2026-08-07): a failed walk must not raise a warning status
+  // line — the dataset table's review-needed flags are the failure surface —
+  // but onComplete still fires so the table refresh happens after the walk
+  // finalized downstream statuses.
   const seen = [];
-  let completed = false;
+  let completed = "unset";
   const result = await trackSavePropagation(
     { ok: true, job_id: "job-1", status: "queued" },
     {
       fetchImpl: async () => response(statusPayload("error", { message: "walk failed" })),
       onStatus: (text, options) => seen.push([text, options?.tone]),
-      onComplete: () => { completed = true; },
+      onComplete: (payload) => { completed = payload; },
       waitForPoll: immediatePoll,
     },
   );
   assert.equal(result, null);
-  assert.equal(completed, false);
-  const warning = seen.at(-1);
-  assert.match(warning[0], /walk failed/u);
-  assert.match(warning[0], /Review Needed/u);
-  assert.equal(warning[1], "warn");
+  assert.equal(completed, null);
+  assert.ok(seen.every(([, tone]) => tone !== "warn"));
+  assert.ok(seen.every(([text]) => !/did not complete/u.test(text)));
+  assert.match(seen.at(-1)[0], /Dependent updates finished/u);
 });

@@ -12,6 +12,11 @@ from typing import Any, Callable, Dict, List
 
 import pandas as pd
 from fastapi import HTTPException
+from arcrho_api.dataset_index_contract import (
+    INDEX_FILE_NAME as DATASET_INDEX_FILE_NAME,
+    index_rebuild_reason,
+    scan_folder_signature,
+)
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 
 from app_server import config
@@ -297,6 +302,42 @@ def _calculated_precedent_request_pairs(
     )
 
 
+def _reserving_class_state_trusted(
+    reserving_class_dir: str,
+    memo: CalculatedValidationMemo | None,
+) -> bool:
+    """Return True when the class's persisted index is current evidence.
+
+    Dependent propagation is a single locked Engine-hosted job (business-logic
+    contract rule 15), so a persisted ``index.json`` whose ``folder_signature``
+    still matches a fresh folder listing proves no dataset, method, or sidecar
+    file in the reserving class changed since the last completed rebuild. The
+    check costs one index read plus three directory listings; it never raises,
+    and any doubt falls back to the deep per-precedent fingerprint walk.
+    """
+    memo_key = "class-state-trusted::" + os.path.normcase(
+        os.path.abspath(reserving_class_dir)
+    )
+    if memo is not None and memo_key in memo:
+        return memo[memo_key]
+    trusted = False
+    try:
+        index_path = os.path.join(reserving_class_dir, DATASET_INDEX_FILE_NAME)
+        with open(index_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if isinstance(data, dict):
+            scan = scan_folder_signature(reserving_class_dir)
+            trusted = not index_rebuild_reason(
+                data,
+                expected_folder_signature=scan.signature,
+            )
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        trusted = False
+    if memo is not None:
+        memo[memo_key] = trusted
+    return trusted
+
+
 def _calculated_dependencies_match(
     payload: Dict[str, Any],
     pairs: list,
@@ -380,6 +421,15 @@ def _calculated_dependencies_match(
     if not _path_is_within_folder(data_path, dataset_folder):
         memo[cache_key] = False
         return False
+    if (
+        dataset_sidecar_status_service.normalize_status(payload.get("status"))
+        == dataset_sidecar_status_service.STATUS_CURRENT
+        and _reserving_class_state_trusted(os.path.dirname(dataset_folder), memo)
+    ):
+        # Open fast path: a current sidecar status inside a class whose folder
+        # signature still matches the persisted index needs no ancestry walk.
+        memo[cache_key] = True
+        return True
     current_precedent_contracts = (
         contract.get("precedent_contracts")
         if isinstance(contract.get("precedent_contracts"), dict)

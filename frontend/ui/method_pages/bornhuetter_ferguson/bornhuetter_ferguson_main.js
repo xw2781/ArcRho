@@ -20,12 +20,17 @@ import {
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js?v=20260722a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260728a";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
-} from "/ui/shared/services/dependent_propagation_job.js?v=20260806a";
+} from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
+import {
+  createMethodObjectChangeWatchController,
+  showObjectUpdatedAlert,
+  wireSamePropagationScopePause,
+} from "/ui/shared/services/object_change_watch.js?v=20260807a";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 import {
@@ -89,6 +94,25 @@ let tabbedPage = null;
 let bfChart = null;
 let aggregateLoadSequence = 0;
 const bfCloseConfirm = createPageCloseConfirm({ subject: BF_METHOD_TYPE });
+// Open-window change alert (advisory): fires once when another user or the
+// dependent-propagation job rewrites this method while it is open.
+const bfObjectChangeWatch = createMethodObjectChangeWatchController({
+  methodType: "bornhuetter_ferguson",
+  onChange: () => {
+    void showObjectUpdatedAlert({
+      showMessageBox: showPageMessageBox,
+      isDirty: () => isDirty,
+      onBlockedRefresh: () => {
+        postStatus("Unsaved changes block the refresh. Save or discard them, then reopen the window.", "warn");
+      },
+    });
+  },
+});
+wireSamePropagationScopePause({
+  watch: bfObjectChangeWatch,
+  getProject: () => state.project,
+  getReservingClass: () => state.reservingClass,
+});
 const activeDependencyPreviews = new Map();
 const bfNotesController = mountNotesTab({
   container: document.getElementById("bfNotesMount"),
@@ -1383,6 +1407,13 @@ async function applyPersistedAggregate(result, options = {}) {
     calculateOutputs();
     renderMethodGrid();
   }
+  const savedName = text(getDetails().name);
+  bfObjectChangeWatch.ensure({
+    projectName: state.project,
+    reservingClass: state.reservingClass,
+    methodName: savedName,
+    outputDataset: savedName,
+  });
   return true;
 }
 
@@ -1444,55 +1475,60 @@ async function saveBornhuetterFerguson() {
   }
   const method = buildPayload({ lastModified: new Date().toISOString() });
   let result;
+  bfObjectChangeWatch.pause();
   try {
-    result = await saveBornhuetterFergusonMethod({
-      project_name: state.project,
-      reserving_class: state.reservingClass,
-      method,
-      notes: els.notesInput?.value || "",
-      expected_owned_revision: state.ownedRevision,
-      expected_derived_revision: state.derivedRevision,
-    });
-  } catch (err) {
-    if (isEngineUnavailableSaveError(err)) {
-      // The save was refused before anything was written; unsaved work stays
-      // in this window.
-      void showPageMessageBox({
-        title: "ArcRho Engine Unavailable",
-        message: String(err?.message || err),
-        tone: "warn",
+    try {
+      result = await saveBornhuetterFergusonMethod({
+        project_name: state.project,
+        reserving_class: state.reservingClass,
+        method,
+        notes: els.notesInput?.value || "",
+        expected_owned_revision: state.ownedRevision,
+        expected_derived_revision: state.derivedRevision,
       });
+    } catch (err) {
+      if (isEngineUnavailableSaveError(err)) {
+        // The save was refused before anything was written; unsaved work stays
+        // in this window.
+        void showPageMessageBox({
+          title: "ArcRho Engine Unavailable",
+          message: String(err?.message || err),
+          tone: "warn",
+        });
+      }
+      throw err;
     }
-    throw err;
+    await applyPersistedAggregate(result);
+    markClean();
+    try {
+      window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+    } catch {}
+    const aggregatedCsvPaths = Array.isArray(result?.aggregated_csv_paths)
+      ? result.aggregated_csv_paths
+      : [];
+    postStatus(
+      result?.propagation_ok === false
+        ? `${BF_METHOD_TYPE} saved, but its dependent updates could not be scheduled: ${details.name}`
+        : `${BF_METHOD_TYPE} saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`,
+      result?.propagation_ok === false ? "warn" : "",
+    );
+    void trackSavePropagation(result?.propagation, {
+      onStatus: (text, statusOptions) => postStatus(text, statusOptions?.tone === "warn" ? "warn" : ""),
+      onComplete: () => {
+        try {
+          window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+        } catch {}
+      },
+    });
+    await showMethodSaveReviewWarning(result, {
+      instanceId: inst,
+      projectName: state.project,
+      reservingClass: state.reservingClass,
+    });
+    return result;
+  } finally {
+    bfObjectChangeWatch.resume();
   }
-  await applyPersistedAggregate(result);
-  markClean();
-  try {
-    window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
-  } catch {}
-  const aggregatedCsvPaths = Array.isArray(result?.aggregated_csv_paths)
-    ? result.aggregated_csv_paths
-    : [];
-  postStatus(
-    result?.propagation_ok === false
-      ? `${BF_METHOD_TYPE} saved, but its dependent updates could not be scheduled: ${details.name}`
-      : `${BF_METHOD_TYPE} saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`,
-    result?.propagation_ok === false ? "warn" : "",
-  );
-  void trackSavePropagation(result?.propagation, {
-    onStatus: (text, statusOptions) => postStatus(text, statusOptions?.tone === "warn" ? "warn" : ""),
-    onComplete: () => {
-      try {
-        window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
-      } catch {}
-    },
-  });
-  await showMethodSaveReviewWarning(result, {
-    instanceId: inst,
-    projectName: state.project,
-    reservingClass: state.reservingClass,
-  });
-  return result;
 }
 
 function setNotesText(value) {

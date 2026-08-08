@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Live dependency previews respond much faster on client PCs by caching unchanged reserving-class files instead of re-reading them from the network share on every edit.",
+  "details": [
+    "Each preview request used to re-read every dataset sidecar, DFM method file, and component CSV in the reserving class over the network drive; unchanged files are now served from an in-app cache validated against the folder listing, so a repeat preview costs a few directory listings instead of one read per file.",
+    "The same cache speeds up calculated-dataset refreshes during saves, since they resolve dependencies through the same folder scans.",
+    "Changed files are always detected via their modification identity, and files written in the last few seconds are always re-read, so cached previews never show stale content."
+  ]
+}

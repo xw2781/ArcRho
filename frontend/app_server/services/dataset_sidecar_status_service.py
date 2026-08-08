@@ -50,6 +50,15 @@ _METHOD_TYPE_BY_SOURCE_KIND = {
     SOURCE_KIND_BERQUIST_SHERMAN_SR: METHOD_TYPE_BERQUIST_SHERMAN_SR,
     SOURCE_KIND_BERQUIST_SHERMAN_CRA: METHOD_TYPE_BERQUIST_SHERMAN_CRA,
 }
+METHOD_JSON_FILENAME_PREFIX_BY_TYPE = {
+    METHOD_TYPE_DFM: "DFM@",
+    METHOD_TYPE_RESULT_SELECTION: "RS@",
+    METHOD_TYPE_BORN_HUETTER_FERGUSON: "BF@",
+    METHOD_TYPE_CAPE_COD: "CC@",
+    METHOD_TYPE_BOOTSTRAP: "BST@",
+    METHOD_TYPE_BERQUIST_SHERMAN_SR: "BSSR@",
+    METHOD_TYPE_BERQUIST_SHERMAN_CRA: "BSCRA@",
+}
 
 
 def _clean_text(value: Any) -> str:
@@ -144,6 +153,31 @@ def sidecar_path(project_name: str, reserving_class: str, dataset_name: str) -> 
     return os.path.join(
         config.get_project_dataset_sidecar_dir(project_name, reserving_class),
         f"{sanitize_dataset_file_name(dataset_name)}.json",
+    )
+
+
+def method_json_path(
+    project_name: str,
+    reserving_class: str,
+    method_type: Any,
+    method_name: str,
+) -> str:
+    """Return the canonical ``<PREFIX>@<name>.json`` path for a method type.
+
+    ``method_type`` may be a canonical method type ("DFM") or a source kind
+    ("dfm", "berquist_sherman_sr").
+    """
+    prefix = METHOD_JSON_FILENAME_PREFIX_BY_TYPE.get(
+        normalize_method_type(method_type)
+    ) or METHOD_JSON_FILENAME_PREFIX_BY_TYPE.get(
+        normalize_method_type("", method_type)
+    )
+    if not prefix:
+        raise ValueError(f"Unknown method type: {method_type}")
+    filename = f"{prefix}{sanitize_dataset_file_name(method_name, 'Name')}.json"
+    return os.path.join(
+        config.get_project_method_data_dir(project_name, reserving_class),
+        filename,
     )
 
 

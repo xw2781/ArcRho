@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Opening a calculated dataset is faster: when the reserving class is unchanged since its last index rebuild, the open trusts the saved state instead of re-validating every upstream dependency file.",
+  "details": [
+    "Because dependent updates now run as a single locked ArcRho Engine job, a current sidecar status plus an unchanged folder signature is trustworthy evidence of currency.",
+    "Any doubt (review-needed status, changed folder, missing index) falls back to the previous deep per-dependency validation."
+  ]
+}

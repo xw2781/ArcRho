@@ -3,6 +3,11 @@ import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
 } from "/ui/shared/dataset/berquist_sherman_contract.js";
+import { waitForDependentPropagationOutcome } from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
+import {
+  PROPAGATION_SCOPE_FINISHED_MESSAGE,
+  PROPAGATION_SCOPE_STARTED_MESSAGE,
+} from "/ui/shared/services/object_change_watch.js?v=20260807a";
 
 export function installProjectInstanceMessages(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -135,6 +140,61 @@ function buildCalculatedPreviewMessage(step = {}, sourceMessage = {}) {
     originLength: Array.isArray(step.origin_labels) ? step.origin_labels.length : undefined,
     developmentLength: Array.isArray(step.development_labels) ? step.development_labels.length : undefined,
   };
+}
+
+const pendingDependencyClearJobIds = new Set();
+const pendingDependencyClearSourceCounts = new Map();
+
+function relayDependencySourceCleared(msg, excludeSource) {
+  postMessageToDatasetWindows({ ...msg, propagationJobId: "" }, excludeSource, { includeDfm: true });
+  clearCalculatedPreviewTargetsForSource(msg, toText(msg.reason) || "clean");
+}
+
+async function deferDependencyClearUntilPropagation(msg, excludeSource) {
+  // A save that enqueued an Engine propagation job posts its cleared message
+  // with the job id. Dependent windows keep their live-preview values until
+  // the job's terminal status so they never snap back to stale values, and
+  // the scope broadcasts pause their change watches so a job this app
+  // started never raises the "updated outside this window" alert.
+  const jobId = toText(msg.propagationJobId);
+  const sourceKey = dependencySourceKey(msg);
+  if (!jobId) {
+    // Save flows can fire more than one clean transition; only the first
+    // cleared message carries the job id. Relaying a job-less duplicate while
+    // its deferral is pending would clear downstream previews early and
+    // reload pre-walk (stale) values, so swallow it — the deferred relay
+    // clears the same source at the job's terminal status.
+    if (pendingDependencyClearSourceCounts.get(sourceKey) > 0) return;
+    relayDependencySourceCleared(msg, excludeSource);
+    return;
+  }
+  if (pendingDependencyClearJobIds.has(jobId)) return;
+  pendingDependencyClearJobIds.add(jobId);
+  pendingDependencyClearSourceCounts.set(sourceKey, (pendingDependencyClearSourceCounts.get(sourceKey) || 0) + 1);
+  const scope = {
+    project: toText(msg.project),
+    reservingClass: toText(msg.reservingClass || msg.reserving_class),
+    jobId,
+  };
+  postMessageToDatasetWindows(
+    { type: PROPAGATION_SCOPE_STARTED_MESSAGE, ...scope },
+    null,
+    { includeDfm: true },
+  );
+  try {
+    await waitForDependentPropagationOutcome(jobId);
+  } finally {
+    pendingDependencyClearJobIds.delete(jobId);
+    const remaining = (pendingDependencyClearSourceCounts.get(sourceKey) || 0) - 1;
+    if (remaining > 0) pendingDependencyClearSourceCounts.set(sourceKey, remaining);
+    else pendingDependencyClearSourceCounts.delete(sourceKey);
+    relayDependencySourceCleared(msg, excludeSource);
+    postMessageToDatasetWindows(
+      { type: PROPAGATION_SCOPE_FINISHED_MESSAGE, ...scope },
+      null,
+      { includeDfm: true },
+    );
+  }
 }
 
 function clearCalculatedPreviewTargetsForSource(sourceMessage = {}, reason = "clean", keepKeys = new Set()) {
@@ -1355,15 +1415,15 @@ window.addEventListener("message", (event) => {
     }
     return;
   }
-  if (msg.type === "arcrho:dependency-source-preview" || msg.type === "arcrho:dependency-source-cleared") {
+  if (msg.type === "arcrho:dependency-source-preview") {
     postMessageToDatasetWindows({ ...msg }, event.source, { includeDfm: true });
-    if (msg.type === "arcrho:dependency-source-preview") {
-      void publishCalculatedDependencyPreviews(msg, event.source).catch((err) => {
-        setStatus(`Calculated live preview failed: ${toText(err?.message) || err}`, true);
-      });
-    } else {
-      clearCalculatedPreviewTargetsForSource(msg, toText(msg.reason) || "clean");
-    }
+    void publishCalculatedDependencyPreviews(msg, event.source).catch((err) => {
+      setStatus(`Calculated live preview failed: ${toText(err?.message) || err}`, true);
+    });
+    return;
+  }
+  if (msg.type === "arcrho:dependency-source-cleared") {
+    void deferDependencyClearUntilPropagation(msg, event.source);
     return;
   }
   if (msg.type === "arcrho:project-instance-refresh-datasets") {

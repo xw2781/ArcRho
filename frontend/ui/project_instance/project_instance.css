@@ -1660,6 +1660,56 @@ body.pi-resizing-table-column * {
   text-align: center;
   padding: 18px;
 }
+/*
+Dataset table loading skeleton: real headers and column widths with placeholder
+bars for the rows, so the surface keeps the shape of the arriving table while
+the cached dataset list is read.
+*/
+.pi-table-skeleton {
+  position: relative;
+  overflow: hidden;
+  --pi-table-skeleton-bar: rgba(15, 23, 42, 0.11);
+  --pi-table-skeleton-sweep: rgba(255, 255, 255, 0.55);
+}
+.pi-table-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 32%,
+    var(--pi-table-skeleton-sweep) 50%,
+    transparent 68%
+  );
+  animation: piTableSkeletonSweep 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.pi-table-skeleton .pi-table,
+.pi-table-skeleton .pi-table tr {
+  cursor: default;
+  user-select: none;
+}
+.pi-table-skeleton-bar {
+  display: inline-block;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--pi-table-skeleton-bar);
+  vertical-align: middle;
+}
+@keyframes piTableSkeletonSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pi-table-skeleton::after {
+    animation: none;
+    background: none;
+  }
+}
 .pi-table-surface[data-empty-add-dataset="1"],
 .pi-table-empty[data-empty-action="add-dataset"] {
   cursor: context-menu;

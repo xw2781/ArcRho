@@ -3,7 +3,8 @@
 Reserving-class data can live on a mapped or UNC network drive, so a per-file
 awaited loop over every cached CSV's sidecar pays one round trip each. These
 tests pin the batched shape: one folder enumeration, one read per distinct
-sidecar, bounded concurrency, and a deterministic candidate order.
+sidecar (served from the scandir-validated cache on repeats), bounded
+concurrency, and a deterministic candidate order.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
 from app_server import config
-from app_server.services import calculated_dataset_service
+from app_server.services import calculated_dataset_service, class_folder_scan_cache
 
 
 PROJECT = "Example Project"
@@ -36,6 +37,7 @@ TARGET_SETTINGS = {
 
 class CalculatedDependencyFolderScanTests(unittest.TestCase):
     def setUp(self) -> None:
+        class_folder_scan_cache.clear_class_folder_scan_cache()
         self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
         self.root = Path(self.temp_dir.name)
         self.cache_dir = self.root / config.DATASET_CACHE_DIR
@@ -61,6 +63,7 @@ class CalculatedDependencyFolderScanTests(unittest.TestCase):
     def tearDown(self) -> None:
         for patcher in self.patchers:
             patcher.stop()
+        class_folder_scan_cache.clear_class_folder_scan_cache()
         self.temp_dir.cleanup()
 
     def _add_dataset(self, name: str, *, variants: int = 1, dataset_type: str = "") -> None:
@@ -87,9 +90,9 @@ class CalculatedDependencyFolderScanTests(unittest.TestCase):
         self._add_dataset("Reported Loss")
 
         with patch.object(
-            calculated_dataset_service,
-            "_read_sidecar",
-            wraps=calculated_dataset_service._read_sidecar,
+            class_folder_scan_cache,
+            "_load_json_payload",
+            wraps=class_folder_scan_cache._load_json_payload,
         ) as read_sidecar:
             scan = calculated_dataset_service._scan_dataset_cache_folder(PROJECT, RESERVING_CLASS)
 
@@ -105,7 +108,7 @@ class CalculatedDependencyFolderScanTests(unittest.TestCase):
         in_flight = 0
         peak = 0
         guard = threading.Lock()
-        original = calculated_dataset_service._read_sidecar
+        original = class_folder_scan_cache._load_json_payload
 
         def tracked(path: str):
             nonlocal in_flight, peak
@@ -118,18 +121,21 @@ class CalculatedDependencyFolderScanTests(unittest.TestCase):
                 with guard:
                     in_flight -= 1
 
-        with patch.object(calculated_dataset_service, "_read_sidecar", side_effect=tracked):
+        with patch.object(class_folder_scan_cache, "_load_json_payload", side_effect=tracked):
             scan = calculated_dataset_service._scan_dataset_cache_folder(PROJECT, RESERVING_CLASS)
 
         self.assertEqual(len(scan.sidecars), 40)
-        self.assertLessEqual(peak, calculated_dataset_service._FOLDER_SCAN_MAX_WORKERS)
+        self.assertLessEqual(peak, class_folder_scan_cache._READ_MAX_WORKERS)
 
     def test_candidates_reuse_a_supplied_scan_without_new_reads(self) -> None:
         self._add_dataset("Paid Loss")
         self._add_dataset("Reported Loss")
         scan = calculated_dataset_service._scan_dataset_cache_folder(PROJECT, RESERVING_CLASS)
 
-        with patch.object(calculated_dataset_service, "_read_sidecar") as read_sidecar:
+        with (
+            patch.object(calculated_dataset_service, "_read_sidecar") as read_sidecar,
+            patch.object(class_folder_scan_cache, "_load_json_payload") as load_json,
+        ):
             candidates = calculated_dataset_service._candidate_csvs(
                 PROJECT,
                 RESERVING_CLASS,
@@ -139,6 +145,7 @@ class CalculatedDependencyFolderScanTests(unittest.TestCase):
             )
 
         read_sidecar.assert_not_called()
+        load_json.assert_not_called()
         self.assertEqual(
             [Path(item["path"]).name for item in candidates],
             ["Paid Loss@12@12@cum@dev.csv"],
@@ -197,16 +204,19 @@ class CalculatedDependencyFolderScanTests(unittest.TestCase):
         (self.method_dir / "RS@Ignored.json").write_text("{}", encoding="utf-8")
 
         with patch.object(
-            calculated_dataset_service,
-            "_read_sidecar",
-            wraps=calculated_dataset_service._read_sidecar,
-        ) as read_sidecar:
+            class_folder_scan_cache,
+            "_load_json_payload",
+            wraps=class_folder_scan_cache._load_json_payload,
+        ) as read_payload:
             scan = calculated_dataset_service._scan_dfm_method_folder(PROJECT, RESERVING_CLASS)
 
         self.assertEqual(len(scan.method_files), 6)
-        self.assertEqual(read_sidecar.call_count, 6)
+        self.assertEqual(read_payload.call_count, 6)
 
-        with patch.object(calculated_dataset_service, "_read_sidecar") as blocked:
+        with (
+            patch.object(calculated_dataset_service, "_read_sidecar") as blocked,
+            patch.object(class_folder_scan_cache, "_load_json_payload") as blocked_json,
+        ):
             candidates = calculated_dataset_service._candidate_dfm_methods(
                 PROJECT,
                 RESERVING_CLASS,
@@ -214,6 +224,7 @@ class CalculatedDependencyFolderScanTests(unittest.TestCase):
                 scan=scan,
             )
         blocked.assert_not_called()
+        blocked_json.assert_not_called()
         self.assertEqual([Path(item["path"]).name for item in candidates], ["DFM@DFM Output 3.json"])
 
     def test_load_components_enumerates_the_cache_folder_once(self) -> None:

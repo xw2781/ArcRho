@@ -10,12 +10,19 @@ function ensureStyles(doc) {
   doc.head.appendChild(link);
 }
 
+/**
+ * Shows a page-local modal message box.
+ *
+ * Resolves with the clicked action's `id` when `actions` are provided
+ * ([{id, label}] rendered before OK), or `undefined` for OK/Esc/close.
+ */
 export function showPageMessageBox({
   title = "Message",
   message = "",
   tone = "",
   links = [],
   onLinkClick = null,
+  actions = [],
   documentRef = document,
 } = {}) {
   const doc = documentRef;
@@ -72,12 +79,17 @@ export function showPageMessageBox({
     .map((element) => ({ element, inert: !!element.inert }));
   for (const item of inertSiblings) item.element.inert = true;
 
+  const actionsEl = overlay.querySelector(".pageMessageBoxActions");
+  const actionItems = (Array.isArray(actions) ? actions : []).filter(
+    (item) => String(item?.id ?? "").trim() && String(item?.label ?? "").trim(),
+  );
+
   return new Promise((resolve) => {
     let open = true;
     function focusableElements() {
       return Array.from(overlay.querySelectorAll("button:not(:disabled), [href], [tabindex]:not([tabindex='-1'])"));
     }
-    function finish() {
+    function finish(actionId) {
       if (!open) return;
       open = false;
       doc.removeEventListener("keydown", handleKeydown, true);
@@ -88,7 +100,15 @@ export function showPageMessageBox({
       if (returnFocus?.isConnected && typeof returnFocus.focus === "function") {
         requestAnimationFrame(() => returnFocus.focus());
       }
-      resolve();
+      resolve(typeof actionId === "string" ? actionId : undefined);
+    }
+    for (const item of actionItems) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "pageMessageBoxButton pageMessageBoxActionButton";
+      button.textContent = String(item.label).trim();
+      button.addEventListener("click", () => finish(String(item.id).trim()));
+      actionsEl.insertBefore(button, okButton);
     }
     function handleKeydown(event) {
       event.stopImmediatePropagation();

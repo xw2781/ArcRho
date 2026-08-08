@@ -86,6 +86,19 @@ export function setRatioColAllActive(v) { ratioColAllActive = v; }
 
 export function getDfmIsDirty() { return dfmIsDirty; }
 
+// A save that enqueued an Engine dependent-propagation job records the job id
+// here so the dependency-source "cleared" message carries it; Project Instance
+// then keeps downstream live previews until the job's terminal status.
+let pendingDfmPropagationJobId = "";
+export function setPendingDfmPropagationJobId(jobId) {
+  pendingDfmPropagationJobId = String(jobId || "").trim();
+}
+export function consumePendingDfmPropagationJobId() {
+  const jobId = pendingDfmPropagationJobId;
+  pendingDfmPropagationJobId = "";
+  return jobId;
+}
+
 export function getShowNaBorders() { return showNaBorders; }
 export function setShowNaBorders(v) { showNaBorders = v; }
 

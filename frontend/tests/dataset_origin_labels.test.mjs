@@ -53,6 +53,14 @@ const testableRunControllerSource = runControllerSource
   .replace(
     /import \{ trackSavePropagation \} from "\/ui\/shared\/services\/dependent_propagation_job\.js\?v=[0-9a-z]+";/,
     "const trackSavePropagation = () => Promise.resolve(null);",
+  )
+  .replace(
+    /import \{[\s\S]*?\} from "\/ui\/shared\/tabs\/data\/data_tab_change_watch_port\.js\?v=[0-9a-z]+";/,
+    [
+      "const notifyDataTabDatasetMutationEnded = () => {};",
+      "const notifyDataTabDatasetMutationStarted = () => {};",
+      "const notifyDataTabDurableDatasetState = () => {};",
+    ].join("\n"),
   );
 const runControllerModule = await import(
   `data:text/javascript;base64,${Buffer.from(testableRunControllerSource).toString("base64")}`

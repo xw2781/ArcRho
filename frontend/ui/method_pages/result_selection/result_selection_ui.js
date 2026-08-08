@@ -271,6 +271,13 @@
           payload.values = selectedUltimateVector();
           payload.originLabels = state.originLabels.map(String);
         }
+        if (type === "arcrho:dependency-source-cleared") {
+          // Set only by a save that enqueued an Engine propagation job;
+          // Project Instance defers the downstream preview clear until the
+          // job reaches a terminal status.
+          payload.propagationJobId = String(state.pendingPropagationJobId || "").trim();
+          state.pendingPropagationJobId = "";
+        }
         return payload;
       }
 

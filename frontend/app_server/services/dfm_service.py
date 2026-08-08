@@ -77,8 +77,9 @@ def _lock(project_name: str, reserving_class: str) -> threading.RLock:
 
 
 def _method_path(project_name: str, reserving_class: str, method_name: str) -> str:
-    filename = f"DFM@{sanitize_dataset_file_name(method_name, 'Name')}.json"
-    return os.path.join(config.get_project_method_data_dir(project_name, reserving_class), filename)
+    return dataset_sidecar_status_service.method_json_path(
+        project_name, reserving_class, dataset_sidecar_status_service.METHOD_TYPE_DFM, method_name
+    )
 
 
 def _sidecar_path(project_name: str, reserving_class: str, output_dataset: str) -> str:

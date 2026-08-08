@@ -142,9 +142,39 @@ export async function waitForDependentPropagationJob({
 }
 
 /**
+ * Resolve once a submitted propagation job reaches any terminal outcome.
+ * Never throws: errors, stale statuses, and unavailable status checks all
+ * resolve as `{ok: false, terminal: true}` so callers waiting to release
+ * held UI state (live previews, paused watches) always proceed.
+ */
+export async function waitForDependentPropagationOutcome(jobId, {
+  fetchImpl = (...args) => fetch(...args),
+  onProgress = () => {},
+  ...pollOptions
+} = {}) {
+  const id = String(jobId || "").trim();
+  if (!id) return { ok: false, terminal: false };
+  try {
+    const result = await waitForDependentPropagationJob({
+      fetchImpl,
+      statusUrl: dependentPropagationStatusUrl(id),
+      jobId: id,
+      onProgress,
+      ...pollOptions,
+    });
+    return { ok: true, terminal: true, result };
+  } catch (error) {
+    return { ok: false, terminal: true, error };
+  }
+}
+
+/**
  * Track a save response's `propagation` payload without blocking the save UX.
- * Never throws: terminal problems become `onStatus(text, {tone})` calls, and
- * `onComplete(result)` fires only after the Engine reports success.
+ * Never throws. `onComplete(result)` fires at any terminal outcome (`result`
+ * is null when the job failed) so callers refresh the dataset table either
+ * way — a failed walk still finalized downstream objects at Review Needed,
+ * and the table's review-needed flags are the failure surface; no warning
+ * status line is emitted (owner decision, 2026-08-07).
  */
 export async function trackSavePropagation(propagation, {
   fetchImpl = (...args) => fetch(...args),
@@ -176,12 +206,9 @@ export async function trackSavePropagation(propagation, {
     onStatus(`Dependent updates complete at ${new Date().toLocaleTimeString()}.`, { tone: "info" });
     try { onComplete(result); } catch { /* completion hooks must not break polling callers */ }
     return result;
-  } catch (error) {
-    const message = String(error?.message || error || "Dependent updates failed.");
-    onStatus(
-      `Dependent updates did not complete: ${message} Downstream methods remain Review Needed until a save or refresh succeeds.`,
-      { tone: "warn" },
-    );
+  } catch {
+    onStatus(`Dependent updates finished at ${new Date().toLocaleTimeString()}.`, { tone: "info" });
+    try { onComplete(null); } catch { /* completion hooks must not break polling callers */ }
     return null;
   }
 }

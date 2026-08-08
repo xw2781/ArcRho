@@ -7,7 +7,7 @@ Project instance workspace for browsing one project's reserving-class paths and 
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_instance.entry_points -->
-- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260731b`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260807b`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `${endpoint}?project_name=${encodeURIComponent(name)}`
@@ -112,6 +112,7 @@ Detected `arcrho:*` message types in key JS files:
 - Dataset table body cells wrap long text and clamp display to two lines per cell, without row-hover fill or browser tooltips over row values.
 - Clicking a dataset table column label cycles that column through ascending sort, descending sort, and no active sort, with the third click returning rows to the default cached order and removing the sort indicator. `Last Modified` and `Created` sort by their cached numeric timestamp values instead of their formatted display strings.
 - The left reserving-class panel defaults to 400px and has a draggable splitter constrained to 200px-600px; collapse/expand is animated, live drag updates are frame-throttled with transitions disabled for responsiveness, dragging the panel to 200px or smaller collapses it, and double-clicking the splitter toggles collapse/expand.
+- Dependency-source `cleared` messages may carry a `propagationJobId` from a save that enqueued an Engine dependent-propagation job. Project Instance then defers relaying the clear (and clearing its calculated preview fan-out targets) until the job's terminal status, so downstream open windows keep their live-preview values instead of snapping back to stale persisted values; it brackets the wait with `arcrho:dependent-propagation-started`/`-finished` broadcasts so those windows' change watches pause for the job. A failed job still releases the clear so windows reload the honest Review Needed state. Save flows can fire more than one clean transition, and only the first cleared message carries the job id, so while a source has a deferral pending Project Instance swallows job-less cleared duplicates for that same source — relaying one would clear downstream previews early and reload pre-walk stale values that never recover.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

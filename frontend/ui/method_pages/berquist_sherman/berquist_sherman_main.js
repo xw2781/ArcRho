@@ -17,7 +17,7 @@ import {
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
-import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
 import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
@@ -493,6 +493,8 @@ function scheduleOutputDependencyPreview(reason = "dirty", force = false) {
   }, 120);
 }
 
+let pendingBsPropagationJobId = "";
+
 function clearOutputDependencyPreview(reason = "clean") {
   window.clearTimeout(outputPreviewTimer);
   outputPreviewTimer = 0;
@@ -501,12 +503,18 @@ function clearOutputDependencyPreview(reason = "clean") {
     reason,
   );
   lastOutputPreviewMessage = null;
+  // Set only by a save that enqueued an Engine propagation job; Project
+  // Instance defers the downstream preview clear until the job's terminal
+  // status so dependents never snap back to stale values.
+  const propagationJobId = pendingBsPropagationJobId;
+  pendingBsPropagationJobId = "";
   if (!message.names?.length) return;
   try {
     window.parent?.postMessage({
       ...message,
       type: "arcrho:dependency-source-cleared",
       reason,
+      propagationJobId,
     }, "*");
   } catch {}
 }
@@ -2191,6 +2199,7 @@ async function saveSidecar(csvPath) {
   }
   sidecarLoadSequence += 1;
   auditLogView.render(payload?.audit_log);
+  pendingBsPropagationJobId = String(payload?.calculated_updates?.job_id || "").trim();
   return payload;
 }
 

@@ -256,16 +256,45 @@ def execute_dependent_propagation(
     )
 
 
+_METHOD_UPDATE_BUCKETS = (
+    "dfm_updates",
+    "result_selection_updates",
+    "bornhuetter_ferguson_updates",
+    "cape_cod_updates",
+    "bootstrap_updates",
+)
+
+
 def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
     failed = [
         str(item.get("dataset_type_name") or item.get("dataset_name") or "").strip()
         for item in result.get("skipped", [])
     ]
     failed = [name for name in failed if name]
+    method_failures: list[str] = []
+    for bucket in _METHOD_UPDATE_BUCKETS:
+        updates = result.get(bucket)
+        if not isinstance(updates, Mapping) or updates.get("ok", True):
+            continue
+        for error in updates.get("errors") or []:
+            if not isinstance(error, Mapping):
+                continue
+            name = str(
+                error.get("dataset_name") or error.get("method_name") or ""
+            ).strip()
+            reason = str(error.get("reason") or "").strip()
+            text = f"{name}: {reason}" if name and reason else (name or reason)
+            if text:
+                method_failures.append(text)
     parts = []
     if failed:
         parts.append(
             "Dependent update(s) did not refresh: " + ", ".join(sorted(failed))
+        )
+    if method_failures:
+        parts.append(
+            "Method refresh failure(s): "
+            + "; ".join(sorted(set(method_failures)))
         )
     if result.get("index_error"):
         parts.append("The reserving-class index rebuild failed.")

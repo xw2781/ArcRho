@@ -18,12 +18,17 @@ import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selection/result_selection_rpc_bridge_client.js?v=20260726a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260728a";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
-} from "/ui/shared/services/dependent_propagation_job.js?v=20260806a";
+} from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
+import {
+  createMethodObjectChangeWatchController,
+  showObjectUpdatedAlert,
+  wireSamePropagationScopePause,
+} from "/ui/shared/services/object_change_watch.js?v=20260807a";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
 import {
@@ -215,6 +220,26 @@ const auditLogView = createAuditLogView({
   formatEventDate: formatSidecarAuditEventDate,
 });
 
+// Open-window change alert (advisory): fires once when another user or the
+// dependent-propagation job rewrites this method while it is open.
+const rsObjectChangeWatch = createMethodObjectChangeWatchController({
+  methodType: "result_selection",
+  onChange: () => {
+    void showObjectUpdatedAlert({
+      showMessageBox: showPageMessageBox,
+      isDirty: () => isDirty,
+      onBlockedRefresh: () => {
+        postStatus("Unsaved changes block the refresh. Save or discard them, then reopen the window.", "warn");
+      },
+    });
+  },
+});
+wireSamePropagationScopePause({
+  watch: rsObjectChangeWatch,
+  getProject: () => state.project,
+  getReservingClass: () => state.reservingClass,
+});
+
 const ctx = {
   fetchProjectDatasetTypeItems,
   ensureDatasetOriginLabels,
@@ -235,6 +260,7 @@ const ctx = {
   showPageMessageBox,
   isEngineUnavailableSaveError,
   trackSavePropagation,
+  rsObjectChangeWatch,
   startResultSelectionRpcBridgeSync,
   readProjectInstanceDatasetSnapshot,
   resultSelectionUpdateContexts,

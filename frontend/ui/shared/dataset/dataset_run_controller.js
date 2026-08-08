@@ -6,8 +6,13 @@ import {
   setDatasetGridEmpty,
   setDatasetGridError,
 } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260728a";
-import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260806a";
+import {
+  notifyDataTabDatasetMutationEnded,
+  notifyDataTabDatasetMutationStarted,
+  notifyDataTabDurableDatasetState,
+} from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
+import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
 
 const DEFAULT_LOADING_POPUP_DELAY_MS = 300;
 
@@ -305,6 +310,7 @@ export function createDatasetRunController(deps) {
       return { ok: false, queued: true };
     }
     runInFlight = true;
+    notifyDataTabDatasetMutationStarted({ source: "run" });
     const gridPlaceholderToken = beginDatasetGridLoading({
       message: datasetGridLoadingMessage(),
     });
@@ -491,6 +497,7 @@ export function createDatasetRunController(deps) {
       cancelDelayedLoadingPopup();
       hideLoadingPopup();
       runInFlight = false;
+      notifyDataTabDatasetMutationEnded({ source: "run" });
       if (btn) btn.disabled = false;
       if (clearBtn) clearBtn.disabled = false;
       const nextRunOptions = queuedRunOptions;
@@ -652,6 +659,7 @@ export function createDatasetRunController(deps) {
       setStatus(meta || "Ready");
     }
     const title = updateCurrentTabTitle() || config.DS_ID || "Dataset";
+    notifyDataTabDurableDatasetState({ source: "load" });
 
     // In DFM context, step title is managed by DFM method naming logic.
     // Avoid overwriting it with transient dataset ids such as "arcrhotri_*".
@@ -690,39 +698,44 @@ export function createDatasetRunController(deps) {
       items.push({ r, c, value });
     }
 
-    const { status, data } = await patchDataset(items, state.fileMtime, config.DS_ID);
+    notifyDataTabDatasetMutationStarted({ source: "patch" });
+    try {
+      const { status, data } = await patchDataset(items, state.fileMtime, config.DS_ID);
 
-    if (status === 409) {
-      logLine("Conflict: file changed on disk. Reload first.");
-      return;
-    }
-    if (status === 503) {
-      // Dependent propagation runs on ArcRho Engine; the save was refused
-      // before anything was written and unsaved edits stay in the grid.
-      const message = String(
-        data?.detail
-        || "The ArcRho Engine service is not available. Please try again later or contact the administrator.",
-      );
-      void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
-      setStatus(message);
-      logLine(`Save refused: ${message}`);
-      return;
-    }
+      if (status === 409) {
+        logLine("Conflict: file changed on disk. Reload first.");
+        return;
+      }
+      if (status === 503) {
+        // Dependent propagation runs on ArcRho Engine; the save was refused
+        // before anything was written and unsaved edits stay in the grid.
+        const message = String(
+          data?.detail
+          || "The ArcRho Engine service is not available. Please try again later or contact the administrator.",
+        );
+        void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
+        setStatus(message);
+        logLine(`Save refused: ${message}`);
+        return;
+      }
 
-    logLine(`Saved patch: applied=${data.applied}, rejected=${(data.rejected || []).length}, new_mtime=${data.mtime}`);
-    const loadResult = await loadDataset();
-    if (!loadResult?.ok) return;
-    if (typeof onCalculatedUpdates === "function") {
-      onCalculatedUpdates(data?.calculated_updates, "Dataset grid save");
+      logLine(`Saved patch: applied=${data.applied}, rejected=${(data.rejected || []).length}, new_mtime=${data.mtime}`);
+      const loadResult = await loadDataset();
+      if (!loadResult?.ok) return;
+      if (typeof onCalculatedUpdates === "function") {
+        onCalculatedUpdates(data?.calculated_updates, "Dataset grid save");
+      }
+      void trackSavePropagation(data?.calculated_updates, {
+        onStatus: (message) => setStatus(message),
+        onComplete: () => {
+          try {
+            window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+          } catch {}
+        },
+      });
+    } finally {
+      notifyDataTabDatasetMutationEnded({ source: "patch" });
     }
-    void trackSavePropagation(data?.calculated_updates, {
-      onStatus: (message) => setStatus(message),
-      onComplete: () => {
-        try {
-          window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
-        } catch {}
-      },
-    });
   }
 
   function toggleBlanks() {

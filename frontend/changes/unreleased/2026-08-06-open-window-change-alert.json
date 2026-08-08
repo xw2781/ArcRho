@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Open dataset and method windows now alert once when the object is updated by another user or an automation process, with a Refresh Now button to reload the window in place.",
+  "details": [
+    "Dataset Viewer, DFM, Bornhuetter Ferguson, Cape Cod, and Result Selection windows watch the opened object's files with a lightweight background check.",
+    "Refresh Now reloads the window to the updated values; windows with unsaved changes keep them and explain why the refresh is blocked.",
+    "Your own saves never trigger the alert, and neither do dependent updates started from your own app: those windows keep their live-preview values until the Engine finishes, then reload the refreshed values automatically."
+  ]
+}

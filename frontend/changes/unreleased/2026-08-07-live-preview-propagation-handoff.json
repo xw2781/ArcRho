@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Live dependency previews in open windows now hold their values through a save until the Engine dependent update completes, instead of snapping back to stale values.",
+  "details": [
+    "Saving an upstream method or dataset keeps every downstream window's previewed values on screen while the Engine job runs; the windows reload the refreshed persisted values when it finishes.",
+    "Duplicate clean-transition messages fired by a save no longer clear downstream previews early, which previously left dependent windows stuck on pre-save values.",
+    "A dependent-update job that leaves items needing review no longer raises a status-bar warning; the review-needed flags in the Project Instance dataset table are the failure surface, and the table refreshes automatically when the job ends.",
+    "If the job fails, downstream windows reload honestly to the last published values with their Review Needed status."
+  ]
+}

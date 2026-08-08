@@ -3,6 +3,10 @@
 
   parts.installModel = function installModel(ctx) {
     with (ctx) {
+      // The open-window change watch is host-provided; installs without one
+      // (tests, embedded hosts) run with an inert stand-in.
+      const rsWatch = ctx.rsObjectChangeWatch
+        || { ensure() {}, pause() {}, resume() {}, stop() {} };
       function buildPayload() {
         const details = getDetails();
         return buildResultSelectionMethodPayload({
@@ -112,6 +116,12 @@
         recordPersistedMethodDependencies(result.method);
         state.methodRevision = String(result.method_revision || "");
         state.loadBlocked = false;
+        rsWatch.ensure({
+          projectName: state.project,
+          reservingClass: state.reservingClass,
+          methodName: getDetails().name,
+          outputDataset: getDetails().name,
+        });
         const basisNames = getRatioBasisNames();
         const storedBasisNames = new Set(
           (Array.isArray(result.method?.method_tab?.ratio_basis_values)
@@ -221,6 +231,7 @@
           return { ok: false };
         }
         const mutation = beginPersistedMutation();
+        rsWatch.pause();
         try {
           await refreshOriginLabels({ render: false });
           assertPersistedMutationReady(mutation);
@@ -251,7 +262,14 @@
           state.methodRevision = String(payload.method_revision || "");
           recordPersistedMethodDependencies(payload.method || method);
           state.needsReview = false;
+          state.pendingPropagationJobId = String(payload?.propagation?.job_id || "").trim();
           markClean();
+          rsWatch.ensure({
+            projectName: state.project,
+            reservingClass: state.reservingClass,
+            methodName: getDetails().name,
+            outputDataset: getDetails().name,
+          });
           reconcilePersistedMutation(mutation, "dependency update during Result Selection save");
           try {
             window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
@@ -272,6 +290,7 @@
           });
           return payload;
         } finally {
+          rsWatch.resume();
           finishPersistedMutation(mutation);
         }
       }
@@ -284,7 +303,14 @@
         state.methodRevision = String(payload?.method_revision || "");
         state.needsReview = false;
         state.loadBlocked = false;
+        state.pendingPropagationJobId = String(payload?.propagation?.job_id || "").trim();
         markClean();
+        rsWatch.ensure({
+          projectName: state.project,
+          reservingClass: state.reservingClass,
+          methodName: getDetails().name,
+          outputDataset: getDetails().name,
+        });
         reconcilePersistedMutation(mutation, "dependency update during Result Selection RPC sync");
         try {
           window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");

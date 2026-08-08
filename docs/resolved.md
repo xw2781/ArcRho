@@ -21,6 +21,18 @@ Issues moved out of [knowun_issues.md](knowun_issues.md) once fixed, newest firs
 
 # PI
 
+### 2026-08-07 - Live preview took a long time to update downstream values on client PCs
+
+**Reported:** The live preview feature works fine on the dev PC but takes a long time to update downstream dataset values in open windows on a client PC; consider letting the client's app server compute instantly for open datasets and avoid many network-drive reads.
+
+**Cause:** Every debounced edit posts `/dataset/calculated/preview`, and each request resolved the non-edited precedents from scratch in [calculated_dataset_service.py](../frontend/app_server/services/calculated_dataset_service.py): `_scan_dataset_cache_folder` re-read every dataset sidecar JSON in the reserving class (~120 files in COL), `_scan_dfm_method_folder` re-read every `DFM@*.json`, and the component CSVs plus their SHA-256 fingerprints were re-read per request. On the dev PC `E:` is local so this is fast; on a client each file open is an SMB round trip, so one preview cost seconds and repeated on every edit.
+
+**Fix:**
+- New [class_folder_scan_cache.py](../frontend/app_server/services/class_folder_scan_cache.py): in-process caches for sidecar/method JSON payloads and component CSV matrices, validated against the `(mtime_ns, size)` identities that the `os.scandir` folder listing already returned - so a repeat request costs directory enumerations instead of one read per file. Discipline follows `file_read_cache`: files modified within the last few seconds are always re-read, failed reads are never cached, results are copied on the way out.
+- `_scan_dataset_cache_folder` and `_scan_dfm_method_folder` now read through the cache (the sidecar folder gets its own listing for validation), `_load_components` reads component CSVs and their fingerprints through `read_matrix_cached` using the listing's stat identity, and `_existing_target_settings` reads the target sidecar through `file_read_cache`. The same cache also speeds up calculated-dataset refreshes during saves, which resolve dependencies through the same scans.
+
+**Verification:** New `frontend/tests/test_class_folder_scan_cache.py` (6 tests: memory hits, change/recent-write re-reads, unvalidatable paths never cached, matrix copy/failure semantics, scan reuse); `test_calculated_dependency_folder_scan.py` updated to pin the cached shape; full frontend python discovery back at its 2 pre-existing baseline failures (465 tests).
+
 ## pi-hidden-tabs-menu
 
 ### 2026-08-05 - Hidden-tabs menu had no close icon and stayed visible with nothing hidden

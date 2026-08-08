@@ -27,6 +27,7 @@ Engine-hosted dependent propagation job domain: saves write only the saved objec
 - Engine worker `data-engine/src/arcrho_engine/dependent_propagation.py` claims the reserving-class lease, drains and merges queued requests for the same class (`merged_into` statuses), runs the canonical `calculated_dataset_service.recalculate_dependents` walk with per-tier progress, and retains the request file until a validated terminal status exists.
 - Every save flow (DFM, Result Selection, Bornhuetter Ferguson, Cape Cod, Bootstrap, dataset sidecar/grid saves, runtime cache writes, dataset-type formula changes) preflights `require_engine_available()` before writing anything; no live Engine blocks the save with a message box and unsaved work stays in the editor.
 - Server-host in-process producers (ResQ migration, public Python API) keep walking in-process but hold the same reserving-class lease.
+- Because the job is the sole propagation writer, the dataset open fast path trusts sidecar status + index folder signature (see the arcrho domain), and open windows watch their object for job or other-user rewrites through the object_change_watch domain's stat-only fingerprint endpoint.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
@@ -44,5 +45,6 @@ Engine-hosted dependent propagation job domain: saves write only the saved objec
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Failed jobs are not auto-retried: downstream methods stay Review Needed until the next save or manual refresh re-enqueues a walk.
+- A failed job raises no warning status line in the UI (owner decision, 2026-08-07): the dataset table's review-needed flags are the failure surface. `trackSavePropagation` fires `onComplete` at any terminal outcome (`result` null on failure) so the table refresh always runs after the walk finalized downstream statuses.
 - A plain filesystem cannot atomically fence the stale-lease takeover race; the generous thresholds make it acceptable (same residual gap as project duplication).
 <!-- MANUAL:END -->
