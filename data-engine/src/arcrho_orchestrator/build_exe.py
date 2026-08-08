@@ -142,7 +142,9 @@ def start_orchestrator():
         raise FileNotFoundError(f"Deployed orchestrator not found: {exe}")
 
     print(f"\n>>> Starting {exe}")
-    subprocess.Popen([str(exe)], close_fds=True)
+    # Its own app folder as working directory: the orchestrator must not pin
+    # the folder this build script happened to run from.
+    subprocess.Popen([str(exe)], cwd=str(DEPLOY_APP_DIR), close_fds=True)
 
 
 @contextmanager

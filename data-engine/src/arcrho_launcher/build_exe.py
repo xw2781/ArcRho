@@ -25,16 +25,15 @@ ICON = PROJECT_ROOT.parent / "assets" / "icons" / "ArcRho Launcher.ico"
 
 BUILD_DIR = BUILD_ROOT / "build"
 SPEC_DIR = BUILD_ROOT / "spec"
+DIST_DIR = BUILD_ROOT / "dist"
+STAGED_APP_DIR = DIST_DIR / APP_NAME
+DEPLOY_APP_DIR = APPS_DIR / APP_NAME
 
-try:
-    shutil.rmtree(BUILD_DIR)
-except:
-    pass
-
-try:
-    shutil.rmtree(SPEC_DIR)
-except:
-    pass
+for _folder in (BUILD_DIR, SPEC_DIR, DIST_DIR):
+    try:
+        shutil.rmtree(_folder)
+    except FileNotFoundError:
+        pass
 
 
 def run(cmd, check=True):
@@ -70,12 +69,11 @@ def install_requirements():
 
 
 def build_exe():
-    APPS_DIR.mkdir(parents=True, exist_ok=True)
     cmd = [
         VENV_PYTHON,
         "-m", "PyInstaller",
         "--specpath", SPEC_DIR,
-        "--noconfirm",   
+        "--noconfirm",
         "--onedir",
         "--paths", SOURCE_ROOT,
         "--hidden-import", "utils",
@@ -84,7 +82,7 @@ def build_exe():
         # "--noconsole",
         "--clean",
         "--name", APP_NAME,
-        "--distpath", APPS_DIR,
+        "--distpath", DIST_DIR,
         "--workpath", BUILD_DIR,
         ENTRY_PY,
     ]
@@ -94,13 +92,80 @@ def build_exe():
     run(cmd)
 
 
+def replace_folder_contents(source_dir, target_dir):
+    """Replace the files inside target_dir without removing the folder itself.
+
+    Apps started by pre-2026-08 launchers inherited the launcher folder as
+    their working directory, and any live process from another user session
+    keeps that folder pinned: it cannot be removed or renamed, but the files
+    inside it can still be replaced because the launcher only runs briefly.
+    """
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for child in target_dir.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    for child in source_dir.iterdir():
+        target = target_dir / child.name
+        if child.is_dir():
+            shutil.copytree(child, target)
+        else:
+            shutil.copy2(child, target)
+
+
+def deploy_exe():
+    """Swap the staged build into the deployed app folder, with a content
+    sync fallback when the folder itself is pinned by another session."""
+
+    if not STAGED_APP_DIR.exists():
+        raise FileNotFoundError(f"Built app not found: {STAGED_APP_DIR}")
+
+    APPS_DIR.mkdir(parents=True, exist_ok=True)
+    temp_app_dir = APPS_DIR / f".{APP_NAME}.new"
+    backup_app_dir = APPS_DIR / f".{APP_NAME}.old"
+
+    for path in (temp_app_dir, backup_app_dir):
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            pass
+
+    shutil.copytree(STAGED_APP_DIR, temp_app_dir)
+
+    swapped = False
+    try:
+        if DEPLOY_APP_DIR.exists() and any(DEPLOY_APP_DIR.iterdir()):
+            DEPLOY_APP_DIR.rename(backup_app_dir)
+        elif DEPLOY_APP_DIR.exists():
+            DEPLOY_APP_DIR.rmdir()
+        temp_app_dir.rename(DEPLOY_APP_DIR)
+        swapped = True
+    except PermissionError:
+        if backup_app_dir.exists() and not DEPLOY_APP_DIR.exists():
+            backup_app_dir.rename(DEPLOY_APP_DIR)
+
+    if not swapped:
+        print(f"\n>>> {DEPLOY_APP_DIR} is pinned by a live process; replacing its contents in place.")
+        replace_folder_contents(temp_app_dir, DEPLOY_APP_DIR)
+        shutil.rmtree(temp_app_dir)
+
+    for path in (backup_app_dir,):
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            pass
+
+
 def main():
     ensure_venv()
     ensure_venv_python()
     install_requirements()
     build_exe()
+    deploy_exe()
 
-    exe_path = APPS_DIR / APP_NAME / f"{APP_NAME}.exe"
+    exe_path = DEPLOY_APP_DIR / f"{APP_NAME}.exe"
     print("\nBuild finished!")
     print(f"EXE location: {exe_path}")
 

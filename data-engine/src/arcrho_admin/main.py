@@ -3,6 +3,7 @@ import atexit
 import getpass
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -448,7 +449,9 @@ def clear_stale_instances():
 def start_component_instance(role):
     exe = resolve_app_exe(role)
     if exe is not None and exe.exists():
-        process = subprocess.Popen([str(exe)], close_fds=True)
+        # Each app runs with its own folder as working directory so it never
+        # keeps this app's folder locked against a redeploy.
+        process = subprocess.Popen([str(exe)], cwd=str(exe.parent), close_fds=True)
         log_event(f"started {role} exe={exe} pid={process.pid}")
         return {"started": True, "pid": process.pid, "path": str(exe)}
 
@@ -471,18 +474,154 @@ def start_bridge_instance():
     if bridge_config.get("kill_all", False):
         return {"started": False, "message": "Bridge is stopped by config"}
 
+    # Bridges are per user session: every ResQ user contributes one bridge on
+    # their own ResQ GUI/license, so the cap counts only the current user.
     max_instances = max(0, min(int(bridge_config.get("max_instances", 1)), 1))
     if max_instances == 0:
         return {"started": False, "message": "Bridge max instances is 0"}
 
+    current_user = getpass.getuser().casefold()
     active_bridge_count = sum(
         1 for item in list_instances()
-        if item.get("role") == "bridge" and item.get("status") == "Active"
+        if item.get("role") == "bridge"
+        and item.get("status") == "Active"
+        and str(item.get("user") or "").casefold() == current_user
     )
     if active_bridge_count >= max_instances:
-        return {"started": False, "message": "Bridge instance already running"}
+        return {"started": False, "message": "Bridge instance already running for this user"}
 
     return start_component_instance("bridge")
+
+
+FOLDER_ACCESS_PRESETS = (
+    {"key": "root", "label": "ArcRho Server (entire folder)", "relative": ""},
+    {"key": "runtime", "label": "runtime (instance heartbeats)", "relative": "runtime"},
+    {"key": "requests", "label": "requests (job queues)", "relative": "requests"},
+    {"key": "projects", "label": "projects (project data)", "relative": "projects"},
+    {"key": "shared", "label": "shared (macro library)", "relative": "shared"},
+    {"key": "config", "label": "config", "relative": "config"},
+)
+FOLDER_ACCESS_RIGHTS = {"modify": "M", "full": "F", "read": "RX"}
+_PRINCIPAL_FORBIDDEN_CHARS = set('/:;,*?"<>|()=+[]')
+
+
+def resolve_access_folder(key_or_relative):
+    """Map a preset key or relative path to a folder inside the server root."""
+
+    value = str(key_or_relative or "").strip()
+    for preset in FOLDER_ACCESS_PRESETS:
+        if value == preset["key"]:
+            value = preset["relative"]
+            break
+    base = PROJECT_ROOT.resolve()
+    target = (base / value).resolve() if value else base
+    if target != base and base not in target.parents:
+        raise ValueError("Folder must be inside the ArcRho Server root")
+    if not target.is_dir():
+        raise ValueError(f"Folder does not exist: {target}")
+    return target
+
+
+def validate_principal(principal):
+    name = str(principal or "").strip()
+    if not name:
+        raise ValueError("Account or group name is required")
+    if any(char in _PRINCIPAL_FORBIDDEN_CHARS or ord(char) < 32 for char in name):
+        raise ValueError("Account or group name contains invalid characters")
+    return name
+
+
+def _decode_console_output(raw):
+    for encoding in ("oem", "mbcs", "utf-8"):
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def run_icacls(args):
+    result = subprocess.run(
+        ["icacls.exe", *args],
+        capture_output=True,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return (
+        result.returncode,
+        _decode_console_output(result.stdout).strip(),
+        _decode_console_output(result.stderr).strip(),
+    )
+
+
+def parse_icacls_entries(output, folder):
+    entries = []
+    prefix = str(folder)
+    for line in output.splitlines():
+        text = line.strip()
+        if not text or text.lower().startswith("successfully processed"):
+            continue
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+        if ":" not in text:
+            continue
+        principal, _, rights = text.rpartition(":")
+        tokens = {
+            token.strip()
+            for group in re.split(r"[()]+", rights)
+            if group
+            for token in group.split(",")
+            if token.strip()
+        }
+        entries.append(
+            {
+                "principal": principal.strip(),
+                "rights": rights.strip(),
+                "inherited": "I" in tokens,
+                "modify": bool(tokens & {"F", "M"}),
+                "delete": bool(tokens & {"F", "M", "D", "DE"}),
+            }
+        )
+    return entries
+
+
+def folder_access_report(folder):
+    code, out, err = run_icacls([str(folder)])
+    if code != 0:
+        raise OSError(err or out or f"icacls failed with exit code {code}")
+    return {
+        "path": str(folder),
+        "entries": parse_icacls_entries(out, folder),
+        "raw": out,
+    }
+
+
+def grant_folder_access(folder, principal, access="modify"):
+    right = FOLDER_ACCESS_RIGHTS.get(str(access or "modify").strip().lower())
+    if right is None:
+        raise ValueError(
+            "Access level must be one of: " + ", ".join(sorted(FOLDER_ACCESS_RIGHTS))
+        )
+    # (OI)(CI) makes the grant inheritable, so heartbeat, request, and project
+    # files created later by any user's components keep the same rights and
+    # every user can claim requests and clean up stale heartbeats.
+    code, out, err = run_icacls(
+        [str(folder), "/grant", f"{principal}:(OI)(CI){right}"]
+    )
+    message = err or out
+    if code != 0:
+        raise OSError(message or f"icacls failed with exit code {code}")
+    log_event(f"folder access granted principal={principal} right={right} folder={folder}")
+    return message
+
+
+def revoke_folder_access(folder, principal):
+    code, out, err = run_icacls([str(folder), "/remove:g", principal])
+    message = err or out
+    if code != 0:
+        raise OSError(message or f"icacls failed with exit code {code}")
+    log_event(f"folder access revoked principal={principal} folder={folder}")
+    return message
 
 
 def shutdown_server(server, reason):
@@ -510,6 +649,24 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": True})
         elif parsed.path == "/api/config":
             self.send_json({"path": str(CONFIG_FILE), "config": load_config()})
+        elif parsed.path == "/api/folder-access":
+            query = parse_qs(parsed.query)
+            folder_key = query.get("folder", ["root"])[0]
+            try:
+                folder = resolve_access_folder(folder_key)
+                report = folder_access_report(folder)
+                self.send_json(
+                    {
+                        "ok": True,
+                        "presets": list(FOLDER_ACCESS_PRESETS),
+                        "report": report,
+                    }
+                )
+            except ValueError as exc:
+                self.send_error(400, str(exc))
+            except OSError as exc:
+                log_event(f"folder access report failed\n{traceback.format_exc()}")
+                self.send_error(500, str(exc))
         elif parsed.path == "/api/instances":
             self.send_json(
                 {
@@ -587,6 +744,29 @@ class AdminHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, **result, "instances": list_instances()})
             except (FileNotFoundError, OSError) as exc:
                 log_event(f"start bridge failed\n{traceback.format_exc()}")
+                self.send_error(500, str(exc))
+        elif parsed.path in ("/api/folder-access/grant", "/api/folder-access/revoke"):
+            payload = self.read_json_body()
+            try:
+                folder = resolve_access_folder(payload.get("folder", "root"))
+                principal = validate_principal(payload.get("principal"))
+                if parsed.path.endswith("/grant"):
+                    message = grant_folder_access(
+                        folder, principal, payload.get("access", "modify")
+                    )
+                else:
+                    message = revoke_folder_access(folder, principal)
+                self.send_json(
+                    {
+                        "ok": True,
+                        "message": message,
+                        "report": folder_access_report(folder),
+                    }
+                )
+            except ValueError as exc:
+                self.send_error(400, str(exc))
+            except OSError as exc:
+                log_event(f"folder access change failed\n{traceback.format_exc()}")
                 self.send_error(500, str(exc))
         elif parsed.path == "/api/shutdown":
             self.send_json({"ok": True})

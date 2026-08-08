@@ -19,8 +19,11 @@
 
   Var ArcRhoInstallExcelAddIn
   Var ArcRhoInstallExcelAddInCheckbox
+  Var ArcRhoLaunchDataEngine
+  Var ArcRhoLaunchDataEngineCheckbox
   Var ArcRhoServerRoot
   Var ArcRhoServerRootDetected
+  Var ArcRhoServerRootIsLocal
   Var ArcRhoServerDriveDropList
   Var ArcRhoExcelAddInPath
 
@@ -42,6 +45,9 @@ ShowUninstDetails show
   SetDetailsPrint both
   StrCpy $ArcRhoInstallExcelAddIn "1"
   Call ArcRho_DetectServerRoot
+  ; Launching the data engine only makes sense on the computer that hosts the
+  ; ArcRho Server folder; a network-drive root means the services run elsewhere.
+  StrCpy $ArcRhoLaunchDataEngine $ArcRhoServerRootIsLocal
   ${IfNot} ${Silent}
     ; Extract the observer before the InstFiles worker starts. It only reads
     ; the native bar and never executes installer script on the UI thread.
@@ -103,6 +109,20 @@ ShowUninstDetails show
     !insertmacro ArcRho_CheckServerRoot "X:"
     !insertmacro ArcRho_CheckServerRoot "Y:"
     !insertmacro ArcRho_CheckServerRoot "Z:"
+    Call ArcRho_DetectServerRootIsLocal
+  FunctionEnd
+
+  Function ArcRho_DetectServerRootIsLocal
+    StrCpy $ArcRhoServerRootIsLocal "0"
+    ${If} $ArcRhoServerRootDetected == "1"
+      ; DRIVE_FIXED (3) means the detected root lives on this computer's own
+      ; disk; mapped network drives report DRIVE_REMOTE (4).
+      StrCpy $0 $ArcRhoServerRoot 3
+      System::Call 'kernel32::GetDriveTypeW(w r0) i .r1'
+      ${If} $1 == 3
+        StrCpy $ArcRhoServerRootIsLocal "1"
+      ${EndIf}
+    ${EndIf}
   FunctionEnd
 
   Function ArcRho_SetExcelAddInPath
@@ -114,7 +134,7 @@ ShowUninstDetails show
   FunctionEnd
 
   Function ArcRho_ExcelAddInOptions_Show
-    !insertmacro MUI_HEADER_TEXT "Excel Add-in" "Choose whether to install the ArcRho Excel add-in."
+    !insertmacro MUI_HEADER_TEXT "Setup Options" "Choose the optional ArcRho setup steps."
 
     nsDialogs::Create 1018
     Pop $0
@@ -122,12 +142,16 @@ ShowUninstDetails show
       Abort
     ${EndIf}
 
-    ${NSD_CreateLabel} 0 0 100% 22u "ArcRho can register the Excel add-in during setup."
+    ${NSD_CreateLabel} 0 0 100% 22u "ArcRho can register the Excel add-in and start the data engine components during setup."
     Pop $1
 
     ${If} $ArcRhoServerRootDetected == "1"
       ${NSD_CreateLabel} 0 30u 100% 22u "Detected ArcRho Server folder: $ArcRhoServerRoot"
       Pop $1
+      ${If} $ArcRhoServerRootIsLocal != "1"
+        ${NSD_CreateLabel} 0 52u 100% 22u "This ArcRho Server folder is on a network drive, so the data engine components run on the computer that hosts it and cannot be launched from here."
+        Pop $1
+      ${EndIf}
     ${Else}
       ${NSD_CreateLabel} 0 30u 100% 22u "Select the drive where ArcRho Server should be located:"
       Pop $1
@@ -162,10 +186,20 @@ ShowUninstDetails show
       Pop $1
     ${EndIf}
 
-    ${NSD_CreateCheckbox} 0 112u 100% 26u "Install ArcRho Excel add-in"
+    ${NSD_CreateCheckbox} 0 112u 48% 26u "Install ArcRho Excel add-in"
     Pop $ArcRhoInstallExcelAddInCheckbox
     ${If} $ArcRhoInstallExcelAddIn == "1"
       ${NSD_Check} $ArcRhoInstallExcelAddInCheckbox
+    ${EndIf}
+
+    ${NSD_CreateCheckbox} 50% 112u 50% 26u "Launch ArcRho data engine at login"
+    Pop $ArcRhoLaunchDataEngineCheckbox
+    ${If} $ArcRhoServerRootIsLocal == "1"
+      ${If} $ArcRhoLaunchDataEngine == "1"
+        ${NSD_Check} $ArcRhoLaunchDataEngineCheckbox
+      ${EndIf}
+    ${Else}
+      EnableWindow $ArcRhoLaunchDataEngineCheckbox 0
     ${EndIf}
 
     nsDialogs::Show
@@ -177,6 +211,14 @@ ShowUninstDetails show
       StrCpy $ArcRhoInstallExcelAddIn "1"
     ${Else}
       StrCpy $ArcRhoInstallExcelAddIn "0"
+    ${EndIf}
+
+    StrCpy $ArcRhoLaunchDataEngine "0"
+    ${If} $ArcRhoServerRootIsLocal == "1"
+      ${NSD_GetState} $ArcRhoLaunchDataEngineCheckbox $0
+      ${If} $0 == ${BST_CHECKED}
+        StrCpy $ArcRhoLaunchDataEngine "1"
+      ${EndIf}
     ${EndIf}
 
     ${If} $ArcRhoServerRootDetected != "1"
@@ -284,11 +326,47 @@ ShowUninstDetails show
     ${EndIf}
   FunctionEnd
 
+  Function ArcRho_LaunchDataEngineComponents
+    ; ArcRho Launcher owns the startup registration and service launch: it
+    ; recreates its own shortcut in the user's Startup folder and then starts
+    ; the orchestrator and bridge, so the installer only needs to run it.
+    StrCpy $0 "$ArcRhoServerRoot\apps\ArcRho Launcher\ArcRho Launcher.exe"
+    ${IfNot} ${FileExists} "$0"
+      StrCpy $0 "$ArcRhoServerRoot\apps\ADAS Shell\ADAS Shell.exe"
+    ${EndIf}
+
+    ${IfNot} ${FileExists} "$0"
+      !insertmacro ArcRho_PrintInstallDetail "ArcRho data engine launch skipped because no ArcRho Launcher was found under $ArcRhoServerRoot\apps."
+      ${IfNot} ${Silent}
+        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the data engine components could not be started because no ArcRho Launcher was found under $ArcRhoServerRoot\apps."
+      ${EndIf}
+      Return
+    ${EndIf}
+
+    !insertmacro ArcRho_PrintInstallDetail "Starting ArcRho data engine components..."
+    !insertmacro ArcRho_PrintInstallDetail "ArcRho Launcher: $0"
+    ClearErrors
+    Exec '"$0"'
+    ${If} ${Errors}
+      !insertmacro ArcRho_PrintInstallDetail "ArcRho Launcher could not be started."
+      ${IfNot} ${Silent}
+        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the data engine components could not be started. You can start them manually from $0."
+      ${EndIf}
+    ${Else}
+      !insertmacro ArcRho_PrintInstallDetail "ArcRho Launcher started; it registers itself in the Startup folder and launches the data engine services."
+    ${EndIf}
+  FunctionEnd
+
   !macro customInstall
     ${If} $ArcRhoInstallExcelAddIn == "1"
       Call ArcRho_InstallExcelAddIn
     ${Else}
       !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation skipped."
+    ${EndIf}
+    ${If} $ArcRhoLaunchDataEngine == "1"
+      Call ArcRho_LaunchDataEngineComponents
+    ${Else}
+      !insertmacro ArcRho_PrintInstallDetail "ArcRho data engine launch skipped."
     ${EndIf}
     Call ArcRho_InstFiles_CompleteProgressText
     !insertmacro ArcRho_PrintInstallDetail "Installation complete."

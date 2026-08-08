@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "installer",
+  "audience": "user",
+  "summary": "The installer's Setup Options page adds a \"Launch ArcRho data engine at login\" checkbox; it defaults on when the detected ArcRho Server folder is on a local drive and is disabled when the folder is reached over a network drive."
+}

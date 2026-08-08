@@ -318,6 +318,75 @@
       text-align: center;
       padding: 26px 8px;
     }
+
+    .access-section {
+      margin-top: 18px;
+    }
+
+    .access-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .access-toolbar .control {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .access-toolbar .control label {
+      font-size: 12px;
+      color: #59677c;
+    }
+
+    .access-toolbar .actions {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    #accessPrincipal {
+      width: 260px;
+    }
+
+    #accessFolder {
+      width: 260px;
+    }
+
+    .access-table {
+      min-width: 0;
+    }
+
+    .yes-mark {
+      color: #087443;
+      font-weight: 650;
+    }
+
+    .no-mark {
+      color: #98a4b5;
+    }
+
+    #accessOutput {
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border: 1px solid #e6edf5;
+      border-radius: 6px;
+      background: #fbfcfe;
+      color: #40506a;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 180px;
+      overflow: auto;
+    }
+
+    #accessOutput:empty {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -392,7 +461,7 @@
               <span class="switch"><input id="autoCreateBridge" type="checkbox" data-path="apps.bridge.auto_create_instance"></span>
             </div>
             <div class="field">
-              <label for="maxBridgeInstances">Max Bridge Instances</label>
+              <label for="maxBridgeInstances">Max Bridge Instances (per user)</label>
               <input id="maxBridgeInstances" type="number" min="0" max="1" data-path="apps.bridge.max_instances">
             </div>
             <div class="field">
@@ -444,6 +513,54 @@
         </div>
       </section>
     </div>
+
+    <section class="access-section">
+      <h2>Folder Access</h2>
+      <div class="section-body">
+        <div class="access-toolbar">
+          <div class="control">
+            <label for="accessFolder">Folder</label>
+            <select id="accessFolder"></select>
+          </div>
+          <div class="control">
+            <label for="accessPrincipal">User or group</label>
+            <input id="accessPrincipal" type="text" list="accessPrincipalPresets" placeholder="e.g. Users or DOMAIN\name">
+            <datalist id="accessPrincipalPresets">
+              <option value="Users"></option>
+              <option value="Authenticated Users"></option>
+            </datalist>
+          </div>
+          <div class="control">
+            <label for="accessLevel">Access</label>
+            <select id="accessLevel">
+              <option value="modify" selected>Modify (read, write, delete)</option>
+              <option value="full">Full control</option>
+              <option value="read">Read only</option>
+            </select>
+          </div>
+          <div class="actions">
+            <button class="primary" id="grantAccess">Grant</button>
+            <button class="danger" id="revokeAccess">Revoke</button>
+            <button id="refreshAccess">Refresh</button>
+          </div>
+        </div>
+        <div class="path" id="accessPath"></div>
+        <table class="access-table">
+          <thead>
+            <tr>
+              <th>User / Group</th>
+              <th>Rights</th>
+              <th>Inherited</th>
+              <th>Can Modify/Delete</th>
+            </tr>
+          </thead>
+          <tbody id="accessBody">
+            <tr><td class="empty" colspan="4">Loading...</td></tr>
+          </tbody>
+        </table>
+        <pre id="accessOutput"></pre>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -732,6 +849,82 @@
       }
     }
 
+    const accessFolder = document.getElementById("accessFolder");
+    const accessPrincipal = document.getElementById("accessPrincipal");
+    const accessLevel = document.getElementById("accessLevel");
+    const accessBody = document.getElementById("accessBody");
+    const accessPath = document.getElementById("accessPath");
+    const accessOutput = document.getElementById("accessOutput");
+
+    function renderAccessReport(report) {
+      accessPath.textContent = report.path;
+      accessBody.innerHTML = "";
+      if (!report.entries.length) {
+        accessBody.innerHTML = `<tr><td class="empty" colspan="4">No permission entries found.</td></tr>`;
+        return;
+      }
+      for (const entry of report.entries) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${escapeHtml(entry.principal)}</td>
+          <td>${escapeHtml(entry.rights)}</td>
+          <td>${entry.inherited ? "Yes" : "No"}</td>
+          <td>${entry.modify || entry.delete
+            ? '<span class="yes-mark">Yes</span>'
+            : '<span class="no-mark">No</span>'}</td>
+        `;
+        row.addEventListener("click", () => { accessPrincipal.value = entry.principal; });
+        accessBody.appendChild(row);
+      }
+    }
+
+    async function loadFolderAccess() {
+      try {
+        const data = await api(`/api/folder-access?folder=${encodeURIComponent(accessFolder.value || "root")}`);
+        if (!accessFolder.options.length) {
+          for (const preset of data.presets) {
+            const option = document.createElement("option");
+            option.value = preset.key;
+            option.textContent = preset.label;
+            accessFolder.appendChild(option);
+          }
+        }
+        renderAccessReport(data.report);
+      } catch (err) {
+        accessBody.innerHTML = `<tr><td class="empty" colspan="4">Failed to load folder permissions.</td></tr>`;
+        accessOutput.textContent = String(err.message || err);
+      }
+    }
+
+    async function changeFolderAccess(action) {
+      const principal = accessPrincipal.value.trim();
+      if (!principal) {
+        setStatus("Enter a user or group name first", true);
+        return;
+      }
+      const folderLabel = accessFolder.selectedOptions[0]?.textContent || accessFolder.value;
+      const question = action === "grant"
+        ? `Grant ${accessLevel.selectedOptions[0].textContent} on "${folderLabel}" to ${principal}?`
+        : `Revoke access to "${folderLabel}" for ${principal}?`;
+      if (!confirm(question)) return;
+      try {
+        const data = await api(`/api/folder-access/${action}`, {
+          method: "POST",
+          body: JSON.stringify({
+            folder: accessFolder.value || "root",
+            principal,
+            access: accessLevel.value,
+          }),
+        });
+        renderAccessReport(data.report);
+        accessOutput.textContent = data.message || "";
+        setStatus(action === "grant" ? "Access granted" : "Access revoked");
+      } catch (err) {
+        accessOutput.textContent = String(err.message || err);
+        setStatus(`${action === "grant" ? "Grant" : "Revoke"} failed`, true);
+      }
+    }
+
     function closeAdminPage() {
       window.close();
       document.body.innerHTML = "<main class=\"app\"><section><h1>ArcRho Admin Control Closed</h1></section></main>";
@@ -767,6 +960,10 @@
       });
     }
     document.getElementById("openConfigFolder").addEventListener("click", () => api("/api/open-config-folder", {method: "POST"}));
+    accessFolder.addEventListener("change", loadFolderAccess);
+    document.getElementById("refreshAccess").addEventListener("click", loadFolderAccess);
+    document.getElementById("grantAccess").addEventListener("click", () => changeFolderAccess("grant"));
+    document.getElementById("revokeAccess").addEventListener("click", () => changeFolderAccess("revoke"));
     document.getElementById("resetConfig").addEventListener("click", async () => {
       if (!confirm("Reset Admin Control settings to default mode?")) return;
       try {
@@ -785,6 +982,7 @@
 
     loadConfig();
     loadInstances();
+    loadFolderAccess();
     setInterval(loadInstances, 5000);
     setInterval(checkAdminServer, 2000);
   </script>

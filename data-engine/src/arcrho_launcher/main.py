@@ -117,6 +117,19 @@ def install_startup_shortcut(
     return lnk_path
 
 
+def start_app_exe(exe_path: str | os.PathLike) -> None:
+    """Start an app with its own folder as working directory.
+
+    A child that inherits this launcher's working directory keeps the launcher
+    folder locked for as long as it runs, which blocks redeploying the
+    launcher. Each app pins only its own folder, and every deploy script
+    already stops its own app before swapping that folder.
+    """
+
+    exe = Path(exe_path)
+    subprocess.Popen([str(exe)], cwd=str(exe.parent), close_fds=True)
+
+
 def main():
     removed_lnk = remove_startup_shortcut("ADAS Shell")
     if removed_lnk:
@@ -133,9 +146,8 @@ def main():
 
     print('\n> Start Applications ...')
 
-    os.startfile(str(resolve_app_exe("orchestrator")))
-    os.startfile(str(resolve_app_exe("bridge")))
-    os.startfile(r"E:\ResQ\Excel Add-ins\URA master\dist\URA master.exe")
+    start_app_exe(resolve_app_exe("orchestrator"))
+    start_app_exe(resolve_app_exe("bridge"))
 
     print('\n> Done'); time.sleep(2)
 

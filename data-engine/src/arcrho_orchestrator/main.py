@@ -38,8 +38,9 @@ bridge_instance_path = str(resolve_app_path("bridge", "instances"))
 orchestrator_instance_path = str(resolve_app_path("orchestrator", "instances"))
 
 device_name = os.environ.get("COMPUTERNAME")
+session_user = os.getlogin()
 ts = datetime.now().strftime("%y%m%d-%H%M%S-%f")[:-3]
-orchestrator_id = f'{device_name}@' + os.getlogin() + "@" + ts
+orchestrator_id = f'{device_name}@' + session_user + "@" + ts
 
 id_folder = orchestrator_instance_path
 id_path = str(Path(id_folder) / f"{orchestrator_id}.json")
@@ -102,18 +103,50 @@ def file_counts(FOLDER):
     return file_count
 
 
-def limit_instance_files(FOLDER, max_count):
+def instance_file_user(name):
+    """Extract the login from instance file names.
+
+    Engine/orchestrator ids look like ``MACHINE@user@ts`` and bridge/worker ids
+    like ``role@MACHINE@user@ts``; the user is the second-to-last token in both.
+    """
+
+    parts = Path(name).stem.split("@")
+    return parts[-2] if len(parts) >= 3 else ""
+
+
+def user_file_counts(FOLDER, user):
+    if not os.path.isdir(FOLDER):
+        return 0
+    normalized = str(user).casefold()
+    return sum(
+        1 for name in os.listdir(FOLDER)
+        if os.path.isfile(os.path.join(FOLDER, name))
+        and name.lower().endswith(".json")
+        and instance_file_user(name).casefold() == normalized
+    )
+
+
+def limit_user_instance_files(FOLDER, user, max_count):
+    """Keep the newest max_count instance files owned by one user.
+
+    Other users' instance files are never touched: on a shared PC each user
+    session runs its own bridge, and deleting a fresh heartbeat kills it.
+    """
+
     if not os.path.isdir(FOLDER):
         return
-
+    normalized = str(user).casefold()
     paths = []
     for name in os.listdir(FOLDER):
         path = os.path.join(FOLDER, name)
-        if os.path.isfile(path) and name.lower().endswith(".json"):
-            try:
-                paths.append((os.path.getmtime(path), path))
-            except OSError:
-                pass
+        if not (os.path.isfile(path) and name.lower().endswith(".json")):
+            continue
+        if instance_file_user(name).casefold() != normalized:
+            continue
+        try:
+            paths.append((os.path.getmtime(path), path))
+        except OSError:
+            pass
 
     paths.sort(reverse=True)
     for _, path in paths[max_count:]:
@@ -127,7 +160,9 @@ def launch_app(role: str):
     exe = resolve_app_exe(role)
     if not exe.exists():
         return False
-    subprocess.Popen([str(exe)], close_fds=True)
+    # Give each app its own folder as working directory so a long-running
+    # child never keeps this process's folder locked against a redeploy.
+    subprocess.Popen([str(exe)], cwd=str(exe.parent), close_fds=True)
     return True
 
 
@@ -198,11 +233,14 @@ def main():
                     break
                 time.sleep(3)
 
+            # Bridges are per user session: every ResQ user contributes one
+            # bridge running on their own ResQ GUI/license, so the cap counts
+            # only this session's user and never trims other users' bridges.
             bridge_max_instances = max(0, min(int(get_config_value('apps.bridge.max_instances', 1)), 1))
-            limit_instance_files(bridge_instance_path, bridge_max_instances)
+            limit_user_instance_files(bridge_instance_path, session_user, bridge_max_instances)
             while get_config_value('apps.bridge.auto_create_instance', True) \
               and get_config_value('apps.bridge.kill_all', False) == False \
-              and file_counts(bridge_instance_path) < bridge_max_instances:
+              and user_file_counts(bridge_instance_path, session_user) < bridge_max_instances:
                 if not launch_app("bridge"):
                     break
                 time.sleep(3)

@@ -2,6 +2,7 @@
 import os
 import sys
 import stat
+import time
 from datetime import datetime
 import json
 from pathlib import Path
@@ -373,12 +374,34 @@ class File:
             os.chmod(self.path, file_attributes | stat.S_IWRITE)
 
 
+_last_good_config: dict | None = None
+
+
 def load_config() -> dict:
+    # config.json is rewritten by other ArcRho apps; on Windows a concurrent
+    # replace/lock makes open() raise PermissionError, and a torn read can
+    # raise JSONDecodeError. Retry briefly, then fall back to the last
+    # successfully loaded config rather than crashing long-running loops.
+    global _last_good_config
+
     if not CONFIG_PATH.exists():
         return {}
 
-    with CONFIG_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    last_error: Exception | None = None
+    for attempt in range(5):
+        if attempt:
+            time.sleep(0.1 * attempt)
+        try:
+            with CONFIG_PATH.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            _last_good_config = data
+            return data
+        except (OSError, json.JSONDecodeError) as e:
+            last_error = e
+
+    if _last_good_config is not None:
+        return _last_good_config
+    raise last_error
 
 
 def save_config(data: dict) -> None:
