@@ -1,4 +1,4 @@
-// Installer update feed checking and update-install prompting for the desktop host.
+// GitHub Releases update checking, download-with-progress, and update-install prompting for the desktop host.
 const { app, dialog } = require("electron");
 const { spawn } = require("child_process");
 const crypto = require("crypto");
@@ -7,20 +7,28 @@ const path = require("path");
 const { withTimeout } = require("./host_support");
 
 const SHA256_RE = /\b[a-fA-F0-9]{64}\b/;
+const GITHUB_API_ROOT = "https://api.github.com";
+const DOWNLOAD_PROGRESS_CHANNEL = "update-download-progress";
+const MANDATORY_MARKER_RE = /\bmandatory\s*:\s*true\b/i;
+const MAX_RELEASES_SCANNED = 15;
 
 let getMainWindow = () => null;
-let UPDATE_FEED_DIR = "";
-let UPDATE_MANIFEST_FILE = "latest.json";
+let fetchImpl = typeof fetch === "function" ? fetch : null;
+let UPDATE_GITHUB_REPO = "xw2781/ArcRho";
+let UPDATE_GITHUB_TOKEN = "";
 let UPDATE_CHECK_TIMEOUT_MS = 3000;
 let UPDATE_INSTALLER_NAME_RE = /$^/;
 let DEV_UPDATE_CHECK_ENABLED = false;
 
-function initUpdateChecker({ appMode, getMainWindow: getWin } = {}) {
+function initUpdateChecker({ appMode, getMainWindow: getWin, fetchImpl: injectedFetch } = {}) {
   getMainWindow = typeof getWin === "function" ? getWin : () => null;
-  UPDATE_FEED_DIR = appMode === "arcode"
-    ? (process.env.ARCODE_UPDATE_DIR || "E:\\Arcode Server\\releases\\arcode-installers")
-    : (process.env.ARCRHO_UPDATE_DIR || "E:\\ArcRho Server\\releases\\installers");
-  UPDATE_MANIFEST_FILE = (appMode === "arcode" ? process.env.ARCODE_UPDATE_MANIFEST_FILE : process.env.ARCRHO_UPDATE_MANIFEST_FILE) || "latest.json";
+  if (typeof injectedFetch === "function") fetchImpl = injectedFetch;
+  UPDATE_GITHUB_REPO = (
+    appMode === "arcode" ? process.env.ARCODE_UPDATE_GITHUB_REPO : process.env.ARCRHO_UPDATE_GITHUB_REPO
+  ) || "xw2781/ArcRho";
+  UPDATE_GITHUB_TOKEN = (
+    appMode === "arcode" ? process.env.ARCODE_UPDATE_GITHUB_TOKEN : process.env.ARCRHO_UPDATE_GITHUB_TOKEN
+  ) || "";
   UPDATE_CHECK_TIMEOUT_MS = Math.max(
     1000,
     parseInt(
@@ -67,189 +75,108 @@ function parseSha256Text(value) {
   return match ? match[0].toLowerCase() : "";
 }
 
-function resolveUpdateInstallerPath(installerName) {
-  const feedRoot = path.resolve(UPDATE_FEED_DIR);
-  const rawName = String(installerName || "").trim();
-  if (!rawName || rawName.includes("\0")) return "";
-  const resolved = path.resolve(feedRoot, rawName);
-  if (resolved !== feedRoot && !resolved.startsWith(feedRoot + path.sep)) {
-    return "";
-  }
-  if (!UPDATE_INSTALLER_NAME_RE.test(path.basename(resolved))) {
-    return "";
-  }
-  return resolved;
-}
-
-async function readInstallerSha256(installerPath, manifestSha256 = "") {
-  const manifestHash = parseSha256Text(manifestSha256);
-  if (manifestHash) return manifestHash;
-
-  try {
-    const raw = await fs.promises.readFile(`${installerPath}.sha256`, "utf8");
-    return parseSha256Text(raw);
-  } catch {
-    return "";
-  }
-}
-
-function createUpdateInfo(version, installerPath, sha256, source, manifest = {}) {
+function createUpdateInfo(version, asset, sha256, release) {
   return {
     version,
-    installerPath,
+    assetName: asset.name,
+    downloadUrl: asset.browser_download_url,
     sha256,
-    source,
-    releaseNotes: String(manifest.releaseNotes || manifest.notes || "").trim(),
-    mandatory: manifest.mandatory === true,
-    publishedAt: String(manifest.publishedAt || "").trim(),
+    source: "github",
+    releaseNotes: String(release?.body || "").trim(),
+    mandatory: MANDATORY_MARKER_RE.test(String(release?.body || "")),
+    publishedAt: String(release?.published_at || "").trim(),
   };
 }
 
-function createUpdateIssue(status, version, installerPath, source, message, detail = "") {
-  return {
-    status,
-    version,
-    installerPath,
-    source,
-    message,
-    detail,
-  };
-}
-
-function isInstallableUpdate(updateInfo) {
-  return !!(updateInfo && !updateInfo.status && updateInfo.version && updateInfo.installerPath && updateInfo.sha256);
+function createUpdateIssue(status, version, assetName, message, detail = "") {
+  return { status, version, assetName, source: "github", message, detail };
 }
 
 function areInstallerUpdateChecksEnabled() {
   return app.isPackaged || DEV_UPDATE_CHECK_ENABLED;
 }
 
-async function updateInfoFromManifest(manifest, options = {}) {
-  const reportIssues = options.reportIssues === true;
-  const version = String(manifest?.version || "").trim();
-  if (!parseVersion(version) || compareVersions(version, app.getVersion()) <= 0) {
-    return null;
-  }
-
-  const installerName = manifest.installer || manifest.installerPath || `ArcRho-Setup-${version}.exe`;
-  const installerPath = resolveUpdateInstallerPath(installerName);
-  if (!installerPath) {
-    console.warn("ArcRho update manifest references an invalid installer path.");
-    if (reportIssues) {
-      return createUpdateIssue(
-        "invalid-update",
-        version,
-        "",
-        "manifest",
-        "ArcRho found a newer update manifest, but its installer path is invalid."
-      );
-    }
-    return null;
-  }
-
-  const stat = await fs.promises.stat(installerPath).catch(() => null);
-  if (!stat?.isFile()) {
-    console.warn(`ArcRho update installer was not found: ${installerPath}`);
-    if (reportIssues) {
-      return createUpdateIssue(
-        "missing-installer",
-        version,
-        installerPath,
-        "manifest",
-        "ArcRho found a newer update manifest, but the installer file is missing."
-      );
-    }
-    return null;
-  }
-
-  const sha256 = await readInstallerSha256(installerPath, manifest.sha256);
-  if (!sha256) {
-    console.warn(`ArcRho update installer is missing a SHA-256 checksum: ${installerPath}`);
-    if (reportIssues) {
-      return createUpdateIssue(
-        "missing-checksum",
-        version,
-        installerPath,
-        "manifest",
-        "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
-        `Add a checksum in ${path.basename(installerPath)}.sha256 or in ${UPDATE_MANIFEST_FILE}.`
-      );
-    }
-    return null;
-  }
-
-  return createUpdateInfo(version, installerPath, sha256, "manifest", manifest);
+function githubRequestHeaders(extra = {}) {
+  const headers = {
+    "User-Agent": "ArcRho-Updater",
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    ...extra,
+  };
+  if (UPDATE_GITHUB_TOKEN) headers.Authorization = `Bearer ${UPDATE_GITHUB_TOKEN}`;
+  return headers;
 }
 
-async function readManifestUpdate(options = {}) {
-  const manifestPath = path.join(UPDATE_FEED_DIR, UPDATE_MANIFEST_FILE);
-  let raw = "";
-  try {
-    raw = await fs.promises.readFile(manifestPath, "utf8");
-  } catch (err) {
-    if (err?.code !== "ENOENT") {
-      console.warn(`ArcRho update manifest could not be read: ${err?.message || err}`);
-    }
-    return null;
+async function fetchReleases() {
+  if (typeof fetchImpl !== "function") {
+    throw new Error("No fetch implementation is available for the update check.");
   }
-
-  try {
-    return updateInfoFromManifest(JSON.parse(raw), options);
-  } catch (err) {
-    console.warn(`ArcRho update manifest is invalid: ${err?.message || err}`);
-    return null;
+  const url = `${GITHUB_API_ROOT}/repos/${UPDATE_GITHUB_REPO}/releases?per_page=${MAX_RELEASES_SCANNED}`;
+  const response = await fetchImpl(url, { headers: githubRequestHeaders() });
+  if (!response.ok) {
+    throw new Error(`GitHub releases request failed with status ${response.status}`);
   }
+  const releases = await response.json();
+  return Array.isArray(releases) ? releases : [];
 }
 
-async function scanInstallerFolderUpdate(options = {}) {
+async function readAssetText(url) {
+  const response = await fetchImpl(url, { headers: githubRequestHeaders({ Accept: "application/octet-stream" }) });
+  if (!response.ok) return "";
+  return String(await response.text());
+}
+
+async function findAvailableUpdateFromReleases(releases, options = {}) {
   const reportIssues = options.reportIssues === true;
-  let entries = [];
-  try {
-    entries = await fs.promises.readdir(UPDATE_FEED_DIR, { withFileTypes: true });
-  } catch (err) {
-    if (err?.code !== "ENOENT") {
-      console.warn(`ArcRho update folder could not be scanned: ${err?.message || err}`);
+  let best = null;
+  let bestIssue = null;
+
+  for (const release of releases) {
+    if (release?.draft || release?.prerelease) continue;
+    const assets = Array.isArray(release?.assets) ? release.assets : [];
+    for (const asset of assets) {
+      const match = String(asset?.name || "").match(UPDATE_INSTALLER_NAME_RE);
+      if (!match) continue;
+      const version = match[1];
+      if (compareVersions(version, app.getVersion()) <= 0) continue;
+      if (best && compareVersions(version, best.version) <= 0) continue;
+
+      const checksumAsset = assets.find((entry) => entry?.name === `${asset.name}.sha256`);
+      if (!checksumAsset) {
+        console.warn(`ArcRho update asset is missing a SHA-256 checksum asset: ${asset.name}`);
+        bestIssue = createUpdateIssue(
+          "missing-checksum",
+          version,
+          asset.name,
+          "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
+          `Add a ${asset.name}.sha256 asset to the release.`
+        );
+        continue;
+      }
+
+      const sha256 = parseSha256Text(await readAssetText(checksumAsset.browser_download_url));
+      if (!sha256) {
+        console.warn(`ArcRho update checksum asset could not be read: ${checksumAsset.name}`);
+        bestIssue = createUpdateIssue(
+          "missing-checksum",
+          version,
+          asset.name,
+          "ArcRho found a newer installer, but its SHA-256 checksum could not be read."
+        );
+        continue;
+      }
+
+      best = createUpdateInfo(version, asset, sha256, release);
     }
-    return null;
   }
 
-  let newest = null;
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const match = entry.name.match(UPDATE_INSTALLER_NAME_RE);
-    if (!match) continue;
-    const version = match[1];
-    if (compareVersions(version, app.getVersion()) <= 0) continue;
-    if (!newest || compareVersions(version, newest.version) > 0) {
-      newest = { version, installerPath: path.join(UPDATE_FEED_DIR, entry.name) };
-    }
-  }
-
-  if (!newest) return null;
-  const sha256 = await readInstallerSha256(newest.installerPath);
-  if (!sha256) {
-    console.warn(`ArcRho update installer is missing a SHA-256 checksum: ${newest.installerPath}`);
-    if (reportIssues) {
-      return createUpdateIssue(
-        "missing-checksum",
-        newest.version,
-        newest.installerPath,
-        "folder",
-        "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
-        `Add ${path.basename(newest.installerPath)}.sha256 beside the installer.`
-      );
-    }
-    return null;
-  }
-  return createUpdateInfo(newest.version, newest.installerPath, sha256, "folder");
+  if (best) return best;
+  return reportIssues ? bestIssue : null;
 }
 
 async function findAvailableUpdate(options = {}) {
-  const manifestUpdate = await readManifestUpdate(options);
-  if (isInstallableUpdate(manifestUpdate)) return manifestUpdate;
-  const folderUpdate = await scanInstallerFolderUpdate(options);
-  if (isInstallableUpdate(folderUpdate)) return folderUpdate;
-  return manifestUpdate || folderUpdate || null;
+  const releases = await fetchReleases();
+  return findAvailableUpdateFromReleases(releases, options);
 }
 
 function calculateFileSha256(filePath) {
@@ -262,14 +189,47 @@ function calculateFileSha256(filePath) {
   });
 }
 
-async function verifyUpdateInstaller(updateInfo) {
-  try {
-    const actual = await calculateFileSha256(updateInfo.installerPath);
-    return actual === String(updateInfo.sha256 || "").toLowerCase();
-  } catch (err) {
-    console.warn(`ArcRho update installer checksum failed: ${err?.message || err}`);
-    return false;
+function updatesDownloadDir() {
+  return path.join(app.getPath("userData"), "updates");
+}
+
+function sendDownloadProgress(payload) {
+  const win = getMainWindow();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(DOWNLOAD_PROGRESS_CHANNEL, payload);
   }
+}
+
+async function downloadReleaseAsset(updateInfo) {
+  const destDir = updatesDownloadDir();
+  await fs.promises.mkdir(destDir, { recursive: true });
+  const destPath = path.join(destDir, updateInfo.assetName);
+  const partPath = `${destPath}.part`;
+
+  const response = await fetchImpl(updateInfo.downloadUrl, { headers: githubRequestHeaders() });
+  if (!response.ok || !response.body) {
+    throw new Error(`Update download request failed with status ${response.status}`);
+  }
+  const totalBytes = Number.parseInt(response.headers.get("content-length") || "", 10) || 0;
+  let receivedBytes = 0;
+
+  sendDownloadProgress({ phase: "start", version: updateInfo.version, receivedBytes: 0, totalBytes });
+  const writeStream = fs.createWriteStream(partPath);
+  try {
+    for await (const chunk of response.body) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      await new Promise((resolve, reject) => {
+        writeStream.write(buffer, (err) => (err ? reject(err) : resolve()));
+      });
+      receivedBytes += buffer.length;
+      sendDownloadProgress({ phase: "progress", version: updateInfo.version, receivedBytes, totalBytes });
+    }
+  } finally {
+    await new Promise((resolve) => writeStream.end(resolve));
+  }
+
+  await fs.promises.rename(partPath, destPath);
+  return destPath;
 }
 
 function showMainWindowMessageBox(options) {
@@ -301,13 +261,66 @@ function launchUpdateInstaller(installerPath) {
   child.unref();
 }
 
+async function downloadVerifyAndInstall(updateInfo) {
+  let installerPath = "";
+  try {
+    installerPath = await downloadReleaseAsset(updateInfo);
+  } catch (err) {
+    console.warn(`ArcRho update download failed: ${err?.message || err}`);
+    sendDownloadProgress({ phase: "error", version: updateInfo.version });
+    await showMainWindowMessageBox({
+      type: "error",
+      title: "Update could not be downloaded",
+      message: "ArcRho did not install the update.",
+      detail: String(err?.message || err),
+      buttons: ["OK"],
+      noLink: true,
+    });
+    return { status: "download-failed", version: updateInfo.version };
+  }
+
+  sendDownloadProgress({ phase: "verifying", version: updateInfo.version });
+  const actualSha256 = await calculateFileSha256(installerPath).catch(() => "");
+  const verified = actualSha256 && actualSha256 === String(updateInfo.sha256 || "").toLowerCase();
+  if (!verified) {
+    sendDownloadProgress({ phase: "error", version: updateInfo.version });
+    await fs.promises.unlink(installerPath).catch(() => {});
+    await showMainWindowMessageBox({
+      type: "error",
+      title: "Update could not be verified",
+      message: "ArcRho did not install the update.",
+      detail: "The downloaded installer checksum did not match the published SHA-256 value.",
+      buttons: ["OK"],
+      noLink: true,
+    });
+    return { status: "verification-failed", version: updateInfo.version };
+  }
+
+  sendDownloadProgress({ phase: "done", version: updateInfo.version });
+  try {
+    launchUpdateInstaller(installerPath);
+    app.quit();
+    return { status: "launching", version: updateInfo.version };
+  } catch (err) {
+    await showMainWindowMessageBox({
+      type: "error",
+      title: "Update could not be started",
+      message: "ArcRho could not launch the update installer.",
+      detail: String(err?.message || err),
+      buttons: ["OK"],
+      noLink: true,
+    });
+    return { status: "launch-failed", version: updateInfo.version };
+  }
+}
+
 async function promptForUpdateInstall(updateInfo) {
   const win = getMainWindow();
   if (!updateInfo || !win || win.isDestroyed()) return { status: "unavailable" };
   const detailLines = [
     `Current version: ${app.getVersion()}`,
     `Available version: ${updateInfo.version}`,
-    `Installer: ${updateInfo.installerPath}`,
+    `Installer: ${updateInfo.assetName}`,
   ];
   if (updateInfo.publishedAt) detailLines.push(`Published: ${updateInfo.publishedAt}`);
   if (updateInfo.releaseNotes) detailLines.push("", updateInfo.releaseNotes);
@@ -328,34 +341,7 @@ async function promptForUpdateInstall(updateInfo) {
   const canShutdown = await confirmUpdateShutdown();
   if (!canShutdown) return { status: "cancelled", version: updateInfo.version };
 
-  const verified = await verifyUpdateInstaller(updateInfo);
-  if (!verified) {
-    await showMainWindowMessageBox({
-      type: "error",
-      title: "Update could not be verified",
-      message: "ArcRho did not install the update.",
-      detail: "The installer checksum did not match the published SHA-256 value.",
-      buttons: ["OK"],
-      noLink: true,
-    });
-    return { status: "verification-failed", version: updateInfo.version };
-  }
-
-  try {
-    launchUpdateInstaller(updateInfo.installerPath);
-    app.quit();
-    return { status: "launching", version: updateInfo.version };
-  } catch (err) {
-    await showMainWindowMessageBox({
-      type: "error",
-      title: "Update could not be started",
-      message: "ArcRho could not launch the update installer.",
-      detail: String(err?.message || err),
-      buttons: ["OK"],
-      noLink: true,
-    });
-    return { status: "launch-failed", version: updateInfo.version };
-  }
+  return downloadVerifyAndInstall(updateInfo);
 }
 
 async function checkForUpdate(options = {}) {
@@ -404,7 +390,7 @@ async function checkForUpdate(options = {}) {
         title: "Update location unavailable",
         message: "ArcRho could not reach the update location.",
         detail: [
-          `Update location: ${UPDATE_FEED_DIR}`,
+          `Update location: https://github.com/${UPDATE_GITHUB_REPO}/releases`,
           String(err?.message || err),
         ].join("\n"),
         buttons: ["OK"],
@@ -423,7 +409,7 @@ async function checkForUpdate(options = {}) {
         detail: [
           `Current version: ${app.getVersion()}`,
           updateInfo.version ? `Available version: ${updateInfo.version}` : "",
-          updateInfo.installerPath ? `Installer: ${updateInfo.installerPath}` : "",
+          updateInfo.assetName ? `Installer: ${updateInfo.assetName}` : "",
           updateInfo.detail || "",
         ].filter(Boolean).join("\n"),
         buttons: ["OK"],
@@ -433,7 +419,7 @@ async function checkForUpdate(options = {}) {
     return {
       status: updateInfo.status,
       version: updateInfo.version || "",
-      installerPath: updateInfo.installerPath || "",
+      assetName: updateInfo.assetName || "",
     };
   }
 

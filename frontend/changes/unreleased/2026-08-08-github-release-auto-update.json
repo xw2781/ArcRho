@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "startup",
+  "audience": "user",
+  "summary": "Update checks now use GitHub Releases and show a download progress bar.",
+  "details": [
+    "The desktop update checker now looks for a newer installer on the project's GitHub Releases instead of the internal network update feed.",
+    "Accepting an update downloads the installer over HTTPS to the local machine, showing a live progress bar while it downloads.",
+    "The downloaded installer is still verified against a published SHA-256 checksum before it is launched."
+  ]
+}

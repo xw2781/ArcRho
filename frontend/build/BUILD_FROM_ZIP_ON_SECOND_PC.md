@@ -13,7 +13,7 @@ Source PC repository
     -> build_app_one_click or build_arcode_one_click request and response
     -> product-specific build PC local Documents workspace
     -> Python + Electron + NSIS build
-    -> installer and published update feed
+    -> installer, published GitHub Release, and backup network feed copy
 ```
 
 ## Roles and Default Paths
@@ -45,6 +45,7 @@ Before starting a full build, confirm that the build PC has:
 - Permission to execute files from the local workspace, including portable Node, `app-builder.exe`, PyInstaller, and NSIS.
 - Read access to the source-PC share and write access to the local workspace.
 - Write access through the mapped `E:` drive to `E:\ArcRho Server\releases\installers` and `E:\ArcRho Server\packages`, or an appropriate `PYTHON_API_PACKAGE_DIR` override for the Python package destination.
+- The `gh` CLI installed and authenticated (`gh auth login`, or a `GH_TOKEN` environment variable) with permission to create releases on the target GitHub repository — required for the GitHub Release publish step, which is what the packaged app's update checker actually reads.
 - Enough local disk space for the copied ZIP, its expanded contents, PyInstaller work files, Electron output, and the installer.
 
 The wrapper deletes the entire local build workspace before each extraction. Never set `ARCRHO_LOCAL_BUILD_ROOT` to a directory containing files that must be preserved.
@@ -177,7 +178,7 @@ An explicit Arcode version can be supplied in the same way:
 call "E:\XWSpace\Build ArcRho App\build_arcode_one_click.bat" 1.2.0
 ```
 
-The Arcode launcher sets the common local-workspace wrapper to Arcode mode. It installs missing package-mapped build dependencies into the selected Python 3.10 interpreter, generates Windows icons from `icons\icon_wing_geo_v8.svg`, builds `arcode_server`, packages with `electron-builder.arcode.json`, publishes `Arcode-Setup-<version>.exe` and its update manifest to `E:\Arcode Server\releases\arcode-installers`, and opens the published installer. The Arcode NSIS include observes native file-copy progress out of process so its percentage continues updating while NSIS installs files. It does not publish the external Python API wheel; that remains owned by the ArcRho application release workflow.
+The Arcode launcher sets the common local-workspace wrapper to Arcode mode. It installs missing package-mapped build dependencies into the selected Python 3.10 interpreter, generates Windows icons from `icons\icon_wing_geo_v8.svg`, builds `arcode_server`, packages with `electron-builder.arcode.json`, publishes `Arcode-Setup-<version>.exe` to a GitHub Release (the update checker's source) and its update manifest to the backup `E:\Arcode Server\releases\arcode-installers` feed, and opens the published installer. The Arcode NSIS include observes native file-copy progress out of process so its percentage continues updating while NSIS installs files. It does not publish the external Python API wheel; that remains owned by the ArcRho application release workflow.
 
 The launcher and its delegated local-workspace wrapper perform these steps:
 
@@ -187,7 +188,7 @@ The launcher and its delegated local-workspace wrapper perform these steps:
 4. Copies and extracts the ZIP locally while rejecting unsafe paths and skipping repository/agent metadata.
 5. Builds the Python API wheel, PyInstaller app server, Electron application, and NSIS installer.
 6. Verifies that the `win-unpacked` application still contains the portable Node, npm, Codex JavaScript entry point, and native Codex executable required by ArcBot.
-7. Publishes release artifacts, records the consumed readiness token after success, and opens the installer named by `E:\ArcRho Server\releases\installers\latest.json`.
+7. Publishes release artifacts — a GitHub Release with the installer and checksum (the update checker's source), plus a backup copy in the network feed — records the consumed readiness token after success, and opens the installer named by `E:\ArcRho Server\releases\installers\latest.json`.
 
 Do not run build tooling directly from the mapped repository. The one-click workflow ensures that dependency execution, PyInstaller, Electron Builder, and NSIS all run from a local filesystem on the build PC.
 
@@ -196,6 +197,7 @@ Do not run build tooling directly from the mapped repository. The one-click work
 A successful build reports exit code `0` and produces:
 
 - `%ARCRHO_LOCAL_BUILD_ROOT%\frontend\dist\ArcRho-Setup-<version>.exe`
+- A GitHub Release tagged `ArcRho-v<version>` with `ArcRho-Setup-<version>.exe` and `ArcRho-Setup-<version>.exe.sha256` attached — this is what the packaged app's update checker reads.
 - `E:\ArcRho Server\releases\installers\ArcRho-Setup-<version>.exe`
 - `E:\ArcRho Server\releases\installers\ArcRho-Setup-<version>.exe.sha256`
 - `E:\ArcRho Server\releases\installers\latest.json`
@@ -250,7 +252,7 @@ Install Python 3.10.6 or newer within the Python 3.10 line, or set `PYTHON_EXE` 
 
 ### Publishing fails after the installer builds
 
-Verify that the build PC can write through its mapped `E:` drive to `E:\ArcRho Server\releases\installers` and the configured Python package destination on the source PC.
+If the GitHub Release publish step fails, confirm `gh auth status` succeeds on the build PC (or that `GH_TOKEN` is set) and that the authenticated account can create releases on the target repository. If the backup network feed publish step fails, verify that the build PC can write through its mapped `E:` drive to `E:\ArcRho Server\releases\installers` and the configured Python package destination on the source PC.
 
 ### ArcBot reports that Codex cannot launch after installation
 
@@ -263,6 +265,6 @@ Confirm that the build log's ArcBot runtime validation passed and that the insta
 - The build PC's permanent `E:` mapping is available and can read the source ZIP.
 - The build ran from `%USERPROFILE%\Documents\build_arcrho_app`, not the network share.
 - The build exited with code `0`.
-- The installer, checksum, update manifest, release notes, and Python API package were published.
+- The installer, checksum, update manifest, release notes, and Python API package were published, including the GitHub Release the update checker reads.
 - The pre-build and `win-unpacked` ArcBot runtime checks found portable Node, npm, the Codex JavaScript entry point, and the native Windows Codex executable.
 - The timestamped build log was retained when troubleshooting was required.

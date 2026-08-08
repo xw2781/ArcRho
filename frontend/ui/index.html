@@ -8,9 +8,9 @@
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260620m"/>
   <link rel="stylesheet" href="/ui/macro/macro_window.css?v=20260731a"/>
-  <link rel="stylesheet" href="/ui/shell/shell.css?v=20260726a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260729a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260807b"/>
+  <link rel="stylesheet" href="/ui/shell/shell.css?v=20260808e"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260808b"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260808b"/>
 </head>
 
 <body>
@@ -144,7 +144,7 @@
     <div class="menuItem" data-action="open-dfm-json" data-page-scopes="dfm"><span>Open DFM JSON</span></div>
   </div>
 
-  <div id="tabCtxMenu">
+  <div id="tabCtxMenu" class="tabCtxMenu">
     <div class="tabCtxItem" data-action="open-file-location">Open File Location</div>
     <div class="tabCtxItem" data-action="copy-file-path">Copy File Path</div>
     <div class="tabCtxItem" data-action="close">Close</div>
@@ -254,6 +254,42 @@
     </div>
   </div>
 
+  <div id="homeNameOverlay" class="host-nodrag" role="dialog" aria-modal="true" aria-labelledby="homeNameTitle">
+    <div id="homeNameBox">
+      <div id="homeNameTitle">New Group</div>
+      <div class="fontSettingsRow">
+        <label id="homeNameLabel" for="homeNameInput">Group name</label>
+        <input id="homeNameInput" type="text" autocomplete="off" maxlength="60" />
+      </div>
+      <div id="homeNameButtons">
+        <button class="appConfirmBtn" id="homeNameCancelBtn" type="button">Cancel</button>
+        <button class="appConfirmBtn primary" id="homeNameOkBtn" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="homeAddCardOverlay" class="host-nodrag" role="dialog" aria-modal="true" aria-labelledby="homeAddCardTitle">
+    <div id="homeAddCardBox">
+      <div id="homeAddCardTitle">Add Shortcut Card</div>
+      <div id="homeAddCardHint">Pick an open tab to pin to Home.</div>
+      <div id="homeAddCardList" role="radiogroup" aria-labelledby="homeAddCardTitle"></div>
+      <div class="fontSettingsRow">
+        <label for="homeAddCardGroup">Group</label>
+        <select id="homeAddCardGroup"></select>
+      </div>
+      <div class="fontSettingsRow">
+        <label for="homeAddCardLabel">Card name</label>
+        <input id="homeAddCardLabel" type="text" autocomplete="off" maxlength="60" />
+      </div>
+      <div id="homeAddCardButtons">
+        <button class="appConfirmBtn" id="homeAddCardCancelBtn" type="button">Cancel</button>
+        <button class="appConfirmBtn primary" id="homeAddCardOkBtn" type="button">Add card</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="homeShortcutMenu" class="tabCtxMenu" role="menu"></div>
+
   <div id="aboutOverlay" class="host-nodrag" role="dialog" aria-modal="true" aria-labelledby="aboutAppName">
     <div id="aboutBox">
       <div id="aboutHero">
@@ -303,6 +339,6 @@
       }
     })();
   </script>
-  <script type="module" src="/ui/shell/ui_shell.js?v=20260801dup1"></script>
+  <script type="module" src="/ui/shell/ui_shell.js?v=20260808a"></script>
 </body>
 </html>

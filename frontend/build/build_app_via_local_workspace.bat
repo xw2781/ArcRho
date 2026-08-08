@@ -395,6 +395,19 @@ if errorlevel 1 (
 echo Installer update feed published: %UPDATE_FEED_DIR%
 echo.
 
+echo Step 6b: Publishing GitHub Release...
+echo ----------------------------------------
+powershell -NoProfile -ExecutionPolicy Bypass -File "build\publish_github_release.ps1" -InstallerPath "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" -ReleaseNotesPath "%RELEASE_NOTE_PATH%" -ProductName "%PRODUCT_NAME%"
+if errorlevel 1 (
+    echo ERROR: Failed to publish GitHub Release.
+    echo HINT: Ensure the gh CLI is installed and authenticated ^(run: gh auth login^).
+    echo.
+    pause
+    exit /b 1
+)
+echo GitHub Release published.
+echo.
+
 if "%PUBLISH_PYTHON_API%"=="1" (
     echo Step 7: Publishing Python API package...
     echo ----------------------------------------
@@ -438,6 +451,7 @@ echo.
 echo - %INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe  (Installer)
 echo - %UPDATE_FEED_DIR%\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe  (Published Installer)
 echo - %UPDATE_FEED_DIR%\latest.json  (Update Manifest)
+echo - GitHub Release %INSTALLER_PREFIX%-v%APP_VERSION%  (Auto-Update Source)
 if "%PUBLISH_PYTHON_API%"=="1" echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
 echo - %RELEASE_NOTE_PATH%  (Release Notes)
 echo.
