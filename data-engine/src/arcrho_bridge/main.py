@@ -12,6 +12,9 @@ from pathlib import Path
 _MODULE_ROOT = Path(__file__).resolve().parent
 _SOURCE_ROOT = _MODULE_ROOT.parent
 _PRODUCT_ROOT = _SOURCE_ROOT.parent
+# Standalone canonical modules (the durable-job lease) live beside the public
+# Python API. A frozen Bridge gets them as hidden imports instead.
+_REPO_CANONICAL_ROOT = _PRODUCT_ROOT.parent / "python-api" / "src"
 _BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", _MODULE_ROOT)).resolve()
 _EXE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
 _DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
@@ -24,7 +27,9 @@ if "ARCRHO_ROOT" not in os.environ:
     elif not getattr(sys, "frozen", False):
         os.environ["ARCRHO_ROOT"] = str(_DEPLOY_ROOT)
 
-for _path in (_PRODUCT_ROOT, _SOURCE_ROOT, _BUNDLE_ROOT):
+for _path in (_PRODUCT_ROOT, _SOURCE_ROOT, _REPO_CANONICAL_ROOT, _BUNDLE_ROOT):
+    if not _path.exists():
+        continue
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
@@ -82,6 +87,15 @@ WORKER_STALE_AFTER_SECONDS = RESQ_IMPORT_CONTRACT[
 ]
 REQUEST_POLL_INTERVAL_SECONDS = 1.0
 IMPORT_HEARTBEAT_INTERVAL_SECONDS = 1.0
+# A running import republishes its own status at least this often, so a
+# ``processing`` status older than the threshold has no live owner: its worker
+# was terminated without running any exception handler. Startup reconciliation
+# closes those out; otherwise the UI waits on an import that will never report.
+RESQ_IMPORT_STATUS_STALE_SECONDS = 120.0
+RESQ_IMPORT_ORPHANED_STATUS_MESSAGE = (
+    "The ArcRho Bridge stopped before this import finished. The live reserving "
+    "class was left unchanged; import it again."
+)
 
 # A reserving-class import is intentionally isolated from both the legacy RPC
 # queue and the data-engine's top-level ``requests`` queue. The latter is
@@ -170,6 +184,7 @@ def discover_fresh_bridge_worker_heartbeats(
     *,
     max_age_seconds=WORKER_STALE_AFTER_SECONDS,
     now=None,
+    user=None,
 ):
     """Return fresh bridge-worker heartbeats without mutating the share.
 
@@ -184,6 +199,7 @@ def discover_fresh_bridge_worker_heartbeats(
     root = Path(server_root) if server_root is not None else get_project_root()
     folder = root.joinpath(*_RESQ_IMPORT_HEARTBEAT_RELATIVE_DIR)
     observed_at = time.time() if now is None else float(now)
+    normalized_user = str(user).casefold() if user else None
     fresh = []
     for path in list_json_files_by_mtime(folder):
         try:
@@ -202,18 +218,41 @@ def discover_fresh_bridge_worker_heartbeats(
             isinstance(payload, dict)
             and payload.get("Role") == WORKER_ROLE
             and _resq_gui_is_running(payload.get("ResQGuiRunning"))
+            and (
+                normalized_user is None
+                or str(payload.get("User") or "").casefold() == normalized_user
+            )
         ):
             fresh.append(path)
     return tuple(sorted(fresh, key=lambda item: item.name.casefold()))
 
 
-def live_worker_count():
+def live_worker_count(user=None):
     remove_old_instances(worker_instance_folder(), WORKER_STALE_AFTER_SECONDS)
-    return len(discover_fresh_bridge_worker_heartbeats())
+    return len(discover_fresh_bridge_worker_heartbeats(user=user))
 
 
-def remove_worker_heartbeats():
+def _instance_file_user(path):
+    """Extract the login from ``<role>@<machine>@<user>@<timestamp>`` names."""
+
+    parts = Path(path).stem.split("@")
+    return parts[-2] if len(parts) >= 3 else ""
+
+
+def remove_worker_heartbeats(user=None):
+    """Remove worker heartbeats, optionally only those owned by one user.
+
+    Bridges run one per user session on a shared PC, so a supervisor must not
+    delete another user's worker heartbeat; that would stop their live worker.
+    """
+
+    normalized_user = str(user).casefold() if user else None
     for path in list_instance_files(worker_instance_folder()):
+        if (
+            normalized_user is not None
+            and _instance_file_user(path).casefold() != normalized_user
+        ):
+            continue
         safe_remove(path)
 
 
@@ -241,7 +280,40 @@ def stop_worker(process, timeout=2.0):
     return None
 
 
+BRIDGE_STALE_AFTER_SECONDS = 60
+
+
+def same_user_bridge_is_running(user):
+    """Return whether a live Bridge heartbeat already exists for this user."""
+
+    folder = resolve_app_path(BRIDGE_ROLE, "instances")
+    normalized_user = str(user).casefold()
+    now = time.time()
+    for path in list_instance_files(folder):
+        try:
+            if now - path.stat().st_mtime > BRIDGE_STALE_AFTER_SECONDS:
+                continue
+            payload = read_json(path, retries=3)
+        except Exception:
+            continue
+        if (
+            isinstance(payload, dict)
+            and payload.get("Role") == BRIDGE_ROLE
+            and str(payload.get("User") or "").casefold() == normalized_user
+        ):
+            return True
+    return False
+
+
 def run_bridge_supervisor():
+    # One bridge per user session on a shared PC: each ResQ user contributes
+    # the bridge tied to their own ResQ GUI and license. Only a duplicate for
+    # the same user exits here; other users' bridges are never touched.
+    current_user = os.getlogin()
+    if same_user_bridge_is_running(current_user):
+        print(f"An ArcRho Bridge is already running for {current_user}; exiting.")
+        return
+
     bridge_id = make_instance_id(BRIDGE_ROLE)
     id_path = instance_path(BRIDGE_ROLE, bridge_id)
     id_path.parent.mkdir(parents=True, exist_ok=True)
@@ -253,7 +325,7 @@ def run_bridge_supervisor():
     try:
         while True:
             if not id_path.exists() or get_config_value("apps.bridge.kill_all", False):
-                remove_worker_heartbeats()
+                remove_worker_heartbeats(current_user)
                 worker_process = stop_worker(worker_process)
                 safe_remove(id_path)
                 break
@@ -273,16 +345,16 @@ def run_bridge_supervisor():
                 worker_process = None
 
             if get_config_value("apps.bridge_worker.kill_all", False):
-                remove_worker_heartbeats()
+                remove_worker_heartbeats(current_user)
                 worker_process = stop_worker(worker_process, timeout=0.5)
                 time.sleep(2)
                 continue
 
             if not gui_running:
-                remove_worker_heartbeats()
+                remove_worker_heartbeats(current_user)
                 worker_process = stop_worker(worker_process, timeout=0.5)
             elif (
-                live_worker_count() < int(get_config_value("apps.bridge.max_workers", 1))
+                live_worker_count(current_user) < int(get_config_value("apps.bridge.max_workers", 1))
                 and worker_process is None
             ):
                 worker_process = start_worker()
@@ -354,12 +426,36 @@ def _json_safe_status_value(value):
 def _write_resq_import_status(request, status, *, message="", progress=None, result=None):
     """Atomically publish the deterministic import status for ``request``."""
 
+    try:
+        request_id = _validate_resq_import_request_id(request.get("RequestId"))
+    except Exception as exc:
+        print(f"(error: could not resolve ResQ import status path: {exc})")
+        return False
+    return _publish_resq_import_status(
+        request_id,
+        status,
+        message=message,
+        progress=progress,
+        result=result,
+    )
+
+
+def _publish_resq_import_status(
+    request_id,
+    status,
+    *,
+    message="",
+    progress=None,
+    result=None,
+    server_root=None,
+):
+    """Atomically publish one status document for an accepted request id."""
+
     if status not in _RESQ_IMPORT_STATUS_VALUES:
         raise ValueError(f"Invalid ResQ import status: {status!r}")
 
     try:
-        request_id = _validate_resq_import_request_id(request.get("RequestId"))
-        status_path = resq_import_status_path(request_id)
+        status_path = resq_import_status_path(request_id, server_root)
     except Exception as exc:
         print(f"(error: could not resolve ResQ import status path: {exc})")
         return False
@@ -389,6 +485,94 @@ def _write_resq_import_status(request, status, *, message="", progress=None, res
     except Exception as exc:
         print(f"(error: could not write ResQ import status to {status_path}: {exc})")
     return False
+
+
+def _touch_resq_import_status(status_path):
+    """Renew a running import's status mtime without rewriting its payload.
+
+    Startup reconciliation reads that mtime to tell a live import from one
+    whose worker was terminated. Progress events alone are too sparse: a single
+    slow dataset can leave a healthy import silent for minutes.
+    """
+
+    try:
+        os.utime(status_path, None)
+    except OSError:
+        pass
+
+
+def reconcile_orphaned_resq_import_statuses(
+    server_root=None,
+    *,
+    max_age_seconds=RESQ_IMPORT_STATUS_STALE_SECONDS,
+    now=None,
+):
+    """Close out ``processing`` statuses no live worker is renewing.
+
+    Every ArcRho user's Bridge sees the same shared status folder, so freshness
+    is the only safe ownership signal here: another machine's running import
+    renews its status well inside the threshold and must never be closed out.
+    Returns the request ids this call reported as failed.
+    """
+
+    if max_age_seconds < 0:
+        raise ValueError("max_age_seconds must be non-negative.")
+
+    try:
+        folder = resq_import_status_dir(server_root)
+    except Exception as exc:
+        print(f"(error: could not open the ResQ import status folder: {exc})")
+        return ()
+
+    observed_at = time.time() if now is None else float(now)
+    reconciled = []
+    for path in list_json_files_by_mtime(folder):
+        try:
+            if observed_at - path.stat().st_mtime <= max_age_seconds:
+                continue
+            payload = read_json(path)
+        except OSError:
+            continue
+        except Exception:
+            # An unreadable status is not evidence of an abandoned import.
+            continue
+        if not isinstance(payload, dict) or payload.get("status") != "processing":
+            continue
+        request_id = payload.get("request_id")
+        try:
+            request_id = _validate_resq_import_request_id(request_id)
+        except Exception:
+            continue
+        if _publish_resq_import_status(
+            request_id,
+            "error",
+            message=RESQ_IMPORT_ORPHANED_STATUS_MESSAGE,
+            server_root=server_root,
+        ):
+            reconciled.append(request_id)
+            _discard_abandoned_import_job(request_id, server_root)
+    if reconciled:
+        print(
+            f"Closed {len(reconciled)} interrupted ResQ import(s): "
+            + ", ".join(reconciled)
+        )
+    return tuple(reconciled)
+
+
+def _discard_abandoned_import_job(request_id, server_root=None):
+    """Reclaim the staging folder of an import that was just declared dead.
+
+    The staging layout belongs to the import runner, so this delegates rather
+    than rebuilding those paths here.
+    """
+
+    try:
+        from arcrho_bridge.resq_import_runner import discard_abandoned_import_job
+
+        discard_abandoned_import_job(request_id, server_root)
+    except Exception as exc:
+        # Reporting the interrupted import matters more than reclaiming disk.
+        print(f"(warning: could not remove staged import [{request_id}]: {exc})")
 
 
 class BridgeRequestHandler(FileSystemEventHandler):
@@ -518,7 +702,7 @@ class BridgeRequestHandler(FileSystemEventHandler):
         def publish_progress(progress):
             _write_resq_import_status(request, "processing", progress=progress)
 
-        heartbeat_stop, heartbeat_thread = self._start_import_heartbeat()
+        heartbeat_stop, heartbeat_thread = self._start_import_heartbeat(request)
         try:
             try:
                 result = self.client.write_resq_reserving_class_import(
@@ -542,25 +726,22 @@ class BridgeRequestHandler(FileSystemEventHandler):
 
         _write_resq_import_status(request, "success", result=result)
 
-    def _start_import_heartbeat(self):
-        """Keep the worker discoverable while its main thread runs ResQ COM work."""
+    def _start_import_heartbeat(self, request):
+        """Keep the worker and its import status alive during ResQ COM work."""
 
-        if not callable(self._worker_heartbeat):
-            return None, None
         try:
-            self._worker_heartbeat()
+            status_path = resq_import_status_path(request.get("RequestId"))
         except Exception:
-            pass
+            status_path = None
+        if not callable(self._worker_heartbeat) and status_path is None:
+            return None, None
+        beat = self._import_heartbeat_writer(status_path)
+        beat()
         stop = threading.Event()
 
         def keepalive():
             while not stop.wait(self._heartbeat_interval_sec):
-                try:
-                    self._worker_heartbeat()
-                except Exception:
-                    # A heartbeat write is advisory. The import's own status
-                    # writer remains responsible for reporting a real failure.
-                    pass
+                beat()
 
         thread = threading.Thread(
             target=keepalive,
@@ -569,6 +750,22 @@ class BridgeRequestHandler(FileSystemEventHandler):
         )
         thread.start()
         return stop, thread
+
+    def _import_heartbeat_writer(self, status_path):
+        """Return the one callable that renews both liveness signals."""
+
+        def beat():
+            if callable(self._worker_heartbeat):
+                try:
+                    self._worker_heartbeat()
+                except Exception:
+                    # A heartbeat write is advisory. The import's own status
+                    # writer remains responsible for reporting a real failure.
+                    pass
+            if status_path is not None:
+                _touch_resq_import_status(status_path)
+
+        return beat
 
     def _validate_resq_import_request(self, request):
         if str(request.get("Function") or "").strip() != RESQ_IMPORT_FUNCTION:
@@ -684,6 +881,10 @@ def run_bridge_worker():
     observer.schedule(handler, str(legacy_request_folder), recursive=False)
     observer.schedule(handler, str(import_request_folder), recursive=False)
     observer.start()
+    # A worker that was terminated mid-import left its status claiming
+    # ``processing`` forever. Close those out before claiming new work, so the
+    # UI stops waiting on an import that no process is running.
+    reconcile_orphaned_resq_import_statuses()
     handler.process_pending(legacy_request_folder)
     handler.process_pending(import_request_folder)
     last_request_scan = time.monotonic()

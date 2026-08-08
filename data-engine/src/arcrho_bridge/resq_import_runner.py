@@ -26,10 +26,17 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable, Mapping
+
+from arcrho_engine_job_lease import (
+    EngineJobLease,
+    acquire_engine_job_lease,
+    release_engine_job_lease,
+    start_engine_job_lease_heartbeat,
+    stop_engine_job_lease_heartbeat,
+)
 
 try:
     from src.arcrho_bridge.resq_import_contract import (
@@ -54,6 +61,15 @@ _IMPORT_STAGING_ROOT_NAME = "r"
 _IMPORT_STAGED_DATA_DIR_NAME = "d"
 _IMPORT_LOCK_DIR_NAME = ".locks"
 _IMPORT_LOCK_SUFFIX = ".lock"
+# The Bridge worker that runs an import is force-terminated by its own
+# supervisor whenever the ResQ GUI disappears, and by the deploy kill switch.
+# TerminateProcess runs no ``finally``, so an import lock that only ever
+# unlinked on a clean exit blocked its reserving class forever. The lock is a
+# heartbeat lease instead: a live import renews it, and a killed one expires.
+# The window is shorter than a durable Engine job's because a person is waiting
+# at the Import dialog for it to clear.
+RESQ_IMPORT_LOCK_HEARTBEAT_SECONDS = 5.0
+RESQ_IMPORT_LOCK_STALE_SECONDS = 120.0
 _MODULE_LOAD_LOCK = threading.RLock()
 # Windows refuses to replace or delete a file that another process still holds
 # open without FILE_SHARE_DELETE, and reports that as access denied (5),
@@ -216,7 +232,7 @@ def run_reserving_class_import(
     _validate_live_target(target_rc_dir, project_data_dir)
     _prepare_job_root(job_root, staging_parent)
     try:
-        lock_path = _acquire_target_lock(staging_parent, project_name, rc_path, request_id)
+        lease = _acquire_target_lock(staging_parent, project_name, rc_path, request_id)
     except Exception:
         try:
             _remove_job_root(job_root, staging_parent)
@@ -225,7 +241,13 @@ def run_reserving_class_import(
             # harmless and contains no live reserving-class data.
             pass
         raise
+    heartbeat_stop, heartbeat_thread = start_engine_job_lease_heartbeat(
+        lease,
+        interval_seconds=RESQ_IMPORT_LOCK_HEARTBEAT_SECONDS,
+        thread_name=f"arcrho-resq-import-lease-{request_id[:8]}",
+    )
     committed = False
+    commit_started = False
     cleanup_job_root = False
     try:
         _report_progress(
@@ -295,6 +317,9 @@ def run_reserving_class_import(
                 "message": "Committing the staged reserving-class import.",
             },
         )
+        # From here the job root can hold the only copy of previous live files,
+        # so it is no longer unconditionally disposable.
+        commit_started = True
         previous_data_deleted, cleanup_warning = _commit_staged_rc(
             target_rc_dir,
             stage_rc_dir,
@@ -322,8 +347,17 @@ def run_reserving_class_import(
         )
         return _json_safe(result)
     finally:
-        _release_target_lock(lock_path)
-        if committed and cleanup_job_root:
+        stop_engine_job_lease_heartbeat(
+            heartbeat_stop,
+            heartbeat_thread,
+            interval_seconds=RESQ_IMPORT_LOCK_HEARTBEAT_SECONDS,
+        )
+        release_engine_job_lease(lease)
+        # A staged tree is disposable until the commit starts moving live files
+        # aside. Once it has, the job's backup folder may be the only copy of
+        # the previous reserving class, so it is kept for the operator unless
+        # the commit finished and already deleted that backup itself.
+        if (not commit_started) or (committed and cleanup_job_root):
             try:
                 _remove_job_root(job_root, staging_parent)
             except Exception:
@@ -331,6 +365,33 @@ def run_reserving_class_import(
                 # folder must not make the Bridge report that committed data
                 # was safely rolled back.
                 pass
+
+
+def discard_abandoned_import_job(
+    request_id: str,
+    server_root: str | os.PathLike[str] | None = None,
+) -> bool:
+    """Delete one interrupted import's staged folder, never its backup.
+
+    A worker killed mid-import runs no ``finally``, so its staged reserving
+    class survives in the staging area. That copy is disposable, but the same
+    job folder holds ``previous/`` once a commit has started moving live files
+    aside, and that backup can be the only remaining copy of the reserving
+    class. A job folder that has one is therefore reported, not removed.
+    Returns whether a staged folder was deleted.
+    """
+
+    root = Path(server_root) if server_root is not None else Path(get_project_root())
+    staging_parent = _import_staging_parent(root.expanduser().resolve())
+    if not staging_parent.is_dir():
+        return False
+    job_root = _direct_child(staging_parent, request_id, "ResQ import job folder")
+    if not job_root.is_dir() or job_root.is_symlink():
+        return False
+    if (job_root / "previous").exists():
+        return False
+    _remove_job_root(job_root, staging_parent)
+    return True
 
 
 def _source_repo_root() -> Path:
@@ -573,34 +634,30 @@ def _acquire_target_lock(
     project_name: str,
     rc_path: str,
     request_id: str,
-) -> Path:
+) -> EngineJobLease:
+    """Take the reserving class's import lease, recovering an expired one.
+
+    Delegates to the canonical durable-job lease so the Bridge does not own a
+    second lock implementation; only the staleness window is import-specific.
+    """
+
     lock_dir = _direct_child(staging_parent, _IMPORT_LOCK_DIR_NAME, "ResQ import lock folder")
     lock_dir.mkdir(parents=True, exist_ok=True)
     if lock_dir.is_symlink():
         raise ResQImportCommitError("Refusing to use a symlinked ResQ import lock folder.")
     lock_path = _direct_child(lock_dir, _lock_file_name(project_name, rc_path), "ResQ import lock")
-    payload = {
-        "request_id": request_id,
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
-    try:
-        with lock_path.open("x", encoding="utf-8", newline="\n") as stream:
-            json.dump(payload, stream, ensure_ascii=False, separators=(",", ":"))
-            stream.write("\n")
-    except FileExistsError as exc:
+    lease = acquire_engine_job_lease(
+        lock_path,
+        stale_seconds=RESQ_IMPORT_LOCK_STALE_SECONDS,
+        payload_fields={"request_id": request_id},
+    )
+    if lease is None:
         raise ResQImportCommitError(
-            "Another ResQ import is already processing this reserving class."
-        ) from exc
-    return lock_path
-
-
-def _release_target_lock(lock_path: Path) -> None:
-    try:
-        lock_path.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError:
-        pass
+            "Another ResQ import is already processing this reserving class. "
+            "If that import was interrupted, its claim clears within "
+            f"{int(RESQ_IMPORT_LOCK_STALE_SECONDS)} seconds."
+        )
+    return lease
 
 
 def _require_staged_rc_dir(stage_rc_dir: Path, stage_data_dir: Path) -> None:

@@ -14,7 +14,11 @@ for path in (PROJECT_ROOT, SOURCE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from arcrho_bridge.bundled_sources import BUNDLED_SOURCES
+from arcrho_bridge.bundled_sources import (
+    BUNDLED_SOURCES,
+    CANONICAL_HIDDEN_IMPORTS,
+    CANONICAL_MODULE_ROOT,
+)
 from utils import (
     component_app_name,
     get_config_value,
@@ -89,14 +93,20 @@ def validate_resq_import_environment():
     """Fail the build if the canonical migration/provenance imports are incomplete."""
 
     import_paths = tuple(
-        dict.fromkeys(bundled.import_root for bundled in BUNDLED_SOURCES)
+        dict.fromkeys(
+            (
+                *(bundled.import_root for bundled in BUNDLED_SOURCES),
+                CANONICAL_MODULE_ROOT,
+            )
+        )
     )
     probe = (
         "import sys; "
         f"sys.path[:0] = {repr([str(path) for path in import_paths])}; "
         "from resq_migration.engine import get_engine_processing_provenance; "
         "from app_server.services.data_processing_rules_service import "
-        "get_processing_provenance"
+        "get_processing_provenance; "
+        + "; ".join(f"import {name}" for name in CANONICAL_HIDDEN_IMPORTS)
     )
     print("\n>>> Validating canonical ResQ import dependencies")
     run([VENV_PYTHON, "-c", probe])
@@ -112,6 +122,12 @@ def build_exe():
         raise FileNotFoundError(
             f"ResQ reserving-class import contract was not found: {RESQ_IMPORT_CONTRACT_FILE}"
         )
+    for module_name in CANONICAL_HIDDEN_IMPORTS:
+        canonical_module = CANONICAL_MODULE_ROOT / f"{module_name}.py"
+        if not canonical_module.is_file():
+            raise FileNotFoundError(
+                f"Canonical Bridge module not found: {canonical_module}"
+            )
     cmd = [
         VENV_PYTHON,
         "-m",
@@ -124,6 +140,13 @@ def build_exe():
         SOURCE_ROOT,
         "--paths",
         REPO_ROOT / "frontend",
+        "--paths",
+        CANONICAL_MODULE_ROOT,
+        *[
+            argument
+            for name in CANONICAL_HIDDEN_IMPORTS
+            for argument in ("--hidden-import", name)
+        ],
         "--hidden-import",
         "utils",
         "--hidden-import",

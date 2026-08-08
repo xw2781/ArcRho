@@ -5,16 +5,20 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 
-ENGINE_SRC = Path(__file__).resolve().parents[1] / "src"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+ENGINE_SRC = REPOSITORY_ROOT / "data-engine" / "src"
+CANONICAL_SRC = REPOSITORY_ROOT / "python-api" / "src"
 TEST_TMP_ROOT = Path(__file__).resolve().parent / "logs" / "tmp"
-if str(ENGINE_SRC) not in sys.path:
-    sys.path.insert(0, str(ENGINE_SRC))
+for source_root in (ENGINE_SRC, CANONICAL_SRC):
+    if str(source_root) not in sys.path:
+        sys.path.insert(0, str(source_root))
 
 from arcrho_bridge import resq_import_runner as runner  # noqa: E402
 
@@ -346,20 +350,8 @@ class ResQImportRunnerTests(unittest.TestCase):
     def test_lock_failure_removes_its_new_job_folder(self):
         server_root = self.root / "server"
         staging_parent = server_root / "r"
-        lock_dir = staging_parent / ".locks"
-        lock_dir.mkdir(parents=True)
-        rc_path = r"Business\Auto"
-        (lock_dir / runner._lock_file_name("Demo", rc_path)).write_text(
-            '{"request_id":"other"}\n',
-            encoding="utf-8",
-        )
-        request = {
-            "RequestId": "run-locked",
-            "ProjectName": "Demo",
-            "Path": rc_path,
-            "ExportMode": "configured",
-            "UserName": "tester",
-        }
+        self._write_orphaned_lock(server_root)
+        request = self._swap_request("run-locked")
         module = SimpleNamespace(_encode_rc_folder=lambda _rc_path: "rc")
 
         with (
@@ -371,6 +363,116 @@ class ResQImportRunnerTests(unittest.TestCase):
 
         self.assertFalse((staging_parent / "run-locked").exists())
 
+    def test_an_expired_lock_from_a_killed_worker_no_longer_blocks_the_rc(self):
+        # A terminated Bridge worker runs no ``finally``, so its lock file
+        # survives. Before the lease, that blocked the reserving class forever.
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+        lock_path = self._write_orphaned_lock(server_root)
+        os.utime(
+            lock_path,
+            (0, time.time() - runner.RESQ_IMPORT_LOCK_STALE_SECONDS - 1),
+        )
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=self._swap_module()),
+        ):
+            result = runner.run_reserving_class_import(self._swap_request("run-after-kill"))
+
+        self.assertTrue(result["committed"])
+        # The import owns and then releases the lease, leaving nothing behind.
+        self.assertFalse(lock_path.exists())
+
+    def test_a_live_import_still_holds_the_reserving_class(self):
+        server_root = self.root / "server"
+        lock_path = self._write_orphaned_lock(server_root)
+        request = self._swap_request("run-contended")
+        module = SimpleNamespace(_encode_rc_folder=lambda _rc_path: "rc")
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+            self.assertRaises(runner.ResQImportCommitError) as raised,
+        ):
+            runner.run_reserving_class_import(request)
+
+        self.assertIn("already processing this reserving class", str(raised.exception))
+        self.assertIn(
+            str(int(runner.RESQ_IMPORT_LOCK_STALE_SECONDS)),
+            str(raised.exception),
+        )
+        self.assertEqual(lock_path.read_text(encoding="utf-8"), '{"request_id":"other"}\n')
+
+    def test_a_running_import_renews_its_lease_while_it_works(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+        observed = []
+
+        def importer(_project_name, _rc_path, **kwargs):
+            lock_dir = server_root / "r" / ".locks"
+            observed.extend(sorted(path.name for path in lock_dir.glob("*.lock")))
+            stage_rc = Path(kwargs["project_data_dir"]) / "rc"
+            self._write_dataset(stage_rc, "new-resq", source_kind="input", value="new")
+            return {"errors": 0, "engine_errors": 0, "engine_available": True}
+
+        module = self._swap_module()
+        module.import_reserving_class_from_resq = importer
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+        ):
+            runner.run_reserving_class_import(self._swap_request("run-heartbeat"))
+
+        self.assertEqual(observed, [runner._lock_file_name("Demo", r"Business\Auto")])
+        self.assertEqual(list((server_root / "r" / ".locks").glob("*.lock")), [])
+
+    def test_a_failure_before_the_commit_removes_the_staged_job_folder(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+
+        def importer(_project_name, _rc_path, **kwargs):
+            stage_rc = Path(kwargs["project_data_dir"]) / "rc"
+            self._write_dataset(stage_rc, "partial", source_kind="input", value="partial")
+            return {"errors": 2, "engine_errors": 0, "engine_available": True}
+
+        module = SimpleNamespace(
+            _encode_rc_folder=lambda _rc_path: "rc",
+            import_reserving_class_from_resq=importer,
+        )
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+            self.assertRaises(runner.ResQImportCommitError),
+        ):
+            runner.run_reserving_class_import(self._swap_request("run-import-error"))
+
+        # Nothing was moved aside yet, so the staged copy is pure garbage.
+        self.assertFalse((server_root / "r" / "run-import-error").exists())
+        self.assertTrue((live_rc / "sidecars" / "old-resq.json").is_file())
+
+    def test_discarding_an_abandoned_job_never_deletes_a_commit_backup(self):
+        server_root = self.root / "server"
+        staging_parent = server_root / "r"
+        staged = staging_parent / "abandoned" / "d" / "rc"
+        staged.mkdir(parents=True)
+        (staged / "index.json").write_text("{}", encoding="utf-8")
+        backed_up = staging_parent / "half-committed" / "previous" / "sidecars"
+        backed_up.mkdir(parents=True)
+        (backed_up / "old-resq.json").write_text("{}", encoding="utf-8")
+
+        self.assertTrue(runner.discard_abandoned_import_job("abandoned", server_root))
+        self.assertFalse(runner.discard_abandoned_import_job("half-committed", server_root))
+        self.assertFalse(runner.discard_abandoned_import_job("never-existed", server_root))
+
+        self.assertFalse((staging_parent / "abandoned").exists())
+        self.assertTrue((backed_up / "old-resq.json").is_file())
+
     def test_request_values_cannot_select_a_target_path(self):
         request = {
             "RequestId": "run-789",
@@ -380,6 +482,15 @@ class ResQImportRunnerTests(unittest.TestCase):
         }
         with self.assertRaises(runner.ResQImportRequestError):
             runner.run_reserving_class_import(request)
+
+    def _write_orphaned_lock(self, server_root: Path) -> Path:
+        """Write the lock a killed or still-running worker would leave behind."""
+
+        lock_dir = server_root / "r" / ".locks"
+        lock_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = lock_dir / runner._lock_file_name("Demo", r"Business\Auto")
+        lock_path.write_text('{"request_id":"other"}\n', encoding="utf-8")
+        return lock_path
 
     def _swap_module(self, *staged_names: str) -> SimpleNamespace:
         names = staged_names or ("new-resq",)

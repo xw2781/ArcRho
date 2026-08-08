@@ -11,10 +11,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 
-ENGINE_SRC = Path(__file__).resolve().parents[1] / "src"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+ENGINE_SRC = REPOSITORY_ROOT / "data-engine" / "src"
+CANONICAL_SRC = REPOSITORY_ROOT / "python-api" / "src"
 TEST_TMP_ROOT = Path(__file__).resolve().parent / "logs" / "tmp"
-if str(ENGINE_SRC) not in sys.path:
-    sys.path.insert(0, str(ENGINE_SRC))
+for source_root in (ENGINE_SRC, CANONICAL_SRC):
+    if str(source_root) not in sys.path:
+        sys.path.insert(0, str(source_root))
 
 from arcrho_bridge import main as bridge_main  # noqa: E402
 from arcrho_bridge import resq_client  # noqa: E402
@@ -221,10 +224,91 @@ class BridgeImportRequestProtocolTests(unittest.TestCase):
             return {"datasets_imported": 1}
 
         client.write_resq_reserving_class_import.side_effect = write_import
-        with patch.object(bridge_main, "_write_resq_import_status", return_value=True):
+        with (
+            patch.object(bridge_main, "get_project_root", return_value=self.server_root),
+            patch.object(bridge_main, "_write_resq_import_status", return_value=True),
+        ):
             handler._process_resq_import_request(request)
 
         self.assertGreaterEqual(len(heartbeats), 2)
+
+    def test_a_running_import_keeps_its_status_fresh_for_reconciliation(self):
+        # Reconciliation reads the status mtime, so a slow but healthy import
+        # must renew it even when it publishes no progress event.
+        client = Mock()
+        status_path = bridge_main.resq_import_status_path(
+            "import-request-123",
+            self.server_root,
+        )
+        status_path.write_text(
+            json.dumps({"status": "processing", "request_id": "import-request-123"}),
+            encoding="utf-8",
+        )
+        aged = time.time() - 600
+        os.utime(status_path, (aged, aged))
+        handler = bridge_main.BridgeRequestHandler(client, heartbeat_interval_sec=0.01)
+
+        def write_import(_request, *, progress_callback=None):
+            return {"datasets_imported": 1}
+
+        client.write_resq_reserving_class_import.side_effect = write_import
+        with (
+            patch.object(bridge_main, "get_project_root", return_value=self.server_root),
+            patch.object(bridge_main, "_write_resq_import_status", return_value=True),
+        ):
+            handler._process_resq_import_request(_import_request())
+
+        self.assertGreater(status_path.stat().st_mtime, aged)
+
+    def test_startup_closes_out_statuses_no_live_worker_is_renewing(self):
+        interrupted = self._write_status("interrupted", "processing", age_seconds=600)
+        live = self._write_status("live", "processing", age_seconds=1)
+        finished = self._write_status("finished", "success", age_seconds=600)
+        staged = self.server_root / "r" / "interrupted" / "d" / "rc"
+        staged.mkdir(parents=True)
+        (staged / "index.json").write_text("{}", encoding="utf-8")
+
+        reconciled = bridge_main.reconcile_orphaned_resq_import_statuses(
+            self.server_root,
+            max_age_seconds=bridge_main.RESQ_IMPORT_STATUS_STALE_SECONDS,
+        )
+
+        self.assertEqual(reconciled, ("interrupted",))
+        closed = json.loads(interrupted.read_text(encoding="utf-8"))
+        self.assertEqual(closed["status"], "error")
+        self.assertEqual(closed["request_id"], "interrupted")
+        self.assertIn("stopped before this import finished", closed["message"])
+        # Another user's running import and an already-terminal one are untouched.
+        self.assertEqual(
+            json.loads(live.read_text(encoding="utf-8"))["status"],
+            "processing",
+        )
+        self.assertEqual(
+            json.loads(finished.read_text(encoding="utf-8"))["status"],
+            "success",
+        )
+        # The dead import's staged copy is reclaimed with it.
+        self.assertFalse((self.server_root / "r" / "interrupted").exists())
+
+    def test_reconciliation_keeps_a_half_committed_import_backup(self):
+        self._write_status("half-committed", "processing", age_seconds=600)
+        backup = self.server_root / "r" / "half-committed" / "previous" / "sidecars"
+        backup.mkdir(parents=True)
+        (backup / "old-resq.json").write_text("{}", encoding="utf-8")
+
+        bridge_main.reconcile_orphaned_resq_import_statuses(self.server_root)
+
+        self.assertTrue((backup / "old-resq.json").is_file())
+
+    def _write_status(self, request_id, status, *, age_seconds):
+        path = bridge_main.resq_import_status_path(request_id, self.server_root)
+        path.write_text(
+            json.dumps({"status": status, "request_id": request_id}),
+            encoding="utf-8",
+        )
+        stamp = time.time() - age_seconds
+        os.utime(path, (stamp, stamp))
+        return path
 
     def test_client_delegates_full_import_to_the_canonical_runner(self):
         request = _import_request()

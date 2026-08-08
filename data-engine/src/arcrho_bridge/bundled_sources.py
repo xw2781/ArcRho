@@ -21,6 +21,13 @@ REPO_ROOT = _BRIDGE_DIR.parents[2]
 
 BUNDLE_DIR_NAME = "resq_importer"
 
+# Standalone canonical modules the Bridge imports directly rather than through
+# the staged migration bundle. ``resq_import_runner`` takes its reserving-class
+# import lease from ``arcrho_engine_job_lease``, so that module must reach the
+# frozen import graph, not only the data bundle.
+CANONICAL_MODULE_ROOT = REPO_ROOT / "python-api" / "src"
+CANONICAL_HIDDEN_IMPORTS: tuple[str, ...] = ("arcrho_engine_job_lease",)
+
 
 @dataclass(frozen=True)
 class BundledSource:
