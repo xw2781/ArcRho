@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "links",
+  "audience": "user",
+  "summary": "The Links tab context menu now offers Refresh all and Break all alongside the selected-row actions instead of replacing them.",
+  "details": [
+    "With rows selected the menu shows Refresh selected, Break selected, a divider, then Refresh all and Break all.",
+    "The all-scope entries always act on every link and leave the current selection intact."
+  ]
+}

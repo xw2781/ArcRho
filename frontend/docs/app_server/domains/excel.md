@@ -2,18 +2,16 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
-Excel automation domain (selection reads and workbook operations).
+Excel automation domain (workbook value reads and workbook operations).
 <!-- MANUAL:END -->
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN app_server.excel.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/excel/active_selection` | `excel_active_selection` | - | - | `excel_service.excel_active_selection` |
 | `POST` | `/excel/open_workbook` | `excel_open_workbook` | `ExcelOpenRequest` | [`app_server/schemas/excel.py`](../../../app_server/schemas/excel.py) | `excel_service.excel_open_workbook` |
 | `POST` | `/excel/read_cell` | `excel_read_cell` | `ExcelCellReadRequest` | [`app_server/schemas/excel.py`](../../../app_server/schemas/excel.py) | `excel_service.excel_read_cell` |
 | `POST` | `/excel/read_cells_batch` | `excel_read_cells_batch` | `ExcelBatchReadRequest` | [`app_server/schemas/excel.py`](../../../app_server/schemas/excel.py) | `excel_service.excel_read_cells_batch` |
-| `POST` | `/excel/wait_for_enter` | `excel_wait_for_enter` | - | - | `excel_service.excel_wait_for_enter` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

@@ -55,7 +55,7 @@ test("every runtime frontend document bootstraps the shared theme before loading
     const bootstrap = html.indexOf("/ui/shared/services/color_theme.js?v=20260724a");
     const firstStylesheet = html.indexOf("rel=\"stylesheet\"");
     const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260729a");
-    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260805a");
+    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260807b");
     const endHead = html.indexOf("</head>");
     assert.ok(bootstrap >= 0, `${path} loads the shared bootstrap`);
     assert.ok(firstStylesheet < 0 || bootstrap < firstStylesheet, `${path} applies theme state before visual CSS`);
@@ -578,7 +578,7 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.match(splash, /requestedTheme === "dark" \? "dark" : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
   assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260729a/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260805a/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260807b/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
   assert.match(dark, /\.logo-icon img\s*\{[^}]*width:\s*88px[^}]*height:\s*88px/s);
@@ -590,15 +590,15 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
   const expectedReferences = [
-    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260805a"],
+    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260807d"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260731a"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260805a"],
     ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
-    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260726a"],
-    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260804a"],
-    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260726a"],
-    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260726a"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260801dup3"],
+    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260807b"],
+    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260807b"],
+    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260807b"],
+    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260807b"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260807idx1"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260722a"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260726b"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260726a"],

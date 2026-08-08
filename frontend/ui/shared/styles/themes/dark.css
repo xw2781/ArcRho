@@ -918,8 +918,7 @@
 :root[data-arcrho-theme="dark"] :is(
   .arNotesTabFormatInput,
   .arNotesTabFormatSelect,
-  .arNotesTabFormatToggle,
-  .arExternalLinksToolbarButton
+  .arNotesTabFormatToggle
 ) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-input);
@@ -928,7 +927,6 @@
 
 :root[data-arcrho-theme="dark"] :is(
   .arNotesTabFormatToggle:hover,
-  .arExternalLinksToolbarButton:hover:not(:disabled),
   .arNotesTabPathMenuItem:focus-visible
 ) {
   background-color: var(--ar-color-surface-hover);
@@ -1437,6 +1435,17 @@
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-input);
   color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .dfmSummaryFormulaBarIconBtn {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .dfmSummaryFormulaBarIconBtn:hover:not(:disabled) {
+  background-color: var(--ar-color-surface-hover);
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.dfmSelectMenu, .dfmCtxMenu, .dfmCellNoteBox, .dfmModalCard) {
@@ -2000,6 +2009,11 @@
   .pi-table-empty
 ) {
   color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-table-skeleton {
+  --pi-table-skeleton-bar: rgba(171, 178, 191, 0.16);
+  --pi-table-skeleton-sweep: rgba(171, 178, 191, 0.1);
 }
 
 :root[data-arcrho-theme="dark"] :is(.dataset-group-label, .dataset-filter-label) {

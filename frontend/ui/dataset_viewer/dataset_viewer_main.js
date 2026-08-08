@@ -21,8 +21,16 @@ import {
   renderDatasetChart,
 } from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260805a";
 import { wireDatasetNotesEditor } from "/ui/dataset_viewer/tabs/dataset_notes_tab.js?v=20260715a";
-import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260715b";
+import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260807a";
 import { configureDataTabLinks } from "/ui/shared/tabs/data/data_tab_links_port.js";
+import { configureDataTabChangeWatch } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
+import {
+  createObjectChangeWatch,
+  showObjectUpdatedAlert,
+  wireSamePropagationScopePause,
+} from "/ui/shared/services/object_change_watch.js?v=20260807a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
+import { state as sharedDatasetState } from "/ui/shared/dataset/dataset_state.js";
 
 const DATASET_VIEWER_TABS = [
   { id: "details", label: "Details" },
@@ -67,6 +75,56 @@ function mountDatasetViewerTabs({
   return tabSystem;
 }
 
+function wireDatasetChangeWatch() {
+  const params = new URLSearchParams(window.location.search);
+  const projectName = (params.get("project") || "").trim();
+  const reservingClass = (params.get("path") || "").trim();
+  const instanceName = (params.get("instance_name") || params.get("tri") || "").trim();
+  const isDurableInstance = params.get("temporary_view") !== "1"
+    && params.get("draft_instance") !== "1";
+  if (!projectName || !reservingClass || !instanceName || !isDurableInstance) return;
+  const changeWatch = createObjectChangeWatch({
+    identity: {
+      project_name: projectName,
+      reserving_class: reservingClass,
+      kind: "dataset",
+      name: instanceName,
+    },
+    onChange: () => {
+      void showObjectUpdatedAlert({
+        showMessageBox: showPageMessageBox,
+        isDirty: () => sharedDatasetState.dirty.size > 0,
+        onBlockedRefresh: () => {
+          window.parent?.postMessage?.({
+            type: "arcrho:status",
+            text: "Unsaved grid changes block the refresh. Save or discard them, then reopen the window.",
+            tone: "warn",
+          }, "*");
+        },
+      });
+    },
+  });
+  wireSamePropagationScopePause({
+    watch: changeWatch,
+    getProject: () => projectName,
+    getReservingClass: () => reservingClass,
+  });
+  let watchStarted = false;
+  configureDataTabChangeWatch({
+    onMutationStarted: () => changeWatch.pause(),
+    onMutationEnded: () => { void changeWatch.resume(); },
+    onDurableDatasetState: () => {
+      if (!watchStarted) {
+        watchStarted = true;
+        changeWatch.start();
+        return;
+      }
+      void changeWatch.rebase();
+    },
+  });
+}
+
+wireDatasetChangeWatch();
 mountDatasetViewer(document.getElementById("datasetRoot"));
 configureDataTabAudit(createAuditLogView({
   container: document.getElementById("datasetAuditLogMount"),
@@ -85,7 +143,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260805a"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260807c"
 );
 
 const datasetLinksTab = createExternalLinksTab({

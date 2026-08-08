@@ -133,3 +133,35 @@ test("detects valid references and rejects invalid input", () => {
   assert.equal(parseStandaloneExcelRange("='C:\\Claims\\[Book.xlsx]Paid'!A1"), null);
   assert.deepEqual(findExcelReferences("not an Excel reference"), []);
 });
+
+// The DFM formula-bar paste control canonicalises clipboard text through exactly this
+// pair, so these shapes are the contract it advertises to users.
+test("clipboard reference text canonicalises through findExcelReferences and formatExcelReference", () => {
+  const canonicalise = (raw) => {
+    const references = findExcelReferences(String(raw || "").trim());
+    if (!references.length) return "";
+    const reference = references[0];
+    return formatExcelReference(
+      reference.bookPath,
+      reference.sheet,
+      reference.cell,
+      reference.endCell,
+    );
+  };
+  const canonical = "='C:\\Data\\[Book.xlsx]Sheet 2'!B4:G4";
+
+  assert.equal(canonicalise("='C:\\Data\\[Book.xlsx]Sheet 2'!$B$4:$G$4"), canonical);
+  assert.equal(canonicalise("'C:\\Data\\[Book.xlsx]Sheet 2'!$B$4:$G$4"), canonical);
+  assert.equal(canonicalise("C:\\Data\\[Book.xlsx]Sheet 2!b4:g4"), canonical);
+  assert.equal(
+    canonicalise("= 'C:\\Data\\[Book.xlsx]Sheet 2'!$A$1 * 2"),
+    "='C:\\Data\\[Book.xlsx]Sheet 2'!A1",
+  );
+
+  // Clipboard text without a workbook path stays unusable instead of guessing one.
+  assert.equal(canonicalise("C:\\Data\\Book.xlsx"), "");
+  assert.equal(canonicalise("Sheet 2!B4"), "");
+  assert.equal(canonicalise("B4:G4"), "");
+  assert.equal(canonicalise("125.4\tab90"), "");
+  assert.equal(canonicalise("   "), "");
+});

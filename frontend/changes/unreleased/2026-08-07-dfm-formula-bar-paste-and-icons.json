@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The DFM Ratios formula bar has a new paste control that turns an Excel workbook path and range on the clipboard into a linked formula.",
+  "details": [
+    "Paste accepts a bare or '='-prefixed reference, quoted or unquoted, including one embedded in a larger formula, and rewrites it into the canonical form.",
+    "Clipboard text without a workbook path is reported in the formula-bar tooltip and leaves the cell unchanged.",
+    "The paste, refresh, and open-workbook controls now use matching stroke SVG icons and the shared ArcRho tooltip instead of native browser tooltips."
+  ]
+}

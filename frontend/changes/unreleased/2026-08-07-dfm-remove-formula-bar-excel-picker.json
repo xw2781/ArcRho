@@ -1,0 +1,10 @@
+{
+  "type": "breaking",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Removed the DFM Ratios formula bar XL pick-from-Excel button; enter an external reference by typing or pasting the full workbook path into the formula bar.",
+  "details": [
+    "The XL button depended on detecting the running Excel instance and its active cell, which was not reliable.",
+    "The formula bar keeps its refresh and open-workbook actions, and existing Excel-linked cells are unchanged."
+  ]
+}

@@ -6,7 +6,7 @@ DFM Ratios Summary Model and Row Configuration
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260726b";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -16,7 +16,7 @@ const {
   getEffectiveDevLabelsForModel, getRatioHeaderLabels, buildSummaryRows,
   buildExcludedSetForColumn, parsePeriodsValue, parseExcludeValue, getDfmDecimalPlaces,
   getSummaryConfigKey, loadCustomSummaryRows, saveCustomSummaryRows,
-  getExcelActiveSelection, readExcelCell, readExcelCellsBatch, openExcelWorkbook, excelWaitForEnter,
+  readExcelCell, readExcelCellsBatch, openExcelWorkbook,
   buildExcelRangeSourceCells, containsExcelRef, excelColumnFromIndex, findExcelRefsInline,
   formatExcelRef, normalizeExcelReferenceAddressCase, parseStandaloneExcelRange,
   collectDfmExternalLinkGroupsModel, getDfmExternalLinkHardCodeTargets, getDfmExternalLinkRangeTargets,

@@ -7,12 +7,12 @@ Compatibility facade and render scheduler for the modular summary table.
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260726b";
-import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260726b";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260726b";
-import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260726b";
-import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260726b";
-import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260726b";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260807a";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260807b";
+import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260807a";
+import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260807a";
+import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260807a";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
   top: "dfmTableHighlightEdgeTop",
@@ -61,7 +61,6 @@ export function setSummaryTableCallbacks({
 export function resetSummaryFormulaEditState() {
   summaryRuntime.invalidateDfmExcelRefresh();
   summaryRuntime.cancelActiveSummaryFormulaCommit();
-  summaryRuntime.exitXlLinkMode(document.getElementById("dfmSummaryFormulaBar"));
   summaryRuntime.cancelFormulaBarDisplayRefresh();
   summaryRuntime.clearFormulaBarFocusRestoreHandler();
   summaryRuntime.clearSummaryFormulaBarValidationError();

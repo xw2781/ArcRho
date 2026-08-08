@@ -10,16 +10,6 @@ from app_server.services import excel_service
 router = APIRouter()
 
 
-@router.post("/excel/active_selection")
-def excel_active_selection() -> Dict[str, Any]:
-    return excel_service.excel_active_selection()
-
-
-@router.post("/excel/wait_for_enter")
-def excel_wait_for_enter() -> Dict[str, Any]:
-    return excel_service.excel_wait_for_enter()
-
-
 @router.post("/excel/read_cell")
 def excel_read_cell(req: ExcelCellReadRequest) -> Dict[str, Any]:
     return excel_service.excel_read_cell(req.book_path, req.sheet, req.cell)

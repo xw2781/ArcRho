@@ -3,10 +3,61 @@
 DFM Ratios Summary Formula Bar
 ===============================================================================
 */
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260726b";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+// Stroke-only 16x16 glyphs. Paint (fill/stroke/width) stays in dfm.css.
+const FORMULA_BAR_ICON_PATHS = {
+  Paste: [
+    "M5.5 3.5H4A1.5 1.5 0 0 0 2.5 5v8A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5V5A1.5 1.5 0 0 0 12 3.5h-1.5",
+    "M6 1.5h4a.5.5 0 0 1 .5.5v1.6a.5.5 0 0 1-.5.5H6a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z",
+    "M5.5 8.5h5",
+    "M5.5 11.2h3.2",
+  ],
+  Refresh: [
+    "M13.3 5.4A5.6 5.6 0 1 0 13.6 9.6",
+    "M10.6 2.9h2.9v2.9",
+  ],
+  // A workbook whose top-right corner opens into an outward arrow.
+  Open: [
+    "M12.5 9.4v3.1A1.5 1.5 0 0 1 11 14H3.5A1.5 1.5 0 0 1 2 12.5V5a1.5 1.5 0 0 1 1.5-1.5h3.1",
+    "M8.2 7.8 14 2",
+    "M9.6 2H14v4.4",
+  ],
+};
+
+function appendFormulaBarIcon(button, kind) {
+  const icon = document.createElementNS(SVG_NAMESPACE, "svg");
+  icon.setAttribute("class", `dfmSummaryFormulaBarIcon is${kind}`);
+  icon.setAttribute("viewBox", "0 0 16 16");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("focusable", "false");
+  FORMULA_BAR_ICON_PATHS[kind].forEach((definition) => {
+    const path = document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("d", definition);
+    icon.appendChild(path);
+  });
+  button.appendChild(icon);
+  return icon;
+}
+
+function createFormulaBarIconButton(id, kind, tooltip) {
+  const button = document.createElement("button");
+  button.id = id;
+  button.className = "dfmSummaryFormulaBarIconBtn";
+  button.type = "button";
+  appendFormulaBarIcon(button, kind);
+  // The glyph is decorative and the shared tooltip only sets aria-description, so the
+  // button needs an explicit accessible name.
+  button.setAttribute("aria-label", tooltip);
+  attachArcrhoTooltip(button, tooltip);
+  return button;
+}
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -16,7 +67,7 @@ const {
   getEffectiveDevLabelsForModel, getRatioHeaderLabels, buildSummaryRows,
   buildExcludedSetForColumn, parsePeriodsValue, parseExcludeValue, getDfmDecimalPlaces,
   getSummaryConfigKey, loadCustomSummaryRows, saveCustomSummaryRows,
-  getExcelActiveSelection, readExcelCell, readExcelCellsBatch, openExcelWorkbook, excelWaitForEnter,
+  readExcelCell, readExcelCellsBatch, openExcelWorkbook,
   buildExcelRangeSourceCells, containsExcelRef, excelColumnFromIndex, findExcelRefsInline,
   formatExcelRef, normalizeExcelReferenceAddressCase, parseStandaloneExcelRange,
   collectDfmExternalLinkGroupsModel, getDfmExternalLinkHardCodeTargets, getDfmExternalLinkRangeTargets,
@@ -387,7 +438,7 @@ function setFormulaBarCommitControlsDisabled(inputEl, disabled, leaseId = null) 
   const bar = inputEl?.closest?.(".dfmSummaryFormulaBar");
   if (!bar) return;
   [
-    "#dfmSummaryFormulaBarXlLink",
+    "#dfmSummaryFormulaBarPaste",
     "#dfmSummaryFormulaBarRefresh",
     "#dfmSummaryFormulaBarOpenXl",
   ].forEach((selector) => {
@@ -466,6 +517,77 @@ function cancelActiveSummaryFormulaCommit() {
   summaryRuntime.summaryFormulaCommitLease = null;
 }
 
+/**
+ * Reads the first complete external Excel reference out of pasted clipboard text and
+ * returns it in ArcRho's canonical `='dir\[Book.xlsx]Sheet'!A1:C3` form. The text may be
+ * a bare or `=`-prefixed reference, quoted or unquoted, may use `$` anchors or lowercase
+ * column letters, and may be embedded in a larger formula. Text without a workbook path
+ * returns "" so the caller can explain why.
+ */
+function readClipboardExcelReference(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) return "";
+  const references = findExcelRefsInline(text);
+  if (!references.length) return "";
+  const reference = references[0];
+  return formatExcelRef(
+    reference.bookPath,
+    reference.sheet,
+    reference.cell,
+    reference.endCell,
+  );
+}
+
+async function pasteExcelReferenceIntoFormulaBar(barEl, inputEl) {
+  if (!inputEl || inputEl.readOnly || isSummaryFormulaCommitPending(inputEl)) return;
+  const rowId = String(inputEl.dataset.rowId || "");
+  const col = Number(inputEl.dataset.col);
+  if (!rowId || !Number.isFinite(col) || col < 0) return;
+
+  if (!navigator.clipboard?.readText) {
+    showSummaryFormulaBarValidationError("Clipboard paste is not available here.", inputEl);
+    return;
+  }
+  let clipboardText = "";
+  try {
+    clipboardText = String(await navigator.clipboard.readText() || "");
+  } catch (err) {
+    showSummaryFormulaBarValidationError(
+      `Could not read the clipboard: ${err?.message || err}`,
+      inputEl,
+    );
+    return;
+  }
+  if (!barEl.isConnected || !inputEl.isConnected) return;
+
+  const reference = readClipboardExcelReference(clipboardText);
+  if (!reference) {
+    showSummaryFormulaBarValidationError(
+      "The clipboard does not contain an Excel workbook path and range, such as "
+      + "='C:\\Folder\\[Book.xlsx]Sheet 1'!$A$1:$C$2.",
+      inputEl,
+    );
+    return;
+  }
+
+  clearSummaryFormulaBarValidationError();
+  inputEl.value = `= ${reference.replace(/^=\s*/, "")}`;
+  setSummaryFormulaBarMode("editing", inputEl);
+  updateFormulaBarDisplayMode(barEl, true);
+  inputEl.focus({ preventScroll: true });
+  scrollSummaryFormulaInputToEnd(inputEl);
+
+  // Open an edit session so Enter commits and Escape restores, exactly as typing does.
+  const summaryTableEl = document.querySelector("#ratioWrap table.ratioSummaryTable");
+  const cell = summaryTableEl?.querySelector(
+    `td.summaryCell[data-r="${rowId}"][data-col="${col}"]`,
+  );
+  if (summaryTableEl && cell) {
+    beginSummaryFormulaEditSession(summaryTableEl, cell, inputEl, col);
+    updateActiveSummaryFormulaReferenceUi(summaryTableEl);
+  }
+}
+
 function ensureSummaryFormulaBarValidationTooltip() {
   let error = document.getElementById("dfmSummaryFormulaBarError");
   if (!error) {
@@ -493,7 +615,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     const fxIcon = document.createElement("span");
     fxIcon.className = "dfmSummaryFormulaBarFxIcon";
     fxIcon.textContent = "fx";
-    fxIcon.title = "Formula Bar";
+    attachArcrhoTooltip(fxIcon, "Formula Bar");
     const label = document.createElement("span");
     label.id = "dfmSummaryFormulaBarLabelText";
     label.className = "dfmSummaryFormulaBarLabel";
@@ -504,24 +626,21 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     input.type = "text";
     input.autocomplete = "off";
     input.spellcheck = false;
-    const xlBtn = document.createElement("button");
-    xlBtn.id = "dfmSummaryFormulaBarXlLink";
-    xlBtn.className = "dfmSummaryFormulaBarXlBtn";
-    xlBtn.title = "Link to Excel cell";
-    xlBtn.textContent = "XL";
-    xlBtn.type = "button";
-    const refreshBtn = document.createElement("button");
-    refreshBtn.id = "dfmSummaryFormulaBarRefresh";
-    refreshBtn.className = "dfmSummaryFormulaBarRefreshBtn";
-    refreshBtn.title = "Refresh all Excel-linked values";
-    refreshBtn.textContent = "\u21BB";
-    refreshBtn.type = "button";
-    const openBtn = document.createElement("button");
-    openBtn.id = "dfmSummaryFormulaBarOpenXl";
-    openBtn.className = "dfmSummaryFormulaBarOpenBtn";
-    openBtn.title = "Open source workbook in Excel";
-    openBtn.textContent = "\uD83D\uDCC2";
-    openBtn.type = "button";
+    const pasteBtn = createFormulaBarIconButton(
+      "dfmSummaryFormulaBarPaste",
+      "Paste",
+      "Paste an Excel workbook path and range from the clipboard",
+    );
+    const refreshBtn = createFormulaBarIconButton(
+      "dfmSummaryFormulaBarRefresh",
+      "Refresh",
+      "Refresh all Excel-linked values",
+    );
+    const openBtn = createFormulaBarIconButton(
+      "dfmSummaryFormulaBarOpenXl",
+      "Open",
+      "Open source workbook in Excel",
+    );
     const display = document.createElement("div");
     display.id = "dfmSummaryFormulaBarDisplay";
     display.className = "dfmSummaryFormulaBarDisplay";
@@ -537,7 +656,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     content.appendChild(input);
     content.appendChild(display);
     content.appendChild(validationState);
-    content.appendChild(xlBtn);
+    content.appendChild(pasteBtn);
     content.appendChild(refreshBtn);
     content.appendChild(openBtn);
     el.appendChild(content);
@@ -691,18 +810,16 @@ function ensureSummaryFormulaBarEl(summaryTable) {
         input.focus({ preventScroll: true });
       }
     });
-    const xlBtn = el.querySelector("#dfmSummaryFormulaBarXlLink");
-    xlBtn?.addEventListener("mousedown", () => {
+    const pasteBtn = el.querySelector("#dfmSummaryFormulaBarPaste");
+    pasteBtn?.addEventListener("mousedown", () => {
       if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
-      // Prevent blur from committing the formula when clicking XL button
-      input.dataset.skipFormulaBlurCommit = "1";
+      // The clipboard value replaces the draft, so the blur this click causes must not
+      // commit it first. Only flag a blur that is actually about to happen; a stale flag
+      // would swallow the commit of the pasted reference itself.
+      if (document.activeElement === input) input.dataset.skipFormulaBlurCommit = "1";
     });
-    xlBtn?.addEventListener("click", () => {
-      if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
-      const rowId = String(input?.dataset.rowId || "");
-      const col = Number(input?.dataset.col);
-      if (!rowId || !Number.isFinite(col) || col < 0) return;
-      enterXlLinkMode(el, input, rowId, col);
+    pasteBtn?.addEventListener("click", () => {
+      void pasteExcelReferenceIntoFormulaBar(el, input);
     });
     const refreshBtn = el.querySelector("#dfmSummaryFormulaBarRefresh");
     refreshBtn?.addEventListener("click", () => {
@@ -757,147 +874,6 @@ function setStatusBarText(text) {
   if (el) el.textContent = text || "";
 }
 
-// =============================================================================
-// Excel Link Mode + Refresh
-// =============================================================================
-
-function exitXlLinkMode(barEl, options = {}) {
-  const session = summaryRuntime._xlLinkSession;
-  const restoreValue = options.restoreValue !== false;
-  summaryRuntime._xlLinkMode = false;
-  if (summaryRuntime._xlLinkFocusHandler) {
-    window.removeEventListener("focus", summaryRuntime._xlLinkFocusHandler);
-    summaryRuntime._xlLinkFocusHandler = null;
-  }
-  if (summaryRuntime._xlLinkEscHandler) {
-    document.removeEventListener("keydown", summaryRuntime._xlLinkEscHandler);
-    summaryRuntime._xlLinkEscHandler = null;
-  }
-  if (summaryRuntime._xlLinkAbortController) {
-    summaryRuntime._xlLinkAbortController.abort();
-    summaryRuntime._xlLinkAbortController = null;
-  }
-  if (barEl) barEl.classList.remove("xlLinkMode");
-  const input = session?.inputEl || barEl?.querySelector?.("#dfmSummaryFormulaBarInput");
-  if (input) {
-    input.disabled = false;
-    input.placeholder = "Enter value or formula";
-    if (restoreValue && session) input.value = session.savedValue;
-    if (input.isConnected) {
-      setSummaryFormulaBarMode("editing", input);
-      updateFormulaBarDisplayMode(barEl || input.closest?.(".dfmSummaryFormulaBar"), true);
-    }
-  }
-  summaryRuntime._xlLinkSession = null;
-}
-
-function enterXlLinkMode(barEl, inputEl, rowId, col) {
-  if (!inputEl || inputEl.readOnly || isSummaryFormulaCommitPending(inputEl)) return;
-  if (summaryRuntime._xlLinkMode) {
-    const savedValue = String(summaryRuntime._xlLinkSession?.savedValue ?? inputEl.value ?? "");
-    exitXlLinkMode(barEl);
-    restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
-      selectionStart: savedValue.length,
-      selectionEnd: savedValue.length,
-    });
-    return;
-  }
-  summaryRuntime._xlLinkMode = true;
-  clearSummaryFormulaBarValidationError();
-  setSummaryFormulaBarMode("validating", inputEl);
-  const validationState = barEl.querySelector("#dfmSummaryFormulaBarState");
-  if (validationState) validationState.textContent = "Waiting for Excel…";
-  barEl.classList.add("xlLinkMode");
-  const savedValue = inputEl.value;
-  const session = { barEl, inputEl, savedValue, rowId, col };
-  summaryRuntime._xlLinkSession = session;
-  inputEl.value = "";
-  inputEl.placeholder = "Select a cell in Excel, press Enter to confirm...";
-  inputEl.disabled = true;
-
-  summaryRuntime._xlLinkEscHandler = (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      exitXlLinkMode(barEl);
-      restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
-        selectionStart: savedValue.length,
-        selectionEnd: savedValue.length,
-      });
-    }
-  };
-  document.addEventListener("keydown", summaryRuntime._xlLinkEscHandler);
-
-  // Also support the old focus-return flow as fallback
-  summaryRuntime._xlLinkFocusHandler = () => {
-    // If the polling already resolved, ignore
-    if (!summaryRuntime._xlLinkMode) return;
-  };
-  window.addEventListener("focus", summaryRuntime._xlLinkFocusHandler);
-
-  // Start polling: wait for Enter key in Excel (cell moves)
-  summaryRuntime._xlLinkAbortController = new AbortController();
-  const abortSignal = summaryRuntime._xlLinkAbortController.signal;
-  (async () => {
-    try {
-      const result = await excelWaitForEnter({ signal: abortSignal });
-      if (abortSignal.aborted || summaryRuntime._xlLinkSession !== session) return;
-      exitXlLinkMode(barEl, { restoreValue: false });
-      if (!result.ok) {
-        inputEl.value = savedValue;
-        showSummaryFormulaBarValidationError(result.error || "Could not read from Excel.", inputEl);
-        restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
-          selectionStart: savedValue.length,
-          selectionEnd: savedValue.length,
-        });
-        return;
-      }
-      if (!result.confirmed) {
-        // Timeout — no Enter pressed within 30s, restore previous value
-        inputEl.value = savedValue;
-        restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
-          selectionStart: savedValue.length,
-          selectionEnd: savedValue.length,
-        });
-        return;
-      }
-      // Populate formula bar with Excel ref and enter edit mode
-      const ref = formatExcelRef(result.book_path, result.sheet, result.cell);
-      inputEl.value = ref;
-      inputEl.dataset.rowId = rowId;
-      inputEl.dataset.col = String(col);
-      // Bring our Electron window to front and focus formula bar in edit mode
-      const linkReturnGeneration = summaryRuntime.summaryFormulaBarState.generation;
-      if (window.ADAHost?.focusWindow) await window.ADAHost.focusWindow();
-      if (
-        !barEl.isConnected ||
-        !inputEl.isConnected ||
-        document.getElementById("dfmSummaryFormulaBar") !== barEl ||
-        summaryRuntime.summaryFormulaBarState.generation !== linkReturnGeneration ||
-        summaryRuntime.summaryFormulaBarState.input !== inputEl ||
-        summaryRuntime.summaryFormulaBarState.mode !== "editing"
-      ) return;
-      setSummaryFormulaBarMode("editing", inputEl);
-      updateFormulaBarDisplayMode(barEl, true);
-      inputEl.focus();
-      scrollSummaryFormulaInputToEnd(inputEl);
-      // Start an edit session so Enter commits / Escape cancels
-      const summaryTableEl = document.querySelector("#ratioWrap table.ratioSummaryTable");
-      if (summaryTableEl) {
-        const cell = summaryTableEl.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
-        if (cell) beginSummaryFormulaEditSession(summaryTableEl, cell, inputEl, col);
-      }
-    } catch (err) {
-      if (abortSignal.aborted) return;
-      exitXlLinkMode(barEl);
-      showSummaryFormulaBarValidationError(`Could not read from Excel: ${err?.message || err}`, inputEl);
-      restoreFormulaBarEditingAfterValidation(barEl, inputEl, {
-        selectionStart: savedValue.length,
-        selectionEnd: savedValue.length,
-      });
-    }
-  })();
-}
-
 registerSummaryFunctions({
   scrollSummaryFormulaInputToEnd,
   tokenizeFormula,
@@ -924,6 +900,4 @@ registerSummaryFunctions({
   ensureSummaryFormulaBarValidationTooltip,
   ensureSummaryFormulaBarEl,
   setStatusBarText,
-  exitXlLinkMode,
-  enterXlLinkMode,
 });

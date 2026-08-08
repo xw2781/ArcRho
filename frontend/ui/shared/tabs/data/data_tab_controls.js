@@ -116,9 +116,14 @@ export function wireDatasetInputController(deps) {
   const devSel = document.getElementById("devLenSelect");
   wireLenDropdowns();
 
-  // Name is auto-copied only when Dataset Type switches.
+  // Name is auto-copied only when Dataset Type switches. On this first call the
+  // remembered type is still blank, so every load would read as a switch. Seed the
+  // remembered type instead, and only copy into an empty Name (a new dataset draft)
+  // so a loaded instance name that differs from its type survives.
   if (triInput) {
-    syncDetailDatasetTypeFromTopInput(triInput.value, { syncName: true });
+    const detailName = document.getElementById("dsDetailName");
+    const hasInstanceName = !!String(detailName?.value || "").trim();
+    syncDetailDatasetTypeFromTopInput(triInput.value, { syncName: !hasInstanceName });
   }
 
   if (pathTreeBtn && pathInput) {

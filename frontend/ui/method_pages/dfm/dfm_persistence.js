@@ -32,6 +32,7 @@ import {
   getRatioSaveProjectName,
   getResolvedProjectName,
   getResolvedReservingClass,
+  setPendingDfmPropagationJobId,
   getDfmInst,
   getDfmDecimalPlaces,
   getEffectiveDevLabelsForModel,
@@ -41,12 +42,17 @@ import {
   computeAverageForColumn,
   buildExcludedSetForColumn,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260728b";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260728a";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
-} from "/ui/shared/services/dependent_propagation_job.js?v=20260806a";
+} from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
+import {
+  createMethodObjectChangeWatchController,
+  showObjectUpdatedAlert,
+  wireSamePropagationScopePause,
+} from "/ui/shared/services/object_change_watch.js?v=20260807a";
 import {
   getSummaryConfigKey,
   saveCustomSummaryRows,
@@ -107,8 +113,8 @@ import {
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726b";
-import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260807a";
+import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260807a";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -122,6 +128,38 @@ let lastCleanDfmNotesText = "";
 let normalDfmMethodSavePath = "";
 let normalDfmMethodSaveName = "";
 let currentDfmOutputDataset = "";
+// Open-window change alert (advisory): watch the method JSON + output sidecar
+// for rewrites by another user or the dependent-propagation job. Self-saves
+// pause the watch and rebase its fingerprint through ensureDfmObjectChangeWatch.
+const dfmObjectChangeWatch = createMethodObjectChangeWatchController({
+  methodType: "dfm",
+  onChange: () => {
+    void showObjectUpdatedAlert({
+      showMessageBox: showPageMessageBox,
+      isDirty: getDfmIsDirty,
+      onBlockedRefresh: () => {
+        postDfmStatus(
+          "Unsaved DFM changes block the refresh. Save or discard them, then reopen the window.",
+          { tone: "warn" },
+        );
+      },
+    });
+  },
+});
+wireSamePropagationScopePause({
+  watch: dfmObjectChangeWatch,
+  getProject: getResolvedProjectName,
+  getReservingClass: getResolvedReservingClass,
+});
+
+function ensureDfmObjectChangeWatch(methodName) {
+  dfmObjectChangeWatch.ensure({
+    projectName: getResolvedProjectName(),
+    reservingClass: getResolvedReservingClass(),
+    methodName,
+    outputDataset: currentDfmOutputDataset,
+  });
+}
 let currentOwnedRevision = "";
 let currentDerivedRevision = "";
 let currentPublicationRevision = "";
@@ -1275,6 +1313,7 @@ async function loadRatioSelectionIfExistsOnce(reason) {
       reviewNeeded ? { tone: "warn" } : {},
     );
     scheduleDfmExcelFreshnessCheck(method);
+    ensureDfmObjectChangeWatch(details.name);
     return { ok: true, method, sidecar: response?.sidecar };
   } catch (error) {
     if (Number(error?.status) === 404) {
@@ -1613,6 +1652,7 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
     : (previousOutputDataset || currentMethodName);
   const method = buildDfmMethodPayload({ outputDataset: nextOutputDataset });
   const identity = readDfmMethodIdentityFromPage();
+  dfmObjectChangeWatch.pause();
   try {
     postDfmStatus("Saving DFM method...");
     const response = await saveDfmMethod({
@@ -1629,11 +1669,15 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
     if (!canonicalMethod || !isDfmV2Method(canonicalMethod)) {
       throw new Error("DFM save did not return a canonical v2 method.");
     }
+    // Record the queued propagation job before the clean transition posts the
+    // dependency-source cleared message, so the message carries the job id.
+    setPendingDfmPropagationJobId(response?.propagation?.job_id);
     applyDfmAggregateRevisions(response, canonicalMethod);
     const applied = await applyDfmMethodPayload(canonicalMethod, { reason: "save", markClean: true });
     if (!applied?.ok) throw new Error(applied?.error || "Saved DFM could not be applied.");
     const details = getDfmDetailsTab(canonicalMethod);
     currentDfmOutputDataset = String(details["output dataset"] || nextOutputDataset).trim();
+    ensureDfmObjectChangeWatch(details.name);
     syncDfmIdentityQuery(canonicalMethod);
     hydrateDfmOutputSidecar(response?.sidecar, {
       hydrateNotes: true,
@@ -1667,6 +1711,8 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
     }
     postDfmStatus(`Save failed: ${message}`, { tone: "error" });
     return { ok: false, error: message, status: error?.status };
+  } finally {
+    dfmObjectChangeWatch.resume();
   }
 }
 

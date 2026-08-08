@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "links",
+  "audience": "user",
+  "summary": "Links tab actions moved from the toolbar buttons into a right-click context menu on the links table, and the table now draws its last row border.",
+  "details": [
+    "Refresh and Break are on the table context menu; right-clicking inside a selection keeps it, and right-clicking an unselected row selects that row first.",
+    "The table fills the whole tab now that the toolbar is gone, and the final row keeps its bottom border instead of ending without one.",
+    "Applies to both the DFM and Dataset Viewer Links tabs."
+  ]
+}

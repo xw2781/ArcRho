@@ -6,7 +6,7 @@ DFM Ratios Summary User Entries
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260726b";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -16,7 +16,7 @@ const {
   getEffectiveDevLabelsForModel, getRatioHeaderLabels, buildSummaryRows,
   buildExcludedSetForColumn, parsePeriodsValue, parseExcludeValue, getDfmDecimalPlaces,
   getSummaryConfigKey, loadCustomSummaryRows, saveCustomSummaryRows,
-  getExcelActiveSelection, readExcelCell, readExcelCellsBatch, openExcelWorkbook, excelWaitForEnter,
+  readExcelCell, readExcelCellsBatch, openExcelWorkbook,
   buildExcelRangeSourceCells, containsExcelRef, excelColumnFromIndex, findExcelRefsInline,
   formatExcelRef, normalizeExcelReferenceAddressCase, parseStandaloneExcelRange,
   collectDfmExternalLinkGroupsModel, getDfmExternalLinkHardCodeTargets, getDfmExternalLinkRangeTargets,
@@ -400,12 +400,8 @@ function updateSummaryFormulaBarForCell(cell) {
           if (!sameTarget) clearSummaryFormulaBarValidationError();
           inputEl.dataset.rowId = editRowId;
           inputEl.dataset.col = String(editCol);
-          if (!summaryRuntime._xlLinkMode || summaryRuntime._xlLinkSession?.inputEl !== inputEl) {
-            inputEl.disabled = false;
-            inputEl.placeholder = "Enter value or formula";
-          }
-          const xlBtn = el.querySelector("#dfmSummaryFormulaBarXlLink");
-          if (xlBtn) xlBtn.disabled = false;
+          inputEl.disabled = false;
+          inputEl.placeholder = "Enter value or formula";
         }
 
       } else {

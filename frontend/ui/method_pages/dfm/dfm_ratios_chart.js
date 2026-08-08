@@ -30,7 +30,7 @@ import {
   isUserEntryConfig,
   getUserEntryValueForCol,
   scheduleRatioSummaryUpdate,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260726b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260807a";
 import {
   beginRatioHistoryAction,
   cancelRatioHistoryAction,

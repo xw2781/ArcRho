@@ -14,15 +14,6 @@ async function parseExcelResponse(resp, signal) {
   }
 }
 
-export async function getExcelActiveSelection() {
-  const resp = await fetch(`${config.API_BASE}/excel/active_selection`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  return resp.json().catch(() => ({ ok: false, error: "Network error" }));
-}
-
 export async function readExcelCell(bookPath, sheet, cell, options = {}) {
   const resp = await fetch(`${config.API_BASE}/excel/read_cell`, {
     method: "POST",
@@ -38,16 +29,6 @@ export async function readExcelCellsBatch(items, options = {}) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items }),
-    signal: options.signal,
-  });
-  return parseExcelResponse(resp, options.signal);
-}
-
-export async function excelWaitForEnter(options = {}) {
-  const resp = await fetch(`${config.API_BASE}/excel/wait_for_enter`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
     signal: options.signal,
   });
   return parseExcelResponse(resp, options.signal);

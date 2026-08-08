@@ -16,10 +16,25 @@ const tooltipStubSource = `
   }
 `;
 const tooltipStubUrl = `data:text/javascript;base64,${Buffer.from(tooltipStubSource).toString("base64")}`;
-const testableComponentSource = componentSource.replace(
-  '"/ui/shared/components/tooltip/tooltip.js?v=20260715a"',
-  JSON.stringify(tooltipStubUrl),
-);
+// The real positioner needs a layout engine; record the placement request instead.
+const contextMenuStubSource = `
+  export const openedMenus = [];
+  export function openContextMenu(menu, opts = {}) {
+    if (!menu) return;
+    menu.style.display = "block";
+    openedMenus.push({ menu, opts });
+  }
+`;
+const contextMenuStubUrl = `data:text/javascript;base64,${Buffer.from(contextMenuStubSource).toString("base64")}`;
+const testableComponentSource = componentSource
+  .replace(
+    '"/ui/shared/components/tooltip/tooltip.js?v=20260715a"',
+    JSON.stringify(tooltipStubUrl),
+  )
+  .replace(
+    '"/ui/shared/components/context_menu/context_menu.js"',
+    JSON.stringify(contextMenuStubUrl),
+  );
 const linksTab = await import(
   `data:text/javascript;base64,${Buffer.from(testableComponentSource).toString("base64")}`
 );
@@ -73,6 +88,7 @@ class FakeElement {
     this.listeners = new Map();
     this.className = "";
     this.classList = new FakeClassList(this);
+    this.style = {};
     this.dataset = {};
     this.textContent = "";
     this.hidden = false;
@@ -233,6 +249,36 @@ function renderedText(element) {
   return [element.textContent, ...element.children.map(renderedText)].join("");
 }
 
+function menuOf(documentRef) {
+  return byClass(documentRef.body, "arExternalLinksMenu")[0];
+}
+
+function menuItem(documentRef, action) {
+  return descendants(menuOf(documentRef)).find((element) => element.dataset?.action === action);
+}
+
+function isMenuOpen(documentRef) {
+  return menuOf(documentRef).style.display === "block";
+}
+
+function visibleMenuLabels(documentRef) {
+  return descendants(menuOf(documentRef))
+    .filter((element) => element.classList.contains("ctx-item") && !element.hidden)
+    .map(renderedText);
+}
+
+/** Right-clicks the scroll host below the rows, which never changes the selection. */
+async function openHostMenu(documentRef, container) {
+  const scrollHost = byClass(container.children[0], "arExternalLinksScroll")[0];
+  await scrollHost.dispatch("contextmenu", { clientX: 40, clientY: 60 });
+  return scrollHost;
+}
+
+async function runMenuAction(documentRef, container, action) {
+  await openHostMenu(documentRef, container);
+  await menuItem(documentRef, action).click();
+}
+
 function setup(options = {}) {
   const documentRef = new FakeDocument();
   const container = documentRef.createElement("div");
@@ -267,7 +313,7 @@ const sampleLinks = [
   { ...sampleLink, id: "link-4", address: "F6", destination: "2027 / 12m", value: "70" },
 ];
 
-test("renders a frameless bulk toolbar and a Values column instead of row actions", async () => {
+test("renders no toolbar and offers the bulk actions through the table context menu", async () => {
   const { documentRef, container, controller } = setup({ getLinks: () => [sampleLink] });
 
   assert.equal(await controller.refresh(), true);
@@ -275,11 +321,23 @@ test("renders a frameless bulk toolbar and a Values column instead of row action
   assert.equal(container.classList.contains("arExternalLinksMount"), true);
 
   const root = container.children[0];
-  const toolbar = byClass(root, "arExternalLinksToolbar")[0];
-  const toolbarButtons = byTag(toolbar, "button");
-  assert.equal(toolbar.getAttribute("role"), "toolbar");
-  assert.deepEqual(toolbarButtons.map(renderedText), ["Refresh all", "Break all"]);
-  assert.equal(byTag(toolbar, "svg").length, 2);
+  assert.equal(byClass(root, "arExternalLinksToolbar").length, 0);
+  assert.equal(byTag(root, "button").length, 0);
+
+  const menu = menuOf(documentRef);
+  assert.equal(menu.parentElement, documentRef.body);
+  assert.equal(menu.getAttribute("role"), "menu");
+  assert.equal(isMenuOpen(documentRef), false);
+  assert.deepEqual(
+    byTag(menu, "button").map(renderedText),
+    ["Refresh selected", "Break selected", "Refresh all", "Break all"],
+  );
+
+  // Nothing selected: only the all-scope entries, and no separator above them.
+  await openHostMenu(documentRef, container);
+  assert.equal(isMenuOpen(documentRef), true);
+  assert.deepEqual(visibleMenuLabels(documentRef), ["Refresh all", "Break all"]);
+  assert.equal(byClass(menu, "ctx-sep")[0].hidden, true);
 
   const table = byTag(root, "table")[0];
   assert.deepEqual(
@@ -305,7 +363,7 @@ test("renders a frameless bulk toolbar and a Values column instead of row action
 
 test("plain, Ctrl, Meta, and Shift clicks provide accessible multi-row selection", async () => {
   let refreshedRecords = [];
-  const { container, controller } = setup({
+  const { documentRef, container, controller } = setup({
     getLinks: () => sampleLinks,
     onRefreshLinks: (records) => {
       refreshedRecords = records;
@@ -316,12 +374,15 @@ test("plain, Ctrl, Meta, and Shift clicks provide accessible multi-row selection
 
   const root = container.children[0];
   const rows = byTag(root, "tbody")[0].children;
-  const refreshButton = byClass(root, "arExternalLinksToolbarButton isRefresh")[0]
-    || byClass(root, "isRefresh")[0];
 
   await rows[0].click();
   assert.deepEqual(rows.map((row) => row.getAttribute("aria-selected")), ["true", "false", "false", "false"]);
-  assert.equal(renderedText(refreshButton), "Refresh selected");
+  await openHostMenu(documentRef, container);
+  assert.deepEqual(
+    visibleMenuLabels(documentRef),
+    ["Refresh selected", "Break selected", "Refresh all", "Break all"],
+  );
+  assert.equal(byClass(menuOf(documentRef), "ctx-sep")[0].hidden, false);
 
   await rows[2].click({ ctrlKey: true });
   assert.deepEqual(rows.map((row) => row.getAttribute("aria-selected")), ["true", "false", "true", "false"]);
@@ -331,13 +392,81 @@ test("plain, Ctrl, Meta, and Shift clicks provide accessible multi-row selection
 
   await rows[1].click({ metaKey: true });
   assert.deepEqual(rows.map((row) => row.getAttribute("aria-selected")), ["false", "true", "true", "true"]);
-  await refreshButton.click();
+  await runMenuAction(documentRef, container, "refresh-selected");
   assert.deepEqual(refreshedRecords.map((record) => record.id), ["link-2", "link-3", "link-4"]);
+});
+
+test("the all-scope entries stay available and ignore the current selection", async () => {
+  let refreshedRecords = [];
+  let brokenRecords = [];
+  const { documentRef, container, controller } = setup({
+    getLinks: () => sampleLinks,
+    onRefreshLinks: (links) => {
+      refreshedRecords = links;
+      return { ok: true };
+    },
+    onBreakLinks: (links) => {
+      brokenRecords = links;
+      return { ok: true };
+    },
+  });
+  await controller.refresh();
+
+  const rows = byTag(container.children[0], "tbody")[0].children;
+  await rows[1].click();
+
+  await runMenuAction(documentRef, container, "refresh-all");
+  assert.deepEqual(refreshedRecords.map((record) => record.id), sampleLinks.map((record) => record.id));
+
+  await runMenuAction(documentRef, container, "break-all");
+  assert.deepEqual(brokenRecords.map((record) => record.id), sampleLinks.map((record) => record.id));
+
+  // The selection survives an all-scope action.
+  const rerenderedRows = byTag(container.children[0], "tbody")[0].children;
+  assert.deepEqual(
+    rerenderedRows.map((row) => row.getAttribute("aria-selected")),
+    ["false", "true", "false", "false"],
+  );
+});
+
+test("right-clicking a row keeps an existing selection but claims an unselected row", async () => {
+  let refreshedRecords = [];
+  const { documentRef, container, controller } = setup({
+    getLinks: () => sampleLinks,
+    onRefreshLinks: (records) => {
+      refreshedRecords = records;
+      return { ok: true };
+    },
+  });
+  await controller.refresh();
+
+  const rows = byTag(container.children[0], "tbody")[0].children;
+  await rows[0].click();
+  await rows[1].click({ ctrlKey: true });
+
+  // Inside the selection: the selection survives and the action stays scoped to it.
+  await rows[1].dispatch("contextmenu", { clientX: 12, clientY: 24 });
+  assert.equal(isMenuOpen(documentRef), true);
+  assert.deepEqual(rows.map((row) => row.getAttribute("aria-selected")), ["true", "true", "false", "false"]);
+  assert.equal(menuItem(documentRef, "break-selected").hidden, false);
+  await menuItem(documentRef, "refresh-selected").click();
+  assert.deepEqual(refreshedRecords.map((record) => record.id), ["link-1", "link-2"]);
+  assert.equal(isMenuOpen(documentRef), false);
+
+  // Outside the selection: the target row becomes the whole selection first.
+  const refreshedRows = byTag(container.children[0], "tbody")[0].children;
+  await refreshedRows[3].dispatch("contextmenu", { clientX: 12, clientY: 24 });
+  assert.deepEqual(
+    refreshedRows.map((row) => row.getAttribute("aria-selected")),
+    ["false", "false", "false", "true"],
+  );
+  await menuItem(documentRef, "refresh-selected").click();
+  assert.deepEqual(refreshedRecords.map((record) => record.id), ["link-4"]);
 });
 
 test("selection is retained by link id and pruned when records disappear", async () => {
   let records = sampleLinks;
-  const { container, controller } = setup({ getLinks: () => records });
+  const { documentRef, container, controller } = setup({ getLinks: () => records });
   await controller.refresh();
   let rows = byTag(container.children[0], "tbody")[0].children;
   await rows[0].click();
@@ -348,16 +477,15 @@ test("selection is retained by link id and pruned when records disappear", async
 
   rows = byTag(container.children[0], "tbody")[0].children;
   assert.deepEqual(rows.map((row) => row.getAttribute("aria-selected")), ["true", "false"]);
-  assert.equal(
-    renderedText(byClass(container.children[0], "isRefresh")[0]),
-    "Refresh selected",
-  );
+  await openHostMenu(documentRef, container);
+  assert.equal(menuItem(documentRef, "refresh-selected").hidden, false);
 
   records = [sampleLinks[1]];
   await controller.refresh();
   rows = byTag(container.children[0], "tbody")[0].children;
   assert.equal(rows[0].getAttribute("aria-selected"), "false");
-  assert.equal(renderedText(byClass(container.children[0], "isRefresh")[0]), "Refresh all");
+  await openHostMenu(documentRef, container);
+  assert.deepEqual(visibleMenuLabels(documentRef), ["Refresh all", "Break all"]);
 });
 
 test("Refresh all uses the bulk callback, exposes busy state, and reports success", async () => {
@@ -365,7 +493,7 @@ test("Refresh all uses the bulk callback, exposes busy state, and reports succes
   let refreshCount = 0;
   let received = [];
   const statuses = [];
-  const { container, controller } = setup({
+  const { documentRef, container, controller } = setup({
     getLinks: () => {
       refreshCount += 1;
       return sampleLinks;
@@ -381,32 +509,33 @@ test("Refresh all uses the bulk callback, exposes busy state, and reports succes
   await controller.refresh();
 
   const root = container.children[0];
-  const refreshButton = byClass(root, "isRefresh")[0];
-  const breakButton = byClass(root, "isBreak")[0];
-  const pendingClick = refreshButton.click();
-  assert.equal(refreshButton.disabled, true);
-  assert.equal(breakButton.disabled, true);
-  assert.equal(refreshButton.getAttribute("aria-busy"), "true");
-  assert.equal(renderedText(refreshButton), "Refreshing...");
+  await openHostMenu(documentRef, container);
+  const pendingClick = menuItem(documentRef, "refresh-all").click();
+  assert.equal(isMenuOpen(documentRef), false);
   assert.equal(root.getAttribute("aria-busy"), "true");
+  assert.match(renderedText(byClass(root, "arExternalLinksState")[0]), /Refreshing external links/u);
   assert.deepEqual(received.map((record) => record.id), sampleLinks.map((record) => record.id));
+
+  // A right-click while an action runs must not reopen the menu.
+  await openHostMenu(documentRef, container);
+  assert.equal(isMenuOpen(documentRef), false);
 
   resolveRefresh({ ok: true, message: "Workbook values refreshed." });
   await pendingClick;
 
   assert.equal(refreshCount, 2);
-  assert.equal(refreshButton.disabled, false);
-  assert.equal(refreshButton.getAttribute("aria-busy"), null);
-  assert.equal(renderedText(refreshButton), "Refresh all");
   assert.equal(root.getAttribute("aria-busy"), "false");
+  await openHostMenu(documentRef, container);
+  assert.equal(isMenuOpen(documentRef), true);
+  assert.deepEqual(visibleMenuLabels(documentRef), ["Refresh all", "Break all"]);
   assert.deepEqual(statuses.at(-1), { message: "Workbook values refreshed.", tone: "success" });
 });
 
-test("Break all excludes read-only records and leaves read-only actions disabled", async () => {
+test("Break all excludes read-only records and hides the break action when none remain", async () => {
   const readOnlyLink = { ...sampleLinks[3], readOnly: true };
   let records = [...sampleLinks.slice(0, 2), readOnlyLink];
   let received = [];
-  const { container, controller } = setup({
+  const { documentRef, container, controller } = setup({
     getLinks: () => records,
     onBreakLinks: (links) => {
       received = links;
@@ -417,19 +546,20 @@ test("Break all excludes read-only records and leaves read-only actions disabled
   await controller.refresh();
 
   const root = container.children[0];
-  const breakButton = byClass(root, "isBreak")[0];
-  await breakButton.click();
+  await runMenuAction(documentRef, container, "break-all");
 
   assert.deepEqual(received.map((record) => record.id), ["link-1", "link-2"]);
   assert.equal(byTag(root, "tbody")[0].children.length, 1);
-  assert.equal(breakButton.disabled, true);
-  assert.equal(breakButton.getAttribute("aria-description"), "The external links are read-only.");
+
+  await openHostMenu(documentRef, container);
+  assert.equal(isMenuOpen(documentRef), true);
+  assert.deepEqual(visibleMenuLabels(documentRef), ["Refresh all"]);
 });
 
 test("failed bulk actions retain rows, selection, and restored controls", async () => {
   let resolveBreak;
   const statuses = [];
-  const { container, controller } = setup({
+  const { documentRef, container, controller } = setup({
     getLinks: () => sampleLinks,
     onBreakLinks: () => new Promise((resolve) => {
       resolveBreak = resolve;
@@ -441,19 +571,19 @@ test("failed bulk actions retain rows, selection, and restored controls", async 
   const root = container.children[0];
   const rows = byTag(root, "tbody")[0].children;
   await rows[1].click();
-  const breakButton = byClass(root, "isBreak")[0];
-  const pendingClick = breakButton.click();
-  assert.equal(breakButton.disabled, true);
-  assert.equal(renderedText(breakButton), "Breaking...");
+  await openHostMenu(documentRef, container);
+  const pendingClick = menuItem(documentRef, "break-selected").click();
+  assert.equal(isMenuOpen(documentRef), false);
+  assert.match(renderedText(byClass(root, "arExternalLinksState")[0]), /Breaking external links/u);
 
   resolveBreak({ ok: false, error: "Workbook is locked." });
   await pendingClick;
 
   assert.equal(byTag(root, "tbody")[0].children.length, 4);
   assert.equal(rows[1].getAttribute("aria-selected"), "true");
-  assert.equal(breakButton.disabled, false);
-  assert.equal(renderedText(breakButton), "Break selected");
-  assert.equal(breakButton.getAttribute("aria-busy"), null);
+  assert.equal(root.getAttribute("aria-busy"), "false");
+  await openHostMenu(documentRef, container);
+  assert.equal(menuItem(documentRef, "break-selected").hidden, false);
   const state = byClass(root, "arExternalLinksState")[0];
   assert.equal(state.hidden, false);
   assert.equal(state.getAttribute("role"), "alert");
@@ -464,7 +594,7 @@ test("failed bulk actions retain rows, selection, and restored controls", async 
 
 test("partial refresh failures are reported instead of shown as success", async () => {
   const statuses = [];
-  const { container, controller } = setup({
+  const { documentRef, container, controller } = setup({
     getLinks: () => [sampleLink],
     onRefreshLinks: () => ({ linkedCellCount: 2, failedCount: 2 }),
     onStatus: (message, tone) => statuses.push({ message, tone }),
@@ -472,7 +602,7 @@ test("partial refresh failures are reported instead of shown as success", async 
   await controller.refresh();
 
   const root = container.children[0];
-  await byClass(root, "isRefresh")[0].click();
+  await runMenuAction(documentRef, container, "refresh-all");
 
   assert.match(renderedText(byClass(root, "arExternalLinksState")[0]), /2 linked values could not be refreshed/u);
   assert.deepEqual(statuses.at(-1), {
@@ -482,27 +612,31 @@ test("partial refresh failures are reported instead of shown as success", async 
 });
 
 test("explicit loading and error states retain rendered rows and destroy cleanly", async () => {
-  const { container, controller } = setup({ getLinks: () => [sampleLink] });
+  const { documentRef, container, controller } = setup({ getLinks: () => [sampleLink] });
   await controller.refresh();
   const root = container.children[0];
   const body = byTag(root, "tbody")[0];
-  const toolbarButtons = byClass(root, "arExternalLinksToolbarButton");
+  const menu = menuOf(documentRef);
 
   controller.setLoading("Refreshing workbook values...");
   assert.equal(root.getAttribute("aria-busy"), "true");
-  assert.equal(toolbarButtons.every((button) => button.disabled), true);
+  await openHostMenu(documentRef, container);
+  assert.equal(isMenuOpen(documentRef), false);
   assert.equal(body.children.length, 1);
   assert.match(renderedText(byClass(root, "arExternalLinksState")[0]), /Refreshing workbook values/u);
 
   controller.setError("Excel is unavailable.");
   assert.equal(root.getAttribute("aria-busy"), "false");
-  assert.equal(toolbarButtons.every((button) => !button.disabled), true);
+  await openHostMenu(documentRef, container);
+  assert.equal(isMenuOpen(documentRef), true);
   assert.equal(body.children.length, 1);
   assert.match(renderedText(byClass(root, "arExternalLinksState")[0]), /Excel is unavailable\./u);
 
   controller.destroy();
   assert.equal(container.children.length, 0);
   assert.equal(container.classList.contains("arExternalLinksMount"), false);
+  assert.equal(menu.parentElement, null);
+  assert.equal(menu.style.display, "none");
   assert.equal(await controller.refresh(), false);
 });
 
@@ -527,8 +661,15 @@ test("persistent warnings survive link refreshes until explicitly cleared", asyn
   assert.equal(state.hidden, true);
 });
 
-test("shared styling keeps the toolbar frameless and separates link text from array outlines", () => {
-  assert.match(stylesheetSource, /\.arExternalLinksToolbar\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/su);
+test("shared styling drops the toolbar, keeps every row border, and separates link text from array outlines", () => {
+  assert.doesNotMatch(stylesheetSource, /arExternalLinksToolbar/u);
+  // The last row must keep its bottom rule so the table does not look unfinished
+  // when the rows are shorter than the framed scroll host.
+  assert.doesNotMatch(stylesheetSource, /tbody tr:last-child td\s*\{[^}]*border-bottom:\s*0;/su);
+  const cellRule = stylesheetSource.match(
+    /\.arExternalLinksTable th,\s*\.arExternalLinksTable td\s*\{([^}]*)\}/u,
+  )?.[1] || "";
+  assert.match(cellRule, /border-bottom:\s*1px solid #e2e8f0;/u);
   assert.match(stylesheetSource, /border-collapse:\s*separate;/u);
   assert.match(stylesheetSource, /position:\s*sticky;/u);
   assert.match(stylesheetSource, /height:\s*31px;/u);

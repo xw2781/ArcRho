@@ -1,9 +1,9 @@
+import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
 
 const EXTERNAL_LINKS_STYLESHEET_ID = "arExternalLinksStylesheet";
-const EXTERNAL_LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260726a";
+const EXTERNAL_LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260807a";
 const MOUNTED_EXTERNAL_LINKS_TABS = new WeakMap();
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 function ensureExternalLinksStylesheet(documentRef) {
   const existingById = documentRef.getElementById?.(EXTERNAL_LINKS_STYLESHEET_ID);
@@ -30,82 +30,23 @@ function appendTextElement(documentRef, parent, tagName, className, text) {
   return element;
 }
 
-function appendSvgElement(documentRef, parent, tagName, attributes = {}) {
-  const element = typeof documentRef.createElementNS === "function"
-    ? documentRef.createElementNS(SVG_NAMESPACE, tagName)
-    : documentRef.createElement(tagName);
-  Object.entries(attributes).forEach(([name, value]) => element.setAttribute(name, value));
-  parent.appendChild(element);
-  return element;
+function appendMenuItem(documentRef, parent, action, label) {
+  const item = documentRef.createElement("button");
+  item.className = "ctx-item";
+  item.type = "button";
+  item.dataset.action = action;
+  item.textContent = label;
+  item.setAttribute("role", "menuitem");
+  parent.appendChild(item);
+  return item;
 }
 
-function appendToolbarIcon(documentRef, button, kind) {
-  const icon = appendSvgElement(documentRef, button, "svg", {
-    class: `arExternalLinksToolbarIcon is${kind}`,
-    viewBox: "0 0 20 20",
-    width: "20",
-    height: "20",
-    "aria-hidden": "true",
-    focusable: "false",
-  });
-
-  if (kind === "Refresh") {
-    appendSvgElement(documentRef, icon, "path", {
-      d: "M16.6 6.8A7 7 0 1 0 17 12",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "1.5",
-      "stroke-linecap": "round",
-    });
-    appendSvgElement(documentRef, icon, "path", {
-      d: "M13.2 3.6h3.6v3.6",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "1.5",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-    });
-    return icon;
-  }
-
-  appendSvgElement(documentRef, icon, "path", {
-    d: "M7.7 12.3 6.2 13.8a3 3 0 0 1-4.2-4.2l2.4-2.4a3 3 0 0 1 4.2 0",
-    fill: "none",
-    stroke: "currentColor",
-    "stroke-width": "1.45",
-    "stroke-linecap": "round",
-  });
-  appendSvgElement(documentRef, icon, "path", {
-    d: "m10.5 9.5 1.2-1.2a3 3 0 0 1 4.2 4.2l-1.5 1.5",
-    fill: "none",
-    stroke: "currentColor",
-    "stroke-width": "1.45",
-    "stroke-linecap": "round",
-  });
-  appendSvgElement(documentRef, icon, "path", {
-    d: "m11.8 13.2 5 5m0-5-5 5",
-    fill: "none",
-    stroke: "currentColor",
-    "stroke-width": "1.55",
-    "stroke-linecap": "round",
-  });
-  return icon;
-}
-
-function createToolbarButton(documentRef, parent, kind, label) {
-  const button = documentRef.createElement("button");
-  button.className = `arExternalLinksToolbarButton is${kind}`;
-  button.type = "button";
-  appendToolbarIcon(documentRef, button, kind);
-  const text = appendTextElement(
-    documentRef,
-    button,
-    "span",
-    "arExternalLinksToolbarButtonText",
-    label,
-  );
-  parent.appendChild(button);
-  return { button, text };
+function appendMenuSeparator(documentRef, parent) {
+  const separator = documentRef.createElement("div");
+  separator.className = "ctx-sep";
+  separator.setAttribute("role", "separator");
+  parent.appendChild(separator);
+  return separator;
 }
 
 function normalizeAffectedCellCount(value) {
@@ -197,13 +138,20 @@ export function createExternalLinksTab({
   root.className = "arExternalLinks";
   root.setAttribute("aria-busy", "false");
 
-  const toolbar = documentRef.createElement("div");
-  toolbar.className = "arExternalLinksToolbar";
-  toolbar.setAttribute("role", "toolbar");
-  toolbar.setAttribute("aria-label", `${String(ariaLabel || "External links")} actions`);
-  const refreshControl = createToolbarButton(documentRef, toolbar, "Refresh", "Refresh all");
-  const breakControl = createToolbarButton(documentRef, toolbar, "Break", "Break all");
-  root.appendChild(toolbar);
+  const menu = documentRef.createElement("div");
+  menu.className = "ctx-menu arExternalLinksMenu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", `${String(ariaLabel || "External links")} actions`);
+  menu.style.display = "none";
+  const menuInner = documentRef.createElement("div");
+  menuInner.className = "ctx-menu-inner";
+  menu.appendChild(menuInner);
+  const refreshSelectedItem = appendMenuItem(documentRef, menuInner, "refresh-selected", "Refresh selected");
+  const breakSelectedItem = appendMenuItem(documentRef, menuInner, "break-selected", "Break selected");
+  const menuSeparator = appendMenuSeparator(documentRef, menuInner);
+  const refreshAllItem = appendMenuItem(documentRef, menuInner, "refresh-all", "Refresh all");
+  const breakAllItem = appendMenuItem(documentRef, menuInner, "break-all", "Break all");
+  (documentRef.body || documentRef.documentElement)?.appendChild(menu);
 
   const state = documentRef.createElement("div");
   state.className = "arExternalLinksState isEmpty isStandalone";
@@ -233,6 +181,7 @@ export function createExternalLinksTab({
   scrollHost.hidden = true;
   scrollHost.setAttribute("role", "region");
   scrollHost.setAttribute("aria-label", `${String(ariaLabel || "External links")} table`);
+  scrollHost.setAttribute("aria-haspopup", "menu");
   root.appendChild(scrollHost);
 
   const table = documentRef.createElement("table");
@@ -281,6 +230,7 @@ export function createExternalLinksTab({
   let advisory = null;
   let records = [];
   let selectionAnchorId = "";
+  let contextRowId = "";
   const selectedIds = new Set();
   const renderedRows = new Map();
   const statusHandler = typeof onStatus === "function" ? onStatus : () => {};
@@ -292,7 +242,12 @@ export function createExternalLinksTab({
     scrollIdleTimer = null;
   };
 
+  const closeMenu = () => {
+    menu.style.display = "none";
+  };
+
   const handleScroll = () => {
+    closeMenu();
     scrollHost.classList.add("isScrolling");
     clearScrollIdleTimer();
     scrollIdleTimer = timerHost.setTimeout(() => {
@@ -340,46 +295,68 @@ export function createExternalLinksTab({
     hasSelection() ? records.filter((record) => selectedIds.has(record.id)) : records.slice()
   );
 
-  const syncToolbar = () => {
+  const syncBusyState = () => {
     if (destroyed) return;
     const busy = loading || Boolean(activeAction);
-    const selected = hasSelection();
-    const scope = scopedRecords();
-    const breakable = scope.filter((record) => !record.readOnly);
-
-    refreshControl.text.textContent = activeAction === "refresh"
-      ? "Refreshing..."
-      : selected ? "Refresh selected" : "Refresh all";
-    breakControl.text.textContent = activeAction === "break"
-      ? "Breaking..."
-      : selected ? "Break selected" : "Break all";
-
-    refreshControl.button.disabled = busy || scope.length === 0;
-    breakControl.button.disabled = busy || breakable.length === 0;
-    refreshControl.button.setAttribute(
-      "aria-label",
-      selected ? `Refresh ${scope.length} selected external links` : "Refresh all external links",
-    );
-    breakControl.button.setAttribute(
-      "aria-label",
-      selected ? `Break ${breakable.length} selected external links` : "Break all external links",
-    );
-    if (activeAction === "refresh") refreshControl.button.setAttribute("aria-busy", "true");
-    else refreshControl.button.removeAttribute("aria-busy");
-    if (activeAction === "break") breakControl.button.setAttribute("aria-busy", "true");
-    else breakControl.button.removeAttribute("aria-busy");
-
-    if (scope.length > 0 && breakable.length === 0) {
-      breakControl.button.setAttribute(
-        "aria-description",
-        selected
-          ? "The selected external links are read-only."
-          : "The external links are read-only.",
-      );
-    } else {
-      breakControl.button.removeAttribute("aria-description");
-    }
     root.setAttribute("aria-busy", busy ? "true" : "false");
+    if (busy) closeMenu();
+  };
+
+  /**
+   * Shows only the entries that have something to act on and reports whether any
+   * remain. The selected-scope entries sit above the always-available all-scope
+   * entries so a selection never hides the "all" actions.
+   */
+  const syncMenuItems = () => {
+    const selectedScope = records.filter((record) => selectedIds.has(record.id));
+    const breakableSelected = selectedScope.filter((record) => !record.readOnly);
+    const breakableAll = records.filter((record) => !record.readOnly);
+
+    refreshSelectedItem.hidden = selectedScope.length === 0;
+    breakSelectedItem.hidden = breakableSelected.length === 0;
+    refreshAllItem.hidden = records.length === 0;
+    breakAllItem.hidden = breakableAll.length === 0;
+    menuSeparator.hidden = (refreshSelectedItem.hidden && breakSelectedItem.hidden)
+      || (refreshAllItem.hidden && breakAllItem.hidden);
+
+    refreshSelectedItem.setAttribute(
+      "aria-label",
+      `Refresh ${selectedScope.length} selected external links`,
+    );
+    breakSelectedItem.setAttribute(
+      "aria-label",
+      `Break ${breakableSelected.length} selected external links`,
+    );
+    refreshAllItem.setAttribute("aria-label", "Refresh all external links");
+    breakAllItem.setAttribute("aria-label", "Break all external links");
+
+    return [refreshSelectedItem, breakSelectedItem, refreshAllItem, breakAllItem]
+      .some((item) => !item.hidden);
+  };
+
+  const restoreTableFocus = () => {
+    const row = contextRowId ? renderedRows.get(contextRowId) : null;
+    const target = row || scrollHost;
+    try {
+      target.focus?.({ preventScroll: true });
+    } catch {
+      // Focus restoration is best-effort; the action result is what matters.
+    }
+  };
+
+  const openMenu = (event) => {
+    if (destroyed || loading || activeAction) return;
+    if (!syncMenuItems()) {
+      closeMenu();
+      return;
+    }
+    openContextMenu(menu, {
+      anchorEl: contextRowId ? renderedRows.get(contextRowId) || scrollHost : scrollHost,
+      clientX: Number(event?.clientX),
+      clientY: Number(event?.clientY),
+      offset: 8,
+      align: "top-left",
+    });
   };
 
   const applySelection = () => {
@@ -388,7 +365,7 @@ export function createExternalLinksTab({
       row.setAttribute("aria-selected", selected ? "true" : "false");
       row.classList.toggle("isSelected", selected);
     });
-    syncToolbar();
+    syncBusyState();
   };
 
   const selectRecord = (record, event = {}) => {
@@ -459,6 +436,13 @@ export function createExternalLinksTab({
         event.preventDefault();
         selectRecord(record, event);
       });
+      row.addEventListener("contextmenu", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        if (!selectedIds.has(record.id)) selectRecord(record, {});
+        contextRowId = record.id;
+        openMenu(event);
+      });
 
       for (const [className, value] of [
         ["arExternalLinksWorkbookCell", record.workbookPath],
@@ -512,13 +496,13 @@ export function createExternalLinksTab({
     } else {
       showState("Empty", "No external links", emptyDescription);
     }
-    syncToolbar();
+    syncBusyState();
   };
 
   const setLoading = (message = "Loading external links...") => {
     loading = true;
     showState("Loading", message || "Loading external links...");
-    syncToolbar();
+    syncBusyState();
   };
 
   const setError = (message) => {
@@ -528,7 +512,7 @@ export function createExternalLinksTab({
       "Unable to load external links",
       message || "The external links could not be loaded.",
     );
-    syncToolbar();
+    syncBusyState();
   };
 
   const setWarning = (title, description = "") => {
@@ -537,14 +521,14 @@ export function createExternalLinksTab({
       description: String(description || ""),
     };
     showState("Warning", advisory.title, advisory.description);
-    syncToolbar();
+    syncBusyState();
   };
 
   const clearWarning = () => {
     advisory = null;
     if (records.length) hideState();
     else showState("Empty", "No external links", emptyDescription);
-    syncToolbar();
+    syncBusyState();
   };
 
   let refresh = async () => false;
@@ -570,16 +554,22 @@ export function createExternalLinksTab({
     }
   };
 
-  const runAction = async (kind) => {
+  const runAction = async (kind, scopeMode = "selection") => {
     if (destroyed || loading || activeAction) return false;
-    const scope = scopedRecords();
+    const scope = scopeMode === "all" ? records.slice() : scopedRecords();
     const actionRecords = kind === "break"
       ? scope.filter((record) => !record.readOnly)
       : scope;
     if (actionRecords.length === 0) return false;
 
     activeAction = kind;
-    syncToolbar();
+    syncBusyState();
+    // The bulk actions moved into the row context menu, so the in-tab state banner is the
+    // only place left that can report progress while the domain handler runs.
+    showState(
+      "Loading",
+      kind === "break" ? "Breaking external links..." : "Refreshing external links...",
+    );
     const handler = kind === "break" ? onBreakLinks : onRefreshLinks;
     const title = kind === "break" ? "Unable to break links" : "Unable to refresh links";
     const fallback = kind === "break"
@@ -611,13 +601,41 @@ export function createExternalLinksTab({
       return false;
     } finally {
       activeAction = "";
-      syncToolbar();
+      syncBusyState();
     }
   };
 
-  refreshControl.button.addEventListener("click", () => runAction("refresh"));
-  breakControl.button.addEventListener("click", () => runAction("break"));
-  syncToolbar();
+  const handleMenuAction = (kind, scopeMode) => {
+    closeMenu();
+    restoreTableFocus();
+    return runAction(kind, scopeMode);
+  };
+
+  const handleContextMenu = (event) => {
+    event.preventDefault?.();
+    contextRowId = "";
+    openMenu(event);
+  };
+
+  const handleDocumentPointerDown = (event) => {
+    if (menu.contains?.(event.target)) return;
+    closeMenu();
+  };
+
+  const handleDocumentKeyDown = (event) => {
+    if (event.key === "Escape") closeMenu();
+  };
+
+  refreshSelectedItem.addEventListener("click", () => handleMenuAction("refresh", "selection"));
+  breakSelectedItem.addEventListener("click", () => handleMenuAction("break", "selection"));
+  refreshAllItem.addEventListener("click", () => handleMenuAction("refresh", "all"));
+  breakAllItem.addEventListener("click", () => handleMenuAction("break", "all"));
+  scrollHost.addEventListener("contextmenu", handleContextMenu);
+  documentRef.addEventListener?.("mousedown", handleDocumentPointerDown, true);
+  documentRef.addEventListener?.("keydown", handleDocumentKeyDown, true);
+  timerHost.addEventListener?.("resize", closeMenu);
+  timerHost.addEventListener?.("blur", closeMenu);
+  syncBusyState();
 
   const destroy = () => {
     if (destroyed) return;
@@ -628,10 +646,18 @@ export function createExternalLinksTab({
     advisory = null;
     selectedIds.clear();
     renderedRows.clear();
+    contextRowId = "";
+    closeMenu();
     scrollHost.removeEventListener("scroll", handleScroll);
     scrollHost.removeEventListener("pointermove", handlePointerMove);
     scrollHost.removeEventListener("pointerleave", handlePointerLeave);
+    scrollHost.removeEventListener("contextmenu", handleContextMenu);
+    documentRef.removeEventListener?.("mousedown", handleDocumentPointerDown, true);
+    documentRef.removeEventListener?.("keydown", handleDocumentKeyDown, true);
+    timerHost.removeEventListener?.("resize", closeMenu);
+    timerHost.removeEventListener?.("blur", closeMenu);
     scrollHost.classList.remove("isScrolling", "isScrollbarHover");
+    menu.remove();
     root.remove();
     container.classList?.remove("arExternalLinksMount");
     if (MOUNTED_EXTERNAL_LINKS_TABS.get(container) === controller) {

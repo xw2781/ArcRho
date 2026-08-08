@@ -23,6 +23,7 @@ import {
   getDfmIsDirty,
   markDfmDirty,
   notifyDfmEditState,
+  consumePendingDfmPropagationJobId,
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { ALLOWED_DFM_TABS, DFM_TAB_DEFS } from "/ui/method_pages/dfm/dfm_tab_config.js?v=20260715a";
 import { initDfmAuditLog, refreshDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260726a";
@@ -44,14 +45,14 @@ import {
   buildResultsVector,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260805a";
 import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
-import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260726a";
+import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260807a";
 import {
   syncMethodNameFromInputs,
   syncOutputTypeFromProject,
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/method_pages/dfm/dfm_details.js?v=20260805a";
+} from "/ui/method_pages/dfm/dfm_details.js?v=20260807b";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -65,10 +66,10 @@ import {
   stopDfmMethodFileWatcher,
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260805a";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260807b";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260805a";
-import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260726a";
-import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260805a";
+import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260807b";
+import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260807b";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260722a";
 import {
   clearRatioHistoryTempSession,
@@ -301,6 +302,12 @@ function buildDfmDependencySourceMessage(type, reason = "") {
   if (type === "arcrho:dependency-source-preview") {
     payload.values = buildResultsVector();
     payload.originLabels = Array.isArray(model?.origin_labels) ? model.origin_labels.map(String) : [];
+  }
+  if (type === "arcrho:dependency-source-cleared") {
+    // Present only when this clean transition came from a save that enqueued
+    // an Engine propagation job; Project Instance defers the downstream
+    // preview clear until that job reaches a terminal status.
+    payload.propagationJobId = consumePendingDfmPropagationJobId();
   }
   return payload;
 }
