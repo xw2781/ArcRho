@@ -41,11 +41,26 @@ test("temporary view uses index membership for its status without cleanup", () =
   assert.match(tableSource, /temp-indexed/);
   assert.match(tableSource, /temp-unindexed/);
   assert.match(tableSource, /already listed in index\.json/);
+  assert.match(projectInstanceHtml, /data-row-action="make-permanent"[^>]*>Make Permanent/);
+  assert.match(tableSource, /function makeTemporaryDatasetPermanent\(record\)/);
+  assert.match(tableSource, /"\/arcrho\/vec\/refresh"/);
+  assert.match(tableSource, /"\/arcrho\/tri\/refresh"/);
   assert.match(projectInstanceCss, /\.pi-status-cell\.temp-indexed\s*\{\s*color:\s*#15803d;/);
   assert.match(projectInstanceCss, /\.pi-status-cell\.temp-unindexed\s*\{\s*color:\s*#98a2b3;/);
   assert.match(tableSource, /\["methodType", "lastModified", "created", "user"\]/);
-  assert.match(tableSource, /isTemporaryViewActive\(\) && normalized !== "view"/);
+  assert.match(tableSource, /isTemporaryViewActive\(\) && !\["view", "make-permanent"\]\.includes\(normalized\)/);
   assert.match(tableSource, /function saveDatasetTablePreferences\(\) \{\s*if \(isTemporaryViewActive\(\)\) return;/);
+});
+
+test("Project Instance table filter menus support type-to-search without changing All semantics", () => {
+  assert.match(tableSource, /className = "pi-table-filter-search"/);
+  assert.match(tableSource, /placeholder = "Type to search"/);
+  assert.match(tableSource, /options\.filter\(\(opt\) => toText\(opt\.label\)\.toLocaleLowerCase\(\)\.includes\(searchText\)\)/);
+  assert.match(tableSource, /const searchText = state\.datasetTableFilterSearchText;/);
+  assert.match(tableSource, /allCb\.checked = selected\.size === 0 \|\| isDatasetFilterAllValuesSelected\(selected, options\)/);
+  assert.match(tableSource, /empty\.textContent = options\.length \? "No matching values" : "No values"/);
+  assert.match(projectInstanceCss, /\.pi-table-filter-search\s*\{/);
+  assert.match(projectInstanceCss, /\.pi-table-filter-list\s*\{[\s\S]*?overflow-x: hidden;/);
 });
 
 test("temporary view toolbar uses concise dataset copy and a styled mode tooltip", () => {

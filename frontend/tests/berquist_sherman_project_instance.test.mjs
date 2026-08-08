@@ -77,6 +77,13 @@ test("every B&S surface shows the ResQ label and persists the canonical identity
   assert.doesNotMatch(methodPageSource, /method_type: contract\.displayLabel/u);
 });
 
+test("Project Instance filter menus use the index-backed render context", () => {
+  assert.match(
+    tableSource,
+    /function openDatasetTableFilterPopover\([\s\S]*?const context = buildDatasetTableRenderContext\(\);[\s\S]*?getDatasetColumnOptions\(key, context\)/u,
+  );
+});
+
 test("Project Instance exposes two direct annual-triangle Add commands", () => {
   assert.match(htmlSource, /data-row-action="add-berquist-sherman-sr">Berquist Sherman SR</u);
   assert.match(htmlSource, /data-row-action="add-berquist-sherman-cra">Berquist Sherman CRA</u);

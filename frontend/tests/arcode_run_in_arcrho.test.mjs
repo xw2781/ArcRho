@@ -57,6 +57,20 @@ test("ArcRho captures and reapplies an exact DFM target around source execution"
   assert.match(projectMessages, /findWindowByInstance\(targetWindowId\)/);
 });
 
+test("Macro windows keep their size while the host window is resized", () => {
+  const macro = read("../ui/macro/macro_window.js");
+  const library = read("../ui/macro/macro_library_window.js");
+  const frame = read("../ui/macro/macro_window_frame.js");
+
+  assert.match(frame, /function lockSize\(\)/);
+  assert.match(frame, /function initResize\(\)/);
+  assert.doesNotMatch(frame, /addEventListener\("resize"/);
+  assert.match(macro, /createMacroWindowFrame/);
+  assert.match(library, /createMacroWindowFrame/);
+  assert.match(macro, /macroWindowFrame\?\.lockSize\(\)/);
+  assert.match(library, /libraryWindowFrame\?\.lockSize\(\)/);
+});
+
 test("ArcRho automation error dialogs render the close mark as SVG", () => {
   const automation = read("../ui/shell/ui_automation.js");
 

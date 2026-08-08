@@ -16,7 +16,7 @@ Result Selection is a Project Instance method window for vector output datasets.
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Opens either from its Home `Datasets & Methods` launch card as a standalone shell tab or from a Project Instance floating window.
+- Opens from a Project Instance floating window. Home no longer offers a Result Selection launch card, but the shell keeps `openResultSelectionTab` for the standalone restorable tab used by tab restore and UI automation.
 - Project Instance creates a new Result Selection from `Add > Result Selection` on a vector dataset row whose Method Type is `None`; existing vector rows with Method Type `Result Selection` open this page for editing directly on the Method tab.
 - The page posts generic nested-window dirty state through `arcrho:dataset-dirty`, consumes `arcrho:dataset-save`, and exposes `window.__arcrho_request_close` so Project Instance can ask before closing dirty windows; dirty close requests use the shared page-local confirm dialog and are then confirmed with `arcrho:dataset-close-confirmed`.
 - Save delegates to `/result-selection/save`, which validates one complete v2 method payload, server-recalculates the selected output from saved values/weights/overrides, stages `methods/RS@<Name>.json` with the native and coarser output vector CSVs, then publishes the output sidecar after those artifacts are available. The sidecar uses `source_kind: "result_selection"`, `method_type: "Result Selection"`, `status: 0`, and `data_format: "Vector"`; successful save asks Project Instance to refresh its cached table. Saves include the revision returned by load, so an already-open stale page cannot overwrite an automatic dependency refresh.

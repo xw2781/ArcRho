@@ -28,7 +28,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Opens either from its Home `Datasets & Methods` launch card as a standalone shell tab or inside Project Instance as a floating iframe method window at `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`.
+- Opens from Project Instance as a floating iframe method window at `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`. Home no longer offers a Bornhuetter Ferguson launch card, but the shell keeps `openBornhuetterFergusonTab` for the standalone restorable tab used by tab restore and UI automation.
 - Uses `ui/shared/tabbed_page/` for reusable tab chrome and pop-out behavior, and `ui/shared/tabs/details/`, `ui/shared/tabs/notes/`, and `ui/shared/tabs/audit_log/` for shared tab presentation. BF modules still own method persistence, calculations, dirty state, save/close coordination, and BF-specific behavior; the established BF tab IDs and `arcrho:*` contracts remain unchanged. BF also uses shared dataset origin-label, dataset picker, filename-sanitizer, and save-bar helpers, and its tab labels use the same Arial-first application font stack as Dataset tabs.
 - Details, Method table, Audit Log table, select carets, and save actions follow the compact DFM-style ArcRho controls; single-value BF dataset pickers use the same three-dot button design as DFM Details.
 - Every BF tab uses the shared white `bfPageHost` workspace surface inside the DFM-style gutter and border frame.

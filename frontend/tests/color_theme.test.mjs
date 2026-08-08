@@ -54,8 +54,8 @@ test("every runtime frontend document bootstraps the shared theme before loading
     const html = read(path);
     const bootstrap = html.indexOf("/ui/shared/services/color_theme.js?v=20260724a");
     const firstStylesheet = html.indexOf("rel=\"stylesheet\"");
-    const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260729a");
-    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260807b");
+    const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260808b");
+    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260808b");
     const endHead = html.indexOf("</head>");
     assert.ok(bootstrap >= 0, `${path} loads the shared bootstrap`);
     assert.ok(firstStylesheet < 0 || bootstrap < firstStylesheet, `${path} applies theme state before visual CSS`);
@@ -577,8 +577,8 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.ok(bootstrap >= 0 && bootstrap < inlineStyles, "splash theme state is set before first paint styles");
   assert.match(splash, /requestedTheme === "dark" \? "dark" : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260729a/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260807b/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260808b/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260808b/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
   assert.match(dark, /\.logo-icon img\s*\{[^}]*width:\s*88px[^}]*height:\s*88px/s);

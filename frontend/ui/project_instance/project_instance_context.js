@@ -199,6 +199,7 @@ export function createProjectInstanceContext(deps = {}) {
       unsubscribe: null,
     },
     datasetTableFilterColumn: "",
+    datasetTableFilterSearchText: "",
     datasetTableFilterAnchor: null,
     datasetTableFilterOpenMode: "",
     datasetTableFilterHoverCloseTimer: 0,

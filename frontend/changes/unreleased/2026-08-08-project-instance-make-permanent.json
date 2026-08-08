@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Temporary-view generated datasets can now be made permanent from their context menu."
+}

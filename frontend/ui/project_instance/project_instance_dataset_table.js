@@ -2239,6 +2239,15 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
   const viewItem = menu.querySelector("[data-row-action='view']");
   const viewRecord = emptyContext ? null : getDatasetRowViewRecord();
   if (viewItem) viewItem.disabled = emptyContext || !viewRecord;
+  const makePermanentItem = menu.querySelector("[data-row-action='make-permanent']");
+  if (makePermanentItem) {
+    const canMakePermanent = temporaryView && !!viewRecord && !viewRecord.isIndexed;
+    makePermanentItem.hidden = !temporaryView;
+    makePermanentItem.disabled = !canMakePermanent;
+    makePermanentItem.title = canMakePermanent
+      ? "Generate and save this dataset to the selected reserving class."
+      : "Dataset is already saved in the selected reserving class.";
+  }
   const showAsVectorItem = menu.querySelector("[data-row-action='show-as-vector']");
   if (showAsVectorItem) {
     const showAsVector = !temporaryView && !!viewRecord && (
@@ -2427,6 +2436,40 @@ function buildAddDatasetTriPayload(record, lengths) {
   };
 }
 
+function buildMakePermanentDatasetPayload(record, lengths) {
+  const originLen = Number(lengths?.originLen) || 12;
+  const devLen = Number(lengths?.devLen) || 12;
+  const datasetTypeName = toText(record?.datasetTypeName || record?.datasetName);
+  const dataFormat = normalizeLookupKey(getDatasetRecordValue(record, "dataFormat"));
+  const base = {
+    Path: state.selectedPath,
+    DatasetTypeName: datasetTypeName,
+    ProjectName: projectName,
+    InstanceName: record.datasetName,
+    Cumulative: true,
+    Calendar: false,
+  };
+  if (dataFormat === "vector") {
+    return {
+      route: "/arcrho/vec/refresh",
+      body: {
+        ...base,
+        VectorName: datasetTypeName,
+        PeriodLength: originLen,
+      },
+    };
+  }
+  return {
+    route: "/arcrho/tri/refresh",
+    body: {
+      ...base,
+      TriangleName: datasetTypeName,
+      OriginLength: originLen,
+      DevelopmentLength: devLen,
+    },
+  };
+}
+
 async function getAddDatasetDefaultLengths() {
   return { originLen: 12, devLen: 12 };
 }
@@ -2503,6 +2546,36 @@ async function addGeneratedDataset(record, lengths) {
   setStatus(selected
     ? `Generated dataset request completed for ${record.datasetName}. Selected the new dataset.`
     : `Generated dataset request completed for ${record.datasetName}.`);
+}
+
+async function makeTemporaryDatasetPermanent(record) {
+  if (!isTemporaryViewActive() || !record || record.isIndexed) return;
+  if (!projectName || !state.selectedPath) {
+    setStatus("Select a reserving class path before making a dataset permanent.", true);
+    return;
+  }
+  const datasetName = toText(record.datasetName);
+  if (!datasetName) return;
+  const lengths = await getAddDatasetDefaultLengths();
+  const request = buildMakePermanentDatasetPayload(record, lengths);
+  setStatus(`Making ${datasetName} permanent...`);
+  const res = await fetch(request.route, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request.body),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (res.ok && out?.ok === false && toText(out?.request_file)) {
+    await refreshDatasetsAfterAdd(datasetName);
+    setStatus(`Permanent dataset request sent for ${datasetName}. Waiting for data engine output.`);
+    return;
+  }
+  if (!res.ok || out?.ok === false) {
+    const detail = toText(out?.detail || out?.status) || `HTTP ${res.status}`;
+    throw new Error(detail);
+  }
+  await refreshDatasetsAfterAdd(datasetName);
+  setStatus(`${datasetName} is now permanent.`);
 }
 
 function openNonGeneratedDatasetDraft(record, lengths) {
@@ -2683,12 +2756,16 @@ function applyDatasetRowContextAction(action) {
   const records = getDatasetRowActionRecords();
   const viewRecord = getDatasetRowViewRecord();
   closeDatasetRowContextMenu();
-  if (isTemporaryViewActive() && normalized !== "view") {
+  if (isTemporaryViewActive() && !["view", "make-permanent"].includes(normalized)) {
     setStatus("Temporary view supports opening datasets only.");
     return;
   }
   if (normalized === "view") {
     openDatasetRecord(viewRecord);
+  } else if (normalized === "make-permanent") {
+    void makeTemporaryDatasetPermanent(viewRecord).catch((err) => {
+      setStatus(`Could not make dataset permanent: ${toText(err?.message) || "Unknown error."}`, true);
+    });
   } else if (normalized === "show-as-vector") {
     openDatasetRecordAsDataset(viewRecord);
   } else if (normalized === "view-as-triangle") {
@@ -2735,12 +2812,13 @@ function getDatasetTableFilterReopenAnchor(key, mode) {
 
 function reopenDatasetTableFilterPopoverAfterChange(key) {
   const mode = state.datasetTableFilterOpenMode || "button";
+  const searchText = state.datasetTableFilterSearchText;
   const nextAnchor = getDatasetTableFilterReopenAnchor(key, mode);
   if (!nextAnchor) {
     closeDatasetTableFilterPopover();
     return;
   }
-  openDatasetTableFilterPopover(key, nextAnchor, { mode });
+  openDatasetTableFilterPopover(key, nextAnchor, { mode, searchText });
 }
 
 function openDatasetActiveFilterChipPopover(chip) {
@@ -2759,6 +2837,7 @@ function closeDatasetTableFilterPopover() {
   pop.setAttribute("aria-hidden", "true");
   pop.innerHTML = "";
   state.datasetTableFilterColumn = "";
+  state.datasetTableFilterSearchText = "";
   state.datasetTableFilterAnchor = null;
   state.datasetTableFilterOpenMode = "";
   state.datasetTableFilterHoveringTrigger = false;
@@ -2780,7 +2859,12 @@ function openDatasetTableFilterPopover(key, anchor, popoverOptions = {}) {
   closeDatasetTableContextMenu();
   closeDatasetGroupContextMenu();
   closeDatasetRowContextMenu();
-  const options = getDatasetColumnOptions(key);
+  // Keep popup options aligned with the rows currently rendered from the
+  // selected reserving class's index-backed instance snapshot. Falling back to
+  // dataset-type definitions omits method outputs whose instance name differs
+  // from their configured Dataset Type Name.
+  const context = buildDatasetTableRenderContext();
+  const options = getDatasetColumnOptions(key, context);
   const selected = getDatasetFilterSelection(key, options);
   pop.innerHTML = "";
 
@@ -2789,69 +2873,91 @@ function openDatasetTableFilterPopover(key, anchor, popoverOptions = {}) {
   title.textContent = `${col.label} Filter`;
   pop.appendChild(title);
 
+  const search = document.createElement("input");
+  search.className = "pi-table-filter-search";
+  search.type = "search";
+  search.autocomplete = "off";
+  search.placeholder = "Type to search";
+  search.setAttribute("aria-label", `Search ${col.label} filter values`);
+  search.value = toText(popoverOptions.searchText ?? state.datasetTableFilterSearchText);
+  pop.appendChild(search);
+
   const list = document.createElement("div");
   list.className = "pi-table-filter-list";
   pop.appendChild(list);
 
-  const allRow = document.createElement("label");
-  allRow.className = "pi-table-filter-option";
-  const allCb = document.createElement("input");
-  allCb.type = "checkbox";
-  allCb.checked = selected.size === 0 || isDatasetFilterAllValuesSelected(selected, options);
-  allCb.addEventListener("change", () => {
-    selected.clear();
-    state.datasetTableExplicitAllFilterKeys?.add?.(key);
-    saveDatasetTablePreferences();
-    renderDatasetTable();
-    reopenDatasetTableFilterPopoverAfterChange(key);
-  });
-  const allText = document.createElement("span");
-  allText.textContent = "All";
-  allRow.append(allCb, allText);
-  list.appendChild(allRow);
+  const renderOptions = () => {
+    list.replaceChildren();
+    const searchText = toText(search.value).toLocaleLowerCase();
+    const visibleOptions = searchText
+      ? options.filter((opt) => toText(opt.label).toLocaleLowerCase().includes(searchText))
+      : options;
 
-  for (const opt of options) {
-    const row = document.createElement("label");
-    row.className = "pi-table-filter-option";
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = selected.has(opt.key);
-    cb.addEventListener("change", () => {
-      if (cb.checked) selected.add(opt.key);
-      else selected.delete(opt.key);
-      if (isDatasetFilterAllValuesSelected(selected, options)) {
-        state.datasetTableExplicitAllFilterKeys?.add?.(key);
-      } else {
-        state.datasetTableExplicitAllFilterKeys?.delete?.(key);
-      }
-      saveDatasetTablePreferences();
-      renderDatasetTable();
-      reopenDatasetTableFilterPopoverAfterChange(key);
-    });
-    row.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      state.datasetTableExplicitAllFilterKeys?.delete?.(key);
+    const allRow = document.createElement("label");
+    allRow.className = "pi-table-filter-option";
+    const allCb = document.createElement("input");
+    allCb.type = "checkbox";
+    allCb.checked = selected.size === 0 || isDatasetFilterAllValuesSelected(selected, options);
+    allCb.addEventListener("change", () => {
       selected.clear();
-      for (const item of options) {
-        if (item.key !== opt.key) selected.add(item.key);
-      }
+      state.datasetTableExplicitAllFilterKeys?.add?.(key);
       saveDatasetTablePreferences();
       renderDatasetTable();
       reopenDatasetTableFilterPopoverAfterChange(key);
     });
-    const text = document.createElement("span");
-    text.textContent = opt.label;
-    row.append(cb, text);
-    list.appendChild(row);
-  }
+    const allText = document.createElement("span");
+    allText.textContent = "All";
+    allRow.append(allCb, allText);
+    list.appendChild(allRow);
 
-  if (!options.length) {
-    const empty = document.createElement("div");
-    empty.className = "pi-table-filter-empty";
-    empty.textContent = "No values";
-    list.appendChild(empty);
-  }
+    for (const opt of visibleOptions) {
+      const row = document.createElement("label");
+      row.className = "pi-table-filter-option";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selected.has(opt.key);
+      cb.addEventListener("change", () => {
+        if (cb.checked) selected.add(opt.key);
+        else selected.delete(opt.key);
+        if (isDatasetFilterAllValuesSelected(selected, options)) {
+          state.datasetTableExplicitAllFilterKeys?.add?.(key);
+        } else {
+          state.datasetTableExplicitAllFilterKeys?.delete?.(key);
+        }
+        saveDatasetTablePreferences();
+        renderDatasetTable();
+        reopenDatasetTableFilterPopoverAfterChange(key);
+      });
+      row.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        state.datasetTableExplicitAllFilterKeys?.delete?.(key);
+        selected.clear();
+        for (const item of options) {
+          if (item.key !== opt.key) selected.add(item.key);
+        }
+        saveDatasetTablePreferences();
+        renderDatasetTable();
+        reopenDatasetTableFilterPopoverAfterChange(key);
+      });
+      const text = document.createElement("span");
+      text.textContent = opt.label;
+      row.append(cb, text);
+      list.appendChild(row);
+    }
+
+    if (!visibleOptions.length) {
+      const empty = document.createElement("div");
+      empty.className = "pi-table-filter-empty";
+      empty.textContent = options.length ? "No matching values" : "No values";
+      list.appendChild(empty);
+    }
+  };
+  search.addEventListener("input", () => {
+    state.datasetTableFilterSearchText = search.value;
+    renderOptions();
+  });
+  renderOptions();
 
   state.datasetTableFilterColumn = key;
   state.datasetTableFilterAnchor = anchor || findDatasetFilterButton(key);
@@ -2859,6 +2965,9 @@ function openDatasetTableFilterPopover(key, anchor, popoverOptions = {}) {
   pop.classList.add("open");
   pop.setAttribute("aria-hidden", "false");
   positionDatasetTableFilterPopover();
+  if (state.datasetTableFilterOpenMode === "button") {
+    search.focus({ preventScroll: true });
+  }
 }
 
 function toggleDatasetTableFilterPopover(key, anchor) {

@@ -2316,6 +2316,23 @@ the cached dataset list is read.
   padding-bottom: 4px;
   border-bottom: 1px solid #eceff3;
 }
+.pi-table-filter-search {
+  width: 100%;
+  height: 30px;
+  box-sizing: border-box;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #2f3a4a;
+  font: inherit;
+  font-size: 12px;
+}
+.pi-table-filter-search:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.16);
+  border-color: #7da5f7;
+}
 .pi-table-filter-clear-all {
   width: 100%;
   height: 26px;
@@ -2340,8 +2357,9 @@ the cached dataset list is read.
   display: flex;
   flex-direction: column;
   gap: 3px;
-  overflow: auto;
-  max-height: 300px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 260px;
   padding-right: 2px;
 }
 .pi-table-filter-option {
@@ -2353,6 +2371,14 @@ the cached dataset list is read.
   padding: 2px;
   cursor: pointer;
   user-select: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+.pi-table-filter-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pi-table-filter-option input[type="checkbox"] {
   width: 13px;

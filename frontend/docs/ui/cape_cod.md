@@ -27,7 +27,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Opens either from its Home `Datasets & Methods` launch card as a standalone shell tab or inside Project Instance as a floating iframe method window at `/ui/method_pages/cape_cod/cape_cod.html`.
+- Opens from Project Instance as a floating iframe method window at `/ui/method_pages/cape_cod/cape_cod.html`. Home no longer offers a Cape Cod launch card. `tab_actions.openCapeCodTab` and the shell's `cape_cod` tab type remain only so a previously opened standalone Cape Cod tab still restores; the shell API does not expose an entry point that creates one.
 - Uses `ui/shared/tabbed_page/` for reusable tab chrome and pop-out behavior, and the shared Details/Notes/Audit tab presentation modules; tab order is `Details`, `Method`, `Ultimates`, `Ratios`, `Notes`, `Audit Log`, matching the ResQ Cape Cod editor.
 - Loads a saved method through `/cape-cod/load`, which reads only `methods/CC@<Name>.json` and the output sidecar; the response also carries the derived as-if `ultimates_triangle` for the Ultimates tab.
 - Saves through `/cape-cod/save`, which publishes `methods/CC@<Name>.json`, the native `datasets/<Name>@<OriginLength>.csv`, supported coarser CSV variants, and the output sidecar as one server-owned transaction with the sidecar written last.
