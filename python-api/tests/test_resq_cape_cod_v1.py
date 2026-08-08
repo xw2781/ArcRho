@@ -168,6 +168,23 @@ class _ManualCcMethod:
         return 1.25
 
 
+class _EmptyDfmCcMethod(_ManualCcMethod):
+    """DFM-factor variant whose referenced DFM vector holds no stored values.
+
+    ResQ still reports percentage developed from the DFM's cumulative dev
+    factors, so the effective prior ultimate is latest / PercentageDevelopedValues.
+    """
+
+    PercentageDevelopedType = 3
+
+    def __init__(self):
+        super().__init__()
+        self.PercentageDeveloped = _Vector("Prior Ultimate", [0, 0, 0], self._labels)
+
+    def PercentageDevelopedValues(self, index: int):
+        return [1.0, 0.75, 0.5][index - 1]
+
+
 def _expected_canonical_payload() -> dict:
     """The canonical payload the app-server save path would produce for D 53."""
 
@@ -299,6 +316,37 @@ class ResqCapeCodV1Tests(unittest.TestCase):
         self.assertEqual(method["latest_values"], [100, 90, 70])
         self.assertEqual(method["percentage_developed"], [1, 0.75, 0.5])
         self.assertEqual(payload["details_tab"]["statistic_decimal_places"], 3)
+
+    def test_dfm_factor_percentage_developed_types_import_as_latest_ultimates(self) -> None:
+        # ResQ codes 2 (pdCumDevFactors) and 3 (pdCumDevFactorsAdjusted) point the
+        # method at a DFM vector whose latest/ultimate ratio reproduces ResQ's
+        # percentage developed exactly, so both import as latest_ultimates.
+        baseline = extractors.export_cape_cod(_ManualCcMethod())
+        for code in (2, 3):
+            method = _ManualCcMethod()
+            method.PercentageDevelopedType = code
+            payload = extractors.export_cape_cod(method)
+            self.assertEqual(
+                payload["method_tab"]["prior_ultimate_mode"], "latest_ultimates"
+            )
+            self.assertEqual(payload, baseline)
+
+    def test_empty_dfm_vector_derives_prior_ultimates_from_percentage_developed(self) -> None:
+        # The stored vector is all zeros, but latest / PercentageDevelopedValues
+        # recovers the same effective prior ultimates the baseline reads directly.
+        baseline = extractors.export_cape_cod(_ManualCcMethod())
+        payload = extractors.export_cape_cod(_EmptyDfmCcMethod())
+        self.assertEqual(
+            payload["method_tab"]["prior_ultimate_values"], [100, 120, 140]
+        )
+        self.assertEqual(payload["method_tab"]["percentage_developed"], [1, 0.75, 0.5])
+        self.assertEqual(payload, baseline)
+
+    def test_unknown_percentage_developed_type_is_rejected(self) -> None:
+        method = _ManualCcMethod()
+        method.PercentageDevelopedType = 4
+        with self.assertRaises(ValueError):
+            extractors.export_cape_cod(method)
 
     def test_migration_method_and_sidecar_match_canonical_builders_exactly(self) -> None:
         cc_source = _CcMethod()

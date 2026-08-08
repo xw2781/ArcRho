@@ -1674,6 +1674,45 @@ def _cc_code_label(value: object, labels: tuple[str, ...], field_name: str) -> s
     return labels[code]
 
 
+# ResQ PercentageDevelopedType codes, indexed: 0 pdInternal (Latest/Ultimates),
+# 1 pdPattern, 2 pdCumDevFactors, 3 pdCumDevFactorsAdjusted. For both DFM-factor
+# codes the referenced vector stores per-origin DFM ultimates whose
+# latest/ultimate ratio equals ResQ's PercentageDevelopedValues exactly
+# (verified against the live book, max deviation 3e-16), so they import as
+# latest_ultimates and stay correct when the input datasets are refreshed.
+CC_PERCENTAGE_DEVELOPED_TYPE_MODES = (
+    CC_PRIOR_ULTIMATE_MODES[0],
+    CC_PRIOR_ULTIMATE_MODES[1],
+    CC_PRIOR_ULTIMATE_MODES[0],
+    CC_PRIOR_ULTIMATE_MODES[0],
+)
+CC_DFM_FACTOR_TYPE_CODES = (2, 3)
+
+
+def _apply_dfm_factor_prior_ultimates(method, latest_snapshot: dict, prior_snapshot: dict) -> None:
+    """Rewrite the prior-ultimate snapshot as latest / ResQ percentage developed.
+
+    For the DFM-factor codes ResQ derives percentage developed from the DFM's
+    cumulative development factors, not from the referenced vector's stored
+    values. latest / PercentageDevelopedValues is therefore the effective prior
+    ultimate: it equals the stored vector whenever the DFM output is populated,
+    and when that output is empty (ResQ then reports a flat 1.0 pattern) the
+    stored zeros would otherwise blank every origin of the imported method.
+    """
+    values = prior_snapshot["values"]
+    latest_values = latest_snapshot["values"]
+    for index in range(min(len(values), len(latest_values))):
+        latest_value = latest_values[index]
+        if not latest_value:
+            continue
+        try:
+            percentage = float(_cc_indexed_value(method, "PercentageDevelopedValues", index + 1))
+        except Exception:
+            continue
+        if percentage:
+            values[index] = float(latest_value) / percentage
+
+
 def export_cape_cod(method) -> dict:
     """Extract a complete, self-contained canonical Cape Cod v1 payload from ResQ."""
 
@@ -1694,11 +1733,14 @@ def export_cape_cod(method) -> dict:
     latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True, context="Cape Cod")
     exposure_snapshot = _bf_source_snapshot(exposure_source, origin_labels, latest=False, context="Cape Cod")
     prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False, context="Cape Cod")
+    pd_type_code = _safe_attr(method, "PercentageDevelopedType", 0)
     prior_ultimate_mode = _cc_code_label(
-        _safe_attr(method, "PercentageDevelopedType", 0),
-        CC_PRIOR_ULTIMATE_MODES,
+        pd_type_code,
+        CC_PERCENTAGE_DEVELOPED_TYPE_MODES,
         "PercentageDevelopedType",
     )
+    if int(pd_type_code) in CC_DFM_FACTOR_TYPE_CODES:
+        _apply_dfm_factor_prior_ultimates(method, latest_snapshot, prior_snapshot)
     scaling_type = _cc_code_label(
         _safe_attr(method, "ScalingType", 0),
         CC_SCALING_TYPES,
