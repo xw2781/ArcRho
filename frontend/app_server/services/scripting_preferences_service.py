@@ -143,7 +143,95 @@ def _normalize_local_project_preferences(raw: Any) -> Dict[str, Any]:
                 if len(entries) >= 10:
                     break
         out["shellActivityHistory"] = {"entries": entries}
+
+    home_shortcuts_source = None
+    for shortcuts_key in ("homeShortcuts", "home_shortcuts"):
+        if shortcuts_key in source:
+            home_shortcuts_source = source.get(shortcuts_key)
+            break
+    if isinstance(home_shortcuts_source, dict):
+        out["homeShortcuts"] = _normalize_home_shortcuts(home_shortcuts_source)
     return out
+
+
+# Home custom shortcut groups. The card `target` is the same descriptor the shell writes for
+# browsing history, so this layer validates structure and caps only and leaves target semantics to
+# `ui/shell/home_shortcuts.js`, which owns the document schema.
+HOME_SHORTCUTS_VERSION = 1
+MAX_HOME_SHORTCUT_GROUPS = 24
+MAX_HOME_SHORTCUT_CARDS_PER_GROUP = 48
+MAX_HOME_SHORTCUT_TITLE_LENGTH = 60
+
+
+def _clip_home_shortcut_title(value: Any, fallback: str) -> str:
+    text = str(value or "").strip()[:MAX_HOME_SHORTCUT_TITLE_LENGTH].strip()
+    return text or fallback
+
+
+def _normalize_home_shortcut_card(raw: Any, used_ids: Set[str]) -> Dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    target = raw.get("target")
+    if not isinstance(target, dict):
+        return None
+    tab_type = str(target.get("tabType") or target.get("tab_type") or "").strip().lower()
+    if not tab_type:
+        return None
+    card_id = str(raw.get("id") or "").strip()
+    if not card_id or card_id in used_ids:
+        return None
+    used_ids.add(card_id)
+    normalized_target = dict(target)
+    normalized_target["tabType"] = tab_type
+    normalized_target.pop("tab_type", None)
+    normalized_target.pop("ts", None)
+    title = str(normalized_target.get("title") or tab_type).strip()
+    normalized_target["title"] = title
+    return {
+        "id": card_id,
+        "label": _clip_home_shortcut_title(raw.get("label"), title or "Shortcut"),
+        "target": normalized_target,
+    }
+
+
+def _normalize_home_shortcut_group(raw: Any, used_ids: Set[str]) -> Dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    group_id = str(raw.get("id") or "").strip()
+    if not group_id or group_id in used_ids:
+        return None
+    used_ids.add(group_id)
+    cards: List[Dict[str, Any]] = []
+    cards_raw = raw.get("cards")
+    if isinstance(cards_raw, (list, tuple)):
+        for item in cards_raw:
+            card = _normalize_home_shortcut_card(item, used_ids)
+            if card is None:
+                continue
+            cards.append(card)
+            if len(cards) >= MAX_HOME_SHORTCUT_CARDS_PER_GROUP:
+                break
+    return {
+        "id": group_id,
+        "title": _clip_home_shortcut_title(raw.get("title"), "Untitled group"),
+        "cards": cards,
+    }
+
+
+def _normalize_home_shortcuts(raw: Any) -> Dict[str, Any]:
+    source = raw if isinstance(raw, dict) else {}
+    used_ids: Set[str] = set()
+    groups: List[Dict[str, Any]] = []
+    groups_raw = source.get("groups")
+    if isinstance(groups_raw, (list, tuple)):
+        for item in groups_raw:
+            group = _normalize_home_shortcut_group(item, used_ids)
+            if group is None:
+                continue
+            groups.append(group)
+            if len(groups) >= MAX_HOME_SHORTCUT_GROUPS:
+                break
+    return {"version": HOME_SHORTCUTS_VERSION, "groups": groups}
 
 
 def get_local_project_preferences() -> Dict[str, Any]:

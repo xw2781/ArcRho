@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Home now supports custom groups of shortcut cards that jump straight to the pages you use most.",
+  "details": [
+    "Create a group on Home, then add a card from any open tab, including a Project Instance, dataset, DFM, workflow, or My Workspace folder.",
+    "Clicking a card follows each page's own rule: a Project Instance card focuses the tab for that project, while a dataset or DFM card opens a new tab.",
+    "Rename, reorder, move between groups, and remove cards from a right-click or ... menu; General and Automation stay fixed.",
+    "Custom groups and cards are saved per Windows user and survive Clear Cache & Reload and app restarts."
+  ]
+}

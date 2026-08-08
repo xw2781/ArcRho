@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Keep Macro and Macro Library window sizes independent while the main app window is resized.",
+  "details": [
+    "Both windows now use the same shared floating-window frame for dragging, resizing, and dimension persistence."
+  ]
+}

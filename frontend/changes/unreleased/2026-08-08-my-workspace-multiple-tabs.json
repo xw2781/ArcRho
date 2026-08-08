@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "My Workspace can now be opened as several tabs at once instead of one per session.",
+  "details": [
+    "Each My Workspace tab keeps its own folder, so two folders can stay open side by side.",
+    "A shortcut or history entry for a folder focuses the tab already showing it rather than opening a duplicate.",
+    "Each tab's folder is restored after an app restart."
+  ]
+}

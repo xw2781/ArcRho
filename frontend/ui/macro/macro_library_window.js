@@ -1,4 +1,5 @@
 import { shell } from "../shell/shell_context.js?v=20260510a";
+import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
 
 const API_BASE = window.location.origin;
 const LIBRARY_WINDOW_FRAGMENT_URL = "/ui/macro/macro_library_window.html?v=20260731a";
@@ -23,6 +24,7 @@ let libraryWindowLoadPromise = null;
 let libraryMacros = [];
 let libraryUnavailableMessage = "";
 let selectedLibraryMacroId = "";
+let libraryWindowFrame = null;
 
 function refreshLibraryElements() {
   libraryWindow = document.getElementById("macroLibraryWindow");
@@ -237,215 +239,20 @@ async function installSelectedLibraryMacro() {
   }
 }
 
-function getLibraryWindowBounds() {
-  const margin = 8;
-  const styles = libraryWindow ? getComputedStyle(libraryWindow) : null;
-  const minWidth = Number.parseFloat(styles?.minWidth || "") || 360;
-  const minHeight = Number.parseFloat(styles?.minHeight || "") || 320;
-  const statusbarHeight = Number(shell.getStatusBarHeight?.() || 0);
-  return {
-    margin,
-    minWidth,
-    minHeight,
-    maxRight: Math.max(margin + minWidth, window.innerWidth - margin),
-    maxBottom: Math.max(margin + minHeight, window.innerHeight - statusbarHeight - margin),
-  };
-}
-
-function clampLibraryWindowRect(left, top, width, height) {
-  const bounds = getLibraryWindowBounds();
-  const maxWidth = Math.max(bounds.minWidth, bounds.maxRight - bounds.margin);
-  const maxHeight = Math.max(bounds.minHeight, bounds.maxBottom - bounds.margin);
-  const nextWidth = Math.min(Math.max(bounds.minWidth, Number(width) || bounds.minWidth), maxWidth);
-  const nextHeight = Math.min(Math.max(bounds.minHeight, Number(height) || bounds.minHeight), maxHeight);
-  const maxLeft = Math.max(bounds.margin, bounds.maxRight - nextWidth);
-  const maxTop = Math.max(bounds.margin, bounds.maxBottom - nextHeight);
-  return {
-    left: Math.min(Math.max(bounds.margin, Number(left) || bounds.margin), maxLeft),
-    top: Math.min(Math.max(bounds.margin, Number(top) || bounds.margin), maxTop),
-    width: nextWidth,
-    height: nextHeight,
-  };
-}
-
-function applyLibraryWindowRect(left, top, width, height) {
-  if (!libraryWindow) return;
-  const next = clampLibraryWindowRect(left, top, width, height);
-  libraryWindow.style.left = `${Math.round(next.left)}px`;
-  libraryWindow.style.top = `${Math.round(next.top)}px`;
-  libraryWindow.style.width = `${Math.round(next.width)}px`;
-  libraryWindow.style.height = `${Math.round(next.height)}px`;
-  libraryWindow.style.right = "auto";
-  libraryWindow.style.bottom = "auto";
-}
-
-function applyLibraryWindowPosition(left, top, width, height) {
-  // Drag moves the window only; size is fixed for the whole gesture so the
-  // open-animation scale transform can never leak into the inline size.
-  if (!libraryWindow) return;
-  const next = clampLibraryWindowRect(left, top, width, height);
-  libraryWindow.style.left = `${Math.round(next.left)}px`;
-  libraryWindow.style.top = `${Math.round(next.top)}px`;
-  libraryWindow.style.right = "auto";
-  libraryWindow.style.bottom = "auto";
-}
-
-function saveLibraryWindowPosition() {
-  if (!libraryWindow) return;
-  const rect = libraryWindow.getBoundingClientRect();
-  try {
-    localStorage.setItem(LIBRARY_WINDOW_POSITION_KEY, JSON.stringify({
-      left: Math.round(rect.left),
-      top: Math.round(rect.top),
-      width: libraryWindow.offsetWidth,
-      height: libraryWindow.offsetHeight,
-    }));
-  } catch {}
-}
-
-function restoreLibraryWindowPosition() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(LIBRARY_WINDOW_POSITION_KEY) || "null");
-    if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
-      applyLibraryWindowRect(saved.left, saved.top, saved.width, saved.height);
-    }
-  } catch {}
-}
-
-function clampOpenLibraryWindow() {
-  if (!libraryWindow?.classList.contains("open")) return;
-  const rect = libraryWindow.getBoundingClientRect();
-  applyLibraryWindowRect(rect.left, rect.top, libraryWindow.offsetWidth, libraryWindow.offsetHeight);
-  saveLibraryWindowPosition();
-}
-
-function initLibraryWindowDrag() {
-  if (!libraryWindow || !libraryHeader) return;
-  let dragState = null;
-
-  libraryHeader.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
-    if (event.target?.closest?.("button")) return;
-    const rect = libraryWindow.getBoundingClientRect();
-    dragState = {
-      pointerId: event.pointerId,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      width: libraryWindow.offsetWidth,
-      height: libraryWindow.offsetHeight,
-    };
-    try { libraryHeader.setPointerCapture(event.pointerId); } catch {}
-    event.preventDefault();
-  });
-
-  libraryHeader.addEventListener("pointermove", (event) => {
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    applyLibraryWindowPosition(
-      event.clientX - dragState.offsetX,
-      event.clientY - dragState.offsetY,
-      dragState.width,
-      dragState.height,
-    );
-  });
-
-  const stopDrag = (event) => {
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    try { libraryHeader.releasePointerCapture(event.pointerId); } catch {}
-    saveLibraryWindowPosition();
-    dragState = null;
-  };
-
-  libraryHeader.addEventListener("pointerup", stopDrag);
-  libraryHeader.addEventListener("pointercancel", stopDrag);
-  window.addEventListener("resize", clampOpenLibraryWindow);
-}
-
-function initLibraryWindowResize() {
-  if (!libraryWindow) return;
-  const handles = Array.from(libraryWindow.querySelectorAll(".macroResizeHandle"));
-  if (!handles.length) return;
-  let resizeState = null;
-
-  const startResize = (event) => {
-    if (event.button !== 0) return;
-    const handle = event.currentTarget;
-    const rect = libraryWindow.getBoundingClientRect();
-    resizeState = {
-      pointerId: event.pointerId,
-      edge: String(handle?.dataset?.resizeEdge || "se"),
-      startX: event.clientX,
-      startY: event.clientY,
-      left: rect.left,
-      top: rect.top,
-      width: libraryWindow.offsetWidth,
-      height: libraryWindow.offsetHeight,
-    };
-    try { handle.setPointerCapture(event.pointerId); } catch {}
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const moveResize = (event) => {
-    if (!resizeState || resizeState.pointerId !== event.pointerId) return;
-    const dx = event.clientX - resizeState.startX;
-    const dy = event.clientY - resizeState.startY;
-    const edge = resizeState.edge;
-    const bounds = getLibraryWindowBounds();
-    const clamp = (value, low, high) => Math.min(Math.max(value, low), Math.max(low, high));
-    // Anchor-preserving resize: the edge opposite the dragged one must never
-    // move, so each axis clamps against its own fixed anchor instead of the
-    // generic window clamp (which can shift the anchored edge at the limits).
-    let { left, top, width, height } = resizeState;
-    if (edge.includes("e")) {
-      width = clamp(resizeState.width + dx, bounds.minWidth, bounds.maxRight - resizeState.left);
-    }
-    if (edge.includes("s")) {
-      height = clamp(resizeState.height + dy, bounds.minHeight, bounds.maxBottom - resizeState.top);
-    }
-    if (edge.includes("w")) {
-      const right = resizeState.left + resizeState.width;
-      left = clamp(resizeState.left + dx, bounds.margin, right - bounds.minWidth);
-      width = right - left;
-    }
-    if (edge.includes("n")) {
-      const bottom = resizeState.top + resizeState.height;
-      top = clamp(resizeState.top + dy, bounds.margin, bottom - bounds.minHeight);
-      height = bottom - top;
-    }
-    if (!libraryWindow) return;
-    libraryWindow.style.left = `${Math.round(left)}px`;
-    libraryWindow.style.top = `${Math.round(top)}px`;
-    libraryWindow.style.width = `${Math.round(width)}px`;
-    libraryWindow.style.height = `${Math.round(height)}px`;
-    libraryWindow.style.right = "auto";
-    libraryWindow.style.bottom = "auto";
-  };
-
-  const stopResize = (event) => {
-    if (!resizeState || resizeState.pointerId !== event.pointerId) return;
-    try { event.currentTarget?.releasePointerCapture?.(event.pointerId); } catch {}
-    saveLibraryWindowPosition();
-    resizeState = null;
-  };
-
-  handles.forEach((handle) => {
-    handle.addEventListener("pointerdown", startResize);
-    handle.addEventListener("pointermove", moveResize);
-    handle.addEventListener("pointerup", stopResize);
-    handle.addEventListener("pointercancel", stopResize);
-  });
-}
-
 export async function initMacroLibraryWindow() {
   if (libraryWindowWired && refreshLibraryElements()) return true;
   if (!(await ensureLibraryWindowDom())) return false;
   if (libraryWindowWired) return true;
+  libraryWindowFrame = createMacroWindowFrame({
+    getWindow: () => libraryWindow,
+    getHeader: () => libraryHeader,
+    storageKey: LIBRARY_WINDOW_POSITION_KEY,
+  });
+  libraryWindowFrame.init();
   libraryWindowWired = true;
   libraryCloseBtn?.addEventListener("click", closeMacroLibraryWindow);
   libraryRefreshBtn?.addEventListener("click", () => loadLibraryMacros());
   libraryLoadBtn?.addEventListener("click", installSelectedLibraryMacro);
-  initLibraryWindowDrag();
-  initLibraryWindowResize();
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!libraryWindow?.classList.contains("open")) return;
@@ -459,7 +266,8 @@ export async function initMacroLibraryWindow() {
 
 export async function openMacroLibraryWindow() {
   if (!(await initMacroLibraryWindow())) return;
-  restoreLibraryWindowPosition();
+  libraryWindowFrame?.restorePosition();
+  libraryWindowFrame?.lockSize();
   libraryWindow?.classList.add("open");
   void loadLibraryMacros();
 }

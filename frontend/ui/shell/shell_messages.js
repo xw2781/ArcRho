@@ -423,6 +423,14 @@ export function initShellMessages() {
       if (path) shell.openFileExplorerTab?.({ path });
       return;
     }
+    if (msg.type === "arcrho:file-explorer-path-changed") {
+      const tab = shell.state.tabs.find(t => t.type === "file_explorer" && t.iframe?.contentWindow === e.source);
+      if (!tab) return;
+      tab.fileExplorerPath = String(msg.path || "").trim();
+      shell.saveState?.();
+      if (shell.state.activeId === tab.id) shell.recordActiveTabHistory?.(tab);
+      return;
+    }
     if (msg.type === "arcrho:open-project-instance") {
       const project = msg?.project && typeof msg.project === "object" ? msg.project : {};
       shell.openProjectInstanceTab?.(project);

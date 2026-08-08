@@ -34,6 +34,13 @@
   --ar-shadow-floating: 0 8px 20px rgba(0, 0, 0, 0.34);
   --ar-shadow-dialog: 0 18px 42px rgba(0, 0, 0, 0.52);
 
+  /* Frameless Home buttons: translucent so one value works on every card and panel surface. */
+  --ar-home-ghost-hover: rgba(255, 255, 255, 0.09);
+  --ar-home-ghost-active: rgba(255, 255, 255, 0.14);
+
+  /* Hovered Home card glow. Carries more blue than Light because the dark canvas swallows a tint. */
+  --ar-home-card-glow: 0 0 12px 2px rgba(82, 139, 255, 0.30);
+
   /* Shared live-DOM popout chrome. */
   --ar-popout-surface: var(--ar-color-surface);
   --ar-popout-border: var(--ar-color-border-strong);
@@ -359,7 +366,7 @@
   background-color: var(--ar-color-canvas);
 }
 
-:root[data-arcrho-theme="dark"] .tab {
+:root[data-arcrho-theme="dark"] :is(.tab, .plusTab) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface-muted);
   color: var(--ar-color-text-muted);
@@ -377,7 +384,7 @@
   box-shadow: var(--ar-shadow-subtle);
 }
 
-:root[data-arcrho-theme="dark"] :is(.tabMenu, .menuDropdown, .menuSubmenu, #tabCtxMenu) {
+:root[data-arcrho-theme="dark"] :is(.tabMenu, .menuDropdown, .menuSubmenu, .tabCtxMenu) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-raised);
   color: var(--ar-color-text);
@@ -452,7 +459,7 @@
 :root[data-arcrho-theme="dark"] .home .card.clickable:hover {
   border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-surface-raised);
-  box-shadow: var(--ar-shadow-floating);
+  box-shadow: var(--ar-shadow-floating), var(--ar-home-card-glow);
 }
 
 :root[data-arcrho-theme="dark"] .home .homeIconBox {
@@ -475,6 +482,8 @@
   #rootPathSettingsOverlay,
   #forceRebuildSettingsOverlay,
   #aboutOverlay,
+  #homeNameOverlay,
+  #homeAddCardOverlay,
   .uiAutomationOverlay
 ) {
   background-color: var(--ar-color-overlay);
@@ -486,6 +495,8 @@
   #rootPathSettingsBox,
   #forceRebuildSettingsBox,
   #aboutBox,
+  #homeNameBox,
+  #homeAddCardBox,
   .uiAutomationDialog
 ) {
   border-color: var(--ar-color-border-strong);
@@ -499,11 +510,36 @@
   #rootPathInput,
   .rootPathControl,
   #forceRebuildToggle,
+  #homeNameInput,
+  #homeAddCardLabel,
+  #homeAddCardGroup,
+  #homeAddCardList,
+  .homeAddCardChip,
   .uiAutomationDialogBody
 ) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-input);
   color: var(--ar-color-text);
+}
+
+/* Frameless Home buttons take their hover fill from --ar-home-ghost-hover; only the dashed
+   empty-group slot needs its edge lifted off the dark canvas. */
+:root[data-arcrho-theme="dark"] .homeShortcutAddCard {
+  border-color: var(--ar-color-border-strong);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .homeShortcutAddCard:hover {
+  border-color: var(--ar-color-border-focus);
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] .homeAddCardOption:hover {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .homeAddCardOptionTitle {
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.appConfirmBtn, #rootPathBrowseBtn, .uiAutomationDialogBtn) {
@@ -1818,6 +1854,10 @@
 
 :root[data-arcrho-theme="dark"] .pi-table tbody tr[data-record-key].selected td {
   background-color: var(--ar-color-accent-soft);
+}
+
+:root[data-arcrho-theme="dark"] .pi-status-soft-fill {
+  fill: #000000;
 }
 
 :root[data-arcrho-theme="dark"] :is(.pi-loading-overlay, .pi-delete-confirm-overlay, .pi-message-overlay) {

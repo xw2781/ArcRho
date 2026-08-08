@@ -5,12 +5,16 @@ import {
   normalizeBrowsingHistoryEntry,
 } from "/ui/shell/browsing_history.js";
 import {
+  normalizeFolderKey,
   normalizeProjectInstanceState,
   normalizeShellActivityEntry,
   pushShellActivityHistoryEntry,
 } from "/ui/shell/shell_activity_history.js";
 import { ALLOWED_DFM_TABS } from "/ui/method_pages/dfm/dfm_tab_config.js";
 
+// The single list of tab types that can be turned back into a tab from a saved descriptor.
+// Browsing History and Home shortcut cards both reach it through `buildShellActivityEntry`, so
+// neither can offer a target the shell cannot actually reopen.
 const RESTORABLE_ACTIVITY_TYPES = new Set([
   "dataset",
   "dfm",
@@ -20,12 +24,13 @@ const RESTORABLE_ACTIVITY_TYPES = new Set([
   "scripting",
   "agent_guide",
   "file_explorer",
+  "browsing_history",
 ]);
 const TASK_DESIGNER_TYPE = "task_designer";
 let activeHistorySaveTimer = 0;
 let pendingActiveHistoryEntry = null;
 
-function buildShellActivityEntry(tab) {
+export function buildShellActivityEntry(tab) {
   if (!tab || !RESTORABLE_ACTIVITY_TYPES.has(tab.type)) return null;
   const entry = {
     tabType: tab.type,
@@ -45,6 +50,8 @@ function buildShellActivityEntry(tab) {
     entry.projectSettingsRibbon = String(tab.projectSettingsRibbon || "summary").trim().toLowerCase();
   } else if (tab.type === "scripting") {
     entry.path = String(tab.scPath || tab.scOpenPath || "").trim() || undefined;
+  } else if (tab.type === "file_explorer") {
+    entry.path = String(tab.fileExplorerPath || "").trim() || undefined;
   }
   return normalizeShellActivityEntry(entry);
 }
@@ -398,7 +405,8 @@ export function openShellActivityHistoryEntry(entry) {
   }
   if (normalized.tabType === "workflow") return openWorkflowTab();
   if (normalized.tabType === "agent_guide") return openAgentGuideTab();
-  if (normalized.tabType === "file_explorer") return openFileExplorerTab();
+  if (normalized.tabType === "browsing_history") return openBrowsingHistoryTab();
+  if (normalized.tabType === "file_explorer") return openFileExplorerTab({ path: normalized.path || "" });
   return null;
 }
 
@@ -406,23 +414,26 @@ export function openBrowsingHistoryTab() {
   const existing = shell.state.tabs.find(t => t.type === "browsing_history");
   if (existing) {
     setActive(existing.id);
-    return;
+    return existing;
   }
   const id = `bh_${shell.state.nextId++}`;
-  shell.state.tabs.push({ id, title: "Browsing History", type: "browsing_history", iframe: null, layout: "docked" });
+  const tab = { id, title: "Browsing History", type: "browsing_history", iframe: null, layout: "docked" };
+  shell.state.tabs.push(tab);
   setDockedActive(id);
   shell.render?.();
   shell.saveState?.();
+  return tab;
 }
 
+// My Workspace is multi-instance and folder-keyed: a request for a specific folder focuses the tab
+// already showing that folder, and anything else opens a new instance. `forceNew` skips the match.
 export function openFileExplorerTab(options = {}) {
   const path = String(options.path || "").trim();
-  const existing = shell.state.tabs.find(t => t.type === "file_explorer");
+  const folderKey = normalizeFolderKey(path);
+  const existing = !options.forceNew && folderKey
+    ? shell.state.tabs.find(t => t.type === "file_explorer" && normalizeFolderKey(t.fileExplorerPath) === folderKey)
+    : null;
   if (existing) {
-    if (path) {
-      existing.fileExplorerPath = path;
-      try { existing.iframe?.contentWindow?.postMessage({ type: "arcrho:file-explorer-open-path", path }, "*"); } catch {}
-    }
     setActive(existing.id);
     return existing;
   }

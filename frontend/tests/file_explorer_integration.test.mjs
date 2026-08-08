@@ -18,15 +18,16 @@ test("Home launches File Explorer as a standard restorable ArcRho tab", async ()
   assert.doesNotMatch(view, /id="homeFoldersNav"/u);
   assert.doesNotMatch(view, /id="homeFoldersPage"/u);
   assert.match(actions, /export function openFileExplorerTab\(options = \{\}\)/u);
-  assert.match(actions, /find\(t => t\.type === "file_explorer"\)/u);
   assert.match(actions, /title:\s*"My Workspace"/u);
   assert.match(actions, /type:\s*"file_explorer"/u);
-  assert.match(actions, /"file_explorer",\s*\]\)/u);
+  assert.match(actions, /const RESTORABLE_ACTIVITY_TYPES = new Set\(\[[^\]]*"file_explorer",/su);
   assert.match(host, /\/ui\/file_explorer\/file_explorer\.html/u);
   assert.match(content, /type:\s*"arcrho:file-explorer-visibility"/u);
   assert.match(content, /tab\.type !== "file_explorer"/u);
   assert.match(shell, /openFileExplorerTab/u);
-  assert.match(history, /\["workflow", "agent_guide", "file_explorer"\]/u);
+  // file_explorer is no longer a payload-free descriptor type; it carries the folder it was opened at.
+  assert.match(history, /tabType === "file_explorer"\) \{\s*const path = toText\(raw\.path \|\| raw\.fileExplorerPath\);/u);
+  assert.match(history, /\["workflow", "agent_guide", "browsing_history"\]/u);
 });
 
 test("File Explorer renders Favorites beside a persistent details-style file list", async () => {
@@ -73,6 +74,31 @@ test("File Explorer renders Favorites beside a persistent details-style file lis
   assert.match(explorer, /folderForPath\(state\.currentPath\)\?\.nickname \|\| defaultHomeFolderNickname\(state\.currentPath\)/u);
   assert.doesNotMatch(explorer, /scrollIntoView/u);
   assert.doesNotMatch(explorer, /\(xlsx\|xlsm\|xlsb\|xls\)/u);
+});
+
+test("My Workspace is multi-instance and folder-keyed", async () => {
+  const actions = await read("../ui/shell/tab_actions.js");
+  const state = await read("../ui/shell/shell_state.js");
+  const messages = await read("../ui/shell/shell_messages.js");
+  const explorer = await read("../ui/file_explorer/file_explorer.js");
+  const history = await read("../ui/shell/shell_activity_history.js");
+
+  // A request without a folder always creates a new instance; a folder request focuses the tab
+  // already showing that folder.
+  assert.match(actions, /const existing = !options\.forceNew && folderKey/u);
+  assert.match(actions, /t\.type === "file_explorer" && normalizeFolderKey\(t\.fileExplorerPath\) === folderKey/u);
+  assert.match(history, /export function normalizeFolderKey/u);
+
+  // Each instance's folder survives a restart and is carried in its restore descriptor.
+  assert.match(state, /fileExplorerPath: t\.type === "file_explorer"/u);
+  assert.equal(state.match(/fileExplorerPath: t\.type === "file_explorer"/gu)?.length, 2, "persisted on both save and load");
+  assert.match(actions, /entry\.path = String\(tab\.fileExplorerPath \|\| ""\)/u);
+  assert.match(actions, /openFileExplorerTab\(\{ path: normalized\.path \|\| "" \}\)/u);
+
+  // The page reports navigation so the shell can keep each tab's folder current.
+  assert.match(explorer, /type: "arcrho:file-explorer-path-changed", path: state\.currentPath/u);
+  assert.match(messages, /msg\.type === "arcrho:file-explorer-path-changed"/u);
+  assert.match(messages, /t\.type === "file_explorer" && t\.iframe\?\.contentWindow === e\.source/u);
 });
 
 test("Electron persists favorite folders and enriches listings only when requested", async () => {

@@ -7,11 +7,12 @@ Standard ArcRho tab for browsing local files with a customizable, resizable Favo
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.file_explorer.entry_points -->
-- `ui/file_explorer/file_explorer.html`: external scripts `/ui/file_explorer/file_explorer.js?v=20260726d`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/file_explorer/file_explorer.html`: external scripts `/ui/file_explorer/file_explorer.js?v=20260808a`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
 
 Detected `arcrho:*` message types in key JS files:
 - `arcrho:browsing-history-updated`
 - `arcrho:close-active-tab`
+- `arcrho:file-explorer-path-changed`
 - `arcrho:hotkey`
 - `arcrho:status`
 - `arcrho:update-active-tab-title`

@@ -10,6 +10,15 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// Canonical comparison key for a Windows folder path. Shared by the activity-history dedupe key
+// and by folder-keyed My Workspace tab matching so both agree on when two folders are the same.
+export function normalizeFolderKey(pathLike) {
+  return toText(pathLike)
+    .replace(/\//g, "\\")
+    .replace(/\\+$/, "")
+    .toLowerCase();
+}
+
 function normalizeRect(raw) {
   if (!raw || typeof raw !== "object") return null;
   const x = toNumber(raw.x, NaN);
@@ -123,7 +132,10 @@ export function normalizeShellActivityEntry(raw) {
   } else if (tabType === "scripting") {
     const path = toText(raw.path || raw.scPath || raw.notebookPath);
     if (path) entry.path = path;
-  } else if (!["workflow", "agent_guide", "file_explorer"].includes(tabType)) {
+  } else if (tabType === "file_explorer") {
+    const path = toText(raw.path || raw.fileExplorerPath);
+    if (path) entry.path = path;
+  } else if (!["workflow", "agent_guide", "browsing_history"].includes(tabType)) {
     return null;
   }
 
@@ -144,6 +156,7 @@ function getActivityKey(entry) {
     return `project_instance|${toText(entry.projectName).toLowerCase()}`;
   }
   if (entry.tabType === "scripting" && entry.path) return `scripting|${entry.path.toLowerCase()}`;
+  if (entry.tabType === "file_explorer") return `file_explorer|${normalizeFolderKey(entry.path)}`;
   return `${entry.tabType}|${entry.title.toLowerCase()}`;
 }
 
@@ -227,6 +240,6 @@ export function buildRestoreSummary(entry) {
     const d = entry.dfmInputs || {};
     return [d.project, d.reservingClass, d.methodName || d.outputType].map(toText).filter(Boolean).join(" | ");
   }
-  if (entry.tabType === "scripting") return toText(entry.path);
+  if (entry.tabType === "scripting" || entry.tabType === "file_explorer") return toText(entry.path);
   return "";
 }

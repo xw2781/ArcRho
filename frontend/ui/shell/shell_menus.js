@@ -1,6 +1,7 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260620q";
-import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260731d";
+import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260808a";
+import { initUpdateProgressBridge } from "./update_progress.js?v=20260808a";
 
 const fileMenuBtn = document.querySelector('.menu[data-menu="file"]');
 const fileMenuDropdown = document.getElementById("fileMenuDropdown");
@@ -396,6 +397,7 @@ export function initShellMenus() {
     void refreshAboutVersion();
   });
   aboutCheckUpdatesBtn?.addEventListener("click", checkForUpdatesFromAbout);
+  initUpdateProgressBridge();
   aboutOverlay?.addEventListener("click", (e) => { if (e.target === aboutOverlay) closeAboutDialog(); });
   menuBarEl?.addEventListener("click", (e) => {
     const btn = e.target?.closest?.(".menu[data-menu]");

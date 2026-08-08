@@ -36,6 +36,9 @@
   --ar-shadow-floating: 0 8px 20px rgba(15, 23, 42, 0.08);
   --ar-shadow-dialog: 0 18px 42px rgba(15, 23, 42, 0.24);
 
+  /* Hovered Home card glow, in ArcRho blue. */
+  --ar-home-card-glow: 0 0 10px 2px rgba(43, 109, 246, 0.18);
+
   /* Shared live-DOM popout chrome (exact current light values). */
   --ar-popout-surface: #ffffff;
   --ar-popout-border: #aebbd0;

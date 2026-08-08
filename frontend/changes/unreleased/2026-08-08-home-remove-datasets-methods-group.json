@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Removed the Datasets & Methods group from the Home launch page.",
+  "details": [
+    "Home now shows only the General and Automation groups.",
+    "Datasets, DFM, Bornhuetter Ferguson, Cape Cod, and Result Selection are opened from Project Instance."
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Refined Home custom groups: a separator above the first custom group, an always-visible add-card tile, frameless group and New group buttons, and press-and-hold card reordering.",
+  "details": [
+    "Custom groups now sit below the same quiet divider that separates General and Automation.",
+    "Every custom group ends with a dashed Add card tile, so pinning a tab no longer depends on the hover-only group menu.",
+    "Long card names ellipsize instead of running under the card options button.",
+    "Hovering a Home card now adds a soft blue glow to the existing lift, in both Light and Dark.",
+    "Hold a custom card for one second - a progress bar fills while you hold - then drag it to reorder the group; the other cards glide to their previewed slots and Escape cancels the drag.",
+    "A held card can also be dragged into another custom group, dropping between two cards or after the last one; the target group is tinted and a group that is already full is never offered.",
+    "Home scrolls vertically again when its groups run past the window; content below the fold was previously clipped with no scrollbar.",
+    "The card menu is down to Rename card and a red Delete - Move left, Move right, and Move to <group> are all done by dragging now.",
+    "The window titlebar no longer changes height when switching to or from Home; the shell chrome is now a fixed height whatever the active page holds."
+  ]
+}
