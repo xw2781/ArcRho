@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Development launches now show the source tree's own version instead of a stale release-feed version, and a single launcher replaces the three start scripts.",
+  "details": [
+    "The old no-console launcher pinned the splash and About version to the newest installer in E:\\ArcRho Server\\releases\\installers, which stopped being updated when releases moved to GitHub, so dev launches were stuck reporting 1.2.5.",
+    "launch_arcrho_dev_mode.bat replaces start_electron.bat, start_electron_no_python_window.bat, and start_arcode.bat; pass arcode to launch Arcode.",
+    "The Electron host no longer falls back to ARCRHO_DISPLAY_VERSION when running in Arcode mode."
+  ]
+}

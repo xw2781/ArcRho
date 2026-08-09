@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "A development launch no longer stalls on the splash screen waiting for a server that cannot start.",
+  "details": [
+    "Running the app server under pythonw.exe left uvicorn without a stderr stream, so it exited with code 1 before binding its port.",
+    "Only the supervisor now runs under pythonw; the app server keeps the console interpreter and stays windowless through Electron's hidden spawn.",
+    "The supervisor also redirects its child to the null device when its own streams are absent."
+  ]
+}

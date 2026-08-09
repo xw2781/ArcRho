@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Closing a development launch now exits for good instead of being replaced by a new instance.",
+  "details": [
+    "The dev Electron supervisor relaunched the app on any exit and only stopped on a .shutdown_electron flag that nothing ever wrote, so closing the window immediately opened a fresh one.",
+    "It now relaunches only after an explicit .restart_electron request; File > Restart is unaffected."
+  ]
+}

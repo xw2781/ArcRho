@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "internal",
+  "summary": "A development launch on Windows 10 now shows a blue window frame, so it is unmistakable beside an installed release.",
+  "details": [
+    "The frame reuses the existing Windows 10 shell border and only changes its color.",
+    "Installed releases keep the standard frame, and Windows 11 is unchanged because its frame belongs to the operating system."
+  ]
+}

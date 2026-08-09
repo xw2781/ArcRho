@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260620m"/>
   <link rel="stylesheet" href="/ui/macro/macro_window.css?v=20260731a"/>
-  <link rel="stylesheet" href="/ui/shell/shell.css?v=20260809d"/>
+  <link rel="stylesheet" href="/ui/shell/shell.css?v=20260809f"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260808b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260809c"/>
 </head>
@@ -317,7 +317,7 @@
       </div>
       <div id="aboutBody">
         <div id="aboutAppName">ArcRho</div>
-        <div id="aboutVersion">Version 1.2.7</div>
+        <div id="aboutVersion">Version 1.2.8</div>
         <div id="aboutDesc">Actuarial Data & Analytics System</div>
         <div id="aboutActions">
           <button id="aboutCheckUpdatesBtn" type="button">Check for Updates</button>
@@ -336,6 +336,14 @@
         const isWin11 = await window.ADAHost.isWindows11();
         document.body.classList.toggle('win11-frame', !!isWin11);
         document.body.classList.toggle('win10-borders', !isWin11);
+      }
+      if (window.ADAHost?.getAppInfo) {
+        try {
+          const info = await window.ADAHost.getAppInfo();
+          document.body.classList.toggle('dev-frame', info?.isPackaged === false);
+        } catch {
+          // A host that cannot report its packaging keeps the installed-release frame.
+        }
       }
     })();
   </script>
