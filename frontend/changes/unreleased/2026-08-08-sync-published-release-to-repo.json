@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Added a repository sync step so a published release records its version, notes, and consumed fragments in the repository.",
+  "details": [
+    "The build runs from a disposable workspace, so its version bump, generated release notes, and fragment archiving were discarded every release; the repository sat at 1.2.0 while 1.2.5 shipped and 493 fragments never drained from changes/unreleased.",
+    "build/sync_published_release.py verifies the release tag through git ls-remote, writes the version into package.json, package-lock.json, index.html, and splash.html, then archives the fragments that release consumed.",
+    "Consumed fragments are taken from the fragment list in the build ZIP, so work added after the ZIP was cut stays unreleased for the next version.",
+    "release_notes.py now exposes release_fragments so a release can consume an explicit fragment set, and version_manager.py exposes update_version_metadata as the single writer of version-carrying files."
+  ]
+}

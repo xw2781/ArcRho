@@ -36,10 +36,17 @@ if ($ReleaseNotesPath) {
     $ReleaseNotes = Get-Content -LiteralPath $resolvedReleaseNotes.Path -Raw
 }
 
+# Hash the local source. Hashing the published copy instead re-reads the whole installer
+# across the network in 4 KB chunks, which cost 17+ minutes per publish on a 362 MB build.
+$hash = (Get-FileHash -LiteralPath $installerFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+
 $targetInstaller = Join-Path $FeedDir $installerFile.Name
 Copy-Item -LiteralPath $installerFile.FullName -Destination $targetInstaller -Force
+$publishedLength = (Get-Item -LiteralPath $targetInstaller).Length
+if ($publishedLength -ne $installerFile.Length) {
+    throw "Published installer is $publishedLength bytes but the source is $($installerFile.Length) bytes: $targetInstaller"
+}
 
-$hash = (Get-FileHash -LiteralPath $targetInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
 $hashFile = "$targetInstaller.sha256"
 "$hash  $($installerFile.Name)" | Set-Content -LiteralPath $hashFile -Encoding ASCII
 

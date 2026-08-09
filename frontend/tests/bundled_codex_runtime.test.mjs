@@ -165,7 +165,7 @@ test("the one-click build smokes source and packaged runtimes before publication
   const packagedSmokeAt = wrapper.indexOf(
     'call :validate_bundled_codex_runtime "%PACKAGED_NODE_HOME%" "%APP_ROOT%"',
   );
-  const publishAt = wrapper.indexOf("Step 6: Publishing installer update feed");
+  const publishAt = wrapper.indexOf("Step 6: Publishing GitHub Release");
   const cleanupAt = wrapper.indexOf('rmdir /s /q "dist\\win-unpacked"');
 
   assert.ok(sourceSmokeAt >= 0 && sourceSmokeAt < electronBuildAt);
@@ -174,5 +174,68 @@ test("the one-click build smokes source and packaged runtimes before publication
   assert.match(
     wrapper,
     /call "%~1\\node\.exe" "%APP_ROOT%\\build\\validate_bundled_codex_runtime\.js"/u,
+  );
+});
+
+test("the one-click build publishes only to GitHub Releases", () => {
+  const wrapper = readText("../build/build_app_via_local_workspace.bat");
+  assert.ok(
+    !wrapper.includes("publish_update_feed.ps1"),
+    "the build must not publish the installer to the network update feed",
+  );
+  assert.ok(
+    !wrapper.includes("RELEASE_FEED_DIR") && !wrapper.includes("UPDATE_FEED_DIR"),
+    "the retired network feed directory must not survive in the build wrapper",
+  );
+  assert.match(wrapper, /publish_github_release\.ps1/u);
+  assert.match(wrapper, /version_manager\.py --github-release-product "%PRODUCT_NAME%"/u);
+});
+
+test("a published release can be synced back into the repository", () => {
+  const sync = readText("../build/sync_published_release.py");
+  assert.match(sync, /git", "ls-remote"/u, "the tag check must not require the gh CLI");
+  assert.match(sync, /version_manager\.update_version_metadata/u);
+  assert.match(sync, /release_notes\.release_fragments/u);
+  assert.match(sync, /read_zip_fragment_names/u);
+
+  const versionManager = readText("../build/version_manager.py");
+  assert.match(versionManager, /def update_version_metadata/u);
+  assert.ok(
+    !/^\s*sync_package_lock\(package_lock_path/mu.test(versionManager),
+    "main must write version metadata through update_version_metadata, not inline",
+  );
+
+  const notes = readText("../build/release_notes.py");
+  assert.match(notes, /def release_fragments/u);
+
+  const wrapper = readText("../build/build_app_via_local_workspace.bat");
+  assert.match(wrapper, /sync_published_release\.bat %APP_VERSION%/u);
+});
+
+test("release tag naming and the GitHub repository have one owner", () => {
+  const channel = JSON.parse(readText("../build/release_channel.json"));
+  assert.equal(typeof channel.githubRepo, "string");
+  assert.ok(channel.githubRepo.includes("/"), "githubRepo must be owner/name");
+  assert.ok(channel.tagFormat.includes("{product}") && channel.tagFormat.includes("{version}"));
+
+  const publishScript = readText("../build/publish_github_release.ps1");
+  assert.match(publishScript, /release_channel\.json/u);
+  assert.ok(
+    !/\$tag = "\$ProductName-v\$version"/u.test(publishScript),
+    "the release tag must come from the release channel definition, not a literal",
+  );
+  assert.match(publishScript, /\$releaseExists = \(\$LASTEXITCODE -eq 0\)/u);
+  assert.match(publishScript, /\$GITHUB_RELEASE_BODY_LIMIT = 125000/u);
+  assert.ok(
+    publishScript.indexOf("$notesText = \"$notesText`n`nmandatory: true\"") >
+      publishScript.indexOf("$notesText.Length -gt $GITHUB_RELEASE_BODY_LIMIT"),
+    "the mandatory marker must be appended after truncation so it survives a long release",
+  );
+
+  const versionManager = readText("../build/version_manager.py");
+  assert.match(versionManager, /release_channel\.json/u);
+  assert.ok(
+    !versionManager.includes("collect_release_feed_versions"),
+    "the retired installer feed scan must be gone",
   );
 });

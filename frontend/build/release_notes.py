@@ -220,9 +220,13 @@ def cmd_check() -> int:
     return 0
 
 
-def cmd_release(version: str, path_file: str | None = None) -> int:
+def release_fragments(version: str, fragments: list[Fragment]) -> Path:
+    """Write the release notes for one version and archive the fragments it consumed.
+
+    Callers pass the fragment list explicitly so a release can consume the exact set
+    that was built, rather than whatever happens to be unreleased at the time.
+    """
     parse_version(version)
-    fragments = load_unreleased_fragments()
     released_on = date.today().isoformat()
 
     release_path = RELEASES_DIR / f"{version}.md"
@@ -242,6 +246,11 @@ def cmd_release(version: str, path_file: str | None = None) -> int:
         render_release_index(release_files),
         encoding="utf-8",
     )
+    return release_path
+
+
+def cmd_release(version: str, path_file: str | None = None) -> int:
+    release_path = release_fragments(version, load_unreleased_fragments())
 
     release_note_path = str(release_path.relative_to(REPO_ROOT).as_posix())
     if path_file:

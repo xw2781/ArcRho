@@ -13,7 +13,7 @@ Source PC repository
     -> build_app_one_click or build_arcode_one_click request and response
     -> product-specific build PC local Documents workspace
     -> Python + Electron + NSIS build
-    -> installer, published GitHub Release, and backup network feed copy
+    -> installer and published GitHub Release
 ```
 
 ## Roles and Default Paths
@@ -29,8 +29,8 @@ Source PC repository
 | Local build workspace | `%USERPROFILE%\Documents\build_arcrho_app` on the build PC | Disposable local extraction and build directory. |
 | Arcode local build workspace | `%USERPROFILE%\Documents\build_arcode_app` on the build PC | Separate disposable extraction and build directory for Arcode. |
 | Local installer output | `%USERPROFILE%\Documents\build_arcrho_app\frontend\dist` | Installer produced by the local build. |
-| Published installer feed | `E:\ArcRho Server\releases\installers` on the build PC | Installer, checksum, and `latest.json` published after a successful build. |
-| Published Arcode installer feed | `E:\Arcode Server\releases\arcode-installers` on the build PC | Arcode installer, checksum, and `latest.json` published after a successful build. |
+| Published release | GitHub Releases in the repository named by `frontend\build\release_channel.json` | Installer and checksum published after a successful build. This is the only publication target and the only durable record of what has shipped. |
+| Retired installer feed | `E:\ArcRho Server\releases\installers` and `E:\Arcode Server\releases\arcode-installers` | No longer written by the build. Kept for clients installed before the GitHub update checker shipped; publish to it manually with `build\publish_update_feed.ps1` when a migration build is needed. |
 | Shared build logs | `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>` | Timestamped ZIP-creation and application-build logs from both PCs. |
 
 This workflow assumes that `E:` on the build PC is permanently mapped to `E:` on the source PC. The default ZIP and wrapper paths already use that mapping, so `ARCRHO_LOCAL_BUILD_SOURCE_ZIP` does not need to be set.
@@ -44,8 +44,8 @@ Before starting a full build, confirm that the build PC has:
 - Permission to install missing Python build dependencies, or all required dependencies already installed.
 - Permission to execute files from the local workspace, including portable Node, `app-builder.exe`, PyInstaller, and NSIS.
 - Read access to the source-PC share and write access to the local workspace.
-- Write access through the mapped `E:` drive to `E:\ArcRho Server\releases\installers` and `E:\ArcRho Server\packages`, or an appropriate `PYTHON_API_PACKAGE_DIR` override for the Python package destination.
-- The `gh` CLI installed and authenticated (`gh auth login`, or a `GH_TOKEN` environment variable) with permission to create releases on the target GitHub repository — required for the GitHub Release publish step, which is what the packaged app's update checker actually reads.
+- Write access through the mapped `E:` drive to `E:\ArcRho Server\packages`, or an appropriate `PYTHON_API_PACKAGE_DIR` override for the Python package destination.
+- The `gh` CLI installed and authenticated (`gh auth login`, or a `GH_TOKEN` environment variable) with permission to create releases on the target GitHub repository. This is now required twice: the version step reads the published release history to decide the next version, and the publish step creates the release the packaged app's update checker reads. An unauthenticated `gh` fails the build at Step 1 rather than after a full package.
 - Enough local disk space for the copied ZIP, its expanded contents, PyInstaller work files, Electron output, and the installer.
 
 The wrapper deletes the entire local build workspace before each extraction. Never set `ARCRHO_LOCAL_BUILD_ROOT` to a directory containing files that must be preserved.
@@ -178,7 +178,7 @@ An explicit Arcode version can be supplied in the same way:
 call "E:\XWSpace\Build ArcRho App\build_arcode_one_click.bat" 1.2.0
 ```
 
-The Arcode launcher sets the common local-workspace wrapper to Arcode mode. It installs missing package-mapped build dependencies into the selected Python 3.10 interpreter, generates Windows icons from `icons\icon_wing_geo_v8.svg`, builds `arcode_server`, packages with `electron-builder.arcode.json`, publishes `Arcode-Setup-<version>.exe` to a GitHub Release (the update checker's source) and its update manifest to the backup `E:\Arcode Server\releases\arcode-installers` feed, and opens the published installer. The Arcode NSIS include observes native file-copy progress out of process so its percentage continues updating while NSIS installs files. It does not publish the external Python API wheel; that remains owned by the ArcRho application release workflow.
+The Arcode launcher sets the common local-workspace wrapper to Arcode mode. It installs missing package-mapped build dependencies into the selected Python 3.10 interpreter, generates Windows icons from `icons\icon_wing_geo_v8.svg`, builds `arcode_server`, packages with `electron-builder.arcode.json`, publishes `Arcode-Setup-<version>.exe` to a GitHub Release (the update checker's source), and opens the locally built installer. The Arcode NSIS include observes native file-copy progress out of process so its percentage continues updating while NSIS installs files. It does not publish the external Python API wheel; that remains owned by the ArcRho application release workflow.
 
 The launcher and its delegated local-workspace wrapper perform these steps:
 
@@ -188,7 +188,7 @@ The launcher and its delegated local-workspace wrapper perform these steps:
 4. Copies and extracts the ZIP locally while rejecting unsafe paths and skipping repository/agent metadata.
 5. Builds the Python API wheel, PyInstaller app server, Electron application, and NSIS installer.
 6. Verifies that the `win-unpacked` application still contains the portable Node, npm, Codex JavaScript entry point, and native Codex executable required by ArcBot.
-7. Publishes release artifacts — a GitHub Release with the installer and checksum (the update checker's source), plus a backup copy in the network feed — records the consumed readiness token after success, and opens the installer named by `E:\ArcRho Server\releases\installers\latest.json`.
+7. Publishes a GitHub Release with the installer and checksum (the update checker's source), records the consumed readiness token after success, and opens the locally built installer from the workspace `dist` folder.
 
 Do not run build tooling directly from the mapped repository. The one-click workflow ensures that dependency execution, PyInstaller, Electron Builder, and NSIS all run from a local filesystem on the build PC.
 
@@ -197,11 +197,10 @@ Do not run build tooling directly from the mapped repository. The one-click work
 A successful build reports exit code `0` and produces:
 
 - `%ARCRHO_LOCAL_BUILD_ROOT%\frontend\dist\ArcRho-Setup-<version>.exe`
-- A GitHub Release tagged `ArcRho-v<version>` with `ArcRho-Setup-<version>.exe` and `ArcRho-Setup-<version>.exe.sha256` attached — this is what the packaged app's update checker reads.
-- `E:\ArcRho Server\releases\installers\ArcRho-Setup-<version>.exe`
-- `E:\ArcRho Server\releases\installers\ArcRho-Setup-<version>.exe.sha256`
-- `E:\ArcRho Server\releases\installers\latest.json`
+- A GitHub Release tagged `ArcRho-v<version>` with `ArcRho-Setup-<version>.exe` and `ArcRho-Setup-<version>.exe.sha256` attached — this is what the packaged app's update checker reads, and the history the next build's version number is derived from.
 - `E:\ArcRho Server\packages\arcrho_api-latest.whl`, unless `PYTHON_API_PACKAGE_DIR` overrides that destination.
+
+The tag name and target repository come from `frontend\build\release_channel.json`, which both `publish_github_release.ps1` and `version_manager.py` read. Change the tag shape there rather than in either script.
 
 ZIP-creation and application-build logs from both PCs are written directly to the shared handoff folder, separated by Windows computer name:
 
@@ -211,6 +210,24 @@ E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\build_app_via_local_workspace_<t
 ```
 
 The build-PC local-workspace log covers ZIP validation, local copying and extraction, the complete application build, publishing, and the final exit code. Logs no longer need to be copied back from the build PC's local workspace.
+
+## Step 6: Sync the Repository to the Published Release
+
+The build runs from a disposable local workspace, so everything it writes back into the source tree is destroyed with that workspace: the version bump in `package.json`, `package-lock.json`, `ui\index.html`, and `ui\splash.html`; the generated `docs\releases\<version>.md`; and the archiving of the changelog fragments the release consumed. None of it reaches the repository on its own.
+
+Left unsynced, the repository reports a version older than what shipped, and `changes\unreleased` never drains — so every later release regenerates notes covering the entire fragment history until the body outgrows the GitHub release limit.
+
+After a build publishes its release, run this on the **source PC**, in the repository:
+
+```bat
+frontend\build\sync_published_release.bat 1.2.5
+```
+
+It verifies the release tag exists on the remote through `git ls-remote`, so it does not need the `gh` CLI on the source PC. Then it writes the version into every file that carries it, generates the release notes, and archives the fragments the release consumed into `changes\archive\<version>`.
+
+Which fragments count as consumed comes from the fragment list inside `E:\XWSpace\Build ArcRho App\ArcRho.zip`, the exact input that build used. Fragments added after the ZIP was cut stay unreleased and belong to the next version, so syncing late does not sweep newer work into an older release. If that ZIP has already been replaced by a later build, the script says so and falls back to consuming every unreleased fragment — so run the sync before starting the next build.
+
+Add `--dry-run` to see the version change and the fragment split without writing anything. The script never commits; review the result and commit it yourself.
 
 ## ZIP Freshness Rules
 
@@ -252,7 +269,7 @@ Install Python 3.10.6 or newer within the Python 3.10 line, or set `PYTHON_EXE` 
 
 ### Publishing fails after the installer builds
 
-If the GitHub Release publish step fails, confirm `gh auth status` succeeds on the build PC (or that `GH_TOKEN` is set) and that the authenticated account can create releases on the target repository. If the backup network feed publish step fails, verify that the build PC can write through its mapped `E:` drive to `E:\ArcRho Server\releases\installers` and the configured Python package destination on the source PC.
+If the version step or the GitHub Release publish step fails, confirm `gh auth status` succeeds on the build PC (or that `GH_TOKEN` is set) and that the authenticated account can create releases on the target repository. The version step deliberately fails instead of falling back to `package.json`: the build runs from a disposable workspace, so `package.json` lags behind what has shipped, and a silent fallback would rebuild a version number that is already public. If the Python API package step fails, verify that the build PC can write through its mapped `E:` drive to the configured Python package destination on the source PC.
 
 ### ArcBot reports that Codex cannot launch after installation
 
@@ -265,6 +282,6 @@ Confirm that the build log's ArcBot runtime validation passed and that the insta
 - The build PC's permanent `E:` mapping is available and can read the source ZIP.
 - The build ran from `%USERPROFILE%\Documents\build_arcrho_app`, not the network share.
 - The build exited with code `0`.
-- The installer, checksum, update manifest, release notes, and Python API package were published, including the GitHub Release the update checker reads.
+- The GitHub Release the update checker reads was created with the installer and checksum attached, and the release notes and Python API package were published.
 - The pre-build and `win-unpacked` ArcBot runtime checks found portable Node, npm, the Codex JavaScript entry point, and the native Windows Codex executable.
 - The timestamped build log was retained when troubleshooting was required.

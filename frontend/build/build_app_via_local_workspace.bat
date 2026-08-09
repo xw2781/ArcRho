@@ -13,7 +13,6 @@ exit /b 1
 set "PRODUCT_NAME=ArcRho"
 set "INSTALLER_PREFIX=ArcRho"
 set "DEFAULT_LOCAL_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
-set "RELEASE_FEED_DIR=E:\ArcRho Server\releases\installers"
 set "PYTHON_SERVER_BUILD_SCRIPT=build\build_python_server.bat"
 set "PYTHON_SERVER_DIR=arcrho_server"
 set "PYTHON_SERVER_EXE=arcrho_server.exe"
@@ -25,7 +24,6 @@ goto product_ready
 set "PRODUCT_NAME=Arcode"
 set "INSTALLER_PREFIX=Arcode"
 set "DEFAULT_LOCAL_ROOT=%USERPROFILE%\Documents\build_arcode_app"
-set "RELEASE_FEED_DIR=E:\Arcode Server\releases\arcode-installers"
 set "PYTHON_SERVER_BUILD_SCRIPT=build\build_arcode_python_server.bat"
 set "PYTHON_SERVER_DIR=arcode_server"
 set "PYTHON_SERVER_EXE=arcode_server.exe"
@@ -72,7 +70,7 @@ if /i "%~1"=="--check" (
     echo Source completion flag:      %SOURCE_ZIP_READY_FLAG%
     echo Local workspace:           %LOCAL_ROOT%
     echo Consumed-signal marker:     %READY_SIGNAL_FILE%
-    echo Published installer feed:  %RELEASE_FEED_DIR%
+    echo Release channel definition: %SCRIPT_DIR%release_channel.json
     echo Shared build log directory: %ARCRHO_BUILD_LOG_DIR%
     if not exist "%SCRIPT_DIR%prepare_local_build_workspace_from_zip.ps1" (
         echo ERROR: Missing prepare_local_build_workspace_from_zip.ps1 beside this batch file.
@@ -161,8 +159,8 @@ call :print_total_time
 call :open_released_installer
 if errorlevel 1 (
     echo.
-    echo WARNING: The build succeeded, but the published installer could not be opened.
-    echo Published installer feed: %RELEASE_FEED_DIR%
+    echo WARNING: The build succeeded, but the built installer could not be opened.
+    echo Local output directory: %LOCAL_FRONTEND%\dist
     pause
 )
 exit /b 0
@@ -197,8 +195,18 @@ if errorlevel 1 exit /b 1
 exit /b 0
 
 :open_released_installer
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$manifestPath = Join-Path $env:RELEASE_FEED_DIR 'latest.json'; if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw ('Published installer manifest not found: ' + $manifestPath) }; $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json; $installerName = [string]$manifest.installer; $expectedPattern = '^' + [regex]::Escape($env:INSTALLER_PREFIX) + '-Setup-.+\.exe$'; if ([string]::IsNullOrWhiteSpace($installerName) -or [System.IO.Path]::GetFileName($installerName) -ne $installerName -or $installerName -notmatch $expectedPattern) { throw 'Published installer manifest contains an invalid installer name.' }; $installerPath = Join-Path $env:RELEASE_FEED_DIR $installerName; if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) { throw ('Published installer not found: ' + $installerPath) }; Write-Host ('Opening published installer: ' + $installerPath); Start-Process -FilePath $installerPath"
-exit /b %ERRORLEVEL%
+if not defined APP_VERSION (
+    echo ERROR: No built version is available to open.
+    exit /b 1
+)
+set "BUILT_INSTALLER=%LOCAL_FRONTEND%\dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe"
+if not exist "%BUILT_INSTALLER%" (
+    echo ERROR: Built installer not found: %BUILT_INSTALLER%
+    exit /b 1
+)
+echo Opening built installer: %BUILT_INSTALLER%
+start "" "%BUILT_INSTALLER%"
+exit /b 0
 
 :print_total_time
 if not defined ARCRHO_LOCAL_BUILD_START_SECONDS exit /b 0
@@ -224,7 +232,6 @@ set "NODE_HOME=%APP_ROOT%\node-portable"
 set "PATH=%NODE_HOME%;%PATH%"
 set "APP_BUILDER_EXE=node_modules\app-builder-bin\win\x64\app-builder.exe"
 set "APP_VERSION="
-set "UPDATE_FEED_DIR=%RELEASE_FEED_DIR%"
 if not defined PYTHON_API_PACKAGE_DIR set "PYTHON_API_PACKAGE_DIR=E:\ArcRho Server\packages"
 set "PYTHON_API_WHEEL="
 
@@ -270,12 +277,14 @@ echo ----------------------------------------
 set "APP_VERSION_FILE=build\app_version.txt"
 if exist "%APP_VERSION_FILE%" del /q "%APP_VERSION_FILE%" >nul 2>nul
 if "%~1"=="" (
-    "%PYTHON_EXE%" build\version_manager.py --release-feed-dir "%UPDATE_FEED_DIR%" --installer-prefix "%INSTALLER_PREFIX%" --version-file "%APP_VERSION_FILE%"
+    "%PYTHON_EXE%" build\version_manager.py --github-release-product "%PRODUCT_NAME%" --version-file "%APP_VERSION_FILE%"
 ) else (
-    "%PYTHON_EXE%" build\version_manager.py "%~1" --installer-prefix "%INSTALLER_PREFIX%" --version-file "%APP_VERSION_FILE%"
+    "%PYTHON_EXE%" build\version_manager.py "%~1" --github-release-product "%PRODUCT_NAME%" --version-file "%APP_VERSION_FILE%"
 )
 if errorlevel 1 (
     echo ERROR: Failed to update application version metadata.
+    echo HINT: The next version comes from the GitHub Releases history, so gh must be
+    echo       authenticated on this machine ^(run: gh auth status^).
     echo.
     pause
     exit /b 1
@@ -383,19 +392,7 @@ if not defined RELEASE_NOTE_PATH (
 echo Release notes generated: %RELEASE_NOTE_PATH%
 echo.
 
-echo Step 6: Publishing installer update feed...
-echo ----------------------------------------
-powershell -NoProfile -ExecutionPolicy Bypass -File "build\publish_update_feed.ps1" -InstallerPath "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" -FeedDir "%UPDATE_FEED_DIR%" -ReleaseNotesPath "%RELEASE_NOTE_PATH%" -ProductName "%PRODUCT_NAME%"
-if errorlevel 1 (
-    echo ERROR: Failed to publish installer update feed.
-    echo.
-    pause
-    exit /b 1
-)
-echo Installer update feed published: %UPDATE_FEED_DIR%
-echo.
-
-echo Step 6b: Publishing GitHub Release...
+echo Step 6: Publishing GitHub Release...
 echo ----------------------------------------
 powershell -NoProfile -ExecutionPolicy Bypass -File "build\publish_github_release.ps1" -InstallerPath "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" -ReleaseNotesPath "%RELEASE_NOTE_PATH%" -ProductName "%PRODUCT_NAME%"
 if errorlevel 1 (
@@ -446,14 +443,16 @@ echo Build completed successfully!
 echo ========================================
 echo.
 echo Output location: dist\
-echo Update feed: %UPDATE_FEED_DIR%
 echo.
 echo - %INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe  (Installer)
-echo - %UPDATE_FEED_DIR%\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe  (Published Installer)
-echo - %UPDATE_FEED_DIR%\latest.json  (Update Manifest)
-echo - GitHub Release %INSTALLER_PREFIX%-v%APP_VERSION%  (Auto-Update Source)
+echo - GitHub Release %PRODUCT_NAME%-v%APP_VERSION%  (Published Installer and Auto-Update Source)
 if "%PUBLISH_PYTHON_API%"=="1" echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
 echo - %RELEASE_NOTE_PATH%  (Release Notes)
+echo.
+echo NEXT STEP on the source PC, in the repository:
+echo   frontend\build\sync_published_release.bat %APP_VERSION%
+echo This workspace is disposable, so the version bump, release notes, and consumed
+echo release fragments are only recorded in the repository by that step.
 echo.
 if not defined ARCRHO_SKIP_SUCCESS_PAUSE pause
 exit /b 0

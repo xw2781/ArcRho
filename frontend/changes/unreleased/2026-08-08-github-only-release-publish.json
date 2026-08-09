@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Builds now publish only to GitHub Releases, which also decides the next version number.",
+  "details": [
+    "Removed the network installer feed publish step, which copied the installer to the ArcRho Server release folder and then re-hashed that remote copy, costing 8 to 40 minutes per build.",
+    "The next version number now comes from the GitHub Releases history instead of the retired feed folder, and the build fails loudly rather than reusing a version already published.",
+    "The release tag format and target repository moved into build/release_channel.json, shared by the publish script and the version manager.",
+    "Fixed the release-exists probe, which treated every tag as already published because a failing gh command sets an exit code instead of throwing.",
+    "Release notes longer than the GitHub release body limit are now attached to the release in full and summarised in a truncated body, instead of failing the publish with HTTP 422."
+  ]
+}
