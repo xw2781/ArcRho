@@ -5,6 +5,7 @@ import json
 import os
 import re
 import stat
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
@@ -633,7 +634,17 @@ def _index_response(
     persisted: bool,
     warning: str = "",
     folder_paths: Dict[str, str] | None = None,
+    rebuild_reason: str = "",
+    started_at: float | None = None,
 ) -> Dict[str, Any]:
+    """Wrap a payload for the wire, reporting whether it cost a rebuild.
+
+    Serving the persisted file costs three directory listings; rebuilding reads
+    every sidecar and method payload and rewrites index.json. Over a network
+    share those differ by orders of magnitude, so the response says which one the
+    caller paid for and why, instead of leaving a slow reload unexplained.
+    """
+
     response = dict(data)
     response["folder_paths"] = dict(
         folder_paths
@@ -645,6 +656,13 @@ def _index_response(
     response["index_file_name"] = INDEX_FILE_NAME
     response["index_persisted"] = bool(persisted)
     response["index_warning"] = _clean_text(warning)
+    response["index_rebuild_reason"] = _clean_text(rebuild_reason)
+    response["index_rebuilt"] = bool(_clean_text(rebuild_reason))
+    response["index_elapsed_ms"] = (
+        round((time.monotonic() - started_at) * 1000.0, 1)
+        if started_at is not None
+        else 0.0
+    )
     return response
 
 
@@ -679,11 +697,15 @@ def rebuild_index(
     allow_unpersisted: bool = False,
     _resolved_folder_paths: Dict[str, str] | None = None,
     _resolved_identity: Tuple[str, str] | None = None,
+    _rebuild_reason: str = "explicit-rebuild",
+    _started_at: float | None = None,
 ) -> Dict[str, Any]:
     requested_project = _clean_text(project_name)
     rc = _clean_text(reserving_class)
     if not rc:
         raise HTTPException(400, "reserving_class is required.")
+    started_at = _started_at if _started_at is not None else time.monotonic()
+    reason = _clean_text(_rebuild_reason) or "explicit-rebuild"
     folder_paths = _resolved_folder_paths or _folder_paths(requested_project, rc)
     project, rc = _resolved_identity or _canonical_identity(folder_paths, requested_project, rc)
     if not os.path.isdir(folder_paths["data"]):
@@ -697,6 +719,8 @@ def rebuild_index(
             persisted=False,
             warning="Dataset instance folder does not exist; index.json was not written.",
             folder_paths=folder_paths,
+            rebuild_reason=reason,
+            started_at=started_at,
         )
 
     index_path = os.path.join(folder_paths["data"], INDEX_FILE_NAME)
@@ -726,6 +750,8 @@ def rebuild_index(
                     persisted=False,
                     warning=_unpersisted_index_warning(err),
                     folder_paths=folder_paths,
+                    rebuild_reason=reason,
+                    started_at=started_at,
                 )
             raise HTTPException(423, "Dataset instance index is locked or inaccessible.")
         except OSError as err:
@@ -735,9 +761,17 @@ def rebuild_index(
                     persisted=False,
                     warning=_unpersisted_index_warning(err),
                     folder_paths=folder_paths,
+                    rebuild_reason=reason,
+                    started_at=started_at,
                 )
             raise HTTPException(500, f"Failed to write dataset instance index: {str(err)}")
-        return _index_response(data, persisted=True, folder_paths=folder_paths)
+        return _index_response(
+            data,
+            persisted=True,
+            folder_paths=folder_paths,
+            rebuild_reason=reason,
+            started_at=started_at,
+        )
 
 
 def get_index(project_name: str, reserving_class: str, refresh: bool = False) -> Dict[str, Any]:
@@ -751,12 +785,17 @@ def get_index(project_name: str, reserving_class: str, refresh: bool = False) ->
 
     ``refresh=True`` still forces an unconditional rebuild for callers that want
     the index rewritten regardless of what the folder listing says.
+
+    The response reports ``index_rebuild_reason`` so a caller that waited on a
+    slow read can tell which of the two paths it paid for, and which check
+    rejected the persisted file.
     """
 
     requested_project = _clean_text(project_name)
     rc = _clean_text(reserving_class)
     if not rc:
         raise HTTPException(400, "reserving_class is required.")
+    started_at = time.monotonic()
     folder_paths = _folder_paths(requested_project, rc)
     path = os.path.join(folder_paths["data"], INDEX_FILE_NAME)
 
@@ -768,6 +807,8 @@ def get_index(project_name: str, reserving_class: str, refresh: bool = False) ->
             allow_unpersisted=True,
             _resolved_folder_paths=folder_paths,
             _resolved_identity=identity,
+            _rebuild_reason="refresh-requested" if refresh else "index-missing",
+            _started_at=started_at,
         )
 
     saved_project = _clean_text(data.get("project_name"))
@@ -799,11 +840,14 @@ def get_index(project_name: str, reserving_class: str, refresh: bool = False) ->
             allow_unpersisted=True,
             _resolved_folder_paths=folder_paths,
             _resolved_identity=(project, rc),
+            _rebuild_reason=rebuild_reason,
+            _started_at=started_at,
         )
     return _index_response(
         data,
         persisted=True,
         folder_paths=folder_paths,
+        started_at=started_at,
     )
 
 

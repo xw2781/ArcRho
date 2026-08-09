@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.2.6
-# Release Note: Report when the dataset table reload had to rebuild the index, and how long it took.
+# Version: 1.2.5
+# Release Note: Show live scanning, engine-wait, finalization, and commit progress.
 # Description: Import all configured ResQ datasets and methods into the reserving-class path selected in the active Project Instance page.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -392,28 +392,6 @@ def _success_message(project_name: str, rc_path: str, status: dict[str, Any]) ->
     return "\n".join(lines)
 
 
-def _dataset_table_reload_cost(reload_info: Any) -> str:
-    """Describe a dataset-table reload that had to rebuild the index.
-
-    Serving the persisted index costs three directory listings; rebuilding reads
-    every sidecar and method payload and rewrites index.json, which on a network
-    share is the difference between an instant reload and a slow one. Reporting
-    the reason here puts it in front of the operator who just waited for it.
-    """
-
-    if not isinstance(reload_info, dict):
-        return ""
-    reason = str(reload_info.get("index_rebuild_reason") or "").strip()
-    if not reason:
-        return ""
-    try:
-        seconds = float(reload_info.get("index_elapsed_ms") or 0) / 1000.0
-    except (TypeError, ValueError):
-        seconds = 0.0
-    elapsed = f" in {seconds:.1f}s" if seconds > 0 else ""
-    return f"Dataset table index was rebuilt{elapsed} ({reason})."
-
-
 def _failure_details_message(error: Exception) -> str:
     status = error.status if isinstance(error, BridgeRequestError) else {}
     result = _status_result(status)
@@ -520,7 +498,6 @@ def run_macro(active_dfm=None, active_context=None):
                 progress.close(auto_close_ms=3000)
         except Exception:
             pass
-    reload_info: dict = {}
     try:
         reload_info = ui.project_instance.reload_dataset_table(timeout_sec=30)
         dataset_table_reloaded = bool(reload_info.get("refreshed", True))
@@ -530,9 +507,6 @@ def run_macro(active_dfm=None, active_context=None):
         reload_error = str(exc)
 
     message = _success_message(project_name, rc_path, status)
-    reload_cost = _dataset_table_reload_cost(reload_info)
-    if reload_cost:
-        message += f"\n\n{reload_cost}"
     if reload_error:
         message += f"\n\nDataset table reload failed: {reload_error}"
     _message(ui, message, kind="warning" if errors or reload_error else "info", auto_close_ms=None if errors else 3000)

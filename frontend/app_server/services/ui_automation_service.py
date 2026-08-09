@@ -15,6 +15,9 @@ class _PendingCommand:
     command: str
     target: Dict[str, Any]
     args: Dict[str, Any]
+    # The submitter's own deadline, carried to the shell so an in-page handler can
+    # size its wait to the caller's budget instead of guessing at a fixed one.
+    timeout_sec: float = 30.0
     created_at: float = field(default_factory=time.time)
     result: Optional[Dict[str, Any]] = None
 
@@ -43,6 +46,7 @@ def _command_payload(item: _PendingCommand) -> Dict[str, Any]:
         "command": item.command,
         "target": item.target,
         "args": item.args,
+        "timeout_sec": item.timeout_sec,
         "created_at": item.created_at,
     }
 
@@ -58,6 +62,7 @@ def submit_command(command: str, target: Dict[str, Any], args: Dict[str, Any], t
         command=name,
         target=_clean_dict(target),
         args=_clean_dict(args),
+        timeout_sec=timeout,
     )
     deadline = time.monotonic() + timeout
     with _LOCK:

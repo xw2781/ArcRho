@@ -3,7 +3,7 @@ import {
   closeAutomationProgress,
   openAutomationProgress,
   updateAutomationProgress,
-} from "./ui_automation.js?v=20260801dup1";
+} from "./ui_automation.js?v=20260809a";
 
 const PROGRESS_ID = "arcrho-update-download";
 let wired = false;

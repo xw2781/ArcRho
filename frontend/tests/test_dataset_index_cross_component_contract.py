@@ -481,6 +481,9 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         persisted_response = dict(frontend_response)
         self.assertTrue(persisted_response.pop("index_persisted"))
         self.assertEqual(persisted_response.pop("index_warning"), "")
+        self.assertEqual(persisted_response.pop("index_rebuild_reason"), "explicit-rebuild")
+        self.assertTrue(persisted_response.pop("index_rebuilt"))
+        self.assertGreaterEqual(persisted_response.pop("index_elapsed_ms"), 0)
         self.assertEqual(
             persisted_response.pop("index_file_name"),
             dataset_index_contract.INDEX_FILE_NAME,
@@ -626,6 +629,10 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         persisted_response = dict(response)
         self.assertTrue(persisted_response.pop("index_persisted"))
         self.assertEqual(persisted_response.pop("index_warning"), "")
+        # Served straight from index.json, so the response must not claim a rebuild.
+        self.assertEqual(persisted_response.pop("index_rebuild_reason"), "")
+        self.assertFalse(persisted_response.pop("index_rebuilt"))
+        self.assertGreaterEqual(persisted_response.pop("index_elapsed_ms"), 0)
         self.assertEqual(
             persisted_response.pop("index_file_name"),
             dataset_index_contract.INDEX_FILE_NAME,

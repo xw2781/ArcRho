@@ -186,6 +186,11 @@ export function createProjectInstanceContext(deps = {}) {
       visibleCount: 0,
       error: "",
       warning: "",
+      // Why the last read had to rebuild index.json, and what that cost. A
+      // rebuild reads every sidecar and method payload, so on a network share it
+      // is the difference between an instant reload and a slow one.
+      rebuildReason: "",
+      elapsedMs: 0,
       requestSeq: 0,
     },
     cachedDatasetSnapshotRequests: new Map(),

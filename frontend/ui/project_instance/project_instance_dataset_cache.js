@@ -440,6 +440,8 @@ function applyCachedDatasetSnapshot(payload, path = state.selectedPath) {
   cachedDatasetFilter.methodTypesByName = snapshot.methodTypesByName;
   cachedDatasetFilter.loadedPath = normalizedPath;
   cachedDatasetFilter.error = "";
+  cachedDatasetFilter.rebuildReason = toText(payload?.index_rebuild_reason);
+  cachedDatasetFilter.elapsedMs = Number(payload?.index_elapsed_ms) || 0;
   cachedDatasetFilter.warning = payload?.index_persisted === false
     ? toText(payload?.index_warning) || "Dataset table loaded, but index.json could not be updated."
     : "";
@@ -452,6 +454,8 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   cachedDatasetFilter.requestSeq = seq;
   cachedDatasetFilter.error = "";
   cachedDatasetFilter.warning = "";
+  cachedDatasetFilter.rebuildReason = "";
+  cachedDatasetFilter.elapsedMs = 0;
   cachedDatasetFilter.names = new Set();
   cachedDatasetFilter.instanceRows = [];
   cachedDatasetFilter.metadataByName = new Map();
@@ -493,6 +497,14 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   }
 }
 
+function describeIndexReadCost() {
+  const reason = toText(cachedDatasetFilter.rebuildReason);
+  if (!reason) return "";
+  const seconds = Number(cachedDatasetFilter.elapsedMs) / 1000;
+  const elapsed = Number.isFinite(seconds) && seconds > 0 ? `, ${seconds.toFixed(1)}s` : "";
+  return `index rebuilt: ${reason}${elapsed}`;
+}
+
 async function refreshCachedDatasetTableFromDisk() {
   if (!state.selectedPath) {
     setStatus("Select a reserving-class path before refreshing the dataset table.", true);
@@ -518,9 +530,12 @@ async function refreshCachedDatasetTableFromDisk() {
       setStatus(cachedDatasetFilter.warning, true);
       return true;
     }
-    setStatus(isTemporaryDatasetView()
+    // A rebuild is the slow path, so name it rather than leaving a long wait
+    // looking like an unexplained stall.
+    const cost = describeIndexReadCost();
+    setStatus(`${isTemporaryDatasetView()
       ? "Dataset index status refreshed."
-      : "Dataset table refreshed.");
+      : "Dataset table refreshed."}${cost ? ` (${cost})` : ""}`);
     return true;
   }
   return false;

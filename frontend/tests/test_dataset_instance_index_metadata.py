@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import threading
@@ -322,10 +323,17 @@ class DatasetInstanceIndexMetadataTests(unittest.TestCase):
 
             self.assertTrue(result["index_persisted"])
             self.assertEqual(result["index_warning"], "")
+            # The cheap path must say so, so a fast reload is distinguishable
+            # from a slow one in the caller's own report.
+            self.assertEqual(result["index_rebuild_reason"], "")
+            self.assertFalse(result["index_rebuilt"])
             self.assertEqual(result["folder_paths"]["data"], str(data_root))
             self.assertNotIn("folder_paths", saved_payload)
             self.assertNotIn("index_persisted", saved_payload)
             self.assertNotIn("index_warning", saved_payload)
+            self.assertNotIn("index_rebuild_reason", saved_payload)
+            self.assertNotIn("index_rebuilt", saved_payload)
+            self.assertNotIn("index_elapsed_ms", saved_payload)
 
     def test_a_changed_folder_makes_a_saved_index_stale(self) -> None:
         with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
@@ -391,6 +399,59 @@ class DatasetInstanceIndexMetadataTests(unittest.TestCase):
                 [row["name"] for row in result["files"]],
                 ["Paid Loss", "Reported Loss"],
             )
+            # Naming the failed check is what turns an unexplained slow reload
+            # into something diagnosable from the operator's own report.
+            self.assertEqual(result["index_rebuild_reason"], "folder-signature-changed")
+            self.assertTrue(result["index_rebuilt"])
+            self.assertGreaterEqual(result["index_elapsed_ms"], 0)
+            self.assertNotIn(
+                "index_rebuild_reason",
+                json.loads((data_root / "index.json").read_text(encoding="utf-8")),
+            )
+
+    def test_a_missing_index_reports_why_it_was_rebuilt(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            data_root = Path(temp_dir)
+            (data_root / "datasets").mkdir()
+            (data_root / "methods").mkdir()
+            sidecar_dir = data_root / "sidecars"
+            sidecar_dir.mkdir()
+            (sidecar_dir / "Paid Loss.json").write_text(
+                '{"dataset_name": "Paid Loss"}',
+                encoding="utf-8",
+            )
+            folder_paths = {
+                "data": str(data_root),
+                "datasets": str(data_root / "datasets"),
+                "methods": str(data_root / "methods"),
+                "sidecars": str(sidecar_dir),
+            }
+
+            with (
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "_folder_paths",
+                    return_value=folder_paths,
+                ),
+                mock.patch.object(
+                    dataset_instance_index_service,
+                    "_canonical_identity",
+                    return_value=("Example", "Paid"),
+                ),
+            ):
+                first = dataset_instance_index_service.get_index("Example", "Paid")
+                second = dataset_instance_index_service.get_index("Example", "Paid")
+                forced = dataset_instance_index_service.get_index(
+                    "Example",
+                    "Paid",
+                    refresh=True,
+                )
+
+            self.assertEqual(first["index_rebuild_reason"], "index-missing")
+            # The rebuild it just paid for makes the next read the cheap one.
+            self.assertEqual(second["index_rebuild_reason"], "")
+            self.assertFalse(second["index_rebuilt"])
+            self.assertEqual(forced["index_rebuild_reason"], "refresh-requested")
 
 
 if __name__ == "__main__":

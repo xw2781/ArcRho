@@ -756,6 +756,7 @@ async function handleAutomationProjectInstanceRefreshDatasets(message, sourceWin
   }
   try {
     const refreshed = await refreshCachedDatasetTableFromDisk();
+    const cache = state.cachedDatasetFilter || {};
     reply({
       ok: !!refreshed,
       result: {
@@ -765,6 +766,10 @@ async function handleAutomationProjectInstanceRefreshDatasets(message, sourceWin
         selected_path: selectedPath,
         path: selectedPath,
         refreshed: !!refreshed,
+        // Tell the caller whether the reload had to rebuild index.json, so a
+        // slow reload is explained where the operator already sees the result.
+        index_rebuild_reason: toText(cache.rebuildReason),
+        index_elapsed_ms: Number(cache.elapsedMs) || 0,
       },
       error: refreshed ? "" : "Dataset table reload failed.",
     });

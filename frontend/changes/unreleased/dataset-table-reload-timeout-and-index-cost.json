@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "A dataset table reload run from a macro no longer reports a timeout while it is still running, and now says when it had to rebuild the dataset index.",
+  "details": [
+    "The Import ResQ Reserving Class macro allows the reload 30 seconds, but the app gave up after a fixed 10 seconds and reported 'Timed out waiting for Project Instance' even though the table loaded moments later. The app now waits for as long as the caller asked.",
+    "Reloading the dataset table re-checks the reserving-class folder and rebuilds index.json whenever the folder no longer matches it, which reads every sidecar and method file. Over a network share that is the difference between an instant reload and a slow one.",
+    "The status bar and the macro's completion dialog now report when a rebuild happened, why, and how long it took, so a slow reload is no longer an unexplained wait."
+  ]
+}

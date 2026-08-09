@@ -663,6 +663,21 @@ function getProjectInstanceAutomationMessageType(commandName) {
   return "";
 }
 
+// The submitter told the app server how long it is prepared to wait, and the
+// server forwards that budget with the command. Honour it instead of applying a
+// fixed wait: a reload that legitimately takes longer than a hard-coded ceiling
+// would otherwise be reported as failed while it is still running and about to
+// succeed. The margin leaves the submitter time to receive this reply rather
+// than racing its own deadline and reporting a less specific error.
+const AUTOMATION_REPLY_MARGIN_MS = 1500;
+const AUTOMATION_FALLBACK_TIMEOUT_MS = 10000;
+
+export function automationCommandTimeoutMs(command) {
+  const budgetSec = Number(command?.timeout_sec ?? command?.timeoutSec);
+  if (!Number.isFinite(budgetSec) || budgetSec <= 0) return AUTOMATION_FALLBACK_TIMEOUT_MS;
+  return Math.max(1000, budgetSec * 1000 - AUTOMATION_REPLY_MARGIN_MS);
+}
+
 function sendCommandToProjectInstance(command) {
   const tab = findActiveProjectInstanceTab();
   if (!tab) {
@@ -704,7 +719,10 @@ function sendCommandToProjectInstance(command) {
       finish({ ok: false, error: toText(err?.message) || "Failed to send Project Instance command." });
       return;
     }
-    setTimeout(() => finish({ ok: false, error: "Timed out waiting for Project Instance." }), 10000);
+    setTimeout(
+      () => finish({ ok: false, error: "Timed out waiting for Project Instance." }),
+      automationCommandTimeoutMs(command),
+    );
   });
 }
 
@@ -774,7 +792,10 @@ async function sendCommandToTaskDesigner(command) {
       finish({ ok: false, error: toText(err?.message) || "Failed to send Task Designer command." });
       return;
     }
-    window.setTimeout(() => finish({ ok: false, error: "Timed out waiting for Task Designer." }), 10000);
+    window.setTimeout(
+      () => finish({ ok: false, error: "Timed out waiting for Task Designer." }),
+      automationCommandTimeoutMs(command),
+    );
   });
 }
 
