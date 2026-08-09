@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Deleting a dataset or method from the Project Instance table responds much faster over a network drive.",
+  "details": [
+    "Finding which cached files a dataset owns now reads the folder listing instead of opening every sidecar, and only method files still need their payload.",
+    "The table redraws from the index the delete already returned instead of re-reading it from the share.",
+    "Index scans use a wider worker pool, so the remaining rebuild spends less time waiting on network round trips."
+  ]
+}

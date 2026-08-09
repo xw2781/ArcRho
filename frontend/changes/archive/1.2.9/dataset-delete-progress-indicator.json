@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Deleting datasets from the Project Instance table now shows a loading spinner with an elapsed counter until it finishes.",
+  "details": [
+    "The indicator uses the same overlay as the project load, so it follows the current light or dark theme.",
+    "It clears whether the delete succeeds or fails, and cancelling the confirmation never shows it."
+  ]
+}
