@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Home now reveals a click-to-add hint below the last group.",
+  "details": [
+    "Hovering anywhere in the space below the last group reveals the add-group hint.",
+    "Clicking that space opens the new-group naming prompt."
+  ]
+}

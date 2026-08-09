@@ -9,9 +9,9 @@ Excluded directories: `.cache`, `__pycache__`, `dist`, `local_workspace_log`, `n
 | --- | --- |
 | `(root)` | 12 |
 | `app_server` | 120 |
-| `build` | 70 |
-| `changes` | 854 |
-| `docs` | 87 |
+| `build` | 78 |
+| `changes` | 866 |
+| `docs` | 88 |
 | `electron` | 12 |
 | `icons` | 19 |
 | `test_artifacts` | 4 |

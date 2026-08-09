@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Display Arcode Home group labels in white in Dark mode."
+}

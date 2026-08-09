@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Match Home add-card tiles to the fill color of existing cards."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Place the Home add-card plus sign and label on one line."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Use the sentence-case + Add card label for Home add-card actions."
+}

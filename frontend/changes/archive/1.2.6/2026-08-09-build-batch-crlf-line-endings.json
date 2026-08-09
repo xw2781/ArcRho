@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Fixed the packaging build failing with \"cannot find the batch label specified\" by keeping build batch files on CRLF line endings.",
+  "details": [
+    "cmd.exe resolves `call :label` by byte offset and cannot find labels in LF-only batch files once the label sits past a certain position.",
+    "Repository batch files are now normalized to CRLF and pinned there by .gitattributes.",
+    "Workspace preparation also normalizes batch line endings, so a ZIP or local workspace can no longer inherit the failure."
+  ]
+}

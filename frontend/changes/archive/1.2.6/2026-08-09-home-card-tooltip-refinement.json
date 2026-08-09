@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Refined Home card tooltips with a readable styled hover and focus presentation."
+}

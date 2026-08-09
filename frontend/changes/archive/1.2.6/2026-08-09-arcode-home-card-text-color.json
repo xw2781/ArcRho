@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Keep Arcode Home card text color unchanged when a card is highlighted."
+}

@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "The build share launcher scripts are now version controlled and deployed from the repository.",
+  "details": [
+    "build/build_share holds the canonical copy of build_app_listener.bat, build_app_listener.ps1, build_app_one_click.bat, build_arcode_one_click.bat, and publish_pending_github_release.bat, which previously existed only in the build share with no review, history, or backup.",
+    "deploy_build_share.bat publishes the scripts that differ, --verify reports drift without writing, and nothing else in the share is touched or removed.",
+    "A share copy that differs and is newer than the repository copy is reported and left alone, so an edit made directly in the share is never silently overwritten.",
+    "The listener compares itself against the repository copy at startup and warns when it is stale, because PowerShell loads the script once and a listener left running after a deploy keeps serving the previous version."
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Aligned Home shortcut drag feedback with the click threshold."
+}

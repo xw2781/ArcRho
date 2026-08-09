@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Show only the card drag hint after the pointer rests for 0.5 seconds."
+}

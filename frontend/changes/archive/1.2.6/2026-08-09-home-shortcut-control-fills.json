@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Lightened Home add-card tiles and removed idle fill from group action buttons."
+}

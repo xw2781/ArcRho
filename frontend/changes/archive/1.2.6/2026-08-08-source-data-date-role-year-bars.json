@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data now charts Origin Date and Development Date columns as one bar per calendar year.",
+  "details": [
+    "Date columns were previously binned across their raw YYYYMM span, which produced a sawtooth because months 13-99 do not exist; each bar is now a single year.",
+    "Placeholder zeros and other values that are not real periods are left out of the chart, so a Development Date column with zeros no longer starts at the wrong place.",
+    "Hovering a bar shows the year it covers, and a year with no rows stays visible as a gap.",
+    "Each column's Origin Date or Development Date role is now resolved by the app server and refreshes automatically when the field mapping changes."
+  ]
+}

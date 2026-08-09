@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "A published release now records itself in the source repository with no manual step.",
+  "details": [
+    "After publishing the GitHub Release, the build asks the source-PC listener to sync the repository, so build_app_listener.bat and build_app_one_click.bat remain the only commands anyone runs.",
+    "The listener captures the changelog fragments each build ZIP carries, keyed by that ZIP's ready signal, so a release consumes exactly the fragments it was built from even if a later build replaced the ZIP.",
+    "The sync commits only release bookkeeping and never stages unrelated work in the worktree, and never pushes.",
+    "Fixed the listener terminating on any failed request before it could publish the failure response, which left the build PC waiting on a response that never arrived and orphaned the request file."
+  ]
+}
