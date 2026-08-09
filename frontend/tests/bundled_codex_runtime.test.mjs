@@ -209,7 +209,63 @@ test("a published release can be synced back into the repository", () => {
   assert.match(notes, /def release_fragments/u);
 
   const wrapper = readText("../build/build_app_via_local_workspace.bat");
-  assert.match(wrapper, /sync_published_release\.bat %APP_VERSION%/u);
+  assert.match(wrapper, /request_release_sync\.ps1/u);
+  // The wrapper lists its main flow before its subroutines, so ordering is asserted on
+  // the calls in that flow rather than on where the labelled bodies happen to sit.
+  assert.ok(
+    wrapper.indexOf("call :sync_source_repository") > wrapper.indexOf("call :build_local_application"),
+    "the repository sync must run after the build that publishes the release",
+  );
+  assert.match(wrapper, /sync_published_release\.bat %APP_VERSION%/u, "a manual fallback must be printed");
+
+  const requester = readText("../build/request_release_sync.ps1");
+  assert.match(requester, /kind\s+= "syncRelease"/u);
+
+  const zipContract = readText("../build/create_build_source_zip.ps1");
+  assert.ok(
+    zipContract.includes('"frontend/build/request_release_sync.ps1"'),
+    "the build PC needs the sync requester inside the ZIP",
+  );
+});
+
+test("the build share launchers are version controlled and deployed from the repository", () => {
+  for (const name of [
+    "build_app_listener.bat",
+    "build_app_listener.ps1",
+    "build_app_one_click.bat",
+    "build_arcode_one_click.bat",
+    "publish_pending_github_release.bat",
+  ]) {
+    assert.ok(
+      readText(`../build/build_share/${name}`).trim().length > 0,
+      `${name} must be tracked in build/build_share`,
+    );
+  }
+
+  const listener = readText("../build/build_share/build_app_listener.ps1");
+  assert.match(listener, /Test-DeployedListenerIsCurrent/u, "the listener must flag itself when stale");
+  assert.match(listener, /syncRelease/u);
+  assert.match(listener, /Write-Warning "Build request/u, "a failed request must not kill the listener");
+
+  const deploy = readText("../build/deploy_build_share.ps1");
+  assert.match(deploy, /\$Verify/u);
+  assert.ok(
+    !/Remove-Item/u.test(deploy),
+    "the deploy must never delete anything from the share, which also holds build artifacts and logs",
+  );
+  assert.match(deploy, /the share copy is newer/u, "a direct share edit must not be silently overwritten");
+});
+
+test("the release sync only ever stages release bookkeeping", () => {
+  const sync = readText("../build/sync_published_release.py");
+  assert.match(sync, /"add", "-u", "frontend\/changes\/unreleased"/u);
+  for (const owned of ["frontend/package.json", "frontend/docs/releases"]) {
+    assert.ok(sync.includes(`"${owned}"`), `${owned} must be part of the commit scope`);
+  }
+  for (const foreign of ["frontend/ui/shell", "frontend/app_server", "frontend/tests"]) {
+    assert.ok(!sync.includes(`"${foreign}"`), `${foreign} must never be staged by the sync`);
+  }
+  assert.ok(!/\bgit["'\s,\]]*push\b/u.test(sync), "the sync must never push");
 });
 
 test("release tag naming and the GitHub repository have one owner", () => {

@@ -19,6 +19,7 @@ not require gh to be installed on the source PC.
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import zipfile
@@ -30,6 +31,19 @@ import version_manager
 
 DEFAULT_SOURCE_ZIP = Path(r"E:\XWSpace\Build ArcRho App\ArcRho.zip")
 ZIP_FRAGMENT_PREFIX = "frontend/changes/unreleased/"
+GIT_ROOT = release_notes.REPO_ROOT.parent
+DOCS_INDEX_BUILDER = release_notes.REPO_ROOT / "tools" / "docs_index_builder.py"
+
+# Only release bookkeeping is ever staged. The repository routinely holds unrelated
+# in-flight work, and an automated commit must never sweep that up.
+COMMIT_PATHS = (
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/ui/index.html",
+    "frontend/ui/splash.html",
+    "frontend/docs/releases",
+    "frontend/docs/generated/file_manifest.md",
+)
 
 
 def resolve_release_tag(product: str, channel_path: Path) -> str:
@@ -51,6 +65,74 @@ def remote_tag_exists(tag: str, remote: str) -> bool:
         detail = (completed.stderr or completed.stdout or "").strip()
         raise RuntimeError(f"Could not read tags from '{remote}'. {detail}".strip())
     return bool((completed.stdout or "").strip())
+
+
+def read_fragment_list(fragment_list: Path) -> set[str]:
+    """Read the fragment names captured when the build ZIP was created.
+
+    The listener snapshots this list at ZIP creation and keys it by the ZIP's ready
+    signal, so the release consumes exactly the fragments it was built from even if a
+    later build has already replaced the ZIP itself.
+    """
+    payload = json.loads(fragment_list.read_text(encoding="utf-8"))
+    if not isinstance(payload, list) or not all(isinstance(name, str) for name in payload):
+        raise ValueError(f"{fragment_list} must contain a JSON array of fragment file names.")
+    names = {name.strip() for name in payload if name.strip()}
+    if not names:
+        raise ValueError(f"{fragment_list} does not list any fragments.")
+    return names
+
+
+def run_git(arguments: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        ["git", *arguments],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=str(GIT_ROOT),
+    )
+    if check and completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise RuntimeError(f"git {' '.join(arguments)} failed. {detail}".strip())
+    return completed
+
+
+def update_docs_index() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(DOCS_INDEX_BUILDER), "--write"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=str(release_notes.REPO_ROOT),
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise RuntimeError(f"The documentation index builder failed. {detail}".strip())
+
+
+def commit_release_bookkeeping(version: str, product: str, tag: str) -> str | None:
+    """Stage only the release bookkeeping and commit it. Returns the commit hash."""
+    # -u stages deletions of tracked fragments without adding untracked files, so
+    # fragments written after the build stay unreleased and unstaged.
+    run_git(["add", "-u", "frontend/changes/unreleased"])
+    run_git(["add", "--", f"frontend/changes/archive/{version}", *COMMIT_PATHS])
+
+    staged = run_git(["diff", "--cached", "--name-only"]).stdout.strip()
+    if not staged:
+        print("Nothing to commit: the release bookkeeping is already committed.")
+        return None
+
+    message = (
+        f"sync repository to published {product} {version}\n"
+        "\n"
+        f"Record what {tag} shipped: the version in package.json, package-lock.json,\n"
+        "the About dialog, and the splash page, its release notes, and the changelog\n"
+        "fragments it consumed.\n"
+        "\n"
+        "Committed by frontend/build/sync_published_release.py.\n"
+    )
+    run_git(["commit", "-m", message])
+    return run_git(["rev-parse", "--short", "HEAD"]).stdout.strip()
 
 
 def read_zip_fragment_names(source_zip: Path) -> set[str] | None:
@@ -103,6 +185,22 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--fragment-list",
+        help=(
+            "JSON array of the fragment file names the release was built from, captured "
+            "when its build ZIP was created. Takes precedence over reading the ZIP."
+        ),
+    )
+    parser.add_argument(
+        "--commit",
+        action="store_true",
+        help=(
+            "Commit the release bookkeeping. Only version files, release notes, the "
+            "fragment archive, and the file manifest are staged; unrelated work in the "
+            "worktree is never staged, and nothing is pushed."
+        ),
+    )
+    parser.add_argument(
         "--release-channel-file",
         help="Optional override for the release channel definition.",
     )
@@ -151,7 +249,11 @@ def main() -> int:
         )
 
     fragments = release_notes.load_unreleased_fragments()
-    built_names = read_zip_fragment_names(Path(args.source_zip))
+    if args.fragment_list:
+        built_names = read_fragment_list(Path(args.fragment_list))
+        print(f"Using the fragment list captured for this build: {args.fragment_list}")
+    else:
+        built_names = read_zip_fragment_names(Path(args.source_zip))
     if built_names is None:
         print(
             "No usable build ZIP fragment list; consuming every unreleased fragment.",
@@ -186,11 +288,19 @@ def main() -> int:
 
     version_manager.update_version_metadata(release_notes.REPO_ROOT, args.version)
     release_path = release_notes.release_fragments(args.version, consumed)
+    update_docs_index()
 
     print("")
     print(f"Release notes written: {release_path.relative_to(release_notes.REPO_ROOT).as_posix()}")
     print(f"Fragments archived to: changes/archive/{args.version}")
-    print("Review and commit the result; this script does not commit.")
+
+    if not args.commit:
+        print("Review and commit the result; this run was not asked to commit.")
+        return 0
+
+    commit_hash = commit_release_bookkeeping(args.version, args.product, tag)
+    if commit_hash:
+        print(f"Committed release bookkeeping as {commit_hash}. Nothing was pushed.")
     return 0
 
 

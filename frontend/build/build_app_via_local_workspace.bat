@@ -155,6 +155,7 @@ if errorlevel 1 (
     echo The next Step 2 run may build this ZIP again.
     echo.
 )
+call :sync_source_repository
 call :print_total_time
 call :open_released_installer
 if errorlevel 1 (
@@ -192,6 +193,30 @@ if not defined CURRENT_READY_SIGNAL exit /b 1
 for %%I in ("%READY_SIGNAL_FILE%") do if not exist "%%~dpI" mkdir "%%~dpI" >nul 2>nul
 > "%READY_SIGNAL_FILE%" echo %CURRENT_READY_SIGNAL%
 if errorlevel 1 exit /b 1
+exit /b 0
+
+:sync_source_repository
+REM The build workspace is disposable and cannot write to the source repository, so
+REM ask the listener that runs beside the repository to record what this build shipped.
+if not defined APP_VERSION (
+    echo WARNING: No built version is available, so the repository was not synced.
+    echo.
+    exit /b 0
+)
+for %%I in ("%SOURCE_ZIP%") do set "BUILD_SHARE_ROOT=%%~dpI"
+if defined BUILD_SHARE_ROOT set "BUILD_SHARE_ROOT=%BUILD_SHARE_ROOT:~0,-1%"
+echo Syncing the source repository to the published release...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%request_release_sync.ps1" -Version "%APP_VERSION%" -ProductName "%PRODUCT_NAME%" -BuildShareRoot "%BUILD_SHARE_ROOT%" -ReadySignal "%CURRENT_READY_SIGNAL%"
+if errorlevel 1 (
+    echo.
+    echo WARNING: The published release was not recorded in the source repository.
+    echo The installer is already published; only the repository bookkeeping is missing.
+    echo Run this on the source PC to finish it:
+    echo   frontend\build\sync_published_release.bat %APP_VERSION%
+    echo.
+    exit /b 0
+)
+echo.
 exit /b 0
 
 :open_released_installer
@@ -448,11 +473,6 @@ echo - %INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe  (Installer)
 echo - GitHub Release %PRODUCT_NAME%-v%APP_VERSION%  (Published Installer and Auto-Update Source)
 if "%PUBLISH_PYTHON_API%"=="1" echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
 echo - %RELEASE_NOTE_PATH%  (Release Notes)
-echo.
-echo NEXT STEP on the source PC, in the repository:
-echo   frontend\build\sync_published_release.bat %APP_VERSION%
-echo This workspace is disposable, so the version bump, release notes, and consumed
-echo release fragments are only recorded in the repository by that step.
 echo.
 if not defined ARCRHO_SKIP_SUCCESS_PAUSE pause
 exit /b 0

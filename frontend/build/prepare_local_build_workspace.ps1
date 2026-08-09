@@ -191,6 +191,54 @@ function Copy-FileChecked {
     }
 }
 
+function Convert-BatchFileLineEndings {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    # cmd.exe resolves `call :label` by byte offset, and that search fails on a
+    # batch file saved with LF-only line endings once the label sits past a
+    # certain position, so a build dies with "cannot find the batch label
+    # specified" even though the label is present. The repository keeps batch
+    # files CRLF through .gitattributes; normalize the workspace copies too so an
+    # editor that rewrote a batch file with LF endings cannot break packaging.
+    # -Include is ignored when the source is given as -LiteralPath, so filter by
+    # extension with -Filter, once per extension. -Filter also matches short 8.3
+    # names, so confirm the real extension before rewriting a file.
+    $normalizedCount = 0
+    $batchFiles = @(
+        @("*.bat", "*.cmd") | ForEach-Object {
+            Get-ChildItem -LiteralPath $Root -Recurse -File -Force -Filter $_ -ErrorAction SilentlyContinue
+        } | Where-Object {
+            $_.Extension -match '^\.(?:bat|cmd)$' -and
+            $_.FullName -notmatch '\\(?:node_modules|node-portable|venvs)\\'
+        }
+    )
+
+    foreach ($batchFile in $batchFiles) {
+        # Rewrite bytes rather than decoded text so the file keeps whatever
+        # single-byte encoding it already uses.
+        $bytes = [System.IO.File]::ReadAllBytes($batchFile.FullName)
+        $normalized = New-Object System.Collections.Generic.List[byte]
+        for ($index = 0; $index -lt $bytes.Length; $index++) {
+            $current = $bytes[$index]
+            if ($current -eq 13 -and ($index + 1) -lt $bytes.Length -and $bytes[$index + 1] -eq 10) {
+                continue
+            }
+            if ($current -eq 10) {
+                $normalized.Add([byte]13)
+            }
+            $normalized.Add($current)
+        }
+
+        if ($normalized.Count -ne $bytes.Length) {
+            [System.IO.File]::WriteAllBytes($batchFile.FullName, $normalized.ToArray())
+            Write-Host "Normalized batch line endings: $($batchFile.FullName.Substring($Root.Length).TrimStart('\'))"
+            $normalizedCount++
+        }
+    }
+
+    Write-Host "Batch files normalized to CRLF: $normalizedCount"
+}
+
 if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $SourceRoot = Resolve-FullPath (Join-Path $scriptDir "..\..")
@@ -291,6 +339,8 @@ Invoke-RobocopyChecked `
     -Target (Join-Path $Destination "python-api\tools") `
     -ExcludeDirs @("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache") `
     -ExcludeFiles @("*.pyc", "*.pyo", "*.log", "*.tmp")
+
+Convert-BatchFileLineEndings -Root $Destination
 
 Write-Host ""
 Write-Host "Local build workspace is ready."

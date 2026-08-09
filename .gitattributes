@@ -1,0 +1,5 @@
+# Windows shells parse batch files by byte offset, and cmd.exe fails to find
+# `call :label` targets in files that use LF-only line endings, so batch files
+# must always be checked out with CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf

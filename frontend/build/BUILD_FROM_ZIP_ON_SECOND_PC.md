@@ -35,6 +35,30 @@ Source PC repository
 
 This workflow assumes that `E:` on the build PC is permanently mapped to `E:` on the source PC. The default ZIP and wrapper paths already use that mapping, so `ARCRHO_LOCAL_BUILD_SOURCE_ZIP` does not need to be set.
 
+## Build Share Scripts Are Deployed, Not Edited
+
+The launchers in the build share cannot run from the repository. The share is the one path both PCs agree on, and the listener resolves its request folders from wherever it sits. But an unversioned script that drives releases has no review and no history, so the repository owns them and the share holds deployed copies.
+
+| | |
+| --- | --- |
+| Canonical copy | `frontend\build\build_share\` in the repository |
+| Deployed copy | `E:\XWSpace\Build ArcRho App\` |
+| Deploy command | `frontend\build\deploy_build_share.bat` |
+
+Covered scripts: `build_app_listener.bat`, `build_app_listener.ps1`, `build_app_one_click.bat`, `build_arcode_one_click.bat`, and `publish_pending_github_release.bat`.
+
+Edit the repository copy, then deploy:
+
+```bat
+frontend\build\deploy_build_share.bat            REM publish the scripts that differ
+frontend\build\deploy_build_share.bat --verify   REM report drift, write nothing, non-zero on drift
+frontend\build\deploy_build_share.bat --force    REM overwrite a share copy that is newer
+```
+
+Only files that differ are copied, and nothing else in the share is touched or removed — build artifacts, logs, request folders, and fragment snapshots all stay. If a share copy differs **and** is newer than the repository copy, the deploy reports it and leaves it alone: that pattern means someone edited the share directly, and the fix is to copy that edit back into `build_share` rather than lose it. `--force` overrides once you have decided the repository copy wins.
+
+The listener compares itself against the repository copy when it starts and warns if they differ, because PowerShell loads the script once and a listener left running after a deploy keeps serving the previous version. That warning means: restart it.
+
 ## Build-PC Prerequisites
 
 Before starting a full build, confirm that the build PC has:
@@ -104,6 +128,8 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -SourceRoot 'E:\XWSpace\Repos\ArcRho' `
   -OutputZip 'E:\XWSpace\Build ArcRho App\ArcRho.zip'
 ```
+
+Staging runs through `prepare_local_build_workspace.ps1`, which normalizes every staged `.bat` and `.cmd` file to CRLF line endings, skipping `node_modules`, `node-portable`, and `venvs`. `cmd.exe` resolves `call :label` by byte offset and cannot find a label in an LF-only batch file once that label sits past a certain position, so a batch file saved with LF endings can fail the build with `The system cannot find the batch label specified`. Repository batch files are pinned to CRLF by `.gitattributes`; this normalization protects the workspace when an editor has rewritten one of them with LF endings.
 
 The creator always includes `frontend\node-portable` and `frontend\node_modules`. They are required when the restricted build PC cannot restore Node dependencies itself. Before publication, the ZIP creator validates the complete ArcBot runtime chain: portable Node, npm, the Codex JavaScript entry point, the bundled Windows Codex executable, and the minimum CLI/model values in `frontend\electron\arcbot_runtime_contract.json`. If the local payload is stale, run `frontend\build\refresh_bundled_codex_runtime.ps1` on the connected source PC before creating the ZIP.
 
@@ -188,7 +214,7 @@ The launcher and its delegated local-workspace wrapper perform these steps:
 4. Copies and extracts the ZIP locally while rejecting unsafe paths and skipping repository/agent metadata.
 5. Builds the Python API wheel, PyInstaller app server, Electron application, and NSIS installer.
 6. Verifies that the `win-unpacked` application still contains the portable Node, npm, Codex JavaScript entry point, and native Codex executable required by ArcBot.
-7. Publishes a GitHub Release with the installer and checksum (the update checker's source), records the consumed readiness token after success, and opens the locally built installer from the workspace `dist` folder.
+7. Publishes a GitHub Release with the installer and checksum (the update checker's source), records the consumed readiness token after success, asks the source-PC listener to record the release in the repository, and opens the locally built installer from the workspace `dist` folder.
 
 Do not run build tooling directly from the mapped repository. The one-click workflow ensures that dependency execution, PyInstaller, Electron Builder, and NSIS all run from a local filesystem on the build PC.
 
@@ -211,23 +237,35 @@ E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>\build_app_via_local_workspace_<t
 
 The build-PC local-workspace log covers ZIP validation, local copying and extraction, the complete application build, publishing, and the final exit code. Logs no longer need to be copied back from the build PC's local workspace.
 
-## Step 6: Sync the Repository to the Published Release
+## Step 6: Repository Sync (Automatic)
 
-The build runs from a disposable local workspace, so everything it writes back into the source tree is destroyed with that workspace: the version bump in `package.json`, `package-lock.json`, `ui\index.html`, and `ui\splash.html`; the generated `docs\releases\<version>.md`; and the archiving of the changelog fragments the release consumed. None of it reaches the repository on its own.
+The build runs from a disposable local workspace, so everything it writes back into the source tree is destroyed with that workspace: the version bump in `package.json`, `package-lock.json`, `ui\index.html`, and `ui\splash.html`; the generated `docs\releases\<version>.md`; and the archiving of the changelog fragments the release consumed. None of it can reach the repository from the build PC, which does not hold the repository at all.
 
-Left unsynced, the repository reports a version older than what shipped, and `changes\unreleased` never drains — so every later release regenerates notes covering the entire fragment history until the body outgrows the GitHub release limit.
+Left unrecorded, the repository reports a version older than what shipped, and `changes\unreleased` never drains — so every later release regenerates notes covering the entire fragment history until the body outgrows the GitHub release limit.
 
-After a build publishes its release, run this on the **source PC**, in the repository:
+**This now happens by itself.** After publishing the GitHub Release, the build wrapper sends a `syncRelease` request to the same source-PC listener that produced the ZIP, and waits for the outcome. The listener runs `sync_published_release.py`, which:
+
+1. Verifies the release tag exists on the remote through `git ls-remote`, so the source PC does not need the `gh` CLI.
+2. Writes the version into every file that carries it.
+3. Generates the release notes and archives the fragments the release consumed into `changes\archive\<version>`.
+4. Regenerates the documentation index.
+5. Commits **only** that release bookkeeping and stops. Nothing is pushed, and unrelated work in the worktree is never staged.
+
+Which fragments count as consumed comes from a snapshot the listener captures when it builds the ZIP, stored under `build_zip_fragments\<readySignal>.json` and keyed by that ZIP's ready signal. The release consumes exactly the fragments it was built from even if a later build has already replaced the ZIP. Fragments written after the ZIP was cut stay unreleased and belong to the next version.
+
+### When the automatic sync does not run
+
+A sync failure never invalidates the installer that was already published — only the repository bookkeeping is missing. The build reports a warning with the command to finish it by hand on the **source PC**:
 
 ```bat
 frontend\build\sync_published_release.bat 1.2.5
 ```
 
-It verifies the release tag exists on the remote through `git ls-remote`, so it does not need the `gh` CLI on the source PC. Then it writes the version into every file that carries it, generates the release notes, and archives the fragments the release consumed into `changes\archive\<version>`.
+The manual command behaves the same way but does not commit unless you add `--commit`. Add `--dry-run` to see the version change and the fragment split without writing anything.
 
-Which fragments count as consumed comes from the fragment list inside `E:\XWSpace\Build ArcRho App\ArcRho.zip`, the exact input that build used. Fragments added after the ZIP was cut stay unreleased and belong to the next version, so syncing late does not sweep newer work into an older release. If that ZIP has already been replaced by a later build, the script says so and falls back to consuming every unreleased fragment — so run the sync before starting the next build.
+The most likely cause is that the listener is not running on the source PC, in which case the build waits ten minutes before giving up. Start it with `build_app_listener.bat` and re-run the manual command.
 
-Add `--dry-run` to see the version change and the fragment split without writing anything. The script never commits; review the result and commit it yourself.
+> The listener loads its script once at start. After changing `build_app_listener.ps1`, restart it or it keeps running the previous version.
 
 ## ZIP Freshness Rules
 
@@ -250,6 +288,10 @@ Confirm that `build_app_listener.bat` is still running visibly on the source PC.
 ### ZIP extraction reports a very long `.git\refs\codex` path
 
 The archive was created from the raw repository instead of the clean ZIP creator. Regenerate it using Step 1. The current extractor skips root `.git`, `.agents`, and `.codex` entries, but those files should not be transported in the first place.
+
+### The build stops with `The system cannot find the batch label specified`
+
+The batch file holding that label was saved with LF-only line endings. `cmd.exe` locates a `call :label` target by byte offset, and the search fails once the label sits past a certain position, so the error appears even though the label is present. Restore CRLF endings in the affected `.bat` file on the source PC, regenerate the ZIP, and rebuild. `.gitattributes` pins `*.bat` and `*.cmd` to CRLF, and workspace staging normalizes them, so this should only surface if a batch file was edited outside those paths.
 
 ### NSIS reports `macro named "MUI_HEADER_TEXT" not found`
 
