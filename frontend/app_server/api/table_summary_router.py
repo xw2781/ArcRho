@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from app_server import config
 from app_server.schemas.table_summary import TableSummaryRefreshRequest
 from app_server.services import (
+    field_mapping_service,
     reserving_class_service,
     source_table_service,
     table_summary_service,
@@ -47,14 +48,18 @@ def get_table_summary(project_name: str) -> Dict[str, Any]:
 
     try:
         master_path = _resolve_master_table(name, force=False)
-        cache_path = config.get_cache_path(name)
+        cache_path = config.get_cache_path(name, table_summary_service.SUMMARY_VERSION)
+        # Date-role columns are summarized by year, so the mapping is part of
+        # what makes a cached payload current.
+        date_roles = field_mapping_service.load_date_role_fields(name)
 
-        cached_data = table_summary_service.load_valid_cache(master_path, cache_path)
+        cached_data = table_summary_service.read_valid_cache(
+            master_path, cache_path, config.get_legacy_cache_path(name), date_roles)
         if cached_data is not None:
             cached_data["from_cache"] = True
             return cached_data
 
-        summary = table_summary_service.generate_table_summary(master_path)
+        summary = table_summary_service.generate_table_summary(master_path, date_roles)
         summary["from_cache"] = False
         _write_cache(cache_path, summary)
         return summary
@@ -78,13 +83,14 @@ def refresh_table_summary(req: TableSummaryRefreshRequest) -> Dict[str, Any]:
         # A refresh re-imports a CSV-sourced project so the master copy matches
         # the external file before the summary is regenerated.
         master_path = _resolve_master_table(project_name, force=True)
-        cache_path = config.get_cache_path(project_name)
-        cache_cleared = False
-        if os.path.exists(cache_path):
-            os.remove(cache_path)
-            cache_cleared = True
+        cache_path = config.get_cache_path(project_name, table_summary_service.SUMMARY_VERSION)
+        # The re-import advanced the imported table's modification time, so
+        # every version's cache - and the pre-versioned file - is stale now.
+        cache_cleared = table_summary_service.discard_cached_summaries(
+            config.list_table_summary_cache_paths(project_name)) > 0
 
-        summary = table_summary_service.generate_table_summary(master_path)
+        summary = table_summary_service.generate_table_summary(
+            master_path, field_mapping_service.load_date_role_fields(project_name))
         summary["from_cache"] = False
         summary["cache_cleared"] = cache_cleared
         _write_cache(cache_path, summary)

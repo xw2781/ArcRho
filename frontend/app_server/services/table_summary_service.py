@@ -11,8 +11,22 @@ import pandas as pd
 from app_server import config
 
 # Bump whenever the cached summary payload gains or changes fields so stale
-# caches are regenerated instead of served without the newer keys.
-SUMMARY_VERSION = 5
+# caches are regenerated instead of served without the newer keys. The cache
+# file name carries this number (`config.get_cache_path`), so two installed app
+# versions sharing one project folder each keep their own cache instead of
+# invalidating and rewriting the other's on every load.
+SUMMARY_VERSION = 6
+
+# A date-role column holds a YYYYMM period, so it is binned by calendar year -
+# one bar per year - rather than over its raw numeric span. Linear binning of
+# YYYYMM combs badly: the 900 numeric units between 201701 and 202612 contain
+# only 120 real values, because months 13-99 do not exist.
+DATE_YEAR_BIN = 100
+DATE_MIN_YEAR = 1000
+DATE_MAX_YEAR = 9999
+# Past this span one bar per year is unreadable, so such a column falls back to
+# the ordinary numeric pipeline.
+DATE_MAX_YEARS = 60
 
 DISTRIBUTION_BIN_COUNT = 40
 DISTRIBUTION_MIN_BIN_COUNT = 8
@@ -41,8 +55,18 @@ def is_cache_valid(csv_path: str, cache_path: str) -> bool:
     return cache_mtime > csv_mtime
 
 
-def load_valid_cache(csv_path: str, cache_path: str) -> Optional[Dict[str, Any]]:
-    """Return the cached summary only when it is fresh and current-version."""
+def load_valid_cache(
+    csv_path: str,
+    cache_path: str,
+    date_roles: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Return the cached summary only when it is fresh, current, and still mapped.
+
+    Date-role columns are binned by year, so the payload depends on the field
+    mapping as well as the CSV. Remapping Origin Date to another column leaves
+    the CSV untouched, and a cache keyed on mtime alone would keep serving the
+    old column's year bars.
+    """
     if not is_cache_valid(csv_path, cache_path):
         return None
     try:
@@ -54,7 +78,107 @@ def load_valid_cache(csv_path: str, cache_path: str) -> Optional[Dict[str, Any]]
         return None
     if int(cached.get("summary_version") or 0) != SUMMARY_VERSION:
         return None
+    if cached.get("date_roles") != dict(date_roles or {}):
+        return None
     return cached
+
+
+def read_valid_cache(
+    csv_path: str,
+    cache_path: str,
+    legacy_cache_path: str,
+    date_roles: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Cached summary for the running version, adopting a pre-versioned file once.
+
+    A project folder written before the cache was version-scoped still holds
+    `table_summary.json`. When that file is fresh and already carries this
+    version's payload, it is renamed onto the versioned name instead of being
+    ignored, so upgrading does not cost one full re-read of the imported table
+    per project. A legacy file belonging to another version is left untouched -
+    it is the only cache the app version that wrote it can still use.
+    """
+    cached = load_valid_cache(csv_path, cache_path, date_roles)
+    if cached is not None:
+        return cached
+    if not legacy_cache_path:
+        return None
+    legacy = load_valid_cache(csv_path, legacy_cache_path, date_roles)
+    if legacy is None:
+        return None
+    try:
+        os.replace(legacy_cache_path, cache_path)
+    except OSError:
+        # A reader elsewhere may hold the file open; serving the payload is
+        # still correct, and the next load retries the rename.
+        pass
+    return legacy
+
+
+def discard_cached_summaries(cache_paths) -> int:
+    """Delete every table-summary cache for a project. Returns how many went.
+
+    Used by the refresh route: a re-import advances the imported table's
+    modification time, so every cached payload - this version's, another
+    version's, and the legacy file - is already stale.
+    """
+    removed = 0
+    for path in cache_paths or []:
+        try:
+            os.remove(path)
+            removed += 1
+        except FileNotFoundError:
+            continue
+        except OSError:
+            continue
+    return removed
+
+
+def _date_year_distribution(values: pd.Series) -> Optional[Dict[str, Any]]:
+    """One linear bar per calendar year for a YYYYMM date-role column.
+
+    Returns `None` when the column cannot be read as YYYYMM periods or spans
+    too many years to draw a bar each, so the caller falls back to the ordinary
+    numeric pipeline.
+    """
+    arr = pd.to_numeric(values, errors="coerce").to_numpy(dtype="float64")
+    arr = arr[np.isfinite(arr)]
+    if not arr.size:
+        return None
+    periods = arr.astype("int64")
+    years, months = np.divmod(periods, DATE_YEAR_BIN)
+    # Placeholder zeros and any other non-period value are excluded from the
+    # chart. `stats` still reports the column's raw minimum and maximum.
+    usable = (
+        (years >= DATE_MIN_YEAR) & (years <= DATE_MAX_YEAR)
+        & (months >= 1) & (months <= 12)
+    )
+    years = years[usable]
+    if not years.size:
+        return None
+
+    first_year = int(years.min())
+    last_year = int(years.max())
+    span = last_year - first_year + 1
+    if span > DATE_MAX_YEARS:
+        return None
+
+    # Dense across the span, so a year with no rows stays visible as a gap.
+    counts = np.bincount(years - first_year, minlength=span).astype("float64")
+    peak = float(counts.max())
+    if peak <= 0:
+        return None
+    labels = [str(first_year + offset) for offset in range(span)]
+    return {
+        "kind": "numeric",
+        # Linear heights: one year of rows against another is a fair comparison,
+        # so these do not need the root scaling the free-form numeric path uses.
+        "bins": [round(float(c) / peak, 4) for c in counts],
+        "edges": [float(first_year + offset) for offset in range(span + 1)],
+        "bin_labels": labels,
+        "clipped_low": False,
+        "clipped_high": False,
+    }
 
 
 def _empty_numeric_distribution() -> Dict[str, Any]:
@@ -167,9 +291,35 @@ def _categorical_distribution(values: pd.Series, distinct_count: int) -> Dict[st
     }
 
 
-def generate_table_summary(path: str) -> Dict[str, Any]:
+def _distribution_for_column(col_data: pd.Series, role: str) -> Dict[str, Any]:
+    """Year bars for a mapped date column, else the free-form numeric shape."""
+    if role:
+        by_year = _date_year_distribution(col_data)
+        if by_year is not None:
+            return by_year
+    return _numeric_distribution(col_data)
+
+
+def generate_table_summary(
+    path: str,
+    date_roles: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """Summarize the imported table.
+
+    `date_roles` maps a column name to its `Origin Date`/`Development Date`
+    significance, resolved by `field_mapping_service.load_date_role_fields`.
+    Those columns are published with their role and binned by calendar year.
+    """
     st = os.stat(path)
     file_size = st.st_size
+
+    # Names are matched case-insensitively and untrimmed, the same rule the
+    # mapping panel applies when it pairs a mapped field to a table column.
+    roles_by_key = {
+        str(name or "").strip().lower(): str(significance or "").strip()
+        for name, significance in (date_roles or {}).items()
+        if str(name or "").strip() and str(significance or "").strip()
+    }
 
     df = pd.read_csv(path)
     row_count = len(df)
@@ -178,6 +328,7 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
     for col in df.columns:
         dtype = str(df[col].dtype)
         col_data = df[col].dropna()
+        role = roles_by_key.get(str(col).strip().lower(), "")
         distinct_count: Optional[int] = None
         distribution: Dict[str, Any] = {"kind": "none"}
         # Raw min/max for numeric and datetime columns (JSON-safe plain types)
@@ -186,7 +337,7 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
 
         if "int" in dtype:
             friendly_type = "Integer"
-            distribution = _numeric_distribution(col_data)
+            distribution = _distribution_for_column(col_data, role)
             if len(col_data) > 0:
                 min_val = int(col_data.min())
                 max_val = int(col_data.max())
@@ -196,7 +347,7 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
                 values_str = "(empty)"
         elif "float" in dtype:
             friendly_type = "Float"
-            distribution = _numeric_distribution(col_data)
+            distribution = _distribution_for_column(col_data, role)
             if len(col_data) > 0:
                 min_val = float(col_data.min())
                 max_val = float(col_data.max())
@@ -219,7 +370,7 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
                     values_str = f"{distinct_count} distinct: {', '.join(str(v) for v in sample)}..."
         elif "datetime" in dtype:
             friendly_type = "DateTime"
-            distribution = _numeric_distribution(col_data)
+            distribution = _distribution_for_column(col_data, role)
             if len(col_data) > 0:
                 min_val = col_data.min()
                 max_val = col_data.max()
@@ -241,6 +392,9 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
             "name": str(col),
             "dtype": dtype,
             "type": friendly_type,
+            # Resolved here so consumers read one answer instead of re-deriving
+            # the mapping rule from `field_mapping.json` themselves.
+            "role": role,
             "values": values_str,
             "distinct_count": distinct_count,
             "null_count": null_count,
@@ -265,5 +419,8 @@ def generate_table_summary(path: str) -> Dict[str, Any]:
         "file_size": file_size,
         "file_size_str": size_str,
         "columns": columns,
+        # The mapping this payload was built against, so a later read can tell
+        # whether the cache still matches the project's current field mapping.
+        "date_roles": dict(date_roles or {}),
         "csv_mtime": st.st_mtime,
     }

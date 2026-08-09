@@ -261,10 +261,13 @@ refresh_runtime_paths()
 # ---------------------------------------------------------------------------
 
 FIELD_MAPPING_FILE = "field_mapping.json"
+# The significances whose mapped field carries a YYYYMM reserving period. Owned
+# here so the summary, the rule editor, and the mapping validator all agree on
+# one vocabulary instead of repeating the literal pair.
+FIELD_MAPPING_DATE_SIGNIFICANCES = ("Origin Date", "Development Date")
 FIELD_MAPPING_SIGNIFICANCES = {
     "Reserving Class",
-    "Origin Date",
-    "Development Date",
+    *FIELD_MAPPING_DATE_SIGNIFICANCES,
     "Dataset",
 }
 RESERVING_CLASS_VALUES_FILE = "reserving_class_values.json"
@@ -292,6 +295,16 @@ DATASET_TYPES_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formu
 DATASET_TYPES_FILE_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula", "Source", "Generated"]
 AUDIT_LOG_FILE = "audit_log.json"
 AUDIT_LOG_MAX_ENTRIES = 5000
+# The table-summary cache is shared by every user of a project, but a payload
+# built by one app version cannot be read by another. Keying the file *name* on
+# the summary version lets two installed versions each keep their own cache; a
+# single shared name made them reject and rewrite each other's payload on every
+# load, so neither version ever saw a warm cache. `table_summary_service` owns
+# the version number itself and passes it in.
+TABLE_SUMMARY_CACHE_PREFIX = "table_summary.v"
+TABLE_SUMMARY_CACHE_SUFFIX = ".json"
+# Written before summaries were version-scoped by file name.
+LEGACY_TABLE_SUMMARY_CACHE_FILE = "table_summary.json"
 GENERAL_SETTINGS_FILE = "general_settings.json"
 PROJECT_DATA_DIR = "data"
 DATASET_CACHE_DIR = "datasets"
@@ -376,13 +389,61 @@ def _find_existing_project_dir(project_name: str) -> Optional[str]:
     return None
 
 
-def get_cache_path(project_name: str) -> str:
-    """Get table-summary cache path under an existing project folder."""
+def get_cache_path(project_name: str, summary_version: int) -> str:
+    """Version-scoped table-summary cache path under an existing project folder.
+
+    `summary_version` is required rather than defaulted so a caller can never
+    silently read or write another version's payload.
+    """
     chosen_name = (project_name or "").strip()
     project_dir = _find_existing_project_dir(chosen_name)
     if not project_dir:
         raise ValueError(f"Project folder not found under projects: {chosen_name}")
-    return os.path.join(project_dir, "table_summary.json")
+    file_name = f"{TABLE_SUMMARY_CACHE_PREFIX}{int(summary_version)}{TABLE_SUMMARY_CACHE_SUFFIX}"
+    return os.path.join(project_dir, file_name)
+
+
+def get_legacy_cache_path(project_name: str) -> str:
+    """Pre-versioned table-summary cache path under an existing project folder."""
+    chosen_name = (project_name or "").strip()
+    project_dir = _find_existing_project_dir(chosen_name)
+    if not project_dir:
+        raise ValueError(f"Project folder not found under projects: {chosen_name}")
+    return os.path.join(project_dir, LEGACY_TABLE_SUMMARY_CACHE_FILE)
+
+
+def list_table_summary_cache_paths(project_name: str) -> List[str]:
+    """Every table-summary cache file in the project folder, newest first.
+
+    One folder enumeration answers for all versions plus the legacy name, so a
+    caller that only needs version-independent fields (the CSV mtime, the column
+    names) or that is discarding every stale cache never has to probe each
+    candidate path over the network.
+    """
+    chosen_name = (project_name or "").strip()
+    project_dir = _find_existing_project_dir(chosen_name)
+    if not project_dir:
+        raise ValueError(f"Project folder not found under projects: {chosen_name}")
+    found: List[tuple] = []
+    try:
+        with os.scandir(project_dir) as entries:
+            for entry in entries:
+                name = entry.name
+                is_cache = name == LEGACY_TABLE_SUMMARY_CACHE_FILE or (
+                    name.startswith(TABLE_SUMMARY_CACHE_PREFIX)
+                    and name.endswith(TABLE_SUMMARY_CACHE_SUFFIX)
+                )
+                if not is_cache or not entry.is_file():
+                    continue
+                try:
+                    mtime = entry.stat().st_mtime
+                except OSError:
+                    mtime = 0.0
+                found.append((mtime, entry.path))
+    except OSError:
+        return []
+    found.sort(key=lambda item: item[0], reverse=True)
+    return [path for _mtime, path in found]
 
 
 def get_field_mapping_path(project_name: str) -> str:

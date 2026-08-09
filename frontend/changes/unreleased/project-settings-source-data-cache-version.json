@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source Data now opens from its cached summary instead of re-reading the whole imported table on every load.",
+  "details": [
+    "The cached table summary is shared by everyone working on a project, but two ArcRho versions used the same cache file name and each rejected the other's copy, so both kept rebuilding it. On a large imported table that turned every Source Data load into a full re-read of the file.",
+    "The cache file name now carries its format version, so different ArcRho versions keep their own copy and each one loads from cache.",
+    "Reloading the source table clears every cached summary for the project, as it did before."
+  ]
+}

@@ -429,7 +429,7 @@ def _source_table_options(
             "field": field_name,
             "type": (
                 "date"
-                if significance in {"Origin Date", "Development Date"}
+                if significance in config.FIELD_MAPPING_DATE_SIGNIFICANCES
                 else ""
             ),
         }
@@ -451,7 +451,7 @@ def _source_table_options(
         series = frame[column]
         field_type = _friendly_series_type(series)
         significance = significance_by_field.get(name, "")
-        if significance in {"Origin Date", "Development Date"}:
+        if significance in config.FIELD_MAPPING_DATE_SIGNIFICANCES:
             field_type = "date"
         option: Dict[str, Any] = {"field": name, "type": field_type}
         values = _dedupe_json_values(

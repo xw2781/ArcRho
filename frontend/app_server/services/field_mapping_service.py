@@ -16,6 +16,47 @@ from app_server.services.dataset_types_service import get_dataset_type_names
 from app_server.services import reserving_class_service
 
 
+def load_date_role_fields(project_name: str) -> Dict[str, str]:
+    """Mapped field name for each date significance, keyed by column name.
+
+    The canonical answer to "which columns hold a reserving period" for this
+    project. Consumers must read it here rather than re-deriving the rule from
+    `field_mapping.json`, and a missing or unreadable mapping simply means no
+    column carries a date role.
+    """
+    try:
+        filepath = config.get_field_mapping_path(project_name)
+    except ValueError:
+        return {}
+    if not os.path.exists(filepath):
+        return {}
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+    rows = raw.get("rows", []) if isinstance(raw, dict) else []
+    if not isinstance(rows, list):
+        return {}
+
+    roles: Dict[str, str] = {}
+    claimed: set = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        significance = str(row.get("significance") or "").strip()
+        field_name = str(row.get("field_name") or "").strip()
+        # First row wins per significance, matching how the mapping panel
+        # resolves a duplicate assignment.
+        if not field_name or significance in claimed:
+            continue
+        if significance in config.FIELD_MAPPING_DATE_SIGNIFICANCES:
+            roles[field_name] = significance
+            claimed.add(significance)
+    return roles
+
+
 def save_field_mapping(
     project_name: str,
     table_path: Optional[str],

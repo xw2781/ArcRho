@@ -15,6 +15,7 @@ const {
   formatSummaryNumber,
   getColumnRowSummary,
   getHistBarRangeLabels,
+  getHistBarLabels,
   getDistributionAreaPath,
 } = sourceDataModule;
 const generalSettingsSource = await readFile(
@@ -39,6 +40,18 @@ const projectSettingsCss = await readFile(
 );
 const summaryService = await readFile(
   new URL("../app_server/services/table_summary_service.py", import.meta.url),
+  "utf8",
+);
+const summaryConfig = await readFile(
+  new URL("../app_server/config.py", import.meta.url),
+  "utf8",
+);
+const fieldMappingService = await readFile(
+  new URL("../app_server/services/field_mapping_service.py", import.meta.url),
+  "utf8",
+);
+const rulesService = await readFile(
+  new URL("../app_server/services/data_processing_rules_service.py", import.meta.url),
   "utf8",
 );
 const summaryRouter = await readFile(
@@ -254,7 +267,12 @@ test("project_settings.js delegates Source Data rendering to the feature module"
   assert.match(projectSettingsJs, /sourceDataFeature\.renderSummary\(data\)/);
   assert.match(projectSettingsJs, /sourceDataFeature\.showNoPath\(/);
   assert.match(projectSettingsJs, /sourceDataFeature\.showError\(/);
-  assert.match(projectSettingsJs, /sourceDataFeature\.setDateRoles\(mappedDateFields\)/);
+  // The date role now rides on the summary payload, so the coordinator no
+  // longer pushes a separately fetched copy of the mapping into the tab.
+  assert.ok(
+    !projectSettingsJs.includes("setDateRoles"),
+    "the coordinator still pushes date roles into Source Data",
+  );
   // The month parser is imported from its owner rather than reimplemented here.
   assert.match(projectSettingsJs, /normalizeMonth: normalizeBoundaryYmCanonical/);
   assert.match(projectSettingsJs, /formatMonth: formatBoundaryYmDisplay/);
@@ -431,7 +449,7 @@ test("column previews show completeness and percentage-accurate frequency meters
 
 test("histogram bars expose their bin range on hover", () => {
   assert.match(moduleSource, /class="sd-hist-bar"/);
-  assert.match(moduleSource, /getHistBarRangeLabels\(dist\.edges, \{\s*asDate: !!role,\s*clippedLow: !!dist\.clipped_low,\s*clippedHigh: !!dist\.clipped_high,\s*\}\)/);
+  assert.match(moduleSource, /const rangeLabels = getHistBarLabels\(dist\)/);
   assert.match(summaryCss, /\.sd-hist-bar\s*\{[\s\S]*?height:\s*100%;/);
   assert.match(summaryCss, /\.sd-hist-bar:hover i\s*\{\s*opacity:\s*1;/);
 
@@ -508,7 +526,7 @@ test("the row distribution mark is a monotone cubic area that never dips below i
 });
 
 test("table summary service publishes versioned distribution data", () => {
-  assert.match(summaryService, /SUMMARY_VERSION = 5/);
+  assert.match(summaryService, /SUMMARY_VERSION = 6/);
   // Significant digits, not decimal places: rounding a 1e-9 column's edges to a
   // fixed number of places collapses every hover label to "0 ~ 0".
   assert.match(summaryService, /"edges": \[float\(f"\{e:\.12g\}"\) for e in edges\]/);
@@ -524,8 +542,95 @@ test("table summary service publishes versioned distribution data", () => {
   assert.match(summaryService, /"distribution": distribution/);
   assert.match(summaryService, /"summary_version": SUMMARY_VERSION/);
   // A stale-version cache must be regenerated rather than served.
-  assert.match(summaryRouter, /load_valid_cache\(master_path, cache_path\)/);
+  assert.match(
+    summaryRouter,
+    /read_valid_cache\(\s*master_path, cache_path, config\.get_legacy_cache_path\(name\), date_roles\)/,
+  );
   assert.ok(!summaryRouter.includes("is_cache_valid("), "router still trusts mtime alone");
+  // The cache is shared by every user of the project, so the file name carries
+  // the version: one shared name made two installed app versions reject and
+  // rewrite each other's payload, and neither ever saw a warm cache.
+  assert.match(summaryConfig, /TABLE_SUMMARY_CACHE_PREFIX = "table_summary\.v"/);
+  assert.match(summaryConfig, /def get_cache_path\(project_name: str, summary_version: int\)/);
+  assert.match(summaryRouter, /config\.get_cache_path\(name, table_summary_service\.SUMMARY_VERSION\)/);
+  // A re-import makes every version's cache stale, so refresh sweeps them all.
+  assert.match(
+    summaryRouter,
+    /discard_cached_summaries\(\s*config\.list_table_summary_cache_paths\(project_name\)\)/,
+  );
+});
+
+test("date-role columns are binned by calendar year, one bar per year", () => {
+  // Linear binning of YYYYMM combs: the 900 numeric units between 201701 and
+  // 202612 hold only 120 real values, because months 13-99 do not exist.
+  assert.match(summaryService, /def _date_year_distribution\(/);
+  assert.match(summaryService, /np\.bincount\(years - first_year, minlength=span\)/);
+  assert.match(summaryService, /"bin_labels": labels/);
+  // Placeholder zeros and any other non-period value stay out of the chart.
+  assert.match(summaryService, /\(years >= DATE_MIN_YEAR\) & \(years <= DATE_MAX_YEAR\)/);
+  assert.match(summaryService, /& \(months >= 1\) & \(months <= 12\)/);
+  // Year counts are directly comparable, so they keep linear heights.
+  assert.ok(
+    !/_date_year_distribution[\s\S]*?np\.sqrt[\s\S]*?def _empty_numeric/.test(summaryService),
+    "year bars are root-scaled like the free-form numeric path",
+  );
+  // An unusable or absurdly wide column falls back rather than drawing nothing.
+  assert.match(summaryService, /DATE_MAX_YEARS = 60/);
+  assert.match(summaryService, /if span > DATE_MAX_YEARS:\s*\n\s*return None/);
+  assert.match(summaryService, /def _distribution_for_column\(col_data: pd\.Series, role: str\)/);
+});
+
+test("the app server owns date-role detection and the cache tracks it", () => {
+  // One canonical vocabulary instead of the literal pair repeated per service.
+  assert.match(summaryConfig, /FIELD_MAPPING_DATE_SIGNIFICANCES = \("Origin Date", "Development Date"\)/);
+  assert.match(summaryConfig, /\*FIELD_MAPPING_DATE_SIGNIFICANCES,/);
+  assert.ok(
+    !/\{"Origin Date", "Development Date"\}/.test(rulesService),
+    "the rule service still repeats the date significance pair",
+  );
+
+  // One resolver owns "which columns hold a reserving period".
+  assert.match(fieldMappingService, /def load_date_role_fields\(project_name: str\) -> Dict\[str, str\]/);
+  assert.match(fieldMappingService, /if significance in config\.FIELD_MAPPING_DATE_SIGNIFICANCES/);
+  assert.match(summaryRouter, /field_mapping_service\.load_date_role_fields\(name\)/);
+  assert.match(summaryService, /"role": role/);
+
+  // Remapping Origin Date leaves the CSV untouched, so an mtime-only cache
+  // check would keep serving the previous column's year bars.
+  assert.match(summaryService, /if cached\.get\("date_roles"\) != dict\(date_roles or \{\}\):/);
+  assert.match(summaryService, /"date_roles": dict\(date_roles or \{\}\)/);
+  assert.match(summaryRouter, /read_valid_cache\(\s*master_path, cache_path, .*, date_roles\)/);
+});
+
+test("histogram bar labels prefer the server's year labels", () => {
+  assert.deepEqual(
+    getHistBarLabels({ bins: [1, 0.5], bin_labels: ["2017", "2018"] }),
+    ["2017", "2018"],
+  );
+  // A label array that does not line up with the bars is ignored, not zipped.
+  assert.deepEqual(
+    getHistBarLabels({ bins: [1, 0.5], bin_labels: ["2017"], edges: [0, 10, 20] }),
+    ["0 ~ 10", "10 ~ 20"],
+  );
+  // Free-form numeric columns still describe each bar as a bin range.
+  assert.deepEqual(
+    getHistBarLabels({ bins: [1, 0.5], edges: [0, 10, 20], clipped_high: true }),
+    ["0 ~ 10", "≥ 10"],
+  );
+  assert.deepEqual(getHistBarLabels({}), []);
+  assert.deepEqual(getHistBarLabels(undefined), []);
+});
+
+test("Source Data reads each column's date role from the payload", () => {
+  assert.match(moduleSource, /function roleForColumn\(column\) \{\s*return String\(column\?\.role \|\| ""\)\.trim\(\);/);
+  assert.ok(
+    !moduleSource.includes("dateRoles"),
+    "the tab still keeps its own copy of the field mapping",
+  );
+  assert.ok(
+    !moduleSource.includes("setDateRoles"),
+    "the retired setDateRoles entry point remains",
+  );
 });
 
 test("numeric distributions are quantile-framed, smoothed, and root-scaled", () => {
@@ -575,7 +680,7 @@ test("table summary is addressed by project and reads the imported master table"
   // The route no longer accepts a caller-supplied path; the project owns the table.
   assert.match(summaryRouter, /def get_table_summary\(project_name: str\)/);
   assert.match(summaryRouter, /source_table_service\.ensure_master_table\(project_name, force=force\)/);
-  assert.match(summaryRouter, /generate_table_summary\(master_path\)/);
+  assert.match(summaryRouter, /generate_table_summary\(master_path, date_roles\)/);
   assert.ok(!summaryRouter.includes("req.path"), "refresh still reads a caller path");
 
   assert.match(projectSettingsJs, /async function loadTableSummary\(projectName = "", options = \{\}\)/);

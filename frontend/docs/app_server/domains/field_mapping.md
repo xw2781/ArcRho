@@ -4,6 +4,8 @@
 <!-- MANUAL:BEGIN -->
 Field mapping persistence domain for project settings.
 
+`field_mapping_service.load_date_role_fields` is the canonical answer to "which columns of this project hold a reserving period". It returns `{column name: significance}` for the significances in `config.FIELD_MAPPING_DATE_SIGNIFICANCES` (`Origin Date`, `Development Date`), first mapped row winning per significance, and an empty mapping when the file is missing or unreadable. Consumers call it instead of re-deriving the rule from `field_mapping.json`; `table_summary` uses it to publish each column's `role` and to bin date columns by year. `FIELD_MAPPING_SIGNIFICANCES` is built from that same tuple, so the date pair is declared once.
+
 `table_path` in `field_mapping.json` is the *external CSV selection* a user picked in Project Settings, not the table anything reads. It is the copy source for a `csv`-sourced project's imported master table; see [`source_table`](source_table.md). Its writer is the import-profile save (`POST /source_table/profile` with `csv_path`); a field-mapping save that omits `table_path` preserves the stored value. Saving a mapping refreshes reserving class values from the imported copy, so no path override is passed.
 <!-- MANUAL:END -->
 

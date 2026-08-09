@@ -15,7 +15,7 @@ import { createFieldMappingFeature } from "/ui/project_settings/project_settings
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260722a";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260808rctresize1";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260721dpr12";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260808sddist1";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260808daterole1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -23,15 +23,15 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260807idx1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260808daterole1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260807idx1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260807idx1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260807idx1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260807idx1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260808daterole1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260808daterole1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260808daterole1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260808daterole1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260716psprefs1";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -1080,9 +1080,10 @@ async function loadTableSummary(projectName = "", options = {}) {
       : [];
     const existingGeneralSettings = await generalSettingsFeature.ensureLoaded(projectName, { applyToInputs: false });
     if (isStale()) return true;
+    // Source Data reads each column's date role off the summary payload. This
+    // copy stays only for deriving the reserving-period boundary inputs.
     const mappedDateFields = await fetchMappedDateFields(projectName);
     if (isStale()) return true;
-    sourceDataFeature.setDateRoles(mappedDateFields);
     const derivedValues = deriveSummaryDateInputs(data.columns, mappedDateFields);
     const shouldApplyDerived = (
       !!existingGeneralSettings.projectNameMismatch

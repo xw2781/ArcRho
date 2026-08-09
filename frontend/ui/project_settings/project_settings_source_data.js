@@ -105,6 +105,25 @@ export function formatSummaryNumber(value, decimals = 0) {
   });
 }
 
+/**
+ * Hover label for each histogram bar.
+ *
+ * A date-role column is binned by calendar year, and the app server ships the
+ * year each bar covers. Only a free-form numeric column has to describe its
+ * bars as a range between two bin edges.
+ */
+export function getHistBarLabels(distribution) {
+  const dist = distribution || {};
+  const bins = Array.isArray(dist.bins) ? dist.bins : [];
+  const labels = Array.isArray(dist.bin_labels) ? dist.bin_labels : null;
+  if (labels && labels.length === bins.length) return labels.map((label) => String(label));
+  return getHistBarRangeLabels(dist.edges, {
+    asDate: !!dist.bin_labels,
+    clippedLow: !!dist.clipped_low,
+    clippedHigh: !!dist.clipped_high,
+  });
+}
+
 export function getHistBarRangeLabels(
   edges,
   { asDate = false, clippedLow = false, clippedHigh = false } = {},
@@ -314,7 +333,6 @@ export function createSourceDataFeature(deps = {}) {
   let windowDragState = null;
   let windowResizeState = null;
   let connectionHistory = [];
-  let dateRoles = { originField: "", developmentField: "" };
   let previewCard = null;
   let previewRow = null;
   let previewCell = null;
@@ -334,12 +352,11 @@ export function createSourceDataFeature(deps = {}) {
     return String(value || "").trim().toLowerCase();
   }
 
-  function roleForColumn(name) {
-    const key = normalizeKey(name);
-    if (!key) return "";
-    if (key === normalizeKey(dateRoles.originField)) return "Origin Date";
-    if (key === normalizeKey(dateRoles.developmentField)) return "Development Date";
-    return "";
+  // The app server resolves each column's date role from the project's field
+  // mapping and publishes it on the column, so this tab reads it rather than
+  // re-deriving the mapping rule from a separately fetched copy.
+  function roleForColumn(column) {
+    return String(column?.role || "").trim();
   }
 
   function monthIndex(value) {
@@ -420,7 +437,7 @@ export function createSourceDataFeature(deps = {}) {
 
   function previewHtml(column) {
     const dist = column?.distribution || {};
-    const role = roleForColumn(column?.name);
+    const role = roleForColumn(column);
     const distinct = Number.isFinite(Number(column?.distinct_count)) && column.distinct_count !== null
       ? Number(column.distinct_count)
       : null;
@@ -449,12 +466,9 @@ export function createSourceDataFeature(deps = {}) {
             ? `<p class="sd-preview-values">and ${Number(dist.other_count).toLocaleString()} more values</p>`
             : "");
     } else if (dist.kind === "numeric" && Array.isArray(dist.bins) && dist.bins.length) {
-      // Full-height bar cells keep short bars hoverable; the title carries the bin range.
-      const rangeLabels = getHistBarRangeLabels(dist.edges, {
-        asDate: !!role,
-        clippedLow: !!dist.clipped_low,
-        clippedHigh: !!dist.clipped_high,
-      });
+      // Full-height bar cells keep short bars hoverable; the title carries the
+      // bar's year for a date column and its bin range otherwise.
+      const rangeLabels = getHistBarLabels(dist);
       body = '<p class="sd-preview-section">Distribution</p><div class="sd-hist">'
         + dist.bins.map((value, index) => {
             const title = rangeLabels[index] ? ` title="${escapeHtml(rangeLabels[index])}"` : "";
@@ -500,7 +514,7 @@ export function createSourceDataFeature(deps = {}) {
       dom.list.innerHTML = '<div class="sd-empty-row">No columns match this filter.</div>';
     } else {
       dom.list.innerHTML = rows.map((column) => {
-        const role = roleForColumn(column?.name);
+        const role = roleForColumn(column);
         const index = columns.indexOf(column);
         const summary = getColumnRowSummary(column, { asDate: !!role });
         const typeLabel = role ? "Date" : column?.type;
@@ -1928,13 +1942,6 @@ export function createSourceDataFeature(deps = {}) {
     // for the Dataset Type and Reserving Class Type editor windows.
     onEditorMouseMove: onWindowMouseMove,
     onEditorMouseUp: onWindowMouseUp,
-    setDateRoles(roles = {}) {
-      dateRoles = {
-        originField: String(roles.originField || ""),
-        developmentField: String(roles.developmentField || ""),
-      };
-      if (columns.length && !summaryLoading) renderColumns();
-    },
     showLoading(message = "Reading the source table...") {
       setBodyVisible(true);
       hidePreview();
