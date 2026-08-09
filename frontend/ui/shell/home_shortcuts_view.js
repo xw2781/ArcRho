@@ -42,10 +42,15 @@ let loadPromise = null;
 let menuContext = null;
 let namePromptResolve = null;
 let addCardResolve = null;
+let homeCardTooltipEl = null;
+let homeCardTooltipTimer = 0;
+let homeCardTooltipCard = null;
+let homeCardTooltipPoint = null;
 
-// Press-and-hold reordering. The hold is deliberately long because a card's primary action is a
-// plain click, so the drag must never be something a normal click can fall into by accident.
-const HOLD_TO_DRAG_MS = 1000;
+// Press-and-hold reordering has a brief threshold to distinguish a drag from an intentional card
+// activation. A quick click activates the card; an incomplete hold cancels without activation.
+const CLICK_TO_OPEN_MS = 200;
+const HOLD_TO_DRAG_MS = 500;
 const HOLD_CANCEL_DISTANCE = 6;
 const CLICK_SUPPRESS_MS = 400;
 const DROP_SETTLE_MS = 140;
@@ -71,15 +76,73 @@ function reportError(message) {
   shell.updateStatusBar?.(String(message || "Could not update Home shortcuts."), { tone: "error" });
 }
 
+function ensureHomeCardTooltip() {
+  if (homeCardTooltipEl) return homeCardTooltipEl;
+  homeCardTooltipEl = document.createElement("div");
+  homeCardTooltipEl.className = "homeCardTooltip";
+  homeCardTooltipEl.setAttribute("role", "tooltip");
+  document.body.appendChild(homeCardTooltipEl);
+  return homeCardTooltipEl;
+}
+
+function hideHomeCardTooltip() {
+  window.clearTimeout(homeCardTooltipTimer);
+  homeCardTooltipTimer = 0;
+  homeCardTooltipCard = null;
+  homeCardTooltipPoint = null;
+  homeCardTooltipEl?.classList.remove("is-visible");
+}
+
+function positionHomeCardTooltip(point) {
+  const tooltip = homeCardTooltipEl;
+  if (!tooltip) return;
+  const gap = 14;
+  const edge = 8;
+  const left = Math.min(point.x + gap, window.innerWidth - tooltip.offsetWidth - edge);
+  const top = Math.min(point.y + gap, window.innerHeight - tooltip.offsetHeight - edge);
+  tooltip.style.left = `${Math.max(edge, left)}px`;
+  tooltip.style.top = `${Math.max(edge, top)}px`;
+}
+
+function scheduleHomeCardTooltip(card, event) {
+  hideHomeCardTooltip();
+  homeCardTooltipCard = card;
+  homeCardTooltipPoint = { x: event.clientX, y: event.clientY };
+  homeCardTooltipTimer = window.setTimeout(() => {
+    if (homeCardTooltipCard !== card || !homeCardTooltipPoint) return;
+    const tooltip = ensureHomeCardTooltip();
+    tooltip.textContent = "Hold to drag and reorder";
+    positionHomeCardTooltip(homeCardTooltipPoint);
+    tooltip.classList.add("is-visible");
+  }, 500);
+}
+
+function wireHomeCardTooltip() {
+  containerEl?.addEventListener("pointerover", (event) => {
+    const card = event.target?.closest?.(".homeShortcutCard");
+    if (!card || !containerEl.contains(card) || card.contains(event.relatedTarget)) return;
+    scheduleHomeCardTooltip(card, event);
+  });
+  containerEl?.addEventListener("pointermove", (event) => {
+    const card = event.target?.closest?.(".homeShortcutCard");
+    if (!card || card !== homeCardTooltipCard) return;
+    scheduleHomeCardTooltip(card, event);
+  });
+  containerEl?.addEventListener("pointerout", (event) => {
+    const card = event.target?.closest?.(".homeShortcutCard");
+    if (card && !card.contains(event.relatedTarget)) hideHomeCardTooltip();
+  });
+}
+
 /* ---------------------------------------------------------------- rendering */
 
 function renderCard(group, card) {
   const summary = buildRestoreSummary(card.target);
-  const tooltip = `${summary || tabTypeLabel(card.target.tabType)}\nHold to drag and reorder`;
+  const tooltip = "Hold to drag and reorder";
   return `
     <div class="card clickable homeShortcutCard" role="button" tabindex="0"
          data-group-id="${escapeHtml(group.id)}" data-card-id="${escapeHtml(card.id)}"
-         title="${escapeHtml(tooltip)}">
+         data-home-tooltip="${escapeHtml(tooltip)}">
       ${homeCardIconForTabType(card.target.tabType)}
       <div class="homeShortcutCardText">
         <h3>${escapeHtml(card.label)}</h3>
@@ -126,12 +189,12 @@ export function renderHomeShortcuts() {
   const groups = shortcutsDocument.groups.map(renderGroup).join("");
   const empty = shortcutsDocument.groups.length
     ? ""
-    : `<div class="homeShortcutsIntro">Group the projects, datasets, and pages you use most. Cards are created from tabs you already have open.</div>`;
+    : `<span class="homeShortcutsIntro">Group the projects, datasets, and pages you use most. Cards are created from tabs you already have open.</span>`;
   containerEl.innerHTML = `
     ${groups}
     <div class="homeShortcutsFooter">
       ${empty}
-      <button class="homeAddGroupBtn" type="button" data-action="add-group">+ New group</button>
+      <button class="homeAddGroupHint" type="button" data-action="add-group" aria-label="Add a new group">+ New group</button>
     </div>
   `;
 }
@@ -304,10 +367,18 @@ function openCardMenu(groupId, cardId, x, y) {
   ], x, y);
 }
 
+function openHomeShortcutAreaMenu(x, y) {
+  menuContext = { kind: "home" };
+  openHomeShortcutMenu([
+    { label: "Add new group", action: "add-group" },
+  ], x, y);
+}
+
 async function runMenuAction(action) {
   const context = menuContext;
   closeHomeShortcutMenu();
   if (!context) return;
+  if (action === "add-group") return void openAddGroupFlow();
   const { groupId, cardId } = context;
   const group = shortcutsDocument.groups.find((item) => item.id === groupId);
   if (!group) return;
@@ -589,7 +660,11 @@ function onGesturePointerMove(e) {
 function onGesturePointerEnd(e) {
   const pointerId = dragState?.pointerId ?? holdState?.pointerId;
   if (pointerId !== undefined && e.pointerId !== pointerId) return;
-  endGesture(true);
+  const holdWasPending = !dragState && !!holdState;
+  const holdElapsedMs = holdWasPending ? performance.now() - holdState.startedAt : 0;
+  const isQuickClick = e.type === "pointerup" && holdElapsedMs <= CLICK_TO_OPEN_MS;
+  if (holdWasPending && !isQuickClick) suppressClickUntil = performance.now() + CLICK_SUPPRESS_MS;
+  endGesture(!holdWasPending);
 }
 
 // A press that arrives while the previous drop is still settling is ignored: the re-render that
@@ -605,6 +680,7 @@ function beginHold(cardEl, e) {
     startY: e.clientY,
     grabX: e.clientX - rect.left,
     grabY: e.clientY - rect.top,
+    startedAt: performance.now(),
     timer: window.setTimeout(startDrag, HOLD_TO_DRAG_MS),
   };
   cardEl.classList.add("isHoldPending");
@@ -664,6 +740,8 @@ function wireOnce() {
     if (cardEl) beginHold(cardEl, e);
   });
 
+  wireHomeCardTooltip();
+
   containerEl?.addEventListener("click", (e) => {
     // The click that ends a drag must not also open the card that was dragged.
     if (performance.now() < suppressClickUntil) {
@@ -711,6 +789,14 @@ function wireOnce() {
     if (!groupTitle) return;
     e.preventDefault();
     openGroupMenu(groupTitle.closest("[data-group-id]")?.getAttribute("data-group-id") || "", e.clientX, e.clientY);
+  });
+
+  const homePageEl = containerEl?.closest(".homeLaunchPage");
+  homePageEl?.addEventListener("contextmenu", (e) => {
+    const lastGroup = Array.from(homePageEl.querySelectorAll(".homeGroup")).at(-1);
+    if (!lastGroup || e.clientY < lastGroup.getBoundingClientRect().bottom) return;
+    e.preventDefault();
+    openHomeShortcutAreaMenu(e.clientX, e.clientY);
   });
 }
 

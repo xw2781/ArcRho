@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Home shortcut cards now distinguish quick clicks from drag holds more clearly and expose a quieter new-group control."
+}

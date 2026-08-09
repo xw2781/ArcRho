@@ -958,6 +958,9 @@ iframe.floatingTabIframe {
 /* Vertical only: the card grid reflows to the available width, so a horizontal bar would only ever
    appear because something overflowed by accident. */
 .homeLaunchPage {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   padding: 18px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -975,9 +978,9 @@ iframe.floatingTabIframe {
 }
 .groupTitle {
   font-size: 14px;
+  letter-spacing: 0;
   font-weight: 700;
   color: var(--ar-color-text-strong, #515b66);
-  letter-spacing: 0;
   margin-bottom: 10px;
 }
 .cards {
@@ -1108,19 +1111,46 @@ iframe.floatingTabIframe {
   color: var(--ar-color-text-strong, #202327);
 }
 .homeGroupActionBtn:active,
-.homeCardMenuBtn:active,
-.homeAddGroupBtn:active {
+.homeCardMenuBtn:active {
   background: var(--ar-home-ghost-active, color-mix(in srgb, var(--ar-color-border, #d8dde3) 52%, transparent));
 }
 .homeGroupActionBtn:focus-visible,
-.homeCardMenuBtn:focus-visible,
-.homeAddGroupBtn:focus-visible {
+.homeCardMenuBtn:focus-visible {
   outline: 2px solid var(--ar-color-border-focus, #93c5fd);
   outline-offset: 1px;
 }
 .homeShortcutCard {
   position: relative;
   grid-template-columns: 46px minmax(0, 1fr);
+}
+.homeShortcutCard:hover,
+.homeShortcutCard:focus-visible {
+  z-index: 10;
+}
+.homeCardTooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: 7px 9px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 5px;
+  background: var(--ar-color-surface-soft, #f1f5f9);
+  color: var(--ar-color-text-strong, #111827);
+  box-shadow: var(--ar-shadow-floating, 0 8px 20px rgba(15, 23, 42, 0.08));
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: pre-line;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transform: translateY(2px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+}
+.homeCardTooltip.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 .homeShortcutCardText {
   min-width: 0;
@@ -1146,8 +1176,8 @@ iframe.floatingTabIframe {
 .homeCardMenuBtn:focus-visible {
   opacity: 1;
 }
-/* Press-and-hold to reorder. The 1s durations mirror HOLD_TO_DRAG_MS in home_shortcuts_view.js:
-   the bar fills for exactly as long as the hold takes, so it reads as progress toward the drag. */
+/* Press-and-hold to reorder. The visual begins after CLICK_TO_OPEN_MS, then fills through the
+   remaining hold interval so it completes exactly when HOLD_TO_DRAG_MS starts the drag. */
 @keyframes homeCardHoldFill {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
@@ -1158,7 +1188,7 @@ iframe.floatingTabIframe {
 }
 .homeShortcutCard.isHoldPending {
   border-color: var(--ar-color-border-focus, #93c5fd);
-  animation: homeCardHoldPress 1000ms cubic-bezier(0.35, 0, 0.65, 1) forwards;
+  animation: homeCardHoldPress 300ms cubic-bezier(0.35, 0, 0.65, 1) 200ms forwards;
 }
 .homeShortcutCard.isHoldPending::after {
   content: "";
@@ -1169,9 +1199,10 @@ iframe.floatingTabIframe {
   height: 3px;
   border-radius: 0 0 6px 6px;
   background: var(--ar-color-accent-strong, #2563eb);
+  transform: scaleX(0);
   transform-origin: left center;
   pointer-events: none;
-  animation: homeCardHoldFill 1000ms linear forwards;
+  animation: homeCardHoldFill 300ms linear 200ms forwards;
 }
 /* Cards are inert for the whole drag - in every group, since a card can be carried into another
    one. The drop slot is read from frozen geometry, so hover lift and hover paint on the cards
@@ -1200,6 +1231,15 @@ iframe.floatingTabIframe {
   box-shadow: 0 0 0 8px var(--ar-color-accent-soft, #eaf2ff);
 }
 @media (prefers-reduced-motion: reduce) {
+  .homeCardTooltip {
+    transition: none;
+  }
+
+  .homeShortcutsFooter,
+  .homeAddGroupHint {
+    transition: none;
+  }
+
   /* Drop the press-in motion but keep the filling bar: it is the only cue that the hold is working. */
   .homeShortcutCard.isHoldPending {
     animation: none;
@@ -1208,18 +1248,20 @@ iframe.floatingTabIframe {
 
 /* Add-card slot: a card-sized dashed tile that closes every custom group's card row. */
 .homeShortcutAddCard {
+  color: #666666b5;
+}
+.homeShortcutAddCard {
   box-sizing: border-box;
   min-height: 94px;
   max-width: 340px;
   padding: 13px;
-  display: grid;
-  place-content: center;
-  justify-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
   border: 1px dashed color-mix(in srgb, var(--ar-color-border, #d8dde3) 90%, transparent);
   border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
+  background: var(--ar-color-surface, #ffffff);
   font: inherit;
   font-size: 12px;
   line-height: 1.35;
@@ -1249,34 +1291,72 @@ iframe.floatingTabIframe {
   outline-offset: 1px;
 }
 .homeShortcutsIntro {
-  color: var(--muted);
+  align-self: flex-start;
+  color: #666666b5;
   font-size: 12px;
+  font-weight: 300;
   line-height: 1.35;
   max-width: 640px;
 }
 .homeShortcutsFooter {
+  box-sizing: border-box;
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 72px;
   margin-top: 20px;
   padding-top: 20px;
+  padding-right: 0;
+  padding-bottom: 16px;
+  padding-left: 0;
+  border: 0;
   border-top: 1px solid color-mix(in srgb, var(--ar-color-border, #d8dde3) 45%, transparent);
+  background: transparent;
+  color: var(--ar-color-text-muted, #626b75);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
+  font: inherit;
+  text-align: left;
+  transition: color 150ms ease;
 }
-.homeAddGroupBtn {
-  height: 28px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
+.homeShortcutsFooter:hover {
+  color: var(--ar-color-accent-strong, #1d4ed8);
+}
+.homeAddGroupHint {
+  box-sizing: border-box;
+  width: min(100%, 340px);
+  min-height: 34px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--ar-color-border, #d8dde3) 90%, transparent);
+  border-radius: 4px;
+  background: var(--ar-color-surface, #ffffff);
+  color: currentColor;
+  font: inherit;
   font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+  opacity: 0;
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
+  transform: translateY(-2px);
+  transition: opacity 150ms ease, transform 150ms ease, border-color 150ms ease, background-color 150ms ease;
 }
-.homeAddGroupBtn:hover {
-  background: var(--ar-home-ghost-hover, color-mix(in srgb, var(--ar-color-border, #d8dde3) 34%, transparent));
-  color: var(--ar-color-text-strong, #515b66);
+.homeShortcutsFooter:hover .homeAddGroupHint,
+.homeShortcutsFooter:focus-within .homeAddGroupHint {
+  opacity: 1;
+  transform: translateY(0);
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  background: var(--ar-color-accent-soft, #eaf2ff);
+}
+.homeAddGroupHint:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: 1px;
+}
+.homeAddGroupHint:active {
+  background: var(--ar-color-accent-hover, #dbeafe);
 }
 /* Destructive menu item: color only, so it still reads as one row in the same list. */
 .homeShortcutMenuItem.isDanger {

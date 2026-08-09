@@ -213,15 +213,48 @@ test("every custom group ends with an add-card tile that opens the pin dialog", 
   assert.match(styles, /\.homeShortcutAddCard\s*\{[^}]*border:\s*1px dashed/su);
 });
 
-test("a card enters drag reordering only after a one-second hold, with a matching fill animation", async () => {
+test("Home adds groups from a context menu below the last group", async () => {
+  const shortcutsView = await read("../ui/shell/home_shortcuts_view.js");
+
+  assert.doesNotMatch(shortcutsView, /homeAddGroupBtn/u);
+  assert.match(shortcutsView, /function openHomeShortcutAreaMenu\(x, y\)/u);
+  assert.match(shortcutsView, /\{ label: "Add new group", action: "add-group" \}/u);
+  assert.match(shortcutsView, /if \(action === "add-group"\) return void openAddGroupFlow\(\);/u);
+  assert.match(shortcutsView, /homePageEl\?\.addEventListener\("contextmenu"/u);
+  assert.match(shortcutsView, /e\.clientY < lastGroup\.getBoundingClientRect\(\)\.bottom/u);
+});
+
+test("Home reveals a full-width click hint below the last group", async () => {
+  const shortcutsView = await read("../ui/shell/home_shortcuts_view.js");
+  const styles = await read("../ui/shell/shell.css");
+  const darkStyles = await read("../ui/shared/styles/themes/dark.css");
+
+  assert.match(shortcutsView, /<div class="homeShortcutsFooter">/u);
+  assert.doesNotMatch(shortcutsView, /<div class="homeShortcutsFooter"[^>]*data-action=/u);
+  assert.match(shortcutsView, /<button class="homeAddGroupHint" type="button" data-action="add-group"/u);
+  assert.match(shortcutsView, /class="homeAddGroupHint" type="button" data-action="add-group"[^>]*>\+ New group</u);
+  assert.match(styles, /\.homeLaunchPage\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/su);
+  assert.match(styles, /\.homeShortcutsFooter\s*\{[^}]*flex:\s*1 1 0[^}]*border-top:\s*1px solid/su);
+  assert.match(styles, /\.homeAddGroupHint\s*\{[^}]*display:\s*flex[^}]*justify-content:\s*center[^}]*border:\s*1px solid/su);
+  assert.match(styles, /\.homeShortcutsFooter:hover \.homeAddGroupHint,\s*\.homeShortcutsFooter:focus-within \.homeAddGroupHint\s*\{[^}]*background:\s*var\(--ar-color-accent-soft/su);
+  assert.match(darkStyles, /\.homeAddGroupHint\s*\{[^}]*background-color:\s*var\(--ar-color-canvas-subtle/su);
+});
+
+test("a card opens on a quick click, cancels an incomplete hold, and drags after a half-second", async () => {
   const shortcutsView = await read("../ui/shell/home_shortcuts_view.js");
   const styles = await read("../ui/shell/shell.css");
 
-  assert.match(shortcutsView, /HOLD_TO_DRAG_MS = 1000/u);
+  assert.match(shortcutsView, /CLICK_TO_OPEN_MS = 200/u);
+  assert.match(shortcutsView, /HOLD_TO_DRAG_MS = 500/u);
   assert.match(shortcutsView, /setTimeout\(startDrag, HOLD_TO_DRAG_MS\)/u);
   assert.match(shortcutsView, /isHoldPending/u);
+  assert.match(shortcutsView, /const holdWasPending = !dragState && !!holdState;/u);
+  assert.match(shortcutsView, /const holdElapsedMs = holdWasPending \? performance\.now\(\) - holdState\.startedAt : 0;/u);
+  assert.match(shortcutsView, /const isQuickClick = e\.type === "pointerup" && holdElapsedMs <= CLICK_TO_OPEN_MS;/u);
+  assert.match(shortcutsView, /if \(holdWasPending && !isQuickClick\) suppressClickUntil = performance\.now\(\) \+ CLICK_SUPPRESS_MS;/u);
+  assert.match(shortcutsView, /endGesture\(!holdWasPending\);/u);
   assert.match(shortcutsView, /placeCard\(shortcutsDocument, sourceGroup\.groupId, cardId, targetGroup\.groupId, toIndex\)/u);
-  assert.match(styles, /\.homeShortcutCard\.isHoldPending::after\s*\{[^}]*animation:\s*homeCardHoldFill 1000ms linear/su);
+  assert.match(styles, /\.homeShortcutCard\.isHoldPending::after\s*\{[^}]*transform:\s*scaleX\(0\);[^}]*animation:\s*homeCardHoldFill 300ms linear 200ms forwards/su);
 });
 
 // The preview flickered while it reordered the DOM on every pointer move: each move re-measured
