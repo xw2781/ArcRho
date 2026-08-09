@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "theme",
+  "audience": "user",
+  "summary": "Dark mode now gives Home, DFM results, Project Instance status marks, and Arcode cards more consistent surfaces and contrast."
+}

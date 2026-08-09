@@ -60,7 +60,7 @@ Detected `fetch(...)` targets in key JS files:
 - ArcRho shell scripting launch actions open the desktop Arcode window through `openArcodeWindow`; browser fallback opens `/ui/arcode/main.html` directly.
 - Clear Cache & Reload stores a one-shot Arcode restore payload in the Electron host, clears Electron cache/storage, reloads the requesting Arcode window with a fresh timestamped UI URL, and restores the previously open Arcode tabs and active tab after boot.
 - The Arcode shell uses the same 10px left/right workspace gutter, flush compact menu bar, flush unclipped status bar with native resize indicator, bordered main frame, and status-bar zoom slider styling as the ArcRho main shell.
-- In Dark mode, Arcode shares ArcRho's raised titlebar-control surfaces, restrained accent hover for minimize/maximize, danger hover for close, and foreground-following SVG icon strokes.
+- In Dark mode, Arcode shares ArcRho's raised titlebar-control surfaces, restrained accent hover for minimize/maximize, danger hover for close, foreground-following SVG icon strokes, and a Home card hover/focus border with a subtle lift.
 - Settings > Color Theme exposes the same Light and Dark choices as ArcRho; the Arcode topbar has no separate theme-toggle icon. The shared theme service applies the selected palette immediately, relays it to existing notebook/code/Snowflake iframes, updates Monaco globally with `vs` or `vs-dark`, and synchronizes other same-origin ArcRho/Arcode windows without reloading editor state. Electron mirrors the renderer-computed background only as a startup paint hint so the next splash and hidden window pre-paint match the selected palette.
 <!-- MANUAL:END -->
 

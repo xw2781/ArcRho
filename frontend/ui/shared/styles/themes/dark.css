@@ -526,6 +526,22 @@
    empty-group slot needs its edge lifted off the dark canvas. */
 :root[data-arcrho-theme="dark"] .homeShortcutAddCard {
   border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-canvas-subtle);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(.homeGroupActionBtn, .homeShortcutsFooter) {
+  background-color: transparent;
+}
+
+:root[data-arcrho-theme="dark"] .homeShortcutsFooter {
+  border-top-color: color-mix(in srgb, var(--ar-color-border) 45%, transparent);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .homeAddGroupHint {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-canvas-subtle);
   color: var(--ar-color-text-muted);
 }
 
@@ -1457,6 +1473,69 @@
   color: var(--ar-color-text);
 }
 
+:root[data-arcrho-theme="dark"] #resultsWrap {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
+}
+
+:root[data-arcrho-theme="dark"] .dfmResultsControls {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] .dfmResultsControls label {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dfmResultsControls input,
+  .dfmResultsControls .dfmSpinner input,
+  .dfmResultsPickerWrap > .pathTreeBtn
+) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .dfmResultsControls input:focus {
+  border-color: var(--ar-color-border-focus);
+  box-shadow: 0 0 0 2px var(--ar-color-focus-ring);
+}
+
+:root[data-arcrho-theme="dark"] .dfmResultsBasisStatus {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .dfmResultsBasisStatus.is-error {
+  color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] .dfmResultsBasisStatus.is-loading {
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] #resultsWrap :is(thead th, tbody th, tbody td):not(.dfmTableHighlight):not(.dfmTableActive) {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] #resultsWrap thead th,
+:root[data-arcrho-theme="dark"] #resultsWrap th:first-child,
+:root[data-arcrho-theme="dark"] #resultsWrap td:first-child {
+  background-color: var(--ar-color-table-header);
+}
+
+:root[data-arcrho-theme="dark"] #resultsWrap tbody tr:not(.dfmResultsTotalRow):hover td:not(.dfmTableHighlight):not(.dfmTableActive) {
+  background-color: var(--ar-color-table-row-hover);
+}
+
+:root[data-arcrho-theme="dark"] #resultsWrap .dfmResultsTotalRow :is(th, td):not(.dfmTableHighlight):not(.dfmTableActive) {
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-strong);
+  border-bottom-color: var(--ar-color-border-strong);
+}
+
 :root[data-arcrho-theme="dark"] :is(
   .dfmFormField select,
   .dfmSpinner input,
@@ -1857,7 +1936,11 @@
 }
 
 :root[data-arcrho-theme="dark"] .pi-status-soft-fill {
-  fill: #000000;
+  fill: var(--ar-color-surface) !important;
+}
+
+:root[data-arcrho-theme="dark"] .pi-table tbody tr[data-record-key].selected .pi-status-soft-fill {
+  fill: var(--ar-color-accent-soft) !important;
 }
 
 :root[data-arcrho-theme="dark"] :is(.pi-loading-overlay, .pi-delete-confirm-overlay, .pi-message-overlay) {
@@ -3294,7 +3377,23 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.arcodeCreateCard:hover, .arcodeExplorerEntry:hover) {
+:root[data-arcrho-theme="dark"] .arcodeCreateGroupTitle {
+  color: var(--ar-color-text-on-accent);
+}
+
+:root[data-arcrho-theme="dark"] .arcodeCreateCard:hover,
+:root[data-arcrho-theme="dark"] .arcodeCreateCard:focus-visible {
+  border-color: var(--ar-color-border-focus);
+  background-color: var(--ar-color-surface-raised);
+  box-shadow: var(--ar-shadow-subtle);
+}
+
+:root[data-arcrho-theme="dark"] .arcodeCreateCard:hover::before,
+:root[data-arcrho-theme="dark"] .arcodeCreateCard:focus-visible::before {
+  opacity: 0;
+}
+
+:root[data-arcrho-theme="dark"] .arcodeExplorerEntry:hover {
   background-color: var(--ar-color-surface-hover);
 }
 

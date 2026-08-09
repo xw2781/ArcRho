@@ -1384,7 +1384,6 @@ body.tab-dragging #arcodeTabs.tabs {
 
 .arcodeCreateCard:hover .arcodeCreateCardTitle,
 .arcodeCreateCard:focus-visible .arcodeCreateCardTitle {
-  color: #111827;
   transform: translateY(-1px);
 }
 
