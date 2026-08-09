@@ -8,7 +8,7 @@ import {
   beginDatasetGridLoading,
   endDatasetGridLoading,
   setDatasetGridError,
-} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 
 export function registerDataTabHostController(runtime) {
   const { state, config, $, instanceId, stepId, workflowId, WF_GLOBAL_CTRL_PREFIX, decodeFileNameSegment } = runtime;

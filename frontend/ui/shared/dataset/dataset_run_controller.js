@@ -5,7 +5,7 @@ import {
   renderDatasetGridPlaceholder,
   setDatasetGridEmpty,
   setDatasetGridError,
-} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 import {
   notifyDataTabDatasetMutationEnded,
   notifyDataTabDatasetMutationStarted,

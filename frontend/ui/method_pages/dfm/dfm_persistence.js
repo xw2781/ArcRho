@@ -6,7 +6,7 @@ DFM Persistence - load/save ratio selections to disk via host API
 import {
   beginDatasetGridLoading,
   endDatasetGridLoading,
-} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 import {
   state,
   ratioStrikeSet,

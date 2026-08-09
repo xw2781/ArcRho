@@ -14,6 +14,11 @@ const originLabelsSource = await readFile(
   "utf8",
 );
 const originLabelsModuleUrl = dataUrl(originLabelsSource);
+const queryInputsSource = await readFile(
+  new URL("../ui/shared/tabs/data/data_tab_query_inputs.js", import.meta.url),
+  "utf8",
+);
+const queryInputsModuleUrl = dataUrl(queryInputsSource);
 const placeholderSource = (await readFile(
   new URL("../ui/shared/tabs/data/dataset_grid_placeholder.js", import.meta.url),
   "utf8",
@@ -22,6 +27,10 @@ const placeholderSource = (await readFile(
   .replace(
     /"\/ui\/shared\/dataset\/dataset_origin_labels\.js"/,
     JSON.stringify(originLabelsModuleUrl),
+  )
+  .replace(
+    /"\/ui\/shared\/tabs\/data\/data_tab_query_inputs\.js"/,
+    JSON.stringify(queryInputsModuleUrl),
   );
 
 const { state } = await import(stateModuleUrl);
@@ -101,6 +110,13 @@ function resetPlaceholderState() {
   state.headerLabels = [];
   state.devHeaderLabels = [];
   state.gridPlaceholder = null;
+  setWindowSearch("");
+}
+
+// The window URL is the only thing a first paint knows about the shape that is
+// arriving, so the shape tests drive it the way an opened window would.
+function setWindowSearch(search) {
+  globalThis.location = { search: String(search || "") };
 }
 
 function allText(element) {
@@ -140,6 +156,56 @@ test("the skeleton previews a triangle: each newer origin row is one column shor
     row.children.filter((cell) => cell.tagName === "TD" && !cell.classes.has("dsGridSkeletonCellBlank")).length
   ));
   assert.deepEqual(filledPerRow, [4, 3, 2, 1]);
+
+  placeholder.endDatasetGridLoading(token);
+});
+
+test("a vector window previews one column of values, not a triangle", () => {
+  setWindowSearch("?project=P&path=A&tri=Ultimate&data_format=Vector&vector_column_label=Ultimate");
+  const token = placeholder.beginDatasetGridLoading();
+  const host = newHost();
+  const root = placeholder.renderDatasetGridPlaceholder(host, { rows: 4 });
+
+  const rows = descendants(root).filter((node) => node.tagName === "TR");
+  const headerCells = rows[0].children.filter((cell) => cell.tagName === "TH");
+  assert.equal(headerCells.length, 2); // origin corner + the single value column
+  assert.equal(headerCells[1].textContent, "Ultimate");
+
+  const filledPerRow = rows.slice(1).map((row) => (
+    row.children.filter((cell) => cell.tagName === "TD" && !cell.classes.has("dsGridSkeletonCellBlank")).length
+  ));
+  assert.deepEqual(filledPerRow, [1, 1, 1, 1]);
+
+  placeholder.endDatasetGridLoading(token);
+});
+
+test("a triangle window keeps the staircase preview", () => {
+  setWindowSearch("?project=P&path=A&tri=Paid&data_format=Triangle");
+  const token = placeholder.beginDatasetGridLoading();
+  const host = newHost();
+  const root = placeholder.renderDatasetGridPlaceholder(host, { rows: 3, columns: 3 });
+
+  const bodyRows = descendants(root).filter((node) => node.tagName === "TR").slice(1);
+  const filledPerRow = bodyRows.map((row) => (
+    row.children.filter((cell) => cell.tagName === "TD" && !cell.classes.has("dsGridSkeletonCellBlank")).length
+  ));
+  assert.deepEqual(filledPerRow, [3, 2, 1]);
+
+  placeholder.endDatasetGridLoading(token);
+});
+
+test("known dev labels outrank the URL format when a reload already has them", () => {
+  setWindowSearch("?project=P&path=A&tri=Paid&data_format=Triangle");
+  state.devHeaderLabels = ["Ultimate"];
+  const token = placeholder.beginDatasetGridLoading();
+  const host = newHost();
+  const root = placeholder.renderDatasetGridPlaceholder(host, { rows: 3 });
+
+  const headerCells = descendants(root)
+    .filter((node) => node.tagName === "TR")[0]
+    .children.filter((cell) => cell.tagName === "TH");
+  assert.equal(headerCells.length, 2);
+  assert.equal(headerCells[1].textContent, "Ultimate");
 
   placeholder.endDatasetGridLoading(token);
 });

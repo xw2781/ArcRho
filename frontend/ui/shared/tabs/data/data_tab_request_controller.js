@@ -5,7 +5,7 @@ import {
   endDatasetGridLoading,
   renderDatasetGridPlaceholder,
   setDatasetGridError,
-} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
+} from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 
 export function registerDataTabRequestController(runtime) {
   const { state, config, isTemporaryDatasetView, qs, temporaryDatasetSessionId } = runtime;

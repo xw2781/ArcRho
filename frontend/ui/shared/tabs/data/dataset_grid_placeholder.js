@@ -22,6 +22,7 @@ import {
   formatDatasetOriginLabel,
   normalizeDatasetOriginLength,
 } from "/ui/shared/dataset/dataset_origin_labels.js";
+import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 
 const PLACEHOLDER_CLASS = "dsGridPlaceholder";
 const DEFAULT_SKELETON_ROWS = 8;
@@ -33,6 +34,9 @@ const MAX_SKELETON_COLUMNS = 14;
 // Cell bars imitate numbers of differing magnitude so the preview reads as data
 // rather than as a uniform gray block.
 const SKELETON_BAR_WIDTHS = [86, 62, 74, 52, 92, 68];
+// A vector holds one value per origin period, so its preview is one column wide
+// no matter how many development columns a triangle would have shown.
+const VECTOR_SKELETON_COLUMNS = 1;
 
 const DEFAULT_LOADING_MESSAGE = "Loading dataset";
 const DEFAULT_EMPTY_TITLE = "No Dataset Loaded";
@@ -154,28 +158,58 @@ function clampCount(value, fallback, max) {
 }
 
 /*
+Data format the window was opened for.
+
+The opener already knows whether it is opening a triangle or a vector and puts
+it in the window URL, so the first paint can preview the right shape without
+asking the server anything.  Reading it costs one parse of a string the browser
+has already loaded, and only the first render pays even that.
+*/
+let parsedQuerySearch = null;
+let parsedQueryDataFormat = "";
+
+function resolveQueryDataFormat() {
+  const search = String(globalThis.location?.search || "");
+  // Keyed by the query itself, so a host that rewrites its URL is not answered
+  // from a stale parse and a repaint of the same window parses nothing again.
+  if (search === parsedQuerySearch) return parsedQueryDataFormat;
+  const values = search ? readDatasetInputQueryValues(search) : {};
+  parsedQuerySearch = search;
+  parsedQueryDataFormat = String(values.dataFormat || "").trim().toLowerCase();
+  return parsedQueryDataFormat;
+}
+
+function resolveQueryVectorColumnLabel() {
+  const search = String(globalThis.location?.search || "");
+  if (!search) return "";
+  return String(new URLSearchParams(search).get("vector_column_label") || "").trim();
+}
+
+/*
 Shape of the preview.
 
 Labels already resolved by an earlier load or by the headers service are reused,
 so a reload previews the grid the user is actually waiting for and the swap to
-live values shifts almost nothing.  Without them the preview falls back to a
-plain triangle, which is what a first open of an unknown dataset is most likely
-to become.
+live values shifts almost nothing.  Without them the declared data format still
+says which shape is arriving, so a vector previews as one column of values
+rather than as a triangle that then collapses.  Only a dataset whose format
+nobody stated falls back to a triangle, the likelier of the two.
 */
 function resolveSkeletonShape(options = {}) {
   const originLabels = Array.isArray(state.headerLabels) ? state.headerLabels : [];
   const devLabels = Array.isArray(state.devHeaderLabels) ? state.devHeaderLabels : [];
+  const shape = String(options.shape || "").trim().toLowerCase()
+    || (devLabels.length ? (devLabels.length === 1 ? "vector" : "triangle") : "")
+    || resolveQueryDataFormat()
+    || "triangle";
   const rows = clampCount(
     options.rows ?? originLabels.length,
     DEFAULT_SKELETON_ROWS,
     MAX_SKELETON_ROWS,
   );
-  const columns = clampCount(
-    options.columns ?? devLabels.length,
-    DEFAULT_SKELETON_COLUMNS,
-    MAX_SKELETON_COLUMNS,
-  );
-  const shape = String(options.shape || (columns === 1 ? "vector" : "triangle"));
+  const columns = shape === "vector"
+    ? VECTOR_SKELETON_COLUMNS
+    : clampCount(options.columns ?? devLabels.length, DEFAULT_SKELETON_COLUMNS, MAX_SKELETON_COLUMNS);
   return {
     rows,
     columns,
@@ -212,9 +246,15 @@ function buildSkeletonTable(options = {}) {
   else appendSkeletonBar(corner, 70, { centered: true });
   headRow.appendChild(corner);
 
+  // A vector's single column is named by whoever opened the window ("Ultimate"
+  // for a method output), the same label the live grid will paint there.
+  const vectorColumnLabel = shape.shape === "vector" && !shape.devLabels.length
+    ? resolveQueryVectorColumnLabel()
+    : "";
   for (let c = 0; c < shape.columns; c += 1) {
     const th = document.createElement("th");
     if (shape.devLabels.length) th.textContent = String(shape.devLabels[c] ?? "");
+    else if (vectorColumnLabel) th.textContent = vectorColumnLabel;
     else appendSkeletonBar(th, 42, { centered: true });
     headRow.appendChild(th);
   }

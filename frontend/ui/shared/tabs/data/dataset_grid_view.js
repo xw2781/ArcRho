@@ -12,7 +12,7 @@ import {
   formatDatasetOriginLabel,
   getDatasetOriginLabelText,
 } from "/ui/shared/dataset/dataset_origin_labels.js";
-import { renderDatasetGridPlaceholder } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260805a";
+import { renderDatasetGridPlaceholder } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 import { renderDataTabChart } from "/ui/shared/tabs/data/data_tab_chart_port.js";
 import { isDfmDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 import {

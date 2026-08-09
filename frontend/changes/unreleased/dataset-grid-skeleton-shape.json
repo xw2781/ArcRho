@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Data grid loading preview now matches the shape of the dataset being opened instead of always showing a triangle.",
+  "details": [
+    "Opening a vector dataset previewed a full triangle while it loaded, which then collapsed to a single column once the data arrived.",
+    "The preview now reads the data format the window was opened with, so a vector shows one column of values under its own column label and a triangle keeps its staircase.",
+    "The shape comes from information the window already has, so opening a dataset makes no extra request and a vector preview draws fewer cells than before."
+  ]
+}
