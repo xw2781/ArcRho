@@ -4,6 +4,7 @@ Generated release note index.
 
 | Version | Release Notes |
 | --- | --- |
+| `1.2.5` | [1.2.5](../../docs/releases/1.2.5.md) |
 | `1.0.5` | [1.0.5](../../docs/releases/1.0.5.md) |
 | `1.0.4` | [1.0.4](../../docs/releases/1.0.4.md) |
 | `1.0.3` | [1.0.3](../../docs/releases/1.0.3.md) |
