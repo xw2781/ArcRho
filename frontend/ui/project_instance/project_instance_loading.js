@@ -1,6 +1,6 @@
 export function installProjectInstanceLoading(ctx) {
   const { api, els, projectName, state } = ctx;
-  const { datasetWindows, pageLoadingTasks } = state;
+  const { datasetWindows, pageLoadingTasks, pageLoadingLabels } = state;
   const toText = (...args) => api.toText(...args);
 
 function postZoomToDatasetFrame(iframe, detail = state.lastZoomDetail) {
@@ -80,8 +80,16 @@ function getPageLoadingMessage() {
 }
 
 function updatePageLoadingText() {
-  if (els.pageLoadingTitle) els.pageLoadingTitle.textContent = "Loading Project Instance";
-  if (els.pageLoadingMessage) els.pageLoadingMessage.textContent = getPageLoadingMessage();
+  // A task that named itself owns the card, so an action such as a delete reads
+  // as itself instead of borrowing the project-load wording. Map keeps
+  // insertion order, so the most recent labelled task wins.
+  const labels = Array.from(pageLoadingLabels.values()).at(-1) || null;
+  if (els.pageLoadingTitle) {
+    els.pageLoadingTitle.textContent = labels?.title || "Loading Project Instance";
+  }
+  if (els.pageLoadingMessage) {
+    els.pageLoadingMessage.textContent = labels?.message || getPageLoadingMessage();
+  }
 }
 
 function stopPageLoadingTimer() {
@@ -100,10 +108,13 @@ function tickPageLoadingElapsed() {
   state.pageLoadingFrameTimer = requestAnimationFrame(tickPageLoadingElapsed);
 }
 
-function beginPageLoading(task) {
+function beginPageLoading(task, labels = null) {
   if (!els.pageLoadingOverlay) return;
   const wasEmpty = pageLoadingTasks.size === 0;
   pageLoadingTasks.add(task);
+  const title = toText(labels?.title);
+  const message = toText(labels?.message);
+  if (title || message) pageLoadingLabels.set(task, { title, message });
   updatePageLoadingText();
   if (!wasEmpty) return;
   state.pageLoadingStartedAt = performance.now();
@@ -114,8 +125,13 @@ function beginPageLoading(task) {
 }
 
 function finishPageLoading(task) {
-  if (!task) pageLoadingTasks.clear();
-  else pageLoadingTasks.delete(task);
+  if (!task) {
+    pageLoadingTasks.clear();
+    pageLoadingLabels.clear();
+  } else {
+    pageLoadingTasks.delete(task);
+    pageLoadingLabels.delete(task);
+  }
   updatePageLoadingText();
   if (pageLoadingTasks.size > 0) return;
   els.pageLoadingOverlay?.classList?.remove("open");

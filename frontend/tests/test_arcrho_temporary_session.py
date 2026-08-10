@@ -240,11 +240,14 @@ class DatasetIndexTemporaryViewCacheTests(unittest.TestCase):
             temporary_cache_dir.mkdir(parents=True)
             (temporary_cache_dir / "Net Paid@12@12@cum@dev.csv").write_text("1\n", encoding="utf-8")
 
-            names, physical_files, methods = dataset_instance_index_service._scan_cached_dataset_folder(str(data_dir))
+            entries = dataset_instance_index_service._enumerate_cached_files({
+                "data": str(data_dir),
+                "datasets": str(data_dir / config.DATASET_CACHE_DIR),
+                "methods": str(data_dir / config.METHOD_DATA_DIR),
+                "sidecars": str(data_dir / config.DATASET_SIDECAR_DIR),
+            })
 
-            self.assertEqual(names, set())
-            self.assertEqual(physical_files, [])
-            self.assertEqual(methods, [])
+            self.assertEqual(entries, [])
 
 
 if __name__ == "__main__":

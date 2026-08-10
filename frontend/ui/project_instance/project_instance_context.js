@@ -157,6 +157,7 @@ export function createProjectInstanceContext(deps = {}) {
     datasetWindows: new Map(),
     lastZoomDetail: null,
     pageLoadingTasks: new Set(),
+    pageLoadingLabels: new Map(),
     hiddenTabsHoverCloseTimer: 0,
     hiddenTabsMenuPinned: false,
     minimizedTabTooltip: null,

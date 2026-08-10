@@ -39,21 +39,16 @@ class RuntimeCacheProvenanceCleanupTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_dataset_delete_removes_technical_provenance(self) -> None:
-        scan_result = (
-            {"Paid"},
-            [{"name": self.csv_path.name, "path": str(self.csv_path), "dataset_name": "Paid"}],
-            [],
-        )
         with (
             patch.object(
                 dataset_instance_index_service,
                 "_folder_paths",
-                return_value={"data": str(self.rc_dir)},
-            ),
-            patch.object(
-                dataset_instance_index_service,
-                "_scan_cached_dataset_folder",
-                return_value=scan_result,
+                return_value={
+                    "data": str(self.rc_dir),
+                    "datasets": str(self.rc_dir / config.DATASET_CACHE_DIR),
+                    "methods": str(self.rc_dir / config.METHOD_DATA_DIR),
+                    "sidecars": str(self.rc_dir / config.DATASET_SIDECAR_DIR),
+                },
             ),
             patch.object(dataset_instance_index_service, "rebuild_index", return_value={}),
         ):

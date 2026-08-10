@@ -596,8 +596,8 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
             self._frontend_workspace(),
             mock.patch.object(
                 dataset_instance_index_service,
-                "_scan_cached_dataset_folder",
-                side_effect=AssertionError("current migration index must not trigger a folder scan"),
+                "_read_cached_metadata",
+                side_effect=AssertionError("current migration index must not read payloads"),
             ) as scan,
             mock.patch.object(
                 dataset_instance_index_service,
@@ -670,6 +670,99 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         read_payload.assert_not_called()
         write.assert_not_called()
         self._assert_minimal_rows(response)
+
+    def _delete(self, *dataset_names: str) -> dict:
+        with self._frontend_workspace():
+            return dataset_instance_index_service.delete_cached_datasets(
+                self.project_name,
+                self.reserving_class,
+                list(dataset_names),
+            )
+
+    def test_delete_resolves_targets_without_reading_sidecar_payloads(self) -> None:
+        """A cached CSV and a sidecar are named after their dataset.
+
+        Opening one payload per file to learn what the directory listing already
+        says costs a network round trip per file on a mapped share, which is the
+        whole reason a delete used to take tens of seconds.
+        """
+
+        self._migration_rebuild()
+        read_paths: list[str] = []
+        original_read = dataset_instance_index_service._safe_read_json
+
+        def counting_read(path: str):
+            read_paths.append(os.path.normcase(os.path.abspath(path)))
+            return original_read(path)
+
+        with mock.patch.object(
+            dataset_instance_index_service,
+            "_safe_read_json",
+            side_effect=counting_read,
+        ):
+            result = self._delete("Paid Loss")
+
+        self.assertEqual(result["deleted_count"], 2)
+        self.assertFalse((self.datasets_dir / "Paid Loss@12@24@cum@dev.csv").exists())
+        self.assertFalse((self.sidecars_dir / "Paid Loss.json").exists())
+        sidecar_reads = [
+            path for path in read_paths
+            if path.startswith(os.path.normcase(os.path.abspath(self.sidecars_dir)))
+        ]
+        self.assertEqual(sidecar_reads, [])
+        self.assertTrue(read_paths, "method payloads still have to be opened")
+        self.assertTrue(
+            all(
+                path.startswith(os.path.normcase(os.path.abspath(self.methods_dir)))
+                for path in read_paths
+            ),
+            read_paths,
+        )
+
+    def test_delete_returns_the_rebuilt_index_for_the_caller(self) -> None:
+        """The table applies this payload instead of paying for a second read."""
+
+        self._migration_rebuild()
+        result = self._delete("Paid Loss")
+
+        index = result["index"]
+        self.assertTrue(index["ok"])
+        self.assertNotIn("Paid Loss", {row["name"] for row in index["files"]})
+        self.assertEqual(
+            index["folder_signature"],
+            dataset_index_contract.scan_folder_signature(self.rc_dir).signature,
+        )
+        self.assertEqual(
+            json.loads(self.index_path.read_text(encoding="utf-8"))["files"],
+            index["files"],
+        )
+
+    def test_delete_verification_pass_removes_a_file_its_filename_hides(self) -> None:
+        """The filename fast path is verified against the rebuild, not trusted."""
+
+        stray = self.sidecars_dir / "Legacy Export.json"
+        self._write_json(
+            stray,
+            {
+                "dataset_name": "Adjusted Paid",
+                "dataset_type": "Adjusted Paid",
+                "data_format": "Triangle",
+                "source_kind": "input",
+            },
+        )
+        self._migration_rebuild()
+
+        result = self._delete("Adjusted Paid")
+
+        self.assertFalse(stray.exists())
+        self.assertIn(
+            "Legacy Export.json",
+            {item["name"] for item in result["deleted_files"]},
+        )
+        self.assertNotIn(
+            "Adjusted Paid",
+            {row["name"] for row in result["index"]["files"]},
+        )
 
     def test_folder_listing_is_not_restatted_per_file(self) -> None:
         """The directory listing already carries size and mtime on Windows."""

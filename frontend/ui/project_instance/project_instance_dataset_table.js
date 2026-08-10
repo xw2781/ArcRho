@@ -19,6 +19,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const DATASET_GROUP_DRAG_TYPE = "text/x-pi-group-key";
   const DATASET_FILTER_DRAG_TYPE = "text/x-pi-filter-key";
   const DATASET_TABLE_PREFERENCES_LOAD_TIMEOUT_MS = 5000;
+  const applyCachedDatasetSnapshot = (...args) => api.applyCachedDatasetSnapshot(...args);
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
   const finishPageLoading = (...args) => api.finishPageLoading(...args);
   const focusProjectInstancePage = (...args) => api.focusProjectInstancePage(...args);
@@ -2721,7 +2722,15 @@ async function deleteSelectedDatasetRows(records) {
   if (!projectName || !state.selectedPath || !names.length) return;
   const confirmed = await showDatasetDeleteConfirm(records);
   if (!confirmed) return;
-  setStatus(`Deleting cached files for ${names.length === 1 ? names[0] : `${names.length} datasets`}...`);
+  const label = names.length === 1 ? names[0] : `${names.length} datasets`;
+  setStatus(`Deleting cached files for ${label}...`);
+  // The server removes the files and rebuilds index.json in one request with no
+  // intermediate progress to report, so this shows the shared indeterminate
+  // spinner and its elapsed counter rather than a percentage nothing measures.
+  beginPageLoading("delete-datasets", {
+    title: "Deleting cached files",
+    message: `Removing cached files for ${label} and rebuilding the dataset index...`,
+  });
   try {
     const resp = await fetch("/datasets/cached/delete", {
       method: "POST",
@@ -2738,7 +2747,17 @@ async function deleteSelectedDatasetRows(records) {
     }
     datasetTableSelection.selectedKeys.clear();
     datasetTableSelection.anchorKey = "";
-    await loadCachedDatasetFilterForSelectedPath();
+    // The delete already rebuilt and returned the index, so re-reading it would
+    // cost a second round trip over the share for data we are holding.
+    const freshIndex = payload?.index;
+    if (freshIndex?.ok && Array.isArray(freshIndex.files)) {
+      state.datasetIndexWatch.suppressUntil = Date.now() + 1500;
+      applyCachedDatasetSnapshot(freshIndex, state.selectedPath);
+      state.datasetIndexWatch.pending = false;
+      syncCachedDatasetToolbar();
+    } else {
+      await loadCachedDatasetFilterForSelectedPath();
+    }
     renderDatasetTable();
     const deletedCount = Number(payload?.deleted_count || 0);
     setStatus(
@@ -2748,6 +2767,8 @@ async function deleteSelectedDatasetRows(records) {
     );
   } catch (err) {
     setStatus(toText(err?.message) || "Failed to delete cached dataset files.", true);
+  } finally {
+    finishPageLoading("delete-datasets");
   }
 }
 

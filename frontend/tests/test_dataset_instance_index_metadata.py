@@ -16,6 +16,7 @@ FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
+from app_server import config
 from app_server.services import dataset_instance_index_service
 from arcrho_api.dataset_index_contract import (
     canonicalize_index_row,
@@ -23,19 +24,24 @@ from arcrho_api.dataset_index_contract import (
 )
 
 
+def _folder_paths_for(rc_dir: Path) -> dict[str, str]:
+    return {
+        "data": str(rc_dir),
+        "datasets": str(rc_dir / config.DATASET_CACHE_DIR),
+        "methods": str(rc_dir / config.METHOD_DATA_DIR),
+        "sidecars": str(rc_dir / config.DATASET_SIDECAR_DIR),
+    }
+
+
 class DatasetInstanceIndexMetadataTests(unittest.TestCase):
-    def test_folder_scan_overlaps_independent_metadata_reads(self) -> None:
+    def test_delete_resolution_overlaps_method_payload_reads(self) -> None:
         with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
             data_root = Path(temp_dir)
-            dataset_dir = data_root / "datasets"
-            sidecar_dir = data_root / "sidecars"
-            method_dir = data_root / "methods"
-            dataset_dir.mkdir()
-            sidecar_dir.mkdir()
-            method_dir.mkdir()
+            folder_paths = _folder_paths_for(data_root)
+            for directory in folder_paths.values():
+                Path(directory).mkdir(exist_ok=True)
             for index in range(8):
-                (dataset_dir / f"Dataset {index}@12.csv").write_text("1\n", encoding="utf-8")
-                (sidecar_dir / f"Dataset {index}.json").write_text("{}", encoding="utf-8")
+                Path(folder_paths["methods"], f"DFM@Method {index}.json").write_text("{}", encoding="utf-8")
 
             active = 0
             max_active = 0
@@ -49,24 +55,21 @@ class DatasetInstanceIndexMetadataTests(unittest.TestCase):
                 time.sleep(0.02)
                 with activity_lock:
                     active -= 1
-                return {
-                    "dataset_name": Path(path).stem,
-                    "dataset_type": Path(path).stem,
-                    "data_format": "Vector",
-                }
+                return {"details tab": {"output dataset": "Paid Ultimate"}}
 
-            with (
-                mock.patch.object(
-                    dataset_instance_index_service,
-                    "_safe_read_json",
-                    side_effect=slow_metadata_read,
-                ),
+            with mock.patch.object(
+                dataset_instance_index_service,
+                "_safe_read_json",
+                side_effect=slow_metadata_read,
             ):
-                _names, files, _methods = dataset_instance_index_service._scan_cached_dataset_folder(
-                    str(data_root)
+                targets, matched = dataset_instance_index_service._cached_delete_targets(
+                    folder_paths,
+                    {"paid ultimate"},
+                    read_sidecar_payloads=False,
                 )
 
-        self.assertEqual(len(files), 16)
+        self.assertEqual(len(targets), 8)
+        self.assertEqual(matched, {"paid ultimate"})
         self.assertGreater(max_active, 1)
 
     def test_canonical_row_keeps_scalar_period_lengths(self) -> None:

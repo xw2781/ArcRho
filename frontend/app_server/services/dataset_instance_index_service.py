@@ -4,10 +4,8 @@ from __future__ import annotations
 import json
 import os
 import re
-import stat
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
 
 from arcrho_api.dataset_index_contract import (
@@ -68,7 +66,11 @@ METHOD_JSON_FILENAME_PREFIXES = (
     *(contract["filename_prefix"] for contract in BERQUIST_SHERMAN_METHOD_CONTRACTS.values()),
 )
 CACHED_JSON_FILENAME_PREFIXES = METHOD_JSON_FILENAME_PREFIXES
-_INDEX_SCAN_MAX_WORKERS = 12
+# Index work is latency-bound, not CPU-bound: every worker spends its time
+# waiting on a network round trip for one small JSON file, so the width of this
+# pool sets how long a rebuild takes on a mapped share. 32 is the ceiling the
+# index contract itself clamps to, which keeps both scanners at one setting.
+_INDEX_SCAN_MAX_WORKERS = 32
 _INDEX_SCAN_EXECUTOR = ThreadPoolExecutor(
     max_workers=_INDEX_SCAN_MAX_WORKERS,
     thread_name_prefix="arcrho-index-scan",
@@ -288,22 +290,6 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
     return names
 
 
-def _format_file_timestamp(value: float) -> str:
-    try:
-        return datetime.fromtimestamp(float(value)).isoformat(timespec="seconds")
-    except (OSError, TypeError, ValueError):
-        return ""
-
-
-def _metadata_text(metadata: Dict[str, Any], keys: Tuple[str, ...]) -> str:
-    for key in keys:
-        value = metadata.get(key)
-        text = _clean_text(value)
-        if text:
-            return text
-    return ""
-
-
 def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None:
     json_format = _clean_text(payload.get("json_format") or payload.get("json format")).lower()
     if json_format in RESULT_SELECTION_JSON_FORMATS:
@@ -418,214 +404,128 @@ def _is_index_file(filename: str) -> bool:
     return filename == INDEX_FILE_NAME
 
 
-def _parse_metadata_datetime(value: Any) -> datetime | None:
-    text = _clean_text(value)
-    if not text:
-        return None
-    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is not None:
-        return parsed.astimezone().replace(tzinfo=None)
-    return parsed
+_DELETE_SCAN_FOLDER_KEYS = ("datasets", "methods", "sidecars")
 
 
-def _metadata_modified_timestamp(metadata: Dict[str, Any]) -> Tuple[str, float]:
-    raw = _metadata_text(metadata, (
-        "last_modified",
-        "last modified",
-        "updated_at",
-        "updated",
-        "modified_at",
-        "modified",
-    ))
-    parsed = _parse_metadata_datetime(raw)
-    if parsed is None:
-        return raw, 0.0
-    return parsed.isoformat(), parsed.timestamp()
+def _enumerate_cached_files(folder_paths: Dict[str, str]) -> List[Tuple[str, str, str]]:
+    """List the three instance folders, keeping the data ``scandir`` returned.
 
+    ``DirEntry.is_file()`` is answered from the directory listing on Windows, so
+    this costs one listing per folder. Re-statting each path would add a network
+    round trip per file for information already in hand.
+    """
 
-def _metadata_created_timestamp(metadata: Dict[str, Any]) -> Tuple[str, float]:
-    raw = _metadata_text(metadata, (
-        "created_at",
-        "created",
-        "creation_time",
-    ))
-    parsed = _parse_metadata_datetime(raw)
-    if parsed is None:
-        return raw, 0.0
-    return parsed.isoformat(), parsed.timestamp()
-
-
-def _file_dataset_names(item: Dict[str, Any]) -> Set[str]:
-    names: Set[str] = set()
-    _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get("dataset_name")))
-    for value in item.get("dataset_names") or []:
-        _add_cached_dataset_name(names, _normalize_cached_dataset_name(value))
-    if names:
-        return names
-    for key in ("name",):
-        _add_cached_dataset_name(names, _normalize_cached_dataset_name(item.get(key)))
-    return names
-
-
-def _scan_cached_dataset_folder(folder_path: str) -> Tuple[Set[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
-    names: Set[str] = set()
-    files: List[Dict[str, Any]] = []
-    methods: List[Dict[str, Any]] = []
-    if not os.path.isdir(folder_path):
-        return names, files, methods
-
-    entries: List[Tuple[str, str, bool]] = []
-    def collect_entries(directory: str, *, sidecar_metadata: bool = False) -> None:
-        if not os.path.isdir(directory):
-            return
+    entries: List[Tuple[str, str, str]] = []
+    for folder_key in _DELETE_SCAN_FOLDER_KEYS:
+        directory = _clean_text(folder_paths.get(folder_key))
+        if not directory or not os.path.isdir(directory):
+            continue
         with os.scandir(directory) as iterator:
             for entry in iterator:
                 ext = os.path.splitext(entry.name)[1].lower()
                 if ext not in {".csv", ".json"} or _is_index_file(entry.name):
                     continue
-                entries.append((entry.path, entry.name, sidecar_metadata))
+                if not entry.is_file():
+                    continue
+                entries.append((entry.path, entry.name, folder_key))
+    return entries
 
-    collect_entries(os.path.join(folder_path, config.DATASET_CACHE_DIR))
-    collect_entries(os.path.join(folder_path, config.METHOD_DATA_DIR))
-    collect_entries(
-        os.path.join(folder_path, config.DATASET_SIDECAR_DIR),
-        sidecar_metadata=True,
+
+def _cached_file_metadata_path(entry_path: str, folder_key: str) -> str:
+    return (
+        _dataset_sidecar_path_for_cached_csv(entry_path)
+        if folder_key == "datasets"
+        else entry_path
     )
 
-    metadata_paths: Set[str] = set()
-    for entry_path, entry_name, _sidecar_metadata in entries:
-        ext = os.path.splitext(entry_name)[1].lower()
-        metadata_paths.add(
-            _dataset_sidecar_path_for_cached_csv(entry_path)
-            if ext == ".csv"
-            else entry_path
+
+def _cached_file_dataset_names(
+    entry_path: str,
+    entry_name: str,
+    folder_key: str,
+    metadata: Dict[str, Any],
+) -> Set[str]:
+    """Dataset names one cached file belongs to.
+
+    ``metadata`` is empty on the filename-only path, which is what makes the
+    common delete cheap: a cached CSV and a sidecar are named after their
+    dataset, so their membership is readable from the directory listing, while a
+    method JSON keeps its dataset name in the payload and must be opened.
+    """
+
+    entry_stem = os.path.splitext(entry_name)[0]
+    legacy_length_only_name = _has_legacy_length_only_suffix(entry_stem)
+    if folder_key == "datasets":
+        legacy_length_only_name = legacy_length_only_name or _has_legacy_length_only_suffix(
+            os.path.splitext(os.path.basename(_cached_file_metadata_path(entry_path, folder_key)))[0]
         )
+    payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
 
-    stat_futures: Dict[str, Future] = {
-        entry_path: _INDEX_SCAN_EXECUTOR.submit(os.stat, entry_path)
-        for entry_path, _entry_name, _sidecar_metadata in entries
+    names: Set[str] = set()
+    if folder_key == "methods" and entry_name.startswith(METHOD_JSON_FILENAME_PREFIXES):
+        method_entry = _method_entry_from_payload(metadata)
+        if method_entry:
+            _add_cached_dataset_name(names, method_entry.get("dataset_name"))
+    if not names:
+        names.update(payload_names or _cached_dataset_names_from_file(entry_name))
+    if metadata and not legacy_length_only_name:
+        names.update(payload_names)
+    return names
+
+
+def _read_cached_metadata(paths: Set[str]) -> Dict[str, Dict[str, Any]]:
+    futures: Dict[str, Future] = {
+        path: _INDEX_SCAN_EXECUTOR.submit(_safe_read_json, path)
+        for path in paths
     }
-    metadata_futures: Dict[str, Future] = {
-        metadata_path: _INDEX_SCAN_EXECUTOR.submit(_safe_read_json, metadata_path)
-        for metadata_path in metadata_paths
+    return {path: future.result() for path, future in futures.items()}
+
+
+def _cached_delete_targets(
+    folder_paths: Dict[str, str],
+    requested: Set[str],
+    *,
+    read_sidecar_payloads: bool,
+) -> Tuple[List[Dict[str, str]], Set[str]]:
+    """Resolve which cached files the requested dataset names own.
+
+    ``read_sidecar_payloads`` opens every sidecar as well, which is only needed
+    when a file's payload names a dataset its filename does not. That is the
+    slow path and stays reserved for the verification pass in
+    ``delete_cached_datasets``.
+    """
+
+    entries = _enumerate_cached_files(folder_paths)
+    payload_paths = {
+        _cached_file_metadata_path(entry_path, folder_key)
+        for entry_path, _entry_name, folder_key in entries
+        if folder_key == "methods" or read_sidecar_payloads
     }
+    payloads = _read_cached_metadata(payload_paths)
 
-    def process_entry(entry_path: str, entry_name: str, *, sidecar_metadata: bool = False) -> None:
-            entry_stat = stat_futures[entry_path].result()
-            if not stat.S_ISREG(entry_stat.st_mode):
-                return
-            ext = os.path.splitext(entry_name)[1].lower()
-            file_names: Set[str] = set()
-            metadata: Dict[str, Any] = {}
-            metadata_path = entry_path
-            method_entry = None
-            entry_stem = os.path.splitext(entry_name)[0]
-            legacy_length_only_name = _has_legacy_length_only_suffix(entry_stem)
-
-            if ext == ".csv":
-                file_names = set(_cached_dataset_names_from_file(entry_name))
-                metadata_path = _dataset_sidecar_path_for_cached_csv(entry_path)
-                metadata = metadata_futures[metadata_path].result()
-                metadata_is_sidecar = True
-                legacy_length_only_name = legacy_length_only_name or _has_legacy_length_only_suffix(
-                    os.path.splitext(os.path.basename(metadata_path))[0]
-                )
-            elif ext == ".json":
-                metadata = metadata_futures[entry_path].result()
-                metadata_is_sidecar = sidecar_metadata
-                payload_names = set() if legacy_length_only_name else _cached_dataset_names_from_payload(metadata)
-                if not sidecar_metadata and entry_name.startswith(METHOD_JSON_FILENAME_PREFIXES):
-                    method_entry = _method_entry_from_payload(metadata)
-                    if method_entry:
-                        methods.append(method_entry)
-                        _add_cached_dataset_name(file_names, method_entry.get("dataset_name"))
-                if not file_names:
-                    file_names.update(payload_names or _cached_dataset_names_from_file(entry_name))
-
-            if metadata and not legacy_length_only_name:
-                payload_names = _cached_dataset_names_from_payload(metadata)
-                file_names.update(payload_names)
-
-            names.update(file_names)
-
-            file_info = {
-                "name": entry_name,
-                "path": entry_path,
-                "size": entry_stat.st_size,
-                "mtime": entry_stat.st_mtime,
-                "mtime_ns": entry_stat.st_mtime_ns,
-                "last_modified": _format_file_timestamp(entry_stat.st_mtime),
-                "last_modified_timestamp": entry_stat.st_mtime,
-            }
-            if file_names:
-                file_info["dataset_names"] = sorted(file_names, key=lambda item: item.lower())
-            if metadata:
-                dataset_type = _normalize_cached_dataset_name(metadata.get("dataset_type"))
-                if not legacy_length_only_name:
-                    file_info["dataset_name"] = _normalize_cached_dataset_name(metadata.get("dataset_name"))
-                    file_info["dataset_type"] = dataset_type
-                    file_info["dataset_category"] = _clean_text(metadata.get("dataset_category") or metadata.get("category"))
-                file_info["csv_file"] = _clean_text(metadata.get("csv_file"))
-                file_info["source_kind"] = _clean_text(metadata.get("source_kind"))
-                file_info["data_format"] = _clean_text(metadata.get("data_format"))
-                file_info["method_type"] = dataset_sidecar_status_service.normalize_method_type(
-                    metadata.get("method_type"),
-                    metadata.get("source_kind"),
-                )
-                file_info["status"] = dataset_sidecar_status_service.normalize_status(metadata.get("status"))
-                if file_info["data_format"].strip().lower() == "vector":
-                    file_info["origin_length"] = metadata.get("period_length")
-                else:
-                    file_info["origin_length"] = metadata.get("origin_length")
-                file_info["development_length"] = metadata.get("development_length")
-                file_info["calculated"] = metadata.get("calculated")
-                file_info["formula"] = _clean_text(metadata.get("formula"))
-                file_info["user"] = _metadata_text(metadata, (
-                    "user",
-                    "user_name",
-                    "username",
-                    "UserName",
-                    "created_by",
-                    "modified_by",
-                    "updated_by",
-                    "owner",
-                    "author",
-                ))
-                metadata_modified, metadata_modified_ts = _metadata_modified_timestamp(metadata)
-                if metadata_modified:
-                    file_info["last_modified"] = metadata_modified
-                    if metadata_is_sidecar:
-                        file_info["_last_modified_from_sidecar"] = True
-                    if metadata_modified_ts > 0:
-                        file_info["last_modified_timestamp"] = metadata_modified_ts
-                metadata_created, metadata_created_ts = _metadata_created_timestamp(metadata)
-                if metadata_created and metadata_is_sidecar:
-                    file_info["created"] = metadata_created
-                    file_info["_created_from_sidecar"] = True
-                    if metadata_created_ts > 0:
-                        file_info["created_timestamp"] = metadata_created_ts
-            if method_entry:
-                file_info["dataset_name"] = method_entry["dataset_name"]
-                file_info["dataset_type"] = method_entry["dataset_type"]
-                file_info["dataset_category"] = method_entry.get("dataset_category", "")
-                file_info["source_kind"] = method_entry.get("source_kind", "")
-                file_info["method_type"] = method_entry["method_type"]
-                file_info["status"] = method_entry.get("status", dataset_sidecar_status_service.STATUS_CURRENT)
-                file_info["data_format"] = method_entry.get("data_format", "")
-                if method_entry.get("origin_length") not in (None, ""):
-                    file_info["origin_length"] = method_entry["origin_length"]
-                if method_entry.get("development_length") not in (None, ""):
-                    file_info["development_length"] = method_entry["development_length"]
-            files.append(file_info)
-
-    for entry_path, entry_name, sidecar_metadata in entries:
-        process_entry(entry_path, entry_name, sidecar_metadata=sidecar_metadata)
-
-    return names, files, methods
+    data_folder = _clean_text(folder_paths.get("data"))
+    targets: List[Dict[str, str]] = []
+    matched_keys: Set[str] = set()
+    seen_paths: Set[str] = set()
+    for entry_path, entry_name, folder_key in entries:
+        metadata = payloads.get(_cached_file_metadata_path(entry_path, folder_key), {})
+        item_names = {
+            _clean_text(name).lower()
+            for name in _cached_file_dataset_names(entry_path, entry_name, folder_key, metadata)
+            if _clean_text(name)
+        }
+        matched = item_names.intersection(requested)
+        if not matched:
+            continue
+        if not _path_is_within_folder(entry_path, data_folder):
+            raise HTTPException(500, "Refusing to delete a cached dataset file outside the selected cache folder.")
+        path_key = os.path.normcase(os.path.abspath(entry_path))
+        if path_key in seen_paths:
+            continue
+        seen_paths.add(path_key)
+        matched_keys.update(matched)
+        targets.append({"name": entry_name, "path": entry_path})
+    return targets, matched_keys
 
 
 def _index_response(
@@ -872,6 +772,17 @@ def _requested_dataset_keys(dataset_names: List[str]) -> Set[str]:
     return keys
 
 
+def _index_row_names(index: Dict[str, Any]) -> Set[str]:
+    rows = index.get("files") if isinstance(index, dict) else None
+    if not isinstance(rows, list):
+        return set()
+    return {
+        _clean_text(row.get("name")).lower()
+        for row in rows
+        if isinstance(row, dict) and _clean_text(row.get("name"))
+    }
+
+
 def delete_cached_datasets(project_name: str, reserving_class: str, dataset_names: List[str]) -> Dict[str, Any]:
     project = _clean_text(project_name)
     rc = _clean_text(reserving_class)
@@ -880,58 +791,61 @@ def delete_cached_datasets(project_name: str, reserving_class: str, dataset_name
 
     requested = _requested_dataset_keys(dataset_names)
     folder_paths = _folder_paths(project, rc)
-    delete_items: List[Dict[str, Any]] = []
-    matched_keys: Set[str] = set()
-    seen_paths: Set[str] = set()
 
-    try:
-        folder_path = folder_paths["data"]
-        _folder_names, files, _methods = _scan_cached_dataset_folder(folder_path)
-        for item in files:
-            item_names = {_clean_text(name).lower() for name in _file_dataset_names(item) if _clean_text(name)}
-            matched = item_names.intersection(requested)
-            if not matched:
-                continue
-            path = _clean_text(item.get("path"))
-            if not path:
-                continue
-            if not _path_is_within_folder(path, folder_path):
-                raise HTTPException(500, "Refusing to delete a cached dataset file outside the selected cache folder.")
-            path_key = os.path.normcase(os.path.abspath(path))
-            if path_key in seen_paths:
-                continue
-            seen_paths.add(path_key)
-            matched_keys.update(matched)
-            delete_items.append({
-                "name": _clean_text(item.get("name")) or os.path.basename(path),
-                "path": path,
-            })
-    except PermissionError:
-        raise HTTPException(423, "Cached dataset folder is locked or inaccessible.")
-    except HTTPException:
-        raise
-    except OSError as err:
-        raise HTTPException(500, f"Failed to read cached dataset folder: {str(err)}")
-
-    deleted: List[Dict[str, Any]] = []
-    for item in delete_items:
-        path = item["path"]
+    def resolve(*, read_sidecar_payloads: bool) -> Tuple[List[Dict[str, str]], Set[str]]:
         try:
-            os.remove(path)
-            if os.path.splitext(path)[1].lower() == ".csv":
-                try:
-                    runtime_cache_provenance_service.remove(path)
-                except OSError:
-                    pass
-            deleted.append(item)
-        except FileNotFoundError:
-            continue
+            return _cached_delete_targets(
+                folder_paths,
+                requested,
+                read_sidecar_payloads=read_sidecar_payloads,
+            )
         except PermissionError:
-            raise HTTPException(423, f"Cached dataset file is locked or inaccessible: {item['name']}")
+            raise HTTPException(423, "Cached dataset folder is locked or inaccessible.")
+        except HTTPException:
+            raise
         except OSError as err:
-            raise HTTPException(500, f"Failed to delete cached dataset file '{item['name']}': {str(err)}")
+            raise HTTPException(500, f"Failed to read cached dataset folder: {str(err)}")
 
+    def remove_targets(targets: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+        removed: List[Dict[str, Any]] = []
+        for item in targets:
+            path = item["path"]
+            try:
+                os.remove(path)
+                if os.path.splitext(path)[1].lower() == ".csv":
+                    try:
+                        runtime_cache_provenance_service.remove(path)
+                    except OSError:
+                        pass
+                removed.append(item)
+            except FileNotFoundError:
+                continue
+            except PermissionError:
+                raise HTTPException(423, f"Cached dataset file is locked or inaccessible: {item['name']}")
+            except OSError as err:
+                raise HTTPException(500, f"Failed to delete cached dataset file '{item['name']}': {str(err)}")
+        return removed
+
+    delete_items, matched_keys = resolve(read_sidecar_payloads=False)
+    deleted = remove_targets(delete_items)
     index = rebuild_index(project, rc)
+
+    # The filename-only pass cannot see a file whose payload names a dataset its
+    # filename does not, so it is verified rather than trusted: the rebuild is
+    # authoritative, and a requested dataset that still owns a row means files
+    # survived. Only then is the payload read repeated for every sidecar.
+    if _index_row_names(index).intersection(requested):
+        stragglers, straggler_keys = resolve(read_sidecar_payloads=True)
+        done_paths = {os.path.normcase(os.path.abspath(item["path"])) for item in deleted}
+        stragglers = [
+            item for item in stragglers
+            if os.path.normcase(os.path.abspath(item["path"])) not in done_paths
+        ]
+        if stragglers:
+            deleted.extend(remove_targets(stragglers))
+            matched_keys.update(straggler_keys)
+            index = rebuild_index(project, rc)
+
     missing_names = [
         _clean_text(name)
         for name in dataset_names or []
