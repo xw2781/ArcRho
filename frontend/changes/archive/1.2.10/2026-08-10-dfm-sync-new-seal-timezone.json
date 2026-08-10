@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM and Result Selection sync now put the NEW seal on the version whose timestamp is actually later.",
+  "details": [
+    "ResQ writes its last-modified value without a timezone while an ArcRho save writes UTC, and the comparison read the ResQ value as UTC too, shifting it by the machine's UTC offset.",
+    "On a UTC-04:00 machine that marked the ArcRho card NEW whenever the two versions were saved less than four hours apart, even though the review window showed the ResQ card with the later time.",
+    "A timezone-less value is now read as local wall-clock time, so the seal, the green/red timestamp frames, and the offered sync action match the displayed times."
+  ]
+}

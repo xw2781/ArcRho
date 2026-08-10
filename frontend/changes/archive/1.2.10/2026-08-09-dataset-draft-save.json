@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Add > Dataset can now save a new dataset without editing a cell first.",
+  "details": [
+    "The new-dataset draft window opened with Save disabled, and Ctrl+S reported \"Dataset settings saved.\" without creating anything, so the dataset never appeared in the Project Instance table.",
+    "An unsaved draft is now save-eligible on open and its first save writes the zero-filled placeholder grid; Save is still blocked while the draft grid cannot be built from project origin headers."
+  ]
+}

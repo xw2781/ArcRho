@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Managed source table imports now work in the installed app instead of reporting a missing SQL Server driver.",
+  "details": [
+    "The packaged app server was built without pyodbc, so every SQL Server import answered with a driver-unavailable error.",
+    "The build now verifies pyodbc before packaging and installs it when missing."
+  ]
+}

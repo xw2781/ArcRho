@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "The packaged build no longer kills makensis part-way through compressing the app.",
+  "details": [
+    "electron-builder allows the piped makensis process four minutes, which assumes it only embeds a pre-built app.7z; ArcRho compresses the whole unpacked app inside makensis.",
+    "The build patcher now raises that kill timeout to 30 minutes.",
+    "A build that hit the old limit reported only 'Exit code: null' with empty compiler output, because the kill arrives as a signal rather than a compiler error."
+  ]
+}

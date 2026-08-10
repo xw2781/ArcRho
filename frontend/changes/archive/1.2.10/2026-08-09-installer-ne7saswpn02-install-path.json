@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "installer",
+  "audience": "user",
+  "summary": "ArcRho setup now defaults to a per-user E-drive installation folder on the designated PC.",
+  "details": [
+    "Fresh installs on NE7SASWPN02 default to E:\\<Windows login>\\ArcRho when setup can create that directory.",
+    "Existing installations, explicit install paths, and the standard C-drive fallback remain unchanged."
+  ]
+}

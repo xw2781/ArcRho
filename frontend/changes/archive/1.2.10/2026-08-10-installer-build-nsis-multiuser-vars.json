@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "The packaged build no longer aborts while compiling the custom NSIS installer script.",
+  "details": [
+    "electron-builder includes build/installer.nsh ahead of multiUser.nsh and of its own plugin directories, so the preferred-install-directory check now reads the install-mode folders and the /D switch from the customInit macro instead of a function body.",
+    "The install-mode variables failed the build through the -WX warning-as-error flag, and the StdUtils plugin call could not be resolved that early in the script.",
+    "The bundled runtime smoke test now allows 30 seconds, so a cold first launch of the freshly extracted Codex binary is no longer reported as a runtime failure."
+  ]
+}

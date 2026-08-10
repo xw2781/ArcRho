@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Open as Read-Only now works for Excel workbook links in the installed app, not only in development mode.",
+  "details": [
+    "The installed app launched Excel from its packaged app.asar folder, which Windows rejects as a working directory and reported as \"spawn powershell.exe ENOENT\".",
+    "Host commands now run from a real directory and resolve PowerShell under %SystemRoot% instead of the inherited PATH.",
+    "Applies to read-only Excel opening from DFM Notes, Dataset links, and File Explorer, plus Open Terminal."
+  ]
+}
