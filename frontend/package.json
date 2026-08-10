@@ -1,6 +1,6 @@
 {
   "name": "arcrho-electron",
-  "version": "1.2.10",
+  "version": "1.2.11",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
