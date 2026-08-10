@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -265,6 +266,83 @@ test("update_checker deletes the installer recorded for cleanup and legacy updat
   assert.ok(!fs.existsSync(legacyDir), "the legacy user-data updates folder must be removed once it is empty");
 
   assert.deepEqual(await updateChecker.cleanupCompletedUpdateInstaller(), { status: "none" });
+});
+
+test("update_checker retries a busy installer launch and records the cleanup marker", async () => {
+  const installerContent = Buffer.from("retry-installer-bytes");
+  const sha256 = crypto.createHash("sha256").update(installerContent).digest("hex");
+
+  async function* bodyChunks() {
+    yield installerContent;
+  }
+
+  const fetchStub = async (url) => {
+    const target = String(url);
+    if (target.includes("/releases?")) {
+      return {
+        ok: true,
+        json: async () => releaseFixture({
+          assets: [
+            { name: "ArcRho-Setup-0.0.4.exe", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.4.exe" },
+            { name: "ArcRho-Setup-0.0.4.exe.sha256", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.4.exe.sha256" },
+          ],
+        }),
+      };
+    }
+    if (target.endsWith(".sha256")) return { ok: true, text: async () => `${sha256}  ArcRho-Setup-0.0.4.exe` };
+    return {
+      ok: true,
+      headers: { get: (name) => (name === "content-length" ? String(installerContent.length) : null) },
+      body: bodyChunks(),
+    };
+  };
+
+  // Windows reports a busy installer either way: spawn() throws EBUSY
+  // synchronously, while other launch failures arrive as an "error" event.
+  const spawnCalls = [];
+  const spawnStub = (command) => {
+    spawnCalls.push(command);
+    const busy = Object.assign(new Error("spawn EBUSY"), { code: "EBUSY" });
+    if (spawnCalls.length === 1) throw busy;
+    const child = new EventEmitter();
+    child.unref = () => {};
+    setImmediate(() => child.emit(spawnCalls.length === 2 ? "error" : "spawn", spawnCalls.length === 2 ? busy : undefined));
+    return child;
+  };
+
+  const originalShowMessageBox = electronStub.dialog.showMessageBox;
+  electronStub.dialog.showMessageBox = async (winOrOptions, maybeOptions) => {
+    const options = maybeOptions || winOrOptions || {};
+    return (options.buttons || []).includes("Update now") ? { response: 0 } : { response: 1 };
+  };
+
+  process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK = "1";
+  const fakeWin = { isDestroyed: () => false, webContents: { send: () => {}, executeJavaScript: async () => true } };
+  updateChecker.initUpdateChecker({
+    appMode: "arcrho",
+    getMainWindow: () => fakeWin,
+    fetchImpl: fetchStub,
+    spawnImpl: spawnStub,
+  });
+  let result;
+  try {
+    result = await updateChecker.checkForUpdate({ showNoUpdate: false });
+  } finally {
+    delete process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK;
+    electronStub.dialog.showMessageBox = originalShowMessageBox;
+    updateChecker.initUpdateChecker({ appMode: "arcrho", getMainWindow: () => null });
+  }
+
+  assert.deepEqual(result, { status: "launching", version: "0.0.4" });
+  assert.equal(spawnCalls.length, 3, "a busy launch must be retried rather than reported to the user");
+
+  const installerPath = path.join(downloadsDir, "ArcRho-Setup-0.0.4.exe");
+  assert.ok(fs.existsSync(installerPath), "a launched installer stays until the next launch deletes it");
+  const marker = JSON.parse(fs.readFileSync(path.join(userDataDir, "pending_update_cleanup.json"), "utf8"));
+  assert.deepEqual(marker, { installerPath, version: "0.0.4" });
+
+  assert.equal((await updateChecker.cleanupCompletedUpdateInstaller()).status, "removed");
+  assert.ok(!fs.existsSync(installerPath));
 });
 
 test("backend_lifecycle initializes, resolves its port, and manages client markers", () => {

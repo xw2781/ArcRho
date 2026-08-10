@@ -1,11 +1,11 @@
 // GitHub Releases update checking, download-with-progress, update-install prompting, and
 // post-install installer cleanup for the desktop host.
-const { app, dialog } = require("electron");
+const { app, dialog, shell } = require("electron");
 const { spawn } = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { withTimeout } = require("./host_support");
+const { sleep, withTimeout } = require("./host_support");
 
 const SHA256_RE = /\b[a-fA-F0-9]{64}\b/;
 const GITHUB_API_ROOT = "https://api.github.com";
@@ -21,19 +21,28 @@ const RELEASED_ON_RE = /^released on .*\.$/i;
 const MAX_RELEASE_NOTE_BULLETS = 12;
 const PENDING_CLEANUP_FILE = "pending_update_cleanup.json";
 const CLEANUP_RETRY_DELAY_MS = 20000;
+const INSTALLER_LAUNCH_RETRY_DELAYS_MS = [400, 1200, 2500, 5000];
+const TRANSIENT_LAUNCH_ERROR_CODES = new Set(["EBUSY", "ETXTBSY", "EACCES", "EPERM"]);
 const MAX_INSTALLER_NAME_ATTEMPTS = 100;
 
 let getMainWindow = () => null;
 let fetchImpl = typeof fetch === "function" ? fetch : null;
+let spawnImpl = spawn;
 let UPDATE_GITHUB_REPO = "xw2781/ArcRho";
 let UPDATE_GITHUB_TOKEN = "";
 let UPDATE_CHECK_TIMEOUT_MS = 3000;
 let UPDATE_INSTALLER_NAME_RE = /$^/;
 let DEV_UPDATE_CHECK_ENABLED = false;
 
-function initUpdateChecker({ appMode, getMainWindow: getWin, fetchImpl: injectedFetch } = {}) {
+function initUpdateChecker({
+  appMode,
+  getMainWindow: getWin,
+  fetchImpl: injectedFetch,
+  spawnImpl: injectedSpawn,
+} = {}) {
   getMainWindow = typeof getWin === "function" ? getWin : () => null;
   if (typeof injectedFetch === "function") fetchImpl = injectedFetch;
+  spawnImpl = typeof injectedSpawn === "function" ? injectedSpawn : spawn;
   UPDATE_GITHUB_REPO = (
     appMode === "arcode" ? process.env.ARCODE_UPDATE_GITHUB_REPO : process.env.ARCRHO_UPDATE_GITHUB_REPO
   ) || "xw2781/ArcRho";
@@ -457,13 +466,46 @@ async function confirmUpdateShutdown() {
   }
 }
 
-function launchUpdateInstaller(installerPath) {
-  const child = spawn(installerPath, [], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: false,
+// Settles on the child's own outcome: spawn() throws EBUSY synchronously but
+// reports EACCES/ENOENT as an "error" event, which with no listener would take
+// the main process down instead of reaching the caller's error dialog.
+function spawnUpdateInstaller(installerPath) {
+  return new Promise((resolve, reject) => {
+    const child = spawnImpl(installerPath, [], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
   });
-  child.unref();
+}
+
+// A freshly written installer is briefly held by whatever inspects new
+// executables - Windows Defender's real-time scan above all - and CreateProcess
+// answers that with EBUSY. It clears on its own, so retry before giving up.
+async function launchUpdateInstaller(installerPath) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= INSTALLER_LAUNCH_RETRY_DELAYS_MS.length; attempt += 1) {
+    if (attempt > 0) await sleep(INSTALLER_LAUNCH_RETRY_DELAYS_MS[attempt - 1]);
+    try {
+      await spawnUpdateInstaller(installerPath);
+      return;
+    } catch (err) {
+      lastError = err;
+      if (!TRANSIENT_LAUNCH_ERROR_CODES.has(String(err?.code || ""))) break;
+      console.warn(`ArcRho update installer launch attempt ${attempt + 1} failed: ${err?.message || err}`);
+    }
+  }
+
+  // ShellExecute goes through the shell rather than CreateProcess directly, so
+  // it can still start a file the direct launch was refused.
+  const openError = shell?.openPath ? await shell.openPath(installerPath) : "no shell available";
+  if (!openError) return;
+  throw new Error(`${String(lastError?.message || lastError)} (opening the installer also failed: ${openError})`);
 }
 
 async function downloadVerifyAndInstall(updateInfo) {
@@ -503,20 +545,27 @@ async function downloadVerifyAndInstall(updateInfo) {
 
   sendDownloadProgress({ phase: "done", version: updateInfo.version });
   try {
-    launchUpdateInstaller(installerPath);
+    await launchUpdateInstaller(installerPath);
     recordPendingInstallerCleanup(installerPath, updateInfo.version);
     app.quit();
     return { status: "launching", version: updateInfo.version };
   } catch (err) {
+    // The installer is downloaded and verified, so name it: running it by hand
+    // is all that is left to do, and ArcRho keeps running in the meantime.
     await showMainWindowMessageBox({
       type: "error",
       title: "Update could not be started",
       message: "ArcRho could not launch the update installer.",
-      detail: String(err?.message || err),
+      detail: [
+        String(err?.message || err),
+        "",
+        "The installer was downloaded and verified. You can run it yourself:",
+        installerPath,
+      ].join("\n"),
       buttons: ["OK"],
       noLink: true,
     });
-    return { status: "launch-failed", version: updateInfo.version };
+    return { status: "launch-failed", version: updateInfo.version, installerPath };
   }
 }
 

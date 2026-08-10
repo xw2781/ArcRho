@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "app update",
+  "audience": "user",
+  "summary": "App updates now retry a verified installer when Windows briefly blocks it immediately after download.",
+  "details": [
+    "ArcRho falls back to the Windows shell if direct installer launch remains unavailable.",
+    "If automatic launch still fails, the error shows the verified installer path so it can be run manually."
+  ]
+}
