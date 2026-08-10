@@ -352,6 +352,38 @@ def wait_for_file(path: str, timeout_sec: float, settle_ms: float = 50.0) -> boo
     return found
 
 
+def parse_method_last_modified_timestamp(value: Any) -> Optional[float]:
+    """Canonical epoch parse for a method JSON ``last modified`` value.
+
+    ResQ writes its ``Modified`` value as a timezone-less wall-clock string in
+    the machine's own timezone, while an ArcRho save writes an absolute ISO
+    value carrying ``Z`` or an offset. A timezone-less value is therefore read
+    as local time, so both sides land on the same instant the sync review
+    window renders for them.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        raw_number = float(value)
+        return raw_number if raw_number > 0 else None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        raw_number = float(raw)
+    except ValueError:
+        raw_number = None
+    if raw_number is not None:
+        return raw_number if raw_number > 0 else None
+
+    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return parsed.timestamp()
+
+
 # ---------------------------------------------------------------------------
 # File utilities
 # ---------------------------------------------------------------------------

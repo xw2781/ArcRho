@@ -155,6 +155,28 @@ test("v2 payload and PI restore preserve distinct method/output identities", () 
   );
 });
 
+test("the built payload carries the owned output category through", () => {
+  // 'output category' is an owned field the DFM page never edits, so a payload
+  // that drops it hashes to a different owned revision and is rejected wherever
+  // the method is validated as complete -- the macro handoff, for one.
+  const builder = functionSlice(
+    persistenceSource,
+    "export function buildDfmMethodPayload",
+    "function normalizeRatioMatrixCellValue",
+  );
+  assert.match(builder, /"output category": currentDfmOutputCategory/u);
+  const grouped = functionSlice(
+    persistenceSource,
+    "function buildDfmGroupedMethodPayload",
+    "function recordCleanDfmMethodPayload",
+  );
+  assert.match(grouped, /"output category",/u);
+  // Captured from the applied method, and omitted when unknown so a Save cannot
+  // clear the category held on disk.
+  assert.match(persistenceSource, /currentDfmOutputCategory = String\(/u);
+  assert.match(builder, /currentDfmOutputCategory \? \{ "output category"/u);
+});
+
 test("DFM Save As rekeys and restores the new method/output identity", () => {
   assert.match(
     projectMessagesSource,

@@ -128,6 +128,10 @@ let lastCleanDfmNotesText = "";
 let normalDfmMethodSavePath = "";
 let normalDfmMethodSaveName = "";
 let currentDfmOutputDataset = "";
+// The DFM page never edits the output dataset's category -- it comes from the
+// ResQ dataset type -- but it is an owned field, so dropping it from the built
+// payload changes the canonical owned revision. Carry the loaded value through.
+let currentDfmOutputCategory = "";
 // Open-window change alert (advisory): watch the method JSON + output sidecar
 // for rewrites by another user or the dependent-propagation job. Self-saves
 // pause the watch and rebase its fingerprint through ensureDfmObjectChangeWatch.
@@ -942,6 +946,7 @@ function buildDfmGroupedMethodPayload(methodPayload) {
       "name",
       "output type",
       "output dataset",
+      "output category",
       "input triangle",
       "origin length",
       "development length",
@@ -1084,6 +1089,12 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
   const ratioTriangle = getDfmRatioTriangleTab(payload);
   const resultsTab = getDfmResultsTab(payload);
   if (isV2) {
+    const appliedDetails = getDfmDetailsTab(payload);
+    currentDfmOutputCategory = String(
+      appliedDetails["output category"]
+        ?? appliedDetails["output dataset_category"]
+        ?? currentDfmOutputCategory,
+    ).trim();
     const dataTab = getDfmDataTab(payload);
     const snapshotResult = window.ADA_DFM_APPLY_DATASET_SNAPSHOT?.({
       origin_labels: dataTab["origin labels"],
@@ -1397,6 +1408,9 @@ export function buildDfmMethodPayload(options = {}) {
     name: methodName,
     "output type": outputVector,
     "output dataset": outputDataset,
+    // Omitted rather than sent empty when unknown: Save merges owned fields as a
+    // patch, so an empty value would clear the category stored on disk.
+    ...(currentDfmOutputCategory ? { "output category": currentDfmOutputCategory } : {}),
     "input triangle": inputTriangle,
     "origin length": originLength,
     "development length": developmentLength,

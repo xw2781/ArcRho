@@ -4,13 +4,17 @@ from __future__ import annotations
 import getpass
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict
 
 from fastapi import HTTPException
 
 from app_server import config
-from app_server.helpers import sanitize_dataset_file_name, wait_for_file
+from app_server.helpers import (
+    parse_method_last_modified_timestamp,
+    sanitize_dataset_file_name,
+    wait_for_file,
+)
 from app_server.schemas.result_selection_rpc_bridge import ResultSelectionRpcBridgeRequest
 
 RPC_BRIDGE_DIR_NAME = "RPC bridge"
@@ -135,31 +139,6 @@ def _try_remove(path: str) -> bool:
     return False
 
 
-def _parse_last_modified_timestamp(value: Any) -> float | None:
-    if isinstance(value, bool) or value is None:
-        return None
-    if isinstance(value, (int, float)):
-        raw_number = float(value)
-        return raw_number if raw_number > 0 else None
-    raw = _clean_text(value)
-    if not raw:
-        return None
-    try:
-        raw_number = float(raw)
-    except ValueError:
-        raw_number = None
-    if raw_number is not None:
-        return raw_number if raw_number > 0 else None
-    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.timestamp()
-
-
 def _read_json(path: str) -> Dict[str, Any]:
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -189,7 +168,7 @@ def _json_last_modified_meta(path: str) -> Dict[str, Any]:
     raw = _json_tab(payload, "method_metadata").get("last_modified")
     return {
         "last_modified": _clean_text(raw),
-        "last_modified_timestamp": _parse_last_modified_timestamp(raw),
+        "last_modified_timestamp": parse_method_last_modified_timestamp(raw),
         "last_modified_error": "",
     }
 

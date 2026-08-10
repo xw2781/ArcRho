@@ -58,6 +58,6 @@ Routes:
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Request and return-path filename rules must match the external RPC bridge worker exactly.
-- Timestamp comparison uses `method_metadata.last_modified` inside each Result Selection JSON file. If an external bridge omits that field, comparison can still show both files but may not reliably identify the newer version.
+- Timestamp comparison uses `method_metadata.last_modified` inside each Result Selection JSON file, parsed by `helpers.parse_method_last_modified_timestamp` (the single owner shared with the DFM RPC bridge), which reads a timezone-less ResQ value as local wall-clock time and an ArcRho `Z`/offset value as the absolute instant it states. If an external bridge omits that field, comparison can still show both files but may not reliably identify the newer version.
 - Sync waits are intentionally short; timeout handling must remain clear to users.
 <!-- MANUAL:END -->

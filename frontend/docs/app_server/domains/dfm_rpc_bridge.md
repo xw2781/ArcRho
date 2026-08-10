@@ -61,6 +61,6 @@ Routes:
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Request and return-path filename rules must match data-engine expectations exactly.
-- Timestamp comparison uses the canonical `last modified` value inside each DFM JSON file. Timezone-less ResQ metadata is parsed as UTC so a value like `2026-06-05 15:23:59.777` compares equal to the matching ArcRho ISO value `2026-06-05T15:23:59.777Z`.
+- Timestamp comparison uses the canonical `last modified` value inside each DFM JSON file, parsed by `helpers.parse_method_last_modified_timestamp` (the single owner shared with the Result Selection RPC bridge). ResQ writes `Modified` as a timezone-less wall-clock string in the machine's own timezone and an ArcRho save writes an absolute ISO value with `Z` or an offset, so a timezone-less value is read as local time. Reading it as UTC instead put the `NEW` seal on the wrong card by the UTC offset whenever the two versions were saved less than that offset apart.
 - Sync waits are intentionally short; timeout handling must remain clear to users.
 <!-- MANUAL:END -->
