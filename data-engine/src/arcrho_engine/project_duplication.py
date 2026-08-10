@@ -8,8 +8,11 @@ import os
 import re
 import shutil
 import stat as stat_module
+import time
+import traceback
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any, Callable, Mapping
@@ -52,6 +55,18 @@ PROJECT_DUPLICATION_LOCK_STALE_SECONDS = 6 * 60 * 60
 PROJECT_DUPLICATION_CLAIM_STALE_SECONDS = 5 * 60.0
 PROJECT_DUPLICATION_CLAIM_HEARTBEAT_SECONDS = 5.0
 PROJECT_DUPLICATION_JOURNAL_VERSION = 1
+
+# A duplication driven from a workstation copies every file over SMB, where a
+# scanner holding a just-written handle or a momentary session drop raises a
+# transient OSError. Without a retry one such error aborts the whole project,
+# so each copy step is attempted again before the job is failed.
+PROJECT_DUPLICATION_COPY_ATTEMPTS = 4
+PROJECT_DUPLICATION_COPY_RETRY_SECONDS = (0.5, 1.5, 3.0)
+
+# The shared status message is deliberately location-independent, so the real
+# OSError is only recoverable from this server-local log.
+PROJECT_DUPLICATION_LOG_RELATIVE_PATH = ("runtime", "logs", "project_duplication.log")
+PROJECT_DUPLICATION_LOG_MAX_BYTES = 1024 * 1024
 
 
 class ProjectDuplicationError(RuntimeError):
@@ -106,6 +121,92 @@ def _safe_status_error(exc: Exception) -> str:
     if isinstance(exc, (OSError, shutil.Error)):
         return "The ArcRho Server filesystem could not complete project duplication."
     return "Project duplication failed."
+
+
+def _duplication_log_path(server_root: str | os.PathLike[str]) -> Path:
+    return Path(server_root).joinpath(*PROJECT_DUPLICATION_LOG_RELATIVE_PATH)
+
+
+def log_duplication_event(
+    server_root: str | os.PathLike[str],
+    message: str,
+    *,
+    exc: BaseException | None = None,
+) -> None:
+    """Record the unredacted diagnosis beside the other ArcRho runtime logs.
+
+    The Engine is packaged with ``--noconsole``, so a bare ``print`` is lost on
+    every deployed machine. Logging must never fail a duplication, so every
+    error here is swallowed.
+    """
+
+    try:
+        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        line = f"{stamp} {message}\n"
+        if exc is not None:
+            line += "".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            )
+        path = _duplication_log_path(server_root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if path.stat().st_size > PROJECT_DUPLICATION_LOG_MAX_BYTES:
+                os.replace(path, path.with_name(f"{path.name}.1"))
+        except OSError:
+            pass
+        with open(path, mode="a", encoding="utf-8") as stream:
+            stream.write(line)
+    except Exception:
+        pass
+
+
+def _discard_failed_copy(destination: Path) -> None:
+    """Clear a partial destination so the next copy attempt starts clean."""
+
+    try:
+        if destination.is_dir() and not destination.is_symlink():
+            shutil.rmtree(destination, ignore_errors=True)
+        else:
+            destination.unlink()
+    except OSError:
+        pass
+
+
+def _copy_with_retry(
+    server_root: str | os.PathLike[str],
+    request_id: str,
+    label: str,
+    destination: Path,
+    copy: Callable[[], Any],
+) -> None:
+    """Run one copy step, retrying the transient share errors that abort jobs."""
+
+    attempts = max(1, PROJECT_DUPLICATION_COPY_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        try:
+            copy()
+            if attempt > 1:
+                log_duplication_event(
+                    server_root,
+                    f"request={request_id} {label}: succeeded on attempt {attempt}",
+                )
+            return
+        except (OSError, shutil.Error) as exc:
+            if attempt >= attempts:
+                log_duplication_event(
+                    server_root,
+                    f"request={request_id} {label}: failed after {attempt} attempts",
+                    exc=exc,
+                )
+                raise
+            log_duplication_event(
+                server_root,
+                f"request={request_id} {label}: attempt {attempt} failed, retrying",
+                exc=exc,
+            )
+            _discard_failed_copy(destination)
+            delays = PROJECT_DUPLICATION_COPY_RETRY_SECONDS
+            time.sleep(delays[min(attempt - 1, len(delays) - 1)] if delays else 0)
 
 
 def _direct_child(parent: Path, segment: str, label: str) -> Path:
@@ -678,7 +779,14 @@ def duplicate_project(
             _progress("project_files", 0, 0, "Copying project files")
         )
         staging_created = True
-        _copy_non_data_project(source, staging)
+        request_id = normalized["RequestId"]
+        _copy_with_retry(
+            root,
+            request_id,
+            "project files",
+            staging,
+            lambda: _copy_non_data_project(source, staging),
+        )
 
         source_data = source / "data"
         if source_data.is_dir():
@@ -688,7 +796,16 @@ def duplicate_project(
                 _progress("data_files", 0, 0, "Copying project data files")
             )
             for source_file in data_files:
-                shutil.copy2(source_file, staging_data / source_file.name)
+                staged_file = staging_data / source_file.name
+                _copy_with_retry(
+                    root,
+                    request_id,
+                    f"data file {source_file.name}",
+                    staged_file,
+                    lambda source_file=source_file, staged_file=staged_file: (
+                        shutil.copy2(source_file, staged_file)
+                    ),
+                )
 
             report(
                 _progress(
@@ -699,10 +816,17 @@ def duplicate_project(
                 )
             )
             for completed, source_rc in enumerate(reserving_classes, start=1):
-                shutil.copytree(
-                    source_rc,
-                    staging_data / source_rc.name,
-                    symlinks=True,
+                staged_rc = staging_data / source_rc.name
+                _copy_with_retry(
+                    root,
+                    request_id,
+                    f"reserving class {completed} of {total} ({source_rc.name})",
+                    staged_rc,
+                    lambda source_rc=source_rc, staged_rc=staged_rc: shutil.copytree(
+                        source_rc,
+                        staged_rc,
+                        symlinks=True,
+                    ),
                 )
                 report(
                     _progress(
@@ -838,6 +962,11 @@ def execute_project_duplication(
     except Exception as exc:
         message = _safe_status_error(exc)
         raw_request_id = request.get("RequestId") if isinstance(request, Mapping) else None
+        log_duplication_event(
+            server_root,
+            f"request={raw_request_id!r} rejected: {message}",
+            exc=exc,
+        )
         try:
             if ownership_callback is not None:
                 ownership_callback()
@@ -912,6 +1041,15 @@ def execute_project_duplication(
             print("(project duplication request ownership was lost)")
             return False
         message = _safe_status_error(exc)
+        # The shared status is redacted by contract; this is the only record of
+        # which path and which errno actually failed.
+        log_duplication_event(
+            server_root,
+            f"request={normalized['RequestId']} failed at stage "
+            f"{current_progress['stage']} "
+            f"({current_progress['completed']}/{current_progress['total']}): {message}",
+            exc=exc,
+        )
         if isinstance(exc, ProjectDuplicationRecoveryRequired):
             current_progress = _progress(
                 "recovery_required",

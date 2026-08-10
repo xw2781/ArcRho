@@ -621,6 +621,91 @@ class ProjectDuplicationTests(unittest.TestCase):
         self.assertFalse((self.projects_dir / "Target").exists())
         self.assertEqual(list(self.projects_dir.glob(".arcrho-project-duplication-*")), [])
 
+    def test_transient_copy_error_is_retried_and_publishes_the_target(self):
+        """A share hiccup on one reserving class must not abort the project."""
+
+        self._create_source()
+        request = self._request()
+        real_copytree = project_duplication.shutil.copytree
+        failed = []
+
+        def flaky_copytree(source, target, *args, **kwargs):
+            if Path(source).name == "RC A" and not failed:
+                failed.append(Path(source).name)
+                # Leave the partial destination a real copy would leave behind.
+                Path(target).mkdir(parents=True)
+                (Path(target) / "partial.bin").write_text("partial", encoding="utf-8")
+                raise PermissionError(32, "The process cannot access the file")
+            return real_copytree(source, target, *args, **kwargs)
+
+        with (
+            patch.object(project_duplication.shutil, "copytree", flaky_copytree),
+            patch.object(
+                project_duplication, "PROJECT_DUPLICATION_COPY_RETRY_SECONDS", (0,)
+            ),
+        ):
+            total = project_duplication.duplicate_project(
+                self.server_root,
+                request,
+                progress_callback=lambda _event: None,
+            )
+
+        self.assertEqual(failed, ["RC A"])
+        self.assertEqual(total, 2)
+        target = self.projects_dir / "Target"
+        self.assertTrue((target / "data" / "RC A" / "sidecars" / "paid.json").is_file())
+        self.assertTrue((target / "data" / "RC B" / "datasets" / "paid.csv").is_file())
+        # The retry must discard the partial attempt, or the staged manifest
+        # would no longer match the source and publication would be refused.
+        self.assertFalse((target / "data" / "RC A" / "partial.bin").exists())
+        self.assertEqual(
+            list(self.projects_dir.glob(".arcrho-project-duplication-*")), []
+        )
+
+    def test_failed_copy_logs_the_real_error_while_status_stays_redacted(self):
+        self._create_source()
+        request = self._request()
+
+        def always_fails(source, target, *args, **kwargs):
+            raise OSError(64, "The specified network name is no longer available")
+
+        with (
+            patch.object(project_duplication.shutil, "copytree", always_fails),
+            patch.object(
+                project_duplication, "PROJECT_DUPLICATION_COPY_RETRY_SECONDS", (0,)
+            ),
+        ):
+            self.assertFalse(
+                project_duplication.execute_project_duplication(
+                    self.server_root, request
+                )
+            )
+
+        status = json.loads(
+            project_duplication_status_path(
+                self.server_root, request["RequestId"]
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(status["status"], "error")
+        self.assertEqual(
+            status["message"],
+            "The ArcRho Server filesystem could not complete project duplication.",
+        )
+
+        log_text = project_duplication._duplication_log_path(
+            self.server_root
+        ).read_text(encoding="utf-8")
+        # The shared status stays location-independent; the log carries the
+        # detail that makes a client-site failure diagnosable at all.
+        self.assertIn("The specified network name is no longer available", log_text)
+        self.assertIn("attempt 1 failed, retrying", log_text)
+        self.assertIn(
+            f"failed after {project_duplication.PROJECT_DUPLICATION_COPY_ATTEMPTS}"
+            " attempts",
+            log_text,
+        )
+        self.assertIn("Traceback", log_text)
+
     def test_live_lock_blocks_and_stale_lock_is_recovered_without_owner_race(self):
         self._create_source()
         request = self._request()
