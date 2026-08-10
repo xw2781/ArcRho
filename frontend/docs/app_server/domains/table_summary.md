@@ -24,8 +24,8 @@ A free-form (non-date-role) numeric `distribution` is shaped for reading, not fo
 <!-- AUTO-GEN:BEGIN app_server.table_summary.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `GET` | `/table_summary` | `get_table_summary` | `str` | - | `field_mapping_service.load_date_role_fields`, `table_summary_service.generate_table_summary`, `table_summary_service.read_valid_cache` |
-| `POST` | `/table_summary/refresh` | `refresh_table_summary` | `TableSummaryRefreshRequest` | [`app_server/schemas/table_summary.py`](../../../app_server/schemas/table_summary.py) | `field_mapping_service.load_date_role_fields`, `reserving_class_service.refresh_reserving_class_values`, `table_summary_service.discard_cached_summaries`, `table_summary_service.generate_table_summary` |
+| `GET` | `/table_summary` | `get_table_summary` | `str` | - | `field_mapping_service.load_date_role_fields`, `table_summary_service.generate_table_summary`, `table_summary_service.load_valid_cache` |
+| `POST` | `/table_summary/refresh` | `refresh_table_summary` | `TableSummaryRefreshRequest` | [`app_server/schemas/table_summary.py`](../../../app_server/schemas/table_summary.py) | `field_mapping_service.load_date_role_fields`, `reserving_class_service.refresh_reserving_class_values`, `table_summary_service.discard_cached_summary`, `table_summary_service.generate_table_summary` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
@@ -44,23 +44,21 @@ A free-form (non-date-role) numeric `distribution` is shaped for reading, not fo
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Can trigger reserving class value refresh as side effect.
-- The cached payload carries `summary_version` and `date_roles`. `load_valid_cache` serves a cache only when it is newer than the CSV, matches the current version, **and** was built against the project's current date-role mapping. A version bump regenerates stale caches instead of returning payloads without the newer keys; the mapping check exists because remapping Origin Date to another column leaves the CSV untouched, so an mtime-only check would keep serving the previous column's year bars.
-- The cache file name is **version-scoped**: `table_summary.v<SUMMARY_VERSION>.json`, built by `config.get_cache_path(project_name, summary_version)` from `TABLE_SUMMARY_CACHE_PREFIX`/`TABLE_SUMMARY_CACHE_SUFFIX`. The cache lives in the shared project folder, so every user of the project reads the same file. Under one shared name, two installed app versions rejected each other's payload and rewrote it on every load, so a fleet running a dev build beside a released one never saw a warm cache and paid a full `read_csv` of the imported table on every Source Data load. Separate names let each version keep its own cache. The version inside the payload is still checked, so a hand-renamed file cannot be served.
-- `read_valid_cache` adopts a pre-versioned `table_summary.json` once: when that file is fresh and already carries the running version's payload it is renamed onto the versioned name, so upgrading costs no re-read. A legacy file belonging to a different version is left alone - it is the only cache the version that wrote it can still use.
-- `POST /table_summary/refresh` re-imports the master table, which advances its modification time and makes **every** cached payload stale, so it discards all of them (`config.list_table_summary_cache_paths` + `table_summary_service.discard_cached_summaries`) rather than only the running version's file. That is also what bounds accumulation of per-version cache files. `cache_cleared` reports whether anything was removed.
-- `reserving_class_service._load_table_summary_cached_meta` reads only the CSV mtime and the column names, both version-independent, so it takes the newest cache any version left behind through the same folder listing and still compares that mtime against the imported table before trusting the column list.
+- The cached payload carries `summary_version` and `date_roles`. `load_valid_cache` serves a cache only when it is newer than the CSV, matches the current `SUMMARY_VERSION`, **and** was built against the project's current date-role mapping. A version bump regenerates stale caches instead of returning payloads without the newer keys; the mapping check exists because remapping Origin Date to another column leaves the CSV untouched, so an mtime-only check would keep serving the previous column's year bars.
+- The cache lives at one fixed path per project: `table_summary.json`, built by `config.get_table_summary_cache_path(project_name)` from `TABLE_SUMMARY_CACHE_FILE`. It lives in the shared project folder, so every user of the project reads the same file. The app is not shipped yet, so there is no fleet of installed versions to keep separate caches for; a version mismatch simply regenerates the one file in place.
+- `POST /table_summary/refresh` re-imports the master table, which advances its modification time and makes the cached payload stale, so it discards it (`table_summary_service.discard_cached_summary`). `cache_cleared` reports whether the file existed.
+- `reserving_class_service._load_table_summary_cached_meta` reads only the CSV mtime and the column names from that same fixed path, and still compares that mtime against the imported table before trusting the column list.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks
 <!-- MANUAL:BEGIN -->
 1. Change refresh contract: align request schema and downstream reserve refresh behavior.
-2. Add or change a per-column field: extend `generate_table_summary`, bump `SUMMARY_VERSION`, and update the Source Data consumer in `ui/project_settings/project_settings_source_data.js`. The bump changes the cache file name automatically; do not add a second place that spells the name.
+2. Add or change a per-column field: extend `generate_table_summary`, bump `SUMMARY_VERSION`, and update the Source Data consumer in `ui/project_settings/project_settings_source_data.js`. The bump regenerates the one cache file in place on its next read; it does not change the file's name.
 <!-- MANUAL:END -->
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Cache invalidation and side-effect refresh can impact performance.
 - Distribution statistics run inside the existing single `read_csv` pass, so they add work proportional to column count on every cache miss. A numeric column costs roughly three times the plain single-histogram version: the quantile window adds a partition pass, `numpy.clip` adds a copy, and the fine histogram is `DISTRIBUTION_OVERSAMPLE` times wider. Measured at about 41 ms per 1M-row numeric column against 14 ms for a plain 16-bin histogram. The second histogram in the low-cardinality branch only runs for columns that cannot fill the full bin count.
-- `SUMMARY_VERSION` bumps regenerate every cached summary, so the first open of each project after a distribution change pays one full `read_csv`. That cost is now once per version per project rather than once per load: before the file name carried the version, running an un-released build against the same ArcRho Server as a released client made every load on both machines a cache miss. Measured on an 84 MB / 346k-row / 34-column table, a miss costs about 1.7 s of local CPU plus the whole file across the network, against about 1 ms for a hit.
-- Bumping `SUMMARY_VERSION` leaves the previous version's cache file in the project folder until the next refresh sweeps it. That is deliberate - it is what an older installed client still reads - and it costs one small JSON file per version.
+- `SUMMARY_VERSION` bumps regenerate the cached summary, so the first open of each project after a distribution change pays one full `read_csv`. Measured on an 84 MB / 346k-row / 34-column table, a miss costs about 1.7 s of local CPU plus the whole file across the network, against about 1 ms for a hit.
 <!-- MANUAL:END -->

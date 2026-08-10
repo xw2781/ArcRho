@@ -541,23 +541,20 @@ test("table summary service publishes versioned distribution data", () => {
   assert.match(summaryService, /stats = \{"min": str\(min_val\), "max": str\(max_val\)\}/);
   assert.match(summaryService, /"distribution": distribution/);
   assert.match(summaryService, /"summary_version": SUMMARY_VERSION/);
-  // A stale-version cache must be regenerated rather than served.
+  // A stale or version-mismatched cache must be regenerated rather than served.
   assert.match(
     summaryRouter,
-    /read_valid_cache\(\s*master_path, cache_path, config\.get_legacy_cache_path\(name\), date_roles\)/,
+    /load_valid_cache\(master_path, cache_path, date_roles\)/,
   );
   assert.ok(!summaryRouter.includes("is_cache_valid("), "router still trusts mtime alone");
-  // The cache is shared by every user of the project, so the file name carries
-  // the version: one shared name made two installed app versions reject and
-  // rewrite each other's payload, and neither ever saw a warm cache.
-  assert.match(summaryConfig, /TABLE_SUMMARY_CACHE_PREFIX = "table_summary\.v"/);
-  assert.match(summaryConfig, /def get_cache_path\(project_name: str, summary_version: int\)/);
-  assert.match(summaryRouter, /config\.get_cache_path\(name, table_summary_service\.SUMMARY_VERSION\)/);
-  // A re-import makes every version's cache stale, so refresh sweeps them all.
-  assert.match(
-    summaryRouter,
-    /discard_cached_summaries\(\s*config\.list_table_summary_cache_paths\(project_name\)\)/,
-  );
+  // The cache lives at one fixed name; the app is not shipped yet, so there is
+  // no per-version file name or legacy-file adoption to keep two installed
+  // builds from colliding.
+  assert.match(summaryConfig, /TABLE_SUMMARY_CACHE_FILE = "table_summary\.json"/);
+  assert.match(summaryConfig, /def get_table_summary_cache_path\(project_name: str\)/);
+  assert.match(summaryRouter, /config\.get_table_summary_cache_path\(name\)/);
+  // A re-import makes the cached payload stale, so refresh discards it.
+  assert.match(summaryRouter, /discard_cached_summary\(cache_path\)/);
 });
 
 test("date-role columns are binned by calendar year, one bar per year", () => {
@@ -599,7 +596,7 @@ test("the app server owns date-role detection and the cache tracks it", () => {
   // check would keep serving the previous column's year bars.
   assert.match(summaryService, /if cached\.get\("date_roles"\) != dict\(date_roles or \{\}\):/);
   assert.match(summaryService, /"date_roles": dict\(date_roles or \{\}\)/);
-  assert.match(summaryRouter, /read_valid_cache\(\s*master_path, cache_path, .*, date_roles\)/);
+  assert.match(summaryRouter, /load_valid_cache\(master_path, cache_path, date_roles\)/);
 });
 
 test("histogram bar labels prefer the server's year labels", () => {

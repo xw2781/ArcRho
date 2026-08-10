@@ -21,14 +21,12 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `_sanitize_project_dir_name`
   - `clear_runtime_path_caches`
   - `get_audit_log_path`
-  - `get_cache_path`
   - `get_data_processing_rules_path`
   - `get_data_processing_values_path`
   - `get_dataset_number_formats_path`
   - `get_dataset_types_path`
   - `get_field_mapping_path`
   - `get_general_settings_path`
-  - `get_legacy_cache_path`
   - `get_local_project_prefs_path`
   - `get_mssql_connections_path`
   - `get_path`
@@ -50,8 +48,8 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `get_reserving_class_values_path`
   - `get_root_path`
   - `get_scripting_prefs_path`
+  - `get_table_summary_cache_path`
   - `get_username_index_path`
-  - `list_table_summary_cache_paths`
   - `load_workspace_paths`
   - `refresh_runtime_paths`
   - `save_workspace_paths`

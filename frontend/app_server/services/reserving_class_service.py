@@ -27,7 +27,7 @@ from app_server.config import (
     get_reserving_class_combinations_path,
     get_reserving_class_path_tree_path,
     get_project_settings_workbook_path,
-    list_table_summary_cache_paths,
+    get_table_summary_cache_path,
     get_field_mapping_path,
 )
 from app_server.helpers import (
@@ -1107,23 +1107,18 @@ def _load_table_summary_cached_meta(project_name: str, table_path: str) -> Tuple
     tpath = str(table_path or "").strip()
     if not tpath:
         return (None, [])
-    # Only the CSV mtime and the column names are read here, and both are
-    # version-independent, so the newest cache any app version left behind is
-    # usable. The caller still compares the mtime against the imported table
-    # before trusting the column list.
+    # Only the CSV mtime and the column names are read here; the caller still
+    # compares the mtime against the imported table before trusting the column
+    # list, so a stale or version-mismatched cache is still handled correctly.
     try:
-        cache_paths = list_table_summary_cache_paths(project_name)
+        cache_path = get_table_summary_cache_path(project_name)
     except Exception:
         return (None, [])
     raw: Any = None
-    for cache_path in cache_paths:
-        try:
-            with open(cache_path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except Exception:
-            continue
-        if isinstance(raw, dict):
-            break
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
         raw = None
     if not isinstance(raw, dict):
         return (None, [])

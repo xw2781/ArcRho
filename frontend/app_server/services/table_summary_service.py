@@ -11,10 +11,7 @@ import pandas as pd
 from app_server import config
 
 # Bump whenever the cached summary payload gains or changes fields so stale
-# caches are regenerated instead of served without the newer keys. The cache
-# file name carries this number (`config.get_cache_path`), so two installed app
-# versions sharing one project folder each keep their own cache instead of
-# invalidating and rewriting the other's on every load.
+# caches are regenerated instead of served without the newer keys.
 SUMMARY_VERSION = 6
 
 # A date-role column holds a YYYYMM period, so it is binned by calendar year -
@@ -83,55 +80,19 @@ def load_valid_cache(
     return cached
 
 
-def read_valid_cache(
-    csv_path: str,
-    cache_path: str,
-    legacy_cache_path: str,
-    date_roles: Optional[Dict[str, str]] = None,
-) -> Optional[Dict[str, Any]]:
-    """Cached summary for the running version, adopting a pre-versioned file once.
-
-    A project folder written before the cache was version-scoped still holds
-    `table_summary.json`. When that file is fresh and already carries this
-    version's payload, it is renamed onto the versioned name instead of being
-    ignored, so upgrading does not cost one full re-read of the imported table
-    per project. A legacy file belonging to another version is left untouched -
-    it is the only cache the app version that wrote it can still use.
-    """
-    cached = load_valid_cache(csv_path, cache_path, date_roles)
-    if cached is not None:
-        return cached
-    if not legacy_cache_path:
-        return None
-    legacy = load_valid_cache(csv_path, legacy_cache_path, date_roles)
-    if legacy is None:
-        return None
-    try:
-        os.replace(legacy_cache_path, cache_path)
-    except OSError:
-        # A reader elsewhere may hold the file open; serving the payload is
-        # still correct, and the next load retries the rename.
-        pass
-    return legacy
-
-
-def discard_cached_summaries(cache_paths) -> int:
-    """Delete every table-summary cache for a project. Returns how many went.
+def discard_cached_summary(cache_path: str) -> bool:
+    """Delete the table-summary cache for a project. Returns whether it existed.
 
     Used by the refresh route: a re-import advances the imported table's
-    modification time, so every cached payload - this version's, another
-    version's, and the legacy file - is already stale.
+    modification time, so the cached payload is already stale.
     """
-    removed = 0
-    for path in cache_paths or []:
-        try:
-            os.remove(path)
-            removed += 1
-        except FileNotFoundError:
-            continue
-        except OSError:
-            continue
-    return removed
+    try:
+        os.remove(cache_path)
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
 
 
 def _date_year_distribution(values: pd.Series) -> Optional[Dict[str, Any]]:
