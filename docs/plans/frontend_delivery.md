@@ -8,12 +8,13 @@
 - Enhanced Navigation Panel
 - Dataset Table Group/Filter UX
 - Temp View Mode
-## Macro
-- Import Datasets from ResQ
-##  DFM
+## Import Datasets and Methods
+- Import Datasets from ResQ - Macro
+## Method Page - DFM
 - Chart
 - Edit Mode
-- Notes hyperlink
+- Notes hyperlink (Read-only not working in packed app 1.2.9)
+- User entry value formula
 ##  Excel Add-in
 
 
