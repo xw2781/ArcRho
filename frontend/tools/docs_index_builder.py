@@ -504,6 +504,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/shared/tabs/data/data_tab_preferences_controller.js", "Data-tab preferences, saved inputs, and browsing-history controller."),
             ("ui/shared/tabs/data/data_tab_request_controller.js", "Data-tab request payload, period, and validation controller."),
             ("ui/shared/tabs/data/data_tab_persistence_controller.js", "Data-tab sidecar, dirty, save, close, Notes, and Links controller."),
+            ("ui/shared/tabs/data/data_tab_dirty_state.js", "Data-tab dirty and save-eligibility rules, including unsaved drafts."),
             ("ui/shared/tabs/data/dataset_grid_view.js", "Reusable Dataset/DFM grid rendering."),
             ("ui/shared/tabs/data/dataset_grid_interactions.js", "Reusable Dataset/DFM grid interactions."),
             ("ui/shared/tabs/data/dataset_grid_placeholder.js", "Reusable Dataset/DFM grid loading, empty, and error states."),
@@ -541,6 +542,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             "ui/shared/tabs/data/data_tab_preferences_controller.js",
             "ui/shared/tabs/data/data_tab_request_controller.js",
             "ui/shared/tabs/data/data_tab_persistence_controller.js",
+            "ui/shared/tabs/data/data_tab_dirty_state.js",
         ],
     },
     "bornhuetter_ferguson": {

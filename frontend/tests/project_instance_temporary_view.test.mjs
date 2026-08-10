@@ -14,6 +14,7 @@ const [projectInstanceHtml, projectInstanceCss, contextSource, cacheSource, tabl
     readFile(new URL("../ui/shared/tabs/data/data_tab_persistence_controller.js", import.meta.url), "utf8"),
     readFile(new URL("../ui/shared/tabs/data/data_tab_request_controller.js", import.meta.url), "utf8"),
     readFile(new URL("../ui/shared/tabs/data/data_tab_temporary_format.js", import.meta.url), "utf8"),
+    readFile(new URL("../ui/shared/tabs/data/data_tab_dirty_state.js", import.meta.url), "utf8"),
   ]).then((sources) => sources.join("\n")),
   readFile(new URL("../ui/shared/dataset/dataset_api.js", import.meta.url), "utf8"),
 ]);

@@ -10,7 +10,7 @@ import {
 export function registerDataTabRequestController(runtime) {
   const { state, config, isTemporaryDatasetView, qs, temporaryDatasetSessionId } = runtime;
   const defer = (name) => (...args) => runtime[name](...args);
-  const { readDatasetInputQueryValues, normalizeReservingClassPath, normalizeBrowsingHistoryEntry, validateDatasetOriginLabels, getDatasetInstanceNameValue, getResolvedProjectValue, getResolvedReservingClassValue, notifyDatasetUpdated, renderTable, renderChart, setStatus, showDatasetDropdown, showProjectDropdown, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, getDatasetTypeDataFormatByName, getStoredInputValue, isDfmDataTabHost, isInputDefaultBound, loadLastDsId, loadProjectValidValueList, renderProjectOptions, saveLastDsId, createDatasetDependencyGuard } = new Proxy({}, { get: (_target, name) => defer(name) });
+  const { readDatasetInputQueryValues, normalizeReservingClassPath, normalizeBrowsingHistoryEntry, validateDatasetOriginLabels, updateDatasetSaveUi, getDatasetInstanceNameValue, getResolvedProjectValue, getResolvedReservingClassValue, notifyDatasetUpdated, renderTable, renderChart, setStatus, showDatasetDropdown, showProjectDropdown, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, getDatasetTypeDataFormatByName, getStoredInputValue, isDfmDataTabHost, isInputDefaultBound, loadLastDsId, loadProjectValidValueList, renderProjectOptions, saveLastDsId, createDatasetDependencyGuard } = new Proxy({}, { get: (_target, name) => defer(name) });
   const normalizeProjectText = defer("normalizeProjectText");
   const setInputInvalid = defer("setInputInvalid");
   const clearInputInvalid = defer("clearInputInvalid");
@@ -143,6 +143,9 @@ export function registerDataTabRequestController(runtime) {
       renderTable();
       notifyDatasetUpdated();
       renderChart();
+      // Save is blocked while the draft has no placeholder grid, so the save bar
+      // has to be refreshed once the grid exists or fails to build.
+      updateDatasetSaveUi();
       setStatus("Ready to edit new dataset draft.");
       return true;
     } catch (err) {
@@ -157,6 +160,7 @@ export function registerDataTabRequestController(runtime) {
       if (meta) meta.textContent = "";
       renderChart();
       notifyDatasetUpdated({ publishPreview: false });
+      updateDatasetSaveUi();
       setStatus(message);
       return false;
     }

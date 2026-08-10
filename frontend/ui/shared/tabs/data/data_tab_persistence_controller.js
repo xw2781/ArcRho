@@ -2,10 +2,11 @@
 import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
 import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
+import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260809a";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
   const defer = (name) => (...args) => runtime[name](...args);
-  const { getResolvedProjectValue, getResolvedReservingClassValue, getDatasetInstanceNameValue, getTriInputs, getProjectInstanceDraftDataFormat, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, isDfmDataTabHost, clampDatasetDecimalPlaces, normalizeDatasetNumberFormat, applyDecimalPlacesToDatasetNumberFormat, updateTabbedPageSaveControls, setDatasetRenderNumberFormatSettings, renderTable, notifyDatasetUpdated, getDatasetNumberFormatDefaults, getDataTabLinksController, loadDatasetSidecar, renderDatasetAuditLog, getDatasetAuditLog, normalizeDatasetDependencyEntries, renderDetailFormula, getDatasetTypeFormulaByName, renderDatasetPrecedents, renderDatasetDependents, saveTriInputsToStorage, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, refreshLenDropdowns, validateDatasetOriginLabels, refreshDatasetInstanceNameConflict, saveDatasetSidecar, saveLastDsId, handleCalculationUpdates, invalidateCachedDatasetInstances, clearDatasetDependencyPreview, requestProjectInstanceDatasetTableRefresh, setStatus, requestTabbedPageWindowClose, hideCalculationUpdatesDialog, isInputDefaultBound, loadWorkflowDefaults, saveDatasetNotes, publishDataTabHostInputs, mountDataTabNotes, ensureHeadersForProject, ensureDevHeadersForProject, scheduleAutoRun, applyGridSelectionFromState, setLenSelectValue, getDataTabCloseConfirm, createDatasetExternalLinksController } = new Proxy({}, { get: (_target, name) => defer(name) });
+  const { getResolvedProjectValue, getResolvedReservingClassValue, getDatasetInstanceNameValue, normalizeDatasetInstanceKey, getTriInputs, getProjectInstanceDraftDataFormat, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, isDfmDataTabHost, clampDatasetDecimalPlaces, normalizeDatasetNumberFormat, applyDecimalPlacesToDatasetNumberFormat, updateTabbedPageSaveControls, setDatasetRenderNumberFormatSettings, renderTable, notifyDatasetUpdated, getDatasetNumberFormatDefaults, getDataTabLinksController, loadDatasetSidecar, renderDatasetAuditLog, getDatasetAuditLog, normalizeDatasetDependencyEntries, renderDetailFormula, getDatasetTypeFormulaByName, renderDatasetPrecedents, renderDatasetDependents, saveTriInputsToStorage, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, refreshLenDropdowns, validateDatasetOriginLabels, refreshDatasetInstanceNameConflict, saveDatasetSidecar, saveLastDsId, handleCalculationUpdates, invalidateCachedDatasetInstances, clearDatasetDependencyPreview, requestProjectInstanceDatasetTableRefresh, setStatus, requestTabbedPageWindowClose, hideCalculationUpdatesDialog, isInputDefaultBound, loadWorkflowDefaults, saveDatasetNotes, publishDataTabHostInputs, mountDataTabNotes, ensureHeadersForProject, ensureDevHeadersForProject, scheduleAutoRun, applyGridSelectionFromState, setLenSelectValue, getDataTabCloseConfirm, createDatasetExternalLinksController } = new Proxy({}, { get: (_target, name) => defer(name) });
   const normalizeProjectText = defer("normalizeProjectText");
   const renderChart = defer("renderChart");
   const isDatasetReadOnly = defer("isDatasetReadOnly");
@@ -29,6 +30,32 @@ export function registerDataTabPersistenceController(runtime) {
     renderTable,
     notifyDatasetUpdated,
     applyGridSelectionFromState,
+  });
+  const {
+    normalizeDatasetModeText,
+    sourceKindIsReadOnly,
+    currentDatasetIsManualTriangleOrVector,
+    hasManualInputGridChanges,
+    hasUnsavedDatasetChanges,
+    isUnsavedProjectInstanceDraft,
+    shouldPersistManualInputGridValues,
+    hasPendingDatasetSaveWork,
+    isDraftGridUnavailable,
+  } = createDatasetDirtyState({
+    state,
+    isProjectInstanceDraft,
+    isReadOnlyDatasetViewer,
+    isTemporaryDatasetView,
+    isDfmDataTabHost,
+    getProjectInstanceDraftDataFormat,
+    getDatasetInstanceNameValue,
+    normalizeDatasetInstanceKey,
+    getSavedProjectInstanceDraftName: () => runtime.savedProjectInstanceDraftName,
+    getDatasetSidecarSourceKind: () => runtime.currentDatasetSidecarSourceKind,
+    getDatasetSidecarDataFormat: () => runtime.currentDatasetSidecarDataFormat,
+    getDatasetExternalLinks: () => runtime.datasetExternalLinks,
+    isSettingsDirty: () => datasetSettingsDirty,
+    isNotesDirty: () => notesDirty,
   });
   runtime.datasetExternalLinks = createDatasetExternalLinksController({
     state,
@@ -79,7 +106,7 @@ export function registerDataTabPersistenceController(runtime) {
   }
 
   function getManualInputDatasetValuePayload() {
-    if (!hasManualInputGridChanges() || !state.model) return {};
+    if (!shouldPersistManualInputGridValues() || !state.model) return {};
     const values = Array.isArray(state.model.values)
       ? state.model.values.map((row) => (
         Array.isArray(row)
@@ -149,42 +176,6 @@ export function registerDataTabPersistenceController(runtime) {
       && normalizeProjectText(left.dataset_type) === normalizeProjectText(right.dataset_type)
       && normalizeProjectText(left.instance_name) === normalizeProjectText(right.instance_name)
     );
-  }
-
-  function hasManualInputGridChanges() {
-    return state.dirty.size > 0 && currentDatasetIsManualTriangleOrVector();
-  }
-
-  function hasUnsavedDatasetChanges() {
-    if (isTemporaryDatasetView) return false;
-    // DFM imports the Dataset runtime for its Data tab, but DFM persistence owns
-    // the method's dirty state and close confirmation for the combined page.
-    if (isDfmDataTabHost()) return false;
-    return datasetSettingsDirty
-      || notesDirty
-      || hasManualInputGridChanges()
-      || runtime.datasetExternalLinks.isDirty();
-  }
-
-  function normalizeDatasetModeText(value) {
-    return String(value || "").trim().toLowerCase();
-  }
-
-  function sourceKindIsReadOnly(value) {
-    const sourceKind = normalizeDatasetModeText(value);
-    return !!sourceKind && sourceKind !== "input";
-  }
-
-  function currentDatasetIsManualTriangleOrVector() {
-    const sourceKind = normalizeDatasetModeText(runtime.currentDatasetSidecarSourceKind || state.model?.source_kind || "");
-    const format = normalizeDatasetModeText(
-      runtime.currentDatasetSidecarDataFormat
-        || state.model?.data_format
-        || (isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : ""),
-    );
-    const isManualInput = isProjectInstanceDraft || sourceKind === "input";
-    const isTriangleOrVector = !format || format === "triangle" || format === "vector";
-    return isManualInput && isTriangleOrVector;
   }
 
   function datasetValuesAreAllZero() {
@@ -283,14 +274,14 @@ export function registerDataTabPersistenceController(runtime) {
     const runBtn = document.getElementById("runArcRhoTriBtn");
     const clearBtn = document.getElementById("clearCacheReloadBtn");
     const hasContext = hasDatasetSidecarContext(sidecarContextPayload) || hasNotesContext(notesContextPayload);
-    const dirty = hasUnsavedDatasetChanges();
+    const dirty = hasPendingDatasetSaveWork();
     if (bar) bar.hidden = !hasContext || isTemporaryDatasetView;
     updateTabbedPageSaveControls({
       saveButton: saveBtn,
       cancelButton: cancelBtn,
       dirty,
       saving: runtime.datasetSaveInFlight,
-      saveBlocked: isTemporaryDatasetView || runtime.datasetInstanceNameConflict || !hasContext,
+      saveBlocked: isTemporaryDatasetView || runtime.datasetInstanceNameConflict || !hasContext || isDraftGridUnavailable(),
       cancelBlocked: isTemporaryDatasetView || !hasContext,
     });
     for (const button of [runBtn, clearBtn]) {
@@ -594,7 +585,7 @@ export function registerDataTabPersistenceController(runtime) {
     void getDataTabLinksController()?.refresh?.();
     let saveStatus = buildDatasetSaveStatus();
     try {
-      if (datasetSettingsDirty || hasManualInputGridChanges() || runtime.datasetExternalLinks.isDirty() || notesDirty) {
+      if (datasetSettingsDirty || hasManualInputGridChanges() || runtime.datasetExternalLinks.isDirty() || notesDirty || isUnsavedProjectInstanceDraft()) {
         const sidecarResult = await saveDatasetSidecarForCurrentContext();
         if (!sidecarResult.ok) return sidecarResult;
         saveStatus = buildDatasetSaveStatus(sidecarResult.data);
@@ -950,6 +941,8 @@ export function registerDataTabPersistenceController(runtime) {
     getManualInputDatasetValuePayload, getDatasetExternalLinksPayload,
     normalizeDatasetSettings, sameDatasetSettings,
     hasManualInputGridChanges, hasUnsavedDatasetChanges,
+    isUnsavedProjectInstanceDraft, shouldPersistManualInputGridValues,
+    hasPendingDatasetSaveWork, isDraftGridUnavailable,
     normalizeDatasetModeText,
     sourceKindIsReadOnly,
     currentDatasetIsManualTriangleOrVector,

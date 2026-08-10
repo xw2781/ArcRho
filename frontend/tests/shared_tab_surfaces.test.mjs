@@ -163,13 +163,13 @@ test("DSV and DFM reach the current shared Data validation runtime", async () =>
     source("ui/shared/tabs/data/data_tab_controller.js"),
   ]);
 
-  assert.match(datasetHtml, /dataset_viewer_main\.js\?v=20260807d/u);
-  assert.match(datasetMain, /data_tab_controller\.js\?v=20260807c/u);
-  assert.match(dfmHtml, /dfm_data_tab_adapter\.js\?v=20260807c/u);
-  assert.match(dfmAdapter, /data_tab_controller\.js\?v=20260807c/u);
+  assert.match(datasetHtml, /dataset_viewer_main\.js\?v=20260809a/u);
+  assert.match(datasetMain, /data_tab_controller\.js\?v=20260809a/u);
+  assert.match(dfmHtml, /dfm_data_tab_adapter\.js\?v=20260809a/u);
+  assert.match(dfmAdapter, /data_tab_controller\.js\?v=20260809a/u);
   assert.match(dataController, /data_tab_controls\.js\?v=20260807a/u);
   assert.match(dataController, /data_tab_inputs_controller\.js\?v=20260731b/u);
-  assert.match(dataController, /data_tab_request_controller\.js\?v=20260805a/u);
+  assert.match(dataController, /data_tab_request_controller\.js\?v=20260809a/u);
 });
 
 test("method pages and shared runtime do not depend on Dataset feature assets", async () => {

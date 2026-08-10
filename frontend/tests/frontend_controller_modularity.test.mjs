@@ -12,6 +12,7 @@ const dataTabModules = [
   "ui/shared/tabs/data/data_tab_preferences_controller.js",
   "ui/shared/tabs/data/data_tab_request_controller.js",
   "ui/shared/tabs/data/data_tab_persistence_controller.js",
+  "ui/shared/tabs/data/data_tab_dirty_state.js",
 ];
 
 const dfmSummaryModules = [
