@@ -10,6 +10,9 @@
 !include "nsDialogs.nsh"
 
 !ifndef BUILD_UNINSTALLER
+  !define ARCRHO_PREFERRED_INSTALL_COMPUTER "NE7SASWPN02"
+  !define ARCRHO_PREFERRED_INSTALL_DRIVE "E:"
+
   ; electron-builder expands this hook after common.nsh, whose default is
   ; "nevershow". Keep the log collapsed while exposing the native Show details
   ; control on the assisted installer page.
@@ -26,6 +29,8 @@
   Var ArcRhoServerRootIsLocal
   Var ArcRhoServerDriveDropList
   Var ArcRhoExcelAddInPath
+  Var ArcRhoPreferredInstallDirectory
+  Var ArcRhoInstallLocationIsOwned
 
   !macro ArcRho_PrintInstallDetail MSG
     ; Keep action-level output in the details list so it cannot replace the
@@ -43,6 +48,27 @@ ShowUninstDetails show
 
 !macro customInit
   SetDetailsPrint both
+  ; electron-builder includes this file at the top of its generated script, ahead
+  ; of both multiUser.nsh and its own !addplugindir lines, so the functions below
+  ; can use neither its install-mode variables nor the StdUtils plugin. This macro
+  ; is expanded inside .onInit after initMultiUser, where both are available, so
+  ; decide there whether something already owns the install location.
+  StrCpy $ArcRhoInstallLocationIsOwned ""
+  !ifndef INSTALL_MODE_PER_ALL_USERS
+    ${If} $perUserInstallationFolder != ""
+      StrCpy $ArcRhoInstallLocationIsOwned "1"
+    ${EndIf}
+  !endif
+  !ifdef INSTALL_MODE_PER_ALL_USERS_REQUIRED
+    ${If} $perMachineInstallationFolder != ""
+      StrCpy $ArcRhoInstallLocationIsOwned "1"
+    ${EndIf}
+  !endif
+  ${StdUtils.GetParameter} $0 "D" ""
+  ${If} $0 != ""
+    StrCpy $ArcRhoInstallLocationIsOwned "1"
+  ${EndIf}
+  Call ArcRho_PreparePreferredInstallDirectory
   StrCpy $ArcRhoInstallExcelAddIn "1"
   Call ArcRho_DetectServerRoot
   ; Launching the data engine only makes sense on the computer that hosts the
@@ -81,6 +107,60 @@ ShowUninstDetails show
   !macro customWelcomePage
     Page custom ArcRho_ExcelAddInOptions_Show ArcRho_ExcelAddInOptions_Leave
   !macroend
+
+  ; The build patcher expands this hidden page immediately before
+  ; electron-builder's directory page, after install-mode selection.
+  !macro customPageBeforeChangeDir
+    Page custom ArcRho_InstallDirectory_Pre
+  !macroend
+
+  Function ArcRho_PreparePreferredInstallDirectory
+    StrCpy $ArcRhoPreferredInstallDirectory ""
+
+    ; Existing installations and explicit /D paths own their install location.
+    ${If} $ArcRhoInstallLocationIsOwned == "1"
+      Return
+    ${EndIf}
+
+    System::Call 'kernel32::GetComputerName(t.r0, *i ${NSIS_MAX_STRLEN}) i.r1'
+    ${If} $1 == 0
+    ${OrIf} $0 != "${ARCRHO_PREFERRED_INSTALL_COMPUTER}"
+      Return
+    ${EndIf}
+
+    System::Call 'advapi32::GetUserName(t.r1, *i ${NSIS_MAX_STRLEN}) i.r2'
+    ${If} $2 == 0
+    ${OrIf} $1 == ""
+      DetailPrint "Windows login name could not be detected; keeping the standard install location."
+      Return
+    ${EndIf}
+
+    StrCpy $ArcRhoPreferredInstallDirectory "${ARCRHO_PREFERRED_INSTALL_DRIVE}\$1\${APP_FILENAME}"
+    ClearErrors
+    CreateDirectory "$ArcRhoPreferredInstallDirectory"
+    ${If} ${Errors}
+      DetailPrint "Could not create $ArcRhoPreferredInstallDirectory; keeping the standard install location."
+      StrCpy $ArcRhoPreferredInstallDirectory ""
+      Return
+    ${EndIf}
+    ${IfNot} ${FileExists} "$ArcRhoPreferredInstallDirectory\*.*"
+      DetailPrint "Could not verify $ArcRhoPreferredInstallDirectory; keeping the standard install location."
+      StrCpy $ArcRhoPreferredInstallDirectory ""
+      Return
+    ${EndIf}
+
+    StrCpy $INSTDIR $ArcRhoPreferredInstallDirectory
+    DetailPrint "Default install location: $INSTDIR"
+  FunctionEnd
+
+  Function ArcRho_InstallDirectory_Pre
+    ; The mode-selection page rewrites $INSTDIR, so restore the prepared default
+    ; only when this fresh install successfully created its preferred folder.
+    ${If} $ArcRhoPreferredInstallDirectory != ""
+      StrCpy $INSTDIR $ArcRhoPreferredInstallDirectory
+    ${EndIf}
+    Abort
+  FunctionEnd
 
   Function ArcRho_DetectServerRoot
     StrCpy $ArcRhoServerRoot ""

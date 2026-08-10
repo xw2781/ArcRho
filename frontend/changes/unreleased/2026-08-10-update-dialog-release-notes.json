@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "app update",
+  "audience": "user",
+  "summary": "The update prompt now shows a short, plain-text list of user-facing changes instead of the full release notes.",
+  "details": [
+    "Internal notes, fragment sources, and the section headings no longer appear in the dialog.",
+    "Markdown symbols such as ##, ###, and ** are no longer shown as literal text.",
+    "Each change shows its one-sentence summary, so the dialog no longer opens tall enough to need its own scrollbar.",
+    "A release with more than 12 user-facing changes ends with a link to the full release notes."
+  ]
+}

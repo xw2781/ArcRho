@@ -9,11 +9,15 @@ import { fileURLToPath } from "node:url";
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const userDataDir = fs.mkdtempSync(path.join(TESTS_DIR, "electron-host-modules-"));
-test.after(() => fs.rmSync(userDataDir, { recursive: true, force: true }));
+const downloadsDir = fs.mkdtempSync(path.join(TESTS_DIR, "electron-host-downloads-"));
+test.after(() => {
+  fs.rmSync(userDataDir, { recursive: true, force: true });
+  fs.rmSync(downloadsDir, { recursive: true, force: true });
+});
 
 const electronStub = {
   app: {
-    getPath: () => userDataDir,
+    getPath: (name) => (name === "downloads" ? downloadsDir : userDataDir),
     getVersion: () => "0.0.1",
     isPackaged: false,
     quit: () => {},
@@ -98,6 +102,78 @@ test("update_checker reports missing-checksum when a newer asset has no .sha256 
   assert.equal(result.version, "0.0.2");
 });
 
+test("update_checker shows only user-facing release notes as plain text", async () => {
+  const body = [
+    "# Release 0.0.2",
+    "",
+    "Released on 2026-08-10.",
+    "",
+    "## User-Facing Changes",
+    "",
+    "### Improvements",
+    "- **installer**: ArcRho setup now defaults to a per-user install folder.",
+    "  - Fresh installs default to `E:\\<Windows login>\\ArcRho`.",
+    "",
+    "### Fixes",
+    "- **dataset**: Add > Dataset can now save without editing a cell first.",
+    "",
+    "## Internal Notes",
+    "",
+    "- **build**: The packaged build no longer kills makensis part-way through.",
+    "",
+    "## Fragment Sources",
+    "",
+    "- `changes/unreleased/2026-08-10-example.json`",
+    "",
+  ].join("\n");
+
+  const fetchStub = async (url) => {
+    const target = String(url);
+    if (target.includes("/releases?")) {
+      return {
+        ok: true,
+        json: async () => releaseFixture({
+          body,
+          assets: [
+            { name: "ArcRho-Setup-0.0.2.exe", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.2.exe" },
+            { name: "ArcRho-Setup-0.0.2.exe.sha256", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.2.exe.sha256" },
+          ],
+        }),
+      };
+    }
+    return { ok: true, text: async () => `${"a".repeat(64)}  ArcRho-Setup-0.0.2.exe` };
+  };
+
+  let detail = "";
+  const originalShowMessageBox = electronStub.dialog.showMessageBox;
+  electronStub.dialog.showMessageBox = async (winOrOptions, maybeOptions) => {
+    const options = maybeOptions || winOrOptions || {};
+    if ((options.buttons || []).includes("Update now")) detail = String(options.detail || "");
+    return { response: 1 };
+  };
+
+  process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK = "1";
+  const fakeWin = { isDestroyed: () => false, webContents: { send: () => {}, executeJavaScript: async () => true } };
+  updateChecker.initUpdateChecker({ appMode: "arcrho", getMainWindow: () => fakeWin, fetchImpl: fetchStub });
+  let result;
+  try {
+    result = await updateChecker.checkForUpdate({ showNoUpdate: false });
+  } finally {
+    delete process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK;
+    electronStub.dialog.showMessageBox = originalShowMessageBox;
+  }
+
+  assert.equal(result.status, "deferred");
+  assert.match(detail, /^Improvements$/m);
+  assert.match(detail, /• installer: ArcRho setup now defaults to a per-user install folder\./);
+  assert.match(detail, /^Fixes$/m);
+  assert.doesNotMatch(detail, /User-Facing Changes|Internal Notes|Fragment Sources/);
+  assert.doesNotMatch(detail, /makensis/, "internal notes must not reach the update dialog");
+  assert.doesNotMatch(detail, /[*#`]|^Released on/m, "the dialog must not show markdown syntax");
+  assert.doesNotMatch(detail, /Fresh installs/, "per-change detail bullets are dropped to bound the dialog height");
+  assert.ok(detail.split("\n").length <= 14, `update dialog detail must stay short, got:\n${detail}`);
+});
+
 test("update_checker downloads a newer release with progress events and rejects a bad checksum", async () => {
   const installerContent = Buffer.from("fake-installer-bytes-for-test");
   const wrongSha256 = crypto.createHash("sha256").update("not-the-installer").digest("hex");
@@ -165,8 +241,30 @@ test("update_checker downloads a newer release with progress events and rejects 
   assert.equal(result.version, "0.0.2");
   assert.deepEqual(progressEvents.map((event) => event.phase), ["start", "progress", "progress", "verifying", "error"]);
 
-  const downloadedPath = path.join(userDataDir, "updates", "ArcRho-Setup-0.0.2.exe");
+  const downloadedPath = path.join(downloadsDir, "ArcRho-Setup-0.0.2.exe");
   assert.ok(!fs.existsSync(downloadedPath), "a failed checksum verification must delete the downloaded installer");
+  assert.ok(!fs.existsSync(`${downloadedPath}.part`), "no partial download may be left in the Downloads folder");
+});
+
+test("update_checker deletes the installer recorded for cleanup and legacy update downloads", async () => {
+  const installerPath = path.join(downloadsDir, "ArcRho-Setup-0.0.3.exe");
+  fs.writeFileSync(installerPath, "completed installer");
+  const markerPath = path.join(userDataDir, "pending_update_cleanup.json");
+  fs.writeFileSync(markerPath, JSON.stringify({ installerPath, version: "0.0.3" }));
+  const legacyDir = path.join(userDataDir, "updates");
+  fs.mkdirSync(legacyDir, { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, "ArcRho-Setup-0.0.2.exe"), "old installer");
+  fs.writeFileSync(path.join(legacyDir, "ArcRho-Setup-0.0.2.exe.part"), "old partial");
+
+  updateChecker.initUpdateChecker({ appMode: "arcrho", getMainWindow: () => null });
+  const result = await updateChecker.cleanupCompletedUpdateInstaller();
+
+  assert.equal(result.status, "removed");
+  assert.ok(!fs.existsSync(installerPath), "the installer that produced this launch must be deleted");
+  assert.ok(!fs.existsSync(markerPath), "the cleanup marker must not survive a successful cleanup");
+  assert.ok(!fs.existsSync(legacyDir), "the legacy user-data updates folder must be removed once it is empty");
+
+  assert.deepEqual(await updateChecker.cleanupCompletedUpdateInstaller(), { status: "none" });
 });
 
 test("backend_lifecycle initializes, resolves its port, and manages client markers", () => {

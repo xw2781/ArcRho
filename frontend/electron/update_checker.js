@@ -1,4 +1,5 @@
-// GitHub Releases update checking, download-with-progress, and update-install prompting for the desktop host.
+// GitHub Releases update checking, download-with-progress, update-install prompting, and
+// post-install installer cleanup for the desktop host.
 const { app, dialog } = require("electron");
 const { spawn } = require("child_process");
 const crypto = require("crypto");
@@ -11,6 +12,16 @@ const GITHUB_API_ROOT = "https://api.github.com";
 const DOWNLOAD_PROGRESS_CHANNEL = "update-download-progress";
 const MANDATORY_MARKER_RE = /\bmandatory\s*:\s*true\b/i;
 const MAX_RELEASES_SCANNED = 15;
+const USER_SECTION_HEADING_RE = /^##\s+user-facing changes\s*$/i;
+const SECTION_HEADING_RE = /^##\s+/;
+const HEADING_RE = /^(#{1,6})\s+(.*)$/;
+const BULLET_RE = /^[-*]\s+(.*)$/;
+const NESTED_BULLET_RE = /^\s{2,}[-*]\s+/;
+const RELEASED_ON_RE = /^released on .*\.$/i;
+const MAX_RELEASE_NOTE_BULLETS = 12;
+const PENDING_CLEANUP_FILE = "pending_update_cleanup.json";
+const CLEANUP_RETRY_DELAY_MS = 20000;
+const MAX_INSTALLER_NAME_ATTEMPTS = 100;
 
 let getMainWindow = () => null;
 let fetchImpl = typeof fetch === "function" ? fetch : null;
@@ -73,6 +84,83 @@ function compareVersions(left, right) {
 function parseSha256Text(value) {
   const match = String(value || "").match(SHA256_RE);
   return match ? match[0].toLowerCase() : "";
+}
+
+function stripInlineMarkdown(text) {
+  return String(text)
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
+// A native message box renders plain text only, so the release body is reduced to
+// the user-facing section as flat lines: the label itself, the internal and
+// fragment-source sections, and the per-change detail bullets are all dropped.
+// Those details are what make the box tall enough to need its own scrollbar.
+function userFacingReleaseNoteEntries(body) {
+  const lines = String(body || "").replace(/\r\n/g, "\n").split("\n");
+  const userSectionIndex = lines.findIndex((line) => USER_SECTION_HEADING_RE.test(line.trim()));
+  let scoped = lines;
+  if (userSectionIndex >= 0) {
+    const rest = lines.slice(userSectionIndex + 1);
+    const nextSection = rest.findIndex((line) => SECTION_HEADING_RE.test(line.trim()));
+    scoped = nextSection >= 0 ? rest.slice(0, nextSection) : rest;
+  }
+
+  const entries = [];
+  for (const line of scoped) {
+    const trimmed = line.trim();
+    if (!trimmed || RELEASED_ON_RE.test(trimmed)) continue;
+
+    const heading = trimmed.match(HEADING_RE);
+    if (heading) {
+      // A body with no user-facing section is shown whole; its own release title
+      // only repeats the version the dialog already states.
+      if (heading[1].length > 1) entries.push({ kind: "title", text: stripInlineMarkdown(heading[2]) });
+      continue;
+    }
+
+    const bullet = trimmed.match(BULLET_RE);
+    if (!bullet) {
+      entries.push({ kind: "text", text: stripInlineMarkdown(trimmed) });
+      continue;
+    }
+    if (NESTED_BULLET_RE.test(line)) continue;
+    entries.push({ kind: "bullet", text: stripInlineMarkdown(bullet[1]) });
+  }
+  return entries;
+}
+
+function formatReleaseNotesForDialog(body) {
+  const entries = userFacingReleaseNoteEntries(body);
+  const rendered = [];
+  let bullets = 0;
+  let dropped = 0;
+
+  for (let i = 0; i < entries.length; i += 1) {
+    const entry = entries[i];
+    if (entry.kind === "bullet" && bullets >= MAX_RELEASE_NOTE_BULLETS) {
+      dropped = entries.slice(i).filter((remaining) => remaining.kind === "bullet").length;
+      break;
+    }
+    if (entry.kind === "bullet") {
+      bullets += 1;
+      rendered.push(`   • ${entry.text}`);
+    } else if (entry.kind === "title") {
+      if (rendered.length) rendered.push("");
+      rendered.push(entry.text);
+    } else {
+      rendered.push(entry.text);
+    }
+  }
+
+  if (dropped > 0) {
+    rendered.push(
+      "",
+      `and ${dropped} more change${dropped === 1 ? "" : "s"} - see https://github.com/${UPDATE_GITHUB_REPO}/releases`
+    );
+  }
+  return rendered.join("\n").trim();
 }
 
 function createUpdateInfo(version, asset, sha256, release) {
@@ -183,14 +271,119 @@ function calculateFileSha256(filePath) {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash("sha256");
     const stream = fs.createReadStream(filePath);
+    let digest = "";
     stream.on("error", reject);
     stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => resolve(hash.digest("hex").toLowerCase()));
+    stream.on("end", () => { digest = hash.digest("hex").toLowerCase(); });
+    // Resolve on "close" so the read handle on the installer is gone before the
+    // caller tries to start it; at "end" the descriptor is still open.
+    stream.on("close", () => resolve(digest));
   });
 }
 
-function updatesDownloadDir() {
+function legacyUpdatesDownloadDir() {
   return path.join(app.getPath("userData"), "updates");
+}
+
+function installerDownloadDir() {
+  // The installer is a user-visible download, so it belongs in the user's own
+  // Downloads folder rather than inside the app's user-data tree on C:.
+  try {
+    const downloads = app.getPath("downloads");
+    if (downloads) return downloads;
+  } catch (err) {
+    console.warn(`ArcRho could not resolve the Downloads folder: ${err?.message || err}`);
+  }
+  return legacyUpdatesDownloadDir();
+}
+
+// The cleanup pass deletes only what ArcRho itself downloaded, so never reuse a
+// name that already exists; an installer the user downloaded by hand keeps it.
+function reserveInstallerPath(destDir, assetName) {
+  const ext = path.extname(assetName);
+  const base = path.basename(assetName, ext);
+  for (let attempt = 0; attempt < MAX_INSTALLER_NAME_ATTEMPTS; attempt += 1) {
+    const candidate = path.join(destDir, attempt === 0 ? assetName : `${base} (${attempt})${ext}`);
+    if (!fs.existsSync(candidate) && !fs.existsSync(`${candidate}.part`)) return candidate;
+  }
+  return path.join(destDir, `${base} (${Date.now()})${ext}`);
+}
+
+function pendingCleanupMarkerPath() {
+  return path.join(app.getPath("userData"), PENDING_CLEANUP_FILE);
+}
+
+function recordPendingInstallerCleanup(installerPath, version) {
+  // Written synchronously: app.quit() follows immediately, and a marker that
+  // never lands leaves the installer in Downloads forever.
+  try {
+    fs.writeFileSync(
+      pendingCleanupMarkerPath(),
+      `${JSON.stringify({ installerPath, version }, null, 2)}\n`,
+      "utf8"
+    );
+  } catch (err) {
+    console.warn(`ArcRho could not record the update installer cleanup marker: ${err?.message || err}`);
+  }
+}
+
+async function deleteInstallerFile(installerPath) {
+  try {
+    await fs.promises.unlink(installerPath);
+    return true;
+  } catch (err) {
+    if (err?.code === "ENOENT") return true;
+    console.warn(`ArcRho could not delete the update installer ${installerPath}: ${err?.message || err}`);
+    return false;
+  }
+}
+
+async function removeLegacyUpdateDownloads() {
+  const dir = legacyUpdatesDownloadDir();
+  let entries = [];
+  try {
+    entries = await fs.promises.readdir(dir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const name = entry.endsWith(".part") ? entry.slice(0, -".part".length) : entry;
+    if (!UPDATE_INSTALLER_NAME_RE.test(name)) continue;
+    await deleteInstallerFile(path.join(dir, entry));
+  }
+  await fs.promises.rmdir(dir).catch(() => {});
+}
+
+// Runs at startup: the installer that produced this launch cannot delete itself,
+// and it is still locked while it exits, so a failed delete is retried once and
+// otherwise left for the next launch.
+async function cleanupCompletedUpdateInstaller() {
+  await removeLegacyUpdateDownloads();
+
+  const markerPath = pendingCleanupMarkerPath();
+  let installerPath = "";
+  try {
+    installerPath = String(JSON.parse(await fs.promises.readFile(markerPath, "utf8"))?.installerPath || "");
+  } catch {
+    return { status: "none" };
+  }
+
+  const dropMarker = () => fs.promises.unlink(markerPath).catch(() => {});
+  if (!installerPath) {
+    await dropMarker();
+    return { status: "none" };
+  }
+  if (await deleteInstallerFile(installerPath)) {
+    await dropMarker();
+    return { status: "removed", installerPath };
+  }
+
+  setTimeout(() => {
+    deleteInstallerFile(installerPath).then((removed) => {
+      if (removed) dropMarker();
+    });
+  }, CLEANUP_RETRY_DELAY_MS).unref?.();
+  return { status: "retry-scheduled", installerPath };
 }
 
 function sendDownloadProgress(payload) {
@@ -201,35 +394,47 @@ function sendDownloadProgress(payload) {
 }
 
 async function downloadReleaseAsset(updateInfo) {
-  const destDir = updatesDownloadDir();
+  const destDir = installerDownloadDir();
   await fs.promises.mkdir(destDir, { recursive: true });
-  const destPath = path.join(destDir, updateInfo.assetName);
+  const destPath = reserveInstallerPath(destDir, updateInfo.assetName);
   const partPath = `${destPath}.part`;
 
-  const response = await fetchImpl(updateInfo.downloadUrl, { headers: githubRequestHeaders() });
-  if (!response.ok || !response.body) {
-    throw new Error(`Update download request failed with status ${response.status}`);
-  }
-  const totalBytes = Number.parseInt(response.headers.get("content-length") || "", 10) || 0;
-  let receivedBytes = 0;
-
-  sendDownloadProgress({ phase: "start", version: updateInfo.version, receivedBytes: 0, totalBytes });
-  const writeStream = fs.createWriteStream(partPath);
   try {
-    for await (const chunk of response.body) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      await new Promise((resolve, reject) => {
-        writeStream.write(buffer, (err) => (err ? reject(err) : resolve()));
-      });
-      receivedBytes += buffer.length;
-      sendDownloadProgress({ phase: "progress", version: updateInfo.version, receivedBytes, totalBytes });
+    const response = await fetchImpl(updateInfo.downloadUrl, { headers: githubRequestHeaders() });
+    if (!response.ok || !response.body) {
+      throw new Error(`Update download request failed with status ${response.status}`);
     }
-  } finally {
-    await new Promise((resolve) => writeStream.end(resolve));
-  }
+    const totalBytes = Number.parseInt(response.headers.get("content-length") || "", 10) || 0;
+    let receivedBytes = 0;
 
-  await fs.promises.rename(partPath, destPath);
-  return destPath;
+    sendDownloadProgress({ phase: "start", version: updateInfo.version, receivedBytes: 0, totalBytes });
+    const writeStream = fs.createWriteStream(partPath);
+    try {
+      for await (const chunk of response.body) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        await new Promise((resolve, reject) => {
+          writeStream.write(buffer, (err) => (err ? reject(err) : resolve()));
+        });
+        receivedBytes += buffer.length;
+        sendDownloadProgress({ phase: "progress", version: updateInfo.version, receivedBytes, totalBytes });
+      }
+    } finally {
+      // "close", not the end() callback: that one fires on "finish", while the
+      // file descriptor is still open, and Windows refuses to start an
+      // executable that another handle is holding.
+      await new Promise((resolve) => {
+        writeStream.on("close", resolve);
+        writeStream.end();
+      });
+    }
+
+    await fs.promises.rename(partPath, destPath);
+    return destPath;
+  } catch (err) {
+    // A partial file in the user's Downloads folder is litter nothing else clears.
+    await fs.promises.unlink(partPath).catch(() => {});
+    throw err;
+  }
 }
 
 function showMainWindowMessageBox(options) {
@@ -299,6 +504,7 @@ async function downloadVerifyAndInstall(updateInfo) {
   sendDownloadProgress({ phase: "done", version: updateInfo.version });
   try {
     launchUpdateInstaller(installerPath);
+    recordPendingInstallerCleanup(installerPath, updateInfo.version);
     app.quit();
     return { status: "launching", version: updateInfo.version };
   } catch (err) {
@@ -323,7 +529,8 @@ async function promptForUpdateInstall(updateInfo) {
     `Installer: ${updateInfo.assetName}`,
   ];
   if (updateInfo.publishedAt) detailLines.push(`Published: ${updateInfo.publishedAt}`);
-  if (updateInfo.releaseNotes) detailLines.push("", updateInfo.releaseNotes);
+  const releaseNotes = formatReleaseNotesForDialog(updateInfo.releaseNotes);
+  if (releaseNotes) detailLines.push("", releaseNotes);
   if (updateInfo.mandatory) detailLines.push("", "This update is marked as mandatory.");
 
   const response = await showMainWindowMessageBox({
@@ -444,4 +651,9 @@ async function checkForStartupUpdate() {
   return checkForUpdate({ showNoUpdate: false });
 }
 
-module.exports = { initUpdateChecker, checkForUpdate, checkForStartupUpdate };
+module.exports = {
+  initUpdateChecker,
+  checkForUpdate,
+  checkForStartupUpdate,
+  cleanupCompletedUpdateInstaller,
+};

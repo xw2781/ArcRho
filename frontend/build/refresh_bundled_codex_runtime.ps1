@@ -28,7 +28,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Bundled Codex CLI refresh failed with exit code $LASTEXITCODE."
 }
 
-& $nodeCommand $validatorPath --runtime-root $runtimeRoot --cwd $frontendRoot --timeout-ms 8000
+& $nodeCommand $validatorPath --runtime-root $runtimeRoot --cwd $frontendRoot --timeout-ms 30000
 if ($LASTEXITCODE -ne 0) {
     throw "Refreshed bundled Codex CLI failed validation."
 }

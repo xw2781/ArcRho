@@ -3,7 +3,11 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { createRequire } = require("node:module");
 
-const DEFAULT_TIMEOUT_MS = 8_000;
+// The one-click build smokes the runtime seconds after unpacking the source ZIP,
+// so the first launch of the freshly extracted native Codex binary pays for a
+// cold file cache and an on-access virus scan. Keep enough headroom that a warm
+// sub-second run never gets confused with a genuine runtime failure.
+const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RUNTIME_CONTRACT_PATH = path.resolve(
   __dirname,
   "..",
@@ -234,6 +238,13 @@ function runChecked(command, args, options, label) {
       const stdout = String(stdoutValue || "").trim();
       const stderr = String(stderrValue || "").trim();
       if (error) {
+        if (error.killed) {
+          reject(new Error(
+            `${label} timed out after ${options.timeoutMs} ms. `
+            + "Re-run the build: the first launch of a freshly extracted runtime is slow.",
+          ));
+          return;
+        }
         const detail = [error.message, stderr, stdout].filter(Boolean).join("\n");
         reject(new Error(`${label} failed${detail ? `:\n${detail}` : "."}`));
         return;

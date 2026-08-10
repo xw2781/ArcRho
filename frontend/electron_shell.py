@@ -40,6 +40,22 @@ def terminate_process_tree(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
+def child_output_streams() -> dict:
+    """Give the child valid stdout/stderr handles when this process has none.
+
+    The launcher runs the supervisor under pythonw.exe so no console window appears.
+    A GUI-subsystem interpreter with no console has `sys.stdout`/`sys.stderr` set to
+    None, and a child that inherits those handles cannot write to them - uvicorn logs
+    to stderr on startup, so the app server died with exit code 1 before binding its
+    port. Redirecting to the null device keeps the whole chain writable. When the
+    supervisor does have streams, the child keeps inheriting them so console launches
+    still show output.
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return {}
+    return {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+
+
 def start_electron(env: dict, mode: str) -> subprocess.Popen:
     npm_cmd, env = resolve_npm_cmd(BASE_DIR)
     cmd = npm_cmd + ["--silent", "run", "arcode" if mode == "arcode" else "electron"]
@@ -47,7 +63,13 @@ def start_electron(env: dict, mode: str) -> subprocess.Popen:
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     else:
         creationflags = 0
-    return subprocess.Popen(cmd, cwd=str(BASE_DIR), env=env, creationflags=creationflags)
+    return subprocess.Popen(
+        cmd,
+        cwd=str(BASE_DIR),
+        env=env,
+        creationflags=creationflags,
+        **child_output_streams(),
+    )
 
 
 def run_shell(mode: str) -> None:
@@ -57,9 +79,16 @@ def run_shell(mode: str) -> None:
     while True:
         proc = start_electron(env, mode)
 
+        # A relaunch happens only when a restart was explicitly requested. Electron
+        # exiting on its own means the user closed the app or it crashed; relaunching
+        # then made the app impossible to close, because the supervisor immediately
+        # replaced every window the user shut.
+        restart_requested = False
+
         while True:
-            if proc.poll() is not None:
-                break
+            # Read the control flags before the process state. A restart force-kills
+            # Electron, so an exited process on its own cannot distinguish a restart
+            # from the user quitting.
             if SHUTDOWN_FLAG.exists():
                 try:
                     SHUTDOWN_FLAG.unlink()
@@ -73,8 +102,14 @@ def run_shell(mode: str) -> None:
                 except Exception:
                     pass
                 terminate_process_tree(proc)
+                restart_requested = True
+                break
+            if proc.poll() is not None:
                 break
             time.sleep(0.4)
+
+        if not restart_requested:
+            return
 
         time.sleep(0.6)
 

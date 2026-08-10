@@ -175,6 +175,14 @@ test("the one-click build smokes source and packaged runtimes before publication
     wrapper,
     /call "%~1\\node\.exe" "%APP_ROOT%\\build\\validate_bundled_codex_runtime\.js"/u,
   );
+  // The smoke test runs seconds after the source ZIP is unpacked, so the first
+  // launch of the extracted native runtime must not be mistaken for a failure.
+  const wrapperTimeout = /--timeout-ms (\d+)/u.exec(wrapper);
+  assert.ok(wrapperTimeout);
+  assert.ok(
+    Number(wrapperTimeout[1]) >= 30_000,
+    "the one-click build must tolerate a cold-start runtime launch",
+  );
 });
 
 test("the one-click build publishes only to GitHub Releases", () => {

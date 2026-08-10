@@ -135,6 +135,13 @@ body {
 body.win10-borders {
   --shell-frame-border: #aeb8ff;
 }
+/* A development launch paints that Windows 10 frame blue, so an unpackaged window is
+   unmistakable beside an installed one. The tone is the saturated sibling of the pale
+   frame above it rather than the #2b6df6 action accent, which keeps the frame reading as
+   chrome. Windows 11 keeps its own frame, which the app does not draw. */
+body.win10-borders.dev-frame {
+  --shell-frame-border: #528bff;
+}
 body.win11-frame {
   --shell-floating-radius: var(--shell-floating-radius-win11);
 }

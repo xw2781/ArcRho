@@ -33,6 +33,7 @@ Application lifecycle control domain (restart/shutdown flags) coordinated betwee
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Uses lifecycle flag files under project root: `.restart_app`, `.shutdown_app`, `.restart_electron`, `.shutdown_electron`.
+- The development Electron supervisor (`electron_shell.py`, used only by `launch_arcrho_dev_mode.bat`) relaunches Electron only when `.restart_electron` was observed. Electron exiting on its own ends the supervisor, because a user closing the app and a crash are indistinguishable from an exit code and relaunching either one leaves an app that cannot be closed. `.shutdown_electron` remains an external stop signal for the supervisor; no in-app path writes it, since the ordinary quit path is simply Electron exiting.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

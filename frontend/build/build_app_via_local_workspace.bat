@@ -550,7 +550,7 @@ if not exist "%APP_ROOT%\build\validate_bundled_codex_runtime.js" (
     echo ERROR: Missing bundled CLI runtime validator: %APP_ROOT%\build\validate_bundled_codex_runtime.js
     exit /b 1
 )
-call "%~1\node.exe" "%APP_ROOT%\build\validate_bundled_codex_runtime.js" --runtime-root "%~1" --cwd "%~2" --timeout-ms 8000
+call "%~1\node.exe" "%APP_ROOT%\build\validate_bundled_codex_runtime.js" --runtime-root "%~1" --cwd "%~2" --timeout-ms 30000
 if errorlevel 1 exit /b 1
 exit /b 0
 

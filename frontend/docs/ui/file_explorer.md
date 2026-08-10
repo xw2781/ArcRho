@@ -58,6 +58,6 @@ Detected `arcrho:*` message types in key JS files:
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Folder paths can become inaccessible or disappear while pinned; these must remain visible as favorites and surface recoverable list errors.
-- File opening is delegated to desktop associations; Excel read-only opening requires the explicit `/r` host path.
+- File opening is delegated to desktop associations; Excel read-only opening requires the explicit `/r` host path. That host spawn, and the PowerShell fallback behind it, must run from a real directory rather than the packaged `app.asar` app root.
 - Watchers must stop while the tab is hidden and be replaced when navigation changes folders.
 <!-- MANUAL:END -->

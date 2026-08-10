@@ -49,6 +49,28 @@ const installerTemplatePath = path.join(
   "include",
   "installer.nsh"
 );
+const assistedInstallerPath = path.join(
+  projectDir,
+  "node_modules",
+  "app-builder-lib",
+  "templates",
+  "nsis",
+  "assistedInstaller.nsh"
+);
+const builderUtilPath = path.join(
+  projectDir,
+  "node_modules",
+  "builder-util",
+  "out",
+  "util.js"
+);
+// electron-builder pipes the NSIS script to makensis through spawnAndWrite, which
+// kills the compiler after four minutes. That budget assumes makensis only embeds
+// an app.7z produced elsewhere; ArcRho compresses the whole unpacked app with
+// NSIS's built-in compressor instead, which takes longer than that on a full
+// build. The kill arrives as a signal, so the build reports "Exit code: null" with
+// no compiler diagnostics at all.
+const MAKENSIS_KILL_TIMEOUT_MS = 30 * 60 * 1000;
 
 function patchFile(filePath, applyPatch) {
   if (!fs.existsSync(filePath)) {
@@ -204,6 +226,55 @@ function restoreExtractionSource(original) {
   );
 }
 
+function patchDirectoryPageHookSource(original) {
+  const hookPattern =
+    /^[ \t]*!ifmacrodef customPageBeforeChangeDir\r?\n[ \t]*!insertmacro customPageBeforeChangeDir\r?\n[ \t]*!endif\r?\n[ \t]*!insertmacro skipPageIfUpdated\r?\n[ \t]*!insertmacro MUI_PAGE_DIRECTORY$/m;
+  if (hookPattern.test(original)) {
+    return original;
+  }
+
+  const legacyHookPattern =
+    /^([ \t]*)!insertmacro skipPageIfUpdated(\r?\n)[ \t]*!ifmacrodef customDirectoryPage\r?\n[ \t]*!insertmacro customDirectoryPage\r?\n[ \t]*!endif\r?\n([ \t]*)!insertmacro MUI_PAGE_DIRECTORY$/m;
+  const anchorPattern =
+    /^([ \t]*)!insertmacro skipPageIfUpdated(\r?\n)([ \t]*)!insertmacro MUI_PAGE_DIRECTORY$/m;
+  const legacyHookMatch = original.match(legacyHookPattern);
+  const anchorMatch = legacyHookMatch || original.match(anchorPattern);
+  if (!anchorMatch) {
+    throw new Error(
+      "electron-builder's assisted installer has an unexpected directory page; refusing to patch it."
+    );
+  }
+
+  const [, firstIndent, newline, secondIndent] = anchorMatch;
+  const hook = [
+    `${firstIndent}!ifmacrodef customPageBeforeChangeDir`,
+    `${firstIndent}  !insertmacro customPageBeforeChangeDir`,
+    `${firstIndent}!endif`,
+    `${firstIndent}!insertmacro skipPageIfUpdated`,
+    `${secondIndent}!insertmacro MUI_PAGE_DIRECTORY`,
+  ].join(newline);
+  return original.replace(
+    legacyHookMatch ? legacyHookPattern : anchorPattern,
+    hook
+  );
+}
+
+function patchMakensisTimeoutSource(original) {
+  const patched = `setTimeout(() => childProcess.kill(), ${MAKENSIS_KILL_TIMEOUT_MS})`;
+  if (original.includes(patched)) {
+    return original;
+  }
+
+  const timeoutPattern =
+    /setTimeout\(\(\) => childProcess\.kill\(\), [\d\s*]+\)/;
+  if (!timeoutPattern.test(original)) {
+    throw new Error(
+      "electron-builder no longer guards spawnAndWrite with a kill timeout; refusing to patch it."
+    );
+  }
+  return original.replace(timeoutPattern, patched);
+}
+
 function validateBuiltInInstallerPath(nsisTargetSource, installerSource) {
   const normalizedTarget = nsisTargetSource.replace(/\r\n/g, "\n");
   const normalizedInstaller = installerSource.replace(/\r\n/g, "\n");
@@ -345,6 +416,14 @@ function main() {
     extractAppPackagePath,
     restoreExtractionSource
   );
+  const directoryPageHookPatched = patchFile(
+    assistedInstallerPath,
+    patchDirectoryPageHookSource
+  );
+  const makensisTimeoutPatched = patchFile(
+    builderUtilPath,
+    patchMakensisTimeoutSource
+  );
   validateBuiltInInstallerPath(
     fs.readFileSync(nsisTargetPath, "utf8"),
     fs.readFileSync(installerTemplatePath, "utf8")
@@ -368,6 +447,20 @@ function main() {
     console.log("Electron-builder's standard extraction fallback is intact.");
   }
 
+  if (directoryPageHookPatched) {
+    console.log("Enabled the custom NSIS directory-page hook.");
+  } else {
+    console.log("The custom NSIS directory-page hook is already enabled.");
+  }
+
+  if (makensisTimeoutPatched) {
+    console.log(
+      `Raised the makensis kill timeout to ${MAKENSIS_KILL_TIMEOUT_MS / 60000} minutes.`
+    );
+  } else {
+    console.log("The makensis kill timeout already covers a full compression run.");
+  }
+
   if (helperPath) {
     console.log(`Built the native-bar progress observer: ${helperPath}`);
   }
@@ -378,9 +471,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  MAKENSIS_KILL_TIMEOUT_MS,
   patchCompressorSource,
   patchDetailsSource,
   restoreExtractionSource,
+  patchDirectoryPageHookSource,
+  patchMakensisTimeoutSource,
   validateBuiltInInstallerPath,
   findCSharpCompiler,
   compileProgressHelper,

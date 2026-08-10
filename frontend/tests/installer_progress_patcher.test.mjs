@@ -5,9 +5,12 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const {
+  MAKENSIS_KILL_TIMEOUT_MS,
   patchCompressorSource,
   patchDetailsSource,
   restoreExtractionSource,
+  patchDirectoryPageHookSource,
+  patchMakensisTimeoutSource,
   validateBuiltInInstallerPath,
   findCSharpCompiler,
   compileProgressHelper,
@@ -47,6 +50,156 @@ const electronBuilderInstallerSource = fs.readFileSync(
   ),
   "utf8"
 );
+const electronBuilderAssistedInstallerSource = fs.readFileSync(
+  new URL(
+    "../node_modules/app-builder-lib/templates/nsis/assistedInstaller.nsh",
+    import.meta.url
+  ),
+  "utf8"
+);
+const builderUtilSource = fs.readFileSync(
+  new URL("../node_modules/builder-util/out/util.js", import.meta.url),
+  "utf8"
+);
+
+test("ArcRho uses the preferred E-drive folder only after it is created", () => {
+  assert.match(
+    installerSource,
+    /!define ARCRHO_PREFERRED_INSTALL_COMPUTER "NE7SASWPN02"/
+  );
+  assert.match(
+    installerSource,
+    /!define ARCRHO_PREFERRED_INSTALL_DRIVE "E:"/
+  );
+  assert.match(
+    installerSource,
+    /!macro customInit[\s\S]*?Call ArcRho_PreparePreferredInstallDirectory[\s\S]*?!macroend/
+  );
+  // electron-builder includes this file ahead of multiUser.nsh and of its own
+  // !addplugindir lines, so its install-mode variables and the StdUtils plugin
+  // may only be used from a macro expanded inside .onInit. In a function body the
+  // former fails the build through -WX and the latter cannot resolve the plugin.
+  const customInitMatch = installerSource.match(
+    /!macro customInit([\s\S]*?)!macroend/
+  );
+  assert.ok(customInitMatch);
+  const customInitSource = customInitMatch[1];
+  assert.match(
+    customInitSource,
+    /!ifndef INSTALL_MODE_PER_ALL_USERS[\s\S]*?\$perUserInstallationFolder != ""[\s\S]*?StrCpy \$ArcRhoInstallLocationIsOwned "1"[\s\S]*?!endif/
+  );
+  assert.match(
+    customInitSource,
+    /!ifdef INSTALL_MODE_PER_ALL_USERS_REQUIRED[\s\S]*?\$perMachineInstallationFolder != ""[\s\S]*?StrCpy \$ArcRhoInstallLocationIsOwned "1"[\s\S]*?!endif/
+  );
+  assert.match(
+    customInitSource,
+    /\$\{StdUtils\.GetParameter\} \$0 "D" ""[\s\S]*?StrCpy \$ArcRhoInstallLocationIsOwned "1"/
+  );
+  const outsideCustomInit = installerSource.replace(
+    /!macro customInit[\s\S]*?!macroend/,
+    ""
+  );
+  assert.doesNotMatch(outsideCustomInit, /\$per(User|Machine)InstallationFolder/);
+  assert.doesNotMatch(outsideCustomInit, /\$\{StdUtils\./);
+  assert.match(
+    installerSource,
+    /!macro customPageBeforeChangeDir\s+Page custom ArcRho_InstallDirectory_Pre\s+!macroend/
+  );
+  assert.match(
+    installerSource,
+    /Function ArcRho_InstallDirectory_Pre[\s\S]*?StrCpy \$INSTDIR \$ArcRhoPreferredInstallDirectory[\s\S]*?Abort[\s\S]*?FunctionEnd/
+  );
+
+  const functionMatch = installerSource.match(
+    /Function ArcRho_PreparePreferredInstallDirectory([\s\S]*?)FunctionEnd/
+  );
+  assert.ok(functionMatch);
+  const functionSource = functionMatch[1];
+  assert.match(functionSource, /\$ArcRhoInstallLocationIsOwned == "1"/);
+  assert.match(functionSource, /kernel32::GetComputerName/);
+  assert.match(functionSource, /advapi32::GetUserName/);
+  assert.match(
+    functionSource,
+    /CreateDirectory "\$ArcRhoPreferredInstallDirectory"/
+  );
+  assert.match(
+    functionSource,
+    /StrCpy \$ArcRhoPreferredInstallDirectory "\$\{ARCRHO_PREFERRED_INSTALL_DRIVE\}\\\$1\\\$\{APP_FILENAME\}"/
+  );
+  assert.match(
+    functionSource,
+    /\$\{If\} \$\{Errors\}[\s\S]*?StrCpy \$ArcRhoPreferredInstallDirectory ""[\s\S]*?Return[\s\S]*?\$\{EndIf\}/
+  );
+  assert.match(
+    functionSource,
+    /\$\{IfNot\} \$\{FileExists\} "\$ArcRhoPreferredInstallDirectory\\\*\.\*"[\s\S]*?Return[\s\S]*?\$\{EndIf\}/
+  );
+  assert.ok(
+    functionSource.indexOf("CreateDirectory") <
+      functionSource.indexOf("StrCpy $INSTDIR")
+  );
+});
+
+test("makensis survives a full built-in compression run", () => {
+  // Compressing the unpacked app inside makensis takes longer than the four
+  // minutes electron-builder allows, and the kill leaves no diagnostics behind:
+  // the build only reports "Exit code: null" with empty compiler output.
+  assert.ok(MAKENSIS_KILL_TIMEOUT_MS >= 30 * 60 * 1000);
+
+  const patched = patchMakensisTimeoutSource(builderUtilSource);
+  assert.ok(
+    patched.includes(
+      `setTimeout(() => childProcess.kill(), ${MAKENSIS_KILL_TIMEOUT_MS})`
+    )
+  );
+  assert.doesNotMatch(patched, /childProcess\.kill\(\), 4 \* 60 \* 1000/);
+  assert.equal(patchMakensisTimeoutSource(patched), patched);
+  assert.throws(
+    () => patchMakensisTimeoutSource("function spawnAndWrite() {}"),
+    /no longer guards spawnAndWrite with a kill timeout/
+  );
+});
+
+test("build patcher exposes the directory-page hook after install-mode selection", () => {
+  const patched = patchDirectoryPageHookSource(
+    electronBuilderAssistedInstallerSource
+  );
+
+  assert.match(
+    patched,
+    /!ifmacrodef customPageBeforeChangeDir\s+!insertmacro customPageBeforeChangeDir\s+!endif\s+!insertmacro skipPageIfUpdated\s+!insertmacro MUI_PAGE_DIRECTORY/
+  );
+  assert.equal(patchDirectoryPageHookSource(patched), patched);
+
+  for (const newline of ["\n", "\r\n"]) {
+    const unpatched = [
+      "    !insertmacro skipPageIfUpdated",
+      "    !insertmacro MUI_PAGE_DIRECTORY",
+    ].join(newline);
+    const legacy = [
+      "    !insertmacro skipPageIfUpdated",
+      "    !ifmacrodef customDirectoryPage",
+      "      !insertmacro customDirectoryPage",
+      "    !endif",
+      "    !insertmacro MUI_PAGE_DIRECTORY",
+    ].join(newline);
+
+    for (const source of [unpatched, legacy]) {
+      const updated = patchDirectoryPageHookSource(source);
+      assert.match(
+        updated,
+        /!ifmacrodef customPageBeforeChangeDir[\s\S]*!insertmacro skipPageIfUpdated[\s\S]*!insertmacro MUI_PAGE_DIRECTORY/
+      );
+      assert.equal(patchDirectoryPageHookSource(updated), updated);
+    }
+  }
+
+  assert.throws(
+    () => patchDirectoryPageHookSource("!insertmacro MUI_PAGE_DIRECTORY"),
+    /unexpected directory page/
+  );
+});
 
 test("installer preserves native file progress and launches an isolated observer", () => {
   assert.match(

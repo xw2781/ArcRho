@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "app update",
+  "audience": "user",
+  "summary": "In-app updates now download the installer to your Downloads folder and delete it after the update is installed.",
+  "details": [
+    "The installer was previously kept under the app's AppData folder on the C drive, where every installed update was left behind for good.",
+    "A download never overwrites a file already in Downloads; a name in use takes a numbered suffix.",
+    "The next launch after an update deletes the installer it was installed from, and also clears installers left in the old AppData updates folder.",
+    "Cancelled downloads and installers that fail checksum verification are removed immediately."
+  ]
+}

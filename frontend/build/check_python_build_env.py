@@ -32,6 +32,10 @@ REQUIRED_MODULES = {
     "numpy": "numpy",
     "openpyxl": "openpyxl",
     "snowflake.connector": "snowflake-connector-python",
+    # server.spec lists pyodbc as a hidden import for the managed source-table
+    # import. It is optional at runtime, so PyInstaller only logs an error and
+    # ships a bundle whose SQL Server import always answers 503.
+    "pyodbc": "pyodbc",
     "watchdog": "watchdog",
     "pythoncom": "pywin32",
     "pywintypes": "pywin32",

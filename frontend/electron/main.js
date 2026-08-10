@@ -15,6 +15,7 @@ const {
   initUpdateChecker,
   checkForUpdate,
   checkForStartupUpdate,
+  cleanupCompletedUpdateInstaller,
 } = require("./update_checker");
 const {
   initBackendLifecycle,
@@ -58,7 +59,6 @@ const DISPLAY_VERSION_OVERRIDE = APP_MODE === "arcode"
   : process.env.ARCRHO_DISPLAY_VERSION;
 const APP_DISPLAY_VERSION = String(
   DISPLAY_VERSION_OVERRIDE
-  || process.env.ARCRHO_DISPLAY_VERSION
   || (app.isPackaged ? app.getVersion() : `${app.getVersion()}+`)
 ).trim() || app.getVersion();
 const BACKEND_TOKEN = crypto.randomBytes(16).toString("hex");
@@ -292,6 +292,53 @@ function isWindowsAppsPath(filePath) {
   return /\\WindowsApps\\/iu.test(String(filePath || ""));
 }
 
+function isAsarPath(filePath) {
+  return /(?:^|[\\/])[^\\/]+\.asar(?:[\\/]|$)/iu.test(String(filePath || ""));
+}
+
+// Windows rejects a working directory that does not exist on disk, and the failure surfaces as
+// "spawn <command> ENOENT" -- which reads as a missing executable rather than a bad cwd. In a
+// packaged build APP_ROOT resolves inside `resources\app.asar`, a virtual path that only Electron's
+// patched `fs` can see, so every host command launched from it failed that way. Launch host
+// processes from a real directory instead.
+let cachedHostSpawnCwd = "";
+function getHostSpawnCwd() {
+  if (cachedHostSpawnCwd) return cachedHostSpawnCwd;
+  const candidates = [APP_ROOT];
+  try {
+    candidates.push(app.getPath("userData"));
+  } catch {
+    // The app may not expose userData yet; fall through to the temp directory.
+  }
+  candidates.push(os.tmpdir());
+  for (const candidate of candidates.filter(Boolean)) {
+    if (isAsarPath(candidate)) continue;
+    try {
+      if (fs.statSync(candidate).isDirectory()) {
+        cachedHostSpawnCwd = candidate;
+        return cachedHostSpawnCwd;
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return os.tmpdir();
+}
+
+// Resolve powershell.exe absolutely so the spawn never depends on the launching shell's PATH.
+function getWindowsPowerShellCommand() {
+  const systemRoot = String(process.env.SystemRoot || process.env.windir || "").trim();
+  if (systemRoot) {
+    const absolute = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    try {
+      if (fs.existsSync(absolute)) return absolute;
+    } catch {
+      // Fall back to the PATH lookup.
+    }
+  }
+  return findExecutableOnPath(["powershell.exe"]) || "powershell.exe";
+}
+
 function findExecutableOnPath(names) {
   const pathText = String(process.env.PATH || process.env.Path || "");
   const pathParts = pathText.split(path.delimiter).filter(Boolean);
@@ -311,7 +358,7 @@ function findExecutableOnPath(names) {
 
 function runHostCommand(command, args = [], options = {}) {
   const {
-    cwd = APP_ROOT,
+    cwd = getHostSpawnCwd(),
     env = process.env,
     input = "",
     timeoutMs = 15000,
@@ -536,7 +583,7 @@ function spawnDetachedOpen(command, args = []) {
     };
     try {
       child = spawn(command, args, {
-        cwd: APP_ROOT,
+        cwd: getHostSpawnCwd(),
         detached: true,
         shell: false,
         stdio: "ignore",
@@ -570,14 +617,14 @@ async function openExcelWorkbookReadOnly(targetPath) {
     "$ErrorActionPreference = 'Stop'",
     `Start-Process -FilePath 'excel.exe' -ArgumentList ${quotePowerShellString(excelReadOnlyArgs)}`,
   ].join("; ");
-  const result = await runHostCommand("powershell.exe", [
+  const result = await runHostCommand(getWindowsPowerShellCommand(), [
     "-NoProfile",
     "-ExecutionPolicy",
     "Bypass",
     "-Command",
     script,
   ], {
-    cwd: APP_ROOT,
+    cwd: getHostSpawnCwd(),
     shell: false,
     timeoutMs: 10000,
   });
@@ -1399,7 +1446,7 @@ ipcMain.handle("open-terminal", async (_event, payload) => {
         "  Start-Process -FilePath 'powershell.exe' -WorkingDirectory $folder",
         "}",
       ].join("; ");
-      const result = await runHostCommand("powershell.exe", [
+      const result = await runHostCommand(getWindowsPowerShellCommand(), [
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -2035,6 +2082,11 @@ app.whenReady().then(async () => {
         // app_endpoint.json appears when the BACKEND is ready, well before the window paints, so a
         // harness that waits on it screenshots the splash. This marker means the UI is visible.
         writeUiReadyMarker();
+        // Deletes the installer this launch was produced by; it is still locked
+        // while setup exits, so this runs after the window is up, not before.
+        cleanupCompletedUpdateInstaller().catch((err) => {
+          console.warn(`ArcRho update installer cleanup failed: ${err?.message || err}`);
+        });
         if (APP_MODE !== "arcode") {
           setTimeout(() => {
             checkForStartupUpdate().catch((err) => {
