@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "home",
+  "audience": "user",
+  "summary": "Home card drag tooltips now close when a card opens another page."
+}

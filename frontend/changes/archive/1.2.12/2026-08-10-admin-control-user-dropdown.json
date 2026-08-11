@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "admin control",
+  "audience": "user",
+  "summary": "Polished Folder Access dropdowns and listed every profile folder under C:\\Users for selection."
+}

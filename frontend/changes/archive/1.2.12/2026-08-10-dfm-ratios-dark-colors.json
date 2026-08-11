@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Refined dark-mode colors for excluded ratios and selected average formulas in the DFM Ratios tab."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Opened method-backed datasets from both Precedents and Dependents in their related method windows."
+}

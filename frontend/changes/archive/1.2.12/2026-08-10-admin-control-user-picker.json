@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "admin control",
+  "audience": "user",
+  "summary": "Added selectable local Windows accounts and common principals to the Folder Access user field."
+}

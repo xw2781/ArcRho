@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "admin control",
+  "audience": "user",
+  "summary": "Sized the engine and bridge instance limit fields to 60px for a more compact admin control form."
+}

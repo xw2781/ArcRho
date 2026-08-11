@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "admin control",
+  "audience": "user",
+  "summary": "Anchored the Folder Access user list below its input with filtering and vertical scrolling."
+}

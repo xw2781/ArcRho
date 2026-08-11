@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "runtime",
+  "audience": "user",
+  "summary": "ArcRho now keeps local preferences isolated when different Windows users run the same packaged build on one PC.",
+  "details": [
+    "A backend can be reused only by ArcRho windows from the same Windows user-data profile."
+  ]
+}

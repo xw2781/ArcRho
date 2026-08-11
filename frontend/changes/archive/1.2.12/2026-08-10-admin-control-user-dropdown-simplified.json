@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "admin control",
+  "audience": "user",
+  "summary": "Simplified Folder Access to one editable user box with C:\\Users names as PRCINS principals."
+}
