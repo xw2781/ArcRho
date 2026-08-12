@@ -102,7 +102,7 @@ test("aggregate DFM API sends method and output identities with revision-aware s
   }
 });
 
-test("v2 open hydrates snapshots and auto-evaluates dataset-backed formulas as dirty", () => {
+test("v2 open hydrates snapshots, stays clean, and warms the dataset-reference cache", () => {
   const load = functionSlice(
     persistenceSource,
     "export async function loadRatioSelectionIfExists",
@@ -111,19 +111,28 @@ test("v2 open hydrates snapshots and auto-evaluates dataset-backed formulas as d
   assert.match(load, /loadDfmMethod\(identity\)/u);
   assert.match(load, /hydrateDfmOutputSidecar/u);
   assert.match(load, /scheduleDfmExcelFreshnessCheck/u);
-  assert.match(
-    load,
-    /hasDfmDatasetFormulaReferences\(method\)[\s\S]*?markDfmDirty\(\)[\s\S]*?refreshAllExcelLinks\(\{[\s\S]*?datasetReferencesOnly: true[\s\S]*?source: "dfm-open"/u,
-  );
+  // Dataset-referenced formula values are refreshed by the Engine propagation
+  // walk when a referenced dataset is saved; opening never re-evaluates them
+  // into the page or marks the window dirty. The open flow only warms the
+  // session cache that powers live re-evaluation after ratio edits.
+  assert.match(load, /warmDfmDatasetReferenceCache\(method\)/u);
+  assert.doesNotMatch(load, /refreshAllExcelLinks|markDfmDirty/u);
   assert.doesNotMatch(load, /readJsonFile|ADA_DFM_REFRESH_DATASET|loadDatasetSidecar/u);
+
+  const warm = functionSlice(
+    persistenceSource,
+    "function warmDfmDatasetReferenceCache",
+    "function getDfmRatioTriangleTab",
+  );
+  assert.match(warm, /resolveDfmDatasetReferencesInFormulas\(datasetFormulas\)/u);
+  assert.doesNotMatch(warm, /setUserEntryCellEntry|markDfmDirty|persistUserEntryRowsFromState/u);
 
   const linkedRefresh = functionSlice(
     summarySource,
     "export async function refreshAllExcelLinks",
     "function canonicalExcelComparisonValue",
   );
-  assert.match(linkedRefresh, /options\.datasetReferencesOnly && !containsDfmDatasetReference\(inputRaw\)/u);
-  assert.match(linkedRefresh, /Auto-refreshing linked formula values; this DFM now has unsaved changes/u);
+  assert.doesNotMatch(linkedRefresh, /datasetReferencesOnly|dfm-open/u);
   assert.match(linkedRefresh, /save to keep the refreshed values/u);
 
   assert.match(dataControllerSource, /if \(persistedDfmBootstrap \|\| isProjectInstanceCachedDatasetOpen \|\| isTemporaryDatasetView\) \{[^}]*runtime\.applyTriInputsFromQueryParams\(\);/u);

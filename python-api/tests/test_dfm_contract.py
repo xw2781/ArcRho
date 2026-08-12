@@ -14,6 +14,8 @@ from arcrho_api.dfm_contract import (  # noqa: E402
     apply_owned_patch,
     build_dfm_output_sidecar,
     canonical_number,
+    dataset_reference_tokens,
+    dfm_dataset_reference_tokens,
     dfm_precedent_names,
     dfm_output_variants,
     method_revisions,
@@ -293,6 +295,56 @@ class DfmContractTests(unittest.TestCase):
                 {"dataset_type_name": "Growth Adjustment"},
             ],
         )
+
+    def test_dataset_reference_values_re_evaluate_referenced_formulas(self) -> None:
+        payload = owned_payload()
+        formulas = payload["ratios tab"]["average formulas"]
+        formulas["inputs"][2][0] = '="User B" * [Accounting Cutoff][-1]'
+        formulas["inputs"][2][1] = "=[Accounting Cutoff][1]"
+        method = recalculate_dfm_method(
+            payload,
+            input_snapshot=input_snapshot(),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="same",
+        )
+        # Without resolved reference values, the stored evaluations survive.
+        self.assertEqual(method["ratios tab"]["average formulas"]["values"][2][:2], [9, 9])
+
+        tokens = dfm_dataset_reference_tokens(method)
+        self.assertEqual(
+            [(token["match"], token["dataset_name"], token["row_idx"], token["col_idx"]) for token in tokens],
+            [
+                ("[Accounting Cutoff][-1]", "Accounting Cutoff", "-1", None),
+                ("[Accounting Cutoff][1]", "Accounting Cutoff", "1", None),
+            ],
+        )
+        self.assertEqual(
+            dataset_reference_tokens('=[Quoted]["2024 Q1", \'12, months\']')[0]["col_idx"],
+            "'12, months'",
+        )
+
+        refreshed = recalculate_dfm_method(
+            method,
+            dataset_reference_values={
+                "[Accounting Cutoff][-1]": 1.02,
+                "[Accounting Cutoff][1]": 1.5,
+            },
+            timestamp="later",
+        )
+        values = refreshed["ratios tab"]["average formulas"]["values"]
+        # "User B" col 0 = Simple-all (1.5) * 1.1 = 1.65; User A = 1.65 * 1.02.
+        self.assertEqual(values[2][0], 1.683)
+        self.assertEqual(values[2][1], 1.5)
+
+        # A partial mapping keeps the stored evaluation for the missing reference.
+        partial = recalculate_dfm_method(
+            method,
+            dataset_reference_values={"[Accounting Cutoff][1]": 1.5},
+            timestamp="later",
+        )
+        partial_values = partial["ratios tab"]["average formulas"]["values"]
+        self.assertEqual(partial_values[2][0], 9)
+        self.assertEqual(partial_values[2][1], 1.5)
 
     def test_upstream_refresh_preserves_owned_projection_and_recalculates_internal_formulas(self) -> None:
         initial = recalculate_dfm_method(

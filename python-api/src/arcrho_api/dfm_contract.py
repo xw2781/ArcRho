@@ -604,11 +604,43 @@ def _hash_projection(value: Any) -> str:
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
-def _dataset_reference_names(value: Any) -> list[str]:
-    """Return valid ``[Dataset][coordinate]`` identities in formula order."""
+def _split_coordinates_top_level(coordinates: str) -> list[str]:
+    """Split ``row, col`` coordinates on top-level commas, honoring quotes."""
+
+    parts: list[str] = []
+    current = ""
+    quote = ""
+    for character in coordinates:
+        if quote:
+            current += character
+            if character == quote:
+                quote = ""
+            continue
+        if character in {'"', "'"}:
+            quote = character
+            current += character
+            continue
+        if character == ",":
+            parts.append(current.strip())
+            current = ""
+            continue
+        current += character
+    parts.append(current.strip())
+    return parts
+
+
+def dataset_reference_tokens(value: Any) -> list[dict[str, Any]]:
+    """Return valid ``[Dataset][coordinate]`` tokens with spans in formula order.
+
+    Each token carries the exact reference text (``match``), its ``start``/``end``
+    span inside the formula, the ``dataset_name``, and the raw ``row_idx`` /
+    ``col_idx`` coordinate text exactly as written (``col_idx`` is ``None`` for a
+    Vector reference). The coordinate text keeps quotes so it matches what the
+    frontend sends to the dataset-reference resolver.
+    """
 
     text = str(value if value is not None else "")
-    names: list[str] = []
+    tokens: list[dict[str, Any]] = []
     cursor = 0
     while cursor < len(text):
         dataset_start = text.find("[", cursor)
@@ -645,20 +677,79 @@ def _dataset_reference_names(value: Any) -> list[str]:
 
         name = _clean(text[dataset_start + 1:dataset_end])
         coordinates = text[coordinate_start + 1:coordinate_end].strip()
-        coordinate_parts = [part.strip() for part in coordinates.split(",")]
+        coordinate_parts = _split_coordinates_top_level(coordinates)
         if (
             name
             and coordinates
             and comma_count <= 1
+            and len(coordinate_parts) in (1, 2)
             and all(coordinate_parts)
         ):
-            names.append(name)
+            tokens.append({
+                "match": text[dataset_start:coordinate_end + 1],
+                "start": dataset_start,
+                "end": coordinate_end + 1,
+                "dataset_name": name,
+                "row_idx": coordinate_parts[0],
+                "col_idx": coordinate_parts[1] if len(coordinate_parts) == 2 else None,
+            })
         cursor = coordinate_end + 1
-    return names
+    return tokens
+
+
+def _dataset_reference_names(value: Any) -> list[str]:
+    """Return valid ``[Dataset][coordinate]`` identities in formula order."""
+
+    return [token["dataset_name"] for token in dataset_reference_tokens(value)]
 
 
 def _contains_dataset_reference(value: Any) -> bool:
     return bool(_dataset_reference_names(value))
+
+
+def dfm_dataset_reference_tokens(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Return unique dataset-reference tokens across all average-formula inputs."""
+
+    formulas = _tab(_tab(payload, "ratios tab"), "average formulas")
+    inputs = formulas.get("inputs") if isinstance(formulas.get("inputs"), list) else []
+    tokens: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in inputs:
+        if not isinstance(row, list):
+            continue
+        for formula in row:
+            for token in dataset_reference_tokens(formula):
+                if token["match"] in seen:
+                    continue
+                seen.add(token["match"])
+                tokens.append(token)
+    return tokens
+
+
+def _substitute_dataset_references(
+    formula: Any,
+    tokens: list[dict[str, Any]],
+    reference_values: Mapping[str, Any] | None,
+) -> str | None:
+    """Replace dataset references with resolved numeric values.
+
+    Returns ``None`` when any reference has no finite resolved value, so the
+    caller keeps the stored evaluation instead of recomputing from a partial
+    substitution.
+    """
+
+    if not isinstance(reference_values, Mapping) or not reference_values:
+        return None
+    text = str(formula if formula is not None else "")
+    for token in reversed(tokens):
+        try:
+            value = float(reference_values.get(token["match"]))
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(value):
+            return None
+        text = f"{text[:token['start']]}{value}{text[token['end']:]}"
+    return text
 
 
 def _owned_formula_values(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -1262,7 +1353,10 @@ def _evaluate_internal_formula(
     return _safe_arithmetic(text)
 
 
-def _calculate_formula_values(payload: dict[str, Any]) -> list[list[Any]]:
+def _calculate_formula_values(
+    payload: dict[str, Any],
+    dataset_reference_values: Mapping[str, Any] | None = None,
+) -> list[list[Any]]:
     data = payload["data tab"]
     ratio = payload["ratios tab"]["ratio triangle"]
     formulas = payload["ratios tab"]["average formulas"]
@@ -1313,8 +1407,38 @@ def _calculate_formula_values(payload: dict[str, Any]) -> list[list[Any]]:
         resolving.add(key)
         try:
             formula = inputs[row][col]
-            if _contains_excel_reference(formula) or _contains_dataset_reference(formula):
+            reference_tokens = dataset_reference_tokens(formula)
+            # The Excel-reference pattern treats any bracket segment as external,
+            # so strip the dataset references before deciding whether an Excel
+            # reference remains that only the client can evaluate.
+            formula_without_references = str(formula or "")
+            for token in reversed(reference_tokens):
+                formula_without_references = (
+                    formula_without_references[:token["start"]]
+                    + formula_without_references[token["end"]:]
+                )
+            if _contains_excel_reference(formula_without_references):
                 chosen = stored
+            elif reference_tokens:
+                # Re-evaluate a dataset-referencing formula only when the caller
+                # supplies a resolved value for every reference; otherwise keep
+                # the stored evaluation.
+                substituted = _substitute_dataset_references(
+                    formula, reference_tokens, dataset_reference_values
+                )
+                chosen = (
+                    _evaluate_internal_formula(
+                        substituted,
+                        labels,
+                        computed,
+                        col,
+                        resolver=resolve,
+                    )
+                    if substituted is not None
+                    else None
+                )
+                if chosen is None:
+                    chosen = stored
             elif formula:
                 chosen = _evaluate_internal_formula(
                     formula,
@@ -1445,8 +1569,16 @@ def recalculate_dfm_method(
     changed_precedents: Iterable[str] = (),
     timestamp: Any = None,
     update_refresh_timestamp: bool | None = None,
+    dataset_reference_values: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Refresh DFM-derived state while preserving the DFM-owned projection."""
+    """Refresh DFM-derived state while preserving the DFM-owned projection.
+
+    ``dataset_reference_values`` maps each ``[Dataset][coordinate]`` reference
+    text to its resolved numeric value. When provided, User Entry formulas that
+    reference datasets are re-evaluated with those values; without it, their
+    stored evaluations are preserved (an ordinary Save trusts the values the
+    client already evaluated).
+    """
 
     changed = tuple(str(item) for item in changed_precedents)
     if update_refresh_timestamp is None:
@@ -1478,7 +1610,7 @@ def recalculate_dfm_method(
     formulas["display inputs"] = _fit_matrix(
         _text_matrix(formulas.get("display inputs")), formula_count, ratio_col_count, ""
     )
-    formulas["values"] = _calculate_formula_values(method)
+    formulas["values"] = _calculate_formula_values(method, dataset_reference_values)
     method["results tab"]["ultimate vector"] = _calculate_ultimate(method)
     if update_refresh_timestamp:
         method["method metadata"]["data refreshed"] = refreshed_at

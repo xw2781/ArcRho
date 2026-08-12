@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Saving a dataset referenced by DFM User Entry formulas now refreshes the dependent DFM automatically, so the DFM opens clean with updated values and a Needs Review flag.",
+  "details": [
+    "The Engine dependent-propagation walk re-resolves the dataset references, re-evaluates the affected User Entry values, republishes the method JSON and output CSVs, and marks the method Needs Review.",
+    "Opening the DFM no longer shows unsaved changes; review the refreshed values and save once to clear the Needs Review flag.",
+    "A blank or non-numeric referenced cell aborts the automatic refresh and keeps the last valid published values.",
+    "Formula evaluation reads referenced average-formula rows from the canonical six-decimal values instead of the displayed rounded text, so evaluations match the persisted values exactly."
+  ]
+}

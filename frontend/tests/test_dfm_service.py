@@ -483,13 +483,85 @@ class DfmServiceTests(unittest.TestCase):
             [{"dataset_type_name": "Development Output"}],
         )
 
-        refresh = dfm_service.refresh_dependents(
-            "Project",
-            "Class",
-            ["Accounting Cutoff"],
-        )
+        with mock.patch(
+            "app_server.services.dataset_service.load_cached_dataset_values",
+            return_value={
+                "dataset_name": "Accounting Cutoff",
+                "data_format": "Vector",
+                "origin_labels": ["2024", "2025"],
+                "dev_labels": ["Ultimate"],
+                "values": [[1.01], [1.02]],
+            },
+        ):
+            refresh = dfm_service.refresh_dependents(
+                "Project",
+                "Class",
+                ["Accounting Cutoff"],
+            )
 
         self.assertTrue(refresh["ok"], refresh)
+        saved_sidecar = json.loads(
+            (self.sidecars / "Development Output.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            saved_sidecar["status"],
+            dataset_sidecar_status_service.STATUS_REVIEW_NEEDED,
+        )
+        # The propagation walk re-resolves the dataset reference and persists
+        # the refreshed evaluation and outputs; the opened DFM then shows the
+        # updated values without becoming dirty.
+        saved_method = json.loads(
+            (self.methods / "DFM@Development.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            saved_method["ratios tab"]["average formulas"]["values"][0][0],
+            1.02,
+        )
+        self.assertEqual(
+            saved_method["results tab"]["ultimate vector"],
+            [150, 204],
+        )
+        published = (self.datasets / "Development Output@12.csv").read_text(encoding="utf-8")
+        self.assertEqual(
+            [float(row) for row in published.strip().splitlines()],
+            [150.0, 204.0],
+        )
+
+    def test_blank_dataset_reference_aborts_refresh_and_preserves_publication(self) -> None:
+        method = self.method_payload()
+        method["ratios tab"]["average formulas"]["inputs"][0][0] = \
+            '=[Accounting Cutoff][2]'
+        method = recalculate_dfm_method(method, timestamp="2026-01-01T00:00:00Z")
+        method = self.write_method_pair(method)
+        self.write_source("Paid", "100,150\n200,\n", data_format="Triangle")
+        self.write_source(
+            "Accounting Cutoff",
+            "1.01\n\n",
+            data_format="Vector",
+            dependents=["Development Output"],
+        )
+        method_path = self.methods / "DFM@Development.json"
+        output_path = self.datasets / "Development Output@12.csv"
+        before_method = method_path.read_bytes()
+        before_output = output_path.read_bytes()
+
+        with mock.patch(
+            "app_server.services.dataset_service.load_cached_dataset_values",
+            return_value={
+                "dataset_name": "Accounting Cutoff",
+                "data_format": "Vector",
+                "origin_labels": ["2024", "2025"],
+                "dev_labels": ["Ultimate"],
+                "values": [[1.01], [None]],
+            },
+        ):
+            result = dfm_service.refresh_dependents("Project", "Class", ["Accounting Cutoff"])
+
+        self.assertFalse(result["ok"], result)
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertIn("blank or non-numeric", result["errors"][0]["reason"])
+        self.assertEqual(method_path.read_bytes(), before_method)
+        self.assertEqual(output_path.read_bytes(), before_output)
         saved_sidecar = json.loads(
             (self.sidecars / "Development Output.json").read_text(encoding="utf-8")
         )

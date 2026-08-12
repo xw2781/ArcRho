@@ -172,5 +172,28 @@ test("DFM formula resolution batches every reference into one API request", asyn
     resolvedFormula: "=10",
     displayFormula: "=[Paid][Row -1, Column 2]",
   });
+
+  // Resolution caches each reference's value for the session, so synchronous
+  // summary recalculation can substitute them without a network round trip.
+  assert.deepEqual(
+    formulaModule.substituteCachedDfmDatasetReferencesInFormula('="Simple - 3" * [Paid][1, 2]'),
+    { ok: true, formula: '="Simple - 3" * 10' },
+  );
+  assert.deepEqual(
+    formulaModule.substituteCachedDfmDatasetReferencesInFormula("=[Premium][1] + [Paid][-1, 2]"),
+    { ok: true, formula: "=11 + 10" },
+  );
+  assert.deepEqual(
+    formulaModule.substituteCachedDfmDatasetReferencesInFormula("=2 * 3"),
+    { ok: true, formula: "=2 * 3" },
+  );
+  assert.deepEqual(
+    formulaModule.substituteCachedDfmDatasetReferencesInFormula("=[Never Resolved][1]"),
+    { ok: false, formula: "=[Never Resolved][1]" },
+  );
+  assert.deepEqual(
+    formulaModule.substituteCachedDfmDatasetReferencesInFormula("=[Paid][1, "),
+    { ok: false, formula: "=[Paid][1, " },
+  );
   delete globalThis.__dfmDatasetReferencePayload;
 });

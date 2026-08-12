@@ -8,7 +8,10 @@ import {
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
-import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260811a";
+import {
+  resolveDfmDatasetReferencesInFormulaDetailed,
+  substituteCachedDfmDatasetReferencesInFormula,
+} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260812a";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -488,27 +491,26 @@ function clearSummaryReferenceUi(summaryTable) {
     .forEach((el) => el.classList.remove("summaryFormulaRefDragTarget"));
 }
 
-function buildSummaryReferenceValues(summaryTable, col) {
+// Reference values must come from the same canonical six-decimal engine that
+// recalculates User Entry rows, never from the displayed cell text: display
+// honors the Decimal Places setting, so a formula evaluated against rounded
+// text drifts from the persisted values and falsely reports refreshed changes.
+function buildSummaryReferenceValues(_summaryTable, col) {
   const out = new Map();
-  if (!summaryTable || !Number.isFinite(col) || col < 0) return out;
-  const rows = Array.from(summaryTable.querySelectorAll("tr[data-row-id]"));
-  rows.forEach((row) => {
-    const rowId = String(row.dataset.rowId || "");
-    if (!rowId) return;
-    const th = row.querySelector("th");
-    const label = String(th?.textContent || "").trim();
-    if (!label) return;
-    const cfg = summaryRowMap.get(rowId);
-    let v = null;
-    if (cfg && isUserEntryConfig(cfg)) {
-      v = getUserEntryValueForCol(cfg, col);
-    } else {
-      const td = row.querySelector(`td.summaryCell[data-col="${col}"]`);
-      const raw = String(td?.textContent || "").trim();
-      const n = Number(raw);
-      if (Number.isFinite(n)) v = n;
-    }
-    if (Number.isFinite(v)) out.set(label, Number(v));
+  if (!Number.isFinite(col) || col < 0) return out;
+  const model = state.model;
+  if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) return out;
+  const rows = Array.isArray(summaryRowConfigs) ? summaryRowConfigs : [];
+  const devs = getEffectiveDevLabelsForModel(model);
+  const lastCol = Math.max(0, devs.length - 1);
+  const labelToId = new Map(
+    rows.map((cfg) => [String(cfg?.label || cfg?.id || "").trim(), String(cfg?.id || "")]).filter(([k, v]) => k && v)
+  );
+  const cache = new Map();
+  const visiting = new Set();
+  labelToId.forEach((rowId, label) => {
+    const value = computeSummaryRowValueForColumn(model, col, rowId, cache, visiting, labelToId, lastCol);
+    if (Number.isFinite(value)) out.set(label, Number(value));
   });
   return out;
 }
@@ -659,7 +661,18 @@ function computeSummaryRowValueForColumn(model, col, rowId, cache, visiting, lab
 
   let value = 1;
   if (isUserEntryConfig(cfg)) {
-    const inputRaw = String(getUserEntryInputForCol(cfg, col) || "").trim();
+    const storedInput = String(getUserEntryInputForCol(cfg, col) || "").trim();
+    // Substitute dataset references with their last-resolved session values so
+    // formulas that mix dataset references with average-formula row references
+    // still re-evaluate when a referenced row changes. Until every dataset
+    // reference has a resolved value, keep the stored value.
+    const datasetSubstitution = substituteCachedDfmDatasetReferencesInFormula(storedInput);
+    if (!datasetSubstitution.ok) {
+      const stored = sanitizeUserEntryValue(getUserEntryValueForCol(cfg, col));
+      cache.set(key, stored);
+      return stored;
+    }
+    const inputRaw = datasetSubstitution.formula;
     // Determine which labels are actually referenced in this formula
     const allLabels = Array.from(labelToId.keys());
     const referencedLabels = findReferencedLabels(inputRaw, allLabels);

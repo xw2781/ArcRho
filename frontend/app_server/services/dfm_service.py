@@ -21,6 +21,7 @@ from arcrho_api.dfm_contract import (
     DfmContractError,
     apply_owned_patch,
     build_dfm_output_sidecar,
+    dfm_dataset_reference_tokens,
     dfm_precedent_names,
     dfm_output_variants,
     method_revisions,
@@ -649,6 +650,7 @@ def _recalculate_with_sources(
     allow_review_needed: bool = False,
     changed_precedents: Iterable[str] = (),
     snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] | None = None,
+    dataset_reference_values: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
     input_snapshot, basis_snapshot = _source_snapshots(
         project_name,
@@ -666,7 +668,34 @@ def _recalculate_with_sources(
         ratio_basis_snapshot=basis_snapshot,
         changed_precedents=tuple(changed_precedents),
         timestamp=_now(),
+        dataset_reference_values=dataset_reference_values,
     )
+
+
+def _resolved_reference_token_values(
+    project_name: str,
+    reserving_class: str,
+    tokens: List[Dict[str, Any]],
+) -> Dict[str, float]:
+    """Resolve dataset-reference tokens to values keyed by their reference text."""
+
+    response = resolve_dfm_dataset_references(
+        project_name,
+        reserving_class,
+        [
+            {
+                "dataset_name": token["dataset_name"],
+                "row_idx": token["row_idx"],
+                **({"col_idx": token["col_idx"]} if token["col_idx"] else {}),
+            }
+            for token in tokens
+        ],
+    )
+    results = response.get("results") or []
+    return {
+        token["match"]: result["value"]
+        for token, result in zip(tokens, results)
+    }
 
 
 def _assert_refreshable_precedents(
@@ -1179,8 +1208,22 @@ def _refresh_one(
     changed_keys = {_key(item) for item in changed_names if _key(item)}
     load_input = _key(input_name) in changed_keys
     load_basis = bool(basis_name and _key(basis_name) in changed_keys)
-    if not load_input and not load_basis:
+    reference_tokens = dfm_dataset_reference_tokens(method)
+    load_references = any(
+        _key(token["dataset_name"]) in changed_keys for token in reference_tokens
+    )
+    if not load_input and not load_basis and not load_references:
         return {"ok": True, "dataset_name": output_dataset, "skipped": True, "reason": "stale_reverse_dependency_edge"}
+    # Re-resolve every dataset reference whenever this method recomputes, so
+    # User Entry formulas that mix dataset references with average-formula row
+    # references are refreshed as one consistent evaluation. A blank or
+    # non-numeric referenced cell aborts the refresh; the caller marks the
+    # output Review Needed and preserves the last valid publication.
+    dataset_reference_values = (
+        _resolved_reference_token_values(project_name, reserving_class, reference_tokens)
+        if reference_tokens
+        else None
+    )
     refreshed = _recalculate_with_sources(
         project_name,
         reserving_class,
@@ -1190,6 +1233,7 @@ def _refresh_one(
         allow_review_needed=True,
         changed_precedents=changed_names,
         snapshot_cache=snapshot_cache,
+        dataset_reference_values=dataset_reference_values,
     )
     _assert_refreshable_precedents(
         project_name,

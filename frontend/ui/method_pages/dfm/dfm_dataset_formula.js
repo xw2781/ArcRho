@@ -8,6 +8,36 @@ import {
   substituteDfmDatasetReferences,
 } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
 
+// Last-resolved dataset-reference values for this page session, keyed by
+// project, reserving class, and the reference text exactly as stored in the
+// formula. Synchronous summary recalculation reuses these values when a
+// referenced average-formula row changes, without a new precedent read.
+const resolvedDatasetReferenceValues = new Map();
+
+function datasetReferenceCacheKey(identity, referenceMatch) {
+  return `${identity.project_name}\u001f${identity.reserving_class}\u001f${referenceMatch}`;
+}
+
+export function substituteCachedDfmDatasetReferencesInFormula(rawFormula) {
+  const formula = String(rawFormula || "");
+  let references;
+  try {
+    references = findDfmDatasetReferences(formula);
+  } catch {
+    return { ok: false, formula };
+  }
+  if (!references.length) return { ok: true, formula };
+  const identity = readDfmMethodIdentityFromPage();
+  if (!identity.project_name || !identity.reserving_class) return { ok: false, formula };
+  const resolvedResults = [];
+  for (const reference of references) {
+    const cached = resolvedDatasetReferenceValues.get(datasetReferenceCacheKey(identity, reference.match));
+    if (!Number.isFinite(cached)) return { ok: false, formula };
+    resolvedResults.push({ value: cached });
+  }
+  return { ok: true, formula: substituteDfmDatasetReferences(formula, references, resolvedResults) };
+}
+
 export async function resolveDfmDatasetReferencesInFormulasDetailed(rawFormulas, options = {}) {
   const formulas = Array.isArray(rawFormulas) ? rawFormulas.map((value) => String(value || "")) : [];
   const parsedByFormula = formulas.map((formula) => findDfmDatasetReferences(formula));
@@ -34,6 +64,12 @@ export async function resolveDfmDatasetReferencesInFormulasDetailed(rawFormulas,
     })),
   }, options);
   const results = Array.isArray(response?.results) ? response.results : [];
+  references.forEach((reference, index) => {
+    const value = Number(results[index]?.value);
+    if (Number.isFinite(value)) {
+      resolvedDatasetReferenceValues.set(datasetReferenceCacheKey(identity, reference.match), value);
+    }
+  });
   let resultOffset = 0;
   return formulas.map((formula, formulaIndex) => {
     const formulaReferences = parsedByFormula[formulaIndex];

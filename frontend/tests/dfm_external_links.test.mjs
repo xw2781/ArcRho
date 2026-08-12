@@ -289,6 +289,16 @@ test("DFM break and formula mutations invalidate in-flight Excel refreshes", () 
   );
 });
 
+test("DFM formula reference values come from the canonical engine, not displayed text", () => {
+  const builder = sourceSlice(
+    summaryEntriesSource,
+    "function buildSummaryReferenceValues",
+    "function insertAtInputCursor",
+  );
+  assert.match(builder, /computeSummaryRowValueForColumn\(model, col, rowId, cache, visiting, labelToId, lastCol\)/u);
+  assert.doesNotMatch(builder, /textContent/u);
+});
+
 test("DFM Excel freshness check deduplicates cells and reports stale and unverified values", async () => {
   const batchCalls = [];
   const rows = [{

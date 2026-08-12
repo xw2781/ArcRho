@@ -9,9 +9,9 @@ import {
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
 import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260812a";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260812b";
-import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260812b";
-import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260807a";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260812c";
+import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260812d";
+import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260812b";
 import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260812a";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({

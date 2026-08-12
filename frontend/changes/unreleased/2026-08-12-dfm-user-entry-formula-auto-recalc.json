@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM User Entry formulas that mix dataset references with average-formula row references now re-evaluate immediately when a referenced row changes.",
+  "details": [
+    "Changing ratio exclusions in the Ratios triangle updates dependent User Entry formula values right away.",
+    "The dataset-reference portion reuses its last resolved session value without a new precedent read."
+  ]
+}

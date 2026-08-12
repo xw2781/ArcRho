@@ -23,7 +23,6 @@ import {
   getResultsCsvSuggestedName,
   getCurrentDfmTab,
   buildSummaryRows,
-  markDfmDirty,
   markDfmClean,
   runDfmProgrammatic,
   isRatiosTabVisible,
@@ -69,7 +68,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260812b";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260812e";
 import {
   applyPersistedResultsSnapshot,
   renderResultsTable,
@@ -114,10 +113,10 @@ import {
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
-  refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260812c";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260812f";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
-import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260812b";
+import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260812a";
+import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260812e";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -444,16 +443,34 @@ function getDfmRatiosTab(payload) {
   return getDfmJsonTab(payload, "ratios tab");
 }
 
-function hasDfmDatasetFormulaReferences(payload) {
+function dfmDatasetFormulaInputs(payload) {
   const formulas = getDfmJsonTab(getDfmRatiosTab(payload), "average formulas");
   const inputs = Array.isArray(formulas.inputs) ? formulas.inputs : [];
   const settings = getDfmJsonTab(formulas, "custom average formula settings");
   const averageTypes = Array.isArray(settings.averageType) ? settings.averageType : [];
-  return inputs.some((row, index) => (
-    String(averageTypes[index] || "").trim().toLowerCase() === "user_entry"
-    && Array.isArray(row)
-    && row.some((formula) => containsDfmDatasetReference(formula))
-  ));
+  const out = [];
+  inputs.forEach((row, index) => {
+    if (String(averageTypes[index] || "").trim().toLowerCase() !== "user_entry") return;
+    if (!Array.isArray(row)) return;
+    row.forEach((formula) => {
+      if (containsDfmDatasetReference(formula)) out.push(String(formula));
+    });
+  });
+  return out;
+}
+
+// Dataset-referenced User Entry values are kept fresh by the Engine
+// dependent-propagation walk when a referenced dataset is saved, so an opened
+// DFM shows its persisted values and stays clean. Resolving the references
+// here only warms the session value cache that lets those formulas re-evaluate
+// live after ratio edits; it never changes values, dirty state, or files.
+function warmDfmDatasetReferenceCache(payload) {
+  const datasetFormulas = dfmDatasetFormulaInputs(payload);
+  if (!datasetFormulas.length) return;
+  resolveDfmDatasetReferencesInFormulas(datasetFormulas).catch(() => {
+    // Best-effort: stored values stay in use until a reference resolves
+    // through a commit, tooltip, or linked refresh.
+  });
 }
 
 function getDfmRatioTriangleTab(payload) {
@@ -1345,31 +1362,11 @@ async function loadRatioSelectionIfExistsOnce(reason) {
     const sidecarStatus = response?.sidecar?.status;
     const reviewNeeded = Number(sidecarStatus) === 2
       || /review/i.test(String(sidecarStatus || response?.sidecar?.status_label || ""));
-    const autoRefreshDatasetFormulas = hasDfmDatasetFormulaReferences(method);
-    if (autoRefreshDatasetFormulas) {
-      // Formula evaluation is an intentional in-memory refresh. Mark the DFM
-      // unsaved before network resolution begins so the shell reflects that
-      // state immediately, even when the resolved values are unchanged.
-      markDfmDirty();
-      try {
-        await refreshAllExcelLinks({
-          datasetReferencesOnly: true,
-          reviewNeeded,
-          silentErrors: true,
-          source: "dfm-open",
-        });
-      } catch (error) {
-        postDfmStatus(
-          `DFM opened with unsaved linked formulas, but automatic evaluation failed: ${String(error?.message || error)}`,
-          { tone: "warn" },
-        );
-      }
-    } else {
-      postDfmStatus(
-        reviewNeeded ? "DFM loaded with Review Needed status." : "Ready",
-        reviewNeeded ? { tone: "warn" } : {},
-      );
-    }
+    warmDfmDatasetReferenceCache(method);
+    postDfmStatus(
+      reviewNeeded ? "DFM loaded with Review Needed status." : "Ready",
+      reviewNeeded ? { tone: "warn" } : {},
+    );
     scheduleDfmExcelFreshnessCheck(method);
     ensureDfmObjectChangeWatch(details.name);
     return { ok: true, method, sidecar: response?.sidecar };
