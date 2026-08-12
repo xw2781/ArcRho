@@ -8,23 +8,41 @@ from pathlib import Path
 from arcrho_api.dataset_index_contract import (
     DATASET_INDEX_VERSION,
     INDEX_FILE_NAME as DATASET_INDEX_FILE_NAME,
+    METHOD_TYPE_BF,
+    METHOD_TYPE_BOOTSTRAP,
+    METHOD_TYPE_BS_CRA,
+    METHOD_TYPE_BS_SR,
+    METHOD_TYPE_CAPE_COD,
+    METHOD_TYPE_DFM,
+    METHOD_TYPE_NONE,
+    METHOD_TYPE_RESULT_SELECTION,
 )
 # The one owner of persisted JSON layout, shared with the app server and the
 # Python API so a migrated file and a re-saved file are byte-identical.
 from arcrho_api.io import persisted_json_text
 
 
+# ResQ owns the numeric `MethodType` codes, so this module is their one ArcRho
+# definition. Every consumer compares against these names, never a bare literal.
 METHOD_TYPE_NONE_CODE = 0
 METHOD_TYPE_DFM_CODE = 1
 METHOD_TYPE_BF_CODE = 2
 METHOD_TYPE_CAPE_COD_CODE = 3
 METHOD_TYPE_RESULT_SELECTION_CODE = 4
+METHOD_TYPE_BOOTSTRAP_CODE = 6
+METHOD_TYPE_STOCHASTIC_CONSOLIDATION_CODE = 7
 METHOD_TYPE_BS_SR_CODE = 8
 METHOD_TYPE_BS_CRA_CODE = 9
+METHOD_TYPE_GLM_CODE = 19
 METHOD_STATUS_OK = 0
 METHOD_STATUS_NEEDS_REVIEW = 2
-BS_SR_METHOD_TYPE = "B&S Settlement Rate Adjustment"
-BS_CRA_METHOD_TYPE = "B&S Case Reserve Adequacy Adjustment"
+# Display names for ArcRho-supported method types belong to the canonical index
+# contract imported above; these two exist only in ResQ, so migration names them.
+METHOD_TYPE_STOCHASTIC_CONSOLIDATION = "Stochastic Consolidation"
+METHOD_TYPE_GLM = "GLM"
+# Migration-facing aliases for the canonical Berquist-Sherman method-type names.
+BS_SR_METHOD_TYPE = METHOD_TYPE_BS_SR
+BS_CRA_METHOD_TYPE = METHOD_TYPE_BS_CRA
 BS_SR_SOURCE_KIND = "berquist_sherman_sr"
 BS_CRA_SOURCE_KIND = "berquist_sherman_cra"
 BS_SR_JSON_FORMAT = "arcrho-berquist-sherman-sr-method-by-tab-v1"
@@ -32,16 +50,16 @@ BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-method-by-tab-v1"
 BS_SR_FILE_PREFIX = "BSSR@"
 BS_CRA_FILE_PREFIX = "BSCRA@"
 METHOD_TYPE_NAMES = {
-    0: "None",
-    1: "DFM",
-    2: "Bornhuetter Ferguson",
-    3: "Cape Cod",
-    4: "Result Selection",
-    6: "Bootstrap",
-    7: "Stochastic Consolidation",
-    8: BS_SR_METHOD_TYPE,
-    9: BS_CRA_METHOD_TYPE,
-    19: "GLM",
+    METHOD_TYPE_NONE_CODE: METHOD_TYPE_NONE,
+    METHOD_TYPE_DFM_CODE: METHOD_TYPE_DFM,
+    METHOD_TYPE_BF_CODE: METHOD_TYPE_BF,
+    METHOD_TYPE_CAPE_COD_CODE: METHOD_TYPE_CAPE_COD,
+    METHOD_TYPE_RESULT_SELECTION_CODE: METHOD_TYPE_RESULT_SELECTION,
+    METHOD_TYPE_BOOTSTRAP_CODE: METHOD_TYPE_BOOTSTRAP,
+    METHOD_TYPE_STOCHASTIC_CONSOLIDATION_CODE: METHOD_TYPE_STOCHASTIC_CONSOLIDATION,
+    METHOD_TYPE_BS_SR_CODE: BS_SR_METHOD_TYPE,
+    METHOD_TYPE_BS_CRA_CODE: BS_CRA_METHOD_TYPE,
+    METHOD_TYPE_GLM_CODE: METHOD_TYPE_GLM,
 }
 
 
