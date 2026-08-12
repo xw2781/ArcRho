@@ -60,12 +60,18 @@ class PublishMacroLibrarySupportTests(unittest.TestCase):
             self.assertEqual(manifest["release_id"], pointer["release_id"])
             self.assertIn("migration/resq_migration/sync.py", manifest["files"])
             self.assertIn("macros/export_reserving_class_to_resq.py", manifest["files"])
-            self.assertEqual(manifest["sync_macro_version"], "1.0.1")
+            sync_macro_bytes = (
+                _PYTHON_API_ROOT / "macros" / "sync_reserving_class_with_resq.py"
+            ).read_bytes()
+            # The macro header owns its version; the manifest must carry that value
+            # rather than a literal this test would have to be edited to re-pin.
+            self.assertEqual(
+                manifest["sync_macro_version"],
+                publisher.parse_meta_field(sync_macro_bytes.decode("utf-8-sig"), "Version"),
+            )
             self.assertEqual(
                 manifest["sync_macro_sha256"],
-                hashlib.sha256(
-                    (_PYTHON_API_ROOT / "macros" / "sync_reserving_class_with_resq.py").read_bytes()
-                ).hexdigest(),
+                hashlib.sha256(sync_macro_bytes).hexdigest(),
             )
             self.assertTrue(pointer["manifest_sha256"])
 
