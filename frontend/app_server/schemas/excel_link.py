@@ -11,3 +11,4 @@ class ExcelLinkRetargetRequest(BaseModel):
     reserving_class: str
     old_workbook_path: str
     new_workbook_path: str
+    refresh_values: bool = False

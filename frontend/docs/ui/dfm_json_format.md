@@ -16,9 +16,9 @@ Project Instance supplies both identities so the reads can run in parallel. A me
 - `details tab.name` is the method identity and owns the `DFM@<name>.json` filename.
 - `details tab.output dataset` is the output CSV/sidecar identity. A new GUI method defaults it to its method name, but migrated methods may keep a different output name.
 - `details tab.output type` is the output Vector Dataset Type.
-- `details tab.input triangle`, period lengths, decimal places, ratio exclusions, average definitions/order/selections/inputs, literal User Entry values, stored values for any Excel-linked formula, Ratio Basis selection, ultimate-ratio decimals, and ratio-cell notes are DFM-owned state.
+- `details tab.input triangle`, period lengths, decimal places, ratio exclusions, average definitions/order/selections/inputs, literal User Entry values, stored values for any Excel- or dataset-linked formula, Ratio Basis selection, ultimate-ratio decimals, and ratio-cell notes are DFM-owned state.
 - Input/basis snapshots, ratio values, standard-average values, non-Excel formula results, and ultimates are derived state.
-- Method Notes, Audit, status, and `Precedents`/`Dependents` live only in the output sidecar. Ratio-cell notes live only in method JSON.
+- Method Notes, Audit, status, and `Precedents`/`Dependents` live only in the output sidecar. The canonical sidecar precedent projection combines Input Triangle, Ratio Basis, and every case-insensitively unique dataset parsed from Ratios User Entry `inputs`; each source sidecar receives the reverse dependent edge. Ratio-cell notes live only in method JSON.
 
 The output sidecar registers both the Input Triangle and configured Ratio Basis as precedents. A method save cannot silently reuse an output sidecar owned by another method.
 
@@ -43,7 +43,7 @@ The output sidecar registers both the Input Triangle and configured Ratio Basis 
 
 The persisted file does not store `input data triangle mask`. A cell is inside the triangle if and only if it holds a value, so the mask can only restate the values beside it; loading derives it and refits every row back to the full development geometry. A null *inside* a row still marks a value missing inside the triangle, exactly as `ratio values` and `excluded` already store their rows. The in-memory canonical payload keeps the mask and its rectangular geometry, so revisions and calculations are unaffected, and a file written before this change still loads unchanged.
 
-`ratios tab.ratio triangle` stores aligned origin/development labels, calculated `ratio values`, and DFM-owned `excluded` cells. `ratios tab.average formulas` remains the columnar object with `label`, `custom average formula settings`, `selected`, `values`, aligned User Entry `inputs`, and aligned display-only `display inputs`. A `display inputs` cell stores the same formula with dataset coordinate positions replaced by the labels returned when that formula was resolved; calculation, dependency parsing, and editing continue to use `inputs`. `ratios tab.cell notes` remains keyed by visible row label and visible development-column label.
+`ratios tab.ratio triangle` stores aligned origin/development labels, calculated `ratio values`, and DFM-owned `excluded` cells. `ratios tab.average formulas` remains the columnar object with `label`, `custom average formula settings`, `selected`, `values`, aligned User Entry `inputs`, and aligned display-only `display inputs`. A `display inputs` cell stores the same formula with dataset coordinate positions replaced by the labels returned when that formula was resolved; calculation, dependency parsing, and editing continue to use `inputs`, and display metadata never creates a graph edge. `ratios tab.cell notes` remains keyed by visible row label and visible development-column label.
 
 `results tab` stores:
 
@@ -98,7 +98,7 @@ Automatic refresh adds an Audit row only when the ultimate publication changes. 
 
 ## Excel Freshness
 
-Excel links are derived from User Entry `inputs`; there is no separate persisted Links section. DFM hydration never refreshes Excel values. After Ready, one abortable check-only task per applied method revision reads saved workbook values in a deduplicated batch, compares canonical results, and reports stale/unverified counts without changing method state, caches, rendering, JSON, or dirty state.
+Excel links are derived from User Entry `inputs`; there is no separate persisted Links section. Excel-only DFM hydration never refreshes workbook values. After Ready, one abortable check-only task per applied method revision reads saved workbook values in a deduplicated batch, compares canonical results, and reports stale/unverified counts without changing method state, caches, rendering, JSON, or dirty state. Dataset-backed formulas are different: after clean hydration the DFM becomes dirty immediately, resolves their current dataset values in memory, and reports the automatic evaluation in the status bar; only explicit Save persists the refreshed `values` and publication.
 
 Manual refresh from the existing Links or Ratios controls remains mutating. Changed values mark the method dirty and require Save; ignoring a warning keeps the stored values.
 

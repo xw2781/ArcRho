@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260811c"/>
   <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260807b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260811b"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260811c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 
@@ -358,13 +358,13 @@
 
   <script type="module">
     (async () => {
-      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260811f");
+      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260812a");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/method_pages/dfm/dfm_main.js?v=20260807b");
+      await import("/ui/method_pages/dfm/dfm_main.js?v=20260812c");
     })();
   </script>
 </body>

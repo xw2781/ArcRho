@@ -32,6 +32,9 @@ const {
 } = summaryRuntime;
 
 const isUserEntryConfig = (...args) => summaryRuntime.isUserEntryConfig(...args);
+const formatUserEntryFormulaEvaluationValue = (...args) => (
+  summaryRuntime.formatUserEntryFormulaEvaluationValue(...args)
+);
 const getCurrentRatioColumnCount = (...args) => summaryRuntime.getCurrentRatioColumnCount(...args);
 const applyUserEntryReferenceHighlights = (...args) => summaryRuntime.applyUserEntryReferenceHighlights(...args);
 const evaluateSimpleMathExpression = (...args) => summaryRuntime.evaluateSimpleMathExpression(...args);
@@ -185,6 +188,7 @@ export async function refreshAllExcelLinks(options = {}) {
         && !selectedConsumerKeys.has(`${String(cfg.id)}\u001f${col}`)
       ) continue;
       const inputRaw = String(inputs[col] || "").trim();
+      if (options.datasetReferencesOnly && !containsDfmDatasetReference(inputRaw)) continue;
       if (!containsExcelRef(inputRaw) && !containsDfmDatasetReference(inputRaw)) continue;
       const range = parseStandaloneExcelRange(inputRaw);
       if (range) {
@@ -211,8 +215,15 @@ export async function refreshAllExcelLinks(options = {}) {
     refreshGeneration === summaryRuntime._dfmExcelRefreshGeneration
     && !refreshController.signal.aborted
   );
+  const openReviewSuffix = options.source === "dfm-open" && options.reviewNeeded
+    ? " It remains Review Needed."
+    : "";
 
-  setStatusBarText("Refreshing linked Excel values...");
+  setStatusBarText(
+    options.source === "dfm-open"
+      ? `Auto-refreshing linked formula values; this DFM now has unsaved changes.${openReviewSuffix}`
+      : "Refreshing linked formula values...",
+  );
   let linkedCellCount = 0;
   let changedCount = 0;
   let failedCount = 0;
@@ -354,15 +365,31 @@ export async function refreshAllExcelLinks(options = {}) {
     summaryRuntime._onRatioStateMutated();
   }
   if (failedCount > 0) {
-    setStatusBarText(`Linked formula refresh: ${failedCount} cell${failedCount === 1 ? "" : "s"} failed.`);
+    const changedSuffix = changedCount > 0
+      ? ` ${changedCount} cell${changedCount === 1 ? " was" : "s were"} refreshed; save to keep those values.`
+      : (options.source === "dfm-open" ? " This DFM remains dirty; save or cancel before closing." : "");
+    setStatusBarText(
+      `${options.source === "dfm-open" ? "Automatic linked formula evaluation" : "Linked formula refresh"}: `
+      + `${failedCount} cell${failedCount === 1 ? "" : "s"} failed.${changedSuffix}${openReviewSuffix}`,
+    );
     if (!options.silentErrors) {
       showSummaryFormulaBarValidationError("One or more linked formula values could not be refreshed.");
     }
   } else if (changedCount > 0) {
-    const suffix = options.source === "dfm-open" ? " changed from the saved DFM values." : " updated.";
-    setStatusBarText(`Linked formula refresh: ${changedCount} cell${changedCount === 1 ? "" : "s"}${suffix}`);
+    const prefix = options.source === "dfm-open"
+      ? "Auto-refreshed linked formulas"
+      : "Linked formula refresh";
+    const suffix = options.source === "dfm-open"
+      ? " changed from the saved DFM values; save to keep the refreshed values."
+      : " updated.";
+    setStatusBarText(`${prefix}: ${changedCount} cell${changedCount === 1 ? "" : "s"}${suffix}${openReviewSuffix}`);
   } else {
-    setStatusBarText(`Linked formula refresh: ${linkedCellCount} cell${linkedCellCount === 1 ? "" : "s"} unchanged.`);
+    const prefix = options.source === "dfm-open"
+      ? "Auto-refreshed linked formulas; this DFM has unsaved evaluated values"
+      : "Linked formula refresh";
+    setStatusBarText(
+      `${prefix}: ${linkedCellCount} cell${linkedCellCount === 1 ? "" : "s"} unchanged.${openReviewSuffix}`,
+    );
   }
   return { linkedCellCount, changedCount, failedCount };
   } catch (error) {
@@ -652,7 +679,7 @@ function hideSummaryFormulaBar() {
 
 function setUserEntryCellDisplayValue(cell, value) {
   if (!cell) return;
-  cell.textContent = formatRatio(roundRatio(value, 6), getDfmDecimalPlaces());
+  cell.textContent = formatUserEntryFormulaEvaluationValue(value);
   cell.classList.remove("na");
   cell.classList.remove("ratioPlaceholder");
   cell.classList.remove("strike");

@@ -813,6 +813,27 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         for path in kept:
             self.assertTrue(path.exists(), path.name)
 
+    def test_selective_sync_cleanup_does_not_match_dataset_name_to_method_filename(self) -> None:
+        dataset = self.datasets_dir / "Paid DFM@12.csv"
+        sidecar = self.sidecars_dir / "Paid DFM.json"
+        unrelated_method = self.methods_dir / "DFM@Paid DFM.json"
+        dataset.write_text("1\n", encoding="utf-8")
+        sidecar.write_text("{}", encoding="utf-8")
+        unrelated_method.write_text(json.dumps({
+            "details tab": {"name": "Paid DFM", "output dataset": "Paid Ultimate"},
+        }), encoding="utf-8")
+
+        removed, _dirs = self.module.cleanup_target_dataset_artifacts(
+            self.rc_dir,
+            dataset_names=["Paid DFM"],
+            match_method_dependencies=False,
+        )
+
+        self.assertEqual(removed, 2)
+        self.assertFalse(dataset.exists())
+        self.assertFalse(sidecar.exists())
+        self.assertTrue(unrelated_method.exists())
+
     def test_merge_preserves_arcrho_only_and_newer_logical_groups(self) -> None:
         live_rc = self.project_dir / "data" / "live"
         staged_rc = self.project_dir / "data" / "stage"
@@ -939,9 +960,9 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertTrue(self.module._parse_args(["--cleanup-target"]).cleanup_target)
 
     def test_default_rc_path_list_is_hardcoded_from_resq_path_workbook(self) -> None:
-        self.assertEqual(len(self.module.RC_PATH), 12)
+        self.assertEqual(len(self.module.RC_PATH), 17)
         self.assertEqual(self.module.RC_PATH[0], r"PRNJ - PA\PA\NY\Direct Group\BI Total")
-        self.assertEqual(self.module.RC_PATH[-1], r"HPPREF\HO+DF\NJ\Legacy\HOPxCAT")
+        self.assertEqual(self.module.RC_PATH[-1], r"PRNJ - PA\PA\MA\Direct Group\MP+PIP")
 
     def test_configured_rc_paths_accepts_string_or_list(self) -> None:
         self.assertEqual(self.module._configured_rc_paths(r"Auto\PP"), [r"Auto\PP"])
@@ -1040,13 +1061,13 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(counts["triangle_names"], ["Paid Loss", "Adjusted Loss"])
         self.assertEqual(counts["bssr_names"], ["Adjusted Loss"])
         self.assertEqual(reserving_class.triangles.item_calls, 0)
-        self.assertEqual([event["event"] for event in events], ["activity", "activity"])
+        self.assertEqual([event["event"] for event in events], ["inventory"] * 3)
         self.assertIs(
             counts["triangle_items"]["paid loss"],
             reserving_class.triangles.items[0],
         )
 
-    def test_export_unsupported_method_vector_as_dataset(self) -> None:
+    def test_export_unknown_dataset_type_vector_is_skipped(self) -> None:
         self_module = self.module
 
         class DatasetType:
@@ -1102,15 +1123,12 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             verbose=False,
         )
 
-        self.assertEqual((written, errors), (1, 0))
-        self.assertEqual(progress_state, {"completed": 1, "total": 1})
-        sidecar = self.sidecars_dir / "BF Output.json"
-        self.assertTrue(sidecar.exists())
-        payload = json.loads(sidecar.read_text(encoding="utf-8"))
-        self.assertEqual(payload["source_kind"], "input")
-        self.assertEqual(payload["method_type"], "BF")
-        self.assertEqual(payload["method_type_code"], 2)
-        self.assertTrue((self.datasets_dir / "BF Output@12.csv").exists())
+        self.assertEqual((written, errors), (0, 0))
+        self.assertEqual(progress_state, {"completed": 1, "total": 1, "skipped": 1})
+        self.assertFalse((self.sidecars_dir / "BF Output.json").exists())
+        self.assertFalse((self.datasets_dir / "BF Output@12.csv").exists())
+        finished = [event for event in events if event.get("event") == "finish"]
+        self.assertEqual(finished[-1]["status"], "skipped")
 
     def test_export_dfm_method_with_matching_vector_progress_tick(self) -> None:
         self_module = self.module
@@ -1166,46 +1184,21 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             def DFMMethods(self):
                 return self.dfms
 
-        def fake_export_dfm(dfm, _rc_path):
-            return {
-                "json format": self_module.DFM_JSON_FORMAT,
-                "details tab": {
-                    "name": dfm.Name,
-                    "input triangle": "Paid Loss",
-                    "origin length": 12,
-                    "development length": 12,
-                    "output type": "Ultimate",
-                },
-                "data tab": {
-                    "origin labels": ["2020"],
-                    "input data triangle csv path": "",
-                },
-                "results tab": {},
-                "method metadata": {},
-            }
-
-        def fake_export_dfm_ultimate_vector(*_args, **_kwargs):
-            return {
-                "name": "Ultimate",
-                "dataset_type": "DFM Ultimate",
-                "data_format": 1,
-                "method_type": "DFM",
-                "method_type_code": self_module.METHOD_TYPE_DFM_CODE,
-                "origin_length": 12,
-                "development_length": 12,
-                "origin_count": 1,
-                "development_count": 1,
-                "origin_labels": ["2020"],
-                "development_labels": ["Ultimate"],
-                "values": [[123.0]],
+        def fake_export_dfm_output(_dfm, _rc_path, rc_dir, **_kwargs):
+            (rc_dir / "datasets" / "Ultimate@12.csv").write_text("123\n", encoding="utf-8")
+            (rc_dir / "methods" / "DFM@Paid DFM.json").write_text("{}\n", encoding="utf-8")
+            (rc_dir / "sidecars" / "Ultimate.json").write_text(json.dumps({
+                "source_kind": "dfm",
                 "method_name": "Paid DFM",
-            }
+                "period_length": 12,
+            }), encoding="utf-8")
+            return "Ultimate", "OK", False
 
-        original_export_dfm = self.module.export_dfm
-        original_export_dfm_ultimate_vector = self.module.export_dfm_ultimate_vector
-        try:
-            self.module.export_dfm = fake_export_dfm
-            self.module.export_dfm_ultimate_vector = fake_export_dfm_ultimate_vector
+        with mock.patch.object(
+            self.module,
+            "_export_dfm_output_dataset",
+            side_effect=fake_export_dfm_output,
+        ):
             progress_state = {"completed": 0, "total": 1}
             method_counts = {"dfms_written": 0}
             events = []
@@ -1222,9 +1215,6 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
                 method_counts=method_counts,
                 verbose=False,
             )
-        finally:
-            self.module.export_dfm = original_export_dfm
-            self.module.export_dfm_ultimate_vector = original_export_dfm_ultimate_vector
 
         self.assertEqual((written, errors), (1, 0))
         self.assertEqual(progress_state, {"completed": 1, "total": 1})
@@ -1267,35 +1257,14 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             def DFMMethods(self):
                 return self.collection
 
-        def fake_export_dfm(dfm, _rc_path):
-            return {
-                "details tab": {
-                    "name": dfm.Name,
-                    "input triangle": "Paid Loss",
-                    "origin length": 12,
-                    "development length": 12,
-                    "output type": "Ultimate",
-                },
-                "data tab": {
-                    "origin labels": ["2020"],
-                    "input data triangle csv path": "",
-                },
-                "results tab": {},
-            }
+        def fake_export_dfm_output(dfm, _rc_path, _rc_dir, **_kwargs):
+            return f"{dfm.Name} Ultimate", "OK", False
 
-        def fake_export_dfm_ultimate_vector(*_args, **_kwargs):
-            return {"name": "Ultimate"}
-
-        def fake_write_dfm_ultimate_vector_export(*_args, **_kwargs):
-            return self.datasets_dir / "Ultimate@12.csv"
-
-        original_export_dfm = self.module.export_dfm
-        original_export_dfm_ultimate_vector = self.module.export_dfm_ultimate_vector
-        original_write_dfm_ultimate_vector_export = self.module.write_dfm_ultimate_vector_export
-        try:
-            self.module.export_dfm = fake_export_dfm
-            self.module.export_dfm_ultimate_vector = fake_export_dfm_ultimate_vector
-            self.module.write_dfm_ultimate_vector_export = fake_write_dfm_ultimate_vector_export
+        with mock.patch.object(
+            self.module,
+            "_export_dfm_output_dataset",
+            side_effect=fake_export_dfm_output,
+        ):
             progress_state = {"completed": 4, "total": 4, "count_methods": False}
             events = []
 
@@ -1308,17 +1277,16 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
                 dfm_names=["Paid DFM", "Reported DFM"],
                 verbose=False,
             )
-        finally:
-            self.module.export_dfm = original_export_dfm
-            self.module.export_dfm_ultimate_vector = original_export_dfm_ultimate_vector
-            self.module.write_dfm_ultimate_vector_export = original_write_dfm_ultimate_vector_export
 
         self.assertEqual((written, errors), (2, 0))
         self.assertEqual(progress_state, {"completed": 4, "total": 4, "count_methods": False})
         finished = [event for event in events if event.get("event") == "method" and event.get("status") == "success"]
         self.assertEqual([event["completed"] for event in finished], [4, 4])
         self.assertEqual([event["total"] for event in finished], [4, 4])
-        self.assertEqual([event["dataset_name"] for event in finished], ["Ultimate", "Ultimate"])
+        self.assertEqual(
+            [event["dataset_name"] for event in finished],
+            ["Paid DFM Ultimate", "Reported DFM Ultimate"],
+        )
 
 
 if __name__ == "__main__":

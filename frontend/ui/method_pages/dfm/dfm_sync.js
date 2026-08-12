@@ -18,7 +18,7 @@ import {
   ensureDefaultSummarySelectionForColumns,
   isRatiosTabVisible,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { renderRatioTable, setNotifyRatioStateChanged } from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260805a";
+import { renderRatioTable, setNotifyRatioStateChanged } from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260812b";
 import { renderResultsTable } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260805a";
 
 function getRatioSyncPayload() {

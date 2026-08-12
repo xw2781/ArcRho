@@ -242,3 +242,18 @@ test("a non-draft dataset with no changes still skips the sidecar save", async (
   assert.equal(result.ok, true);
   assert.equal(runtime.sidecarSaves.length, 0);
 });
+
+test("a non-draft refresh marker saves the durable grid even when values are unchanged", async () => {
+  installFakeDom();
+  const runtime = createRuntime({ isProjectInstanceDraft: false, model: draftModel() });
+  runtime.currentDatasetSidecarSourceKind = "input";
+  runtime.currentDatasetSidecarDataFormat = "Triangle";
+  runtime.state.dirty.set("0,0", runtime.state.model.values[0][0]);
+
+  const result = await runtime.saveDatasetChanges();
+
+  assert.equal(result.ok, true);
+  assert.equal(runtime.sidecarSaves.length, 1);
+  assert.deepEqual(runtime.sidecarSaves[0].values, [[0, 0], [0, null]]);
+  assert.equal(runtime.state.dirty.size, 0);
+});

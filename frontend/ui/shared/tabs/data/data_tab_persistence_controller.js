@@ -390,7 +390,10 @@ export function registerDataTabPersistenceController(runtime) {
         balancedActions: true,
       });
       if (choice === "refresh" && isCurrent()) {
-        await refreshDatasetExternalLinks({ isCurrent });
+        await refreshDatasetExternalLinks({
+          isCurrent,
+          markRefreshedCellsDirty: true,
+        });
       }
     }, 0);
   }
@@ -406,7 +409,10 @@ export function registerDataTabPersistenceController(runtime) {
     ) {
       return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
     }
-    const result = await runtime.datasetExternalLinks.refreshAll(options?.ids ?? null);
+    const result = await runtime.datasetExternalLinks.refreshAll(
+      options?.ids ?? null,
+      { markRefreshedCellsDirty: options?.markRefreshedCellsDirty === true },
+    );
     if (!isCurrent() || result?.stale || result?.aborted) return result;
     if (result.changedCount > 0) {
       renderTable();
@@ -414,6 +420,7 @@ export function registerDataTabPersistenceController(runtime) {
       applyGridSelectionFromState();
     }
     getDataTabLinksController()?.refresh?.();
+    updateDatasetSaveUi();
     if (result.failedCount > 0) {
       window.setTimeout(() => {
         if (isCurrent()) {

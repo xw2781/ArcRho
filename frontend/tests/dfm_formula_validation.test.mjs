@@ -15,19 +15,23 @@ const ratiosTabSource = await readFile(
 const validation = await import(`data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`);
 const summaryFormatterSource = summarySource
   .replace(
-    'import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";',
-    "const attachArcrhoTooltip = () => {};",
+    'import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";',
+    "const attachArcrhoTooltip = (target, text) => { target.tooltipText = text; };",
   )
   .replace(
     'import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260811a";',
     "const installDfmDatasetAutocomplete = () => {};",
   )
   .replace(
+    'import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260811a";',
+    'const resolveDfmDatasetReferencesInFormulaDetailed = async (formula) => { globalThis.__dfmTooltipResolutionCalls = (globalThis.__dfmTooltipResolutionCalls || 0) + 1; globalThis.__dfmTooltipReferenceFormula = formula; return { resolvedFormula: "=1.00264" }; };',
+  )
+  .replace(
     `import {
   registerSummaryFunctions,
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";`,
-    "const summaryRuntime = {}; const registerSummaryFunctions = (functions) => Object.assign(summaryRuntime, functions);",
+    'const summaryRuntime = { formatUserEntryFormulaEvaluationValue: (value) => Number(value).toFixed(4) }; const registerSummaryFunctions = (functions) => Object.assign(summaryRuntime, functions);',
   )
   .concat("\nexport { tokenizeFormula, formatFormulaText, openDfmFormulaDataset, renderFormulaBarDisplay, updateFormulaBarDisplayMode };\n");
 const summaryFormatter = await import(
@@ -299,7 +303,7 @@ test("formula display formatting preserves all bracket contents verbatim", () =>
   );
 });
 
-test("non-editing formula display renders average formulas and datasets as reference pills", () => {
+test("non-editing formula display renders average formulas and datasets as reference pills", async () => {
   class FakeElement {
     constructor(tagName) {
       this.tagName = String(tagName || "").toUpperCase();
@@ -368,6 +372,7 @@ test("non-editing formula display renders average formulas and datasets as refer
       "Open dataset Accounting Cutoff at 2025 Q4 in Dataset Viewer",
     );
     const renderedText = display.children.map((child) => child.textContent).join("");
+    assert.match(renderedText, /^= Simple - 2/u);
     assert.match(renderedText, /Accounting Cutoff @ 2025 Q4/u);
     assert.doesNotMatch(renderedText, /\[2025 Q4\]/u);
     assert.doesNotMatch(renderedText, /\[-1\]/u);
@@ -391,6 +396,12 @@ test("non-editing formula display renders average formulas and datasets as refer
     );
     assert.doesNotMatch(modeDisplay.children.map((child) => child.textContent).join(""), /\[2025 Q4\]/u);
     assert.doesNotMatch(modeDisplay.children.map((child) => child.textContent).join(""), /\[-1\]/u);
+    const modePill = modeDisplay.children.find((child) => child.className === "fmtDatasetRef");
+    assert.equal(typeof modePill.tooltipText, "function");
+    assert.equal(await modePill.tooltipText(), "1.0026");
+    assert.equal(await modePill.tooltipText(), "1.0026");
+    assert.equal(globalThis.__dfmTooltipResolutionCalls, 1);
+    assert.equal(globalThis.__dfmTooltipReferenceFormula, "=[Accounting Cutoff][-1]");
 
     const excelDisplay = new FakeElement("div");
     summaryFormatter.renderFormulaBarDisplay(
@@ -418,5 +429,7 @@ test("non-editing formula display renders average formulas and datasets as refer
     else globalThis.document = priorDocument;
     if (priorWindow === undefined) delete globalThis.window;
     else globalThis.window = priorWindow;
+    delete globalThis.__dfmTooltipResolutionCalls;
+    delete globalThis.__dfmTooltipReferenceFormula;
   }
 });

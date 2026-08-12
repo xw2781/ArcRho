@@ -1,9 +1,9 @@
-import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260807a";
+import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260812b";
 import {
   breakDfmExternalLinks,
   getDfmExternalLinkRecords,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260807a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260812c";
 
 let dfmLinksController = null;
 let linksChangedListener = null;

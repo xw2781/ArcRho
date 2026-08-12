@@ -762,6 +762,14 @@ function buildTextDiff(oldText, newText) {
 }
 
 function renderDiffTokens(tokens, flags, className) {
+  const isWhitespaceToken = (token) => /^\s+$/.test(String(token || ""));
+  const wordHighlighted = tokens.map((token, index) => !!flags[index] && !isWhitespaceToken(token));
+  // Whitespace between two highlighted words joins the highlight so a changed
+  // phrase renders as one connected fill instead of per-word patches.
+  const effective = tokens.map((token, index) => {
+    if (!isWhitespaceToken(token)) return wordHighlighted[index];
+    return !!(wordHighlighted[index - 1] && wordHighlighted[index + 1]);
+  });
   let html = "";
   let buffer = "";
   let highlighted = false;
@@ -772,11 +780,9 @@ function renderDiffTokens(tokens, flags, className) {
     buffer = "";
   };
   tokens.forEach((token, index) => {
-    const isWhitespace = /^\s+$/.test(String(token || ""));
-    const nextHighlighted = !!flags[index] && !isWhitespace;
-    if (nextHighlighted !== highlighted) {
+    if (effective[index] !== highlighted) {
       flush();
-      highlighted = nextHighlighted;
+      highlighted = effective[index];
     }
     buffer += token;
   });

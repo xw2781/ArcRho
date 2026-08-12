@@ -672,7 +672,8 @@ export function createDatasetExternalLinksController({
     };
   }
 
-  async function refreshAll(ids = null) {
+  async function refreshAll(ids = null, options = {}) {
+    const markRefreshedCellsDirty = options?.markRefreshedCellsDirty === true;
     const requestedIds = Array.isArray(ids)
       ? new Set(ids.map((id) => String(id || "")).filter(Boolean))
       : null;
@@ -760,9 +761,12 @@ export function createDatasetExternalLinksController({
       task.link.target_cells.forEach((target, index) => {
         const value = nextValues[index];
         const previous = state.model.values[target.row][target.column];
-        if (!valuesEqual(previous, value)) {
+        const changed = !valuesEqual(previous, value);
+        if (changed) {
           changedCount += 1;
           state.model.values[target.row][target.column] = value;
+        }
+        if (changed || markRefreshedCellsDirty) {
           state.dirty.set(targetCellKey(target), value);
         }
       });

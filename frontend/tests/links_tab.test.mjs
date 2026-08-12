@@ -26,14 +26,24 @@ const contextMenuStubSource = `
   }
 `;
 const contextMenuStubUrl = `data:text/javascript;base64,${Buffer.from(contextMenuStubSource).toString("base64")}`;
+const openPathStubSource = `
+  export function openPathThroughDesktopHost() {
+    return Promise.resolve({ ok: true });
+  }
+`;
+const openPathStubUrl = `data:text/javascript;base64,${Buffer.from(openPathStubSource).toString("base64")}`;
 const testableComponentSource = componentSource
   .replace(
-    '"/ui/shared/components/tooltip/tooltip.js?v=20260715a"',
+    '"/ui/shared/components/tooltip/tooltip.js?v=20260812a"',
     JSON.stringify(tooltipStubUrl),
   )
   .replace(
     '"/ui/shared/components/context_menu/context_menu.js"',
     JSON.stringify(contextMenuStubUrl),
+  )
+  .replace(
+    '"/ui/shared/integrations/open_path.js?v=20260812a"',
+    JSON.stringify(openPathStubUrl),
   );
 const linksTab = await import(
   `data:text/javascript;base64,${Buffer.from(testableComponentSource).toString("base64")}`
@@ -291,6 +301,7 @@ function setup(options = {}) {
     getLinks: options.getLinks || (() => []),
     onRefreshLinks: options.onRefreshLinks || (() => ({ ok: true })),
     onBreakLinks: options.onBreakLinks || (() => ({ ok: true })),
+    onOpenWorkbook: options.onOpenWorkbook || (() => ({ ok: true })),
     onStatus: options.onStatus,
   });
   return { documentRef, container, controller };
@@ -330,7 +341,14 @@ test("renders no toolbar and offers the bulk actions through the table context m
   assert.equal(isMenuOpen(documentRef), false);
   assert.deepEqual(
     byTag(menu, "button").map(renderedText),
-    ["Refresh selected", "Break selected", "Refresh all", "Break all"],
+    [
+      "Open workbook",
+      "Open workbook as Read-Only",
+      "Refresh selected",
+      "Break selected",
+      "Refresh all",
+      "Break all",
+    ],
   );
 
   // Nothing selected: only the all-scope entries, and no separator above them.
@@ -382,7 +400,7 @@ test("plain, Ctrl, Meta, and Shift clicks provide accessible multi-row selection
     visibleMenuLabels(documentRef),
     ["Refresh selected", "Break selected", "Refresh all", "Break all"],
   );
-  assert.equal(byClass(menuOf(documentRef), "ctx-sep")[0].hidden, false);
+  assert.equal(byClass(menuOf(documentRef), "ctx-sep")[1].hidden, false);
 
   await rows[2].click({ ctrlKey: true });
   assert.deepEqual(rows.map((row) => row.getAttribute("aria-selected")), ["true", "false", "true", "false"]);
@@ -462,6 +480,44 @@ test("right-clicking a row keeps an existing selection but claims an unselected 
   );
   await menuItem(documentRef, "refresh-selected").click();
   assert.deepEqual(refreshedRecords.map((record) => record.id), ["link-4"]);
+});
+
+test("row context menu opens its workbook normally or read-only from the top entries", async () => {
+  const opened = [];
+  const statuses = [];
+  const { documentRef, container, controller } = setup({
+    getLinks: () => sampleLinks,
+    onOpenWorkbook: (path, options) => {
+      opened.push({ path, ...options });
+      return { ok: true };
+    },
+    onStatus: (message, tone) => statuses.push({ message, tone }),
+  });
+  await controller.refresh();
+
+  const rows = byTag(container.children[0], "tbody")[0].children;
+  await rows[1].dispatch("contextmenu", { clientX: 12, clientY: 24 });
+  assert.deepEqual(visibleMenuLabels(documentRef), [
+    "Open workbook",
+    "Open workbook as Read-Only",
+    "Refresh selected",
+    "Break selected",
+    "Refresh all",
+    "Break all",
+  ]);
+  await menuItem(documentRef, "open-workbook").click();
+
+  await rows[1].dispatch("contextmenu", { clientX: 12, clientY: 24 });
+  await menuItem(documentRef, "open-workbook-read-only").click();
+
+  assert.deepEqual(opened, [
+    { path: sampleLinks[1].workbookPath, readOnly: false },
+    { path: sampleLinks[1].workbookPath, readOnly: true },
+  ]);
+  assert.deepEqual(statuses, [
+    { message: "Workbook opened.", tone: "success" },
+    { message: "Workbook opened read-only.", tone: "success" },
+  ]);
 });
 
 test("selection is retained by link id and pruned when records disappear", async () => {
@@ -661,7 +717,7 @@ test("persistent warnings survive link refreshes until explicitly cleared", asyn
   assert.equal(state.hidden, true);
 });
 
-test("shared styling drops the toolbar, keeps every row border, and separates link text from array outlines", () => {
+test("shared styling drops the toolbar, keeps every row border, and leaves linked cell text neutral", () => {
   assert.doesNotMatch(stylesheetSource, /arExternalLinksToolbar/u);
   // The last row must keep its bottom rule so the table does not look unfinished
   // when the rows are shorter than the framed scroll host.
@@ -674,10 +730,7 @@ test("shared styling drops the toolbar, keeps every row border, and separates li
   assert.match(stylesheetSource, /position:\s*sticky;/u);
   assert.match(stylesheetSource, /height:\s*31px;/u);
   assert.match(stylesheetSource, /tbody tr\[aria-selected="true"\]/u);
-  const linkedCellRule = stylesheetSource.match(/td\.arExternalLinkCell\s*\{([^}]*)\}/u)?.[1] || "";
-  assert.match(linkedCellRule, /color:\s*#166534;/u);
-  assert.match(linkedCellRule, /font-weight:\s*700;/u);
-  assert.doesNotMatch(linkedCellRule, /box-shadow|background|border|position/u);
+  assert.doesNotMatch(stylesheetSource, /td\.arExternalLinkCell\s*\{/u);
   assert.doesNotMatch(stylesheetSource, /td\.arExternalLinkAnchor::after/u);
   const arrayRule = spreadsheetStylesheetSource.match(
     /\.arSpreadsheetTable td\.arArrayFormulaCell\s*\{([^}]*)\}/u,

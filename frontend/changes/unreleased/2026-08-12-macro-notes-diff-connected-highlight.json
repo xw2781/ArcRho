@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Macro Notes diff previews highlight changed phrases as one connected fill instead of per-word patches."
+}

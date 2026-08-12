@@ -73,22 +73,60 @@ function showTooltip(doc, target, text) {
 }
 
 export function attachArcrhoTooltip(target, rawText, options = {}) {
-  const text = String(rawText || "").trim();
+  const textProvider = typeof rawText === "function" ? rawText : null;
+  const text = textProvider ? "" : String(rawText || "").trim();
   const doc = options.document || target?.ownerDocument || document;
-  if (!target || !text || !doc?.body) return;
+  if (!target || (!textProvider && !text) || !doc?.body) return;
   target.removeAttribute("title");
-  target.setAttribute("aria-description", text);
+  if (text) target.setAttribute("aria-description", text);
+
+  let generation = 0;
+  const showResolvedTooltip = (requestGeneration) => {
+    let providedText;
+    try {
+      providedText = textProvider ? textProvider() : text;
+    } catch (_error) {
+      return;
+    }
+    Promise.resolve(providedText).then((value) => {
+      const resolvedText = String(value ?? "").trim();
+      const state = TOOLTIP_STATES.get(doc);
+      if (
+        requestGeneration !== generation
+        || state?.anchor !== target
+        || !target.isConnected
+        || !resolvedText
+      ) return;
+      target.setAttribute("aria-description", resolvedText);
+      showTooltip(doc, target, resolvedText);
+    }).catch(() => {});
+  };
 
   const schedule = () => {
+    generation += 1;
+    const requestGeneration = generation;
     hideTooltip(doc);
     const state = getTooltipState(doc);
     state.anchor = target;
     const view = doc.defaultView || window;
-    state.showTimer = view.setTimeout(() => showTooltip(doc, target, text), TOOLTIP_DELAY_MS);
+    state.showTimer = view.setTimeout(
+      () => showResolvedTooltip(requestGeneration),
+      TOOLTIP_DELAY_MS,
+    );
   };
   target.addEventListener("mouseenter", schedule);
-  target.addEventListener("mouseleave", () => hideTooltip(doc, target));
-  target.addEventListener("mousedown", () => hideTooltip(doc, target));
-  target.addEventListener("focus", () => showTooltip(doc, target, text));
-  target.addEventListener("blur", () => hideTooltip(doc, target));
+  const cancel = () => {
+    generation += 1;
+    hideTooltip(doc, target);
+  };
+  target.addEventListener("mouseleave", cancel);
+  target.addEventListener("mousedown", cancel);
+  target.addEventListener("focus", () => {
+    generation += 1;
+    const requestGeneration = generation;
+    hideTooltip(doc);
+    getTooltipState(doc).anchor = target;
+    showResolvedTooltip(requestGeneration);
+  });
+  target.addEventListener("blur", cancel);
 }

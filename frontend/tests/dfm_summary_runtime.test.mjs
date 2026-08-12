@@ -150,6 +150,9 @@ test("rebuilt DFM summary rows remain live through the extracted runtime", async
     assert.deepEqual(modelModule.buildAverageSelectionPayload().formulas, ["Second"]);
     assert.equal(runtimeModule.summaryRuntime.summaryRowMap.has("first"), false);
     assert.equal(runtimeModule.summaryRuntime.summaryRowMap.get("second")?.label, "Second");
+    assert.equal(modelModule.formatUserEntryFormulaEvaluationValue(1.2), "1.2000");
+    assert.equal(modelModule.formatUserEntryFormulaEvaluationValue(1.23456), "1.2346");
+    assert.equal(modelModule.formatUserEntryFormulaEvaluationValue("not-a-number"), "");
   } finally {
     globalThis.window = previousWindow;
     globalThis.__dfmSummaryRuntimeRows = previousRows;

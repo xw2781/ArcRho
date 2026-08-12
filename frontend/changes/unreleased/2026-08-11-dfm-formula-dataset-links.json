@@ -4,6 +4,7 @@
   "audience": "user",
   "summary": "DFM Ratios formulas now show each dataset and resolved coordinate together in one compact reference pill that opens the dataset in Dataset Viewer.",
   "details": [
-    "Rendered dataset pills use the Dataset @ Coordinate style, show labels instead of numeric positions such as [-1], and preserve the original relative formula for editing."
+    "Rendered dataset pills use the Dataset @ Coordinate style, show labels instead of numeric positions such as [-1], and preserve the original relative formula for editing.",
+    "Hovering or keyboard-focusing a dataset pill shows the referenced cell's actual numeric value instead of a navigation hint."
   ]
 }

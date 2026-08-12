@@ -85,6 +85,24 @@
 
 .pi-excel-links-hint { flex: 0 0 auto; color: #667085; line-height: 15px; }
 
+.pi-excel-links-refresh-option {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pi-excel-links-refresh-option input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #2b6df6;
+  cursor: pointer;
+}
+
 .pi-excel-links-table-wrap {
   min-height: 96px;
   max-height: 340px;

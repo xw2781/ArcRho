@@ -143,6 +143,103 @@ class ResqDfmV2Tests(unittest.TestCase):
             local["method metadata"]["last modified"],
         )
 
+    def _publish_dfm_authority_fixture(
+        self,
+        *,
+        preserve_local_owned_state: bool | None,
+    ) -> tuple[dict, object]:
+        remote = recalculate_dfm_method(
+            _owned_payload(),
+            input_snapshot=_input(),
+            ratio_basis_snapshot=_basis(),
+            timestamp="resq-modified",
+        )
+        remote["method metadata"]["last modified"] = "resq-modified"
+        remote["method metadata"]["data refreshed"] = "resq-modified"
+        local = deepcopy(remote)
+        local["method metadata"]["last modified"] = "arcrho-modified"
+        captured: list[dict] = []
+
+        def capture_publication(_ultimate, method_payload, _rc_path, rc_dir):
+            captured.append(deepcopy(method_payload))
+            sidecar_path = rc_dir / "sidecars" / "Paid Selected.json"
+            return (
+                rc_dir / "datasets" / "Paid Selected@12.csv",
+                {sidecar_path: b"{}"},
+                sidecar_path,
+            )
+
+        dfm = types.SimpleNamespace(
+            Name="Paid DFM",
+            OutputVector=types.SimpleNamespace(
+                Name="Paid Selected",
+                DatasetType=types.SimpleNamespace(Name="Paid Ultimate"),
+            ),
+        )
+        kwargs = {}
+        if preserve_local_owned_state is not None:
+            kwargs["preserve_local_owned_state"] = preserve_local_owned_state
+        with (
+            patch.object(migration_dfm, "export_dfm", return_value=deepcopy(remote)),
+            patch.object(migration_dfm, "_safe_read_json", return_value=local),
+            patch.object(
+                migration_dfm,
+                "export_dfm_ultimate_vector",
+                return_value={"name": "Paid Selected", "dataset_type": "Paid Ultimate"},
+            ),
+            patch.object(migration_dfm, "_is_known_dataset_type", return_value=True),
+            patch.object(
+                migration_dfm,
+                "build_dfm_ultimate_publication",
+                side_effect=capture_publication,
+            ),
+            patch.object(migration_dfm, "publish_dfm_artifacts"),
+            patch.object(
+                migration_dfm,
+                "_preserve_local_dfm_data",
+                wraps=migration_dfm._preserve_local_dfm_data,
+            ) as preserve,
+        ):
+            migration_dfm.export_dfm_output_dataset(
+                dfm,
+                r"Auto\PP",
+                self.rc_dir,
+                project_name="Demo",
+                project_data_dir=self.rc_dir,
+                method_data_dir="methods",
+                debug_log=lambda *_args, **_kwargs: None,
+                log=lambda *_args, **_kwargs: None,
+                **kwargs,
+            )
+        self.assertEqual(len(captured), 1)
+        return captured[0], preserve
+
+    def test_dfm_publication_preserves_local_owned_state_by_default(self) -> None:
+        published, preserve = self._publish_dfm_authority_fixture(
+            preserve_local_owned_state=None,
+        )
+
+        preserve.assert_called_once()
+        self.assertEqual(
+            published["method metadata"]["last modified"],
+            "arcrho-modified",
+        )
+
+    def test_dfm_publication_can_keep_resq_authoritative_timestamp(self) -> None:
+        published, preserve = self._publish_dfm_authority_fixture(
+            preserve_local_owned_state=False,
+        )
+
+        preserve.assert_not_called()
+        self.assertEqual(
+            published["method metadata"]["last modified"],
+            "resq-modified",
+        )
+        self.assertEqual(
+            published["method metadata"]["data refreshed"],
+            "resq-modified",
+        )
+
     def test_dfm_ratio_basis_reads_values_by_index_at_dfm_shape(self) -> None:
         class _Basis:
             Name = "Basis DFM"
@@ -218,8 +315,11 @@ class ResqDfmV2Tests(unittest.TestCase):
         self.assertEqual(method["ratios tab"]["average formulas"]["values"][row], [1.8, 1.7, 1.0])
 
     def test_migration_sidecar_exactly_matches_canonical_projection(self) -> None:
+        owned = _owned_payload()
+        owned["ratios tab"]["average formulas"]["inputs"][1][0] = \
+            '=[Accounting Cutoff][-1]'
         method = recalculate_dfm_method(
-            _owned_payload(), input_snapshot=_input(), ratio_basis_snapshot=_basis(), timestamp="method-time"
+            owned, input_snapshot=_input(), ratio_basis_snapshot=_basis(), timestamp="method-time"
         )
         existing = {
             "notes": "Method Notes",
@@ -255,6 +355,14 @@ class ResqDfmV2Tests(unittest.TestCase):
             append_audit=True,
         )
         self.assertEqual(actual, expected)
+        self.assertEqual(
+            actual["Precedents"],
+            [
+                {"dataset_type_name": "Paid Loss"},
+                {"dataset_type_name": "Premium"},
+                {"dataset_type_name": "Accounting Cutoff"},
+            ],
+        )
 
     def test_full_method_payload_parity_across_app_public_and_migration_adapters(self) -> None:
         class _Project:

@@ -1,5 +1,5 @@
 const STYLE_ID = "arcrho-path-tree-picker-style";
-import { attachArcrhoTooltip, ensureArcrhoTooltipStyles } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+import { attachArcrhoTooltip, ensureArcrhoTooltipStyles } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 
 const SHARED_SCROLLBAR_STYLE_ID = "arcrho-shared-scrollbar-style";
 const TREE_INDENT_PX = 10;

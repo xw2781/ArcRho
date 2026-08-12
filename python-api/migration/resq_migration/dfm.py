@@ -367,7 +367,32 @@ def _get_ratio_value(dfm, i: int, j: int) -> float | None:
         return None
 
 
-def _ratio_basis_snapshot(dfm, name: str, origin_labels: list[str], rc_path: str) -> dict:
+def _strict_dfm_failure(strict: bool, message: str, exc: Exception | None = None) -> None:
+    if not strict:
+        return
+    error = RuntimeError(message)
+    if exc is None:
+        raise error
+    raise error from exc
+
+
+def _dfm_attr(source, name: str, default, *, strict: bool, context: str):
+    if not strict:
+        return _safe_attr(source, name, default)
+    try:
+        return getattr(source, name)
+    except Exception as exc:
+        _strict_dfm_failure(strict, f"Could not read ResQ DFM {context}.{name}.", exc)
+
+
+def _ratio_basis_snapshot(
+    dfm,
+    name: str,
+    origin_labels: list[str],
+    rc_path: str,
+    *,
+    strict: bool = False,
+) -> dict:
     if not name:
         return {}
     basis = _safe_attr(dfm, "SummaryRatioBasis", None)
@@ -382,11 +407,20 @@ def _ratio_basis_snapshot(dfm, name: str, origin_labels: list[str], rc_path: str
     except Exception as exc:
         raise ValueError(f"Unable to read DFM Ratio Basis dataset {name!r} from ResQ: {exc}") from exc
 
-    dataset_type_obj = _safe_attr(basis, "DatasetType", None)
-    dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
+    dataset_type_obj = _dfm_attr(
+        basis, "DatasetType", None, strict=strict, context="ratio-basis dataset"
+    )
+    dataset_type = _normalize_import_name(
+        _dfm_attr(
+            dataset_type_obj,
+            "Name",
+            "",
+            strict=strict,
+            context="ratio-basis Dataset Type",
+        )
+    ) or name
     revision = _iso_or_text(
-        _safe_attr(basis, "Modified", "")
-        or _safe_attr(_safe_attr(basis, "OutputVector", None), "Modified", "")
+        _dfm_attr(basis, "Modified", "", strict=strict, context="ratio-basis dataset")
     )
     return {
         "name": name,
@@ -405,36 +439,64 @@ def export_dfm(
     *,
     max_average_formula_probe: int = MAX_AVERAGE_FORMULA_PROBE,
     ratio_basis_snapshot: dict | None = None,
+    strict: bool = False,
 ) -> dict:
     """Extract all DFM data from a ResQ DFM COM object and return a JSON-ready dict."""
     del project_data_dir
-    name = _normalize_import_name(dfm.Name)
-    input_tri_name = _normalize_import_name(dfm.InputTriangle.Name)
-    output_vec_name = _normalize_import_name(dfm.OutputVector.Name)
-    output_dataset_type_obj = _safe_attr(dfm.OutputVector, "DatasetType", None)
-    output_dataset_type = _normalize_import_name(_safe_attr(output_dataset_type_obj, "Name", "")) or output_vec_name
-    output_category = _normalize_import_name(_safe_attr(_safe_attr(output_dataset_type_obj, "Category", None), "Name", ""))
-    origin_length: int = dfm.OriginLength
-    dev_length: int = dfm.DevelopmentLength
-    decimal_places: int = dfm.RatioDecimalPlaces
+    name = _normalize_import_name(_dfm_attr(dfm, "Name", "", strict=strict, context="method"))
+    input_triangle = _dfm_attr(dfm, "InputTriangle", None, strict=strict, context=name or "method")
+    output_vector = _dfm_attr(dfm, "OutputVector", None, strict=strict, context=name or "method")
+    input_tri_name = _normalize_import_name(
+        _dfm_attr(input_triangle, "Name", "", strict=strict, context="input triangle")
+    )
+    output_vec_name = _normalize_import_name(
+        _dfm_attr(output_vector, "Name", "", strict=strict, context="output vector")
+    )
+    output_dataset_type_obj = _dfm_attr(
+        output_vector, "DatasetType", None, strict=strict, context="output vector"
+    )
+    output_dataset_type = _normalize_import_name(
+        _dfm_attr(output_dataset_type_obj, "Name", "", strict=strict, context="output Dataset Type")
+    ) or output_vec_name
+    output_category_obj = _dfm_attr(
+        output_dataset_type_obj, "Category", None, strict=strict, context="output Dataset Type"
+    )
+    output_category = (
+        _normalize_import_name(
+            _dfm_attr(output_category_obj, "Name", "", strict=strict, context="output category")
+        )
+        if output_category_obj is not None
+        else ""
+    )
+    origin_length = int(_dfm_attr(dfm, "OriginLength", 0, strict=strict, context=name or "method"))
+    dev_length = int(_dfm_attr(dfm, "DevelopmentLength", 0, strict=strict, context=name or "method"))
+    decimal_places = int(_dfm_attr(dfm, "RatioDecimalPlaces", 0, strict=strict, context=name or "method"))
 
     try:
         ultimate_dp: int = dfm.SummaryRatioDecimalPlaces
-    except Exception:
+    except Exception as exc:
+        _strict_dfm_failure(strict, "Could not read the ResQ DFM SummaryRatioDecimalPlaces.", exc)
         ultimate_dp = 2
 
     try:
-        ratio_basis = _normalize_import_name(dfm.SummaryRatioBasis.Name)
-    except Exception:
+        ratio_basis_object = dfm.SummaryRatioBasis
+    except Exception as exc:
+        _strict_dfm_failure(strict, "Could not read the ResQ DFM SummaryRatioBasis.", exc)
+        ratio_basis_object = None
+    try:
+        ratio_basis = _normalize_import_name(ratio_basis_object.Name) if ratio_basis_object is not None else ""
+    except Exception as exc:
+        _strict_dfm_failure(strict, "Could not read the ResQ DFM SummaryRatioBasis name.", exc)
         ratio_basis = ""
 
     try:
         modified = dfm.OutputVector.Modified
         last_modified = _iso_or_text(modified)
-    except Exception:
+    except Exception as exc:
+        _strict_dfm_failure(strict, "Could not read the ResQ DFM output Modified timestamp.", exc)
         last_modified = datetime.now(timezone.utc).astimezone().isoformat()
 
-    input_payload = export_triangle(dfm.InputTriangle)
+    input_payload = export_triangle(input_triangle, strict=strict)
     origin_labels = [str(item) for item in input_payload.get("origin_labels", [])]
     data_dev_labels = [str(item) for item in input_payload.get("development_labels", [])]
     input_values = input_payload.get("values") if isinstance(input_payload.get("values"), list) else []
@@ -459,10 +521,13 @@ def export_dfm(
         ex_row: list = []
         for j in range(1, row_dev + 1):
             val = _get_ratio_value(dfm, i, j)
+            if strict and val is None:
+                raise RuntimeError(f"Could not read ResQ DFM ratio at ({i}, {j}).")
             rv_row.append(round(val, decimal_places) if val is not None else 0)
             try:
                 ex_row.append(_excluded_ratio_flag(dfm.ExcludedRatios(i, j)))
-            except Exception:
+            except Exception as exc:
+                _strict_dfm_failure(strict, f"Could not read ResQ DFM exclusion at ({i}, {j}).", exc)
                 ex_row.append(0)
         ratio_values.append(rv_row)
         excluded.append(ex_row)
@@ -475,7 +540,18 @@ def export_dfm(
             if f is None:
                 break
             raw_names.append(f)
-        except Exception:
+            if strict and _strip_formula_index_prefix(f).lower().startswith("user"):
+                break
+        except Exception as exc:
+            if strict and not any(
+                _strip_formula_index_prefix(value).lower().startswith("user")
+                for value in raw_names
+            ):
+                _strict_dfm_failure(
+                    strict,
+                    f"Could not finish enumerating ResQ DFM average formulas at index {idx}.",
+                    exc,
+                )
             break
 
     # Deduplicate: keep only the first User Entry; record its ResQ index
@@ -501,14 +577,22 @@ def export_dfm(
     for j in dev_rng:
         try:
             sel = int(dfm.SelectedRatios(DevIndex=j))  # 1-based ResQ formula index
-        except Exception:
+        except Exception as exc:
+            _strict_dfm_failure(strict, f"Could not read the selected ResQ DFM average at column {j}.", exc)
             continue
         # sel is 1-based index into raw_names; find in resq_idx_map
         raw_idx_0 = sel - 1  # 0-based into raw_names
+        matched = False
         for k, mapped_raw_idx in enumerate(resq_idx_map):
             if mapped_raw_idx == raw_idx_0:
                 selected[k][j - 1] = 1
+                matched = True
                 break
+        if strict and not matched:
+            raise RuntimeError(
+                f"ResQ DFM selected average index {sel} at column {j} was not present "
+                "in the enumerated formula list."
+            )
 
     # values[formula_row][dev_col] = computed average LDF
     values: list[list] = []
@@ -519,7 +603,12 @@ def export_dfm(
             try:
                 v = dfm.AverageRatioValues(j, resq_formula_idx)
                 row.append(round(float(v), decimal_places) if v is not None else None)
-            except Exception:
+            except Exception as exc:
+                _strict_dfm_failure(
+                    strict,
+                    f"Could not read ResQ DFM average value at formula {resq_formula_idx}, column {j}.",
+                    exc,
+                )
                 row.append(None)
         # trim trailing None
         while row and row[-1] is None:
@@ -539,7 +628,8 @@ def export_dfm(
     # Cell notes
     try:
         cell_notes_raw: str = dfm.CellNotes or ""
-    except Exception:
+    except Exception as exc:
+        _strict_dfm_failure(strict, "Could not read ResQ DFM cell notes.", exc)
         cell_notes_raw = ""
     cell_notes = _parse_cell_notes(cell_notes_raw, origin_labels, formula_labels)
 
@@ -615,7 +705,13 @@ def export_dfm(
         ratio_basis_snapshot=(
             ratio_basis_snapshot
             if ratio_basis_snapshot is not None
-            else _ratio_basis_snapshot(dfm, ratio_basis, origin_labels, rc_path)
+            else _ratio_basis_snapshot(
+                dfm,
+                ratio_basis,
+                origin_labels,
+                rc_path,
+                strict=strict,
+            )
             if ratio_basis
             else None
         ),
@@ -628,23 +724,17 @@ def dfm_methods_by_output_name(reserving_class, dfm_names: list[str] | None = No
         dfm_collection = reserving_class.DFMMethods()
     except Exception:
         return {}
-    names = [
-        str(name or "").strip()
-        for name in dfm_names
-        if str(name or "").strip()
-    ] if dfm_names is not None else [
-        _clean_name(_safe_attr(item, "Name", ""))
-        for item in dfm_collection
-        if _clean_name(_safe_attr(item, "Name", ""))
-    ]
+    requested = {
+        _clean_name(name).casefold()
+        for name in (dfm_names or [])
+        if _clean_name(name)
+    } if dfm_names is not None else None
     out: dict[str, tuple[str, object]] = {}
-    for dfm_name in names:
-        clean_name = _clean_name(dfm_name)
+    for dfm in dfm_collection:
+        clean_name = _clean_name(_safe_attr(dfm, "Name", ""))
         if not clean_name:
             continue
-        try:
-            dfm = dfm_collection.Item(clean_name)
-        except Exception:
+        if requested is not None and clean_name.casefold() not in requested:
             continue
         output_vector = _safe_attr(dfm, "OutputVector", None)
         output_name = _normalize_import_name(_safe_attr(output_vector, "Name", ""))
@@ -667,20 +757,42 @@ def export_dfm_output_dataset(
     known_dataset_type_keys: set[str] | None = None,
     max_average_formula_probe: int = MAX_AVERAGE_FORMULA_PROBE,
     ratio_basis_snapshot: dict | None = None,
+    preserve_local_owned_state: bool = True,
+    strict: bool = False,
     verbose: bool = True,
 ) -> tuple[str, str, bool]:
-    dfm_name = _normalize_import_name(_safe_attr(dfm, "Name", ""))
-    output_vector = _safe_attr(dfm, "OutputVector", None)
-    output_dataset_name = _normalize_import_name(_safe_attr(output_vector, "Name", "")) or dfm_name
-    dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
-    output_dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or output_dataset_name
+    """Publish one ResQ DFM output and its canonical method artifacts.
+
+    The default keeps the existing migration behavior: ArcRho-owned settings
+    are rebased onto the fresh ResQ snapshot.  Callers performing an explicitly
+    ResQ-authoritative synchronization may disable that rebase so the ResQ
+    method payload, including its ``last modified`` timestamp, is retained.
+    """
+    dfm_name = _normalize_import_name(
+        _dfm_attr(dfm, "Name", "", strict=strict, context="method")
+    )
+    output_vector = _dfm_attr(
+        dfm, "OutputVector", None, strict=strict, context=dfm_name or "method"
+    )
+    output_dataset_name = _normalize_import_name(
+        _dfm_attr(output_vector, "Name", "", strict=strict, context="output vector")
+    ) or dfm_name
+    dataset_type_obj = _dfm_attr(
+        output_vector, "DatasetType", None, strict=strict, context="output vector"
+    )
+    output_dataset_type = _normalize_import_name(
+        _dfm_attr(dataset_type_obj, "Name", "", strict=strict, context="output Dataset Type")
+    ) or output_dataset_name
     if not _is_known_dataset_type(output_dataset_type, known_dataset_type_keys):
         detail = _unknown_dataset_type_skip_detail("DFM", output_dataset_name, output_dataset_type)
         log(verbose, detail)
         return output_dataset_name, detail, True
     file_name = f"DFM@{_encode_name_part(dfm_name)}.json"
     out_path = rc_dir / method_data_dir / file_name
-    export_kwargs = {"max_average_formula_probe": max_average_formula_probe}
+    export_kwargs = {
+        "max_average_formula_probe": max_average_formula_probe,
+        "strict": strict,
+    }
     if ratio_basis_snapshot is not None:
         export_kwargs["ratio_basis_snapshot"] = ratio_basis_snapshot
     payload = export_dfm(dfm, rc_path, project_data_dir, **export_kwargs)
@@ -697,7 +809,9 @@ def export_dfm_output_dataset(
         input_source_revision=payload.get("data tab", {}).get("source revision") if isinstance(payload.get("data tab"), dict) else "",
     )
     existing_payload = _safe_read_json(out_path)
-    payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
+    preserved: set[str] = set()
+    if preserve_local_owned_state:
+        payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
     payload = recalculate_dfm_method(
         payload,
         timestamp=payload.get("method metadata", {}).get("data refreshed")
@@ -711,6 +825,11 @@ def export_dfm_output_dataset(
         payload["details tab"]["origin length"],
         payload["details tab"]["development length"],
     )
+    if strict and any(
+        not isinstance(row, list) or not row or row[0] is None
+        for row in ultimate_payload.get("values", [])
+    ):
+        raise RuntimeError("Could not read every ResQ DFM ultimate value in strict mode.")
     if not _is_known_dataset_type(ultimate_payload.get("dataset_type"), known_dataset_type_keys):
         detail = _unknown_dataset_type_skip_detail("DFM", output_dataset_name, ultimate_payload.get("dataset_type"))
         log(verbose, detail)

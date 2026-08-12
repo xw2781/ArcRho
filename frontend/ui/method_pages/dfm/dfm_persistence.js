@@ -23,6 +23,7 @@ import {
   getResultsCsvSuggestedName,
   getCurrentDfmTab,
   buildSummaryRows,
+  markDfmDirty,
   markDfmClean,
   runDfmProgrammatic,
   isRatiosTabVisible,
@@ -68,7 +69,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260805a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260812b";
 import {
   applyPersistedResultsSnapshot,
   renderResultsTable,
@@ -113,8 +114,10 @@ import {
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260807a";
-import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260807a";
+  refreshAllExcelLinks,
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260812c";
+import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
+import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260812b";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -439,6 +442,18 @@ function getDfmDataTab(payload) {
 
 function getDfmRatiosTab(payload) {
   return getDfmJsonTab(payload, "ratios tab");
+}
+
+function hasDfmDatasetFormulaReferences(payload) {
+  const formulas = getDfmJsonTab(getDfmRatiosTab(payload), "average formulas");
+  const inputs = Array.isArray(formulas.inputs) ? formulas.inputs : [];
+  const settings = getDfmJsonTab(formulas, "custom average formula settings");
+  const averageTypes = Array.isArray(settings.averageType) ? settings.averageType : [];
+  return inputs.some((row, index) => (
+    String(averageTypes[index] || "").trim().toLowerCase() === "user_entry"
+    && Array.isArray(row)
+    && row.some((formula) => containsDfmDatasetReference(formula))
+  ));
 }
 
 function getDfmRatioTriangleTab(payload) {
@@ -1062,16 +1077,27 @@ export async function applyDfmOwnedPatchPayload(payload, options = {}) {
   const merged = isDfmV2Method(payload)
     ? cloneJsonValue(payload)
     : mergePlainObject(buildDfmMethodPayload(), projectDfmOwnedPatch(payload));
+  // Method Notes are sidecar-owned and stripped by canonicalization, so read
+  // the transient `method metadata.method notes` carrier (macro results, RPC
+  // bridge, ArcBot proposals) from the incoming payload before preview.
+  const incomingMetadata = getDfmJsonTab(payload, "method metadata");
+  const hasMethodNotes = Object.prototype.hasOwnProperty.call(incomingMetadata, "method notes");
   try {
     const response = await previewDfmMethod(merged);
     if (!response?.method || !isDfmV2Method(response.method)) {
       throw new Error("Owned DFM patch preview did not return a canonical v2 method.");
     }
-    return applyDfmMethodPayload(response.method, {
+    const applied = await applyDfmMethodPayload(response.method, {
       ...options,
       markClean: false,
       reason: options.reason || "owned-patch",
     });
+    if (applied?.ok && hasMethodNotes) {
+      // Deliver carried Method Notes to the Notes tab; the next normal Save
+      // persists them to the output sidecar through the existing notes field.
+      setDfmNotesText(String(incomingMetadata["method notes"] ?? ""));
+    }
+    return applied;
   } catch (error) {
     return { ok: false, error: String(error?.message || error || "Could not preview DFM owned patch.") };
   }
@@ -1319,10 +1345,31 @@ async function loadRatioSelectionIfExistsOnce(reason) {
     const sidecarStatus = response?.sidecar?.status;
     const reviewNeeded = Number(sidecarStatus) === 2
       || /review/i.test(String(sidecarStatus || response?.sidecar?.status_label || ""));
-    postDfmStatus(
-      reviewNeeded ? "DFM loaded with Review Needed status." : "Ready",
-      reviewNeeded ? { tone: "warn" } : {},
-    );
+    const autoRefreshDatasetFormulas = hasDfmDatasetFormulaReferences(method);
+    if (autoRefreshDatasetFormulas) {
+      // Formula evaluation is an intentional in-memory refresh. Mark the DFM
+      // unsaved before network resolution begins so the shell reflects that
+      // state immediately, even when the resolved values are unchanged.
+      markDfmDirty();
+      try {
+        await refreshAllExcelLinks({
+          datasetReferencesOnly: true,
+          reviewNeeded,
+          silentErrors: true,
+          source: "dfm-open",
+        });
+      } catch (error) {
+        postDfmStatus(
+          `DFM opened with unsaved linked formulas, but automatic evaluation failed: ${String(error?.message || error)}`,
+          { tone: "warn" },
+        );
+      }
+    } else {
+      postDfmStatus(
+        reviewNeeded ? "DFM loaded with Review Needed status." : "Ready",
+        reviewNeeded ? { tone: "warn" } : {},
+      );
+    }
     scheduleDfmExcelFreshnessCheck(method);
     ensureDfmObjectChangeWatch(details.name);
     return { ok: true, method, sidecar: response?.sidecar };

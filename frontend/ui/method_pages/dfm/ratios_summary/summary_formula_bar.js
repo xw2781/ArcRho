@@ -3,8 +3,9 @@
 DFM Ratios Summary Formula Bar
 ===============================================================================
 */
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260811a";
+import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260811a";
 import {
   registerSummaryFunctions,
   summaryRuntime,
@@ -79,6 +80,9 @@ const {
 } = summaryRuntime;
 
 const updateActiveSummaryFormulaReferenceUi = (...args) => summaryRuntime.updateActiveSummaryFormulaReferenceUi(...args);
+const formatUserEntryFormulaEvaluationValue = (...args) => (
+  summaryRuntime.formatUserEntryFormulaEvaluationValue(...args)
+);
 const refreshAllExcelLinks = (...args) => summaryRuntime.refreshAllExcelLinks(...args);
 const isSummaryFormulaCommitPending = (...args) => summaryRuntime.isSummaryFormulaCommitPending(...args);
 const commitSummaryFormulaInput = (...args) => summaryRuntime.commitSummaryFormulaInput(...args);
@@ -225,7 +229,7 @@ function openDfmFormulaDataset(datasetName, windowRef = window) {
  * - Operators get spaces around them
  * - Always shows leading '='
  */
-function renderFormulaBarDisplay(displayEl, rawText) {
+function renderFormulaBarDisplay(displayEl, rawText, sourceText = rawText) {
   if (!displayEl) return;
   const tokens = tokenizeFormula(rawText);
   if (!tokens.length) {
@@ -234,6 +238,8 @@ function renderFormulaBarDisplay(displayEl, rawText) {
   }
 
   displayEl.innerHTML = "";
+  const sourceDatasetTokens = tokenizeFormula(sourceText).filter((token) => token.datasetName);
+  let datasetIndex = 0;
   for (const tok of tokens) {
     if (tok.datasetCoordinate) continue;
     if (tok.type === "excel") {
@@ -247,6 +253,8 @@ function renderFormulaBarDisplay(displayEl, rawText) {
       span.textContent = tok.text.slice(1, -1);
       displayEl.appendChild(span);
     } else if (tok.type === "bracket" && tok.datasetName) {
+      const sourceToken = sourceDatasetTokens[datasetIndex] || tok;
+      datasetIndex += 1;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "fmtDatasetRef";
@@ -257,10 +265,21 @@ function renderFormulaBarDisplay(displayEl, rawText) {
         "aria-label",
         `Open dataset ${tok.datasetName} at ${tok.datasetCoordinateLabel} in Dataset Viewer`,
       );
-      attachArcrhoTooltip(
-        button,
-        `Open ${tok.datasetName} @ ${tok.datasetCoordinateLabel} in Dataset Viewer`,
-      );
+      let tooltipValuePromise = null;
+      attachArcrhoTooltip(button, async () => {
+        if (!tooltipValuePromise) {
+          const referenceFormula = `=[${sourceToken.datasetName}][${sourceToken.datasetCoordinateLabel}]`;
+          tooltipValuePromise = resolveDfmDatasetReferencesInFormulaDetailed(referenceFormula)
+            .then((resolved) => {
+              const value = Number(String(resolved?.resolvedFormula || "").replace(/^=\s*/, ""));
+              return Number.isFinite(value)
+                ? formatUserEntryFormulaEvaluationValue(value)
+                : "Value unavailable";
+            })
+            .catch(() => "Value unavailable");
+        }
+        return tooltipValuePromise;
+      });
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -273,7 +292,7 @@ function renderFormulaBarDisplay(displayEl, rawText) {
       displayEl.appendChild(document.createTextNode(" " + tok.text + " "));
     } else {
       const t = tok.text.trim();
-      if (t) displayEl.appendChild(document.createTextNode(t));
+      if (t) displayEl.appendChild(document.createTextNode(t === "=" ? "= " : t));
     }
   }
 }
@@ -295,7 +314,7 @@ function updateFormulaBarDisplayMode(barEl, isEditing) {
     }
     input.style.display = "none";
     display.style.display = "";
-    renderFormulaBarDisplay(display, input.dataset.displayFormula || input.value);
+    renderFormulaBarDisplay(display, input.dataset.displayFormula || input.value, input.value);
   }
 }
 

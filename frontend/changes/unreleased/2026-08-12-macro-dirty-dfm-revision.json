@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Macros can run against a DFM with unsaved edits without failing revision validation.",
+  "details": [
+    "The macro runtime re-stamps canonical revisions on the captured in-memory DFM payload instead of rejecting it with 'DFM method metadata.owned revision does not match the canonical payload'."
+  ]
+}

@@ -9,7 +9,7 @@ let moduleSource = await readFile(
   "utf8",
 );
 moduleSource = moduleSource.replace(
-  '"/ui/shared/components/tooltip/tooltip.js?v=20260715a"',
+  '"/ui/shared/components/tooltip/tooltip.js?v=20260812a"',
   JSON.stringify(tooltipStubUrl),
 );
 const excelLinks = await import(
@@ -111,6 +111,46 @@ test("excelLinkRetargetSummary reports success, no-op, and partial failures", ()
   assert.match(partial.message, /\(\+1 more\)/);
 });
 
+test("excelLinkRetargetSummary reports recalculation outcomes", () => {
+  const recalculated = excelLinks.excelLinkRetargetSummary({
+    results: [{ kind: "dataset", name: "Manual Paid", ok: true, value_changed: true }],
+    changed_file_count: 2,
+    changed_link_count: 3,
+    refresh_requested: true,
+    refreshed_cell_count: 5,
+    failed_refresh_count: 0,
+    value_changed_file_count: 2,
+    propagation_ok: true,
+  });
+  assert.equal(recalculated.ok, true);
+  assert.match(recalculated.message, /Recalculated 5 linked cells in 2 files/);
+  assert.match(recalculated.message, /Dependent recalculation has started/);
+
+  const unchanged = excelLinks.excelLinkRetargetSummary({
+    results: [{ kind: "dataset", name: "Manual Paid", ok: true }],
+    changed_file_count: 1,
+    changed_link_count: 1,
+    refresh_requested: true,
+    refreshed_cell_count: 2,
+    failed_refresh_count: 0,
+    value_changed_file_count: 0,
+  });
+  assert.equal(unchanged.ok, true);
+  assert.match(unchanged.message, /matches the stored values/);
+
+  const failedCells = excelLinks.excelLinkRetargetSummary({
+    results: [{ kind: "dfm", name: "Development", ok: true }],
+    changed_file_count: 1,
+    changed_link_count: 1,
+    refresh_requested: true,
+    refreshed_cell_count: 1,
+    failed_refresh_count: 2,
+    value_changed_file_count: 0,
+  });
+  assert.equal(failedCells.ok, false);
+  assert.match(failedCells.message, /2 linked cells could not be recalculated/);
+});
+
 test("project instance wires the toolbar button, window, and path sync", () => {
   assert.match(htmlSource, /id="excelLinksBtn"/);
   assert.ok(
@@ -122,6 +162,7 @@ test("project instance wires the toolbar button, window, and path sync", () => {
     "excelLinksHeader",
     "excelLinksPath",
     "excelLinksRefresh",
+    "excelLinksRefreshValues",
     "excelLinksClose",
     "excelLinksBody",
     "excelLinksState",
@@ -133,4 +174,22 @@ test("project instance wires the toolbar button, window, and path sync", () => {
   assert.match(bootSource, /installProjectInstanceExcelLinks\(ctx\)/);
   assert.match(bootSource, /api\.initExcelLinkManager\(\)/);
   assert.match(pathPanelSource, /api\.syncExcelLinkManagerPath\?\.\(\)/);
+});
+
+test("the recalculation checkbox always defaults back to No", () => {
+  const checkboxSource = moduleSource;
+  assert.match(checkboxSource, /refresh_values: refreshValues/, "request carries the checkbox state");
+  const resetCalls = (checkboxSource.match(/resetRefreshValuesChoice\(\)/g) || []).length;
+  assert.ok(resetCalls >= 3, "checkbox resets on open and after every change");
+  const openBody = checkboxSource.slice(
+    checkboxSource.indexOf("function openExcelLinkManager"),
+    checkboxSource.indexOf("function closeExcelLinkManager"),
+  );
+  assert.match(openBody, /resetRefreshValuesChoice\(\)/, "opening the window resets the choice");
+  const changeBody = checkboxSource.slice(
+    checkboxSource.indexOf("async function changeWorkbook"),
+    checkboxSource.indexOf("function openExcelLinkManager"),
+  );
+  assert.match(changeBody, /finally[\s\S]*resetRefreshValuesChoice\(\)/, "every change resets the choice");
+  assert.doesNotMatch(checkboxSource, /excelLinksRefreshValues\.checked = true/, "nothing pre-checks the box");
 });

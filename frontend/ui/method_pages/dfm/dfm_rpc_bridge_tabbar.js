@@ -1,4 +1,4 @@
-import { startDfmRpcBridgeSync } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260807b";
+import { startDfmRpcBridgeSync } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260812a";
 
 const STYLE_ID = "dfm-rpc-bridge-tabbar-style";
 

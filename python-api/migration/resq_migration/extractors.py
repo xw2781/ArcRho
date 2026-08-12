@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from functools import wraps
 from pathlib import Path
 
 from arcrho_api.bornhuetter_ferguson_contract import (
@@ -130,6 +131,60 @@ _DEFER_GRAPH_ENRICHMENT_DEPTH: ContextVar[int] = ContextVar(
     "resq_migration_defer_graph_enrichment_depth",
     default=0,
 )
+
+_STRICT_RESQ_EXTRACTION: ContextVar[bool] = ContextVar(
+    "resq_migration_strict_extraction",
+    default=False,
+)
+
+
+class StrictResQExtractionError(RuntimeError):
+    """A required ResQ value could not be read during selective extraction."""
+
+
+def _strict_extractor(function):
+    """Scope an extractor's opt-in strict flag across its nested helpers."""
+
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        token = _STRICT_RESQ_EXTRACTION.set(bool(kwargs.get("strict", False)))
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _STRICT_RESQ_EXTRACTION.reset(token)
+
+    return wrapped
+
+
+def _strict_failure(message: str, exc: Exception | None = None):
+    error = StrictResQExtractionError(message)
+    if exc is None:
+        raise error
+    raise error from exc
+
+
+def _extract_attr(source, member_name: str, default=None, *, context: str = "ResQ object"):
+    """Read a persisted COM property, preserving tolerant bulk-import behavior."""
+
+    if not _STRICT_RESQ_EXTRACTION.get():
+        return _safe_attr(source, member_name, default)
+    try:
+        return getattr(source, member_name)
+    except Exception as exc:
+        _strict_failure(f"Could not read {context}.{member_name} during strict ResQ extraction.", exc)
+
+
+def _extract_int_attr(source, member_name: str, default: int = 0, *, context: str = "ResQ object") -> int:
+    if not _STRICT_RESQ_EXTRACTION.get():
+        return _safe_int_attr(source, member_name, default)
+    value = _extract_attr(source, member_name, default, context=context)
+    try:
+        return int(value)
+    except Exception as exc:
+        _strict_failure(
+            f"Could not convert {context}.{member_name}={value!r} to an integer during strict ResQ extraction.",
+            exc,
+        )
 
 
 @contextmanager
@@ -256,30 +311,52 @@ def _triangle_development_count(triangle, origin_index: int) -> int | None:
         ((), {}),
     ]
     call_shapes = [shape for shape in call_shapes if shape is not None]
+    errors: list[Exception] = []
     for name in ("DevelopmentCount", "DevCount"):
         try:
             return int(_try_call_member(triangle, name, call_shapes))
-        except Exception:
+        except Exception as exc:
+            errors.append(exc)
             continue
     try:
-        return int(_safe_attr(triangle, "DevelopmentCount", None))
-    except Exception:
+        return int(getattr(triangle, "DevelopmentCount"))
+    except Exception as exc:
+        errors.append(exc)
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(
+                f"Could not read triangle DevelopmentCount for origin index {origin_index}.",
+                errors[0],
+            )
         return None
 
 def _triangle_origin_label(triangle, origin_index: int) -> str:
+    errors: list[Exception] = []
     for name in ("OriginLabel", "OriginLabels"):
         try:
             return _normalize_import_name(_try_call_member(triangle, name, [((origin_index,), {}), ((), {"OriginIndex": origin_index})]))
-        except Exception:
+        except Exception as exc:
+            errors.append(exc)
             continue
+    if _STRICT_RESQ_EXTRACTION.get():
+        _strict_failure(
+            f"Could not read triangle origin label for origin index {origin_index}.",
+            errors[0] if errors else None,
+        )
     return str(origin_index)
 
 def _triangle_development_label(triangle, dev_index: int) -> str:
+    errors: list[Exception] = []
     for name in ("DevelopmentLabel", "DevelopmentLabels", "DevLabel"):
         try:
             return _normalize_import_name(_try_call_member(triangle, name, [((dev_index,), {}), ((), {"DevIndex": dev_index})]))
-        except Exception:
+        except Exception as exc:
+            errors.append(exc)
             continue
+    if _STRICT_RESQ_EXTRACTION.get():
+        _strict_failure(
+            f"Could not read triangle development label for development index {dev_index}.",
+            errors[0] if errors else None,
+        )
     return str(dev_index)
 
 def _triangle_value(triangle, origin_index: int, dev_index: int):
@@ -299,24 +376,41 @@ def _triangle_value(triangle, origin_index: int, dev_index: int):
     )
 
 def _vector_origin_count(vector) -> int:
+    errors: list[Exception] = []
     for name in ("OriginCount", "Count", "Length"):
-        value = _safe_int_attr(vector, name, 0)
-        if value > 0:
-            return value
+        try:
+            value = int(getattr(vector, name))
+            if value > 0:
+                return value
+        except Exception as exc:
+            errors.append(exc)
         try:
             value = int(_call_member(vector, name))
             if value > 0:
                 return value
-        except Exception:
+        except Exception as exc:
+            errors.append(exc)
             continue
+    if _STRICT_RESQ_EXTRACTION.get():
+        _strict_failure(
+            "Could not read a positive vector OriginCount/Count/Length.",
+            errors[0] if errors else None,
+        )
     return 0
 
 def _vector_origin_label(vector, origin_index: int) -> str:
+    errors: list[Exception] = []
     for name in ("OriginLabel", "OriginLabels", "Label", "Labels"):
         try:
             return _normalize_import_name(_try_call_member(vector, name, [((origin_index,), {}), ((), {"OriginIndex": origin_index})]))
-        except Exception:
+        except Exception as exc:
+            errors.append(exc)
             continue
+    if _STRICT_RESQ_EXTRACTION.get():
+        _strict_failure(
+            f"Could not read vector origin label for origin index {origin_index}.",
+            errors[0] if errors else None,
+        )
     return str(origin_index)
 
 def _vector_value(vector, origin_index: int):
@@ -343,19 +437,46 @@ def _vector_value(vector, origin_index: int):
         f"for origin index {origin_index}."
     )
 
-def export_triangle(triangle, *, method_type_code: int | None = None) -> dict:
+@_strict_extractor
+def export_triangle(
+    triangle,
+    *,
+    method_type_code: int | None = None,
+    strict: bool = False,
+) -> dict:
     """Extract a ResQ Triangle COM object into ArcRho CSV values and metadata."""
-    name = _normalize_import_name(triangle.Name)
-    dataset_type_obj = _safe_attr(triangle, "DatasetType", None)
-    dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", ""))
-    category = _normalize_import_name(_safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", ""))
-    data_format = _safe_int_attr(dataset_type_obj, "DataFormat", 0)
+    del strict
+    name = _normalize_import_name(_extract_attr(triangle, "Name", "", context="triangle"))
+    dataset_type_obj = _extract_attr(triangle, "DatasetType", None, context=f"triangle {name!r}")
+    dataset_type = _normalize_import_name(
+        _extract_attr(dataset_type_obj, "Name", "", context=f"triangle {name!r} DatasetType")
+    )
+    category_obj = _extract_attr(
+        dataset_type_obj,
+        "Category",
+        None,
+        context=f"triangle {name!r} DatasetType",
+    )
+    category = _normalize_import_name(
+        _extract_attr(category_obj, "Name", "", context=f"triangle {name!r} Category")
+    )
+    data_format = _extract_int_attr(
+        dataset_type_obj,
+        "DataFormat",
+        0,
+        context=f"triangle {name!r} DatasetType",
+    )
     if method_type_code is None:
-        method_type_code = _safe_int_attr(triangle, "MethodType", METHOD_TYPE_NONE_CODE)
+        method_type_code = _extract_int_attr(
+            triangle,
+            "MethodType",
+            METHOD_TYPE_NONE_CODE,
+            context=f"triangle {name!r}",
+        )
     method_type = _method_type_name(method_type_code)
-    origin_length = _safe_int_attr(triangle, "OriginLength", 12)
-    dev_length = _safe_int_attr(triangle, "DevelopmentLength", 12)
-    origin_count = _safe_int_attr(triangle, "OriginCount", 0)
+    origin_length = _extract_int_attr(triangle, "OriginLength", 12, context=f"triangle {name!r}")
+    dev_length = _extract_int_attr(triangle, "DevelopmentLength", 12, context=f"triangle {name!r}")
+    origin_count = _extract_int_attr(triangle, "OriginCount", 0, context=f"triangle {name!r}")
     if origin_count <= 0:
         try:
             origin_count = int(_call_member(triangle, "OriginCount"))
@@ -367,7 +488,12 @@ def export_triangle(triangle, *, method_type_code: int | None = None) -> dict:
     first_row_dev_count = _triangle_development_count(triangle, 1)
     max_dev_count = first_row_dev_count if first_row_dev_count is not None else 0
     if max_dev_count <= 0:
-        max_dev_count = _safe_int_attr(triangle, "DevelopmentCount", 0)
+        max_dev_count = _extract_int_attr(
+            triangle,
+            "DevelopmentCount",
+            0,
+            context=f"triangle {name!r}",
+        )
     if max_dev_count <= 0:
         raise ValueError(f"Triangle {name!r} does not expose a positive DevelopmentCount.")
     row_dev_counts = [_triangle_development_count(triangle, i) for i in range(1, origin_count + 1)]
@@ -391,15 +517,20 @@ def export_triangle(triangle, *, method_type_code: int | None = None) -> dict:
             try:
                 row.append(_triangle_value(triangle, i, j))
             except Exception as exc:
+                if _STRICT_RESQ_EXTRACTION.get():
+                    _strict_failure(
+                        f"Could not read triangle {name!r} value at cell ({i}, {j}).",
+                        exc,
+                    )
                 value_errors.append(exc)
                 row.append(None)
         values.append(row)
     if attempted_cells > 0 and len(value_errors) == attempted_cells:
         raise ValueError(f"Failed to read any values for triangle {name!r}: {value_errors[0]}")
 
-    user = _normalize_import_name(_safe_attr(triangle, "User", ""))
-    created = _iso_or_text(_safe_attr(triangle, "Created", ""))
-    modified = _iso_or_text(_safe_attr(triangle, "Modified", ""))
+    user = _normalize_import_name(_extract_attr(triangle, "User", "", context=f"triangle {name!r}"))
+    created = _iso_or_text(_extract_attr(triangle, "Created", "", context=f"triangle {name!r}"))
+    modified = _iso_or_text(_extract_attr(triangle, "Modified", "", context=f"triangle {name!r}"))
     origin_labels = [_triangle_origin_label(triangle, i) for i in range(1, origin_count + 1)]
     dev_labels = [_triangle_development_label(triangle, j) for j in range(1, max_dev_count + 1)]
 
@@ -420,7 +551,9 @@ def export_triangle(triangle, *, method_type_code: int | None = None) -> dict:
         "user": user,
         "created": created,
         "modified": modified,
-        "status": normalize_method_status(_safe_attr(triangle, "Status", 0)),
+        "status": normalize_method_status(
+            _extract_attr(triangle, "Status", 0, context=f"triangle {name!r}")
+        ),
     }
 
 def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
@@ -510,26 +643,50 @@ def _bs_indexed_value(method, member_name: str, *indices: int):
         name: value
         for name, value in zip(keyword_names, indices)
     }
-    return _try_call_member(
-        method,
-        member_name,
-        [
-            (tuple(indices), {}),
-            ((), keyword_args),
-        ],
-    )
+    try:
+        value = _try_call_member(
+            method,
+            member_name,
+            [
+                (tuple(indices), {}),
+                ((), keyword_args),
+            ],
+        )
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            index_text = ", ".join(str(index) for index in indices)
+            _strict_failure(
+                f"Could not read Berquist Sherman {member_name} at index ({index_text}).",
+                exc,
+            )
+        raise
+    if value is None and _STRICT_RESQ_EXTRACTION.get():
+        index_text = ", ".join(str(index) for index in indices)
+        _strict_failure(
+            f"Berquist Sherman {member_name} returned no value at index ({index_text})."
+        )
+    return value
 
 
 def _bs_source_name(method, attr_name: str) -> str:
-    source = _safe_attr(method, attr_name, None)
-    return _normalize_import_name(_safe_attr(source, "Name", ""))
+    context = f"Berquist Sherman {attr_name}"
+    source = _extract_attr(method, attr_name, None, context="Berquist Sherman method")
+    name = _normalize_import_name(_extract_attr(source, "Name", "", context=context))
+    if not name and _STRICT_RESQ_EXTRACTION.get():
+        _strict_failure(f"{context} does not expose a source dataset name.")
+    return name
 
 
 def _bs_loess_span(method) -> int:
-    raw = _safe_attr(method, "LoessSpan", None)
+    raw = _extract_attr(method, "LoessSpan", None, context="Berquist Sherman method")
     try:
         span = int(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(
+                f"Could not convert Berquist Sherman method.LoessSpan={raw!r} to an integer.",
+                exc,
+            )
         return BS_DEFAULT_LOESS_SPAN
     return min(BS_MAX_LOESS_SPAN, max(BS_MIN_LOESS_SPAN, span))
 
@@ -570,16 +727,27 @@ def _bs_variant_from_payload(payload: dict) -> str:
     raise ValueError(f"Unsupported Berquist Sherman JSON format: {json_format!r}.")
 
 
-def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
+@_strict_extractor
+def export_berquist_sherman(
+    method,
+    variant: str,
+    output_payload: dict,
+    *,
+    strict: bool = False,
+) -> dict:
     """Extract the annual B&S configuration needed to reproduce a ResQ output."""
+    del strict
     clean_variant = _clean_name(variant).casefold()
     if clean_variant not in {"sr", "cra"}:
         raise ValueError(f"Unsupported Berquist Sherman variant: {variant!r}.")
 
-    origin_length = int(output_payload.get("origin_length") or _safe_int_attr(method, "OriginLength", 0))
+    origin_length = int(
+        output_payload.get("origin_length")
+        or _extract_int_attr(method, "OriginLength", 0, context="Berquist Sherman method")
+    )
     development_length = int(
         output_payload.get("development_length")
-        or _safe_int_attr(method, "DevelopmentLength", 0)
+        or _extract_int_attr(method, "DevelopmentLength", 0, context="Berquist Sherman method")
     )
     if origin_length != 12 or development_length != 12:
         raise ValueError(
@@ -588,7 +756,7 @@ def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
         )
 
     name = _normalize_import_name(output_payload.get("name")) or _normalize_import_name(
-        _safe_attr(method, "Name", "")
+        _extract_attr(method, "Name", "", context="Berquist Sherman method")
     )
     if not name:
         raise ValueError("The ResQ Berquist Sherman method does not expose an output name.")
@@ -601,6 +769,11 @@ def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
         _normalize_import_name(label)
         for label in output_payload.get("development_labels", [])
     ]
+    if _STRICT_RESQ_EXTRACTION.get() and (
+        any(not label for label in origin_labels)
+        or any(not label for label in development_labels)
+    ):
+        _strict_failure(f"Berquist Sherman method {name!r} has incomplete annual triangle labels.")
     origin_count = len(origin_labels)
     development_count = len(development_labels)
     if origin_count <= 0 or development_count <= 0:
@@ -677,8 +850,16 @@ def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
         }
         json_format = BS_CRA_JSON_FORMAT
 
-    notes = _clean_name(_safe_attr(method, "Notes", ""))
+    notes = _clean_name(
+        _extract_attr(method, "Notes", "", context=f"Berquist Sherman method {name!r}")
+    )
     modified = output_payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    output_triangle = _extract_attr(
+        method,
+        "OutputTriangle",
+        None,
+        context=f"Berquist Sherman method {name!r}",
+    )
     return {
         "json_format": json_format,
         "details_tab": {
@@ -691,7 +872,12 @@ def export_berquist_sherman(method, variant: str, output_payload: dict) -> dict:
         "method_tab": method_tab,
         "_sidecar_notes": notes,
         "_sidecar_status": normalize_method_status(
-            _safe_attr(_safe_attr(method, "OutputTriangle", None), "Status", 0)
+            _extract_int_attr(
+                output_triangle,
+                "Status",
+                0,
+                context=f"Berquist Sherman method {name!r} OutputTriangle",
+            )
         ),
         "audit_log_tab": {},
         "method_metadata": {
@@ -820,6 +1006,68 @@ def write_berquist_sherman_export(payload: dict, rc_path: str, rc_dir: Path) -> 
     return out_path
 
 
+def _find_unique_method_by_output(
+    collection,
+    direct_candidates,
+    output_name: str,
+    output_member: str,
+    method_label: str,
+):
+    """Return the one method that actually owns the requested output.
+
+    Some ResQ collection getters resolve a method name before an output name.
+    A direct lookup is therefore only a compatibility fallback when the COM
+    collection cannot be enumerated, and every candidate is still validated
+    against its output object.  A complete enumeration also lets selective
+    migration fail closed instead of choosing arbitrarily when corrupt or
+    unusual ResQ data exposes duplicate output owners.
+    """
+
+    target = _normalize_import_name(output_name).casefold()
+    if not target:
+        return None
+
+    enumerated = None
+    if collection is not None:
+        try:
+            enumerated = list(collection)
+        except Exception:
+            # Older COM collection wrappers are not always iterable. Keep the
+            # canonical bulk migration tolerant, but never trust their direct
+            # lookup without checking the returned method's output identity.
+            pass
+
+    candidates = enumerated if enumerated is not None else list(direct_candidates)
+    matches = []
+    direct_identities: set[str] = set()
+    for method in candidates:
+        output = _safe_attr(method, output_member, None)
+        candidate_output = _normalize_import_name(
+            _safe_attr(output, "Name", "")
+        ).casefold()
+        if candidate_output != target:
+            continue
+        if enumerated is None:
+            # Getter and Item() can return separate Python wrappers for the
+            # same COM method. Method names are unique in ResQ and provide the
+            # stable identity needed to avoid treating those aliases as two
+            # different output owners.
+            method_name = _normalize_import_name(
+                _safe_attr(method, "Name", "")
+            ).casefold()
+            identity = method_name or f"object:{id(method)}"
+            if identity in direct_identities:
+                continue
+            direct_identities.add(identity)
+        matches.append(method)
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"Multiple ResQ {method_label} methods produce output {output_name!r}."
+        )
+    return matches[0] if matches else None
+
+
 def _find_berquist_sherman_for_triangle(
     reserving_class,
     triangle_name: str,
@@ -834,51 +1082,70 @@ def _find_berquist_sherman_for_triangle(
 
     target = _normalize_import_name(triangle_name).casefold()
     for variant, getter_name, collection_name in variants:
+        direct_candidates = []
         try:
             method = _call_member(reserving_class, getter_name, triangle_name)
             if method is not None:
-                return variant, method
+                direct_candidates.append(method)
         except Exception:
             pass
         try:
             collection = _call_member(reserving_class, collection_name)
         except Exception:
-            continue
-        try:
-            method = collection.Item(triangle_name)
-            if method is not None:
-                return variant, method
-        except Exception:
-            pass
-        try:
-            for method in collection:
-                output = _safe_attr(method, "OutputTriangle", None)
-                output_name = _normalize_import_name(_safe_attr(output, "Name", "")).casefold()
-                method_name = _normalize_import_name(_safe_attr(method, "Name", "")).casefold()
-                if target and target in {output_name, method_name}:
-                    return variant, method
-        except Exception:
-            continue
+            collection = None
+        if collection is not None:
+            try:
+                method = collection.Item(triangle_name)
+                if method is not None:
+                    direct_candidates.append(method)
+            except Exception:
+                pass
+        method = _find_unique_method_by_output(
+            collection,
+            direct_candidates,
+            target,
+            "OutputTriangle",
+            "Berquist Sherman",
+        )
+        if method is not None:
+            return variant, method
     return None
 
 
-def export_vector(vector) -> dict:
+@_strict_extractor
+def export_vector(vector, *, strict: bool = False) -> dict:
     """Extract a ResQ Vector COM object into ArcRho CSV values and metadata."""
-    name = _normalize_import_name(vector.Name)
-    dataset_type_obj = _safe_attr(vector, "DatasetType", None)
-    dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
-    category = _normalize_import_name(_safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", ""))
-    data_format = _safe_int_attr(dataset_type_obj, "DataFormat", 1)
-    method_type_code = _safe_int_attr(vector, "MethodType", -1)
+    del strict
+    name = _normalize_import_name(_extract_attr(vector, "Name", "", context="vector"))
+    dataset_type_obj = _extract_attr(vector, "DatasetType", None, context=f"vector {name!r}")
+    dataset_type = _normalize_import_name(
+        _extract_attr(dataset_type_obj, "Name", "", context=f"vector {name!r} DatasetType")
+    ) or name
+    category_obj = _extract_attr(
+        dataset_type_obj,
+        "Category",
+        None,
+        context=f"vector {name!r} DatasetType",
+    )
+    category = _normalize_import_name(
+        _extract_attr(category_obj, "Name", "", context=f"vector {name!r} Category")
+    )
+    data_format = _extract_int_attr(
+        dataset_type_obj,
+        "DataFormat",
+        1,
+        context=f"vector {name!r} DatasetType",
+    )
+    method_type_code = _extract_int_attr(vector, "MethodType", -1, context=f"vector {name!r}")
     method_type = _method_type_name(method_type_code)
     # ResQ vectors expose their period granularity (in months) as PeriodLength. They do
     # not have the triangle/method-style OriginLength member, so reading "OriginLength"
     # here always missed and fell back to the default 12. Use PeriodLength, falling back
     # to OriginLength then 12 only if PeriodLength is unavailable. A vector is 1-D, so the
     # same period length applies to both the origin and (nominal) development axis.
-    period_length = _safe_int_attr(vector, "PeriodLength", 0)
+    period_length = _extract_int_attr(vector, "PeriodLength", 0, context=f"vector {name!r}")
     if period_length <= 0:
-        period_length = _safe_int_attr(vector, "OriginLength", 12)
+        period_length = _extract_int_attr(vector, "OriginLength", 12, context=f"vector {name!r}")
     origin_length = period_length
     dev_length = period_length
     origin_count = _vector_origin_count(vector)
@@ -893,15 +1160,20 @@ def export_vector(vector) -> dict:
         try:
             values.append([_vector_value(vector, i)])
         except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read vector {name!r} value at origin index {i}.",
+                    exc,
+                )
             value_errors.append(exc)
             values.append([None])
     if attempted_cells > 0 and len(value_errors) == attempted_cells:
         raise ValueError(f"Failed to read any values for vector {name!r}: {value_errors[0]}")
 
-    user = _normalize_import_name(_safe_attr(vector, "User", ""))
-    created = _iso_or_text(_safe_attr(vector, "Created", ""))
-    modified = _iso_or_text(_safe_attr(vector, "Modified", ""))
-    formula = _clean_name(_safe_attr(vector, "Formula", ""))
+    user = _normalize_import_name(_extract_attr(vector, "User", "", context=f"vector {name!r}"))
+    created = _iso_or_text(_extract_attr(vector, "Created", "", context=f"vector {name!r}"))
+    modified = _iso_or_text(_extract_attr(vector, "Modified", "", context=f"vector {name!r}"))
+    formula = _clean_name(_extract_attr(vector, "Formula", "", context=f"vector {name!r}"))
     origin_labels = [_vector_origin_label(vector, i) for i in range(1, origin_count + 1)]
 
     return {
@@ -922,7 +1194,9 @@ def export_vector(vector) -> dict:
         "user": user,
         "created": created,
         "modified": modified,
-        "status": normalize_method_status(_safe_attr(vector, "Status", 0)),
+        "status": normalize_method_status(
+            _extract_attr(vector, "Status", 0, context=f"vector {name!r}")
+        ),
     }
 
 def _vector_payload_period_length(payload: dict) -> int:
@@ -1149,27 +1423,57 @@ def write_engine_generated_export(
     return csv_path
 
 def _result_selection_dataset_count(result_selection) -> int:
-    value = _safe_int_attr(result_selection, "DatasetCount", 0)
-    if value > 0:
-        return value
+    errors: list[Exception] = []
     try:
-        return int(_call_member(result_selection, "DatasetCount"))
-    except Exception:
-        return 0
+        value = int(getattr(result_selection, "DatasetCount"))
+        if value >= 0:
+            return value
+    except Exception as exc:
+        errors.append(exc)
+    try:
+        value = int(_call_member(result_selection, "DatasetCount"))
+        if value >= 0:
+            return value
+    except Exception as exc:
+        errors.append(exc)
+    if _STRICT_RESQ_EXTRACTION.get():
+        _strict_failure(
+            "Could not read Result Selection DatasetCount.",
+            errors[0] if errors else None,
+        )
+    return 0
+
 
 def _result_selection_origin_count(result_selection) -> int:
-    value = _safe_int_attr(result_selection, "OriginCount", 0)
-    if value > 0:
-        return value
+    errors: list[Exception] = []
     try:
-        return int(_call_member(result_selection, "OriginCount"))
-    except Exception:
-        return 0
+        value = int(getattr(result_selection, "OriginCount"))
+        if value > 0:
+            return value
+    except Exception as exc:
+        errors.append(exc)
+    try:
+        value = int(_call_member(result_selection, "OriginCount"))
+        if value > 0:
+            return value
+    except Exception as exc:
+        errors.append(exc)
+    if _STRICT_RESQ_EXTRACTION.get():
+        _strict_failure(
+            "Could not read a positive Result Selection OriginCount.",
+            errors[0] if errors else None,
+        )
+    return 0
 
 def _result_selection_origin_label(result_selection, origin_index: int) -> str:
     try:
         return _normalize_import_name(result_selection.OriginLabel(origin_index))
-    except Exception:
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(
+                f"Could not read Result Selection origin label for origin index {origin_index}.",
+                exc,
+            )
         return str(origin_index)
 
 def _result_selection_dataset(result_selection, dataset_index: int):
@@ -1212,9 +1516,13 @@ def _result_selection_ratio_basis_dataset_name(result_selection) -> str:
     ]
     try:
         dataset = _try_call_member(result_selection, "RatioBasisDataset", call_shapes)
-    except Exception:
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure("Could not read Result Selection RatioBasisDataset.", exc)
         return ""
-    return _normalize_import_name(_safe_attr(dataset, "Name", ""))
+    return _normalize_import_name(
+        _extract_attr(dataset, "Name", "", context="Result Selection RatioBasisDataset")
+    )
 
 def _result_selection_ratio_basis_value(result_selection, origin_index: int, origin_length: int):
     call_shapes = [
@@ -1253,33 +1561,67 @@ def _result_selection_source_kind(name: str, dataset_type: str, data_format: str
 
 def _result_selection_source_payload(result_selection, dataset_index: int, origin_count: int, origin_length: int) -> dict:
     dataset = _result_selection_dataset(result_selection, dataset_index)
-    dataset_type_obj = _safe_attr(dataset, "DatasetType", None)
-    name = _normalize_import_name(_safe_attr(dataset, "Name", "")) or f"Source {dataset_index}"
-    dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", ""))
-    data_format_code = _safe_int_attr(dataset_type_obj, "DataFormat", -1)
+    context = f"Result Selection source {dataset_index}"
+    dataset_type_obj = _extract_attr(dataset, "DatasetType", None, context=context)
+    name = _normalize_import_name(_extract_attr(dataset, "Name", "", context=context)) or f"Source {dataset_index}"
+    dataset_type = _normalize_import_name(
+        _extract_attr(dataset_type_obj, "Name", "", context=f"{context} DatasetType")
+    )
+    data_format_code = _extract_int_attr(
+        dataset_type_obj,
+        "DataFormat",
+        -1,
+        context=f"{context} DatasetType",
+    )
     data_format = "Triangle" if data_format_code == 0 else "Vector"
-    method_type_code = _safe_int_attr(dataset, "MethodType", METHOD_TYPE_NONE_CODE)
+    method_type_code = _extract_int_attr(
+        dataset,
+        "MethodType",
+        METHOD_TYPE_NONE_CODE,
+        context=context,
+    )
     method_type = _method_type_name(method_type_code)
     values: list = []
     weights: list = []
     for origin_index in range(1, origin_count + 1):
         try:
             values.append(_rs_json_number(_result_selection_dataset_value(result_selection, dataset_index, origin_index, origin_length)))
-        except Exception:
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read {context} value for origin index {origin_index}.",
+                    exc,
+                )
             values.append(None)
         try:
             weights.append(max(0.0, _rs_json_number(
                 _result_selection_weight(result_selection, dataset_index, origin_index)
             ) or 0.0))
-        except Exception:
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read {context} weight for origin index {origin_index}.",
+                    exc,
+                )
             weights.append(0)
+    category_obj = _extract_attr(
+        dataset_type_obj,
+        "Category",
+        None,
+        context=f"{context} DatasetType",
+    )
     return {
         "name": name,
         "dataset_type": dataset_type,
         "data_format": data_format,
         "method_type": method_type,
-        "category": _normalize_import_name(_safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")),
+        "category": _normalize_import_name(
+            _extract_attr(category_obj, "Name", "", context=f"{context} Category")
+        ),
         "source_kind": _result_selection_source_kind(name, dataset_type, data_format, method_type_code),
+        # Vectors do not consistently expose OriginLength; the enclosing
+        # Result Selection's OriginLength is the canonical fallback, not a
+        # failed cell/property read.
         "origin_length": max(1, _safe_int_attr(dataset, "OriginLength", origin_length)),
         "values": values,
         "weights": weights,
@@ -1315,13 +1657,36 @@ def _result_selection_selected_ultimate(calculated_ultimate: list, ultimate_over
     return selected
 
 
-def export_result_selection(result_selection) -> dict:
+@_strict_extractor
+def export_result_selection(result_selection, *, strict: bool = False) -> dict:
     """Extract a ResQ Result Selection method into ArcRho's method JSON shape."""
-    output_vector = _safe_attr(result_selection, "OutputVector", None)
-    name = _normalize_import_name(_safe_attr(output_vector, "Name", "")) or _normalize_import_name(_safe_attr(result_selection, "Name", ""))
-    dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
-    output_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
-    origin_length = _safe_int_attr(result_selection, "OriginLength", 12)
+    del strict
+    output_vector = _extract_attr(result_selection, "OutputVector", None, context="Result Selection")
+    name = _normalize_import_name(
+        _extract_attr(output_vector, "Name", "", context="Result Selection OutputVector")
+    ) or _normalize_import_name(
+        _extract_attr(result_selection, "Name", "", context="Result Selection")
+    )
+    dataset_type_obj = _extract_attr(
+        output_vector,
+        "DatasetType",
+        None,
+        context=f"Result Selection {name!r} OutputVector",
+    )
+    output_type = _normalize_import_name(
+        _extract_attr(
+            dataset_type_obj,
+            "Name",
+            "",
+            context=f"Result Selection {name!r} output DatasetType",
+        )
+    ) or name
+    origin_length = _extract_int_attr(
+        result_selection,
+        "OriginLength",
+        12,
+        context=f"Result Selection {name!r}",
+    )
     origin_count = _result_selection_origin_count(result_selection)
     if origin_count <= 0:
         raise ValueError(f"Result Selection {name!r} does not expose a positive OriginCount.")
@@ -1341,32 +1706,51 @@ def export_result_selection(result_selection) -> dict:
                 values.append(_rs_json_number(
                     _result_selection_ratio_basis_value(result_selection, origin_index, origin_length)
                 ))
-            except Exception:
+            except Exception as exc:
+                if _STRICT_RESQ_EXTRACTION.get():
+                    _strict_failure(
+                        f"Could not read Result Selection {name!r} ratio-basis value for origin index {origin_index}.",
+                        exc,
+                    )
                 values.append(None)
         ratio_basis_values.append({"name": ratio_basis_dataset, "values": values})
     ultimate_overrides: list = []
     for origin_index in range(1, origin_count + 1):
         try:
             overridden = _result_selection_ultimate_overridden(result_selection, origin_index)
-        except Exception:
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read Result Selection {name!r} UltimateOverridden for origin index {origin_index}.",
+                    exc,
+                )
             overridden = False
         if not overridden:
             ultimate_overrides.append(None)
             continue
         try:
             ultimate_overrides.append(_rs_json_number(_result_selection_ultimate(result_selection, origin_index, origin_length)))
-        except Exception:
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read Result Selection {name!r} ultimate for origin index {origin_index}.",
+                    exc,
+                )
             ultimate_overrides.append(None)
     calculated_ultimate = _result_selection_calculated_ultimate(loaded_datasets, origin_count)
     selected_ultimate = _result_selection_selected_ultimate(calculated_ultimate, ultimate_overrides, origin_count)
 
     try:
         notes = _clean_name(result_selection.Notes)
-    except Exception:
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read Result Selection {name!r}.Notes.", exc)
         notes = ""
     try:
         modified = _iso_or_text(output_vector.Modified)
-    except Exception:
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read Result Selection {name!r} OutputVector.Modified.", exc)
         modified = datetime.now(timezone.utc).astimezone().isoformat()
 
     return {
@@ -1392,7 +1776,14 @@ def export_result_selection(result_selection) -> dict:
         "results_tab": {},
         "validation_tab": {},
         "_sidecar_notes": notes,
-        "_sidecar_status": normalize_method_status(_safe_attr(output_vector, "Status", 0)),
+        "_sidecar_status": normalize_method_status(
+            _extract_attr(
+                output_vector,
+                "Status",
+                0,
+                context=f"Result Selection {name!r} OutputVector",
+            )
+        ),
         "method_metadata": {
             "last_modified": modified,
         },
@@ -1440,11 +1831,13 @@ def _apply_result_selection_vector_metadata(payload: dict, result_selection_payl
         payload["origin_count"] = len(origin_labels)
 
 def _bf_origin_count(method, output_vector) -> int:
-    origin_count = _safe_int_attr(method, "OriginCount", 0)
+    origin_count = _extract_int_attr(method, "OriginCount", 0, context="method")
     if origin_count <= 0:
         try:
             origin_count = int(_call_member(method, "OriginCount"))
-        except Exception:
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure("Could not read method OriginCount.", exc)
             origin_count = 0
     if origin_count <= 0:
         origin_count = _vector_origin_count(output_vector)
@@ -1452,11 +1845,18 @@ def _bf_origin_count(method, output_vector) -> int:
 
 
 def _bf_origin_label(method, origin_index: int) -> str:
+    errors: list[Exception] = []
     for name in ("OriginLabel", "OriginLabels"):
         try:
             return _normalize_import_name(_try_call_member(method, name, [((), {"OriginIndex": origin_index}), ((origin_index,), {})]))
-        except Exception:
+        except Exception as exc:
+            errors.append(exc)
             continue
+    if _STRICT_RESQ_EXTRACTION.get():
+        _strict_failure(
+            f"Could not read method origin label for origin index {origin_index}.",
+            errors[0] if errors else None,
+        )
     return ""
 
 
@@ -1473,7 +1873,9 @@ def _bf_origin_labels(method, output_vector, fallback_count: int = 0) -> list[st
 def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool, context: str = "BF") -> dict:
     """Extract the exact source vector a method consumes, without filesystem I/O."""
 
-    name = _normalize_import_name(_safe_attr(source, "Name", ""))
+    name = _normalize_import_name(
+        _extract_attr(source, "Name", "", context=f"{context} precedent")
+    )
     if not name:
         raise ValueError(f"A ResQ {context} precedent does not expose a dataset name.")
     values: list = []
@@ -1499,6 +1901,12 @@ def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool, conte
                     candidate = _triangle_value(source, origin_index, development_index)
                     row_read = True
                 except Exception as exc:
+                    if _STRICT_RESQ_EXTRACTION.get():
+                        _strict_failure(
+                            f"Could not read {context} source {name!r} value at cell "
+                            f"({origin_index}, {development_index}).",
+                            exc,
+                        )
                     errors.append(exc)
                     continue
                 if _rs_json_number(candidate) is not None:
@@ -1508,6 +1916,11 @@ def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool, conte
                 successful_reads += 1
             values.append(value)
         except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read {context} source {name!r} for origin index {origin_index}.",
+                    exc,
+                )
             errors.append(exc)
             values.append(None)
     if origin_labels and successful_reads <= 0:
@@ -1520,33 +1933,85 @@ def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool, conte
     }
 
 
-def export_bornhuetter_ferguson(method) -> dict:
+@_strict_extractor
+def export_bornhuetter_ferguson(method, *, strict: bool = False) -> dict:
     """Extract a complete, self-contained canonical BF v3 payload from ResQ."""
 
-    output_vector = _safe_attr(method, "OutputVector", None)
-    name = _normalize_import_name(_safe_attr(output_vector, "Name", "")) or _normalize_import_name(_safe_attr(method, "Name", ""))
-    dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
-    output_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
-    dataset_category = _normalize_import_name(
-        _safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")
+    del strict
+    output_vector = _extract_attr(method, "OutputVector", None, context="Bornhuetter Ferguson method")
+    name = _normalize_import_name(
+        _extract_attr(output_vector, "Name", "", context="Bornhuetter Ferguson OutputVector")
+    ) or _normalize_import_name(
+        _extract_attr(method, "Name", "", context="Bornhuetter Ferguson method")
     )
-    origin_length = _safe_int_attr(method, "OriginLength", _safe_int_attr(output_vector, "PeriodLength", 12))
+    dataset_type_obj = _extract_attr(
+        output_vector,
+        "DatasetType",
+        None,
+        context=f"Bornhuetter Ferguson {name!r} OutputVector",
+    )
+    output_type = _normalize_import_name(
+        _extract_attr(
+            dataset_type_obj,
+            "Name",
+            "",
+            context=f"Bornhuetter Ferguson {name!r} output DatasetType",
+        )
+    ) or name
+    category_obj = _extract_attr(
+        dataset_type_obj,
+        "Category",
+        None,
+        context=f"Bornhuetter Ferguson {name!r} output DatasetType",
+    )
+    dataset_category = _normalize_import_name(
+        _extract_attr(
+            category_obj,
+            "Name",
+            "",
+            context=f"Bornhuetter Ferguson {name!r} output Category",
+        )
+    )
+    output_period_length = _extract_int_attr(
+        output_vector,
+        "PeriodLength",
+        12,
+        context=f"Bornhuetter Ferguson {name!r} OutputVector",
+    )
+    origin_length = _extract_int_attr(
+        method,
+        "OriginLength",
+        output_period_length,
+        context=f"Bornhuetter Ferguson {name!r}",
+    )
     origin_labels = _bf_origin_labels(method, output_vector)
     if not origin_labels or any(not label for label in origin_labels):
         raise ValueError(f"Bornhuetter Ferguson method {name!r} does not expose complete origin labels.")
-    latest_source = _safe_attr(method, "Latest", None)
-    dfm_source = _safe_attr(method, "PercentageDeveloped", None)
-    prior_source = _safe_attr(method, "Prior", None)
+    latest_source = _extract_attr(method, "Latest", None, context=f"Bornhuetter Ferguson {name!r}")
+    dfm_source = _extract_attr(
+        method,
+        "PercentageDeveloped",
+        None,
+        context=f"Bornhuetter Ferguson {name!r}",
+    )
+    prior_source = _extract_attr(method, "Prior", None, context=f"Bornhuetter Ferguson {name!r}")
     latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True)
     dfm_snapshot = _bf_source_snapshot(dfm_source, origin_labels, latest=False)
     prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False)
     try:
         notes = _clean_name(method.Notes)
-    except Exception:
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read Bornhuetter Ferguson {name!r}.Notes.", exc)
         notes = ""
     try:
         modified = _iso_or_text(output_vector.Modified)
-    except Exception:
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(
+                f"Could not read Bornhuetter Ferguson {name!r} OutputVector.Modified.",
+                exc,
+            )
         modified = datetime.now(timezone.utc).astimezone().isoformat()
 
     owned = {
@@ -1598,7 +2063,14 @@ def export_bornhuetter_ferguson(method) -> dict:
         timestamp=modified,
     )
     payload["_sidecar_notes"] = notes
-    payload["_sidecar_status"] = normalize_method_status(_safe_attr(output_vector, "Status", 0))
+    payload["_sidecar_status"] = normalize_method_status(
+        _extract_attr(
+            output_vector,
+            "Status",
+            0,
+            context=f"Bornhuetter Ferguson {name!r} OutputVector",
+        )
+    )
     return payload
 
 
@@ -1641,24 +2113,24 @@ def write_bornhuetter_ferguson_export(payload: dict, rc_path: str, rc_dir: Path)
 
 
 def _find_bornhuetter_ferguson_for_vector(reserving_class, vector_name: str):
-    target = _normalize_import_name(vector_name).lower()
     try:
         collection = _call_member(reserving_class, "BFMethods")
-        try:
-            item = collection.Item(vector_name)
-            if item is not None:
-                return item
-        except Exception:
-            pass
-        for item in collection:
-            output_vector = _safe_attr(item, "OutputVector", None)
-            output_name = _normalize_import_name(_safe_attr(output_vector, "Name", "")).lower()
-            method_name = _normalize_import_name(_safe_attr(item, "Name", "")).lower()
-            if target and (output_name == target or method_name == target):
-                return item
     except Exception:
         return None
-    return None
+    direct_candidates = []
+    try:
+        item = collection.Item(vector_name)
+        if item is not None:
+            direct_candidates.append(item)
+    except Exception:
+        pass
+    return _find_unique_method_by_output(
+        collection,
+        direct_candidates,
+        vector_name,
+        "OutputVector",
+        "Bornhuetter Ferguson",
+    )
 
 
 def _cc_indexed_value(method, member_name: str, origin_index: int):
@@ -1712,33 +2184,87 @@ def _apply_dfm_factor_prior_ultimates(method, latest_snapshot: dict, prior_snaps
             continue
         try:
             percentage = float(_cc_indexed_value(method, "PercentageDevelopedValues", index + 1))
-        except Exception:
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    "Could not read Cape Cod PercentageDevelopedValues for origin index "
+                    f"{index + 1}.",
+                    exc,
+                )
             continue
         if percentage:
             values[index] = float(latest_value) / percentage
 
 
-def export_cape_cod(method) -> dict:
+@_strict_extractor
+def export_cape_cod(method, *, strict: bool = False) -> dict:
     """Extract a complete, self-contained canonical Cape Cod v1 payload from ResQ."""
 
-    output_vector = _safe_attr(method, "OutputVector", None)
-    name = _normalize_import_name(_safe_attr(output_vector, "Name", "")) or _normalize_import_name(_safe_attr(method, "Name", ""))
-    dataset_type_obj = _safe_attr(output_vector, "DatasetType", None)
-    output_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
-    dataset_category = _normalize_import_name(
-        _safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")
+    del strict
+    output_vector = _extract_attr(method, "OutputVector", None, context="Cape Cod method")
+    name = _normalize_import_name(
+        _extract_attr(output_vector, "Name", "", context="Cape Cod OutputVector")
+    ) or _normalize_import_name(_extract_attr(method, "Name", "", context="Cape Cod method"))
+    dataset_type_obj = _extract_attr(
+        output_vector,
+        "DatasetType",
+        None,
+        context=f"Cape Cod {name!r} OutputVector",
     )
-    origin_length = _safe_int_attr(method, "OriginLength", _safe_int_attr(output_vector, "PeriodLength", 12))
+    output_type = _normalize_import_name(
+        _extract_attr(
+            dataset_type_obj,
+            "Name",
+            "",
+            context=f"Cape Cod {name!r} output DatasetType",
+        )
+    ) or name
+    category_obj = _extract_attr(
+        dataset_type_obj,
+        "Category",
+        None,
+        context=f"Cape Cod {name!r} output DatasetType",
+    )
+    dataset_category = _normalize_import_name(
+        _extract_attr(
+            category_obj,
+            "Name",
+            "",
+            context=f"Cape Cod {name!r} output Category",
+        )
+    )
+    output_period_length = _extract_int_attr(
+        output_vector,
+        "PeriodLength",
+        12,
+        context=f"Cape Cod {name!r} OutputVector",
+    )
+    origin_length = _extract_int_attr(
+        method,
+        "OriginLength",
+        output_period_length,
+        context=f"Cape Cod {name!r}",
+    )
     origin_labels = _bf_origin_labels(method, output_vector)
     if not origin_labels or any(not label for label in origin_labels):
         raise ValueError(f"Cape Cod method {name!r} does not expose complete origin labels.")
-    latest_source = _safe_attr(method, "Latest", None)
-    exposure_source = _safe_attr(method, "Exposure", None)
-    prior_source = _safe_attr(method, "PercentageDeveloped", None)
+    latest_source = _extract_attr(method, "Latest", None, context=f"Cape Cod {name!r}")
+    exposure_source = _extract_attr(method, "Exposure", None, context=f"Cape Cod {name!r}")
+    prior_source = _extract_attr(
+        method,
+        "PercentageDeveloped",
+        None,
+        context=f"Cape Cod {name!r}",
+    )
     latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True, context="Cape Cod")
     exposure_snapshot = _bf_source_snapshot(exposure_source, origin_labels, latest=False, context="Cape Cod")
     prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False, context="Cape Cod")
-    pd_type_code = _safe_attr(method, "PercentageDevelopedType", 0)
+    pd_type_code = _extract_attr(
+        method,
+        "PercentageDevelopedType",
+        0,
+        context=f"Cape Cod {name!r}",
+    )
     prior_ultimate_mode = _cc_code_label(
         pd_type_code,
         CC_PERCENTAGE_DEVELOPED_TYPE_MODES,
@@ -1747,7 +2273,7 @@ def export_cape_cod(method) -> dict:
     if int(pd_type_code) in CC_DFM_FACTOR_TYPE_CODES:
         _apply_dfm_factor_prior_ultimates(method, latest_snapshot, prior_snapshot)
     scaling_type = _cc_code_label(
-        _safe_attr(method, "ScalingType", 0),
+        _extract_attr(method, "ScalingType", 0, context=f"Cape Cod {name!r}"),
         CC_SCALING_TYPES,
         "ScalingType",
     )
@@ -1759,11 +2285,15 @@ def export_cape_cod(method) -> dict:
             trend_factor_overrides.append(None)
     try:
         notes = _clean_name(method.Notes)
-    except Exception:
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read Cape Cod {name!r}.Notes.", exc)
         notes = ""
     try:
         modified = _iso_or_text(output_vector.Modified)
-    except Exception:
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read Cape Cod {name!r} OutputVector.Modified.", exc)
         modified = datetime.now(timezone.utc).astimezone().isoformat()
 
     owned = {
@@ -1774,18 +2304,37 @@ def export_cape_cod(method) -> dict:
             "output_type": output_type,
             "dataset_category": dataset_category,
             "origin_length": origin_length,
-            "statistic_decimal_places": _safe_int_attr(method, "DecimalPlaces", 2),
+            "statistic_decimal_places": _extract_int_attr(
+                method,
+                "DecimalPlaces",
+                2,
+                context=f"Cape Cod {name!r}",
+            ),
         },
         "method_tab": {
             "latest_dataset": latest_snapshot["name"],
             "exposure_dataset": exposure_snapshot["name"],
             "prior_ultimate_dataset": prior_snapshot["name"],
             "prior_ultimate_mode": prior_ultimate_mode,
-            "trend_rate": _safe_attr(method, "TrendRate", 0),
-            "auto_trend_fit": _bool_value(_safe_attr(method, "AutoTrendFit", False)),
-            "decay_factor": _safe_attr(method, "DecayFactor", 0),
+            "trend_rate": _extract_attr(method, "TrendRate", 0, context=f"Cape Cod {name!r}"),
+            "auto_trend_fit": _bool_value(
+                _extract_attr(method, "AutoTrendFit", False, context=f"Cape Cod {name!r}")
+            ),
+            "decay_factor": _extract_attr(
+                method,
+                "DecayFactor",
+                0,
+                context=f"Cape Cod {name!r}",
+            ),
             "scaling_type": scaling_type,
-            "alternative_ultimate_calculation": _bool_value(_safe_attr(method, "AltUltimateCalc", False)),
+            "alternative_ultimate_calculation": _bool_value(
+                _extract_attr(
+                    method,
+                    "AltUltimateCalc",
+                    False,
+                    context=f"Cape Cod {name!r}",
+                )
+            ),
             "trend_factor_overrides": trend_factor_overrides,
             "origin_labels": origin_labels,
         },
@@ -1809,7 +2358,14 @@ def export_cape_cod(method) -> dict:
         timestamp=modified,
     )
     payload["_sidecar_notes"] = notes
-    payload["_sidecar_status"] = normalize_method_status(_safe_attr(output_vector, "Status", 0))
+    payload["_sidecar_status"] = normalize_method_status(
+        _extract_attr(
+            output_vector,
+            "Status",
+            0,
+            context=f"Cape Cod {name!r} OutputVector",
+        )
+    )
     return payload
 
 
@@ -1852,24 +2408,24 @@ def write_cape_cod_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
 
 
 def _find_cape_cod_for_vector(reserving_class, vector_name: str):
-    target = _normalize_import_name(vector_name).lower()
     try:
         collection = _call_member(reserving_class, "CapeCodMethods")
-        try:
-            item = collection.Item(vector_name)
-            if item is not None:
-                return item
-        except Exception:
-            pass
-        for item in collection:
-            output_vector = _safe_attr(item, "OutputVector", None)
-            output_name = _normalize_import_name(_safe_attr(output_vector, "Name", "")).lower()
-            method_name = _normalize_import_name(_safe_attr(item, "Name", "")).lower()
-            if target and (output_name == target or method_name == target):
-                return item
     except Exception:
         return None
-    return None
+    direct_candidates = []
+    try:
+        item = collection.Item(vector_name)
+        if item is not None:
+            direct_candidates.append(item)
+    except Exception:
+        pass
+    return _find_unique_method_by_output(
+        collection,
+        direct_candidates,
+        vector_name,
+        "OutputVector",
+        "Cape Cod",
+    )
 
 def _parse_origin_start_month(label: object, base_len: int) -> tuple[int, int] | None:
     text = _clean_name(label)
@@ -2007,23 +2563,31 @@ def write_result_selection_export(payload: dict, rc_path: str, rc_dir: Path) -> 
     return out_path
 
 def _find_result_selection_for_vector(reserving_class, vector_name: str):
+    direct_candidates = []
     try:
-        return _call_member(reserving_class, "GetResultSelection", vector_name)
+        method = _call_member(reserving_class, "GetResultSelection", vector_name)
+        if method is not None:
+            direct_candidates.append(method)
     except Exception:
         pass
     try:
         collection = _call_member(reserving_class, "ResultSelections")
+    except Exception:
+        collection = None
+    if collection is not None:
         try:
-            return collection.Item(vector_name)
+            method = collection.Item(vector_name)
+            if method is not None:
+                direct_candidates.append(method)
         except Exception:
             pass
-        for item in collection:
-            output_vector = _safe_attr(item, "OutputVector", None)
-            if _normalize_import_name(_safe_attr(output_vector, "Name", "")).lower() == _normalize_import_name(vector_name).lower():
-                return item
-    except Exception:
-        return None
-    return None
+    return _find_unique_method_by_output(
+        collection,
+        direct_candidates,
+        vector_name,
+        "OutputVector",
+        "Result Selection",
+    )
 
 def _dfm_ultimate_value(dfm, origin_index: int):
     call_shapes = [

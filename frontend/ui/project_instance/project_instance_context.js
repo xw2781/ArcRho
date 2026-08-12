@@ -81,6 +81,7 @@ export function createProjectInstanceContext(deps = {}) {
     excelLinksHeader: document.getElementById("excelLinksHeader"),
     excelLinksPath: document.getElementById("excelLinksPath"),
     excelLinksRefresh: document.getElementById("excelLinksRefresh"),
+    excelLinksRefreshValues: document.getElementById("excelLinksRefreshValues"),
     excelLinksClose: document.getElementById("excelLinksClose"),
     excelLinksBody: document.getElementById("excelLinksBody"),
     excelLinksState: document.getElementById("excelLinksState"),

@@ -12,6 +12,10 @@ const testableSource = automationSource
   .replace(
     /import \{\s*captureActiveDfmContextForMacro,\s*reviewAndApplyCapturedMacroResult,\s*\} from "\.\.\/macro\/macro_window\.js\?v=[^"]+";/u,
     "const captureActiveDfmContextForMacro = () => {}; const reviewAndApplyCapturedMacroResult = () => {};",
+  )
+  .replace(
+    /import \{ createReviewTableDialog \} from "\.\.\/shared\/components\/review_table\/review_table\.js\?v=[^"]+";/u,
+    "const createReviewTableDialog = () => ({ close() {} });",
   );
 const { automationCommandTimeoutMs } = await import(
   `data:text/javascript;base64,${Buffer.from(testableSource).toString("base64")}`

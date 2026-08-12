@@ -14,6 +14,7 @@ from arcrho_api.dfm_contract import (  # noqa: E402
     apply_owned_patch,
     build_dfm_output_sidecar,
     canonical_number,
+    dfm_precedent_names,
     dfm_output_variants,
     method_revisions,
     normalize_dfm_method,
@@ -253,6 +254,45 @@ class DfmContractTests(unittest.TestCase):
         self.assertEqual(first["notes"], "Method note")
         self.assertIs(first["show_subtotal"], False)
         self.assertEqual(first["publication_revision"], method["method metadata"]["publication revision"])
+
+    def test_dataset_formula_inputs_are_owned_precedents_and_preserve_stored_values(self) -> None:
+        payload = owned_payload()
+        formulas = payload["ratios tab"]["average formulas"]
+        formulas["inputs"][2][0] = '=[Accounting Cutoff][-1] * [Growth Adjustment]["2024", "12m"]'
+        formulas["inputs"][2][1] = '=[accounting cutoff][1]'
+        formulas["display inputs"][2][0] = "=[Display Metadata Only][2024]"
+
+        method = recalculate_dfm_method(
+            payload,
+            input_snapshot=input_snapshot(),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="same",
+        )
+
+        self.assertEqual(
+            dfm_precedent_names(method),
+            ["Paid Loss", "Earned Premium", "Accounting Cutoff", "Growth Adjustment"],
+        )
+        self.assertEqual(method["ratios tab"]["average formulas"]["values"][2][:2], [9, 9])
+        owned_values = owned_projection(method)["ratios tab"]["average formulas"]["owned values"]
+        user_a = next(item for item in owned_values if item["label"] == "User A")
+        self.assertEqual(user_a, {"label": "User A", "columns": [0, 1, 2], "values": [9, 9, 1.0]})
+        sidecar = build_dfm_output_sidecar(
+            method,
+            project_name="Demo",
+            reserving_class=r"Auto\PP",
+            csv_file="Paid Selected@12.csv",
+            timestamp="same",
+        )
+        self.assertEqual(
+            sidecar["Precedents"],
+            [
+                {"dataset_type_name": "Paid Loss"},
+                {"dataset_type_name": "Earned Premium"},
+                {"dataset_type_name": "Accounting Cutoff"},
+                {"dataset_type_name": "Growth Adjustment"},
+            ],
+        )
 
     def test_upstream_refresh_preserves_owned_projection_and_recalculates_internal_formulas(self) -> None:
         initial = recalculate_dfm_method(

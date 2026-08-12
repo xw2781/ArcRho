@@ -14,6 +14,11 @@ For each macro it:
 - replaces the library file atomically (temp file + ``os.replace``) so
   readers never observe a half-written macro.
 
+It also publishes the canonical ResQ migration Python runtime as an immutable
+release under ``<shared>/python-api/releases`` and atomically switches
+``<shared>/python-api/current.json``. ResQ macros load that read-only support
+bundle on client PCs that do not have the ArcRho development checkout.
+
 Run by deployers only; the library folder should be read-only for users.
 
 Usage:
@@ -22,6 +27,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import sys
@@ -36,6 +43,11 @@ META_END = "# </arcrho-macro>"
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 
 SOURCE_DIR = Path(__file__).resolve().parent
+MIGRATION_SOURCE_DIR = SOURCE_DIR.parent / "migration"
+SYNC_EXPORTER_SOURCE = SOURCE_DIR / "export_reserving_class_to_resq.py"
+SUPPORT_RELEASES_DIR = Path("python-api") / "releases"
+SUPPORT_POINTER = Path("python-api") / "current.json"
+SUPPORT_MANIFEST = "manifest.json"
 
 
 def parse_meta_field(text: str, field: str) -> str:
@@ -97,6 +109,86 @@ def archive_replaced_copy(library_dir: Path, target: Path, dry_run: bool) -> str
     return f"archived previous v{old_version}"
 
 
+def publish_migration_support(library_dir: Path, dry_run: bool) -> tuple[int, int]:
+    """Publish an immutable support release, then atomically switch its pointer."""
+
+    sources = sorted(
+        (path for path in MIGRATION_SOURCE_DIR.rglob("*.py") if "references" not in path.parts),
+        key=lambda path: str(path.relative_to(MIGRATION_SOURCE_DIR)).casefold(),
+    )
+    if not sources:
+        raise FileNotFoundError(f"No migration support modules found in {MIGRATION_SOURCE_DIR}")
+    digest_builder = hashlib.sha256()
+    payloads: list[tuple[Path, bytes]] = []
+    for source in sources:
+        relative = Path("migration") / source.relative_to(MIGRATION_SOURCE_DIR)
+        data = source.read_bytes()
+        digest_builder.update(str(relative).replace("\\", "/").encode("utf-8"))
+        digest_builder.update(b"\0")
+        digest_builder.update(data)
+        payloads.append((relative, data))
+    if not SYNC_EXPORTER_SOURCE.is_file():
+        raise FileNotFoundError(f"Sync exporter not found: {SYNC_EXPORTER_SOURCE}")
+    exporter_relative = Path("macros") / SYNC_EXPORTER_SOURCE.name
+    exporter_data = SYNC_EXPORTER_SOURCE.read_bytes()
+    digest_builder.update(str(exporter_relative).replace("\\", "/").encode("utf-8"))
+    digest_builder.update(b"\0")
+    digest_builder.update(exporter_data)
+    payloads.append((exporter_relative, exporter_data))
+    sync_macro_source = SOURCE_DIR / "sync_reserving_class_with_resq.py"
+    if not sync_macro_source.is_file():
+        raise FileNotFoundError(f"Sync macro not found: {sync_macro_source}")
+    sync_macro_data = sync_macro_source.read_bytes()
+    sync_macro_version = parse_meta_field(
+        sync_macro_data.decode("utf-8-sig"), "Version"
+    )
+    digest_builder.update(b"sync-macro-contract\0")
+    digest_builder.update(sync_macro_data)
+    release_id = digest_builder.hexdigest()[:20]
+    release_root = library_dir.parent / SUPPORT_RELEASES_DIR / release_id
+    target_root = release_root
+    changed = 0
+    unchanged = 0
+    for relative, data in payloads:
+        target = target_root / relative
+        if target.is_file() and target.read_bytes() == data:
+            unchanged += 1
+            continue
+        changed += 1
+        if not dry_run:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(target, data)
+    if not dry_run:
+        for relative, data in payloads:
+            target = target_root / relative
+            if not target.is_file() or target.read_bytes() != data:
+                raise RuntimeError(f"Published migration support failed verification: {target}")
+        manifest = {
+            "version": 1,
+            "runtime_api_version": 1,
+            "release_id": release_id,
+            "sync_macro_version": sync_macro_version,
+            "sync_macro_sha256": hashlib.sha256(sync_macro_data).hexdigest(),
+            "files": {
+                str(relative).replace("\\", "/"): hashlib.sha256(data).hexdigest()
+                for relative, data in payloads
+            },
+        }
+        manifest_bytes = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        atomic_write(release_root / SUPPORT_MANIFEST, manifest_bytes)
+        pointer = {
+            "version": 1,
+            "release_id": release_id,
+            "relative_root": str(Path("releases") / release_id).replace("\\", "/"),
+            "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        }
+        atomic_write(
+            library_dir.parent / SUPPORT_POINTER,
+            (json.dumps(pointer, indent=2) + "\n").encode("utf-8"),
+        )
+    return changed, unchanged
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -141,6 +233,13 @@ def main() -> int:
     if failures:
         print(f"\n{failures} macro(s) failed validation; nothing was published.")
         return 1
+
+    support_changed, support_unchanged = publish_migration_support(library_dir, args.dry_run)
+    support_action = "WOULD PUBLISH" if args.dry_run else "PUBLISH"
+    print(
+        f"{support_action}  ResQ migration support: {support_changed} changed, "
+        f"{support_unchanged} unchanged"
+    )
 
     if not args.dry_run:
         library_dir.mkdir(parents=True, exist_ok=True)

@@ -604,6 +604,63 @@ def _hash_projection(value: Any) -> str:
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
+def _dataset_reference_names(value: Any) -> list[str]:
+    """Return valid ``[Dataset][coordinate]`` identities in formula order."""
+
+    text = str(value if value is not None else "")
+    names: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        dataset_start = text.find("[", cursor)
+        if dataset_start < 0:
+            break
+        dataset_end = text.find("]", dataset_start + 1)
+        if dataset_end < 0:
+            break
+        coordinate_start = dataset_end + 1
+        while coordinate_start < len(text) and text[coordinate_start].isspace():
+            coordinate_start += 1
+        if coordinate_start >= len(text) or text[coordinate_start] != "[":
+            cursor = dataset_start + 1
+            continue
+
+        quote = ""
+        coordinate_end = -1
+        comma_count = 0
+        for index in range(coordinate_start + 1, len(text)):
+            character = text[index]
+            if quote:
+                if character == quote:
+                    quote = ""
+                continue
+            if character in {'"', "'"}:
+                quote = character
+            elif character == ",":
+                comma_count += 1
+            elif character == "]":
+                coordinate_end = index
+                break
+        if coordinate_end < 0:
+            break
+
+        name = _clean(text[dataset_start + 1:dataset_end])
+        coordinates = text[coordinate_start + 1:coordinate_end].strip()
+        coordinate_parts = [part.strip() for part in coordinates.split(",")]
+        if (
+            name
+            and coordinates
+            and comma_count <= 1
+            and all(coordinate_parts)
+        ):
+            names.append(name)
+        cursor = coordinate_end + 1
+    return names
+
+
+def _contains_dataset_reference(value: Any) -> bool:
+    return bool(_dataset_reference_names(value))
+
+
 def _owned_formula_values(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     formulas = _tab(_tab(payload, "ratios tab"), "average formulas")
     labels = formulas.get("label") if isinstance(formulas.get("label"), list) else []
@@ -622,14 +679,22 @@ def _owned_formula_values(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
             deepcopy(row_values[col]) if col < len(row_values) else None
             for col, formula in enumerate(row_inputs)
             if base == "benchmark" or (
-                average_type == "user_entry" and (_is_direct_literal(formula) or _contains_excel_reference(formula))
+                average_type == "user_entry" and (
+                    _is_direct_literal(formula)
+                    or _contains_excel_reference(formula)
+                    or _contains_dataset_reference(formula)
+                )
             )
         ]
         owned_columns = [
             col
             for col, formula in enumerate(row_inputs)
             if base == "benchmark" or (
-                average_type == "user_entry" and (_is_direct_literal(formula) or _contains_excel_reference(formula))
+                average_type == "user_entry" and (
+                    _is_direct_literal(formula)
+                    or _contains_excel_reference(formula)
+                    or _contains_dataset_reference(formula)
+                )
             )
         ]
         if not owned_columns:
@@ -801,9 +866,19 @@ def dependency_entries(entries: Any) -> list[dict[str, str]]:
 def dfm_precedent_names(payload: Mapping[str, Any]) -> list[str]:
     details = _tab(payload, "details tab")
     results = _tab(payload, "results tab")
+    formulas = _tab(_tab(payload, "ratios tab"), "average formulas")
+    inputs = formulas.get("inputs") if isinstance(formulas.get("inputs"), list) else []
+    formula_datasets = [
+        dataset_name
+        for row in inputs
+        if isinstance(row, list)
+        for formula in row
+        for dataset_name in _dataset_reference_names(formula)
+    ]
     return _dependency_names([
         details.get("input triangle"),
         results.get("ratio basis dataset"),
+        *formula_datasets,
     ])
 
 
@@ -1170,7 +1245,7 @@ def _evaluate_internal_formula(
     resolver: Any = None,
 ) -> float | None:
     text = str(formula or "").strip()
-    if not text or _contains_excel_reference(text):
+    if not text or _contains_excel_reference(text) or _contains_dataset_reference(text):
         return None
     if text.startswith("="):
         text = text[1:]
@@ -1238,7 +1313,7 @@ def _calculate_formula_values(payload: dict[str, Any]) -> list[list[Any]]:
         resolving.add(key)
         try:
             formula = inputs[row][col]
-            if _contains_excel_reference(formula):
+            if _contains_excel_reference(formula) or _contains_dataset_reference(formula):
                 chosen = stored
             elif formula:
                 chosen = _evaluate_internal_formula(

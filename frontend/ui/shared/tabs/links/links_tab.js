@@ -1,5 +1,6 @@
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260812a";
 
 const EXTERNAL_LINKS_STYLESHEET_ID = "arExternalLinksStylesheet";
 const EXTERNAL_LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260807a";
@@ -105,6 +106,7 @@ export function createExternalLinksTab({
   getLinks,
   onRefreshLinks,
   onBreakLinks,
+  onOpenWorkbook = openPathThroughDesktopHost,
   onStatus,
   documentRef = container?.ownerDocument || globalThis.document,
 } = {}) {
@@ -122,6 +124,9 @@ export function createExternalLinksTab({
   }
   if (typeof onBreakLinks !== "function") {
     throw new TypeError("createExternalLinksTab requires onBreakLinks to be a function.");
+  }
+  if (typeof onOpenWorkbook !== "function") {
+    throw new TypeError("createExternalLinksTab onOpenWorkbook must be a function.");
   }
   if (onStatus !== undefined && typeof onStatus !== "function") {
     throw new TypeError("createExternalLinksTab onStatus must be a function when provided.");
@@ -146,6 +151,14 @@ export function createExternalLinksTab({
   const menuInner = documentRef.createElement("div");
   menuInner.className = "ctx-menu-inner";
   menu.appendChild(menuInner);
+  const openWorkbookItem = appendMenuItem(documentRef, menuInner, "open-workbook", "Open workbook");
+  const openWorkbookReadOnlyItem = appendMenuItem(
+    documentRef,
+    menuInner,
+    "open-workbook-read-only",
+    "Open workbook as Read-Only",
+  );
+  const openWorkbookSeparator = appendMenuSeparator(documentRef, menuInner);
   const refreshSelectedItem = appendMenuItem(documentRef, menuInner, "refresh-selected", "Refresh selected");
   const breakSelectedItem = appendMenuItem(documentRef, menuInner, "break-selected", "Break selected");
   const menuSeparator = appendMenuSeparator(documentRef, menuInner);
@@ -311,7 +324,11 @@ export function createExternalLinksTab({
     const selectedScope = records.filter((record) => selectedIds.has(record.id));
     const breakableSelected = selectedScope.filter((record) => !record.readOnly);
     const breakableAll = records.filter((record) => !record.readOnly);
+    const contextRecord = records.find((record) => record.id === contextRowId) || null;
 
+    openWorkbookItem.hidden = !contextRecord?.workbookPath;
+    openWorkbookReadOnlyItem.hidden = !contextRecord?.workbookPath;
+    openWorkbookSeparator.hidden = !contextRecord?.workbookPath;
     refreshSelectedItem.hidden = selectedScope.length === 0;
     breakSelectedItem.hidden = breakableSelected.length === 0;
     refreshAllItem.hidden = records.length === 0;
@@ -330,7 +347,14 @@ export function createExternalLinksTab({
     refreshAllItem.setAttribute("aria-label", "Refresh all external links");
     breakAllItem.setAttribute("aria-label", "Break all external links");
 
-    return [refreshSelectedItem, breakSelectedItem, refreshAllItem, breakAllItem]
+    return [
+      openWorkbookItem,
+      openWorkbookReadOnlyItem,
+      refreshSelectedItem,
+      breakSelectedItem,
+      refreshAllItem,
+      breakAllItem,
+    ]
       .some((item) => !item.hidden);
   };
 
@@ -611,6 +635,43 @@ export function createExternalLinksTab({
     return runAction(kind, scopeMode);
   };
 
+  const handleOpenWorkbook = async (readOnly) => {
+    const record = records.find((candidate) => candidate.id === contextRowId);
+    closeMenu();
+    restoreTableFocus();
+    if (destroyed || loading || activeAction || !record?.workbookPath) return false;
+
+    activeAction = "open-workbook";
+    syncBusyState();
+    try {
+      const result = await onOpenWorkbook(record.workbookPath, { readOnly: !!readOnly });
+      if (destroyed) return false;
+      const failure = actionFailureMessage(
+        result,
+        readOnly ? "The workbook could not be opened read-only." : "The workbook could not be opened.",
+      );
+      if (failure) {
+        reportStatus(failure, "error");
+        return false;
+      }
+      reportStatus(
+        readOnly ? "Workbook opened read-only." : "Workbook opened.",
+        "success",
+      );
+      return true;
+    } catch (error) {
+      const message = errorMessage(
+        error,
+        readOnly ? "The workbook could not be opened read-only." : "The workbook could not be opened.",
+      );
+      reportStatus(message, "error");
+      return false;
+    } finally {
+      activeAction = "";
+      syncBusyState();
+    }
+  };
+
   const handleContextMenu = (event) => {
     event.preventDefault?.();
     contextRowId = "";
@@ -626,6 +687,8 @@ export function createExternalLinksTab({
     if (event.key === "Escape") closeMenu();
   };
 
+  openWorkbookItem.addEventListener("click", () => handleOpenWorkbook(false));
+  openWorkbookReadOnlyItem.addEventListener("click", () => handleOpenWorkbook(true));
   refreshSelectedItem.addEventListener("click", () => handleMenuAction("refresh", "selection"));
   breakSelectedItem.addEventListener("click", () => handleMenuAction("break", "selection"));
   refreshAllItem.addEventListener("click", () => handleMenuAction("refresh", "all"));

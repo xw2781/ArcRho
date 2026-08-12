@@ -43,7 +43,11 @@ under `backup/`.
 official shared server macro library (default `E:\ArcRho Server\shared\macros`,
 override with `--library-dir` or `ARCRHO_MACRO_LIBRARY_DIR`). The ArcRho app's
 Macro Library window reads that folder so users can copy ("load") macros into
-their local macro folder; macros never run from the share directly.
+their local macro folder; macros never run from the share directly. The same
+command also publishes the canonical `python-api/migration` Python modules as
+an immutable release under `E:\ArcRho Server\shared\python-api\releases` and
+atomically switches `shared\python-api\current.json`; ResQ macros load this
+read-only support bundle on Client PCs without a development checkout.
 
 The script validates the `Version`/`Release Note` metadata, archives each
 replaced library copy to `<library>/archive/<macro-file-stem>/<version>/`, and

@@ -29,6 +29,15 @@ const {
 const tokenizeFormula = (...args) => summaryRuntime.tokenizeFormula(...args);
 const isRatioEditMode = (...args) => summaryRuntime.isRatioEditMode(...args);
 
+export const USER_ENTRY_FORMULA_EVALUATION_DECIMALS = 4;
+
+export function formatUserEntryFormulaEvaluationValue(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric)
+    ? numeric.toFixed(USER_ENTRY_FORMULA_EVALUATION_DECIMALS)
+    : "";
+}
+
 // =============================================================================
 // Ratio Selection Pattern + Average Selection
 // =============================================================================
@@ -937,6 +946,7 @@ registerSummaryFunctions({
   replaceFormulaReferenceLabel,
   updateActiveSummaryFormulaReferenceUi,
   applyUserEntryReferenceHighlights,
+  formatUserEntryFormulaEvaluationValue,
   evaluateSimpleMathExpression,
   stripFormulaEquals,
   splitFormulaTopLevel,

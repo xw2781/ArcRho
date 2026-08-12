@@ -7,10 +7,10 @@
   <title>Project Instance</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance_number_formats.css?v=20260720a"/>
-  <link rel="stylesheet" href="/ui/project_instance/project_instance_excel_links.css?v=20260811a"/>
+  <link rel="stylesheet" href="/ui/project_instance/project_instance_excel_links.css?v=20260811b"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260807a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
-    <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260811b"/>
+    <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260811c"/>
     <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
@@ -248,7 +248,11 @@
         </div>
       </header>
       <div class="pi-excel-links-body">
-        <div class="pi-excel-links-hint">Changing a workbook relinks every dataset and DFM method in this reserving class. Stored values are kept until links are refreshed from a Dataset or DFM Links tab.</div>
+        <div class="pi-excel-links-hint">Changing a workbook relinks every dataset and DFM method in this reserving class. Unless recalculation is selected below, stored values are kept until links are refreshed from a Dataset or DFM Links tab.</div>
+        <label class="pi-excel-links-refresh-option">
+          <input type="checkbox" id="excelLinksRefreshValues">
+          <span>Recalculate all affected datasets and DFM methods from the new workbook</span>
+        </label>
         <div class="pi-excel-links-table-wrap">
           <table class="pi-excel-links-table">
             <colgroup><col class="workbook"><col class="folder"><col class="status"><col class="usage"><col class="action"></colgroup>
@@ -301,6 +305,6 @@
       </section>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260811a"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260811b"></script>
 </body>
 </html>

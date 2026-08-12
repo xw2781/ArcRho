@@ -1,4 +1,4 @@
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 
 const LIST_ENDPOINT = "/excel_links/list";
 const RETARGET_ENDPOINT = "/excel_links/retarget";
@@ -82,9 +82,34 @@ export function excelLinkRetargetSummary(payload) {
   if (!changedFiles) {
     return { ok: true, message: text(payload?.message) || "No saved links needed a change." };
   }
+  const relinked = `Updated ${changedLinks} link${changedLinks === 1 ? "" : "s"} in ${changedFiles} file${changedFiles === 1 ? "" : "s"}.`;
+  if (!payload?.refresh_requested) {
+    return {
+      ok: true,
+      message: `${relinked} Values keep their stored snapshots until refreshed.`,
+    };
+  }
+  const failedRefresh = count(payload?.failed_refresh_count);
+  if (failedRefresh) {
+    return {
+      ok: false,
+      message: `${relinked} ${failedRefresh} linked cell${failedRefresh === 1 ? "" : "s"} could not be recalculated; refresh them from the Dataset or DFM Links tab.`,
+    };
+  }
+  const refreshedCells = count(payload?.refreshed_cell_count);
+  const changedValueFiles = count(payload?.value_changed_file_count);
+  if (!changedValueFiles) {
+    return {
+      ok: true,
+      message: `${relinked} The new workbook matches the stored values.`,
+    };
+  }
+  const propagationNote = payload?.propagation_ok === false
+    ? " Dependent recalculation reported a problem; check the affected pages."
+    : " Dependent recalculation has started.";
   return {
-    ok: true,
-    message: `Updated ${changedLinks} link${changedLinks === 1 ? "" : "s"} in ${changedFiles} file${changedFiles === 1 ? "" : "s"}. Values keep their stored snapshots until refreshed.`,
+    ok: payload?.propagation_ok !== false,
+    message: `${relinked} Recalculated ${refreshedCells} linked cell${refreshedCells === 1 ? "" : "s"} in ${changedValueFiles} file${changedValueFiles === 1 ? "" : "s"}.${propagationNote}`,
   };
 }
 
@@ -129,6 +154,7 @@ export function installProjectInstanceExcelLinks(ctx) {
     const blocked = manager.busy || manager.loading;
     if (els.excelLinksRefresh) els.excelLinksRefresh.disabled = blocked;
     if (els.excelLinksClose) els.excelLinksClose.disabled = manager.busy;
+    if (els.excelLinksRefreshValues) els.excelLinksRefreshValues.disabled = manager.busy;
     els.excelLinksBody?.querySelectorAll("button").forEach((button) => {
       button.disabled = blocked;
     });
@@ -255,6 +281,11 @@ export function installProjectInstanceExcelLinks(ctx) {
     }
   }
 
+  function resetRefreshValuesChoice() {
+    // Recalculation is a per-change decision that always defaults back to No.
+    if (els.excelLinksRefreshValues) els.excelLinksRefreshValues.checked = false;
+  }
+
   async function changeWorkbook(workbook) {
     if (manager.busy || manager.loading) return;
     const path = normalizePath(state.selectedPath);
@@ -275,9 +306,12 @@ export function installProjectInstanceExcelLinks(ctx) {
     }
     if (!picked) return;
 
+    const refreshValues = els.excelLinksRefreshValues?.checked === true;
     const seq = ++manager.requestSeq;
     setBusy(true);
-    setManagerStatus(`Relinking ${workbook.workbookName} for every dataset and DFM method...`);
+    setManagerStatus(refreshValues
+      ? `Relinking ${workbook.workbookName} and recalculating affected datasets and DFM methods...`
+      : `Relinking ${workbook.workbookName} for every dataset and DFM method...`);
     // The retarget rebuilds index.json server-side; suppress the disk watcher
     // prompt for this window's own write.
     if (state.datasetIndexWatch) state.datasetIndexWatch.suppressUntil = Date.now() + 30000;
@@ -290,6 +324,7 @@ export function installProjectInstanceExcelLinks(ctx) {
           reserving_class: path,
           old_workbook_path: workbook.workbookPath,
           new_workbook_path: picked,
+          refresh_values: refreshValues,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -304,10 +339,15 @@ export function installProjectInstanceExcelLinks(ctx) {
       if (summary.ok && count(payload?.changed_file_count)) {
         setStatus(`Excel links now read from ${picked}.`);
       }
+      if (refreshValues && count(payload?.value_changed_file_count)) {
+        // Values and review statuses changed on disk; reload the dataset table.
+        void api.refreshCachedDatasetTableFromDisk?.();
+      }
     } catch (error) {
       setManagerStatus(`Could not change the link: ${error.message}`, "error");
     } finally {
       if (state.datasetIndexWatch) state.datasetIndexWatch.suppressUntil = Date.now() + 1500;
+      resetRefreshValuesChoice();
       setBusy(false);
     }
   }
@@ -322,6 +362,7 @@ export function installProjectInstanceExcelLinks(ctx) {
     els.excelLinksWindow.hidden = false;
     els.excelLinksBtn?.classList.add("active");
     els.excelLinksBtn?.setAttribute("aria-pressed", "true");
+    resetRefreshValuesChoice();
     void loadExcelLinks();
     els.excelLinksRefresh?.focus?.();
   }

@@ -450,6 +450,32 @@ test("refresh applies each range atomically and marks only changed cells", async
   assert.equal(controller.isDirty(), false);
 });
 
+test("accepted freshness refresh marks equal linked values dirty for a durable save", async () => {
+  const state = { model: model2x2(), dirty: new Map() };
+  const controller = externalLinks.createDatasetExternalLinksController({
+    state,
+    readCellsBatch: async () => ({
+      ok: true,
+      results: [1, 2, 3, 4].map((value) => ({ ok: true, value })),
+    }),
+  });
+  controller.load([{
+    reference: REF,
+    target_cells: [
+      { row: 0, column: 0 },
+      { row: 0, column: 1 },
+      { row: 1, column: 0 },
+      { row: 1, column: 1 },
+    ],
+  }]);
+
+  const result = await controller.refreshAll(null, { markRefreshedCellsDirty: true });
+
+  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 0, failedCount: 0 });
+  assert.deepEqual(state.model.values, [[1, 2], [3, 4]]);
+  assert.deepEqual(Array.from(state.dirty.keys()), ["0,0", "0,1", "1,0", "1,1"]);
+});
+
 test("refresh does not apply result payloads from a failed batch response", async () => {
   const state = { model: model2x2(), dirty: new Map() };
   const controller = externalLinks.createDatasetExternalLinksController({

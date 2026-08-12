@@ -2,7 +2,8 @@ import { shell } from "./shell_context.js?v=20260510a";
 import {
   captureActiveDfmContextForMacro,
   reviewAndApplyCapturedMacroResult,
-} from "../macro/macro_window.js?v=20260808a";
+} from "../macro/macro_window.js?v=20260812a";
+import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260812a";
 
 const API_BASE = window.location.origin;
 const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -15,6 +16,7 @@ let automationStopped = false;
 let messageBoxPromise = null;
 const progressWindows = new Map();
 const dismissedProgressWindows = new Set();
+const reviewTableDialogs = new Map();
 
 function toText(value) {
   return value == null ? "" : String(value).trim();
@@ -499,6 +501,65 @@ export function showAutomationMessageBox(args = {}) {
   return messageBoxPromise;
 }
 
+function reviewTableIdFromArgs(args = {}) {
+  return toText(args.dialogId || args.dialog_id || args.id);
+}
+
+function createReviewTableId() {
+  return `review_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+export function openAutomationReviewTable(args = {}) {
+  const existingPending = Array.from(reviewTableDialogs.values()).find((entry) => entry.status === "pending");
+  if (existingPending) {
+    throw new Error("Finish the open review table before opening another one.");
+  }
+  const dialogId = reviewTableIdFromArgs(args) || createReviewTableId();
+  if (reviewTableDialogs.has(dialogId)) {
+    throw new Error(`Review table already exists: ${dialogId}`);
+  }
+  const entry = { status: "pending", result: null, controller: null };
+  entry.controller = createReviewTableDialog(args, {
+    onComplete(result) {
+      entry.status = "completed";
+      entry.result = {
+        accepted: !!result?.accepted,
+        selectedRowIds: Array.isArray(result?.selectedRowIds) ? result.selectedRowIds : [],
+      };
+    },
+  });
+  reviewTableDialogs.set(dialogId, entry);
+  return { dialogId };
+}
+
+export function getAutomationReviewTableStatus(args = {}) {
+  const dialogId = reviewTableIdFromArgs(args);
+  if (!dialogId) throw new Error("Review table status requires dialogId.");
+  const entry = reviewTableDialogs.get(dialogId);
+  if (!entry) throw new Error(`Review table is not available: ${dialogId}`);
+  if (entry.status === "pending") {
+    return { dialogId, status: "pending", pending: true };
+  }
+  return {
+    dialogId,
+    status: "completed",
+    pending: false,
+    accepted: !!entry.result?.accepted,
+    selectedRowIds: Array.isArray(entry.result?.selectedRowIds) ? [...entry.result.selectedRowIds] : [],
+  };
+}
+
+export function closeAutomationReviewTable(args = {}) {
+  const dialogId = reviewTableIdFromArgs(args);
+  if (!dialogId) throw new Error("Closing a review table requires dialogId.");
+  const entry = reviewTableDialogs.get(dialogId);
+  if (!entry) return { dialogId, closed: false, cancelled: false };
+  const cancelled = entry.status === "pending";
+  if (cancelled) entry.controller?.close?.("automation");
+  reviewTableDialogs.delete(dialogId);
+  return { dialogId, closed: true, cancelled };
+}
+
 function progressIdFromArgs(args = {}) {
   return toText(args.progressId || args.progress_id || args.id) || "default";
 }
@@ -804,6 +865,15 @@ async function executeAutomationCommand(command) {
   if (name === "ui.messageBox") {
     const result = await showAutomationMessageBox(command.args || {});
     return { ok: true, result };
+  }
+  if (name === "ui.reviewTableOpen") {
+    return { ok: true, result: openAutomationReviewTable(command.args || {}) };
+  }
+  if (name === "ui.reviewTableStatus") {
+    return { ok: true, result: getAutomationReviewTableStatus(command.args || {}) };
+  }
+  if (name === "ui.reviewTableClose") {
+    return { ok: true, result: closeAutomationReviewTable(command.args || {}) };
   }
   if (name === "ui.progressOpen") {
     return { ok: true, result: openAutomationProgress(command.args || {}) };

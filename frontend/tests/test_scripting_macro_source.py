@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import copy
 import sys
+import tempfile
 import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "frontend"))
+if str(REPO_ROOT / "python-api" / "src") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "python-api" / "src"))
 
 from app_server.services import scripting_macro_service
 
@@ -123,6 +127,91 @@ def main():
         self.assertTrue(result["success"])
         self.assertNotIn("payload", result)
         self.assertIn("inspection only", result["stdout"])
+
+    def test_macro_update_notes_carried_in_payload_metadata(self) -> None:
+        class _NotesDfm:
+            def __init__(self) -> None:
+                self.payload = {"details tab": {"name": "Development"}}
+                self._pending_notes = None
+
+            def to_dict(self):
+                return copy.deepcopy(self.payload)
+
+            def update_notes(self, text):
+                self._pending_notes = str(text or "")
+                return self
+
+        dfm = _NotesDfm()
+        source = """
+def run_macro(active_dfm, active_context=None):
+    active_dfm.update_notes("Generated adjustment note")
+    return {'message': 'notes updated'}
+"""
+        with (
+            patch.object(scripting_macro_service, "_build_active_dfm", return_value=dfm),
+            patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+        ):
+            result = scripting_macro_service.run_macro_source(
+                source,
+                "notes_macro.py",
+                {"activeJson": {"details tab": {}}},
+            )
+
+        self.assertTrue(result["success"], result)
+        # Even though the method payload itself is unchanged, the pending notes
+        # ride in the transient `method metadata.method notes` carrier so the
+        # DFM tab can deliver them to the Notes tab on apply.
+        self.assertEqual(result["payload"]["method metadata"]["method notes"], "Generated adjustment note")
+        self.assertEqual(result["payload"]["details tab"], {"name": "Development"})
+
+    def test_build_active_dfm_accepts_dirty_ui_payload_with_stale_revisions(self) -> None:
+        from arcrho_api.dfm_contract import recalculate_dfm_method
+
+        saved = recalculate_dfm_method(
+            {
+                "details tab": {
+                    "name": "Development",
+                    "output type": "Selected Ultimate",
+                    "output dataset": "Development Output",
+                    "input triangle": "Paid",
+                    "origin length": 12,
+                    "development length": 12,
+                },
+                "ratios tab": {
+                    "average formulas": {
+                        "label": ["User Entry"],
+                        "custom average formula settings": {"averageType": ["user_entry"]},
+                        "selected": [[1, 1]],
+                        "values": [[1.5, 1]],
+                        "inputs": [["1.5", "1"]],
+                    },
+                },
+            },
+            input_snapshot={
+                "name": "Paid",
+                "data_format": "Triangle",
+                "origin_labels": ["2024", "2025"],
+                "development_labels": ["12", "24"],
+                "values": [[100, 150], [200, None]],
+                "mask": [[True, True], [True, False]],
+                "number_format": "#,##0",
+                "decimal_places": 0,
+                "revision": "paid-r1",
+            },
+            timestamp="2026-01-01T00:00:00Z",
+        )
+        dirty = copy.deepcopy(saved)
+        formula = '= "Simple - 2" * [Accounting Cutoff][-1]'
+        # Simulate an unsaved UI edit: the owned content changes while the
+        # payload still carries the revision stamps of the last save.
+        dirty["ratios tab"]["average formulas"]["inputs"][0][0] = formula
+
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir, patch.object(
+            scripting_macro_service.tempfile, "gettempdir", return_value=temp_dir
+        ):
+            dfm = scripting_macro_service._build_active_dfm({"activeJson": dirty, "fields": {}})
+
+        self.assertEqual(dfm.average_formulas["inputs"][0][0], formula)
 
     def test_run_macro_source_times_out_runaway_python(self) -> None:
         with (

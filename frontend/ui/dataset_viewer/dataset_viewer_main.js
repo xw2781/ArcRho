@@ -21,7 +21,7 @@ import {
   renderDatasetChart,
 } from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260805a";
 import { wireDatasetNotesEditor } from "/ui/dataset_viewer/tabs/dataset_notes_tab.js?v=20260715a";
-import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260807a";
+import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260812b";
 import { configureDataTabLinks } from "/ui/shared/tabs/data/data_tab_links_port.js";
 import { configureDataTabChangeWatch } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
 import {
@@ -143,7 +143,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260811k"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260812a"
 );
 
 const datasetLinksTab = createExternalLinksTab({

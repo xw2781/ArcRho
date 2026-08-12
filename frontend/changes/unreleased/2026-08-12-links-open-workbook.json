@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "links",
+  "audience": "user",
+  "summary": "Added normal and read-only workbook open commands to Dataset Viewer and DFM Links menus."
+}

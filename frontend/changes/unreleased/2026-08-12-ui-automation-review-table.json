@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "automation",
+  "audience": "user",
+  "summary": "Added reviewed, timestamp-based two-way reserving-class sync between ArcRho and ResQ.",
+  "details": [
+    "Every dataset and method-output row shows both ArcRho and ResQ timestamps before the user accepts selected actions.",
+    "The reusable searchable review table supports disabled actions, select-all, and asynchronous accept or cancel results."
+  ]
+}

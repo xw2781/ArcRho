@@ -2448,6 +2448,10 @@
   color: var(--ar-color-text-muted);
 }
 
+:root[data-arcrho-theme="dark"] .pi-excel-links-refresh-option {
+  color: var(--ar-color-text);
+}
+
 :root[data-arcrho-theme="dark"] :is(.pi-number-formats-table-wrap, .pi-excel-links-table-wrap) {
   border-color: var(--ar-color-border);
   background: var(--ar-color-input);

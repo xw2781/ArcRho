@@ -21,6 +21,7 @@ from arcrho_api.dfm_contract import (
     DfmContractError,
     apply_owned_patch,
     build_dfm_output_sidecar,
+    dfm_precedent_names,
     dfm_output_variants,
     method_revisions,
     normalize_dfm_method,
@@ -212,20 +213,7 @@ def _identity(payload: Mapping[str, Any]) -> Tuple[str, str]:
 
 
 def _precedent_names(payload: Mapping[str, Any]) -> List[str]:
-    details = _details(payload)
-    results = _results_tab(payload)
-    names = [
-        _clean(details.get("input triangle")),
-        _clean(results.get("ratio basis dataset")),
-    ]
-    out: List[str] = []
-    seen = set()
-    for name in names:
-        normalized = _key(name)
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            out.append(name)
-    return out
+    return dfm_precedent_names(payload)
 
 
 def _revision_response(payload: Mapping[str, Any]) -> Dict[str, str]:

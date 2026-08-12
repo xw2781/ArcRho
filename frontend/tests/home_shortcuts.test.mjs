@@ -264,7 +264,7 @@ test("Home shortcut tooltips use the shared press-dismissed tooltip surface", as
 
   assert.match(shortcutsView, /import \{ attachArcrhoTooltip \} from "\.\.\/shared\/components\/tooltip\/tooltip\.js/u);
   assert.match(shortcutsView, /attachArcrhoTooltip\(card, "Hold to drag and reorder"\)/u);
-  assert.match(sharedTooltip, /target\.addEventListener\("mousedown", \(\) => hideTooltip\(doc, target\)\)/u);
+  assert.match(sharedTooltip, /target\.addEventListener\("mousedown", cancel\)/u);
   assert.doesNotMatch(shortcutsView, /document\.body\.appendChild\(homeCardTooltipEl\)/u);
   assert.doesNotMatch(styles, /\.homeCardTooltip/u);
 });

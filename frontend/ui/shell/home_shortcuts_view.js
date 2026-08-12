@@ -8,7 +8,7 @@
 import { $, shell } from "./shell_context.js?v=20260510a";
 import { homeCardIconForTabType } from "./home_card_icons.js?v=20260808a";
 import { buildRestoreSummary } from "./shell_activity_history.js";
-import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js?v=20260715a";
+import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js?v=20260812a";
 import {
   MAX_CARDS_PER_GROUP,
   addCard,

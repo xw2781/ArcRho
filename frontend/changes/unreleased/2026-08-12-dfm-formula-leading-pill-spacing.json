@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added clear spacing between the DFM formula bar's leading equals sign and its first reference pill."
+}

@@ -444,6 +444,60 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(result["unreviewed_precedents"], ["Paid"])
         self.assertEqual(result["unreviewed_precedent_count"], 1)
 
+    def test_dataset_formula_save_registers_graph_and_source_change_marks_review(self) -> None:
+        method = self.write_method_pair()
+        expected_owned_revision = method_revisions(method)["owned revision"]
+        for name, data_format, csv_text in (
+            ("Paid", "Triangle", "100,150\n200,\n"),
+            ("Premium", "Vector", "1000\n1100\n"),
+            ("Accounting Cutoff", "Vector", "1.01\n1.02\n"),
+        ):
+            self.write_source(name, csv_text, data_format=data_format)
+        method["ratios tab"]["average formulas"]["inputs"][0][0] = \
+            '=[Accounting Cutoff][-1]'
+
+        with mock.patch.object(
+            dfm_service.dependent_propagation_service,
+            "require_engine_available",
+        ):
+            result = dfm_service.save_dfm_method(
+                "Project",
+                "Class",
+                method,
+                expected_owned_revision=expected_owned_revision,
+            )
+
+        self.assertEqual(
+            result["sidecar"]["Precedents"],
+            [
+                {"dataset_type_name": "Paid"},
+                {"dataset_type_name": "Premium"},
+                {"dataset_type_name": "Accounting Cutoff"},
+            ],
+        )
+        formula_source = json.loads(
+            (self.sidecars / "Accounting Cutoff.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            formula_source["Dependents"],
+            [{"dataset_type_name": "Development Output"}],
+        )
+
+        refresh = dfm_service.refresh_dependents(
+            "Project",
+            "Class",
+            ["Accounting Cutoff"],
+        )
+
+        self.assertTrue(refresh["ok"], refresh)
+        saved_sidecar = json.loads(
+            (self.sidecars / "Development Output.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            saved_sidecar["status"],
+            dataset_sidecar_status_service.STATUS_REVIEW_NEEDED,
+        )
+
     def test_existing_save_rejects_owned_revision_conflict_without_mutation(self) -> None:
         method = self.write_method_pair()
         method_path = self.methods / "DFM@Development.json"

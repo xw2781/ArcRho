@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Changed Excel-linked Dataset values to use the same normal dark font as other grid values."
+}

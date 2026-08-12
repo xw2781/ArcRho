@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Accepting a macro's Notes preview now updates the DFM Notes tab so the next Save persists the generated notes.",
+  "details": [
+    "Macro update_notes() results ride in the transient method metadata carrier used by the DFM RPC bridge; canonicalization keeps them out of persisted method JSON."
+  ]
+}

@@ -24,4 +24,5 @@ def excel_links_retarget(req: ExcelLinkRetargetRequest) -> Dict[str, Any]:
         req.reserving_class,
         req.old_workbook_path,
         req.new_workbook_path,
+        refresh_values=req.refresh_values,
     )

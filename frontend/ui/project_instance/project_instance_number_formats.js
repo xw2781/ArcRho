@@ -1,4 +1,4 @@
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 
 const ENDPOINT = "/dataset/number-format-defaults";
 

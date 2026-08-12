@@ -26,7 +26,9 @@ test("freshness prompt defaults to keeping values and refreshes only on request"
   assert.match(persistenceSource, /okLabel: "Keep Current Values"/);
   assert.match(persistenceSource, /actions: \[\{ id: "refresh", label: "Refresh from Excel" \}\]/);
   assert.match(persistenceSource, /balancedActions: true/);
-  assert.match(persistenceSource, /if \(choice === "refresh" && isCurrent\(\)\) \{\s*await refreshDatasetExternalLinks/);
+  assert.match(persistenceSource, /if \(choice === "refresh" && isCurrent\(\)\) \{\s*await refreshDatasetExternalLinks\(\{\s*isCurrent,\s*markRefreshedCellsDirty: true,/);
+  assert.match(persistenceSource, /runtime\.datasetExternalLinks\.refreshAll\([\s\S]*?markRefreshedCellsDirty: options\?\.markRefreshedCellsDirty === true/);
+  assert.match(persistenceSource, /getDataTabLinksController\(\)\?\.refresh\?\.\(\);\s*updateDatasetSaveUi\(\);/);
   assert.match(messageBoxSource, /okButton\.textContent = String\(okLabel \|\| "OK"\)/);
   assert.match(messageBoxSource, /pageMessageBoxActionsBalanced/);
   assert.match(messageBoxStyles, /\.pageMessageBoxActionsBalanced \{\s*gap: 8px;/);

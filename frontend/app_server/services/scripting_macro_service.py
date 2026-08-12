@@ -478,6 +478,24 @@ def _infer_active_dfm_identity_from_path(method_path: str) -> Dict[str, str]:
     return out
 
 
+def _restamp_active_dfm_revisions(active_json: Dict[str, Any]) -> Dict[str, Any]:
+    """Re-stamp canonical revisions on the captured in-memory DFM payload.
+
+    The captured activeJson reflects the UI's current state — including unsaved
+    edits — while still carrying the revision stamps of the last save. Strict
+    validation requires stamped revisions to match the canonical payload, so it
+    would reject exactly the dirty state macros are meant to operate on.
+    """
+    from arcrho_api.dfm_contract import DFM_JSON_FORMAT, normalize_dfm_method
+
+    if str(active_json.get("json format") or "") != DFM_JSON_FORMAT:
+        return active_json
+    try:
+        return normalize_dfm_method(active_json, require_complete=False)
+    except ValueError as err:
+        raise ValueError(f"Active DFM JSON could not be normalized: {err}") from err
+
+
 def _build_active_dfm(active_context: Dict[str, Any]):
     _ensure_arcrho_api_import_path()
     from arcrho_api import ArcRhoClient, DfmMethod
@@ -485,7 +503,7 @@ def _build_active_dfm(active_context: Dict[str, Any]):
     active_json = active_context.get("activeJson")
     if not isinstance(active_json, dict):
         raise ValueError("Active DFM JSON is not available.")
-    active_json = copy.deepcopy(active_json)
+    active_json = _restamp_active_dfm_revisions(copy.deepcopy(active_json))
     fields = active_context.get("fields") if isinstance(active_context.get("fields"), dict) else {}
     details = active_json.get("details tab") if isinstance(active_json.get("details tab"), dict) else {}
     metadata = active_json.get("method metadata") if isinstance(active_json.get("method metadata"), dict) else {}
@@ -876,6 +894,12 @@ def _execute_macro_source_body(
                     "runner_result": runner_result,
                     "before_payload": before_payload,
                     "after_payload": after_payload,
+                    # Method Notes live in the output sidecar, not the method
+                    # payload; carry a macro's update_notes() result separately
+                    # so the apply path can deliver it to the DFM Notes tab.
+                    "pending_method_notes": (
+                        getattr(active_dfm, "_pending_notes", None) if active_dfm is not None else None
+                    ),
                 }
             finally:
                 if inserted_source_directory:
@@ -937,6 +961,20 @@ def run_macro_source(
         if changed_payload == execution.get("before_payload"):
             changed_payload = None
         payload = explicit_payload if explicit_payload is not None else changed_payload
+        pending_method_notes = execution.get("pending_method_notes")
+        if runner_success and pending_method_notes is not None:
+            # Stamp the transient `method metadata.method notes` carrier (the
+            # same convention as the DFM RPC bridge) so accepting the macro
+            # result updates the DFM Notes tab; canonicalization strips the
+            # stamp before anything is persisted to the method JSON.
+            notes_payload = copy.deepcopy(
+                payload if payload is not None else execution.get("after_payload")
+            )
+            if isinstance(notes_payload, dict):
+                metadata = notes_payload.setdefault("method metadata", {})
+                if isinstance(metadata, dict):
+                    metadata["method notes"] = str(pending_method_notes)
+                    payload = notes_payload
         preview = (
             runner_result.get("preview")
             if isinstance(runner_result, dict) and isinstance(runner_result.get("preview"), dict)

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed newer linked Excel workbook refreshes so unchanged values still mark the Dataset dirty and Save records the refresh."
+}

@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM dataset formulas now participate in dependency review and refresh automatically when the method opens.",
+  "details": [
+    "Saved formula datasets appear in Precedents and their sidecars list the DFM output under Dependents.",
+    "Updating a formula input dataset marks the downstream DFM Review Needed.",
+    "Opening a DFM with dataset-backed formulas marks it dirty immediately and reports the in-memory formula refresh in the status bar."
+  ]
+}

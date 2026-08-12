@@ -102,6 +102,7 @@ from resq_migration.core import (  # noqa: E402
     _cached_dataset_names_from_file,
     _clean_name,
     _dataset_cache_csv_file_name,
+    _encode_name_part,
     _encode_rc_folder,
     _normalize_cached_dataset_name,
     _normalize_import_name,
@@ -387,8 +388,16 @@ def cleanup_target_dataset_artifacts(
     *,
     dataset_names: list[str] | tuple[str, ...] | set[str] | None = None,
     method_names: list[str] | tuple[str, ...] | set[str] | None = None,
+    match_method_dependencies: bool = True,
+    method_prefixes: list[str] | tuple[str, ...] | set[str] | None = None,
 ) -> tuple[int, int]:
-    """Remove stale cached files for selected datasets/methods before single-item export."""
+    """Remove stale cached files for selected datasets/methods before single-item export.
+
+    ``match_method_dependencies`` retains the historical single-item-import
+    invalidation behavior by default. Selective synchronization disables it so
+    replacing one precedent does not delete unrelated dependent method JSON;
+    the canonical propagation walk refreshes those dependents after import.
+    """
     target = _require_safe_target_rc_dir(rc_dir)
     if not target.exists():
         return 0, 0
@@ -397,6 +406,7 @@ def cleanup_target_dataset_artifacts(
 
     dataset_keys = _normalized_name_keys(dataset_names or [])
     method_keys = _normalized_name_keys(method_names or [])
+    allowed_prefixes = tuple(str(value) for value in (method_prefixes or []) if str(value))
     files = 0
 
     dataset_dir = target / DATASET_CACHE_DIR
@@ -416,11 +426,18 @@ def cleanup_target_dataset_artifacts(
     method_dir = target / METHOD_DATA_DIR
     if method_dir.is_dir():
         for path in sorted(method_dir.glob("*.json"), key=lambda item: item.name.lower()):
+            if allowed_prefixes and not path.name.startswith(allowed_prefixes):
+                continue
             method_file_names = _method_file_names(path)
             if (
                 _matches_cleanup_names(method_file_names, method_keys)
-                or _matches_cleanup_names(method_file_names, dataset_keys)
-                or _matches_cleanup_names(_method_payload_dataset_names(path), dataset_keys)
+                or (
+                    match_method_dependencies
+                    and (
+                        _matches_cleanup_names(method_file_names, dataset_keys)
+                        or _matches_cleanup_names(_method_payload_dataset_names(path), dataset_keys)
+                    )
+                )
             ):
                 path.unlink()
                 files += 1
@@ -704,38 +721,64 @@ def _engine_generated_metadata_payload(
     name: str,
     dataset_type: str,
     is_vector: bool,
+    strict: bool = False,
 ) -> dict:
     """Read only the ResQ metadata needed for an engine-owned sidecar."""
 
-    dataset_type_obj = _safe_attr(item, "DatasetType", None)
-    resolved_name = _normalize_import_name(_safe_attr(item, "Name", "")) or _normalize_import_name(name)
+    def read(source, member: str, default=None):
+        if not strict:
+            return _safe_attr(source, member, default)
+        try:
+            return getattr(source, member)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not read generated ResQ dataset {name!r} {member}."
+            ) from exc
+
+    def read_int(source, member: str, default: int = 0) -> int:
+        value = read(source, member, default)
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Generated ResQ dataset {name!r} has invalid {member}: {value!r}."
+            ) from exc
+
+    dataset_type_obj = read(item, "DatasetType", None)
+    resolved_name = _normalize_import_name(read(item, "Name", "")) or _normalize_import_name(name)
     resolved_type = (
         _normalize_import_name(dataset_type)
-        or _normalize_import_name(_safe_attr(dataset_type_obj, "Name", ""))
+        or _normalize_import_name(read(dataset_type_obj, "Name", ""))
         or resolved_name
     )
     if is_vector:
-        period_length = _safe_int_attr(item, "PeriodLength", 0)
+        period_length = read_int(item, "PeriodLength", 0)
         if period_length <= 0:
-            period_length = _safe_int_attr(item, "OriginLength", 12)
+            period_length = read_int(item, "OriginLength", 12)
         origin_length = development_length = period_length
     else:
-        origin_length = _safe_int_attr(item, "OriginLength", 12)
-        development_length = _safe_int_attr(item, "DevelopmentLength", 12)
+        origin_length = read_int(item, "OriginLength", 12)
+        development_length = read_int(item, "DevelopmentLength", 12)
         period_length = 0
+    if strict and (origin_length <= 0 or development_length <= 0):
+        raise RuntimeError(
+            f"Generated ResQ dataset {name!r} has non-positive display dimensions."
+        )
+
+    category_obj = read(dataset_type_obj, "Category", None)
 
     payload = {
         "name": resolved_name,
         "dataset_type": resolved_type,
         "category": _normalize_import_name(
-            _safe_attr(_safe_attr(dataset_type_obj, "Category", None), "Name", "")
+            read(category_obj, "Name", "") if category_obj is not None else ""
         ),
-        "data_format": _safe_int_attr(dataset_type_obj, "DataFormat", 1 if is_vector else 0),
+        "data_format": read_int(dataset_type_obj, "DataFormat", 1 if is_vector else 0),
         "origin_length": origin_length,
         "development_length": development_length,
-        "user": _normalize_import_name(_safe_attr(item, "User", "")),
-        "created": _iso_or_text(_safe_attr(item, "Created", "")),
-        "modified": _iso_or_text(_safe_attr(item, "Modified", "")),
+        "user": _normalize_import_name(read(item, "User", "")),
+        "created": _iso_or_text(read(item, "Created", "")),
+        "modified": _iso_or_text(read(item, "Modified", "")),
     }
     if is_vector:
         payload["period_length"] = period_length
@@ -1021,6 +1064,7 @@ def export_triangles_for_rc(
     method_counts: dict | None = None,
     engine_provenance: dict | None = None,
     engine_available: bool = True,
+    strict_extraction: bool = False,
     verbose: bool = True,
 ) -> tuple[int, int]:
     """Export triangle datasets for one reserving class. Returns (written, errors)."""
@@ -1060,7 +1104,11 @@ def export_triangles_for_rc(
                 triangle = triangle_collection.Item(triangle_name)
             method_type = triangle_method_types.get(triangle_key)
             if method_type is None:
-                method_type = _safe_int_attr(triangle, "MethodType", METHOD_TYPE_NONE_CODE)
+                method_type = (
+                    int(getattr(triangle, "MethodType"))
+                    if strict_extraction
+                    else _safe_int_attr(triangle, "MethodType", METHOD_TYPE_NONE_CODE)
+                )
             bs_entry = _find_berquist_sherman_for_triangle(
                 reserving_class,
                 triangle_name,
@@ -1070,8 +1118,12 @@ def export_triangles_for_rc(
                 raise ValueError(
                     f"Could not find the ResQ Berquist Sherman method attached to {triangle_name!r}."
                 )
-            dataset_type_obj = _safe_attr(triangle, "DatasetType", None)
-            dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", ""))
+            if strict_extraction:
+                dataset_type_obj = getattr(triangle, "DatasetType")
+                dataset_type = _normalize_import_name(getattr(dataset_type_obj, "Name"))
+            else:
+                dataset_type_obj = _safe_attr(triangle, "DatasetType", None)
+                dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", ""))
             if not _is_known_dataset_type(dataset_type, known_dataset_type_keys):
                 detail = _unknown_dataset_type_skip_detail("triangle", triangle_name, dataset_type)
                 _log(verbose, detail)
@@ -1097,6 +1149,7 @@ def export_triangles_for_rc(
                     name=triangle_name,
                     dataset_type=dataset_type,
                     is_vector=False,
+                    strict=strict_extraction,
                 )
                 engine_tasks.append(
                     _create_engine_generated_task(
@@ -1107,7 +1160,11 @@ def export_triangles_for_rc(
                     )
                 )
                 continue
-            payload = export_triangle(triangle, method_type_code=method_type)
+            payload = export_triangle(
+                triangle,
+                method_type_code=method_type,
+                strict=strict_extraction,
+            )
             if not _is_known_dataset_type(payload.get("dataset_type"), known_dataset_type_keys):
                 detail = _unknown_dataset_type_skip_detail("triangle", payload.get("name") or triangle_name, payload.get("dataset_type"))
                 _log(verbose, detail)
@@ -1127,7 +1184,12 @@ def export_triangles_for_rc(
             bs_payload = None
             if bs_entry is not None:
                 variant, bs_method = bs_entry
-                bs_payload = export_berquist_sherman(bs_method, variant, payload)
+                bs_payload = export_berquist_sherman(
+                    bs_method,
+                    variant,
+                    payload,
+                    strict=strict_extraction,
+                )
                 _apply_berquist_sherman_triangle_metadata(payload, bs_payload)
 
             if bs_payload is not None:
@@ -1213,6 +1275,8 @@ def export_vectors_for_rc(
     method_counts: dict | None = None,
     engine_provenance: dict | None = None,
     engine_available: bool = True,
+    preserve_local_dfm_owned_state: bool = True,
+    strict_extraction: bool = False,
     verbose: bool = True,
 ) -> tuple[int, int]:
     """Export vector datasets for one reserving class. Returns (written, errors)."""
@@ -1237,7 +1301,11 @@ def export_vectors_for_rc(
         )
         try:
             vector = vector_collection.Item(vector_name)
-            method_type = _safe_int_attr(vector, "MethodType", -1)
+            method_type = (
+                int(getattr(vector, "MethodType"))
+                if strict_extraction
+                else _safe_int_attr(vector, "MethodType", -1)
+            )
             dfm_entry = dfm_by_output.get(_normalize_import_name(vector_name).lower()) if method_type == METHOD_TYPE_DFM_CODE else None
             if dfm_entry is not None:
                 dfm_name, dfm = dfm_entry
@@ -1252,6 +1320,8 @@ def export_vectors_for_rc(
                     log=_log,
                     known_dataset_type_keys=known_dataset_type_keys,
                     max_average_formula_probe=MAX_AVERAGE_FORMULA_PROBE,
+                    preserve_local_owned_state=preserve_local_dfm_owned_state,
+                    strict=strict_extraction,
                     verbose=verbose,
                 )
                 if skipped:
@@ -1290,8 +1360,12 @@ def export_vectors_for_rc(
             if method_type == METHOD_TYPE_DFM_CODE and include_dfm_methods:
                 _log(verbose, f"    WARN DFM method not found for vector {vector_name}; exporting vector only")
 
-            dataset_type_obj = _safe_attr(vector, "DatasetType", None)
-            dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or vector_name
+            if strict_extraction:
+                dataset_type_obj = getattr(vector, "DatasetType")
+                dataset_type = _normalize_import_name(getattr(dataset_type_obj, "Name")) or vector_name
+            else:
+                dataset_type_obj = _safe_attr(vector, "DatasetType", None)
+                dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or vector_name
             if not _is_known_dataset_type(dataset_type, known_dataset_type_keys):
                 detail = _unknown_dataset_type_skip_detail("vector", vector_name, dataset_type)
                 _log(verbose, detail)
@@ -1314,21 +1388,30 @@ def export_vectors_for_rc(
                 if bf_method is None:
                     _log(verbose, f"    WARN Bornhuetter Ferguson method not found for vector {vector_name}; exporting vector only")
                 else:
-                    bf_payload = export_bornhuetter_ferguson(bf_method)
+                    bf_payload = export_bornhuetter_ferguson(
+                        bf_method,
+                        strict=strict_extraction,
+                    )
             cc_payload = None
             if method_type == METHOD_TYPE_CAPE_COD_CODE and include_cc_methods:
                 cc_method = _find_cape_cod_for_vector(reserving_class, vector_name)
                 if cc_method is None:
                     _log(verbose, f"    WARN Cape Cod method not found for vector {vector_name}; exporting vector only")
                 else:
-                    cc_payload = export_cape_cod(cc_method)
+                    cc_payload = export_cape_cod(
+                        cc_method,
+                        strict=strict_extraction,
+                    )
             result_selection_payload = None
             if method_type == METHOD_TYPE_RESULT_SELECTION_CODE:
                 result_selection = _find_result_selection_for_vector(reserving_class, vector_name)
                 if result_selection is None:
                     _log(verbose, f"    WARN result selection method not found for vector {vector_name}; exporting vector only")
                 else:
-                    result_selection_payload = export_result_selection(result_selection)
+                    result_selection_payload = export_result_selection(
+                        result_selection,
+                        strict=strict_extraction,
+                    )
             if (
                 not result_selection_payload
                 and not bf_payload
@@ -1343,6 +1426,7 @@ def export_vectors_for_rc(
                     name=vector_name,
                     dataset_type=dataset_type,
                     is_vector=True,
+                    strict=strict_extraction,
                 )
                 engine_tasks.append(
                     _create_engine_generated_task(
@@ -1353,7 +1437,7 @@ def export_vectors_for_rc(
                     )
                 )
                 continue
-            payload = export_vector(vector)
+            payload = export_vector(vector, strict=strict_extraction)
             if not _is_known_dataset_type(payload.get("dataset_type"), known_dataset_type_keys):
                 detail = _unknown_dataset_type_skip_detail("vector", payload.get("name") or vector_name, payload.get("dataset_type"))
                 _log(verbose, detail)
@@ -1391,6 +1475,10 @@ def export_vectors_for_rc(
             if result_selection_payload:
                 method_path = write_result_selection_export(result_selection_payload, rc_path, rc_dir)
                 _log(verbose, f"    OK  {method_path.name}")
+                if isinstance(method_counts, dict):
+                    method_counts["result_selections_written"] = int(
+                        method_counts.get("result_selections_written") or 0
+                    ) + 1
             if bf_payload:
                 method_path = write_bornhuetter_ferguson_export(bf_payload, rc_path, rc_dir)
                 _log(verbose, f"    OK  {method_path.name}")

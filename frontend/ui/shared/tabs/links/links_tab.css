@@ -247,8 +247,3 @@
   background: rgba(120, 120, 120, 0.267);
   background-clip: content-box;
 }
-
-td.arExternalLinkCell {
-  color: #166534;
-  font-weight: 700;
-}

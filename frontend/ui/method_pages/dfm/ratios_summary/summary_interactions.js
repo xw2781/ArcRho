@@ -38,6 +38,9 @@ const getSummaryCellRowLabel = (...args) => summaryRuntime.getSummaryCellRowLabe
 const replaceFormulaReferenceLabel = (...args) => summaryRuntime.replaceFormulaReferenceLabel(...args);
 const updateActiveSummaryFormulaReferenceUi = (...args) => summaryRuntime.updateActiveSummaryFormulaReferenceUi(...args);
 const applyUserEntryReferenceHighlights = (...args) => summaryRuntime.applyUserEntryReferenceHighlights(...args);
+const formatUserEntryFormulaEvaluationValue = (...args) => (
+  summaryRuntime.formatUserEntryFormulaEvaluationValue(...args)
+);
 const evaluateSimpleMathExpression = (...args) => summaryRuntime.evaluateSimpleMathExpression(...args);
 const stripFormulaEquals = (...args) => summaryRuntime.stripFormulaEquals(...args);
 const getUserEntryValueForCol = (...args) => summaryRuntime.getUserEntryValueForCol(...args);
@@ -383,7 +386,7 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable, options = {})
   input.type = "text";
   input.className = "summaryCellEditInput";
   const initialText = typeof options.initialText === "string" ? options.initialText : null;
-  input.value = initialText ?? formatRatio(roundRatio(currentValue, 6), getDfmDecimalPlaces());
+  input.value = initialText ?? formatUserEntryFormulaEvaluationValue(currentValue);
   clearSummaryFormulaBarValidationError();
   const original = cell.textContent;
   cell.textContent = "";
@@ -398,7 +401,7 @@ function beginUserEntryCellEdit(cell, summaryTable, selectedTable, options = {})
 
   let finished = false;
   const restore = (nextValue) => {
-    cell.textContent = formatRatio(roundRatio(nextValue, 6), getDfmDecimalPlaces());
+    cell.textContent = formatUserEntryFormulaEvaluationValue(nextValue);
     cell.classList.remove("na");
     cell.classList.remove("ratioPlaceholder");
     cell.classList.remove("strike");

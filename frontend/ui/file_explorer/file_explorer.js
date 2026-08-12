@@ -1,5 +1,5 @@
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260715a";
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { createFileIconResolver } from "/ui/shared/file-icons/fileIconResolver.js?v=20260722a";
 import { pushWorkspaceHistoryEntry } from "/ui/shared/services/workspace_history.js?v=20260726a";
 import { isExcelWorkbookPath } from "/ui/shared/tabs/notes/notes_paths.js?v=20260722a";
