@@ -12,8 +12,39 @@ from arcrho_bridge.bridge_utils import read_json, write_json, write_json_with_co
 
 
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
+RESQ_CONFIG_SECTION = "resq"
 DFM_OWNED_PATCH_FORMAT = "arcrho-dfm-owned-patch-v1"
 RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
+
+
+def resq_connection_settings():
+    """Read the shared ResQ service account from the deployed config.json.
+
+    Every ArcRho user connects to ResQ as one service account rather than with
+    their own Windows authentication, so the credentials live in the shared
+    ``<ArcRho Server>\\config\\config.json`` under ``resq`` instead of being
+    compiled into the Bridge exe. Rotating the account is a config edit that the
+    next connect picks up, with no rebuild or redeploy.
+    """
+
+    # Imported lazily: utils resolves the deploy root at import time, and the
+    # Bridge sets that up in main.py before any COM work starts.
+    from utils import get_config_value
+
+    def setting(key, default=""):
+        value = get_config_value(f"{RESQ_CONFIG_SECTION}.{key}", default)
+        return str(value).strip() if value is not None else ""
+
+    connection_name = setting("connection_name") or CONNECTION_NAME
+    user_name = setting("user_name")
+    password = setting("password")
+    if not user_name or not password:
+        raise RuntimeError(
+            "The shared ResQ service account is not configured: set "
+            f"'{RESQ_CONFIG_SECTION}.user_name' and '{RESQ_CONFIG_SECTION}.password' "
+            "in the ArcRho Server config.json."
+        )
+    return connection_name, user_name, password
 
 
 class ResQClient:
@@ -47,8 +78,9 @@ class ResQClient:
             self._ensure_com_initialized()
             if self.app is None:
                 try:
+                    connection_name, user_name, password = resq_connection_settings()
                     self.app = win32com.client.Dispatch("ResQ3Automation.ResQApplication")
-                    self.app.ConnectByName(CONNECTION_NAME, "", "")
+                    self.app.ConnectByName(connection_name, user_name, password)
                 except Exception:
                     self.app = None
                     self._uninitialize_com()
