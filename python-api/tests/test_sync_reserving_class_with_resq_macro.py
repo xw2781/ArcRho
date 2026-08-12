@@ -152,6 +152,7 @@ class SyncReservingClassWithResqMacroTests(unittest.TestCase):
         )
 
         columns = {column["key"]: column["label"] for column in payload["columns"]}
+        self.assertEqual(payload["host"], "projectInstance")
         self.assertEqual(columns["arcrho_timestamp"], "ArcRho Timestamp")
         self.assertEqual(columns["resq_timestamp"], "ResQ Timestamp")
         self.assertIn("Both timestamp columns are shown for every row", payload["summary"])

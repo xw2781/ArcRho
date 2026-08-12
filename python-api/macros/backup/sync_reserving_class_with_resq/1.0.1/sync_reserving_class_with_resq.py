@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.1.0
-# Release Note: Host the review table as a Project Instance nested window so it can be minimized to the toolbar while reviewing details.
+# Version: 1.0.1
+# Release Note: Finalize strict selective writes, recovery-safe baselines, and deployable client runtime support.
 # Description: Compare every dataset and supported method output in the selected reserving class, show both ArcRho and ResQ timestamps in a review table, and apply only the synchronization actions the user accepts.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -26,7 +26,7 @@ from typing import Any, Mapping
 
 
 TITLE = "Sync Reserving Class with ResQ"
-MACRO_VERSION = "1.1.0"
+MACRO_VERSION = "1.0.1"
 PROGRESS_ID = "sync-reserving-class-with-resq"
 DEFAULT_SERVER_ROOT = Path(r"E:\ArcRho Server")
 REVIEW_POLL_SECONDS = 0.5
@@ -795,10 +795,6 @@ def review_table_payload(plan: list[dict[str, Any]], project_name: str, rc_path:
     selected = sum(bool(row.get("selected")) and not bool(row.get("disabled")) for row in plan)
     return {
         "title": TITLE,
-        # Ask the shell to host the review inside the active Project Instance
-        # page as a nested window (minimizable to the toolbar). Shells without
-        # an active Project Instance page fall back to the modal dialog.
-        "host": "projectInstance",
         "summary": (
             f"Project: {project_name} | Reserving class: {rc_path} | ResQ: {connection_name}\n"
             f"Compared {len(plan)} logical dataset/method output(s). "

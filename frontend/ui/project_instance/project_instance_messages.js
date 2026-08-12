@@ -578,6 +578,13 @@ function findAutomationWindow(args = {}) {
   return getActiveDatasetWindow();
 }
 
+function automationWindowArgsHaveExplicitTarget(args = {}) {
+  return !!(
+    toText(args.windowId || args.window_id || args.id || args.inst)
+    || toText(args.windowKey || args.window_key)
+  );
+}
+
 function handleAutomationOpenDataset(message, sourceWindow) {
   const requestId = toText(message?.requestId);
   const args = message?.args && typeof message.args === "object" ? message.args : {};
@@ -890,12 +897,20 @@ function handleAutomationWindowCommand(message, sourceWindow) {
   const reply = (payload) => replyAutomationResult(sourceWindow, requestId, payload);
   if (!requestId) return true;
   const frame = findAutomationWindow(args);
+  const action = toText(args.action || "properties").toLowerCase();
   if (!frame?.isConnected) {
+    // An implicit active-window properties query is a valid question with a
+    // valid empty answer: no nested window is open or focused. Reply ok with
+    // an empty windowId so ArcRhoUI.project_instance.active_window() returns
+    // None instead of raising. Explicit lookups and actions keep the error.
+    if (!automationWindowArgsHaveExplicitTarget(args) && ["properties", "get", "info"].includes(action)) {
+      reply({ ok: true, result: { windowId: "", id: "", connected: false, active: false } });
+      return true;
+    }
     reply({ ok: false, error: "Project Instance window was not found." });
     return true;
   }
 
-  const action = toText(args.action || "properties").toLowerCase();
   const sendInfo = () => {
     const windowInfo = getAutomationWindowInfo(frame);
     reply({ ok: true, result: { ...windowInfo, window: windowInfo } });
@@ -1343,6 +1358,22 @@ window.addEventListener("message", (event) => {
     handleAutomationWindowCommand(msg, event.source);
     return;
   }
+  if (msg.type === "arcrho:automation-review-table-open") {
+    api.handleAutomationReviewTableOpen(msg, event.source);
+    return;
+  }
+  if (msg.type === "arcrho:automation-review-table-status") {
+    api.handleAutomationReviewTableStatus(msg, event.source);
+    return;
+  }
+  if (msg.type === "arcrho:automation-review-table-close") {
+    api.handleAutomationReviewTableClose(msg, event.source);
+    return;
+  }
+  if (msg.type === "arcrho:review-table-window-ready" || msg.type === "arcrho:review-table-window-complete" || msg.type === "arcrho:review-table-window-error") {
+    api.handleReviewTableWindowMessage(msg, event.source);
+    return;
+  }
   if (msg.type === "arcrho:dfm-edit-state") {
     const frame = findWindowByMessageSource(event.source);
     if (frame && isDfmWindow(frame)) {
@@ -1529,6 +1560,7 @@ window.addEventListener("message", (event) => {
     closeActiveDatasetWindowFromShortcut,
     consumeCloseShortcutFromShell,
     forwardRequestToActiveDfm,
+    replyAutomationResult,
     forwardOpenPathRequestToShell,
     initDatasetWindowShortcuts,
     isCloseActiveWindowShortcut,

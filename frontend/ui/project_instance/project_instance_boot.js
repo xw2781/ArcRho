@@ -9,15 +9,16 @@ import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 import { createProjectInstanceContext } from "./project_instance_context.js?v=20260811b";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260809b";
-import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260809a";
+import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260812a";
 import { installProjectInstanceNumberFormats } from "./project_instance_number_formats.js?v=20260720b";
 import { installProjectInstanceExcelLinks } from "./project_instance_excel_links.js?v=20260811b";
-import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260809b";
+import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260812a";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260811a";
-import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260805a";
+import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260812a";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
-import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260809a";
+import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260812a";
+import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260812a";
 
 export async function bootProjectInstance() {
   const ctx = createProjectInstanceContext({
@@ -37,6 +38,7 @@ export async function bootProjectInstance() {
   installProjectInstancePathPanel(ctx);
   installProjectInstanceWindows(ctx);
   installProjectInstanceHiddenTabs(ctx);
+  installProjectInstanceReviewTable(ctx);
   installProjectInstanceMessages(ctx);
 
   const { api, els, projectName, state } = ctx;

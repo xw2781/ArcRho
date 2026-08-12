@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "The Sync Reserving Class with ResQ review table now opens as a nested Project Instance window instead of a modal dialog.",
+  "details": [
+    "The review window can be minimized to the Project Instance toolbar and restored later, so the dataset table and open windows stay reachable while reviewing.",
+    "Closing the review window cancels the synchronization cleanly instead of leaving the macro waiting.",
+    "Shells without an active Project Instance page keep the previous modal review dialog."
+  ]
+}

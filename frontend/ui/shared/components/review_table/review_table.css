@@ -358,6 +358,29 @@
   user-select: none !important;
 }
 
+/* Nested-window host page: the pi-window supplies chrome, dragging, and
+   resizing, so the panel simply fills the iframe viewport. */
+.reviewTableWindowPage {
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  color: #1f2937;
+  font: 13px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  background: #fbfcfe;
+}
+
+.reviewTableWindowHost {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.reviewTableWindowHost .reviewTableBody {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .reviewTableFrame::-webkit-scrollbar {
   width: 20px;
   height: 20px;

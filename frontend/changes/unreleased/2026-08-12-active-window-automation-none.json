@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Macros no longer fail with 'Project Instance window was not found' when run without an open dataset or method window.",
+  "details": [
+    "The active-window automation query now reports 'no active window' instead of an error, so macros like Sync Reserving Class with ResQ run directly from the dataset table view."
+  ]
+}

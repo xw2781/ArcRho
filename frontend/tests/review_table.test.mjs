@@ -98,10 +98,10 @@ test("shell UI automation wires asynchronous review-table open, status, and clos
   assert.match(automation, /return \{ dialogId \}/u);
   assert.match(automation, /status: "completed"/u);
   assert.match(automation, /selectedRowIds/u);
-  assert.match(index, /review_table\/review_table\.css\?v=20260812a/u);
-  assert.match(index, /ui_shell\.js\?v=20260812a/u);
+  assert.match(index, /review_table\/review_table\.css\?v=20260812b/u);
+  assert.match(index, /ui_shell\.js\?v=20260812b/u);
   for (const consumer of [uiShell, shellMessages, updateProgress]) {
-    assert.match(consumer, /ui_automation\.js\?v=20260812a/u);
+    assert.match(consumer, /ui_automation\.js\?v=20260812b/u);
   }
   assert.match(component, /cell\.textContent/u);
   assert.doesNotMatch(component, /innerHTML/u);
@@ -109,4 +109,59 @@ test("shell UI automation wires asynchronous review-table open, status, and clos
   assert.match(component, /Select all visible actions/u);
   assert.match(styles, /\.reviewTable th\s*\{[\s\S]*?position: sticky;/u);
   assert.match(styles, /\.reviewTableResizeHandle/u);
+});
+
+test("a projectInstance-hosted review table runs as a nested pi-window", async () => {
+  const [automation, piReviewTable, piMessages, piWindows, windowPage, windowScript, component, styles] = await Promise.all([
+    source("ui/shell/ui_automation.js"),
+    source("ui/project_instance/project_instance_review_table.js"),
+    source("ui/project_instance/project_instance_messages.js"),
+    source("ui/project_instance/project_instance_windows.js"),
+    source("ui/shared/components/review_table/review_table_window.html"),
+    source("ui/shared/components/review_table/review_table_window.js"),
+    source("ui/shared/components/review_table/review_table.js"),
+    source("ui/shared/components/review_table/review_table.css"),
+  ]);
+
+  // The shell routes host=projectInstance opens to the active Project Instance
+  // tab and pins follow-up status/close commands to that owning tab.
+  assert.match(automation, /reviewTableWantsProjectInstanceHost/u);
+  assert.match(automation, /arcrho:automation-review-table-open/u);
+  assert.match(automation, /arcrho:automation-review-table-status/u);
+  assert.match(automation, /arcrho:automation-review-table-close/u);
+  assert.match(automation, /reviewTableHostTabs/u);
+  // Without an active Project Instance page the shell modal remains the host.
+  assert.match(automation, /openAutomationReviewTable\(args\)/u);
+
+  // The Project Instance page owns the dialog lifecycle as a nested window.
+  assert.match(piMessages, /arcrho:automation-review-table-open/u);
+  assert.match(piMessages, /arcrho:review-table-window-complete/u);
+  assert.match(piReviewTable, /kind: "review_table"/u);
+  assert.match(piReviewTable, /createFloatingContentWindow/u);
+  assert.match(piReviewTable, /status: "pending", pending: true/u);
+  assert.match(piReviewTable, /accepted: !!entry\.result\?\.accepted/u);
+  // A user closing the window (X or minimized-tab close) resolves the review
+  // as a cancelled completion instead of hanging the macro poll loop.
+  assert.match(piReviewTable, /settleEntryIfWindowClosed/u);
+  // Review windows are macro-session state, never part of the persisted
+  // Project Instance window snapshot.
+  assert.match(piWindows, /windowKind === "review_table"\) return null/u);
+
+  // The nested-window page embeds the same shared panel the modal uses.
+  assert.match(windowPage, /review_table\.css\?v=20260812b/u);
+  assert.match(windowPage, /review_table_window\.js\?v=20260812a/u);
+  assert.match(windowScript, /createReviewTablePanel/u);
+  assert.match(windowScript, /arcrho:review-table-window-ready/u);
+  assert.match(component, /export function createReviewTablePanel/u);
+  assert.match(styles, /\.reviewTableWindowHost/u);
+});
+
+test("an implicit active-window query with no open window reports None instead of an error", async () => {
+  const piMessages = await source("ui/project_instance/project_instance_messages.js");
+  // ArcRhoUI.project_instance.active_window() sends no windowId; when nothing
+  // is open the page must reply ok with an empty windowId so the Python API
+  // returns None, keeping the error only for explicit window lookups.
+  assert.match(piMessages, /automationWindowArgsHaveExplicitTarget/u);
+  assert.match(piMessages, /\{ ok: true, result: \{ windowId: "", id: "", connected: false, active: false \} \}/u);
+  assert.match(piMessages, /Project Instance window was not found\./u);
 });

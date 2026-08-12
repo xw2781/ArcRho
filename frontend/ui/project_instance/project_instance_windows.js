@@ -114,6 +114,9 @@ function getFrameRect(frame) {
 function getProjectInstanceWindowSnapshot(frame) {
   if (!frame?.isConnected) return null;
   if (toText(frame.dataset?.temporaryViewSessionId)) return null;
+  // Review-table windows belong to a live macro session; they are never
+  // persisted into or restored from the saved Project Instance state.
+  if (frame.dataset?.windowKind === "review_table") return null;
   const kind = isDfmWindow(frame)
     ? "dfm"
     : isResultSelectionWindow(frame)

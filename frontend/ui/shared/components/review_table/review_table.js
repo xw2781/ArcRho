@@ -271,31 +271,18 @@ function enableDialogMovement(dialog, header, resizeHandle, windowRef) {
   };
 }
 
-export function createReviewTableDialog(options = {}, settings = {}) {
+// Host-neutral review surface: the message, search toolbar, selectable table,
+// and footer actions without any dialog chrome. The modal dialog below and the
+// Project Instance nested-window page both embed this panel, so selection,
+// filtering, and completion semantics stay identical in every host.
+export function createReviewTablePanel(options = {}, settings = {}) {
   const model = normalizeReviewTableOptions(options);
   const doc = settings.documentRef || document;
-  const windowRef = doc.defaultView || window;
-  const domId = `reviewTable${++reviewTableSequence}`;
+  const container = settings.container;
+  if (!container) throw new Error("Review table panel requires a container.");
   const selectedIds = new Set(model.rows.filter((row) => row.selected).map((row) => row.id));
-  const returnFocus = doc.activeElement;
   let settled = false;
   let visibleRows = [...model.rows];
-
-  const overlay = element(doc, "div", "reviewTableOverlay host-nodrag");
-  overlay.setAttribute("role", "presentation");
-  const dialog = element(doc, "section", "reviewTableDialog");
-  dialog.setAttribute("role", "dialog");
-  dialog.setAttribute("aria-modal", "true");
-  dialog.setAttribute("aria-labelledby", `${domId}Title`);
-
-  const header = element(doc, "div", "reviewTableHeader");
-  const title = element(doc, "h2", "reviewTableTitle", model.title);
-  title.id = `${domId}Title`;
-  const closeButton = element(doc, "button", "reviewTableClose");
-  closeButton.type = "button";
-  closeButton.setAttribute("aria-label", "Cancel review");
-  closeButton.appendChild(createSvgCloseIcon(doc));
-  header.append(title, closeButton);
 
   const body = element(doc, "div", "reviewTableBody");
   const message = element(doc, "p", "reviewTableMessage", model.message);
@@ -344,26 +331,7 @@ export function createReviewTableDialog(options = {}, settings = {}) {
   acceptButton.type = "button";
   actions.append(cancelButton, acceptButton);
   footer.append(selectionStatus, actions);
-
-  const resizeHandle = element(doc, "div", "reviewTableResizeHandle");
-  resizeHandle.setAttribute("role", "presentation");
-  resizeHandle.setAttribute("aria-hidden", "true");
-  dialog.append(header, body, footer, resizeHandle);
-  overlay.appendChild(dialog);
-
-  const inertSiblings = Array.from(doc.body.children)
-    .filter((node) => node !== overlay)
-    .map((node) => ({ node, inert: !!node.inert }));
-  inertSiblings.forEach(({ node }) => { node.inert = true; });
-  doc.body.appendChild(overlay);
-  const movement = enableDialogMovement(dialog, header, resizeHandle, windowRef);
-  movement.center();
-
-  function focusableElements() {
-    return Array.from(dialog.querySelectorAll(
-      "button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex='-1'])",
-    ));
-  }
+  container.append(body, footer);
 
   function updateSelectionUi() {
     const summary = summarizeReviewTableSelection(model.rows, selectedIds, visibleRows);
@@ -412,28 +380,111 @@ export function createReviewTableDialog(options = {}, settings = {}) {
   function finish(accepted, reason = "user") {
     if (settled) return;
     settled = true;
+    settings.onComplete?.({
+      accepted: !!accepted,
+      selectedRowIds: accepted ? selectedReviewTableRowIds(model.rows, selectedIds) : [],
+      reason,
+    });
+  }
+
+  search.addEventListener("input", renderRows);
+  selectAll.addEventListener("change", () => {
+    visibleRows.filter((row) => !row.disabled).forEach((row) => {
+      if (selectAll.checked) selectedIds.add(row.id);
+      else selectedIds.delete(row.id);
+    });
+    renderRows();
+  });
+  cancelButton.addEventListener("click", () => finish(false, "cancel"));
+  acceptButton.addEventListener("click", () => finish(true, "accept"));
+  renderRows();
+
+  return {
+    title: model.title,
+    body,
+    footer,
+    cancel(reason = "cancel") {
+      finish(false, reason);
+    },
+    focusSearch() {
+      try { search.focus(); } catch {}
+    },
+    get isOpen() {
+      return !settled;
+    },
+  };
+}
+
+export function createReviewTableDialog(options = {}, settings = {}) {
+  const doc = settings.documentRef || document;
+  const windowRef = doc.defaultView || window;
+  const domId = `reviewTable${++reviewTableSequence}`;
+  const returnFocus = doc.activeElement;
+
+  const overlay = element(doc, "div", "reviewTableOverlay host-nodrag");
+  overlay.setAttribute("role", "presentation");
+  const dialog = element(doc, "section", "reviewTableDialog");
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-labelledby", `${domId}Title`);
+
+  const header = element(doc, "div", "reviewTableHeader");
+  const title = element(doc, "h2", "reviewTableTitle", "");
+  title.id = `${domId}Title`;
+  const closeButton = element(doc, "button", "reviewTableClose");
+  closeButton.type = "button";
+  closeButton.setAttribute("aria-label", "Cancel review");
+  closeButton.appendChild(createSvgCloseIcon(doc));
+  header.append(title, closeButton);
+  dialog.appendChild(header);
+
+  const panel = createReviewTablePanel(options, {
+    documentRef: doc,
+    onComplete(result) {
+      teardown();
+      settings.onComplete?.(result);
+    },
+    container: dialog,
+  });
+  title.textContent = panel.title;
+
+  const resizeHandle = element(doc, "div", "reviewTableResizeHandle");
+  resizeHandle.setAttribute("role", "presentation");
+  resizeHandle.setAttribute("aria-hidden", "true");
+  dialog.appendChild(resizeHandle);
+  overlay.appendChild(dialog);
+
+  const inertSiblings = Array.from(doc.body.children)
+    .filter((node) => node !== overlay)
+    .map((node) => ({ node, inert: !!node.inert }));
+  inertSiblings.forEach(({ node }) => { node.inert = true; });
+  doc.body.appendChild(overlay);
+  const movement = enableDialogMovement(dialog, header, resizeHandle, windowRef);
+  movement.center();
+
+  function focusableElements() {
+    return Array.from(dialog.querySelectorAll(
+      "button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex='-1'])",
+    ));
+  }
+
+  function teardown() {
     doc.removeEventListener("keydown", onKeyDown, true);
     movement.destroy();
     overlay.remove();
     inertSiblings.forEach(({ node, inert }) => {
       if (node.isConnected) node.inert = inert;
     });
-    const result = {
-      accepted: !!accepted,
-      selectedRowIds: accepted ? selectedReviewTableRowIds(model.rows, selectedIds) : [],
-      reason,
-    };
     if (returnFocus?.isConnected && typeof returnFocus.focus === "function") {
       windowRef.requestAnimationFrame(() => returnFocus.focus());
     }
-    settings.onComplete?.(result);
   }
 
   function onKeyDown(event) {
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopImmediatePropagation();
-      finish(false, "escape");
+      panel.cancel("escape");
       return;
     }
     if (event.key !== "Tab") return;
@@ -453,27 +504,16 @@ export function createReviewTableDialog(options = {}, settings = {}) {
     }
   }
 
-  search.addEventListener("input", renderRows);
-  selectAll.addEventListener("change", () => {
-    visibleRows.filter((row) => !row.disabled).forEach((row) => {
-      if (selectAll.checked) selectedIds.add(row.id);
-      else selectedIds.delete(row.id);
-    });
-    renderRows();
-  });
-  closeButton.addEventListener("click", () => finish(false, "close"));
-  cancelButton.addEventListener("click", () => finish(false, "cancel"));
-  acceptButton.addEventListener("click", () => finish(true, "accept"));
+  closeButton.addEventListener("click", () => panel.cancel("close"));
   doc.addEventListener("keydown", onKeyDown, true);
-  renderRows();
-  windowRef.requestAnimationFrame(() => search.focus());
+  windowRef.requestAnimationFrame(() => panel.focusSearch());
 
   return {
     close(reason = "automation") {
-      finish(false, reason);
+      panel.cancel(reason);
     },
     get isOpen() {
-      return !settled;
+      return panel.isOpen;
     },
   };
 }

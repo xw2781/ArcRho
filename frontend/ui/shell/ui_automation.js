@@ -3,7 +3,7 @@ import {
   captureActiveDfmContextForMacro,
   reviewAndApplyCapturedMacroResult,
 } from "../macro/macro_window.js?v=20260812a";
-import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260812a";
+import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260812b";
 
 const API_BASE = window.location.origin;
 const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -17,6 +17,10 @@ let messageBoxPromise = null;
 const progressWindows = new Map();
 const dismissedProgressWindows = new Set();
 const reviewTableDialogs = new Map();
+// dialogId -> Project Instance tab hosting that review table as a nested
+// window. Status/close commands must reach the owning tab even after the user
+// switches shell tabs, so the tab reference is pinned at open time.
+const reviewTableHostTabs = new Map();
 
 function toText(value) {
   return value == null ? "" : String(value).trim();
@@ -560,6 +564,62 @@ export function closeAutomationReviewTable(args = {}) {
   return { dialogId, closed: true, cancelled };
 }
 
+function reviewTableWantsProjectInstanceHost(args = {}) {
+  return toText(args.host).toLowerCase().replace(/[\s_-]/g, "") === "projectinstance";
+}
+
+function isLiveShellTab(tab) {
+  return !!tab && Array.isArray(shell.state?.tabs) && shell.state.tabs.includes(tab);
+}
+
+async function openReviewTableCommand(command) {
+  const args = command.args || {};
+  if (reviewTableWantsProjectInstanceHost(args)) {
+    const tab = findActiveProjectInstanceTab();
+    if (tab) {
+      const outcome = await sendCommandToProjectInstance(command, {
+        tab,
+        messageType: "arcrho:automation-review-table-open",
+      });
+      if (outcome?.ok) {
+        const dialogId = toText(outcome.result?.dialogId);
+        if (dialogId) reviewTableHostTabs.set(dialogId, tab);
+      }
+      return outcome;
+    }
+    // No active Project Instance page to host the nested window: fall back to
+    // the shell modal dialog so the caller's review still happens.
+  }
+  return { ok: true, result: openAutomationReviewTable(args) };
+}
+
+async function routeReviewTableFollowUp(command, isClose) {
+  const args = command.args || {};
+  const dialogId = reviewTableIdFromArgs(args);
+  const hostTab = dialogId ? reviewTableHostTabs.get(dialogId) : null;
+  if (!hostTab) {
+    return {
+      ok: true,
+      result: isClose ? closeAutomationReviewTable(args) : getAutomationReviewTableStatus(args),
+    };
+  }
+  if (!isLiveShellTab(hostTab) || !hostTab.iframe?.contentWindow) {
+    // The hosting Project Instance tab was closed, so the review can never
+    // finish: report a cancelled completion instead of an error so the caller
+    // exits its poll loop cleanly.
+    reviewTableHostTabs.delete(dialogId);
+    return isClose
+      ? { ok: true, result: { dialogId, closed: false, cancelled: false } }
+      : { ok: true, result: { dialogId, status: "completed", pending: false, accepted: false, selectedRowIds: [] } };
+  }
+  const outcome = await sendCommandToProjectInstance(command, {
+    tab: hostTab,
+    messageType: isClose ? "arcrho:automation-review-table-close" : "arcrho:automation-review-table-status",
+  });
+  if (isClose && outcome?.ok) reviewTableHostTabs.delete(dialogId);
+  return outcome;
+}
+
 function progressIdFromArgs(args = {}) {
   return toText(args.progressId || args.progress_id || args.id) || "default";
 }
@@ -739,8 +799,8 @@ export function automationCommandTimeoutMs(command) {
   return Math.max(1000, budgetSec * 1000 - AUTOMATION_REPLY_MARGIN_MS);
 }
 
-function sendCommandToProjectInstance(command) {
-  const tab = findActiveProjectInstanceTab();
+function sendCommandToProjectInstance(command, options = {}) {
+  const tab = options.tab || findActiveProjectInstanceTab();
   if (!tab) {
     return Promise.resolve({ ok: false, error: "Activate a Project Instance page before running this UI command." });
   }
@@ -749,7 +809,8 @@ function sendCommandToProjectInstance(command) {
   if (!iframe?.contentWindow) {
     return Promise.resolve({ ok: false, error: "The active Project Instance page is not ready." });
   }
-  const messageType = getProjectInstanceAutomationMessageType(toText(command?.command));
+  const messageType = toText(options.messageType)
+    || getProjectInstanceAutomationMessageType(toText(command?.command));
   if (!messageType) {
     return Promise.resolve({ ok: false, error: `Unsupported Project Instance command: ${toText(command?.command)}` });
   }
@@ -867,13 +928,13 @@ async function executeAutomationCommand(command) {
     return { ok: true, result };
   }
   if (name === "ui.reviewTableOpen") {
-    return { ok: true, result: openAutomationReviewTable(command.args || {}) };
+    return openReviewTableCommand(command);
   }
   if (name === "ui.reviewTableStatus") {
-    return { ok: true, result: getAutomationReviewTableStatus(command.args || {}) };
+    return routeReviewTableFollowUp(command, false);
   }
   if (name === "ui.reviewTableClose") {
-    return { ok: true, result: closeAutomationReviewTable(command.args || {}) };
+    return routeReviewTableFollowUp(command, true);
   }
   if (name === "ui.progressOpen") {
     return { ok: true, result: openAutomationProgress(command.args || {}) };
