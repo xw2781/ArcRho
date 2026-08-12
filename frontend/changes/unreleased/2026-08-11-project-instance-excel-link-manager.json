@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Added a reserving-class Excel Link Manager that lists every linked workbook and can repoint one workbook for all datasets and DFM methods at once.",
+  "details": [
+    "A new toolbar button opens a floating window showing each linked workbook, whether the file exists, and which datasets and DFM methods use it.",
+    "Change... opens a file picker and relinks every saved reference in the reserving class to the selected workbook.",
+    "Stored values keep their current snapshots until links are refreshed from a Dataset or DFM Links tab.",
+    "The window follows the selected reserving-class path automatically."
+  ]
+}

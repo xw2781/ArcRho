@@ -21,6 +21,7 @@ from app_server.api import (
     dataset_router,
     book_router,
     excel_router,
+    excel_link_router,
     arcrho_router,
     project_settings_router,
     table_summary_router,
@@ -61,6 +62,7 @@ app.include_router(audit_log_router)
 app.include_router(dataset_router)
 app.include_router(book_router)
 app.include_router(excel_router)
+app.include_router(excel_link_router)
 app.include_router(arcrho_router)
 app.include_router(project_settings_router)
 app.include_router(table_summary_router)

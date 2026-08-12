@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added a High Contrast color theme that keeps the Light palette and renders spreadsheet text in pure black."
+}

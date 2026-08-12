@@ -7,6 +7,8 @@ import {
   registerSummaryFunctions,
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
+import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260811a";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -40,8 +42,10 @@ const stripFormulaEquals = (...args) => summaryRuntime.stripFormulaEquals(...arg
 const parseSummaryArrayFormula = (...args) => summaryRuntime.parseSummaryArrayFormula(...args);
 const normalizeUserEntryValues = (...args) => summaryRuntime.normalizeUserEntryValues(...args);
 const normalizeUserEntryInputs = (...args) => summaryRuntime.normalizeUserEntryInputs(...args);
+const normalizeUserEntryDisplayInputs = (...args) => summaryRuntime.normalizeUserEntryDisplayInputs(...args);
 const getUserEntryValueForCol = (...args) => summaryRuntime.getUserEntryValueForCol(...args);
 const getUserEntryInputForCol = (...args) => summaryRuntime.getUserEntryInputForCol(...args);
+const getUserEntryDisplayInputForCol = (...args) => summaryRuntime.getUserEntryDisplayInputForCol(...args);
 const summaryTableHasUserEntryRows = (...args) => summaryRuntime.summaryTableHasUserEntryRows(...args);
 const setModalValidationError = (...args) => summaryRuntime.setModalValidationError(...args);
 const clearModalValidationError = (...args) => summaryRuntime.clearModalValidationError(...args);
@@ -183,6 +187,13 @@ function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCo
       error: "Array formulas currently support numbers and DFM row-reference math, but not Excel cell links inside the array.",
     };
   }
+  if (containsDfmDatasetReference(raw)) {
+    return {
+      handled: true,
+      ok: false,
+      error: "Array formulas do not support ArcRho dataset references.",
+    };
+  }
 
   const availableCells = getSummaryArrayFormulaDestination(
     summaryTable,
@@ -297,18 +308,26 @@ async function commitSummaryFormulaInput(inputEl) {
         isCurrent,
       });
     }
+    const resolvedDatasetFormula = await resolveDfmDatasetReferencesInFormulaDetailed(raw, {
+      signal: validationLease.signal,
+    });
+    if (!isCurrent()) return false;
     const refValues = buildSummaryReferenceValues(summaryTable, col);
-    const parsed = stripFormulaEquals(raw) ? evaluateSimpleMathExpression(raw, refValues) : 1;
+    const parsed = stripFormulaEquals(resolvedDatasetFormula.resolvedFormula)
+      ? evaluateSimpleMathExpression(resolvedDatasetFormula.resolvedFormula, refValues)
+      : 1;
     if (!Number.isFinite(parsed) || parsed <= 0) {
       showSummaryFormulaBarValidationError(
-        "Enter a number > 0, or a formula like =\"Simple - 5\"*2.",
+        "Enter a number > 0, a DFM row formula, or an ArcRho dataset reference.",
         inputEl
       );
       return false;
     }
     const nextValue = roundRatio(parsed, 6);
     restoreSupersededExcelRange(summaryTable, rowId, col, raw);
-    setUserEntryCellEntry(rowId, col, stripFormulaEquals(raw) ? raw : "1", nextValue);
+    setUserEntryCellEntry(rowId, col, stripFormulaEquals(raw) ? raw : "1", nextValue, {
+      displayInput: resolvedDatasetFormula.displayFormula === raw ? "" : resolvedDatasetFormula.displayFormula,
+    });
     persistUserEntryRowsFromState();
     const cell = summaryTable.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
     if (cell) setUserEntryCellDisplayValue(cell, nextValue);
@@ -326,7 +345,7 @@ async function commitSummaryFormulaInput(inputEl) {
     if (error?.name === "AbortError") {
       if (validationLease.timedOut) {
         showSummaryFormulaBarValidationError(
-          "Excel validation timed out after 30 seconds. Check the workbook and try again.",
+          "Linked formula validation timed out after 30 seconds. Check the source and try again.",
           inputEl
         );
       }
@@ -381,6 +400,9 @@ function updateSummaryFormulaBarForCell(cell) {
         inputRaw = isExcelRangeCell
           ? String(targetCell.dataset.excelRangeFormula || "").trim()
           : String(getUserEntryInputForCol(cfg, editCol) || "").trim();
+        const displayInputRaw = isExcelRangeCell
+          ? ""
+          : String(getUserEntryDisplayInputForCol(cfg, editCol) || "").trim();
         const labelEl = el.querySelector("#dfmSummaryFormulaBarLabelText");
         if (labelEl) {
           const rowLabel = String(cfg.label || cfg.id || "f(x)");
@@ -400,6 +422,8 @@ function updateSummaryFormulaBarForCell(cell) {
           if (!sameTarget) clearSummaryFormulaBarValidationError();
           inputEl.dataset.rowId = editRowId;
           inputEl.dataset.col = String(editCol);
+          if (displayInputRaw) inputEl.dataset.displayFormula = displayInputRaw;
+          else delete inputEl.dataset.displayFormula;
           inputEl.disabled = false;
           inputEl.placeholder = "Enter value or formula";
         }
@@ -551,10 +575,18 @@ function setUserEntryCellEntry(rowId, col, inputRaw, value, options = {}) {
   const colCount = getCurrentRatioColumnCount();
   const values = normalizeUserEntryValues(cfg.values, Math.max(colCount, col + 1));
   const inputs = normalizeUserEntryInputs(cfg.inputs ?? cfg.formulas, values, Math.max(colCount, col + 1));
+  const displayInputs = normalizeUserEntryDisplayInputs(cfg.displayInputs, Math.max(colCount, col + 1));
+  const previousInput = String(inputs[col] ?? "").trim();
   values[col] = nextValue;
   inputs[col] = nextInput;
+  if (Object.prototype.hasOwnProperty.call(options || {}, "displayInput")) {
+    displayInputs[col] = String(options.displayInput ?? "").trim();
+  } else if (previousInput !== nextInput) {
+    displayInputs[col] = "";
+  }
   cfg.values = values;
   cfg.inputs = inputs;
+  cfg.displayInputs = displayInputs;
   if (Object.prototype.hasOwnProperty.call(cfg, "formulas")) delete cfg.formulas;
 
   if (!persist) return true;
@@ -572,6 +604,7 @@ function setUserEntryCellEntry(rowId, col, inputRaw, value, options = {}) {
     exclude: 0,
     values,
     inputs,
+    displayInputs,
   };
   saveCustomSummaryRows(cfgKey, customRows);
   return true;
@@ -590,6 +623,7 @@ function persistUserEntryRowsFromState() {
     if (!cfg || !isUserEntryConfig(cfg)) return row;
     const values = normalizeUserEntryValues(cfg.values, colCount);
     const inputs = normalizeUserEntryInputs(cfg.inputs ?? cfg.formulas, values, colCount);
+    const displayInputs = normalizeUserEntryDisplayInputs(cfg.displayInputs, colCount);
     const { formulas: _legacyFormulas, ...baseRow } = row || {};
     const nextRow = {
       ...baseRow,
@@ -599,6 +633,7 @@ function persistUserEntryRowsFromState() {
       exclude: 0,
       values,
       inputs,
+      displayInputs,
     };
     if (!changed) changed = JSON.stringify(row) !== JSON.stringify(nextRow);
     return nextRow;

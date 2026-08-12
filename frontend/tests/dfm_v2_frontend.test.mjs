@@ -65,6 +65,11 @@ test("aggregate DFM API sends method and output identities with revision-aware s
       expected_owned_revision: "owned",
       expected_derived_revision: "derived",
     });
+    await api.resolveDfmDatasetReferences({
+      project_name: "Project",
+      reserving_class: "RC",
+      references: [{ dataset_name: "Paid", row_idx: "1", col_idx: "2" }],
+    });
 
     assert.deepEqual(requests[0], {
       path: "/dfm/method/load",
@@ -83,6 +88,14 @@ test("aggregate DFM API sends method and output identities with revision-aware s
       notes: "keep",
       expected_owned_revision: "owned",
       expected_derived_revision: "derived",
+    });
+    assert.deepEqual(requests[3], {
+      path: "/dfm/method/dataset-references/resolve",
+      body: {
+        project_name: "Project",
+        reserving_class: "RC",
+        references: [{ dataset_name: "Paid", row_idx: "1", col_idx: "2" }],
+      },
     });
   } finally {
     globalThis.fetch = previousFetch;

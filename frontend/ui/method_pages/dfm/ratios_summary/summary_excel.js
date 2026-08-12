@@ -7,6 +7,11 @@ import {
   registerSummaryFunctions,
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
+import {
+  resolveDfmDatasetReferencesInFormulaDetailed,
+  resolveDfmDatasetReferencesInFormulas,
+} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260811a";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -32,6 +37,7 @@ const applyUserEntryReferenceHighlights = (...args) => summaryRuntime.applyUserE
 const evaluateSimpleMathExpression = (...args) => summaryRuntime.evaluateSimpleMathExpression(...args);
 const parseSummaryArrayFormula = (...args) => summaryRuntime.parseSummaryArrayFormula(...args);
 const normalizeUserEntryInputs = (...args) => summaryRuntime.normalizeUserEntryInputs(...args);
+const normalizeUserEntryDisplayInputs = (...args) => summaryRuntime.normalizeUserEntryDisplayInputs(...args);
 const getUserEntryValueForCol = (...args) => summaryRuntime.getUserEntryValueForCol(...args);
 const getUserEntryInputForCol = (...args) => summaryRuntime.getUserEntryInputForCol(...args);
 const clearSummaryFormulaBarValidationError = (...args) => summaryRuntime.clearSummaryFormulaBarValidationError(...args);
@@ -51,7 +57,9 @@ const ensureSelectedRowValues = (...args) => summaryRuntime.ensureSelectedRowVal
  * Returns { ok, value, error? }.
  */
 async function resolveExcelRefsInExpression(raw, referenceValues, options = {}) {
-  let expr = String(raw || "").trim();
+  const resolvedDatasetFormula = await resolveDfmDatasetReferencesInFormulaDetailed(raw, options);
+  let expr = resolvedDatasetFormula.resolvedFormula;
+  expr = String(expr || "").trim();
   if (expr.startsWith("=")) expr = expr.slice(1).trim();
 
   // Find all inline Excel refs
@@ -80,7 +88,11 @@ async function resolveExcelRefsInExpression(raw, referenceValues, options = {}) 
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return { ok: false, error: null }; // let caller show standard error
   }
-  return { ok: true, value: parsed };
+  return {
+    ok: true,
+    value: parsed,
+    displayFormula: resolvedDatasetFormula.displayFormula === raw ? "" : resolvedDatasetFormula.displayFormula,
+  };
 }
 
 // Cache of last-resolved Excel cell values, keyed by ref match string (e.g. "'dir\[file]Sheet'!A1")
@@ -123,7 +135,7 @@ async function commitExcelFormulaAsync(rowId, col, raw, options = {}) {
     }
     const nextValue = roundRatio(result.value, 6);
     restoreSupersededExcelRange(summaryTable, rowId, col, raw);
-    setUserEntryCellEntry(rowId, col, raw, nextValue);
+    setUserEntryCellEntry(rowId, col, raw, nextValue, { displayInput: result.displayFormula });
     persistUserEntryRowsFromState();
     const cell = summaryTable?.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
     if (cell) {
@@ -173,7 +185,7 @@ export async function refreshAllExcelLinks(options = {}) {
         && !selectedConsumerKeys.has(`${String(cfg.id)}\u001f${col}`)
       ) continue;
       const inputRaw = String(inputs[col] || "").trim();
-      if (!containsExcelRef(inputRaw)) continue;
+      if (!containsExcelRef(inputRaw) && !containsDfmDatasetReference(inputRaw)) continue;
       const range = parseStandaloneExcelRange(inputRaw);
       if (range) {
         rangeLinks.push({ rowId: String(cfg.id), col, inputRaw, range });
@@ -187,7 +199,7 @@ export async function refreshAllExcelLinks(options = {}) {
       cellsToRefresh.push({ rowId: cfg.id, col, inputRaw });
     }
   }
-  if (!rangeLinks.length && !batchItems.length) {
+  if (!rangeLinks.length && !cellsToRefresh.length) {
     return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
   }
 
@@ -250,8 +262,8 @@ export async function refreshAllExcelLinks(options = {}) {
   }
 
   const resolvedMap = new Map();
+  linkedCellCount += cellsToRefresh.length;
   if (batchItems.length) {
-    linkedCellCount += cellsToRefresh.length;
     const result = await readExcelCellsBatch(batchItems, {
       signal: refreshController.signal,
     });
@@ -269,6 +281,7 @@ export async function refreshAllExcelLinks(options = {}) {
     }
   }
 
+  const preparedCells = [];
   for (const { rowId, col, inputRaw } of cellsToRefresh) {
     if (!refreshIsCurrent()) {
       return { linkedCellCount, changedCount, failedCount, aborted: true };
@@ -288,6 +301,21 @@ export async function refreshAllExcelLinks(options = {}) {
       failedCount += 1;
       continue;
     }
+
+    preparedCells.push({ rowId, col, inputRaw, expr });
+  }
+
+  const resolvedExpressions = await resolveDfmDatasetReferencesInFormulas(
+    preparedCells.map((item) => item.expr),
+    { signal: refreshController.signal },
+  );
+  if (!refreshIsCurrent()) {
+    return { linkedCellCount, changedCount, failedCount, aborted: true };
+  }
+
+  for (let index = 0; index < preparedCells.length; index += 1) {
+    const { rowId, col, inputRaw } = preparedCells[index];
+    const expr = resolvedExpressions[index];
 
     const refValues = summaryTable ? buildSummaryReferenceValues(summaryTable, col) : new Map();
     const parsed = evaluateSimpleMathExpression(expr, refValues);
@@ -326,15 +354,15 @@ export async function refreshAllExcelLinks(options = {}) {
     summaryRuntime._onRatioStateMutated();
   }
   if (failedCount > 0) {
-    setStatusBarText(`Excel refresh: ${failedCount} linked cell${failedCount === 1 ? "" : "s"} failed.`);
+    setStatusBarText(`Linked formula refresh: ${failedCount} cell${failedCount === 1 ? "" : "s"} failed.`);
     if (!options.silentErrors) {
-      showSummaryFormulaBarValidationError("One or more Excel-linked values could not be refreshed.");
+      showSummaryFormulaBarValidationError("One or more linked formula values could not be refreshed.");
     }
   } else if (changedCount > 0) {
     const suffix = options.source === "dfm-open" ? " changed from the saved DFM values." : " updated.";
-    setStatusBarText(`Excel refresh: ${changedCount} linked cell${changedCount === 1 ? "" : "s"}${suffix}`);
+    setStatusBarText(`Linked formula refresh: ${changedCount} cell${changedCount === 1 ? "" : "s"}${suffix}`);
   } else {
-    setStatusBarText(`Excel refresh: ${linkedCellCount} linked cell${linkedCellCount === 1 ? "" : "s"} unchanged.`);
+    setStatusBarText(`Linked formula refresh: ${linkedCellCount} cell${linkedCellCount === 1 ? "" : "s"} unchanged.`);
   }
   return { linkedCellCount, changedCount, failedCount };
   } catch (error) {
@@ -560,7 +588,13 @@ function hardCodeDfmUserEntryTarget(target) {
     Math.max(getCurrentRatioColumnCount(), col + 1),
   );
   inputs[col] = String(value);
+  const displayInputs = normalizeUserEntryDisplayInputs(
+    cfg.displayInputs,
+    Math.max(getCurrentRatioColumnCount(), col + 1),
+  );
+  displayInputs[col] = "";
   cfg.inputs = inputs;
+  cfg.displayInputs = displayInputs;
   if (Object.prototype.hasOwnProperty.call(cfg, "formulas")) delete cfg.formulas;
   return true;
 }

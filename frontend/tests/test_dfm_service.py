@@ -166,6 +166,144 @@ class DfmServiceTests(unittest.TestCase):
             ],
         })
 
+    def test_dataset_references_resolve_labels_indices_and_reuse_dataset_reads(self) -> None:
+        datasets = {
+            "paid": {
+                "dataset_name": "Paid",
+                "data_format": "Triangle",
+                "origin_labels": ["2023", "2024"],
+                "dev_labels": ["12", "24"],
+                "values": [[100, 150], [200, 275]],
+            },
+            "premium": {
+                "dataset_name": "Premium",
+                "data_format": "Vector",
+                "origin_labels": ["2023", "2024"],
+                "dev_labels": ["Ultimate"],
+                "values": [[1000], [1100]],
+            },
+        }
+        reads: list[str] = []
+
+        def load(_project: str, _reserving_class: str, dataset_name: str) -> dict:
+            reads.append(dataset_name)
+            return datasets[dataset_name.casefold()]
+
+        with mock.patch(
+            "app_server.services.dataset_service.load_cached_dataset_values",
+            side_effect=load,
+        ):
+            result = dfm_service.resolve_dfm_dataset_references(
+                "Project",
+                "Class",
+                [
+                    {"dataset_name": "Paid", "row_idx": "1", "col_idx": "2"},
+                    {"dataset_name": "Paid", "row_idx": "2024", "col_idx": "24"},
+                    {"dataset_name": "Premium", "row_idx": "2"},
+                    {"dataset_name": "Premium", "row_idx": "2023", "col_idx": "1"},
+                ],
+            )
+
+        self.assertEqual([item["value"] for item in result["results"]], [150, 275, 1100, 1000])
+        self.assertEqual(
+            [(item["row_label"], item["col_label"]) for item in result["results"]],
+            [("2023", "24"), ("2024", "24"), ("2024", "Ultimate"), ("2023", "Ultimate")],
+        )
+        self.assertCountEqual(reads, ["Paid", "Premium"])
+
+    def test_dataset_reference_requires_triangle_column_and_vector_column_one(self) -> None:
+        triangle = {
+            "dataset_name": "Paid",
+            "data_format": "Triangle",
+            "origin_labels": ["2024"],
+            "dev_labels": ["12"],
+            "values": [[100]],
+        }
+        vector = {
+            "dataset_name": "Premium",
+            "data_format": "Vector",
+            "origin_labels": ["2024"],
+            "dev_labels": ["Ultimate"],
+            "values": [[1000]],
+        }
+
+        with mock.patch(
+            "app_server.services.dataset_service.load_cached_dataset_values",
+            side_effect=lambda _p, _r, name: triangle if name == "Paid" else vector,
+        ):
+            with self.assertRaisesRegex(HTTPException, "Column index is required"):
+                dfm_service.resolve_dfm_dataset_references(
+                    "Project", "Class", [{"dataset_name": "Paid", "row_idx": "1"}],
+                )
+            with self.assertRaisesRegex(HTTPException, "Column index 2 is outside"):
+                dfm_service.resolve_dfm_dataset_references(
+                    "Project",
+                    "Class",
+                    [{"dataset_name": "Premium", "row_idx": "1", "col_idx": "2"}],
+                )
+
+    def test_dataset_reference_negative_vector_indices_trim_only_trailing_blanks(self) -> None:
+        vector = {
+            "dataset_name": "Quarterly Premium",
+            "data_format": "Vector",
+            "origin_labels": [str(index) for index in range(1, 10)],
+            "dev_labels": ["Ultimate"],
+            "values": [[22], [33], [55], [66], [None], [45], [None], [76], [None]],
+        }
+
+        self.assertEqual(
+            dfm_service._resolved_dataset_reference(
+                {"dataset_name": "Quarterly Premium", "row_idx": "-1"},
+                vector,
+            )["value"],
+            76,
+        )
+        self.assertEqual(
+            dfm_service._resolved_dataset_reference(
+                {"dataset_name": "Quarterly Premium", "row_idx": "-3"},
+                vector,
+            )["value"],
+            45,
+        )
+        with self.assertRaisesRegex(HTTPException, r"\[Quarterly Premium\]\[7, Ultimate\] is blank"):
+            dfm_service._resolved_dataset_reference(
+                {"dataset_name": "Quarterly Premium", "row_idx": "-2"},
+                vector,
+            )
+
+    def test_dataset_reference_negative_triangle_indices_follow_latest_valid_diagonal(self) -> None:
+        triangle = {
+            "dataset_name": "Quarterly Paid",
+            "data_format": "Triangle",
+            "origin_labels": ["Q1", "Q2", "Q3", "Q4", "Q5"],
+            "dev_labels": ["3", "6", "9", "12", "15"],
+            # The final two calendar diagonals are outside the valuation range.
+            # A blank inside the valid geometry remains an addressable position.
+            "values": [
+                [10, None, 12, None, None],
+                [20, 21, None, None, None],
+                [30, None, None, None, None],
+                [None, None, None, None, None],
+                [None, None, None, None, None],
+            ],
+        }
+
+        latest = dfm_service._resolved_dataset_reference(
+            {"dataset_name": "Quarterly Paid", "row_idx": "-1", "col_idx": "-1"},
+            triangle,
+        )
+        self.assertEqual((latest["row_label"], latest["col_label"], latest["value"]), ("Q3", "3", 30))
+        prior = dfm_service._resolved_dataset_reference(
+            {"dataset_name": "Quarterly Paid", "row_idx": "-2", "col_idx": "-1"},
+            triangle,
+        )
+        self.assertEqual((prior["row_label"], prior["col_label"], prior["value"]), ("Q2", "6", 21))
+        with self.assertRaisesRegex(HTTPException, "outside the valid range"):
+            dfm_service._resolved_dataset_reference(
+                {"dataset_name": "Quarterly Paid", "row_idx": "-4", "col_idx": "-1"},
+                triangle,
+            )
+
     def test_v2_load_reads_only_method_and_own_sidecar(self) -> None:
         self.write_method_pair()
         original = dfm_service._read_json

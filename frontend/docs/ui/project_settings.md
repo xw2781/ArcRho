@@ -10,7 +10,7 @@ Source Data offers two import sources for the same project-owned table: a flat C
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260808daterole1`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260811dtcategory1`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
@@ -112,6 +112,8 @@ Detected `arcrho:*` message types in key JS files:
 - Local Dataset Types import uses an in-page custom dialog to choose merge vs overwrite (instead of browser `confirm`), except when imported rows are exactly identical to current UI rows (no prompt, no-op with status message). Merge keeps current behavior (update/add imported rows while preserving mapped-name rows). Overwrite removes existing rows not used by Field Mapping, then loads imported rows, and keeps mapped-name rows only when missing from imported content. For `.xlsx` local load, the app server converts workbook data to the same JSON payload structure before merge/overwrite is applied.
 - Dataset Types save validation allows calculated formulas to save when their formula components are Dataset Type `Name` values, even if field-mapping source resolution is incomplete.
 - Dataset Types table renders grouped by `Category` and uses the same multi-select header filters as the Project Instance dataset table for `Name`, `Data Format`, `Category`, and `Calculated` (`Yes`/`No`). Each filter opens directly into a focused `Type to search` field, shows an `All` choice, supports right-clicking an option to select every other value, and treats no selected options as unfiltered. It does not auto-resize column widths during filter changes, keeps header filter icons right-aligned near each column's right border, uses single-triangle sort indicators (`U+25B2`/`U+25BC`) in headers to match Reserving Class Types, allows per-column sort toggles that apply within each category group, and provides left-side subgroup header buttons to collapse/expand each category.
+- The Dataset Type editor uses a closed Data Format selector. Users must choose `Triangle` or `Vector`; arbitrary typed values and blank saves are not accepted.
+- The Dataset Type Category field is an editable combobox backed by the distinct nonblank Category values already present in that project's Dataset Types rows. Focusing the field or using its caret opens the app-styled list; typing filters existing values but remains valid free text. A case-insensitive exact match reuses the existing category spelling, while any nonblank new value shows a floating `New category` advisory beneath the field and is created when the edit is applied.
 - Dataset Types error status shows an underlined `see more` action that opens a floating details window; details are formatted one error per line.
 - Dataset Types table right-click menu includes `Copy` before `Edit`; `Copy` copies the clicked cell's displayed value to the clipboard, including `TRUE` / `FALSE` for the `Calculated` checkbox column, and uses compact row spacing like the reserving class types menu.
 - Reserving Class Types save writes `reserving_class_types.json` and a same-folder mirror workbook `reserving_class_types.xlsx`.

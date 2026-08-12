@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Made the complete dynamic-array outline continuous across Dataset cells and visible above the Total row."
+}

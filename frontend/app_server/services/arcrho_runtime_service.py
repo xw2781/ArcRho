@@ -18,6 +18,7 @@ from arcrho_api.dataset_index_contract import (
     scan_folder_signature,
 )
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
+from arcrho_api.dataset_display_contract import normalize_show_subtotal
 
 from app_server import config
 from app_server.helpers import (
@@ -1146,6 +1147,7 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
         payload["user"] = user_name
         payload["data_format"] = data_format
         payload["data_format_code"] = 1 if is_vector else 0
+        payload["show_subtotal"] = normalize_show_subtotal(payload.get("show_subtotal"))
         if _clean_cache_text(payload.get("source_kind")).lower() == "engine":
             _set_processing_provenance(payload, project_name, data_path)
         _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)

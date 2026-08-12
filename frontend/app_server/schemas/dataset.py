@@ -120,6 +120,7 @@ class DatasetSidecarSaveRequest(BaseModel):
     cumulative: bool = True
     transposed: bool = False
     calendar: bool = False
+    show_subtotal: Optional[bool] = None
     number_format: str = ""
     decimal_places: int = Field(1, ge=0, le=6)
     origin_labels: Optional[List[str]] = None

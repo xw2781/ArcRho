@@ -169,6 +169,7 @@ export function registerDataTabDetailsController(runtime) {
     if (text === "dfm") return "DFM";
     if (text === "result selection") return "Result Selection";
     if (text === "bornhuetter ferguson") return "Bornhuetter Ferguson";
+    if (text === "cape cod") return "Cape Cod";
     const berquistShermanContract = getBerquistShermanContract(text);
     if (berquistShermanContract) return berquistShermanContract.methodType;
     return "";
@@ -407,9 +408,13 @@ export function registerDataTabDetailsController(runtime) {
       button.className = "dsDependentLink";
       if (datasetFormulaEntryHasFormula(dependent)) button.appendChild(createFormulaCalculatedIcon());
       appendDatasetChipLabel(button, dependent.datasetName);
+      const methodType = normalizeDatasetMethodType(dependent.methodType);
+      const openLabel = methodType
+        ? `Open ${datasetMethodTypeLabel(dependent.methodType)} method ${dependent.datasetName}`
+        : `Open related item ${dependent.datasetName}`;
       button.setAttribute("aria-label", dependent.formula
-        ? `Open ${dependent.datasetName}. Formula: ${dependent.formula}`
-        : `Open ${dependent.datasetName}`);
+        ? `${openLabel}. Formula: ${dependent.formula}`
+        : openLabel);
       button.addEventListener("mouseenter", (event) => showDependentFormulaTooltip(dependent, event));
       button.addEventListener("mousemove", (event) => {
         const tooltip = document.getElementById("dsDependentFormulaTooltip");
@@ -417,7 +422,7 @@ export function registerDataTabDetailsController(runtime) {
       });
       button.addEventListener("mouseleave", hideDependentFormulaTooltip);
       button.addEventListener("blur", hideDependentFormulaTooltip);
-      button.addEventListener("click", () => openRelatedDataset(dependent));
+      button.addEventListener("click", () => openRelatedDataset(dependent, { openMethod: true }));
       list.appendChild(button);
     }
   }

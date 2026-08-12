@@ -6,14 +6,15 @@ import {
 import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260715c";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
-import { createProjectInstanceContext } from "./project_instance_context.js?v=20260809b";
+import { createProjectInstanceContext } from "./project_instance_context.js?v=20260811a";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260809b";
 import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260809a";
 import { installProjectInstanceNumberFormats } from "./project_instance_number_formats.js?v=20260720b";
+import { installProjectInstanceExcelLinks } from "./project_instance_excel_links.js?v=20260811a";
 import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260809b";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
-import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260731b";
+import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260811a";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260805a";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
 import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260809a";
@@ -30,6 +31,7 @@ export async function bootProjectInstance() {
   installProjectInstanceLoading(ctx);
   installProjectInstanceDatasetCache(ctx);
   installProjectInstanceNumberFormats(ctx);
+  installProjectInstanceExcelLinks(ctx);
   installProjectInstanceDatasetTable(ctx);
   installProjectInstanceDatasetAddPicker(ctx);
   installProjectInstancePathPanel(ctx);
@@ -42,6 +44,7 @@ export async function bootProjectInstance() {
   api.initHiddenTabsArea();
   api.initCachedDatasetToolbar();
   api.initDatasetNumberFormatsEditor();
+  api.initExcelLinkManager();
   api.initLeftPanelResizer();
   api.initDatasetTableInteractions();
   api.initDatasetAddPickerInteractions();

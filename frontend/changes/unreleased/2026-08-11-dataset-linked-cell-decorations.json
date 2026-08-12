@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Restored linked-cell borders and stabilized the Excel formula bar above linked array ranges.",
+  "details": [
+    "The formula bar now stays in one position while the pointer moves across cells in the same linked array.",
+    "The bar positions from the full array boundary so it does not cover linked cells."
+  ]
+}

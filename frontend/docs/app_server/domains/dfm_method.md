@@ -13,6 +13,7 @@ The DFM method domain owns self-contained v2 method loading, canonical calculati
 | `POST` | `/dfm/method/preview` | Recalculate derived DFM state in memory with the canonical Python contract and no filesystem I/O. |
 | `POST` | `/dfm/method/save` | Rebase submitted owned state onto the newest derived state, calculate, and publish the method/output transaction. |
 | `POST` | `/dfm/method/refresh` | Explicitly reread registered precedents and recover a review-needed DFM when its source geometry is compatible. |
+| `POST` | `/dfm/method/dataset-references/resolve` | Resolve a bounded batch of Ratios User Entry dataset references without mutating project data. |
 <!-- MANUAL:END -->
 
 ## Key Files
@@ -35,6 +36,7 @@ The DFM method domain owns self-contained v2 method loading, canonical calculati
 - Save compares the owned revision independently from the derived revision. A clean owned patch may rebase over an automatic derived refresh; an externally changed owned revision returns a conflict. An ordinary v2 Save trusts its embedded source snapshots and does not reopen precedents to validate duplicate label metadata.
 - Publication uses the reserving-class lock, staged replacement, rollback, unchanged-file suppression, and sidecar-last ordering. Every explicit Save acknowledges the DFM output as Current and starts downstream propagation even when its publication values are unchanged. Readable review-needed precedents are returned through `unreviewed_precedents` and `unreviewed_precedent_count` without blocking the save.
 - Automatic refresh preserves exclusions, formula definitions and selections, literal User Entry values, the complete stored result of Excel-linked formulas, ratio-cell notes, Method Notes, Audit, and the method-owned origin/development axes. Source CSV values are mapped onto those axes without requiring duplicate precedent-sidecar labels. It refreshes the stored data but leaves the DFM Review Needed until an explicit Save; Refresh alone is not acknowledgement. Incompatible row, column, or period geometry leaves the prior publication intact and reports the refresh failure separately.
+- `POST /dfm/method/dataset-references/resolve` resolves Ratios User Entry references against existing dataset instances in the requested project and Reserving Class. It loads each distinct dataset once with bounded parallel I/O, uses one-based positions or exact axis labels, defaults an omitted Vector column to its first column, and requires a Triangle column. Negative positions count backward from the latest valuation-valid dataset geometry: trailing empty Vector positions are excluded, and trailing empty Triangle calendar diagonals are excluded while interior blanks remain addressable. This read does not change method JSON or dependency sidecars.
 <!-- MANUAL:END -->
 
 ## External Excel Links

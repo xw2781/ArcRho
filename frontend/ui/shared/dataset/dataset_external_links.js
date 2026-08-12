@@ -1,4 +1,7 @@
-import { readExcelCellsBatch } from "/ui/shared/integrations/excel_api.js";
+import {
+  readExcelCellsBatch,
+  readExcelFileMtimesBatch,
+} from "/ui/shared/integrations/excel_api.js?v=20260811a";
 import {
   excelColumnFromIndex,
   formatExcelReference,
@@ -259,7 +262,7 @@ function excelResultValue(result) {
     return { ok: false, error: String(result?.error || "Excel cell read failed.") };
   }
   if (result.value === null || result.value === undefined || result.value === "") {
-    return { ok: false, error: "Excel returned a blank value." };
+    return { ok: true, value: null };
   }
   const value = Number(result.value);
   return Number.isFinite(value)
@@ -268,7 +271,7 @@ function excelResultValue(result) {
 }
 
 function valuesEqual(left, right) {
-  if (left == null && right == null) return true;
+  if (left == null || right == null) return left == null && right == null;
   return Number(left) === Number(right);
 }
 
@@ -297,6 +300,7 @@ function targetValuePreview(model, targets, isRange) {
 export function createDatasetExternalLinksController({
   state,
   readCellsBatch = readExcelCellsBatch,
+  readFileMtimesBatch = readExcelFileMtimesBatch,
   isReadOnly = () => false,
   isTransposed = () => false,
   onInventoryChanged = () => {},
@@ -444,6 +448,59 @@ export function createDatasetExternalLinksController({
         readOnly: !!isReadOnly(),
       };
     });
+  }
+
+  async function checkForNewerWorkbooks(datasetMtime, options = {}) {
+    const baseline = Number(datasetMtime);
+    if (!Number.isFinite(baseline)) {
+      return { ok: false, newerWorkbookCount: 0, unverifiedWorkbookCount: 0 };
+    }
+    const pathsByKey = new Map();
+    links.forEach((link) => {
+      const description = describeExcelReference(link.reference);
+      const path = String(description?.bookPath || "").trim();
+      if (path) pathsByKey.set(path.toLowerCase(), path);
+    });
+    const bookPaths = Array.from(pathsByKey.values());
+    if (!bookPaths.length) {
+      return { ok: true, newerWorkbookCount: 0, unverifiedWorkbookCount: 0, newerWorkbooks: [] };
+    }
+    let response;
+    try {
+      response = await readFileMtimesBatch(bookPaths, { signal: options.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") return { ok: false, aborted: true, newerWorkbookCount: 0, unverifiedWorkbookCount: 0 };
+      return {
+        ok: false,
+        error: String(error?.message || error || "Excel timestamp check failed."),
+        newerWorkbookCount: 0,
+        unverifiedWorkbookCount: bookPaths.length,
+      };
+    }
+    if (!response?.ok || !Array.isArray(response.results) || response.results.length !== bookPaths.length) {
+      return {
+        ok: false,
+        error: String(response?.error || "Excel timestamp check failed."),
+        newerWorkbookCount: 0,
+        unverifiedWorkbookCount: bookPaths.length,
+      };
+    }
+    const newerWorkbooks = [];
+    let unverifiedWorkbookCount = 0;
+    response.results.forEach((result, index) => {
+      const mtime = Number(result?.mtime);
+      if (!result?.ok || !Number.isFinite(mtime)) {
+        unverifiedWorkbookCount += 1;
+      } else if (mtime > baseline + 0.001) {
+        newerWorkbooks.push({ path: bookPaths[index], mtime });
+      }
+    });
+    return {
+      ok: true,
+      newerWorkbookCount: newerWorkbooks.length,
+      unverifiedWorkbookCount,
+      newerWorkbooks,
+    };
   }
 
   function breakLinks(ids) {
@@ -717,6 +774,7 @@ export function createDatasetExternalLinksController({
     abort,
     breakLink,
     breakLinks,
+    checkForNewerWorkbooks,
     clear,
     commitReference,
     decorateCell,

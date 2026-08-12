@@ -1,0 +1,102 @@
+/* High Contrast intentionally keeps the Light palette and only changes
+   spreadsheet text to pure black. All fills, borders, accents, and other
+   application text remain owned by the Light baseline. */
+:root[data-arcrho-theme="high-contrast"] {
+  color-scheme: light;
+
+  --ar-spreadsheet-label-text: #000000;
+  --ar-spreadsheet-selection-text: #000000;
+}
+
+:root[data-arcrho-theme="high-contrast"] :is(
+  .arSpreadsheetTable,
+  #tableWrap,
+  #tableWrap table,
+  #ratioWrap,
+  #ratioWrap table,
+  #resultsWrap,
+  #resultsWrap table,
+  .summaryDragGhostTable,
+  .dfmDevelopedCurveSegmentTable,
+  .pi-table,
+  .pi-number-formats-table,
+  .pi-excel-links-table,
+  .pi-add-picker-table,
+  .field-mapping-table,
+  .dataset-types-table,
+  .dpr-rules-table,
+  .gc-table,
+  .taskDesignerTable,
+  .sfTable
+) {
+  color: #000000 !important;
+}
+
+:root[data-arcrho-theme="high-contrast"] :is(
+  .arSpreadsheetTable,
+  #tableWrap,
+  #ratioWrap,
+  #resultsWrap,
+  .summaryDragGhostTable,
+  .dfmDevelopedCurveSegmentTable,
+  .pi-table,
+  .pi-number-formats-table,
+  .pi-excel-links-table,
+  .pi-add-picker-table,
+  .field-mapping-table,
+  .dataset-types-table,
+  .dpr-rules-table,
+  .gc-table,
+  .taskDesignerTable,
+  .sfTable
+) * {
+  color: #000000 !important;
+}
+
+:root[data-arcrho-theme="high-contrast"] :is(
+  .arSpreadsheetTable,
+  #tableWrap,
+  #ratioWrap,
+  #resultsWrap,
+  .summaryDragGhostTable,
+  .dfmDevelopedCurveSegmentTable,
+  .pi-table,
+  .pi-number-formats-table,
+  .pi-excel-links-table,
+  .pi-add-picker-table,
+  .field-mapping-table,
+  .dataset-types-table,
+  .dpr-rules-table,
+  .gc-table,
+  .taskDesignerTable,
+  .sfTable
+) :is(*::before, *::after) {
+  color: #000000 !important;
+}
+
+:root[data-arcrho-theme="high-contrast"] :is(
+  .arSpreadsheetTable,
+  #tableWrap,
+  #ratioWrap,
+  #resultsWrap,
+  .summaryDragGhostTable,
+  .dfmDevelopedCurveSegmentTable,
+  .pi-table,
+  .pi-number-formats-table,
+  .pi-excel-links-table,
+  .pi-add-picker-table,
+  .field-mapping-table,
+  .dataset-types-table,
+  .dpr-rules-table,
+  .gc-table,
+  .taskDesignerTable,
+  .sfTable
+) :is(input, textarea)::placeholder {
+  color: #000000 !important;
+}
+
+/* Excluded ratios retain the Light-theme exclusion cue in High Contrast. */
+:root[data-arcrho-theme="high-contrast"] #ratioWrap td.ratioCell.strike {
+  color: #b000c2 !important;
+  text-decoration-color: #b000c2 !important;
+}

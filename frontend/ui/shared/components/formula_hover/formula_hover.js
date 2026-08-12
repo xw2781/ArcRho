@@ -1,5 +1,5 @@
 const FORMULA_HOVER_STYLE_ID = "arcrho-formula-hover-style";
-const FORMULA_HOVER_STYLESHEET = "/ui/shared/components/formula_hover/formula_hover.css?v=20260715a";
+const FORMULA_HOVER_STYLESHEET = "/ui/shared/components/formula_hover/formula_hover.css?v=20260811c";
 const DEFAULT_HIDE_DELAY_MS = 140;
 
 let formulaHoverIdSequence = 0;
@@ -33,14 +33,22 @@ export function calculateFormulaHoverPosition(anchorRect, hoverRect, viewport = 
     left = Math.max(margin, Math.min(left, viewportWidth - hoverWidth - margin));
   }
 
-  let top = anchorTop - hoverHeight - gap;
+  const aboveTop = anchorTop - hoverHeight - gap;
+  const belowTop = anchorBottom + gap;
+  const aboveFits = aboveTop >= margin;
+  const belowFits = viewportHeight <= 0 || belowTop + hoverHeight <= viewportHeight - margin;
+  let top = aboveTop;
   let placement = "above";
-  if (top < margin) {
-    top = anchorBottom + gap;
+  if (!aboveFits && belowFits) {
+    top = belowTop;
     placement = "below";
-  }
-  if (viewportHeight > 0) {
-    top = Math.max(margin, Math.min(top, viewportHeight - hoverHeight - margin));
+  } else if (!aboveFits && !belowFits) {
+    const roomAbove = Math.max(0, anchorTop - margin);
+    const roomBelow = Math.max(0, viewportHeight - margin - anchorBottom);
+    if (roomBelow > roomAbove) {
+      top = belowTop;
+      placement = "below";
+    }
   }
 
   return {
@@ -74,6 +82,7 @@ export function createFormulaHoverEditor(options = {}) {
   let input = null;
   let errorMessage = null;
   let activeAnchor = null;
+  let activePositionRect = null;
   let activeContext = null;
   let hideTimer = 0;
   let barHovered = false;
@@ -198,7 +207,10 @@ export function createFormulaHoverEditor(options = {}) {
 
   function reposition() {
     if (!root?.classList?.contains("is-open") || !activeAnchor?.isConnected) return;
-    const anchorRect = activeAnchor.getBoundingClientRect?.();
+    const resolvedPositionRect = typeof activePositionRect === "function"
+      ? activePositionRect()
+      : activePositionRect;
+    const anchorRect = resolvedPositionRect || activeAnchor.getBoundingClientRect?.();
     if (!anchorRect) return;
     const hoverRect = root.getBoundingClientRect?.() || { width: 0, height: 0 };
     const position = calculateFormulaHoverPosition(anchorRect, hoverRect, {
@@ -217,6 +229,7 @@ export function createFormulaHoverEditor(options = {}) {
     clearHideTimer();
     clearError();
     activeAnchor = anchor;
+    activePositionRect = openOptions.positionRect || null;
     activeContext = context;
     input.value = context.formula;
     input.readOnly = !!context.readOnly;
@@ -247,6 +260,7 @@ export function createFormulaHoverEditor(options = {}) {
       errorMessage.textContent = "";
     }
     activeAnchor = null;
+    activePositionRect = null;
     activeContext = null;
     barHovered = false;
     if (shouldRestoreFocus) onDismiss(dismissedContext);
@@ -301,11 +315,18 @@ export function createFormulaHoverEditor(options = {}) {
     return false;
   }
 
-  function attach(anchor, rawContext) {
+  function attach(anchor, rawContext, attachOptions = {}) {
     const context = normalizedFormulaContext(rawContext);
     if (!anchor || !context) return false;
     anchor.setAttribute?.("aria-description", "Linked to Excel. Hover or press F2 to view the formula.");
-    anchor.addEventListener?.("mouseenter", () => open(anchor, context));
+    anchor.addEventListener?.("mouseenter", () => {
+      const resolvedAnchor = typeof attachOptions.resolveAnchor === "function"
+        ? attachOptions.resolveAnchor()
+        : null;
+      open(resolvedAnchor || anchor, context, {
+        positionRect: attachOptions.positionRect || null,
+      });
+    });
     anchor.addEventListener?.("mouseleave", scheduleHide);
     return true;
   }
@@ -322,6 +343,7 @@ export function createFormulaHoverEditor(options = {}) {
     input = null;
     errorMessage = null;
     activeAnchor = null;
+    activePositionRect = null;
     activeContext = null;
   }
 

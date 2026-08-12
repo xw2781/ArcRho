@@ -1159,8 +1159,36 @@ body {
   color: #217346;
   font-weight: 600;
 }
+.dfmSummaryFormulaBarDisplay :is(.fmtRowRef, .fmtDatasetRef) {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin: 1px 0;
+  padding: 0 5px;
+  border: 1px solid var(--ar-color-border-focus, #93c5fd);
+  border-radius: 999px;
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  color: var(--ar-color-accent-strong, #1d4ed8);
+  font: inherit;
+  line-height: 16px;
+  vertical-align: top;
+}
 .dfmSummaryFormulaBarDisplay .fmtRowRef {
-  color: #2563eb;
+  cursor: text;
+}
+.dfmSummaryFormulaBarDisplay .fmtDatasetRef {
+  appearance: none;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+.dfmSummaryFormulaBarDisplay .fmtDatasetRef:hover {
+  border-color: var(--ar-color-accent, #2b6df6);
+  background: var(--ar-color-accent-hover, #dbeafe);
+}
+.dfmSummaryFormulaBarDisplay .fmtDatasetRef:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: 1px;
 }
 .dfmSummaryFormulaBarInput:focus {
   outline: none;
@@ -1171,6 +1199,52 @@ body {
 }
 .dfmSummaryFormulaBarInput:disabled {
   color: #9ca3af;
+}
+.dfmDatasetAutocomplete {
+  position: fixed;
+  z-index: 1750;
+  box-sizing: border-box;
+  max-height: 240px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 3px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #fff;
+  color: #1f2937;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+  font: 12px/18px Arial, "Segoe UI", sans-serif;
+}
+.dfmDatasetAutocomplete[hidden] {
+  display: none;
+}
+.dfmDatasetAutocompleteOption {
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 3px 7px;
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+.dfmDatasetAutocompleteOption[aria-selected="true"] {
+  background: #e8f1ff;
+  color: #173f78;
+}
+.dfmDatasetAutocompleteStatus {
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 3px 7px;
+  color: #64748b;
+  white-space: normal;
+}
+.dfmDatasetAutocompleteStatus.is-loading {
+  color: #1d4ed8;
+}
+.dfmDatasetAutocompleteStatus.is-error {
+  color: #b91c1c;
 }
 .dfmSummaryFormulaBarState {
   flex: 0 0 auto;

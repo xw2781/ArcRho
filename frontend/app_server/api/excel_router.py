@@ -4,7 +4,12 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 
-from app_server.schemas.excel import ExcelCellReadRequest, ExcelBatchReadRequest, ExcelOpenRequest
+from app_server.schemas.excel import (
+    ExcelBatchReadRequest,
+    ExcelCellReadRequest,
+    ExcelFileMtimeBatchRequest,
+    ExcelOpenRequest,
+)
 from app_server.services import excel_service
 
 router = APIRouter()
@@ -18,6 +23,11 @@ def excel_read_cell(req: ExcelCellReadRequest) -> Dict[str, Any]:
 @router.post("/excel/read_cells_batch")
 def excel_read_cells_batch(req: ExcelBatchReadRequest) -> Dict[str, Any]:
     return excel_service.excel_read_cells_batch(req.items)
+
+
+@router.post("/excel/file_mtimes_batch")
+def excel_file_mtimes_batch(req: ExcelFileMtimeBatchRequest) -> Dict[str, Any]:
+    return excel_service.excel_file_mtimes_batch(req.book_paths)
 
 
 @router.post("/excel/open_workbook")

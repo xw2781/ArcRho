@@ -1,7 +1,7 @@
-export function shouldShowDatasetGridTotals({ isDfmHost = false, formula = "" } = {}) {
+export function shouldShowDatasetGridTotals({ isDfmHost = false, formula = "", showSubtotal = true } = {}) {
   const normalizedFormula = String(formula || "").trim();
   if (isDfmHost) return !/[*/]/.test(normalizedFormula);
-  return !normalizedFormula.includes("/");
+  return showSubtotal !== false;
 }
 
 function normalizeCount(value) {

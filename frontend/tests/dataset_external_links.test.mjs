@@ -8,14 +8,14 @@ const referenceSource = await readFile(
 );
 const referenceUrl = `data:text/javascript;base64,${Buffer.from(referenceSource).toString("base64")}`;
 const excelApiStubUrl = `data:text/javascript;base64,${Buffer.from(
-  "export async function readExcelCellsBatch(){ return { ok: false, results: [] }; }",
+  "export async function readExcelCellsBatch(){ return { ok: false, results: [] }; } export async function readExcelFileMtimesBatch(){ return { ok: false, results: [] }; }",
 ).toString("base64")}`;
 let controllerSource = await readFile(
   new URL("../ui/shared/dataset/dataset_external_links.js", import.meta.url),
   "utf8",
 );
 controllerSource = controllerSource
-  .replace('"/ui/shared/integrations/excel_api.js"', JSON.stringify(excelApiStubUrl))
+  .replace('"/ui/shared/integrations/excel_api.js?v=20260811a"', JSON.stringify(excelApiStubUrl))
   .replace(
     '"/ui/shared/integrations/excel_reference.js?v=20260715a"',
     JSON.stringify(referenceUrl),
@@ -336,7 +336,7 @@ test("failed range reads leave every value and link unchanged", async () => {
   assert.equal(state.dirty.size, 0);
 });
 
-test("blank Excel cells reject the whole linked range", async () => {
+test("blank Excel cells commit as null values without rejecting the linked range", async () => {
   const state = { model: model2x2(), dirty: new Map() };
   const controller = externalLinks.createDatasetExternalLinksController({
     state,
@@ -358,10 +358,42 @@ test("blank Excel cells reject the whole linked range", async () => {
     reference: REF,
   });
 
-  assert.equal(result.ok, false);
-  assert.match(result.error, /blank value/u);
-  assert.deepEqual(state.model.values, [[1, 2], [3, 4]]);
-  assert.deepEqual(controller.serialize(), []);
+  assert.equal(result.ok, true);
+  assert.deepEqual(state.model.values, [[10, null], [30, 40]]);
+  assert.equal(state.dirty.get("0,1"), null);
+  assert.equal(controller.serialize().length, 1);
+});
+
+test("refresh replaces a numeric linked value with null when Excel is blank", async () => {
+  const state = { model: model2x2(), dirty: new Map() };
+  state.model.values[0][0] = 0;
+  const controller = externalLinks.createDatasetExternalLinksController({
+    state,
+    readCellsBatch: async () => ({
+      ok: true,
+      results: [
+        { ok: true, value: null },
+        { ok: true, value: 2 },
+        { ok: true, value: 3 },
+        { ok: true, value: 4 },
+      ],
+    }),
+  });
+  controller.load([{
+    reference: REF,
+    target_cells: [
+      { row: 0, column: 0 },
+      { row: 0, column: 1 },
+      { row: 1, column: 0 },
+      { row: 1, column: 1 },
+    ],
+  }]);
+
+  const result = await controller.refreshAll();
+
+  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 1, failedCount: 0 });
+  assert.deepEqual(state.model.values, [[null, 2], [3, 4]]);
+  assert.equal(state.dirty.get("0,0"), null);
 });
 
 test("breaking a grouped source preserves values and hard-codes all consumers", () => {
@@ -676,4 +708,42 @@ test("breaking a link invalidates its unresolved refresh", async () => {
   assert.equal(result.stale, true);
   assert.deepEqual(state.model.values, [[1, 2], [3, 4]]);
   assert.deepEqual(controller.serialize(), []);
+});
+
+test("checks each linked workbook timestamp once without changing dataset values", async () => {
+  const requestedPaths = [];
+  const state = { model: model2x2(), dirty: new Map() };
+  const controller = externalLinks.createDatasetExternalLinksController({
+    state,
+    readFileMtimesBatch: async (paths) => {
+      requestedPaths.push(...paths);
+      return {
+        ok: true,
+        results: [
+          { ok: true, mtime: 99 },
+          { ok: true, mtime: 101 },
+          { ok: false, error: "Unavailable" },
+        ],
+      };
+    },
+  });
+  controller.load([
+    { reference: "='C:\\Data\\[Older.xlsx]Sheet 1'!A1", target_cells: [{ row: 0, column: 0 }] },
+    { reference: "='C:\\Data\\[Older.xlsx]Sheet 2'!B2", target_cells: [{ row: 0, column: 1 }] },
+    { reference: "='C:\\Data\\[Newer.xlsx]Sheet 1'!A1", target_cells: [{ row: 1, column: 0 }] },
+    { reference: "='C:\\Data\\[Missing.xlsx]Sheet 1'!A1", target_cells: [{ row: 1, column: 1 }] },
+  ]);
+
+  const result = await controller.checkForNewerWorkbooks(100);
+
+  assert.deepEqual(requestedPaths, [
+    "C:\\Data\\Older.xlsx",
+    "C:\\Data\\Newer.xlsx",
+    "C:\\Data\\Missing.xlsx",
+  ]);
+  assert.equal(result.newerWorkbookCount, 1);
+  assert.deepEqual(result.newerWorkbooks, [{ path: "C:\\Data\\Newer.xlsx", mtime: 101 }]);
+  assert.equal(result.unverifiedWorkbookCount, 1);
+  assert.deepEqual(state.model.values, [[1, 2], [3, 4]]);
+  assert.equal(state.dirty.size, 0);
 });

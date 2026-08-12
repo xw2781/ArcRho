@@ -103,7 +103,7 @@ export function mountDatasetViewer(container) {
     <div class="topRow">
       <div class="panel" id="datasetTopBar">
         <div class="topbar-grid">
-          <!-- Col 1: Cumulative / Transposed / Development / Calendar -->
+          <!-- Col 1: dataset display and orientation controls -->
           <div class="topbar-left" style="grid-column: 1; grid-row: 1 / span 2;">
             <label class="chk"><span>Cumulative:</span> <input id="cumulativeChk" type="checkbox" checked /></label>
             <label class="chk"><span>Transposed:</span> <input id="transposedChk" type="checkbox" /></label>
@@ -292,11 +292,13 @@ export function mountDatasetViewer(container) {
     </div>
   </div>
 
-  <div id="ctxMenu" class="ctx-menu" style="display:none;">
+  <div id="ctxMenu" class="ctx-menu" role="menu" style="display:none;">
     <div class="ctx-menu-inner">
       <button class="ctx-item" data-action="copy_value">Copy values</button>
       <button class="ctx-item" data-action="paste">Paste</button>
       <button class="ctx-item" data-action="remove_highlights">Remove Highlights</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-action="toggle_subtotal">Show/Hide subtotal</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" data-action="export_data">Export data</button>
     </div>

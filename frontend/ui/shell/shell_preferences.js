@@ -79,7 +79,8 @@ export function getColorTheme() {
 }
 
 export function updateColorThemeMenuState() {
-  for (const theme of ["light", "dark"]) {
+  const themes = window.ArcRhoColorTheme?.THEMES || ["light", "dark"];
+  for (const theme of themes) {
     const item = document.querySelector(`[data-action="color-theme-${theme}"]`);
     if (!item) continue;
     const selected = theme === colorTheme;

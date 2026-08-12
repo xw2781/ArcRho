@@ -229,7 +229,7 @@ class DatasetExternalLinkSidecarTests(unittest.TestCase):
             "unknown_extension_field": {"preserve": True},
         }
 
-    def _save(self, external_links=None):
+    def _save(self, external_links=None, *, show_subtotal=None):
         written = {}
 
         def capture_write(path, payload):
@@ -263,10 +263,20 @@ class DatasetExternalLinkSidecarTests(unittest.TestCase):
                 data_format="Triangle",
                 origin_length=12,
                 development_length=12,
+                show_subtotal=show_subtotal,
                 external_links=external_links,
             )
 
         return result, written["payload"]
+
+    def test_show_subtotal_defaults_on_and_persists_an_explicit_false_value(self) -> None:
+        default_result, default_payload = self._save()
+        hidden_result, hidden_payload = self._save(show_subtotal=False)
+
+        self.assertIs(default_payload["show_subtotal"], True)
+        self.assertIs(default_result["show_subtotal"], True)
+        self.assertIs(hidden_payload["show_subtotal"], False)
+        self.assertIs(hidden_result["show_subtotal"], False)
 
     def test_omitted_external_links_preserves_existing_and_unknown_fields(self) -> None:
         result, payload = self._save()

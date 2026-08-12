@@ -6,7 +6,7 @@
   const MESSAGE_TYPE = "arcrho:set-color-theme";
   const CHANGE_EVENT = "arcrho:color-theme-changed";
   const DEFAULT_THEME = "light";
-  const THEMES = Object.freeze(["light", "dark"]);
+  const THEMES = Object.freeze(["light", "dark", "high-contrast"]);
   const THEME_MENU_OPEN_CLASS = "arcrhoThemeMenuOpen";
   const MONACO_ATOM_ONE_DARK_THEME = "arcrho-atom-one-dark";
   let hostPreferenceRevision = 0;

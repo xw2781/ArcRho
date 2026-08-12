@@ -400,3 +400,93 @@
   justify-content: flex-end;
   margin-top: 16px;
 }
+
+/* Editable Category picker in the Dataset Type editor. The established
+   Project Settings combo/list primitives own the shared dropdown surface. */
+.rct-row-editor-body .dt-category-combo {
+  width: 100%;
+}
+.rct-row-editor-body .dt-category-combo input {
+  height: 30px;
+  padding: 0 30px 0 9px;
+  border-radius: 4px;
+}
+.dt-category-combo .sd-combo-caret {
+  width: 28px;
+}
+.dt-category-combo .sd-combo-caret .sd-select-caret {
+  right: 10px;
+}
+.dt-category-list {
+  max-height: 190px;
+}
+.dt-category-option.active {
+  background: var(--ar-color-surface-hover, #e8eef6);
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+.dt-category-new-tip {
+  position: fixed;
+  z-index: 9491;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: var(--ar-color-surface-raised, #fbfcfe);
+  color: var(--ar-color-text, #1f2937);
+  box-shadow: var(--ar-shadow-floating, 0 8px 20px rgba(15, 23, 42, 0.08));
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+  animation: dt-category-tip-in 140ms ease-out;
+}
+.dt-category-new-tip[hidden] {
+  display: none;
+}
+.dt-category-new-tip::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 18px;
+  width: 8px;
+  height: 8px;
+  border-top: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-left: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  background: var(--ar-color-surface-raised, #fbfcfe);
+  transform: rotate(45deg);
+}
+.dt-category-new-tip strong {
+  display: block;
+  color: var(--ar-color-text-strong, #0f172a);
+  font-size: 11px;
+}
+.dt-category-new-tip #dtCategoryNewTipText {
+  display: block;
+  margin-top: 1px;
+  color: var(--ar-color-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+.dt-category-new-mark {
+  display: inline-flex;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  color: var(--ar-color-accent, #2b6df6);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+@keyframes dt-category-tip-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dt-category-new-tip { animation: none; }
+}

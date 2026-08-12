@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import stat
 import unittest
 from concurrent.futures import Future
 from pathlib import Path
@@ -90,6 +91,44 @@ class ExcelBatchReadTests(unittest.TestCase):
         self.assertEqual(_RecordingExecutor.max_workers, excel_service.EXCEL_BATCH_MAX_WORKERS)
         self.assertEqual(len(result["results"]), len(items))
         self.assertTrue(all(not item["ok"] for item in result["results"]))
+
+    def test_file_mtimes_deduplicate_stat_calls_and_preserve_order(self) -> None:
+        calls = []
+
+        def fake_stat(path: str):
+            calls.append(path)
+            return SimpleNamespace(
+                st_mtime=101.0 if "first" in path else 202.0,
+                st_mode=stat.S_IFREG,
+            )
+
+        paths = ["first.xlsx", "second.xlsx", "first.xlsx", ""]
+        with (
+            mock.patch.object(excel_service.os, "stat", side_effect=fake_stat),
+            mock.patch.object(excel_service, "ThreadPoolExecutor", _RecordingExecutor),
+        ):
+            result = excel_service.excel_file_mtimes_batch(paths)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual([item.get("mtime") for item in result["results"][:3]], [101.0, 202.0, 101.0])
+        self.assertFalse(result["results"][3]["ok"])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(_RecordingExecutor.max_workers, 3)
+
+    def test_file_mtime_concurrency_is_bounded(self) -> None:
+        paths = [f"workbook-{index}.xlsx" for index in range(8)]
+        with (
+            mock.patch.object(
+                excel_service.os,
+                "stat",
+                return_value=SimpleNamespace(st_mtime=100.0, st_mode=stat.S_IFREG),
+            ),
+            mock.patch.object(excel_service, "ThreadPoolExecutor", _RecordingExecutor),
+        ):
+            result = excel_service.excel_file_mtimes_batch(paths)
+
+        self.assertEqual(_RecordingExecutor.max_workers, excel_service.EXCEL_BATCH_MAX_WORKERS)
+        self.assertEqual(len(result["results"]), len(paths))
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, NamedTuple, Sequence, Set, Tuple
 import numpy as np
 import pandas as pd
 
+from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from app_server import config
 from app_server.helpers import (
     _canon_dataset_name,
@@ -1414,6 +1415,7 @@ def _recalculate_dataset_impl(
         "development_length": settings.get("development_length") or 12,
         "cumulative": bool(settings.get("cumulative", True)),
         "calendar": bool(settings.get("calendar", False)),
+        "show_subtotal": normalize_show_subtotal(existing_sidecar.get("show_subtotal")),
         "csv_file": os.path.basename(csv_path),
         "created": created,
         "updated_at": now,

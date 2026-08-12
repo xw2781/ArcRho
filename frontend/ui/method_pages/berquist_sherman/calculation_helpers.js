@@ -8,6 +8,54 @@ export function normalizeLoessSpan(value) {
   return Math.min(MAX_LOESS_SPAN, Math.max(MIN_LOESS_SPAN, Math.trunc(number)));
 }
 
+// B&S supports annual development triangles, whose available cells form the
+// same upper-left staircase shown by the Dataset Viewer. ResQ and some legacy
+// CSVs pad the unavailable lower-right area with numeric zeroes, so the value
+// alone cannot distinguish a real zero observation from structural padding.
+// Apply both the Dataset Viewer mask and the annual staircase at ingestion;
+// calculations can then preserve the jagged shape by mapping the source rows.
+export function normalizeAnnualTriangle(rawValues, rawMask = null) {
+  const rows = Array.isArray(rawValues) ? rawValues : [];
+  const masks = Array.isArray(rawMask) ? rawMask : [];
+  const developmentCount = Math.max(
+    0,
+    ...rows.map((row) => Array.isArray(row) ? row.length : 1),
+    ...masks.map((row) => Array.isArray(row) ? row.length : 0),
+  );
+
+  return rows.map((rawRow, rowIndex) => {
+    const values = Array.isArray(rawRow) ? rawRow : [rawRow];
+    const mask = Array.isArray(masks[rowIndex]) ? masks[rowIndex] : null;
+    const structuralLength = Math.max(0, developmentCount - rowIndex);
+    const candidateLength = Math.min(
+      structuralLength,
+      Math.max(values.length, mask?.length || 0),
+    );
+    let lastIncluded = candidateLength - 1;
+    if (mask) {
+      while (lastIncluded >= 0 && !mask[lastIncluded]) lastIncluded -= 1;
+    } else {
+      while (
+        lastIncluded >= 0
+        && (values[lastIncluded] === null
+          || values[lastIncluded] === undefined
+          || values[lastIncluded] === "")
+      ) {
+        lastIncluded -= 1;
+      }
+    }
+    if (lastIncluded < 0) return [];
+
+    return Array.from({ length: lastIncluded + 1 }, (_, columnIndex) => {
+      if (mask && !mask[columnIndex]) return null;
+      const value = values[columnIndex];
+      if (value === null || value === undefined || value === "") return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    });
+  });
+}
+
 // ResQ "Loess (n)": a tri-cube weighted straight-line fit over the span + 1
 // nearest neighbours, evaluated at `target`. The furthest neighbour's weight is
 // exactly zero, so it drops out of the fit. Returns null when too few

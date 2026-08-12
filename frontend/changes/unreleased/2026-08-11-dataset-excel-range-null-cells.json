@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Manual Dataset Excel ranges now accept blank source cells and display them as muted formatted zeros.",
+  "details": [
+    "Opening a manual Dataset Viewer dataset now warns when a linked Excel workbook is newer, with options to keep stored values or refresh them as unsaved changes.",
+    "Dynamic-array highlights now retain their blue left border beside sticky row labels.",
+    "The linked-cell formula editor now has an 879px maximum width while remaining constrained to the viewport."
+  ]
+}

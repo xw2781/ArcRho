@@ -8,6 +8,7 @@
 import { $, shell } from "./shell_context.js?v=20260510a";
 import { homeCardIconForTabType } from "./home_card_icons.js?v=20260808a";
 import { buildRestoreSummary } from "./shell_activity_history.js";
+import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js?v=20260715a";
 import {
   MAX_CARDS_PER_GROUP,
   addCard,
@@ -42,10 +43,6 @@ let loadPromise = null;
 let menuContext = null;
 let namePromptResolve = null;
 let addCardResolve = null;
-let homeCardTooltipEl = null;
-let homeCardTooltipTimer = 0;
-let homeCardTooltipCard = null;
-let homeCardTooltipPoint = null;
 
 // Press-and-hold reordering has a brief threshold to distinguish a drag from an intentional card
 // activation. A quick click activates the card; an incomplete hold cancels without activation.
@@ -76,73 +73,13 @@ function reportError(message) {
   shell.updateStatusBar?.(String(message || "Could not update Home shortcuts."), { tone: "error" });
 }
 
-function ensureHomeCardTooltip() {
-  if (homeCardTooltipEl) return homeCardTooltipEl;
-  homeCardTooltipEl = document.createElement("div");
-  homeCardTooltipEl.className = "homeCardTooltip";
-  homeCardTooltipEl.setAttribute("role", "tooltip");
-  document.body.appendChild(homeCardTooltipEl);
-  return homeCardTooltipEl;
-}
-
-function hideHomeCardTooltip() {
-  window.clearTimeout(homeCardTooltipTimer);
-  homeCardTooltipTimer = 0;
-  homeCardTooltipCard = null;
-  homeCardTooltipPoint = null;
-  homeCardTooltipEl?.classList.remove("is-visible");
-}
-
-function positionHomeCardTooltip(point) {
-  const tooltip = homeCardTooltipEl;
-  if (!tooltip) return;
-  const gap = 14;
-  const edge = 8;
-  const left = Math.min(point.x + gap, window.innerWidth - tooltip.offsetWidth - edge);
-  const top = Math.min(point.y + gap, window.innerHeight - tooltip.offsetHeight - edge);
-  tooltip.style.left = `${Math.max(edge, left)}px`;
-  tooltip.style.top = `${Math.max(edge, top)}px`;
-}
-
-function scheduleHomeCardTooltip(card, event) {
-  hideHomeCardTooltip();
-  homeCardTooltipCard = card;
-  homeCardTooltipPoint = { x: event.clientX, y: event.clientY };
-  homeCardTooltipTimer = window.setTimeout(() => {
-    if (homeCardTooltipCard !== card || !homeCardTooltipPoint) return;
-    const tooltip = ensureHomeCardTooltip();
-    tooltip.textContent = "Hold to drag and reorder";
-    positionHomeCardTooltip(homeCardTooltipPoint);
-    tooltip.classList.add("is-visible");
-  }, 500);
-}
-
-function wireHomeCardTooltip() {
-  containerEl?.addEventListener("pointerover", (event) => {
-    const card = event.target?.closest?.(".homeShortcutCard");
-    if (!card || !containerEl.contains(card) || card.contains(event.relatedTarget)) return;
-    scheduleHomeCardTooltip(card, event);
-  });
-  containerEl?.addEventListener("pointermove", (event) => {
-    const card = event.target?.closest?.(".homeShortcutCard");
-    if (!card || card !== homeCardTooltipCard) return;
-    scheduleHomeCardTooltip(card, event);
-  });
-  containerEl?.addEventListener("pointerout", (event) => {
-    const card = event.target?.closest?.(".homeShortcutCard");
-    if (card && !card.contains(event.relatedTarget)) hideHomeCardTooltip();
-  });
-}
-
 /* ---------------------------------------------------------------- rendering */
 
 function renderCard(group, card) {
   const summary = buildRestoreSummary(card.target);
-  const tooltip = "Hold to drag and reorder";
   return `
     <div class="card clickable homeShortcutCard" role="button" tabindex="0"
-         data-group-id="${escapeHtml(group.id)}" data-card-id="${escapeHtml(card.id)}"
-         data-home-tooltip="${escapeHtml(tooltip)}">
+         data-group-id="${escapeHtml(group.id)}" data-card-id="${escapeHtml(card.id)}">
       ${homeCardIconForTabType(card.target.tabType)}
       <div class="homeShortcutCardText">
         <h3>${escapeHtml(card.label)}</h3>
@@ -197,6 +134,9 @@ export function renderHomeShortcuts() {
       <button class="homeAddGroupHint" type="button" data-action="add-group" aria-label="Add a new group">+ New group</button>
     </div>
   `;
+  containerEl.querySelectorAll(".homeShortcutCard").forEach((card) => {
+    attachArcrhoTooltip(card, "Hold to drag and reorder");
+  });
 }
 
 /* ------------------------------------------------------------- persistence */
@@ -739,8 +679,6 @@ function wireOnce() {
     const cardEl = e.target?.closest?.(".homeShortcutCard");
     if (cardEl) beginHold(cardEl, e);
   });
-
-  wireHomeCardTooltip();
 
   containerEl?.addEventListener("click", (e) => {
     // The click that ends a drag must not also open the card that was dragged.

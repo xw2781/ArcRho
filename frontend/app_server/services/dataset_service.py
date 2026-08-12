@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 from fastapi import HTTPException
 
+from arcrho_api.dataset_display_contract import DEFAULT_SHOW_SUBTOTAL, normalize_show_subtotal
 from arcrho_api.io import persisted_json_text
 from app_server import config
 from app_server.helpers import (
@@ -976,6 +977,7 @@ def _create_empty_cached_dataset_impl(
         "source_kind": "input",
         "data_format": fmt,
         "data_format_code": _data_format_code(fmt),
+        "show_subtotal": DEFAULT_SHOW_SUBTOTAL,
         "csv_file": os.path.basename(csv_path),
         "user": user_name,
         "created": now,
@@ -1307,6 +1309,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
             "reserving_class": rc,
             "dataset_name": ds,
             "external_links": [],
+            "show_subtotal": DEFAULT_SHOW_SUBTOTAL,
             "path": path,
         }
     dataset_type = str(payload.get("dataset_type") or ds)
@@ -1360,6 +1363,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "cumulative": payload.get("cumulative"),
         "transposed": payload.get("transposed"),
         "calendar": payload.get("calendar"),
+        "show_subtotal": normalize_show_subtotal(payload.get("show_subtotal")),
         "number_format": _normalize_number_format(payload.get("number_format") or "0,000"),
         "decimal_places": _normalize_decimal_places(payload.get("decimal_places")),
         "csv_file": str(payload.get("csv_file") or ""),
@@ -1609,6 +1613,7 @@ def load_cached_dataset_values(
         "cumulative": sidecar.get("cumulative"),
         "transposed": sidecar.get("transposed"),
         "calendar": sidecar.get("calendar"),
+        "show_subtotal": normalize_show_subtotal(sidecar.get("show_subtotal")),
         "number_format": _normalize_number_format(sidecar.get("number_format") or "0,000"),
         "decimal_places": _normalize_decimal_places(sidecar.get("decimal_places")),
         "formula": dataset_type_formula or str(sidecar.get("formula") or ""),
@@ -1638,6 +1643,7 @@ def _save_dataset_sidecar_impl(
     cumulative: bool = True,
     transposed: bool = False,
     calendar: bool = False,
+    show_subtotal: bool | None = None,
     number_format: str = "",
     decimal_places: int = 1,
     origin_labels: List[str] | None = None,
@@ -1675,6 +1681,9 @@ def _save_dataset_sidecar_impl(
     method_calculated = method_type_value in _METHOD_CALCULATED_TYPES
     number_format_value = _normalize_number_format(number_format or existing.get("number_format") or "0,000")
     decimal_places_value = _normalize_decimal_places(decimal_places)
+    show_subtotal_value = normalize_show_subtotal(
+        show_subtotal if show_subtotal is not None else existing.get("show_subtotal")
+    )
     if values is not None and app_calculated:
         raise HTTPException(400, "Calculated datasets cannot save editable grid values.")
 
@@ -1708,6 +1717,7 @@ def _save_dataset_sidecar_impl(
         "data_format": data_format_value,
         "data_format_code": _data_format_code(data_format_value),
         "transposed": bool(transposed),
+        "show_subtotal": show_subtotal_value,
         "number_format": number_format_value,
         "decimal_places": decimal_places_value,
         "csv_file": csv_file_value,
@@ -1823,6 +1833,7 @@ def _save_dataset_sidecar_impl(
         "cumulative": payload.get("cumulative"),
         "transposed": payload["transposed"],
         "calendar": payload.get("calendar"),
+        "show_subtotal": payload["show_subtotal"],
         "number_format": payload["number_format"],
         "decimal_places": payload["decimal_places"],
         "csv_file": payload["csv_file"],

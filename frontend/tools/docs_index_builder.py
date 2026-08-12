@@ -624,6 +624,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/project_instance/project_instance_dataset_table.js", "Dataset table rendering, filters, grouping, sorting, selection, and row actions."),
             ("ui/project_instance/project_instance_dataset_add_picker.js", "Add Dataset picker sorting, filtering, search, drag/resize, and row selection."),
             ("ui/project_instance/project_instance_path_panel.js", "Reserving-class path panel loading, selection, persistence, and resizing."),
+            ("ui/project_instance/project_instance_excel_links.js", "Reserving-class Excel Link Manager floating window and workbook retargeting."),
             ("ui/project_instance/project_instance_windows.js", "Floating Dataset and DFM window lifecycle, geometry, dirty state, and restore snapshots."),
             ("ui/project_instance/project_instance_hidden_tabs.js", "Hidden floating-window tab strip, menu, drop target, and dock animations."),
             ("ui/project_instance/project_instance_messages.js", "Shell and nested DFM message routing plus keyboard command forwarding."),
@@ -767,6 +768,14 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/api/excel_router.py", "Excel COM automation routes."),
             ("app_server/services/excel_service.py", "Excel process interaction logic."),
             ("app_server/schemas/excel.py", "Excel request payload schemas."),
+        ],
+    },
+    "excel_link": {
+        "doc": "docs/app_server/domains/excel_link.md",
+        "files": [
+            ("app_server/api/excel_link_router.py", "Reserving-class Excel link list/retarget routes."),
+            ("app_server/services/excel_link_service.py", "Excel link scan, workbook grouping, and reference retargeting."),
+            ("app_server/schemas/excel_link.py", "Excel link request payload schemas."),
         ],
     },
     "arcrho": {
@@ -1228,6 +1237,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Runtime depends on local Excel automation availability.",
             "1. Add automation method: schema + router + service must stay aligned.",
             "- Excel COM timing and environment dependencies are fragile.",
+        ),
+        "excel_link": (
+            "Reserving-class Excel link inventory and workbook retargeting domain.",
+            "- Called by the Project Instance Excel Link Manager window.",
+            "- Rewrites saved dataset sidecar and DFM method reference text without touching stored values.",
+            "1. Add link source kinds: extend the scan/rewrite pair while keeping reference syntax mirrored with the frontend parser.",
+            "- The Python reference parser must stay in sync with `ui/shared/integrations/excel_reference.js`.",
         ),
         "arcrho": (
             "ArcRho calculations/precheck domain.",

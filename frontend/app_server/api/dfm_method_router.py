@@ -5,6 +5,7 @@ from typing import Any, Dict
 from fastapi import APIRouter
 
 from app_server.schemas.dfm_method import (
+    DfmDatasetReferencesResolveRequest,
     DfmMethodIdentityRequest,
     DfmMethodPreviewRequest,
     DfmMethodSaveRequest,
@@ -13,6 +14,15 @@ from app_server.services import dfm_service
 
 
 router = APIRouter()
+
+
+@router.post("/dfm/method/dataset-references/resolve")
+def resolve_dfm_dataset_references(req: DfmDatasetReferencesResolveRequest) -> Dict[str, Any]:
+    return dfm_service.resolve_dfm_dataset_references(
+        req.project_name,
+        req.reserving_class,
+        [reference.model_dump() for reference in req.references],
+    )
 
 
 @router.post("/dfm/method/load")

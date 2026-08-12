@@ -18,7 +18,7 @@ import {
   renderTable,
   setDatasetRenderNumberFormatSettings,
   setDatasetRenderVectorColumnLabel,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260805a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260811j";
 import {
   beginDatasetGridLoading,
   endDatasetGridLoading,
@@ -36,13 +36,13 @@ import {
 import { createDatasetDependencyGuard } from "/ui/shared/dataset/dataset_dependency_service.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { validateDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
-import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260805a";
+import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260811i";
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
 import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260807b";
 import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
-import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260807a";
+import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260811c";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 import {
   applyDecimalPlacesToDatasetNumberFormat,
@@ -61,7 +61,7 @@ import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 import { getDataTabAuditController } from "/ui/shared/tabs/data/data_tab_audit_port.js";
 import { getDataTabCloseConfirm } from "/ui/shared/tabs/data/data_tab_close_port.js";
 import { getDataTabLinksController } from "/ui/shared/tabs/data/data_tab_links_port.js";
-import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260716a";
+import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260811a";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -90,7 +90,7 @@ import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
 import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260809a";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260809a";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260811c";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";
@@ -337,6 +337,7 @@ function wireGridInteractions() {
     isReadOnly: runtime.isDatasetReadOnly,
     setStatus: runtime.setStatus,
     notifyDatasetUpdated: runtime.notifyDatasetUpdated,
+    refreshDatasetSettingsDirty: runtime.refreshDatasetSettingsDirty,
     commitExternalReference: (request) => (
       isDfmDataTabHost()
         ? Promise.resolve({

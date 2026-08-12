@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Improved the linked Excel update dialog with separated, evenly balanced action buttons."
+}

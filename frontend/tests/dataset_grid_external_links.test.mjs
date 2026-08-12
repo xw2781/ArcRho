@@ -28,7 +28,7 @@ const formulaHoverStubUrl = dataUrl(`
     globalThis.__arTestFormulaHoverOptions = options;
     const controller = {
       attached: [], openCalls: [],
-      attach(cell, context) { this.attached.push({ cell, context }); return true; },
+      attach(cell, context, attachOptions) { this.attached.push({ cell, context, attachOptions }); return true; },
       open(cell, context, options) { this.openCalls.push({ cell, context, options }); return true; },
     };
     globalThis.__arTestFormulaHover = controller;
@@ -40,13 +40,28 @@ let interactionSource = await readFile(
   new URL("../ui/shared/tabs/data/dataset_grid_interactions.js", import.meta.url),
   "utf8",
 );
+const rawInteractionSource = interactionSource;
+const dataTabControllerSource = await readFile(
+  new URL("../ui/shared/tabs/data/data_tab_controller.js", import.meta.url),
+  "utf8",
+);
+const gridViewImportPattern = /["']([^"']*\/dataset_grid_view\.js\?v=[^"']+)["']/u;
+
+test("the grid renderer and interactions share one module instance", () => {
+  const controllerImport = dataTabControllerSource.match(gridViewImportPattern)?.[1];
+  const interactionsImport = rawInteractionSource.match(gridViewImportPattern)?.[1];
+
+  assert.ok(controllerImport, "Data-tab controller must import the grid view");
+  assert.equal(interactionsImport, controllerImport);
+});
+
 interactionSource = interactionSource
   .replace(
     '"/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260715a"',
     JSON.stringify(spreadsheetStubUrl),
   )
   .replace(
-    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260805a"',
+    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260811j"',
     JSON.stringify(viewStubUrl),
   )
   .replace(
@@ -54,7 +69,7 @@ interactionSource = interactionSource
     JSON.stringify(dataUrl(referenceSource)),
   )
   .replace(
-    '"/ui/shared/components/formula_hover/formula_hover.js?v=20260715a"',
+    '"/ui/shared/components/formula_hover/formula_hover.js?v=20260811c"',
     JSON.stringify(formulaHoverStubUrl),
   );
 const interactions = await import(dataUrl(interactionSource));
@@ -116,6 +131,7 @@ function setup({
     activeCell: { r: 0, c: 0 },
     selectionAnchor: { r: 0, c: 0 },
     selRanges: [{ r0: 0, c0: 0, r1: 0, c1: 0 }],
+    showSubtotal: true,
   };
   globalThis.__arTestDisplayModel = state.model;
   const calls = {
@@ -124,6 +140,7 @@ function setup({
     statuses: [],
     hardCoded: [],
     externalRequestCancellations: 0,
+    settingsRefreshes: 0,
     events: [],
     postedMessages,
   };
@@ -134,6 +151,7 @@ function setup({
       calls.events.push("render");
     },
     notifyDatasetUpdated: () => { calls.updates += 1; },
+    refreshDatasetSettingsDirty: () => { calls.settingsRefreshes += 1; },
     setStatus: (message) => calls.statuses.push(message),
     commitExternalReference,
     cancelExternalReference: () => {
@@ -186,6 +204,21 @@ test("starting a DSV cell edit invalidates an in-flight Excel refresh", () => {
     context.config.onCellFocus(0, 0);
 
     assert.equal(context.calls.externalRequestCancellations, 1);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test("the grid context menu toggles the persisted subtotal setting", async () => {
+  const context = setup();
+  try {
+    await context.config.onContextAction("toggle_subtotal");
+
+    assert.equal(context.state.showSubtotal, false);
+    assert.deepEqual(context.state.selRanges, []);
+    assert.equal(context.state.activeCell, null);
+    assert.equal(context.calls.renders, 1);
+    assert.equal(context.calls.settingsRefreshes, 1);
   } finally {
     context.cleanup();
   }
@@ -375,6 +408,8 @@ test("linked cells attach the reusable hover editor and commit edits at the link
       formula: EXCEL_REFERENCE,
       readOnly: false,
     });
+    assert.equal(typeof context.formulaHover.attached[0].attachOptions.resolveAnchor, "function");
+    assert.equal(typeof context.formulaHover.attached[0].attachOptions.positionRect, "function");
 
     const result = await context.formulaHoverOptions.onCommit({
       formula: nextReference,

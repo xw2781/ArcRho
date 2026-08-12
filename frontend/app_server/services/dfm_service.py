@@ -5,6 +5,7 @@ import getpass
 import json
 import math
 import os
+import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -379,6 +380,201 @@ def _load_source_snapshot(
     snapshot["_method_type"] = source_method_type
     snapshot["_status"] = source_status
     return snapshot
+
+
+def _dataset_reference_axis_index(
+    raw_index: Any,
+    labels: Iterable[Any],
+    *,
+    axis_name: str,
+    dataset_name: str,
+    negative_index_length: int | None = None,
+) -> Tuple[int, str]:
+    token = _clean(raw_index)
+    if not token:
+        raise HTTPException(422, f"{axis_name.capitalize()} index is required for '{dataset_name}'.")
+    axis_labels = _axis_labels(labels)
+    quoted = len(token) >= 2 and token[0] in {'"', "'"} and token[-1] == token[0]
+    if quoted:
+        requested_label = token[1:-1]
+        matches = [index for index, label in enumerate(axis_labels) if label == requested_label]
+        if len(matches) != 1:
+            detail = "not found" if not matches else "ambiguous"
+            raise HTTPException(
+                422,
+                f"{axis_name.capitalize()} label '{requested_label}' is {detail} in '{dataset_name}'.",
+            )
+        return matches[0], axis_labels[matches[0]]
+    negative_match = re.fullmatch(r"-([1-9]\d*)", token)
+    if negative_match:
+        valid_length = (
+            len(axis_labels)
+            if negative_index_length is None
+            else max(0, min(len(axis_labels), int(negative_index_length)))
+        )
+        from_end = int(negative_match.group(1))
+        resolved_index = valid_length - from_end
+        if resolved_index < 0:
+            raise HTTPException(
+                422,
+                f"{axis_name.capitalize()} index -{from_end} is outside the valid range "
+                f"of '{dataset_name}' ({valid_length} positions).",
+            )
+        return resolved_index, axis_labels[resolved_index]
+    if token.isdigit():
+        one_based = int(token)
+        if 1 <= one_based <= len(axis_labels):
+            return one_based - 1, axis_labels[one_based - 1]
+        # Large numeric axis labels such as origin year 2024 are labels rather
+        # than plausible positions. Quoting remains available to disambiguate a
+        # numeric label that is also a valid position.
+        matches = [index for index, label in enumerate(axis_labels) if label == token]
+        if len(matches) == 1:
+            return matches[0], axis_labels[matches[0]]
+        raise HTTPException(
+            422,
+            f"{axis_name.capitalize()} index {one_based} is outside '{dataset_name}' "
+            f"(1-{len(axis_labels)}).",
+        )
+    matches = [index for index, label in enumerate(axis_labels) if label == token]
+    if len(matches) != 1:
+        detail = "not found" if not matches else "ambiguous"
+        raise HTTPException(
+            422,
+            f"{axis_name.capitalize()} label '{token}' is {detail} in '{dataset_name}'.",
+        )
+    return matches[0], axis_labels[matches[0]]
+
+
+def _dataset_reference_has_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str) and not value.strip():
+        return False
+    try:
+        return not bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return True
+
+
+def _dataset_reference_valid_boundary(values: Iterable[Any], *, vector: bool) -> int:
+    """Return the last valid vector position or triangle calendar diagonal.
+
+    Dataset caches retain their full configured geometry. Sub-annual projects
+    therefore have a trailing empty suffix (vectors) or empty calendar
+    diagonals (triangles) beyond the valuation period. The last non-empty cell
+    establishes that boundary; blanks inside it remain valid positions.
+    """
+    boundary = -1
+    for row_index, raw_row in enumerate(values):
+        row = raw_row if isinstance(raw_row, list) else [raw_row]
+        for col_index, value in enumerate(row):
+            if _dataset_reference_has_value(value):
+                boundary = max(boundary, row_index if vector else row_index + col_index)
+    return boundary
+
+
+def _resolved_dataset_reference(
+    reference: Mapping[str, Any],
+    dataset: Mapping[str, Any],
+) -> Dict[str, Any]:
+    requested_name = _clean(reference.get("dataset_name"))
+    dataset_name = _clean(dataset.get("dataset_name")) or requested_name
+    values = dataset.get("values") if isinstance(dataset.get("values"), list) else []
+    origin_labels = dataset.get("origin_labels") if isinstance(dataset.get("origin_labels"), list) else []
+    data_format = _clean(dataset.get("data_format")) or "Triangle"
+    is_vector = data_format.casefold() == "vector"
+    valid_boundary = _dataset_reference_valid_boundary(values, vector=is_vector)
+    row_index, row_label = _dataset_reference_axis_index(
+        reference.get("row_idx"),
+        origin_labels,
+        axis_name="row",
+        dataset_name=dataset_name,
+        negative_index_length=valid_boundary + 1,
+    )
+    raw_col = _clean(reference.get("col_idx"))
+    if not is_vector and not raw_col:
+        raise HTTPException(422, f"Column index is required for Triangle dataset '{dataset_name}'.")
+    development_labels = (
+        dataset.get("dev_labels")
+        if isinstance(dataset.get("dev_labels"), list)
+        else []
+    )
+    if is_vector and not development_labels:
+        development_labels = ["Ultimate"]
+    col_index, col_label = _dataset_reference_axis_index(
+        raw_col or "1",
+        development_labels,
+        axis_name="column",
+        dataset_name=dataset_name,
+        negative_index_length=(
+            len(development_labels)
+            if is_vector
+            else max(0, valid_boundary - row_index + 1)
+        ),
+    )
+    row = values[row_index] if row_index < len(values) and isinstance(values[row_index], list) else []
+    value = row[col_index] if col_index < len(row) else None
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            422,
+            f"Referenced cell [{dataset_name}][{row_label}, {col_label}] is blank or non-numeric.",
+        ) from exc
+    if not math.isfinite(numeric_value):
+        raise HTTPException(
+            422,
+            f"Referenced cell [{dataset_name}][{row_label}, {col_label}] is blank or non-numeric.",
+        )
+    return {
+        "dataset_name": dataset_name,
+        "data_format": data_format,
+        "row_label": row_label,
+        "col_label": col_label,
+        "value": numeric_value,
+    }
+
+
+def resolve_dfm_dataset_references(
+    project_name: str,
+    reserving_class: str,
+    references: Iterable[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    """Resolve DFM User Entry dataset references with one read per dataset."""
+    from app_server.services import dataset_service
+
+    project = _clean(project_name)
+    rc = _clean(reserving_class)
+    requested = [dict(reference) for reference in references]
+    if not project or not rc:
+        raise HTTPException(422, "Project and reserving class are required.")
+    if not requested:
+        raise HTTPException(422, "At least one dataset reference is required.")
+
+    names_by_key: Dict[str, str] = {}
+    for reference in requested:
+        name = _clean(reference.get("dataset_name"))
+        if not name:
+            raise HTTPException(422, "Dataset name is required in every reference.")
+        names_by_key.setdefault(_key(name), name)
+    futures = {
+        key: _READ_EXECUTOR.submit(
+            dataset_service.load_cached_dataset_values,
+            project,
+            rc,
+            name,
+        )
+        for key, name in names_by_key.items()
+    }
+    datasets = {key: future.result() for key, future in futures.items()}
+    return {
+        "ok": True,
+        "results": [
+            _resolved_dataset_reference(reference, datasets[_key(reference.get("dataset_name"))])
+            for reference in requested
+        ],
+    }
 
 
 def _source_snapshots(

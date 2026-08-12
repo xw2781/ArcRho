@@ -7,6 +7,7 @@ import {
   isDatasetTypeSelectionFilterActive,
 } from "/ui/shared/dataset/dataset_types_view_model.js";
 import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
+import { createDatasetTypeCategoryCombo } from "/ui/project_settings/project_settings_dataset_type_category_combo.js?v=20260811dtcategory1";
 
 function calculationStepReservingPath(step) {
   const explicit = String(step?.reserving_class || "").trim();
@@ -46,7 +47,12 @@ export function createDatasetTypesFeature(deps = {}) {
     datasetTypeEditorTitle = null,
     dtEditName = null,
     dtEditDataFormat = null,
+    dtCategoryCombo = null,
     dtEditCategory = null,
+    dtCategoryToggle = null,
+    dtCategoryList = null,
+    dtCategoryNewTip = null,
+    dtCategoryNewTipText = null,
     dtEditCalculated = null,
     dtEditFormula = null,
     scheduleDatasetTypesAutoSave = () => {},
@@ -88,6 +94,14 @@ export function createDatasetTypesFeature(deps = {}) {
   let datasetTypesErrorUiWired = false;
   let datasetTypesLoadModeDialog = null;
   let datasetTypesLoadModeDialogResolve = null;
+  const categoryCombo = createDatasetTypeCategoryCombo({
+    root: dtCategoryCombo,
+    input: dtEditCategory,
+    toggle: dtCategoryToggle,
+    list: dtCategoryList,
+    newTip: dtCategoryNewTip,
+    newTipText: dtCategoryNewTipText,
+  });
 
   function escapeHtml(str) {
     return String(str)
@@ -1045,6 +1059,7 @@ export function createDatasetTypesFeature(deps = {}) {
 
   function closeDatasetTypeEditor() {
     if (!datasetTypeEditor) return;
+    categoryCombo.close({ hideNewTip: true });
     datasetTypeEditor.classList.remove("show");
     datasetTypeEditor.style.left = "";
     datasetTypeEditor.style.top = "";
@@ -1072,7 +1087,8 @@ export function createDatasetTypesFeature(deps = {}) {
     }
     if (dtEditName) dtEditName.value = mode === "add" ? "" : String(row?.[0] ?? "");
     if (dtEditDataFormat) dtEditDataFormat.value = mode === "add" ? "" : String(row?.[1] ?? "");
-    if (dtEditCategory) dtEditCategory.value = mode === "add" ? "" : String(row?.[2] ?? "");
+    categoryCombo.setOptions(state.rows.map((item) => item?.[2]));
+    categoryCombo.setValue(mode === "add" ? "" : String(row?.[2] ?? ""));
     const initialCalculated = mode === "add" ? false : parseCalculatedFlag(row?.[3]);
     if (dtEditCalculated) dtEditCalculated.checked = initialCalculated;
     if (dtEditFormula) {
@@ -1107,13 +1123,20 @@ export function createDatasetTypesFeature(deps = {}) {
 
     const nameValue = String(dtEditName?.value ?? "").trim();
     const dataFormatValue = String(dtEditDataFormat?.value ?? "").trim();
-    const categoryValue = String(dtEditCategory?.value ?? "").trim();
+    const categoryValue = categoryCombo.getValue();
     const calculatedValue = !!(dtEditCalculated?.checked);
     const formulaValue = calculatedValue ? String(dtEditFormula?.value ?? "").trim() : "";
 
     if (!nameValue) {
       setDatasetTypesStatus("Name is required.", true);
       if (dtEditName) dtEditName.focus();
+      return;
+    }
+    const isAllowedDataFormat = Array.from(dtEditDataFormat?.options || [])
+      .some((option) => option.value === dataFormatValue && !option.disabled);
+    if (!isAllowedDataFormat) {
+      setDatasetTypesStatus("Choose Triangle or Vector for Data Format.", true);
+      if (dtEditDataFormat) dtEditDataFormat.focus();
       return;
     }
 
@@ -1194,6 +1217,7 @@ export function createDatasetTypesFeature(deps = {}) {
     const top = Math.max(8, Math.min(window.innerHeight - datasetTypeEditor.offsetHeight - 8, e.clientY - dtEditorDragState.offsetY));
     datasetTypeEditor.style.left = `${left}px`;
     datasetTypeEditor.style.top = `${top}px`;
+    categoryCombo.positionFloating();
   }
 
   function onEditorMouseUp() {

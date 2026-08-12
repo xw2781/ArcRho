@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List
@@ -87,6 +88,45 @@ def excel_read_cells_batch(items: list) -> Dict[str, Any]:
                 by_key.update(future.result())
     results = [dict(by_key[key]) for key in result_keys]
     return {"ok": True, "results": results}
+
+
+def excel_file_mtimes_batch(book_paths: list[str]) -> Dict[str, Any]:
+    resolved_by_key: Dict[str, str] = {}
+    result_keys: List[str] = []
+    for index, raw_path in enumerate(book_paths):
+        if not str(raw_path or "").strip():
+            key = f"__invalid_path_{index}"
+            result_keys.append(key)
+            resolved_by_key[key] = ""
+            continue
+        resolved = str(Path(str(raw_path or "")).resolve())
+        key = os.path.normcase(resolved)
+        result_keys.append(key)
+        resolved_by_key.setdefault(key, resolved)
+
+    def stat_workbook(item: tuple[str, str]) -> tuple[str, Dict[str, Any]]:
+        key, resolved = item
+        if not resolved:
+            return key, {"ok": False, "path": resolved, "error": "Workbook path is empty."}
+        try:
+            stat_result = os.stat(resolved)
+            if not stat.S_ISREG(stat_result.st_mode):
+                return key, {"ok": False, "path": resolved, "error": f"File not found: {resolved}"}
+            return key, {"ok": True, "path": resolved, "mtime": stat_result.st_mtime}
+        except OSError as exc:
+            return key, {"ok": False, "path": resolved, "error": str(exc)}
+
+    by_key: Dict[str, Dict[str, Any]] = {}
+    if resolved_by_key:
+        with ThreadPoolExecutor(
+            max_workers=min(EXCEL_BATCH_MAX_WORKERS, len(resolved_by_key)),
+            thread_name_prefix="arcrho-excel-stat",
+        ) as executor:
+            futures = [executor.submit(stat_workbook, item) for item in resolved_by_key.items()]
+            for future in futures:
+                key, result = future.result()
+                by_key[key] = result
+    return {"ok": True, "results": [dict(by_key[key]) for key in result_keys]}
 
 
 def excel_open_workbook(book_path: str, sheet: str = "", cell: str = "") -> Dict[str, Any]:

@@ -116,9 +116,13 @@ export function runHotkeyAction(action) {
   if (action === "view_toggle_exec_time") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-exec-time"); return; }
   if (action === "help_view_dev_panel") return shell.openDevPanel?.();
   if (action === "settings_toggle_color_theme") {
-    const nextTheme = shell.getColorTheme?.() === "dark" ? "light" : "dark";
+    const themes = window.ArcRhoColorTheme?.THEMES || ["light", "dark"];
+    const currentTheme = shell.getColorTheme?.();
+    const currentIndex = themes.indexOf(currentTheme);
+    const nextTheme = themes[(currentIndex + 1 + themes.length) % themes.length] || "light";
     shell.setColorTheme?.(nextTheme);
-    shell.updateStatusBar?.(`Color theme changed to ${nextTheme === "dark" ? "Dark" : "Light"}.`);
+    const label = nextTheme.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+    shell.updateStatusBar?.(`Color theme changed to ${label}.`);
     return;
   }
   if (action === "settings_clear_cache_reload") {

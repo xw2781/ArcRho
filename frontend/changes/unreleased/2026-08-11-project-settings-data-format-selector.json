@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Dataset Type Data Format is now selected from Triangle or Vector instead of entered as free text."
+}

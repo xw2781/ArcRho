@@ -1134,31 +1134,6 @@ iframe.floatingTabIframe {
 .homeShortcutCard:focus-visible {
   z-index: 10;
 }
-.homeCardTooltip {
-  position: fixed;
-  z-index: 1000;
-  max-width: min(260px, calc(100vw - 16px));
-  padding: 7px 9px;
-  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
-  border-radius: 5px;
-  background: var(--ar-color-surface-soft, #f1f5f9);
-  color: var(--ar-color-text-strong, #111827);
-  box-shadow: var(--ar-shadow-floating, 0 8px 20px rgba(15, 23, 42, 0.08));
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.35;
-  white-space: pre-line;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-  transform: translateY(2px);
-  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
-}
-.homeCardTooltip.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-  visibility: visible;
-}
 .homeShortcutCardText {
   min-width: 0;
 }
@@ -1238,10 +1213,6 @@ iframe.floatingTabIframe {
   box-shadow: 0 0 0 8px var(--ar-color-accent-soft, #eaf2ff);
 }
 @media (prefers-reduced-motion: reduce) {
-  .homeCardTooltip {
-    transition: none;
-  }
-
   .homeShortcutsFooter,
   .homeAddGroupHint {
     transition: none;

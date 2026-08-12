@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Dataset Type Category now suggests existing categories while allowing new categories with clear inline feedback."
+}

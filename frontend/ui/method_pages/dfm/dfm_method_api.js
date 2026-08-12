@@ -44,6 +44,27 @@ export function loadDfmMethod(identity, options = {}) {
   }, options);
 }
 
+export function resolveDfmDatasetReferences(payload, options = {}) {
+  return requestJson("/dfm/method/dataset-references/resolve", payload, options);
+}
+
+export async function listDfmDatasetInstances(identity, options = {}) {
+  const projectName = text(identity?.project_name);
+  const reservingClass = text(identity?.reserving_class);
+  if (!projectName || !reservingClass) return [];
+  const url = new URL("/datasets/cached", globalThis.location?.origin || "http://localhost");
+  url.searchParams.set("project_name", projectName);
+  url.searchParams.set("reserving_class", reservingClass);
+  const response = await fetch(url.toString(), { cache: "no-store", signal: options.signal });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(text(payload?.detail || payload?.error) || `HTTP ${response.status}`);
+  }
+  return (Array.isArray(payload?.files) ? payload.files : [])
+    .map((item) => text(item?.name))
+    .filter(Boolean);
+}
+
 export function previewDfmMethod(method, options = {}) {
   return requestJson("/dfm/method/preview", { method }, options);
 }

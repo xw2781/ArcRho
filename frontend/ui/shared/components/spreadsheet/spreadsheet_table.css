@@ -75,45 +75,40 @@
   outline-offset: -2px;
 }
 
-/* Multi-cell formula arrays use an inset perimeter so table geometry and fills stay unchanged. */
+/* Multi-cell formula arrays use real grid edges so the perimeter stays continuous across cells. */
 .arSpreadsheetTable td.arArrayFormulaCell {
-  --ar-array-formula-top: transparent;
-  --ar-array-formula-right: transparent;
-  --ar-array-formula-bottom: transparent;
-  --ar-array-formula-left: transparent;
+  --ar-array-formula-border: #2b6df6;
   --ar-array-formula-top-glow: transparent;
   --ar-array-formula-right-glow: transparent;
   --ar-array-formula-bottom-glow: transparent;
   --ar-array-formula-left-glow: transparent;
   box-shadow:
-    inset 0 1px 0 var(--ar-array-formula-top),
-    inset -1px 0 0 var(--ar-array-formula-right),
-    inset 0 -1px 0 var(--ar-array-formula-bottom),
-    inset 1px 0 0 var(--ar-array-formula-left),
     inset 0 7px 8px -7px var(--ar-array-formula-top-glow),
     inset -7px 0 8px -7px var(--ar-array-formula-right-glow),
     inset 0 -7px 8px -7px var(--ar-array-formula-bottom-glow),
     inset 7px 0 8px -7px var(--ar-array-formula-left-glow);
-  transition: box-shadow 150ms ease;
+  transition: box-shadow 150ms ease, border-color 150ms ease;
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeTop {
-  --ar-array-formula-top: #2b6df6;
+  border-top: 1px solid var(--ar-array-formula-border) !important;
   --ar-array-formula-top-glow: rgba(43, 109, 246, 0.28);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeRight {
-  --ar-array-formula-right: #2b6df6;
+  border-right-color: var(--ar-array-formula-border) !important;
   --ar-array-formula-right-glow: rgba(43, 109, 246, 0.28);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeBottom {
-  --ar-array-formula-bottom: #2b6df6;
+  position: relative;
+  z-index: 1;
+  border-bottom: 1px solid var(--ar-array-formula-border) !important;
   --ar-array-formula-bottom-glow: rgba(43, 109, 246, 0.28);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeLeft {
-  --ar-array-formula-left: #2b6df6;
+  border-left: 1px solid var(--ar-array-formula-border) !important;
   --ar-array-formula-left-glow: rgba(43, 109, 246, 0.28);
 }
 

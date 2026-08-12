@@ -6,7 +6,8 @@
   <script>
     (() => {
       const requestedTheme = new URLSearchParams(window.location.search).get("theme");
-      document.documentElement.setAttribute("data-arcrho-theme", requestedTheme === "dark" ? "dark" : "light");
+      const themes = new Set(["light", "dark", "high-contrast"]);
+      document.documentElement.setAttribute("data-arcrho-theme", themes.has(requestedTheme) ? requestedTheme : "light");
     })();
   </script>
   <title>ArcRho</title>
@@ -239,8 +240,9 @@
       100% { top: 100%; opacity: 0; }
     }
   </style>
-  <link rel="stylesheet" href="./shared/styles/themes/light.css?v=20260808b">
-  <link rel="stylesheet" href="./shared/styles/themes/dark.css?v=20260808b">
+  <link rel="stylesheet" href="./shared/styles/themes/light.css?v=20260811a">
+  <link rel="stylesheet" href="./shared/styles/themes/dark.css?v=20260811b">
+  <link rel="stylesheet" href="./shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
 <body class="startupSplash">
   <!-- Subtle background -->

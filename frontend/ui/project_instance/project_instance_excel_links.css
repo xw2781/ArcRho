@@ -1,0 +1,183 @@
+/* Non-modal floating Excel Link Manager window inside the Project Instance
+   frame. It has no backdrop so the reserving-class tree stays clickable and
+   the open window can follow the selection. */
+
+.pi-excel-links-window {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  z-index: 9950;
+  width: min(780px, calc(100vw - 48px));
+  max-height: min(560px, calc(100vh - 104px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #aeb8ca;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(27, 40, 66, 0.26);
+  color: #243044;
+  font-size: 12px;
+}
+
+.pi-excel-links-window[hidden] { display: none; }
+
+.pi-excel-links-header {
+  min-height: 42px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 8px 5px 12px;
+  border-bottom: 1px solid #d4dbe7;
+  background: #f2f5f9;
+  cursor: move;
+  user-select: none;
+}
+
+.pi-excel-links-title { font-size: 13px; font-weight: 700; }
+
+.pi-excel-links-path {
+  max-width: 620px;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #667085;
+  font-size: 10px;
+  line-height: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-excel-links-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pi-excel-links-icon-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+}
+
+.pi-excel-links-icon-btn:hover { border-color: #cbd5e1; background: #fff; color: #1e293b; }
+.pi-excel-links-icon-btn:disabled { opacity: .55; cursor: default; }
+.pi-excel-links-icon-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.pi-excel-links-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #fafbfc;
+}
+
+.pi-excel-links-hint { flex: 0 0 auto; color: #667085; line-height: 15px; }
+
+.pi-excel-links-table-wrap {
+  min-height: 96px;
+  max-height: 340px;
+  flex: 1 1 auto;
+  position: relative;
+  overflow: auto;
+  border: 1px solid #cfd6df;
+  background: #fff;
+  scrollbar-gutter: stable;
+}
+
+.pi-excel-links-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.pi-excel-links-table col.workbook { width: 26%; }
+.pi-excel-links-table col.folder { width: 34%; }
+.pi-excel-links-table col.status { width: 74px; }
+.pi-excel-links-table col.usage { width: 24%; }
+.pi-excel-links-table col.action { width: 84px; }
+
+.pi-excel-links-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 29px;
+  box-sizing: border-box;
+  border-right: 1px solid #d8dde3;
+  border-bottom: 1px solid #cfd6df;
+  background: #f4f7fa;
+  color: #475569;
+  padding: 0 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pi-excel-links-table th:last-child { border-right: 0; }
+
+.pi-excel-links-table td {
+  height: 31px;
+  box-sizing: border-box;
+  border-right: 1px solid #e2e7ed;
+  border-bottom: 1px solid #e2e7ed;
+  padding: 2px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-excel-links-table td:last-child { border-right: 0; }
+.pi-excel-links-table tbody tr:hover { background: #f6f9ff; }
+.pi-excel-links-folder, .pi-excel-links-usage { color: #667085; }
+
+.pi-excel-links-chip { font-weight: 700; }
+.pi-excel-links-chip.found { color: #15803d; }
+.pi-excel-links-chip.missing { color: #be123c; }
+
+.pi-excel-links-action { text-align: center; }
+.pi-excel-links-action button {
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #334155;
+  padding: 0 9px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pi-excel-links-action button:hover { background: #f1f5f9; border-color: #aeb8ca; }
+.pi-excel-links-action button:disabled { opacity: .55; cursor: default; }
+
+.pi-excel-links-state {
+  position: absolute;
+  inset: 30px 0 0;
+  padding-top: 28px;
+  background: #fff;
+  color: #7c8798;
+  text-align: center;
+}
+
+.pi-excel-links-status { min-height: 16px; flex: 0 0 auto; color: #667085; line-height: 16px; }
+.pi-excel-links-status.error { color: #be123c; }
+.pi-excel-links-status.success { color: #15803d; }
+
+@media (max-width: 680px) {
+  .pi-excel-links-window { top: 12px; width: calc(100vw - 24px); max-height: calc(100vh - 24px); }
+}

@@ -43,7 +43,7 @@ The output sidecar registers both the Input Triangle and configured Ratio Basis 
 
 The persisted file does not store `input data triangle mask`. A cell is inside the triangle if and only if it holds a value, so the mask can only restate the values beside it; loading derives it and refits every row back to the full development geometry. A null *inside* a row still marks a value missing inside the triangle, exactly as `ratio values` and `excluded` already store their rows. The in-memory canonical payload keeps the mask and its rectangular geometry, so revisions and calculations are unaffected, and a file written before this change still loads unchanged.
 
-`ratios tab.ratio triangle` stores aligned origin/development labels, calculated `ratio values`, and DFM-owned `excluded` cells. `ratios tab.average formulas` remains the columnar object with `label`, `custom average formula settings`, `selected`, `values`, and aligned User Entry `inputs`. `ratios tab.cell notes` remains keyed by visible row label and visible development-column label.
+`ratios tab.ratio triangle` stores aligned origin/development labels, calculated `ratio values`, and DFM-owned `excluded` cells. `ratios tab.average formulas` remains the columnar object with `label`, `custom average formula settings`, `selected`, `values`, aligned User Entry `inputs`, and aligned display-only `display inputs`. A `display inputs` cell stores the same formula with dataset coordinate positions replaced by the labels returned when that formula was resolved; calculation, dependency parsing, and editing continue to use `inputs`. `ratios tab.cell notes` remains keyed by visible row label and visible development-column label.
 
 `results tab` stores:
 

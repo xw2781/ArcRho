@@ -167,6 +167,7 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
         cumulative=req.cumulative,
         transposed=req.transposed,
         calendar=req.calendar,
+        show_subtotal=req.show_subtotal,
         number_format=req.number_format,
         decimal_places=req.decimal_places,
         origin_labels=req.origin_labels,

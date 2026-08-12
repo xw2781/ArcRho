@@ -1,7 +1,10 @@
-/* Shared semantic values for the unchanged Light baseline. Feature-local Light
-   rules stay with their owning base stylesheet; Dark-only deviations stay in dark.css. */
+/* Shared semantic values for the unchanged Light baseline. High Contrast reuses
+   these same values; its spreadsheet text-only deviation lives in
+   high_contrast.css. Feature-local Light rules stay with their owning base
+   stylesheet; Dark-only deviations stay in dark.css. */
 :root:not([data-arcrho-theme]),
-:root[data-arcrho-theme="light"] {
+:root[data-arcrho-theme="light"],
+:root[data-arcrho-theme="high-contrast"] {
   color-scheme: light;
 
   /* Native document/window paint. */
@@ -106,7 +109,8 @@
 }
 
 :root[data-arcrho-app="arcode"]:not([data-arcrho-theme]),
-:root[data-arcrho-app="arcode"][data-arcrho-theme="light"] {
+:root[data-arcrho-app="arcode"][data-arcrho-theme="light"],
+:root[data-arcrho-app="arcode"][data-arcrho-theme="high-contrast"] {
   --ar-native-window-background: #f7f8fa;
 }
 

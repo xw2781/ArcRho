@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added a per-dataset Show/Hide subtotal command to the Data grid right-click menu."
+}

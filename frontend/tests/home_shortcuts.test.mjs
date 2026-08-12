@@ -257,6 +257,18 @@ test("a card opens on a quick click, cancels an incomplete hold, and drags after
   assert.match(styles, /\.homeShortcutCard\.isHoldPending::after\s*\{[^}]*transform:\s*scaleX\(0\);[^}]*animation:\s*homeCardHoldFill 300ms linear 200ms forwards/su);
 });
 
+test("Home shortcut tooltips use the shared press-dismissed tooltip surface", async () => {
+  const shortcutsView = await read("../ui/shell/home_shortcuts_view.js");
+  const sharedTooltip = await read("../ui/shared/components/tooltip/tooltip.js");
+  const styles = await read("../ui/shell/shell.css");
+
+  assert.match(shortcutsView, /import \{ attachArcrhoTooltip \} from "\.\.\/shared\/components\/tooltip\/tooltip\.js/u);
+  assert.match(shortcutsView, /attachArcrhoTooltip\(card, "Hold to drag and reorder"\)/u);
+  assert.match(sharedTooltip, /target\.addEventListener\("mousedown", \(\) => hideTooltip\(doc, target\)\)/u);
+  assert.doesNotMatch(shortcutsView, /document\.body\.appendChild\(homeCardTooltipEl\)/u);
+  assert.doesNotMatch(styles, /\.homeCardTooltip/u);
+});
+
 // The preview flickered while it reordered the DOM on every pointer move: each move re-measured
 // boxes that were still animating, and hover state kept switching on the cards under the cursor.
 test("the drop preview moves cards by transform against frozen slots instead of reordering the DOM", async () => {

@@ -755,6 +755,13 @@ function normalizeUserEntryInputs(inputs, values, minLength = 0) {
   return arr;
 }
 
+function normalizeUserEntryDisplayInputs(displayInputs, minLength = 0) {
+  const arr = Array.isArray(displayInputs) ? displayInputs.slice() : [];
+  for (let i = 0; i < arr.length; i++) arr[i] = String(arr[i] ?? "").trim();
+  while (arr.length < minLength) arr.push("");
+  return arr;
+}
+
 export function getUserEntryValueForCol(cfg, col) {
   if (!isUserEntryConfig(cfg)) return 1;
   const values = normalizeUserEntryValues(cfg?.values, Math.max(0, col + 1));
@@ -769,6 +776,12 @@ function getUserEntryInputForCol(cfg, col) {
   if (txt) return txt;
   const fallback = sanitizeUserEntryValue(values[col]);
   return String(fallback);
+}
+
+function getUserEntryDisplayInputForCol(cfg, col) {
+  if (!isUserEntryConfig(cfg)) return "";
+  const displayInputs = normalizeUserEntryDisplayInputs(cfg?.displayInputs, Math.max(0, col + 1));
+  return String(displayInputs[col] ?? "").trim();
 }
 
 function summaryTableHasUserEntryRows(summaryTable) {
@@ -932,8 +945,10 @@ registerSummaryFunctions({
   parseSummaryArrayFormula,
   normalizeUserEntryValues,
   normalizeUserEntryInputs,
+  normalizeUserEntryDisplayInputs,
   getUserEntryValueForCol,
   getUserEntryInputForCol,
+  getUserEntryDisplayInputForCol,
   summaryTableHasUserEntryRows,
   setModalValidationError,
   clearModalValidationError,

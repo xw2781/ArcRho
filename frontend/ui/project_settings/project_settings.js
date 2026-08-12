@@ -12,7 +12,7 @@
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260223";
 import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260808rctresize1";
-import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260722a";
+import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260811dtcategory1";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260808rctresize1";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260721dpr12";
 import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260808daterole1";
@@ -23,15 +23,15 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260808daterole1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260811dtcategory1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260808daterole1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260808daterole1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260808daterole1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260808daterole1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260811dtcategory1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260811dtcategory1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260811dtcategory1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260811dtcategory1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260716psprefs1";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -131,7 +131,12 @@ const datasetTypeEditorTitle = document.getElementById("datasetTypeEditorTitle")
 const datasetTypeEditorClose = document.getElementById("datasetTypeEditorClose");
 const dtEditName = document.getElementById("dtEditName");
 const dtEditDataFormat = document.getElementById("dtEditDataFormat");
+const dtCategoryCombo = document.getElementById("dtCategoryCombo");
 const dtEditCategory = document.getElementById("dtEditCategory");
+const dtCategoryToggle = document.getElementById("dtCategoryToggle");
+const dtCategoryList = document.getElementById("dtCategoryList");
+const dtCategoryNewTip = document.getElementById("dtCategoryNewTip");
+const dtCategoryNewTipText = document.getElementById("dtCategoryNewTipText");
 const dtEditCalculated = document.getElementById("dtEditCalculated");
 const dtEditFormula = document.getElementById("dtEditFormula");
 const dtEditorCancelBtn = document.getElementById("dtEditorCancelBtn");
@@ -501,7 +506,12 @@ datasetTypesFeature = createDatasetTypesFeature({
   datasetTypeEditorTitle,
   dtEditName,
   dtEditDataFormat,
+  dtCategoryCombo,
   dtEditCategory,
+  dtCategoryToggle,
+  dtCategoryList,
+  dtCategoryNewTip,
+  dtCategoryNewTipText,
   dtEditCalculated,
   dtEditFormula,
   scheduleDatasetTypesAutoSave,

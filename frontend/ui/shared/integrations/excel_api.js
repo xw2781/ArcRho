@@ -34,6 +34,16 @@ export async function readExcelCellsBatch(items, options = {}) {
   return parseExcelResponse(resp, options.signal);
 }
 
+export async function readExcelFileMtimesBatch(bookPaths, options = {}) {
+  const resp = await fetch(`${config.API_BASE}/excel/file_mtimes_batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ book_paths: Array.isArray(bookPaths) ? bookPaths : [] }),
+    signal: options.signal,
+  });
+  return parseExcelResponse(resp, options.signal);
+}
+
 export async function openExcelWorkbook(bookPath, sheet = "", cell = "") {
   const resp = await fetch(`${config.API_BASE}/excel/open_workbook`, {
     method: "POST",

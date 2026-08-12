@@ -683,7 +683,7 @@ test("shared styling drops the toolbar, keeps every row border, and separates li
     /\.arSpreadsheetTable td\.arArrayFormulaCell\s*\{([^}]*)\}/u,
   )?.[1] || "";
   assert.match(arrayRule, /box-shadow:/u);
-  assert.match(arrayRule, /transition:\s*box-shadow 150ms ease;/u);
+  assert.match(arrayRule, /transition:\s*box-shadow 150ms ease, border-color 150ms ease;/u);
   for (const edge of ["Top", "Right", "Bottom", "Left"]) {
     assert.match(
       spreadsheetStylesheetSource,

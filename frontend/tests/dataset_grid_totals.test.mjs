@@ -10,12 +10,24 @@ const gridViewSource = await readFile(
   new URL("../ui/shared/tabs/data/dataset_grid_view.js", import.meta.url),
   "utf8",
 );
+const datasetViewerSource = await readFile(
+  new URL("../ui/dataset_viewer/dataset_viewer_view.js", import.meta.url),
+  "utf8",
+);
+const persistenceSource = await readFile(
+  new URL("../ui/shared/tabs/data/data_tab_persistence_controller.js", import.meta.url),
+  "utf8",
+);
 const gridInteractionsSource = await readFile(
   new URL("../ui/shared/tabs/data/dataset_grid_interactions.js", import.meta.url),
   "utf8",
 );
 const dataTabCss = await readFile(
   new URL("../ui/shared/tabs/data/data_tab.css", import.meta.url),
+  "utf8",
+);
+const spreadsheetCss = await readFile(
+  new URL("../ui/shared/components/spreadsheet/spreadsheet_table.css", import.meta.url),
   "utf8",
 );
 const workspaceCss = await readFile(
@@ -34,18 +46,40 @@ const {
   sumDatasetGridRow,
 } = await import(helperModuleUrl);
 
-test("Dataset Viewer hides totals only for calculated division formulas", () => {
-  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid / Reported" }), false);
-  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid * 0.80" }), true);
-  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid + Reported" }), true);
-  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid - Reported" }), true);
-  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "" }), true);
+test("Dataset Viewer follows the persisted Show subtotal setting", () => {
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid / Reported", showSubtotal: true }), true);
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid + Reported", showSubtotal: false }), false);
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false }), true);
+});
+
+test("Dataset Viewer exposes a standard Show/Hide subtotal context-menu command", () => {
+  assert.doesNotMatch(datasetViewerSource, /id="showSubtotalChk"/u);
+  assert.match(datasetViewerSource, /class="ctx-item" data-action="toggle_subtotal">Show\/Hide subtotal<\/button>/u);
+  assert.doesNotMatch(datasetViewerSource, /ctx-item-toggle|ctx-item-check|role="menuitemcheckbox"|aria-checked=/u);
+  assert.doesNotMatch(gridViewSource, /subtotalButton|aria-checked/u);
+  assert.match(persistenceSource, /show_subtotal:\s*state\.showSubtotal\s*!==\s*false/u);
+  assert.match(persistenceSource, /typeof source\.show_subtotal === "boolean" \? source\.show_subtotal : true/u);
+  assert.match(persistenceSource, /state\.showSubtotal = normalized\.show_subtotal/u);
+  assert.match(gridInteractionsSource, /action === "toggle_subtotal"[\s\S]*?state\.showSubtotal = state\.showSubtotal === false/u);
 });
 
 test("the grid applies the total policy using its configured host", () => {
   assert.match(gridViewSource, /isDfmHost:\s*isDfmDataTabHost\(\)/u);
   assert.match(gridViewSource, /formula:\s*getCurrentDatasetTypeFormula\(\)/u);
+  assert.match(gridViewSource, /showSubtotal:\s*state\.showSubtotal\s*!==\s*false/u);
   assert.match(gridViewSource, /state\.model\?\.formula/u);
+});
+
+test("editable null cells display a formatted muted zero without changing their value", () => {
+  assert.match(
+    gridViewSource,
+    /displayNullAsZero\s*=\s*isEditable\s*&&\s*v\s*==\s*null[\s\S]*?formatCellValue\(displayNullAsZero\s*\?\s*0\s*:\s*v\)/u,
+  );
+  assert.match(gridViewSource, /classList\.toggle\("dsNullValue",\s*displayNullAsZero\)/u);
+  assert.match(
+    dataTabCss,
+    /#tableWrap td\.dsNullValue,[\s\S]*?color:\s*#7a858f/u,
+  );
 });
 
 test("the grid auto-fits the row-label column to its corner header", () => {
@@ -69,6 +103,42 @@ test("the Data grid draws its own top and left perimeter inside the scroll wrapp
     dataTabCss,
     /#tableWrap th:first-child,[\s\S]*?border-left:\s*1px solid var\(--ar-spreadsheet-grid-border\)/u,
   );
+});
+
+test("the sticky row-label seam does not cover the dynamic-array left border", () => {
+  assert.match(
+    dataTabCss,
+    /#tableWrap th:first-child,[\s\S]*?box-shadow:\s*inset -1px 0 0 var\(--ar-spreadsheet-grid-border\)/u,
+  );
+  assert.doesNotMatch(
+    dataTabCss,
+    /#tableWrap th:first-child,[\s\S]*?box-shadow:\s*1px 0 0 var\(--ar-spreadsheet-grid-border\)/u,
+  );
+});
+
+test("dynamic-array outlines stay continuous above the optional Total row", () => {
+  const edgeBorders = {
+    Top: "border-top: 1px solid var\\(--ar-array-formula-border\\) !important",
+    Right: "border-right-color: var\\(--ar-array-formula-border\\) !important",
+    Bottom: "border-bottom: 1px solid var\\(--ar-array-formula-border\\) !important",
+    Left: "border-left: 1px solid var\\(--ar-array-formula-border\\) !important",
+  };
+  for (const [edge, declaration] of Object.entries(edgeBorders)) {
+    assert.match(
+      spreadsheetCss,
+      new RegExp(`\\.arArrayFormulaEdge${edge} \\{[^}]*${declaration}`, "u"),
+    );
+  }
+  assert.match(
+    spreadsheetCss,
+    /\.arArrayFormulaEdgeBottom \{[^}]*position: relative;[^}]*z-index: 1;/u,
+  );
+  assert.match(
+    dataTabCss,
+    /table\.has-total-row tbody tr:last-child > \* \{\s*border-bottom: 0;/u,
+  );
+  assert.doesNotMatch(spreadsheetCss, /inset 0 1px 0 var\(--ar-array-formula-top\)/u);
+  assert.doesNotMatch(spreadsheetCss, /inset -1px 0 0 var\(--ar-array-formula-right\)/u);
 });
 
 test("Data and Ratios scroll frames share the same neutral border token", () => {

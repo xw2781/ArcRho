@@ -136,6 +136,7 @@ class EngineDatasetSidecarContractTests(unittest.TestCase):
         # the runtime writer has no ResQ source, so the field is migration-only.
         self.assertEqual(migration_payload.pop("source_modified"), "2000-01-02")
         self.assertEqual(migration_payload, runtime_payload)
+        self.assertIs(runtime_payload["show_subtotal"], True)
         self.assertNotIn("origin_labels", migration_payload)
         self.assertNotIn("development_labels", migration_payload)
         self.assertNotIn(str(self.runtime_rc), json.dumps(runtime_payload))

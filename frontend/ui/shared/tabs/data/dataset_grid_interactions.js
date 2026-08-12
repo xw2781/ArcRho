@@ -7,9 +7,9 @@ import {
   getDatasetGridSelectionLayout,
   getDisplayDatasetModel,
   setDatasetGridEditConfig,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260805a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260811j";
 import { parseExcelReference } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
-import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260715a";
+import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260811c";
 
 export function wireDatasetGridInteractions(deps) {
   const {
@@ -18,6 +18,7 @@ export function wireDatasetGridInteractions(deps) {
     isReadOnly = () => false,
     setStatus = () => {},
     notifyDatasetUpdated = () => {},
+    refreshDatasetSettingsDirty = () => {},
     commitExternalReference = async () => ({ handled: false, ok: false }),
     cancelExternalReference = () => {},
     hardCodeExternalLinkCells = () => 0,
@@ -152,11 +153,52 @@ export function wireDatasetGridInteractions(deps) {
         ...info,
         formula: info.reference,
         readOnly: isReadOnly(),
+      }, {
+        resolveAnchor: () => resolveExternalFormulaAnchor(info, cell),
+        positionRect: () => resolveExternalFormulaRangeRect(info, cell),
       });
     },
   });
   wireArrowKeyNavigation();
   wireRectSelectionAndCopy();
+
+  function sameExternalFormulaRange(left, right) {
+    return !!(
+      left?.reference
+      && right?.reference === left.reference
+      && right.anchorDisplayRow === left.anchorDisplayRow
+      && right.anchorDisplayColumn === left.anchorDisplayColumn
+    );
+  }
+
+  function externalFormulaRangeCells(info) {
+    return Array.from(document.querySelectorAll?.("#tableWrap td[data-r][data-c]") || []).filter((cell) => {
+      const row = Number(cell.dataset?.r);
+      const column = Number(cell.dataset?.c);
+      return Number.isInteger(row)
+        && Number.isInteger(column)
+        && sameExternalFormulaRange(info, getExternalLinkCellInfo(row, column));
+    });
+  }
+
+  function resolveExternalFormulaAnchor(info, fallbackCell = null) {
+    const selector = `#tableWrap td[data-r="${info.anchorDisplayRow}"][data-c="${info.anchorDisplayColumn}"]`;
+    return document.querySelector(selector) || fallbackCell;
+  }
+
+  function resolveExternalFormulaRangeRect(info, fallbackCell = null) {
+    const cells = externalFormulaRangeCells(info);
+    if (!cells.length && fallbackCell) cells.push(fallbackCell);
+    const rects = cells
+      .map((cell) => cell.getBoundingClientRect?.())
+      .filter(Boolean);
+    if (!rects.length) return null;
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    return { left, top, right, bottom, width: right - left, height: bottom - top };
+  }
 
   function wireArrowKeyNavigation() {
     if (window.__arcRhoArrowNavWired) return;
@@ -589,6 +631,14 @@ export function wireDatasetGridInteractions(deps) {
 
   async function handleGridContextAction(action) {
     if (action === "paste") return pasteSelectionFromClipboard();
+    if (action === "toggle_subtotal") {
+      state.showSubtotal = state.showSubtotal === false;
+      state.activeCell = null;
+      state.selRanges = [];
+      renderTable();
+      refreshDatasetSettingsDirty();
+      return true;
+    }
     if (action === "remove_highlights") {
       clearGridSelection();
       return true;
@@ -721,14 +771,18 @@ export function wireDatasetGridInteractions(deps) {
         if (!cell) return;
         const info = getExternalLinkCellInfo(cell.r, cell.c);
         if (!info?.reference) return;
-        const anchor = document.querySelector(`#tableWrap td[data-r="${cell.r}"][data-c="${cell.c}"]`);
+        const hoveredCell = document.querySelector(`#tableWrap td[data-r="${cell.r}"][data-c="${cell.c}"]`);
+        const anchor = resolveExternalFormulaAnchor(info, hoveredCell);
         if (!anchor) return;
         e.preventDefault();
         formulaHover.open(anchor, {
           ...info,
           formula: info.reference,
           readOnly: isReadOnly(),
-        }, { focus: true });
+        }, {
+          focus: true,
+          positionRect: () => resolveExternalFormulaRangeRect(info, anchor),
+        });
         return;
       }
 

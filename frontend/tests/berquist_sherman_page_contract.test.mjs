@@ -47,6 +47,12 @@ test("B&S rejects source format and period mismatches", () => {
   assert.doesNotMatch(main, /`\$\{\(index \+ 1\) \* ANNUAL_PERIOD_LENGTH\}m`/u);
 });
 
+test("B&S applies the annual triangle mask to disk loads and live previews", () => {
+  assert.match(main, /normalizeAnnualTriangle\(payload\?\.values, payload\?\.mask\)/u);
+  assert.match(main, /normalizeAnnualTriangle\(matrixValues, message\.mask\)/u);
+  assert.doesNotMatch(main, /normalizeMaskedMatrix/u);
+});
+
 test("B&S publishes and clears full-triangle dependency previews", () => {
   assert.match(main, /message\.matrixValues = cloneMatrix\(output\)/u);
   assert.match(main, /message\.mask = output\.map/u);

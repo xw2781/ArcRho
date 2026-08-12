@@ -14,6 +14,8 @@ const duplicateJob = await read("project_settings_duplicate_job.js");
 const fieldMapping = await read("project_settings_field_mapping.js");
 const fieldMappingCss = await read("project_settings.css");
 const fieldMappingFeatureCss = await read("project_settings_field_mapping.css");
+const datasetTypes = await read("project_settings_dataset_types.js");
+const datasetTypesCss = await read("project_settings_dataset_types.css");
 const html = await read("project_settings.html");
 
 const SPLIT_MODULES = [
@@ -152,6 +154,24 @@ test("Field Mapping Significance cells indicate their dropdown behavior", () => 
     fieldMappingFeatureCss,
     /td:has\(input\[data-role="significance"\]\)[\s\S]*cursor: pointer;/,
   );
+});
+
+test("Dataset Type Data Format is a closed Triangle or Vector choice", () => {
+  const control = html.match(/<select id="dtEditDataFormat"[\s\S]*?<\/select>/u)?.[0] || "";
+  assert.ok(control, "Data Format must use a select control");
+  assert.match(control, /<option value="Triangle">Triangle<\/option>/u);
+  assert.match(control, /<option value="Vector">Vector<\/option>/u);
+  assert.doesNotMatch(control, /type="text"/u);
+  assert.match(datasetTypes, /Array\.from\(dtEditDataFormat\?\.options \|\| \[\]\)[\s\S]*option\.value === dataFormatValue/u);
+});
+
+test("Dataset Type Category is an editable existing-value combobox with new-category feedback", () => {
+  assert.match(html, /id="dtEditCategory"[\s\S]*role="combobox"[\s\S]*aria-autocomplete="list"/u);
+  assert.match(html, /id="dtCategoryList" role="listbox"/u);
+  assert.match(html, /id="dtCategoryNewTip" role="status" hidden/u);
+  assert.match(datasetTypes, /categoryCombo\.setOptions\(state\.rows\.map\(\(item\) => item\?\.\[2\]\)\)/u);
+  assert.match(datasetTypes, /const categoryValue = categoryCombo\.getValue\(\);/u);
+  assert.match(datasetTypesCss, /\.dt-category-new-tip \{[\s\S]*position: fixed;[\s\S]*box-shadow:/u);
 });
 
 test("each split module remains bounded", () => {

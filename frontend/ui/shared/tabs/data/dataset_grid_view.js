@@ -20,7 +20,7 @@ import {
   shouldShowDatasetGridTotals,
   sumDatasetGridColumn,
   sumDatasetGridRow,
-} from "/ui/shared/tabs/data/dataset_grid_totals.js";
+} from "/ui/shared/tabs/data/dataset_grid_totals.js?v=20260811a";
 
 let ctxMenuWired = false;
 let renderNumberFormatSettings = null;
@@ -324,6 +324,7 @@ export function getDatasetGridSelectionLayout(model = getDisplayDatasetModel()) 
   const showTotals = shouldShowDatasetGridTotals({
     isDfmHost: isDfmDataTabHost(),
     formula: getCurrentDatasetTypeFormula(),
+    showSubtotal: state.showSubtotal !== false,
   });
   return {
     transposed,
@@ -503,7 +504,8 @@ export function renderTable() {
         }
       } else {
         const v = vals[r][c];
-        if (gridEditConfig?.isEditableCell?.(r, c) && gridEditConfig?.isEditingCell?.(r, c)) {
+        const isEditable = gridEditConfig?.isEditableCell?.(r, c) === true;
+        if (isEditable && gridEditConfig?.isEditingCell?.(r, c)) {
           const input = document.createElement("input");
           input.className = "dsCellInput";
           input.type = "text";
@@ -521,7 +523,9 @@ export function renderTable() {
           input.addEventListener("blur", () => gridEditConfig?.onCellCommit?.(r, c, input.value, input, td));
           td.appendChild(input);
         } else {
-          td.textContent = formatCellValue(v);
+          const displayNullAsZero = isEditable && v == null;
+          td.textContent = formatCellValue(displayNullAsZero ? 0 : v);
+          td.classList.toggle("dsNullValue", displayNullAsZero);
         }
       }
 

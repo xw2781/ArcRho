@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Ratios User Entry formulas can now pull values from datasets in the current Reserving Class.",
+  "details": [
+    "Vector references use [Dataset][row] or [Dataset][row, 1].",
+    "Triangle references use [Dataset][row, col], with one-based positions or axis labels.",
+    "Typing [ opens a searchable list of dataset instances in the current Reserving Class.",
+    "Negative positions count backward after trimming trailing out-of-valuation Vector cells or Triangle diagonals; nulls inside the valid range are preserved."
+  ]
+}

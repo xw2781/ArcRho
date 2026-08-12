@@ -3,7 +3,7 @@
   z-index: 10040;
   display: none;
   box-sizing: border-box;
-  width: min(520px, calc(100vw - 16px));
+  width: min(879px, calc(100vw - 16px));
   padding: 3px;
   color: #24313a;
   background: #fff;

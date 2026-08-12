@@ -1810,7 +1810,8 @@ function updateMenuState() {
     aiBotIconLabel.textContent = isAiAssistantLauncherVisible() ? "Hide AI Bot Icon" : "Show AI Bot Icon";
   }
   const colorTheme = window.ArcRhoColorTheme?.getTheme?.() || "light";
-  for (const theme of ["light", "dark"]) {
+  const themes = window.ArcRhoColorTheme?.THEMES || ["light", "dark"];
+  for (const theme of themes) {
     document.querySelector(`.menuItem[data-action="color-theme-${theme}"]`)
       ?.setAttribute("aria-checked", theme === colorTheme ? "true" : "false");
   }
@@ -1974,11 +1975,12 @@ async function runShellAction(action, detail = {}) {
   if (action === "zoom-reset") return setZoomPercent(100);
   if (action === "refresh-tab") return reloadActiveTab();
   if (action === "hard-refresh") return reloadActiveTab({ hard: true });
-  if (action === "color-theme-light" || action === "color-theme-dark") {
-    const theme = action.endsWith("dark") ? "dark" : "light";
+  if (action.startsWith("color-theme-")) {
+    const theme = window.ArcRhoColorTheme?.normalizeTheme?.(action.slice("color-theme-".length)) || "light";
     window.ArcRhoColorTheme?.setTheme?.(theme, { source: "arcode-settings" });
     updateMenuState();
-    updateStatus(`Color theme changed to ${theme === "dark" ? "Dark" : "Light"}.`);
+    const label = theme.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+    updateStatus(`Color theme changed to ${label}.`);
     return;
   }
   if (action === "clear-cache-reload") {

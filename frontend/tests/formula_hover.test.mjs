@@ -6,6 +6,10 @@ const source = await readFile(
   new URL("../ui/shared/components/formula_hover/formula_hover.js", import.meta.url),
   "utf8",
 );
+const styles = await readFile(
+  new URL("../ui/shared/components/formula_hover/formula_hover.css", import.meta.url),
+  "utf8",
+);
 const formulaHover = await import(
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
 );
@@ -234,6 +238,50 @@ const LINK_CONTEXT = {
   anchorDisplayRow: 1,
   anchorDisplayColumn: 2,
 };
+
+test("formula hover width cap increases another 30 percent and remains viewport-clamped", () => {
+  assert.match(styles, /width:\s*min\(879px,\s*calc\(100vw - 16px\)\)/u);
+  assert.match(source, /formula_hover\.css\?v=20260811c/u);
+});
+
+test("array formula positioning uses the complete range and never overlaps it", () => {
+  const context = setup();
+  const rangeRect = { left: 40, top: 10, right: 240, bottom: 120, width: 200, height: 110 };
+  context.controller.open(context.anchor, LINK_CONTEXT, { positionRect: rangeRect });
+  const root = byClass(context.documentRef, "arFormulaHover");
+  root._rect = { left: 0, top: 0, right: 300, bottom: 30, width: 300, height: 30 };
+  context.controller.reposition();
+
+  assert.equal(root.dataset.placement, "below");
+  assert.equal(root.style.top, "125px");
+  assert.ok(Number.parseInt(root.style.top, 10) > rangeRect.bottom);
+});
+
+test("moving across one array keeps the canonical anchor and formula-bar position", () => {
+  const context = setup();
+  const secondCell = context.documentRef.createElement("td");
+  secondCell._rect = { left: 140, top: 128, right: 240, bottom: 156, width: 100, height: 28 };
+  context.documentRef.body.appendChild(secondCell);
+  const rangeRect = { left: 40, top: 100, right: 240, bottom: 156, width: 200, height: 56 };
+  const options = {
+    resolveAnchor: () => context.anchor,
+    positionRect: () => rangeRect,
+  };
+  context.controller.attach(context.anchor, LINK_CONTEXT, options);
+  context.controller.attach(secondCell, LINK_CONTEXT, options);
+
+  context.anchor.dispatch("mouseenter");
+  const root = byClass(context.documentRef, "arFormulaHover");
+  root._rect = { left: 0, top: 0, right: 300, bottom: 30, width: 300, height: 30 };
+  context.controller.reposition();
+  const firstPosition = { left: root.style.left, top: root.style.top, placement: root.dataset.placement };
+
+  secondCell.dispatch("mouseenter");
+  assert.deepEqual(
+    { left: root.style.left, top: root.style.top, placement: root.dataset.placement },
+    firstPosition,
+  );
+});
 
 test("formula hover positioning prefers above the cell and flips below near the viewport top", () => {
   assert.deepEqual(

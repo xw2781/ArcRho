@@ -3,22 +3,23 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <script src="/ui/shared/services/color_theme.js?v=20260724a"></script>
+  <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Development Factor Method</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260720b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/tabs/links/links_tab.css?v=20260807a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260716a"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260811c"/>
   <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260715a"/>
-  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260715a"/>
-  <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260805a"/>
+  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260811c"/>
   <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260807b"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260808b"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260808c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260811b"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 
 <body>
@@ -357,7 +358,7 @@
 
   <script type="module">
     (async () => {
-      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260809a");
+      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260811f");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {

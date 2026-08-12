@@ -11,6 +11,7 @@ const helperSource = await readFile(
   "utf8",
 );
 const helperUrl = toDataUrl(helperSource);
+const helpers = await import(helperUrl);
 
 async function loadCalculationModule(filename) {
   const source = await readFile(
@@ -51,6 +52,43 @@ function assertClose(actual, expected, path = "value") {
     `${path}: expected ${expected}, received ${actual}`,
   );
 }
+
+test("annual B&S triangles mask structural lower-right zero padding", () => {
+  assert.deepEqual(
+    helpers.normalizeAnnualTriangle([
+      [100, 200, 300],
+      [400, 0, 0],
+      [0, 0, 0],
+    ]),
+    [
+      [100, 200, 300],
+      [400, 0],
+      [0],
+    ],
+  );
+});
+
+test("annual B&S triangles honor the Dataset Viewer mask without hiding real zeroes", () => {
+  assert.deepEqual(
+    helpers.normalizeAnnualTriangle(
+      [
+        [0, 20, 30],
+        [40, 50, 0],
+        [60, 0, 0],
+      ],
+      [
+        [true, false, true],
+        [true, true, false],
+        [true, false, false],
+      ],
+    ),
+    [
+      [0, null, 30],
+      [40, 50],
+      [60],
+    ],
+  );
+});
 
 test("settlement-rate calculation reproduces the annual COL ResQ object", () => {
   const source = fixture.settlementRate;

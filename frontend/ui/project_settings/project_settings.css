@@ -801,6 +801,7 @@ input, textarea, select, option, [contenteditable="true"] { user-select: text; }
   justify-self: start;
 }
 .rct-row-editor-body input:not([type="checkbox"]),
+.rct-row-editor-body select,
 .rct-row-editor-body textarea {
   width: 100%;
   box-sizing: border-box;
@@ -810,6 +811,28 @@ input, textarea, select, option, [contenteditable="true"] { user-select: text; }
   font-size: 12px;
   font-family: inherit;
   background: #fff;
+}
+.rct-row-editor-body select {
+  height: 30px;
+  appearance: none;
+  padding: 0 32px 0 9px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 12px,
+    calc(100% - 10px) 12px;
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+  cursor: pointer;
+}
+.rct-row-editor-body select:hover,
+.rct-row-editor-body select:focus-visible {
+  border-color: #7da2d6;
+}
+.rct-row-editor-body select:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.16);
+  outline-offset: 1px;
 }
 .rct-row-editor-body textarea {
   min-height: 58px;

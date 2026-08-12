@@ -6,7 +6,7 @@ function ensureStyles(doc) {
   const link = doc.createElement("link");
   link.id = STYLE_ID;
   link.rel = "stylesheet";
-  link.href = "/ui/shared/components/message_box/message_box.css?v=20260728a";
+  link.href = "/ui/shared/components/message_box/message_box.css?v=20260811a";
   doc.head.appendChild(link);
 }
 
@@ -23,6 +23,8 @@ export function showPageMessageBox({
   links = [],
   onLinkClick = null,
   actions = [],
+  okLabel = "OK",
+  balancedActions = false,
   documentRef = document,
 } = {}) {
   const doc = documentRef;
@@ -54,6 +56,7 @@ export function showPageMessageBox({
   const okButton = overlay.querySelector(".pageMessageBoxButton");
   const closeButton = overlay.querySelector(".pageMessageBoxClose");
   titleEl.textContent = String(title || "Message");
+  okButton.textContent = String(okLabel || "OK");
   titleEl.dataset.tone = String(tone || "");
   messageEl.textContent = String(message || "");
   const linkItems = Array.isArray(links) ? links : [];
@@ -83,6 +86,7 @@ export function showPageMessageBox({
   const actionItems = (Array.isArray(actions) ? actions : []).filter(
     (item) => String(item?.id ?? "").trim() && String(item?.label ?? "").trim(),
   );
+  actionsEl.classList.toggle("pageMessageBoxActionsBalanced", balancedActions && actionItems.length > 0);
 
   return new Promise((resolve) => {
     let open = true;

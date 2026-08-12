@@ -8,6 +8,7 @@ const os = require("os");
 const path = require("path");
 const {
   backendArtifactIdForBundle,
+  isBackendHealthFromSameProfile,
   isCompatibleBackendHealth: isCompatibleBackendHealthResponse,
 } = require("./backend_health_compatibility");
 const {
@@ -350,6 +351,15 @@ async function stopMismatchedBackendListener(port = PORT) {
     health = await requestBackendHealth(700, port);
   } catch {}
   if (isCompatibleBackendHealth(health)) return;
+  if (health?.ok === true && !isBackendHealthFromSameProfile(health, {
+    appMode: APP_MODE,
+    backendToken: BACKEND_TOKEN,
+  })) {
+    appendElectronLog(
+      `Leaving backend listener on ${HOST}:${port} untouched because it belongs to another or an unscoped user profile.`,
+    );
+    return;
+  }
   const pids = await getBackendPortListenerPids(port);
   for (const pid of pids) {
     if (serverProc && pid === serverProc.pid) continue;

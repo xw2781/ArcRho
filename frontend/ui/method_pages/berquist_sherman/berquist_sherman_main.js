@@ -31,7 +31,11 @@ import {
   getDatasetNumberFormatDecimalPlaces,
   normalizeDatasetNumberFormat,
 } from "/ui/shared/dataset/dataset_number_format.js";
-import { DEFAULT_LOESS_SPAN, normalizeLoessSpan } from "./calculation_helpers.js";
+import {
+  DEFAULT_LOESS_SPAN,
+  normalizeAnnualTriangle,
+  normalizeLoessSpan,
+} from "./calculation_helpers.js";
 import { calculateSettlementRate } from "./settlement_rate_calculation.js";
 import { calculateCaseReserveAdequacy } from "./case_reserve_adequacy_calculation.js";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
@@ -525,24 +529,6 @@ function normalizeMatrix(rawValues) {
     const row = (Array.isArray(rawRow) ? rawRow : [rawRow]).map(numberOrNull);
     while (row.length && row[row.length - 1] === null) row.pop();
     return row;
-  });
-}
-
-function normalizeMaskedMatrix(rawValues, rawMask) {
-  if (!Array.isArray(rawMask) || !rawMask.length) return normalizeMatrix(rawValues);
-  const rows = Array.isArray(rawValues) ? rawValues : [];
-  return rows.map((rawRow, rowIndex) => {
-    const values = Array.isArray(rawRow) ? rawRow : [rawRow];
-    const mask = Array.isArray(rawMask[rowIndex]) ? rawMask[rowIndex] : [];
-    let lastIncluded = -1;
-    for (let columnIndex = 0; columnIndex < mask.length; columnIndex += 1) {
-      if (mask[columnIndex]) lastIncluded = columnIndex;
-    }
-    if (lastIncluded < 0) return [];
-    return Array.from(
-      { length: lastIncluded + 1 },
-      (_, columnIndex) => mask[columnIndex] ? numberOrNull(values[columnIndex]) : null,
-    );
   });
 }
 
@@ -1619,7 +1605,7 @@ function applyPayloadToRole(role, payload) {
   }
   const values = role.format === "Vector"
     ? normalizeVector(payload?.values)
-    : normalizeMatrix(payload?.values);
+    : normalizeAnnualTriangle(payload?.values, payload?.mask);
   state.sourceValues[role.key] = values;
   state.sourcePayloads[role.key] = payload;
   if (role.format === "Triangle") {
@@ -1764,7 +1750,7 @@ function dependencyValuesForRole(message, role) {
       : message.values;
   return role.format === "Vector"
     ? normalizeVector(matrixValues)
-    : normalizeMaskedMatrix(matrixValues, message.mask);
+    : normalizeAnnualTriangle(matrixValues, message.mask);
 }
 
 function assertDependencyPreviewCompatible(message, role, values) {
@@ -1801,7 +1787,7 @@ function assertDependencyPreviewCompatible(message, role, values) {
 function applyDependencyValues(role, values) {
   state.sourceValues[role.key] = role.format === "Vector"
     ? normalizeVector(values)
-    : normalizeMatrix(values);
+    : normalizeAnnualTriangle(values);
 }
 
 function reapplyActiveDependencyPreviews() {

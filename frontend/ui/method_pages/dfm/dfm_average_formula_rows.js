@@ -20,6 +20,7 @@ function cloneSummaryRow(row) {
   const next = { ...(row || {}) };
   if (Array.isArray(row?.values)) next.values = row.values.slice();
   if (Array.isArray(row?.inputs)) next.inputs = row.inputs.slice();
+  if (Array.isArray(row?.displayInputs)) next.displayInputs = row.displayInputs.slice();
   if (Array.isArray(row?.formulas)) next.formulas = row.formulas.slice();
   return next;
 }
@@ -37,7 +38,9 @@ export function buildDfmAverageFormulaObject(summaryRows, matrix, values) {
   };
   const settings = out[AVERAGE_FORMULA_SETTINGS_KEY];
   const inputs = [];
+  const displayInputs = [];
   let hasInputs = false;
+  let hasDisplayInputs = false;
   rows.forEach((row) => {
     out.label.push(normalizeLabel(row?.label || row?.id));
     settings.averageType.push(row?.averageType ?? "");
@@ -52,10 +55,16 @@ export function buildDfmAverageFormulaObject(summaryRows, matrix, values) {
     const normalizedInputs = Array.isArray(rowInputs) ? rowInputs.map((value) => String(value ?? "").trim()) : [];
     if (normalizedInputs.some((value) => value)) hasInputs = true;
     inputs.push(normalizedInputs);
+    const normalizedDisplayInputs = Array.isArray(row?.displayInputs)
+      ? row.displayInputs.map((value) => String(value ?? "").trim())
+      : [];
+    if (normalizedDisplayInputs.some((value) => value)) hasDisplayInputs = true;
+    displayInputs.push(normalizedDisplayInputs);
   });
   if (Array.isArray(matrix)) out.selected = matrix;
   if (Array.isArray(values)) out.values = values;
   if (hasInputs) out.inputs = inputs;
+  if (hasDisplayInputs) out["display inputs"] = displayInputs;
   return out;
 }
 
@@ -90,6 +99,13 @@ export function getDfmAverageFormulaInputs(averageFormulas) {
   return [];
 }
 
+export function getDfmAverageFormulaDisplayInputs(averageFormulas) {
+  if (averageFormulas && typeof averageFormulas === "object" && Array.isArray(averageFormulas["display inputs"])) {
+    return averageFormulas["display inputs"];
+  }
+  return [];
+}
+
 function getDfmAverageFormulaSettings(averageFormulas) {
   const settings = averageFormulas?.[AVERAGE_FORMULA_SETTINGS_KEY];
   return settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
@@ -101,6 +117,7 @@ export function buildDfmSummaryRowsFromAverageFormulaObject(averageFormulas) {
   if (!labels.length) return null;
   const settings = getDfmAverageFormulaSettings(averageFormulas);
   const inputs = getDfmAverageFormulaInputs(averageFormulas);
+  const displayInputs = getDfmAverageFormulaDisplayInputs(averageFormulas);
   return labels.map((label, index) => {
     const normalized = normalizeLabel(label);
     const inferred = resolveDfmAverageFormulaRowFromLabel(normalized) || {};
@@ -114,6 +131,10 @@ export function buildDfmSummaryRowsFromAverageFormulaObject(averageFormulas) {
     };
     const rowInputs = Array.isArray(inputs?.[index]) ? inputs[index].map((value) => String(value ?? "").trim()) : null;
     if (rowInputs && rowInputs.some((value) => value)) row.inputs = rowInputs;
+    const rowDisplayInputs = Array.isArray(displayInputs?.[index])
+      ? displayInputs[index].map((value) => String(value ?? "").trim())
+      : null;
+    if (rowDisplayInputs && rowDisplayInputs.some((value) => value)) row.displayInputs = rowDisplayInputs;
     return row;
   });
 }

@@ -27,6 +27,7 @@ const {
   clearBackendControlFlags,
   cleanupBackendEndpoint,
 } = require("./backend_lifecycle");
+const { createBackendLaunchToken } = require("./backend_health_compatibility");
 
 // Detect Windows 11 (build number >= 22000)
 function isWindows11() {
@@ -61,7 +62,11 @@ const APP_DISPLAY_VERSION = String(
   DISPLAY_VERSION_OVERRIDE
   || (app.isPackaged ? app.getVersion() : `${app.getVersion()}+`)
 ).trim() || app.getVersion();
-const BACKEND_TOKEN = crypto.randomBytes(16).toString("hex");
+const BACKEND_TOKEN = createBackendLaunchToken({
+  appMode: APP_MODE,
+  userDataPath: app.getPath("userData"),
+  nonce: crypto.randomBytes(16).toString("hex"),
+});
 const START_BACKEND = (APP_MODE === "arcode" ? process.env.ARCODE_START_BACKEND : process.env.ARCRHO_START_BACKEND) !== "0";
 const PYTHON_EXE = process.env.PYTHON_EXE || process.env.PYTHON || "python";
 const APP_ROOT = path.resolve(__dirname, "..");
@@ -117,7 +122,7 @@ function resolveDfmRatioUndoDir(dirPath) {
 const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const MAIN_WINDOW_PREFS_FILE = "main_window_prefs.json";
 const WINDOW_BACKGROUND_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const COLOR_THEMES = new Set(["light", "dark"]);
+const COLOR_THEMES = new Set(["light", "dark", "high-contrast"]);
 const HOST_WINDOW_BACKGROUND_FALLBACK_COLOR = "#ffffff";
 const ARCODE_WINDOW_BACKGROUND_COLOR = "#f7f8fa";
 
@@ -740,6 +745,8 @@ function saveColorThemePreference(value) {
 
 function createSplashWindow() {
   const startupBackgroundColor = loadCachedWindowBackgroundColor();
+  const startupTheme = loadColorThemePreference()
+    || (isDarkWindowBackgroundColor(startupBackgroundColor) ? "dark" : "light");
   splashWin = new BrowserWindow({
     width: 500,
     height: 400,
@@ -763,7 +770,7 @@ function createSplashWindow() {
   splashWin.loadFile(splashPath, {
     query: {
       version: APP_DISPLAY_VERSION,
-      theme: isDarkWindowBackgroundColor(startupBackgroundColor) ? "dark" : "light",
+      theme: startupTheme,
     },
   });
   return splashWin;

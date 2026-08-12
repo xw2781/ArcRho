@@ -5,7 +5,7 @@ Cape Cod method page replicating the ResQ Generalised Cape Cod method: an ultima
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.cape_cod.entry_points -->
-- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260807b`, `/ui/shared/services/color_theme.js?v=20260724a`; inline imports _none_.
+- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260807b`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`

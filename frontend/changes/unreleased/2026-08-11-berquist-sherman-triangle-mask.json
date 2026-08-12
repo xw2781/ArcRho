@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Fixed B&S Method triangles to leave unavailable lower-right cells blank instead of displaying padded zeroes."
+}

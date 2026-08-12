@@ -3,14 +3,18 @@ import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/u
 import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260809a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260811a";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
+  if (typeof state.showSubtotal !== "boolean") state.showSubtotal = true;
   const defer = (name) => (...args) => runtime[name](...args);
   const { getResolvedProjectValue, getResolvedReservingClassValue, getDatasetInstanceNameValue, normalizeDatasetInstanceKey, getTriInputs, getProjectInstanceDraftDataFormat, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, isDfmDataTabHost, clampDatasetDecimalPlaces, normalizeDatasetNumberFormat, applyDecimalPlacesToDatasetNumberFormat, updateTabbedPageSaveControls, setDatasetRenderNumberFormatSettings, renderTable, notifyDatasetUpdated, getDatasetNumberFormatDefaults, getDataTabLinksController, loadDatasetSidecar, renderDatasetAuditLog, getDatasetAuditLog, normalizeDatasetDependencyEntries, renderDetailFormula, getDatasetTypeFormulaByName, renderDatasetPrecedents, renderDatasetDependents, saveTriInputsToStorage, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, refreshLenDropdowns, validateDatasetOriginLabels, refreshDatasetInstanceNameConflict, saveDatasetSidecar, saveLastDsId, handleCalculationUpdates, invalidateCachedDatasetInstances, clearDatasetDependencyPreview, requestProjectInstanceDatasetTableRefresh, setStatus, requestTabbedPageWindowClose, hideCalculationUpdatesDialog, isInputDefaultBound, loadWorkflowDefaults, saveDatasetNotes, publishDataTabHostInputs, mountDataTabNotes, ensureHeadersForProject, ensureDevHeadersForProject, scheduleAutoRun, applyGridSelectionFromState, setLenSelectValue, getDataTabCloseConfirm, createDatasetExternalLinksController } = new Proxy({}, { get: (_target, name) => defer(name) });
   const normalizeProjectText = defer("normalizeProjectText");
   const renderChart = defer("renderChart");
   const isDatasetReadOnly = defer("isDatasetReadOnly");
   let notesContextKey = "", notesContextPayload = null, notesDirty = false, lastSavedNotesText = "", datasetNotesController = null, datasetSettingsDirty = false, sidecarContextKey = "", sidecarContextPayload = null, lastSavedDatasetSettings = null, sidecarSyncNonce = 0, datasetExternalLinksLoaded = false, datasetCloseConfirm = null, hostInputsPublished = false;
+  let datasetExcelFreshnessAbortController = null;
+  const datasetExcelFreshnessCheckedKeys = new Set();
   const {
     loadTemporaryNumberFormatSettings,
     resolveTemporaryDatasetSettings,
@@ -100,6 +104,7 @@ export function registerDataTabPersistenceController(runtime) {
       cumulative: !!triInputs.cumulative,
       transposed: !!triInputs.transposed,
       calendar: !!triInputs.calendar,
+      show_subtotal: state.showSubtotal !== false,
       decimal_places: getDatasetDecimalPlacesValue(),
       number_format: getDatasetSyncedNumberFormatValue(),
     };
@@ -154,6 +159,7 @@ export function registerDataTabPersistenceController(runtime) {
       cumulative: typeof source.cumulative === "boolean" ? source.cumulative : true,
       transposed: typeof source.transposed === "boolean" ? source.transposed : false,
       calendar: typeof source.calendar === "boolean" ? source.calendar : false,
+      show_subtotal: typeof source.show_subtotal === "boolean" ? source.show_subtotal : true,
       decimal_places: normalizedDecimalPlaces,
       number_format: applyDecimalPlacesToDatasetNumberFormat(
         normalizeDatasetNumberFormat(numberFormat),
@@ -171,6 +177,7 @@ export function registerDataTabPersistenceController(runtime) {
       && left.cumulative === right.cumulative
       && left.transposed === right.transposed
       && left.calendar === right.calendar
+      && left.show_subtotal === right.show_subtotal
       && left.decimal_places === right.decimal_places
       && left.number_format === right.number_format
       && normalizeProjectText(left.dataset_type) === normalizeProjectText(right.dataset_type)
@@ -326,6 +333,7 @@ export function registerDataTabPersistenceController(runtime) {
     if (cumulativeChk) cumulativeChk.checked = normalized.cumulative;
     const transposedChk = document.getElementById("transposedChk");
     if (transposedChk) transposedChk.checked = normalized.transposed;
+    state.showSubtotal = normalized.show_subtotal;
     const mode = normalized.calendar ? "calendar" : "development";
     const modeInput = document.querySelector(`input[name="timeMode"][value="${mode}"]`);
     if (modeInput) modeInput.checked = true;
@@ -336,7 +344,55 @@ export function registerDataTabPersistenceController(runtime) {
 
   function invalidateDatasetContextLoads() {
     sidecarSyncNonce += 1;
+    datasetExcelFreshnessAbortController?.abort();
+    datasetExcelFreshnessAbortController = null;
     runtime.datasetExternalLinks.abort();
+  }
+
+  function scheduleDatasetExcelFreshnessPrompt({ contextKey, isCurrent }) {
+    if (
+      !contextKey
+      || datasetExcelFreshnessCheckedKeys.has(contextKey)
+      || !datasetExternalLinksLoaded
+      || !Number.isFinite(Number(state.fileMtime))
+    ) return;
+    datasetExcelFreshnessCheckedKeys.add(contextKey);
+    window.setTimeout(async () => {
+      if (!isCurrent()) return;
+      datasetExcelFreshnessAbortController?.abort();
+      const abortController = new AbortController();
+      datasetExcelFreshnessAbortController = abortController;
+      const result = await runtime.datasetExternalLinks.checkForNewerWorkbooks(
+        state.fileMtime,
+        { signal: abortController.signal },
+      );
+      if (datasetExcelFreshnessAbortController === abortController) {
+        datasetExcelFreshnessAbortController = null;
+      }
+      if (!isCurrent() || result?.aborted) return;
+      if (!result?.ok) {
+        setStatus("Excel link timestamps could not be verified.");
+        return;
+      }
+      if (!result.newerWorkbookCount) return;
+      const workbookNames = result.newerWorkbooks
+        .map(({ path }) => String(path || "").split(/[\\/]/).pop())
+        .filter(Boolean);
+      const workbookSummary = workbookNames.length === 1
+        ? `The linked workbook ${workbookNames[0]} is newer`
+        : `${workbookNames.length} linked workbooks are newer`;
+      const choice = await showPageMessageBox({
+        title: "Linked Excel File Updated",
+        tone: "warning",
+        message: `${workbookSummary} than the values stored in this ArcRho dataset. Keep the stored values, or refresh from Excel. Refreshed values remain unsaved until you select Save.`,
+        actions: [{ id: "refresh", label: "Refresh from Excel" }],
+        okLabel: "Keep Current Values",
+        balancedActions: true,
+      });
+      if (choice === "refresh" && isCurrent()) {
+        await refreshDatasetExternalLinks({ isCurrent });
+      }
+    }, 0);
   }
 
   async function refreshDatasetExternalLinks(options = {}) {
@@ -448,6 +504,7 @@ export function registerDataTabPersistenceController(runtime) {
     runtime.datasetExternalLinks.load(
       datasetExternalLinksLoaded && data.exists ? data.external_links : [],
     );
+    if (data.exists) scheduleDatasetExcelFreshnessPrompt({ contextKey: key, isCurrent });
     if (isProjectInstanceDraft && data.exists && !String(data.csv_file || "").trim()) {
       runtime.savedProjectInstanceDraftName = String(data.dataset_name || context.dataset_name || "").trim();
     }

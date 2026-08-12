@@ -13,6 +13,26 @@ const ratiosTabSource = await readFile(
   "utf8",
 );
 const validation = await import(`data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`);
+const summaryFormatterSource = summarySource
+  .replace(
+    'import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";',
+    "const attachArcrhoTooltip = () => {};",
+  )
+  .replace(
+    'import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260811a";',
+    "const installDfmDatasetAutocomplete = () => {};",
+  )
+  .replace(
+    `import {
+  registerSummaryFunctions,
+  summaryRuntime,
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";`,
+    "const summaryRuntime = {}; const registerSummaryFunctions = (functions) => Object.assign(summaryRuntime, functions);",
+  )
+  .concat("\nexport { tokenizeFormula, formatFormulaText, openDfmFormulaDataset, renderFormulaBarDisplay, updateFormulaBarDisplayMode };\n");
+const summaryFormatter = await import(
+  `data:text/javascript;base64,${Buffer.from(summaryFormatterSource).toString("base64")}`,
+);
 
 class FakeClassList {
   constructor() {
@@ -261,4 +281,142 @@ test("DFM ratio validation does not use native alerts", () => {
   assert.doesNotMatch(summarySource, /\balert\s*\(/);
   assert.doesNotMatch(ratiosTabSource, /\balert\s*\(/);
   assert.match(summarySource, /setAttribute\("role", "alert"\)/);
+});
+
+test("formula display formatting preserves all bracket contents verbatim", () => {
+  assert.equal(
+    summaryFormatter.formatFormulaText(
+      '= "Simple - 2" * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][row / 2]',
+    ),
+    '= "Simple - 2" * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][row / 2]',
+  );
+
+  assert.deepEqual(
+    summaryFormatter.tokenizeFormula("=[Dataset + Name][-1]")
+      .filter((token) => token.type === "bracket")
+      .map((token) => token.text),
+    ["[Dataset + Name]", "[-1]"],
+  );
+});
+
+test("non-editing formula display renders average formulas and datasets as reference pills", () => {
+  class FakeElement {
+    constructor(tagName) {
+      this.tagName = String(tagName || "").toUpperCase();
+      this.children = [];
+      this.dataset = {};
+      this.attributes = new Map();
+      this.listeners = new Map();
+      this.className = "";
+      this.textContent = "";
+    }
+
+    set innerHTML(_value) {
+      this.children = [];
+    }
+
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    }
+
+    setAttribute(name, value) {
+      this.attributes.set(name, String(value));
+    }
+
+    addEventListener(type, listener) {
+      this.listeners.set(type, listener);
+    }
+  }
+
+  const posted = [];
+  const priorDocument = globalThis.document;
+  const priorWindow = globalThis.window;
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+    createTextNode: (textContent) => ({ nodeType: 3, textContent }),
+  };
+  globalThis.window = {
+    parent: {
+      postMessage: (message, targetOrigin) => posted.push({ message, targetOrigin }),
+    },
+  };
+
+  try {
+    const display = new FakeElement("div");
+    summaryFormatter.renderFormulaBarDisplay(
+      display,
+      '= "Simple - 2" * [Accounting Cutoff][2025 Q4] * [C 01 - Growth Adjustment][2024, 12 months]',
+    );
+    const averageFormulaPills = display.children.filter((child) => child.className === "fmtRowRef");
+    assert.deepEqual(averageFormulaPills.map((pill) => pill.textContent), ["Simple - 2"]);
+    const pills = display.children.filter((child) => child.className === "fmtDatasetRef");
+    assert.deepEqual(pills.map((pill) => pill.textContent), [
+      "Accounting Cutoff @ 2025 Q4",
+      "C 01 - Growth Adjustment @ 2024, 12 months",
+    ]);
+    assert.deepEqual(pills.map((pill) => pill.dataset.datasetName), [
+      "Accounting Cutoff",
+      "C 01 - Growth Adjustment",
+    ]);
+    assert.deepEqual(pills.map((pill) => pill.dataset.coordinateLabel), [
+      "2025 Q4",
+      "2024, 12 months",
+    ]);
+    assert.equal(
+      pills[0].attributes.get("aria-label"),
+      "Open dataset Accounting Cutoff at 2025 Q4 in Dataset Viewer",
+    );
+    const renderedText = display.children.map((child) => child.textContent).join("");
+    assert.match(renderedText, /Accounting Cutoff @ 2025 Q4/u);
+    assert.doesNotMatch(renderedText, /\[2025 Q4\]/u);
+    assert.doesNotMatch(renderedText, /\[-1\]/u);
+
+    const modeDisplay = new FakeElement("div");
+    modeDisplay.style = {};
+    const modeInput = {
+      value: "=[Accounting Cutoff][-1]",
+      dataset: { displayFormula: "=[Accounting Cutoff][2025 Q4]" },
+      style: {},
+    };
+    const modeBar = {
+      querySelector(selector) {
+        return selector === "#dfmSummaryFormulaBarInput" ? modeInput : modeDisplay;
+      },
+    };
+    summaryFormatter.updateFormulaBarDisplayMode(modeBar, false);
+    assert.match(
+      modeDisplay.children.map((child) => child.textContent).join(""),
+      /Accounting Cutoff @ 2025 Q4/u,
+    );
+    assert.doesNotMatch(modeDisplay.children.map((child) => child.textContent).join(""), /\[2025 Q4\]/u);
+    assert.doesNotMatch(modeDisplay.children.map((child) => child.textContent).join(""), /\[-1\]/u);
+
+    const excelDisplay = new FakeElement("div");
+    summaryFormatter.renderFormulaBarDisplay(
+      excelDisplay,
+      "='C:\\Data\\[Book.xlsx]Sheet 1'!A1",
+    );
+    assert.equal(excelDisplay.children.some((child) => child.className === "fmtDatasetRef"), false);
+
+    let propagationStopped = false;
+    pills[0].listeners.get("click")({
+      preventDefault() {},
+      stopPropagation() { propagationStopped = true; },
+    });
+    assert.equal(propagationStopped, true);
+    assert.deepEqual(posted, [{
+      message: {
+        type: "arcrho:project-instance-open-dependent-dataset",
+        datasetName: "Accounting Cutoff",
+        openMethod: false,
+      },
+      targetOrigin: "*",
+    }]);
+  } finally {
+    if (priorDocument === undefined) delete globalThis.document;
+    else globalThis.document = priorDocument;
+    if (priorWindow === undefined) delete globalThis.window;
+    else globalThis.window = priorWindow;
+  }
 });

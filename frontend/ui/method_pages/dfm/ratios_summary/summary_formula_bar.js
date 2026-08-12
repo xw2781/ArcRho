@@ -4,6 +4,7 @@ DFM Ratios Summary Formula Bar
 ===============================================================================
 */
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260715a";
+import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260811a";
 import {
   registerSummaryFunctions,
   summaryRuntime,
@@ -99,41 +100,54 @@ function scrollSummaryFormulaInputToEnd(inputEl) {
 
 /**
  * Tokenise a formula string into typed segments.
- * Recognises Excel refs, quoted row references, operators, and plain text.
+ * Recognises Excel refs, quoted row references, bracketed references,
+ * operators, and plain text.
  */
 function tokenizeFormula(rawText) {
   const text = String(rawText || "").trim();
   if (!text) return [];
 
   // Ensure leading '='
-  let remaining = text.startsWith("=") ? text : "=" + text;
+  const normalizedText = text.startsWith("=") ? text : "=" + text;
+  let remaining = normalizedText;
+  let offset = 0;
   const tokens = [];
+
+  const pushToken = (type, tokenText) => {
+    tokens.push({ type, text: tokenText, start: offset, end: offset + tokenText.length });
+    offset += tokenText.length;
+    remaining = remaining.slice(tokenText.length);
+  };
 
   while (remaining.length > 0) {
     // Excel ref: 'dir\[file.xlsx]Sheet'!A1 or a range such as ...!A1:C3
     const xlMatch = /^'([^[]*)\[([^\]]+)\]([^'!]+)'!\$?[A-Z]+\$?[0-9]+(?::\$?[A-Z]+\$?[0-9]+)?/i.exec(remaining);
     if (xlMatch) {
-      tokens.push({ type: "excel", text: xlMatch[0] });
-      remaining = remaining.slice(xlMatch[0].length);
+      pushToken("excel", xlMatch[0]);
       continue;
     }
     // Quoted row reference: "Some Label" or 'Some Label'
     const quotedMatch = /^(["'])(.+?)\1/.exec(remaining);
     if (quotedMatch) {
-      tokens.push({ type: "ref", text: quotedMatch[0] });
-      remaining = remaining.slice(quotedMatch[0].length);
+      pushToken("ref", quotedMatch[0]);
+      continue;
+    }
+    // Dataset names and coordinates: preserve everything inside each complete
+    // bracket pair verbatim so negative indices and operator-like characters
+    // remain part of the reference rather than formula operators.
+    const bracketMatch = /^\[[^\]]*\]/.exec(remaining);
+    if (bracketMatch) {
+      pushToken("bracket", bracketMatch[0]);
       continue;
     }
     // Operator
     const opMatch = /^[+\-*/]/.exec(remaining);
     if (opMatch) {
-      tokens.push({ type: "op", text: opMatch[0] });
-      remaining = remaining.slice(1);
+      pushToken("op", opMatch[0]);
       continue;
     }
     // Plain text (one char at a time)
-    tokens.push({ type: "plain", text: remaining[0] });
-    remaining = remaining.slice(1);
+    pushToken("plain", remaining[0]);
   }
 
   // Merge consecutive plain tokens
@@ -141,9 +155,27 @@ function tokenizeFormula(rawText) {
   for (const tok of tokens) {
     if (tok.type === "plain" && merged.length > 0 && merged[merged.length - 1].type === "plain") {
       merged[merged.length - 1].text += tok.text;
+      merged[merged.length - 1].end = tok.end;
     } else {
       merged.push({ ...tok });
     }
+  }
+  for (let index = 0; index < merged.length; index += 1) {
+    const token = merged[index];
+    if (token.type !== "bracket") continue;
+    let nextIndex = index + 1;
+    while (
+      merged[nextIndex]?.type === "plain"
+      && !String(merged[nextIndex].text || "").trim()
+    ) nextIndex += 1;
+    if (merged[nextIndex]?.type !== "bracket") continue;
+    const datasetName = token.text.slice(1, -1).trim();
+    const coordinateLabel = merged[nextIndex].text.slice(1, -1).trim();
+    if (!datasetName || !coordinateLabel) continue;
+    token.datasetName = datasetName;
+    token.datasetCoordinateLabel = coordinateLabel;
+    merged[nextIndex].datasetCoordinate = true;
+    index = nextIndex;
   }
   return merged;
 }
@@ -151,7 +183,7 @@ function tokenizeFormula(rawText) {
 /**
  * Format a raw formula string with proper spacing around operators
  * and ensure leading '='. Does not alter content inside Excel refs
- * or quoted references.
+ * or bracketed/quoted references.
  */
 function formatFormulaText(rawText) {
   const tokens = tokenizeFormula(rawText);
@@ -172,10 +204,24 @@ function formatFormulaText(rawText) {
   return formatted;
 }
 
+/** Ask the containing Project Instance to open a dataset explicitly in DSV. */
+function openDfmFormulaDataset(datasetName, windowRef = window) {
+  const name = String(datasetName || "").trim();
+  const parentWindow = windowRef?.parent;
+  if (!name || !parentWindow || parentWindow === windowRef) return false;
+  parentWindow.postMessage({
+    type: "arcrho:project-instance-open-dependent-dataset",
+    datasetName: name,
+    openMethod: false,
+  }, "*");
+  return true;
+}
+
 /**
  * Render colorized formula display in the overlay div.
  * - Excel refs → dark green
  * - Quoted row references → blue
+ * - Dataset references → clickable DSV pills
  * - Operators get spaces around them
  * - Always shows leading '='
  */
@@ -189,6 +235,7 @@ function renderFormulaBarDisplay(displayEl, rawText) {
 
   displayEl.innerHTML = "";
   for (const tok of tokens) {
+    if (tok.datasetCoordinate) continue;
     if (tok.type === "excel") {
       const span = document.createElement("span");
       span.className = "fmtExcelRef";
@@ -197,8 +244,31 @@ function renderFormulaBarDisplay(displayEl, rawText) {
     } else if (tok.type === "ref") {
       const span = document.createElement("span");
       span.className = "fmtRowRef";
-      span.textContent = tok.text;
+      span.textContent = tok.text.slice(1, -1);
       displayEl.appendChild(span);
+    } else if (tok.type === "bracket" && tok.datasetName) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "fmtDatasetRef";
+      button.textContent = `${tok.datasetName} @ ${tok.datasetCoordinateLabel}`;
+      button.dataset.datasetName = tok.datasetName;
+      button.dataset.coordinateLabel = tok.datasetCoordinateLabel;
+      button.setAttribute(
+        "aria-label",
+        `Open dataset ${tok.datasetName} at ${tok.datasetCoordinateLabel} in Dataset Viewer`,
+      );
+      attachArcrhoTooltip(
+        button,
+        `Open ${tok.datasetName} @ ${tok.datasetCoordinateLabel} in Dataset Viewer`,
+      );
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!openDfmFormulaDataset(tok.datasetName)) {
+          setStatusBarText(`Could not open dataset ${tok.datasetName}.`);
+        }
+      });
+      displayEl.appendChild(button);
     } else if (tok.type === "op") {
       displayEl.appendChild(document.createTextNode(" " + tok.text + " "));
     } else {
@@ -225,7 +295,7 @@ function updateFormulaBarDisplayMode(barEl, isEditing) {
     }
     input.style.display = "none";
     display.style.display = "";
-    renderFormulaBarDisplay(display, input.value);
+    renderFormulaBarDisplay(display, input.dataset.displayFormula || input.value);
   }
 }
 
@@ -634,7 +704,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     const refreshBtn = createFormulaBarIconButton(
       "dfmSummaryFormulaBarRefresh",
       "Refresh",
-      "Refresh all Excel-linked values",
+      "Refresh all linked formula values",
     );
     const openBtn = createFormulaBarIconButton(
       "dfmSummaryFormulaBarOpenXl",
@@ -663,6 +733,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
   }
   if (el.dataset.wired !== "1") {
     const input = el.querySelector("#dfmSummaryFormulaBarInput");
+    installDfmDatasetAutocomplete(input);
     const FORMULA_PREFIX = "= ";
     const PREFIX_LEN = FORMULA_PREFIX.length; // 2
     input?.addEventListener("focus", () => {
@@ -826,8 +897,8 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
       clearSummaryFormulaBarValidationError();
       refreshAllExcelLinks().catch((error) => {
-        setStatusBarText("Excel refresh failed.");
-        showSummaryFormulaBarValidationError(error?.message || "Excel refresh failed.", input);
+        setStatusBarText("Linked formula refresh failed.");
+        showSummaryFormulaBarValidationError(error?.message || "Linked formula refresh failed.", input);
       });
     });
     const openBtn = el.querySelector("#dfmSummaryFormulaBarOpenXl");
@@ -878,6 +949,7 @@ registerSummaryFunctions({
   scrollSummaryFormulaInputToEnd,
   tokenizeFormula,
   formatFormulaText,
+  openDfmFormulaDataset,
   renderFormulaBarDisplay,
   updateFormulaBarDisplayMode,
   syncSummaryFormulaBarWidth,

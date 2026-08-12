@@ -35,6 +35,7 @@ const THEMED_DOCUMENTS = [
   "../ui/method_pages/dfm/dfm.html",
   "../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html",
   "../ui/method_pages/cape_cod/cape_cod.html",
+  "../ui/method_pages/berquist_sherman/berquist_sherman.html",
   "../ui/method_pages/result_selection/result_selection.html",
   "../ui/workflow/workflow.html",
   "../ui/project_instance/project_instance.html",
@@ -52,23 +53,26 @@ const THEMED_DOCUMENTS = [
 test("every runtime frontend document bootstraps the shared theme before loading separated theme sheets", () => {
   for (const path of THEMED_DOCUMENTS) {
     const html = read(path);
-    const bootstrap = html.indexOf("/ui/shared/services/color_theme.js?v=20260724a");
+    const bootstrap = html.indexOf("/ui/shared/services/color_theme.js");
     const firstStylesheet = html.indexOf("rel=\"stylesheet\"");
-    const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260808b");
-    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260808b");
+    const light = html.indexOf("/ui/shared/styles/themes/light.css");
+    const dark = html.indexOf("/ui/shared/styles/themes/dark.css");
+    const highContrast = html.indexOf("/ui/shared/styles/themes/high_contrast.css?v=20260811c");
     const endHead = html.indexOf("</head>");
     assert.ok(bootstrap >= 0, `${path} loads the shared bootstrap`);
     assert.ok(firstStylesheet < 0 || bootstrap < firstStylesheet, `${path} applies theme state before visual CSS`);
-    assert.ok(light > bootstrap && dark > light, `${path} loads light then dark theme ownership`);
-    assert.ok(endHead > dark, `${path} loads theme sheets inside the head`);
+    assert.ok(light > bootstrap && dark > light && highContrast > dark, `${path} loads light, dark, then high contrast theme ownership`);
+    assert.ok(endHead > highContrast, `${path} loads theme sheets inside the head`);
   }
 });
 
-test("light values remain explicit and dark values stay isolated", () => {
+test("light values remain explicit, high contrast reuses them, and dark values stay isolated", () => {
   const light = read("../ui/shared/styles/themes/light.css");
   const dark = read("../ui/shared/styles/themes/dark.css");
+  const highContrast = read("../ui/shared/styles/themes/high_contrast.css");
 
   assert.match(light, /:root\[data-arcrho-theme="light"\]/);
+  assert.match(light, /:root\[data-arcrho-theme="high-contrast"\]/);
   assert.match(light, /--ar-native-window-background:\s*#ffffff/);
   assert.match(light, /--ar-color-surface:\s*#ffffff/);
   assert.match(light, /--ar-color-text:\s*#1f2937/);
@@ -78,6 +82,26 @@ test("light values remain explicit and dark values stay isolated", () => {
   assert.match(light, /--ar-chart-dfm-empty-text:\s*#555555/);
   assert.match(light, /--ar-chart-dfm-point-border:\s*#94a3b8/);
   assert.doesNotMatch(light, /data-arcrho-theme="dark"/);
+
+  assert.match(highContrast, /:root\[data-arcrho-theme="high-contrast"\]/);
+  assert.match(highContrast, /color-scheme:\s*light/);
+  assert.match(highContrast, /--ar-spreadsheet-label-text:\s*#000000/);
+  assert.match(highContrast, /--ar-spreadsheet-selection-text:\s*#000000/);
+  assert.match(highContrast, /#tableWrap/);
+  assert.match(highContrast, /\.pi-table/);
+  assert.match(highContrast, /\.taskDesignerTable/);
+  assert.match(highContrast, /color:\s*#000000\s*!important/);
+  assert.deepEqual(
+    [...highContrast.matchAll(/(--ar-[\w-]+)\s*:/g)].map((match) => match[1]),
+    ["--ar-spreadsheet-label-text", "--ar-spreadsheet-selection-text"],
+    "High Contrast only overrides spreadsheet text tokens",
+  );
+  assert.doesNotMatch(highContrast, /(?:background|border|fill|stroke)\s*:/);
+  assert.doesNotMatch(highContrast, /--ar-color-/);
+
+  const excludedRatioDeclarations = declarationsFor(highContrast, "#ratioWrap td.ratioCell.strike");
+  assert.match(excludedRatioDeclarations, /color:\s*#b000c2\s*!important/);
+  assert.match(excludedRatioDeclarations, /text-decoration-color:\s*#b000c2\s*!important/);
 
   assert.match(dark, /:root\[data-arcrho-theme="dark"\]/);
   assert.match(dark, /color-scheme:\s*dark/);
@@ -295,7 +319,7 @@ test("Project Settings and Project Instance override light-only child paint in D
   const projectSettingsHtml = read("../ui/project_settings/project_settings.html");
   assert.match(datasetTypesCss, /\.datasetTypesRecalcOverlay\s*\{/);
   assert.doesNotMatch(datasetTypesJs, /datasetTypesRecalcDialogStyles|createElement\("style"\)/);
-  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260730sqlsrc6/);
+  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260811dtcategory1/);
 });
 
 test("theme runtime validates, persists per user, applies, notifies frames, and updates Monaco live", async () => {
@@ -389,7 +413,9 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
   vm.runInNewContext(source, context, { filename: "color_theme.js" });
   assert.equal(attributes.get("data-arcrho-theme"), "light");
   assert.equal(context.ArcRhoColorTheme.normalizeTheme("unsupported"), "light");
+  assert.equal(context.ArcRhoColorTheme.normalizeTheme("high-contrast"), "high-contrast");
   assert.equal(context.ArcRhoColorTheme.getMonacoTheme("dark"), "arcrho-atom-one-dark");
+  assert.equal(context.ArcRhoColorTheme.getMonacoTheme("high-contrast"), "vs");
 
   context.ArcRhoColorTheme.setTheme("dark");
   await Promise.resolve();
@@ -409,6 +435,15 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
   assert.equal(atomOneDarkTheme.colors["editor.selectionBackground"], "#3e4451");
   assert.equal(atomOneDarkTheme.rules.find((rule) => rule.token === "keyword")?.foreground, "c678dd");
   assert.equal(atomOneDarkTheme.rules.find((rule) => rule.token === "string")?.foreground, "98c379");
+
+  context.ArcRhoColorTheme.setTheme("high-contrast");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(storage.get("arcrho_color_theme"), "high-contrast");
+  assert.equal(savedHostThemes.at(-1), "high-contrast");
+  assert.equal(attributes.get("data-arcrho-theme"), "high-contrast");
+  assert.equal(monacoThemes.at(-1), "vs");
+  assert.equal(posted.at(-1)?.theme, "high-contrast");
 
   listeners.get("message")?.({ data: { type: "arcrho:set-color-theme", theme: "light" } });
   assert.equal(attributes.get("data-arcrho-theme"), "light");
@@ -479,6 +514,7 @@ test("theme runtime restores the Electron user preference after renderer storage
 test("ArcRho and standalone Arcode keep accessible theme menus without topbar toggles", () => {
   const shellHtml = read("../ui/index.html");
   const shellPreferences = read("../ui/shell/shell_preferences.js");
+  const shellHotkeys = read("../ui/shell/shell_hotkeys.js");
   const shellMenus = read("../ui/shell/shell_menus.js");
   const iframeHost = read("../ui/shell/iframe_host.js");
   const arcodeHtml = read("../ui/arcode/main.html");
@@ -487,6 +523,8 @@ test("ArcRho and standalone Arcode keep accessible theme menus without topbar to
   for (const html of [shellHtml, arcodeHtml]) {
     assert.match(html, /data-action="color-theme-light"[^>]*role="menuitemradio"/);
     assert.match(html, /data-action="color-theme-dark"[^>]*role="menuitemradio"/);
+    assert.match(html, /data-action="color-theme-high-contrast"[^>]*role="menuitemradio"/);
+    assert.match(html, /data-color-theme-value="high-contrast"[^>]*tabindex="-1"/);
     assert.match(html, /data-color-theme-trigger[^>]*tabindex="0"/);
     assert.match(html, /data-color-theme-menu[^>]*aria-haspopup="menu"/);
     assert.match(html, /data-color-theme-value="light"[^>]*tabindex="-1"/);
@@ -495,9 +533,12 @@ test("ArcRho and standalone Arcode keep accessible theme menus without topbar to
   assert.match(shellPreferences, /api\?\.setTheme\?\./);
   assert.match(shellPreferences, /type:\s*messageType,\s*theme:\s*normalized/);
   assert.doesNotMatch(shellPreferences, /initColorThemeToggle|colorThemeToggle/);
-  assert.match(shellMenus, /action === "color-theme-light" \|\| action === "color-theme-dark"/);
+  assert.match(shellHotkeys, /ArcRhoColorTheme\?\.THEMES/);
+  assert.match(shellHotkeys, /themes\.length/);
+  assert.match(shellMenus, /data-color-theme-value/);
   assert.match(iframeHost, /postMessage\(\{ type: messageType, theme \}/);
   assert.match(arcodeMain, /ArcRhoColorTheme\?\.setTheme/);
+  assert.match(arcodeMain, /action\.startsWith\("color-theme-"\)/);
   assert.doesNotMatch(arcodeMain, /initColorThemeToggle|updateColorThemeToggleUI|arcodeColorThemeToggle/);
   assert.match(arcodeMain, /\.menu\[aria-expanded="true"\][^\n]*setAttribute\("aria-expanded", "false"\)/);
   assert.equal(existsSync(new URL("../ui/shared/styles/theme_toggle.css", import.meta.url)), false);
@@ -575,17 +616,33 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   const bootstrap = splash.indexOf("data-arcrho-theme");
   const inlineStyles = splash.indexOf("<style>");
   assert.ok(bootstrap >= 0 && bootstrap < inlineStyles, "splash theme state is set before first paint styles");
-  assert.match(splash, /requestedTheme === "dark" \? "dark" : "light"/);
+  assert.match(splash, /themes\.has\(requestedTheme\) \? requestedTheme : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260808b/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260808b/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260811a/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260811b/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/high_contrast\.css\?v=20260811c/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
   assert.match(dark, /\.logo-icon img\s*\{[^}]*width:\s*88px[^}]*height:\s*88px/s);
   assert.match(dark, /\.logo-icon\s*\{[^}]*animation:\s*none/s);
   assert.match(dark, /:is\(\.orb, \.scan-line\)\s*\{[^}]*display:\s*none/s);
-  assert.match(main, /theme:\s*isDarkWindowBackgroundColor\(startupBackgroundColor\) \? "dark" : "light"/);
+  assert.match(main, /theme:\s*startupTheme/);
   assert.match(main, /backgroundColor:\s*startupBackgroundColor/);
+});
+
+test("DFM Ratios dark mode keeps exclusions visible and selected averages restrained", () => {
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  const dfm = read("../ui/method_pages/dfm/dfm.html");
+  const excludedDeclarations = declarationsFor(dark, "#ratioWrap td.ratioCell.strike");
+  const selectedAverageDeclarations = declarationsFor(dark, "#ratioWrap td.summaryCell.ratioSelectedCell");
+
+  assert.match(excludedDeclarations, /color:\s*#c58bd8/);
+  assert.match(excludedDeclarations, /text-decoration-color:\s*#c58bd8/);
+  assert.match(selectedAverageDeclarations, /background-color:\s*#526331/);
+  assert.match(selectedAverageDeclarations, /color:\s*#edf4d5/);
+  assert.ok(contrastRatio("#c58bd8", "#282c34") >= 4.5, "excluded ratios remain readable on the table surface");
+  assert.ok(contrastRatio("#edf4d5", "#526331") >= 4.5, "selected average text remains readable on its fill");
+  assert.match(dfm, /themes\/dark\.css\?v=20260811b/);
 });
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
@@ -598,8 +655,8 @@ test("changed theme and chart owners are reached through current cache-version c
     ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260807b"],
     ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260807b"],
     ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260807b"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260807idx1"],
-    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260722a"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260811dtcategory1"],
+    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260811dtcategory1"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260726b"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260726a"],
     ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260726a"],

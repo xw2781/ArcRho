@@ -203,7 +203,7 @@
   border-left: 1px solid var(--ar-spreadsheet-grid-border);
   border-right: 0;
   background: var(--ar-spreadsheet-label-fill);
-  box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
+  box-shadow: inset -1px 0 0 var(--ar-spreadsheet-grid-border);
 }
 
 #tableWrap thead th:first-child {
@@ -300,6 +300,13 @@
 
 #tableWrap td.sel.active {
   outline: none;
+}
+
+#tableWrap td.dsNullValue,
+#tableWrap td.dsNullValue.sel,
+#tableWrap td.dsNullValue.active {
+  color: #7a858f;
+  font-weight: 400;
 }
 
 #tableWrap td.na.sel,

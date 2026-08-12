@@ -1601,6 +1601,18 @@
   color: var(--ar-color-text);
 }
 
+:root[data-arcrho-theme="dark"] #ratioWrap td.ratioCell.strike {
+  color: #c58bd8;
+  text-decoration-color: #c58bd8;
+}
+
+:root[data-arcrho-theme="dark"] #ratioWrap td.summaryCell.ratioSelectedCell:not(.summaryFormulaReferencedCell):not(.summaryFormulaActiveRefCell):not(.summaryFormulaRefDragTarget),
+:root[data-arcrho-theme="dark"] #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableHighlight:not(.summaryFormulaReferencedCell):not(.summaryFormulaActiveRefCell):not(.summaryFormulaRefDragTarget),
+:root[data-arcrho-theme="dark"] #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableActive:not(.summaryFormulaReferencedCell):not(.summaryFormulaActiveRefCell):not(.summaryFormulaRefDragTarget) {
+  background-color: #526331;
+  color: #edf4d5;
+}
+
 :root[data-arcrho-theme="dark"] #ratioWrap th:not(.dfmTableHighlight),
 :root[data-arcrho-theme="dark"] #ratioWrap td:first-child:not(.dfmTableHighlight) {
   background-color: var(--ar-color-table-header);
@@ -1947,34 +1959,50 @@
   background-color: var(--ar-color-overlay);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-loading-card, .pi-delete-confirm-box, .pi-message-box, .pi-number-formats-window) {
+:root[data-arcrho-theme="dark"] :is(.pi-loading-card, .pi-delete-confirm-box, .pi-message-box, .pi-number-formats-window, .pi-excel-links-window) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-raised);
   color: var(--ar-color-text);
   box-shadow: var(--ar-shadow-dialog);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-header, .pi-message-header, .pi-number-formats-header, .pi-number-formats-actions) {
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-header, .pi-message-header, .pi-number-formats-header, .pi-number-formats-actions, .pi-excel-links-header) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface-muted);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-table, .pi-number-formats-empty) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-table, .pi-number-formats-empty, .pi-excel-links-table, .pi-excel-links-state) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .pi-number-formats-table th {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-table th, .pi-excel-links-table th) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-table-header);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .pi-number-formats-table td {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-table td, .pi-excel-links-table td) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-excel-links-table tbody tr:hover td {
+  background-color: var(--ar-color-table-row-hover);
+}
+
+:root[data-arcrho-theme="dark"] .pi-excel-links-state {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-excel-links-chip.found {
+  color: var(--ar-color-success);
+}
+
+:root[data-arcrho-theme="dark"] .pi-excel-links-chip.missing {
+  color: var(--ar-color-danger);
 }
 
 :root[data-arcrho-theme="dark"] .pi-left-resizer {
@@ -2411,16 +2439,16 @@
   background: var(--ar-color-surface-hover);
 }
 
-:root[data-arcrho-theme="dark"] .pi-number-formats-body {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-body, .pi-excel-links-body) {
   background: var(--ar-color-canvas-subtle);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-path, .pi-number-formats-default-row span, .pi-number-formats-status) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-path, .pi-number-formats-default-row span, .pi-number-formats-status, .pi-excel-links-path, .pi-excel-links-hint, .pi-excel-links-status, .pi-excel-links-folder, .pi-excel-links-usage) {
   color: var(--ar-color-text-muted);
 }
 
-:root[data-arcrho-theme="dark"] .pi-number-formats-table-wrap {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-table-wrap, .pi-excel-links-table-wrap) {
   border-color: var(--ar-color-border);
   background: var(--ar-color-input);
 }
@@ -2434,23 +2462,23 @@
   background: var(--ar-color-input);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button, .pi-number-formats-actions button) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button, .pi-number-formats-actions button, .pi-excel-links-action button) {
   border-color: var(--ar-color-border-strong);
   background: var(--ar-color-input);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button:hover, .pi-number-formats-actions button:hover) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button:hover, .pi-number-formats-actions button:hover, .pi-excel-links-action button:hover) {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-surface-hover);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-close, .pi-number-formats-remove) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-close, .pi-number-formats-remove, .pi-excel-links-icon-btn) {
   background: transparent;
   color: var(--ar-color-text-muted);
 }
 
-:root[data-arcrho-theme="dark"] .pi-number-formats-close:hover {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-close:hover, .pi-excel-links-icon-btn:hover) {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-surface-hover);
   color: var(--ar-color-text-strong);
@@ -2468,11 +2496,11 @@
   color: var(--ar-color-text-strong);
 }
 
-:root[data-arcrho-theme="dark"] .pi-number-formats-status.error {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-status.error, .pi-excel-links-status.error) {
   color: var(--ar-color-danger);
 }
 
-:root[data-arcrho-theme="dark"] .pi-number-formats-status.success {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-status.success, .pi-excel-links-status.success) {
   color: var(--ar-color-success);
 }
 
