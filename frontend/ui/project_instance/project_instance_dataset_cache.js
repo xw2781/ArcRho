@@ -6,6 +6,7 @@ export function installProjectInstanceDatasetCache(ctx) {
   const { cachedDatasetFilter, cachedDatasetSnapshotRequests, datasetIndexWatch } = state;
   const captureDatasetTableSelection = (...args) => api.captureDatasetTableSelection(...args);
   const closeDatasetTableFilterPopover = (...args) => api.closeDatasetTableFilterPopover(...args);
+  const fetchDatasetTypeRowsForRefresh = (...args) => api.fetchDatasetTypeRowsForRefresh(...args);
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
   const getDatasetName = (...args) => api.getDatasetName(...args);
   const normalizeLookupKey = (...args) => api.normalizeLookupKey(...args);
@@ -477,8 +478,18 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   renderDatasetTable();
 
   try {
-    const payload = await fetchCachedDatasetSnapshot(path, { userInitiated: !!options?.userInitiated });
+    // The index reports each instance's dataset type; Dataset Types owns that
+    // type's Data Format, Category, and Formula. Refresh both together so a type
+    // added or edited in Project Settings after this page opened cannot leave a
+    // saved instance rendering with a blank category. The two reads run
+    // concurrently, and the rows land under the same request guard as the
+    // snapshot so a superseded refresh cannot overwrite newer dataset types.
+    const [payload, datasetTypeRows] = await Promise.all([
+      fetchCachedDatasetSnapshot(path, { userInitiated: !!options?.userInitiated }),
+      fetchDatasetTypeRowsForRefresh(),
+    ]);
     if (seq !== cachedDatasetFilter.requestSeq) return;
+    if (Array.isArray(datasetTypeRows)) state.datasetRows = datasetTypeRows;
     applyCachedDatasetSnapshot(payload, path);
   } catch (err) {
     if (seq !== cachedDatasetFilter.requestSeq) return;

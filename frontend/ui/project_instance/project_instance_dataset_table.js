@@ -3310,6 +3310,28 @@ function initDatasetDeleteConfirmInteractions() {
 }
 
 
+async function fetchDatasetTypeRows() {
+  const fetched = await fetchProjectDatasetTypes(projectName);
+  return Array.isArray(fetched?.data?.rows)
+    ? fetched.data.rows.filter((row) => getDatasetName(row))
+    : [];
+}
+
+// Dataset Types owns the type-owned columns (Data Format, Category, Formula) that
+// the table shows next to each instance. Project Settings can add or edit a type
+// while this page stays open, so the boot snapshot goes stale and instances of a
+// newer type render with a blank category. Reloaded with the dataset index;
+// returns null when the read fails so the caller keeps the rows it already has.
+async function fetchDatasetTypeRowsForRefresh() {
+  if (!projectName) return null;
+  try {
+    return await fetchDatasetTypeRows();
+  } catch (err) {
+    console.error("Failed to reload dataset types:", err);
+    return null;
+  }
+}
+
 async function loadDatasets() {
   beginPageLoading("datasets");
   if (!projectName) {
@@ -3318,10 +3340,7 @@ async function loadDatasets() {
     return;
   }
   try {
-    const fetched = await fetchProjectDatasetTypes(projectName);
-    state.datasetRows = Array.isArray(fetched?.data?.rows)
-      ? fetched.data.rows.filter((row) => getDatasetName(row))
-      : [];
+    state.datasetRows = await fetchDatasetTypeRows();
     autoFitInitialDatasetTableWidths(state.datasetRows);
     renderDatasetTable();
   } catch (err) {
@@ -3359,6 +3378,7 @@ async function loadDatasets() {
     createDatasetTable,
     createDatasetTableHeaderCell,
     deleteSelectedDatasetRows,
+    fetchDatasetTypeRowsForRefresh,
     findDatasetFilterButton,
     focusDatasetTableSurface,
     getActiveDatasetSelectionIndex,

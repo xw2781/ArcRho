@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "A dataset instance of a newly added dataset type no longer appears under a blank Category.",
+  "details": [
+    "The dataset table now reloads the project's Dataset Types with each table refresh, so Data Format, Category, and Formula follow types added or edited in Project Settings while the project tab stays open."
+  ]
+}

@@ -37,12 +37,14 @@ function createStatusElement() {
   };
 }
 
-function createHarness(payload) {
+function createHarness(payload, options = {}) {
   const statuses = [];
   const cachedDatasetStatus = createStatusElement();
+  const datasetTypeReads = [];
   const state = {
     selectedPath: "Direct Group/COLL",
     datasetViewMode: "normal",
+    datasetRows: options.datasetRows ? [...options.datasetRows] : [],
     cachedDatasetFilter: {
       loading: false,
       loadedPath: "",
@@ -80,6 +82,10 @@ function createHarness(payload) {
   const api = {
     captureDatasetTableSelection: () => ({}),
     closeDatasetTableFilterPopover: () => {},
+    fetchDatasetTypeRowsForRefresh: async () => {
+      datasetTypeReads.push(true);
+      return options.refreshedDatasetRows ?? null;
+    },
     getCachedDatasetKey: (value) => String(value || "").trim().toLowerCase(),
     getDatasetName: (row) => row?.name || "",
     normalizeLookupKey: (value) => String(value || "").trim().toLowerCase(),
@@ -120,6 +126,7 @@ function createHarness(payload) {
   return {
     api,
     cachedDatasetStatus,
+    datasetTypeReads,
     restoreGlobals() {
       if (previousFetch === undefined) delete globalThis.fetch;
       else globalThis.fetch = previousFetch;
@@ -210,6 +217,53 @@ test("canonical logical names with numeric at-sign suffixes remain literal", () 
       harness.state.cachedDatasetFilter.instanceRows[0].name,
       "Legacy Name@12@24",
     );
+  } finally {
+    harness.restoreGlobals();
+  }
+});
+
+// A dataset type added in Project Settings after this page opened would otherwise
+// stay unknown to the boot-time snapshot, so its saved instances rendered with a
+// blank Category group.
+test("refreshing the dataset table reloads the dataset type rows", async () => {
+  const staleRows = [["Paid Loss", "Triangle", "D Gross Loss", false, "", false]];
+  const freshRows = [
+    ...staleRows,
+    ["C 01 - Growth Adjustment", "Vector", "C Claim Count", false, "", false],
+  ];
+  const harness = createHarness(
+    {
+      ok: true,
+      files: [{ name: "C 01 - Growth Adjustment", dataset_type: "C 01 - Growth Adjustment", method_type: "None" }],
+      index_persisted: true,
+    },
+    { datasetRows: staleRows, refreshedDatasetRows: freshRows },
+  );
+
+  try {
+    const refreshed = await harness.api.refreshCachedDatasetTableFromDisk();
+
+    assert.equal(refreshed, true);
+    assert.equal(harness.datasetTypeReads.length, 1);
+    assert.deepEqual(harness.state.datasetRows, freshRows);
+  } finally {
+    harness.restoreGlobals();
+  }
+});
+
+test("a failed dataset type reload keeps the rows the table already has", async () => {
+  const knownRows = [["Paid Loss", "Triangle", "D Gross Loss", false, "", false]];
+  const harness = createHarness(
+    { ok: true, files: [{ name: "Paid Loss", method_type: "None" }], index_persisted: true },
+    { datasetRows: knownRows, refreshedDatasetRows: null },
+  );
+
+  try {
+    const refreshed = await harness.api.refreshCachedDatasetTableFromDisk();
+
+    assert.equal(refreshed, true);
+    assert.equal(harness.state.cachedDatasetFilter.error, "");
+    assert.deepEqual(harness.state.datasetRows, knownRows);
   } finally {
     harness.restoreGlobals();
   }
