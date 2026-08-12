@@ -16,7 +16,8 @@ Run:
 from __future__ import annotations
 
 # PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
+PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May Test"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
 
 # RC_PATH may be a string or a list of reserving-class paths.
@@ -46,6 +47,7 @@ import json
 import re
 import shutil
 import sys
+import tempfile
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -143,6 +145,10 @@ from resq_migration.extractors import (  # noqa: E402
 )
 from resq_migration.number_formats import (  # noqa: E402
     configure_number_formats_path,
+)
+from resq_migration.merge import (  # noqa: E402
+    merge_preserved_arcrho_artifacts,
+    snapshot_reserving_class_artifacts,
 )
 from resq_migration.engine import (  # noqa: E402
     EngineGenerationError,
@@ -1973,6 +1979,7 @@ def main(argv: list[str] | None = None) -> None:
 
     total_written = total_errors = 0
     active_index_context: tuple[str, Path] | None = None
+    pending_snapshots: list[tuple[tempfile.TemporaryDirectory, Path, Path]] = []
 
     try:
         project = ResQApp.Projects().Item(PROJECT_NAME)
@@ -1997,7 +2004,18 @@ def main(argv: list[str] | None = None) -> None:
             print(f"\nRC {rc_index}/{len(rc_paths)}: {rc_path}")
             print(f"Export mode: {args.export} (triangles={run_triangles}, vectors={run_vectors}, dfm={run_dfms})")
             active_index_context = (rc_path, rc_dir)
+            snapshot_entry = None
             if args.cleanup_target:
+                runtime_root = SERVER_ROOT / "r"
+                runtime_root.mkdir(parents=True, exist_ok=True)
+                snapshot_temp = tempfile.TemporaryDirectory(
+                    prefix="direct-resq-",
+                    dir=str(runtime_root),
+                )
+                snapshot_rc_dir = Path(snapshot_temp.name) / rc_folder
+                snapshot_entry = (snapshot_temp, snapshot_rc_dir, rc_dir)
+                pending_snapshots.append(snapshot_entry)
+                snapshot_reserving_class_artifacts(rc_dir, snapshot_rc_dir)
                 cleaned_files, cleaned_dirs = cleanup_target_reserving_class_dir(rc_dir)
                 print(f"    OK  cleaned target RC folder ({cleaned_files} files, {cleaned_dirs} folders)")
             else:
@@ -2059,6 +2077,17 @@ def main(argv: list[str] | None = None) -> None:
                     total_written += written
                     total_errors += errors
 
+            if snapshot_entry is not None:
+                _snapshot_temp, snapshot_rc_dir, _live_rc_dir = snapshot_entry
+                merge_result = merge_preserved_arcrho_artifacts(snapshot_rc_dir, rc_dir)
+                if merge_result["groups"]:
+                    print(
+                        "    OK  retained "
+                        f"{merge_result['groups']} ArcRho-owned or newer dataset/method group(s)"
+                    )
+                snapshot_entry[0].cleanup()
+                pending_snapshots.remove(snapshot_entry)
+
             if rc_written:
                 refreshed = refresh_sidecar_graphs_for_rc(rc_dir)
                 if refreshed:
@@ -2073,6 +2102,19 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         active_error = sys.exc_info()[1]
         try:
+            for snapshot_temp, snapshot_rc_dir, live_rc_dir in pending_snapshots:
+                try:
+                    try:
+                        merge_preserved_arcrho_artifacts(snapshot_rc_dir, live_rc_dir)
+                    except Exception as merge_error:
+                        if active_error is None:
+                            raise
+                        print(
+                            "    WARN failed to restore preserved ArcRho artifacts "
+                            f"after interrupted import: {merge_error}"
+                        )
+                finally:
+                    snapshot_temp.cleanup()
             if active_index_context is not None:
                 active_rc_path, active_rc_dir = active_index_context
                 try:

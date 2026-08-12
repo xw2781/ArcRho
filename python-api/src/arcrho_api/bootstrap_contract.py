@@ -44,6 +44,7 @@ from .bootstrap_simulation import (
     simulate_bootstrap,
     summarize_reserves,
 )
+from .dataset_display_contract import normalize_show_subtotal
 from .dfm_contract import aggregate_vector_values, canonical_number, selected_ratio_values
 
 
@@ -1048,6 +1049,7 @@ def build_bootstrap_output_sidecar(
         "data_format_code": 1,
         "period_length": details["origin_length"],
         "transposed": False,
+        "show_subtotal": normalize_show_subtotal(prior.get("show_subtotal")),
         "number_format": _clean(prior.get("number_format")) or "#,##0",
         "decimal_places": _integer(prior.get("decimal_places"), 0, minimum=0, maximum=8),
         "csv_file": _clean(csv_file),

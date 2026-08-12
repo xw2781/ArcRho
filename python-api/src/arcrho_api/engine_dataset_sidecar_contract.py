@@ -4,6 +4,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Mapping, Sequence
 
+from .dataset_display_contract import DEFAULT_SHOW_SUBTOTAL, normalize_show_subtotal
+
 
 ENGINE_SOURCE_KIND = "engine"
 ENGINE_METHOD_TYPE = "None"
@@ -28,6 +30,7 @@ def build_engine_dataset_sidecar(
     period_length: int | None = None,
     cumulative: bool = True,
     calendar: bool = False,
+    show_subtotal: bool = DEFAULT_SHOW_SUBTOTAL,
     processing: Mapping[str, Any] | None = None,
     precedents: Sequence[Any] = (),
     dependents: Sequence[Any] = (),
@@ -63,6 +66,7 @@ def build_engine_dataset_sidecar(
         "status": ENGINE_STATUS_CURRENT,
         "number_format": str(number_format or "").strip(),
         "decimal_places": int(decimal_places),
+        "show_subtotal": normalize_show_subtotal(show_subtotal),
         "csv_file": str(csv_file or "").strip(),
         "user": str(user or "").strip(),
         "created": str(created or "").strip(),

@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping
 
+from .dataset_display_contract import normalize_show_subtotal
+
 
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v2"
 LEGACY_DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
@@ -271,7 +273,7 @@ def _settings(raw: Any, row_count: int) -> dict[str, list[Any]]:
     return out
 
 
-def _default_average_formulas() -> dict[str, Any]:
+def default_average_formulas() -> dict[str, Any]:
     labels = ["Volume - all", "Simple - all", "User Entry"]
     return {
         "label": labels,
@@ -284,6 +286,7 @@ def _default_average_formulas() -> dict[str, Any]:
         "selected": [[], [], []],
         "values": [[], [], []],
         "inputs": [[], [], []],
+        "display inputs": [[], [], []],
     }
 
 
@@ -398,14 +401,14 @@ def normalize_dfm_method(
 
     formula_labels = _labels(formulas_source.get("label"))
     if not formula_labels:
-        defaults = _default_average_formulas()
+        defaults = default_average_formulas()
         formula_labels = defaults["label"]
         formulas_source = defaults
     formula_count = len(formula_labels)
     formula_cols = len(ratio_dev_labels) or dev_count or max(
         (
             len(row)
-            for key in ("selected", "values", "inputs")
+            for key in ("selected", "values", "inputs", "display inputs")
             for row in (formulas_source.get(key) if isinstance(formulas_source.get(key), list) else [])
             if isinstance(row, list)
         ),
@@ -414,6 +417,9 @@ def normalize_dfm_method(
     selected = _fit_matrix(_int_matrix(formulas_source.get("selected")), formula_count, formula_cols, 0)
     formula_values = _fit_matrix(_number_matrix(formulas_source.get("values")), formula_count, formula_cols, None)
     formula_inputs = _fit_matrix(_text_matrix(formulas_source.get("inputs")), formula_count, formula_cols, "")
+    formula_display_inputs = _fit_matrix(
+        _text_matrix(formulas_source.get("display inputs")), formula_count, formula_cols, ""
+    )
 
     basis_name = _clean(results_source.get("ratio basis dataset"))
     basis_origin_labels = _labels(results_source.get("ratio basis origin labels"))
@@ -489,6 +495,7 @@ def normalize_dfm_method(
                 "selected": selected,
                 "values": formula_values,
                 "inputs": formula_inputs,
+                "display inputs": formula_display_inputs,
             },
             "cell notes": _notes(ratios_source.get("cell notes")),
         },
@@ -568,7 +575,7 @@ def _validate_complete(payload: Mapping[str, Any]) -> None:
     formulas = _tab(ratios, "average formulas")
     formula_labels = formulas.get("label") if isinstance(formulas.get("label"), list) else []
     formula_cols = len(expected_ratio_labels)
-    for key in ("selected", "values", "inputs"):
+    for key in ("selected", "values", "inputs", "display inputs"):
         matrix = formulas.get(key)
         if not isinstance(matrix, list) or len(matrix) != len(formula_labels):
             raise DfmContractError(f"DFM average formulas.{key} must align to formula labels.")
@@ -859,6 +866,7 @@ def build_dfm_output_sidecar(
         "data_format_code": 1,
         "period_length": _integer(details.get("origin length"), 12, minimum=1),
         "transposed": False,
+        "show_subtotal": normalize_show_subtotal(prior.get("show_subtotal")),
         "number_format": _clean(prior.get("number_format")) or "#,##0",
         "decimal_places": _integer(details.get("decimal places"), 0, minimum=0, maximum=8),
         "csv_file": _clean(csv_file),
@@ -1392,6 +1400,9 @@ def recalculate_dfm_method(
     formulas = method["ratios tab"]["average formulas"]
     formulas["selected"] = _fit_matrix(_int_matrix(formulas.get("selected")), formula_count, ratio_col_count, 0)
     formulas["inputs"] = _fit_matrix(_text_matrix(formulas.get("inputs")), formula_count, ratio_col_count, "")
+    formulas["display inputs"] = _fit_matrix(
+        _text_matrix(formulas.get("display inputs")), formula_count, ratio_col_count, ""
+    )
     formulas["values"] = _calculate_formula_values(method)
     method["results tab"]["ultimate vector"] = _calculate_ultimate(method)
     if update_refresh_timestamp:
@@ -1432,6 +1443,7 @@ _OWNED_PATHS = (
     ("ratios tab", "average formulas", "custom average formula settings"),
     ("ratios tab", "average formulas", "selected"),
     ("ratios tab", "average formulas", "inputs"),
+    ("ratios tab", "average formulas", "display inputs"),
     ("ratios tab", "average formulas", "values"),
     ("ratios tab", "cell notes"),
     ("results tab", "ratio basis dataset"),
@@ -1539,6 +1551,7 @@ __all__ = [
     "dfm_output_variants",
     "method_revisions",
     "normalize_dfm_method",
+    "default_average_formulas",
     "owned_projection",
     "persisted_projection",
     "preview_dfm_method",

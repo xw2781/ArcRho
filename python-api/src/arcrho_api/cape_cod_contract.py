@@ -21,6 +21,7 @@ from typing import Any, Iterable, Mapping
 
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
+from .dataset_display_contract import normalize_show_subtotal
 from .dfm_contract import aggregate_vector_values, canonical_number
 
 
@@ -986,6 +987,7 @@ def build_cape_cod_output_sidecar(
         "data_format_code": 1,
         "period_length": details["origin_length"],
         "transposed": False,
+        "show_subtotal": normalize_show_subtotal(prior.get("show_subtotal")),
         "number_format": _clean(prior.get("number_format")) or "#,##0",
         "decimal_places": details["statistic_decimal_places"],
         "csv_file": _clean(csv_file),

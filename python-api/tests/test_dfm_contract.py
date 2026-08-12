@@ -68,6 +68,13 @@ def owned_payload() -> dict:
                     ['="Simple - all" * 1.1', '="Simple - all" * 1.1', ""],
                     ["='[Book.xlsx]Sheet1'!$A$1", "=1.3", ""],
                 ],
+                "display inputs": [
+                    ["", "", ""],
+                    ["", "", ""],
+                    ["", "", ""],
+                    ["", "", ""],
+                    ["=[Premium][2025 Q4]", "", ""],
+                ],
             },
             "cell notes": {
                 "ratio main table": {"2020": {"(1) 12-24": "Keep"}},
@@ -144,6 +151,10 @@ class DfmContractTests(unittest.TestCase):
         self.assertNotIn("ultimate vector csv path", method["results tab"])
         self.assertEqual(method["ratios tab"]["average formulas"]["values"][4][0], 1.25)
         self.assertEqual(method["ratios tab"]["average formulas"]["values"][4][1], 1.3)
+        self.assertEqual(
+            method["ratios tab"]["average formulas"]["display inputs"][4][0],
+            "=[Premium][2025 Q4]",
+        )
         self.assertEqual(method["method metadata"]["data refreshed"], "2026-01-02T00:00:00Z")
         self.assertEqual(normalize_dfm_method(method), method)
 
@@ -173,6 +184,35 @@ class DfmContractTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(source_snapshot_revision(first_input), source_snapshot_revision(second_input))
 
+    def test_display_inputs_are_backward_compatible_display_metadata(self) -> None:
+        method = recalculate_dfm_method(
+            owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot(), timestamp="same"
+        )
+        legacy = deepcopy(method)
+        legacy["ratios tab"]["average formulas"].pop("display inputs")
+
+        normalized_legacy = normalize_dfm_method(legacy)
+
+        self.assertEqual(
+            normalized_legacy["method metadata"]["owned revision"],
+            method["method metadata"]["owned revision"],
+        )
+        self.assertEqual(
+            normalized_legacy["ratios tab"]["average formulas"]["display inputs"],
+            [["", "", ""] for _ in method["ratios tab"]["average formulas"]["label"]],
+        )
+        display_patch = deepcopy(method)
+        display_patch["ratios tab"]["average formulas"]["display inputs"][4][0] = "=[Premium][2026 Q1]"
+        patched = apply_owned_patch(method, display_patch)
+        self.assertEqual(
+            patched["ratios tab"]["average formulas"]["display inputs"][4][0],
+            "=[Premium][2026 Q1]",
+        )
+        self.assertEqual(
+            patched["method metadata"]["owned revision"],
+            method["method metadata"]["owned revision"],
+        )
+
     def test_output_sidecar_projection_is_canonical_and_preserves_owned_sidecar_state(self) -> None:
         method = recalculate_dfm_method(
             owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot(), timestamp="same"
@@ -183,6 +223,7 @@ class DfmContractTests(unittest.TestCase):
             "Dependents": ["Selected Ultimate", {"dataset_type_name": "Report"}],
             "created": "old",
             "number_format": "$#,##0",
+            "show_subtotal": False,
             "producer_only": "must be removed",
         }
         first = build_dfm_output_sidecar(
@@ -210,6 +251,7 @@ class DfmContractTests(unittest.TestCase):
             [{"dataset_type_name": "Paid Loss"}, {"dataset_type_name": "Earned Premium"}],
         )
         self.assertEqual(first["notes"], "Method note")
+        self.assertIs(first["show_subtotal"], False)
         self.assertEqual(first["publication_revision"], method["method metadata"]["publication revision"])
 
     def test_upstream_refresh_preserves_owned_projection_and_recalculates_internal_formulas(self) -> None:

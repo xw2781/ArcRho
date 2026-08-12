@@ -18,6 +18,7 @@ from .dfm_contract import (
     LEGACY_DFM_JSON_FORMAT,
     build_dfm_output_sidecar,
     dependency_entries,
+    default_average_formulas,
     dfm_output_variants,
     dfm_precedent_names,
     normalize_dfm_method,
@@ -437,7 +438,7 @@ class DfmMethod:
                     "ratio values": [],
                     "excluded": [],
                 },
-                "average formulas": _default_average_formulas(),
+                "average formulas": default_average_formulas(),
             },
             "results tab": {
                 "ratio basis dataset": "",
@@ -2067,20 +2068,6 @@ class DfmMethod:
                 out[col] = _number(values[row_index][col])
         _ = labels
         return out
-
-def _default_average_formulas() -> dict[str, Any]:
-    return {
-        "label": ["Volume - all", "Simple - all", "User Entry"],
-        "custom average formula settings": {
-            "averageType": ["custom", "custom", "user_entry"],
-            "base": ["volume", "simple", ""],
-            "periods": ["all", "all", "all"],
-            "exclude": [0, 0, 0],
-        },
-        "selected": [],
-        "values": [],
-    }
-
 
 def _infer_average_settings(label: str) -> dict[str, Any] | None:
     normalized = _normalize_label(label)

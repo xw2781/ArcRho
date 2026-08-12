@@ -12,7 +12,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .dataset_display_contract import normalize_show_subtotal
 from .exceptions import DfmDataError, ReadOnlyError
+from .io import persisted_json_text
 from .models import DfmMethodRef, TriangleCacheResult
 from .paths import clean_text, dataset_filename, sanitize_file_name_part, sanitize_reserving_class_folder
 
@@ -282,6 +284,7 @@ class ReservingClass:
             "data_format_code": 0,
             "origin_length": int(origin_length),
             "development_length": int(development_length),
+            "show_subtotal": normalize_show_subtotal(existing.get("show_subtotal")),
             "csv_file": data_path.name,
             "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
             "Precedents": existing.get("Precedents") if isinstance(existing.get("Precedents"), list) else [],
@@ -289,7 +292,7 @@ class ReservingClass:
         }
         temp_path = sidecar_path.with_name(f"{sidecar_path.name}.{uuid.uuid4()}.tmp")
         try:
-            temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            temp_path.write_text(persisted_json_text(payload), encoding="utf-8")
             os.replace(temp_path, sidecar_path)
         except OSError as err:
             try:

@@ -114,6 +114,11 @@ class ResQImportRunnerTests(unittest.TestCase):
             import_reserving_class_from_resq=importer,
             _apply_runtime_scope=lambda *args: ("previous", args),
             _restore_runtime_scope=lambda _previous: None,
+            merge_preserved_arcrho_artifacts=lambda _live, _stage: {
+                "groups": 0,
+                "files": 0,
+                "names": [],
+            },
             refresh_sidecar_graphs_for_rc=lambda path: refresh_calls.append(Path(path)),
             rebuild_dataset_instance_index=rebuild,
         )
@@ -185,6 +190,58 @@ class ResQImportRunnerTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_result["errors"], 1)
         self.assertEqual(raised.exception.status_result["error_details"][0]["name"], "Broken DFM")
         self.assertNotIn("E:\\", raised.exception.status_result["error_details"][0]["message"])
+
+    def test_merge_runs_before_graph_refresh_and_commit(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "ArcRho-only", source_kind="calculated", value="keep")
+        events = []
+        order = []
+
+        def importer(_project_name, _rc_path, **kwargs):
+            stage_rc = Path(kwargs["project_data_dir"]) / "rc"
+            self._write_dataset(stage_rc, "new-resq", source_kind="input", value="new")
+            return {"errors": 0, "engine_errors": 0, "engine_available": True}
+
+        def merge(live, stage):
+            order.append("merge")
+            source = Path(live) / "sidecars" / "ArcRho-only.json"
+            target = Path(stage) / "sidecars" / source.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
+            source_csv = Path(live) / "datasets" / "ArcRho-only.csv"
+            target_csv = Path(stage) / "datasets" / source_csv.name
+            target_csv.write_bytes(source_csv.read_bytes())
+            return {"groups": 1, "files": 2, "names": ["ArcRho-only"]}
+
+        def refresh(_path):
+            order.append("refresh")
+
+        module = SimpleNamespace(
+            INDEX_FILE_NAME="index.json",
+            _encode_rc_folder=lambda _rc_path: "rc",
+            import_reserving_class_from_resq=importer,
+            _apply_runtime_scope=lambda *args: ("previous", args),
+            _restore_runtime_scope=lambda _previous: None,
+            merge_preserved_arcrho_artifacts=merge,
+            refresh_sidecar_graphs_for_rc=refresh,
+            rebuild_dataset_instance_index=lambda _project, _rc, path: self._write_index(Path(path)),
+        )
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+        ):
+            result = runner.run_reserving_class_import(
+                self._swap_request("run-merge-policy"),
+                events.append,
+            )
+
+        self.assertEqual(order, ["merge", "refresh"])
+        self.assertEqual(result["arcrho_groups_preserved"], 1)
+        self.assertEqual(result["arcrho_artifacts_preserved"], 2)
+        self.assertTrue((live_rc / "sidecars" / "ArcRho-only.json").is_file())
+        self.assertTrue(any(event.get("kind") == "arcrho_merge" for event in events))
 
     def test_backup_cleanup_failure_keeps_the_committed_import_and_old_backup(self):
         server_root = self.root / "server"
@@ -507,6 +564,11 @@ class ResQImportRunnerTests(unittest.TestCase):
             import_reserving_class_from_resq=importer,
             _apply_runtime_scope=lambda *args: ("previous", args),
             _restore_runtime_scope=lambda _previous: None,
+            merge_preserved_arcrho_artifacts=lambda _live, _stage: {
+                "groups": 0,
+                "files": 0,
+                "names": [],
+            },
             refresh_sidecar_graphs_for_rc=lambda _path: 0,
             rebuild_dataset_instance_index=lambda _project, _rc, path: self._write_index(Path(path)),
         )

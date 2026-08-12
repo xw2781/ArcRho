@@ -156,6 +156,19 @@ def _copy_local_user_entry_inputs(remote_payload: dict, local_payload: dict) -> 
         remote_values = []
         remote_avg["values"] = remote_values
     remote_value_row = _ensure_matrix_row(remote_values, remote_user_row)
+    local_display_inputs = local_avg.get("display inputs")
+    local_display_input_row = (
+        local_display_inputs[local_user_row]
+        if isinstance(local_display_inputs, list)
+        and local_user_row < len(local_display_inputs)
+        and isinstance(local_display_inputs[local_user_row], list)
+        else []
+    )
+    remote_display_inputs = remote_avg.get("display inputs")
+    if not isinstance(remote_display_inputs, list):
+        remote_display_inputs = []
+        remote_avg["display inputs"] = remote_display_inputs
+    remote_display_input_row = _ensure_matrix_row(remote_display_inputs, remote_user_row)
 
     remote_dev_labels = _dfm_ratio_development_labels(remote_payload)
     local_dev_labels = _dfm_ratio_development_labels(local_payload)
@@ -176,8 +189,13 @@ def _copy_local_user_entry_inputs(remote_payload: dict, local_payload: dict) -> 
             remote_row.append("")
         while len(remote_value_row) <= remote_col:
             remote_value_row.append(None)
+        while len(remote_display_input_row) <= remote_col:
+            remote_display_input_row.append("")
         remote_row[remote_col] = formula_text
         remote_value_row[remote_col] = canonical_number(local_value)
+        remote_display_input_row[remote_col] = _clean_name(
+            local_display_input_row[local_col] if local_col < len(local_display_input_row) else ""
+        )
         copied = copied or bool(formula_text) or local_value is not None
     return copied
 
@@ -560,6 +578,7 @@ def export_dfm(
                 "selected": selected,
                 "values": values,
                 "inputs": [[""] * dev_count for _ in range(n_formulas)],
+                "display inputs": [[""] * dev_count for _ in range(n_formulas)],
             },
             "cell notes": cell_notes,
         },

@@ -33,6 +33,7 @@ from arcrho_api.cape_cod_contract import (
     recalculate_cape_cod_method,
 )
 from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variants
+from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
@@ -441,6 +442,8 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     method_source_kind = _clean_name(payload.get("source_kind"))
     is_berquist_sherman = method_source_kind in {BS_SR_SOURCE_KIND, BS_CRA_SOURCE_KIND}
     source_kind = method_source_kind if is_berquist_sherman else _triangle_source_kind(name, dataset_type)
+    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    existing = _safe_read_json(meta_path)
     meta = {
         "dataset_name": name,
         "dataset_type": dataset_type,
@@ -466,6 +469,7 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "development_labels": payload.get("development_labels", []),
         "cumulative": DEFAULT_CUMULATIVE,
         "calendar": DEFAULT_CALENDAR,
+        "show_subtotal": normalize_show_subtotal(existing.get("show_subtotal")),
         "number_format": dataset_type_number_format(rc_path, dataset_type),
         "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
         "csv_file": csv_name,
@@ -492,7 +496,6 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir, preserve_precedents=True)
     else:
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
-    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     _write_json(meta_path, meta)
     return csv_path
 
@@ -977,6 +980,8 @@ def write_vector_export(
         source_kind = "calculated"
     else:
         source_kind = "input"
+    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    existing = _safe_read_json(meta_path)
     meta = {
         "dataset_name": name,
         "dataset_type": dataset_type,
@@ -1000,6 +1005,7 @@ def write_vector_export(
         "data_format": "Vector",
         "data_format_code": payload.get("data_format", 1),
         "period_length": period_length,
+        "show_subtotal": normalize_show_subtotal(existing.get("show_subtotal")),
         "origin_count": payload.get("origin_count", 0),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
@@ -1012,9 +1018,7 @@ def write_vector_export(
         "notes": str(payload.get("notes") or ""),
         "updated_at": updated_at,
     }
-    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     if is_bornhuetter_ferguson and isinstance(bf_method_payload, dict):
-        existing = _safe_read_json(meta_path)
         publication_revision = _clean_name(
             bf_method_payload.get("method_metadata", {}).get("publication_revision")
             if isinstance(bf_method_payload.get("method_metadata"), dict)
@@ -1035,7 +1039,6 @@ def write_vector_export(
             status=normalize_method_status(payload.get("status")),
         )
     elif is_cape_cod and isinstance(cc_method_payload, dict):
-        existing = _safe_read_json(meta_path)
         publication_revision = _clean_name(
             cc_method_payload.get("method_metadata", {}).get("publication_revision")
             if isinstance(cc_method_payload.get("method_metadata"), dict)
@@ -1117,6 +1120,8 @@ def write_engine_generated_export(
     user = getpass.getuser()
     updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     created = _engine_cache_created_at(csv_path, "")
+    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    existing = _safe_read_json(meta_path)
     meta = build_engine_dataset_sidecar(
         project_name=PROJECT_NAME,
         reserving_class=rc_path,
@@ -1134,12 +1139,12 @@ def write_engine_generated_export(
         period_length=_vector_payload_period_length(payload) if is_vector else None,
         cumulative=DEFAULT_CUMULATIVE,
         calendar=DEFAULT_CALENDAR,
+        show_subtotal=normalize_show_subtotal(existing.get("show_subtotal")),
         processing=provenance,
         source_modified=str(payload.get("modified") or "").strip(),
     )
 
     _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
-    meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     _write_json(meta_path, meta)
     return csv_path
 

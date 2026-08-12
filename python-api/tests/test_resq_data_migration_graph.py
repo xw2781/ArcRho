@@ -813,6 +813,126 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         for path in kept:
             self.assertTrue(path.exists(), path.name)
 
+    def test_merge_preserves_arcrho_only_and_newer_logical_groups(self) -> None:
+        live_rc = self.project_dir / "data" / "live"
+        staged_rc = self.project_dir / "data" / "stage"
+        for rc_dir in (live_rc, staged_rc):
+            for folder in ("datasets", "methods", "sidecars"):
+                (rc_dir / folder).mkdir(parents=True, exist_ok=True)
+
+        def write_dataset(rc_dir, name, dataset_type, updated_at, value):
+            csv_name = f"{name}@12.csv"
+            (rc_dir / "datasets" / csv_name).write_text(f"{value}\n", encoding="utf-8")
+            (rc_dir / "sidecars" / f"{name}.json").write_text(json.dumps({
+                "dataset_name": name,
+                "dataset_type": dataset_type,
+                "csv_file": csv_name,
+                "updated_at": updated_at,
+            }), encoding="utf-8")
+
+        write_dataset(
+            live_rc,
+            "ArcRho Scenario",
+            "Net Ultimate",
+            "2026-07-01T00:00:00Z",
+            "local-only",
+        )
+        write_dataset(
+            live_rc,
+            "Paid Loss",
+            "Paid Loss",
+            "2026-08-03T00:00:00Z",
+            "local-newer",
+        )
+        write_dataset(
+            staged_rc,
+            "Paid Loss",
+            "Paid Loss",
+            "2026-08-02T00:00:00Z",
+            "resq-older",
+        )
+        (staged_rc / "datasets" / "Paid Loss@3.csv").write_text(
+            "stale-stage-variant\n",
+            encoding="utf-8",
+        )
+        write_dataset(
+            live_rc,
+            "DFM Ultimate",
+            "DFM Ultimate",
+            "2026-08-01T00:00:00Z",
+            "local-older-dataset",
+        )
+        write_dataset(
+            staged_rc,
+            "DFM Ultimate",
+            "DFM Ultimate",
+            "2026-08-02T00:00:00Z",
+            "resq-newer-dataset",
+        )
+        write_dataset(
+            live_rc,
+            "Older ResQ Dataset",
+            "Paid Loss",
+            "2026-08-01T00:00:00Z",
+            "local-older",
+        )
+        write_dataset(
+            staged_rc,
+            "Older ResQ Dataset",
+            "Paid Loss",
+            "2026-08-02T00:00:00Z",
+            "resq-newer",
+        )
+        live_method = live_rc / "methods" / "DFM@Selected DFM.json"
+        live_method.write_text(json.dumps({
+            "json format": self.module.DFM_JSON_FORMAT,
+            "details tab": {
+                "name": "Selected DFM",
+                "output dataset": "DFM Ultimate",
+                "output type": "DFM Ultimate",
+            },
+            "method metadata": {"last modified": "2026-08-04T00:00:00Z"},
+        }), encoding="utf-8")
+        staged_method = staged_rc / "methods" / live_method.name
+        staged_method.write_text(json.dumps({
+            "json format": self.module.DFM_JSON_FORMAT,
+            "details tab": {
+                "name": "Selected DFM",
+                "output dataset": "DFM Ultimate",
+                "output type": "DFM Ultimate",
+            },
+            "method metadata": {"last modified": "2026-08-03T00:00:00Z"},
+        }), encoding="utf-8")
+
+        snapshot_rc = self.project_dir / "snapshots" / "live"
+        snapshot_files = self.module.snapshot_reserving_class_artifacts(live_rc, snapshot_rc)
+        result = self.module.merge_preserved_arcrho_artifacts(snapshot_rc, staged_rc)
+
+        self.assertEqual(snapshot_files, 9)
+        self.assertEqual(
+            set(result["names"]),
+            {"ArcRho Scenario", "Paid Loss", "DFM Ultimate"},
+        )
+        self.assertEqual(result["groups"], 3)
+        self.assertEqual(
+            (staged_rc / "datasets" / "ArcRho Scenario@12.csv").read_text(encoding="utf-8"),
+            "local-only\n",
+        )
+        self.assertEqual(
+            (staged_rc / "datasets" / "Paid Loss@12.csv").read_text(encoding="utf-8"),
+            "local-newer\n",
+        )
+        self.assertFalse((staged_rc / "datasets" / "Paid Loss@3.csv").exists())
+        self.assertEqual(
+            (staged_rc / "datasets" / "DFM Ultimate@12.csv").read_text(encoding="utf-8"),
+            "local-older-dataset\n",
+        )
+        self.assertEqual(staged_method.read_bytes(), live_method.read_bytes())
+        self.assertEqual(
+            (staged_rc / "datasets" / "Older ResQ Dataset@12.csv").read_text(encoding="utf-8"),
+            "resq-newer\n",
+        )
+
     def test_cleanup_target_flag_defaults_on_and_can_be_disabled(self) -> None:
         self.assertTrue(self.module._parse_args([]).cleanup_target)
         self.assertFalse(self.module._parse_args(["--no-cleanup-target"]).cleanup_target)

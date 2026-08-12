@@ -58,6 +58,7 @@ def _owned_payload() -> dict:
                 "selected": [[1, 1, 1], [0, 0, 0]],
                 "values": [[1, 1, 1], [1.2, 1.3, 1]],
                 "inputs": [["", "", ""], ["=1.2", "='[Book.xlsx]S'!A1", ""]],
+                "display inputs": [["", "", ""], ["=[Premium][2025 Q4]", "", ""]],
             },
             "cell notes": {
                 "ratio main table": {"2020": {"(1) 12-24": "keep"}},
@@ -128,6 +129,10 @@ class ResqDfmV2Tests(unittest.TestCase):
         self.assertEqual(
             rebased["ratios tab"]["average formulas"]["values"][1][1],
             local["ratios tab"]["average formulas"]["values"][1][1],
+        )
+        self.assertEqual(
+            rebased["ratios tab"]["average formulas"]["display inputs"],
+            local["ratios tab"]["average formulas"]["display inputs"],
         )
         self.assertNotEqual(
             rebased["data tab"]["input data triangle values"],

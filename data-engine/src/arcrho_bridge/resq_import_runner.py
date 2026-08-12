@@ -307,7 +307,29 @@ def run_reserving_class_import(
                 },
             )
 
-        _refresh_stage_contract(module, project_name, rc_path, server_root, stage_data_dir, stage_rc_dir)
+        merge_result = _refresh_stage_contract(
+            module,
+            project_name,
+            rc_path,
+            server_root,
+            stage_data_dir,
+            target_rc_dir,
+            stage_rc_dir,
+        )
+        preserved_groups = int(merge_result.get("groups") or 0)
+        if preserved_groups:
+            _report_progress(
+                progress_callback,
+                {
+                    "event": "activity",
+                    "kind": "arcrho_merge",
+                    "status": "success",
+                    "message": (
+                        f"Retained {preserved_groups} ArcRho-owned or newer "
+                        "dataset/method group(s)."
+                    ),
+                },
+            )
         _report_progress(
             progress_callback,
             {
@@ -332,6 +354,8 @@ def run_reserving_class_import(
 
         result["engine_component_preserved"] = preserve_engine
         result["engine_artifacts_restored"] = restored_engine_artifacts
+        result["arcrho_groups_preserved"] = preserved_groups
+        result["arcrho_artifacts_preserved"] = int(merge_result.get("files") or 0)
         result["previous_data_deleted"] = previous_data_deleted
         if cleanup_warning:
             result["message"] = cleanup_warning
@@ -820,20 +844,29 @@ def _refresh_stage_contract(
     rc_path: str,
     server_root: Path,
     stage_data_dir: Path,
+    live_rc_dir: Path,
     stage_rc_dir: Path,
-) -> None:
+) -> dict[str, object]:
     apply_scope = getattr(module, "_apply_runtime_scope", None)
     restore_scope = getattr(module, "_restore_runtime_scope", None)
     refresh_graphs = getattr(module, "refresh_sidecar_graphs_for_rc", None)
     rebuild_index = getattr(module, "rebuild_dataset_instance_index", None)
-    if not all(callable(item) for item in (apply_scope, restore_scope, refresh_graphs, rebuild_index)):
+    merge_artifacts = getattr(module, "merge_preserved_arcrho_artifacts", None)
+    if not all(
+        callable(item)
+        for item in (apply_scope, restore_scope, refresh_graphs, rebuild_index, merge_artifacts)
+    ):
         raise ResQMigrationBundleError(
-            "The canonical ResQ migration bundle does not expose required graph/index helpers."
+            "The canonical ResQ migration bundle does not expose required merge/graph/index helpers."
         )
     previous_scope = apply_scope(project_name, server_root, stage_data_dir)
     try:
+        merge_result = merge_artifacts(live_rc_dir, stage_rc_dir)
+        if not isinstance(merge_result, Mapping):
+            raise ResQMigrationBundleError("The canonical ArcRho merge returned a non-object result.")
         refresh_graphs(stage_rc_dir)
         rebuild_index(project_name, rc_path, stage_rc_dir)
+        return dict(merge_result)
     finally:
         restore_scope(previous_scope)
 
