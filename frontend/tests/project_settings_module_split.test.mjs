@@ -165,6 +165,19 @@ test("Dataset Type Data Format is a closed Triangle or Vector choice", () => {
   assert.match(datasetTypes, /Array\.from\(dtEditDataFormat\?\.options \|\| \[\]\)[\s\S]*option\.value === dataFormatValue/u);
 });
 
+test("Dataset Type Data Format opens an app-styled list instead of the native popup", () => {
+  // The select stays the value store; the shared sd-select primitives draw it.
+  assert.match(html, /<div class="sd-select dt-format-select" id="dtFormatSelect">/u);
+  assert.match(html, /<select id="dtEditDataFormat" required tabindex="-1" aria-hidden="true">/u);
+  assert.match(html, /class="sd-select-trigger"[\s\S]*id="dtFormatTrigger"[\s\S]*aria-haspopup="listbox"/u);
+  assert.match(html, /id="dtFormatList" role="listbox"/u);
+  assert.match(datasetTypes, /formatSelect\.setValue\(mode === "add" \? "" : String\(row\?\.\[1\] \?\? ""\)\)/u);
+  assert.doesNotMatch(datasetTypes, /dtEditDataFormat\.value =/u);
+  // A native select popup cannot be themed, so no editor field may rely on one.
+  assert.doesNotMatch(fieldMappingCss, /\.rct-row-editor-body select/u);
+  assert.match(datasetTypesCss, /\.rct-row-editor-body \.dt-format-select \.sd-select-trigger \{[\s\S]*height: 30px;/u);
+});
+
 test("Dataset Type Category is an editable existing-value combobox with new-category feedback", () => {
   assert.match(html, /id="dtEditCategory"[\s\S]*role="combobox"[\s\S]*aria-autocomplete="list"/u);
   assert.match(html, /id="dtCategoryList" role="listbox"/u);

@@ -319,7 +319,7 @@ test("Project Settings and Project Instance override light-only child paint in D
   const projectSettingsHtml = read("../ui/project_settings/project_settings.html");
   assert.match(datasetTypesCss, /\.datasetTypesRecalcOverlay\s*\{/);
   assert.doesNotMatch(datasetTypesJs, /datasetTypesRecalcDialogStyles|createElement\("style"\)/);
-  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260811dtcategory1/);
+  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260812dtformat2/);
 });
 
 test("theme runtime validates, persists per user, applies, notifies frames, and updates Monaco live", async () => {
@@ -654,9 +654,9 @@ test("changed theme and chart owners are reached through current cache-version c
     ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260807b"],
     ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260807b"],
     ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260807b"],
-    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260812c"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260811dtcategory1"],
-    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260811dtcategory1"],
+    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260812f"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260812dtformat2"],
+    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260812dtformat2"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260726b"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260726a"],
     ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260726a"],

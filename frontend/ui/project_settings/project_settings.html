@@ -6,17 +6,17 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Project Explorer</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings.css?v=20260811dtformat1"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_summary.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings.css?v=20260812dtformat2"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_summary.css?v=20260812dtformat2"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260808fieldmap1"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_field_mapping.css?v=20260808sddist1"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_dataset_types.css?v=20260811dtcategory1"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_reserving_class_types.css?v=20260808sddist1"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_data_processing_rules.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_field_mapping.css?v=20260812dtformat2"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_dataset_types.css?v=20260812dtformat2"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_reserving_class_types.css?v=20260812dtformat2"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_data_processing_rules.css?v=20260812dtformat2"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260811c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
-  <link rel="stylesheet" href="/ui/project_settings/project_settings_scrollbars.css?v=20260808sddist1"/>
+  <link rel="stylesheet" href="/ui/project_settings/project_settings_scrollbars.css?v=20260812dtformat2"/>
 </head>
 <body class="project-settings-page">
   <div class="main" style="height: 100%;">
@@ -484,12 +484,26 @@
     <div class="rct-row-editor-body">
       <label for="dtEditName">Name</label>
       <input id="dtEditName" type="text" spellcheck="false" />
-      <label for="dtEditDataFormat">Data Format</label>
-      <select id="dtEditDataFormat" required>
-        <option value="" disabled>Select data format</option>
-        <option value="Triangle">Triangle</option>
-        <option value="Vector">Vector</option>
-      </select>
+      <label for="dtFormatTrigger">Data Format</label>
+      <div class="sd-select dt-format-select" id="dtFormatSelect">
+        <select id="dtEditDataFormat" required tabindex="-1" aria-hidden="true">
+          <option value="" disabled>Select data format</option>
+          <option value="Triangle">Triangle</option>
+          <option value="Vector">Vector</option>
+        </select>
+        <button
+          class="sd-select-trigger"
+          id="dtFormatTrigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-controls="dtFormatList"
+        >
+          <span class="sd-select-value" id="dtFormatValue"></span>
+          <span class="sd-select-caret" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="sd-select-list dt-format-list" id="dtFormatList" role="listbox" aria-label="Data Format" hidden></div>
       <label for="dtEditCategory">Category</label>
       <div class="sd-combo dt-category-combo" id="dtCategoryCombo">
         <input
@@ -804,6 +818,6 @@
     </div>
   </div>
 
-<script type="module" src="/ui/project_settings/project_settings.js?v=20260811dtcategory1"></script>
+<script type="module" src="/ui/project_settings/project_settings.js?v=20260812dtformat2"></script>
 </body>
 </html>

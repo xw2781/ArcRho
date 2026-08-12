@@ -401,6 +401,38 @@
   margin-top: 16px;
 }
 
+/* Data Format picker in the Dataset Type editor. A native select popup cannot
+   be themed, so the select stays as the hidden value store behind the shared
+   app-styled trigger and option list. */
+.rct-row-editor-body .dt-format-select {
+  width: 100%;
+}
+.rct-row-editor-body .dt-format-select select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.rct-row-editor-body .dt-format-select .sd-select-trigger {
+  height: 30px;
+  padding: 0 30px 0 9px;
+  border-radius: 4px;
+}
+.dt-format-select .sd-select-trigger.is-placeholder {
+  color: var(--ar-color-text-subtle, #94a3b8);
+}
+.dt-format-list {
+  max-height: 190px;
+}
+.dt-format-option.active {
+  background: var(--ar-color-surface-hover, #e8eef6);
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: -2px;
+}
+
 /* Editable Category picker in the Dataset Type editor. The established
    Project Settings combo/list primitives own the shared dropdown surface. */
 .rct-row-editor-body .dt-category-combo {

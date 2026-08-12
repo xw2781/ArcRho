@@ -8,6 +8,7 @@ import {
 } from "/ui/shared/dataset/dataset_types_view_model.js";
 import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 import { createDatasetTypeCategoryCombo } from "/ui/project_settings/project_settings_dataset_type_category_combo.js?v=20260811dtcategory1";
+import { createDatasetTypeFormatSelect } from "/ui/project_settings/project_settings_dataset_type_format_select.js?v=20260812dtformat2";
 
 function calculationStepReservingPath(step) {
   const explicit = String(step?.reserving_class || "").trim();
@@ -47,6 +48,10 @@ export function createDatasetTypesFeature(deps = {}) {
     datasetTypeEditorTitle = null,
     dtEditName = null,
     dtEditDataFormat = null,
+    dtFormatSelect = null,
+    dtFormatTrigger = null,
+    dtFormatValue = null,
+    dtFormatList = null,
     dtCategoryCombo = null,
     dtEditCategory = null,
     dtCategoryToggle = null,
@@ -94,6 +99,13 @@ export function createDatasetTypesFeature(deps = {}) {
   let datasetTypesErrorUiWired = false;
   let datasetTypesLoadModeDialog = null;
   let datasetTypesLoadModeDialogResolve = null;
+  const formatSelect = createDatasetTypeFormatSelect({
+    root: dtFormatSelect,
+    select: dtEditDataFormat,
+    trigger: dtFormatTrigger,
+    valueEl: dtFormatValue,
+    list: dtFormatList,
+  });
   const categoryCombo = createDatasetTypeCategoryCombo({
     root: dtCategoryCombo,
     input: dtEditCategory,
@@ -1060,6 +1072,7 @@ export function createDatasetTypesFeature(deps = {}) {
   function closeDatasetTypeEditor() {
     if (!datasetTypeEditor) return;
     categoryCombo.close({ hideNewTip: true });
+    formatSelect.close();
     datasetTypeEditor.classList.remove("show");
     datasetTypeEditor.style.left = "";
     datasetTypeEditor.style.top = "";
@@ -1086,7 +1099,7 @@ export function createDatasetTypesFeature(deps = {}) {
         : "Edit Dataset Type";
     }
     if (dtEditName) dtEditName.value = mode === "add" ? "" : String(row?.[0] ?? "");
-    if (dtEditDataFormat) dtEditDataFormat.value = mode === "add" ? "" : String(row?.[1] ?? "");
+    formatSelect.setValue(mode === "add" ? "" : String(row?.[1] ?? ""));
     categoryCombo.setOptions(state.rows.map((item) => item?.[2]));
     categoryCombo.setValue(mode === "add" ? "" : String(row?.[2] ?? ""));
     const initialCalculated = mode === "add" ? false : parseCalculatedFlag(row?.[3]);
@@ -1218,6 +1231,7 @@ export function createDatasetTypesFeature(deps = {}) {
     datasetTypeEditor.style.left = `${left}px`;
     datasetTypeEditor.style.top = `${top}px`;
     categoryCombo.positionFloating();
+    formatSelect.positionFloating();
   }
 
   function onEditorMouseUp() {

@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The Add/Edit Dataset Type dialog now opens an app-styled Data Format list instead of the browser's native dropdown.",
+  "details": [
+    "The list matches the Category picker beside it: trigger-aligned width, compact hover and selected rows, and correct colors in Dark and High Contrast themes.",
+    "The field can be opened and navigated from the keyboard, and shows a muted 'Select data format' placeholder until Triangle or Vector is chosen.",
+    "Triangle and Vector remain the only accepted values, and a rejected save now returns focus to the visible field."
+  ]
+}
