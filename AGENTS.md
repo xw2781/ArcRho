@@ -105,6 +105,17 @@ Run `python data-engine/src/arcrho_bridge/build_exe.py` with a Python 3.10 inter
 
 Never deploy a change that has not passed its checks; a broken Bridge blocks every ResQ import. If the build fails, or the live Bridge does not stop within the script's timeout, the script aborts and leaves the deployed Bridge untouched. Report that outcome plainly and do not retry blindly. State in the final response whether the Bridge was rebuilt and redeployed, or why it was not.
 
+## ArcRho Admin Control Deployment Authorization
+The user pre-authorizes agents to shut down, rebuild, redeploy, and reopen ArcRho Admin Control whenever a task changes the Admin Control app. Do not request separate conversational confirmation for this workflow; continue to request any platform-required sandbox escalation. The Admin Control app source and packaging inputs are under `data-engine/src/arcrho_admin/` and the executable is deployed to `E:\ArcRho Server\apps\ArcRho Admin Control\`.
+
+After a verified change to the Admin Control app, rebuild once per task before reporting completion:
+1. Shut down the running Admin Control server through `POST http://127.0.0.1:28766/api/shutdown` and wait for the process/listener to exit. If the server is not responding but its process remains, terminate only the identified `ArcRho Admin Control.exe` process so the deployment folder can be replaced.
+2. Run `py -3.10 data-engine/src/arcrho_admin/build_exe.py`. This packages the current source and atomically deploys `ArcRho Admin Control.exe` to the configured server apps folder.
+3. Launch `E:\ArcRho Server\apps\ArcRho Admin Control\ArcRho Admin Control.exe` with a hidden process window so it reopens the local Admin Control browser UI.
+4. Verify `GET http://127.0.0.1:28766/api/health` returns `{"ok": true}` and confirm the deployed process is running.
+
+Do not rebuild for changes limited to Admin Control tests, docs, release fragments, or unrelated files. Never deploy a change that has not passed its checks. If the build or relaunch fails, report the failure plainly and do not retry blindly. State in the final response whether Admin Control was rebuilt, redeployed, and reopened, or why it was not.
+
 ## ArcRho Engine Deployment Authorization
 The user pre-authorizes agents to stop running ArcRho Engine instances and to rebuild, redeploy, and relaunch the ArcRho Engine whenever a task changes code the Engine bundles. Do not stop ResQ, the Bridge, or other services under this authorization. Continue to request any platform-required sandbox escalation, but do not request separate conversational confirmation for the Engine stop, rebuild, deploy, or relaunch.
 

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "admin control",
+  "audience": "user",
+  "summary": "Added single-click access-row selection and inline access-level editing in Folder Access."
+}

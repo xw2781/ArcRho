@@ -540,6 +540,28 @@ def _decode_console_output(raw):
     return raw.decode("utf-8", errors="replace")
 
 
+def _user_profile_directories():
+    system_drive = os.environ.get("SystemDrive") or "C:"
+    profile_root = Path(system_drive if system_drive.endswith("\\") else f"{system_drive}\\") / "Users"
+    names = [entry.name for entry in profile_root.iterdir() if entry.is_dir()]
+    return sorted(names, key=str.casefold)
+
+
+def folder_access_principals():
+    try:
+        names = _user_profile_directories()
+    except OSError as exc:
+        return {"options": [], "warnings": [str(exc)]}
+    domain = str(os.environ.get("USERDOMAIN") or "PRCINS").strip() or "PRCINS"
+    return {
+        "options": [
+            {"value": f"{domain}\\{name}", "label": f"{domain}\\{name}"}
+            for name in names
+        ],
+        "warnings": [],
+    }
+
+
 def run_icacls(args):
     result = subprocess.run(
         ["icacls.exe", *args],
@@ -667,6 +689,8 @@ class AdminHandler(BaseHTTPRequestHandler):
             except OSError as exc:
                 log_event(f"folder access report failed\n{traceback.format_exc()}")
                 self.send_error(500, str(exc))
+        elif parsed.path == "/api/folder-access/principals":
+            self.send_json({"ok": True, **folder_access_principals()})
         elif parsed.path == "/api/instances":
             self.send_json(
                 {

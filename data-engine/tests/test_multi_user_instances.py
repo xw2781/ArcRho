@@ -212,6 +212,25 @@ class AdminFolderAccessTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.admin_main.validate_principal(bad)
 
+    def test_folder_access_principals_use_profile_names_with_domain_prefix(self):
+        with patch.object(
+            self.admin_main,
+            "_user_profile_directories",
+            return_value=["Alice", "Public"],
+        ), patch.dict(os.environ, {"USERDOMAIN": "PRCINS"}, clear=False):
+            result = self.admin_main.folder_access_principals()
+
+        self.assertEqual(
+            result,
+            {
+                "options": [
+                    {"value": r"PRCINS\Alice", "label": r"PRCINS\Alice"},
+                    {"value": r"PRCINS\Public", "label": r"PRCINS\Public"},
+                ],
+                "warnings": [],
+            },
+        )
+
     def test_resolve_access_folder_stays_inside_the_server_root(self):
         with tempfile.TemporaryDirectory(dir=str(TEST_TMP_ROOT)) as temp_root:
             root = Path(temp_root)

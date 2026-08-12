@@ -126,6 +126,7 @@
 
     input[type="text"], input[type="number"], select {
       width: 210px;
+      height: 34px;
       box-sizing: border-box;
       border: 1px solid #cdd7e4;
       border-radius: 6px;
@@ -136,8 +137,46 @@
       background: #ffffff;
     }
 
+    select {
+      appearance: none;
+      padding-right: 30px;
+      background-image:
+        linear-gradient(45deg, transparent 50%, #64748b 50%),
+        linear-gradient(135deg, #64748b 50%, transparent 50%);
+      background-position:
+        calc(100% - 14px) 50%,
+        calc(100% - 9px) 50%;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+      cursor: pointer;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #80aaf7;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+    }
+
+    input[type="text"]:hover,
+    input[type="number"]:hover,
+    select:hover {
+      border-color: #a9bdd8;
+    }
+
+    option {
+      color: #152238;
+      background: #ffffff;
+    }
+
     input.root {
       width: 100%;
+    }
+
+    #maxWorkers,
+    #maxBridgeInstances {
+      width: 60px;
     }
 
     .root-row {
@@ -176,7 +215,7 @@
 
     .toolbar select {
       width: 130px;
-      padding: 6px 8px;
+      padding: 6px 30px 6px 8px;
     }
 
     button {
@@ -324,10 +363,10 @@
     }
 
     .access-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-end;
-      gap: 12px;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(300px, 1.25fr) auto;
+      align-items: start;
+      gap: 14px;
       margin-bottom: 12px;
     }
 
@@ -335,6 +374,7 @@
       display: flex;
       flex-direction: column;
       gap: 5px;
+      min-width: 0;
     }
 
     .access-toolbar .control label {
@@ -345,19 +385,124 @@
     .access-toolbar .actions {
       display: flex;
       gap: 8px;
-      margin-left: auto;
+      align-self: end;
+      padding-bottom: 1px;
     }
 
-    #accessPrincipal {
-      width: 260px;
+    .access-toolbar select,
+    .access-toolbar input[type="text"] {
+      width: 100%;
     }
 
-    #accessFolder {
-      width: 260px;
+    .principal-combobox {
+      position: relative;
+      z-index: 20;
+      width: 100%;
+    }
+
+    .principal-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      box-sizing: border-box;
+      max-height: 240px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding: 4px 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #ffffff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    }
+
+    .principal-menu[hidden] {
+      display: none;
+    }
+
+    .principal-option {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 8px 10px;
+      overflow: hidden;
+      color: #152238;
+      font-size: 13px;
+      line-height: 18px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+
+    .principal-option:hover,
+    .principal-option:focus {
+      outline: none;
+      background: #eef4ff;
+      color: #1d4ed8;
+    }
+
+    .principal-empty {
+      padding: 8px 10px;
+      color: #69778c;
+      font-size: 12px;
+    }
+
+    .access-toolbar select {
+      min-width: 0;
+    }
+
+    @media (max-width: 1100px) {
+      .access-toolbar {
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+      }
+
+      .access-toolbar .actions {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+      }
     }
 
     .access-table {
       min-width: 0;
+    }
+
+    .access-row {
+      cursor: pointer;
+      transition: background 150ms ease;
+    }
+
+    .access-row:hover td {
+      background: #f7faff;
+    }
+
+    .access-row td:first-child {
+      border-left: 3px solid transparent;
+    }
+
+    .access-row-selected td {
+      background: #eef4ff;
+    }
+
+    .access-row-selected td:first-child {
+      border-left-color: #2b6df6;
+    }
+
+    .rights-editor {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .inline-access-select {
+      width: 132px;
+      flex: 0 0 132px;
+    }
+
+    .rights-code {
+      color: #69778c;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 11px;
+      white-space: nowrap;
     }
 
     .yes-mark {
@@ -524,22 +669,13 @@
           </div>
           <div class="control">
             <label for="accessPrincipal">User or group</label>
-            <input id="accessPrincipal" type="text" list="accessPrincipalPresets" placeholder="e.g. Users or DOMAIN\name">
-            <datalist id="accessPrincipalPresets">
-              <option value="Users"></option>
-              <option value="Authenticated Users"></option>
-            </datalist>
-          </div>
-          <div class="control">
-            <label for="accessLevel">Access</label>
-            <select id="accessLevel">
-              <option value="modify" selected>Modify (read, write, delete)</option>
-              <option value="full">Full control</option>
-              <option value="read">Read only</option>
-            </select>
+            <div class="principal-combobox">
+              <input id="accessPrincipal" type="text" placeholder="PRCINS\name" role="combobox" aria-autocomplete="list" aria-controls="accessPrincipalMenu" aria-expanded="false" autocomplete="off">
+              <div id="accessPrincipalMenu" class="principal-menu" role="listbox" hidden></div>
+            </div>
           </div>
           <div class="actions">
-            <button class="primary" id="grantAccess">Grant</button>
+            <button class="primary" id="grantAccess">Grant Modify</button>
             <button class="danger" id="revokeAccess">Revoke</button>
             <button id="refreshAccess">Refresh</button>
           </div>
@@ -549,7 +685,7 @@
           <thead>
             <tr>
               <th>User / Group</th>
-              <th>Rights</th>
+              <th>Access</th>
               <th>Inherited</th>
               <th>Can Modify/Delete</th>
             </tr>
@@ -851,10 +987,52 @@
 
     const accessFolder = document.getElementById("accessFolder");
     const accessPrincipal = document.getElementById("accessPrincipal");
-    const accessLevel = document.getElementById("accessLevel");
+    const accessPrincipalMenu = document.getElementById("accessPrincipalMenu");
+    const accessPrincipalValues = [];
     const accessBody = document.getElementById("accessBody");
     const accessPath = document.getElementById("accessPath");
     const accessOutput = document.getElementById("accessOutput");
+    const DEFAULT_ACCESS_LEVEL = "modify";
+    let selectedAccessPrincipal = "";
+
+    function accessLevelForEntry(entry) {
+      const tokens = String(entry.rights || "").split(/[(),]+/).filter(Boolean);
+      if (tokens.includes("F")) return "full";
+      if (tokens.includes("M") || tokens.includes("W")) return "modify";
+      if (tokens.includes("RX") || tokens.includes("R")) return "read";
+      return DEFAULT_ACCESS_LEVEL;
+    }
+
+    function createInlineAccessSelect(entry) {
+      const select = document.createElement("select");
+      select.className = "inline-access-select";
+      select.setAttribute("aria-label", `Access for ${entry.principal}`);
+      for (const optionData of [
+        ["modify", "Modify"],
+        ["full", "Full control"],
+        ["read", "Read only"],
+      ]) {
+        const option = document.createElement("option");
+        option.value = optionData[0];
+        option.textContent = optionData[1];
+        select.appendChild(option);
+      }
+      select.value = accessLevelForEntry(entry);
+      select.addEventListener("click", event => event.stopPropagation());
+      select.addEventListener("change", () => updateInlineAccess(entry, select));
+      return select;
+    }
+
+    function selectAccessRow(row, principal) {
+      for (const selectedRow of accessBody.querySelectorAll(".access-row-selected")) {
+        selectedRow.classList.remove("access-row-selected");
+        selectedRow.setAttribute("aria-selected", "false");
+      }
+      row.classList.add("access-row-selected");
+      row.setAttribute("aria-selected", "true");
+      selectedAccessPrincipal = principal;
+      accessPrincipal.value = principal;
+    }
 
     function renderAccessReport(report) {
       accessPath.textContent = report.path;
@@ -865,22 +1043,113 @@
       }
       for (const entry of report.entries) {
         const row = document.createElement("tr");
+        row.className = "access-row";
+        row.tabIndex = 0;
+        row.setAttribute("aria-selected", entry.principal === selectedAccessPrincipal ? "true" : "false");
+        if (entry.principal === selectedAccessPrincipal) row.classList.add("access-row-selected");
         row.innerHTML = `
           <td>${escapeHtml(entry.principal)}</td>
-          <td>${escapeHtml(entry.rights)}</td>
           <td>${entry.inherited ? "Yes" : "No"}</td>
           <td>${entry.modify || entry.delete
             ? '<span class="yes-mark">Yes</span>'
             : '<span class="no-mark">No</span>'}</td>
         `;
-        row.addEventListener("click", () => { accessPrincipal.value = entry.principal; });
+        const rightsCell = document.createElement("td");
+        rightsCell.className = "rights-cell";
+        const rightsEditor = document.createElement("div");
+        rightsEditor.className = "rights-editor";
+        rightsEditor.appendChild(createInlineAccessSelect(entry));
+        const rightsCode = document.createElement("span");
+        rightsCode.className = "rights-code";
+        rightsCode.textContent = entry.rights;
+        rightsEditor.appendChild(rightsCode);
+        rightsCell.appendChild(rightsEditor);
+        row.insertBefore(rightsCell, row.children[1]);
+        row.addEventListener("click", () => selectAccessRow(row, entry.principal));
+        row.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            selectAccessRow(row, entry.principal);
+          }
+        });
         accessBody.appendChild(row);
       }
     }
 
+    async function updateInlineAccess(entry, select) {
+      const previousAccess = accessLevelForEntry(entry);
+      selectAccessRow(select.closest(".access-row"), entry.principal);
+      select.disabled = true;
+      try {
+        const data = await api("/api/folder-access/grant", {
+          method: "POST",
+          body: JSON.stringify({
+            folder: accessFolder.value || "root",
+            principal: entry.principal,
+            access: select.value,
+          }),
+        });
+        renderAccessReport(data.report);
+        accessOutput.textContent = data.message || "";
+        setStatus("Access updated");
+      } catch (err) {
+        select.value = previousAccess;
+        accessOutput.textContent = String(err.message || err);
+        setStatus("Access update failed", true);
+      } finally {
+        select.disabled = false;
+      }
+    }
+
+    function renderAccessPrincipalOptions(data) {
+      accessPrincipalValues.length = 0;
+      for (const optionData of data.options || []) accessPrincipalValues.push(optionData.value);
+      renderAccessPrincipalMenu();
+    }
+
+    function renderAccessPrincipalMenu() {
+      const query = accessPrincipal.value.trim().toLowerCase();
+      const matches = accessPrincipalValues.filter(value => !query || value.toLowerCase().includes(query));
+      accessPrincipalMenu.innerHTML = "";
+      if (!matches.length) {
+        const empty = document.createElement("div");
+        empty.className = "principal-empty";
+        empty.textContent = "No matching users";
+        accessPrincipalMenu.appendChild(empty);
+        return;
+      }
+      for (const value of matches) {
+        const option = document.createElement("div");
+        option.className = "principal-option";
+        option.textContent = value;
+        option.tabIndex = -1;
+        option.setAttribute("role", "option");
+        option.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          accessPrincipal.value = value;
+          closeAccessPrincipalMenu();
+        });
+        accessPrincipalMenu.appendChild(option);
+      }
+    }
+
+    function openAccessPrincipalMenu() {
+      accessPrincipalMenu.hidden = false;
+      accessPrincipal.setAttribute("aria-expanded", "true");
+      renderAccessPrincipalMenu();
+    }
+
+    function closeAccessPrincipalMenu() {
+      accessPrincipalMenu.hidden = true;
+      accessPrincipal.setAttribute("aria-expanded", "false");
+    }
+
     async function loadFolderAccess() {
       try {
-        const data = await api(`/api/folder-access?folder=${encodeURIComponent(accessFolder.value || "root")}`);
+        const [data, principalData] = await Promise.all([
+          api(`/api/folder-access?folder=${encodeURIComponent(accessFolder.value || "root")}`),
+          api("/api/folder-access/principals"),
+        ]);
         if (!accessFolder.options.length) {
           for (const preset of data.presets) {
             const option = document.createElement("option");
@@ -889,6 +1158,7 @@
             accessFolder.appendChild(option);
           }
         }
+        renderAccessPrincipalOptions(principalData);
         renderAccessReport(data.report);
       } catch (err) {
         accessBody.innerHTML = `<tr><td class="empty" colspan="4">Failed to load folder permissions.</td></tr>`;
@@ -904,7 +1174,7 @@
       }
       const folderLabel = accessFolder.selectedOptions[0]?.textContent || accessFolder.value;
       const question = action === "grant"
-        ? `Grant ${accessLevel.selectedOptions[0].textContent} on "${folderLabel}" to ${principal}?`
+        ? `Grant Modify access on "${folderLabel}" to ${principal}?`
         : `Revoke access to "${folderLabel}" for ${principal}?`;
       if (!confirm(question)) return;
       try {
@@ -913,7 +1183,7 @@
           body: JSON.stringify({
             folder: accessFolder.value || "root",
             principal,
-            access: accessLevel.value,
+            access: DEFAULT_ACCESS_LEVEL,
           }),
         });
         renderAccessReport(data.report);
@@ -960,6 +1230,15 @@
       });
     }
     document.getElementById("openConfigFolder").addEventListener("click", () => api("/api/open-config-folder", {method: "POST"}));
+    accessPrincipal.addEventListener("focus", openAccessPrincipalMenu);
+    accessPrincipal.addEventListener("click", openAccessPrincipalMenu);
+    accessPrincipal.addEventListener("input", openAccessPrincipalMenu);
+    accessPrincipal.addEventListener("keydown", event => {
+      if (event.key === "Escape") closeAccessPrincipalMenu();
+    });
+    document.addEventListener("pointerdown", event => {
+      if (!event.target.closest(".principal-combobox")) closeAccessPrincipalMenu();
+    });
     accessFolder.addEventListener("change", loadFolderAccess);
     document.getElementById("refreshAccess").addEventListener("click", loadFolderAccess);
     document.getElementById("grantAccess").addEventListener("click", () => changeFolderAccess("grant"));
