@@ -32,15 +32,16 @@ BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-method-by-tab-v1"
 BS_SR_FILE_PREFIX = "BSSR@"
 BS_CRA_FILE_PREFIX = "BSCRA@"
 METHOD_TYPE_NAMES = {
-    METHOD_TYPE_NONE_CODE: "None",
-    METHOD_TYPE_DFM_CODE: "DFM",
-    METHOD_TYPE_BF_CODE: "Bornhuetter Ferguson",
-    METHOD_TYPE_CAPE_COD_CODE: "Cape Cod",
-    METHOD_TYPE_RESULT_SELECTION_CODE: "Result Selection",
+    0: "None",
+    1: "DFM",
+    2: "Bornhuetter Ferguson",
+    3: "Cape Cod",
+    4: "Result Selection",
     6: "Bootstrap",
     7: "Stochastic Consolidation",
-    METHOD_TYPE_BS_SR_CODE: BS_SR_METHOD_TYPE,
-    METHOD_TYPE_BS_CRA_CODE: BS_CRA_METHOD_TYPE,
+    8: BS_SR_METHOD_TYPE,
+    9: BS_CRA_METHOD_TYPE,
+    19: "GLM",
 }
 
 
