@@ -12,6 +12,7 @@ import {
   notifyDataTabDurableDatasetState,
 } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
+import { createArcRhoProgressPopup } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260813a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
 
 const DEFAULT_LOADING_POPUP_DELAY_MS = 300;
@@ -59,9 +60,11 @@ export function createDatasetRunController(deps) {
   let runInFlight = false;
   let queuedRunOptions = null;
   let datasetLoadSequence = 0;
-  let datasetLoadingPopupEl = null;
-  let datasetLoadingPopupTimer = null;
-  let datasetLoadingPopupStart = 0;
+  // Pages that suppress the popup never build one, so they do not pull the
+  // popup stylesheet into windows that will not show it.
+  const datasetLoadingPopup = suppressLoadingPopup
+    ? null
+    : createArcRhoProgressPopup({ title: "Loading Dataset" });
   const datasetContextFields = [
     "project",
     "path",
@@ -73,147 +76,16 @@ export function createDatasetRunController(deps) {
     "devLen",
   ];
 
-  function ensureDatasetLoadingPopupStyles(doc = document) {
-    if (doc.getElementById("arcrho-load-popup-style")) return;
-    const style = doc.createElement("style");
-    style.id = "arcrho-load-popup-style";
-    style.textContent = `
-      .arcrho-load-popup-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.18);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 100000;
-      }
-      .arcrho-load-popup-card {
-        min-width: 340px;
-        max-width: min(92vw, 680px);
-        border-radius: 10px;
-        border: 1px solid #c9d1dc;
-        background: #fff;
-        box-shadow: 0 20px 44px rgba(15, 23, 42, 0.22);
-        padding: 18px 20px 16px;
-        color: #0f172a;
-        font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-      }
-      .arcrho-load-popup-title {
-        font-size: 14px;
-        font-weight: 600;
-        margin-bottom: 8px;
-      }
-      .arcrho-load-popup-msg {
-        font-size: 13px;
-        line-height: 1.35;
-        white-space: normal;
-        word-break: break-word;
-        color: #334155;
-      }
-      .arcrho-load-popup-spinner {
-        width: 34px;
-        height: 34px;
-        margin: 11px auto 7px;
-        border-radius: 50%;
-        position: relative;
-      }
-      .arcrho-load-popup-spinner::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: 50%;
-        border: 2px solid rgba(120, 178, 224, 0.24);
-        box-shadow:
-          inset 0 0 10px rgba(116, 182, 235, 0.14),
-          0 0 0 1px rgba(134, 188, 229, 0.1);
-      }
-      .arcrho-load-popup-spinner::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: 50%;
-        background:
-          conic-gradient(
-            from 220deg,
-            rgba(86, 176, 236, 0) 0deg,
-            rgba(86, 176, 236, 0) 238deg,
-            rgba(134, 224, 255, 0.92) 308deg,
-            rgba(74, 144, 217, 0.98) 338deg,
-            rgba(74, 144, 217, 0) 360deg
-          );
-        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-        mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-        filter:
-          drop-shadow(0 0 6px rgba(95, 196, 255, 0.42))
-          drop-shadow(0 0 13px rgba(84, 161, 228, 0.24));
-        animation: arcrho-load-popup-sweep 1.05s linear infinite;
-        pointer-events: none;
-      }
-      @keyframes arcrho-load-popup-sweep {
-        to { transform: rotate(360deg); }
-      }
-      .arcrho-load-popup-elapsed {
-        margin-top: 10px;
-        font-size: 12px;
-        color: #64748b;
-      }
-    `;
-    (doc.head || doc.documentElement).appendChild(style);
-  }
-
   function isDatasetLoadingPopupVisible() {
-    return !!(datasetLoadingPopupEl && datasetLoadingPopupEl.isConnected);
+    return !!datasetLoadingPopup?.isVisible();
   }
 
   function showDatasetLoadingPopup(message = "") {
-    if (suppressLoadingPopup) return;
-    const doc = document;
-    ensureDatasetLoadingPopupStyles(doc);
-    const reuseExisting = isDatasetLoadingPopupVisible();
-    if (!reuseExisting) {
-      const overlay = doc.createElement("div");
-      overlay.className = "arcrho-load-popup-overlay";
-      overlay.innerHTML = `
-        <div class="arcrho-load-popup-card" role="alert" aria-live="polite">
-          <div class="arcrho-load-popup-title">Loading Dataset</div>
-          <div class="arcrho-load-popup-msg"></div>
-          <div class="arcrho-load-popup-spinner" aria-hidden="true"></div>
-          <div class="arcrho-load-popup-elapsed">Elapsed: 0.0s</div>
-        </div>
-      `;
-      doc.body.appendChild(overlay);
-      datasetLoadingPopupEl = overlay;
-    }
-    const msgEl = datasetLoadingPopupEl.querySelector(".arcrho-load-popup-msg");
-    if (msgEl) msgEl.textContent = String(message || "Loading...");
-
-    // A popup shown at window boot keeps its running elapsed counter when a
-    // later load step re-announces it; only a fresh popup restarts the clock.
-    if (reuseExisting && datasetLoadingPopupTimer) return;
-
-    datasetLoadingPopupStart = performance.now();
-    if (datasetLoadingPopupTimer) cancelAnimationFrame(datasetLoadingPopupTimer);
-    const elapsedEl = datasetLoadingPopupEl.querySelector(".arcrho-load-popup-elapsed");
-    const tick = () => {
-      if (!datasetLoadingPopupEl) return;
-      const sec = (performance.now() - datasetLoadingPopupStart) / 1000;
-      if (elapsedEl) elapsedEl.textContent = `Elapsed: ${sec.toFixed(1)}s`;
-      datasetLoadingPopupTimer = requestAnimationFrame(tick);
-    };
-    datasetLoadingPopupTimer = requestAnimationFrame(tick);
+    datasetLoadingPopup?.show(message || "Loading...");
   }
 
   function hideDatasetLoadingPopup() {
-    if (suppressLoadingPopup) return;
-    if (datasetLoadingPopupTimer) {
-      cancelAnimationFrame(datasetLoadingPopupTimer);
-      datasetLoadingPopupTimer = null;
-    }
-    if (!datasetLoadingPopupEl) return;
-    if (datasetLoadingPopupEl.parentNode) {
-      datasetLoadingPopupEl.parentNode.removeChild(datasetLoadingPopupEl);
-    }
-    datasetLoadingPopupEl = null;
+    datasetLoadingPopup?.hide();
   }
 
   function scheduleAutoRun(delayMs = 150) {

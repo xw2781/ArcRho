@@ -22,6 +22,7 @@ import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_fer
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -1455,7 +1456,15 @@ async function reloadPersistedBornhuetterFerguson(options = {}) {
   return true;
 }
 
+// The window blocks edits behind the shared saving animation for the whole
+// round trip: recalculation, method write, then dependent-propagation queueing.
+const bfSaveProgress = createArcRhoSaveProgress({ subject: BF_METHOD_TYPE });
+
 async function saveBornhuetterFerguson() {
+  return bfSaveProgress.run((progress) => runBornhuetterFergusonSave(progress));
+}
+
+async function runBornhuetterFergusonSave(progress) {
   const details = getDetails();
   if (!details.name || !details.outputType) {
     postStatus(`${BF_METHOD_TYPE} save requires Name and Output Type.`, "error");
@@ -1478,6 +1487,7 @@ async function saveBornhuetterFerguson() {
   bfObjectChangeWatch.pause();
   try {
     try {
+      progress.writing();
       result = await saveBornhuetterFergusonMethod({
         project_name: state.project,
         reserving_class: state.reservingClass,
@@ -1487,9 +1497,11 @@ async function saveBornhuetterFerguson() {
         expected_derived_revision: state.derivedRevision,
       });
     } catch (err) {
+      progress.finish();
       if (isEngineUnavailableSaveError(err)) {
         // The save was refused before anything was written; unsaved work stays
-        // in this window.
+        // in this window. The spinner is already gone, so the message box
+        // cannot open behind it.
         void showPageMessageBox({
           title: "ArcRho Engine Unavailable",
           message: String(err?.message || err),
@@ -1520,6 +1532,8 @@ async function saveBornhuetterFerguson() {
         } catch {}
       },
     });
+    // The save itself is done; drop the spinner before the review dialog.
+    progress.finish();
     await showMethodSaveReviewWarning(result, {
       instanceId: inst,
       projectName: state.project,

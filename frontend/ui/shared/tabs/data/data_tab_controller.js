@@ -40,7 +40,7 @@ import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_i
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
-import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260807b";
+import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260813a";
 import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
 import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260811c";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";

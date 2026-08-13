@@ -44,6 +44,7 @@ import {
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -1686,7 +1687,17 @@ export function cancelDfmMethodAsyncTasks() {
   cancelDfmExcelFreshnessCheck();
 }
 
+// A DFM save is a multi-step round trip -- final recalculation, method write,
+// then dependent-propagation queueing -- so the window blocks edits behind the
+// shared saving animation until it settles. Overlapping saves (save bar plus
+// an Excel bridge save) share one popup through its scope counter.
+const dfmSaveProgress = createArcRhoSaveProgress({ subject: "DFM Method" });
+
 export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
+  return dfmSaveProgress.run((progress) => runDfmMethodSave(forceSaveAs, options, progress));
+}
+
+async function runDfmMethodSave(forceSaveAs, options, progress) {
   const preview = await flushDfmMethodPreview();
   if (preview?.ok === false && !preview?.skipped) return preview;
 
@@ -1713,6 +1724,7 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
   dfmObjectChangeWatch.pause();
   try {
     postDfmStatus("Saving DFM method...");
+    progress.writing();
     const response = await saveDfmMethod({
       project_name: identity.project_name,
       reserving_class: identity.reserving_class,
@@ -1752,6 +1764,8 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
       onComplete: () => requestProjectInstanceDatasetTableRefresh(),
     });
     scheduleDfmExcelFreshnessCheck(canonicalMethod);
+    // The save itself is done; drop the spinner before any follow-up dialog.
+    progress.finish();
     if (options.showReviewWarning !== false) {
       await showMethodSaveReviewWarning(response, {
         instanceId: getDfmInst(),
@@ -1761,6 +1775,7 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
     }
     return { ok: true, method: canonicalMethod, sidecar: response?.sidecar };
   } catch (error) {
+    progress.finish();
     const message = String(error?.message || error || "DFM save failed.");
     if (isEngineUnavailableSaveError(error)) {
       // The save was refused before anything was written; unsaved work stays

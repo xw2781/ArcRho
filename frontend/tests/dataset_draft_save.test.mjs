@@ -16,6 +16,10 @@ const propagationReportUrl = await inlineModule("../ui/shared/tabs/data/data_tab
 const temporaryFormatUrl = await inlineModule("../ui/shared/tabs/data/data_tab_temporary_format.js");
 const dirtyStateUrl = await inlineModule("../ui/shared/tabs/data/data_tab_dirty_state.js");
 const messageBoxUrl = dataUrl("export async function showPageMessageBox(){ return undefined; }");
+// The saving animation needs a document; this headless install runs it inert.
+const saveProgressUrl = dataUrl(
+  "export function createArcRhoSaveProgress(){ return { run: (work) => work({ writing(){}, finish(){} }), isVisible: () => false }; }",
+);
 
 let persistenceSource = await readFile(
   new URL("../ui/shared/tabs/data/data_tab_persistence_controller.js", import.meta.url),
@@ -26,7 +30,8 @@ persistenceSource = persistenceSource
   .replace(/"\/ui\/shared\/tabs\/data\/data_tab_propagation_report\.js[^"]*"/, JSON.stringify(propagationReportUrl))
   .replace(/"\/ui\/shared\/tabs\/data\/data_tab_temporary_format\.js[^"]*"/, JSON.stringify(temporaryFormatUrl))
   .replace(/"\/ui\/shared\/tabs\/data\/data_tab_dirty_state\.js[^"]*"/, JSON.stringify(dirtyStateUrl))
-  .replace(/"\/ui\/shared\/components\/message_box\/message_box\.js[^"]*"/, JSON.stringify(messageBoxUrl));
+  .replace(/"\/ui\/shared\/components\/message_box\/message_box\.js[^"]*"/, JSON.stringify(messageBoxUrl))
+  .replace(/"\/ui\/shared\/components\/progress_popup\/save_progress\.js[^"]*"/, JSON.stringify(saveProgressUrl));
 const { registerDataTabPersistenceController } = await import(dataUrl(persistenceSource));
 
 const PROJECT = "NJ_Annual_Prod_202605_Fake";

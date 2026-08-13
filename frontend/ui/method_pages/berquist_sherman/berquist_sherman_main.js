@@ -18,6 +18,7 @@ import {
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
 import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
@@ -2209,7 +2210,16 @@ function blockSaveForActiveSourcePreviews() {
   return true;
 }
 
+// The window blocks edits behind the shared saving animation for the whole
+// round trip: source refresh, method and CSV writes, then the sidecar write
+// that queues dependent updates.
+const bsSaveProgress = createArcRhoSaveProgress({ subject: contract.displayLabel });
+
 async function saveMethod() {
+  return bsSaveProgress.run((progress) => runBerquistShermanSave(progress));
+}
+
+async function runBerquistShermanSave(progress) {
   const details = getDetails();
   if (!details.name || !details.outputType) {
     postStatus(`${contract.displayLabel} save requires Name and Output Type.`, "error");
@@ -2234,6 +2244,7 @@ async function saveMethod() {
     return { ok: false };
   }
   const methodPath = await getMethodPath();
+  progress.writing();
   const jsonResult = await hostApi.saveJsonFile({
     path: methodPath,
     suggestedName: getMethodFilename(),
@@ -2264,6 +2275,8 @@ async function saveMethod() {
     }, "*");
   } catch {}
   postStatus(`${contract.displayLabel} saved: ${details.name}`);
+  // The save itself is done; drop the spinner before the review dialog.
+  progress.finish();
   await showMethodSaveReviewWarning(sidecar, {
     instanceId: inst,
     projectName: state.project,

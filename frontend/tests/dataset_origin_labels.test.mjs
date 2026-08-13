@@ -51,6 +51,10 @@ const testableRunControllerSource = runControllerSource
     "const showPageMessageBox = () => Promise.resolve();",
   )
   .replace(
+    /import \{ createArcRhoProgressPopup \} from "\/ui\/shared\/components\/progress_popup\/progress_popup\.js\?v=[0-9a-z]+";/,
+    "const createArcRhoProgressPopup = () => ({ show: () => {}, hide: () => {}, isVisible: () => false });",
+  )
+  .replace(
     /import \{ trackSavePropagation \} from "\/ui\/shared\/services\/dependent_propagation_job\.js\?v=[0-9a-z]+";/,
     "const trackSavePropagation = () => Promise.resolve(null);",
   )
@@ -983,5 +987,17 @@ test("the loading popup is reserved for rebuilds and slow cache-miss loads", () 
   assert.match(runControllerSource, /let loadingPopupVisible = isDatasetLoadingPopupVisible\(\);/u);
   assert.match(runControllerSource, /if \(clearCache \|\| loadingPopupVisible\) \{/u);
   assert.match(runControllerSource, /scheduleDelayedLoadingPopup\(\);/u);
-  assert.match(runControllerSource, /if \(reuseExisting && datasetLoadingPopupTimer\) return;/u);
+});
+
+test("the shared progress popup keeps one running clock while work is re-announced", async () => {
+  const progressPopupSource = await readFile(
+    new URL("../ui/shared/components/progress_popup/progress_popup.js", import.meta.url),
+    "utf8",
+  );
+  // A popup shown at window boot is adopted by the next step instead of
+  // restarting its elapsed counter.
+  assert.match(progressPopupSource, /if \(reuseExisting && elapsedFrame\) return;/u);
+  // The dataset run controller owns no popup markup or styles of its own.
+  assert.match(runControllerSource, /createArcRhoProgressPopup\(\{ title: "Loading Dataset" \}\)/u);
+  assert.doesNotMatch(runControllerSource, /arcrho-load-popup/u);
 });

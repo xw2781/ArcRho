@@ -133,7 +133,10 @@ test("a dependency update queued during save survives the save response", async 
       reapplyActiveDependencyPreviews: () => { previewReapplyCount += 1; },
       schedulePersistedValuesRefresh: () => { scheduleCount += 1; },
       resumePersistedValuesRefresh: () => { resumeCount += 1; },
+      trackSavePropagation: async () => null,
+      showMethodSaveReviewWarning: async () => {},
       postStatus: () => {},
+      inst: "rs_test",
     });
 
     const savePromise = api.saveResultSelection();

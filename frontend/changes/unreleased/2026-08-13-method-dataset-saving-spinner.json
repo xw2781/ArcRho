@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "methods, dataset",
+  "audience": "user",
+  "summary": "Every method window and the Dataset window now show the same saving animation while a save is running.",
+  "details": [
+    "Result Selection, Bornhuetter Ferguson, Cape Cod, Berquist Sherman, and Dataset saves join DFM behind one centered spinner card that names the object being saved, reports the current step, and shows elapsed time.",
+    "The animation covers every save entry point in each window, including the Save bar, keyboard save, and saves a sync dialog runs first.",
+    "It clears before the post-save review dialog, the dataset recalculation dialog, or any save error message so no dialog opens behind it."
+  ]
+}

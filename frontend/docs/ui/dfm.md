@@ -174,6 +174,7 @@ Detected `arcrho:*` message types in key JS files:
 - Existence checks run on committed input changes (`change`/selection/blur`) rather than every typing keystroke.
 - DFM responds to shell `arcrho:assistant-context-request` messages with the active DFM tab, Details field values, dirty state, standard method JSON path, and current in-memory method payload so ArcBot can analyze the active method even when host-side direct reads from the server share are denied. After an ArcBot JSON edit is applied by the host, DFM receives `arcrho:assistant-json-updated` and schedules a local method reload.
 - DFM watches the active local method JSON file for external disk changes. When the page is clean, a changed JSON file is reloaded into the active GUI automatically; changed Ratios exclusion cells and Average Formula selection cells briefly flash blue so API/ArcBot edits are easy to inspect. When the page is dirty, DFM does not overwrite in-memory edits and posts a warning so the user can save or reload deliberately.
+- A DFM save runs behind the shared saving animation described in [`dataset.md`](dataset.md), titled `Saving DFM Method`, so the page cannot be edited while the save settles. `saveRatioSelectionPattern` wraps the save in it, so it covers every save entry point: the Save bar, the shell `arcrho:dfm-save` and `arcrho:dfm-save-as` messages, and Excel bridge saves. The spinner is dismissed before the post-save review warning and at the start of the save error path so no dialog opens behind it.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

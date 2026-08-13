@@ -20,6 +20,7 @@ import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selec
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -240,6 +241,12 @@ wireSamePropagationScopePause({
   getReservingClass: () => state.reservingClass,
 });
 
+// A Result Selection save is a multi-step round trip -- origin-label refresh,
+// method write, then dependent-propagation queueing -- so the window blocks
+// edits behind the shared saving animation until it settles. Overlapping saves
+// (save bar plus a Sync dialog save) share one popup through its scope counter.
+const rsSaveProgress = createArcRhoSaveProgress({ subject: "Result Selection" });
+
 const ctx = {
   fetchProjectDatasetTypeItems,
   ensureDatasetOriginLabels,
@@ -261,6 +268,7 @@ const ctx = {
   isEngineUnavailableSaveError,
   trackSavePropagation,
   rsObjectChangeWatch,
+  rsSaveProgress,
   startResultSelectionRpcBridgeSync,
   readProjectInstanceDatasetSnapshot,
   resultSelectionUpdateContexts,

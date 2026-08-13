@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The DFM window now shows a saving animation with a spinner while a save is running.",
+  "details": [
+    "Saving blocks page edits behind a centered spinner card that reports the current step and elapsed time.",
+    "The animation covers every save entry point, including the Save bar, keyboard save, Save As, and Excel bridge saves.",
+    "It clears before the post-save review dialog or any save error message so no dialog opens behind it."
+  ]
+}

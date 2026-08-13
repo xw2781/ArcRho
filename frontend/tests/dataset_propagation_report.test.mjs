@@ -116,7 +116,7 @@ test("dataset dependency previews clear only after the awaited save response", a
     new URL("../ui/shared/tabs/data/data_tab_persistence_controller.js", import.meta.url),
     "utf8",
   );
-  const start = source.indexOf("async function saveDatasetSidecarForCurrentContext()");
+  const start = source.indexOf("async function saveDatasetSidecarForCurrentContext(");
   const end = source.indexOf("async function saveDatasetChanges", start);
   const saveFlow = source.slice(start, end);
 

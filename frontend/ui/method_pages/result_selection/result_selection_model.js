@@ -7,6 +7,10 @@
       // (tests, embedded hosts) run with an inert stand-in.
       const rsWatch = ctx.rsObjectChangeWatch
         || { ensure() {}, pause() {}, resume() {}, stop() {} };
+      // The saving animation is host-provided for the same reason; installs
+      // without a document run with an inert stand-in.
+      const saveProgress = ctx.rsSaveProgress
+        || { run: (work) => work({ writing() {}, finish() {} }) };
       function buildPayload() {
         const details = getDetails();
         return buildResultSelectionMethodPayload({
@@ -225,6 +229,10 @@
       }
 
       async function saveResultSelection() {
+        return saveProgress.run((progress) => runResultSelectionSave(progress));
+      }
+
+      async function runResultSelectionSave(progress) {
         const details = getDetails();
         if (!details.name || !details.outputType) {
           postStatus("Result Selection save requires Name and Output Type.", "error");
@@ -236,6 +244,7 @@
           await refreshOriginLabels({ render: false });
           assertPersistedMutationReady(mutation);
           const method = buildPayload();
+          progress.writing();
           const resp = await fetch("/result-selection/save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -252,7 +261,9 @@
             const message = String(payload?.detail || payload?.error || `Result Selection save failed (${resp.status}).`);
             if (isEngineUnavailableSaveError({ status: resp.status, message })) {
               // The save was refused before anything was written; unsaved
-              // work stays in this window.
+              // work stays in this window. Drop the spinner first so the
+              // message box cannot open behind it.
+              progress.finish();
               void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
             }
             throw new Error(message);
@@ -283,6 +294,8 @@
             postStatus(`Result Selection saved: ${details.name}${aggregateCount ? ` (+${aggregateCount} aggregated)` : ""}`);
           }
           trackPersistedPropagation(payload);
+          // The save itself is done; drop the spinner before the review dialog.
+          progress.finish();
           await showMethodSaveReviewWarning(payload, {
             instanceId: inst,
             projectName: state.project,

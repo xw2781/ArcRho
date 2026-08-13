@@ -4,6 +4,7 @@ import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagatio
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260809a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260811a";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
   if (typeof state.showSubtotal !== "boolean") state.showSubtotal = true;
@@ -559,7 +560,11 @@ export function registerDataTabPersistenceController(runtime) {
     return true;
   }
 
-  async function saveDatasetSidecarForCurrentContext() {
+  // The saving animation is created per controller instance so the Dataset
+  // window and a method page hosting this Data tab keep separate popups.
+  const datasetSaveProgress = createArcRhoSaveProgress({ subject: "Dataset", noun: "dataset" });
+
+  async function saveDatasetSidecarForCurrentContext(progress = null) {
     if (isTemporaryDatasetView) {
       return { ok: false, error: "Temporary view does not save permanent dataset sidecars." };
     }
@@ -583,6 +588,7 @@ export function registerDataTabPersistenceController(runtime) {
       return { ok: false, error: "Project, Reserving Class, and Dataset Type are required." };
     }
     const settings = getCurrentDatasetSettings();
+    progress?.writing();
     const resp = await withDataTabDatasetMutation({ source: "sidecar-save" }, () => saveDatasetSidecar({
       ...context,
       ...settings,
@@ -634,6 +640,8 @@ export function registerDataTabPersistenceController(runtime) {
     datasetSettingsDirty = false;
     updateDatasetSaveUi();
     clearDatasetDependencyPreview("save");
+    // The write is done; drop the spinner before the recalculation dialog.
+    progress?.finish();
     handleCalculationUpdates(resp.data?.calculated_updates, "Dataset settings save");
     notifyDataTabDurableDatasetState({ source: "sidecar-save" });
     return { ok: true, data: resp.data };
@@ -643,6 +651,10 @@ export function registerDataTabPersistenceController(runtime) {
       return { ok: false, error: "Temporary view is read-only and cannot save permanent dataset changes." };
     }
     if (runtime.datasetSaveInFlight) return { ok: false, error: "Save already in progress." };
+    return datasetSaveProgress.run((progress) => runDatasetSave(options, progress));
+  }
+
+  async function runDatasetSave(options, progress) {
     runtime.datasetExternalLinks.abort();
     runtime.datasetSaveInFlight = true;
     updateDatasetSaveUi();
@@ -650,7 +662,7 @@ export function registerDataTabPersistenceController(runtime) {
     let saveStatus = buildDatasetSaveStatus();
     try {
       if (datasetSettingsDirty || hasManualInputGridChanges() || runtime.datasetExternalLinks.isDirty() || notesDirty || isUnsavedProjectInstanceDraft()) {
-        const sidecarResult = await saveDatasetSidecarForCurrentContext();
+        const sidecarResult = await saveDatasetSidecarForCurrentContext(progress);
         if (!sidecarResult.ok) return sidecarResult;
         saveStatus = buildDatasetSaveStatus(sidecarResult.data);
       }
