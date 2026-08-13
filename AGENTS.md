@@ -7,6 +7,7 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 - `python-api/`: Python API, ResQ migration scripts, migration references, and macro source files.
 - `data-engine/`: ArcRho data-engine component.
 - `tools/`: repository-level automation, including commit/push helpers for agents.
+- `agent-memory/`: tracked Claude Code project memories; see [Agent Memory](#agent-memory).
 
 ## Project Terms and Abbreviations
 - **DSV (Dataset Viewer):** the frontend workspace for viewing and editing datasets under `frontend/ui/dataset_viewer`.
@@ -21,6 +22,13 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 
 ## Mandatory Read Before Editing
 Before changing files under `frontend/`, read `frontend/FRONTEND_AGENT_GUIDELINES.md`.
+
+## Agent Memory
+Claude Code project memories are tracked in this repository under `agent-memory/`, with `agent-memory/MEMORY.md` as the index. They are reviewed and committed to `main` like any other documentation, so a hard-won debugging technique survives a machine rebuild and reaches every clone.
+
+The agent harness derives its memory directory from the repository's absolute path (`%USERPROFILE%\.claude\projects\<slug>\memory`) and offers no setting to move it. Run `tools/link_agent_memory.ps1` once per machine and per clone path to make that directory a junction pointing at `agent-memory/`; memory writes then land in the working tree. The script is idempotent, needs no elevation, and refuses to replace a non-empty real memory directory without `-Force`. Restart Claude Code afterwards so the index is loaded at session start.
+
+Because these notes are now shared across machines, a memory that depends on one workstation's layout — installed interpreters, drive letters, a bundled `node-portable`, a count of tests already failing at HEAD — must say so in its own text instead of being written as a universal fact.
 
 ## Agent Project Data Access (MUST)
 Agents may view on-disk metadata JSON files under `E:\ArcRho Server\projects` only for project `NJ_Annual_Prod_202605_Fake` by default.
