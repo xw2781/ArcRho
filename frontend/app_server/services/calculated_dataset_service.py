@@ -28,6 +28,7 @@ from app_server.services import (
     dataset_types_service,
     file_read_cache,
     runtime_cache_provenance_service,
+    user_identity_service,
 )
 
 _METHOD_DEPENDENT_READ_EXECUTOR = ThreadPoolExecutor(
@@ -52,6 +53,9 @@ def _now_utc_iso() -> str:
 
 
 def _current_user_name() -> str:
+    display_name = user_identity_service.get_current_display_name()
+    if display_name:
+        return display_name
     for value in (os.environ.get("USERNAME"), os.environ.get("USER")):
         text = _clean_text(value)
         if text:

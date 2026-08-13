@@ -36,6 +36,7 @@ from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    user_identity_service,
 )
 
 
@@ -774,7 +775,7 @@ def _build_sidecar(
     _method_name, output_dataset = _identity(payload)
     origin_length = int(details.get("origin length") or 12)
     now = _now()
-    user_name = getpass.getuser()
+    user_name = user_identity_service.get_current_display_name() or getpass.getuser()
     output_files = _output_files(project_name, reserving_class, payload)
     primary = min(
         output_files,

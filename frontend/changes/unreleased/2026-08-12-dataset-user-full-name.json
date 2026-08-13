@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Saving a dataset or method now records the configured full name instead of the Windows login name.",
+  "details": [
+    "The name comes from the workspace-global config/username_index.json and is resolved once per app session.",
+    "An unmapped login keeps its login name, and existing rows keep their stored name until they are saved again."
+  ]
+}

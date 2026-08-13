@@ -9,12 +9,18 @@ from typing import Any, Dict, List, Optional
 
 from arcrho_api.io import persisted_json_text
 from app_server import config
+from app_server.services import user_identity_service
 
 
 def _resolve_audit_user_name(explicit_user_name: Optional[str] = None) -> str:
     explicit = str(explicit_user_name or "").strip()
     if explicit:
-        return explicit
+        # Callers pass either a login or an already-resolved display name; the
+        # mapping leaves an unmapped value unchanged, so this is idempotent.
+        return user_identity_service.resolve_display_name(explicit)
+    display_name = user_identity_service.get_current_display_name()
+    if display_name:
+        return display_name
     env_user = str(os.environ.get("USERNAME") or os.environ.get("USER") or "").strip()
     if env_user:
         return env_user

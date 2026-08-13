@@ -29,6 +29,7 @@ from app_server.services import (
     dataset_instance_index_service,
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    user_identity_service,
 )
 
 
@@ -378,6 +379,14 @@ DATASET_AUDIT_LOG_MAX_ENTRIES = 50
 
 
 def _current_user_name() -> str:
+    """Display name stamped onto dataset metadata and audit entries.
+
+    Sidecars carry the configured full name, not the Windows login, so the
+    dataset table reads the same identity ResQ-imported rows already show.
+    """
+    display_name = user_identity_service.get_current_display_name()
+    if display_name:
+        return display_name
     for value in (os.environ.get("USERNAME"), os.environ.get("USER")):
         text = str(value or "").strip()
         if text:

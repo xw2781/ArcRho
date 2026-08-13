@@ -32,6 +32,7 @@ from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    user_identity_service,
 )
 
 
@@ -557,7 +558,7 @@ def _build_sidecar(
         dependents=canonical_existing.get("Dependents"),
         notes=notes,
         timestamp=_now(),
-        user=getpass.getuser(),
+        user=user_identity_service.get_current_display_name() or getpass.getuser(),
         output_changed=bool(output_changed or not automatic),
         append_audit=bool(not automatic or output_changed),
         audit_action=(

@@ -21,6 +21,19 @@ Issues moved out of [knowun_issues.md](knowun_issues.md) once fixed, newest firs
 
 # PI
 
+### 2026-08-12 - Saving a dataset showed the login name instead of the mapped full name
+
+**Reported:** After saving a dataset, the user name shown in the dataset table still shows the login name, but the full name mapped in `E:\ArcRho Server\config\username_index.json` was expected.
+
+**Cause:** `username_index.json` was read in exactly one place, `resolve_display_name` in [user_identity_service.py](../frontend/app_server/services/user_identity_service.py), whose only caller was `get_current_identity` behind the Home-screen identity route. No dataset writer used it. Every save path stamped the raw Windows login instead: `_current_user_name` in [dataset_service.py](../frontend/app_server/services/dataset_service.py) and [calculated_dataset_service.py](../frontend/app_server/services/calculated_dataset_service.py) read `USERNAME`, while [result_selection_service.py](../frontend/app_server/services/result_selection_service.py), [dfm_service.py](../frontend/app_server/services/dfm_service.py), [bornhuetter_ferguson_service.py](../frontend/app_server/services/bornhuetter_ferguson_service.py), [cape_cod_service.py](../frontend/app_server/services/cape_cod_service.py), [bootstrap_service.py](../frontend/app_server/services/bootstrap_service.py), [arcrho_runtime_service.py](../frontend/app_server/services/arcrho_runtime_service.py), and [audit_service.py](../frontend/app_server/services/audit_service.py) called `getpass.getuser()` directly. The reserving-class index is pass-through by contract, so the table could only show what the sidecar already held. Rows that still read `Wei, Xiao` were untouched ResQ imports, which copy ResQ's own `User` attribute; every row re-saved in ArcRho reverted to `xwei`.
+
+**Fix:**
+- `user_identity_service` gained `get_current_display_name()` plus a process-lifetime cache of both the parsed index and the current account's resolved name, keyed by index path, with `clear_display_name_cache()` for tests. Resolving a name during a save now costs no file I/O after the first call.
+- All nine writers listed above stamp `user`, `modified_by`, and audit records through that helper, falling back to the raw login when the account is unmapped. `_resolve_audit_user_name` also maps an explicitly passed login, which is idempotent for a value that is already a display name.
+- Machine-facing identity was deliberately left on the raw login: engine/bridge request `UserName` fields, dependent-propagation requests, and the per-user preference folder name, since a display name is many-to-one and cannot key an account.
+
+**Verification:** New `frontend/tests/test_dataset_user_display_name.py` (6 tests) pins the resolved name for the dataset, calculated, result-selection, and audit writers plus the unmapped fallback; `test_user_identity_service.py` extended with the session-cache and no-login cases; 176 tests across the affected app-server modules pass.
+
 ### 2026-08-07 - Live preview took a long time to update downstream values on client PCs
 
 **Reported:** The live preview feature works fine on the dev PC but takes a long time to update downstream dataset values in open windows on a client PC; consider letting the client's app server compute instantly for open datasets and avoid many network-drive reads.

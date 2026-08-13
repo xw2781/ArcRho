@@ -27,6 +27,7 @@ from app_server.helpers import (
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    user_identity_service,
 )
 
 
@@ -62,6 +63,11 @@ def _key(value: Any) -> str:
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="microseconds") + "Z"
+
+
+def _current_user_name() -> str:
+    """Configured full name for the saving account, or the raw login."""
+    return user_identity_service.get_current_display_name() or getpass.getuser()
 
 
 def _lock(project_name: str, reserving_class: str) -> threading.RLock:
@@ -1078,8 +1084,9 @@ def _persist_refreshed_method(
         if precedent_names is not None:
             updated_sidecar["Precedents"] = list(precedent_names)
         updated_sidecar["updated_at"] = timestamp
-        updated_sidecar["modified_by"] = getpass.getuser()
-        updated_sidecar["user"] = getpass.getuser()
+        user_name = _current_user_name()
+        updated_sidecar["modified_by"] = user_name
+        updated_sidecar["user"] = user_name
         updated_sidecar["status"] = (
             dataset_sidecar_status_service.compute_status(
                 project_name,
@@ -1097,7 +1104,7 @@ def _persist_refreshed_method(
             updated_sidecar,
             "Update",
             event_date=timestamp,
-            user_name=getpass.getuser(),
+            user_name=user_name,
         )
         files = {
             method_path: _json_text(payload),
@@ -1123,7 +1130,7 @@ def _mark_refreshed_sidecar_current(
         latest_sidecar = _read_json(sidecar_path) or sidecar
         updated_sidecar = dict(latest_sidecar)
         timestamp = _now()
-        user_name = getpass.getuser()
+        user_name = _current_user_name()
         updated_sidecar["updated_at"] = timestamp
         updated_sidecar["modified_by"] = user_name
         updated_sidecar["user"] = user_name

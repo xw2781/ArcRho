@@ -35,6 +35,7 @@ from app_server.services import (
     file_read_cache,
     project_settings_service,
     runtime_cache_provenance_service,
+    user_identity_service,
 )
 from app_server.services.data_processing_rules_service import (
     get_processing_config_hash,
@@ -1131,7 +1132,7 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
     reserving_class = _pair_value(pairs, "Path")
     is_vector = _pair_value(pairs, "Function").strip().lower() == "arcrhovec"
     data_format = "Vector" if is_vector else "Triangle"
-    user_name = getpass.getuser()
+    user_name = user_identity_service.get_current_display_name() or getpass.getuser()
     updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     if os.path.exists(sidecar_path):
         payload = dataset_sidecar_status_service.read_sidecar(sidecar_path)
