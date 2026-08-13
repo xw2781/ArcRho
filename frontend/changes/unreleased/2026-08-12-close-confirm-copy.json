@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "frontend",
+  "audience": "user",
+  "summary": "Simplified the unsaved-changes close confirmation and relabeled its secondary action to No."
+}

@@ -10,18 +10,17 @@ function ensureStyles(doc) {
   doc.head.appendChild(link);
 }
 
-function closeCopy(subject, reason) {
-  const label = String(subject || "dataset").trim() || "dataset";
+function closeCopy(reason) {
   const isClose = reason === "close";
   return {
     title: isClose ? "Cancel and close?" : "Cancel changes?",
     message: isClose
-      ? `Unsaved ${label} changes will be discarded and the window will close.`
-      : `Unsaved ${label} changes will be discarded.`,
+      ? "Unsaved changes will be discarded and the window will close."
+      : "Unsaved changes will be discarded.",
   };
 }
 
-export function createPageCloseConfirm({ subject = "dataset", documentRef = document } = {}) {
+export function createPageCloseConfirm({ documentRef = document } = {}) {
   const doc = documentRef;
   ensureStyles(doc);
 
@@ -41,7 +40,7 @@ export function createPageCloseConfirm({ subject = "dataset", documentRef = docu
       <div class="pageCloseConfirmMessage" id="${id}Message"></div>
       <div class="pageCloseConfirmActions">
         <button class="pageCloseConfirmButton primary" type="button" data-close-confirm-value="yes">Yes</button>
-        <button class="pageCloseConfirmButton secondary" type="button" data-close-confirm-value="cancel">Cancel</button>
+        <button class="pageCloseConfirmButton secondary" type="button" data-close-confirm-value="cancel">No</button>
       </div>
     </div>
   `;
@@ -123,9 +122,9 @@ export function createPageCloseConfirm({ subject = "dataset", documentRef = docu
   overlay.addEventListener("wheel", (event) => event.preventDefault(), { passive: false });
   doc.addEventListener("keydown", handleKeydown, true);
 
-  function confirm({ reason = "close", title = "", message = "", subject: nextSubject = subject } = {}) {
+  function confirm({ reason = "close", title = "", message = "" } = {}) {
     if (pending) return pending.promise;
-    const copy = closeCopy(nextSubject, reason);
+    const copy = closeCopy(reason);
     titleEl.textContent = String(title || copy.title);
     messageEl.textContent = String(message || copy.message);
     returnFocus = doc.activeElement;
