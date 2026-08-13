@@ -28,7 +28,7 @@ Convert a completed, user-tested ArcRho UI fix into concise, reusable guidance i
 7. Do not overfit to a single page. Mention a page only when the rule is intentionally page-specific.
 8. Add or update an unreleased fragment when repository rules require it.
 9. Run skill validation with `py -3.10 C:\Users\xwei.PRCINS\.codex\skills\.system\skill-creator\scripts\quick_validate.py .codex\skills\arcrho-ui-design`.
-10. Run the frontend docs workflow from the repo root: `py -3.10 frontend/tools/docs_index_builder.py --write`, then `py -3.10 frontend/tools/docs_index_builder.py --check`. If a release fragment changed, also run `py -3.10 frontend/build/release_notes.py check`.
+10. Run the frontend docs workflow from the repo root: `py -3.10 frontend/tools/docs_index_builder.py --write`, then `py -3.10 frontend/tools/docs_index_builder.py --check`. If a release fragment changed, also run `py -3.10 frontend/build/release/release_notes.py check`.
 
 ## Rule Writing Style
 

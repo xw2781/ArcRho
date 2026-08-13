@@ -4,6 +4,8 @@
 
 Use this workflow when the ArcRho repository is maintained on one Windows PC, but ArcRho or standalone Arcode packaging must run on another Windows PC because the source PC cannot execute the complete build toolchain with the required permissions.
 
+> If the PC holding the repository **can** run the toolchain and has an authenticated `gh` CLI, use the [local release build](BUILD_FROM_LOCAL_REPO.md) instead. It needs no ZIP, no build share, and no listener, and it records the release in the repository as the build runs. Both workflows share the same build body in `build_app_via_local_workspace.bat`.
+
 The ZIP is a transport artifact. A listener on the source PC creates it only when the build PC requests one. The build PC then copies the requested ZIP to a local workspace, extracts it locally, and runs the complete build from that local workspace.
 
 ```text
@@ -29,8 +31,8 @@ Source PC repository
 | Local build workspace | `%USERPROFILE%\Documents\build_arcrho_app` on the build PC | Disposable local extraction and build directory. |
 | Arcode local build workspace | `%USERPROFILE%\Documents\build_arcode_app` on the build PC | Separate disposable extraction and build directory for Arcode. |
 | Local installer output | `%USERPROFILE%\Documents\build_arcrho_app\frontend\dist` | Installer produced by the local build. |
-| Published release | GitHub Releases in the repository named by `frontend\build\release_channel.json` | Installer and checksum published after a successful build. This is the only publication target and the only durable record of what has shipped. |
-| Retired installer feed | `E:\ArcRho Server\releases\installers` and `E:\Arcode Server\releases\arcode-installers` | No longer written by the build. Kept for clients installed before the GitHub update checker shipped; publish to it manually with `build\publish_update_feed.ps1` when a migration build is needed. |
+| Published release | GitHub Releases in the repository named by `frontend\build\release\release_channel.json` | Installer and checksum published after a successful build. This is the only publication target and the only durable record of what has shipped. |
+| Retired installer feed | `E:\ArcRho Server\releases\installers` and `E:\Arcode Server\releases\arcode-installers` | No longer written by the build. Kept for clients installed before the GitHub update checker shipped; publish to it manually with `build\release\publish_update_feed.ps1` when a migration build is needed. |
 | Shared build logs | `E:\XWSpace\Build ArcRho App\logs\<COMPUTERNAME>` | Timestamped ZIP-creation and application-build logs from both PCs. |
 
 This workflow assumes that `E:` on the build PC is permanently mapped to `E:` on the source PC. The default ZIP and wrapper paths already use that mapping, so `ARCRHO_LOCAL_BUILD_SOURCE_ZIP` does not need to be set.
@@ -124,22 +126,22 @@ To use another repository or output path, call the PowerShell implementation dir
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
-  -File 'E:\XWSpace\Repos\ArcRho\frontend\build\create_build_source_zip.ps1' `
+  -File 'E:\XWSpace\Repos\ArcRho\frontend\build\transport\create_build_source_zip.ps1' `
   -SourceRoot 'E:\XWSpace\Repos\ArcRho' `
   -OutputZip 'E:\XWSpace\Build ArcRho App\ArcRho.zip'
 ```
 
 Staging runs through `prepare_local_build_workspace.ps1`, which normalizes every staged `.bat` and `.cmd` file to CRLF line endings, skipping `node_modules`, `node-portable`, and `venvs`. `cmd.exe` resolves `call :label` by byte offset and cannot find a label in an LF-only batch file once that label sits past a certain position, so a batch file saved with LF endings can fail the build with `The system cannot find the batch label specified`. Repository batch files are pinned to CRLF by `.gitattributes`; this normalization protects the workspace when an editor has rewritten one of them with LF endings.
 
-The creator always includes `frontend\node-portable` and `frontend\node_modules`. They are required when the restricted build PC cannot restore Node dependencies itself. Before publication, the ZIP creator validates the complete ArcBot runtime chain: portable Node, npm, the Codex JavaScript entry point, the bundled Windows Codex executable, and the minimum CLI/model values in `frontend\electron\arcbot_runtime_contract.json`. If the local payload is stale, run `frontend\build\refresh_bundled_codex_runtime.ps1` on the connected source PC before creating the ZIP.
+The creator always includes `frontend\node-portable` and `frontend\node_modules`. They are required when the restricted build PC cannot restore Node dependencies itself. Before publication, the ZIP creator validates the complete ArcBot runtime chain: portable Node, npm, the Codex JavaScript entry point, the bundled Windows Codex executable, and the minimum CLI/model values in `frontend\electron\arcbot_runtime_contract.json`. If the local payload is stale, run `frontend\build\arcbot_runtime\refresh_bundled_codex_runtime.ps1` on the connected source PC before creating the ZIP.
 
 ### Required ZIP Content
 
 The ZIP may contain one top-level `ArcRho` folder or the repository contents directly. It must contain at least:
 
 - `frontend\build\build_app_via_local_workspace.bat`
-- `frontend\build\prepare_local_build_workspace_from_zip.ps1`
-- `frontend\build\refresh_bundled_codex_runtime.ps1`
+- `frontend\build\transport\prepare_local_build_workspace_from_zip.ps1`
+- `frontend\build\arcbot_runtime\refresh_bundled_codex_runtime.ps1`
 - `frontend\package.json`
 - `frontend\node-portable\node.exe`
 - `frontend\node-portable\npm.cmd`
@@ -226,7 +228,7 @@ A successful build reports exit code `0` and produces:
 - A GitHub Release tagged `ArcRho-v<version>` with `ArcRho-Setup-<version>.exe` and `ArcRho-Setup-<version>.exe.sha256` attached — this is what the packaged app's update checker reads, and the history the next build's version number is derived from.
 - `E:\ArcRho Server\packages\arcrho_api-latest.whl`, unless `PYTHON_API_PACKAGE_DIR` overrides that destination.
 
-The tag name and target repository come from `frontend\build\release_channel.json`, which both `publish_github_release.ps1` and `version_manager.py` read. Change the tag shape there rather than in either script.
+The tag name and target repository come from `frontend\build\release\release_channel.json`, which both `publish_github_release.ps1` and `version_manager.py` read. Change the tag shape there rather than in either script.
 
 ZIP-creation and application-build logs from both PCs are written directly to the shared handoff folder, separated by Windows computer name:
 
@@ -295,7 +297,7 @@ The batch file holding that label was saved with LF-only line endings. `cmd.exe`
 
 ### NSIS reports `macro named "MUI_HEADER_TEXT" not found`
 
-This is an installer-source/include-order problem, not a ZIP, mapped-drive, or permission problem. Fix `frontend\build\installer.nsh` so `MUI2.nsh` is available before `MUI_HEADER_TEXT` is expanded, regenerate the ZIP, and rebuild.
+This is an installer-source/include-order problem, not a ZIP, mapped-drive, or permission problem. Fix `frontend\build\installer\installer.nsh` so `MUI2.nsh` is available before `MUI_HEADER_TEXT` is expanded, regenerate the ZIP, and rebuild.
 
 ### Electron Builder reports `spawn EPERM` for `app-builder.exe`
 

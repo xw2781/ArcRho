@@ -2,7 +2,7 @@ const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const frontendRoot = path.resolve(__dirname, "..");
+const frontendRoot = path.resolve(__dirname, "..", "..");
 const repoRoot = path.resolve(frontendRoot, "..");
 const outputDir = path.join(frontendRoot, "build", "python_packages");
 const pythonExe = process.env.PYTHON_EXE || process.env.PYTHON || "python";

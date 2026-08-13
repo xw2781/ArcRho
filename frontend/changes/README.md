@@ -27,7 +27,7 @@ Example:
 ```
 
 Release flow:
-1. Fragments are validated with `python build/release_notes.py check`.
-2. A successful packaged release runs `python build/release_notes.py release <version>`.
+1. Fragments are validated with `python build/release/release_notes.py check`.
+2. A successful packaged release runs `python build/release/release_notes.py release <version>`.
 3. Release notes are written to `docs/releases/<version>.md`.
 4. Consumed fragments are moved into `changes/archive/<version>/`.

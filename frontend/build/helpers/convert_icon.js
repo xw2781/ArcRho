@@ -43,7 +43,7 @@ async function convertSvgToIco(svgPath, outputDir) {
     console.log('\nDone! Icon files generated.');
 }
 
-const repoRoot = path.join(__dirname, '..');
+const repoRoot = path.join(__dirname, '..', '..');
 const svgPath = process.argv[2]
     ? path.resolve(process.cwd(), process.argv[2])
     : path.join(repoRoot, 'icons', 'icon_arc_wing4b.svg');

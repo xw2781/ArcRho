@@ -2,10 +2,11 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
-const projectDir = path.resolve(__dirname, "..");
+const projectDir = path.resolve(__dirname, "..", "..");
 const progressHelperSourcePath = path.join(
   projectDir,
   "build",
+  "installer",
   "installer_progress_helper.cs"
 );
 const progressHelperOutputPath = path.join(

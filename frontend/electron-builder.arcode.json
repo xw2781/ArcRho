@@ -54,7 +54,7 @@
     "shortcutName": "Arcode",
     "artifactName": "Arcode-Setup-${version}.exe",
     "deleteAppDataOnUninstall": false,
-    "include": "build/arcode_installer.nsh",
+    "include": "build/installer/arcode_installer.nsh",
     "installerIcon": "build/generated/arcode-icons/icon.ico",
     "uninstallerIcon": "build/generated/arcode-icons/icon.ico",
     "installerHeaderIcon": "build/generated/arcode-icons/icon.ico"

@@ -330,7 +330,7 @@ them (length is `3`, not `12`). No change required beyond 6.2, but verify labels
    ```
 
 5. Run `python tools/docs_index_builder.py --write` then `--check`; fix docs until `--check`
-   passes. Run `python build/release_notes.py check` for the fragment.
+   passes. Run `python build/release/release_notes.py check` for the fragment.
 
 ---
 

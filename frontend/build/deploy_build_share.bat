@@ -11,7 +11,7 @@ REM   deploy_build_share.bat --verify     Report drift without writing anything.
 REM   deploy_build_share.bat --force      Overwrite share copies that are newer.
 
 set "SCRIPT_DIR=%~dp0"
-set "DEPLOY_SCRIPT=%SCRIPT_DIR%deploy_build_share.ps1"
+set "DEPLOY_SCRIPT=%SCRIPT_DIR%transport\deploy_build_share.ps1"
 
 if not exist "%DEPLOY_SCRIPT%" (
     echo ERROR: Missing deploy script: %DEPLOY_SCRIPT%

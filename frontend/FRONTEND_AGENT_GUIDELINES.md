@@ -30,7 +30,7 @@ Apply the existing rules in that skill during implementation. Do not edit the Ar
 6. Any meaningful user-facing feature, fix, improvement, or breaking change must add a release fragment under `changes/unreleased/` with a short user-facing summary.
 
 ## Release Fragment Schema
-Before adding or editing a release fragment, read `changes/README.md` and keep the fragment valid for `python build/release_notes.py check`.
+Before adding or editing a release fragment, read `changes/README.md` and keep the fragment valid for `python build/release/release_notes.py check`.
 
 Required JSON fields:
 - `type`: one of `feature`, `improvement`, `fix`, or `breaking`

@@ -11,6 +11,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RUNTIME_CONTRACT_PATH = path.resolve(
   __dirname,
   "..",
+  "..",
   "electron",
   "arcbot_runtime_contract.json",
 );

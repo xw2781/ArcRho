@@ -241,7 +241,7 @@ function Convert-BatchFileLineEndings {
 
 if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-    $SourceRoot = Resolve-FullPath (Join-Path $scriptDir "..\..")
+    $SourceRoot = Resolve-FullPath (Join-Path $scriptDir "..\..\..")
 } else {
     $SourceRoot = Resolve-FullPath $SourceRoot
 }

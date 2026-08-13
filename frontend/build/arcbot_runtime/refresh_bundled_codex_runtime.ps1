@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$frontendRoot = Split-Path -Parent $PSScriptRoot
+$frontendRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $runtimeRoot = Join-Path $frontendRoot "node-portable"
 $npmCommand = Join-Path $runtimeRoot "npm.cmd"
 $nodeCommand = Join-Path $runtimeRoot "node.exe"

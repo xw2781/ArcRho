@@ -129,10 +129,71 @@ def commit_release_bookkeeping(version: str, product: str, tag: str) -> str | No
         "the About dialog, and the splash page, its release notes, and the changelog\n"
         "fragments it consumed.\n"
         "\n"
-        "Committed by frontend/build/sync_published_release.py.\n"
+        "Committed by frontend/build/release/sync_published_release.py.\n"
     )
     run_git(["commit", "-m", message])
     return run_git(["rev-parse", "--short", "HEAD"]).stdout.strip()
+
+
+def commit_bookkeeping_only(
+    version: str,
+    product: str,
+    tag: str,
+    commit: bool,
+    dry_run: bool,
+) -> int:
+    """Finish an in-place build, which already wrote the release work into this tree.
+
+    A build that runs in the repository rather than a disposable workspace bumps the
+    version, writes the release notes, and archives the consumed fragments as it goes.
+    Redoing any of that here would regenerate notes from fragments the release already
+    drained, so this only verifies that the work is present, refreshes the documentation
+    index, and commits the same paths the two-PC sync commits.
+    """
+    package_json = version_manager.load_json(release_notes.REPO_ROOT / "package.json")
+    current_version = str(package_json.get("version", "")).strip()
+    if current_version != version:
+        raise ValueError(
+            f"package.json reports version '{current_version}', not '{version}'. "
+            "--bookkeeping-only expects the build to have written the version already; "
+            "drop it to have this script do the release work instead."
+        )
+
+    archive_target = release_notes.ARCHIVE_DIR / version
+    if not archive_target.is_dir():
+        raise ValueError(
+            f"{archive_target} does not exist, so the build did not archive the fragments "
+            f"for {version}. Drop --bookkeeping-only to do the release work here."
+        )
+
+    release_path = release_notes.RELEASES_DIR / f"{version}.md"
+    if not release_path.is_file():
+        raise ValueError(
+            f"{release_path} does not exist, so the build did not write release notes for "
+            f"{version}. Drop --bookkeeping-only to do the release work here."
+        )
+
+    archived = len(list(archive_target.glob("*.json")))
+    print("")
+    print(f"Version metadata : already {version}")
+    print(f"Release notes    : {release_path.relative_to(release_notes.REPO_ROOT).as_posix()}")
+    print(f"Fragments archived : {archived} in changes/archive/{version}")
+
+    if dry_run:
+        print("")
+        print("Dry run: nothing was written.")
+        return 0
+
+    update_docs_index()
+
+    if not commit:
+        print("Review and commit the result; this run was not asked to commit.")
+        return 0
+
+    commit_hash = commit_release_bookkeeping(version, product, tag)
+    if commit_hash:
+        print(f"Committed release bookkeeping as {commit_hash}. Nothing was pushed.")
+    return 0
 
 
 def read_zip_fragment_names(source_zip: Path) -> set[str] | None:
@@ -192,6 +253,16 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--bookkeeping-only",
+        action="store_true",
+        help=(
+            "The release work is already done in this working tree, so only refresh the "
+            "documentation index and commit. Use after an in-place build, which writes the "
+            "version metadata, release notes, and fragment archive directly into the "
+            "repository rather than into a disposable workspace."
+        ),
+    )
+    parser.add_argument(
         "--commit",
         action="store_true",
         help=(
@@ -240,6 +311,15 @@ def main() -> int:
         )
     else:
         print(f"Verified published release tag {tag} on {args.remote}.")
+
+    if args.bookkeeping_only:
+        return commit_bookkeeping_only(
+            args.version,
+            args.product,
+            tag,
+            commit=args.commit,
+            dry_run=args.dry_run,
+        )
 
     archive_target = release_notes.ARCHIVE_DIR / args.version
     if archive_target.exists() and not args.force:

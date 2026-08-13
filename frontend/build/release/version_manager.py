@@ -267,7 +267,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = Path(__file__).resolve().parents[2]
     package_json_path = repo_root / "package.json"
 
     package_json = load_json(package_json_path)

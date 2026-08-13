@@ -49,7 +49,7 @@ This is where most regressions are caught, in seconds.
 | `A3` persisted JSON text format | Every file written during `A2` conforms to `arcrho_api/io.py` `persisted_json_text` - notably 2D arrays one row per line. |
 | `A4` cross-producer parity | Frontend app-server writer vs `python-api/migration/` writer for the same logical inputs, including path-alias independence. |
 | `A5` route inventory freshness | `python tools/docs_index_builder.py --check`. |
-| `A6` release fragment validity | `python build/release_notes.py check`. |
+| `A6` release fragment validity | `python build/release/release_notes.py check`. |
 | `A7` unit/contract suite | `node --test tests/` plus `python -m unittest discover -s tests -p "test_*.py"`. |
 
 `A2` mutates the fixture. The runner guards every mutating step with a **per-file byte snapshot**

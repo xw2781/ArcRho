@@ -1,6 +1,9 @@
 # Memory Index
 
 - [Agent memory lives in the repo](agent-memory-in-repo.md) — memories are tracked in agent-memory/ and reach the harness path through a directory junction created by tools/link_agent_memory.ps1
+- [Dev PC and Client PC identity](dev-pc-and-client-pc-identity.md) — this machine (L-H2MQ6280FVP) is a Client PC holding the main repo; NE7SASWPN02 is the Dev PC and every E:\ path is a mapped drive onto it
+- [frontend/build folder layout](frontend-build-folder-layout.md) — runnable scripts at the top level, helpers in subfolders; moving a build script needs its own path anchor fixed, and a bare `runtime/` name collides with a repo-wide gitignore
+- [Local release build](arcrho-local-release-build.md) — build_app_from_local_repo.bat releases from this PC by building in place, so the version bump and release notes land in the working tree; codex.cmd is missing here and blocks the build
 - [Shared macro library deploy rule](shared-macro-library-deploy.md) — after editing any active macro, publish all active macros to E:\ArcRho Server\shared\macros via publish_macro_library.py
 - [Bridge restart after deploy](bridge-restart-after-deploy.md) — after build_exe.py check apps.bridge.auto_create_instance (flips over time); if false, Start-Process the exe manually; bridges are per user session since 2026-08-07
 - [ResQ COM probe](resq-com-probe.md) — read-only ResQ COM debugging via arcrho_bridge venv python + ResQ3Automation.ResQApplication

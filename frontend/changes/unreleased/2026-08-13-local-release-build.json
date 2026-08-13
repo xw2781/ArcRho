@@ -1,0 +1,16 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "ArcRho and Arcode can now be built and released from the PC that holds the repository, without a second build PC.",
+  "details": [
+    "build/build_app_from_local_repo.bat validates prerequisites, builds in place from the repository, publishes the GitHub Release, and commits the release bookkeeping it produced.",
+    "build/build_app_via_local_workspace.bat gained ARCRHO_BUILD_IN_PLACE, ARCRHO_BUILD_LOG_DIR, and ARCRHO_BUILD_VERSION_OUT; unset, the two-PC ZIP workflow behaves exactly as before and both entry points share one build body.",
+    "An in-place build writes the version bump, release notes, and fragment archive straight into the working tree, so sync_published_release.py --bookkeeping-only only refreshes the documentation index and commits instead of reconstructing the release.",
+    "The prerequisite check smokes the bundled ArcBot/Codex runtime and the Python API package destination up front, so an incomplete node-portable or a disconnected network drive fails in seconds rather than after a full package.",
+    "Removed build/build_arcode_one_click.bat, which was a byte-identical duplicate of the canonical copy in build/build_share.",
+    "docs/build/packaging.md no longer documents build_app.bat and build_app_from_network.bat, which no longer exist.",
+    "frontend/build is reorganized so the six scripts a human runs sit at the top level beside a new README, and helpers move into docs/, installer/, release/, transport/, arcbot_runtime/, and helpers/.",
+    "The PyInstaller specs and entry points deliberately stay at the top level, because they resolve BASE_DIR inside the frozen application and .gitignore covers *.spec with a per-file exception."
+  ]
+}

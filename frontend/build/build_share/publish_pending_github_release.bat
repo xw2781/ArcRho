@@ -17,7 +17,7 @@ REM place rather than duplicated.
 
 set "BUILD_SHARE_ROOT=%~dp0"
 set "BUILD_SHARE_ROOT=%BUILD_SHARE_ROOT:~0,-1%"
-set "PUBLISH_SCRIPT=E:\XWSpace\Repos\ArcRho\frontend\build\publish_github_release.ps1"
+set "PUBLISH_SCRIPT=E:\XWSpace\Repos\ArcRho\frontend\build\release\publish_github_release.ps1"
 
 REM --check reports the resolved paths and publishes nothing. Accept it in any
 REM position so a check never turns into a real publish.

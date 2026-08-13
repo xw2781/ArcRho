@@ -130,40 +130,39 @@ function Assert-BuildArchive {
     $requiredFiles = @(
         "BUILD_SOURCE_MANIFEST.json",
         "frontend/build/build_app_via_local_workspace.bat",
-        "frontend/build/build_arcode_one_click.bat",
-        "frontend/build/prepare_local_build_workspace_from_zip.ps1",
+        "frontend/build/transport/prepare_local_build_workspace_from_zip.ps1",
         "frontend/package.json",
         "frontend/package-lock.json",
         "frontend/electron/main.js",
         "frontend/ui/index.html",
         "frontend/icons/icon.png",
-        "frontend/build/run_with_log.ps1",
-        "frontend/build/release_notes.py",
-        "frontend/build/version_manager.py",
-        "frontend/build/build_python_api_wheel.js",
+        "frontend/build/transport/run_with_log.ps1",
+        "frontend/build/release/release_notes.py",
+        "frontend/build/release/version_manager.py",
+        "frontend/build/helpers/build_python_api_wheel.js",
         "frontend/build/build_python_server.bat",
         "frontend/build/build_arcode_python_server.bat",
-        "frontend/build/convert_icon.js",
+        "frontend/build/helpers/convert_icon.js",
         "frontend/build/check_python_build_env.py",
         "frontend/build/server.spec",
         "frontend/build/server_entry.py",
         "frontend/build/arcode_server.spec",
         "frontend/build/arcode_server_entry.py",
-        "frontend/build/patch_nsis_installer_progress.js",
-        "frontend/build/refresh_bundled_codex_runtime.ps1",
-        "frontend/build/validate_bundled_codex_runtime.js",
+        "frontend/build/installer/patch_nsis_installer_progress.js",
+        "frontend/build/arcbot_runtime/refresh_bundled_codex_runtime.ps1",
+        "frontend/build/arcbot_runtime/validate_bundled_codex_runtime.js",
         "frontend/electron/arcbot_runtime_contract.json",
-        "frontend/build/installer_progress_helper.cs",
-        "frontend/build/installer.nsh",
-        "frontend/build/detect_arcrho_server_root.ps1",
-        "frontend/build/arcode_installer.nsh",
+        "frontend/build/installer/installer_progress_helper.cs",
+        "frontend/build/installer/installer.nsh",
+        "frontend/build/installer/detect_arcrho_server_root.ps1",
+        "frontend/build/installer/arcode_installer.nsh",
         "frontend/electron-builder.arcode.json",
         "frontend/icons/icon_wing_geo_v8.svg",
-        "frontend/build/install_arcrho_excel_addin.ps1",
-        "frontend/build/publish_update_feed.ps1",
-        "frontend/build/publish_github_release.ps1",
-        "frontend/build/release_channel.json",
-        "frontend/build/request_release_sync.ps1",
+        "frontend/build/installer/install_arcrho_excel_addin.ps1",
+        "frontend/build/release/publish_update_feed.ps1",
+        "frontend/build/release/publish_github_release.ps1",
+        "frontend/build/release/release_channel.json",
+        "frontend/build/release/request_release_sync.ps1",
         "frontend/node-portable/node.exe",
         "frontend/node-portable/npm.cmd",
         "frontend/node-portable/node_modules/npm/bin/npm-cli.js",
@@ -245,7 +244,7 @@ function Publish-FileAtomically {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
-    $SourceRoot = Resolve-FullPath (Join-Path $scriptDir "..\..")
+    $SourceRoot = Resolve-FullPath (Join-Path $scriptDir "..\..\..")
 }
 else {
     $SourceRoot = Resolve-FullPath $SourceRoot
@@ -278,11 +277,10 @@ if (
     throw "OutputZip must be outside the source repository: $OutputZip"
 }
 
-$prepareScript = Join-Path $SourceRoot "frontend\build\prepare_local_build_workspace.ps1"
+$prepareScript = Join-Path $SourceRoot "frontend\build\transport\prepare_local_build_workspace.ps1"
 $requiredSourcePaths = @(
     "frontend\build\build_app_via_local_workspace.bat",
-    "frontend\build\build_arcode_one_click.bat",
-    "frontend\build\prepare_local_build_workspace_from_zip.ps1",
+    "frontend\build\transport\prepare_local_build_workspace_from_zip.ps1",
     "frontend\package.json",
     "frontend\package-lock.json",
     "frontend\electron\main.js",
@@ -291,33 +289,33 @@ $requiredSourcePaths = @(
     "frontend\app_server\default_preferences",
     "frontend\changes\unreleased",
     "frontend\docs\releases",
-    "frontend\build\run_with_log.ps1",
-    "frontend\build\release_notes.py",
-    "frontend\build\version_manager.py",
-    "frontend\build\build_python_api_wheel.js",
+    "frontend\build\transport\run_with_log.ps1",
+    "frontend\build\release\release_notes.py",
+    "frontend\build\release\version_manager.py",
+    "frontend\build\helpers\build_python_api_wheel.js",
     "frontend\build\build_python_server.bat",
     "frontend\build\build_arcode_python_server.bat",
-    "frontend\build\convert_icon.js",
+    "frontend\build\helpers\convert_icon.js",
     "frontend\build\check_python_build_env.py",
     "frontend\build\server.spec",
     "frontend\build\server_entry.py",
     "frontend\build\arcode_server.spec",
     "frontend\build\arcode_server_entry.py",
-    "frontend\build\patch_nsis_installer_progress.js",
-    "frontend\build\refresh_bundled_codex_runtime.ps1",
-    "frontend\build\validate_bundled_codex_runtime.js",
+    "frontend\build\installer\patch_nsis_installer_progress.js",
+    "frontend\build\arcbot_runtime\refresh_bundled_codex_runtime.ps1",
+    "frontend\build\arcbot_runtime\validate_bundled_codex_runtime.js",
     "frontend\electron\arcbot_runtime_contract.json",
-    "frontend\build\installer_progress_helper.cs",
-    "frontend\build\installer.nsh",
-    "frontend\build\detect_arcrho_server_root.ps1",
-    "frontend\build\arcode_installer.nsh",
+    "frontend\build\installer\installer_progress_helper.cs",
+    "frontend\build\installer\installer.nsh",
+    "frontend\build\installer\detect_arcrho_server_root.ps1",
+    "frontend\build\installer\arcode_installer.nsh",
     "frontend\electron-builder.arcode.json",
     "frontend\icons\icon_wing_geo_v8.svg",
-    "frontend\build\install_arcrho_excel_addin.ps1",
-    "frontend\build\publish_update_feed.ps1",
-    "frontend\build\publish_github_release.ps1",
-    "frontend\build\release_channel.json",
-    "frontend\build\request_release_sync.ps1",
+    "frontend\build\installer\install_arcrho_excel_addin.ps1",
+    "frontend\build\release\publish_update_feed.ps1",
+    "frontend\build\release\publish_github_release.ps1",
+    "frontend\build\release\release_channel.json",
+    "frontend\build\release\request_release_sync.ps1",
     "frontend\node-portable\node.exe",
     "frontend\node-portable\npm.cmd",
     "frontend\node-portable\node_modules\npm\bin\npm-cli.js",
@@ -343,7 +341,7 @@ foreach ($relativePath in $requiredSourcePaths) {
 }
 
 $bundledRuntimeRoot = Join-Path $SourceRoot "frontend\node-portable"
-$bundledRuntimeValidator = Join-Path $SourceRoot "frontend\build\validate_bundled_codex_runtime.js"
+$bundledRuntimeValidator = Join-Path $SourceRoot "frontend\build\arcbot_runtime\validate_bundled_codex_runtime.js"
 $bundledNode = Join-Path $bundledRuntimeRoot "node.exe"
 & $bundledNode $bundledRuntimeValidator --runtime-root $bundledRuntimeRoot --inventory-only
 if ($LASTEXITCODE -ne 0) {

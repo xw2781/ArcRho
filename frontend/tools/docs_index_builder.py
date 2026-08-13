@@ -1393,10 +1393,10 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
         title="Build and Packaging",
         manual_sections={
             "Purpose": "Document Electron + Python packaging inputs and scripts.",
-            "External Interfaces": "- Node scripts from `package.json` drive build orchestration.\n- PyInstaller spec (`build/server.spec`) builds app-server executable artifacts.\n- `build/release_notes.py` validates unreleased change fragments and generates versioned release notes in `docs/releases/`.\n- ArcRho packaging preserves electron-builder's built-in NSIS file installation path and compiles an isolated native-bar progress observer.",
-            "Data/State/Caches": "- Build outputs: `dist/`, `python_build/`, `python_dist/`.\n- Installer settings live in `package.json`, `build/installer.nsh`, `build/installer_progress_helper.cs`, and `build/patch_nsis_installer_progress.js`.\n- Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.",
+            "External Interfaces": "- Node scripts from `package.json` drive build orchestration.\n- PyInstaller spec (`build/server.spec`) builds app-server executable artifacts.\n- `build/release/release_notes.py` validates unreleased change fragments and generates versioned release notes in `docs/releases/`.\n- ArcRho packaging preserves electron-builder's built-in NSIS file installation path and compiles an isolated native-bar progress observer.",
+            "Data/State/Caches": "- Build outputs: `dist/`, `python_build/`, `python_dist/`.\n- Installer settings live in `package.json`, `build/installer/installer.nsh`, `build/installer/installer_progress_helper.cs`, and `build/installer/patch_nsis_installer_progress.js`.\n- Release tracking data lives under `changes/unreleased/`, `changes/archive/`, and `docs/releases/`.",
             "Common Change Tasks": "1. Update app packaging metadata: edit `package.json` `build` block.\n2. Update bundled app server: edit `build/server.spec` and verify `extraResources` mappings.\n3. Add or update unreleased change fragments in `changes/unreleased/` before packaging a release.\n4. Run `E:\\XWSpace\\Build ArcRho App\\build_app_one_click.bat` for a normal build; it requests a fresh ZIP and auto-increments the patch version.\n5. If electron-builder is reinstalled or upgraded, rerun `npm run build:electron` or the one-click workflow; both paths reapply the ArcRho NSIS installer-progress patch before packaging.",
-            "Known Risks": "- Packaging excludes can accidentally omit runtime files.\n- Divergence between dev and packaged paths causes startup failures.\n- electron-builder NSIS implementation changes can break the ArcRho installer-progress patch; `build/patch_nsis_installer_progress.js` fails fast when upstream templates no longer match a supported form.\n- ArcRho installer packaging requires the Windows .NET Framework 4 C# compiler for the isolated progress observer.",
+            "Known Risks": "- Packaging excludes can accidentally omit runtime files.\n- Divergence between dev and packaged paths causes startup failures.\n- electron-builder NSIS implementation changes can break the ArcRho installer-progress patch; `build/installer/patch_nsis_installer_progress.js` fails fast when upstream templates no longer match a supported form.\n- ArcRho installer packaging requires the Windows .NET Framework 4 C# compiler for the isolated progress observer.",
         },
         auto_sections={
             "Entry Points": "build.packaging.entry_points",
@@ -1684,14 +1684,15 @@ def render_build_key_files(doc_path: str) -> str:
         ("build/server.spec", "PyInstaller spec for Python app-server executable."),
         ("build/server_entry.py", "PyInstaller entrypoint for the bundled app server."),
         ("build/write_backend_artifact_manifest.py", "Build-time identity manifest for the complete collected backend bundle."),
-        ("build/release_notes.py", "Release fragment validator and versioned release note generator."),
+        ("build/release/release_notes.py", "Release fragment validator and versioned release note generator."),
         ("electron/main.js", "Electron main process entry."),
         ("app_launcher.py", "Python host launcher used by packaged runtime."),
-        ("build/installer.nsh", "NSIS custom installer script include."),
-        ("build/patch_nsis_installer_progress.js", "Build-time helper that restores NSIS's built-in file installation path and compiles the progress observer before electron-builder runs."),
-        ("build/installer_progress_helper.cs", "Isolated Windows UI observer that derives installer percentage and time remaining from the native progress control."),
-        ("build/build_app_via_local_workspace.bat", "The only supported ArcRho application build entry point; prepares a local workspace and runs the complete package build."),
-        ("build/convert_icon.js", "Build helper for regenerating Windows icon assets."),
+        ("build/installer/installer.nsh", "NSIS custom installer script include."),
+        ("build/installer/patch_nsis_installer_progress.js", "Build-time helper that restores NSIS's built-in file installation path and compiles the progress observer before electron-builder runs."),
+        ("build/installer/installer_progress_helper.cs", "Isolated Windows UI observer that derives installer percentage and time remaining from the native progress control."),
+        ("build/build_app_via_local_workspace.bat", "Shared build body for both release entry points; prepares a local workspace from the source ZIP, or builds in place when ARCRHO_BUILD_IN_PLACE is set, and runs the complete package build."),
+        ("build/build_app_from_local_repo.bat", "Single-PC release entry point; builds in place from this repository and commits the release bookkeeping it produces."),
+        ("build/helpers/convert_icon.js", "Build helper for regenerating Windows icon assets."),
     ]
     return render_key_files_block(doc_path, files)
 

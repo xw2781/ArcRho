@@ -6,16 +6,16 @@
   "scripts": {
     "electron": "electron .",
     "arcode": "set ARCRHO_APP_MODE=arcode&& electron .",
-    "build:python-api": "node-portable\\node.exe build/build_python_api_wheel.js",
+    "build:python-api": "node-portable\\node.exe build/helpers/build_python_api_wheel.js",
     "build:python": "build\\build_python_server.bat",
     "build:arcode:python": "build\\build_arcode_python_server.bat",
-    "build:arcode:icons": "node-portable\\node.exe build/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons",
-    "build:electron": "node-portable\\node.exe build/patch_nsis_installer_progress.js && node-portable\\node.exe node_modules/electron-builder/cli.js --win",
-    "build:arcode:electron": "set ARCRHO_APP_MODE=arcode&& node-portable\\node.exe build/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons && node-portable\\node.exe build/patch_nsis_installer_progress.js && node-portable\\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win",
+    "build:arcode:icons": "node-portable\\node.exe build/helpers/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons",
+    "build:electron": "node-portable\\node.exe build/installer/patch_nsis_installer_progress.js && node-portable\\node.exe node_modules/electron-builder/cli.js --win",
+    "build:arcode:electron": "set ARCRHO_APP_MODE=arcode&& node-portable\\node.exe build/helpers/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons && node-portable\\node.exe build/installer/patch_nsis_installer_progress.js && node-portable\\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win",
     "clean:python-artifacts": "node -e \"const fs=require('fs'); ['python_dist','python_build','build/python_packages'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));\"",
     "clean:arcode-python-artifacts": "node-portable\\node.exe -e \"const fs=require('fs'); ['python_dist/arcode_server','python_build'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));\"",
     "build": "npm run build:python-api && npm run build:python && npm run build:electron && npm run clean:python-artifacts",
-    "build:arcode": "build\\build_arcode_python_server.bat && set ARCRHO_APP_MODE=arcode&& node-portable\\node.exe build/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons && node-portable\\node.exe build/patch_nsis_installer_progress.js && node-portable\\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win && node-portable\\node.exe -e \"const fs=require('fs'); ['python_dist/arcode_server','python_build'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));\""
+    "build:arcode": "build\\build_arcode_python_server.bat && set ARCRHO_APP_MODE=arcode&& node-portable\\node.exe build/helpers/convert_icon.js icons/icon_wing_geo_v8.svg build/generated/arcode-icons && node-portable\\node.exe build/installer/patch_nsis_installer_progress.js && node-portable\\node.exe node_modules/electron-builder/cli.js --config electron-builder.arcode.json --win && node-portable\\node.exe -e \"const fs=require('fs'); ['python_dist/arcode_server','python_build'].forEach((p)=>fs.rmSync(p,{recursive:true,force:true}));\""
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
@@ -79,7 +79,7 @@
       "shortcutName": "ArcRho",
       "artifactName": "ArcRho-Setup-${version}.exe",
       "deleteAppDataOnUninstall": false,
-      "include": "build/installer.nsh"
+      "include": "build/installer/installer.nsh"
     },
     "asar": true
   }

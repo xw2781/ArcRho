@@ -9,7 +9,7 @@ from datetime import date
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CHANGES_ROOT = REPO_ROOT / "changes"
 UNRELEASED_DIR = CHANGES_ROOT / "unreleased"
 ARCHIVE_DIR = CHANGES_ROOT / "archive"

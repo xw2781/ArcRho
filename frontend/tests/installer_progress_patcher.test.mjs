@@ -14,26 +14,26 @@ const {
   validateBuiltInInstallerPath,
   findCSharpCompiler,
   compileProgressHelper,
-} = require("../build/patch_nsis_installer_progress.js");
+} = require("../build/installer/patch_nsis_installer_progress.js");
 
 const BUILT_IN_COMPRESSOR =
   "const USE_NSIS_BUILT_IN_COMPRESSOR = true;";
 const MODE_AWARE_COMPRESSOR =
   'const USE_NSIS_BUILT_IN_COMPRESSOR = process.env.ARCRHO_APP_MODE === "arcode";';
 const installerSource = fs.readFileSync(
-  new URL("../build/installer.nsh", import.meta.url),
+  new URL("../build/installer/installer.nsh", import.meta.url),
   "utf8"
 );
 const arcodeInstallerSource = fs.readFileSync(
-  new URL("../build/arcode_installer.nsh", import.meta.url),
+  new URL("../build/installer/arcode_installer.nsh", import.meta.url),
   "utf8"
 );
 const helperSource = fs.readFileSync(
-  new URL("../build/installer_progress_helper.cs", import.meta.url),
+  new URL("../build/installer/installer_progress_helper.cs", import.meta.url),
   "utf8"
 );
 const patcherSource = fs.readFileSync(
-  new URL("../build/patch_nsis_installer_progress.js", import.meta.url),
+  new URL("../build/installer/patch_nsis_installer_progress.js", import.meta.url),
   "utf8"
 );
 const electronBuilderTargetSource = fs.readFileSync(

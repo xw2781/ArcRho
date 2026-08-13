@@ -35,10 +35,13 @@ set "ARCRHO_APP_MODE=arcode"
 if defined ARCRHO_LOCAL_WORKSPACE_LOG_ACTIVE goto after_wrapper_log_setup
 for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"`) do set "ARCRHO_LOCAL_WORKSPACE_LOG_STAMP=%%I"
 set "ARCRHO_LOCAL_WORKSPACE_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
+REM A single-PC build has no build share to log into, so it points the log
+REM directory at a local folder. Unset, the two-PC default above is unchanged.
+if defined ARCRHO_BUILD_LOG_DIR set "ARCRHO_LOCAL_WORKSPACE_LOG_DIR=%ARCRHO_BUILD_LOG_DIR%"
 set "ARCRHO_LOCAL_WORKSPACE_LOG_FILE=%ARCRHO_LOCAL_WORKSPACE_LOG_DIR%\build_%ARCRHO_BUILD_PRODUCT%_via_local_workspace_%ARCRHO_LOCAL_WORKSPACE_LOG_STAMP%.log"
 echo Writing local-workspace build log to: %ARCRHO_LOCAL_WORKSPACE_LOG_FILE%
 set "ARCRHO_LOCAL_WORKSPACE_LOG_ACTIVE=1"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%run_with_log.ps1" -LogPath "%ARCRHO_LOCAL_WORKSPACE_LOG_FILE%" -CommandPath "%~f0" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%transport\run_with_log.ps1" -LogPath "%ARCRHO_LOCAL_WORKSPACE_LOG_FILE%" -CommandPath "%~f0" %*
 exit /b %ERRORLEVEL%
 
 :after_wrapper_log_setup
@@ -59,7 +62,7 @@ set "LOCAL_FRONTEND=%LOCAL_ROOT%\frontend"
 set "SOURCE_ZIP_READY_FLAG=%SOURCE_ZIP%.ready"
 set "SOURCE_ZIP_HASH=%SOURCE_ZIP%.sha256"
 set "READY_SIGNAL_FILE=%LOCAL_ROOT%.source_zip_ready_signal"
-set "ARCRHO_BUILD_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
+if not defined ARCRHO_BUILD_LOG_DIR set "ARCRHO_BUILD_LOG_DIR=E:\XWSpace\Build ArcRho App\logs\%COMPUTERNAME%"
 set "ARCRHO_LOCAL_BUILD_START_SECONDS="
 for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()" 2^>nul`) do set "ARCRHO_LOCAL_BUILD_START_SECONDS=%%I"
 
@@ -70,15 +73,17 @@ if /i "%~1"=="--check" (
     echo Source completion flag:      %SOURCE_ZIP_READY_FLAG%
     echo Local workspace:           %LOCAL_ROOT%
     echo Consumed-signal marker:     %READY_SIGNAL_FILE%
-    echo Release channel definition: %SCRIPT_DIR%release_channel.json
+    echo Release channel definition: %SCRIPT_DIR%release\release_channel.json
     echo Shared build log directory: %ARCRHO_BUILD_LOG_DIR%
-    if not exist "%SCRIPT_DIR%prepare_local_build_workspace_from_zip.ps1" (
+    if not exist "%SCRIPT_DIR%transport\prepare_local_build_workspace_from_zip.ps1" (
         echo ERROR: Missing prepare_local_build_workspace_from_zip.ps1 beside this batch file.
         exit /b 1
     )
     echo Local workspace wrapper check passed.
     exit /b 0
 )
+
+if defined ARCRHO_BUILD_IN_PLACE goto workspace_ready
 
 echo ========================================
 echo Preparing local %PRODUCT_NAME% build workspace
@@ -99,7 +104,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%prepare_local_build_workspace_from_zip.ps1" -SourceZip "%SOURCE_ZIP%" -Destination "%LOCAL_ROOT%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%transport\prepare_local_build_workspace_from_zip.ps1" -SourceZip "%SOURCE_ZIP%" -Destination "%LOCAL_ROOT%"
 if errorlevel 1 (
     echo.
     echo ERROR: Failed to prepare local build workspace.
@@ -114,10 +119,18 @@ if not exist "%LOCAL_FRONTEND%\build\build_app_via_local_workspace.bat" (
     exit /b 1
 )
 
+:workspace_ready
+REM In-place mode skips the ZIP transport entirely: the repository is already on
+REM this PC, so LOCAL_ROOT points at it and the build runs against its own
+REM frontend. The version bump, release notes, and archived fragments the build
+REM writes then land in the repository instead of a workspace that gets deleted.
 echo.
 echo ========================================
-echo Building %PRODUCT_NAME% from local workspace
+if defined ARCRHO_BUILD_IN_PLACE echo Building %PRODUCT_NAME% in place from the local repository
+if not defined ARCRHO_BUILD_IN_PLACE echo Building %PRODUCT_NAME% from local workspace
 echo ========================================
+if defined ARCRHO_BUILD_IN_PLACE echo Repository:          %LOCAL_ROOT%
+if defined ARCRHO_BUILD_IN_PLACE echo Build log directory: %ARCRHO_BUILD_LOG_DIR%
 echo.
 
 pushd "%LOCAL_FRONTEND%"
@@ -149,6 +162,7 @@ echo Local %PRODUCT_NAME% build completed successfully
 echo ========================================
 echo Local output directory: %LOCAL_FRONTEND%\dist
 echo.
+call :publish_built_version
 call :record_source_zip_signal
 if errorlevel 1 (
     echo WARNING: Could not record the completed ZIP signal.
@@ -189,10 +203,22 @@ timeout /t 5 /nobreak >nul
 goto wait_for_new_source_zip_signal_loop
 
 :record_source_zip_signal
+REM An in-place build consumed no ZIP, so there is no readiness token to record.
+if defined ARCRHO_BUILD_IN_PLACE exit /b 0
 if not defined CURRENT_READY_SIGNAL exit /b 1
 for %%I in ("%READY_SIGNAL_FILE%") do if not exist "%%~dpI" mkdir "%%~dpI" >nul 2>nul
 > "%READY_SIGNAL_FILE%" echo %CURRENT_READY_SIGNAL%
 if errorlevel 1 exit /b 1
+exit /b 0
+
+:publish_built_version
+REM A caller that drives this wrapper itself cannot read APP_VERSION back out of it,
+REM because the wrapper runs under setlocal. Hand the built version over through a
+REM file when the caller asked for one.
+if not defined ARCRHO_BUILD_VERSION_OUT exit /b 0
+if not defined APP_VERSION exit /b 0
+for %%I in ("%ARCRHO_BUILD_VERSION_OUT%") do if not exist "%%~dpI" mkdir "%%~dpI" >nul 2>nul
+> "%ARCRHO_BUILD_VERSION_OUT%" echo %APP_VERSION%
 exit /b 0
 
 :sync_source_repository
@@ -203,10 +229,23 @@ if not defined APP_VERSION (
     echo.
     exit /b 0
 )
+REM On a single PC the repository is already on this machine, so there is no listener
+REM to ask and nothing to wait for. An in-place build has already written the version
+REM bump, release notes, and archived fragments straight into it.
+if defined ARCRHO_BUILD_IN_PLACE goto skip_listener_release_sync
+if defined ARCRHO_SKIP_LISTENER_RELEASE_SYNC goto skip_listener_release_sync
+goto run_listener_release_sync
+
+:skip_listener_release_sync
+echo Skipping the build-share listener sync request; this repository is local.
+echo.
+exit /b 0
+
+:run_listener_release_sync
 for %%I in ("%SOURCE_ZIP%") do set "BUILD_SHARE_ROOT=%%~dpI"
 if defined BUILD_SHARE_ROOT set "BUILD_SHARE_ROOT=%BUILD_SHARE_ROOT:~0,-1%"
 echo Syncing the source repository to the published release...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%request_release_sync.ps1" -Version "%APP_VERSION%" -ProductName "%PRODUCT_NAME%" -BuildShareRoot "%BUILD_SHARE_ROOT%" -ReadySignal "%CURRENT_READY_SIGNAL%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%release\request_release_sync.ps1" -Version "%APP_VERSION%" -ProductName "%PRODUCT_NAME%" -BuildShareRoot "%BUILD_SHARE_ROOT%" -ReadySignal "%CURRENT_READY_SIGNAL%"
 if errorlevel 1 (
     echo.
     echo WARNING: The published release was not recorded in the source repository.
@@ -287,7 +326,7 @@ echo.
 
 echo Step 0: Validating release note fragments...
 echo ----------------------------------------
-"%PYTHON_EXE%" build\release_notes.py check
+"%PYTHON_EXE%" build\release\release_notes.py check
 if errorlevel 1 (
     echo ERROR: Release note fragment validation failed.
     echo.
@@ -302,9 +341,9 @@ echo ----------------------------------------
 set "APP_VERSION_FILE=build\app_version.txt"
 if exist "%APP_VERSION_FILE%" del /q "%APP_VERSION_FILE%" >nul 2>nul
 if "%~1"=="" (
-    "%PYTHON_EXE%" build\version_manager.py --github-release-product "%PRODUCT_NAME%" --version-file "%APP_VERSION_FILE%"
+    "%PYTHON_EXE%" build\release\version_manager.py --github-release-product "%PRODUCT_NAME%" --version-file "%APP_VERSION_FILE%"
 ) else (
-    "%PYTHON_EXE%" build\version_manager.py "%~1" --github-release-product "%PRODUCT_NAME%" --version-file "%APP_VERSION_FILE%"
+    "%PYTHON_EXE%" build\release\version_manager.py "%~1" --github-release-product "%PRODUCT_NAME%" --version-file "%APP_VERSION_FILE%"
 )
 if errorlevel 1 (
     echo ERROR: Failed to update application version metadata.
@@ -397,7 +436,7 @@ echo Step 5: Generating release notes...
 echo ----------------------------------------
 set "RELEASE_NOTE_PATH_FILE=build\release_note_path_%APP_VERSION%.txt"
 if exist "%RELEASE_NOTE_PATH_FILE%" del /q "%RELEASE_NOTE_PATH_FILE%" >nul 2>nul
-"%PYTHON_EXE%" build\release_notes.py release "%APP_VERSION%" --path-file "%RELEASE_NOTE_PATH_FILE%"
+"%PYTHON_EXE%" build\release\release_notes.py release "%APP_VERSION%" --path-file "%RELEASE_NOTE_PATH_FILE%"
 if errorlevel 1 (
     echo ERROR: Failed to generate release notes for version %APP_VERSION%.
     echo.
@@ -419,7 +458,7 @@ echo.
 
 echo Step 6: Publishing GitHub Release...
 echo ----------------------------------------
-powershell -NoProfile -ExecutionPolicy Bypass -File "build\publish_github_release.ps1" -InstallerPath "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" -ReleaseNotesPath "%RELEASE_NOTE_PATH%" -ProductName "%PRODUCT_NAME%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "build\release\publish_github_release.ps1" -InstallerPath "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" -ReleaseNotesPath "%RELEASE_NOTE_PATH%" -ProductName "%PRODUCT_NAME%"
 if errorlevel 1 (
     echo ERROR: Failed to publish GitHub Release.
     echo HINT: Ensure the gh CLI is installed and authenticated ^(run: gh auth login^).
@@ -482,7 +521,7 @@ if not exist "%NODE_HOME%\node.exe" (
     echo ERROR: Missing portable node: %NODE_HOME%\node.exe
     exit /b 1
 )
-call "%NODE_HOME%\node.exe" build\build_python_api_wheel.js
+call "%NODE_HOME%\node.exe" build\helpers\build_python_api_wheel.js
 if errorlevel 1 (
     echo ERROR: Failed to build Python API wheel.
     exit /b 1
@@ -546,11 +585,11 @@ if not exist "%~1\node.exe" (
     echo ERROR: Missing portable Node executable: %~1\node.exe
     exit /b 1
 )
-if not exist "%APP_ROOT%\build\validate_bundled_codex_runtime.js" (
-    echo ERROR: Missing bundled CLI runtime validator: %APP_ROOT%\build\validate_bundled_codex_runtime.js
+if not exist "%APP_ROOT%\build\arcbot_runtime\validate_bundled_codex_runtime.js" (
+    echo ERROR: Missing bundled CLI runtime validator: %APP_ROOT%\build\arcbot_runtime\validate_bundled_codex_runtime.js
     exit /b 1
 )
-call "%~1\node.exe" "%APP_ROOT%\build\validate_bundled_codex_runtime.js" --runtime-root "%~1" --cwd "%~2" --timeout-ms 30000
+call "%~1\node.exe" "%APP_ROOT%\build\arcbot_runtime\validate_bundled_codex_runtime.js" --runtime-root "%~1" --cwd "%~2" --timeout-ms 30000
 if errorlevel 1 exit /b 1
 exit /b 0
 
@@ -584,13 +623,13 @@ exit /b 0
 
 :run_electron
 if /i "%ARCRHO_BUILD_PRODUCT%"=="arcode" (
-    call "%NODE_HOME%\node.exe" build\convert_icon.js icons\icon_wing_geo_v8.svg build\generated\arcode-icons
+    call "%NODE_HOME%\node.exe" build\helpers\convert_icon.js icons\icon_wing_geo_v8.svg build\generated\arcode-icons
     if errorlevel 1 (
         echo ERROR: Failed to generate Arcode icons from icons\icon_wing_geo_v8.svg.
         exit /b 1
     )
 )
-call "%NODE_HOME%\node.exe" build\patch_nsis_installer_progress.js
+call "%NODE_HOME%\node.exe" build\installer\patch_nsis_installer_progress.js
 if errorlevel 1 (
     echo ERROR: Failed to prepare NSIS installer progress patch.
     exit /b 1
@@ -602,7 +641,7 @@ echo.
 echo WARNING: Electron build failed on first attempt.
 echo Retrying once after re-preparing app-builder...
 call :prepare_app_builder
-call "%NODE_HOME%\node.exe" build\patch_nsis_installer_progress.js
+call "%NODE_HOME%\node.exe" build\installer\patch_nsis_installer_progress.js
 if errorlevel 1 (
     echo ERROR: Failed to prepare NSIS installer progress patch.
     exit /b 1

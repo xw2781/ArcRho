@@ -38,9 +38,9 @@ if errorlevel 1 (
 
 REM When the version came from the prompt there are no forwarded arguments to pass.
 if "%~1"=="" (
-    "%PYTHON_EXE%" build\sync_published_release.py %TARGET_VERSION%
+    "%PYTHON_EXE%" build\release\sync_published_release.py %TARGET_VERSION%
 ) else (
-    "%PYTHON_EXE%" build\sync_published_release.py %*
+    "%PYTHON_EXE%" build\release\sync_published_release.py %*
 )
 if errorlevel 1 (
     echo.

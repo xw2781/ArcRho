@@ -204,7 +204,7 @@ ShowUninstDetails show
   Function ArcRho_DetectConfiguredServerRoot
     InitPluginsDir
     SetOutPath "$PLUGINSDIR"
-    File /oname=detect_arcrho_server_root.ps1 "${PROJECT_DIR}\build\detect_arcrho_server_root.ps1"
+    File /oname=detect_arcrho_server_root.ps1 "${PROJECT_DIR}\build\installer\detect_arcrho_server_root.ps1"
     nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\detect_arcrho_server_root.ps1"'
     Pop $0
     Pop $1
@@ -417,7 +417,7 @@ ShowUninstDetails show
 
   Function ArcRho_InstallExcelAddIn
     InitPluginsDir
-    File /oname=$PLUGINSDIR\install_arcrho_excel_addin.ps1 "${PROJECT_DIR}\build\install_arcrho_excel_addin.ps1"
+    File /oname=$PLUGINSDIR\install_arcrho_excel_addin.ps1 "${PROJECT_DIR}\build\installer\install_arcrho_excel_addin.ps1"
     Call ArcRho_SetExcelAddInPath
 
     ${If} $ArcRhoExcelAddInPath == ""

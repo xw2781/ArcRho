@@ -27,7 +27,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-"%PYTHON_EXE%" build\version_manager.py "%TARGET_VERSION%" --require-increase
+"%PYTHON_EXE%" build\release\version_manager.py "%TARGET_VERSION%" --require-increase
 if errorlevel 1 (
     echo.
     echo ERROR: Version was not changed.

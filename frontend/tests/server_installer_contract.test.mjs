@@ -4,11 +4,11 @@ import test from "node:test";
 
 
 const frontendInstaller = fs.readFileSync(
-  new URL("../build/installer.nsh", import.meta.url),
+  new URL("../build/installer/installer.nsh", import.meta.url),
   "utf8"
 );
 const detector = fs.readFileSync(
-  new URL("../build/detect_arcrho_server_root.ps1", import.meta.url),
+  new URL("../build/installer/detect_arcrho_server_root.ps1", import.meta.url),
   "utf8"
 );
 const serverInstaller = fs.readFileSync(

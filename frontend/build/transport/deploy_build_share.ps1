@@ -28,7 +28,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$sourceDirectory = Join-Path $PSScriptRoot "build_share"
+$sourceDirectory = Join-Path (Split-Path -Parent $PSScriptRoot) "build_share"
 if (-not (Test-Path -LiteralPath $sourceDirectory -PathType Container)) {
     throw "Canonical build-share directory not found: $sourceDirectory"
 }
