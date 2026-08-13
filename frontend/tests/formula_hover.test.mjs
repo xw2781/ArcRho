@@ -10,8 +10,22 @@ const styles = await readFile(
   new URL("../ui/shared/components/formula_hover/formula_hover.css", import.meta.url),
   "utf8",
 );
+const sharedModuleUrl = (name) => new URL(
+  `../ui/shared/components/formula_bar/${name}`,
+  import.meta.url,
+).href;
+// Resolved to real file URLs so the test exercises the shared layout and
+// tokenizer rather than a stand-in.
+const patchedSource = ["formula_bar_layout.js", "formula_text.js"].reduce((text, name) => {
+  const specifier = new RegExp(
+    `"/ui/shared/components/formula_bar/${name.replace(".", "\\.")}\\?v=[^"]*"`,
+    "u",
+  );
+  if (!specifier.test(text)) throw new Error(`${name} import not found in formula_hover.js`);
+  return text.replace(specifier, JSON.stringify(sharedModuleUrl(name)));
+}, source);
 const formulaHover = await import(
-  `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+  `data:text/javascript;base64,${Buffer.from(patchedSource).toString("base64")}`
 );
 
 class FakeClassList {
@@ -163,6 +177,12 @@ class FakeDocument {
     return new FakeElement(tagName, this);
   }
 
+  createTextNode(data) {
+    const node = new FakeElement("#text", this);
+    node.textContent = String(data ?? "");
+    return node;
+  }
+
   allElements() {
     const elements = [];
     const visit = (element) => {
@@ -239,9 +259,13 @@ const LINK_CONTEXT = {
   anchorDisplayColumn: 2,
 };
 
-test("formula hover width cap increases another 30 percent and remains viewport-clamped", () => {
-  assert.match(styles, /width:\s*min\(879px,\s*calc\(100vw - 16px\)\)/u);
-  assert.match(source, /formula_hover\.css\?v=20260811c/u);
+test("the linked-cell editor wears the shared formula bar and adds only its own placement", () => {
+  assert.ok(source.includes("/ui/shared/components/formula_bar/formula_bar.css?v="));
+  assert.ok(source.includes("/ui/shared/components/formula_hover/formula_hover.css?v="));
+  assert.ok(source.includes('root.className = "arFormulaBar arFormulaHover"'));
+  // Nothing visual is redefined here: the shared bar owns border, shadow, and type.
+  assert.doesNotMatch(styles, /box-shadow|border-radius|font:\s*12px/u);
+  assert.match(styles, /position:\s*fixed/u);
 });
 
 test("array formula positioning uses the complete range and never overlaps it", () => {
@@ -253,8 +277,10 @@ test("array formula positioning uses the complete range and never overlaps it", 
   context.controller.reposition();
 
   assert.equal(root.dataset.placement, "below");
-  assert.equal(root.style.top, "125px");
+  assert.equal(root.style.top, "124px");
   assert.ok(Number.parseInt(root.style.top, 10) > rangeRect.bottom);
+  // Sized to its content rather than a fixed panel width.
+  assert.equal(root.style.width, "300px");
 });
 
 test("moving across one array keeps the canonical anchor and formula-bar position", () => {
@@ -290,7 +316,7 @@ test("formula hover positioning prefers above the cell and flips below near the 
       { width: 300, height: 30 },
       { width: 800, height: 600 },
     ),
-    { left: 40, top: 65, placement: "above" },
+    { left: 40, top: 66, width: 300, placement: "above" },
   );
   assert.deepEqual(
     formulaHover.calculateFormulaHoverPosition(
@@ -298,7 +324,7 @@ test("formula hover positioning prefers above the cell and flips below near the 
       { width: 300, height: 30 },
       { width: 800, height: 600 },
     ),
-    { left: 40, top: 40, placement: "below" },
+    { left: 40, top: 39, width: 300, placement: "below" },
   );
 });
 
@@ -308,8 +334,8 @@ test("linked-cell hover shows the full formula and delays hiding while entering 
   context.anchor.dispatch("mouseenter");
 
   const root = byClass(context.documentRef, "arFormulaHover");
-  const input = byClass(context.documentRef, "arFormulaHoverInput");
-  assert.equal(root.classList.contains("is-open"), true);
+  const input = byClass(context.documentRef, "arFormulaBarInput");
+  assert.equal(root.classList.contains("isOpen"), true);
   assert.equal(root.dataset.placement, "above");
   assert.equal(input.value, LINK_CONTEXT.reference);
   assert.match(context.anchor.getAttribute("aria-description"), /press F2/u);
@@ -317,18 +343,18 @@ test("linked-cell hover shows the full formula and delays hiding while entering 
   context.anchor.dispatch("mouseleave");
   root.dispatch("mouseenter");
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.equal(root.classList.contains("is-open"), true);
+  assert.equal(root.classList.contains("isOpen"), true);
 
   root.dispatch("mouseleave");
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.equal(root.classList.contains("is-open"), false);
+  assert.equal(root.classList.contains("isOpen"), false);
 });
 
 test("Enter commits the edited formula and Escape cancels without a commit", async () => {
   const context = setup();
   context.controller.open(context.anchor, LINK_CONTEXT, { focus: true });
   const root = byClass(context.documentRef, "arFormulaHover");
-  const input = byClass(context.documentRef, "arFormulaHoverInput");
+  const input = byClass(context.documentRef, "arFormulaBarInput");
   assert.equal(context.documentRef.activeElement, input);
   assert.equal(input.selected, true);
   assert.deepEqual(context.editStarts, [{ ...LINK_CONTEXT, formula: LINK_CONTEXT.reference }]);
@@ -346,13 +372,13 @@ test("Enter commits the edited formula and Escape cancels without a commit", asy
   assert.equal(prevented, true);
   assert.deepEqual(context.commits, [{ formula: nextFormula, context: { ...LINK_CONTEXT, formula: LINK_CONTEXT.reference } }]);
   assert.equal(root.getAttribute("aria-busy"), "false");
-  assert.equal(root.classList.contains("is-open"), false);
+  assert.equal(root.classList.contains("isOpen"), false);
 
   context.controller.open(context.anchor, LINK_CONTEXT, { focus: true });
   input.value = "changed but canceled";
   input.dispatch("keydown", { key: "Escape" });
   assert.equal(input.value, LINK_CONTEXT.reference);
-  assert.equal(root.classList.contains("is-open"), false);
+  assert.equal(root.classList.contains("isOpen"), false);
   assert.equal(context.commits.length, 1);
   assert.equal(context.dismisses.length, 2);
 });
@@ -361,14 +387,79 @@ test("failed formula commits retain the editor with an accessible error", async 
   const context = setup({ commitResult: { ok: false, error: "Workbook unavailable." } });
   context.controller.open(context.anchor, LINK_CONTEXT, { focus: true });
   const root = byClass(context.documentRef, "arFormulaHover");
-  const input = byClass(context.documentRef, "arFormulaHoverInput");
+  const input = byClass(context.documentRef, "arFormulaBarInput");
   input.value = "='C:\\Missing\\[Book.xlsx]Sheet 1'!A1";
 
   assert.equal(await context.controller.commit(), false);
-  assert.equal(root.classList.contains("is-open"), true);
+  assert.equal(root.classList.contains("isOpen"), true);
   assert.equal(root.classList.contains("has-error"), true);
   assert.equal(input.getAttribute("aria-invalid"), "true");
   assert.equal(byClass(context.documentRef, "arFormulaHoverError").textContent, "Workbook unavailable.");
   assert.equal(context.documentRef.activeElement, input);
   assert.equal(context.statuses.at(-1), "Workbook unavailable.");
+});
+
+test("the editor renders the formula read-only and swaps to the input on focus", () => {
+  const context = setup();
+  context.controller.open(context.anchor, LINK_CONTEXT);
+  const input = byClass(context.documentRef, "arFormulaBarInput");
+  const display = byClass(context.documentRef, "arFormulaBarDisplay");
+
+  assert.equal(input.style.display, "none", "the raw input stays out of the way until edited");
+  assert.equal(display.style.display, "");
+  const excelRef = display.children.find((child) => child.classList.contains("fmtExcelRef"));
+  assert.ok(excelRef, "the external reference is colorized");
+  assert.equal(excelRef.textContent, LINK_CONTEXT.reference.replace(/^=/u, ""));
+
+  input.focus();
+  assert.equal(input.style.display, "");
+  assert.equal(display.style.display, "none");
+});
+
+test("clicking a linked cell pins the editor open and clicking it again releases it", async () => {
+  const context = setup();
+  context.controller.attach(context.anchor, LINK_CONTEXT);
+  const findRoot = () => byClass(context.documentRef, "arFormulaHover");
+
+  // Hovering alone stays transient: leaving still hides it.
+  context.anchor.dispatch("mouseenter");
+  assert.equal(findRoot().classList.contains("isOpen"), true);
+  context.anchor.dispatch("mouseleave");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(findRoot().classList.contains("isOpen"), false);
+
+  // A click pins it, and leaving no longer hides it.
+  context.anchor.dispatch("click", { button: 0 });
+  assert.equal(findRoot().classList.contains("isOpen"), true);
+  context.anchor.dispatch("mouseleave");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(findRoot().classList.contains("isOpen"), true, "a pinned editor stays put");
+
+  // Clicking the same cell again releases it.
+  context.anchor.dispatch("click", { button: 0 });
+  assert.equal(findRoot().classList.contains("isOpen"), false);
+  assert.match(context.anchor.getAttribute("aria-description"), /Hover, click, or press F2/u);
+});
+
+test("a link in the grid's first row still gets its bar above the range", () => {
+  const context = setup();
+  // The grid starts at y=25; the linked range fills its first rows, so there is
+  // no room above inside the grid itself.
+  const gridEl = context.documentRef.createElement("div");
+  gridEl.id = "tableWrap";
+  gridEl._rect = { left: 20, top: 25, right: 700, bottom: 400, width: 680, height: 375 };
+  gridEl.clientWidth = 680;
+  gridEl.scrollTop = 0;
+  context.documentRef.body.appendChild(gridEl);
+
+  const rangeRect = { left: 150, top: 57, right: 280, bottom: 315, width: 130, height: 258 };
+  context.controller.open(context.anchor, LINK_CONTEXT, { positionRect: rangeRect });
+  const root = byClass(context.documentRef, "arFormulaHover");
+  root._rect = { left: 0, top: 0, right: 300, bottom: 30, width: 300, height: 30 };
+  context.controller.reposition();
+
+  assert.equal(root.dataset.placement, "above");
+  // 57 - 30 - 4, which is above the grid's own top edge and still on screen.
+  assert.equal(root.style.top, "23px");
+  assert.equal(root.style.left, "150px");
 });

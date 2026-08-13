@@ -1008,22 +1008,21 @@
   .decimalPlacesWrap > input[type="number"],
   .decimalPlacesStepBtn,
   .pageCloseConfirmButton,
-  .ctx-item,
-  .arFormulaHoverInput
+  .ctx-item
 ) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-input);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.datasetDropdown, .ctx-menu, .arFormulaHover) {
+:root[data-arcrho-theme="dark"] :is(.datasetDropdown, .ctx-menu) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-raised);
   color: var(--ar-color-text);
   box-shadow: var(--ar-shadow-floating);
 }
 
-:root[data-arcrho-theme="dark"] :is(.datasetOption:hover, .ctx-item:hover, .ctx-item:focus-visible, .arFormulaHoverInput:hover) {
+:root[data-arcrho-theme="dark"] :is(.datasetOption:hover, .ctx-item:hover, .ctx-item:focus-visible, .arFormulaBarInput:hover) {
   background-color: var(--ar-color-surface-hover);
   color: var(--ar-color-text-strong);
 }
@@ -1054,8 +1053,7 @@
   background-color: var(--ar-color-surface-muted);
 }
 
-:root[data-arcrho-theme="dark"] .arFormulaHoverMark {
-  border-color: #4f7e9d;
+:root[data-arcrho-theme="dark"] .arFormulaBarFxIcon {
   background-color: #182935;
   color: #9cc9e7;
 }
@@ -1543,24 +1541,13 @@
   .dfmSelectMenu,
   .dfmCellNoteBox,
   .dfmCellNoteText,
-  .dfmSummaryFormulaBar,
-  .dfmSummaryFormulaBarInput,
+  .arFormulaBar,
+  .arFormulaBarInput,
   .dfmModalCard
 ) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-input);
   color: var(--ar-color-text);
-}
-
-:root[data-arcrho-theme="dark"] .dfmSummaryFormulaBarIconBtn {
-  border-color: var(--ar-color-border-strong);
-  background-color: var(--ar-color-surface-raised);
-  color: var(--ar-color-text-muted);
-}
-
-:root[data-arcrho-theme="dark"] .dfmSummaryFormulaBarIconBtn:hover:not(:disabled) {
-  background-color: var(--ar-color-surface-hover);
-  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(.dfmSelectMenu, .dfmCtxMenu, .dfmCellNoteBox, .dfmModalCard) {

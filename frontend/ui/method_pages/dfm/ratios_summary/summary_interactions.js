@@ -6,7 +6,7 @@ DFM Ratios Summary Table Interactions
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
 import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag_tracker.js";
 
 const {
@@ -59,6 +59,7 @@ const pasteUserEntryClipboardGrid = (...args) => summaryRuntime.pasteUserEntryCl
 const commitUserEntryArrayFormula = (...args) => summaryRuntime.commitUserEntryArrayFormula(...args);
 const isSummaryFormulaCommitPending = (...args) => summaryRuntime.isSummaryFormulaCommitPending(...args);
 const updateSummaryFormulaBarForCell = (...args) => summaryRuntime.updateSummaryFormulaBarForCell(...args);
+const wireSummaryFormulaBarPointer = (...args) => summaryRuntime.wireSummaryFormulaBarPointer(...args);
 const handleSummaryTableSelectionChange = (...args) => summaryRuntime.handleSummaryTableSelectionChange(...args);
 const clearSummaryReferenceUi = (...args) => summaryRuntime.clearSummaryReferenceUi(...args);
 const buildSummaryReferenceValues = (...args) => summaryRuntime.buildSummaryReferenceValues(...args);
@@ -873,6 +874,8 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   listen(summaryTable, "mouseleave", () => {
     updateReferenceHoverUi(null);
   });
+
+  wireSummaryFormulaBarPointer(summaryTable, listen);
 
   listen(document, "keydown", (e) => {
     if (!document.body.contains(summaryTable)) return;

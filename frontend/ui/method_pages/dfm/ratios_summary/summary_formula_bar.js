@@ -7,59 +7,13 @@ import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=
 import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260811a";
 import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260812a";
 import {
+  formatFormulaText,
+  tokenizeFormula,
+} from "/ui/shared/components/formula_bar/formula_text.js?v=20260812a";
+import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
-
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-
-// Stroke-only 16x16 glyphs. Paint (fill/stroke/width) stays in dfm.css.
-const FORMULA_BAR_ICON_PATHS = {
-  Paste: [
-    "M5.5 3.5H4A1.5 1.5 0 0 0 2.5 5v8A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5V5A1.5 1.5 0 0 0 12 3.5h-1.5",
-    "M6 1.5h4a.5.5 0 0 1 .5.5v1.6a.5.5 0 0 1-.5.5H6a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z",
-    "M5.5 8.5h5",
-    "M5.5 11.2h3.2",
-  ],
-  Refresh: [
-    "M13.3 5.4A5.6 5.6 0 1 0 13.6 9.6",
-    "M10.6 2.9h2.9v2.9",
-  ],
-  // A workbook whose top-right corner opens into an outward arrow.
-  Open: [
-    "M12.5 9.4v3.1A1.5 1.5 0 0 1 11 14H3.5A1.5 1.5 0 0 1 2 12.5V5a1.5 1.5 0 0 1 1.5-1.5h3.1",
-    "M8.2 7.8 14 2",
-    "M9.6 2H14v4.4",
-  ],
-};
-
-function appendFormulaBarIcon(button, kind) {
-  const icon = document.createElementNS(SVG_NAMESPACE, "svg");
-  icon.setAttribute("class", `dfmSummaryFormulaBarIcon is${kind}`);
-  icon.setAttribute("viewBox", "0 0 16 16");
-  icon.setAttribute("aria-hidden", "true");
-  icon.setAttribute("focusable", "false");
-  FORMULA_BAR_ICON_PATHS[kind].forEach((definition) => {
-    const path = document.createElementNS(SVG_NAMESPACE, "path");
-    path.setAttribute("d", definition);
-    icon.appendChild(path);
-  });
-  button.appendChild(icon);
-  return icon;
-}
-
-function createFormulaBarIconButton(id, kind, tooltip) {
-  const button = document.createElement("button");
-  button.id = id;
-  button.className = "dfmSummaryFormulaBarIconBtn";
-  button.type = "button";
-  appendFormulaBarIcon(button, kind);
-  // The glyph is decorative and the shared tooltip only sets aria-description, so the
-  // button needs an explicit accessible name.
-  button.setAttribute("aria-label", tooltip);
-  attachArcrhoTooltip(button, tooltip);
-  return button;
-}
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -83,7 +37,6 @@ const updateActiveSummaryFormulaReferenceUi = (...args) => summaryRuntime.update
 const formatUserEntryFormulaEvaluationValue = (...args) => (
   summaryRuntime.formatUserEntryFormulaEvaluationValue(...args)
 );
-const refreshAllExcelLinks = (...args) => summaryRuntime.refreshAllExcelLinks(...args);
 const isSummaryFormulaCommitPending = (...args) => summaryRuntime.isSummaryFormulaCommitPending(...args);
 const commitSummaryFormulaInput = (...args) => summaryRuntime.commitSummaryFormulaInput(...args);
 const updateSummaryFormulaBarForCell = (...args) => summaryRuntime.updateSummaryFormulaBarForCell(...args);
@@ -100,112 +53,6 @@ function scrollSummaryFormulaInputToEnd(inputEl) {
       // no-op: some browsers may not expose scroll metrics on detached inputs
     }
   });
-}
-
-/**
- * Tokenise a formula string into typed segments.
- * Recognises Excel refs, quoted row references, bracketed references,
- * operators, and plain text.
- */
-function tokenizeFormula(rawText) {
-  const text = String(rawText || "").trim();
-  if (!text) return [];
-
-  // Ensure leading '='
-  const normalizedText = text.startsWith("=") ? text : "=" + text;
-  let remaining = normalizedText;
-  let offset = 0;
-  const tokens = [];
-
-  const pushToken = (type, tokenText) => {
-    tokens.push({ type, text: tokenText, start: offset, end: offset + tokenText.length });
-    offset += tokenText.length;
-    remaining = remaining.slice(tokenText.length);
-  };
-
-  while (remaining.length > 0) {
-    // Excel ref: 'dir\[file.xlsx]Sheet'!A1 or a range such as ...!A1:C3
-    const xlMatch = /^'([^[]*)\[([^\]]+)\]([^'!]+)'!\$?[A-Z]+\$?[0-9]+(?::\$?[A-Z]+\$?[0-9]+)?/i.exec(remaining);
-    if (xlMatch) {
-      pushToken("excel", xlMatch[0]);
-      continue;
-    }
-    // Quoted row reference: "Some Label" or 'Some Label'
-    const quotedMatch = /^(["'])(.+?)\1/.exec(remaining);
-    if (quotedMatch) {
-      pushToken("ref", quotedMatch[0]);
-      continue;
-    }
-    // Dataset names and coordinates: preserve everything inside each complete
-    // bracket pair verbatim so negative indices and operator-like characters
-    // remain part of the reference rather than formula operators.
-    const bracketMatch = /^\[[^\]]*\]/.exec(remaining);
-    if (bracketMatch) {
-      pushToken("bracket", bracketMatch[0]);
-      continue;
-    }
-    // Operator
-    const opMatch = /^[+\-*/]/.exec(remaining);
-    if (opMatch) {
-      pushToken("op", opMatch[0]);
-      continue;
-    }
-    // Plain text (one char at a time)
-    pushToken("plain", remaining[0]);
-  }
-
-  // Merge consecutive plain tokens
-  const merged = [];
-  for (const tok of tokens) {
-    if (tok.type === "plain" && merged.length > 0 && merged[merged.length - 1].type === "plain") {
-      merged[merged.length - 1].text += tok.text;
-      merged[merged.length - 1].end = tok.end;
-    } else {
-      merged.push({ ...tok });
-    }
-  }
-  for (let index = 0; index < merged.length; index += 1) {
-    const token = merged[index];
-    if (token.type !== "bracket") continue;
-    let nextIndex = index + 1;
-    while (
-      merged[nextIndex]?.type === "plain"
-      && !String(merged[nextIndex].text || "").trim()
-    ) nextIndex += 1;
-    if (merged[nextIndex]?.type !== "bracket") continue;
-    const datasetName = token.text.slice(1, -1).trim();
-    const coordinateLabel = merged[nextIndex].text.slice(1, -1).trim();
-    if (!datasetName || !coordinateLabel) continue;
-    token.datasetName = datasetName;
-    token.datasetCoordinateLabel = coordinateLabel;
-    merged[nextIndex].datasetCoordinate = true;
-    index = nextIndex;
-  }
-  return merged;
-}
-
-/**
- * Format a raw formula string with proper spacing around operators
- * and ensure leading '='. Does not alter content inside Excel refs
- * or bracketed/quoted references.
- */
-function formatFormulaText(rawText) {
-  const tokens = tokenizeFormula(rawText);
-  if (!tokens.length) return String(rawText || "").trim();
-  let out = "";
-  for (const tok of tokens) {
-    if (tok.type === "op") {
-      out = out.replace(/\s+$/, "");
-      out += " " + tok.text + " ";
-    } else if (tok.type === "plain") {
-      out += tok.text.trim();
-    } else {
-      out += tok.text;
-    }
-  }
-  const formatted = out.replace(/\s+$/, "");
-  if (formatted.startsWith("=")) return `= ${formatted.slice(1).trimStart()}`;
-  return formatted;
 }
 
 /** Ask the containing Project Instance to open a dataset explicitly in DSV. */
@@ -316,34 +163,9 @@ function updateFormulaBarDisplayMode(barEl, isEditing) {
     display.style.display = "";
     renderFormulaBarDisplay(display, input.dataset.displayFormula || input.value, input.value);
   }
-}
-
-function syncSummaryFormulaBarWidth(barEl, summaryTable) {
-  if (!barEl || !summaryTable) return;
-  const host = summaryTable.closest("#ratioWrapHost") || document.getElementById("ratioWrapHost");
-  const hostWidth = Number(host?.clientWidth || 0);
-  const tableWidth = Number(summaryTable.getBoundingClientRect?.().width || 0);
-  const frameWidth = Math.max(0, Math.ceil(tableWidth || hostWidth));
-  if (!frameWidth) return;
-  const viewportWidth = Math.max(0, Math.ceil(Math.min(frameWidth, hostWidth || frameWidth)));
-  const contentWidth = Math.max(0, viewportWidth - summaryRuntime.SUMMARY_FORMULA_BAR_FRAME_INSET_PX);
-  const contentOffset = Math.min(
-    Math.max(0, Number(host?.scrollLeft || 0)),
-    Math.max(0, frameWidth - contentWidth)
-  );
-  const px = `${frameWidth}px`;
-  barEl.style.width = px;
-  barEl.style.minWidth = px;
-  barEl.style.maxWidth = px;
-  barEl.style.setProperty(
-    "--dfm-summary-formula-bar-content-width",
-    `${contentWidth}px`
-  );
-  barEl.style.setProperty(
-    "--dfm-summary-formula-bar-content-x",
-    `${contentOffset}px`
-  );
-  scheduleSummaryFormulaBarValidationTooltipPosition();
+  // The two modes need different widths, so the bar is re-measured on every swap.
+  // Optional: this module is also loaded standalone, without the anchor module.
+  summaryRuntime.repositionSummaryFormulaBar?.(barEl);
 }
 
 function positionSummaryFormulaBarValidationTooltip() {
@@ -356,7 +178,7 @@ function positionSummaryFormulaBarValidationTooltip() {
   if (
     !host
     || !bar.isConnected
-    || !bar.classList.contains("fxVisible")
+    || !bar.classList.contains("isOpen")
     || ratiosPage?.getClientRects?.().length === 0
   ) return;
 
@@ -413,6 +235,13 @@ function scheduleSummaryFormulaBarResizeRefresh() {
   });
 }
 
+// A resize can also be a zoom change, so the measured text width is re-taken;
+// a scroll leaves it valid and keeps the cheap path.
+function handleSummaryFormulaBarViewportResize() {
+  summaryRuntime.invalidateSummaryFormulaBarWidthCache();
+  scheduleSummaryFormulaBarResizeRefresh();
+}
+
 function wireSummaryFormulaBarResizeWatcher(summaryTable) {
   const host = summaryTable?.closest?.("#ratioWrapHost") || document.getElementById("ratioWrapHost");
   if (summaryRuntime.formulaBarScrollHost && summaryRuntime.formulaBarScrollHost !== host) {
@@ -426,14 +255,14 @@ function wireSummaryFormulaBarResizeWatcher(summaryTable) {
   if (host && window.ResizeObserver) {
     if (summaryRuntime.formulaBarResizeObserver?.target !== host) {
       summaryRuntime.formulaBarResizeObserver?.observer?.disconnect?.();
-      const observer = new ResizeObserver(scheduleSummaryFormulaBarResizeRefresh);
+      const observer = new ResizeObserver(handleSummaryFormulaBarViewportResize);
       observer.observe(host);
       summaryRuntime.formulaBarResizeObserver = { observer, target: host };
     }
   }
   if (!summaryRuntime.formulaBarResizeWired) {
     summaryRuntime.formulaBarResizeWired = true;
-    window.addEventListener("resize", scheduleSummaryFormulaBarResizeRefresh);
+    window.addEventListener("resize", handleSummaryFormulaBarViewportResize);
     window.addEventListener(
       "pointerdown",
       scheduleSummaryFormulaBarValidationTooltipPosition,
@@ -520,33 +349,10 @@ function setSummaryFormulaBarMode(mode, inputEl = null) {
   if (state) {
     state.hidden = nextMode !== "validating";
     state.textContent = nextMode === "validating" ? "Validating…" : "";
+    // The chip takes room of its own: make space for it rather than squeezing
+    // the formula while a commit is in flight.
+    summaryRuntime.repositionSummaryFormulaBar?.(bar);
   }
-}
-
-function setFormulaBarCommitControlsDisabled(inputEl, disabled, leaseId = null) {
-  const bar = inputEl?.closest?.(".dfmSummaryFormulaBar");
-  if (!bar) return;
-  [
-    "#dfmSummaryFormulaBarPaste",
-    "#dfmSummaryFormulaBarRefresh",
-    "#dfmSummaryFormulaBarOpenXl",
-  ].forEach((selector) => {
-    const button = bar.querySelector(selector);
-    if (!button) return;
-    if (disabled) {
-      if (!button.disabled) button.dataset.disabledByFormulaValidation = "1";
-      button.dataset.formulaValidationLease = String(leaseId ?? "");
-      button.disabled = true;
-    } else if (
-      leaseId === null ||
-      button.dataset.formulaValidationLease === String(leaseId)
-    ) {
-      delete button.dataset.formulaValidationLease;
-      if (button.dataset.disabledByFormulaValidation !== "1") return;
-      delete button.dataset.disabledByFormulaValidation;
-      button.disabled = false;
-    }
-  });
 }
 
 function scheduleFormulaBarDisplayMode(barEl, inputEl) {
@@ -602,79 +408,7 @@ function cancelActiveSummaryFormulaCommit() {
   summaryRuntime.summaryFormulaCommitGeneration += 1;
   const lease = summaryRuntime.summaryFormulaCommitLease;
   lease?.cancel?.();
-  if (lease?.inputEl) setFormulaBarCommitControlsDisabled(lease.inputEl, false, lease.id);
   summaryRuntime.summaryFormulaCommitLease = null;
-}
-
-/**
- * Reads the first complete external Excel reference out of pasted clipboard text and
- * returns it in ArcRho's canonical `='dir\[Book.xlsx]Sheet'!A1:C3` form. The text may be
- * a bare or `=`-prefixed reference, quoted or unquoted, may use `$` anchors or lowercase
- * column letters, and may be embedded in a larger formula. Text without a workbook path
- * returns "" so the caller can explain why.
- */
-function readClipboardExcelReference(rawText) {
-  const text = String(rawText || "").trim();
-  if (!text) return "";
-  const references = findExcelRefsInline(text);
-  if (!references.length) return "";
-  const reference = references[0];
-  return formatExcelRef(
-    reference.bookPath,
-    reference.sheet,
-    reference.cell,
-    reference.endCell,
-  );
-}
-
-async function pasteExcelReferenceIntoFormulaBar(barEl, inputEl) {
-  if (!inputEl || inputEl.readOnly || isSummaryFormulaCommitPending(inputEl)) return;
-  const rowId = String(inputEl.dataset.rowId || "");
-  const col = Number(inputEl.dataset.col);
-  if (!rowId || !Number.isFinite(col) || col < 0) return;
-
-  if (!navigator.clipboard?.readText) {
-    showSummaryFormulaBarValidationError("Clipboard paste is not available here.", inputEl);
-    return;
-  }
-  let clipboardText = "";
-  try {
-    clipboardText = String(await navigator.clipboard.readText() || "");
-  } catch (err) {
-    showSummaryFormulaBarValidationError(
-      `Could not read the clipboard: ${err?.message || err}`,
-      inputEl,
-    );
-    return;
-  }
-  if (!barEl.isConnected || !inputEl.isConnected) return;
-
-  const reference = readClipboardExcelReference(clipboardText);
-  if (!reference) {
-    showSummaryFormulaBarValidationError(
-      "The clipboard does not contain an Excel workbook path and range, such as "
-      + "='C:\\Folder\\[Book.xlsx]Sheet 1'!$A$1:$C$2.",
-      inputEl,
-    );
-    return;
-  }
-
-  clearSummaryFormulaBarValidationError();
-  inputEl.value = `= ${reference.replace(/^=\s*/, "")}`;
-  setSummaryFormulaBarMode("editing", inputEl);
-  updateFormulaBarDisplayMode(barEl, true);
-  inputEl.focus({ preventScroll: true });
-  scrollSummaryFormulaInputToEnd(inputEl);
-
-  // Open an edit session so Enter commits and Escape restores, exactly as typing does.
-  const summaryTableEl = document.querySelector("#ratioWrap table.ratioSummaryTable");
-  const cell = summaryTableEl?.querySelector(
-    `td.summaryCell[data-r="${rowId}"][data-col="${col}"]`,
-  );
-  if (summaryTableEl && cell) {
-    beginSummaryFormulaEditSession(summaryTableEl, cell, inputEl, col);
-    updateActiveSummaryFormulaReferenceUi(summaryTableEl);
-  }
 }
 
 function ensureSummaryFormulaBarValidationTooltip() {
@@ -700,9 +434,9 @@ function ensureSummaryFormulaBarEl(summaryTable) {
   if (!el) {
     el = document.createElement("div");
     el.id = "dfmSummaryFormulaBar";
-    el.className = "dfmSummaryFormulaBar";
+    el.className = "arFormulaBar dfmSummaryFormulaBar";
     const fxIcon = document.createElement("span");
-    fxIcon.className = "dfmSummaryFormulaBarFxIcon";
+    fxIcon.className = "arFormulaBarFxIcon";
     fxIcon.textContent = "fx";
     attachArcrhoTooltip(fxIcon, "Formula Bar");
     const label = document.createElement("span");
@@ -711,44 +445,23 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     label.textContent = "f(x)";
     const input = document.createElement("input");
     input.id = "dfmSummaryFormulaBarInput";
-    input.className = "dfmSummaryFormulaBarInput";
+    input.className = "arFormulaBarInput dfmSummaryFormulaBarInput";
     input.type = "text";
     input.autocomplete = "off";
     input.spellcheck = false;
-    const pasteBtn = createFormulaBarIconButton(
-      "dfmSummaryFormulaBarPaste",
-      "Paste",
-      "Paste an Excel workbook path and range from the clipboard",
-    );
-    const refreshBtn = createFormulaBarIconButton(
-      "dfmSummaryFormulaBarRefresh",
-      "Refresh",
-      "Refresh all linked formula values",
-    );
-    const openBtn = createFormulaBarIconButton(
-      "dfmSummaryFormulaBarOpenXl",
-      "Open",
-      "Open source workbook in Excel",
-    );
     const display = document.createElement("div");
     display.id = "dfmSummaryFormulaBarDisplay";
-    display.className = "dfmSummaryFormulaBarDisplay";
+    display.className = "arFormulaBarDisplay dfmSummaryFormulaBarDisplay";
     const validationState = document.createElement("span");
     validationState.id = "dfmSummaryFormulaBarState";
     validationState.className = "dfmSummaryFormulaBarState";
     validationState.setAttribute("aria-live", "polite");
     validationState.hidden = true;
-    const content = document.createElement("div");
-    content.className = "dfmSummaryFormulaBarContent";
-    content.appendChild(fxIcon);
-    content.appendChild(label);
-    content.appendChild(input);
-    content.appendChild(display);
-    content.appendChild(validationState);
-    content.appendChild(pasteBtn);
-    content.appendChild(refreshBtn);
-    content.appendChild(openBtn);
-    el.appendChild(content);
+    el.appendChild(fxIcon);
+    el.appendChild(label);
+    el.appendChild(input);
+    el.appendChild(display);
+    el.appendChild(validationState);
   }
   if (el.dataset.wired !== "1") {
     const input = el.querySelector("#dfmSummaryFormulaBarInput");
@@ -900,58 +613,13 @@ function ensureSummaryFormulaBarEl(summaryTable) {
         input.focus({ preventScroll: true });
       }
     });
-    const pasteBtn = el.querySelector("#dfmSummaryFormulaBarPaste");
-    pasteBtn?.addEventListener("mousedown", () => {
-      if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
-      // The clipboard value replaces the draft, so the blur this click causes must not
-      // commit it first. Only flag a blur that is actually about to happen; a stale flag
-      // would swallow the commit of the pasted reference itself.
-      if (document.activeElement === input) input.dataset.skipFormulaBlurCommit = "1";
-    });
-    pasteBtn?.addEventListener("click", () => {
-      void pasteExcelReferenceIntoFormulaBar(el, input);
-    });
-    const refreshBtn = el.querySelector("#dfmSummaryFormulaBarRefresh");
-    refreshBtn?.addEventListener("click", () => {
-      if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
-      clearSummaryFormulaBarValidationError();
-      refreshAllExcelLinks().catch((error) => {
-        setStatusBarText("Linked formula refresh failed.");
-        showSummaryFormulaBarValidationError(error?.message || "Linked formula refresh failed.", input);
-      });
-    });
-    const openBtn = el.querySelector("#dfmSummaryFormulaBarOpenXl");
-    openBtn?.addEventListener("click", async () => {
-      if (input.readOnly || isSummaryFormulaCommitPending(input)) return;
-      // Find Excel ref in the current formula
-      const raw = String(input?.value || "").trim();
-      const refs = findExcelRefsInline(raw.startsWith("=") ? raw : "=" + raw);
-      if (!refs.length) {
-        showSummaryFormulaBarValidationError("No Excel reference found in current formula.", input);
-        return;
-      }
-      clearSummaryFormulaBarValidationError();
-      openBtn.disabled = true;
-      try {
-        const address = refs[0].endCell && refs[0].endCell !== refs[0].cell
-          ? `${refs[0].cell}:${refs[0].endCell}`
-          : refs[0].cell;
-        const result = await openExcelWorkbook(refs[0].bookPath, refs[0].sheet, address);
-        if (!result.ok) {
-          showSummaryFormulaBarValidationError(result.error || "Failed to open workbook.", input);
-        }
-      } catch (err) {
-        showSummaryFormulaBarValidationError(`Failed to open workbook: ${err.message || err}`, input);
-      }
-      openBtn.disabled = false;
-    });
     el.dataset.wired = "1";
   }
-  const parent = summaryTable?.parentElement;
-  if (parent && el.parentElement !== parent) {
-    parent.insertBefore(el, summaryTable);
-  } else if (parent && summaryTable && el.nextElementSibling !== summaryTable) {
-    parent.insertBefore(el, summaryTable);
+  // The bar floats over the grid, so it lives in the scrolling host rather than
+  // in the table's flow: absolute children of the host scroll with the tables.
+  const host = summaryTable?.closest?.("#ratioWrapHost") || document.getElementById("ratioWrapHost");
+  if (host && el.parentElement !== host) {
+    host.appendChild(el);
   }
   wireSummaryFormulaBarResizeWatcher(summaryTable);
   return el;
@@ -971,10 +639,10 @@ registerSummaryFunctions({
   openDfmFormulaDataset,
   renderFormulaBarDisplay,
   updateFormulaBarDisplayMode,
-  syncSummaryFormulaBarWidth,
   positionSummaryFormulaBarValidationTooltip,
   scheduleSummaryFormulaBarValidationTooltipPosition,
   scheduleSummaryFormulaBarResizeRefresh,
+  handleSummaryFormulaBarViewportResize,
   wireSummaryFormulaBarResizeWatcher,
   getSummaryFormulaBarParts,
   clearSummaryFormulaBarValidationError,
@@ -983,7 +651,6 @@ registerSummaryFunctions({
   clearFormulaBarFocusRestoreHandler,
   isSummaryFormulaBarInputEditing,
   setSummaryFormulaBarMode,
-  setFormulaBarCommitControlsDisabled,
   scheduleFormulaBarDisplayMode,
   captureFormulaInputSelection,
   restoreFormulaBarEditingAfterValidation,

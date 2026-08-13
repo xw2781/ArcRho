@@ -69,7 +69,7 @@ interactionSource = interactionSource
     JSON.stringify(dataUrl(referenceSource)),
   )
   .replace(
-    '"/ui/shared/components/formula_hover/formula_hover.js?v=20260811c"',
+    '"/ui/shared/components/formula_hover/formula_hover.js?v=20260812b"',
     JSON.stringify(formulaHoverStubUrl),
   );
 const interactions = await import(dataUrl(interactionSource));

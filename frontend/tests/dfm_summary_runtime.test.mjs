@@ -119,7 +119,7 @@ test("rebuilt DFM summary rows remain live through the extracted runtime", async
       "ui/method_pages/dfm/ratios_summary/summary_model.js",
     );
     modelSource = modelSource.replace(
-      '"/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a"',
+      '"/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d"',
       JSON.stringify(runtimeUrl),
     );
     const modelUrl = moduleUrl(modelSource);

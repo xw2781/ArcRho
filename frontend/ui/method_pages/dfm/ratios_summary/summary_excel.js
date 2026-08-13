@@ -6,7 +6,7 @@ DFM Ratios Summary Excel Integration
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
 import {
   resolveDfmDatasetReferencesInFormulaDetailed,
@@ -651,12 +651,20 @@ export function breakDfmExternalLink(id) {
   return breakDfmExternalLinks([id]);
 }
 
-function hideSummaryFormulaBar() {
+function hideSummaryFormulaBar({ keepHoverTarget = false } = {}) {
+  summaryRuntime.summaryFormulaBarVisibleKey = "";
+  // Drop the hover anchor too, so the next pointer move re-evaluates from
+  // scratch. A bar hidden because its target is toggled off keeps that anchor,
+  // or every pointer move over the same array would redo the same work.
+  if (!keepHoverTarget) {
+    summaryRuntime.summaryFormulaBarHoverCell = null;
+    summaryRuntime.summaryFormulaBarHoverKey = "";
+  }
   const el = document.getElementById("dfmSummaryFormulaBar");
   if (el) {
     clearSummaryFormulaBarValidationError();
     setSummaryFormulaBarMode("display", el.querySelector("#dfmSummaryFormulaBarInput"));
-    el.classList.remove("fxVisible");
+    el.classList.remove("isOpen");
   }
 }
 

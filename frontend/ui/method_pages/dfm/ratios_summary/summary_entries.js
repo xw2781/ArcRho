@@ -6,7 +6,7 @@ DFM Ratios Summary User Entries
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
 import {
   resolveDfmDatasetReferencesInFormulaDetailed,
@@ -56,11 +56,11 @@ const hideAvgModal = (...args) => summaryRuntime.hideAvgModal(...args);
 const computeAutoNameWithExclude = (...args) => summaryRuntime.computeAutoNameWithExclude(...args);
 const scrollSummaryFormulaInputToEnd = (...args) => summaryRuntime.scrollSummaryFormulaInputToEnd(...args);
 const updateFormulaBarDisplayMode = (...args) => summaryRuntime.updateFormulaBarDisplayMode(...args);
-const syncSummaryFormulaBarWidth = (...args) => summaryRuntime.syncSummaryFormulaBarWidth(...args);
+const positionSummaryFormulaBar = (...args) => summaryRuntime.positionSummaryFormulaBar(...args);
 const clearSummaryFormulaBarValidationError = (...args) => summaryRuntime.clearSummaryFormulaBarValidationError(...args);
 const showSummaryFormulaBarValidationError = (...args) => summaryRuntime.showSummaryFormulaBarValidationError(...args);
 const isSummaryFormulaBarInputEditing = (...args) => summaryRuntime.isSummaryFormulaBarInputEditing(...args);
-const setFormulaBarCommitControlsDisabled = (...args) => summaryRuntime.setFormulaBarCommitControlsDisabled(...args);
+const summaryFormulaBarTargetKey = (...args) => summaryRuntime.summaryFormulaBarTargetKey(...args);
 const ensureSummaryFormulaBarEl = (...args) => summaryRuntime.ensureSummaryFormulaBarEl(...args);
 const setStatusBarText = (...args) => summaryRuntime.setStatusBarText(...args);
 const invalidateDfmExcelRefresh = (...args) => summaryRuntime.invalidateDfmExcelRefresh(...args);
@@ -280,7 +280,6 @@ async function commitSummaryFormulaInput(inputEl) {
     timeoutMs: DFM_FORMULA_VALIDATION_TIMEOUT_MS,
   });
   summaryRuntime.summaryFormulaCommitLease = validationLease;
-  setFormulaBarCommitControlsDisabled(inputEl, true, validationLease.id);
   const isCurrent = () => (
     generation === summaryRuntime.summaryFormulaCommitGeneration &&
     summaryRuntime.summaryFormulaCommitLease === validationLease &&
@@ -358,7 +357,6 @@ async function commitSummaryFormulaInput(inputEl) {
     return false;
   } finally {
     validationLease.finish();
-    setFormulaBarCommitControlsDisabled(inputEl, false, validationLease.id);
     if (summaryRuntime.summaryFormulaCommitLease === validationLease) summaryRuntime.summaryFormulaCommitLease = null;
   }
 }
@@ -441,18 +439,25 @@ function updateSummaryFormulaBarForCell(cell) {
     return;
   }
 
-  el.classList.add("fxVisible");
+  // A target the user toggled off stays off until they pick a different one.
+  const targetKey = summaryFormulaBarTargetKey(targetCell);
+  if (summaryRuntime.summaryFormulaBarSuppressedKey === targetKey) {
+    hideSummaryFormulaBar({ keepHoverTarget: true });
+    return;
+  }
+  summaryRuntime.summaryFormulaBarVisibleKey = targetKey;
+
+  el.classList.add("isOpen");
   const isEditing = isSummaryFormulaBarInputEditing(inputEl);
   updateFormulaBarDisplayMode(el, isEditing);
-  syncSummaryFormulaBarWidth(el, summaryTable);
-  window.requestAnimationFrame(() => syncSummaryFormulaBarWidth(el, summaryTable));
-  el.style.left = "";
-  el.style.top = "";
-  el.style.transform = "";
+  positionSummaryFormulaBar(el, summaryTable, targetCell);
+  window.requestAnimationFrame(() => positionSummaryFormulaBar(el, summaryTable, targetCell));
 }
 
 function refreshSummaryFormulaBar() {
-  updateSummaryFormulaBarForCell(null);
+  // A hovered dynamic array outranks the active cell, so keep the bar on it.
+  const hoverCell = summaryRuntime.summaryFormulaBarHoverCell;
+  updateSummaryFormulaBarForCell(hoverCell?.isConnected ? hoverCell : null);
 }
 
 function handleSummaryTableSelectionChange(summaryTable, selection) {

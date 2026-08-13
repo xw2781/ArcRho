@@ -1,0 +1,14 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The DFM Ratios formula bar now floats above the cell it edits, and follows a linked dynamic array when you hover it.",
+  "details": [
+    "Hovering any cell of an Excel-linked dynamic array shows the shared range formula directly above that array; moving off it returns the bar to the active cell.",
+    "The bar sizes itself to the formula it shows, never extends past the visible ratio frame, and re-applies both rules as you type, as you leave edit mode, and when the window is resized.",
+    "The bar no longer reserves a fixed frame above the summary ratios table, so the Ratios grid gains that vertical space.",
+    "Clicking a User Entry cell toggles its formula bar, so it can be dismissed to read the cells underneath; this works the same in Select and Edit mode.",
+    "The paste, refresh, and open-in-Excel buttons are gone from the bar; refreshing linked values and opening a source workbook remain Links tab actions.",
+    "Hover and the click toggle are both ignored while the bar is being edited or a commit is pending."
+  ]
+}

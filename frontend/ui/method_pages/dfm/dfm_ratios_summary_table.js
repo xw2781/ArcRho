@@ -7,12 +7,13 @@ Compatibility facade and render scheduler for the modular summary table.
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
-import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260812a";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260812c";
-import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260812d";
-import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260812b";
-import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260812a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
+import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260812d";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260812h";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260812f";
+import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260812h";
+import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260812f";
+import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260812f";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
   top: "dfmTableHighlightEdgeTop",
@@ -69,6 +70,12 @@ export function resetSummaryFormulaEditState() {
   summaryRuntime.summarySelectionDestroy?.();
   summaryRuntime.summarySelectionDestroy = null;
   summaryRuntime.summaryFormulaEditState = null;
+  summaryRuntime.summaryFormulaBarHoverCell = null;
+  summaryRuntime.summaryFormulaBarHoverKey = "";
+  summaryRuntime.summaryFormulaBarVisibleKey = "";
+  // summaryFormulaBarSuppressedKey deliberately survives: a re-render is not the
+  // user changing their mind about a bar they toggled off, and Edit mode
+  // re-renders on the same click that toggles.
   summaryRuntime.summaryFormulaBarState = {
     mode: "display",
     input: null,

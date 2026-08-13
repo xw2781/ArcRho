@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Dataset Viewer's linked-cell formula editor now looks and behaves like the DFM Ratios formula bar.",
+  "details": [
+    "It sizes itself to the formula it shows, capped by the visible grid frame, instead of a fixed 879px panel.",
+    "The formula renders colorized and read-only until you focus it, and the bar re-measures on that swap so nothing is clipped.",
+    "Clicking a linked cell pins the editor open and clicking it again releases it; hovering still opens it transiently.",
+    "The DFM Data tab uses the same shared editor, so it picks up the same look."
+  ]
+}

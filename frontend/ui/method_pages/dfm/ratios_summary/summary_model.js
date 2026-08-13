@@ -6,7 +6,7 @@ DFM Ratios Summary Model and Row Configuration
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,

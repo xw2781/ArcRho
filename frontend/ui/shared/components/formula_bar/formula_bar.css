@@ -1,0 +1,99 @@
+/*
+===============================================================================
+Formula Bar
+The floating bar that shows a cell's formula. Shared by the DFM Ratios summary
+bar and the Dataset Viewer linked-cell editor so both read as one control.
+
+Each consumer owns only its `position` and `z-index`: the Ratios bar is absolute
+inside its scroll host, the Dataset Viewer editor is fixed. Everything visual
+lives here.
+===============================================================================
+*/
+.arFormulaBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  line-height: 20px;
+  padding: 1px 6px;
+  border: 1px solid #b9b9b9;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #ffffff;
+  color: #111827;
+  box-shadow: var(--ar-shadow-floating);
+  font: 12px Consolas, "Courier New", monospace;
+  white-space: nowrap;
+  pointer-events: auto;
+  box-sizing: border-box;
+  opacity: 0;
+  /* Hidden must also mean click-through: the bar overlays live cells. */
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0.12s;
+}
+.arFormulaBar.isOpen {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.arFormulaBar:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6, var(--ar-shadow-floating);
+}
+
+.arFormulaBarFxIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 10px;
+  font-weight: 700;
+  font-style: italic;
+  flex: 0 0 auto;
+  user-select: none;
+  margin-right: 4px;
+}
+
+.arFormulaBarInput {
+  flex: 1 1 auto;
+  min-width: 40px;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  height: 20px;
+  line-height: 20px;
+}
+.arFormulaBarInput:focus {
+  outline: none;
+}
+.arFormulaBarInput:disabled,
+.arFormulaBarInput[readonly] {
+  color: #9ca3af;
+}
+
+/* The read-only rendering shown whenever the input is not being typed into. */
+.arFormulaBarDisplay {
+  flex: 1 1 auto;
+  min-width: 40px;
+  height: 20px;
+  font: inherit;
+  line-height: 20px;
+  color: inherit;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+  cursor: text;
+}
+.arFormulaBarDisplay .fmtExcelRef {
+  color: #217346;
+  font-weight: 600;
+}
