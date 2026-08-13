@@ -29,6 +29,8 @@ build/
 !frontend/build/
 !frontend/build/**
 frontend/build/generated/
+data-engine/builds/
+data-engine/server-installer/out/
 dist/
 python_build/
 python_dist/

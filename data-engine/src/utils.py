@@ -8,11 +8,17 @@ import json
 from pathlib import Path
 from typing import Any
 
+from server_config import resolve_server_config_path, write_server_config
+
 
 PROJECT_ROOT_NAMES = ("ArcRho Server", "ArcRho", "ADAS")
 DEFAULT_DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server")).expanduser()
 
 COMPONENTS = {
+    "admin": {
+        "dirs": ("arcrho_admin",),
+        "apps": ("ArcRho Admin Control",),
+    },
     "engine": {
         "dirs": ("arcrho_engine", "ArcRho Engine", "ADAS Agent"),
         "apps": ("ArcRho Engine", "ADAS Agent"),
@@ -36,6 +42,8 @@ COMPONENTS = {
 }
 
 COMPONENT_ALIASES = {
+    "admin": "admin",
+    "admin_control": "admin",
     "agent": "engine",
     "worker": "engine",
     "engine": "engine",
@@ -51,6 +59,14 @@ COMPONENT_ALIASES = {
     "rpc_bridge_worker": "bridge_worker",
 }
 
+SERVER_COMPONENT_ROLES = (
+    "admin",
+    "bridge",
+    "engine",
+    "launcher",
+    "orchestrator",
+)
+
 
 def _configured_root() -> Path | None:
     configured_root = os.environ.get("ARCRHO_ROOT") or os.environ.get("ADAS_ROOT")
@@ -59,34 +75,35 @@ def _configured_root() -> Path | None:
     return None
 
 
-def _frozen_root_candidates() -> list[Path]:
+def _frozen_project_root() -> Path | None:
     if not getattr(sys, "frozen", False):
-        return []
+        return None
 
     exe_dir = Path(sys.executable).resolve().parent
-    candidates = [exe_dir]
-
     # One-file layout: <root>\apps\<App>.exe
     if exe_dir.name.lower() == "apps":
-        candidates.append(exe_dir.parent)
+        return exe_dir.parent
 
     # One-dir layout: <root>\apps\<App>\<App>.exe
     if exe_dir.parent.name.lower() == "apps":
-        candidates.append(exe_dir.parent.parent)
-
-    return candidates
+        return exe_dir.parent.parent
+    return None
 
 
 def find_project_root(start_path: Path, root_name: str | tuple[str, ...] = PROJECT_ROOT_NAMES) -> Path:
     root_names = (root_name,) if isinstance(root_name, str) else root_name
     root_names_lower = {name.lower() for name in root_names}
-    starts = []
-
     configured_root = _configured_root()
     if configured_root:
-        starts.append(configured_root)
+        return configured_root.resolve()
 
-    starts.extend(_frozen_root_candidates())
+    frozen_root = _frozen_project_root()
+    if frozen_root is not None:
+        # The deployed layout is authoritative and supports any user-selected
+        # workspace folder name.  Do not fall back to a drive/name heuristic.
+        return frozen_root.resolve()
+
+    starts = []
     starts.append(DEFAULT_DEPLOY_ROOT)
     starts.append(start_path)
 
@@ -114,19 +131,8 @@ def find_project_root(start_path: Path, root_name: str | tuple[str, ...] = PROJE
 
 PROJECT_ROOT = find_project_root(Path(__file__).resolve().parent)
 
-_CONFIG_ENV = os.environ.get("ARCRHO_CONFIG") or os.environ.get("ADAS_CONFIG")
-_DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.json"
-_LEGACY_CONFIG_PATH = PROJECT_ROOT / "core" / "config.json"
-
-
 def resolve_config_path() -> Path:
-    if _DEFAULT_CONFIG_PATH.exists():
-        return _DEFAULT_CONFIG_PATH
-    if _CONFIG_ENV:
-        return Path(_CONFIG_ENV)
-    if _LEGACY_CONFIG_PATH.exists():
-        return _LEGACY_CONFIG_PATH
-    return _DEFAULT_CONFIG_PATH
+    return resolve_server_config_path(PROJECT_ROOT)
 
 
 CONFIG_PATH = resolve_config_path()
@@ -405,13 +411,7 @@ def load_config() -> dict:
 
 
 def save_config(data: dict) -> None:
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    tmp_path = CONFIG_PATH.with_suffix(".tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-    tmp_path.replace(CONFIG_PATH)  # atomic on Windows
+    write_server_config(CONFIG_PATH, data)
 
 
 def get_config_value(
@@ -458,5 +458,3 @@ def set_config_value(
 
     cur[keys[-1]] = value
     save_config(data)
-
-

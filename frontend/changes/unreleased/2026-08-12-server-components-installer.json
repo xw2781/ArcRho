@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Added a separate ArcRho Server Components installer for deploying and maintaining the data engine on a new host PC.",
+  "details": [
+    "The server workspace can use any user-selected folder on a local fixed disk.",
+    "Desktop Setup detects an existing configured deployment but never owns its shared binaries."
+  ]
+}

@@ -8,17 +8,23 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
+REPOSITORY_ROOT = PROJECT_ROOT.parent
 SOURCE_ROOT = BASE_DIR.parent
 for path in (PROJECT_ROOT, SOURCE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
+
+from build_runtime import ensure_python_310_venv
+from utils import component_app_name
 
 BUILD_ROOT = PROJECT_ROOT / "builds" / BASE_DIR.name
 DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
 APPS_DIR = DEPLOY_ROOT / "apps"
 VENV_PYTHON = PROJECT_ROOT / "venvs" / BASE_DIR.name / "Scripts" / "python.exe"
 ENTRY_PY = BASE_DIR / "main.py"
-APP_NAME = "ArcRho Admin Control"
+CANONICAL_SOURCE_ROOT = REPOSITORY_ROOT / "python-api" / "src"
+STAGE_ONLY = os.environ.get("ARCRHO_STAGE_ONLY", "").strip() == "1"
+APP_NAME = component_app_name("admin")
 ICON = PROJECT_ROOT.parent / "assets" / "icons" / "ArcRho Orchestrator.ico"
 
 BUILD_DIR = BUILD_ROOT / "build"
@@ -66,14 +72,12 @@ def clean_build_dirs():
 
 
 def ensure_venv():
-    if VENV_PYTHON.exists():
-        return
-    run([sys.executable, "-m", "venv", VENV_PYTHON.parent.parent])
+    ensure_python_310_venv(VENV_PYTHON)
 
 
 def install_pyinstaller():
     run([VENV_PYTHON, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
-    run([VENV_PYTHON, "-m", "pip", "install", "pyinstaller"])
+    run([VENV_PYTHON, "-m", "pip", "install", "pyinstaller>=6.15,<7"])
 
 
 def build_exe():
@@ -87,8 +91,12 @@ def build_exe():
         "--onedir",
         "--paths",
         SOURCE_ROOT,
+        "--paths",
+        CANONICAL_SOURCE_ROOT,
         "--hidden-import",
         "utils",
+        "--hidden-import",
+        "server_config",
         "--exclude-module",
         "tkinter",
         "--exclude-module",
@@ -138,8 +146,10 @@ def main():
     ensure_venv()
     install_pyinstaller()
     build_exe()
-    deploy_exe()
-    print(f"\nBuild finished: {DEPLOY_APP_DIR / f'{APP_NAME}.exe'}")
+    if not STAGE_ONLY:
+        deploy_exe()
+    output_dir = STAGED_APP_DIR if STAGE_ONLY else DEPLOY_APP_DIR
+    print(f"\nBuild finished: {output_dir / f'{APP_NAME}.exe'}")
 
 
 if __name__ == "__main__":

@@ -36,19 +36,29 @@ SOURCE_ROOT = MODULE_ROOT.parent
 PRODUCT_ROOT = SOURCE_ROOT.parent
 BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", MODULE_ROOT)).resolve()
 EXE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
-DEFAULT_DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server")).expanduser()
-
-if "ARCRHO_ROOT" not in os.environ:
-    if EXE_DIR and EXE_DIR.name.lower() == "apps":
-        os.environ["ARCRHO_ROOT"] = str(EXE_DIR.parent)
-    elif EXE_DIR and EXE_DIR.parent.name.lower() == "apps":
-        os.environ["ARCRHO_ROOT"] = str(EXE_DIR.parent.parent)
-    elif not getattr(sys, "frozen", False):
-        os.environ["ARCRHO_ROOT"] = str(DEFAULT_DEPLOY_ROOT)
 
 for path in (PRODUCT_ROOT, SOURCE_ROOT, BUNDLE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
+
+try:
+    from src.server_config import (
+        default_server_config,
+        merge_missing_defaults,
+        read_server_config,
+        resolve_server_config_path,
+        write_server_config,
+    )
+    from src.utils import get_project_root, resolve_app_exe, resolve_app_path
+except ModuleNotFoundError:
+    from server_config import (
+        default_server_config,
+        merge_missing_defaults,
+        read_server_config,
+        resolve_server_config_path,
+        write_server_config,
+    )
+    from utils import get_project_root, resolve_app_exe, resolve_app_path
 
 def env_int(name, default):
     try:
@@ -62,64 +72,9 @@ DEFAULT_STALE_AFTER_SECONDS = 60
 ENGINE_STALE_AFTER_SECONDS = 6
 HEARTBEAT_INTERVAL_SECONDS = 2
 HEARTBEAT_WRITE_ATTEMPTS = 5
-PROJECT_ROOT_NAMES = ("ArcRho Server", "ArcRho", "ADAS")
-COMPONENT_DIRS = {
-    "admin": ("arcrho_admin",),
-    "engine": ("arcrho_engine", "ArcRho Engine", "ADAS Agent"),
-    "orchestrator": ("arcrho_orchestrator", "ArcRho Orchestrator", "ADAS Master"),
-    "bridge": ("arcrho_bridge",),
-    "bridge_worker": ("arcrho_bridge_worker",),
-}
-COMPONENT_APPS = {
-    "orchestrator": ("ArcRho Orchestrator", "ADAS Master"),
-    "bridge": ("ArcRho Bridge",),
-}
-
-
-def find_project_root():
-    starts = []
-    configured_root = os.environ.get("ARCRHO_ROOT")
-    if configured_root:
-        starts.append(Path(configured_root).expanduser())
-    if EXE_DIR:
-        starts.append(EXE_DIR)
-        if EXE_DIR.name.lower() == "apps":
-            starts.append(EXE_DIR.parent)
-        if EXE_DIR.parent.name.lower() == "apps":
-            starts.append(EXE_DIR.parent.parent)
-    starts.extend((DEFAULT_DEPLOY_ROOT, MODULE_ROOT))
-
-    seen = set()
-    for start in starts:
-        current = start.resolve()
-        if current in seen:
-            continue
-        seen.add(current)
-        for candidate in (current, *current.parents):
-            if candidate.name.lower() in {name.lower() for name in PROJECT_ROOT_NAMES}:
-                return candidate
-            if ((candidate / "config" / "config.json").exists() or (candidate / "core" / "config.json").exists()):
-                return candidate
-    return PRODUCT_ROOT
-
-
-PROJECT_ROOT = find_project_root()
-_CONFIG_ENV = os.environ.get("ARCRHO_CONFIG") or os.environ.get("ADAS_CONFIG")
-_DEFAULT_CONFIG_FILE = PROJECT_ROOT / "config" / "config.json"
-_LEGACY_CONFIG_FILE = PROJECT_ROOT / "core" / "config.json"
-
-
-def resolve_config_file():
-    if _DEFAULT_CONFIG_FILE.exists():
-        return _DEFAULT_CONFIG_FILE
-    if _CONFIG_ENV:
-        return Path(_CONFIG_ENV)
-    if _LEGACY_CONFIG_FILE.exists():
-        return _LEGACY_CONFIG_FILE
-    return _DEFAULT_CONFIG_FILE
-
-
-CONFIG_FILE = resolve_config_file()
+PROJECT_ROOT = get_project_root()
+os.environ.setdefault("ARCRHO_ROOT", str(PROJECT_ROOT))
+CONFIG_FILE = resolve_server_config_path(PROJECT_ROOT)
 LOG_FILE = PROJECT_ROOT / "runtime" / "logs" / "arcrho_admin.log"
 DEPLOY_LOG_FILE = (EXE_DIR or MODULE_ROOT) / "arcrho_admin.log"
 
@@ -130,54 +85,19 @@ def resource_path(name):
 
 
 def default_config():
-    return {
-        "config_version": "1.0",
-        "root": str(PROJECT_ROOT),
-        "apps": {
-            "engine": {"kill_all": False},
-            "orchestrator": {
-                "kill_all": False,
-                "auto_create_workers": True,
-                "max_workers": 5,
-            },
-            "bridge": {
-                "kill_all": False,
-                "auto_create_instance": True,
-                "max_instances": 1,
-                "max_workers": 1,
-            },
-            "bridge_worker": {"kill_all": False},
-        },
-    }
+    return default_server_config(PROJECT_ROOT)
 
 
 def merge_defaults(config, defaults):
-    if not isinstance(config, dict):
-        return defaults
-    merged = dict(config)
-    for key, value in defaults.items():
-        if isinstance(value, dict):
-            merged[key] = merge_defaults(merged.get(key), value)
-        elif key not in merged:
-            merged[key] = value
-    return merged
+    return merge_missing_defaults(config, defaults)
 
 
 def load_config():
-    try:
-        with open(CONFIG_FILE, mode="r", encoding="utf-8") as file:
-            return merge_defaults(json.load(file), default_config())
-    except FileNotFoundError:
-        return default_config()
+    return read_server_config(CONFIG_FILE, PROJECT_ROOT)
 
 
 def save_config(config):
-    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = CONFIG_FILE.with_name(f"{CONFIG_FILE.name}.{os.getpid()}.tmp")
-    with open(temp_path, mode="w", encoding="utf-8") as file:
-        json.dump(config, file, indent=2)
-        file.write("\n")
-    os.replace(temp_path, CONFIG_FILE)
+    write_server_config(CONFIG_FILE, config)
 
 
 def set_nested_value(data, key_path, value):
@@ -312,39 +232,8 @@ def instance_sources():
     }
 
 
-def resolve_app_path(role, *parts):
-    normalized_parts = tuple(str(part) for part in parts)
-    if normalized_parts and normalized_parts[0].lower() == "instances":
-        return PROJECT_ROOT.joinpath("runtime", "instances", COMPONENT_DIRS[role][0], *normalized_parts[1:])
-    for dirname in COMPONENT_DIRS[role]:
-        for candidate in (
-            PROJECT_ROOT / "core" / dirname,
-            PROJECT_ROOT / "data-engine" / "src" / dirname,
-            PROJECT_ROOT / "src" / dirname,
-        ):
-            if candidate.exists():
-                return candidate.joinpath(*parts)
-    return (PROJECT_ROOT / "core" / COMPONENT_DIRS[role][0]).joinpath(*parts)
-
-
-def resolve_app_exe(role):
-    app_names = COMPONENT_APPS.get(role, ())
-    candidates = []
-    for app_name in app_names:
-        candidates.append(PROJECT_ROOT / "apps" / app_name / f"{app_name}.exe")
-        candidates.append(PROJECT_ROOT / "apps" / f"{app_name}.exe")
-    for path in candidates:
-        if path.exists():
-            return path
-    return candidates[0] if candidates else None
-
-
 def resolve_source_main(role):
-    for dirname in COMPONENT_DIRS[role]:
-        path = PROJECT_ROOT / "data-engine" / "src" / dirname / "main.py"
-        if path.exists():
-            return path
-    path = SOURCE_ROOT / COMPONENT_DIRS[role][0] / "main.py"
+    path = SOURCE_ROOT / f"arcrho_{role}" / "main.py"
     return path if path.exists() else None
 
 

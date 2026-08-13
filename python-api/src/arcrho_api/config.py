@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from .exceptions import InvalidArcRhoServerError
+from .io import persisted_json_text
 
 WORKSPACE_PATHS_FILE_NAME = "workspace_paths.json"
 DEFAULT_WORKSPACE_ROOT = r"E:\ArcRho Server"
@@ -105,7 +106,7 @@ def _save_host_server_root(root: Path) -> None:
         "projects_dir": str(paths.get("projects_dir") or DEFAULT_WORKSPACE_PATHS["projects_dir"]),
         "requests_dir": str(paths.get("requests_dir") or DEFAULT_WORKSPACE_PATHS["requests_dir"]),
     }
-    tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    tmp_path.write_text(persisted_json_text(payload), encoding="utf-8")
     os.replace(tmp_path, config_path)
 
 

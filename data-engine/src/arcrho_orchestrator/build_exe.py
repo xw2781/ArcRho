@@ -8,6 +8,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
+REPOSITORY_ROOT = PROJECT_ROOT.parent
 SOURCE_ROOT = BASE_DIR.parent
 for path in (PROJECT_ROOT, SOURCE_ROOT):
     if str(path) not in sys.path:
@@ -19,12 +20,15 @@ from utils import (
     resolve_app_path,
     set_config_value,
 )
+from build_runtime import ensure_python_310_venv
 
 BUILD_ROOT = PROJECT_ROOT / "builds" / BASE_DIR.name
 DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
 APPS_DIR = DEPLOY_ROOT / "apps"
 VENV_PYTHON = PROJECT_ROOT / "venvs" / BASE_DIR.name / "Scripts" / "python.exe"
 REQ_FILE = BASE_DIR / "requirements.txt"
+CANONICAL_SOURCE_ROOT = REPOSITORY_ROOT / "python-api" / "src"
+STAGE_ONLY = os.environ.get("ARCRHO_STAGE_ONLY", "").strip() == "1"
 
 ENTRY_PY = BASE_DIR / "main.py"
 APP_NAME = component_app_name("orchestrator")
@@ -58,14 +62,7 @@ def run(cmd, check=True):
 
 
 def ensure_venv():
-    if VENV_PYTHON.exists():
-        return
-
-    print(f"\n>>> Creating virtual environment ({VENV_PYTHON.parent.parent})")
-    run([sys.executable, "-m", "venv", VENV_PYTHON.parent.parent])
-
-    if not VENV_PYTHON.exists():
-        raise RuntimeError("Failed to create virtual environment")
+    ensure_python_310_venv(VENV_PYTHON)
 
 
 def ensure_venv_python():
@@ -92,7 +89,9 @@ def build_exe():
         "--noconfirm",
         "--onedir",
         "--paths", SOURCE_ROOT,
+        "--paths", CANONICAL_SOURCE_ROOT,
         "--hidden-import", "utils",
+        "--hidden-import", "server_config",
         f"--icon={ICON}",
         "--add-data", f"{ICON};.",
         "--noconsole",
@@ -215,9 +214,13 @@ def main():
     ensure_venv_python()
     install_requirements()
     build_exe()
-    with orchestrator_stopped():
-        deploy_exe()
-    print(f"\nBuild finished: {DEPLOY_APP_DIR / f'{APP_NAME}.exe'}")
+    if STAGE_ONLY:
+        exe_path = STAGED_APP_DIR / f"{APP_NAME}.exe"
+    else:
+        with orchestrator_stopped():
+            deploy_exe()
+        exe_path = DEPLOY_APP_DIR / f"{APP_NAME}.exe"
+    print(f"\nBuild finished: {exe_path}")
 
 
 if __name__ == "__main__":

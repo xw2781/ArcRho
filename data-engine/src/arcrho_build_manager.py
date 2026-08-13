@@ -16,6 +16,7 @@ from tkinter import messagebox, ttk
 # restating it, so a change to what the Bridge bundles cannot silently stop
 # being reported as stale here.
 from arcrho_bridge.bundled_sources import BUNDLED_SOURCE_ROOTS
+from utils import SERVER_COMPONENT_ROLES, component_app_name
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -56,25 +57,33 @@ class Component:
         return (self.source_dir, *self.bundled_source_roots)
 
 
-COMPONENTS = (
-    Component("admin", "Admin Control", BASE_DIR / "arcrho_admin", "ArcRho Admin Control.exe", ("arcrho_admin",)),
-    Component(
-        "bridge",
-        "Bridge",
-        BASE_DIR / "arcrho_bridge",
-        "ArcRho Bridge.exe",
-        ("arcrho_bridge", "arcrho_bridge_worker"),
-        bundled_source_roots=BUNDLED_SOURCE_ROOTS,
-    ),
-    Component("engine", "Engine", BASE_DIR / "arcrho_engine", "ArcRho Engine.exe", ("arcrho_engine",)),
-    Component("launcher", "Launcher", BASE_DIR / "arcrho_launcher", "ArcRho Launcher.exe", ()),
-    Component(
-        "orchestrator",
-        "Orchestrator",
-        BASE_DIR / "arcrho_orchestrator",
-        "ArcRho Orchestrator.exe",
-        ("arcrho_orchestrator",),
-    ),
+SHARED_COMPONENT_SOURCES = (
+    BASE_DIR / "utils.py",
+    BASE_DIR / "server_config.py",
+    BASE_DIR / "build_runtime.py",
+)
+
+
+def _build_component(role: str) -> Component:
+    if role == "launcher":
+        instance_roles = ()
+    elif role == "bridge":
+        instance_roles = ("arcrho_bridge", "arcrho_bridge_worker")
+    else:
+        instance_roles = (f"arcrho_{role}",)
+    role_sources = BUNDLED_SOURCE_ROOTS if role == "bridge" else ()
+    return Component(
+        role,
+        "Admin Control" if role == "admin" else role.title(),
+        BASE_DIR / f"arcrho_{role}",
+        f"{component_app_name(role)}.exe",
+        instance_roles,
+        bundled_source_roots=(*role_sources, *SHARED_COMPONENT_SOURCES),
+    )
+
+
+COMPONENTS = tuple(
+    _build_component(role) for role in SERVER_COMPONENT_ROLES
 )
 
 
@@ -118,7 +127,8 @@ def latest_source_timestamp(component: Component) -> float | None:
     for root in component.freshness_source_dirs:
         if not root.exists():
             continue
-        for path in root.rglob("*"):
+        candidates = (root,) if root.is_file() else root.rglob("*")
+        for path in candidates:
             if not path.is_file():
                 continue
             if any(part in SOURCE_SKIP_DIRS for part in path.relative_to(root).parts[:-1]):

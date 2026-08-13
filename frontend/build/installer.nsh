@@ -27,6 +27,7 @@
   Var ArcRhoServerRoot
   Var ArcRhoServerRootDetected
   Var ArcRhoServerRootIsLocal
+  Var ArcRhoDataEngineInstalled
   Var ArcRhoServerDriveDropList
   Var ArcRhoExcelAddInPath
   Var ArcRhoPreferredInstallDirectory
@@ -73,7 +74,11 @@ ShowUninstDetails show
   Call ArcRho_DetectServerRoot
   ; Launching the data engine only makes sense on the computer that hosts the
   ; ArcRho Server folder; a network-drive root means the services run elsewhere.
-  StrCpy $ArcRhoLaunchDataEngine $ArcRhoServerRootIsLocal
+  StrCpy $ArcRhoLaunchDataEngine "0"
+  ${If} $ArcRhoServerRootIsLocal == "1"
+  ${AndIf} $ArcRhoDataEngineInstalled == "1"
+    StrCpy $ArcRhoLaunchDataEngine "1"
+  ${EndIf}
   ${IfNot} ${Silent}
     ; Extract the observer before the InstFiles worker starts. It only reads
     ; the native bar and never executes installer script on the UI thread.
@@ -165,31 +170,50 @@ ShowUninstDetails show
   Function ArcRho_DetectServerRoot
     StrCpy $ArcRhoServerRoot ""
     StrCpy $ArcRhoServerRootDetected "0"
-    !insertmacro ArcRho_CheckServerRoot "C:"
-    !insertmacro ArcRho_CheckServerRoot "D:"
-    !insertmacro ArcRho_CheckServerRoot "E:"
-    !insertmacro ArcRho_CheckServerRoot "F:"
-    !insertmacro ArcRho_CheckServerRoot "G:"
-    !insertmacro ArcRho_CheckServerRoot "H:"
-    !insertmacro ArcRho_CheckServerRoot "I:"
-    !insertmacro ArcRho_CheckServerRoot "J:"
-    !insertmacro ArcRho_CheckServerRoot "K:"
-    !insertmacro ArcRho_CheckServerRoot "L:"
-    !insertmacro ArcRho_CheckServerRoot "M:"
-    !insertmacro ArcRho_CheckServerRoot "N:"
-    !insertmacro ArcRho_CheckServerRoot "O:"
-    !insertmacro ArcRho_CheckServerRoot "P:"
-    !insertmacro ArcRho_CheckServerRoot "Q:"
-    !insertmacro ArcRho_CheckServerRoot "R:"
-    !insertmacro ArcRho_CheckServerRoot "S:"
-    !insertmacro ArcRho_CheckServerRoot "T:"
-    !insertmacro ArcRho_CheckServerRoot "U:"
-    !insertmacro ArcRho_CheckServerRoot "V:"
-    !insertmacro ArcRho_CheckServerRoot "W:"
-    !insertmacro ArcRho_CheckServerRoot "X:"
-    !insertmacro ArcRho_CheckServerRoot "Y:"
-    !insertmacro ArcRho_CheckServerRoot "Z:"
+    Call ArcRho_DetectConfiguredServerRoot
+    ${If} $ArcRhoServerRoot == ""
+      !insertmacro ArcRho_CheckServerRoot "C:"
+      !insertmacro ArcRho_CheckServerRoot "D:"
+      !insertmacro ArcRho_CheckServerRoot "E:"
+      !insertmacro ArcRho_CheckServerRoot "F:"
+      !insertmacro ArcRho_CheckServerRoot "G:"
+      !insertmacro ArcRho_CheckServerRoot "H:"
+      !insertmacro ArcRho_CheckServerRoot "I:"
+      !insertmacro ArcRho_CheckServerRoot "J:"
+      !insertmacro ArcRho_CheckServerRoot "K:"
+      !insertmacro ArcRho_CheckServerRoot "L:"
+      !insertmacro ArcRho_CheckServerRoot "M:"
+      !insertmacro ArcRho_CheckServerRoot "N:"
+      !insertmacro ArcRho_CheckServerRoot "O:"
+      !insertmacro ArcRho_CheckServerRoot "P:"
+      !insertmacro ArcRho_CheckServerRoot "Q:"
+      !insertmacro ArcRho_CheckServerRoot "R:"
+      !insertmacro ArcRho_CheckServerRoot "S:"
+      !insertmacro ArcRho_CheckServerRoot "T:"
+      !insertmacro ArcRho_CheckServerRoot "U:"
+      !insertmacro ArcRho_CheckServerRoot "V:"
+      !insertmacro ArcRho_CheckServerRoot "W:"
+      !insertmacro ArcRho_CheckServerRoot "X:"
+      !insertmacro ArcRho_CheckServerRoot "Y:"
+      !insertmacro ArcRho_CheckServerRoot "Z:"
+    ${EndIf}
     Call ArcRho_DetectServerRootIsLocal
+    Call ArcRho_DetectDataEngineInstalled
+  FunctionEnd
+
+  Function ArcRho_DetectConfiguredServerRoot
+    InitPluginsDir
+    SetOutPath "$PLUGINSDIR"
+    File /oname=detect_arcrho_server_root.ps1 "${PROJECT_DIR}\build\detect_arcrho_server_root.ps1"
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\detect_arcrho_server_root.ps1"'
+    Pop $0
+    Pop $1
+    ${If} $0 == 0
+    ${AndIf} $1 != ""
+      StrCpy $ArcRhoServerRoot $1
+      StrCpy $ArcRhoServerRootDetected "1"
+      DetailPrint "Configured ArcRho Server folder: $ArcRhoServerRoot"
+    ${EndIf}
   FunctionEnd
 
   Function ArcRho_DetectServerRootIsLocal
@@ -201,6 +225,16 @@ ShowUninstDetails show
       System::Call 'kernel32::GetDriveTypeW(w r0) i .r1'
       ${If} $1 == 3
         StrCpy $ArcRhoServerRootIsLocal "1"
+      ${EndIf}
+    ${EndIf}
+  FunctionEnd
+
+  Function ArcRho_DetectDataEngineInstalled
+    StrCpy $ArcRhoDataEngineInstalled "0"
+    ${If} $ArcRhoServerRoot != ""
+      ${If} ${FileExists} "$ArcRhoServerRoot\apps\ArcRho Launcher\ArcRho Launcher.exe"
+      ${OrIf} ${FileExists} "$ArcRhoServerRoot\apps\ADAS Shell\ADAS Shell.exe"
+        StrCpy $ArcRhoDataEngineInstalled "1"
       ${EndIf}
     ${EndIf}
   FunctionEnd
@@ -222,7 +256,7 @@ ShowUninstDetails show
       Abort
     ${EndIf}
 
-    ${NSD_CreateLabel} 0 0 100% 22u "ArcRho can register the Excel add-in and start the data engine components during setup."
+    ${NSD_CreateLabel} 0 0 100% 22u "ArcRho can register the Excel add-in and start existing data engine components during setup."
     Pop $1
 
     ${If} $ArcRhoServerRootDetected == "1"
@@ -230,6 +264,9 @@ ShowUninstDetails show
       Pop $1
       ${If} $ArcRhoServerRootIsLocal != "1"
         ${NSD_CreateLabel} 0 52u 100% 22u "This ArcRho Server folder is on a network drive, so the data engine components run on the computer that hosts it and cannot be launched from here."
+        Pop $1
+      ${ElseIf} $ArcRhoDataEngineInstalled != "1"
+        ${NSD_CreateLabel} 0 52u 100% 22u "No server components are installed in this workspace. Use ArcRho Server Components Setup on the host PC."
         Pop $1
       ${EndIf}
     ${Else}
@@ -266,15 +303,19 @@ ShowUninstDetails show
       Pop $1
     ${EndIf}
 
-    ${NSD_CreateCheckbox} 0 112u 48% 26u "Install ArcRho Excel add-in"
+    ${NSD_CreateLabel} 0 100u 100% 18u "Server binaries are delivered separately and are never installed or removed by ArcRho Desktop Setup."
+    Pop $1
+
+    ${NSD_CreateCheckbox} 0 126u 48% 26u "Install ArcRho Excel add-in"
     Pop $ArcRhoInstallExcelAddInCheckbox
     ${If} $ArcRhoInstallExcelAddIn == "1"
       ${NSD_Check} $ArcRhoInstallExcelAddInCheckbox
     ${EndIf}
 
-    ${NSD_CreateCheckbox} 50% 112u 50% 26u "Launch ArcRho data engine at login"
+    ${NSD_CreateCheckbox} 50% 126u 50% 26u "Launch ArcRho data engine at login"
     Pop $ArcRhoLaunchDataEngineCheckbox
     ${If} $ArcRhoServerRootIsLocal == "1"
+    ${AndIf} $ArcRhoDataEngineInstalled == "1"
       ${If} $ArcRhoLaunchDataEngine == "1"
         ${NSD_Check} $ArcRhoLaunchDataEngineCheckbox
       ${EndIf}
@@ -295,6 +336,7 @@ ShowUninstDetails show
 
     StrCpy $ArcRhoLaunchDataEngine "0"
     ${If} $ArcRhoServerRootIsLocal == "1"
+    ${AndIf} $ArcRhoDataEngineInstalled == "1"
       ${NSD_GetState} $ArcRhoLaunchDataEngineCheckbox $0
       ${If} $0 == ${BST_CHECKED}
         StrCpy $ArcRhoLaunchDataEngine "1"
@@ -418,7 +460,7 @@ ShowUninstDetails show
     ${IfNot} ${FileExists} "$0"
       !insertmacro ArcRho_PrintInstallDetail "ArcRho data engine launch skipped because no ArcRho Launcher was found under $ArcRhoServerRoot\apps."
       ${IfNot} ${Silent}
-        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the data engine components could not be started because no ArcRho Launcher was found under $ArcRhoServerRoot\apps."
+        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but no server components were found under $ArcRhoServerRoot\apps. Run ArcRho Server Components Setup on the PC that locally hosts this workspace."
       ${EndIf}
       Return
     ${EndIf}

@@ -11,25 +11,18 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 _SOURCE_ROOT = _MODULE_ROOT.parent
 _PRODUCT_ROOT = _SOURCE_ROOT.parent
 _BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", _MODULE_ROOT)).resolve()
-_EXE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
-_DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
-
-if "ARCRHO_ROOT" not in os.environ:
-    if _EXE_DIR and _EXE_DIR.name.lower() == "apps":
-        os.environ["ARCRHO_ROOT"] = str(_EXE_DIR.parent)
-    elif _EXE_DIR and _EXE_DIR.parent.name.lower() == "apps":
-        os.environ["ARCRHO_ROOT"] = str(_EXE_DIR.parent.parent)
-    elif not getattr(sys, "frozen", False):
-        os.environ["ARCRHO_ROOT"] = str(_DEPLOY_ROOT)
 
 for _path in (_PRODUCT_ROOT, _SOURCE_ROOT, _BUNDLE_ROOT):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
 try:
-    from src.utils import component_app_name, resolve_app_exe
+    from src.utils import component_app_name, get_project_root, resolve_app_exe
 except ModuleNotFoundError:
-    from utils import component_app_name, resolve_app_exe
+    from utils import component_app_name, get_project_root, resolve_app_exe
+
+
+os.environ.setdefault("ARCRHO_ROOT", str(get_project_root()))
 
 
 def remove_startup_shortcut(shortcut_name: str) -> Optional[Path]:

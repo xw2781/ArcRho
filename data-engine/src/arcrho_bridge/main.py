@@ -16,16 +16,6 @@ _PRODUCT_ROOT = _SOURCE_ROOT.parent
 # Python API. A frozen Bridge gets them as hidden imports instead.
 _REPO_CANONICAL_ROOT = _PRODUCT_ROOT.parent / "python-api" / "src"
 _BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", _MODULE_ROOT)).resolve()
-_EXE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
-_DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
-
-if "ARCRHO_ROOT" not in os.environ:
-    if _EXE_DIR and _EXE_DIR.name.lower() == "apps":
-        os.environ["ARCRHO_ROOT"] = str(_EXE_DIR.parent)
-    elif _EXE_DIR and _EXE_DIR.parent.name.lower() == "apps":
-        os.environ["ARCRHO_ROOT"] = str(_EXE_DIR.parent.parent)
-    elif not getattr(sys, "frozen", False):
-        os.environ["ARCRHO_ROOT"] = str(_DEPLOY_ROOT)
 
 for _path in (_PRODUCT_ROOT, _SOURCE_ROOT, _REPO_CANONICAL_ROOT, _BUNDLE_ROOT):
     if not _path.exists():
@@ -70,6 +60,9 @@ except ModuleNotFoundError:
     )
     from arcrho_bridge.resq_client import ResQClient
     from utils import get_config_value, get_project_root, normalize_function_name, resolve_app_path
+
+
+os.environ.setdefault("ARCRHO_ROOT", str(get_project_root()))
 
 
 RESQ_IMPORT_CONTRACT = load_resq_reserving_class_import_contract()

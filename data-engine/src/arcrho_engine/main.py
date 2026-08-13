@@ -11,16 +11,6 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 _SOURCE_ROOT = _MODULE_ROOT.parent
 _REPO_CANONICAL_ROOT = _SOURCE_ROOT.parent.parent / "python-api" / "src"
 _BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", _MODULE_ROOT)).resolve()
-_EXE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
-_DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
-
-if "ARCRHO_ROOT" not in os.environ:
-    if _EXE_DIR and _EXE_DIR.name.lower() == "apps":
-        os.environ["ARCRHO_ROOT"] = str(_EXE_DIR.parent)
-    elif _EXE_DIR and _EXE_DIR.parent.name.lower() == "apps":
-        os.environ["ARCRHO_ROOT"] = str(_EXE_DIR.parent.parent)
-    elif not getattr(sys, "frozen", False):
-        os.environ["ARCRHO_ROOT"] = str(_DEPLOY_ROOT)
 
 for _path in (_SOURCE_ROOT, _REPO_CANONICAL_ROOT, _BUNDLE_ROOT):
     if not _path.exists():
@@ -34,6 +24,9 @@ from watchdog.observers import Observer
 from arcrho_dependent_propagation_contract import DEPENDENT_PROPAGATION_FUNCTION
 from arcrho_project_duplication_contract import PROJECT_DUPLICATION_FUNCTION
 from utils import get_config_value, get_project_root, normalize_function_name
+
+os.environ.setdefault("ARCRHO_ROOT", str(get_project_root()))
+
 from arcrho_engine.data_processing import (
     PROJECT_CONFIG,
     PROJECT_CONFIG_LOCK,

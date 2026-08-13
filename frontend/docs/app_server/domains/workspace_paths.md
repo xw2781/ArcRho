@@ -30,6 +30,7 @@ Runtime workspace path read/update domain.
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Persists config in `%APPDATA%\ArcRho\workspace_paths.json`.
+- ArcRho Server Components Setup can optionally set this root for the installing Windows user by calling the canonical `arcrho_api.config.set_server_root`; it does not maintain a second installer-specific workspace setting.
 - Uses built-in defaults until Server Connection is saved. Only `POST /workspace_paths` creates that file, so a fresh client install runs entirely on the defaults.
 - Resolution order is owned by `arcrho_api/config.py` and shared with the Python API and macros: `ARCRHO_SERVER_ROOT`/`ARCRHO_RUNTIME_SERVER_ROOT`, then the config file, then the packaged default root. `app_server/config.py` adds only the Arcode-mode AppData branch and `paths` normalization.
 - `GET /workspace_paths` is also how a macro process outside the app discovers the workspace root when no config file exists.

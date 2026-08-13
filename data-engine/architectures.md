@@ -1,15 +1,37 @@
-# data-engine Architecture Notes
+# Data-engine Architecture Notes
 
-## data-engine\src\arcrho_bridge
+## Deployment model
 
-- ResQ import/export only; a separate module from the rest of the ArcRho system.
-- Purpose: migration support — phased transition from ResQ to the ArcRho platform.
-- Will be retired once the transition completes. Do not host permanent ArcRho features here.
-- One instance per user, on the dev PC.
+ArcRho Server components run on the Windows PC that locally hosts the selected
+ArcRho Server workspace. The workspace folder may have any name; a frozen
+component discovers it structurally from `<workspace>\apps\<component>` and an
+explicit `ARCRHO_ROOT` remains the highest-precedence override.
 
-## data-engine\src\arcrho_engine
+Five components ship as one versioned server release:
 
-- Handles data transformation and processing.
-- Runs ~5 instances on the dev PC (the dedicated server where the ArcRho Server folder is a local drive), enough to serve requests from the 5–6 person team efficiently.
-- Planned: support for long-running jobs — for example a complete dependency-graph refresh (update all dependents of a changed dataset) or project duplication — using a durable request queue with status files the client can poll. See [docs/plans/engine_dependent_propagation_plan.md](../docs/plans/engine_dependent_propagation_plan.md).
-- Planned: a lock file on the affected reserving-class or project folder so only one Engine instance updates a segment at a time and duplicate requests from different users are avoided. The lock is a lease with a max hold time: the owning instance renews it while working, and a lock left behind by a dead instance expires and can be taken over.
+- **ArcRho Engine** processes calculation, propagation, duplication, and other
+  durable workspace requests. The Orchestrator normally maintains five workers.
+- **ArcRho Orchestrator** supervises Engine and Bridge processes.
+- **ArcRho Bridge** provides per-interactive-user ResQ automation. Its worker
+  needs that user's ResQ GUI and COM session, so it is not a Windows service.
+- **ArcRho Launcher** registers per-user login startup and starts Orchestrator
+  and Bridge.
+- **ArcRho Admin Control** exposes local component/configuration administration.
+
+The offline companion installer and lifecycle contract are documented in
+[Server Components Deployment](docs/server-components-deployment.md). The
+frontend installer never owns these shared binaries.
+
+## `data-engine/src/arcrho_bridge`
+
+- ResQ import/export only; a separate module from permanent ArcRho processing.
+- One supervisor per interactive user session; each user contributes the Bridge
+  tied to their own ResQ GUI/license.
+- Intended for migration support and removable when the ResQ transition ends.
+
+## `data-engine/src/arcrho_engine`
+
+- Handles transformations and durable shared-workspace jobs.
+- Runs as a worker pool on the local workspace host.
+- Uses lease-backed request processing so concurrent workers do not update the
+  same reserving class or project segment simultaneously.

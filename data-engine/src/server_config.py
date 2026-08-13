@@ -1,0 +1,131 @@
+"""Canonical ArcRho Server component configuration contract.
+
+The server installer, Admin Control, and long-running components all share this
+module so the default worker topology and JSON text cannot drift between
+producers.  Unknown keys and existing values are intentionally preserved when
+defaults are merged into an adopted workspace.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+CANONICAL_API_SOURCE = REPOSITORY_ROOT / "python-api" / "src"
+if CANONICAL_API_SOURCE.is_dir() and str(CANONICAL_API_SOURCE) not in sys.path:
+    sys.path.insert(0, str(CANONICAL_API_SOURCE))
+
+from arcrho_api.io import persisted_json_text  # noqa: E402
+
+
+SERVER_CONFIG_VERSION = "1.0"
+SERVER_CONFIG_RELATIVE_PATH = Path("config") / "config.json"
+LEGACY_SERVER_CONFIG_RELATIVE_PATH = Path("core") / "config.json"
+
+_DEFAULT_APPS = {
+    "engine": {"kill_all": False},
+    "orchestrator": {
+        "kill_all": False,
+        "auto_create_workers": True,
+        "max_workers": 5,
+    },
+    "bridge": {
+        "kill_all": False,
+        "auto_create_instance": True,
+        "max_instances": 1,
+        "max_workers": 1,
+    },
+    "bridge_worker": {"kill_all": False},
+}
+
+
+def default_server_config(server_root: str | os.PathLike[str]) -> dict[str, Any]:
+    return {
+        "config_version": SERVER_CONFIG_VERSION,
+        "root": str(Path(server_root).expanduser().resolve()),
+        "apps": copy.deepcopy(_DEFAULT_APPS),
+    }
+
+
+def merge_missing_defaults(value: Any, defaults: Any) -> Any:
+    """Return ``value`` with missing mapping keys supplied by ``defaults``."""
+
+    if not isinstance(defaults, dict):
+        return copy.deepcopy(value)
+    if not isinstance(value, dict):
+        return copy.deepcopy(defaults)
+    merged = copy.deepcopy(value)
+    for key, default_value in defaults.items():
+        if key not in merged:
+            merged[key] = copy.deepcopy(default_value)
+        elif isinstance(default_value, dict):
+            merged[key] = merge_missing_defaults(merged[key], default_value)
+    return merged
+
+
+def resolve_server_config_path(server_root: str | os.PathLike[str]) -> Path:
+    root = Path(server_root)
+    configured = os.environ.get("ARCRHO_CONFIG") or os.environ.get("ADAS_CONFIG")
+    canonical = root / SERVER_CONFIG_RELATIVE_PATH
+    legacy = root / LEGACY_SERVER_CONFIG_RELATIVE_PATH
+    if canonical.exists():
+        return canonical
+    if configured:
+        return Path(configured).expanduser()
+    if legacy.exists():
+        return legacy
+    return canonical
+
+
+def read_server_config(
+    path: Path,
+    server_root: str | os.PathLike[str],
+    *,
+    merge_defaults: bool = True,
+) -> dict[str, Any]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise ValueError(f"ArcRho Server configuration must be a JSON object: {path}")
+    if not merge_defaults:
+        return payload
+    return merge_missing_defaults(payload, default_server_config(server_root))
+
+
+def write_server_config(path: Path, payload: dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise TypeError("ArcRho Server configuration must be a mapping.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(
+        f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    )
+    try:
+        with temp_path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(persisted_json_text(payload))
+        os.replace(temp_path, path)
+    except Exception:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def ensure_server_config(server_root: str | os.PathLike[str]) -> tuple[Path, dict[str, Any]]:
+    root = Path(server_root).expanduser().resolve()
+    path = resolve_server_config_path(root)
+    existing = read_server_config(path, root, merge_defaults=False)
+    merged = merge_missing_defaults(existing, default_server_config(root))
+    if not path.exists() or merged != existing:
+        write_server_config(path, merged)
+    return path, merged
