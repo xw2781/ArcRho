@@ -7,6 +7,7 @@ import {
   registerSummaryFunctions,
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260807a";
+import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag_tracker.js";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -510,7 +511,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     listenerCleanup.push(() => target.removeEventListener(type, handler, options));
   };
   let dragActive = false;
-  let lastKey = null;
+  const dragVisits = createRatioDragVisitTracker();
   let pasteArmed = false;
 
   const finishSummaryCellDrag = () => {
@@ -518,7 +519,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       commitRatioHistoryAction("summary-cell-click");
     }
     dragActive = false;
-    lastKey = null;
+    dragVisits.reset();
   };
 
   const isFormulaReferenceMode = () => {
@@ -803,12 +804,12 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     if (e.target?.closest?.("input.summaryCellEditInput")) return;
     const cell = e.target?.closest?.("td.summaryCell");
     if (!cell) return;
+    finishSummaryCellDrag();
     e.preventDefault();
     dragActive = true;
     beginRatioHistoryAction("summary-cell-click");
     const key = `${cell.dataset.r || ""},${cell.dataset.col || ""}`;
-    lastKey = key;
-    setActiveCell(cell, true);
+    if (dragVisits.visit(key)) setActiveCell(cell, true);
   });
 
   listen(summaryTable, "mousemove", (e) => {
@@ -822,8 +823,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     const cell = e.target?.closest?.("td.summaryCell");
     if (!cell) return;
     const key = `${cell.dataset.r || ""},${cell.dataset.col || ""}`;
-    if (key === lastKey) return;
-    lastKey = key;
+    if (!dragVisits.visit(key)) return;
     setActiveCell(cell, true);
   });
 

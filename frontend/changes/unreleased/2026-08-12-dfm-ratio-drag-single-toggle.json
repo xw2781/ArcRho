@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Prevented Ratios-table drag gestures from applying the same cell more than once."
+}

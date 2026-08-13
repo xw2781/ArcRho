@@ -71,6 +71,7 @@ import {
   cancelRatioHistoryAction,
   commitRatioHistoryAction,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
+import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag_tracker.js";
 
 let persistedRatioTriangleValues = null;
 
@@ -1007,7 +1008,7 @@ export function wireRatioStrikeToggle() {
   if (!wrap || wrap.dataset.strikeWired === "1") return;
   wrap.dataset.strikeWired = "1";
   let dragActive = false;
-  let lastKey = null;
+  const dragVisits = createRatioDragVisitTracker();
   const isDataRow = (rowId) => /^\d+$/.test(String(rowId || ""));
 
   const finishRatioCellDrag = () => {
@@ -1015,7 +1016,7 @@ export function wireRatioStrikeToggle() {
       commitRatioHistoryAction("ratio-cell-click");
     }
     dragActive = false;
-    lastKey = null;
+    dragVisits.reset();
   };
 
   const toggleRatioRowExclusions = (rowHead) => {
@@ -1075,6 +1076,7 @@ export function wireRatioStrikeToggle() {
     const cell = e.target?.closest?.("td.ratioCell");
     if (!cell) return;
     ratioTableHighlight?.selectCell?.(cell, false);
+    finishRatioCellDrag();
     if (cell.classList.contains("na") || cell.classList.contains("ratioPlaceholder")) return;
     if (!isDataRow(cell.dataset.r)) return;
     if (cell.dataset.r === "sum") return;
@@ -1082,8 +1084,7 @@ export function wireRatioStrikeToggle() {
     dragActive = true;
     beginRatioHistoryAction("ratio-cell-click");
     const key = `${cell.dataset.r},${cell.dataset.c}`;
-    lastKey = key;
-    toggleStrike(cell);
+    if (dragVisits.visit(key)) toggleStrike(cell);
   });
 
   wrap.addEventListener("mousemove", (e) => {
@@ -1097,8 +1098,7 @@ export function wireRatioStrikeToggle() {
     if (!isDataRow(cell.dataset.r)) return;
     if (cell.dataset.r === "sum") return;
     const key = `${cell.dataset.r},${cell.dataset.c}`;
-    if (key === lastKey) return;
-    lastKey = key;
+    if (!dragVisits.visit(key)) return;
     toggleStrike(cell);
   });
 
