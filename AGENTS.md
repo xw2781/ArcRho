@@ -109,7 +109,7 @@ The Bridge ships a frozen copy of its bundled sources, so a change to those sour
 
 Rebuild once per task, after the change is verified and before reporting the task complete; do not rebuild after each individual edit. Skip the rebuild when a task changed only tests, docs, or files outside the bundle, and say so.
 
-Run `python data-engine/src/arcrho_bridge/build_exe.py` with a Python 3.10 interpreter. That single command builds, stops the live Bridge through `apps.bridge.kill_all`, swaps the deployed app folder atomically with rollback, and releases the orchestrator to relaunch, so no separate stop or restart step is needed. This command is exempt from the Validation Runtime Limit and may run to completion without asking.
+Run `python data-engine/src/arcrho_bridge/build_exe.py` with a Python 3.10 interpreter. That single command builds, stops the live Bridge through `apps.bridge.kill_all`, swaps the deployed app folder atomically with rollback, and releases the orchestrator to relaunch, so no separate stop or restart step is needed. This command may run to completion without asking.
 
 Never deploy a change that has not passed its checks; a broken Bridge blocks every ResQ import. If the build fails, or the live Bridge does not stop within the script's timeout, the script aborts and leaves the deployed Bridge untouched. Report that outcome plainly and do not retry blindly. State in the final response whether the Bridge was rebuilt and redeployed, or why it was not.
 
@@ -129,15 +129,14 @@ The user pre-authorizes agents to stop running ArcRho Engine instances and to re
 
 The Engine ships a frozen copy of its bundled sources, so a change to those sources has no effect on running instances until the Engine is rebuilt. `data-engine/src/arcrho_engine/build_exe.py` owns the bundle; read its `ENGINE_BUNDLED_SOURCES` (from `data-engine/src/arcrho_engine/bundled_sources.py`), `--paths`, and hidden imports rather than trusting a copy of that list. At the time of writing it bundles `data-engine/src/arcrho_engine/`, `python-api/src/`, and `frontend/app_server/`, so many changes that look unrelated to the Engine still require a rebuild.
 
-Run `python data-engine/src/arcrho_engine/build_exe.py` with a Python 3.10 interpreter. That single command builds, stops every live Engine instance through `apps.engine.kill_all`, swaps the deployed app folder atomically with rollback, and restores the kill switch so the orchestrator relaunches instances up to `apps.orchestrator.max_workers`. After the deploy, verify fresh heartbeat files appear under `E:\ArcRho Server\runtime\instances\arcrho_engine\`; if the orchestrator is not running, start `E:\ArcRho Server\apps\ArcRho Engine\ArcRho Engine.exe` manually. This command is exempt from the Validation Runtime Limit and may run to completion without asking.
+Run `python data-engine/src/arcrho_engine/build_exe.py` with a Python 3.10 interpreter. That single command builds, stops every live Engine instance through `apps.engine.kill_all`, swaps the deployed app folder atomically with rollback, and restores the kill switch so the orchestrator relaunches instances up to `apps.orchestrator.max_workers`. After the deploy, verify fresh heartbeat files appear under `E:\ArcRho Server\runtime\instances\arcrho_engine\`; if the orchestrator is not running, start `E:\ArcRho Server\apps\ArcRho Engine\ArcRho Engine.exe` manually. This command may run to completion without asking.
 
 Stopping the Engine pauses every pending calculation, dependent-propagation, and project-duplication job until instances return, so rebuild once per task, after the change is verified and before reporting the task complete; skip the rebuild when a task changed only tests, docs, or files outside the bundle, and say so. Never deploy a change that has not passed its checks. If the build fails, or live instances do not stop within the script's timeout (an instance finishing a long durable job delays shutdown), the script aborts and leaves the deployed Engine untouched; report that outcome plainly and do not retry blindly. State in the final response whether the Engine was rebuilt, redeployed, and its instances relaunched, or why not.
 
 ## Node Runtime Preference
 The frontend includes a bundled portable Node runtime. When validating or running Node/npm commands for this repository, prefer `frontend\node-portable\node.exe` and `frontend\node-portable\npm.cmd` instead of plain `node` or `npm`, because Node is not expected to be installed globally or available on `PATH` in the agent environment. Do not report "Node is not installed in this environment" unless the bundled portable runtime is also missing or fails.
 
-## Validation Runtime Limit
-No validation command should run for more than 60 seconds by default. Use targeted fast checks first, and put tests, docs checks, syntax checks, and smoke checks behind a timeout of 60 seconds or less. If a broader validation is expected to exceed 60 seconds, ask before running it and explain why the longer run is needed. When a validation times out, stop it and report the timeout instead of retrying indefinitely.
+## Validation Runtime
 Validation commands must not write files to the C drive. If temporary files are needed, write them only inside the current repository folder.
 
 ## Final Response Changed Files
