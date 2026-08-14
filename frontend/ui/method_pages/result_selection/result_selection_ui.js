@@ -1420,10 +1420,11 @@
         });
         els.saveBtn?.addEventListener("click", () => {
           saveResultSelection()
+            // A save keeps the window open; only Cancel and a confirmed dirty
+            // close dismiss it.
             .then(async (saved) => {
               if (saved?.ok && saved?.propagationClean) {
                 await showSavedDependentsNotice(saved.refreshedDatasets);
-                requestConfirmedClose();
               }
             })
             .catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));
@@ -1449,7 +1450,6 @@
               .then(async (saved) => {
                 if (saved?.ok && saved?.propagationClean) {
                   await showSavedDependentsNotice(saved.refreshedDatasets);
-                  requestConfirmedClose();
                 }
               })
               .catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));

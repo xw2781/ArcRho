@@ -69,22 +69,36 @@ export function previewDfmMethod(method, options = {}) {
   return requestJson("/dfm/method/preview", { method }, options);
 }
 
-export function saveDfmMethod({
+// One projection for both halves of the two-step save: the plan must resolve
+// the same propagation roots the save will, which it can only do from the
+// same body.
+function dfmMethodSaveBody({
   project_name,
   reserving_class,
   method,
   notes,
   expected_owned_revision,
   expected_derived_revision,
-} = {}, options = {}) {
-  return requestJson("/dfm/method/save", {
+  plan_fingerprint,
+} = {}) {
+  return {
     project_name: text(project_name),
     reserving_class: text(reserving_class),
     method,
     notes: String(notes ?? ""),
     ...(text(expected_owned_revision) ? { expected_owned_revision: text(expected_owned_revision) } : {}),
     ...(text(expected_derived_revision) ? { expected_derived_revision: text(expected_derived_revision) } : {}),
-  }, options);
+    ...(text(plan_fingerprint) ? { plan_fingerprint: text(plan_fingerprint) } : {}),
+  };
+}
+
+/** Names the dependent objects a save would refresh; writes nothing. */
+export function planDfmMethodSave(input = {}, options = {}) {
+  return requestJson("/dfm/method/save/plan", dfmMethodSaveBody(input), options);
+}
+
+export function saveDfmMethod(input = {}, options = {}) {
+  return requestJson("/dfm/method/save", dfmMethodSaveBody(input), options);
 }
 
 export function refreshDfmMethod(identity, options = {}) {

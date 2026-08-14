@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Saving a dataset or method window no longer closes it.",
+  "details": [
+    "Dataset, DFM, Result Selection, Bornhuetter Ferguson, Cape Cod, and Berquist Sherman windows stay open after a successful save.",
+    "The saved-dependents notice still names the dataset instances the dependent walk refreshed; Cancel, the titlebar close, and the close shortcut still close the window with the usual unsaved-changes confirmation."
+  ]
+}

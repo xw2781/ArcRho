@@ -13,11 +13,11 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `arcrho` | [`app_server/api/arcrho_router.py`](../../app_server/api/arcrho_router.py) | 9 | [`arcrho.md`](domains/arcrho.md) |
 | `audit_log` | [`app_server/api/audit_log_router.py`](../../app_server/api/audit_log_router.py) | 2 | [`audit_log.md`](domains/audit_log.md) |
 | `book` | [`app_server/api/book_router.py`](../../app_server/api/book_router.py) | 3 | [`book.md`](domains/book.md) |
-| `bootstrap` | [`app_server/api/bootstrap_router.py`](../../app_server/api/bootstrap_router.py) | 3 | [`bootstrap.md`](domains/bootstrap.md) |
-| `bornhuetter_ferguson` | [`app_server/api/bornhuetter_ferguson_router.py`](../../app_server/api/bornhuetter_ferguson_router.py) | 3 | [`bornhuetter_ferguson.md`](domains/bornhuetter_ferguson.md) |
-| `cape_cod` | [`app_server/api/cape_cod_router.py`](../../app_server/api/cape_cod_router.py) | 3 | [`cape_cod.md`](domains/cape_cod.md) |
+| `bootstrap` | [`app_server/api/bootstrap_router.py`](../../app_server/api/bootstrap_router.py) | 4 | [`bootstrap.md`](domains/bootstrap.md) |
+| `bornhuetter_ferguson` | [`app_server/api/bornhuetter_ferguson_router.py`](../../app_server/api/bornhuetter_ferguson_router.py) | 4 | [`bornhuetter_ferguson.md`](domains/bornhuetter_ferguson.md) |
+| `cape_cod` | [`app_server/api/cape_cod_router.py`](../../app_server/api/cape_cod_router.py) | 4 | [`cape_cod.md`](domains/cape_cod.md) |
 | `data_processing_rules` | [`app_server/api/data_processing_rules_router.py`](../../app_server/api/data_processing_rules_router.py) | 3 | [`data_processing_rules.md`](domains/data_processing_rules.md) |
-| `dataset` | [`app_server/api/dataset_router.py`](../../app_server/api/dataset_router.py) | 14 | [`dataset.md`](domains/dataset.md) |
+| `dataset` | [`app_server/api/dataset_router.py`](../../app_server/api/dataset_router.py) | 15 | [`dataset.md`](domains/dataset.md) |
 | `dataset_types` | [`app_server/api/dataset_types_router.py`](../../app_server/api/dataset_types_router.py) | 3 | [`dataset_types.md`](domains/dataset_types.md) |
 | `dependent_propagation` | [`app_server/api/dependent_propagation_router.py`](../../app_server/api/dependent_propagation_router.py) | 3 | [`dependent_propagation.md`](domains/dependent_propagation.md) |
 | `excel` | [`app_server/api/excel_router.py`](../../app_server/api/excel_router.py) | 4 | [`excel.md`](domains/excel.md) |
@@ -26,7 +26,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `object_change_watch` | [`app_server/api/object_change_watch_router.py`](../../app_server/api/object_change_watch_router.py) | 1 | [`object_change_watch.md`](domains/object_change_watch.md) |
 | `project_settings` | [`app_server/api/project_settings_router.py`](../../app_server/api/project_settings_router.py) | 13 | [`project_settings.md`](domains/project_settings.md) |
 | `reserving_class` | [`app_server/api/reserving_class_router.py`](../../app_server/api/reserving_class_router.py) | 11 | [`reserving_class.md`](domains/reserving_class.md) |
-| `result_selection` | [`app_server/api/result_selection_router.py`](../../app_server/api/result_selection_router.py) | 2 | [`result_selection.md`](domains/result_selection.md) |
+| `result_selection` | [`app_server/api/result_selection_router.py`](../../app_server/api/result_selection_router.py) | 3 | [`result_selection.md`](domains/result_selection.md) |
 | `snowflake` | [`app_server/api/snowflake_router.py`](../../app_server/api/snowflake_router.py) | 4 | [`snowflake.md`](domains/snowflake.md) |
 | `source_table` | [`app_server/api/source_table_router.py`](../../app_server/api/source_table_router.py) | 8 | [`source_table.md`](domains/source_table.md) |
 | `sql_formatting` | [`app_server/api/sql_formatting_router.py`](../../app_server/api/sql_formatting_router.py) | 1 | [`sql_formatting.md`](domains/sql_formatting.md) |

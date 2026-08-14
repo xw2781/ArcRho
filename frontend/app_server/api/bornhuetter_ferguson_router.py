@@ -23,6 +23,31 @@ def load_bornhuetter_ferguson(req: BornhuetterFergusonIdentityRequest) -> Dict[s
     )
 
 
+def _bornhuetter_ferguson_save_call(req: BornhuetterFergusonSaveRequest) -> Dict[str, Any]:
+    """The one argument projection the plan and the save both run against."""
+
+    return {
+        "args": [req.project_name, req.reserving_class, req.method],
+        "kwargs": {
+            "notes": req.notes,
+            "expected_owned_revision": req.expected_owned_revision,
+            "expected_derived_revision": req.expected_derived_revision,
+        },
+    }
+
+
+@router.post("/bornhuetter-ferguson/save/plan")
+def plan_bornhuetter_ferguson_save(req: BornhuetterFergusonSaveRequest) -> Dict[str, Any]:
+    # Step one of the two-step save: name the dependent objects this save
+    # would refresh. Nothing is written and no lease is taken.
+    return engine_hosted_save_service.run_hosted_save_plan(
+        "bornhuetter_ferguson_method",
+        req.project_name,
+        req.reserving_class,
+        **_bornhuetter_ferguson_save_call(req),
+    )
+
+
 @router.post("/bornhuetter-ferguson/save")
 def save_bornhuetter_ferguson(req: BornhuetterFergusonSaveRequest) -> Dict[str, Any]:
     # The save runs on ArcRho Engine next to the data; this endpoint keeps
@@ -31,12 +56,8 @@ def save_bornhuetter_ferguson(req: BornhuetterFergusonSaveRequest) -> Dict[str, 
         "bornhuetter_ferguson_method",
         req.project_name,
         req.reserving_class,
-        args=[req.project_name, req.reserving_class, req.method],
-        kwargs={
-            "notes": req.notes,
-            "expected_owned_revision": req.expected_owned_revision,
-            "expected_derived_revision": req.expected_derived_revision,
-        },
+        plan_fingerprint=req.plan_fingerprint,
+        **_bornhuetter_ferguson_save_call(req),
     )
 
 

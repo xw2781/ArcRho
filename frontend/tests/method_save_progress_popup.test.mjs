@@ -240,6 +240,16 @@ test("a Result Selection save shows the spinner and clears it before the review 
       try {
         return await work({
           writing() { events.push("writing"); },
+          // The dependent-update confirmation runs mid-save with the spinner
+          // dropped, because the busy overlay paints above the message box.
+          async duringDialog(dialogWork) {
+            visible = false;
+            try {
+              return await dialogWork();
+            } finally {
+              visible = true;
+            }
+          },
           finish() {
             if (!visible) return;
             visible = false;
@@ -296,6 +306,13 @@ test("a Result Selection save shows the spinner and clears it before the review 
       schedulePersistedValuesRefresh: () => {},
       resumePersistedValuesRefresh: () => {},
       trackSavePropagation: async () => null,
+      planAndConfirmSave: async ({ showDialog }) => {
+        // A plan that reaches nothing never opens the dialog, but it still
+        // runs before the write.
+        events.push(`plan:${visible}`);
+        await showDialog(() => {});
+        return { proceed: true, fingerprint: "fp-rs" };
+      },
       showMethodSaveReviewWarning: async () => {
         events.push(`review-dialog:${visible}`);
       },
@@ -310,6 +327,7 @@ test("a Result Selection save shows the spinner and clears it before the review 
     assert.deepEqual(events, [
       "begin",
       "origin-labels:true",
+      "plan:true",
       "writing",
       "finish",
       "review-dialog:false",

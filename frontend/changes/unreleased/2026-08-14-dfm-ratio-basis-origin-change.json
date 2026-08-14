@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed saving a DFM after changing Origin Length, which failed with a Ratio Basis alignment error.",
+  "details": [
+    "Changing the origin basis now re-reads the Results Ratio Basis column on the new origins instead of keeping the column saved on the previous basis.",
+    "Save and its preview wait for that re-read, and a Ratio Basis that still cannot be aligned is reported by name instead of as a contract error."
+  ]
+}

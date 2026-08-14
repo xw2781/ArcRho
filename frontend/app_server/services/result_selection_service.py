@@ -711,6 +711,28 @@ def save_result_selection(
     }
 
 
+def save_propagation_roots(
+    project_name: str,
+    reserving_class: str,
+    method: Dict[str, Any],
+    notes: str = "",
+    expected_revision: str | None = None,
+    **_ignored: Any,
+) -> List[Tuple[str, str]]:
+    """Return the roots ``save_result_selection`` would propagate from.
+
+    The two-step save plans the dependent closure before anything is written.
+    Result Selection propagates through the output sidecar it writes, so the
+    roots are the same ``(name, output_type)`` pair the save hands to
+    ``dataset_service.save_dataset_sidecar``.
+    """
+
+    payload = normalize_method_payload(method, require_complete_basis=True)
+    details = payload["details_tab"]
+    name = _clean(details.get("name"))
+    return [(name, _clean(details.get("output_type")) or name)]
+
+
 def _source_period(sidecar: Dict[str, Any]) -> int:
     value = sidecar.get("period_length") if _clean(sidecar.get("data_format")).lower() == "vector" else sidecar.get("origin_length")
     try:

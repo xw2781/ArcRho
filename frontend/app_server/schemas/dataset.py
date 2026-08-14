@@ -132,6 +132,10 @@ class DatasetSidecarSaveRequest(BaseModel):
     external_links: Optional[List[DatasetExternalLink]] = None
     values: Optional[List[List[Optional[float]]]] = None
     mask: Optional[List[List[bool]]] = None
+    # Fingerprint of the dependent-update plan the user confirmed. The Engine
+    # rechecks it under the reserving-class lease and refuses with 409 if the
+    # class changed while the plan was on screen.
+    plan_fingerprint: str = ""
 
 
 class EmptyDatasetCacheCreateRequest(BaseModel):

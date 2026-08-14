@@ -49,8 +49,10 @@ import {
 } from "/ui/method_pages/cape_cod/cape_cod_json_contract.js?v=20260804a";
 import {
   loadCapeCodMethod,
+  planCapeCodMethodSave,
   saveCapeCodMethod,
-} from "/ui/method_pages/cape_cod/cape_cod_method_api.js?v=20260804a";
+} from "/ui/method_pages/cape_cod/cape_cod_method_api.js?v=20260814a";
+import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
 
 const DEFAULT_ORIGIN_LENGTH = 12;
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
@@ -1553,18 +1555,35 @@ async function runCapeCodSave(progress) {
     return { ok: false };
   }
   const method = buildPayload({ lastModified: new Date().toISOString() });
+  const saveInput = {
+    project_name: state.project,
+    reserving_class: state.reservingClass,
+    method,
+    notes: els.notesInput?.value || "",
+    expected_owned_revision: state.ownedRevision,
+    expected_derived_revision: state.derivedRevision,
+  };
+  // Step one: name the dependent objects this save would refresh and let the
+  // user decide, before anything reaches the network drive. Cancelling leaves
+  // the edit in this window, unsaved.
+  const decision = await planAndConfirmSave({
+    requestPlan: () => planCapeCodMethodSave(saveInput),
+    subject: `this ${CC_METHOD_TYPE}`,
+    showDialog: (work) => progress.duringDialog(work),
+  });
+  if (!decision.proceed) {
+    const message = decision.message || "Save cancelled; nothing was changed.";
+    postStatus(message, decision.cancelled ? "" : "warn");
+    return { ok: false, cancelled: !!decision.cancelled, error: message };
+  }
   let result;
   ccObjectChangeWatch.pause();
   try {
     try {
       progress.writing();
       result = await saveCapeCodMethod({
-        project_name: state.project,
-        reserving_class: state.reservingClass,
-        method,
-        notes: els.notesInput?.value || "",
-        expected_owned_revision: state.ownedRevision,
-        expected_derived_revision: state.derivedRevision,
+        ...saveInput,
+        plan_fingerprint: decision.fingerprint,
       });
     } catch (err) {
       progress.finish();
@@ -2047,9 +2066,10 @@ function wireInputs() {
   els.saveBtn?.addEventListener("click", async () => {
     try {
       const saved = await saveCapeCod();
+      // A save keeps the window open; only Cancel and a confirmed dirty close
+      // dismiss it.
       if (saved?.ok && saved?.propagationClean) {
         await showSavedDependentsNotice(saved.refreshedDatasets);
-        requestConfirmedClose();
       }
     } catch (err) {
       console.error(err);
@@ -2074,7 +2094,6 @@ function wireMessages() {
         const saved = await saveCapeCod();
         if (saved?.ok && saved?.propagationClean) {
           await showSavedDependentsNotice(saved.refreshedDatasets);
-          requestConfirmedClose();
         }
       } catch (err) {
         postStatus(`Save failed: ${String(err?.message || err)}`, "error");

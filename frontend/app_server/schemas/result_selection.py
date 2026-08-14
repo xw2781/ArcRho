@@ -16,3 +16,7 @@ class ResultSelectionSaveRequest(BaseModel):
     method: Dict[str, Any]
     notes: str = ""
     expected_revision: str | None = None
+    # Fingerprint of the dependent-update plan the user confirmed. The Engine
+    # rechecks it under the reserving-class lease and refuses with 409 if the
+    # class changed while the plan was on screen.
+    plan_fingerprint: str = ""

@@ -23,6 +23,31 @@ def load_bootstrap(req: BootstrapIdentityRequest) -> Dict[str, Any]:
     )
 
 
+def _bootstrap_save_call(req: BootstrapSaveRequest) -> Dict[str, Any]:
+    """The one argument projection the plan and the save both run against."""
+
+    return {
+        "args": [req.project_name, req.reserving_class, req.method],
+        "kwargs": {
+            "notes": req.notes,
+            "expected_owned_revision": req.expected_owned_revision,
+            "expected_derived_revision": req.expected_derived_revision,
+        },
+    }
+
+
+@router.post("/bootstrap/save/plan")
+def plan_bootstrap_save(req: BootstrapSaveRequest) -> Dict[str, Any]:
+    # Step one of the two-step save: name the dependent objects this save
+    # would refresh. Nothing is written and no lease is taken.
+    return engine_hosted_save_service.run_hosted_save_plan(
+        "bootstrap_method",
+        req.project_name,
+        req.reserving_class,
+        **_bootstrap_save_call(req),
+    )
+
+
 @router.post("/bootstrap/save")
 def save_bootstrap(req: BootstrapSaveRequest) -> Dict[str, Any]:
     # The save runs on ArcRho Engine next to the data; this endpoint keeps
@@ -31,12 +56,8 @@ def save_bootstrap(req: BootstrapSaveRequest) -> Dict[str, Any]:
         "bootstrap_method",
         req.project_name,
         req.reserving_class,
-        args=[req.project_name, req.reserving_class, req.method],
-        kwargs={
-            "notes": req.notes,
-            "expected_owned_revision": req.expected_owned_revision,
-            "expected_derived_revision": req.expected_derived_revision,
-        },
+        plan_fingerprint=req.plan_fingerprint,
+        **_bootstrap_save_call(req),
     )
 
 

@@ -11,6 +11,7 @@ Own the aggregate load, validation, persistence, and eager dependency refresh fl
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/result-selection/load` | `load_result_selection` | `ResultSelectionLoadRequest` | [`app_server/schemas/result_selection.py`](../../../app_server/schemas/result_selection.py) | `result_selection_service.load_result_selection` |
 | `POST` | `/result-selection/save` | `save_result_selection` | `ResultSelectionSaveRequest` | [`app_server/schemas/result_selection.py`](../../../app_server/schemas/result_selection.py) | `engine_hosted_save_service.run_hosted_save` |
+| `POST` | `/result-selection/save/plan` | `plan_result_selection_save` | `ResultSelectionSaveRequest` | [`app_server/schemas/result_selection.py`](../../../app_server/schemas/result_selection.py) | `engine_hosted_save_service.run_hosted_save_plan` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

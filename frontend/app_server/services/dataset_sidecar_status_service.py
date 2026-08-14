@@ -414,6 +414,131 @@ def update_precedent_dependents(
     return touched
 
 
+def read_sidecars(project_name: str, reserving_class: str, dataset_names: Iterable[Any]) -> Dict[str, Dict[str, Any]]:
+    """Read many sidecars at once, keyed by canonical name.
+
+    Project data can live on a mapped network drive where every open is a
+    round trip, so the reads go through the bounded pool instead of a
+    per-file awaited loop. Missing or unreadable sidecars come back absent.
+    """
+
+    names: List[str] = []
+    seen: Set[str] = set()
+    for raw in dataset_names or []:
+        name = _clean_text(raw)
+        key = _canon_dataset_name(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    futures = {
+        _canon_dataset_name(name): _SIDECAR_READ_EXECUTOR.submit(
+            read_sidecar, sidecar_path(project_name, reserving_class, name)
+        )
+        for name in names
+    }
+    out: Dict[str, Dict[str, Any]] = {}
+    for key, future in futures.items():
+        payload = future.result()
+        if payload:
+            out[key] = payload
+    return out
+
+
+def dependent_closure(
+    project_name: str,
+    reserving_class: str,
+    changed_dataset_names: Iterable[Any],
+) -> List[Dict[str, str]]:
+    """Name every object reachable from the changed roots, nearest tier first.
+
+    Walks the same sidecar ``Dependents`` edges as
+    ``_refresh_method_statuses_for_dependents_unlocked`` below, but reads only
+    — it takes no write locks and marks nothing, so the two-step save can show
+    the user what a save would reach before anything is written. Each tier is
+    read through the bounded pool rather than one file at a time, because the
+    same walk on a Client PC would otherwise pay one network round trip per
+    node.
+    """
+
+    roots: List[str] = []
+    queued: Set[str] = set()
+    for raw in changed_dataset_names or []:
+        name = _clean_text(raw)
+        key = _canon_dataset_name(name)
+        if not key or key in queued:
+            continue
+        queued.add(key)
+        roots.append(name)
+
+    out: List[Dict[str, str]] = []
+    reported: Set[str] = set(queued)
+    frontier = roots
+    while frontier:
+        payloads = read_sidecars(project_name, reserving_class, frontier)
+        next_frontier: List[str] = []
+        for source_name in frontier:
+            payload = payloads.get(_canon_dataset_name(source_name))
+            if not payload:
+                continue
+            for dependent_name in entry_names(payload.get("Dependents")):
+                key = _canon_dataset_name(dependent_name)
+                if not key or key in reported:
+                    continue
+                reported.add(key)
+                next_frontier.append(dependent_name)
+        if not next_frontier:
+            break
+        tier_payloads = read_sidecars(project_name, reserving_class, next_frontier)
+        for dependent_name in next_frontier:
+            dependent_payload = tier_payloads.get(_canon_dataset_name(dependent_name), {})
+            out.append({
+                "dataset_name": dependent_name,
+                "method_type": normalize_method_type(
+                    dependent_payload.get("method_type"),
+                    dependent_payload.get("source_kind"),
+                ),
+                "source_kind": _clean_text(dependent_payload.get("source_kind")),
+            })
+        frontier = next_frontier
+    return out
+
+
+def graph_signature(
+    project_name: str,
+    reserving_class: str,
+    dataset_names: Iterable[Any],
+) -> List[List[Any]]:
+    """Project the sidecar state that decides a dependent walk's shape.
+
+    The two-step save fingerprints this over the roots plus their closure, so
+    a precedent rewired, an object refreshed, or a status flipped between the
+    plan the user reviewed and the commit is caught under the lease.
+    """
+
+    payloads = read_sidecars(project_name, reserving_class, dataset_names)
+    return sorted(
+        (
+            [
+                key,
+                _clean_text(payload.get("updated_at")),
+                normalize_status(payload.get("status")),
+                normalize_method_type(payload.get("method_type"), payload.get("source_kind")),
+                sorted(
+                    _canon_dataset_name(name)
+                    for name in entry_names(payload.get("Precedents"))
+                ),
+                sorted(
+                    _canon_dataset_name(name)
+                    for name in entry_names(payload.get("Dependents"))
+                ),
+            ]
+            for key, payload in payloads.items()
+        ),
+        key=lambda item: item[0],
+    )
+
+
 def _refresh_method_statuses_for_dependents_unlocked(
     project_name: str,
     reserving_class: str,

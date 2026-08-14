@@ -20,6 +20,7 @@ import { openContextMenu } from "/ui/shared/components/context_menu/context_menu
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
+import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
 import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
@@ -2153,33 +2154,40 @@ async function loadSidecar() {
   }
 }
 
-async function saveSidecar(csvPath) {
+// One projection for both halves of the two-step save: the plan must resolve
+// the same propagation root the save will, which it can only do from the same
+// body.
+function buildSidecarSaveBody(csvPath) {
   const details = getDetails();
+  return {
+    project_name: state.project,
+    reserving_class: state.reservingClass,
+    dataset_name: details.name,
+    dataset_type: details.outputType || details.name,
+    instance_name: details.name,
+    source_kind: contract.sourceKind,
+    method_type: contract.methodType,
+    status: 0,
+    data_format: "Triangle",
+    origin_length: ANNUAL_PERIOD_LENGTH,
+    development_length: ANNUAL_PERIOD_LENGTH,
+    cumulative: true,
+    transposed: false,
+    calendar: false,
+    number_format: derivedNumberFormat().number_format,
+    decimal_places: derivedNumberFormat().decimal_places,
+    origin_labels: state.originLabels.map(String),
+    csv_file: csvBaseName(csvPath),
+    notes: notesController.getValue(),
+    precedents: getPrecedentNames(),
+  };
+}
+
+async function saveSidecar(body, planFingerprint = "") {
   const response = await fetch("/dataset/sidecar/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project_name: state.project,
-      reserving_class: state.reservingClass,
-      dataset_name: details.name,
-      dataset_type: details.outputType || details.name,
-      instance_name: details.name,
-      source_kind: contract.sourceKind,
-      method_type: contract.methodType,
-      status: 0,
-      data_format: "Triangle",
-      origin_length: ANNUAL_PERIOD_LENGTH,
-      development_length: ANNUAL_PERIOD_LENGTH,
-      cumulative: true,
-      transposed: false,
-      calendar: false,
-      number_format: derivedNumberFormat().number_format,
-      decimal_places: derivedNumberFormat().decimal_places,
-      origin_labels: state.originLabels.map(String),
-      csv_file: csvBaseName(csvPath),
-      notes: notesController.getValue(),
-      precedents: getPrecedentNames(),
-    }),
+    body: JSON.stringify({ ...body, plan_fingerprint: String(planFingerprint || "") }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {
@@ -2245,6 +2253,22 @@ async function runBerquistShermanSave(progress) {
     return { ok: false };
   }
   const methodPath = await getMethodPath();
+  const csvPath = await getCsvPath();
+  const sidecarBody = buildSidecarSaveBody(csvPath);
+  // Step one: name the dependent objects this save would refresh and let the
+  // user decide. This runs before the method JSON and CSV writes, not just
+  // before the sidecar write, so cancelling leaves nothing behind on disk.
+  const decision = await planAndConfirmSave({
+    saveUrl: "/dataset/sidecar/save",
+    payload: sidecarBody,
+    subject: `this ${contract.displayLabel}`,
+    showDialog: (work) => progress.duringDialog(work),
+  });
+  if (!decision.proceed) {
+    const message = decision.message || "Save cancelled; nothing was changed.";
+    postStatus(message, decision.cancelled ? "" : "warn");
+    return { ok: false, cancelled: !!decision.cancelled, error: message };
+  }
   progress.writing();
   const jsonResult = await hostApi.saveJsonFile({
     path: methodPath,
@@ -2255,13 +2279,12 @@ async function runBerquistShermanSave(progress) {
   if (!jsonResult?.path || jsonResult?.error) {
     throw new Error(jsonResult?.error || "Method JSON save failed.");
   }
-  const csvPath = await getCsvPath();
   const csvResult = await hostApi.saveTextFile({
     path: csvPath,
     data: matrixCsv(output),
   });
   if (csvResult?.error) throw new Error(csvResult.error);
-  const sidecar = await saveSidecar(csvPath);
+  const sidecar = await saveSidecar(sidecarBody, decision.fingerprint);
   await Promise.all([
     loadCachedRows(true).catch(() => {}),
     loadSidecar().catch(() => null),
@@ -2436,9 +2459,10 @@ function wireInputs() {
   els.saveBtn?.addEventListener("click", async () => {
     try {
       const saved = await saveMethod();
+      // A save keeps the window open; only Cancel and a confirmed dirty close
+      // dismiss it.
       if (saved?.ok && saved?.propagationClean) {
         await showSavedDependentsNotice(saved.refreshedDatasets);
-        requestConfirmedClose();
       }
     } catch (error) {
       console.error(error);
@@ -2464,7 +2488,6 @@ function wireMessages() {
         const saved = await saveMethod();
         if (saved?.ok && saved?.propagationClean) {
           await showSavedDependentsNotice(saved.refreshedDatasets);
-          requestConfirmedClose();
         }
       } catch (error) {
         postStatus(`Save failed: ${text(error?.message || error)}`, "error");

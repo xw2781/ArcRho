@@ -40,6 +40,31 @@ def preview_dfm_method(req: DfmMethodPreviewRequest) -> Dict[str, Any]:
     return dfm_service.preview_dfm_method(req.method)
 
 
+def _dfm_method_save_call(req: DfmMethodSaveRequest) -> Dict[str, Any]:
+    """The one argument projection the plan and the save both run against."""
+
+    return {
+        "args": [req.project_name, req.reserving_class, req.method],
+        "kwargs": {
+            "notes": req.notes,
+            "expected_owned_revision": req.expected_owned_revision,
+            "expected_derived_revision": req.expected_derived_revision,
+        },
+    }
+
+
+@router.post("/dfm/method/save/plan")
+def plan_dfm_method_save(req: DfmMethodSaveRequest) -> Dict[str, Any]:
+    # Step one of the two-step save: name the dependent objects this save
+    # would refresh. Nothing is written and no lease is taken.
+    return engine_hosted_save_service.run_hosted_save_plan(
+        "dfm_method",
+        req.project_name,
+        req.reserving_class,
+        **_dfm_method_save_call(req),
+    )
+
+
 @router.post("/dfm/method/save")
 def save_dfm_method(req: DfmMethodSaveRequest) -> Dict[str, Any]:
     # The save runs on ArcRho Engine next to the data; this endpoint keeps
@@ -48,12 +73,8 @@ def save_dfm_method(req: DfmMethodSaveRequest) -> Dict[str, Any]:
         "dfm_method",
         req.project_name,
         req.reserving_class,
-        args=[req.project_name, req.reserving_class, req.method],
-        kwargs={
-            "notes": req.notes,
-            "expected_owned_revision": req.expected_owned_revision,
-            "expected_derived_revision": req.expected_derived_revision,
-        },
+        plan_fingerprint=req.plan_fingerprint,
+        **_dfm_method_save_call(req),
     )
 
 

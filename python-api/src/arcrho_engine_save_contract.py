@@ -14,6 +14,15 @@ shapes while the file I/O happens on the server host's local disk.
 Save jobs are interactive, not durable: a request lost to a mid-save crash
 surfaces as a client timeout and the user simply saves again (the unsaved
 work never left the editor). Only the allowlisted kinds below may execute.
+
+A save runs in two steps. ``Mode: "plan"`` asks the Engine which dependent
+objects the save can reach: it runs no save, changes no saved object, and
+takes no reserving-class lease, and it answers with a plan carrying a
+``fingerprint`` of the graph it read. ``Mode: "commit"`` is the save itself;
+when the client passes that fingerprint back the Engine recomputes it *under*
+the lease and refuses with 409 if the reserving class moved while the user was
+reviewing. The lease is never held across the human pause — one user's open
+dialog must not block every other save in the class.
 """
 
 from __future__ import annotations
@@ -47,10 +56,32 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
     "dataset_sidecar": ("dataset_service", "save_dataset_sidecar"),
 }
 
+# Every kind's propagation roots are resolved by this function in the same
+# module that owns the save, so a plan can never derive a root differently
+# from the save it precedes. There is deliberately no second kind -> module
+# table: the module always comes from ``SAVE_JOB_KINDS``.
+SAVE_JOB_PLAN_ROOT_FUNCTION = "save_propagation_roots"
+
+SAVE_JOB_MODE_COMMIT = "commit"
+SAVE_JOB_MODE_PLAN = "plan"
+SAVE_JOB_MODES = (SAVE_JOB_MODE_COMMIT, SAVE_JOB_MODE_PLAN)
+
+# Refusal a commit publishes when the reserving class changed between the plan
+# the user reviewed and the commit. The user re-saves, sees a fresh plan, and
+# confirms against the graph that actually exists.
+SAVE_PLAN_STALE_MESSAGE = (
+    "This reserving class changed while the dependent updates were being "
+    "reviewed. Nothing was saved. Save again to review the current list of "
+    "dependent objects."
+)
+
 # The client gives up on a queued request nobody claimed (dead engines) much
 # sooner than on a claimed save that is still working.
 SAVE_JOB_QUEUED_TIMEOUT_SECONDS = 20.0
 SAVE_JOB_PROCESSING_TIMEOUT_SECONDS = 180.0
+# A plan writes nothing and takes no lease, so it never waits behind a walk;
+# it only has to read the graph on local disk.
+SAVE_JOB_PLAN_TIMEOUT_SECONDS = 60.0
 
 _TERMINAL_STATUSES = {"success", "error"}
 
@@ -91,10 +122,20 @@ def build_save_job_request(
     args: list[Any],
     kwargs: Mapping[str, Any],
     user_name: str = "",
+    mode: str = SAVE_JOB_MODE_COMMIT,
+    plan_fingerprint: str = "",
 ) -> dict[str, Any]:
     kind = str(save_kind or "").strip()
     if kind not in SAVE_JOB_KINDS:
         raise SaveJobContractError(f"Unknown hosted-save kind: {kind!r}")
+    job_mode = str(mode or SAVE_JOB_MODE_COMMIT).strip()
+    if job_mode not in SAVE_JOB_MODES:
+        raise SaveJobContractError(f"Unknown hosted-save mode: {job_mode!r}")
+    fingerprint = str(plan_fingerprint or "").strip()
+    if fingerprint and job_mode != SAVE_JOB_MODE_COMMIT:
+        raise SaveJobContractError(
+            "Only a commit may carry a reviewed plan fingerprint."
+        )
     project = str(project_name or "").strip()
     reserving = str(path or "").strip()
     if not project or not reserving:
@@ -106,6 +147,8 @@ def build_save_job_request(
         "ContractVersion": SAVE_JOB_CONTRACT_VERSION,
         "RequestId": validate_request_id(request_id),
         "SaveKind": kind,
+        "Mode": job_mode,
+        "PlanFingerprint": fingerprint,
         "ProjectName": project,
         "Path": reserving,
         "Args": list(args or []),
@@ -131,6 +174,17 @@ def validate_save_job_request(payload: Mapping[str, Any]) -> dict[str, Any]:
     kind = str(payload.get("SaveKind") or "").strip()
     if kind not in SAVE_JOB_KINDS:
         raise SaveJobContractError(f"Unknown hosted-save kind: {kind!r}")
+    # A request written before the two-step save existed carries no Mode and
+    # is a commit, which is also what an omitted Mode must mean for any
+    # producer that only ever saves.
+    mode = str(payload.get("Mode") or SAVE_JOB_MODE_COMMIT).strip()
+    if mode not in SAVE_JOB_MODES:
+        raise SaveJobContractError(f"Unknown hosted-save mode: {mode!r}")
+    fingerprint = str(payload.get("PlanFingerprint") or "").strip()
+    if fingerprint and mode != SAVE_JOB_MODE_COMMIT:
+        raise SaveJobContractError(
+            "Only a commit may carry a reviewed plan fingerprint."
+        )
     project = str(payload.get("ProjectName") or "").strip()
     reserving = str(payload.get("Path") or "").strip()
     if not project or not reserving:
@@ -148,6 +202,8 @@ def validate_save_job_request(payload: Mapping[str, Any]) -> dict[str, Any]:
         "ContractVersion": SAVE_JOB_CONTRACT_VERSION,
         "RequestId": request_id,
         "SaveKind": kind,
+        "Mode": mode,
+        "PlanFingerprint": fingerprint,
         "ProjectName": project,
         "Path": reserving,
         "Args": list(args),

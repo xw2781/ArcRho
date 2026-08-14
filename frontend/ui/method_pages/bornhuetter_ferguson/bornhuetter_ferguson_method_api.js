@@ -31,15 +31,19 @@ export function loadBornhuetterFergusonMethod({
   }, options);
 }
 
-export function saveBornhuetterFergusonMethod({
+// One projection for both halves of the two-step save: the plan must resolve
+// the same propagation roots the save will, which it can only do from the
+// same body.
+function bornhuetterFergusonSaveBody({
   project_name,
   reserving_class,
   method,
   notes,
   expected_owned_revision,
   expected_derived_revision,
-} = {}, options = {}) {
-  return requestJson("/bornhuetter-ferguson/save", {
+  plan_fingerprint,
+} = {}) {
+  return {
     project_name: text(project_name),
     reserving_class: text(reserving_class),
     method,
@@ -50,5 +54,15 @@ export function saveBornhuetterFergusonMethod({
     ...(text(expected_derived_revision)
       ? { expected_derived_revision: text(expected_derived_revision) }
       : {}),
-  }, options);
+    ...(text(plan_fingerprint) ? { plan_fingerprint: text(plan_fingerprint) } : {}),
+  };
+}
+
+/** Names the dependent objects a save would refresh; writes nothing. */
+export function planBornhuetterFergusonMethodSave(input = {}, options = {}) {
+  return requestJson("/bornhuetter-ferguson/save/plan", bornhuetterFergusonSaveBody(input), options);
+}
+
+export function saveBornhuetterFergusonMethod(input = {}, options = {}) {
+  return requestJson("/bornhuetter-ferguson/save", bornhuetterFergusonSaveBody(input), options);
 }

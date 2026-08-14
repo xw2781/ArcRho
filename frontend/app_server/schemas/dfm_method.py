@@ -35,3 +35,7 @@ class DfmMethodSaveRequest(BaseModel):
     notes: str | None = None
     expected_owned_revision: str | None = None
     expected_derived_revision: str | None = None
+    # Fingerprint of the dependent-update plan the user confirmed. The Engine
+    # rechecks it under the reserving-class lease and refuses with 409 if the
+    # class changed while the plan was on screen.
+    plan_fingerprint: str = ""

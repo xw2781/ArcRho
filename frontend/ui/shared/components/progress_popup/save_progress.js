@@ -20,6 +20,12 @@ Inside the save, `progress.writing()` announces the write step and
 review warning or an error message box never appears behind it. `run` always
 dismisses on the way out, including when the save throws, so a page cannot
 strand the overlay by adding a new early return.
+
+A save that must ask the user something and then keep going — the two-step
+save's dependent-update confirmation — wraps that question in
+`progress.duringDialog`, which drops the spinner for the dialog and raises it
+again afterwards. The busy overlay sits above the message box (z-index 100000
+against 20000), so a dialog shown with the spinner up would be invisible.
 */
 
 import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260813e";
@@ -47,18 +53,39 @@ export function createArcRhoSaveProgress({ subject, noun = "method", documentRef
    * @returns {Promise<any>} Whatever `work` resolves to.
    */
   async function run(work) {
-    const scope = overlay.begin(`Preparing the ${savedNoun} before saving.`);
+    let message = `Preparing the ${savedNoun} before saving.`;
+    let scope = overlay.begin(message);
     const progress = {
       /** Announces the write and dependent-update step. */
       writing() {
-        scope.setMessage(`Saving the ${savedNoun} and updating dependent objects.`);
+        message = `Saving the ${savedNoun} and updating dependent objects.`;
+        scope.setMessage(message);
       },
       /** Retargets the card headline; used by queued refresh flows that
        *  still poll a propagation job. Engine-hosted saves complete inline,
        *  so an ordinary save never streams live updates. */
       setMessage(text) {
         const line = String(text || "").trim();
-        if (line) scope.setMessage(line);
+        if (!line) return;
+        message = line;
+        scope.setMessage(message);
+      },
+      /**
+       * Runs one dialog the save must show before it continues, with the
+       * spinner dropped so the dialog is not hidden underneath it, and
+       * raises the spinner again on the way out.
+       *
+       * @param {() => Promise<any>} work - Opens the dialog and resolves
+       *   with the user's answer.
+       * @returns {Promise<any>} Whatever `work` resolves to.
+       */
+      async duringDialog(dialogWork) {
+        scope.dismiss();
+        try {
+          return await dialogWork();
+        } finally {
+          scope = overlay.begin(message);
+        }
       },
       /** Drops the spinner; call before any dialog the save opens. */
       finish() {
@@ -82,7 +109,12 @@ export function createArcRhoSaveProgress({ subject, noun = "method", documentRef
  * @type {{run: Function, isVisible: Function}}
  */
 export const inertArcRhoSaveProgress = {
-  run: (work) => work({ writing() {}, setMessage() {}, finish() {} }),
+  run: (work) => work({
+    writing() {},
+    setMessage() {},
+    duringDialog: (dialogWork) => dialogWork(),
+    finish() {},
+  }),
   isVisible: () => false,
 };
 

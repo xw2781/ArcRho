@@ -43,8 +43,10 @@ import {
 } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_json_contract.js?v=20260726a";
 import {
   loadBornhuetterFergusonMethod,
+  planBornhuetterFergusonMethodSave,
   saveBornhuetterFergusonMethod,
-} from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_method_api.js?v=20260726a";
+} from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_method_api.js?v=20260814a";
+import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
 
 const BF_METHOD_TYPE = BORN_HUETTER_FERGUSON_METHOD_TYPE;
 const DEFAULT_ORIGIN_LENGTH = 12;
@@ -1483,18 +1485,35 @@ async function runBornhuetterFergusonSave(progress) {
     return { ok: false };
   }
   const method = buildPayload({ lastModified: new Date().toISOString() });
+  const saveInput = {
+    project_name: state.project,
+    reserving_class: state.reservingClass,
+    method,
+    notes: els.notesInput?.value || "",
+    expected_owned_revision: state.ownedRevision,
+    expected_derived_revision: state.derivedRevision,
+  };
+  // Step one: name the dependent objects this save would refresh and let the
+  // user decide, before anything reaches the network drive. Cancelling leaves
+  // the edit in this window, unsaved.
+  const decision = await planAndConfirmSave({
+    requestPlan: () => planBornhuetterFergusonMethodSave(saveInput),
+    subject: `this ${BF_METHOD_TYPE}`,
+    showDialog: (work) => progress.duringDialog(work),
+  });
+  if (!decision.proceed) {
+    const message = decision.message || "Save cancelled; nothing was changed.";
+    postStatus(message, decision.cancelled ? "" : "warn");
+    return { ok: false, cancelled: !!decision.cancelled, error: message };
+  }
   let result;
   bfObjectChangeWatch.pause();
   try {
     try {
       progress.writing();
       result = await saveBornhuetterFergusonMethod({
-        project_name: state.project,
-        reserving_class: state.reservingClass,
-        method,
-        notes: els.notesInput?.value || "",
-        expected_owned_revision: state.ownedRevision,
-        expected_derived_revision: state.derivedRevision,
+        ...saveInput,
+        plan_fingerprint: decision.fingerprint,
       });
     } catch (err) {
       progress.finish();
@@ -1904,9 +1923,10 @@ function wireInputs() {
   els.saveBtn?.addEventListener("click", async () => {
     try {
       const saved = await saveBornhuetterFerguson();
+      // A save keeps the window open; only Cancel and a confirmed dirty close
+      // dismiss it.
       if (saved?.ok && saved?.propagationClean) {
         await showSavedDependentsNotice(saved.refreshedDatasets);
-        requestConfirmedClose();
       }
     } catch (err) {
       console.error(err);
@@ -1931,7 +1951,6 @@ function wireMessages() {
         const saved = await saveBornhuetterFerguson();
         if (saved?.ok && saved?.propagationClean) {
           await showSavedDependentsNotice(saved.refreshedDatasets);
-          requestConfirmedClose();
         }
       } catch (err) {
         postStatus(`Save failed: ${String(err?.message || err)}`, "error");

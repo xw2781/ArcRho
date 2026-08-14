@@ -25,6 +25,12 @@ const saveProgressUrl = dataUrl(
 const propagationJobUrl = dataUrl(
   "export async function trackSavePropagation(){ return null; }",
 );
+// Step one of the two-step save also needs a live server. A brand-new draft
+// has no dependents yet, so the real plan would reach nothing and proceed
+// without a dialog; this stands in for that answer.
+const savePlanUrl = dataUrl(
+  "export async function planAndConfirmSave(){ return { proceed: true, fingerprint: \"draft-plan\" }; }",
+);
 
 let persistenceSource = await readFile(
   new URL("../ui/shared/tabs/data/data_tab_persistence_controller.js", import.meta.url),
@@ -37,7 +43,8 @@ persistenceSource = persistenceSource
   .replace(/"\/ui\/shared\/tabs\/data\/data_tab_dirty_state\.js[^"]*"/, JSON.stringify(dirtyStateUrl))
   .replace(/"\/ui\/shared\/components\/message_box\/message_box\.js[^"]*"/, JSON.stringify(messageBoxUrl))
   .replace(/"\/ui\/shared\/components\/progress_popup\/save_progress\.js[^"]*"/, JSON.stringify(saveProgressUrl))
-  .replace(/"\/ui\/shared\/services\/dependent_propagation_job\.js[^"]*"/, JSON.stringify(propagationJobUrl));
+  .replace(/"\/ui\/shared\/services\/dependent_propagation_job\.js[^"]*"/, JSON.stringify(propagationJobUrl))
+  .replace(/"\/ui\/shared\/services\/save_plan\.js[^"]*"/, JSON.stringify(savePlanUrl));
 const { registerDataTabPersistenceController } = await import(dataUrl(persistenceSource));
 
 const PROJECT = "NJ_Annual_Prod_202605_Fake";

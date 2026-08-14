@@ -44,7 +44,7 @@ import {
   renderResultsTable,
   wireResultsRatioBasisControls,
   buildResultsVector,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260805a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260814a";
 import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
 import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260812e";
 import {
@@ -67,7 +67,7 @@ import {
   stopDfmMethodFileWatcher,
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260813e";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260814a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260812f";
 import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260813e";
 import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260813e";
@@ -353,25 +353,22 @@ async function saveCurrentDfmMethodFromBar() {
   if (dfmSaveInFlight) return;
   dfmSaveInFlight = true;
   updateDfmSaveUi();
-  let closeAfterSave = false;
+  let savedCleanly = false;
   let refreshedDatasets = [];
   try {
     const result = await saveRatioSelectionPattern(false);
     if (!result?.ok && result?.error) {
       postDfmStatus(`DFM save failed: ${result.error}`, "error");
     }
-    // Only the explicit Save command closes the window, and only after the
-    // dependent walk finished cleanly; bridge and Save As flows never do.
-    closeAfterSave = Boolean(result?.ok && result?.propagationClean);
+    // A save keeps the window open; only after a clean dependent walk is there
+    // a refreshed-dependents list to report.
+    savedCleanly = Boolean(result?.ok && result?.propagationClean);
     refreshedDatasets = result?.refreshedDatasets || [];
   } finally {
     dfmSaveInFlight = false;
     updateDfmSaveUi();
   }
-  if (closeAfterSave) {
-    await showSavedDependentsNotice(refreshedDatasets);
-    requestConfirmedDfmClose();
-  }
+  if (savedCleanly) await showSavedDependentsNotice(refreshedDatasets);
 }
 
 async function cancelCurrentDfmChangesFromBar() {

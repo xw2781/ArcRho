@@ -23,6 +23,31 @@ def load_cape_cod(req: CapeCodIdentityRequest) -> Dict[str, Any]:
     )
 
 
+def _cape_cod_save_call(req: CapeCodSaveRequest) -> Dict[str, Any]:
+    """The one argument projection the plan and the save both run against."""
+
+    return {
+        "args": [req.project_name, req.reserving_class, req.method],
+        "kwargs": {
+            "notes": req.notes,
+            "expected_owned_revision": req.expected_owned_revision,
+            "expected_derived_revision": req.expected_derived_revision,
+        },
+    }
+
+
+@router.post("/cape-cod/save/plan")
+def plan_cape_cod_save(req: CapeCodSaveRequest) -> Dict[str, Any]:
+    # Step one of the two-step save: name the dependent objects this save
+    # would refresh. Nothing is written and no lease is taken.
+    return engine_hosted_save_service.run_hosted_save_plan(
+        "cape_cod_method",
+        req.project_name,
+        req.reserving_class,
+        **_cape_cod_save_call(req),
+    )
+
+
 @router.post("/cape-cod/save")
 def save_cape_cod(req: CapeCodSaveRequest) -> Dict[str, Any]:
     # The save runs on ArcRho Engine next to the data; this endpoint keeps
@@ -31,12 +56,8 @@ def save_cape_cod(req: CapeCodSaveRequest) -> Dict[str, Any]:
         "cape_cod_method",
         req.project_name,
         req.reserving_class,
-        args=[req.project_name, req.reserving_class, req.method],
-        kwargs={
-            "notes": req.notes,
-            "expected_owned_revision": req.expected_owned_revision,
-            "expected_derived_revision": req.expected_derived_revision,
-        },
+        plan_fingerprint=req.plan_fingerprint,
+        **_cape_cod_save_call(req),
     )
 
 

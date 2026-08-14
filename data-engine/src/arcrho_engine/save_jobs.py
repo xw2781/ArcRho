@@ -8,6 +8,15 @@ dependent walk serialize with propagation jobs, runs the canonical
 ``app_server`` service save on local disk, and publishes the service's full
 response through a result file the client returns as its own HTTP response.
 
+A ``plan`` request is the first half of a two-step save: it reads the two
+dependency graphs and answers with the objects the save could reach, so the
+user confirms before anything is written. It runs no save and takes no
+reserving-class lease, because the lease must never span the human pause —
+holding it would block every other save in the class for as long as the
+dialog stayed open. The plan's fingerprint comes back on the ``commit``, which
+recomputes it *under* the lease and refuses with 409 when the class moved in
+between.
+
 Failures map faithfully: an ``HTTPException`` raised by the service (409
 conflicts, 400 validation, 423 holds) reaches the client with its original
 status code and detail; anything else becomes a redacted 500-style error.
@@ -31,6 +40,8 @@ from arcrho_dependent_propagation_contract import (
 )
 from arcrho_engine_save_contract import (
     SAVE_JOB_KINDS,
+    SAVE_JOB_MODE_PLAN,
+    SAVE_PLAN_STALE_MESSAGE,
     SaveJobContractError,
     prune_stale_save_job_artifacts,
     validate_save_job_request,
@@ -92,6 +103,59 @@ def _prune_occasionally(root: Path) -> None:
         pass
 
 
+def _process_plan_request(
+    root: Path,
+    request_id: str,
+    normalized: Mapping[str, Any],
+    publish,
+    publish_error,
+) -> bool:
+    """Answer one plan request: which dependents can this save reach?
+
+    Deliberately outside the reserving-class lease. The plan only reads, and
+    a walk running concurrently can at worst make the plan stale — which the
+    commit's fingerprint recheck catches under the lease. Waiting for the
+    lease here would instead make every plan queue behind an unrelated walk
+    for no gain.
+    """
+
+    try:
+        configure_canonical_runtime(root)
+        from fastapi import HTTPException
+
+        from app_server.services import save_plan_service
+
+        try:
+            plan = save_plan_service.build_save_plan(
+                normalized["SaveKind"],
+                normalized["ProjectName"],
+                normalized["Path"],
+                normalized["Args"],
+                normalized["Kwargs"],
+            )
+        except HTTPException as exc:
+            _log(root, f"{request_id} plan refusal {exc.status_code}: {exc.detail}")
+            try:
+                detail = _redact_machine_paths(str(exc.detail))
+            except Exception:
+                detail = str(exc.detail)
+            publish_error(detail, int(exc.status_code))
+            return False
+
+        write_save_job_result(root, request_id, plan)
+        publish("success")
+        _log(root, f"{request_id} plan reached {plan.get('dependent_count')} dependent(s)")
+        return True
+    except Exception as exc:
+        _log(root, f"{request_id} plan failed: {exc!r}\n{traceback.format_exc()}")
+        try:
+            message = _redact_machine_paths(exc) or "The dependent-update plan failed."
+        except Exception:
+            message = "The dependent-update plan failed."
+        publish_error(message, 500)
+        return False
+
+
 def process_hosted_save_request(
     server_root: str | os.PathLike[str],
     request_file: str | os.PathLike[str],
@@ -133,7 +197,11 @@ def process_hosted_save_request(
         return False
 
     _prune_occasionally(root)
-    _log(root, f"claimed {request_id} kind={normalized['SaveKind']} class={normalized['Path']!r}")
+    _log(
+        root,
+        f"claimed {request_id} kind={normalized['SaveKind']} "
+        f"mode={normalized['Mode']} class={normalized['Path']!r}",
+    )
 
     def publish(status: str, *, message: str = "", status_code: int | None = None) -> None:
         write_save_job_status(
@@ -151,6 +219,9 @@ def process_hosted_save_request(
     except Exception as exc:
         _log(root, f"{request_id} processing publish failed: {exc!r}")
         return False
+
+    if normalized["Mode"] == SAVE_JOB_MODE_PLAN:
+        return _process_plan_request(root, request_id, normalized, publish, publish_error)
 
     lease = _acquire_lease_with_wait(root, normalized["ProjectName"], normalized["Path"])
     if lease is None:
@@ -172,6 +243,35 @@ def process_hosted_save_request(
         module_name, function_name = SAVE_JOB_KINDS[normalized["SaveKind"]]
         module = importlib.import_module(f"app_server.services.{module_name}")
         save_function = getattr(module, function_name)
+
+        # The user confirmed a specific list of dependent objects; re-derive it
+        # here, where the lease guarantees nothing else can change the class
+        # between this check and the write.
+        if normalized["PlanFingerprint"]:
+            from app_server.services import save_plan_service
+
+            try:
+                matches, current = save_plan_service.plan_fingerprint_matches(
+                    normalized["SaveKind"],
+                    normalized["ProjectName"],
+                    normalized["Path"],
+                    normalized["Args"],
+                    normalized["Kwargs"],
+                    normalized["PlanFingerprint"],
+                )
+            except HTTPException as exc:
+                _log(root, f"{request_id} plan recheck refusal {exc.status_code}")
+                publish_error(_redact_machine_paths(str(exc.detail)), int(exc.status_code))
+                return False
+            if not matches:
+                _log(
+                    root,
+                    f"{request_id} reviewed plan is stale "
+                    f"(reviewed={normalized['PlanFingerprint'][:12]} now={current[:12]})",
+                )
+                publish_error(SAVE_PLAN_STALE_MESSAGE, 409)
+                return False
+
         _log(root, f"{request_id} executing {module_name}.{function_name}")
 
         try:

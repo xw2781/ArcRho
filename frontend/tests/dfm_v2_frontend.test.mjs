@@ -147,6 +147,52 @@ test("v2 open hydrates snapshots, stays clean, and warms the dataset-reference c
   assert.match(auditSource, /if \(hydratedDfmSidecar\)/u);
 });
 
+test("an Origin Length change re-reads the embedded Ratio Basis before any payload", () => {
+  // The persisted Ratio Basis column is captured on the DFM's origin basis and
+  // the method contract requires its labels to equal the DFM origins exactly,
+  // so a new origin basis must drop the embedded snapshot and reload the
+  // column instead of saving the previous basis.
+  const drop = functionSlice(
+    resultsSource,
+    "function dropEmbeddedRatioBasisSnapshotOnOriginChange",
+    "export async function ensureResultsRatioBasisAligned",
+  );
+  assert.match(drop, /matchesOriginLabels\(ratioBasisColumnState\.originLabels, origins\)/u);
+  assert.match(drop, /ratioBasisEmbeddedSnapshot = false;\s*clearRatioBasisColumnState\(\);/u);
+
+  const render = resultsSource.slice(resultsSource.indexOf("export function renderResultsTable"));
+  assert.match(
+    render,
+    /wrap\.innerHTML = "";\s*dropEmbeddedRatioBasisSnapshotOnOriginChange\(\);/u,
+  );
+
+  const align = functionSlice(
+    resultsSource,
+    "export async function ensureResultsRatioBasisAligned",
+    "function readCurrentOriginLen",
+  );
+  assert.match(align, /await ratioBasisColumnLoadPromise/u);
+  assert.match(align, /does not line up with the current origins/u);
+
+  // Both payload producers wait for that re-read; the save names the field
+  // rather than letting the contract reject an unaligned column.
+  const save = functionSlice(
+    persistenceSource,
+    "async function runDfmMethodSave",
+    "export async function saveDfmTemplate",
+  );
+  assert.match(
+    save,
+    /const ratioBasis = await ensureResultsRatioBasisAligned\(\);[\s\S]*?if \(!ratioBasis\.ok\)[\s\S]*?return \{ ok: false, error: ratioBasis\.error \};[\s\S]*?const preview = await flushDfmMethodPreview\(\)/u,
+  );
+  const preview = functionSlice(
+    persistenceSource,
+    "async function runDfmMethodPreview",
+    "export function scheduleDfmMethodPreview",
+  );
+  assert.match(preview, /await ensureResultsRatioBasisAligned\(\);[\s\S]*?dfmPreviewGeneration \+= 1;/u);
+});
+
 test("v2 payload and PI restore preserve distinct method/output identities", () => {
   const builder = functionSlice(
     persistenceSource,

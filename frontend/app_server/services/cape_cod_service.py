@@ -909,6 +909,30 @@ def save_cape_cod_method(
     return response
 
 
+def save_propagation_roots(
+    project_name: str,
+    reserving_class: str,
+    method: Dict[str, Any],
+    **_ignored: Any,
+) -> List[Tuple[str, str]]:
+    """Return the changed roots ``save_cape_cod_method`` would propagate from.
+
+    The two-step save plans the dependent closure before anything is written,
+    and the roots must be derived exactly the way the save derives them. Save
+    refuses to change a Cape Cod's output identity (409), so the incoming
+    payload's identity is the identity the save will publish.
+    """
+
+    incoming = _contract_call(
+        normalize_cape_cod_method,
+        method,
+        require_complete=False,
+    )
+    _method_name, output_dataset = _identity(incoming)
+    output_type = _clean(_details(incoming).get("output_type")) or output_dataset
+    return [(output_dataset, output_type)]
+
+
 def _mark_review_needed(
     project_name: str,
     reserving_class: str,

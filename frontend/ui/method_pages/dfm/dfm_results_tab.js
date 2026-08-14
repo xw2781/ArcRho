@@ -44,6 +44,7 @@ let ratioBasisOptionsRenderedProjectKey = "";
 const ratioBasisOptionsByProject = new Map();
 const ratioBasisOptionsInFlightByProject = new Map();
 const ratioBasisColumnCache = new Map();
+let ratioBasisColumnLoadPromise = Promise.resolve();
 let ratioBasisColumnState = {
   requestKey: "",
   status: "idle", // idle | loading | ready | error
@@ -401,6 +402,65 @@ export function invalidatePersistedResultsDerivations() {
   persistedUltimateVector = null;
 }
 
+function getDfmOriginLabels() {
+  return Array.isArray(state?.model?.origin_labels)
+    ? state.model.origin_labels.map((label) => String(label ?? ""))
+    : [];
+}
+
+function matchesOriginLabels(labels, origins) {
+  if (!Array.isArray(labels) || labels.length !== origins.length) return false;
+  return origins.every((label, index) => String(labels[index] ?? "") === label);
+}
+
+/**
+ * The embedded snapshot stays authoritative only while it still describes the
+ * DFM's own origins. Changing Origin Length rebuilds the input triangle on a
+ * new origin basis, so the saved column no longer lines up and must be re-read
+ * from its source dataset at the current basis; the method contract requires
+ * the Ratio Basis labels to equal the DFM origins exactly.
+ */
+function dropEmbeddedRatioBasisSnapshotOnOriginChange() {
+  if (!ratioBasisEmbeddedSnapshot || !ratioBasisSelectedName) return;
+  const origins = getDfmOriginLabels();
+  if (!origins.length) return;
+  if (matchesOriginLabels(ratioBasisColumnState.originLabels, origins)) return;
+  ratioBasisEmbeddedSnapshot = false;
+  clearRatioBasisColumnState();
+}
+
+/**
+ * Settles the Ratio Basis column against the DFM's current origins so a save
+ * or preview built right after an Origin Length change carries an aligned
+ * column instead of the previous basis.
+ */
+export async function ensureResultsRatioBasisAligned() {
+  dropEmbeddedRatioBasisSnapshotOnOriginChange();
+  const datasetName = toText(ratioBasisSelectedName);
+  if (!datasetName) return { ok: true };
+  if (!ratioBasisEmbeddedSnapshot) {
+    await ensureRatioBasisOptionsForCurrentProject().catch(() => {});
+    // A settled load can queue the next one when the origin basis moved again
+    // while this one was in flight; a few passes converge without looping.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      queueRatioBasisColumnLoadIfNeeded();
+      if (ratioBasisColumnState.status !== "loading") break;
+      await ratioBasisColumnLoadPromise;
+    }
+  }
+  const origins = getDfmOriginLabels();
+  const snapshotOrigins = getResultsRatioBasisSnapshot()["ratio basis origin labels"];
+  if (origins.length && !matchesOriginLabels(snapshotOrigins, origins)) {
+    const detail = toText(ratioBasisColumnState.error)
+      || "Reselect or clear it in the Results tab, then save.";
+    return {
+      ok: false,
+      error: `Ratio Basis "${datasetName}" does not line up with the current origins. ${detail}`,
+    };
+  }
+  return { ok: true };
+}
+
 function readCurrentOriginLen() {
   const raw = Number.parseInt(document.getElementById("originLenSelect")?.value, 10);
   return Number.isFinite(raw) ? raw : 12;
@@ -607,7 +667,7 @@ function queueRatioBasisColumnLoadIfNeeded() {
   setRatioBasisStatus(`Loading ${ctx.datasetName}...`, "loading");
 
   const seq = ++ratioBasisColumnLoadSeq;
-  void (async () => {
+  ratioBasisColumnLoadPromise = (async () => {
     try {
       const loaded = await loadRatioBasisColumnForContext(ctx);
       ratioBasisColumnCache.set(ctx.requestKey, loaded);
@@ -879,6 +939,7 @@ export function renderResultsTable() {
   if (!wrap) return;
   wrap.innerHTML = "";
 
+  dropEmbeddedRatioBasisSnapshotOnOriginChange();
   if (getRatioBasisInputEl() && !ratioBasisEmbeddedSnapshot) {
     void ensureRatioBasisOptionsForCurrentProject().catch((err) => {
       console.error("Failed to load ratio-basis options:", err);

@@ -152,16 +152,12 @@ def preview_calculated_dataset_dependents(req: DatasetCalculatedPreviewRequest) 
     )
 
 
-@router.post("/dataset/sidecar/save")
-def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
-    # The save runs on ArcRho Engine next to the data; this endpoint keeps
-    # its exact response shape and error codes.
-    return engine_hosted_save_service.run_hosted_save(
-        "dataset_sidecar",
-        req.project_name,
-        req.reserving_class,
-        args=[req.project_name, req.reserving_class, req.dataset_name],
-        kwargs={
+def _dataset_sidecar_save_call(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
+    """The one argument projection the plan and the save both run against."""
+
+    return {
+        "args": [req.project_name, req.reserving_class, req.dataset_name],
+        "kwargs": {
             "dataset_type": req.dataset_type,
             "instance_name": req.instance_name,
             "source_kind": req.source_kind,
@@ -184,4 +180,29 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
             "values": req.values,
             "mask": req.mask,
         },
+    }
+
+
+@router.post("/dataset/sidecar/save/plan")
+def plan_dataset_sidecar_save(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
+    # Step one of the two-step save: name the dependent objects this save
+    # would refresh. Nothing is written and no lease is taken.
+    return engine_hosted_save_service.run_hosted_save_plan(
+        "dataset_sidecar",
+        req.project_name,
+        req.reserving_class,
+        **_dataset_sidecar_save_call(req),
+    )
+
+
+@router.post("/dataset/sidecar/save")
+def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
+    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # its exact response shape and error codes.
+    return engine_hosted_save_service.run_hosted_save(
+        "dataset_sidecar",
+        req.project_name,
+        req.reserving_class,
+        plan_fingerprint=req.plan_fingerprint,
+        **_dataset_sidecar_save_call(req),
     )

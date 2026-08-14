@@ -18,6 +18,7 @@ See [`data-engine/docs/dataset-scenarios.md`](../../../../data-engine/docs/datas
 | `PUT` | `/dataset/number-format-defaults` | `save_dataset_number_format_defaults` | `DatasetNumberFormatsSaveRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `dataset_number_format_service.save_preferences` |
 | `POST` | `/dataset/sidecar/load` | `load_dataset_sidecar` | `DatasetSidecarLoadRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `dataset_service.load_dataset_sidecar` |
 | `POST` | `/dataset/sidecar/save` | `save_dataset_sidecar` | `DatasetSidecarSaveRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `engine_hosted_save_service.run_hosted_save` |
+| `POST` | `/dataset/sidecar/save/plan` | `plan_dataset_sidecar_save` | `DatasetSidecarSaveRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `engine_hosted_save_service.run_hosted_save_plan` |
 | `GET` | `/dataset/{ds_id}` | `get_dataset` | `str` | - | `dataset_service.get_dataset` |
 | `GET` | `/dataset/{ds_id}/diagonal` | `get_diagonal` | `str` | - | `dataset_service.get_diagonal` |
 | `POST` | `/dataset/{ds_id}/patch` | `patch_dataset` | `PatchRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `dataset_service.patch_dataset` |

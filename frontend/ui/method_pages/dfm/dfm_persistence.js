@@ -72,6 +72,7 @@ import {
 } from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260812f";
 import {
   applyPersistedResultsSnapshot,
+  ensureResultsRatioBasisAligned,
   renderResultsTable,
   buildResultsVector,
   buildResultsVectorCsv,
@@ -80,7 +81,7 @@ import {
   getResultsUltimateRatioDecimalPlacesSelection,
   setResultsRatioBasisSelection,
   setResultsUltimateRatioDecimalPlacesSelection,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260805a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260814a";
 import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
 import {
   buildDfmAverageFormulaObject,
@@ -107,10 +108,12 @@ import {
   DFM_METHOD_JSON_FORMAT_V2,
   isDfmV2Method,
   loadDfmMethod,
+  planDfmMethodSave,
   previewDfmMethod,
   readDfmMethodIdentityFromPage,
   saveDfmMethod,
-} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260814a";
+import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
@@ -182,14 +185,6 @@ const DFM_AVERAGE_FORMULA_DECIMALS = 6;
 const DFM_METHOD_JSON_FORMAT = DFM_METHOD_JSON_FORMAT_V2;
 const DFM_METHOD_FILE_WATCH_INTERVAL_MS = 2000;
 
-function stripDatasetCacheVariantSuffix(value) {
-  const text = String(value || "").trim().replace(/\.csv$/iu, "");
-  let match = text.match(/^(.*)@\d+@\d+@(?:cum|inc)@(?:dev|cal)$/i);
-  if (match) return match[1];
-  match = text.match(/^(.*)@\d+$/i);
-  return match ? match[1] : text;
-}
-
 function decodeFileNameSegment(value) {
   return String(value || "").replace(/_%([0-9A-Fa-f]{2})_/g, (match, hex) => {
     const code = Number.parseInt(hex, 16);
@@ -197,67 +192,11 @@ function decodeFileNameSegment(value) {
   });
 }
 
-function decodeDatasetNameFromCsvStem(value) {
-  return decodeFileNameSegment(stripDatasetCacheVariantSuffix(value));
-}
-
 function getDfmMethodNameFromPath(path) {
   const filename = String(path || "").split(/[\\/]/).pop() || "";
   const stem = filename.replace(/\.json$/i, "");
   const rawName = stem.startsWith("DFM@") ? stem.slice(4) : stem;
   return decodeFileNameSegment(rawName).trim();
-}
-
-async function saveDatasetSidecar(_hostApi, csvPath, datasetName) {
-  const projectName = String(getRatioSaveProjectName() || getResolvedProjectName() || "").trim();
-  const reservingClass = String(getResolvedReservingClass() || "").trim();
-  const csvFile = String(csvPath || "").split(/[\\/]/).pop() || "";
-  const name = decodeDatasetNameFromCsvStem(datasetName);
-  const outputType = String(document.getElementById("dfmOutputVector")?.value || "").trim();
-  const inputTriangle = String(document.getElementById("triInput")?.value || "").trim();
-
-  if (!projectName || !reservingClass || !name || !csvFile) {
-    return {
-      ok: false,
-      error: "Missing project, reserving class, output vector, or CSV file for DFM sidecar save.",
-    };
-  }
-
-  try {
-    const response = await fetch("/dataset/sidecar/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_name: projectName,
-        reserving_class: reservingClass,
-        dataset_name: name,
-        dataset_type: outputType || name,
-        instance_name: name,
-        source_kind: "dfm",
-        method_type: "DFM",
-        status: 0,
-        data_format: "Vector",
-        origin_length: readSelectedLengthNumber("originLenSelect"),
-        development_length: readSelectedLengthNumber("devLenSelect"),
-        cumulative: true,
-        calendar: false,
-        csv_file: csvFile,
-        notes: getDfmNotesText(),
-        precedents: inputTriangle ? [inputTriangle] : [],
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data?.ok) {
-      return {
-        ok: false,
-        error: String(data?.detail || data?.error || `HTTP ${response.status}`),
-        data,
-      };
-    }
-    return { ok: true, data };
-  } catch (err) {
-    return { ok: false, error: String(err?.message || err || "Failed to save DFM sidecar.") };
-  }
 }
 
 function getRatioLoadReasonPriority(reason) {
@@ -1624,6 +1563,10 @@ export function stopDfmMethodFileWatcher() {
 
 async function runDfmMethodPreview() {
   if (!getDfmIsDirty()) return { ok: true, skipped: true };
+  // A Details change can move the origin basis, which invalidates the Ratio
+  // Basis column the preview payload carries. Let it settle first so the
+  // preview is not rejected for a column the window is already re-reading.
+  await ensureResultsRatioBasisAligned();
   dfmPreviewGeneration += 1;
   const generation = dfmPreviewGeneration;
   dfmPreviewAbortController?.abort?.();
@@ -1698,6 +1641,14 @@ export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
 }
 
 async function runDfmMethodSave(forceSaveAs, options, progress) {
+  // The Ratio Basis column is read on the DFM's origin basis. When Origin
+  // Length changed, wait for the re-read before any payload is built and name
+  // the field when it still cannot be aligned.
+  const ratioBasis = await ensureResultsRatioBasisAligned();
+  if (!ratioBasis.ok) {
+    postDfmStatus(ratioBasis.error, { tone: "error" });
+    return { ok: false, error: ratioBasis.error };
+  }
   const preview = await flushDfmMethodPreview();
   if (preview?.ok === false && !preview?.skipped) return preview;
 
@@ -1721,19 +1672,36 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
     : (previousOutputDataset || currentMethodName);
   const method = buildDfmMethodPayload({ outputDataset: nextOutputDataset });
   const identity = readDfmMethodIdentityFromPage();
+  const saveInput = {
+    project_name: identity.project_name,
+    reserving_class: identity.reserving_class,
+    method,
+    notes: getDfmNotesText(),
+    ...((forceSaveAs || identityChanged) ? {} : {
+      expected_owned_revision: currentOwnedRevision,
+      expected_derived_revision: currentDerivedRevision,
+    }),
+  };
+  // Step one: name the dependent objects this save would refresh and let the
+  // user decide, before anything reaches the network drive. Cancelling leaves
+  // the edit in this window, unsaved.
+  const decision = await planAndConfirmSave({
+    requestPlan: () => planDfmMethodSave(saveInput),
+    subject: "this DFM",
+    showDialog: (work) => progress.duringDialog(work),
+  });
+  if (!decision.proceed) {
+    const message = decision.message || "Save cancelled; nothing was changed.";
+    postDfmStatus(message, { tone: decision.cancelled ? "info" : "warn" });
+    return { ok: false, cancelled: !!decision.cancelled, error: message };
+  }
   dfmObjectChangeWatch.pause();
   try {
     postDfmStatus("Saving DFM method...");
     progress.writing();
     const response = await saveDfmMethod({
-      project_name: identity.project_name,
-      reserving_class: identity.reserving_class,
-      method,
-      notes: getDfmNotesText(),
-      ...((forceSaveAs || identityChanged) ? {} : {
-        expected_owned_revision: currentOwnedRevision,
-        expected_derived_revision: currentDerivedRevision,
-      }),
+      ...saveInput,
+      plan_fingerprint: decision.fingerprint,
     });
     const canonicalMethod = response?.method;
     if (!canonicalMethod || !isDfmV2Method(canonicalMethod)) {

@@ -1298,6 +1298,57 @@ def _existing_downstream_keys(
     ]
 
 
+def existing_downstream_dataset_types(
+    project_name: str,
+    reserving_class: str,
+    changed_names: List[str],
+) -> List[Dict[str, Any]]:
+    """Name every calculated dataset a walk from ``changed_names`` can reach.
+
+    Read-only view of the same formula graph ``_recalculate_dependents_impl``
+    walks, in the same dependency order, restricted to instances that exist in
+    this reserving class. The two-step save shows this list before it writes
+    anything; it is a superset of what a walk ultimately rewrites, because
+    only the walk itself can tell whether an intermediate output changed.
+    """
+
+    rows = _dataset_type_rows(project_name)
+    rows_by_key = {_canon_dataset_name(row.get("name")): row for row in rows}
+    out: List[Dict[str, Any]] = []
+    for key in _existing_downstream_keys(project_name, reserving_class, changed_names, rows):
+        row = rows_by_key.get(key)
+        if not row:
+            continue
+        out.append({
+            "dataset_name": str(row.get("name") or ""),
+            "data_format": str(row.get("data_format") or ""),
+            "formula": str(row.get("formula") or ""),
+        })
+    return out
+
+
+def dataset_type_graph_signature(project_name: str) -> List[List[Any]]:
+    """Project the dataset-type rows that decide the calculated dependency graph.
+
+    The two-step save fingerprints this so a formula edited between the plan
+    the user reviewed and the commit is caught before the save lands.
+    """
+
+    return sorted(
+        (
+            [
+                _canon_dataset_name(row.get("name")),
+                bool(row.get("calculated")),
+                bool(row.get("generated")),
+                _clean_text(row.get("formula")),
+            ]
+            for row in _dataset_type_rows(project_name)
+            if _canon_dataset_name(row.get("name"))
+        ),
+        key=lambda item: item[0],
+    )
+
+
 def _recalculate_dataset_impl(
     project_name: str,
     reserving_class: str,

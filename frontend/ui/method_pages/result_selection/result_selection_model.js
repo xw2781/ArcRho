@@ -10,7 +10,13 @@
       // The saving animation is host-provided for the same reason; installs
       // without a document run with an inert stand-in.
       const saveProgress = ctx.rsSaveProgress
-        || { run: (work) => work({ writing() {}, finish() {} }) };
+        || {
+          run: (work) => work({
+            writing() {},
+            duringDialog: (dialogWork) => dialogWork(),
+            finish() {},
+          }),
+        };
       function buildPayload() {
         const details = getDetails();
         return buildResultSelectionMethodPayload({
@@ -247,17 +253,32 @@
           await refreshOriginLabels({ render: false });
           assertPersistedMutationReady(mutation);
           const method = buildPayload();
+          const saveBody = {
+            project_name: state.project,
+            reserving_class: state.reservingClass,
+            method,
+            notes: els.notesInput?.value || "",
+            expected_revision: state.methodRevision,
+          };
+          // Step one: name the dependent objects this save would refresh and
+          // let the user decide, before anything reaches the network drive.
+          // Cancelling leaves the edit in this window, unsaved.
+          const decision = await planAndConfirmSave({
+            saveUrl: "/result-selection/save",
+            payload: saveBody,
+            subject: "this Result Selection",
+            showDialog: (work) => progress.duringDialog(work),
+          });
+          if (!decision.proceed) {
+            const message = decision.message || "Save cancelled; nothing was changed.";
+            postStatus(message, decision.cancelled ? "" : "warn");
+            return { ok: false, cancelled: !!decision.cancelled, error: message };
+          }
           progress.writing();
           const resp = await fetch("/result-selection/save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              project_name: state.project,
-              reserving_class: state.reservingClass,
-              method,
-              notes: els.notesInput?.value || "",
-              expected_revision: state.methodRevision,
-            }),
+            body: JSON.stringify({ ...saveBody, plan_fingerprint: decision.fingerprint }),
           });
           const payload = await resp.json().catch(() => ({}));
           if (!resp.ok || payload?.ok === false) {

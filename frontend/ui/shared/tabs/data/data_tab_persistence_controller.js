@@ -6,6 +6,7 @@ import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_sta
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
+import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
   if (typeof state.showSubtotal !== "boolean") state.showSubtotal = true;
@@ -589,13 +590,30 @@ export function registerDataTabPersistenceController(runtime) {
       return { ok: false, error: "Project, Reserving Class, and Dataset Type are required." };
     }
     const settings = getCurrentDatasetSettings();
-    progress?.writing();
-    const resp = await withDataTabDatasetMutation({ source: "sidecar-save" }, () => saveDatasetSidecar({
+    const payload = {
       ...context,
       ...settings,
       notes: String(getNotesEditorElements().input?.value ?? ""),
       ...getManualInputDatasetValuePayload(),
       ...getDatasetExternalLinksPayload(),
+    };
+    // Step one: name the dependent objects this save would refresh and let the
+    // user decide, before anything reaches the network drive. The identical
+    // payload goes to both steps so the plan resolves the same roots the save
+    // will. Cancelling leaves the edit in the window, unsaved.
+    const decision = await planAndConfirmSave({
+      saveUrl: `${config.API_BASE}/dataset/sidecar/save`,
+      payload,
+      subject: "this dataset",
+      showDialog: (work) => (progress?.duringDialog ? progress.duringDialog(work) : work()),
+    });
+    if (!decision.proceed) {
+      return { ok: false, cancelled: !!decision.cancelled, error: decision.message };
+    }
+    progress?.writing();
+    const resp = await withDataTabDatasetMutation({ source: "sidecar-save" }, () => saveDatasetSidecar({
+      ...payload,
+      plan_fingerprint: decision.fingerprint,
     }));
     if (!resp.ok) {
       return { ok: false, error: resp?.data?.detail || "Failed to save dataset settings." };
@@ -784,12 +802,15 @@ export function registerDataTabPersistenceController(runtime) {
 
   async function handleDatasetSaveCommand() {
     const result = await saveDatasetChanges();
-    if (!result.ok) setStatus(`Dataset save failed: ${result.error || "Unknown error."}`);
-    // Only the explicit Save command closes the window, only after a clean
-    // dependent walk, and never for the Data tab hosted inside a DFM window.
+    // A cancelled dependent-update confirmation is the user's own answer, not
+    // a failure: the window stays open with the edit intact and no alarm.
+    if (result.cancelled) setStatus(result.error || "Save cancelled; nothing was changed.");
+    else if (!result.ok) setStatus(`Dataset save failed: ${result.error || "Unknown error."}`);
+    // A save never closes the window; the user keeps working in place. After a
+    // clean dependent walk the notice names what the walk refreshed, except for
+    // the Data tab hosted inside a DFM window, which reports through DFM's save.
     if (result.ok && result.propagationClean && !isDfmDataTabHost()) {
       await showSavedDependentsNotice(result.refreshedDatasets);
-      requestConfirmedDatasetClose();
     }
     return result;
   }

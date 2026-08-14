@@ -84,7 +84,7 @@ Opaque migrated average rows such as ResQ `Benchmark` keep their persisted value
 
 Origin changes remap owned state by exact label; new origins default to included. Development geometry must remain compatible. Positional remapping is forbidden: an incompatible geometry leaves the prior publication intact and marks the DFM Review Needed.
 
-Ratio Basis values are aligned by exact origin label. A missing or duplicate required label is a refresh error rather than a positional fallback.
+Ratio Basis values are aligned by exact origin label. A missing or duplicate required label is a refresh error rather than a positional fallback. The saved labels must equal the DFM origins exactly, so the method window re-reads the Ratio Basis dataset at the new Origin Length before it builds a payload on a changed origin basis; the embedded snapshot is never carried across bases.
 
 ## Refresh and Publication
 

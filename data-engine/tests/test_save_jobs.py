@@ -35,19 +35,21 @@ def _noop_context():
     yield
 
 
-def _fake_app_server(save_function):
+def _fake_app_server(save_function, save_plan_service=None):
     fake_services = types.ModuleType("app_server.services")
     fake_services.dfm_service = SimpleNamespace(save_dfm_method=save_function)
     fake_services.dependent_propagation_service = SimpleNamespace(
         suspended_reserving_class_hold_check=_noop_context,
         inline_engine_propagation=_noop_context,
     )
+    fake_services.save_plan_service = save_plan_service or SimpleNamespace()
     fake_app_server = types.ModuleType("app_server")
     fake_app_server.services = fake_services
     return {
         "app_server": fake_app_server,
         "app_server.services": fake_services,
         "app_server.services.dfm_service": fake_services.dfm_service,
+        "app_server.services.save_plan_service": fake_services.save_plan_service,
     }
 
 
@@ -63,7 +65,7 @@ class HostedSaveJobTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def _publish_request(self) -> tuple[Path, dict]:
+    def _publish_request(self, **overrides) -> tuple[Path, dict]:
         request = build_save_job_request(
             request_id=self.REQUEST_ID,
             save_kind="dfm_method",
@@ -72,6 +74,7 @@ class HostedSaveJobTests(unittest.TestCase):
             args=["Demo", "HPPREF\\HOL", {"json format": "dfm"}],
             kwargs={"notes": "note"},
             user_name="tester",
+            **overrides,
         )
         path = save_job_request_path(self.root, self.REQUEST_ID)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -156,6 +159,191 @@ class HostedSaveJobTests(unittest.TestCase):
         status = read_save_job_status(self.root, self.REQUEST_ID)
         self.assertEqual(status["status"], "error")
         self.assertEqual(status["status_code"], 423)
+
+
+class HostedSavePlanJobTests(unittest.TestCase):
+    """The plan half of the two-step save, and the commit's staleness recheck."""
+
+    REQUEST_ID = "0bad0bad0bad0bad0bad0bad0bad0bad"
+
+    def setUp(self) -> None:
+        logs_tmp = TESTS_DIR / "logs" / "tmp"
+        logs_tmp.mkdir(parents=True, exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(dir=str(logs_tmp))
+        self.root = Path(self.temp.name)
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def _publish(self, **overrides) -> tuple[Path, dict]:
+        request = build_save_job_request(
+            request_id=self.REQUEST_ID,
+            save_kind="dfm_method",
+            project_name="Demo",
+            path="HPPREF\\HOL",
+            args=["Demo", "HPPREF\\HOL", {"json format": "dfm"}],
+            kwargs={"notes": "note"},
+            user_name="tester",
+            **overrides,
+        )
+        path = save_job_request_path(self.root, self.REQUEST_ID)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(request), encoding="utf-8")
+        return path, request
+
+    def test_plan_publishes_the_reachable_dependents_without_saving(self) -> None:
+        saves: list[tuple] = []
+        plan = {
+            "ok": True,
+            "dependents": [{"dataset_name": "Ultimate Loss", "kind": "Calculated dataset"}],
+            "dependent_count": 1,
+            "fingerprint": "abc123",
+        }
+        planner = SimpleNamespace(build_save_plan=lambda *a, **k: plan)
+
+        path, request = self._publish(mode="plan")
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, _fake_app_server(lambda *a, **k: saves.append(a), planner)),
+        ):
+            completed = save_jobs.process_hosted_save_request(self.root, path, request)
+
+        self.assertTrue(completed)
+        self.assertEqual(saves, [], "a plan must never run the save")
+        self.assertEqual(read_save_job_status(self.root, self.REQUEST_ID)["status"], "success")
+        self.assertEqual(read_save_job_result(self.root, self.REQUEST_ID), plan)
+
+    def test_plan_never_waits_for_the_reserving_class_lease(self) -> None:
+        from arcrho_dependent_propagation_contract import (
+            acquire_reserving_class_lease,
+            release_reserving_class_lease,
+        )
+
+        # A plan reads only, so an open confirmation dialog must not queue
+        # behind an unrelated walk that already owns the class.
+        holder = acquire_reserving_class_lease(self.root, "Demo", "HPPREF\\HOL")
+        self.assertIsNotNone(holder)
+        planner = SimpleNamespace(
+            build_save_plan=lambda *a, **k: {"ok": True, "dependents": [], "dependent_count": 0, "fingerprint": "x"}
+        )
+        path, request = self._publish(mode="plan")
+        try:
+            with (
+                patch.object(save_jobs, "configure_canonical_runtime"),
+                patch.dict(sys.modules, _fake_app_server(lambda *a, **k: {"ok": True}, planner)),
+            ):
+                completed = save_jobs.process_hosted_save_request(self.root, path, request)
+        finally:
+            release_reserving_class_lease(holder)
+
+        self.assertTrue(completed)
+        self.assertEqual(read_save_job_status(self.root, self.REQUEST_ID)["status"], "success")
+
+    def test_commit_with_a_matching_fingerprint_runs_the_save(self) -> None:
+        saves: list[tuple] = []
+        planner = SimpleNamespace(
+            plan_fingerprint_matches=lambda *a, **k: (True, "abc123")
+        )
+
+        def fake_save(*args, **kwargs):
+            saves.append((args, kwargs))
+            return {"ok": True}
+
+        path, request = self._publish(plan_fingerprint="abc123")
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, _fake_app_server(fake_save, planner)),
+        ):
+            completed = save_jobs.process_hosted_save_request(self.root, path, request)
+
+        self.assertTrue(completed)
+        self.assertEqual(len(saves), 1)
+        self.assertEqual(read_save_job_status(self.root, self.REQUEST_ID)["status"], "success")
+
+    def test_commit_refuses_409_when_the_reviewed_plan_went_stale(self) -> None:
+        saves: list[tuple] = []
+        planner = SimpleNamespace(
+            plan_fingerprint_matches=lambda *a, **k: (False, "different")
+        )
+
+        path, request = self._publish(plan_fingerprint="abc123")
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, _fake_app_server(lambda *a, **k: saves.append(a), planner)),
+        ):
+            completed = save_jobs.process_hosted_save_request(self.root, path, request)
+
+        self.assertFalse(completed)
+        self.assertEqual(saves, [], "a stale plan must not reach the save")
+        status = read_save_job_status(self.root, self.REQUEST_ID)
+        self.assertEqual(status["status"], "error")
+        self.assertEqual(status["status_code"], 409)
+        self.assertIn("changed while", status["message"])
+
+    def test_commit_without_a_fingerprint_skips_the_recheck(self) -> None:
+        def exploding_recheck(*_args, **_kwargs):
+            raise AssertionError("a commit with no reviewed plan must not recheck")
+
+        saves: list[tuple] = []
+        planner = SimpleNamespace(plan_fingerprint_matches=exploding_recheck)
+        path, request = self._publish()
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, _fake_app_server(lambda *a, **k: saves.append(a) or {"ok": True}, planner)),
+        ):
+            completed = save_jobs.process_hosted_save_request(self.root, path, request)
+
+        self.assertTrue(completed)
+        self.assertEqual(len(saves), 1)
+
+
+class SaveJobContractModeTests(unittest.TestCase):
+    def test_a_request_written_before_two_step_saves_reads_as_a_commit(self) -> None:
+        from arcrho_engine_save_contract import validate_save_job_request
+
+        legacy = {
+            "Function": "ArcRhoHostedSave",
+            "ContractVersion": 1,
+            "RequestId": "a" * 32,
+            "SaveKind": "dataset_sidecar",
+            "ProjectName": "Demo",
+            "Path": "HPPREF\\HOL",
+            "Args": [],
+            "Kwargs": {},
+            "UserName": "tester",
+        }
+        normalized = validate_save_job_request(legacy)
+        self.assertEqual(normalized["Mode"], "commit")
+        self.assertEqual(normalized["PlanFingerprint"], "")
+
+    def test_a_plan_may_not_carry_a_reviewed_fingerprint(self) -> None:
+        from arcrho_engine_save_contract import SaveJobContractError
+
+        with self.assertRaises(SaveJobContractError):
+            build_save_job_request(
+                request_id="b" * 32,
+                save_kind="dataset_sidecar",
+                project_name="Demo",
+                path="HPPREF\\HOL",
+                args=[],
+                kwargs={},
+                mode="plan",
+                plan_fingerprint="abc123",
+            )
+
+    def test_an_unknown_mode_is_rejected(self) -> None:
+        from arcrho_engine_save_contract import SaveJobContractError
+
+        with self.assertRaises(SaveJobContractError):
+            build_save_job_request(
+                request_id="c" * 32,
+                save_kind="dataset_sidecar",
+                project_name="Demo",
+                path="HPPREF\\HOL",
+                args=[],
+                kwargs={},
+                mode="dry-run",
+            )
 
 
 if __name__ == "__main__":

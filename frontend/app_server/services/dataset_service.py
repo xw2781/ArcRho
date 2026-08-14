@@ -1893,6 +1893,28 @@ def save_dataset_sidecar(
         )
 
 
+def save_propagation_roots(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    *,
+    dataset_type: str = "",
+    csv_file: str = "",
+    **_ignored: Any,
+) -> List[Tuple[str, str]]:
+    """Return the changed roots ``save_dataset_sidecar`` would propagate from.
+
+    The two-step save plans the dependent closure before anything is written,
+    so this mirrors ``_save_dataset_sidecar_impl``'s root exactly, including
+    its fallback to the existing sidecar's ``dataset_type`` and then to the
+    instance name.
+    """
+
+    p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
+    existing = _read_dataset_sidecar(_get_dataset_sidecar_path(p, rc, ds, csv_file=csv_file))
+    return [(ds, str(dataset_type or existing.get("dataset_type") or ds))]
+
+
 def _save_dataset_notes_impl(project_name: str, reserving_class: str, dataset_name: str, notes: str) -> Dict[str, Any]:
     """Update notes in the owning dataset sidecar; no standalone notes file exists."""
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
