@@ -1,0 +1,1192 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Release Manager</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #1f1f1f;
+      --bg-chrome: #181818;
+      --bg-panel: #1f1f1f;
+      --bg-raised: #252526;
+      --bg-input: #313131;
+      --bg-console: #181818;
+      --border: #2b2b2b;
+      --border-strong: #3c3c3c;
+      --text: #cccccc;
+      --text-strong: #e6e6e6;
+      --muted: #9d9d9d;
+      --accent: #0078d4;
+      --accent-hover: #026ec1;
+      --accent-text: #ffffff;
+      --list-hover: #2a2d2e;
+      --list-active: #04395e;
+      --list-active-text: #ffffff;
+      --ok: #89d185;
+      --warn: #cca700;
+      --danger: #f14c4c;
+      --info: #4daafc;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+      --radius: 6px;
+      --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+    }
+
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f8f8f8;
+      --bg-chrome: #ffffff;
+      --bg-panel: #ffffff;
+      --bg-raised: #f3f3f3;
+      --bg-input: #ffffff;
+      --bg-console: #ffffff;
+      --border: #e5e5e5;
+      --border-strong: #cecece;
+      --text: #3b3b3b;
+      --text-strong: #1f1f1f;
+      --muted: #616161;
+      --accent: #005fb8;
+      --accent-hover: #0258a8;
+      --accent-text: #ffffff;
+      --list-hover: #f0f0f0;
+      --list-active: #e8e8e8;
+      --list-active-text: #1f1f1f;
+      --ok: #1a7f37;
+      --warn: #9a6700;
+      --danger: #cd3131;
+      --info: #005fb8;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      min-width: 940px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    /* Title bar ---------------------------------------------------------- */
+
+    .titlebar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 40px;
+      padding: 0 12px;
+      background: var(--bg-chrome);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .titlebar .mark {
+      width: 20px;
+      height: 20px;
+      border-radius: 5px;
+      background: linear-gradient(140deg, var(--accent), #3fa0ff);
+      display: grid;
+      place-items: center;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .titlebar h1 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-strong);
+      white-space: nowrap;
+    }
+
+    .titlebar .repo {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      direction: rtl;
+      text-align: left;
+    }
+
+    .titlebar .actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Layout ------------------------------------------------------------- */
+
+    main {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px 14px;
+      overflow: auto;
+    }
+
+    .card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .card > header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card > header h2 {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-strong);
+      white-space: nowrap;
+    }
+
+    .card > header .hint {
+      flex: 1 1 auto;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .card > header .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-body {
+      padding: 12px;
+      min-height: 0;
+    }
+
+    .table-card .card-body {
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .split {
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      min-height: 260px;
+    }
+
+    /* Build strip -------------------------------------------------------- */
+
+    .fields {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .field label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    input[type="text"],
+    select {
+      height: 28px;
+      padding: 0 8px;
+      font: inherit;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg-input);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+    }
+
+    select {
+      appearance: none;
+      padding-right: 26px;
+      cursor: pointer;
+      background-image:
+        linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
+      background-position: calc(100% - 13px) 55%, calc(100% - 8px) 55%;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }
+
+    #productSelect { min-width: 118px; }
+    #versionInput { width: 128px; }
+
+    input[type="text"]:hover,
+    select:hover { border-color: var(--muted); }
+
+    input[type="text"]:focus,
+    select:focus,
+    button:focus-visible,
+    tbody tr:focus-visible,
+    .check:focus-within {
+      outline: 1px solid var(--accent);
+      outline-offset: -1px;
+      border-color: var(--accent);
+    }
+
+    button {
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px;
+      font: inherit;
+      font-size: 12px;
+      color: var(--text);
+      background: transparent;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover:not(:disabled) { background: var(--list-hover); }
+
+    button.primary {
+      color: var(--accent-text);
+      background: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+    button.danger:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); background: transparent; }
+
+    button.quiet { border-color: transparent; padding: 0 8px; color: var(--muted); }
+    button.quiet:hover:not(:disabled) { color: var(--text); background: var(--list-hover); }
+
+    button:disabled { opacity: 0.45; cursor: default; }
+
+    .suggested {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .check input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
+    /* Tables ------------------------------------------------------------- */
+
+    .table-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12px;
+    }
+
+    #pendingTable th:nth-child(1) { width: 92px; }
+    #pendingTable th:nth-child(2) { width: 78px; }
+    #pendingTable th:nth-child(3) { width: 148px; }
+    #pendingTable th:nth-child(4) { width: 138px; }
+    #historyTable th:nth-child(1) { width: 78px; }
+    #historyTable th:nth-child(2) { width: 148px; }
+    #historyTable th:nth-child(3) { width: 112px; }
+    #historyTable th:nth-child(4) { width: 142px; }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 7px 10px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--bg-raised);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    tbody td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 0;
+    }
+
+    tbody tr { cursor: default; }
+    tbody tr:hover td { background: var(--list-hover); }
+
+    tbody tr[aria-selected="true"] td {
+      background: var(--list-active);
+      color: var(--list-active-text);
+    }
+
+    td.num, th.num { font-variant-numeric: tabular-nums; }
+
+    .empty-row td {
+      color: var(--muted);
+      text-align: center;
+      padding: 22px 10px;
+      white-space: normal;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: capitalize;
+    }
+
+    .badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .badge[data-state="built"]::before { background: var(--info); }
+    .badge[data-state="remote_published"]::before { background: var(--warn); }
+    .badge[data-state="published"]::before { background: var(--ok); }
+    .badge[data-state="revoked"]::before { background: var(--danger); }
+    .badge[data-state="draft"]::before { background: var(--muted); }
+    .badge[data-state="prerelease"]::before { background: var(--warn); }
+
+    a { color: var(--info); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Activity panel ----------------------------------------------------- */
+
+    .activity {
+      flex: 0 0 auto;
+    }
+
+    .activity .card-body {
+      padding: 0;
+    }
+
+    #activityLog {
+      height: 190px;
+      overflow: auto;
+      margin: 0;
+      padding: 8px 12px;
+      background: var(--bg-console);
+      border-radius: 0 0 var(--radius) var(--radius);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+    }
+
+    .activity.collapsed #activityLog { display: none; }
+
+    /* Status bar --------------------------------------------------------- */
+
+    .statusbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 24px;
+      padding: 0 12px;
+      background: var(--bg-chrome);
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .statusbar .spacer { flex: 1 1 auto; }
+    .statusbar[data-tone="busy"] #statusText { color: var(--info); }
+    .statusbar[data-tone="ok"] #statusText { color: var(--ok); }
+    .statusbar[data-tone="error"] #statusText { color: var(--danger); }
+
+    .spinner {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid var(--border-strong);
+      border-top-color: var(--info);
+      animation: spin 0.9s linear infinite;
+    }
+
+    .spinner[hidden] { display: none; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation-duration: 3s; }
+    }
+
+    /* Dialog ------------------------------------------------------------- */
+
+    dialog {
+      width: min(480px, calc(100vw - 40px));
+      padding: 0;
+      color: var(--text);
+      background: var(--bg-raised);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+
+    dialog h3 {
+      margin: 0;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-strong);
+      border-bottom: 1px solid var(--border);
+    }
+
+    dialog .dialog-body {
+      padding: 14px 16px;
+      white-space: pre-wrap;
+    }
+
+    dialog .dialog-body input {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    dialog .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 0 16px 14px;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <span class="mark" aria-hidden="true">AR</span>
+    <h1>ArcRho Release Manager</h1>
+    <span class="repo" id="repositoryPath" title=""></span>
+    <div class="actions">
+      <button type="button" id="themeButton" class="quiet" title="Switch between the dark and light theme">Light theme</button>
+      <button type="button" id="refreshButton" class="quiet">Refresh</button>
+      <button type="button" id="quitButton" class="quiet" title="Stop the local Release Manager server">Quit</button>
+    </div>
+  </div>
+
+  <main>
+    <section class="card">
+      <header>
+        <h2>1 &middot; Build and test locally</h2>
+        <span class="hint">The build records an installer for testing; it does not create a GitHub Release.</span>
+      </header>
+      <div class="card-body">
+        <div class="fields">
+          <div class="field">
+            <label for="productSelect">Product</label>
+            <select id="productSelect"></select>
+          </div>
+          <div class="field">
+            <label for="versionInput">Version</label>
+            <input type="text" id="versionInput" placeholder="1.3.0" autocomplete="off" spellcheck="false" size="14">
+          </div>
+          <button type="button" id="suggestedButton" class="suggested">Suggested version: loading…</button>
+          <button type="button" id="checkVersionButton">Check next version</button>
+          <button type="button" id="buildButton" class="primary">Build installer</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="split">
+      <section class="card table-card">
+        <header>
+          <h2>2 &middot; Test, then publish</h2>
+          <span class="hint"></span>
+          <div class="toolbar">
+            <label class="check" title="Write version metadata, release notes, and the fragment archive as a local commit">
+              <input type="checkbox" id="commitCheckbox" checked>
+              Commit bookkeeping
+            </label>
+            <button type="button" id="openInstallerButton">Open installer</button>
+            <button type="button" id="publishButton" class="primary">Publish selected</button>
+          </div>
+        </header>
+        <div class="card-body">
+          <div class="table-scroll">
+            <table id="pendingTable">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Version</th>
+                  <th>Built</th>
+                  <th>State</th>
+                  <th>Installer</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card table-card">
+        <header>
+          <h2>3 &middot; Published release history</h2>
+          <span class="hint"></span>
+          <div class="toolbar">
+            <button type="button" id="refreshHistoryButton">Refresh history</button>
+            <button type="button" id="revokeButton" class="danger">Revoke selected</button>
+          </div>
+        </header>
+        <div class="card-body">
+          <div class="table-scroll">
+            <table id="historyTable">
+              <thead>
+                <tr>
+                  <th>Version</th>
+                  <th>Published</th>
+                  <th>State</th>
+                  <th>Tag</th>
+                  <th>Release</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card activity" id="activityCard">
+      <header>
+        <h2>Activity</h2>
+        <span class="hint" id="activityHint"></span>
+        <div class="toolbar">
+          <button type="button" id="collapseActivityButton" class="quiet">Hide</button>
+          <button type="button" id="clearActivityButton" class="quiet">Clear</button>
+        </div>
+      </header>
+      <div class="card-body">
+        <pre id="activityLog" tabindex="0" aria-label="Activity log"></pre>
+      </div>
+    </section>
+  </main>
+
+  <div class="statusbar" id="statusBar" data-tone="idle">
+    <span class="spinner" id="statusSpinner" hidden></span>
+    <span id="statusText">Ready</span>
+    <span class="spacer"></span>
+    <span id="workDir"></span>
+  </div>
+
+  <dialog id="modal">
+    <h3 id="modalTitle"></h3>
+    <div class="dialog-body">
+      <span id="modalMessage"></span>
+      <label class="sr-only" for="modalInput">Confirmation</label>
+      <input type="text" id="modalInput" autocomplete="off" spellcheck="false" hidden>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" id="modalCancel">Cancel</button>
+      <button type="button" id="modalConfirm" class="primary">OK</button>
+    </div>
+  </dialog>
+
+  <script>
+    "use strict";
+
+    const TOKEN_KEY = "arcrho.release-manager.token";
+    const THEME_KEY = "arcrho.release-manager.theme";
+
+    function resolveToken() {
+      const fromUrl = new URLSearchParams(window.location.search).get("token");
+      if (fromUrl) {
+        sessionStorage.setItem(TOKEN_KEY, fromUrl);
+        history.replaceState(null, "", window.location.pathname);
+        return fromUrl;
+      }
+      return sessionStorage.getItem(TOKEN_KEY) || "";
+    }
+
+    const token = resolveToken();
+
+    const state = {
+      pending: [],
+      history: [],
+      selectedPending: null,
+      selectedHistory: null,
+      cursor: 0,
+      running: false,
+      lastCompleted: 0,
+      historyProduct: "",
+    };
+
+    const el = (id) => document.getElementById(id);
+    const dom = {
+      product: el("productSelect"),
+      version: el("versionInput"),
+      suggested: el("suggestedButton"),
+      checkVersion: el("checkVersionButton"),
+      build: el("buildButton"),
+      commit: el("commitCheckbox"),
+      openInstaller: el("openInstallerButton"),
+      publish: el("publishButton"),
+      refreshHistory: el("refreshHistoryButton"),
+      revoke: el("revokeButton"),
+      refresh: el("refreshButton"),
+      quit: el("quitButton"),
+      theme: el("themeButton"),
+      pendingBody: document.querySelector("#pendingTable tbody"),
+      historyBody: document.querySelector("#historyTable tbody"),
+      log: el("activityLog"),
+      activityCard: el("activityCard"),
+      activityHint: el("activityHint"),
+      collapseActivity: el("collapseActivityButton"),
+      clearActivity: el("clearActivityButton"),
+      statusBar: el("statusBar"),
+      statusText: el("statusText"),
+      spinner: el("statusSpinner"),
+      repository: el("repositoryPath"),
+      workDir: el("workDir"),
+      modal: el("modal"),
+      modalTitle: el("modalTitle"),
+      modalMessage: el("modalMessage"),
+      modalInput: el("modalInput"),
+      modalConfirm: el("modalConfirm"),
+      modalCancel: el("modalCancel"),
+    };
+
+    /* Theme ------------------------------------------------------------- */
+
+    function applyTheme(theme) {
+      const next = theme === "light" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      dom.theme.textContent = next === "dark" ? "Light theme" : "Dark theme";
+      localStorage.setItem(THEME_KEY, next);
+    }
+
+    applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+    dom.theme.addEventListener("click", () => {
+      applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+    });
+
+    /* Dialog ------------------------------------------------------------ */
+
+    let modalResolve = null;
+
+    function closeModal(value) {
+      if (!modalResolve) return;
+      const resolve = modalResolve;
+      modalResolve = null;
+      dom.modal.close();
+      resolve(value);
+    }
+
+    dom.modalConfirm.addEventListener("click", () => {
+      closeModal(dom.modalInput.hidden ? true : dom.modalInput.value.trim());
+    });
+    dom.modalCancel.addEventListener("click", () => closeModal(null));
+    dom.modal.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeModal(null);
+    });
+    dom.modalInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") dom.modalConfirm.click();
+    });
+
+    function showModal({ title, message, confirmLabel = "OK", cancelLabel = "Cancel", danger = false, prompt = false }) {
+      dom.modalTitle.textContent = title;
+      dom.modalMessage.textContent = message;
+      dom.modalConfirm.textContent = confirmLabel;
+      dom.modalConfirm.classList.toggle("primary", !danger);
+      dom.modalConfirm.classList.toggle("danger", danger);
+      dom.modalCancel.hidden = cancelLabel === null;
+      dom.modalCancel.textContent = cancelLabel || "Cancel";
+      dom.modalInput.hidden = !prompt;
+      dom.modalInput.value = "";
+      dom.modal.showModal();
+      if (prompt) dom.modalInput.focus();
+      else dom.modalConfirm.focus();
+      return new Promise((resolve) => { modalResolve = resolve; });
+    }
+
+    const notify = (title, message) =>
+      showModal({ title, message, confirmLabel: "Close", cancelLabel: null });
+
+    /* API --------------------------------------------------------------- */
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: { "X-ArcRho-Token": token, ...(options.body ? { "Content-Type": "application/json" } : {}) },
+      });
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch (error) {
+        payload = { error: `${response.status} ${response.statusText}` };
+      }
+      if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+      return payload;
+    }
+
+    const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body || {}) });
+
+    /* Rendering --------------------------------------------------------- */
+
+    function setStatus(text, tone = "idle") {
+      dom.statusText.textContent = text;
+      dom.statusBar.dataset.tone = tone;
+    }
+
+    function formatTimestamp(value) {
+      return String(value || "").replace("T", " ").replace("Z", "").trim() || "—";
+    }
+
+    function emptyRow(body, columns, message) {
+      const row = document.createElement("tr");
+      row.className = "empty-row";
+      const cell = document.createElement("td");
+      cell.colSpan = columns;
+      cell.textContent = message;
+      row.appendChild(cell);
+      body.appendChild(row);
+    }
+
+    function addCell(row, text, { title, badge } = {}) {
+      const cell = document.createElement("td");
+      if (badge) {
+        const span = document.createElement("span");
+        span.className = "badge";
+        span.dataset.state = badge;
+        span.textContent = text;
+        cell.appendChild(span);
+      } else {
+        cell.textContent = text;
+      }
+      cell.title = title !== undefined ? title : text;
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function selectRow(body, row, key) {
+      for (const other of body.querySelectorAll("tr[aria-selected]")) {
+        other.setAttribute("aria-selected", String(other === row));
+      }
+      return key;
+    }
+
+    function renderPending() {
+      dom.pendingBody.replaceChildren();
+      if (!state.pending.length) {
+        emptyRow(dom.pendingBody, 5, "No local builds recorded yet. Build an installer to start.");
+        state.selectedPending = null;
+        updateActions();
+        return;
+      }
+      let selectionStillExists = false;
+      for (const record of state.pending) {
+        const key = `${record.product}@${record.version}`;
+        const row = document.createElement("tr");
+        row.tabIndex = 0;
+        row.setAttribute("aria-selected", String(key === state.selectedPending));
+        if (key === state.selectedPending) selectionStillExists = true;
+        addCell(row, record.product);
+        addCell(row, record.version);
+        addCell(row, formatTimestamp(record.built_at));
+        addCell(row, record.status.replace(/_/g, " "), { badge: record.status, title: record.status });
+        addCell(row, record.installer_name || "—", { title: record.installer_path });
+        const pick = () => { state.selectedPending = selectRow(dom.pendingBody, row, key); updateActions(); };
+        row.addEventListener("click", pick);
+        row.addEventListener("focus", pick);
+        row.addEventListener("dblclick", openInstaller);
+        dom.pendingBody.appendChild(row);
+      }
+      if (!selectionStillExists) state.selectedPending = null;
+      updateActions();
+    }
+
+    function renderHistory() {
+      dom.historyBody.replaceChildren();
+      if (!state.history.length) {
+        emptyRow(dom.historyBody, 5, `No published ${dom.product.value} releases found.`);
+        state.selectedHistory = null;
+        updateActions();
+        return;
+      }
+      let selectionStillExists = false;
+      for (const record of state.history) {
+        const key = `${record.product}@${record.version}`;
+        const status = record.draft ? "draft" : record.prerelease ? "prerelease" : "published";
+        const row = document.createElement("tr");
+        row.tabIndex = 0;
+        row.setAttribute("aria-selected", String(key === state.selectedHistory));
+        if (key === state.selectedHistory) selectionStillExists = true;
+        addCell(row, record.version);
+        addCell(row, formatTimestamp(record.published_at));
+        addCell(row, status, { badge: status });
+        addCell(row, record.tag);
+        const urlCell = addCell(row, "", { title: record.url });
+        if (record.url) {
+          const link = document.createElement("a");
+          link.href = record.url;
+          link.target = "_blank";
+          link.rel = "noreferrer noopener";
+          link.textContent = record.url;
+          urlCell.replaceChildren(link);
+        } else {
+          urlCell.textContent = "—";
+        }
+        const pick = () => { state.selectedHistory = selectRow(dom.historyBody, row, key); updateActions(); };
+        row.addEventListener("click", pick);
+        row.addEventListener("focus", pick);
+        dom.historyBody.appendChild(row);
+      }
+      if (!selectionStillExists) state.selectedHistory = null;
+      updateActions();
+    }
+
+    function selectedPendingRecord() {
+      return state.pending.find((record) => `${record.product}@${record.version}` === state.selectedPending) || null;
+    }
+
+    function selectedHistoryRecord() {
+      return state.history.find((record) => `${record.product}@${record.version}` === state.selectedHistory) || null;
+    }
+
+    function updateActions() {
+      const busy = state.running;
+      dom.build.disabled = busy;
+      dom.publish.disabled = busy || !selectedPendingRecord();
+      dom.openInstaller.disabled = !selectedPendingRecord();
+      dom.revoke.disabled = busy || !selectedHistoryRecord();
+    }
+
+    /* Data loading ------------------------------------------------------ */
+
+    async function loadEnvironment() {
+      const payload = await api("/api/environment");
+      dom.product.replaceChildren();
+      for (const product of payload.products) {
+        const option = document.createElement("option");
+        option.value = product;
+        option.textContent = product;
+        dom.product.appendChild(option);
+      }
+      dom.repository.textContent = payload.repository;
+      dom.repository.title = `Repository: ${payload.repository}`;
+      dom.workDir.textContent = payload.work_dir;
+      dom.workDir.title = `Local build records: ${payload.work_dir}`;
+    }
+
+    async function refreshPending() {
+      try {
+        const payload = await api("/api/pending");
+        state.pending = payload.records;
+        renderPending();
+      } catch (error) {
+        setStatus(`Could not load local builds: ${error.message}`, "error");
+      }
+    }
+
+    async function refreshSuggestedVersion() {
+      const product = dom.product.value;
+      dom.suggested.textContent = "Suggested version: loading…";
+      dom.suggested.disabled = true;
+      try {
+        const payload = await api(`/api/suggested-version?product=${encodeURIComponent(product)}`);
+        if (dom.product.value !== product) return;
+        dom.suggested.textContent = `Suggested version: ${payload.version}`;
+        dom.suggested.dataset.version = payload.version;
+        dom.suggested.disabled = false;
+      } catch (error) {
+        if (dom.product.value !== product) return;
+        dom.suggested.textContent = "Suggested version: unavailable";
+        delete dom.suggested.dataset.version;
+        setStatus(`Could not calculate the next version: ${error.message}`, "error");
+      }
+    }
+
+    async function refreshHistory() {
+      const product = dom.product.value;
+      state.historyProduct = product;
+      dom.refreshHistory.disabled = true;
+      try {
+        const payload = await api(`/api/history?product=${encodeURIComponent(product)}`);
+        if (state.historyProduct !== product) return;
+        state.history = payload.records;
+        renderHistory();
+        setStatus(`Loaded ${payload.records.length} recent ${product} release(s)`);
+      } catch (error) {
+        state.history = [];
+        renderHistory();
+        setStatus(`GitHub release history is unavailable: ${error.message}`, "error");
+      } finally {
+        dom.refreshHistory.disabled = false;
+      }
+    }
+
+    function refreshAll() {
+      refreshPending();
+      refreshSuggestedVersion();
+      refreshHistory();
+    }
+
+    /* Operations -------------------------------------------------------- */
+
+    async function startOperation(path, body, failureTitle) {
+      try {
+        await post(path, body);
+        await pollActivity();
+      } catch (error) {
+        await notify(failureTitle, error.message);
+      }
+    }
+
+    async function build() {
+      const version = dom.version.value.trim();
+      if (!version) {
+        await notify("Version required", "Enter a custom semantic version or use the suggested version.");
+        dom.version.focus();
+        return;
+      }
+      await startOperation("/api/build", { product: dom.product.value, version }, "Invalid build request");
+    }
+
+    async function openInstaller() {
+      const record = selectedPendingRecord();
+      if (!record) return;
+      try {
+        const payload = await post("/api/open-installer", { product: record.product, version: record.version });
+        setStatus(`Opened installer: ${payload.name}`);
+      } catch (error) {
+        await notify("Could not open installer", error.message);
+      }
+    }
+
+    async function publish() {
+      const record = selectedPendingRecord();
+      if (!record) return;
+      const confirmed = await showModal({
+        title: "Publish to GitHub",
+        message:
+          `Publish ${record.product} ${record.version} to GitHub Releases now?\n\n` +
+          "The installer and its checksum will become the update source for users.",
+        confirmLabel: "Publish",
+      });
+      if (!confirmed) return;
+      await startOperation(
+        "/api/publish",
+        { product: record.product, version: record.version, commit: dom.commit.checked },
+        "Publish release",
+      );
+    }
+
+    async function revoke() {
+      const record = selectedHistoryRecord();
+      if (!record) return;
+      const confirmation = await showModal({
+        title: "Revoke GitHub release",
+        message:
+          `Revoke ${record.product} ${record.version} from GitHub?\n\n` +
+          "This permanently deletes the release assets and its Git tag. Local release bookkeeping is retained.\n\n" +
+          `Type ${record.version} to confirm:`,
+        confirmLabel: "Revoke",
+        danger: true,
+        prompt: true,
+      });
+      if (confirmation === null) return;
+      if (confirmation !== record.version) {
+        await notify("Revocation cancelled", "The entered version did not match; nothing was deleted.");
+        return;
+      }
+      await startOperation(
+        "/api/revoke",
+        { product: record.product, version: record.version, confirm: confirmation },
+        "Revoke release",
+      );
+    }
+
+    async function quit() {
+      const confirmed = await showModal({
+        title: "Quit Release Manager",
+        message: "Stop the local Release Manager server? This page will stop working until you run release_manager.bat again.",
+        confirmLabel: "Quit",
+        danger: true,
+      });
+      if (!confirmed) return;
+      try {
+        await post("/api/shutdown");
+      } catch (error) {
+        /* The server closes the connection as it shuts down. */
+      }
+      setStatus("Release Manager stopped. You can close this tab.", "idle");
+      dom.spinner.hidden = true;
+      window.clearInterval(pollTimer);
+      for (const button of document.querySelectorAll("main button, .titlebar button:not(#themeButton)")) {
+        button.disabled = true;
+      }
+    }
+
+    /* Activity polling -------------------------------------------------- */
+
+    function appendActivity(lines, truncated) {
+      if (truncated) dom.log.append("… earlier activity trimmed …\n");
+      const atBottom = dom.log.scrollTop + dom.log.clientHeight >= dom.log.scrollHeight - 24;
+      dom.log.append(lines.join("\n") + "\n");
+      if (atBottom) dom.log.scrollTop = dom.log.scrollHeight;
+    }
+
+    async function pollActivity() {
+      let snapshot;
+      try {
+        snapshot = await api(`/api/activity?cursor=${state.cursor}`);
+      } catch (error) {
+        return;
+      }
+      state.cursor = snapshot.cursor;
+      if (snapshot.lines.length) appendActivity(snapshot.lines, snapshot.truncated);
+
+      const wasRunning = state.running;
+      state.running = snapshot.running;
+      dom.spinner.hidden = !snapshot.running;
+      dom.activityHint.textContent = snapshot.running ? snapshot.title : "";
+      if (snapshot.running) setStatus(snapshot.title, "busy");
+      if (wasRunning !== snapshot.running) updateActions();
+
+      const result = snapshot.result;
+      if (result && result.id > state.lastCompleted) {
+        state.lastCompleted = result.id;
+        setStatus(snapshot.status, result.ok ? "ok" : "error");
+        refreshAll();
+        if (!result.ok) {
+          await notify(
+            "Release Manager",
+            `${result.title} failed with exit code ${result.exit_code}.` +
+              (result.detail ? `\n\n${result.detail}` : "\n\nReview the Activity panel for details."),
+          );
+        }
+      }
+    }
+
+    /* Wiring ------------------------------------------------------------ */
+
+    dom.product.addEventListener("change", () => {
+      dom.version.value = "";
+      state.selectedHistory = null;
+      refreshSuggestedVersion();
+      refreshHistory();
+    });
+    dom.suggested.addEventListener("click", () => {
+      const version = dom.suggested.dataset.version;
+      if (version) dom.version.value = version;
+    });
+    dom.checkVersion.addEventListener("click", refreshSuggestedVersion);
+    dom.build.addEventListener("click", build);
+    dom.version.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") build();
+    });
+    dom.openInstaller.addEventListener("click", openInstaller);
+    dom.publish.addEventListener("click", publish);
+    dom.refreshHistory.addEventListener("click", refreshHistory);
+    dom.revoke.addEventListener("click", revoke);
+    dom.refresh.addEventListener("click", refreshAll);
+    dom.quit.addEventListener("click", quit);
+    dom.clearActivity.addEventListener("click", () => { dom.log.textContent = ""; });
+    dom.collapseActivity.addEventListener("click", () => {
+      const collapsed = dom.activityCard.classList.toggle("collapsed");
+      dom.collapseActivity.textContent = collapsed ? "Show" : "Hide";
+    });
+
+    const pollTimer = window.setInterval(pollActivity, 1000);
+
+    async function start() {
+      if (!token) {
+        setStatus("No session token. Start Release Manager with release_manager.bat.", "error");
+        await notify(
+          "Session token required",
+          "This page must be opened by release_manager.bat so it can authenticate to the local Release Manager server.",
+        );
+        return;
+      }
+      try {
+        await loadEnvironment();
+      } catch (error) {
+        setStatus(`Could not reach the Release Manager server: ${error.message}`, "error");
+        return;
+      }
+      renderPending();
+      renderHistory();
+      refreshAll();
+      pollActivity();
+    }
+
+    start();
+  </script>
+</body>
+</html>

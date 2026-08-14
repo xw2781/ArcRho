@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Added a Release Manager for custom-version local builds, deliberate GitHub publishing, history, and guarded release revocation.",
+  "details": [
+    "Runs as a local browser app on 127.0.0.1 with a dark theme by default and an optional light theme.",
+    "Build-only installers can be tested locally before any GitHub or shared-wheel publication.",
+    "Pending installers are hash-checked again before publication."
+  ]
+}

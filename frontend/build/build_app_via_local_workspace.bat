@@ -122,8 +122,8 @@ if not exist "%LOCAL_FRONTEND%\build\build_app_via_local_workspace.bat" (
 :workspace_ready
 REM In-place mode skips the ZIP transport entirely: the repository is already on
 REM this PC, so LOCAL_ROOT points at it and the build runs against its own
-REM frontend. The version bump, release notes, and archived fragments the build
-REM writes then land in the repository instead of a workspace that gets deleted.
+REM frontend. A one-step build writes its version bump, release notes, and archived fragments
+REM into that repository; build-only mode defers those release artifacts until publication.
 echo.
 echo ========================================
 if defined ARCRHO_BUILD_IN_PLACE echo Building %PRODUCT_NAME% in place from the local repository
@@ -136,7 +136,7 @@ echo.
 pushd "%LOCAL_FRONTEND%"
 if errorlevel 1 (
     echo ERROR: Could not enter local frontend directory: %LOCAL_FRONTEND%
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 
@@ -152,7 +152,7 @@ if not "%BUILD_EXIT_CODE%"=="0" (
     echo ERROR: Local %PRODUCT_NAME% build failed with exit code %BUILD_EXIT_CODE%.
     echo Build log directory: %ARCRHO_BUILD_LOG_DIR%
     call :print_total_time
-    pause
+    call :pause_if_interactive
     exit /b %BUILD_EXIT_CODE%
 )
 
@@ -171,13 +171,15 @@ if errorlevel 1 (
 )
 call :sync_source_repository
 call :print_total_time
+if defined ARCRHO_RELEASE_BUILD_ONLY goto skip_open_released_installer
 call :open_released_installer
 if errorlevel 1 (
     echo.
     echo WARNING: The build succeeded, but the built installer could not be opened.
     echo Local output directory: %LOCAL_FRONTEND%\dist
-    pause
+    call :pause_if_interactive
 )
+:skip_open_released_installer
 exit /b 0
 
 :wait_for_new_source_zip_signal
@@ -304,7 +306,7 @@ call :validate_bundled_codex_runtime "%NODE_HOME%" "%APP_ROOT%"
 if errorlevel 1 (
     echo ERROR: Bundled Node, npm, and Codex runtime validation failed.
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 echo Bundled CLI runtime validated.
@@ -319,7 +321,7 @@ echo Using Python: %PYTHON_EXE%
 call :validate_python_310
 if errorlevel 1 (
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 echo.
@@ -330,7 +332,7 @@ echo ----------------------------------------
 if errorlevel 1 (
     echo ERROR: Release note fragment validation failed.
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 echo Release note fragments validated.
@@ -350,7 +352,7 @@ if errorlevel 1 (
     echo HINT: The next version comes from the GitHub Releases history, so gh must be
     echo       authenticated on this machine ^(run: gh auth status^).
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 if exist "%APP_VERSION_FILE%" (
@@ -360,7 +362,7 @@ if exist "%APP_VERSION_FILE%" (
 if not defined APP_VERSION (
     echo ERROR: Version updater did not return a version.
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 echo Building version %APP_VERSION%
@@ -372,7 +374,7 @@ if "%PUBLISH_PYTHON_API%"=="1" (
     call :build_python_api_wheel
     if errorlevel 1 (
         echo.
-        pause
+        call :pause_if_interactive
         exit /b 1
     )
     echo Python API wheel built: %PYTHON_API_WHEEL%
@@ -387,7 +389,7 @@ echo ----------------------------------------
 call :run_pyinstaller
 if errorlevel 1 (
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 echo Python app server built successfully!
@@ -400,14 +402,14 @@ if not exist "python_dist\%PYTHON_SERVER_DIR%\%PYTHON_SERVER_EXE%" (
     echo HINT: PyInstaller step did not produce the server executable.
     echo       Do not continue, otherwise installer may build fast but fail at launch.
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 call :prepare_app_builder
 call :run_electron
 if errorlevel 1 (
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 
@@ -418,7 +420,7 @@ if errorlevel 1 (
     echo ERROR: Packaged Node, npm, and Codex runtime validation failed.
     echo HINT: The installer was not published because its bundled CLI payload is incomplete or cannot run.
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 echo Packaged ArcBot CLI runtime validated.
@@ -427,9 +429,11 @@ echo.
 if not exist "dist\%INSTALLER_PREFIX%-Setup-*.exe" (
     echo ERROR: Installer was not generated in dist\.
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
+
+if defined ARCRHO_RELEASE_BUILD_ONLY goto record_pending_release
 
 echo.
 echo Step 5: Generating release notes...
@@ -440,7 +444,7 @@ if exist "%RELEASE_NOTE_PATH_FILE%" del /q "%RELEASE_NOTE_PATH_FILE%" >nul 2>nul
 if errorlevel 1 (
     echo ERROR: Failed to generate release notes for version %APP_VERSION%.
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 if exist "%RELEASE_NOTE_PATH_FILE%" (
@@ -450,7 +454,7 @@ if exist "%RELEASE_NOTE_PATH_FILE%" (
 if not defined RELEASE_NOTE_PATH (
     echo ERROR: Release note generator did not return a release note path.
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 echo Release notes generated: %RELEASE_NOTE_PATH%
@@ -463,19 +467,38 @@ if errorlevel 1 (
     echo ERROR: Failed to publish GitHub Release.
     echo HINT: Ensure the gh CLI is installed and authenticated ^(run: gh auth login^).
     echo.
-    pause
+    call :pause_if_interactive
     exit /b 1
 )
 echo GitHub Release published.
 echo.
 
+goto after_release_publication
+
+:record_pending_release
+echo.
+echo Step 5: Recording pending local release...
+echo ----------------------------------------
+call :capture_pending_release
+if errorlevel 1 (
+    echo ERROR: Failed to record the built installer for later publication.
+    echo.
+    call :pause_if_interactive
+    exit /b 1
+)
+echo Pending local release recorded. Test the installer, then publish it from Release Manager.
+echo.
+
+:after_release_publication
+
+if defined ARCRHO_RELEASE_BUILD_ONLY goto after_python_api_publication
 if "%PUBLISH_PYTHON_API%"=="1" (
     echo Step 7: Publishing Python API package...
     echo ----------------------------------------
     call :publish_python_api_package
     if errorlevel 1 (
         echo.
-        pause
+        call :pause_if_interactive
         exit /b 1
     )
     echo Python API package published: %PYTHON_API_PACKAGE_DIR%
@@ -484,6 +507,8 @@ if "%PUBLISH_PYTHON_API%"=="1" (
     echo Step 7: Shared Python API package publication is not part of the %PRODUCT_NAME% build.
     echo.
 )
+
+:after_python_api_publication
 
 echo Step 8: Cleaning Python build artifacts...
 echo ----------------------------------------
@@ -509,12 +534,40 @@ echo.
 echo Output location: dist\
 echo.
 echo - %INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe  (Installer)
-echo - GitHub Release %PRODUCT_NAME%-v%APP_VERSION%  (Published Installer and Auto-Update Source)
-if "%PUBLISH_PYTHON_API%"=="1" echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
-echo - %RELEASE_NOTE_PATH%  (Release Notes)
+if defined ARCRHO_RELEASE_BUILD_ONLY echo - Pending local release record  (Publish only after local testing)
+if not defined ARCRHO_RELEASE_BUILD_ONLY echo - GitHub Release %PRODUCT_NAME%-v%APP_VERSION%  (Published Installer and Auto-Update Source)
+if "%PUBLISH_PYTHON_API%"=="1" if not defined ARCRHO_RELEASE_BUILD_ONLY echo - %PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl  (Python API Package)
+if not defined ARCRHO_RELEASE_BUILD_ONLY echo - %RELEASE_NOTE_PATH%  (Release Notes)
 echo.
-if not defined ARCRHO_SKIP_SUCCESS_PAUSE pause
+if not defined ARCRHO_SKIP_SUCCESS_PAUSE call :pause_if_interactive
 exit /b 0
+
+:capture_pending_release
+if not defined APP_VERSION (
+    echo ERROR: No built version is available to record.
+    exit /b 1
+)
+if not exist "build\release\release_workflow.py" (
+    echo ERROR: Missing pending-release workflow helper: build\release\release_workflow.py
+    exit /b 1
+)
+if "%PUBLISH_PYTHON_API%"=="1" goto capture_pending_release_with_wheel
+if defined ARCRHO_RELEASE_VERSION_SNAPSHOT goto capture_pending_release_with_snapshot
+"%PYTHON_EXE%" build\release\release_workflow.py capture-built --product "%PRODUCT_NAME%" --version "%APP_VERSION%" --installer-path "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe"
+exit /b %ERRORLEVEL%
+
+:capture_pending_release_with_snapshot
+"%PYTHON_EXE%" build\release\release_workflow.py capture-built --product "%PRODUCT_NAME%" --version "%APP_VERSION%" --installer-path "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" --version-snapshot-path "%ARCRHO_RELEASE_VERSION_SNAPSHOT%"
+exit /b %ERRORLEVEL%
+
+:capture_pending_release_with_wheel
+if defined ARCRHO_RELEASE_VERSION_SNAPSHOT goto capture_pending_release_with_wheel_snapshot
+"%PYTHON_EXE%" build\release\release_workflow.py capture-built --product "%PRODUCT_NAME%" --version "%APP_VERSION%" --installer-path "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" --python-api-wheel-path "%PYTHON_API_WHEEL%" --python-api-package-dir "%PYTHON_API_PACKAGE_DIR%"
+exit /b %ERRORLEVEL%
+
+:capture_pending_release_with_wheel_snapshot
+"%PYTHON_EXE%" build\release\release_workflow.py capture-built --product "%PRODUCT_NAME%" --version "%APP_VERSION%" --installer-path "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" --python-api-wheel-path "%PYTHON_API_WHEEL%" --python-api-package-dir "%PYTHON_API_PACKAGE_DIR%" --version-snapshot-path "%ARCRHO_RELEASE_VERSION_SNAPSHOT%"
+exit /b %ERRORLEVEL%
 
 :build_python_api_wheel
 if not exist "%NODE_HOME%\node.exe" (
@@ -546,21 +599,13 @@ if not exist "%PYTHON_API_WHEEL%" (
     echo ERROR: Python API wheel does not exist: %PYTHON_API_WHEEL%
     exit /b 1
 )
-if not exist "%PYTHON_API_PACKAGE_DIR%" (
-    mkdir "%PYTHON_API_PACKAGE_DIR%"
-    if errorlevel 1 (
-        echo ERROR: Failed to create Python API package directory: %PYTHON_API_PACKAGE_DIR%
-        exit /b 1
-    )
-)
-copy /Y "%PYTHON_API_WHEEL%" "%PYTHON_API_PACKAGE_DIR%\" >nul
-if errorlevel 1 (
-    echo ERROR: Failed to publish versioned Python API wheel to %PYTHON_API_PACKAGE_DIR%.
+if not exist "build\release\release_workflow.py" (
+    echo ERROR: Missing Python API publication workflow helper: build\release\release_workflow.py
     exit /b 1
 )
-copy /Y "%PYTHON_API_WHEEL%" "%PYTHON_API_PACKAGE_DIR%\arcrho_api-latest.whl" >nul
+"%PYTHON_EXE%" build\release\release_workflow.py publish-python-api --wheel-path "%PYTHON_API_WHEEL%" --destination "%PYTHON_API_PACKAGE_DIR%"
 if errorlevel 1 (
-    echo ERROR: Failed to publish arcrho_api-latest.whl to %PYTHON_API_PACKAGE_DIR%.
+    echo ERROR: Failed to publish the Python API wheel to %PYTHON_API_PACKAGE_DIR%.
     exit /b 1
 )
 exit /b 0
@@ -655,3 +700,8 @@ echo HINT: If error shows "spawn EPERM" for app-builder.exe, run:
 echo       powershell -NoProfile -Command "Get-Item '%APP_BUILDER_EXE%' ^| Unblock-File"
 echo       Then retry the one-click build workflow.
 exit /b 1
+
+:pause_if_interactive
+if defined ARCRHO_NONINTERACTIVE exit /b 0
+pause
+exit /b 0

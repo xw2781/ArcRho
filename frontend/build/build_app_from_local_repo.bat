@@ -1,22 +1,25 @@
 @echo off
 setlocal EnableExtensions
 
-REM Builds and publishes an ArcRho or Arcode release from the repository on THIS PC.
+REM Builds or publishes an ArcRho or Arcode release from the repository on THIS PC.
 REM
 REM Use this when the repository, the build toolchain, and an authenticated gh CLI all
 REM live on the same machine. It needs no second PC, no build share, no source ZIP, and
-REM no listener. The build runs in place against this repository's own frontend, so the
-REM version bump, the generated release notes, and the archived changelog fragments land
-REM directly in the working tree instead of being discarded with a disposable workspace.
-REM That is why there is no repository sync step here: there is nothing to sync back.
+REM no listener. The one-step path runs in place against this repository's own frontend, so
+REM its version bump, generated release notes, and archived changelog fragments land directly
+REM in the working tree. Build-only mode restores version metadata and records a pending
+REM installer outside the repository instead, so it can be tested before publication.
 REM
 REM The two-PC workflow in BUILD_FROM_ZIP_ON_SECOND_PC.md is unchanged and remains the
 REM route to use when the PC holding the repository cannot run the full build toolchain.
 REM
 REM Usage:
-REM   build_app_from_local_repo.bat [--check] [version] [--no-commit]
+REM   build_app_from_local_repo.bat [--check] [--build-only] [version] [--no-commit]
+REM   build_app_from_local_repo.bat --publish version [--no-commit]
 REM
 REM   --check       Validate prerequisites and print resolved paths, build nothing.
+REM   --build-only  Build an installer and record it for local testing. Do not publish.
+REM   --publish     Publish a previously recorded local installer. Requires a version.
 REM   version       Explicit semantic version. Omitted, the patch version is bumped from
 REM                 the GitHub Releases history.
 REM   --no-commit   Leave the release bookkeeping in the working tree, uncommitted.
@@ -42,11 +45,17 @@ if not defined PRODUCT_NAME (
 set "EXPLICIT_VERSION="
 set "COMMIT_BOOKKEEPING=1"
 set "CHECK_ONLY="
+set "BUILD_ONLY="
+set "PUBLISH_ONLY="
+set "ARCRHO_RELEASE_BUILD_ONLY="
+set "ARCRHO_RELEASE_VERSION_SNAPSHOT="
 
 :parse_args
 if "%~1"=="" goto parse_args_done
 if /i "%~1"=="--check" goto parse_args_check
 if /i "%~1"=="--no-commit" goto parse_args_no_commit
+if /i "%~1"=="--build-only" goto parse_args_build_only
+if /i "%~1"=="--publish" goto parse_args_publish
 set "EXPLICIT_VERSION=%~1"
 shift
 goto parse_args
@@ -61,15 +70,36 @@ set "COMMIT_BOOKKEEPING="
 shift
 goto parse_args
 
+:parse_args_build_only
+set "BUILD_ONLY=1"
+shift
+goto parse_args
+
+:parse_args_publish
+set "PUBLISH_ONLY=1"
+shift
+goto parse_args
+
 :parse_args_done
+
+if defined BUILD_ONLY if defined PUBLISH_ONLY (
+    echo ERROR: --build-only and --publish cannot be used together.
+    exit /b 1
+)
+if defined PUBLISH_ONLY if not defined EXPLICIT_VERSION (
+    echo ERROR: --publish requires the version of a pending local installer.
+    exit /b 1
+)
 
 set "BUILD_WRAPPER=%SCRIPT_DIR%build_app_via_local_workspace.bat"
 set "SYNC_SCRIPT=%SCRIPT_DIR%release\sync_published_release.py"
+set "RELEASE_WORKFLOW_SCRIPT=%SCRIPT_DIR%release\release_workflow.py"
 
 REM Only build logs and the version handover file live here; the build itself runs in
 REM the repository. Kept outside the repository so a build never writes into it.
 set "WORK_DIR=%USERPROFILE%\Documents\ArcRho Local Build"
 if defined ARCRHO_LOCAL_RELEASE_WORK_DIR set "WORK_DIR=%ARCRHO_LOCAL_RELEASE_WORK_DIR%"
+set "ARCRHO_LOCAL_RELEASE_WORK_DIR=%WORK_DIR%"
 set "VERSION_OUT=%WORK_DIR%\last_built_%ARCRHO_BUILD_PRODUCT%_version.txt"
 set "ARCRHO_BUILD_LOG_DIR=%WORK_DIR%\logs\%COMPUTERNAME%"
 
@@ -89,27 +119,41 @@ echo Build logs:        %ARCRHO_BUILD_LOG_DIR%
 echo Python:            %PYTHON_EXE%
 if /i "%ARCRHO_BUILD_PRODUCT%"=="arcrho" echo Python API target: %PYTHON_API_PACKAGE_DIR%
 if defined EXPLICIT_VERSION echo Requested version: %EXPLICIT_VERSION%
+if defined BUILD_ONLY echo Mode:              build installer for local testing only
+if defined PUBLISH_ONLY echo Mode:              publish an existing pending installer
 if not defined COMMIT_BOOKKEEPING echo Bookkeeping:       written but not committed
 echo.
 
-call :check_prerequisites
+if defined PUBLISH_ONLY (
+    call :check_publish_prerequisites
+) else (
+    call :check_prerequisites
+)
 if errorlevel 1 exit /b 1
 
 if defined CHECK_ONLY (
-    echo All prerequisites passed. Nothing was built.
+    echo All prerequisites passed. Nothing was built or published.
     exit /b 0
 )
 
+if defined PUBLISH_ONLY call :publish_pending_release
+if defined PUBLISH_ONLY exit /b %ERRORLEVEL%
+
 echo ========================================
-echo Step A: Building and publishing %PRODUCT_NAME%
+if defined BUILD_ONLY echo Step A: Building %PRODUCT_NAME% for local testing
+if not defined BUILD_ONLY echo Step A: Building and publishing %PRODUCT_NAME%
 echo ========================================
 if exist "%VERSION_OUT%" del /q "%VERSION_OUT%" >nul 2>nul
 REM The build runs against this repository rather than a copied workspace.
 set "ARCRHO_BUILD_IN_PLACE=1"
 set "ARCRHO_LOCAL_BUILD_ROOT=%REPO_ROOT%"
 set "ARCRHO_BUILD_VERSION_OUT=%VERSION_OUT%"
+if defined BUILD_ONLY call :prepare_build_only
+if defined BUILD_ONLY if errorlevel 1 exit /b 1
 call "%BUILD_WRAPPER%" %EXPLICIT_VERSION%
 set "BUILD_EXIT_CODE=%ERRORLEVEL%"
+if defined BUILD_ONLY call :restore_build_only_metadata
+if defined BUILD_ONLY if errorlevel 1 exit /b 1
 if not "%BUILD_EXIT_CODE%"=="0" (
     echo.
     echo ERROR: The %PRODUCT_NAME% build failed with exit code %BUILD_EXIT_CODE%.
@@ -127,6 +171,17 @@ if not defined BUILT_VERSION (
     echo WARNING: The build succeeded but did not report its version.
     echo The installer is published and the bookkeeping is already in the working tree.
     echo Review it with: git -C "%REPO_ROOT%" status --short
+    exit /b 0
+)
+
+if defined BUILD_ONLY (
+    echo.
+    echo ========================================
+    echo %PRODUCT_NAME% %BUILT_VERSION% built for local testing
+    echo ========================================
+    echo Installer:      %REPO_ROOT%\frontend\dist\%PRODUCT_NAME%-Setup-%BUILT_VERSION%.exe
+    echo Pending record: %WORK_DIR%\pending_releases\%PRODUCT_NAME%-v%BUILT_VERSION%.json
+    echo Publish later:  frontend\build\build_app_from_local_repo.bat --publish %BUILT_VERSION%
     exit /b 0
 )
 
@@ -156,6 +211,33 @@ if defined COMMIT_BOOKKEEPING echo The release bookkeeping was committed locally
 if not defined COMMIT_BOOKKEEPING echo Review and commit the release bookkeeping when ready.
 exit /b 0
 
+:publish_pending_release
+echo ========================================
+echo Publishing pending %PRODUCT_NAME% %EXPLICIT_VERSION%
+echo ========================================
+set "PUBLISH_ARGS=publish --product %PRODUCT_NAME% --version %EXPLICIT_VERSION%"
+if not defined COMMIT_BOOKKEEPING set "PUBLISH_ARGS=%PUBLISH_ARGS% --no-commit"
+"%PYTHON_EXE%" "%RELEASE_WORKFLOW_SCRIPT%" %PUBLISH_ARGS%
+exit /b %ERRORLEVEL%
+
+:prepare_build_only
+set "ARCRHO_RELEASE_BUILD_ONLY=1"
+set "ARCRHO_RELEASE_VERSION_SNAPSHOT=%WORK_DIR%\pending_releases\version_metadata_%RANDOM%_%RANDOM%.json"
+"%PYTHON_EXE%" "%RELEASE_WORKFLOW_SCRIPT%" snapshot-version --snapshot-path "%ARCRHO_RELEASE_VERSION_SNAPSHOT%"
+if errorlevel 1 (
+    echo ERROR: Could not preserve the current version metadata before the build.
+    exit /b 1
+)
+exit /b 0
+
+:restore_build_only_metadata
+"%PYTHON_EXE%" "%RELEASE_WORKFLOW_SCRIPT%" restore-version --snapshot-path "%ARCRHO_RELEASE_VERSION_SNAPSHOT%" --delete
+if not errorlevel 1 exit /b 0
+echo.
+echo ERROR: The build-only run could not restore the original version metadata.
+echo Snapshot retained at: %ARCRHO_RELEASE_VERSION_SNAPSHOT%
+exit /b 1
+
 :commit_bookkeeping
 set "SYNC_ARGS=%BUILT_VERSION% --product %PRODUCT_NAME% --bookkeeping-only"
 if defined COMMIT_BOOKKEEPING set "SYNC_ARGS=%SYNC_ARGS% --commit"
@@ -180,6 +262,10 @@ if not exist "%BUILD_WRAPPER%" (
 )
 if not exist "%SYNC_SCRIPT%" (
     echo ERROR: Missing release bookkeeping script: %SYNC_SCRIPT%
+    exit /b 1
+)
+if not exist "%RELEASE_WORKFLOW_SCRIPT%" (
+    echo ERROR: Missing local release workflow script: %RELEASE_WORKFLOW_SCRIPT%
     exit /b 1
 )
 if not exist "%REPO_ROOT%\frontend\node-portable\node.exe" (
@@ -233,6 +319,9 @@ if errorlevel 1 (
 
 REM The shared Python API wheel is published to the ArcRho Server workspace, which on a
 REM client PC is a mapped network drive. Fail here rather than after a full package.
+REM A build-only installer retains the wheel locally and defers this shared write until
+REM the explicit publish action, so it can be tested while the server workspace is offline.
+if defined BUILD_ONLY goto check_fragments
 if /i not "%ARCRHO_BUILD_PRODUCT%"=="arcrho" goto check_fragments
 for %%I in ("%PYTHON_API_PACKAGE_DIR%\..") do set "PYTHON_API_PACKAGE_PARENT=%%~fI"
 if not exist "%PYTHON_API_PACKAGE_PARENT%" (
@@ -247,6 +336,31 @@ if not exist "%PYTHON_API_PACKAGE_PARENT%" (
 if errorlevel 1 (
     echo ERROR: Release note fragment validation failed.
     echo HINT: Fix the fragments under frontend\changes\unreleased before building.
+    exit /b 1
+)
+echo.
+exit /b 0
+
+:check_publish_prerequisites
+if not exist "%RELEASE_WORKFLOW_SCRIPT%" (
+    echo ERROR: Missing local release workflow script: %RELEASE_WORKFLOW_SCRIPT%
+    exit /b 1
+)
+"%PYTHON_EXE%" -c "import sys; raise SystemExit(0 if (3, 10, 6) <= sys.version_info[:3] < (3, 11) else 1)" >nul 2>nul
+if errorlevel 1 (
+    echo ERROR: %PRODUCT_NAME% release publishing requires Python 3.10.6 or newer within the 3.10 line.
+    exit /b 1
+)
+where gh >nul 2>nul
+if errorlevel 1 (
+    echo ERROR: The gh CLI was not found on PATH.
+    echo HINT: Install GitHub CLI and run gh auth login before publishing.
+    exit /b 1
+)
+gh auth status >nul 2>nul
+if errorlevel 1 (
+    echo ERROR: The gh CLI is not authenticated.
+    echo HINT: Run gh auth login, or set GH_TOKEN, then retry.
     exit /b 1
 )
 echo.
