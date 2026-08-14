@@ -68,7 +68,10 @@ installer is not uploaded a second time.
 ## History And Revocation
 
 The history panel lists the latest 20 releases for the selected product from the canonical
-repository and tag format in `build/release/release_channel.json`.
+repository and tag format in `build/release/release_channel.json`, ordered newest first by
+publication time. A draft that was never published has no publication time and sorts last.
+`release_workflow.list_release_history` owns that order, so the `history` command prints the
+same sequence.
 
 To revoke a release, select it, choose **Revoke selected**, and type the displayed version
 again. This permanently deletes the GitHub Release, its assets, and its Git tag through

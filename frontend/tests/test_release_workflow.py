@@ -136,6 +136,44 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
         self.assertEqual([item["tag"] for item in history], ["ArcRho-v1.2.13"])
 
+    def test_history_is_ordered_newest_first_with_undated_drafts_last(self) -> None:
+        payload = json.dumps(
+            [
+                {
+                    "tag_name": "ArcRho-v1.2.11",
+                    "published_at": "2026-08-11T08:00:00Z",
+                    "html_url": "https://example.invalid/1.2.11",
+                },
+                {
+                    "tag_name": "ArcRho-v1.2.14",
+                    "draft": True,
+                    "published_at": None,
+                    "html_url": "https://example.invalid/1.2.14",
+                },
+                {
+                    "tag_name": "ArcRho-v1.2.13",
+                    "published_at": "2026-08-14T12:00:00Z",
+                    "html_url": "https://example.invalid/1.2.13",
+                },
+                {
+                    "tag_name": "ArcRho-v1.2.12",
+                    "published_at": "2026-08-12T09:30:00Z",
+                    "html_url": "https://example.invalid/1.2.12",
+                },
+            ]
+        )
+        with mock.patch.object(release_workflow, "_gh_path", return_value="gh"), mock.patch.object(
+            release_workflow,
+            "_run_checked",
+            return_value=payload,
+        ):
+            history = release_workflow.list_release_history("ArcRho")
+
+        self.assertEqual(
+            [item["version"] for item in history],
+            ["1.2.13", "1.2.12", "1.2.11", "1.2.14"],
+        )
+
     def test_python_api_wheel_publication_writes_versioned_and_latest_files(self) -> None:
         wheel = self.root / "arcrho_api-0.1.0-py3-none-any.whl"
         wheel.write_bytes(b"wheel payload")

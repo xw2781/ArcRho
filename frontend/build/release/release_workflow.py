@@ -516,6 +516,18 @@ def next_version(product: str) -> str:
         raise ReleaseWorkflowError(str(exc)) from exc
 
 
+def _release_history_sort_key(record: dict[str, Any]) -> tuple[bool, str]:
+    """Order releases newest first.
+
+    GitHub returns RFC 3339 UTC timestamps, so their string order is already
+    chronological.  A draft that was never published has no timestamp at all;
+    reversing on the presence flag keeps those at the end instead of the top.
+    """
+
+    published_at = str(record.get("published_at", ""))
+    return (bool(published_at), published_at)
+
+
 def list_release_history(product: str, limit: int = DEFAULT_RECENT_RELEASE_LIMIT) -> list[dict[str, Any]]:
     product = normalize_product(product)
     limit = max(1, min(int(limit), MAX_RELEASE_HISTORY_LIMIT))
@@ -556,6 +568,7 @@ def list_release_history(product: str, limit: int = DEFAULT_RECENT_RELEASE_LIMIT
                 "url": str(item.get("html_url") or ""),
             }
         )
+    history.sort(key=_release_history_sort_key, reverse=True)
     return history
 
 
