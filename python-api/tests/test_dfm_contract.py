@@ -346,6 +346,32 @@ class DfmContractTests(unittest.TestCase):
         self.assertEqual(partial_values[2][0], 9)
         self.assertEqual(partial_values[2][1], 1.5)
 
+    def test_formulas_with_whitespace_after_equals_still_re_evaluate(self) -> None:
+        # The UI stores user-entry formulas as "= expr" with a space after the
+        # equals sign; stripping the "=" must not leave leading whitespace that
+        # makes ast.parse fail and silently keep the stored evaluation.
+        payload = owned_payload()
+        formulas = payload["ratios tab"]["average formulas"]
+        formulas["inputs"][2][0] = '= "User B" * [Accounting Cutoff][-1]'
+        formulas["inputs"][3][0] = '= "Simple - all" * 1.1'
+        method = recalculate_dfm_method(
+            payload,
+            input_snapshot=input_snapshot(),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="same",
+        )
+        # The internal formula re-evaluates even without reference values.
+        self.assertEqual(method["ratios tab"]["average formulas"]["values"][3][0], 1.65)
+
+        refreshed = recalculate_dfm_method(
+            method,
+            dataset_reference_values={"[Accounting Cutoff][-1]": 1.02},
+            timestamp="later",
+        )
+        values = refreshed["ratios tab"]["average formulas"]["values"]
+        # User A col 0 = User B (1.65) * resolved cutoff 1.02.
+        self.assertEqual(values[2][0], 1.683)
+
     def test_upstream_refresh_preserves_owned_projection_and_recalculates_internal_formulas(self) -> None:
         initial = recalculate_dfm_method(
             owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot()

@@ -1296,8 +1296,11 @@ def contains_excel_reference(value: Any) -> bool:
 
 
 def _safe_arithmetic(expression: str) -> float | None:
+    # ast.parse in eval mode rejects leading whitespace (IndentationError), so
+    # a formula like "= expr" must not reach it with the space that stripping
+    # the "=" leaves behind.
     try:
-        tree = ast.parse(expression, mode="eval")
+        tree = ast.parse(str(expression or "").strip(), mode="eval")
     except (SyntaxError, ValueError):
         return None
     binary = {
