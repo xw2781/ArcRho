@@ -3,8 +3,9 @@ import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/u
 import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260809a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260811a";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
   if (typeof state.showSubtotal !== "boolean") state.showSubtotal = true;
@@ -640,11 +641,27 @@ export function registerDataTabPersistenceController(runtime) {
     datasetSettingsDirty = false;
     updateDatasetSaveUi();
     clearDatasetDependencyPreview("save");
-    // The write is done; drop the spinner before the recalculation dialog.
+    // Engine-hosted saves return with the dependent walk already finished;
+    // a null outcome (walk failures) keeps the window open and leaves the
+    // dataset table as the failure surface.
+    const propagationOutcome = await trackSavePropagation(resp.data?.calculated_updates, {
+      onStatus: (message, statusOptions) => {
+        progress?.setMessage?.(message, statusOptions);
+        setStatus(message);
+      },
+      onComplete: () => requestProjectInstanceDatasetTableRefresh(),
+    });
+    // The write and its dependent walk are done; drop the spinner before the
+    // recalculation dialog.
     progress?.finish();
     handleCalculationUpdates(resp.data?.calculated_updates, "Dataset settings save");
     notifyDataTabDurableDatasetState({ source: "sidecar-save" });
-    return { ok: true, data: resp.data };
+    return {
+      ok: true,
+      data: resp.data,
+      propagationClean: propagationOutcome !== null,
+      refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+    };
   }
   async function saveDatasetChanges(options = {}) {
     if (isTemporaryDatasetView) {
@@ -660,16 +677,22 @@ export function registerDataTabPersistenceController(runtime) {
     updateDatasetSaveUi();
     void getDataTabLinksController()?.refresh?.();
     let saveStatus = buildDatasetSaveStatus();
+    // A save with nothing dirty writes nothing and enqueues no walk, so it
+    // counts as clean for the close-on-save decision.
+    let propagationClean = true;
+    let refreshedDatasets = [];
     try {
       if (datasetSettingsDirty || hasManualInputGridChanges() || runtime.datasetExternalLinks.isDirty() || notesDirty || isUnsavedProjectInstanceDraft()) {
         const sidecarResult = await saveDatasetSidecarForCurrentContext(progress);
         if (!sidecarResult.ok) return sidecarResult;
         saveStatus = buildDatasetSaveStatus(sidecarResult.data);
+        propagationClean = sidecarResult.propagationClean !== false;
+        refreshedDatasets = sidecarResult.refreshedDatasets || [];
       }
       updateDatasetSaveUi();
       if (!options?.silentStatus) setStatus(saveStatus.text, saveStatus.tone);
       requestProjectInstanceDatasetTableRefresh();
-      return { ok: true };
+      return { ok: true, propagationClean, refreshedDatasets };
     } finally {
       runtime.datasetSaveInFlight = false;
       updateDatasetSaveUi();
@@ -762,6 +785,12 @@ export function registerDataTabPersistenceController(runtime) {
   async function handleDatasetSaveCommand() {
     const result = await saveDatasetChanges();
     if (!result.ok) setStatus(`Dataset save failed: ${result.error || "Unknown error."}`);
+    // Only the explicit Save command closes the window, only after a clean
+    // dependent walk, and never for the Data tab hosted inside a DFM window.
+    if (result.ok && result.propagationClean && !isDfmDataTabHost()) {
+      await showSavedDependentsNotice(result.refreshedDatasets);
+      requestConfirmedDatasetClose();
+    }
     return result;
   }
 

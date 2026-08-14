@@ -38,3 +38,9 @@ class DependentPropagationJobStatusResponse(BaseModel):
     progress: DependentPropagationProgress
     message: Optional[str] = None
     merged_into: Optional[str] = None
+
+
+class ReservingClassBusyResponse(BaseModel):
+    ok: Literal[True]
+    busy: bool
+    reason: Optional[Literal["processing", "queued"]] = None

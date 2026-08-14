@@ -1122,8 +1122,11 @@ def retarget_reserving_class_workbook(
 
     if refresh_values:
         # Refreshing commits real value changes, so fail fast before any write
-        # when no Engine instance could run the resulting propagation walks.
-        dependent_propagation_service.require_engine_available()
+        # when no Engine could run the resulting propagation walks or another
+        # walk is still rewriting this reserving class.
+        dependent_propagation_service.require_reserving_class_writable(
+            project, reserving
+        )
         sidecar_paths = _list_json_files(sidecar_dir, _SIDECAR_FILE_RE)
         method_paths = _list_json_files(method_dir, _DFM_METHOD_FILE_RE)
         read_map = _read_refresh_cells(_collect_refresh_read_items(
@@ -1134,20 +1137,25 @@ def retarget_reserving_class_workbook(
         ))
         # The canonical save functions take the reserving-class lock per file,
         # so the slow batched Excel read above never blocks other writers.
-        results = _collect_file_results(
-            "dataset",
-            sidecar_paths,
-            lambda path: _retarget_dataset_with_refresh(
-                path, project, reserving, old_key, new_path, read_map
-            ),
-        )
-        results += _collect_file_results(
-            "dfm",
-            method_paths,
-            lambda path: _retarget_dfm_with_refresh(
-                path, project, reserving, old_key, new_path, read_map
-            ),
-        )
+        # The hold was preflighted once above; without the suspension the first
+        # file's enqueued propagation job would make the class read as busy and
+        # 423 every following file's save. The nested jobs coalesce into one
+        # walk through the Engine's queued-request merge.
+        with dependent_propagation_service.suspended_reserving_class_hold_check():
+            results = _collect_file_results(
+                "dataset",
+                sidecar_paths,
+                lambda path: _retarget_dataset_with_refresh(
+                    path, project, reserving, old_key, new_path, read_map
+                ),
+            )
+            results += _collect_file_results(
+                "dfm",
+                method_paths,
+                lambda path: _retarget_dfm_with_refresh(
+                    path, project, reserving, old_key, new_path, read_map
+                ),
+            )
         surgical_writes = [item for item in results if item.get("surgical_write")]
     else:
         with _reserving_class_lock(project, reserving):

@@ -93,7 +93,9 @@ def validate_canonical_runtime_environment():
         "from app_server.services import bornhuetter_ferguson_service; "
         "from app_server.services import cape_cod_service, bootstrap_service; "
         "from app_server.services import arcrho_runtime_service; "
+        "from app_server.services import dataset_service; "
         "import arcrho_dependent_propagation_contract; "
+        "import arcrho_engine_save_contract; "
         "import arcrho_engine_job_lease"
     )
     print("\n>>> Validating canonical dependent-propagation dependencies")
@@ -104,6 +106,7 @@ def build_exe():
     for module_name in (
         "arcrho_project_duplication_contract.py",
         "arcrho_dependent_propagation_contract.py",
+        "arcrho_engine_save_contract.py",
         "arcrho_engine_job_lease.py",
     ):
         contract_module = CANONICAL_SOURCE_ROOT / module_name
@@ -130,7 +133,9 @@ def build_exe():
         "--hidden-import", "server_config",
         "--hidden-import", "arcrho_project_duplication_contract",
         "--hidden-import", "arcrho_dependent_propagation_contract",
+        "--hidden-import", "arcrho_engine_save_contract",
         "--hidden-import", "arcrho_engine_job_lease",
+        "--hidden-import", "app_server.services.dataset_service",
         "--hidden-import", "app_server.services.calculated_dataset_service",
         "--hidden-import", "app_server.services.dfm_service",
         "--hidden-import", "app_server.services.result_selection_service",
@@ -202,12 +207,54 @@ def engines_stopped():
         set_config_value(ENGINE_KILL_ALL_KEY, previous)
 
 
-def deploy_exe():
-    """Swap the staged build into the deployed app folder with rollback.
+def copy_tree_parallel(source, destination):
+    """Copy a directory tree with robocopy's parallel streams.
 
-    PyInstaller builds into an isolated dist folder rather than straight into
-    the deployed app folder, so a failed swap can fall back to the previous
-    deployment instead of leaving nothing.
+    A PyInstaller dist is thousands of small files, and over the mapped-drive
+    SMB link a single-threaded copy pays one network round trip per file.
+    Robocopy exit codes below 8 are success variants.
+    """
+
+    result = subprocess.run([
+        "robocopy", str(source), str(destination),
+        "/E", "/MT:16", "/NP", "/NFL", "/NDL", "/R:2", "/W:2",
+    ])
+    if result.returncode >= 8:
+        raise RuntimeError(
+            f"robocopy failed copying {source} -> {destination} "
+            f"(exit code {result.returncode})."
+        )
+
+
+def remove_tree_with_retry(path, attempts=5, delay_seconds=2.0):
+    """Delete a directory tree, retrying transient SMB failures.
+
+    Deletes over the share complete asynchronously, so ``rmtree`` can lose the
+    race against its own pending file deletes (``WinError 145`` directory not
+    empty) or a scanner briefly holding a file (``WinError 5``).
+    """
+
+    for attempt in range(1, attempts + 1):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt == attempts:
+                raise
+            print(
+                f">>> Remove busy ({Path(path).name}); "
+                f"retrying in {delay_seconds:.0f}s ({attempt}/{attempts})"
+            )
+            time.sleep(delay_seconds)
+
+
+def stage_deploy():
+    """Copy the built app beside the deployment while engines keep running.
+
+    The slow network copy touches only the private staging folder, so it needs
+    no downtime; the engines are stopped only around the rename swap.
     """
 
     if not STAGED_APP_DIR.exists():
@@ -218,26 +265,57 @@ def deploy_exe():
     backup_app_dir = APPS_DIR / f".{APP_NAME}.old"
 
     for path in (temp_app_dir, backup_app_dir):
-        try:
-            shutil.rmtree(path)
-        except FileNotFoundError:
-            pass
+        remove_tree_with_retry(path)
 
-    shutil.copytree(STAGED_APP_DIR, temp_app_dir)
+    print(f"\n>>> Staging the new build at {temp_app_dir}")
+    copy_tree_parallel(STAGED_APP_DIR, temp_app_dir)
+    return temp_app_dir, backup_app_dir
+
+
+def rename_with_retry(source, target, attempts=8, delay_seconds=5.0):
+    """Rename, retrying transient access-denied failures.
+
+    A directory tree freshly written over the SMB share can be briefly held by
+    server-side antivirus scanning, which surfaces as ``WinError 5`` on the
+    rename even though nothing else uses the folder.
+    """
+
+    for attempt in range(1, attempts + 1):
+        try:
+            source.rename(target)
+            return
+        except PermissionError:
+            if attempt == attempts:
+                raise
+            print(
+                f">>> Rename busy ({source.name} -> {target.name}); "
+                f"retrying in {delay_seconds:.0f}s ({attempt}/{attempts})"
+            )
+            time.sleep(delay_seconds)
+
+
+def swap_deploy(temp_app_dir, backup_app_dir):
+    """Swap the staged folder into the deployed app folder with rollback.
+
+    A failed rename falls back to the previous deployment instead of leaving
+    nothing; this runs inside the stopped-engines window and takes seconds.
+    """
 
     try:
         if DEPLOY_APP_DIR.exists():
-            DEPLOY_APP_DIR.rename(backup_app_dir)
-        temp_app_dir.rename(DEPLOY_APP_DIR)
+            rename_with_retry(DEPLOY_APP_DIR, backup_app_dir)
+        rename_with_retry(temp_app_dir, DEPLOY_APP_DIR)
     except Exception:
         if backup_app_dir.exists() and not DEPLOY_APP_DIR.exists():
             backup_app_dir.rename(DEPLOY_APP_DIR)
         raise
 
+    # The swap already succeeded; a stubborn backup folder is cosmetic and the
+    # next deploy's staging cleanup retries it, so never fail the deploy here.
     try:
-        shutil.rmtree(backup_app_dir)
-    except FileNotFoundError:
-        pass
+        remove_tree_with_retry(backup_app_dir)
+    except OSError as exc:
+        print(f">>> Backup cleanup left {backup_app_dir.name} behind: {exc}")
 
 
 def main():
@@ -247,8 +325,9 @@ def main():
     validate_canonical_runtime_environment()
     build_exe()
     if not STAGE_ONLY:
+        temp_app_dir, backup_app_dir = stage_deploy()
         with engines_stopped():
-            deploy_exe()
+            swap_deploy(temp_app_dir, backup_app_dir)
 
     output_dir = STAGED_APP_DIR if STAGE_ONLY else DEPLOY_APP_DIR
     print(f"\nBuild finished: {output_dir / f'{APP_NAME}.exe'}")

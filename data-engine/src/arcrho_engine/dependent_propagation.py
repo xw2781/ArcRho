@@ -20,10 +20,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from arcrho_dependent_propagation_contract import (
+    DEPENDENT_PROPAGATION_STATUS_HEARTBEAT_SECONDS,
     DependentPropagationContractError,
     acquire_reserving_class_lease,
     dependent_propagation_request_path,
@@ -243,6 +245,31 @@ def execute_dependent_propagation(
         if progress_callback is not None:
             progress_callback(_progress(stage, completed, total, label))
 
+    # The save only marked the first dependent method tier (the deep closure
+    # would cost a Client PC one SMB round trip per node); re-mark the full
+    # reachable closure here on local disk before the walk so statuses are
+    # honest for the whole cascade while it runs. A marking failure never
+    # aborts the walk — the walk finalizes every status itself.
+    on_tier("marking", 0, 0, "Marking dependents for review")
+    try:
+        from app_server.services import dataset_sidecar_status_service
+
+        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+            normalized["ProjectName"],
+            normalized["Path"],
+            [
+                name
+                for root in roots
+                for name in (root.get("dataset_name"), root.get("dataset_type"))
+                if str(name or "").strip()
+            ],
+        )
+    except Exception as exc:
+        print(
+            "(dependent propagation closure marking failed: "
+            f"{_redact_machine_paths(exc)})"
+        )
+
     return calculated_dataset_service.recalculate_dependents(
         normalized["ProjectName"],
         normalized["Path"],
@@ -381,6 +408,11 @@ def process_durable_dependent_propagation_request(
         for _path, merged_request in drained:
             additional_roots.extend(merged_request["ChangedRoots"])
 
+        # One lock serializes every status write: walk progress ticks and the
+        # status heartbeat below both republish the same files, and a stale
+        # heartbeat write must never land after a newer progress write.
+        status_write_lock = threading.Lock()
+
         def publish(
             target_request_id: str,
             status: str,
@@ -390,40 +422,72 @@ def process_durable_dependent_propagation_request(
             merged_into: str | None = None,
         ) -> None:
             _require_lease(lease)
-            write_dependent_propagation_status(
-                root,
-                target_request_id,
-                status,
-                progress=progress,
-                message=message,
-                merged_into=merged_into,
-            )
+            with status_write_lock:
+                write_dependent_propagation_status(
+                    root,
+                    target_request_id,
+                    status,
+                    progress=progress,
+                    message=message,
+                    merged_into=merged_into,
+                )
 
         current_progress = _progress(
             "starting", 0, 0, "Preparing dependent propagation"
         )
+
+        def publish_processing(progress: Progress) -> None:
+            publish(request_id, "processing", progress)
+            for merged_id in merged_ids:
+                publish(
+                    merged_id,
+                    "processing",
+                    progress,
+                    merged_into=request_id,
+                )
 
         def publish_progress(progress: Progress) -> None:
             nonlocal current_progress
             current_progress = progress
             publish(request_id, "processing", progress)
 
-        try:
-            publish(request_id, "processing", current_progress)
-            for merged_id in merged_ids:
-                publish(
-                    merged_id,
-                    "processing",
-                    current_progress,
-                    merged_into=request_id,
-                )
+        # Remote pollers treat a status whose updated_at stops moving as an
+        # abandoned job, so republish the current progress on the contract
+        # heartbeat cadence even while one slow step is still running.
+        heartbeat_stop_event = threading.Event()
 
-            result = execute_dependent_propagation(
-                root,
-                normalized,
-                additional_roots=additional_roots,
-                progress_callback=publish_progress,
-            )
+        def status_heartbeat_loop() -> None:
+            while not heartbeat_stop_event.wait(
+                DEPENDENT_PROPAGATION_STATUS_HEARTBEAT_SECONDS
+            ):
+                try:
+                    publish_processing(current_progress)
+                except Exception:
+                    # Lease loss or filesystem trouble ends the heartbeat; the
+                    # walk thread surfaces the same condition on its next write.
+                    return
+
+        status_heartbeat_thread = threading.Thread(
+            target=status_heartbeat_loop,
+            name=f"arcrho-dependent-propagation-status-{request_id[:8]}",
+            daemon=True,
+        )
+
+        try:
+            publish_processing(current_progress)
+            status_heartbeat_thread.start()
+            try:
+                result = execute_dependent_propagation(
+                    root,
+                    normalized,
+                    additional_roots=additional_roots,
+                    progress_callback=publish_progress,
+                )
+            finally:
+                heartbeat_stop_event.set()
+                status_heartbeat_thread.join(
+                    timeout=DEPENDENT_PROPAGATION_STATUS_HEARTBEAT_SECONDS * 2
+                )
             if result.get("ok"):
                 terminal_state = "success"
                 terminal_message = ""

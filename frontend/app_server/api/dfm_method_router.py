@@ -10,7 +10,7 @@ from app_server.schemas.dfm_method import (
     DfmMethodPreviewRequest,
     DfmMethodSaveRequest,
 )
-from app_server.services import dfm_service
+from app_server.services import dfm_service, engine_hosted_save_service
 
 
 router = APIRouter()
@@ -42,13 +42,18 @@ def preview_dfm_method(req: DfmMethodPreviewRequest) -> Dict[str, Any]:
 
 @router.post("/dfm/method/save")
 def save_dfm_method(req: DfmMethodSaveRequest) -> Dict[str, Any]:
-    return dfm_service.save_dfm_method(
+    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # its exact response shape and error codes.
+    return engine_hosted_save_service.run_hosted_save(
+        "dfm_method",
         req.project_name,
         req.reserving_class,
-        req.method,
-        notes=req.notes,
-        expected_owned_revision=req.expected_owned_revision,
-        expected_derived_revision=req.expected_derived_revision,
+        args=[req.project_name, req.reserving_class, req.method],
+        kwargs={
+            "notes": req.notes,
+            "expected_owned_revision": req.expected_owned_revision,
+            "expected_derived_revision": req.expected_derived_revision,
+        },
     )
 
 

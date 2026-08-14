@@ -278,6 +278,88 @@ class ReservingClassLeaseTests(unittest.TestCase):
             contract.release_reserving_class_lease(holder)
 
 
+class ReservingClassPropagationHoldTests(unittest.TestCase):
+    PROJECT = "Demo"
+    PATH = "A\\B"
+
+    def setUp(self) -> None:
+        _TMP_ROOT.mkdir(parents=True, exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(dir=str(_TMP_ROOT))
+        self.root = Path(self.temp.name)
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def _probe(self):
+        return contract.find_reserving_class_propagation_hold(
+            self.root, self.PROJECT, self.PATH
+        )
+
+    def _write_queued_request(self, request_id: str, path: str = PATH) -> Path:
+        request = contract.build_dependent_propagation_request(
+            request_id=request_id,
+            project_name=self.PROJECT,
+            path=path,
+            changed_roots=[{"dataset_name": "Paid", "dataset_type": "Paid Loss"}],
+            user_name="tester",
+        )
+        request_path = contract.dependent_propagation_request_path(
+            self.root, request_id
+        )
+        request_path.parent.mkdir(parents=True, exist_ok=True)
+        return contract.write_json_atomic(request_path, request)
+
+    def test_an_idle_class_reports_no_hold(self) -> None:
+        self.assertIsNone(self._probe())
+
+    def test_a_fresh_lease_holds_the_class_until_its_heartbeat_goes_stale(self) -> None:
+        lease = contract.acquire_reserving_class_lease(
+            self.root, self.PROJECT, self.PATH
+        )
+        self.assertIsNotNone(lease)
+        try:
+            self.assertEqual(self._probe(), {"reason": "processing"})
+            dead_moment = time.time() - (
+                contract.DEPENDENT_PROPAGATION_STATUS_STALE_SECONDS + 5
+            )
+            os.utime(lease.path, (dead_moment, dead_moment))
+            self.assertIsNone(self._probe())
+        finally:
+            contract.release_reserving_class_lease(lease)
+        self.assertIsNone(self._probe())
+
+    def test_a_queued_request_holds_the_class_until_terminal_or_abandoned(self) -> None:
+        request_id = "1111111111111111aaaaaaaaaaaaaaaa"
+        request_path = self._write_queued_request(request_id)
+        self.assertEqual(self._probe(), {"reason": "queued"})
+
+        contract.write_dependent_propagation_status(
+            self.root,
+            request_id,
+            "success",
+            progress={
+                "stage": "complete",
+                "completed": 1,
+                "total": 1,
+                "label": "Dependent updates complete",
+            },
+        )
+        self.assertIsNone(self._probe())
+
+        abandoned_id = "2222222222222222bbbbbbbbbbbbbbbb"
+        abandoned_path = self._write_queued_request(abandoned_id)
+        old_moment = time.time() - (
+            contract.DEPENDENT_PROPAGATION_QUEUED_STALE_SECONDS + 5
+        )
+        os.utime(abandoned_path, (old_moment, old_moment))
+        self.assertIsNone(self._probe())
+        self.assertTrue(request_path.exists())
+
+    def test_a_queued_request_for_another_class_does_not_hold_this_one(self) -> None:
+        self._write_queued_request("3333333333333333cccccccccccccccc", path="Other\\Class")
+        self.assertIsNone(self._probe())
+
+
 class EngineHeartbeatPreflightTests(unittest.TestCase):
     def setUp(self) -> None:
         _TMP_ROOT.mkdir(parents=True, exist_ok=True)

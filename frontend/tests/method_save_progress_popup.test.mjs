@@ -11,10 +11,18 @@ const frontendRoot = new URL("../", import.meta.url);
 // rewritten to the file it serves.
 async function importSaveProgress() {
   const popupUrl = new URL("ui/shared/components/progress_popup/progress_popup.js", frontendRoot).href;
-  const text = (await source("ui/shared/components/progress_popup/save_progress.js")).replace(
-    /"\/ui\/shared\/components\/progress_popup\/progress_popup\.js\?v=[0-9a-z]+"/u,
-    JSON.stringify(popupUrl),
-  );
+  const messageBoxUrl = `data:text/javascript,${encodeURIComponent(
+    "export async function showPageMessageBox(){ return undefined; }",
+  )}`;
+  const text = (await source("ui/shared/components/progress_popup/save_progress.js"))
+    .replace(
+      /"\/ui\/shared\/components\/progress_popup\/progress_popup\.js\?v=[0-9a-z]+"/u,
+      JSON.stringify(popupUrl),
+    )
+    .replace(
+      /"\/ui\/shared\/components\/message_box\/message_box\.js\?v=[0-9a-z]+"/u,
+      JSON.stringify(messageBoxUrl),
+    );
   return import(`data:text/javascript,${encodeURIComponent(text)}`);
 }
 
@@ -66,10 +74,21 @@ function createStubElement() {
   return {
     className: "",
     innerHTML: "",
+    textContent: "",
+    hidden: false,
     isConnected: false,
     parentNode: null,
+    children: [],
+    lastElementChild: null,
+    scrollTop: 0,
+    scrollHeight: 0,
+    clientHeight: 0,
+    appendChild(child) {
+      this.children.push(child);
+      this.lastElementChild = child;
+    },
     querySelector(selector) {
-      if (!parts.has(selector)) parts.set(selector, { textContent: "", hidden: false });
+      if (!parts.has(selector)) parts.set(selector, createStubElement());
       return parts.get(selector);
     },
   };
@@ -313,7 +332,7 @@ test("every method and dataset window saves behind the shared save progress", as
     );
     assert.match(
       text,
-      /save_progress\.js\?v=20260813a/u,
+      /save_progress\.js\?v=20260813e/u,
       `${surface.label} must load one version of the shared save progress`,
     );
     // No page owns popup markup, styles, or its own scope counter.

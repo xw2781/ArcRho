@@ -152,6 +152,103 @@ test("poller detects a stale unchanged status", async () => {
   );
 });
 
+test("a queued status gets the longer no-heartbeat allowance before going stale", async () => {
+  // Processing statuses are heartbeat-republished by the Engine worker, so an
+  // unchanged one means a dead worker; a queued status has no heartbeat owner
+  // and must be tolerated for the longer queued window.
+  let processingPolls = 0;
+  let clock = 0;
+  await assert.rejects(
+    waitForDependentPropagationJob({
+      fetchImpl: async () => {
+        processingPolls += 1;
+        return response(statusPayload("processing"));
+      },
+      statusUrl: "/status",
+      jobId: "job-1",
+      waitForPoll: immediatePoll,
+      pollIntervalMs: 1,
+      staleStatusMs: 5,
+      queuedStaleStatusMs: 50,
+      now: () => (clock += 10),
+    }),
+    (error) => error.code === "PROPAGATION_STATUS_STALE",
+  );
+
+  let queuedPolls = 0;
+  clock = 0;
+  await assert.rejects(
+    waitForDependentPropagationJob({
+      fetchImpl: async () => {
+        queuedPolls += 1;
+        return response(statusPayload("queued"));
+      },
+      statusUrl: "/status",
+      jobId: "job-1",
+      waitForPoll: immediatePoll,
+      pollIntervalMs: 1,
+      staleStatusMs: 5,
+      queuedStaleStatusMs: 50,
+      now: () => (clock += 10),
+    }),
+    (error) => error.code === "PROPAGATION_STATUS_STALE",
+  );
+  assert.ok(
+    queuedPolls > processingPolls,
+    `queued statuses must outlast processing ones (queued ${queuedPolls} <= processing ${processingPolls})`,
+  );
+});
+
+test("trackSavePropagation frames per-dataset ticks and passes stage banners through", async () => {
+  const responses = [
+    response(statusPayload("processing", {
+      progress: { stage: "marking", completed: 0, total: 0, label: "Marking dependents for review" },
+    })),
+    response(statusPayload("processing", {
+      progress: { stage: "calculated_datasets", completed: 3, total: 8, label: "Paid Loss Ratio" },
+    })),
+    response(statusPayload("success")),
+  ];
+  const seen = [];
+  await trackSavePropagation(
+    { ok: true, job_id: "job-1", status: "queued" },
+    {
+      fetchImpl: async () => responses.shift(),
+      onStatus: (text) => seen.push(text),
+      waitForPoll: immediatePoll,
+    },
+  );
+  assert.ok(
+    seen.includes("Updating dataset Paid Loss Ratio..."),
+    `per-dataset ticks must read "Updating dataset <name>...", got: ${JSON.stringify(seen)}`,
+  );
+  assert.ok(
+    seen.includes("Marking dependents for review"),
+    `stage banners must pass through unframed, got: ${JSON.stringify(seen)}`,
+  );
+});
+
+test("trackSavePropagation resolves an Engine-hosted completed save without polling", async () => {
+  let completedWith = "unset";
+  const result = await trackSavePropagation(
+    { ok: true, status: "completed", refreshed_datasets: ["C 61", "C 91"] },
+    {
+      fetchImpl: async () => { throw new Error("a completed save must not poll"); },
+      onComplete: (payload) => { completedWith = payload; },
+    },
+  );
+  assert.deepEqual(result?.refreshed_datasets, ["C 61", "C 91"]);
+  assert.deepEqual(completedWith?.refreshed_datasets, ["C 61", "C 91"]);
+
+  // A completed payload whose walk reported failures resolves null so the
+  // window stays open and review-needed flags stay the failure surface.
+  const failed = await trackSavePropagation(
+    { ok: false, status: "completed", refreshed_datasets: [] },
+    { fetchImpl: async () => { throw new Error("no polling"); }, onComplete: () => {} },
+  );
+  assert.equal(failed, null);
+});
+
 test("trackSavePropagation ignores a no-op save", async () => {
   let statusCalls = 0;
   const result = await trackSavePropagation(

@@ -25,6 +25,7 @@ export function showPageMessageBox({
   actions = [],
   okLabel = "OK",
   balancedActions = false,
+  autoCloseMs = 0,
   documentRef = document,
 } = {}) {
   const doc = documentRef;
@@ -141,6 +142,11 @@ export function showPageMessageBox({
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) finish();
     });
+    // Transient notices (post-save confirmations) dismiss themselves; the
+    // user can still close sooner through any normal path above.
+    if (Number(autoCloseMs) > 0) {
+      setTimeout(() => finish(), Number(autoCloseMs));
+    }
     overlay.addEventListener("wheel", (event) => event.preventDefault(), { passive: false });
     doc.addEventListener("keydown", handleKeydown, true);
     requestAnimationFrame(() => okButton.focus());

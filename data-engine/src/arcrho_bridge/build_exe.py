@@ -229,13 +229,34 @@ def bridge_stopped():
         set_config_value(BRIDGE_KILL_ALL_KEY, previous)
 
 
-def deploy_exe():
-    """Swap the staged build into the deployed app folder with rollback.
+def copy_tree_parallel(source, destination):
+    """Copy a directory tree with robocopy's parallel streams.
+
+    A PyInstaller dist is thousands of small files, and over the mapped-drive
+    SMB link a single-threaded copy pays one network round trip per file.
+    Robocopy exit codes below 8 are success variants.
+    """
+
+    result = subprocess.run([
+        "robocopy", str(source), str(destination),
+        "/E", "/MT:16", "/NP", "/NFL", "/NDL", "/R:2", "/W:2",
+    ])
+    if result.returncode >= 8:
+        raise RuntimeError(
+            f"robocopy failed copying {source} -> {destination} "
+            f"(exit code {result.returncode})."
+        )
+
+
+def stage_deploy():
+    """Copy the built app beside the deployment while the Bridge keeps running.
 
     PyInstaller builds into an isolated dist folder rather than straight into
     the deployed app folder. Building in place would delete the live Bridge
     before writing its replacement, so any locked file left the deployment
-    destroyed with nothing to fall back to.
+    destroyed with nothing to fall back to. The slow network copy touches only
+    the private staging folder, so it needs no downtime; the Bridge is stopped
+    only around the rename swap.
     """
 
     if not STAGED_APP_DIR.exists():
@@ -246,26 +267,81 @@ def deploy_exe():
     backup_app_dir = APPS_DIR / f".{APP_NAME}.old"
 
     for path in (temp_app_dir, backup_app_dir):
+        remove_tree_with_retry(path)
+
+    print(f"\n>>> Staging the new build at {temp_app_dir}")
+    copy_tree_parallel(STAGED_APP_DIR, temp_app_dir)
+    return temp_app_dir, backup_app_dir
+
+
+def remove_tree_with_retry(path, attempts=5, delay_seconds=2.0):
+    """Delete a directory tree, retrying transient SMB failures.
+
+    Deletes over the share complete asynchronously, so ``rmtree`` can lose the
+    race against its own pending file deletes (``WinError 145`` directory not
+    empty) or a scanner briefly holding a file (``WinError 5``).
+    """
+
+    for attempt in range(1, attempts + 1):
         try:
             shutil.rmtree(path)
+            return
         except FileNotFoundError:
-            pass
+            return
+        except OSError:
+            if attempt == attempts:
+                raise
+            print(
+                f">>> Remove busy ({Path(path).name}); "
+                f"retrying in {delay_seconds:.0f}s ({attempt}/{attempts})"
+            )
+            time.sleep(delay_seconds)
 
-    shutil.copytree(STAGED_APP_DIR, temp_app_dir)
+
+def rename_with_retry(source, target, attempts=8, delay_seconds=5.0):
+    """Rename, retrying transient access-denied failures.
+
+    A directory tree freshly written over the SMB share can be briefly held by
+    server-side antivirus scanning, which surfaces as ``WinError 5`` on the
+    rename even though nothing else uses the folder.
+    """
+
+    for attempt in range(1, attempts + 1):
+        try:
+            source.rename(target)
+            return
+        except PermissionError:
+            if attempt == attempts:
+                raise
+            print(
+                f">>> Rename busy ({source.name} -> {target.name}); "
+                f"retrying in {delay_seconds:.0f}s ({attempt}/{attempts})"
+            )
+            time.sleep(delay_seconds)
+
+
+def swap_deploy(temp_app_dir, backup_app_dir):
+    """Swap the staged folder into the deployed app folder with rollback.
+
+    A failed rename falls back to the previous deployment instead of leaving
+    nothing; this runs inside the stopped-Bridge window and takes seconds.
+    """
 
     try:
         if DEPLOY_APP_DIR.exists():
-            DEPLOY_APP_DIR.rename(backup_app_dir)
-        temp_app_dir.rename(DEPLOY_APP_DIR)
+            rename_with_retry(DEPLOY_APP_DIR, backup_app_dir)
+        rename_with_retry(temp_app_dir, DEPLOY_APP_DIR)
     except Exception:
         if backup_app_dir.exists() and not DEPLOY_APP_DIR.exists():
             backup_app_dir.rename(DEPLOY_APP_DIR)
         raise
 
+    # The swap already succeeded; a stubborn backup folder is cosmetic and the
+    # next deploy's staging cleanup retries it, so never fail the deploy here.
     try:
-        shutil.rmtree(backup_app_dir)
-    except FileNotFoundError:
-        pass
+        remove_tree_with_retry(backup_app_dir)
+    except OSError as exc:
+        print(f">>> Backup cleanup left {backup_app_dir.name} behind: {exc}")
 
 
 def main():
@@ -278,8 +354,9 @@ def main():
     if STAGE_ONLY:
         exe_path = STAGED_APP_DIR / f"{APP_NAME}.exe"
     else:
+        temp_app_dir, backup_app_dir = stage_deploy()
         with bridge_stopped():
-            deploy_exe()
+            swap_deploy(temp_app_dir, backup_app_dir)
         exe_path = DEPLOY_APP_DIR / f"{APP_NAME}.exe"
     print(f"\nBuild finished: {exe_path}")
 

@@ -18,13 +18,13 @@ import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selection/result_selection_rpc_bridge_client.js?v=20260726a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
-} from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
+} from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
@@ -269,6 +269,7 @@ const ctx = {
   trackSavePropagation,
   rsObjectChangeWatch,
   rsSaveProgress,
+  showSavedDependentsNotice,
   startResultSelectionRpcBridgeSync,
   readProjectInstanceDatasetSnapshot,
   resultSelectionUpdateContexts,

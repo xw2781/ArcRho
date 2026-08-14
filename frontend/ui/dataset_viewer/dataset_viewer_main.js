@@ -29,7 +29,7 @@ import {
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
 } from "/ui/shared/services/object_change_watch.js?v=20260807a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260811a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
 import { state as sharedDatasetState } from "/ui/shared/dataset/dataset_state.js";
 
 const DATASET_VIEWER_TABS = [
@@ -143,7 +143,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260812a"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260813e"
 );
 
 const datasetLinksTab = createExternalLinksTab({

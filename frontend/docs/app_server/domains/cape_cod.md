@@ -11,7 +11,7 @@ Own the self-contained Cape Cod v1 contract, aggregate two-file load (plus the d
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/cape-cod/load` | `load_cape_cod` | `CapeCodIdentityRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `cape_cod_service.load_cape_cod_method` |
 | `POST` | `/cape-cod/refresh` | `refresh_cape_cod` | `CapeCodIdentityRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `cape_cod_service.refresh_cape_cod_method` |
-| `POST` | `/cape-cod/save` | `save_cape_cod` | `CapeCodSaveRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `cape_cod_service.save_cape_cod_method` |
+| `POST` | `/cape-cod/save` | `save_cape_cod` | `CapeCodSaveRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `engine_hosted_save_service.run_hosted_save` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

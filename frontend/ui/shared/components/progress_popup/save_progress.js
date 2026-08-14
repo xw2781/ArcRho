@@ -22,7 +22,8 @@ dismisses on the way out, including when the save throws, so a page cannot
 strand the overlay by adding a new early return.
 */
 
-import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260813a";
+import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260813e";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
 
 /**
  * Creates the saving animation controller for one window.
@@ -52,6 +53,13 @@ export function createArcRhoSaveProgress({ subject, noun = "method", documentRef
       writing() {
         scope.setMessage(`Saving the ${savedNoun} and updating dependent objects.`);
       },
+      /** Retargets the card headline; used by queued refresh flows that
+       *  still poll a propagation job. Engine-hosted saves complete inline,
+       *  so an ordinary save never streams live updates. */
+      setMessage(text) {
+        const line = String(text || "").trim();
+        if (line) scope.setMessage(line);
+      },
       /** Drops the spinner; call before any dialog the save opens. */
       finish() {
         scope.dismiss();
@@ -74,6 +82,32 @@ export function createArcRhoSaveProgress({ subject, noun = "method", documentRef
  * @type {{run: Function, isVisible: Function}}
  */
 export const inertArcRhoSaveProgress = {
-  run: (work) => work({ writing() {}, finish() {} }),
+  run: (work) => work({ writing() {}, setMessage() {}, finish() {} }),
   isVisible: () => false,
 };
+
+/**
+ * Shows the post-save notice naming the dependent datasets the Engine
+ * refreshed during the save, auto-dismissing after ~2 s. Explicit Save
+ * commands await this before closing their window so the user sees exactly
+ * which dataset instances were rewritten.
+ *
+ * @param {string[]} refreshedDatasets - Names from the save response's
+ *   `propagation.refreshed_datasets`.
+ * @param {Object} [options]
+ * @param {Document} [options.documentRef] - Document that owns the notice.
+ * @returns {Promise<void>} Resolves when the notice closes.
+ */
+export async function showSavedDependentsNotice(refreshedDatasets, { documentRef } = {}) {
+  const names = (Array.isArray(refreshedDatasets) ? refreshedDatasets : [])
+    .map((name) => String(name || "").trim())
+    .filter(Boolean);
+  await showPageMessageBox({
+    title: "Saved",
+    message: names.length
+      ? `Updated datasets: ${names.join(", ")}`
+      : "No dependent datasets required updates.",
+    autoCloseMs: 2000,
+    documentRef: documentRef || document,
+  });
+}

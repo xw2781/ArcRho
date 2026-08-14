@@ -28,11 +28,13 @@ from arcrho_dependent_propagation_contract import (
     dependent_propagation_request_path,
     dependent_propagation_status_path,
     release_reserving_class_lease,
+    write_dependent_propagation_status,
 )
 from app_server.api.dependent_propagation_router import router
 from app_server.schemas.dependent_propagation import (
     DependentPropagationJobStatusResponse,
     RefreshDependentsJobResponse,
+    ReservingClassBusyResponse,
 )
 from app_server.services import dependent_propagation_service
 from arcrho_engine import dependent_propagation as engine_propagation
@@ -363,10 +365,114 @@ class DependentPropagationJobTests(unittest.TestCase):
         self.assertEqual(payload["status"], "error")
         self.assertEqual(payload["message"], ENGINE_UNAVAILABLE_MESSAGE)
 
+    def test_marked_save_propagation_marks_only_the_first_method_tier(self) -> None:
+        # The save-side marking must stay cheap on a Client PC: the deep
+        # closure is the Engine job's first claimed step, on local disk.
+        with (
+            patch(
+                "app_server.services.dataset_sidecar_status_service."
+                "refresh_method_statuses_for_dependents",
+                return_value=[],
+            ) as marker,
+            patch.object(
+                dependent_propagation_service,
+                "enqueue_save_propagation",
+                return_value={"ok": True, "job_id": self.REQUEST_ID, "status": "queued"},
+            ),
+        ):
+            payload = dependent_propagation_service.enqueue_marked_save_propagation(
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                "Paid Output",
+                "Selected Ultimate",
+            )
+        self.assertEqual(payload["status"], "queued")
+        marker.assert_called_once_with(
+            "Demo Project",
+            "HPPREF\\HO+DF\\NJ",
+            ["Paid Output", "Selected Ultimate"],
+            direct_only=True,
+        )
+
     def test_no_op_save_payload_shape(self) -> None:
         self.assertEqual(
             dependent_propagation_service.unchanged_propagation(),
             {"ok": True, "status": "unchanged"},
+        )
+
+    def test_a_fresh_walk_lease_holds_the_class_against_new_writes(self) -> None:
+        self._write_heartbeat()
+        project, reserving = "Demo Project", "HPPREF\\HO+DF\\NJ"
+        # An idle class is writable and reports not busy.
+        dependent_propagation_service.require_reserving_class_writable(
+            project, reserving
+        )
+        self.assertEqual(
+            dependent_propagation_service.get_reserving_class_busy(project, reserving),
+            {"ok": True, "busy": False, "reason": None},
+        )
+
+        lease = acquire_reserving_class_lease(self.root, project, reserving)
+        self.assertIsNotNone(lease)
+        try:
+            with self.assertRaises(HTTPException) as raised:
+                dependent_propagation_service.require_reserving_class_writable(
+                    project, reserving
+                )
+            self.assertEqual(raised.exception.status_code, 423)
+            self.assertEqual(
+                str(raised.exception.detail),
+                dependent_propagation_service.RESERVING_CLASS_BUSY_MESSAGE,
+            )
+            self.assertEqual(
+                dependent_propagation_service.get_reserving_class_busy(
+                    project, reserving
+                ),
+                {"ok": True, "busy": True, "reason": "processing"},
+            )
+            # A different class stays writable while this one is held.
+            dependent_propagation_service.require_reserving_class_writable(
+                project, "Other\\Class"
+            )
+            # An orchestrated multi-save operation that preflighted the hold
+            # once suspends the refusal for its nested saves.
+            with dependent_propagation_service.suspended_reserving_class_hold_check():
+                dependent_propagation_service.require_reserving_class_writable(
+                    project, reserving
+                )
+        finally:
+            release_reserving_class_lease(lease)
+        dependent_propagation_service.require_reserving_class_writable(
+            project, reserving
+        )
+
+    def test_a_queued_job_holds_the_class_until_its_terminal_status(self) -> None:
+        self._write_heartbeat()
+        project, reserving = "Demo Project", "HPPREF\\HO+DF\\NJ"
+        self._submit()
+        with self.assertRaises(HTTPException) as raised:
+            dependent_propagation_service.require_reserving_class_writable(
+                project, reserving
+            )
+        self.assertEqual(raised.exception.status_code, 423)
+        self.assertEqual(
+            dependent_propagation_service.get_reserving_class_busy(project, reserving),
+            {"ok": True, "busy": True, "reason": "queued"},
+        )
+
+        write_dependent_propagation_status(
+            self.root,
+            self.REQUEST_ID,
+            "success",
+            progress={
+                "stage": "complete",
+                "completed": 1,
+                "total": 1,
+                "label": "Dependent updates complete",
+            },
+        )
+        dependent_propagation_service.require_reserving_class_writable(
+            project, reserving
         )
 
     def test_router_declares_async_and_typed_job_contracts(self) -> None:
@@ -382,11 +488,17 @@ class DependentPropagationJobTests(unittest.TestCase):
             if route.path
             == "/dependent_propagation/refresh_dependents/status/{request_id}"
         )
+        busy_route = next(
+            route
+            for route in router.routes
+            if route.path == "/dependent_propagation/reserving_class_busy"
+        )
         self.assertEqual(submit_route.status_code, status.HTTP_202_ACCEPTED)
         self.assertIs(submit_route.response_model, RefreshDependentsJobResponse)
         self.assertIs(
             status_route.response_model, DependentPropagationJobStatusResponse
         )
+        self.assertIs(busy_route.response_model, ReservingClassBusyResponse)
 
 
 class EngineWalkParityTests(unittest.TestCase):

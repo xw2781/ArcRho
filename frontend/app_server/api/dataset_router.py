@@ -15,7 +15,7 @@ from app_server.schemas.dataset import (
     EmptyDatasetCacheCreateRequest,
     PatchRequest,
 )
-from app_server.services import dataset_service
+from app_server.services import dataset_service, engine_hosted_save_service
 from app_server.services import calculated_dataset_service
 from app_server.services import dataset_number_format_service
 
@@ -154,29 +154,34 @@ def preview_calculated_dataset_dependents(req: DatasetCalculatedPreviewRequest) 
 
 @router.post("/dataset/sidecar/save")
 def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
-    return dataset_service.save_dataset_sidecar(
+    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # its exact response shape and error codes.
+    return engine_hosted_save_service.run_hosted_save(
+        "dataset_sidecar",
         req.project_name,
         req.reserving_class,
-        req.dataset_name,
-        dataset_type=req.dataset_type,
-        instance_name=req.instance_name,
-        source_kind=req.source_kind,
-        data_format=req.data_format,
-        origin_length=req.origin_length,
-        development_length=req.development_length,
-        cumulative=req.cumulative,
-        transposed=req.transposed,
-        calendar=req.calendar,
-        show_subtotal=req.show_subtotal,
-        number_format=req.number_format,
-        decimal_places=req.decimal_places,
-        origin_labels=req.origin_labels,
-        csv_file=req.csv_file,
-        method_type=req.method_type,
-        status=req.status,
-        notes=req.notes,
-        precedents=req.precedents,
-        external_links=req.external_links,
-        values=req.values,
-        mask=req.mask,
+        args=[req.project_name, req.reserving_class, req.dataset_name],
+        kwargs={
+            "dataset_type": req.dataset_type,
+            "instance_name": req.instance_name,
+            "source_kind": req.source_kind,
+            "data_format": req.data_format,
+            "origin_length": req.origin_length,
+            "development_length": req.development_length,
+            "cumulative": req.cumulative,
+            "transposed": req.transposed,
+            "calendar": req.calendar,
+            "show_subtotal": req.show_subtotal,
+            "number_format": req.number_format,
+            "decimal_places": req.decimal_places,
+            "origin_labels": req.origin_labels,
+            "csv_file": req.csv_file,
+            "method_type": req.method_type,
+            "status": req.status,
+            "notes": req.notes,
+            "precedents": req.precedents,
+            "external_links": req.external_links,
+            "values": req.values,
+            "mask": req.mask,
+        },
     )

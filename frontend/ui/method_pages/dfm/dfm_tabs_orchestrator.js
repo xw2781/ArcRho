@@ -12,6 +12,7 @@ import {
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
+import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
 import { setStorageInstance, loadNaBorders } from "/ui/method_pages/dfm/dfm_storage.js";
 import {
   state as dfmState,
@@ -52,7 +53,7 @@ import {
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/method_pages/dfm/dfm_details.js?v=20260812f";
+} from "/ui/method_pages/dfm/dfm_details.js?v=20260813e";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -66,10 +67,10 @@ import {
   stopDfmMethodFileWatcher,
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260813a";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260813e";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260812f";
-import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260812d";
-import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260812d";
+import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260813e";
+import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260813e";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260722a";
 import {
   clearRatioHistoryTempSession,
@@ -352,14 +353,24 @@ async function saveCurrentDfmMethodFromBar() {
   if (dfmSaveInFlight) return;
   dfmSaveInFlight = true;
   updateDfmSaveUi();
+  let closeAfterSave = false;
+  let refreshedDatasets = [];
   try {
     const result = await saveRatioSelectionPattern(false);
     if (!result?.ok && result?.error) {
       postDfmStatus(`DFM save failed: ${result.error}`, "error");
     }
+    // Only the explicit Save command closes the window, and only after the
+    // dependent walk finished cleanly; bridge and Save As flows never do.
+    closeAfterSave = Boolean(result?.ok && result?.propagationClean);
+    refreshedDatasets = result?.refreshedDatasets || [];
   } finally {
     dfmSaveInFlight = false;
     updateDfmSaveUi();
+  }
+  if (closeAfterSave) {
+    await showSavedDependentsNotice(refreshedDatasets);
+    requestConfirmedDfmClose();
   }
 }
 
@@ -855,7 +866,9 @@ export function initDfmRatios() {
       return;
     }
     if (e?.data?.type === "arcrho:dfm-save") {
-      saveRatioSelectionPattern(false);
+      // Route through the bar handler so the explicit Save command shares the
+      // in-flight guard and the close-on-clean-propagation behavior.
+      void saveCurrentDfmMethodFromBar();
       return;
     }
     if (e?.data?.type === "arcrho:dfm-save-as") {

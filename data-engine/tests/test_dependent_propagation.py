@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -78,6 +80,87 @@ class DependentPropagationEngineTests(unittest.TestCase):
 
         generic = dependent_propagation._summarize_walk_failure({"skipped": []})
         self.assertIn("One or more dependent updates failed.", generic)
+
+    def test_claimed_walk_marks_the_full_closure_before_running(self) -> None:
+        # The save only marked the first dependent method tier; the Engine
+        # re-marks the whole reachable closure (all merged roots included)
+        # before the walk so statuses are honest for the entire cascade.
+        calls: list[tuple] = []
+
+        def record_marking(*args, **kwargs):
+            calls.append(("mark", args, kwargs))
+            return []
+
+        def record_walk(*args, **kwargs):
+            calls.append(("walk", args, kwargs))
+            return {"ok": True}
+
+        fake_services = types.ModuleType("app_server.services")
+        fake_services.calculated_dataset_service = SimpleNamespace(
+            recalculate_dependents=record_walk
+        )
+        fake_services.dataset_sidecar_status_service = SimpleNamespace(
+            refresh_method_statuses_for_dependents=record_marking
+        )
+        fake_app_server = types.ModuleType("app_server")
+        fake_app_server.services = fake_services
+
+        _path, request = self._publish_request()
+        progress: list[dict] = []
+        with (
+            patch.object(dependent_propagation, "configure_canonical_runtime"),
+            patch.dict(
+                sys.modules,
+                {"app_server": fake_app_server, "app_server.services": fake_services},
+            ),
+        ):
+            result = dependent_propagation.execute_dependent_propagation(
+                self.root,
+                request,
+                additional_roots=[
+                    {"dataset_name": "Extra", "dataset_type": "Extra Type"}
+                ],
+                progress_callback=progress.append,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual([kind for kind, *_ in calls], ["mark", "walk"])
+        mark_args, mark_kwargs = calls[0][1], calls[0][2]
+        self.assertEqual(mark_args[0], "Demo")
+        self.assertEqual(mark_args[1], "HPPREF\\HOL")
+        self.assertEqual(
+            mark_args[2], ["Paid", "Paid Loss", "Extra", "Extra Type"]
+        )
+        # Full closure: the Engine must not pass the save-side direct_only.
+        self.assertNotIn("direct_only", mark_kwargs)
+        self.assertEqual(progress[0]["label"], "Marking dependents for review")
+
+    def test_a_marking_failure_never_aborts_the_walk(self) -> None:
+        def failing_marking(*_args, **_kwargs):
+            raise OSError("sidecar folder unavailable")
+
+        fake_services = types.ModuleType("app_server.services")
+        fake_services.calculated_dataset_service = SimpleNamespace(
+            recalculate_dependents=lambda *args, **kwargs: {"ok": True}
+        )
+        fake_services.dataset_sidecar_status_service = SimpleNamespace(
+            refresh_method_statuses_for_dependents=failing_marking
+        )
+        fake_app_server = types.ModuleType("app_server")
+        fake_app_server.services = fake_services
+
+        _path, request = self._publish_request()
+        with (
+            patch.object(dependent_propagation, "configure_canonical_runtime"),
+            patch.dict(
+                sys.modules,
+                {"app_server": fake_app_server, "app_server.services": fake_services},
+            ),
+        ):
+            result = dependent_propagation.execute_dependent_propagation(
+                self.root, request
+            )
+        self.assertTrue(result["ok"])
 
     def test_request_filename_must_match_request_id(self) -> None:
         path, request = self._publish_request()

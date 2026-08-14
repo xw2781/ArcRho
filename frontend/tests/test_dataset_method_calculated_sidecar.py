@@ -12,9 +12,16 @@ if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
 from app_server.services import calculated_dataset_service, dataset_service
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 
 class DatasetMethodCalculatedSidecarTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.propagation_workspace = IsolatedPropagationWorkspace().start()
+
+    def tearDown(self) -> None:
+        self.propagation_workspace.stop()
+
     def _save_and_capture(
         self,
         *,

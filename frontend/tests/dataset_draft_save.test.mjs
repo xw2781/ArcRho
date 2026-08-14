@@ -18,7 +18,12 @@ const dirtyStateUrl = await inlineModule("../ui/shared/tabs/data/data_tab_dirty_
 const messageBoxUrl = dataUrl("export async function showPageMessageBox(){ return undefined; }");
 // The saving animation needs a document; this headless install runs it inert.
 const saveProgressUrl = dataUrl(
-  "export function createArcRhoSaveProgress(){ return { run: (work) => work({ writing(){}, finish(){} }), isVisible: () => false }; }",
+  "export function createArcRhoSaveProgress(){ return { run: (work) => work({ writing(){}, setMessage(){}, finish(){} }), isVisible: () => false }; }\n"
+  + "export async function showSavedDependentsNotice(){}",
+);
+// The dependent-update poller needs a live server; drafts enqueue no walk.
+const propagationJobUrl = dataUrl(
+  "export async function trackSavePropagation(){ return null; }",
 );
 
 let persistenceSource = await readFile(
@@ -31,7 +36,8 @@ persistenceSource = persistenceSource
   .replace(/"\/ui\/shared\/tabs\/data\/data_tab_temporary_format\.js[^"]*"/, JSON.stringify(temporaryFormatUrl))
   .replace(/"\/ui\/shared\/tabs\/data\/data_tab_dirty_state\.js[^"]*"/, JSON.stringify(dirtyStateUrl))
   .replace(/"\/ui\/shared\/components\/message_box\/message_box\.js[^"]*"/, JSON.stringify(messageBoxUrl))
-  .replace(/"\/ui\/shared\/components\/progress_popup\/save_progress\.js[^"]*"/, JSON.stringify(saveProgressUrl));
+  .replace(/"\/ui\/shared\/components\/progress_popup\/save_progress\.js[^"]*"/, JSON.stringify(saveProgressUrl))
+  .replace(/"\/ui\/shared\/services\/dependent_propagation_job\.js[^"]*"/, JSON.stringify(propagationJobUrl));
 const { registerDataTabPersistenceController } = await import(dataUrl(persistenceSource));
 
 const PROJECT = "NJ_Annual_Prod_202605_Fake";

@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "While dependent updates run for a reserving class, other saves into that class are paused so edits cannot collide.",
+  "details": [
+    "Saves into a busy reserving class are refused with a clear message until the walk finishes; other reserving classes are unaffected.",
+    "Project Instance quietly pauses dataset add/delete actions for the busy reserving class; a blocked action explains itself in the status bar.",
+    "The Engine heartbeats each job's status every few seconds, so a dead worker releases the hold and the save popup within about a minute instead of blocking."
+  ]
+}

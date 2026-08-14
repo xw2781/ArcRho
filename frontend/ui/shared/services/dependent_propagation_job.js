@@ -7,7 +7,14 @@
 
 const POLL_INTERVAL_MS = 750;
 const MAX_STATUS_RETRIES = 8;
-const STALE_STATUS_MS = 15 * 60 * 1000;
+// The Engine worker republishes a "processing" status every ~5s even when
+// progress has not advanced (DEPENDENT_PROPAGATION_STATUS_HEARTBEAT_SECONDS
+// in arcrho_dependent_propagation_contract.py), so a processing status whose
+// updated_at stops moving means the worker died. Queued statuses have no
+// heartbeat owner — the job is waiting for an Engine slot — so they get a
+// separate, longer allowance before the poller gives up.
+const STALE_STATUS_MS = 45 * 1000;
+const QUEUED_STALE_STATUS_MS = 180 * 1000;
 const SUCCESS_STATUSES = new Set(["success", "completed", "complete", "succeeded"]);
 const ERROR_STATUSES = new Set(["error", "failed", "failure", "cancelled", "canceled"]);
 
@@ -50,6 +57,7 @@ export async function waitForDependentPropagationJob({
   pollIntervalMs = POLL_INTERVAL_MS,
   maxStatusRetries = MAX_STATUS_RETRIES,
   staleStatusMs = STALE_STATUS_MS,
+  queuedStaleStatusMs = QUEUED_STALE_STATUS_MS,
   now = () => Date.now(),
 }) {
   let consecutiveFailures = 0;
@@ -126,15 +134,16 @@ export async function waitForDependentPropagationJob({
       total,
       progress.label || "",
     ]);
+    const allowedStaleMs = status === "queued" ? queuedStaleStatusMs : staleStatusMs;
     const currentNow = Number(now());
     const observedAt = Number.isFinite(currentNow) ? currentNow : lastActivityAt;
     if (signature !== lastStatusSignature) {
       lastStatusSignature = signature;
       lastActivityAt = observedAt;
-    } else if (observedAt - lastActivityAt >= Math.max(pollIntervalMs, staleStatusMs)) {
+    } else if (observedAt - lastActivityAt >= Math.max(pollIntervalMs, allowedStaleMs)) {
       throw codedError(
         "PROPAGATION_STATUS_STALE",
-        `Dependent-update status has not changed for a long time. Job "${jobId}" may still be running on ArcRho Engine.`,
+        `Dependent-update status has stopped updating. Job "${jobId}" appears to have stalled on ArcRho Engine.`,
       );
     }
     await waitForPoll(pollIntervalMs);
@@ -169,12 +178,14 @@ export async function waitForDependentPropagationOutcome(jobId, {
 }
 
 /**
- * Track a save response's `propagation` payload without blocking the save UX.
+ * Track a save response's `propagation` payload and report each live step.
  * Never throws. `onComplete(result)` fires at any terminal outcome (`result`
  * is null when the job failed) so callers refresh the dataset table either
  * way — a failed walk still finalized downstream objects at Review Needed,
  * and the table's review-needed flags are the failure surface; no warning
- * status line is emitted (owner decision, 2026-08-07).
+ * status line is emitted (owner decision, 2026-08-07). A caller holding the
+ * save popup open awaits the returned promise and treats a null resolution
+ * as "not clean" — the failure detail stays on the dataset table.
  */
 export async function trackSavePropagation(propagation, {
   fetchImpl = (...args) => fetch(...args),
@@ -185,6 +196,16 @@ export async function trackSavePropagation(propagation, {
   if (!propagation || typeof propagation !== "object") return null;
   const status = String(propagation.status || "").trim().toLowerCase();
   if (status === "unchanged") return { status: "unchanged" };
+  if (status === "completed") {
+    // Engine-hosted saves run the dependent walk inline and the response
+    // carries the finished outcome (with `refreshed_datasets`) — nothing to
+    // poll. A walk that reported failures resolves null so the window stays
+    // open and the dataset table's review-needed flags stay the surface.
+    const clean = propagation.ok !== false;
+    const payload = clean ? { ...propagation } : null;
+    try { onComplete(payload); } catch { /* completion hooks must not break callers */ }
+    return payload;
+  }
   const jobId = String(propagation.job_id || "").trim();
   if (!jobId) {
     const message = String(propagation.message || "Dependent updates could not be scheduled.").trim();
@@ -198,8 +219,13 @@ export async function trackSavePropagation(propagation, {
       fetchImpl,
       statusUrl: dependentPropagationStatusUrl(jobId),
       jobId,
-      onProgress: ({ label }) => {
-        onStatus(label || "Updating dependents...", { tone: "info" });
+      onProgress: ({ label, completed, total }) => {
+        const text = String(label || "").trim() || "Updating dependents...";
+        // Per-dataset ticks (non-zero total) name the dataset being
+        // refreshed; stage banners pass through as-is. Only queued refresh
+        // flows still poll — Engine-hosted saves complete inline above.
+        const framed = total > 0 ? `Updating dataset ${text}...` : text;
+        onStatus(framed, { tone: "info" });
       },
       ...pollOptions,
     });

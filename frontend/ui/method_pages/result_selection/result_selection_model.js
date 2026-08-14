@@ -217,9 +217,12 @@
         }
       }
 
-      function trackPersistedPropagation(payload) {
-        void trackSavePropagation(payload?.propagation, {
-          onStatus: (message, statusOptions) => postStatus(message, statusOptions?.tone === "warn" ? "warn" : ""),
+      function trackPersistedPropagation(payload, progress = null) {
+        return trackSavePropagation(payload?.propagation, {
+          onStatus: (message, statusOptions) => {
+            progress?.setMessage?.(message, statusOptions);
+            postStatus(message, statusOptions?.tone === "warn" ? "warn" : "");
+          },
           onComplete: () => {
             try {
               window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
@@ -293,15 +296,24 @@
           } else {
             postStatus(`Result Selection saved: ${details.name}${aggregateCount ? ` (+${aggregateCount} aggregated)` : ""}`);
           }
-          trackPersistedPropagation(payload);
-          // The save itself is done; drop the spinner before the review dialog.
+          // Hold the saving card open through the dependent walk so the user
+          // sees each live update; a null outcome (failed or stalled walk)
+          // keeps the window open with the dataset table as the failure
+          // surface.
+          const propagationOutcome = await trackPersistedPropagation(payload, progress);
+          // The save and its dependent walk are done; drop the spinner before
+          // the review dialog.
           progress.finish();
           await showMethodSaveReviewWarning(payload, {
             instanceId: inst,
             projectName: state.project,
             reservingClass: state.reservingClass,
           });
-          return payload;
+          return {
+            ...payload,
+            propagationClean: propagationOutcome !== null,
+            refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+          };
         } finally {
           rsWatch.resume();
           finishPersistedMutation(mutation);
@@ -328,7 +340,7 @@
         try {
           window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
         } catch {}
-        trackPersistedPropagation(payload);
+        void trackPersistedPropagation(payload);
       }
 
       function setNotesText(value) {

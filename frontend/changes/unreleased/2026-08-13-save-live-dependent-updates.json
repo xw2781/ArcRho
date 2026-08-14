@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Saving a dataset or method now runs on ArcRho Engine next to the data, finishing in a few seconds with a short summary of the refreshed datasets.",
+  "details": [
+    "The save and its dependent updates execute on the server host instead of over the network share, cutting a typical save from ~30 seconds to a few seconds.",
+    "After a clean save, a brief notice inside the window lists the exact dataset instances that were refreshed, then the window closes (explicit Save only; Save As, Sync, and Excel bridge saves keep it open).",
+    "Save conflicts and validation errors report exactly as before, and a save whose dependent updates hit review-needed items leaves the window open with the affected items flagged."
+  ]
+}

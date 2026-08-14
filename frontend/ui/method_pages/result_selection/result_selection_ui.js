@@ -1419,7 +1419,14 @@
           }, els.syncBtn).catch((err) => postStatus(`Result Selection sync failed: ${err?.message || err}`, "error"));
         });
         els.saveBtn?.addEventListener("click", () => {
-          saveResultSelection().catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));
+          saveResultSelection()
+            .then(async (saved) => {
+              if (saved?.ok && saved?.propagationClean) {
+                await showSavedDependentsNotice(saved.refreshedDatasets);
+                requestConfirmedClose();
+              }
+            })
+            .catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));
         });
         els.cancelBtn?.addEventListener("click", async () => {
           if (!isDirty) {
@@ -1438,7 +1445,14 @@
         window.addEventListener("message", (event) => {
           const msg = event.data || {};
           if (msg.type === "arcrho:dataset-save" || msg.type === "arcrho:result-selection-save") {
-            saveResultSelection().catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));
+            saveResultSelection()
+              .then(async (saved) => {
+                if (saved?.ok && saved?.propagationClean) {
+                  await showSavedDependentsNotice(saved.refreshedDatasets);
+                  requestConfirmedClose();
+                }
+              })
+              .catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));
             return;
           }
           if (msg.type === "arcrho:dependency-source-preview") {

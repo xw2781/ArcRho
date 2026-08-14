@@ -30,6 +30,7 @@ from app_server.services import (
     cape_cod_service,
     dataset_sidecar_status_service,
 )
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 RESQ_FIXTURE_PATH = REPO_ROOT / "python-api" / "tests" / "fixtures" / "resq_cape_cod_d53.json"
 # Same bound as python-api/tests/test_cape_cod_contract.py: parity against the
@@ -48,6 +49,7 @@ class CapeCodServiceTests(unittest.TestCase):
         for folder in (self.methods, self.datasets, self.sidecars):
             folder.mkdir()
         self.patchers = [
+            IsolatedPropagationWorkspace(),
             mock.patch.object(
                 cape_cod_service.config,
                 "get_project_method_data_dir",
@@ -419,7 +421,7 @@ class CapeCodServiceTests(unittest.TestCase):
         with (
             mock.patch.object(
                 cape_cod_service.dependent_propagation_service,
-                "require_engine_available",
+                "require_reserving_class_writable",
             ),
             mock.patch.object(
                 cape_cod_service.dependent_propagation_service,

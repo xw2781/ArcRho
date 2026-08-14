@@ -5,7 +5,7 @@ Annual MVP page for `B&S Settlement Rate Adjustment` and `B&S Case Reserve Adequ
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.berquist_sherman.entry_points -->
-- `ui/method_pages/berquist_sherman/berquist_sherman.html`: external scripts `/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260811a`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/method_pages/berquist_sherman/berquist_sherman.html`: external scripts `/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260813e`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
@@ -59,7 +59,7 @@ Detected `arcrho:*` message types in key JS files:
 - When opened inside Project Instance, B&S reuses the parent page's already-loaded dataset-index snapshot for its initial source inventory. Explicit refreshes and post-save refreshes still request the authoritative server index.
 - The final result is stored as an annual Triangle CSV at `datasets/<Name>@12@12@cum@dev.csv`; the related sidecar stores the canonical method/source identity and direct precedents.
 - Matching dirty source previews recalculate the open method in memory without making the B&S page dirty. The recalculated B&S triangle is relayed to open dependents, and clearing a preview reloads the source and clears or refreshes the downstream preview. Saving is blocked until upstream preview changes are saved or discarded, so the persisted result remains reproducible from its named sources. Once sources are durable and readable, their Review Needed status does not block Save; the committed save is followed by a page-local message box reporting how many precedents have not been reviewed.
-- A Berquist Sherman save runs behind the shared saving animation described in [`dataset.md`](dataset.md), titled `Saving ` plus the variant's display label, so the page cannot be edited while the method JSON, output CSV, and sidecar writes settle. `saveMethod` wraps the save in it, so the Save bar and the shell `arcrho:dataset-save` message are both covered, and the spinner is dismissed before the post-save review warning.
+- A Berquist Sherman save runs behind the shared saving animation described in [`dataset.md`](dataset.md), titled `Saving ` plus the variant's display label, so the page cannot be edited while the method JSON, output CSV, and sidecar writes settle. `saveMethod` wraps the save in it, so the Save bar and the shell `arcrho:dataset-save` message are both covered; the card then streams the sidecar save's dependent walk (`calculated_updates`) live and the spinner is dismissed before the post-save review warning. Both explicit save entry points close the window after a clean walk (`propagationClean`); a failed or stalled walk keeps it open.
 - The post-save review warning lists every unreviewed precedent by name. Each name is a keyboard-focusable link that opens its related method window when the dataset is method-backed, or its Dataset Viewer otherwise, while keeping the saved B&S method unchanged.
 - Fresh methods load annual origin and development labels from the project's canonical headers; inputs with mismatched formats or known periods are rejected. A legacy source sidecar with no labels is treated as unavailable metadata rather than as a conflicting period set.
 <!-- MANUAL:END -->

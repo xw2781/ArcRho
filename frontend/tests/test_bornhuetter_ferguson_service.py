@@ -309,7 +309,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
             ),
             mock.patch.object(
                 bornhuetter_ferguson_service.dependent_propagation_service,
-                "require_engine_available",
+                "require_reserving_class_writable",
             ),
             mock.patch.object(
                 bornhuetter_ferguson_service.dependent_propagation_service,

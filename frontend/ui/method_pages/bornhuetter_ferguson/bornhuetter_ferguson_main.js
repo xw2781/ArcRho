@@ -20,13 +20,13 @@ import {
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js?v=20260722a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
-} from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
+} from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
@@ -1524,22 +1524,33 @@ async function runBornhuetterFergusonSave(progress) {
         : `${BF_METHOD_TYPE} saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`,
       result?.propagation_ok === false ? "warn" : "",
     );
-    void trackSavePropagation(result?.propagation, {
-      onStatus: (text, statusOptions) => postStatus(text, statusOptions?.tone === "warn" ? "warn" : ""),
+    // Engine-hosted saves return with the dependent walk already finished;
+    // a null outcome (walk failures) keeps the window open and leaves the
+    // dataset table as the failure surface.
+    const propagationOutcome = await trackSavePropagation(result?.propagation, {
+      onStatus: (text, statusOptions) => {
+        progress.setMessage?.(text, statusOptions);
+        postStatus(text, statusOptions?.tone === "warn" ? "warn" : "");
+      },
       onComplete: () => {
         try {
           window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
         } catch {}
       },
     });
-    // The save itself is done; drop the spinner before the review dialog.
+    // The save and its dependent walk are done; drop the spinner before the
+    // review dialog.
     progress.finish();
     await showMethodSaveReviewWarning(result, {
       instanceId: inst,
       projectName: state.project,
       reservingClass: state.reservingClass,
     });
-    return result;
+    return {
+      ...result,
+      propagationClean: propagationOutcome !== null,
+      refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+    };
   } finally {
     bfObjectChangeWatch.resume();
   }
@@ -1892,7 +1903,11 @@ function wireInputs() {
   renderPriorSourceList();
   els.saveBtn?.addEventListener("click", async () => {
     try {
-      await saveBornhuetterFerguson();
+      const saved = await saveBornhuetterFerguson();
+      if (saved?.ok && saved?.propagationClean) {
+        await showSavedDependentsNotice(saved.refreshedDatasets);
+        requestConfirmedClose();
+      }
     } catch (err) {
       console.error(err);
       postStatus(`Save failed: ${String(err?.message || err)}`, "error");
@@ -1913,7 +1928,11 @@ function wireMessages() {
     const msg = event?.data && typeof event.data === "object" ? event.data : {};
     if (msg.type === "arcrho:dataset-save") {
       try {
-        await saveBornhuetterFerguson();
+        const saved = await saveBornhuetterFerguson();
+        if (saved?.ok && saved?.propagationClean) {
+          await showSavedDependentsNotice(saved.refreshedDatasets);
+          requestConfirmedClose();
+        }
       } catch (err) {
         postStatus(`Save failed: ${String(err?.message || err)}`, "error");
       }

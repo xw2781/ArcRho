@@ -11,7 +11,7 @@ Own the self-contained BF v3 contract, aggregate two-file load, revision-aware t
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/bornhuetter-ferguson/load` | `load_bornhuetter_ferguson` | `BornhuetterFergusonIdentityRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `bornhuetter_ferguson_service.load_bornhuetter_ferguson_method` |
 | `POST` | `/bornhuetter-ferguson/refresh` | `refresh_bornhuetter_ferguson` | `BornhuetterFergusonIdentityRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `bornhuetter_ferguson_service.refresh_bornhuetter_ferguson_method` |
-| `POST` | `/bornhuetter-ferguson/save` | `save_bornhuetter_ferguson` | `BornhuetterFergusonSaveRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `bornhuetter_ferguson_service.save_bornhuetter_ferguson_method` |
+| `POST` | `/bornhuetter-ferguson/save` | `save_bornhuetter_ferguson` | `BornhuetterFergusonSaveRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `engine_hosted_save_service.run_hosted_save` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

@@ -6,7 +6,7 @@ from app_server.schemas.result_selection import (
     ResultSelectionLoadRequest,
     ResultSelectionSaveRequest,
 )
-from app_server.services import result_selection_service
+from app_server.services import engine_hosted_save_service, result_selection_service
 
 
 router = APIRouter()
@@ -24,10 +24,17 @@ def load_result_selection(req: ResultSelectionLoadRequest) -> Dict[str, Any]:
 
 @router.post("/result-selection/save")
 def save_result_selection(req: ResultSelectionSaveRequest) -> Dict[str, Any]:
-    return result_selection_service.save_result_selection(
+    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # its exact response shape and error codes.
+    return engine_hosted_save_service.run_hosted_save(
+        "result_selection_method",
         req.project_name,
         req.reserving_class,
-        req.method,
-        req.notes,
-        req.expected_revision,
+        args=[
+            req.project_name,
+            req.reserving_class,
+            req.method,
+            req.notes,
+            req.expected_revision,
+        ],
     )

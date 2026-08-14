@@ -17,6 +17,7 @@ from fastapi import HTTPException
 
 from app_server.schemas.dataset import DatasetSidecarSaveRequest
 from app_server.services import calculated_dataset_service, dataset_service
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 
 class DatasetExternalLinkSchemaTests(unittest.TestCase):
@@ -63,6 +64,12 @@ class DatasetExternalLinkSchemaTests(unittest.TestCase):
 
 
 class DatasetExternalLinkNormalizationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.propagation_workspace = IsolatedPropagationWorkspace().start()
+
+    def tearDown(self) -> None:
+        self.propagation_workspace.stop()
+
     def test_preserves_separate_consumers_and_deduplicates_exact_links(self) -> None:
         normalized = dataset_service._normalize_dataset_external_links([
             {
@@ -204,7 +211,11 @@ class DatasetExternalLinkNormalizationTests(unittest.TestCase):
 
 
 class DatasetExternalLinkSidecarTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        self.propagation_workspace.stop()
+
     def setUp(self) -> None:
+        self.propagation_workspace = IsolatedPropagationWorkspace().start()
         self.existing_links = [
             {
                 "reference": "='C:\\Data\\[Book.xlsx]Sheet 1'!$A$1:$A$2",

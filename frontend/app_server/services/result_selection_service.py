@@ -592,8 +592,9 @@ def save_result_selection(
     if not project or not reserving:
         raise HTTPException(400, "project_name and reserving_class are required.")
     # Dependent propagation runs on ArcRho Engine; block the save before any
-    # write when no live Engine instance can pick the job up.
-    dependent_propagation_service.require_engine_available()
+    # write when no live Engine can pick the job up or another walk is still
+    # rewriting this reserving class.
+    dependent_propagation_service.require_reserving_class_writable(project, reserving)
     payload = normalize_method_payload(method, require_complete_basis=True)
     _recalculate_method(payload)
     details = payload["details_tab"]

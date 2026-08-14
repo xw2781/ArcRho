@@ -112,7 +112,19 @@ def write_server_config(path: Path, payload: dict[str, Any]) -> None:
     try:
         with temp_path.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(persisted_json_text(payload))
-        os.replace(temp_path, path)
+        # Every Engine, Bridge, and Orchestrator polls this file on its
+        # heartbeat cycle, and an SMB reader holding it open surfaces as a
+        # transient WinError 5 on the atomic replace. Retry briefly rather
+        # than fail the write: a failed write here can strand a deploy's
+        # kill switch and keep every worker down.
+        for attempt in range(5):
+            try:
+                os.replace(temp_path, path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.5 * (attempt + 1))
     except Exception:
         try:
             temp_path.unlink(missing_ok=True)

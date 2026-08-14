@@ -17,8 +17,9 @@ import {
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
-import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
@@ -2275,14 +2276,35 @@ async function runBerquistShermanSave(progress) {
     }, "*");
   } catch {}
   postStatus(`${contract.displayLabel} saved: ${details.name}`);
-  // The save itself is done; drop the spinner before the review dialog.
+  // Hold the saving card open through the dependent walk so the user sees
+  // each live update; a null outcome (failed or stalled walk) keeps the
+  // window open and leaves the dataset table as the failure surface.
+  const propagationOutcome = await trackSavePropagation(sidecar?.calculated_updates, {
+    onStatus: (message, statusOptions) => {
+      progress.setMessage?.(message, statusOptions);
+      postStatus(message, statusOptions?.tone === "warn" ? "warn" : "");
+    },
+    onComplete: () => {
+      try {
+        window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
+      } catch {}
+    },
+  });
+  // The save and its dependent walk are done; drop the spinner before the
+  // review dialog.
   progress.finish();
   await showMethodSaveReviewWarning(sidecar, {
     instanceId: inst,
     projectName: state.project,
     reservingClass: state.reservingClass,
   });
-  return { ok: true, path: jsonResult.path, csvPath };
+  return {
+    ok: true,
+    path: jsonResult.path,
+    csvPath,
+    propagationClean: propagationOutcome !== null,
+    refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+  };
 }
 
 function requestConfirmedClose() {
@@ -2413,7 +2435,11 @@ function wireInputs() {
   }
   els.saveBtn?.addEventListener("click", async () => {
     try {
-      await saveMethod();
+      const saved = await saveMethod();
+      if (saved?.ok && saved?.propagationClean) {
+        await showSavedDependentsNotice(saved.refreshedDatasets);
+        requestConfirmedClose();
+      }
     } catch (error) {
       console.error(error);
       postStatus(`Save failed: ${text(error?.message || error)}`, "error");
@@ -2435,7 +2461,11 @@ function wireMessages() {
     const message = event?.data && typeof event.data === "object" ? event.data : {};
     if (message.type === "arcrho:dataset-save") {
       try {
-        await saveMethod();
+        const saved = await saveMethod();
+        if (saved?.ok && saved?.propagationClean) {
+          await showSavedDependentsNotice(saved.refreshedDatasets);
+          requestConfirmedClose();
+        }
       } catch (error) {
         postStatus(`Save failed: ${text(error?.message || error)}`, "error");
       }

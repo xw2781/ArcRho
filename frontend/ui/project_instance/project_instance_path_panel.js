@@ -483,6 +483,7 @@ function setSelectedPath(path, options = {}) {
   markPathTreeActive(state.selectedPath);
   syncDatasetWindowChrome();
   api.syncExcelLinkManagerPath?.();
+  api.refreshReservingClassBusyNow?.();
   void loadCachedDatasetFilterForSelectedPath();
   renderDatasetTable();
   if (options?.persist !== false) saveLastSelectedPath(state.selectedPath);

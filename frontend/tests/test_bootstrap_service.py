@@ -34,6 +34,7 @@ from app_server.services import (
     calculated_dataset_service,
     dataset_sidecar_status_service,
 )
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 RESQ_FIXTURE_PATH = REPO_ROOT / "python-api" / "tests" / "fixtures" / "resq_bootstrap_f72a.json"
 DFM_METHOD_NAME = "F 25 - Incurred DFM Bootstrap"
@@ -57,6 +58,7 @@ class BootstrapServiceTests(unittest.TestCase):
         for folder in (self.methods, self.datasets, self.sidecars):
             folder.mkdir()
         self.patchers = [
+            IsolatedPropagationWorkspace(),
             mock.patch.object(
                 bootstrap_service.config,
                 "get_project_method_data_dir",

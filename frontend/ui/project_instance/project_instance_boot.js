@@ -6,19 +6,20 @@ import {
 import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260715c";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
-import { createProjectInstanceContext } from "./project_instance_context.js?v=20260811b";
+import { createProjectInstanceContext } from "./project_instance_context.js?v=20260813b";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260809b";
 import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260812a";
 import { installProjectInstanceNumberFormats } from "./project_instance_number_formats.js?v=20260720b";
 import { installProjectInstanceExcelLinks } from "./project_instance_excel_links.js?v=20260811b";
-import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260812a";
+import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260813b";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
-import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260811a";
+import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260813b";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260812a";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
 import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260812a";
-import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260812a";
+import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260813e";
+import { installProjectInstanceBusyBanner } from "./project_instance_busy_banner.js?v=20260813c";
 
 export async function bootProjectInstance() {
   const ctx = createProjectInstanceContext({
@@ -40,6 +41,7 @@ export async function bootProjectInstance() {
   installProjectInstanceHiddenTabs(ctx);
   installProjectInstanceReviewTable(ctx);
   installProjectInstanceMessages(ctx);
+  installProjectInstanceBusyBanner(ctx);
 
   const { api, els, projectName, state } = ctx;
   await api.applyHostFrameCornerStyle();
@@ -60,6 +62,7 @@ export async function bootProjectInstance() {
     return;
   }
   await api.loadDatasetTablePreferences();
+  api.startReservingClassBusyWatch();
   await Promise.all([api.loadPathTree(), api.loadDatasets()]);
   state.projectInstanceBootComplete = true;
   if (state.pendingProjectInstanceRestoreState) {

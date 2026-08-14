@@ -418,11 +418,14 @@ def _refresh_method_statuses_for_dependents_unlocked(
     project_name: str,
     reserving_class: str,
     changed_dataset_names: Iterable[Any],
+    *,
+    direct_only: bool = False,
 ) -> List[Dict[str, Any]]:
     touched: List[Dict[str, Any]] = []
     processed_sources: Set[str] = set()
     queued_sources: Set[str] = set()
     marked_dependents: Set[str] = set()
+    method_dependent_keys: Set[str] = set()
     queue: List[str] = []
     for source_name in changed_dataset_names or []:
         clean_name = _clean_text(source_name)
@@ -447,27 +450,31 @@ def _refresh_method_statuses_for_dependents_unlocked(
             dep_key = _canon_dataset_name(dependent_name)
             if not dep_key:
                 continue
+            if dep_key not in marked_dependents:
+                marked_dependents.add(dep_key)
+                dep_path = sidecar_path(project_name, reserving_class, dependent_name)
+                with sidecar_write_lock(dep_path):
+                    dep_payload = read_sidecar(dep_path)
+                    if dep_payload:
+                        method_type = normalize_method_type(dep_payload.get("method_type"), dep_payload.get("source_kind"))
+                        if method_type != METHOD_TYPE_NONE:
+                            method_dependent_keys.add(dep_key)
+                            before = normalize_status(dep_payload.get("status"))
+                            dep_payload["method_type"] = method_type
+                            dep_payload["status"] = STATUS_REVIEW_NEEDED
+                            after = normalize_status(dep_payload.get("status"))
+                            if after != before:
+                                write_sidecar(dep_path, dep_payload)
+                                touched.append({"dataset_name": dependent_name, "status": after})
+            # direct_only stops expanding at the first method tier: plain
+            # vectors between a root and its nearest methods are walked
+            # through, but a marked method's own downstream stays for the
+            # Engine job's closure marking.
+            if direct_only and dep_key in method_dependent_keys:
+                continue
             if dep_key not in queued_sources:
                 queued_sources.add(dep_key)
                 queue.append(dependent_name)
-            if dep_key in marked_dependents:
-                continue
-            marked_dependents.add(dep_key)
-            dep_path = sidecar_path(project_name, reserving_class, dependent_name)
-            with sidecar_write_lock(dep_path):
-                dep_payload = read_sidecar(dep_path)
-                if not dep_payload:
-                    continue
-                method_type = normalize_method_type(dep_payload.get("method_type"), dep_payload.get("source_kind"))
-                if method_type == METHOD_TYPE_NONE:
-                    continue
-                before = normalize_status(dep_payload.get("status"))
-                dep_payload["method_type"] = method_type
-                dep_payload["status"] = STATUS_REVIEW_NEEDED
-                after = normalize_status(dep_payload.get("status"))
-                if after != before:
-                    write_sidecar(dep_path, dep_payload)
-                    touched.append({"dataset_name": dependent_name, "status": after})
     return touched
 
 
@@ -475,10 +482,18 @@ def refresh_method_statuses_for_dependents(
     project_name: str,
     reserving_class: str,
     changed_dataset_names: Iterable[Any],
+    *,
+    direct_only: bool = False,
 ) -> List[Dict[str, Any]]:
+    # direct_only marks only the first method tier reachable from the changed
+    # roots (walking through plain vectors but never past a marked method)
+    # instead of the whole reachable closure. Save paths use it so a Client
+    # PC save pays a handful of SMB round trips; the Engine job re-marks the
+    # full closure on claim, where the same walk runs against local disk.
     with reserving_class_io_lock(project_name, reserving_class):
         return _refresh_method_statuses_for_dependents_unlocked(
             project_name,
             reserving_class,
             changed_dataset_names,
+            direct_only=direct_only,
         )

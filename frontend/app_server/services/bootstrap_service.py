@@ -919,8 +919,9 @@ def save_bootstrap_method(
     if not project or not reserving:
         raise HTTPException(400, "project_name and reserving_class are required.")
     # Dependent propagation runs on ArcRho Engine; block the save before any
-    # write when no live Engine instance can pick the job up.
-    dependent_propagation_service.require_engine_available()
+    # write when no live Engine can pick the job up or another walk is still
+    # rewriting this reserving class.
+    dependent_propagation_service.require_reserving_class_writable(project, reserving)
     incoming = _contract_call(
         normalize_bootstrap_method,
         method,
@@ -1269,7 +1270,7 @@ def refresh_bootstrap_method(
     name = _clean(method_name)
     if not project or not reserving or not name:
         raise HTTPException(400, "project_name, reserving_class, and method_name are required.")
-    dependent_propagation_service.require_engine_available()
+    dependent_propagation_service.require_reserving_class_writable(project, reserving)
     output_name = name
     sidecar_path = _sidecar_path(project, reserving, output_name)
     sidecar_cache: Dict[str, Dict[str, Any]] = {}

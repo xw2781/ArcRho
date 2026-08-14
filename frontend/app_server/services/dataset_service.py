@@ -1059,8 +1059,11 @@ def create_empty_cached_dataset(
     **kwargs: Any,
 ) -> Dict[str, Any]:
     # Dependent propagation runs on ArcRho Engine; block the create before any
-    # write when no live Engine instance can pick the job up.
-    dependent_propagation_service.require_engine_available()
+    # write when no live Engine can pick the job up or another walk is still
+    # rewriting this reserving class.
+    dependent_propagation_service.require_reserving_class_writable(
+        project_name, reserving_class
+    )
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _create_empty_cached_dataset_impl(
             project_name,
@@ -1876,8 +1879,11 @@ def save_dataset_sidecar(
     **kwargs: Any,
 ) -> Dict[str, Any]:
     # Dependent propagation runs on ArcRho Engine; block the save before any
-    # write when no live Engine instance can pick the job up.
-    dependent_propagation_service.require_engine_available()
+    # write when no live Engine can pick the job up or another walk is still
+    # rewriting this reserving class.
+    dependent_propagation_service.require_reserving_class_writable(
+        project_name, reserving_class
+    )
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _save_dataset_sidecar_impl(
             project_name,
@@ -2034,14 +2040,19 @@ def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return _patch_dataset_impl(ds_id, items, file_mtime)
-    # Dependent propagation runs on ArcRho Engine; block the grid save before
-    # any write when no live Engine instance can pick the job up.
-    dependent_propagation_service.require_engine_available()
     sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
     sidecar = _read_dataset_sidecar(sidecar_path)
     project_name = str(sidecar.get("project_name") or "").strip()
     reserving_class = str(sidecar.get("reserving_class") or "").strip()
     if not project_name or not reserving_class:
+        # Dependent propagation runs on ArcRho Engine; block the grid save
+        # before any write when no live Engine instance can pick the job up.
+        dependent_propagation_service.require_engine_available()
         return _patch_dataset_impl(ds_id, items, file_mtime)
+    # Block the grid save before any write when no live Engine can pick the
+    # job up or another walk is still rewriting this reserving class.
+    dependent_propagation_service.require_reserving_class_writable(
+        project_name, reserving_class
+    )
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _patch_dataset_impl(ds_id, items, file_mtime)

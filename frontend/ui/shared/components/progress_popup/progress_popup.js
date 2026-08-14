@@ -14,7 +14,7 @@ function ensureStyles(doc) {
   const link = doc.createElement("link");
   link.id = STYLE_ID;
   link.rel = "stylesheet";
-  link.href = "/ui/shared/components/progress_popup/progress_popup.css?v=20260813a";
+  link.href = "/ui/shared/components/progress_popup/progress_popup.css?v=20260813e";
   (doc.head || doc.documentElement)?.appendChild(link);
 }
 

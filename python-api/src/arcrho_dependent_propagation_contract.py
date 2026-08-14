@@ -23,6 +23,7 @@ pruning beyond operator cleanup.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import time
@@ -65,6 +66,17 @@ DEPENDENT_PROPAGATION_STATUS_VALUES = (
 )
 DEPENDENT_PROPAGATION_LEASE_HEARTBEAT_SECONDS = 5.0
 DEPENDENT_PROPAGATION_LEASE_STALE_SECONDS = 300.0
+
+# The Engine worker republishes the current "processing" status on this cadence
+# even when progress has not advanced, so a remote poller can tell a live walk
+# from a dead worker. A status whose updated_at/mtime stops moving for the
+# stale window is treated as abandoned by pollers and by the reserving-class
+# writability preflight; the values are shared so every consumer draws the
+# line in the same place. Queued statuses have no heartbeat owner (the job is
+# waiting to be claimed), so they get a separate, longer allowance.
+DEPENDENT_PROPAGATION_STATUS_HEARTBEAT_SECONDS = 5.0
+DEPENDENT_PROPAGATION_STATUS_STALE_SECONDS = 45.0
+DEPENDENT_PROPAGATION_QUEUED_STALE_SECONDS = 180.0
 
 ENGINE_HEARTBEAT_MAX_AGE_SECONDS = 60.0
 ENGINE_UNAVAILABLE_MESSAGE = (
@@ -592,6 +604,95 @@ def held_reserving_class_lease(
     finally:
         stop_reserving_class_lease_heartbeat(stop_event, thread)
         release_reserving_class_lease(lease)
+
+
+# ---------------------------------------------------------------------------
+# Reserving-class write-hold probe
+# ---------------------------------------------------------------------------
+
+
+def find_reserving_class_propagation_hold(
+    server_root: str | os.PathLike[str],
+    project_name: Any,
+    path: Any,
+    *,
+    now: float | None = None,
+    processing_fresh_seconds: float = DEPENDENT_PROPAGATION_STATUS_STALE_SECONDS,
+    queued_fresh_seconds: float = DEPENDENT_PROPAGATION_QUEUED_STALE_SECONDS,
+) -> dict[str, str] | None:
+    """Return the active propagation hold on one reserving class, or ``None``.
+
+    A save into a reserving class must not race the dependent walk that is
+    rewriting that class, so writers preflight this probe and refuse with a
+    lock-contention error while it reports a hold. The probe is deliberately
+    cheap for a remote caller on a mapped drive: one lock-file stat, plus a
+    scan of the (normally empty) queued-requests folder.
+
+    A hold exists while either:
+
+    - the reserving-class lease file is fresh — its heartbeat-renewed mtime is
+      within ``processing_fresh_seconds`` (reason ``"processing"``); or
+    - a queued request for the class, no older than ``queued_fresh_seconds``,
+      has no terminal status yet (reason ``"queued"``).
+
+    Both freshness windows exist so a dead worker or an abandoned queue entry
+    can never freeze the class forever; a stale hold simply stops being
+    reported. This check-then-write gate cannot be atomic on a plain
+    filesystem — two saves may still slip past it together — and that residual
+    race stays safe because the Engine merges concurrent queued requests for
+    one class into a single walk.
+    """
+
+    identity = reserving_class_identity(project_name, path)
+    observed_at = time.time() if now is None else float(now)
+
+    lock_path = dependent_propagation_lock_path(server_root, project_name, path)
+    try:
+        lease_age = observed_at - lock_path.stat().st_mtime
+    except OSError:
+        lease_age = None
+    if lease_age is not None and lease_age <= processing_fresh_seconds:
+        return {"reason": "processing"}
+
+    requests_dir = dependent_propagation_requests_directory(server_root)
+    try:
+        candidates = tuple(requests_dir.glob("*.json"))
+    except OSError:
+        return None
+    for candidate in candidates:
+        try:
+            request_age = observed_at - candidate.stat().st_mtime
+        except OSError:
+            continue
+        if request_age > queued_fresh_seconds:
+            continue
+        try:
+            request = validate_dependent_propagation_request(
+                json.loads(candidate.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError, TypeError, DependentPropagationContractError):
+            continue
+        if (
+            reserving_class_identity(request["ProjectName"], request["Path"])
+            != identity
+        ):
+            continue
+        status_path = dependent_propagation_status_path(
+            server_root, request["RequestId"]
+        )
+        try:
+            status = validate_dependent_propagation_status(
+                json.loads(status_path.read_text(encoding="utf-8")),
+                expected_request_id=request["RequestId"],
+            )
+        except OSError:
+            status = None
+        except (ValueError, TypeError, DependentPropagationContractError):
+            status = None
+        if status is not None and status["status"] in {"success", "error"}:
+            continue
+        return {"reason": "queued"}
+    return None
 
 
 # ---------------------------------------------------------------------------

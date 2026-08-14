@@ -11,7 +11,7 @@ Own the self-contained Bootstrap v1 contract, aggregate two-file load, revision-
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/bootstrap/load` | `load_bootstrap` | `BootstrapIdentityRequest` | [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) | `bootstrap_service.load_bootstrap_method` |
 | `POST` | `/bootstrap/refresh` | `refresh_bootstrap` | `BootstrapIdentityRequest` | [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) | `bootstrap_service.refresh_bootstrap_method` |
-| `POST` | `/bootstrap/save` | `save_bootstrap` | `BootstrapSaveRequest` | [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) | `bootstrap_service.save_bootstrap_method` |
+| `POST` | `/bootstrap/save` | `save_bootstrap` | `BootstrapSaveRequest` | [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) | `engine_hosted_save_service.run_hosted_save` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

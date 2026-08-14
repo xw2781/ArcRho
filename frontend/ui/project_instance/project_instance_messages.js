@@ -3,7 +3,7 @@ import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
 } from "/ui/shared/dataset/berquist_sherman_contract.js";
-import { waitForDependentPropagationOutcome } from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
+import { waitForDependentPropagationOutcome } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   PROPAGATION_SCOPE_FINISHED_MESSAGE,
   PROPAGATION_SCOPE_STARTED_MESSAGE,

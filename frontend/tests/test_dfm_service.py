@@ -395,7 +395,7 @@ class DfmServiceTests(unittest.TestCase):
             ) as enqueue,
             mock.patch.object(
                 dfm_service.dependent_propagation_service,
-                "require_engine_available",
+                "require_reserving_class_writable",
             ),
         ):
             result = dfm_service.save_dfm_method(
@@ -458,7 +458,7 @@ class DfmServiceTests(unittest.TestCase):
 
         with mock.patch.object(
             dfm_service.dependent_propagation_service,
-            "require_engine_available",
+            "require_reserving_class_writable",
         ):
             result = dfm_service.save_dfm_method(
                 "Project",

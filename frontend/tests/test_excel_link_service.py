@@ -19,6 +19,7 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
 
 from arcrho_api.dfm_contract import method_revisions, recalculate_dfm_method
 from app_server.services import excel_link_service
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 
 OLD_REFERENCE = "='C:\\Data\\[Book.xlsx]Sheet 1'!$A$1:$B$1"
@@ -126,6 +127,7 @@ class ExcelLinkFixture(unittest.TestCase):
             f"='{self.books}\\[Book.xlsx]Sheet 1'!$A$1:$B$1"
         )
         self.patchers = [
+            IsolatedPropagationWorkspace(),
             mock.patch.object(
                 excel_link_service.config,
                 "get_project_dataset_sidecar_dir",
@@ -328,7 +330,8 @@ class ExcelLinkRefreshValuesTests(ExcelLinkFixture):
                 side_effect=read_cells_batch,
             ),
             mock.patch.object(
-                excel_link_service.dependent_propagation_service, "require_engine_available",
+                excel_link_service.dependent_propagation_service,
+                "require_reserving_class_writable",
             ),
             mock.patch(
                 "app_server.services.dataset_service.load_cached_dataset_values",
@@ -367,7 +370,7 @@ class ExcelLinkRefreshValuesTests(ExcelLinkFixture):
         self.assertEqual(response["failed_refresh_count"], 0)
         self.assertEqual(response["value_changed_file_count"], 1)
         self.assertTrue(response["propagation_ok"])
-        engine.assert_called_once()
+        engine.assert_called_once_with("Project", "Class")
         read_batch.assert_called_once()
         for item in read_batch.call_args[0][0]:
             self.assertEqual(item["book_path"], str(self.new_book))
@@ -480,7 +483,7 @@ class ExcelLinkRefreshValuesTests(ExcelLinkFixture):
         before = (self.sidecars / "Manual Paid.json").read_bytes()
         with mock.patch.object(
             excel_link_service.dependent_propagation_service,
-            "require_engine_available",
+            "require_reserving_class_writable",
             side_effect=HTTPException(503, "No ArcRho Engine instance is available."),
         ):
             with self.assertRaises(HTTPException) as ctx:

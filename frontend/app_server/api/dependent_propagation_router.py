@@ -6,6 +6,7 @@ from app_server.schemas.dependent_propagation import (
     DependentPropagationJobStatusResponse,
     RefreshDependentsJobRequest,
     RefreshDependentsJobResponse,
+    ReservingClassBusyResponse,
 )
 from app_server.services import dependent_propagation_service
 
@@ -40,3 +41,15 @@ def get_refresh_dependents_job_status(
     request_id: str,
 ) -> DependentPropagationJobStatusResponse:
     return dependent_propagation_service.get_dependent_propagation_status(request_id)
+
+
+@router.get(
+    "/dependent_propagation/reserving_class_busy",
+    response_model=ReservingClassBusyResponse,
+)
+def get_reserving_class_busy(
+    project_name: str, reserving_class: str
+) -> ReservingClassBusyResponse:
+    return dependent_propagation_service.get_reserving_class_busy(
+        project_name, reserving_class
+    )

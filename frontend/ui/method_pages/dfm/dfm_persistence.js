@@ -42,13 +42,13 @@ import {
   computeAverageForColumn,
   buildExcludedSetForColumn,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260807a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260807a";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813a";
+import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
-} from "/ui/shared/services/dependent_propagation_job.js?v=20260807b";
+} from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
@@ -1759,12 +1759,19 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
     emitDfmInstancePresence("found");
     requestProjectInstanceDatasetTableRefresh();
     postDfmStatus(`Method saved at ${new Date().toLocaleTimeString()}.`);
-    void trackSavePropagation(response?.propagation, {
-      onStatus: (text, statusOptions) => postDfmStatus(text, statusOptions),
+    // Hold the saving card open through the dependent walk so the user sees
+    // each live update; a null outcome (failed or stalled walk) keeps the
+    // window open and leaves the dataset table as the failure surface.
+    const propagationOutcome = await trackSavePropagation(response?.propagation, {
+      onStatus: (text, statusOptions) => {
+        progress.setMessage?.(text, statusOptions);
+        postDfmStatus(text, statusOptions);
+      },
       onComplete: () => requestProjectInstanceDatasetTableRefresh(),
     });
     scheduleDfmExcelFreshnessCheck(canonicalMethod);
-    // The save itself is done; drop the spinner before any follow-up dialog.
+    // The save and its dependent walk are done; drop the spinner before any
+    // follow-up dialog.
     progress.finish();
     if (options.showReviewWarning !== false) {
       await showMethodSaveReviewWarning(response, {
@@ -1773,7 +1780,13 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
         reservingClass: getResolvedReservingClass(),
       });
     }
-    return { ok: true, method: canonicalMethod, sidecar: response?.sidecar };
+    return {
+      ok: true,
+      method: canonicalMethod,
+      sidecar: response?.sidecar,
+      propagationClean: propagationOutcome !== null,
+      refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+    };
   } catch (error) {
     progress.finish();
     const message = String(error?.message || error || "DFM save failed.");

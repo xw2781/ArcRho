@@ -2781,6 +2781,13 @@ function applyDatasetRowContextAction(action) {
     setStatus("Temporary view supports opening datasets only.");
     return;
   }
+  // Opening windows stays allowed while a dependent walk holds this class;
+  // actions that write into the class wait until it finishes (the app server
+  // refuses them with 423 anyway -- this guard just explains the pause).
+  if (api.isReservingClassBusy?.() && !["view", "show-as-vector", "view-as-triangle"].includes(normalized)) {
+    setStatus("Dependent updates are running for this reserving class. Try again when they finish.");
+    return;
+  }
   if (normalized === "view") {
     openDatasetRecord(viewRecord);
   } else if (normalized === "make-permanent") {

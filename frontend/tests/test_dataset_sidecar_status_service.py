@@ -155,6 +155,51 @@ class DatasetSidecarStatusServiceTests(unittest.TestCase):
             [],
         )
 
+    def test_direct_only_marks_the_first_method_tier_through_plain_vectors(self) -> None:
+        self.write_sidecar(
+            "Input",
+            method_type=status_service.METHOD_TYPE_NONE,
+            source_kind="input",
+            dependents=["Vector"],
+        )
+        self.write_sidecar(
+            "Vector",
+            method_type=status_service.METHOD_TYPE_NONE,
+            source_kind="calculated",
+            dependents=["DFM Output"],
+        )
+        self.write_sidecar(
+            "DFM Output",
+            method_type=status_service.METHOD_TYPE_DFM,
+            source_kind="dfm",
+            dependents=["BF Output"],
+        )
+        self.write_sidecar(
+            "BF Output",
+            method_type=status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON,
+            source_kind="bornhuetter_ferguson",
+            dependents=[],
+        )
+
+        updates = status_service.refresh_method_statuses_for_dependents(
+            "Project",
+            "Class",
+            ["Input"],
+            direct_only=True,
+        )
+
+        # The walk passes through the plain vector to the nearest method,
+        # then stops: the marked method's own downstream belongs to the
+        # Engine job's full-closure marking.
+        self.assertEqual(
+            [item["dataset_name"] for item in updates], ["DFM Output"]
+        )
+        self.assertEqual(self.status("Vector"), status_service.STATUS_CURRENT)
+        self.assertEqual(
+            self.status("DFM Output"), status_service.STATUS_REVIEW_NEEDED
+        )
+        self.assertEqual(self.status("BF Output"), status_service.STATUS_CURRENT)
+
     def test_review_needed_precedents_are_deduplicated_and_keep_input_order(self) -> None:
         self.write_sidecar(
             "Current Method",

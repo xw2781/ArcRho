@@ -22,6 +22,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from arcrho_dependent_propagation_contract import DEPENDENT_PROPAGATION_FUNCTION
+from arcrho_engine_save_contract import SAVE_JOB_FUNCTION
 from arcrho_project_duplication_contract import PROJECT_DUPLICATION_FUNCTION
 from utils import get_config_value, get_project_root, normalize_function_name
 
@@ -60,6 +61,7 @@ from arcrho_engine.dependent_propagation import (
 from arcrho_engine.project_duplication import (
     process_durable_project_duplication_request,
 )
+from arcrho_engine.save_jobs import process_hosted_save_request
 
 
 class _DurableJobDispatcher:
@@ -145,6 +147,7 @@ class RequestHandler(FileSystemEventHandler):
         *,
         duplication_queue_capacity: int = 1,
         propagation_queue_capacity: int = 1,
+        hosted_save_queue_capacity: int = 4,
     ):
         super().__init__()
         self._processing_lock = Lock()
@@ -157,6 +160,13 @@ class RequestHandler(FileSystemEventHandler):
             thread_name="arcrho-dependent-propagation-worker",
             execute=self._execute_dependent_propagation,
             queue_capacity=propagation_queue_capacity,
+        )
+        # Hosted saves are interactive: they get their own worker so a long
+        # propagation walk queued on this instance never delays a user's save.
+        self._hosted_save = _DurableJobDispatcher(
+            thread_name="arcrho-hosted-save-worker",
+            execute=self._execute_hosted_save,
+            queue_capacity=hosted_save_queue_capacity,
         )
 
     @property
@@ -209,12 +219,28 @@ class RequestHandler(FileSystemEventHandler):
         except Exception as exc:
             print(f"(dependent propagation request error: {exc})")
 
+    def _schedule_hosted_save(self, file_path, arg) -> bool:
+        return self._hosted_save.schedule(
+            self._duplication_key(file_path, arg), file_path, arg
+        )
+
+    def _execute_hosted_save(self, file_path, arg) -> None:
+        try:
+            process_hosted_save_request(
+                get_project_root(),
+                file_path,
+                arg,
+            )
+        except Exception as exc:
+            print(f"(hosted save request error: {exc})")
+
     def shutdown(self, *, wait: bool = True, timeout: float | None = None) -> bool:
         """Stop accepting durable jobs and optionally wait for active work."""
 
         duplication_stopped = self._duplication.shutdown(wait=wait, timeout=timeout)
         propagation_stopped = self._propagation.shutdown(wait=wait, timeout=timeout)
-        return duplication_stopped and propagation_stopped
+        hosted_save_stopped = self._hosted_save.shutdown(wait=wait, timeout=timeout)
+        return duplication_stopped and propagation_stopped and hosted_save_stopped
 
     def _process_event_path(self, event, file_path):
         if event.is_directory:
@@ -267,6 +293,14 @@ class RequestHandler(FileSystemEventHandler):
                 self._schedule_dependent_propagation(file_path, arg)
             else:
                 self._execute_dependent_propagation(file_path, arg)
+            return
+        if function_name_raw == SAVE_JOB_FUNCTION:
+            # Hosted saves claim by delete inside the executor; scheduling
+            # keeps the watchdog event thread free like other durable jobs.
+            if dispatch_duplication:
+                self._schedule_hosted_save(file_path, arg)
+            else:
+                self._execute_hosted_save(file_path, arg)
             return
 
         with self._processing_lock:
@@ -500,12 +534,45 @@ def _remove_instance_heartbeat():
         pass
 
 
+def _warm_canonical_runtime() -> None:
+    """Pre-import the bundled app_server stack in the background at boot.
+
+    The first hosted save or propagation walk on a cold frozen instance
+    otherwise pays tens of seconds of one-time import cost (pandas plus the
+    canonical services) while a user waits on the save popup.
+    """
+
+    try:
+        from arcrho_engine.dependent_propagation import configure_canonical_runtime
+
+        configure_canonical_runtime(get_project_root())
+        from app_server.services import (  # noqa: F401
+            bootstrap_service,
+            bornhuetter_ferguson_service,
+            calculated_dataset_service,
+            cape_cod_service,
+            dataset_service,
+            dependent_propagation_service,
+            dfm_service,
+            result_selection_service,
+        )
+        print('(canonical runtime warmed)')
+    except Exception as exc:
+        print(f'(canonical runtime warmup failed: {exc})')
+
+
 def start_monitoring(path):
     event_handler = RequestHandler()
     observer = Observer()
     observer.schedule(event_handler, path, recursive=False)
     observer.start()
     print('Server ID: ' + robot_id + '\n')
+
+    Thread(
+        target=_warm_canonical_runtime,
+        name="arcrho-canonical-runtime-warmup",
+        daemon=True,
+    ).start()
 
     remove_old_instances()
 

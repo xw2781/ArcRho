@@ -15,6 +15,7 @@ if str(FRONTEND_ROOT) not in sys.path:
 
 from app_server import config
 from app_server.services import calculated_dataset_service, dataset_service, result_selection_service
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 
 class ResultSelectionServiceTests(unittest.TestCase):
@@ -27,6 +28,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         for path in (self.methods, self.datasets, self.sidecars):
             path.mkdir(parents=True)
         self.patchers = [
+            IsolatedPropagationWorkspace(),
             mock.patch.object(config, "get_project_method_data_dir", return_value=str(self.methods)),
             mock.patch.object(config, "get_project_dataset_cache_dir", return_value=str(self.datasets)),
             mock.patch.object(config, "get_project_dataset_sidecar_dir", return_value=str(self.sidecars)),
