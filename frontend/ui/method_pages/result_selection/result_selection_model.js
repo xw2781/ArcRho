@@ -13,7 +13,6 @@
         || {
           run: (work) => work({
             writing() {},
-            duringDialog: (dialogWork) => dialogWork(),
             finish() {},
           }),
         };
@@ -260,25 +259,11 @@
             notes: els.notesInput?.value || "",
             expected_revision: state.methodRevision,
           };
-          // Step one: name the dependent objects this save would refresh and
-          // let the user decide, before anything reaches the network drive.
-          // Cancelling leaves the edit in this window, unsaved.
-          const decision = await planAndConfirmSave({
-            saveUrl: "/result-selection/save",
-            payload: saveBody,
-            subject: "this Result Selection",
-            showDialog: (work) => progress.duringDialog(work),
-          });
-          if (!decision.proceed) {
-            const message = decision.message || "Save cancelled; nothing was changed.";
-            postStatus(message, decision.cancelled ? "" : "warn");
-            return { ok: false, cancelled: !!decision.cancelled, error: message };
-          }
           progress.writing();
           const resp = await fetch("/result-selection/save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...saveBody, plan_fingerprint: decision.fingerprint }),
+            body: JSON.stringify(saveBody),
           });
           const payload = await resp.json().catch(() => ({}));
           if (!resp.ok || payload?.ok === false) {

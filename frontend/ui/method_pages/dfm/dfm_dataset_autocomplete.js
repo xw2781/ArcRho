@@ -1,7 +1,7 @@
 import {
   listDfmDatasetInstances,
   readDfmMethodIdentityFromPage,
-} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260811b";
+} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260814b";
 import {
   completeDfmDatasetName,
   filterDfmDatasetNames,

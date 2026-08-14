@@ -19,11 +19,11 @@ const summaryFormatterSource = summarySource
     "const attachArcrhoTooltip = (target, text) => { target.tooltipText = text; };",
   )
   .replace(
-    'import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260811a";',
+    'import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260814b";',
     "const installDfmDatasetAutocomplete = () => {};",
   )
   .replace(
-    'import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260812a";',
+    'import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260814b";',
     'const resolveDfmDatasetReferencesInFormulaDetailed = async (formula) => { globalThis.__dfmTooltipResolutionCalls = (globalThis.__dfmTooltipResolutionCalls || 0) + 1; globalThis.__dfmTooltipReferenceFormula = formula; return { resolvedFormula: "=1.00264" }; };',
   )
   .replace(

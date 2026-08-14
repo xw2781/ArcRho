@@ -20,12 +20,11 @@ import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selec
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
 } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
-import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
 import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
@@ -268,7 +267,6 @@ const ctx = {
   showPageMessageBox,
   isEngineUnavailableSaveError,
   trackSavePropagation,
-  planAndConfirmSave,
   rsObjectChangeWatch,
   rsSaveProgress,
   showSavedDependentsNotice,

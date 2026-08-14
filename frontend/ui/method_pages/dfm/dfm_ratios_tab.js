@@ -51,7 +51,7 @@ import {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260812m";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260814b";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -59,7 +59,7 @@ import {
   showRatioColumnChart,
   resetRatioChartThresholds,
   setRatioChartCallbacks,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260812e";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260814b";
 import {
   applyDfmCellNoteMarkers,
   hasDfmCellNote,
@@ -95,14 +95,14 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260812m";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260814b";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
   scheduleRatioChartRender,
   showRatioColumnChart,
   resetRatioChartThresholds,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260812e";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260814b";
 
 
 

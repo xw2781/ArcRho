@@ -22,7 +22,7 @@ import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_fer
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -43,10 +43,8 @@ import {
 } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_json_contract.js?v=20260726a";
 import {
   loadBornhuetterFergusonMethod,
-  planBornhuetterFergusonMethodSave,
   saveBornhuetterFergusonMethod,
-} from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_method_api.js?v=20260814a";
-import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
+} from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_method_api.js?v=20260814b";
 
 const BF_METHOD_TYPE = BORN_HUETTER_FERGUSON_METHOD_TYPE;
 const DEFAULT_ORIGIN_LENGTH = 12;
@@ -1493,28 +1491,12 @@ async function runBornhuetterFergusonSave(progress) {
     expected_owned_revision: state.ownedRevision,
     expected_derived_revision: state.derivedRevision,
   };
-  // Step one: name the dependent objects this save would refresh and let the
-  // user decide, before anything reaches the network drive. Cancelling leaves
-  // the edit in this window, unsaved.
-  const decision = await planAndConfirmSave({
-    requestPlan: () => planBornhuetterFergusonMethodSave(saveInput),
-    subject: `this ${BF_METHOD_TYPE}`,
-    showDialog: (work) => progress.duringDialog(work),
-  });
-  if (!decision.proceed) {
-    const message = decision.message || "Save cancelled; nothing was changed.";
-    postStatus(message, decision.cancelled ? "" : "warn");
-    return { ok: false, cancelled: !!decision.cancelled, error: message };
-  }
   let result;
   bfObjectChangeWatch.pause();
   try {
     try {
       progress.writing();
-      result = await saveBornhuetterFergusonMethod({
-        ...saveInput,
-        plan_fingerprint: decision.fingerprint,
-      });
+      result = await saveBornhuetterFergusonMethod(saveInput);
     } catch (err) {
       progress.finish();
       if (isEngineUnavailableSaveError(err)) {

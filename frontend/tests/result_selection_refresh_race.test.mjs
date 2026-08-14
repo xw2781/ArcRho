@@ -134,9 +134,6 @@ test("a dependency update queued during save survives the save response", async 
       schedulePersistedValuesRefresh: () => { scheduleCount += 1; },
       resumePersistedValuesRefresh: () => { resumeCount += 1; },
       trackSavePropagation: async () => null,
-      // Step one of the two-step save needs a live server; this save's
-      // dependents are not what this test is about.
-      planAndConfirmSave: async () => ({ proceed: true, fingerprint: "fp-race" }),
       showMethodSaveReviewWarning: async () => {},
       postStatus: () => {},
       inst: "rs_test",

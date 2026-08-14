@@ -143,7 +143,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260813e"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260814b"
 );
 
 const datasetLinksTab = createExternalLinksTab({

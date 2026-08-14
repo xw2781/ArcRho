@@ -1,7 +1,7 @@
 import {
   readDfmMethodIdentityFromPage,
   resolveDfmDatasetReferences,
-} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260811a";
+} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260814b";
 import {
   findDfmDatasetReferences,
   substituteDfmDatasetReferenceLabels,

@@ -5,7 +5,7 @@ Annual MVP page for `B&S Settlement Rate Adjustment` and `B&S Case Reserve Adequ
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.berquist_sherman.entry_points -->
-- `ui/method_pages/berquist_sherman/berquist_sherman.html`: external scripts `/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260813e`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/method_pages/berquist_sherman/berquist_sherman.html`: external scripts `/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260814b`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`

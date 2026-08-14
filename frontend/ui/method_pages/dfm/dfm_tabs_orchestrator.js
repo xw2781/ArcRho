@@ -12,7 +12,7 @@ import {
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
 import { setStorageInstance, loadNaBorders } from "/ui/method_pages/dfm/dfm_storage.js";
 import {
   state as dfmState,
@@ -39,21 +39,21 @@ import {
   isRatioChartOpen,
   scheduleRatioChartRender,
   restoreRatioHistoryUi,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260812f";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260814b";
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,
   buildResultsVector,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260814a";
 import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
-import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260812e";
+import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260814b";
 import {
   syncMethodNameFromInputs,
   syncOutputTypeFromProject,
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/method_pages/dfm/dfm_details.js?v=20260813e";
+} from "/ui/method_pages/dfm/dfm_details.js?v=20260814b";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -67,10 +67,10 @@ import {
   stopDfmMethodFileWatcher,
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260814a";
-import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260812f";
-import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260813e";
-import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260813e";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260814b";
+import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260814b";
+import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260814b";
+import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260814b";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260722a";
 import {
   clearRatioHistoryTempSession,

@@ -4,9 +4,8 @@ import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagatio
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260809a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
-import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
   if (typeof state.showSubtotal !== "boolean") state.showSubtotal = true;
@@ -597,24 +596,8 @@ export function registerDataTabPersistenceController(runtime) {
       ...getManualInputDatasetValuePayload(),
       ...getDatasetExternalLinksPayload(),
     };
-    // Step one: name the dependent objects this save would refresh and let the
-    // user decide, before anything reaches the network drive. The identical
-    // payload goes to both steps so the plan resolves the same roots the save
-    // will. Cancelling leaves the edit in the window, unsaved.
-    const decision = await planAndConfirmSave({
-      saveUrl: `${config.API_BASE}/dataset/sidecar/save`,
-      payload,
-      subject: "this dataset",
-      showDialog: (work) => (progress?.duringDialog ? progress.duringDialog(work) : work()),
-    });
-    if (!decision.proceed) {
-      return { ok: false, cancelled: !!decision.cancelled, error: decision.message };
-    }
     progress?.writing();
-    const resp = await withDataTabDatasetMutation({ source: "sidecar-save" }, () => saveDatasetSidecar({
-      ...payload,
-      plan_fingerprint: decision.fingerprint,
-    }));
+    const resp = await withDataTabDatasetMutation({ source: "sidecar-save" }, () => saveDatasetSidecar(payload));
     if (!resp.ok) {
       return { ok: false, error: resp?.data?.detail || "Failed to save dataset settings." };
     }

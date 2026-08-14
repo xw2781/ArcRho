@@ -11,7 +11,7 @@ import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_re
 import {
   resolveDfmDatasetReferencesInFormulaDetailed,
   substituteCachedDfmDatasetReferencesInFormula,
-} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260812a";
+} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260814b";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,

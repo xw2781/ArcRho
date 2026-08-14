@@ -44,7 +44,7 @@ import {
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -69,7 +69,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260812f";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260814b";
 import {
   applyPersistedResultsSnapshot,
   ensureResultsRatioBasisAligned,
@@ -108,19 +108,17 @@ import {
   DFM_METHOD_JSON_FORMAT_V2,
   isDfmV2Method,
   loadDfmMethod,
-  planDfmMethodSave,
   previewDfmMethod,
   readDfmMethodIdentityFromPage,
   saveDfmMethod,
-} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260814a";
-import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
+} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260814b";
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260812m";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260814b";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
-import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260812a";
-import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260812e";
+import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260814b";
+import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260814b";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -1682,27 +1680,11 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
       expected_derived_revision: currentDerivedRevision,
     }),
   };
-  // Step one: name the dependent objects this save would refresh and let the
-  // user decide, before anything reaches the network drive. Cancelling leaves
-  // the edit in this window, unsaved.
-  const decision = await planAndConfirmSave({
-    requestPlan: () => planDfmMethodSave(saveInput),
-    subject: "this DFM",
-    showDialog: (work) => progress.duringDialog(work),
-  });
-  if (!decision.proceed) {
-    const message = decision.message || "Save cancelled; nothing was changed.";
-    postDfmStatus(message, { tone: decision.cancelled ? "info" : "warn" });
-    return { ok: false, cancelled: !!decision.cancelled, error: message };
-  }
   dfmObjectChangeWatch.pause();
   try {
     postDfmStatus("Saving DFM method...");
     progress.writing();
-    const response = await saveDfmMethod({
-      ...saveInput,
-      plan_fingerprint: decision.fingerprint,
-    });
+    const response = await saveDfmMethod(saveInput);
     const canonicalMethod = response?.method;
     if (!canonicalMethod || !isDfmV2Method(canonicalMethod)) {
       throw new Error("DFM save did not return a canonical v2 method.");

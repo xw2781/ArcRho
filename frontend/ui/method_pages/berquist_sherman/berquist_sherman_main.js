@@ -18,9 +18,8 @@ import {
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
-import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
 import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
@@ -2154,9 +2153,6 @@ async function loadSidecar() {
   }
 }
 
-// One projection for both halves of the two-step save: the plan must resolve
-// the same propagation root the save will, which it can only do from the same
-// body.
 function buildSidecarSaveBody(csvPath) {
   const details = getDetails();
   return {
@@ -2183,11 +2179,11 @@ function buildSidecarSaveBody(csvPath) {
   };
 }
 
-async function saveSidecar(body, planFingerprint = "") {
+async function saveSidecar(body) {
   const response = await fetch("/dataset/sidecar/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, plan_fingerprint: String(planFingerprint || "") }),
+    body: JSON.stringify(body),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {
@@ -2255,20 +2251,6 @@ async function runBerquistShermanSave(progress) {
   const methodPath = await getMethodPath();
   const csvPath = await getCsvPath();
   const sidecarBody = buildSidecarSaveBody(csvPath);
-  // Step one: name the dependent objects this save would refresh and let the
-  // user decide. This runs before the method JSON and CSV writes, not just
-  // before the sidecar write, so cancelling leaves nothing behind on disk.
-  const decision = await planAndConfirmSave({
-    saveUrl: "/dataset/sidecar/save",
-    payload: sidecarBody,
-    subject: `this ${contract.displayLabel}`,
-    showDialog: (work) => progress.duringDialog(work),
-  });
-  if (!decision.proceed) {
-    const message = decision.message || "Save cancelled; nothing was changed.";
-    postStatus(message, decision.cancelled ? "" : "warn");
-    return { ok: false, cancelled: !!decision.cancelled, error: message };
-  }
   progress.writing();
   const jsonResult = await hostApi.saveJsonFile({
     path: methodPath,
@@ -2284,7 +2266,7 @@ async function runBerquistShermanSave(progress) {
     data: matrixCsv(output),
   });
   if (csvResult?.error) throw new Error(csvResult.error);
-  const sidecar = await saveSidecar(sidecarBody, decision.fingerprint);
+  const sidecar = await saveSidecar(sidecarBody);
   await Promise.all([
     loadCachedRows(true).catch(() => {}),
     loadSidecar().catch(() => null),

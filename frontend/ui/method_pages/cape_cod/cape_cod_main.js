@@ -22,7 +22,7 @@ import { createCapeCodRatiosChart } from "/ui/method_pages/cape_cod/cape_cod_rat
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260813e";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -49,10 +49,8 @@ import {
 } from "/ui/method_pages/cape_cod/cape_cod_json_contract.js?v=20260804a";
 import {
   loadCapeCodMethod,
-  planCapeCodMethodSave,
   saveCapeCodMethod,
-} from "/ui/method_pages/cape_cod/cape_cod_method_api.js?v=20260814a";
-import { planAndConfirmSave } from "/ui/shared/services/save_plan.js?v=20260814a";
+} from "/ui/method_pages/cape_cod/cape_cod_method_api.js?v=20260814b";
 
 const DEFAULT_ORIGIN_LENGTH = 12;
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
@@ -1563,28 +1561,12 @@ async function runCapeCodSave(progress) {
     expected_owned_revision: state.ownedRevision,
     expected_derived_revision: state.derivedRevision,
   };
-  // Step one: name the dependent objects this save would refresh and let the
-  // user decide, before anything reaches the network drive. Cancelling leaves
-  // the edit in this window, unsaved.
-  const decision = await planAndConfirmSave({
-    requestPlan: () => planCapeCodMethodSave(saveInput),
-    subject: `this ${CC_METHOD_TYPE}`,
-    showDialog: (work) => progress.duringDialog(work),
-  });
-  if (!decision.proceed) {
-    const message = decision.message || "Save cancelled; nothing was changed.";
-    postStatus(message, decision.cancelled ? "" : "warn");
-    return { ok: false, cancelled: !!decision.cancelled, error: message };
-  }
   let result;
   ccObjectChangeWatch.pause();
   try {
     try {
       progress.writing();
-      result = await saveCapeCodMethod({
-        ...saveInput,
-        plan_fingerprint: decision.fingerprint,
-      });
+      result = await saveCapeCodMethod(saveInput);
     } catch (err) {
       progress.finish();
       if (isEngineUnavailableSaveError(err)) {
