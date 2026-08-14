@@ -23,6 +23,11 @@
 - Manage Linked Workbook in ArcRho
 - DFM Sync
 
+## Examples
+1. Dataset dependency graph
+2. Input refresh & Propagation
+3. Review workflow
+
 # Phase 3 - 8/24
 - AI coding assistant
 - Create Macros

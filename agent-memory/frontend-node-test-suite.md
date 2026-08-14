@@ -5,18 +5,22 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 70ce39fb-ac39-4edd-a4ac-59ca01231bb8
-  modified: 2026-08-08T03:06:48.658Z
+  modified: 2026-08-14T22:22:24.186Z
 ---
 
 `frontend/package.json` has no `test` script. Run the suite from `frontend/` with the
 portable Node: `./node-portable/node.exe --test "tests/**/*.test.mjs"` (bare `node` is not
 on PATH; passing the directory instead of the glob fails to resolve).
 
-As of 2026-08-07 four tests fail as a stable baseline (525 tests, 521 pass), and they also
-fail when run in isolation: "BF, Cape Cod, and Result Selection Home cards open restorable
-shell method tabs", "Project Settings loads its external stylesheets in cascade order",
-"existing Result Selection apply uses persisted values without source or basis reloads", and
-"a dependency update queued during save survives the save response".
+As of 2026-08-14 the suite at clean HEAD (a71614b) has grown to 705 tests with 14 failures;
+the failing set now includes several version-stamp/modularity tests ("DFM runtime imports
+never load one module under multiple version URLs", "stateful shared-grid consumers use one
+cache-busted module URL", "the data-tab controller and its interaction adapter share the
+grid module version"), DFM Excel freshness (x2), dfm_formula_validation, installer progress
+patcher, the B&S "app-server and migration adapters retain every canonical frontend contract
+value" test, shell add-tab SVG, Data-tab split/facade, Details-format sync, DSV/DFM Data
+validation runtime, Result Selection apply, and bundled Codex runtime. Some are flaky
+run-to-run, so always diff against a same-commit worktree baseline rather than this list.
 
 Separately, "changed theme and chart owners are reached through current cache-version chains"
 (tests/color_theme.test.mjs) is a **flake in full-suite runs only** — it passes in isolation
