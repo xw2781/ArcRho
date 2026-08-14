@@ -5,6 +5,7 @@ import sys
 import tempfile
 import types
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -27,6 +28,45 @@ from arcrho_dependent_propagation_contract import (
 )
 from arcrho_engine import dependent_propagation
 from arcrho_engine import main as engine_main
+
+
+def _identity_stub(bound: list):
+    """Stand in for the canonical acting-identity binding.
+
+    ``bound`` holds the identity only while it is in scope, so the walk can
+    assert it ran *inside* the binding rather than merely next to it.
+    """
+
+    @contextmanager
+    def acting_identity(login_name, display_name=""):
+        identity = {
+            "login_name": str(login_name or "").strip(),
+            "display_name": str(display_name or "").strip()
+            or str(login_name or "").strip(),
+        }
+        bound.append(identity)
+        try:
+            yield identity
+        finally:
+            bound.pop()
+
+    return SimpleNamespace(acting_identity=acting_identity)
+
+
+def _fake_app_server(*, walk, marking, bound_identities=None):
+    fake_services = types.ModuleType("app_server.services")
+    fake_services.calculated_dataset_service = SimpleNamespace(
+        recalculate_dependents=walk
+    )
+    fake_services.dataset_sidecar_status_service = SimpleNamespace(
+        refresh_method_statuses_for_dependents=marking
+    )
+    fake_services.user_identity_service = _identity_stub(
+        bound_identities if bound_identities is not None else []
+    )
+    fake_app_server = types.ModuleType("app_server")
+    fake_app_server.services = fake_services
+    return {"app_server": fake_app_server, "app_server.services": fake_services}
 
 
 class DependentPropagationEngineTests(unittest.TestCase):
@@ -95,23 +135,13 @@ class DependentPropagationEngineTests(unittest.TestCase):
             calls.append(("walk", args, kwargs))
             return {"ok": True}
 
-        fake_services = types.ModuleType("app_server.services")
-        fake_services.calculated_dataset_service = SimpleNamespace(
-            recalculate_dependents=record_walk
-        )
-        fake_services.dataset_sidecar_status_service = SimpleNamespace(
-            refresh_method_statuses_for_dependents=record_marking
-        )
-        fake_app_server = types.ModuleType("app_server")
-        fake_app_server.services = fake_services
-
         _path, request = self._publish_request()
         progress: list[dict] = []
         with (
             patch.object(dependent_propagation, "configure_canonical_runtime"),
             patch.dict(
                 sys.modules,
-                {"app_server": fake_app_server, "app_server.services": fake_services},
+                _fake_app_server(walk=record_walk, marking=record_marking),
             ),
         ):
             result = dependent_propagation.execute_dependent_propagation(
@@ -139,28 +169,50 @@ class DependentPropagationEngineTests(unittest.TestCase):
         def failing_marking(*_args, **_kwargs):
             raise OSError("sidecar folder unavailable")
 
-        fake_services = types.ModuleType("app_server.services")
-        fake_services.calculated_dataset_service = SimpleNamespace(
-            recalculate_dependents=lambda *args, **kwargs: {"ok": True}
-        )
-        fake_services.dataset_sidecar_status_service = SimpleNamespace(
-            refresh_method_statuses_for_dependents=failing_marking
-        )
-        fake_app_server = types.ModuleType("app_server")
-        fake_app_server.services = fake_services
-
         _path, request = self._publish_request()
         with (
             patch.object(dependent_propagation, "configure_canonical_runtime"),
             patch.dict(
                 sys.modules,
-                {"app_server": fake_app_server, "app_server.services": fake_services},
+                _fake_app_server(
+                    walk=lambda *args, **kwargs: {"ok": True}, marking=failing_marking
+                ),
             ),
         ):
             result = dependent_propagation.execute_dependent_propagation(
                 self.root, request
             )
         self.assertTrue(result["ok"])
+
+    def test_the_walk_runs_as_the_user_whose_save_queued_it(self) -> None:
+        # The walk re-saves every dependent it recalculates. This instance runs
+        # under its own service profile, so without the binding those sidecars
+        # would name the instance instead of the person who saved.
+        bound: list = []
+        seen: list = []
+
+        def record_walk(*_args, **_kwargs):
+            seen.append(list(bound))
+            return {"ok": True}
+
+        _path, request = self._publish_request()
+        with (
+            patch.object(dependent_propagation, "configure_canonical_runtime"),
+            patch.dict(
+                sys.modules,
+                _fake_app_server(
+                    walk=record_walk,
+                    marking=lambda *args, **kwargs: [],
+                    bound_identities=bound,
+                ),
+            ),
+        ):
+            dependent_propagation.execute_dependent_propagation(self.root, request)
+
+        self.assertEqual(
+            seen, [[{"login_name": "tester", "display_name": "tester"}]]
+        )
+        self.assertEqual(bound, [], "the binding must not outlive the walk")
 
     def test_request_filename_must_match_request_id(self) -> None:
         path, request = self._publish_request()

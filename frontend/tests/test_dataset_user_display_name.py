@@ -68,5 +68,52 @@ class DatasetUserDisplayNameTests(unittest.TestCase):
             self.assertEqual(audit_service._resolve_audit_user_name(), "nobody")
 
 
+class HostedSaveUserDisplayNameTests(unittest.TestCase):
+    """A save hosted on ArcRho Engine stamps the user, not the instance.
+
+    Engine instances run under their own service profiles, so before the
+    acting identity existed the same edit could be attributed to a different
+    account each time depending on which instance claimed the request.
+    """
+
+    def setUp(self) -> None:
+        user_identity_service.clear_display_name_cache()
+        self.addCleanup(user_identity_service.clear_display_name_cache)
+        self._temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.addCleanup(self._temp_dir.cleanup)
+        index_path = Path(self._temp_dir.name) / "username_index.json"
+        index_path.write_text(
+            json.dumps({"users": [{"login_name": "xwei", "full_name": "Wei, Xiao"}]}),
+            encoding="utf-8",
+        )
+        patchers = (
+            patch.object(config, "get_username_index_path", return_value=str(index_path)),
+            patch.dict("os.environ", {"USERNAME": "arcrho.engine.02"}, clear=False),
+        )
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _stamped_names(self) -> list[str]:
+        return [
+            dataset_service._current_user_name(),
+            calculated_dataset_service._current_user_name(),
+            result_selection_service._current_user_name(),
+            audit_service._resolve_audit_user_name(),
+        ]
+
+    def test_the_engine_account_is_what_the_bug_looked_like(self) -> None:
+        self.assertEqual(self._stamped_names(), ["arcrho.engine.02"] * 4)
+
+    def test_every_writer_follows_the_acting_identity(self) -> None:
+        with user_identity_service.acting_identity("xwei", "Wei, Xiao"):
+            self.assertEqual(self._stamped_names(), ["Wei, Xiao"] * 4)
+        self.assertEqual(self._stamped_names(), ["arcrho.engine.02"] * 4)
+
+    def test_a_login_only_binding_resolves_through_the_username_index(self) -> None:
+        with user_identity_service.acting_identity("xwei"):
+            self.assertEqual(self._stamped_names(), ["Wei, Xiao"] * 4)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "save",
+  "audience": "user",
+  "summary": "Save and dependent-update review responses no longer wait for queue-file cleanup on the network drive.",
+  "details": [
+    "The save result returns as soon as ArcRho Engine reports it; leftover queue files are removed in the background, saving roughly a quarter second per save step on network-drive installs."
+  ]
+}

@@ -229,7 +229,7 @@ def execute_dependent_propagation(
 
     normalized = validate_dependent_propagation_request(request)
     configure_canonical_runtime(server_root)
-    from app_server.services import calculated_dataset_service
+    from app_server.services import calculated_dataset_service, user_identity_service
 
     roots = list(normalized["ChangedRoots"])
     for extra in additional_roots or []:
@@ -245,42 +245,49 @@ def execute_dependent_propagation(
         if progress_callback is not None:
             progress_callback(_progress(stage, completed, total, label))
 
-    # The save only marked the first dependent method tier (the deep closure
-    # would cost a Client PC one SMB round trip per node); re-mark the full
-    # reachable closure here on local disk before the walk so statuses are
-    # honest for the whole cascade while it runs. A marking failure never
-    # aborts the walk — the walk finalizes every status itself.
-    on_tier("marking", 0, 0, "Marking dependents for review")
-    try:
-        from app_server.services import dataset_sidecar_status_service
+    # The walk re-saves every dependent dataset it recalculates, and this
+    # instance runs under its own service profile: act as the user whose save
+    # queued the walk so those sidecars — and the index rows built from them —
+    # name the person who made the change. The request carries only the login,
+    # so the display name resolves here against the workspace username index,
+    # which is local disk for this process.
+    with user_identity_service.acting_identity(normalized["UserName"]):
+        # The save only marked the first dependent method tier (the deep
+        # closure would cost a Client PC one SMB round trip per node); re-mark
+        # the full reachable closure here on local disk before the walk so
+        # statuses are honest for the whole cascade while it runs. A marking
+        # failure never aborts the walk — the walk finalizes every status itself.
+        on_tier("marking", 0, 0, "Marking dependents for review")
+        try:
+            from app_server.services import dataset_sidecar_status_service
 
-        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+                normalized["ProjectName"],
+                normalized["Path"],
+                [
+                    name
+                    for root in roots
+                    for name in (root.get("dataset_name"), root.get("dataset_type"))
+                    if str(name or "").strip()
+                ],
+            )
+        except Exception as exc:
+            print(
+                "(dependent propagation closure marking failed: "
+                f"{_redact_machine_paths(exc)})"
+            )
+
+        return calculated_dataset_service.recalculate_dependents(
             normalized["ProjectName"],
             normalized["Path"],
-            [
-                name
-                for root in roots
-                for name in (root.get("dataset_name"), root.get("dataset_type"))
-                if str(name or "").strip()
+            first["dataset_name"],
+            first["dataset_type"],
+            additional_roots=[
+                (root["dataset_name"], root["dataset_type"]) for root in rest
             ],
+            progress_callback=on_tier,
+            rebuild_index=True,
         )
-    except Exception as exc:
-        print(
-            "(dependent propagation closure marking failed: "
-            f"{_redact_machine_paths(exc)})"
-        )
-
-    return calculated_dataset_service.recalculate_dependents(
-        normalized["ProjectName"],
-        normalized["Path"],
-        first["dataset_name"],
-        first["dataset_type"],
-        additional_roots=[
-            (root["dataset_name"], root["dataset_type"]) for root in rest
-        ],
-        progress_callback=on_tier,
-        rebuild_index=True,
-    )
 
 
 _METHOD_UPDATE_BUCKETS = (

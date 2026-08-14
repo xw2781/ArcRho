@@ -13,7 +13,6 @@ to UI pages that freeze their editing surface while a class is rewritten.
 from __future__ import annotations
 
 import contextvars
-import getpass
 import json
 import uuid
 from contextlib import contextmanager
@@ -39,6 +38,7 @@ from arcrho_dependent_propagation_contract import (
 from arcrho_project_duplication_contract import path_is_link_or_reparse
 
 from app_server import config
+from app_server.services import user_identity_service
 
 
 def _workspace_server_root() -> Path:
@@ -200,7 +200,10 @@ def submit_dependent_propagation_job(
             project_name=project_name,
             path=reserving_class,
             changed_roots=list(changed_roots),
-            user_name=getpass.getuser(),
+            # The Engine acts as this user while it walks, so the login must be
+            # the person who saved, not the process that publishes the request
+            # — which, for a save already hosted on the Engine, is an Engine.
+            user_name=user_identity_service.get_windows_login_name(),
         )
     except DependentPropagationContractError as error:
         raise HTTPException(400, str(error)) from error

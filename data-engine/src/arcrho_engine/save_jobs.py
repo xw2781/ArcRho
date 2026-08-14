@@ -17,6 +17,10 @@ dialog stayed open. The plan's fingerprint comes back on the ``commit``, which
 recomputes it *under* the lease and refuses with 409 when the class moved in
 between.
 
+The save runs as the user named in the request, not as the account this
+instance was started under, so the ``user`` fields it writes name the person
+who made the edit no matter which instance claimed the request.
+
 Failures map faithfully: an ``HTTPException`` raised by the service (409
 conflicts, 400 validation, 423 holds) reaches the client with its original
 status code and detail; anything else becomes a redacted 500-style error.
@@ -238,7 +242,7 @@ def process_hosted_save_request(
         configure_canonical_runtime(root)
         from fastapi import HTTPException
 
-        from app_server.services import dependent_propagation_service
+        from app_server.services import dependent_propagation_service, user_identity_service
 
         module_name, function_name = SAVE_JOB_KINDS[normalized["SaveKind"]]
         module = importlib.import_module(f"app_server.services.{module_name}")
@@ -275,13 +279,20 @@ def process_hosted_save_request(
         _log(root, f"{request_id} executing {module_name}.{function_name}")
 
         try:
-            # The hold probe would refuse this very save (the lease we hold is
-            # the hold), and the walk runs inline on local disk instead of
+            # This instance runs under its own service profile, so the save
+            # acts as the user who submitted it — otherwise every sidecar and
+            # index row would name whichever instance claimed the request. The
+            # hold probe would refuse this very save (the lease we hold is the
+            # hold), and the walk runs inline on local disk instead of
             # enqueueing a second job.
             with (
+                user_identity_service.acting_identity(
+                    normalized["UserName"], normalized["UserDisplayName"]
+                ) as identity,
                 dependent_propagation_service.suspended_reserving_class_hold_check(),
                 dependent_propagation_service.inline_engine_propagation(),
             ):
+                _log(root, f"{request_id} acting as {identity['display_name']!r}")
                 response = save_function(
                     *normalized["Args"], **normalized["Kwargs"]
                 )

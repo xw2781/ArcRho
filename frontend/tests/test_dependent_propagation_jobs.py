@@ -81,8 +81,12 @@ class DependentPropagationJobTests(unittest.TestCase):
             "request_id": self.REQUEST_ID,
         }
         payload.update(overrides)
+        # The Engine acts as this login while it walks, so the request must
+        # carry the person who saved rather than the publishing process.
         with patch.object(
-            dependent_propagation_service.getpass, "getuser", return_value="Test User"
+            dependent_propagation_service.user_identity_service,
+            "get_windows_login_name",
+            return_value="Test User",
         ):
             return dependent_propagation_service.submit_dependent_propagation_job(
                 payload["project_name"],

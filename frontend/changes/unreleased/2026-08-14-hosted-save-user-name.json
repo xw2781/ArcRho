@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "save",
+  "audience": "user",
+  "summary": "Saved datasets and methods once again record the person who saved them instead of a random ArcRho Engine account.",
+  "details": [
+    "Saves and dependent updates run on ArcRho Engine, whose instances sign in under their own profiles; the request now carries the editing user, so the User column in the dataset table and the sidecar and audit records name the right person no matter which instance handled the save.",
+    "Rows saved before this fix keep the account they were stamped with until the object is saved again."
+  ]
+}

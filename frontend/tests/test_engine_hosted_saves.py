@@ -112,9 +112,46 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         thread.join(timeout=5)
         self.assertEqual(result["propagation"]["refreshed_datasets"], ["C 61", "C 91"])
         self.assertEqual(result["echo_args"][2], {"json format": "dfm"})
-        # Terminal artifacts are consumed so the queue folders stay clean.
-        statuses = self.root / "requests" / "save_jobs" / "statuses"
-        self.assertEqual([item.name for item in statuses.iterdir()], [])
+        # Terminal artifacts are consumed so the queue folders stay clean —
+        # in the background, off the response's critical path, so wait for it.
+        save_jobs = self.root / "requests" / "save_jobs"
+        deadline = time.monotonic() + 5
+        def leftovers():
+            return [
+                item.name
+                for folder in ("statuses", "results")
+                for item in (save_jobs / folder).iterdir()
+            ]
+        while leftovers() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(leftovers(), [])
+
+    def test_the_request_carries_the_user_who_is_saving(self) -> None:
+        # The Engine instance that claims this runs as its own service
+        # account, so the requesting user has to travel with the request or
+        # the sidecar ends up naming a random instance.
+        received: list = []
+
+        def respond(request):
+            received.append(request)
+            write_save_job_result(self.root, request["RequestId"], {"ok": True})
+            write_save_job_status(self.root, request["RequestId"], "success")
+
+        thread = self._engine_stub(respond)
+        with patch.object(
+            engine_hosted_save_service.user_identity_service,
+            "get_current_identity",
+            return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
+        ):
+            engine_hosted_save_service.run_hosted_save(
+                "dataset_sidecar",
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
+            )
+        thread.join(timeout=5)
+        self.assertEqual(received[0]["UserName"], "xwei")
+        self.assertEqual(received[0]["UserDisplayName"], "Wei, Xiao")
 
     def test_service_errors_keep_their_status_codes(self) -> None:
         def respond(request):

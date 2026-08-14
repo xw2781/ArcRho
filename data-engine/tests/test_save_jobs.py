@@ -35,7 +35,30 @@ def _noop_context():
     yield
 
 
-def _fake_app_server(save_function, save_plan_service=None):
+def _identity_stub(bound: list):
+    """Stand in for the canonical acting-identity binding.
+
+    ``bound`` holds the identity only while it is in scope, so a save can
+    assert it ran *inside* the binding rather than merely next to it.
+    """
+
+    @contextmanager
+    def acting_identity(login_name, display_name=""):
+        identity = {
+            "login_name": str(login_name or "").strip(),
+            "display_name": str(display_name or "").strip()
+            or str(login_name or "").strip(),
+        }
+        bound.append(identity)
+        try:
+            yield identity
+        finally:
+            bound.pop()
+
+    return SimpleNamespace(acting_identity=acting_identity)
+
+
+def _fake_app_server(save_function, save_plan_service=None, bound_identities=None):
     fake_services = types.ModuleType("app_server.services")
     fake_services.dfm_service = SimpleNamespace(save_dfm_method=save_function)
     fake_services.dependent_propagation_service = SimpleNamespace(
@@ -43,6 +66,9 @@ def _fake_app_server(save_function, save_plan_service=None):
         inline_engine_propagation=_noop_context,
     )
     fake_services.save_plan_service = save_plan_service or SimpleNamespace()
+    fake_services.user_identity_service = _identity_stub(
+        bound_identities if bound_identities is not None else []
+    )
     fake_app_server = types.ModuleType("app_server")
     fake_app_server.services = fake_services
     return {
@@ -50,6 +76,7 @@ def _fake_app_server(save_function, save_plan_service=None):
         "app_server.services": fake_services,
         "app_server.services.dfm_service": fake_services.dfm_service,
         "app_server.services.save_plan_service": fake_services.save_plan_service,
+        "app_server.services.user_identity_service": fake_services.user_identity_service,
     }
 
 
@@ -66,6 +93,7 @@ class HostedSaveJobTests(unittest.TestCase):
         self.temp.cleanup()
 
     def _publish_request(self, **overrides) -> tuple[Path, dict]:
+        overrides.setdefault("user_name", "tester")
         request = build_save_job_request(
             request_id=self.REQUEST_ID,
             save_kind="dfm_method",
@@ -73,7 +101,6 @@ class HostedSaveJobTests(unittest.TestCase):
             path="HPPREF\\HOL",
             args=["Demo", "HPPREF\\HOL", {"json format": "dfm"}],
             kwargs={"notes": "note"},
-            user_name="tester",
             **overrides,
         )
         path = save_job_request_path(self.root, self.REQUEST_ID)
@@ -104,6 +131,53 @@ class HostedSaveJobTests(unittest.TestCase):
         self.assertEqual(status["status"], "success")
         result = read_save_job_result(self.root, self.REQUEST_ID)
         self.assertEqual(result["propagation"]["status"], "completed")
+
+    def test_the_save_runs_as_the_user_who_submitted_it(self) -> None:
+        # Instances run under their own service profiles, so without this the
+        # sidecar would name whichever instance claimed the request.
+        bound: list = []
+        seen: list = []
+
+        def fake_save(*_args, **_kwargs):
+            seen.append(list(bound))
+            return {"ok": True}
+
+        path, request = self._publish_request(
+            user_name="xwei", user_display_name="Wei, Xiao"
+        )
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, _fake_app_server(fake_save, bound_identities=bound)),
+        ):
+            completed = save_jobs.process_hosted_save_request(self.root, path, request)
+
+        self.assertTrue(completed)
+        self.assertEqual(
+            seen, [[{"login_name": "xwei", "display_name": "Wei, Xiao"}]]
+        )
+        self.assertEqual(bound, [], "the binding must not outlive the save")
+
+    def test_a_request_without_a_display_name_binds_the_login_to_resolve(self) -> None:
+        # A producer that predates UserDisplayName still identifies its user;
+        # the canonical binding resolves that login through the username index.
+        bound: list = []
+        seen: list = []
+
+        def fake_save(*_args, **_kwargs):
+            seen.append(list(bound))
+            return {"ok": True}
+
+        path, request = self._publish_request(user_name="xwei")
+        request.pop("UserDisplayName")
+        path.write_text(json.dumps(request), encoding="utf-8")
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, _fake_app_server(fake_save, bound_identities=bound)),
+        ):
+            completed = save_jobs.process_hosted_save_request(self.root, path, request)
+
+        self.assertTrue(completed)
+        self.assertEqual(seen, [[{"login_name": "xwei", "display_name": "xwei"}]])
 
     def test_service_http_exceptions_keep_their_status_codes(self) -> None:
         def conflicting_save(*_args, **_kwargs):
@@ -315,6 +389,8 @@ class SaveJobContractModeTests(unittest.TestCase):
         normalized = validate_save_job_request(legacy)
         self.assertEqual(normalized["Mode"], "commit")
         self.assertEqual(normalized["PlanFingerprint"], "")
+        # No display name to trust: the Engine resolves the login itself.
+        self.assertEqual(normalized["UserDisplayName"], "")
 
     def test_a_plan_may_not_carry_a_reviewed_fingerprint(self) -> None:
         from arcrho_engine_save_contract import SaveJobContractError

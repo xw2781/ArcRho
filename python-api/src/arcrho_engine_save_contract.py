@@ -11,6 +11,13 @@ writes the service's full response payload to a result file the client
 returns as its own HTTP response — so the save endpoints keep their exact
 shapes while the file I/O happens on the server host's local disk.
 
+Engine instances run under their own service profiles, so a request carries
+the submitting user in ``UserName`` (the Windows login) and
+``UserDisplayName`` (that login already resolved through the workspace
+username index). The Engine acts as that user while it saves, which is what
+keeps a sidecar's ``user`` field naming the person who edited the object
+rather than whichever instance happened to claim the request.
+
 Save jobs are interactive, not durable: a request lost to a mid-save crash
 surfaces as a client timeout and the user simply saves again (the unsaved
 work never left the editor). Only the allowlisted kinds below may execute.
@@ -122,6 +129,7 @@ def build_save_job_request(
     args: list[Any],
     kwargs: Mapping[str, Any],
     user_name: str = "",
+    user_display_name: str = "",
     mode: str = SAVE_JOB_MODE_COMMIT,
     plan_fingerprint: str = "",
 ) -> dict[str, Any]:
@@ -154,6 +162,7 @@ def build_save_job_request(
         "Args": list(args or []),
         "Kwargs": dict(kwargs or {}),
         "UserName": str(user_name or "").strip(),
+        "UserDisplayName": str(user_display_name or "").strip(),
     }
 
 
@@ -209,6 +218,9 @@ def validate_save_job_request(payload: Mapping[str, Any]) -> dict[str, Any]:
         "Args": list(args),
         "Kwargs": dict(kwargs),
         "UserName": str(payload.get("UserName") or "").strip(),
+        # An omitted display name means the producer predates this field; the
+        # Engine then resolves ``UserName`` through the username index itself.
+        "UserDisplayName": str(payload.get("UserDisplayName") or "").strip(),
     }
 
 

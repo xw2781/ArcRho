@@ -16,9 +16,9 @@ matching :func:`run_hosted_save` passes back for the under-lease recheck.
 
 from __future__ import annotations
 
-import getpass
 import json
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -43,7 +43,7 @@ from arcrho_engine_save_contract import (
     write_save_job_status,
 )
 
-from app_server.services import dependent_propagation_service
+from app_server.services import dependent_propagation_service, user_identity_service
 
 # SMB status reads take ~0.4 s and hold the file open without
 # FILE_SHARE_DELETE, blocking the Engine's atomic status replace for their
@@ -72,6 +72,23 @@ HOSTED_PLAN_TIMEOUT_MESSAGE = (
 
 def _server_root() -> Path:
     return dependent_propagation_service._workspace_server_root()
+
+
+def _discard_artifacts_in_background(server_root: Path, request_id: str) -> None:
+    # Consuming a claimed job's leftovers is three sequential SMB unlinks
+    # (measured ~0.1 s per existing file on the mapped drive; the Engine's
+    # delete-to-claim already removed the request file), so doing it before
+    # returning makes every hosted save and plan wait ~0.25 s for pure
+    # housekeeping. Cleanup stays best-effort either way: the Engine prunes
+    # anything a dead client leaves behind. The unclaimed-request retraction
+    # must NOT come through here — deleting the request file before the 503
+    # is what guarantees the job never runs.
+    threading.Thread(
+        target=discard_save_job_artifacts,
+        args=(server_root, request_id),
+        name=f"hosted-save-cleanup-{request_id}",
+        daemon=True,
+    ).start()
 
 
 def _publish_request(server_root: Path, request: Mapping[str, Any]) -> Path:
@@ -118,6 +135,11 @@ def _run_hosted_job(
 
     server_root = _server_root()
     request_id = uuid.uuid4().hex
+    # The Engine instance that claims this runs under its own service profile,
+    # so the requesting user travels with the request: the login for identity
+    # and the display name this process already resolved against the workspace
+    # username index.
+    identity = user_identity_service.get_current_identity()
     try:
         request = build_save_job_request(
             request_id=request_id,
@@ -128,7 +150,8 @@ def _run_hosted_job(
             # plain JSON, so encode exactly the way FastAPI would respond.
             args=jsonable_encoder(list(args)),
             kwargs=jsonable_encoder(dict(kwargs or {})),
-            user_name=getpass.getuser(),
+            user_name=identity["login_name"],
+            user_display_name=identity["display_name"],
             mode=mode,
             plan_fingerprint=plan_fingerprint,
         )
@@ -146,13 +169,13 @@ def _run_hosted_job(
         if save_job_status_is_terminal(status):
             if str(status.get("status")) == "success":
                 result = read_save_job_result(server_root, request_id)
-                discard_save_job_artifacts(server_root, request_id)
+                _discard_artifacts_in_background(server_root, request_id)
                 if result is None:
                     raise HTTPException(500, missing_result_message)
                 return result
             code = int(status.get("status_code") or 500)
             message = str(status.get("message") or failure_message)
-            discard_save_job_artifacts(server_root, request_id)
+            _discard_artifacts_in_background(server_root, request_id)
             raise HTTPException(code, message)
 
         now = time.monotonic()
