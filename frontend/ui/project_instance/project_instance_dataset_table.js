@@ -357,8 +357,10 @@ function captureDatasetTableSelection() {
   return {
     selectedNames,
     anchorName: getDatasetSelectionName(getDatasetRecordByKey(datasetTableSelection.anchorKey)),
+    activeName: getDatasetSelectionName(getDatasetRecordByKey(datasetTableSelection.activeKey)),
     selectedKeys: Array.from(datasetTableSelection.selectedKeys),
     anchorKey: datasetTableSelection.anchorKey,
+    activeKey: datasetTableSelection.activeKey,
   };
 }
 
@@ -376,10 +378,14 @@ function restoreDatasetTableSelection(selectionState) {
   );
   const anchorName = normalizeLookupKey(selectionState.anchorName);
   const oldAnchorKey = toText(selectionState.anchorKey);
+  const activeName = normalizeLookupKey(selectionState.activeName);
+  const oldActiveKey = toText(selectionState.activeKey);
   let nextAnchorKey = "";
+  let nextActiveKey = "";
 
   datasetTableSelection.selectedKeys.clear();
   datasetTableSelection.anchorKey = "";
+  datasetTableSelection.activeKey = "";
 
   for (const record of state.datasetTableVisibleRecords) {
     const recordKey = getDatasetRecordKey(record);
@@ -391,9 +397,13 @@ function restoreDatasetTableSelection(selectionState) {
     if (!nextAnchorKey && ((anchorName && name === anchorName) || (!anchorName && recordKey === oldAnchorKey))) {
       nextAnchorKey = recordKey;
     }
+    if (!nextActiveKey && ((activeName && name === activeName) || (!activeName && recordKey === oldActiveKey))) {
+      nextActiveKey = recordKey;
+    }
   }
 
   datasetTableSelection.anchorKey = nextAnchorKey || datasetTableSelection.selectedKeys.values().next().value || "";
+  datasetTableSelection.activeKey = nextActiveKey || datasetTableSelection.anchorKey;
   syncDatasetTableSelectionDom();
 }
 
@@ -404,6 +414,9 @@ function pruneDatasetTableSelection() {
   }
   if (!visibleKeys.has(datasetTableSelection.anchorKey)) {
     datasetTableSelection.anchorKey = datasetTableSelection.selectedKeys.values().next().value || "";
+  }
+  if (!visibleKeys.has(datasetTableSelection.activeKey)) {
+    datasetTableSelection.activeKey = datasetTableSelection.anchorKey;
   }
   updateDatasetSelectionStatusBar();
 }
@@ -458,12 +471,9 @@ function scrollDatasetRecordIntoView(key) {
 }
 
 function getActiveDatasetSelectionIndex() {
-  const anchorIndex = getDatasetRecordIndexByKey(datasetTableSelection.anchorKey);
-  if (
-    anchorIndex >= 0
-    && datasetTableSelection.selectedKeys.has(datasetTableSelection.anchorKey)
-  ) {
-    return anchorIndex;
+  for (const key of [datasetTableSelection.activeKey, datasetTableSelection.anchorKey]) {
+    const index = getDatasetRecordIndexByKey(key);
+    if (index >= 0 && datasetTableSelection.selectedKeys.has(key)) return index;
   }
   for (const key of datasetTableSelection.selectedKeys) {
     const selectedIndex = getDatasetRecordIndexByKey(key);
@@ -481,6 +491,7 @@ function selectDatasetRecordAtIndex(index) {
   datasetTableSelection.selectedKeys.clear();
   datasetTableSelection.selectedKeys.add(key);
   datasetTableSelection.anchorKey = key;
+  datasetTableSelection.activeKey = key;
   syncDatasetTableSelectionDom();
   scrollDatasetRecordIntoView(key);
   focusDatasetTableSurface();
@@ -496,6 +507,7 @@ function selectDatasetRecordByName(datasetName) {
   datasetTableSelection.selectedKeys.clear();
   datasetTableSelection.selectedKeys.add(key);
   datasetTableSelection.anchorKey = key;
+  datasetTableSelection.activeKey = key;
   syncDatasetTableSelectionDom();
   scrollDatasetRecordIntoView(key);
   focusDatasetTableSurface();
@@ -528,6 +540,7 @@ function applyDatasetRowSelection(record, event = {}) {
     }
     datasetTableSelection.anchorKey = key;
   }
+  datasetTableSelection.activeKey = key;
   syncDatasetTableSelectionDom();
 }
 
@@ -555,10 +568,22 @@ function handleDatasetTableKeyDown(event) {
   selectDatasetRecordAtIndex(nextIndex);
 }
 
+function isActiveDatasetSelectionKey(key) {
+  return (
+    datasetTableSelection.selectedKeys.size > 1
+    && !!key
+    && key === datasetTableSelection.activeKey
+    && datasetTableSelection.selectedKeys.has(key)
+  );
+}
+
 function syncDatasetTableSelectionDom() {
   for (const tr of els.datasetTableSurface?.querySelectorAll?.("tr[data-record-key]") || []) {
-    const selected = datasetTableSelection.selectedKeys.has(toText(tr.dataset.recordKey));
+    const key = toText(tr.dataset.recordKey);
+    const selected = datasetTableSelection.selectedKeys.has(key);
     tr.classList.toggle("selected", selected);
+    tr.classList.toggle("multi", selected && datasetTableSelection.selectedKeys.size > 1);
+    tr.classList.toggle("active", isActiveDatasetSelectionKey(key));
     tr.setAttribute("aria-selected", selected ? "true" : "false");
   }
   updateDatasetSelectionStatusBar();
@@ -1233,6 +1258,14 @@ function openDatasetRecordAsDataset(record) {
   });
 }
 
+function canAddDfmForDataset(record) {
+  return (
+    !!record
+    && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "triangle"
+    && ["", "none"].includes(normalizeLookupKey(getDatasetRecordValue(record, "methodType")))
+  );
+}
+
 function addDfmForDataset(record) {
   const datasetName = toText(record?.datasetName);
   if (!datasetName) {
@@ -1241,6 +1274,10 @@ function addDfmForDataset(record) {
   }
   if (!state.selectedPath) {
     setStatus("Select a reserving class path before adding a DFM object.", true);
+    return;
+  }
+  if (!canAddDfmForDataset(record)) {
+    setStatus("DFM can be added only to triangle datasets with Method Type None.", true);
     return;
   }
   openDfmWindow(datasetName, {
@@ -1817,8 +1854,11 @@ function createDatasetRecordRow(item, columns) {
   const recordKey = getDatasetRecordKey(item);
   if (recordKey) {
     tr.dataset.recordKey = recordKey;
-    tr.classList.toggle("selected", datasetTableSelection.selectedKeys.has(recordKey));
-    tr.setAttribute("aria-selected", datasetTableSelection.selectedKeys.has(recordKey) ? "true" : "false");
+    const selected = datasetTableSelection.selectedKeys.has(recordKey);
+    tr.classList.toggle("selected", selected);
+    tr.classList.toggle("multi", selected && datasetTableSelection.selectedKeys.size > 1);
+    tr.classList.toggle("active", isActiveDatasetSelectionKey(recordKey));
+    tr.setAttribute("aria-selected", selected ? "true" : "false");
   }
   for (const col of columns) {
     const value = getDatasetRecordValue(item, col.key);
@@ -1848,8 +1888,9 @@ function createDatasetRecordRow(item, columns) {
       datasetTableSelection.selectedKeys.clear();
       datasetTableSelection.selectedKeys.add(recordKey);
       datasetTableSelection.anchorKey = recordKey;
-      syncDatasetTableSelectionDom();
     }
+    datasetTableSelection.activeKey = recordKey;
+    syncDatasetTableSelectionDom();
     focusDatasetTableSurface();
     showDatasetRowContextMenu(recordKey, event.clientX, event.clientY);
   });
@@ -2267,6 +2308,13 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
     viewAsTriangleItem.hidden = !viewAsTriangle;
     viewAsTriangleItem.disabled = !viewAsTriangle;
   }
+  const addDfmItem = menu.querySelector("[data-row-action='add-dfm']");
+  if (addDfmItem) {
+    const canAdd = !temporaryView && !emptyContext && canAddDfmForDataset(viewRecord);
+    addDfmItem.hidden = temporaryView || emptyContext;
+    addDfmItem.disabled = !canAdd;
+    addDfmItem.title = canAdd ? "" : "DFM can be added only to triangle datasets with Method Type None.";
+  }
   const addResultSelectionItem = menu.querySelector("[data-row-action='add-result-selection']");
   if (addResultSelectionItem) {
     const canAdd = !temporaryView && !emptyContext && canAddResultSelectionForDataset(viewRecord);
@@ -2324,6 +2372,7 @@ function showDatasetEmptyAddContextMenu(x, y) {
   if (!canShowDatasetEmptyAddContextMenu()) return false;
   datasetTableSelection.selectedKeys.clear();
   datasetTableSelection.anchorKey = "";
+  datasetTableSelection.activeKey = "";
   syncDatasetTableSelectionDom();
   focusDatasetTableSurface();
   showDatasetRowContextMenu("", x, y, { emptyContext: true });

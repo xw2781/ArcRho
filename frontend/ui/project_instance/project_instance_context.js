@@ -236,7 +236,7 @@ export function createProjectInstanceContext(deps = {}) {
       filterAnchor: null,
     },
     datasetTableVisibleRecords: [],
-    datasetTableSelection: { selectedKeys: new Set(), anchorKey: "" },
+    datasetTableSelection: { selectedKeys: new Set(), anchorKey: "", activeKey: "" },
     temporaryDatasetTableFilterState: null,
     datasetDeleteConfirmResolve: null,
     lastDatasetSelectionStatusCount: 0,

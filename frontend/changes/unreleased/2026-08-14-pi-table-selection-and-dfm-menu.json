@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "ui",
+  "audience": "user",
+  "summary": "Project Instance dataset table shows which selected row Enter will open and only offers Add > DFM for triangle datasets.",
+  "details": [
+    "In a multi-row selection all selected rows share the same background, the last-selected row alone keeps the solid blue left-edge bar while the others switch to a hollow left bar, and Enter now opens that emphasized row (previously it opened the Shift-range anchor).",
+    "Right-clicking always targets the row under the mouse pointer: outside the selection it collapses the selection to that row, inside it the emphasis moves to that row.",
+    "Add > DFM is disabled with an explanatory tooltip unless the row is a triangle dataset with Method Type None, matching the other Add method entries."
+  ]
+}
